@@ -1130,7 +1130,7 @@ private struct ChannelRow: View {
     var body: some View {
         HStack(spacing: 8) {
             Capsule()
-                .fill(Color.white)
+                .fill(Color.primary)
                 .frame(width: 4, height: 8)
                 .opacity(showsUnread ? 1 : 0)
                 .frame(width: 8)
