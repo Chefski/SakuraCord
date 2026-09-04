@@ -452,7 +452,8 @@ final class RateLimitURLProtocol: URLProtocol, @unchecked Sendable {
                 ? ""
                 : #"{"retry_after":0.01,"global":false}"#
         case let path
-            where path.hasPrefix("/api/v9/channels/200/messages/300/reactions/")
+            where (path.hasPrefix("/api/v9/channels/200/messages/300/reactions/")
+                || path.hasPrefix("/api/v9/channels/200/messages/350/reactions/"))
                 && path.hasSuffix("/@me"):
             RateLimitURLProtocol.reactionMethods.append(request.httpMethod ?? "")
             status = 204

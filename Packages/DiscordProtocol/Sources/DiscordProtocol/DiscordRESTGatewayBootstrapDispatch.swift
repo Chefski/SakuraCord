@@ -4,28 +4,27 @@ import SakuraCordModels
 extension DiscordRESTProvider {
     func handleGatewayBootstrapEvent(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async -> Bool {
         switch name {
         case "READY", "RESUMED":
-            await handleReadyDispatch(name: name, body: body, data: data)
+            await handleReadyDispatch(name: name, body: body)
         case "USER_SETTINGS_PROTO_UPDATE":
-            await handleUserSettingsProtoUpdateDispatch(name: name, body: body, data: data)
+            await handleUserSettingsProtoUpdateDispatch(name: name, body: body)
         case "GUILD_STICKERS_UPDATE":
-            await handleGuildStickersUpdateDispatch(name: name, body: body, data: data)
+            await handleGuildStickersUpdateDispatch(name: name, body: body)
         case "USER_GUILD_SETTINGS_UPDATE":
-            await handleUserGuildSettingsUpdateDispatch(name: name, body: body, data: data)
+            await handleUserGuildSettingsUpdateDispatch(name: name, body: body)
         case "SOUNDBOARD_SOUNDS":
-            await handleSoundboardSoundsDispatch(name: name, body: body, data: data)
+            await handleSoundboardSoundsDispatch(name: name, body: body)
         case "VOICE_CHANNEL_EFFECT_SEND", "VOICE_EFFECT_SEND":
-            await handleVoiceChannelEffectSendDispatch(name: name, body: body, data: data)
+            await handleVoiceChannelEffectSendDispatch(name: name, body: body)
         case "GUILD_SOUNDBOARD_SOUND_CREATE", "GUILD_SOUNDBOARD_SOUND_UPDATE":
-            await handleGuildSoundboardSoundCreateDispatch(name: name, body: body, data: data)
+            await handleGuildSoundboardSoundCreateDispatch(name: name, body: body)
         case "GUILD_SOUNDBOARD_SOUND_DELETE":
-            await handleGuildSoundboardSoundDeleteDispatch(name: name, body: body, data: data)
+            await handleGuildSoundboardSoundDeleteDispatch(name: name, body: body)
         case "READY_SUPPLEMENTAL":
-            await handleReadySupplementalDispatch(name: name, body: body, data: data)
+            await handleReadySupplementalDispatch(name: name, body: body)
         default:
             return false
         }
@@ -34,8 +33,7 @@ extension DiscordRESTProvider {
 
     func handleReadyDispatch(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async {
         subscribedPrivateCallChannelIDs = []
         let readyDecode = discordPerformanceSignposter.beginInterval(
@@ -373,12 +371,11 @@ extension DiscordRESTProvider {
 
     func handleUserSettingsProtoUpdateDispatch(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async {
-        guard let update = try? JSONDecoder().decode(
+        guard let update = try? JSONValueDecoder().decode(
             GatewayUserSettingsProtoUpdateDTO.self,
-            from: data
+            from: body
         ) else { return }
         switch update.settings.type {
         case 1:
@@ -398,12 +395,11 @@ extension DiscordRESTProvider {
 
     func handleGuildStickersUpdateDispatch(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async {
-        guard let update = try? JSONDecoder().decode(
+        guard let update = try? JSONValueDecoder().decode(
             GatewayGuildStickersUpdateDTO.self,
-            from: data
+            from: body
         ), let guildID = GuildID(update.guildID) else { return }
         let stickers = update.stickers
             .map { $0.domain(guildID: guildID) }
@@ -414,11 +410,10 @@ extension DiscordRESTProvider {
 
     func handleUserGuildSettingsUpdateDispatch(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async {
-        guard let update = try? JSONDecoder().decode(
-            GatewayUserGuildSettingsDTO.self, from: data
+        guard let update = try? JSONValueDecoder().decode(
+            GatewayUserGuildSettingsDTO.self, from: body
         ) else { return }
         let guildID = update.guildID.flatMap(GuildID.init)
         let settings = update.domain(
@@ -430,30 +425,28 @@ extension DiscordRESTProvider {
 
     func handleSoundboardSoundsDispatch(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async {
-        guard let update = try? JSONDecoder().decode(
+        guard let update = try? JSONValueDecoder().decode(
             GatewaySoundboardSoundsDTO.self,
-            from: data
+            from: body
         ) else { return }
         applySoundboardSounds(update)
     }
 
     func handleVoiceChannelEffectSendDispatch(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async {
         let decoded: VoiceChannelEffectDTO
         do {
-            decoded = try JSONDecoder().decode(
+            decoded = try JSONValueDecoder().decode(
                 VoiceChannelEffectDTO.self,
-                from: data
+                from: body
             )
         } catch {
             gatewayLogger.error(
-                "Voice channel effect could not be decoded; bytes=\(data.count)"
+                "Voice channel effect could not be decoded"
             )
             return
         }
@@ -466,42 +459,39 @@ extension DiscordRESTProvider {
 
     func handleGuildSoundboardSoundCreateDispatch(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async {
-        guard let sound = try? JSONDecoder().decode(
+        guard let sound = try? JSONValueDecoder().decode(
             GatewaySoundboardSoundEventDTO.self,
-            from: data
+            from: body
         ).domain else { return }
         upsertSoundboardSound(sound)
     }
 
     func handleGuildSoundboardSoundDeleteDispatch(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async {
-        guard let deletion = try? JSONDecoder().decode(
+        guard let deletion = try? JSONValueDecoder().decode(
             GatewaySoundboardSoundDeleteDTO.self,
-            from: data
+            from: body
         ), let guildID = GuildID(deletion.guildID) else { return }
         deleteSoundboardSound(guildID: guildID, soundID: deletion.soundID)
     }
 
     func handleReadySupplementalDispatch(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async {
-        if let supplemental = try? JSONDecoder().decode(
-            GatewayReadyGuildsDTO.self, from: data
+        if let supplemental = try? JSONValueDecoder().decode(
+            GatewayReadyGuildsDTO.self, from: body
         ) {
             cacheReadySupplementalPrivateState(supplemental)
             applyReadySupplementalGuildProjection(supplemental)
             publishReadySupplementalAliases(supplemental)
         }
         let states = ReadySupplementalVoiceStateResolver.resolve(
-            data: data,
+            body: body,
             gatewayGuildIDs: gatewayGuildIDs
         )
         for state in states {

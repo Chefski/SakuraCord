@@ -158,12 +158,32 @@ extension DiscordRESTProvider {
     }
 
     public func eventStream() async -> AsyncStream<ClientEvent> {
-        let stream = AsyncStream<ClientEvent>.makeStream(bufferingPolicy: .bufferingNewest(500))
-        continuation = stream.continuation
-        return stream.stream
+        let buffer = SessionEventBuffer<ClientEvent>(
+            overflowEvent: .sessionInvalidated(Self.eventOverflowMessage)
+        ) { [weak self] in
+            Task { await self?.stopAfterEventOverflow() }
+        }
+        continuation?.finish()
+        continuation = buffer
+        return buffer.stream
+    }
+
+    private static let eventOverflowMessage =
+        "The connection could not keep up with Discord updates. Reconnect your saved account to reload its state."
+
+    private func stopAfterEventOverflow() async {
+        guard !requestSafetyCircuitIsOpen else { return }
+        requestSafetyCircuitIsOpen = true
+        #if DEBUG
+            eventOverflowDidStopRequestsForTesting?()
+        #endif
+        continuation?.yield(.sessionInvalidated(Self.eventOverflowMessage))
+        failInitialGatewaySnapshot(ChatProviderError.invalidRequest(Self.eventOverflowMessage))
+        await disconnect()
     }
 
     public func disconnect() async {
+        derivedCacheGeneration &+= 1
         stickerFrecencyFlushGeneration &+= 1
         stickerFrecencyFlushTask?.cancel()
         stickerFrecencyFlushTask = nil
@@ -222,6 +242,7 @@ extension DiscordRESTProvider {
         continuation?.finish()
         continuation = nil
         authorizationValue = nil
+        cachedMessages.removeAll()
     }
 
     func startGateway() async throws {
@@ -280,6 +301,8 @@ extension DiscordRESTProvider {
 
     func handleGatewaySessionEvent(_ event: GatewaySessionEvent) async {
         switch event {
+        case .deliveryFailed:
+            await stopAfterEventOverflow()
         case .stateChanged(let connectionState):
             gatewayReady = connectionState == .ready
             if connectionState == .authenticationFailed {

@@ -111,15 +111,25 @@ extension AppModel {
 
     @discardableResult
     func sendGIF(_ gif: GIFSearchResult) async -> Bool {
-        guard selectedChannelID != nil else { return false }
+        guard let channelID = selectedChannelID,
+              selectedConversationAccess.canSend
+        else { return false }
+        // A picker submission owns its message value. It must never borrow or
+        // restore the mutable composer across the network suspension.
         let session = accountSession()
-        let priorDraft = draft
-        updateDraft(gif.url.absoluteString)
-        let sent = await send()
-        if !sent, isCurrentAccountSession(session) {
-            updateDraft(priorDraft)
-        }
-        return sent
+        let replyTo = replyingTo?.id
+        let mentionsRepliedUser = replyMentionsAuthor
+        let replyPreview = replyingTo.map { MessageReplyPreview(message: $0) }
+        guard await prepareChannelMessageSubmission(channelID: channelID, account: session) else { return false }
+        return await sendChannelMessage(
+            channelID: channelID,
+            content: gif.url.absoluteString,
+            replyTo: replyTo,
+            mentionsRepliedUser: mentionsRepliedUser,
+            replyPreview: replyPreview,
+            attachments: [],
+            clearsComposer: false
+        )
     }
 
 }

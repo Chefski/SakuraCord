@@ -72,6 +72,44 @@ nonisolated private struct DiscordForwardSearchPeopleCacheWrite: Sendable {
 }
 
 extension DiscordRESTProvider {
+    public func clearLocalSearchCache() async throws {
+        guard !isClearingDerivedCaches else {
+            throw ChatProviderError.invalidRequest("Local activity is already being cleared.")
+        }
+        isClearingDerivedCaches = true
+        derivedCacheGeneration &+= 1
+        #if DEBUG
+            derivedCacheClearDidBeginForTesting?()
+        #endif
+        defer { isClearingDerivedCaches = false }
+        cancelStartupSearchCacheLoad()
+        forwardPeopleCachePersistenceGeneration &+= 1
+        forwardPeopleCachePersistenceTask?.cancel()
+        forwardPeopleCachePersistenceTask = nil
+        await forwardPeopleCacheWriteTask?.value
+        forwardPeopleCacheWriteTask = nil
+        // Forget learned aliases as well as disk state so an unrelated later
+        // write cannot restore the cleared historical associations.
+        cachedForwardSearchUsersByID = [:]
+        cachedForwardSearchUserOrder = []
+        cachedForwardSearchAliasesByGuildID = [:]
+        cachedForwardSearchAliasGuildOrder = []
+        loadedForwardSearchAliasGuildOrder = []
+        // Live channel identity remains available; discard the saved insertion order.
+        cachedForwardChannelStoreOrder = []
+        cachedEmojis = [:]
+        continuation?.yield(.knownUsersChanged(currentKnownUsers()))
+        publishUserSearchAliases()
+        if forwardPeopleCacheDirectoryOverride != nil {
+            for url in [forwardSearchPeopleCacheURL(), quickSwitcherChannelStoreCacheURL()].compactMap({ $0 })
+            where FileManager.default.fileExists(atPath: url.path) {
+                try FileManager.default.removeItem(at: url)
+            }
+        } else if let accountID, usesForwardSearchPeopleDiskCache || usesEmojiDiskCache {
+            try await DiscordDerivedCacheStorage.remove(accountID: accountID)
+        }
+    }
+
     func beginStartupSearchCacheLoad() {
         guard startupSearchCacheLoadTask == nil else { return }
         let peopleURL = forwardSearchPeopleCacheURL()
@@ -236,6 +274,7 @@ extension DiscordRESTProvider {
     /// persist once after the discovery burst becomes quiet. Disconnect
     /// explicitly flushes the pending generation.
     func scheduleForwardSearchPeopleCachePersistence() {
+        guard !isClearingDerivedCaches, !requestSafetyCircuitIsOpen else { return }
         forwardPeopleCachePersistenceGeneration &+= 1
         let generation = forwardPeopleCachePersistenceGeneration
         forwardPeopleCachePersistenceTask?.cancel()
@@ -258,7 +297,7 @@ extension DiscordRESTProvider {
     private func persistScheduledForwardSearchPeopleCache(
         generation: UInt64
     ) async {
-        guard forwardPeopleCachePersistenceGeneration == generation else {
+        guard forwardPeopleCachePersistenceGeneration == generation, !requestSafetyCircuitIsOpen else {
             return
         }
         forwardPeopleCachePersistenceTask = nil
@@ -277,6 +316,7 @@ extension DiscordRESTProvider {
     }
 
     func persistForwardSearchPeopleCache() async {
+        guard !isClearingDerivedCaches else { return }
         guard let write = forwardSearchPeopleCacheWrite() else { return }
         let interval = discordPerformanceSignposter.beginInterval(
             "ForwardSearchPeopleCachePersistence"
@@ -314,10 +354,10 @@ extension DiscordRESTProvider {
                 snapshot
             )
         }
-        var seenUserIDs = Set<UserID>()
-        let orderedUserIDs = cachedGatewayUserOrder.compactMap(UserID.init).filter {
-            seenUserIDs.insert($0).inserted
-        } + cachedForwardSearchUserOrder.filter { seenUserIDs.insert($0).inserted }
+        // Only the learned-history owner grants persistence eligibility. The
+        // live UserStore also contains pre-clear authors needed by the current
+        // session; serializing that store would resurrect cleared history.
+        let orderedUserIDs = cachedForwardSearchUserOrder
         let users = orderedUserIDs.suffix(
             DiscordForwardSearchPeopleCache.maximumUsers
         ).compactMap { userID in

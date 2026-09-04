@@ -94,8 +94,7 @@ extension AppModel {
                 handle = credentialHandlesByAccountID[accountID]
             }
             guard let handle else {
-                savedAccounts.removeAll { $0.accountID == accountID }
-                await savedAccountStore.remove(accountID: accountID)
+                try await removeSavedAccount(accountID: accountID)
                 errorMessage = "That saved Discord account is no longer available."
                 return false
             }
@@ -177,7 +176,7 @@ extension AppModel {
         let previousAccount = accountSession(allowsTransition: true)
         let previousProvider = previousAccount.provider
         let previousEventTask = eventTask
-        resetAccountScopedLoadsAndForumState()
+        await resetAccountScopedLoadsAndForumState()
         let preparationSignpost = AppPerformanceSignposts.signposter.beginInterval(
             "AccountConnectionPreparation"
         )
@@ -203,11 +202,6 @@ extension AppModel {
         eventTask = nil
         await drainAccountChildTasks()
         guard accountSessionGeneration == transitionGeneration else { return false }
-        resetPendingCreatedMessages()
-        resetTimelineLiveScrolling()
-        clearReactionMutationState()
-        stopLocalTyping(clearThrottle: true)
-        typingState.clearAll()
         if !preservesInteractivePresentation {
             sessionState = .connecting
         }
@@ -354,15 +348,10 @@ extension AppModel {
         accountTransitionIsActive = true
         do {
             let handles = try await credentialStore.handles()
-            if let handle = handles.first(where: { $0.accountID == accountID }) {
-                try await removeSavedAccount(handle)
-            } else {
-                savedAccounts.removeAll { $0.accountID == accountID }
-                await savedAccountStore.remove(accountID: accountID)
-                await savedAccountStore.setPreferredAccountID(
-                    activeAccountID ?? savedAccounts.first?.accountID
-                )
-            }
+            try await removeSavedAccount(
+                accountID: accountID,
+                credentialHandle: handles.first(where: { $0.accountID == accountID })
+            )
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -375,7 +364,8 @@ extension AppModel {
         let previousProvider = previousAccount.provider
         let previousEventTask = eventTask
         let previousCredentialHandle = credentialHandle
-        resetAccountScopedLoadsAndForumState()
+        let previousAccountID = previousCredentialHandle?.accountID ?? activeAccountID
+        await resetAccountScopedLoadsAndForumState()
         await leaveVoice(account: previousAccount)
         guard accountSessionGeneration == transitionGeneration else { return }
         resetAppSounds()
@@ -387,28 +377,25 @@ extension AppModel {
         eventTask = nil
         await drainAccountChildTasks()
         guard accountSessionGeneration == transitionGeneration else { return }
-        resetPendingCreatedMessages()
-        resetTimelineLiveScrolling()
-        clearReactionMutationState()
-        stopLocalTyping(clearThrottle: true)
-        typingState.clearAll()
-        if let previousCredentialHandle {
+        var removalError: String?
+        if let previousAccountID {
             do {
-                try await removeSavedAccount(previousCredentialHandle)
+                try await removeSavedAccount(accountID: previousAccountID, credentialHandle: previousCredentialHandle)
                 guard accountSessionGeneration == transitionGeneration else { return }
             } catch {
                 guard accountSessionGeneration == transitionGeneration else { return }
-                errorMessage = error.localizedDescription
+                removalError = error.localizedDescription
             }
         }
         installSignedOutAccountState()
+        errorMessage = removalError
         if launchMode == .offlineTesting {
             await start()
             guard accountSessionGeneration == transitionGeneration else { return }
         }
     }
 
-    private func installSignedOutAccountState() {
+    func installSignedOutAccountState() {
         bootstrapHistoryPrefetch?.task.cancel()
         bootstrapHistoryPrefetch = nil
         credentialHandle = nil
@@ -430,74 +417,41 @@ extension AppModel {
             : nil
         installAccountSession(provider: signedOutProvider, database: signedOutDatabase)
         accountTransitionIsActive = false
-        workspaceNavigationOverlay = nil
-        lastOpenedChannelIDsByGuild = [:]
-        snapshot = nil
-        replaceServerRailGuilds([:])
-        serverRailHomeIsUnread = false
-        serverRailHomeMentionCount = 0
-        serverRailItems = []
-        emojisByGuild = [:]
-        loadingEmojiGuildIDs = []
-        emojiLoadErrorsByGuild = [:]
-        discordFavoriteEmojiKeys = []
-        discordFrequentlyUsedEmojiKeys = []
-        discordEmojiUsageScores = [:]
-        discordGuildAndChannelUsageScores = [:]
-        discordSyncedGuildAndChannelUsageScores = [:]
-        discordGuildAndChannelUsage = [:]
-        discordGuildAndChannelUsageOrder = []
-        pendingDiscordFrecencyUses = []
-        appliedDiscordFrecencyDeltasKey = nil
-        lastDiscordFrecencyChannelID = nil
-        lastDiscordFrecencyGuildID = nil
-        hasLoadedDiscordEmojiSettings = false
-        didAttemptDiscordEmojiSettings = false
-        voiceStates = [:]
-        privateCallsByChannel = [:]
-        visibleChannels = []
-        selectedChannel = nil
-        selectedGuildID = nil
-        selectedChannelID = nil
-        replaceSelectedMessages(with: [])
-        hasCompletedInitialMessageLoad = false
-        hasCompletedInitialThreadLoad = false
-        isLoadingLater = false
-        hasMoreLaterMessages = false
-        messageCache = [:]
-        messageCacheOrder = []
-        messageRowCache = [:]
-        messageRowCacheOrder = []
-        hasMoreCache = [:]
-        membersByGuildID = [:]
-        memberListsByGuildID = [:]
-        memberListGroupsByGuildID = [:]
-        memberListViewportRequest = nil
-        lastMemberListVisibleRange = nil
-        guildRolesByGuildID = [:]
-        membersByID = [:]
-        memberListGroups = []
-        guildRoles = []
-        members = []
-        dismissAllProfiles(clearsCache: true)
+        resetAccountPresentationState()
         connectionState = .disconnected
         isAuthenticated = false
         didAttemptSessionRestore = true
         sessionState = launchMode == .offlineTesting ? .connecting : .signedOut
     }
 
-    private func removeSavedAccount(_ handle: CredentialHandle) async throws {
-        try await credentialStore.remove(handle)
-        credentialHandlesByAccountID[handle.accountID] = nil
-        await savedAccountStore.remove(accountID: handle.accountID)
-        savedAccounts.removeAll { $0.accountID == handle.accountID }
+    func removeSavedAccount(
+        accountID: String,
+        credentialHandle: CredentialHandle? = nil,
+        clearCaches: (String) async throws -> Void = { try await DiscordDerivedCacheStorage.remove(accountID: $0) }
+    ) async throws {
+        if let credentialHandle { try await credentialStore.remove(credentialHandle) }
+        credentialHandlesByAccountID[accountID] = nil
+        await savedAccountStore.remove(accountID: accountID)
+        savedAccounts.removeAll { $0.accountID == accountID }
         await savedAccountStore.setPreferredAccountID(
-            savedAccounts.first?.accountID
+            activeAccountID != accountID ? activeAccountID ?? savedAccounts.first?.accountID : savedAccounts.first?.accountID
         )
+        if launchMode == .normal {
+            do {
+                try await clearCaches(accountID)
+            } catch {
+                throw SavedAccountCacheCleanupError(reason: error.localizedDescription)
+            }
+        }
     }
 
-    func resetAccountScopedLoadsAndForumState() {
+    func resetAccountScopedLoadsAndForumState() async {
         cancelAccountChildTasks()
+        resetPendingCreatedMessages()
+        resetTimelineLiveScrolling()
+        clearReactionMutationState()
+        stopLocalTyping(clearThrottle: true)
+        typingState.clearAll()
         clientAppStateUpdateTask?.cancel()
         clientAppStateUpdateTask = nil
         channelLoadTask?.cancel()
@@ -531,9 +485,6 @@ extension AppModel {
         externalAttachmentUploadTask = nil
         externalAttachmentUploadPresentation = nil
         releaseAllOwnedPromisedFiles()
-        channelComposerAttachments = []
-        threadComposerAttachments = []
-        outgoingMessages.reset()
         oversizedAttachmentPrompt = nil
         queuedOversizedAttachmentPrompts.removeAll()
         commandLoadTask?.cancel()
@@ -576,5 +527,13 @@ extension AppModel {
         loadingReactionReactors = []
         failedReactionReactorLoads = [:]
         resetForumLoadAndPresentationState()
+        await composer.reset()
+    }
+}
+
+private struct SavedAccountCacheCleanupError: LocalizedError {
+    let reason: String
+    var errorDescription: String? {
+        "The saved account was removed, but its local search cache could not be cleared: \(reason)"
     }
 }

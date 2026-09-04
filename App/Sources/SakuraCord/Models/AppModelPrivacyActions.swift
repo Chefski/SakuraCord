@@ -15,24 +15,40 @@ extension AppModel {
         resetLocalEmojiRanking()
     }
 
-    func clearLocalActivity() {
+    func clearLocalActivity() async throws {
+        let session = accountSession()
+        try await session.provider.clearLocalSearchCache()
+        guard isCurrentAccountSession(session) else { throw LocalPrivacyActionError.accountChanged }
+        snapshot?.forwardChannelStoreOrder = []
+        forwardSearchSourceRevision &+= 1
         clearLocalDestinationHistory()
         clearLocallyLearnedEmojiRanking()
     }
 
     func clearLocalDrafts() async throws {
-        let session = accountSession()
+        try await clearActiveLocalDrafts(account: accountSession())
+        await applyConfiguredLocalStorageLimit()
+    }
+
+    func clearActiveLocalDrafts(account session: AppModelAccountSession) async throws {
+        guard isCurrentAccountSession(session) else { throw LocalPrivacyActionError.accountChanged }
         guard let database = session.database else {
             throw LocalPrivacyActionError.noActiveAccount
         }
-        try await database.clearDrafts()
+        let previousDraftChannelIDs = quickSwitcherDraftChannelIDs
+        quickSwitcherDraftChannelIDs = []
+        do {
+            try await composer.clearDrafts(in: database)
+        } catch {
+            if isCurrentAccountSession(session) {
+                let currentIDs = Set(quickSwitcherDraftChannelIDs)
+                quickSwitcherDraftChannelIDs += previousDraftChannelIDs.filter { !currentIDs.contains($0) }
+            }
+            throw error
+        }
         guard isCurrentAccountSession(session) else {
             throw LocalPrivacyActionError.accountChanged
         }
-        draft = ""
-        threadDraft = ""
-        quickSwitcherDraftChannelIDs = []
-        await applyConfiguredLocalStorageLimit()
     }
 }
 
@@ -45,7 +61,7 @@ nonisolated enum LocalPrivacyActionError: LocalizedError {
         case .noActiveAccount:
             "No signed-in account has local drafts to clear."
         case .accountChanged:
-            "The active account changed while drafts were being cleared."
+            "The active account changed while local data was being cleared."
         }
     }
 }

@@ -22,6 +22,7 @@ public struct PartialBulkReadAcknowledgementError: Error, Sendable {
 }
 
 public protocol ChatProvider: Sendable {
+    func clearLocalSearchCache() async throws
     func prepareAuthentication() async throws
     func bootstrap() async throws -> BootstrapSnapshot
     func channels(in guildID: GuildID?) async throws -> [Channel]
@@ -238,6 +239,8 @@ public protocol PendingCredentialChatProvider: ChatProvider {
 }
 
 public extension ChatProvider {
+    func clearLocalSearchCache() async throws {}
+
     func prepareAuthentication() async throws {}
 
     func pinnedMessages(

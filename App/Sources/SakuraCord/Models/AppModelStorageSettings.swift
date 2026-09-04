@@ -9,6 +9,7 @@ nonisolated struct LocalDraftStorageSummary: Equatable, Sendable {
 extension AppModel {
     func localDraftStorageSummary() async throws -> LocalDraftStorageSummary {
         let databases = draftDatabasesByAccountID()
+        await composer.flushDraftOperations()
         var all = DraftStorageSummary(draftCount: 0, approximateByteCount: 0)
         for (_, database) in databases {
             let summary = try await database.draftStorageSummary()
@@ -41,16 +42,17 @@ extension AppModel {
     func clearAllLocalDrafts() async throws {
         let session = accountSession()
         let databases = draftDatabasesByAccountID().map(\.1)
-        for database in databases {
+        if session.database != nil {
+            try await clearActiveLocalDrafts(account: session)
+        }
+        for database in databases where database !== session.database {
             try Task.checkCancellation()
+            guard isCurrentAccountSession(session) else { throw LocalPrivacyActionError.accountChanged }
             try await database.clearDrafts()
         }
         guard isCurrentAccountSession(session) else {
             throw LocalPrivacyActionError.accountChanged
         }
-        draft = ""
-        threadDraft = ""
-        quickSwitcherDraftChannelIDs = []
         await applyConfiguredLocalStorageLimit()
     }
 

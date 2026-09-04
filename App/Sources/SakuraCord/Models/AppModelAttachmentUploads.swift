@@ -207,7 +207,7 @@ extension AppModel {
             )
         }
         retainedFileURLs.formUnion(
-            outgoingMessages.draftsByNonce.values.lazy
+            composer.outbox.draftsByNonce.values.lazy
                 .flatMap(\.attachmentURLs)
                 .map(\.standardizedFileURL)
         )

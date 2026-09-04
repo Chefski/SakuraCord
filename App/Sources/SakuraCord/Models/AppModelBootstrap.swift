@@ -58,22 +58,21 @@ extension AppModel {
             return
         }
 
-        await session.provider.disconnect()
-        eventTask?.cancel()
-        await eventTask?.value
-        guard isCurrentAccountSession(session) else { return }
+        let previousEventTask = eventTask
+        previousEventTask?.cancel()
         eventTask = nil
+        await resetAccountScopedLoadsAndForumState()
+        guard isCurrentAccountSession(session) else { return }
+        await leaveVoice(account: session, notifyDiscord: false)
+        guard isCurrentAccountSession(session) else { return }
+        resetAppSounds()
+        await session.provider.disconnect()
+        await previousEventTask?.value
+        guard isCurrentAccountSession(session) else { return }
         await drainAccountChildTasks()
         guard isCurrentAccountSession(session) else { return }
 
-        installAccountSession(provider: SignedOutChatProvider(), database: nil)
-        credentialHandle = nil
-        activeAccountID = nil
-        supportedCapabilities = []
-        connectionState = .disconnected
-        readState.reset(accountID: nil)
-        commandComposer.configureFrecencyScope("signed-out")
-        resetAccountPresentationState()
+        installSignedOutAccountState()
         isLoading = false
         handleSessionStartFailure(error, account: accountSession())
     }
@@ -88,6 +87,14 @@ extension AppModel {
                       !Task.isCancelled,
                       self.isCurrentAccountSession(account)
                 else { break }
+                if case let .sessionInvalidated(reason) = event {
+                    // Detach this consumer before teardown, which drains eventTask.
+                    self.eventTask = nil
+                    await self.failAuthenticatedSessionStart(
+                        ChatProviderError.invalidRequest(reason), account: account
+                    )
+                    break
+                }
                 await self.consume(event)
             }
         }

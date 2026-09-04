@@ -130,7 +130,7 @@ extension AppModel {
         let previousAccount = accountSession(allowsTransition: true)
         let previousProvider = previousAccount.provider
         let previousEventTask = eventTask
-        resetAccountScopedLoadsAndForumState()
+        await resetAccountScopedLoadsAndForumState()
         await leaveVoice(account: previousAccount)
         guard await pendingTransitionIsCurrent(transitionGeneration, provider: nextProvider)
         else { return nil }

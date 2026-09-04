@@ -193,7 +193,7 @@ import Testing
     #expect(state.isVideoEnabled)
 }
 
-@Test func `ready supplemental seeds voice participants using ready guild order`() {
+@Test func `ready supplemental seeds voice participants using ready guild order`() throws {
     let data = Data(#"""
     {
         "merged_voice_states": {
@@ -205,7 +205,7 @@ import Testing
     }
     """#.utf8)
     let states = ReadySupplementalVoiceStateResolver.resolve(
-        data: data,
+        body: try JSONDecoder().decode(JSONValue.self, from: data),
         gatewayGuildIDs: [GuildID(rawValue: 100), GuildID(rawValue: 999)]
     )
 
@@ -214,7 +214,7 @@ import Testing
     #expect(states.first(where: { $0.userID == UserID(rawValue: 201) })?.isVideoEnabled == true)
 }
 
-@Test func `ready supplemental skips null guild batches and future voice states`() {
+@Test func `ready supplemental skips null guild batches and future voice states`() throws {
     let data = Data(#"""
     {
         "merged_voice_states": {
@@ -226,7 +226,7 @@ import Testing
     }
     """#.utf8)
     let states = ReadySupplementalVoiceStateResolver.resolve(
-        data: data,
+        body: try JSONDecoder().decode(JSONValue.self, from: data),
         gatewayGuildIDs: [GuildID(rawValue: 100), GuildID(rawValue: 101)]
     )
 

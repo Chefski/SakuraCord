@@ -11,8 +11,8 @@ extension AppModel {
                 channelID: message.channelID
               ) == .failed
         else { return }
-        outgoingMessages.draftsByNonce[nonce] = nil
-        outgoingMessages.stickerUploadSourceURLByNonce[nonce] = nil
+        composer.outbox.draftsByNonce[nonce] = nil
+        composer.outbox.stickerUploadSourceURLByNonce[nonce] = nil
         removeOutgoingMessage(
             nonce: nonce,
             channelID: message.channelID
@@ -104,14 +104,13 @@ extension AppModel {
         let content = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !content.isEmpty || !attachments.isEmpty else { return .rejected }
         guard validateAttachmentCount(attachments) else { return .rejected }
-        if hasMoreLaterMessages {
-            guard await loadNewestMessageWindow() else { return .rejected }
-        }
+        let session = accountSession()
         let replyTo = replyingTo?.id
         let mentionsRepliedUser = replyMentionsAuthor
         let replyPreview = replyingTo.map {
             MessageReplyPreview(message: $0)
         }
+        guard await prepareChannelMessageSubmission(channelID: channelID, account: session) else { return .rejected }
         let confirmed = await sendChannelMessage(
             channelID: channelID,
             content: content,
@@ -122,6 +121,16 @@ extension AppModel {
             clearsComposer: true
         )
         return .enqueued(serverConfirmed: confirmed)
+    }
+
+    func prepareChannelMessageSubmission(channelID: ChannelID, account: AppModelAccountSession) async -> Bool {
+        guard isCurrentAccountSession(account), selectedChannelID == channelID else { return false }
+        if hasMoreLaterMessages {
+            guard await loadNewestMessageWindow(account: account) else { return false }
+        }
+        return !Task.isCancelled && isCurrentAccountSession(account)
+            && selectedChannelID == channelID && !hasMoreLaterMessages
+            && selectedConversationAccess.canSend
     }
 
     @discardableResult
@@ -149,7 +158,7 @@ extension AppModel {
             replyPreview: replyPreview
         )
         appendOutgoingMessage(optimistic)
-        outgoingMessages.draftsByNonce[outgoing.nonce] = outgoing
+        composer.outbox.draftsByNonce[outgoing.nonce] = outgoing
         if clearsComposer {
             replyingTo = nil
             updateDraft("")
@@ -166,9 +175,9 @@ extension AppModel {
         guard message.outboxState == .failed,
               let nonce = message.nonce,
               outgoingState(nonce: nonce, channelID: message.channelID) == .failed,
-              let outgoing = outgoingMessages.draftsByNonce[nonce]
+              let outgoing = composer.outbox.draftsByNonce[nonce]
         else { return false }
-        if let sourceURL = outgoingMessages.stickerUploadSourceURLByNonce[nonce] {
+        if let sourceURL = composer.outbox.stickerUploadSourceURLByNonce[nonce] {
             updateOutgoingState(.uploading, nonce: nonce, channelID: message.channelID)
             return await performStickerUpload(
                 outgoing,
@@ -204,8 +213,8 @@ extension AppModel {
             let confirmed = try await session.provider.send(outgoing)
             guard isCurrentAccountSession(session) else { return false }
             let reconciled = reconcileVisibleOrCached(confirmed)
-            outgoingMessages.draftsByNonce[outgoing.nonce] = nil
-            outgoingMessages.stickerUploadSourceURLByNonce[outgoing.nonce] = nil
+            composer.outbox.draftsByNonce[outgoing.nonce] = nil
+            composer.outbox.stickerUploadSourceURLByNonce[outgoing.nonce] = nil
             journalAuthoritativeMessageUpsert(reconciled)
             guard isCurrentAccountSession(session) else { return false }
             Self.messageSendLogger.info(
@@ -244,7 +253,7 @@ extension AppModel {
         replyPreview: MessageReplyPreview?,
         stickers: [MessageSticker] = []
     ) -> Message {
-        let id = outgoingMessages.nextOptimisticMessageID()
+        let id = composer.outbox.nextOptimisticMessageID()
         return Message(
             id: id,
             channelID: outgoing.channelID,

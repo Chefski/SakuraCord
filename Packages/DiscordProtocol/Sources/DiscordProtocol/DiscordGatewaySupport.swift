@@ -1421,17 +1421,16 @@ struct GatewayUserSettingsProtoUpdateDTO: Decodable {
 }
 
 enum ReadySupplementalVoiceStateResolver {
-    static func resolve(data: Data, gatewayGuildIDs: [GuildID]) -> [VoiceParticipantState] {
-        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+    static func resolve(body: JSONValue, gatewayGuildIDs: [GuildID]) -> [VoiceParticipantState] {
+        guard case let .object(root) = body else {
             return []
         }
         var resolved: [VoiceParticipantState] = []
 
-        func append(rawStates: Any, fallbackGuildID: GuildID?) {
-            guard let values = rawStates as? [Any] else { return }
-            for value in values where JSONSerialization.isValidJSONObject(value) {
-                guard let data = try? JSONSerialization.data(withJSONObject: value),
-                      let dto = try? JSONDecoder().decode(VoiceStateUpdateDTO.self, from: data),
+        func append(rawStates: JSONValue?, fallbackGuildID: GuildID?) {
+            guard case let .array(values) = rawStates else { return }
+            for value in values {
+                guard let dto = try? JSONValueDecoder().decode(VoiceStateUpdateDTO.self, from: value),
                       let state = dto.domain(defaultGuildID: fallbackGuildID)
                 else { continue }
                 resolved.append(state)
@@ -1439,8 +1438,8 @@ enum ReadySupplementalVoiceStateResolver {
         }
 
         let merged = root["merged_voice_states"]
-        if let object = merged as? [String: Any] {
-            if let batches = object["guilds"] as? [Any] {
+        if case let .object(object) = merged {
+            if case let .array(batches) = object["guilds"] {
                 for (index, batch) in batches.enumerated() {
                     append(
                         rawStates: batch,
@@ -1448,7 +1447,7 @@ enum ReadySupplementalVoiceStateResolver {
                             ? gatewayGuildIDs[index] : nil
                     )
                 }
-            } else if let keyed = object["guilds"] as? [String: Any] {
+            } else if case let .object(keyed) = object["guilds"] {
                 for (guildID, batch) in keyed {
                     append(rawStates: batch, fallbackGuildID: GuildID(guildID))
                 }
@@ -1457,7 +1456,7 @@ enum ReadySupplementalVoiceStateResolver {
                     append(rawStates: batch, fallbackGuildID: GuildID(guildID))
                 }
             }
-        } else if let batches = merged as? [Any] {
+        } else if case let .array(batches) = merged {
             for (index, batch) in batches.enumerated() {
                 append(
                     rawStates: batch,
@@ -1467,11 +1466,14 @@ enum ReadySupplementalVoiceStateResolver {
             }
         }
 
-        if let guilds = root["guilds"] as? [[String: Any]] {
-            for guild in guilds {
+        if case let .array(guilds) = root["guilds"] {
+            for value in guilds {
+                guard case let .object(guild) = value else { continue }
+                let guildID: GuildID?
+                if case let .string(id) = guild["id"] { guildID = GuildID(id) } else { guildID = nil }
                 append(
-                    rawStates: guild["voice_states"] as Any,
-                    fallbackGuildID: (guild["id"] as? String).flatMap(GuildID.init)
+                    rawStates: guild["voice_states"],
+                    fallbackGuildID: guildID
                 )
             }
         }

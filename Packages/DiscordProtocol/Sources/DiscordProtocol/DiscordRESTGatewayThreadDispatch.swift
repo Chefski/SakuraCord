@@ -4,58 +4,32 @@ import SakuraCordModels
 extension DiscordRESTProvider {
     func handleGatewayThreadEvent(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async -> Bool {
         switch name {
-        case "MESSAGE_CREATE":
-            await handleMessageCreateDispatch(name: name, body: body, data: data)
         case "THREAD_CREATE":
-            await handleThreadCreateDispatch(name: name, body: body, data: data)
+            await handleThreadCreateDispatch(name: name, body: body)
         case "THREAD_UPDATE":
-            await handleThreadUpdateDispatch(name: name, body: body, data: data)
+            await handleThreadUpdateDispatch(name: name, body: body)
         case "THREAD_DELETE":
-            await handleThreadDeleteDispatch(name: name, body: body, data: data)
+            await handleThreadDeleteDispatch(name: name, body: body)
         case "THREAD_MEMBER_UPDATE":
-            await handleThreadMemberUpdateDispatch(name: name, body: body, data: data)
+            await handleThreadMemberUpdateDispatch(name: name, body: body)
         case "THREAD_MEMBERS_UPDATE":
-            await handleThreadMembersUpdateDispatch(name: name, body: body, data: data)
+            await handleThreadMembersUpdateDispatch(name: name, body: body)
         case "THREAD_LIST_SYNC":
-            await handleThreadListSyncDispatch(name: name, body: body, data: data)
-        case "MESSAGE_ACK":
-            await handleMessageAckDispatch(name: name, body: body, data: data)
+            await handleThreadListSyncDispatch(name: name, body: body)
         default:
             return false
         }
         return true
     }
 
-    func handleMessageCreateDispatch(
-        name: String,
-        body: JSONValue,
-        data: Data
-    ) async {
-        if let dto = try? JSONDecoder().decode(MessageDTO.self, from: data),
-           let message = try? dto.domain()
-        {
-            cacheMessageSearchUsers(dto.searchIndexUsers)
-            cacheForwardSearchMessageAliases([message])
-            cachedMessages[message.id] = message
-            continuation?.yield(.messageCreated(message))
-            promotePrivateChannel(
-                channelID: message.channelID,
-                lastMessageID: message.id
-            )
-            updateForumPostForMessage(message, marksUnread: true)
-        }
-    }
-
     func handleThreadCreateDispatch(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async {
-        guard let dto = try? JSONDecoder().decode(ChannelDTO.self, from: data) else { return }
+        guard let dto = try? JSONValueDecoder().decode(ChannelDTO.self, from: body) else { return }
         ingestForumThreads(
             [dto],
             fallbackGuildID: dto.guildID.flatMap(GuildID.init),
@@ -65,19 +39,17 @@ extension DiscordRESTProvider {
 
     func handleThreadUpdateDispatch(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async {
-        guard let dto = try? JSONDecoder().decode(ChannelDTO.self, from: data) else { return }
+        guard let dto = try? JSONValueDecoder().decode(ChannelDTO.self, from: body) else { return }
         ingestForumThreads([dto], fallbackGuildID: dto.guildID.flatMap(GuildID.init))
     }
 
     func handleThreadDeleteDispatch(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async {
-        guard let deleted = try? JSONDecoder().decode(GatewayThreadDeleteDTO.self, from: data),
+        guard let deleted = try? JSONValueDecoder().decode(GatewayThreadDeleteDTO.self, from: body),
               let threadID = ChannelID(deleted.id),
               let parentID = deleted.parentID.flatMap(ChannelID.init)
         else { return }
@@ -91,11 +63,10 @@ extension DiscordRESTProvider {
 
     func handleThreadMemberUpdateDispatch(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async {
         guard
-            let member = try? JSONDecoder().decode(ThreadMemberDTO.self, from: data),
+            let member = try? JSONValueDecoder().decode(ThreadMemberDTO.self, from: body),
             member.userID == nil || member.userID.flatMap(UserID.init) == currentUser?.id,
             let rawThreadID = member.id,
             let threadID = ChannelID(rawThreadID)
@@ -114,12 +85,11 @@ extension DiscordRESTProvider {
 
     func handleThreadMembersUpdateDispatch(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async {
         guard
-            let update = try? JSONDecoder().decode(
-                GatewayThreadMembersUpdateDTO.self, from: data
+            let update = try? JSONValueDecoder().decode(
+                GatewayThreadMembersUpdateDTO.self, from: body
             ), let threadID = ChannelID(update.id)
         else { return }
         for parentID in cachedForumPosts.keys.sorted(by: {
@@ -150,10 +120,9 @@ extension DiscordRESTProvider {
 
     func handleThreadListSyncDispatch(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async {
-        guard let sync = try? JSONDecoder().decode(GatewayThreadListSyncDTO.self, from: data),
+        guard let sync = try? JSONValueDecoder().decode(GatewayThreadListSyncDTO.self, from: body),
               let guildID = GuildID(sync.guildID)
         else { return }
         let parents = Set(sync.channelIDs.compactMap(ChannelID.init))
@@ -175,46 +144,5 @@ extension DiscordRESTProvider {
             replacingParents: parents.isEmpty ? nil : parents,
             advancesParentLatestThreadID: true
         )
-    }
-
-    func handleMessageAckDispatch(
-        name: String,
-        body: JSONValue,
-        data: Data
-    ) async {
-        guard let ack = try? JSONDecoder().decode(GatewayMessageAckDTO.self, from: data),
-              let channelID = ChannelID(ack.channelID)
-        else { return }
-        forumReadStates[channelID] = ForumReadState(
-            lastReadMessageID: ack.messageID.flatMap(MessageID.init),
-            mentionCount: ack.mentionCount ?? 0
-        )
-        continuation?.yield(
-            .readStateChanged(
-                ChannelReadState(
-                    channelID: channelID,
-                    lastAcknowledgedMessageID: ack.messageID.flatMap(MessageID.init),
-                    mentionCount: ack.mentionCount ?? 0,
-                    isManual: ack.manual ?? false,
-                    flags: ack.flags,
-                    lastViewed: ack.lastViewed,
-                    version: ack.version
-                )
-            )
-        )
-        for (parentID, posts) in cachedForumPosts where posts[channelID] != nil {
-            if let lastMessageID = posts[channelID]?.thread.lastMessageID {
-                cachedForumPosts[parentID]?[channelID]?.isUnread =
-                    (ack.mentionCount ?? 0) > 0
-                    || (ack.messageID.flatMap(MessageID.init).map {
-                        lastMessageID > $0
-                    } ?? true)
-            } else {
-                cachedForumPosts[parentID]?[channelID]?.isUnread =
-                    (ack.mentionCount ?? 0) > 0
-            }
-            publishForumPosts(parentID: parentID)
-            break
-        }
     }
 }

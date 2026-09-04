@@ -796,11 +796,26 @@ extension DiscordRESTProvider {
     }
 
     func applyGatewayReactionUpdate(_ update: MessageReactionUpdate) {
-        if var message = cachedMessages[update.messageID],
-           message.applyReactionUpdate(update, currentUserID: currentUser?.id)
-        {
-            cachedMessages[message.id] = message
-            updateForumPostForMessage(message, publishesChange: false)
+        if var message = cachedMessages[update.messageID] {
+            if message.applyReactionUpdate(update, currentUserID: currentUser?.id) {
+                cachedMessages[message.id] = message
+                updateForumPostForMessage(message, publishesChange: false)
+            }
+        } else {
+            // Forum previews outlive the working set. Update each retained value
+            // once, without replaying a delta already applied through that set.
+            for (parentID, posts) in cachedForumPosts {
+                guard var post = posts[update.channelID] else { continue }
+                if var message = post.firstMessage, message.id == update.messageID {
+                    _ = message.applyReactionUpdate(update, currentUserID: currentUser?.id)
+                    post.firstMessage = message
+                }
+                if var message = post.mostRecentMessage, message.id == update.messageID {
+                    _ = message.applyReactionUpdate(update, currentUserID: currentUser?.id)
+                    post.mostRecentMessage = message
+                }
+                cachedForumPosts[parentID]?[post.id] = post
+            }
         }
         continuation?.yield(.messageReactionUpdated(update))
     }

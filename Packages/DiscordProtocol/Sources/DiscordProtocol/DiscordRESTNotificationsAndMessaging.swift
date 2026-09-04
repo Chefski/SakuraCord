@@ -770,12 +770,20 @@ extension DiscordRESTProvider {
         continuation?.yield(.messageDeleted(channelID: channelID, messageID: messageID))
     }
 
+    private func messageForReaction(_ messageID: MessageID, channelID: ChannelID) async throws -> Message {
+        if let message = cachedMessages[messageID] { return message }
+        // A visible message can outlive the provider's bounded working set.
+        let page = try await messages(in: channelID, anchoredAt: .around(messageID), limit: 1)
+        guard let message = page.messages.first(where: { $0.id == messageID }) else {
+            throw ChatProviderError.messageNotFound
+        }
+        return message
+    }
+
     public func toggleReaction(_ emoji: String, messageID: MessageID, channelID: ChannelID)
         async throws
     {
-        guard let message = cachedMessages[messageID] else {
-            throw ChatProviderError.messageNotFound
-        }
+        let message = try await messageForReaction(messageID, channelID: channelID)
         let apiEmoji = Self.reactionAPIValue(emoji)
         let existing = message.reactions.firstIndex { Self.reactionAPIValue($0.emoji) == apiEmoji }
         let reacted = existing.map { message.reactions[$0].didCurrentUserReact } ?? false
@@ -793,14 +801,12 @@ extension DiscordRESTProvider {
         messageID: MessageID,
         channelID: ChannelID
     ) async throws {
-        guard let message = cachedMessages[messageID] else {
-            throw ChatProviderError.messageNotFound
-        }
+        let message = try await messageForReaction(messageID, channelID: channelID)
         let apiEmoji = Self.reactionAPIValue(emoji)
         let currentReaction = message.reactions.first {
             Self.reactionAPIValue($0.emoji) == apiEmoji
         }
-        guard currentReaction?.didCurrentUserReact != reacted else { return }
+        guard (currentReaction?.didCurrentUserReact ?? false) != reacted else { return }
         let encoded =
             apiEmoji.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? apiEmoji
         let method = reacted ? "PUT" : "DELETE"

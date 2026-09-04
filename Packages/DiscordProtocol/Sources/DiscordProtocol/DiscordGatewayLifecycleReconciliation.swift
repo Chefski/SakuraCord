@@ -53,7 +53,7 @@ extension DiscordRESTProvider {
         for channelID in channelIDs {
             forumReadStates[channelID] = nil
         }
-        cachedMessages = cachedMessages.filter { !channelIDs.contains($0.value.channelID) }
+        cachedMessages.removeAll { channelIDs.contains($0.channelID) }
         cancelPendingMemberRequests(guildID: guildID, error: CancellationError())
         publishGuildLayout()
     }
@@ -161,20 +161,24 @@ extension DiscordRESTProvider {
             continuation?.yield(.privateMembersChanged(privateMembersInChannelOrder()))
         }
 
-        let affectedMessageIDs = cachedMessages.compactMap {
-            $0.value.author.id == user.id
-                || $0.value.mentionedUsers.contains(where: { $0.id == user.id })
-                ? $0.key : nil
+        let affectedMessageIDs = cachedMessages.values.compactMap {
+            $0.author.id == user.id
+                || $0.mentionedUsers.contains(where: { $0.id == user.id })
+                ? $0.id : nil
         }
         for messageID in affectedMessageIDs {
             guard var message = cachedMessages[messageID] else { continue }
-            if message.author.id == user.id { message.author = user }
-            for index in message.mentionedUsers.indices
-            where message.mentionedUsers[index].id == user.id {
-                message.mentionedUsers[index] = user
-            }
+            message.applyIdentityUpdate(user)
             cachedMessages[messageID] = message
-            continuation?.yield(.messageUpdated(message))
+        }
+        // Retained forum previews have a lifetime independent of the message
+        // working set, just like the app's visible conversations.
+        for (parentID, posts) in cachedForumPosts {
+            for (channelID, var post) in posts {
+                post.firstMessage?.applyIdentityUpdate(user)
+                post.mostRecentMessage?.applyIdentityUpdate(user)
+                cachedForumPosts[parentID]?[channelID] = post
+            }
         }
         continuation?.yield(.currentUserChanged(user))
     }

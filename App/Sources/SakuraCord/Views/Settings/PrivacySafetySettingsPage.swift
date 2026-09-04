@@ -79,13 +79,17 @@ private struct PrivacyLocalActivitySection: View {
     let state: SettingsViewState
 
     @State private var isConfirmingClear = false
+    @State private var isClearing = false
+    @State private var clearError: String?
 
     var body: some View {
         Section {
             Button("Clear Local Activity…", role: .destructive) {
                 isConfirmingClear = true
             }
+            .disabled(isClearing)
             .settingsControlAnchor(.clearLocalActivity, state: state)
+            if let clearError { Text(clearError).foregroundStyle(.secondary) }
         } header: {
             Text("Local Activity", bundle: #bundle)
         }
@@ -94,14 +98,24 @@ private struct PrivacyLocalActivitySection: View {
             isPresented: $isConfirmingClear
         ) {
             Button("Clear Local Activity", role: .destructive) {
-                model.clearLocalActivity()
+                isClearing = true
+                clearError = nil
+                Task {
+                    defer { isClearing = false }
+                    do {
+                        try await model.clearLocalActivity()
+                    } catch {
+                        clearError = error.localizedDescription
+                    }
+                }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(
                 LocalizedStringResource(
                     """
-                    This clears the current account's recent Quick Switch and forwarding destinations, plus app-wide local \
+                    This clears the current account's learned people, nicknames, saved search ordering, saved emoji catalogs, \
+                    and recent Quick Switch and forwarding destinations, plus app-wide local \
                     emoji recents and learned usage. It does not delete drafts, cached media, trusted domains, preferences, \
                     credentials, or Discord data.
                     """,

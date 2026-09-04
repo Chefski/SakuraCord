@@ -176,30 +176,7 @@ extension AppModel {
     }
 
     func reactionMessage(for key: ReactionMutationKey) -> Message? {
-        if key.channelID == selectedChannelID,
-           let index = selectedMessageIndex(for: key.messageID),
-           messages.indices.contains(index)
-        {
-            return messages[index]
-        }
-        if key.channelID == openThread?.id,
-           let message = threadMessages.first(where: { $0.id == key.messageID })
-        {
-            return message
-        }
-        if let message = messageCache[key.channelID]?.first(where: { $0.id == key.messageID }) {
-            return message
-        }
-        if let forumIndex = forumCatalogueIndexByID[key.channelID] {
-            let post = forumCataloguePosts[forumIndex]
-            if post.firstMessage?.id == key.messageID {
-                return post.firstMessage
-            }
-            if post.mostRecentMessage?.id == key.messageID {
-                return post.mostRecentMessage
-            }
-        }
-        return nil
+        messageInWorkspace(channelID: key.channelID, messageID: key.messageID)
     }
 
     func knownReactionReactor(for userID: UserID) -> ReactionReactor? {

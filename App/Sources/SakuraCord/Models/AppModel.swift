@@ -349,10 +349,6 @@ final class AppModel {
     var forumSortOrder: ForumSortOrder = .latestActivity
     var forumLayout: ForumLayout = .list
     var forumTagMatch: ForumTagMatch = .matchSome
-    var replyingTo: Message?
-    var threadReplyingTo: Message?
-    var replyMentionsAuthor = true
-    var threadReplyMentionsAuthor = true
     var presentedInteractionModal: InteractionModal?
     var interactionModalNonce: String?
     var interactionErrorMessage: String?
@@ -407,7 +403,7 @@ final class AppModel {
         threadErrorScope == .initialPage
             || threadErrorScope == .earlierPage
     }
-    @ObservationIgnored var outgoingMessages = OutgoingMessageState()
+    @ObservationIgnored let composer = MessageComposerState()
     var gifResults: [GIFSearchResult] = []
     var gifCategories: [GIFPickerCategory] = []
     var gifTrendingPreviewURL: URL?
@@ -1016,10 +1012,6 @@ final class AppModel {
         }
     }
 
-    var draft = ""
-    var threadDraft = ""
-    var channelComposerAttachments: [ForumPostAttachment] = []
-    var threadComposerAttachments: [ForumPostAttachment] = []
     var oversizedAttachmentPrompt: OversizedAttachmentPrompt?
     var externalAttachmentUploadPresentation: ExternalAttachmentUploadPresentation?
     var showInspector = true

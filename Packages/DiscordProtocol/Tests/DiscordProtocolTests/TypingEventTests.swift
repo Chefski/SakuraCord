@@ -24,7 +24,7 @@ import Testing
         currentStatus: .online,
         cachedMembers: [:],
         cachedChannels: [],
-        cachedMessages: [],
+        cachedAuthor: nil,
         cachedGuildRoles: [:]
     ))
     #expect(user?.displayName == "Guild Alex")
@@ -42,7 +42,7 @@ import Testing
         currentStatus: .online,
         cachedMembers: [:],
         cachedChannels: [],
-        cachedMessages: [],
+        cachedAuthor: nil,
         cachedGuildRoles: [:]
     ))
     #expect(partialUser?.displayName == "Sam")
@@ -66,7 +66,7 @@ import Testing
         currentStatus: .online,
         cachedMembers: [:],
         cachedChannels: [groupDM],
-        cachedMessages: [],
+        cachedAuthor: nil,
         cachedGuildRoles: [:]
     ))
     #expect(cached == recipient)
@@ -86,7 +86,7 @@ import Testing
         currentStatus: .online,
         cachedMembers: [GuildID(rawValue: 100): [member]],
         cachedChannels: [],
-        cachedMessages: [],
+        cachedAuthor: nil,
         cachedGuildRoles: [:]
     ))
     #expect(fromGuild == cachedUser)
@@ -104,7 +104,7 @@ import Testing
         currentStatus: .online,
         cachedMembers: [:],
         cachedChannels: [],
-        cachedMessages: [message],
+        cachedAuthor: message.author,
         cachedGuildRoles: [:]
     ))
     #expect(fromMessage == cachedUser)
@@ -116,7 +116,7 @@ import Testing
         currentStatus: .online,
         cachedMembers: [:],
         cachedChannels: [],
-        cachedMessages: [],
+        cachedAuthor: nil,
         cachedGuildRoles: [:]
     )) == nil)
 }

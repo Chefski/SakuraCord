@@ -93,6 +93,7 @@ enum GatewaySessionError: Error, Equatable {
 }
 
 enum GatewaySessionEvent: Sendable, Equatable {
+    case deliveryFailed
     case stateChanged(ConnectionState)
     case dispatch(name: String, data: JSONValue)
 }
@@ -197,7 +198,7 @@ actor GatewaySession {
     private let random: any GatewayRandomSource
     private let codec: any GatewayCodec
     private let apiDiagnostics: DiscordAPIDiagnosticStore
-    private let eventContinuation: AsyncStream<GatewaySessionEvent>.Continuation
+    private let eventContinuation: SessionEventBuffer<GatewaySessionEvent>
 
     private var state: State = .disconnected
     private var socket: (any GatewaySocket)?
@@ -232,9 +233,9 @@ actor GatewaySession {
         self.apiDiagnostics = apiDiagnostics
         heartbeatSession = configuration.heartbeatSession
         qosActive = configuration.qosActive
-        let stream = AsyncStream<GatewaySessionEvent>.makeStream(bufferingPolicy: .bufferingNewest(500))
-        events = stream.stream
-        eventContinuation = stream.continuation
+        let buffer = SessionEventBuffer<GatewaySessionEvent>(overflowEvent: .deliveryFailed)
+        events = buffer.stream
+        eventContinuation = buffer
     }
 
     func connect() {

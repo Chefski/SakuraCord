@@ -420,9 +420,9 @@ import UserNotifications
         message(7),
     ]
     let fresh = [message(2), message(4)]
-    let mutations: [MessageID: ConversationRefreshMutation] = [
+    let mutations = ConversationRefreshMutations(messages: [
         message(7).id: .upsert(message(7))
-    ]
+    ])
     let refreshed = AppModel.applyingConversationRefreshMutations(
         mutations,
         to: fresh
@@ -2296,6 +2296,100 @@ private actor FailingRemovalCredentialStore: CredentialStore {
 }
 
 @MainActor
+@Test(arguments: [false, true])
+func `cache cleanup failure cannot retain a logged out credential`(hasCredential: Bool) async throws {
+    let credentials = MultiAccountCredentialStore(accountIDs: hasCredential ? ["93000", "94000"] : ["94000"])
+    let savedAccounts = SavedAccountStoreSpy()
+    let model = AppModel(
+        launchMode: .normal, restoresStoredSession: false,
+        credentialStore: credentials, savedAccountStore: savedAccounts
+    )
+    let handle = CredentialHandle(accountID: "93000")
+    model.savedAccounts = [SavedAccount(handle: handle), SavedAccount(handle: CredentialHandle(accountID: "94000"))]
+    var cleanupError: String?
+    do {
+        try await model.removeSavedAccount(accountID: handle.accountID, credentialHandle: hasCredential ? handle : nil) { _ in
+            throw CocoaError(.fileWriteNoPermission)
+        }
+    } catch {
+        cleanupError = error.localizedDescription
+    }
+    #expect(await credentials.accountIDs == ["94000"])
+    #expect(model.savedAccounts.map(\.accountID) == ["94000"])
+    #expect(await savedAccounts.preferredAccountID() == "94000")
+    #expect(cleanupError?.contains("saved account was removed") == true)
+}
+
+@MainActor
+@Test(arguments: [false, true])
+func `removing a saved account without a credential still clears derived caches`(switchesAccount: Bool) async throws {
+    let accountID = "missing-\(UUID().uuidString)"
+    let root = try #require(FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first)
+        .appending(path: "dev.sakuracord.SakuraCord")
+    let cacheURLs = ["ForwardSearchPeople/\(accountID).json", "QuickSwitcherChannelStore/\(accountID).json", "EmojiCache/\(accountID)"]
+        .map { root.appending(path: $0) }
+    defer { for url in cacheURLs { try? FileManager.default.removeItem(at: url) } }
+    for url in cacheURLs {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("fixture".utf8).write(to: url)
+    }
+    let savedAccounts = SavedAccountStoreSpy()
+    let model = AppModel(
+        launchMode: .normal, restoresStoredSession: false,
+        credentialStore: MultiAccountCredentialStore(accountIDs: ["94000"]), savedAccountStore: savedAccounts
+    )
+    model.activeAccountID = "94000"
+    model.savedAccounts = [accountID, "94000"].map { SavedAccount(handle: CredentialHandle(accountID: $0)) }
+    if switchesAccount { #expect(await !model.switchAccount(to: accountID)) }
+    else { await model.logout(accountID: accountID) }
+    for url in cacheURLs { #expect(!FileManager.default.fileExists(atPath: url.path)) }
+    #expect(model.savedAccounts.map(\.accountID) == ["94000"])
+    #expect(await savedAccounts.preferredAccountID() == "94000")
+    #expect(model.activeAccountID == "94000")
+}
+
+@MainActor
+@Test func `activity clearing stops at an account change without describing draft deletion`() async throws {
+    let provider = DiscordRESTProvider(
+        credentials: MultiAccountCredentialStore(accountIDs: []), handle: CredentialHandle(accountID: "privacy-fixture"),
+        session: URLSession(configuration: .ephemeral), usesEmojiDiskCache: false, usesForwardSearchPeopleDiskCache: false
+    )
+    let began = AsyncStream<Void>.makeStream()
+    let release = AsyncStream<Void>.makeStream()
+    await provider.installPrivacyClearGate(began: began.continuation, release: release.stream)
+    let model = AppModel(launchMode: .offlineTesting)
+    model.installAccountSession(provider: provider, database: nil)
+    let clearing = Task { try await model.clearLocalActivity() }
+    var iterator = began.stream.makeAsyncIterator()
+    _ = await iterator.next()
+    model.installAccountSession(provider: MockChatProvider(), database: nil)
+    model.draft = "new account draft"
+    model.forwardDestinationHistory = [ChannelID(rawValue: 200)]
+    release.continuation.yield(())
+    do {
+        try await clearing.value
+        Issue.record("Clearing should report the account change")
+    } catch {
+        #expect(error is LocalPrivacyActionError)
+        #expect(error.localizedDescription.contains("local data"))
+        #expect(!error.localizedDescription.contains("draft"))
+    }
+    #expect(model.draft == "new account draft")
+    #expect(model.forwardDestinationHistory == [ChannelID(rawValue: 200)])
+    await provider.disconnect()
+}
+
+private extension DiscordRESTProvider {
+    func installPrivacyClearGate(began: AsyncStream<Void>.Continuation, release: AsyncStream<Void>) {
+        derivedCacheClearDidBeginForTesting = { began.yield(()) }
+        forwardPeopleCacheWriteTask = Task {
+            var iterator = release.makeAsyncIterator()
+            _ = await iterator.next()
+        }
+    }
+}
+
+@MainActor
 @Test func `logout completes locally when saved credential removal fails`() async {
     let credentials = FailingRemovalCredentialStore(accountID: "93000")
     let provider = SuspendedBootstrapTestProvider()
@@ -2676,6 +2770,35 @@ private actor FailingRemovalCredentialStore: CredentialStore {
 }
 
 @MainActor
+@Test(arguments: [false, true], [false, true])
+func `GIF completion preserves newer text and channel drafts`(changesChannel: Bool, fails: Bool) async throws {
+    let provider = SuspendedAccountOperationTestProvider(suspendsOperations: true, failsSend: fails)
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    let channel = Channel(id: provider.channelID, guildID: nil, name: "shared")
+    model.snapshot = BootstrapSnapshot(currentUser: provider.editTarget.author, guilds: [], channels: [channel], members: [])
+    model.visibleChannels = [channel]
+    model.selectedChannel = channel
+    model.selectedChannelID = channel.id
+    model.draft = "existing text"
+    model.replyingTo = provider.editTarget
+    let gif = GIFSearchResult(id: "race", title: "Race", url: URL(string: "https://example.com/race.gif")!, previewURL: URL(string: "https://example.com/preview.gif")!)
+    let send = Task { @MainActor in await model.sendGIF(gif) }
+    #expect(await provider.waitUntilSendRequestStarts())
+    #expect(model.draft == "existing text")
+    if changesChannel { model.selectedChannelID = ChannelID(rawValue: 96_099) }
+    model.draft = "newer text"
+    let currentReply = model.replyingTo
+    await provider.releaseSendRequest()
+    #expect(await send.value == !fails)
+    #expect(model.draft == "newer text")
+    #expect(model.replyingTo == currentReply)
+    let sent = try #require(await provider.sentDraft)
+    #expect(sent.channelID == channel.id)
+    #expect(sent.content == gif.url.absoluteString)
+    #expect(sent.replyTo == provider.editTarget.id)
+}
+
+@MainActor
 @Test func `stale GIF send cannot restore an old account draft`() async throws {
     let oldProvider = SuspendedAccountOperationTestProvider(suspendsOperations: true)
     let newProvider = SuspendedAccountOperationTestProvider(suspendsOperations: false)
@@ -2918,7 +3041,7 @@ private actor FailingRemovalCredentialStore: CredentialStore {
     model.deliverNativeNotification(for: message)
     await notifications.waitUntilDeliveryStarts()
     model.invalidateAccountSession()
-    model.resetAccountScopedLoadsAndForumState()
+    await model.resetAccountScopedLoadsAndForumState()
     let drain = Task { @MainActor in
         await model.drainAccountChildTasks()
     }
@@ -5242,6 +5365,8 @@ private actor SuspendedAccountOperationTestProvider: ChatProvider {
         displayName: "Account Race"
     )
     private let suspendsOperations: Bool
+    private let failsSend: Bool
+    private(set) var sentDraft: SendMessageDraft?
     private var sendStarted = false
     private var editStarted = false
     private var earlierPageRequestCount = 0
@@ -5254,8 +5379,9 @@ private actor SuspendedAccountOperationTestProvider: ChatProvider {
     private var editContinuation: CheckedContinuation<Void, Never>?
     private var earlierContinuations: [CheckedContinuation<Void, Never>] = []
 
-    init(suspendsOperations: Bool) {
+    init(suspendsOperations: Bool, failsSend: Bool = false) {
         self.suspendsOperations = suspendsOperations
+        self.failsSend = failsSend
         thread = MessageThreadSummary(
             id: threadID,
             parentID: channelID,
@@ -5330,10 +5456,12 @@ private actor SuspendedAccountOperationTestProvider: ChatProvider {
     }
 
     func send(_ draft: SendMessageDraft) async throws -> Message {
+        sentDraft = draft
         sendStarted = true
         if suspendsOperations {
             await withCheckedContinuation { sendContinuation = $0 }
         }
+        if failsSend { throw ChatProviderError.invalidRequest("Fixture send failure") }
         return Message(
             id: MessageID(rawValue: 96_011),
             channelID: draft.channelID,

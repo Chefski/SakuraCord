@@ -324,7 +324,7 @@ extension AppModel {
             replyPreview: replyPreview
         )
         appendOutgoingMessage(optimistic)
-        outgoingMessages.draftsByNonce[draft.nonce] = draft
+        composer.outbox.draftsByNonce[draft.nonce] = draft
         if clearsComposer {
             threadDraft = ""
             threadReplyingTo = nil

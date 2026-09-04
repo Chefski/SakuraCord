@@ -46,6 +46,16 @@ Launch state is explicit:
 
 High-frequency presentation state such as remote typing is kept in narrower
 observable models so it does not invalidate the complete app tree.
+`MessageComposerState` owns channel/thread drafts, reply targets, attachments,
+and the outbox. Draft writes capture their account database, are serialized,
+and drain during account teardown. Clearing drafts joins the same write queue:
+earlier edits are deleted and later edits are preserved, including when clearing
+all accounts. Draft restoration also joins this queue before reading stored text
+and checks the composer's edit revision at publication, so clearing or editing
+invalidates earlier restoration results. Switching, logout, and failed startup share
+load cancellation and presentation reset, including pins and composer state.
+`AppModel` remains the workspace coordinator; feature state should have an
+explicit owner rather than accumulating unrelated fields in extensions.
 
 `AppUpdateController` owns Sparkle's `SPUStandardUpdaterController` for the
 application lifetime. It starts only when the canonical release bundle contains
@@ -98,7 +108,26 @@ Within the production provider:
 - Production Gateway ETF is parsed directly from the decompressed bounded byte
   buffer into a JSON-compatible value tree. Dispatch DTOs decode directly from
   that tree, avoiding a second JSON serialization/parser pass while retaining
-  the same typed validation and event ordering.
+  the same typed validation and event ordering. Dispatch files are grouped by
+  bootstrap, guild, channel, thread, message, member, interaction, and voice
+  responsibility. Search, history, profiles, emoji, presence, channel, member,
+  and bootstrap provider methods likewise have separate files.
+- Gateway-to-provider and provider-to-app event queues each hold at most 500
+  events. Overflow publishes a terminal session-invalidated event and stops the
+  session; the app clears its incomplete projection and offers saved-account
+  reconnection. It never continues presenting a silently truncated event stream.
+- Provider message reconciliation keeps at most 10,000 messages, evicting the
+  oldest insertion. This working set is independent of visible conversation
+  caches. Reactions on evicted messages reload the target through the existing
+  anchored-history route before deciding the mutation. Typing resolves authors
+  through user indexes instead of scanning message history. Sparse Gateway
+  edits still reach retained UI and forum projections after cache eviction;
+  in-flight history refreshes merge those edits before publishing their result.
+  Current-user identity events likewise reconcile retained authors and mentions
+  independently of the provider working set, including forum previews and pages
+  that are still being prepared before publication. Refresh journals preserve
+  event order: later message identity fields supersede earlier global identity
+  changes, while later identity events update already-journaled message fields.
 - `CatboxAttachmentUploader` is a separate unauthenticated app service used
   only after an explicit choice in the oversized-attachment warning. It never
   receives Discord credentials or sends a Discord message; its validated HTTPS
@@ -146,9 +175,13 @@ can identify sessions without reading every secret or issuing profile probes.
 Switching accounts disconnects and drains the current account-scoped work,
 then bootstraps the selected existing credential through the same provider
 path used for launch restore. It does not replay the login exchange. Logging
-out from account management removes only the selected account's Keychain item
-and picker metadata; logging out the active account also disconnects its live
-session before returning to the remaining saved accounts.
+out from account management removes the selected account's Keychain item,
+picker metadata, and derived search/catalog disk caches; logging out the active
+account first disconnects its live session and drains pending cache writes.
+Credential and picker removal precede disposable cache deletion; a cache-cleanup
+failure is reported without retaining the saved credential.
+Removing a stale saved account also removes its metadata and derived caches
+when its Keychain credential is already absent.
 
 An explicitly insecure, debug-only build flag can migrate the credential once
 from Keychain into a mode-`0600` file within the app's sandbox Application
@@ -157,9 +190,34 @@ is not the production credential contract.
 
 Only user-authored drafts are stored through `SakuraCordPersistence`.
 Credentials never enter GRDB, fixtures, logs, or plugin APIs. Discord
-workspace, message, read, member, and Gateway state is session-memory only. A
-database migration drops the obsolete tables from earlier builds while
-preserving drafts. Normal and offline runs use separate storage behavior.
+authoritative workspace, message, read, member, and Gateway state is
+session-memory only. A database migration drops the obsolete tables from earlier
+builds while preserving drafts. Normal and offline runs use separate storage
+behavior.
+
+The provider deliberately persists disposable derived metadata under
+`Caches/dev.sakuracord.SakuraCord`, scoped by account ID:
+
+| Directory | Content and retention |
+| --- | --- |
+| `ForwardSearchPeople` | Up to 10,000 learned user identities and 20,000 guild nickname associations, retained until cleared or logout. |
+| `QuickSwitcherChannelStore` | Up to 50,000 channel IDs preserving equal-score search order across launches, retained until cleared or logout. |
+| `EmojiCache` | Per-guild emoji catalogs, fresh for seven days; stale catalogs can be used if refresh fails. Retained until cleared or logout. |
+
+These files do not contain message bodies or credentials and never restore the
+workspace before live bootstrap. **Privacy & Safety → Clear Local Activity**
+removes the active account's derived files and learned historical associations,
+as well as local destination/emoji usage history. Pending writes are drained
+before deletion. Emoji requests started before clearing cannot reinstall their
+results in the provider's catalog cache or on disk. The app's session-only emoji
+catalog remains available for display, including results of already-requested
+loads; clearing local activity does not invalidate that presentation data.
+Live Discord identities and memberships remain available;
+only identities learned again after clearing become eligible for history
+persistence. Saved channel insertion order is discarded and rebuilt by subsequent
+channel discovery; the app clears its copy of that order and invalidates its
+search index at the same time. These metadata files have their
+own retention policy and are outside the draft/media storage budget below.
 The user-configured local storage limit is shared by persistent drafts and the
 disposable media cache: draft content reserves its measured space first, and
 the media cache applies the remainder as its LRU limit. Drafts are never

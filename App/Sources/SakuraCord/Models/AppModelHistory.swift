@@ -5,12 +5,39 @@ import SakuraCordPersistence
 
 enum ConversationRefreshMutation {
     case upsert(Message)
+    case patch(MessageUpdate)
     case delete
+}
+
+struct ConversationRefreshMutations {
+    var messages: [MessageID: ConversationRefreshMutation] = [:]
+    var updatedUsers: [UserID: User] = [:]
 }
 
 struct ConversationRefreshJournal {
     let revision: UInt64
     var mutationsByMessageID: [MessageID: ConversationRefreshMutation] = [:]
+    var updatedUsers: [UserID: User] = [:]
+
+    mutating func recordIdentityUpdate(_ user: User) {
+        updatedUsers[user.id] = user
+        // Fold the event into earlier mutations, including messages whose
+        // history page has not been published in any retained projection yet.
+        for (messageID, mutation) in mutationsByMessageID {
+            switch mutation {
+            case .upsert(var message):
+                message.applyIdentityUpdate(user)
+                mutationsByMessageID[messageID] = .upsert(message)
+            case .patch(var patch):
+                var identity = MessageUpdate(messageID: messageID, channelID: patch.channelID)
+                identity.updatedUsers[user.id] = user
+                patch.merge(identity)
+                mutationsByMessageID[messageID] = .patch(patch)
+            case .delete:
+                break
+            }
+        }
+    }
 }
 
 extension AppModel {
@@ -66,13 +93,13 @@ extension AppModel {
             preserveUnreadDividerIfNeeded(channelID: channelID)
             reportConversationHistoryLoaded(channelID: channelID)
             let account = accountSession()
+            let draftRevision = composer.draftRevision
             channelLoadTask = startAccountChildTask(account: account) { model, account in
                 let savedDraft = await model.storedDraft(in: channelID, account: account)
                 guard model.isCurrentAccountSession(account),
-                      model.isCurrentLoad(channelID, generation: generation),
-                      model.draft.isEmpty
+                      model.isCurrentLoad(channelID, generation: generation)
                 else { return }
-                model.draft = savedDraft
+                model.composer.restoreDraft(savedDraft, ifUnchangedSince: draftRevision)
             }
             return
         }
@@ -142,6 +169,7 @@ extension AppModel {
                 revision: refreshRevision
             )
         }
+        let draftRevision = composer.draftRevision
         async let storedDraft = AppPerformanceSignposts.measure(
             "ConversationDraftLoad"
         ) {
@@ -163,9 +191,7 @@ extension AppModel {
         guard isCurrentAccountSession(account),
               isCurrentLoad(channelID, generation: generation)
         else { return }
-        if draft.isEmpty {
-            draft = savedDraft
-        }
+        composer.restoreDraft(savedDraft, ifUnchangedSince: draftRevision)
 
         do {
             let page = try await freshPageTask.value
@@ -587,18 +613,33 @@ extension AppModel {
         channelID: ChannelID
     ) {
         guard var journal = conversationRefreshJournals[channelID] else { return }
-        journal.mutationsByMessageID[messageID] = mutation
+        if case .patch(let update) = mutation {
+            switch journal.mutationsByMessageID[messageID] {
+            case .upsert(var message):
+                update.apply(to: &message)
+                journal.mutationsByMessageID[messageID] = .upsert(message)
+            case .patch(var previous):
+                previous.merge(update)
+                journal.mutationsByMessageID[messageID] = .patch(previous)
+            case .delete:
+                break
+            case nil:
+                journal.mutationsByMessageID[messageID] = mutation
+            }
+        } else {
+            journal.mutationsByMessageID[messageID] = mutation
+        }
         conversationRefreshJournals[channelID] = journal
     }
 
     func conversationRefreshMutations(
         in channelID: ChannelID,
         revision: UInt64
-    ) -> [MessageID: ConversationRefreshMutation] {
+    ) -> ConversationRefreshMutations {
         guard let journal = conversationRefreshJournals[channelID],
               journal.revision == revision
-        else { return [:] }
-        return journal.mutationsByMessageID
+        else { return .init() }
+        return ConversationRefreshMutations(messages: journal.mutationsByMessageID, updatedUsers: journal.updatedUsers)
     }
 
     func endConversationRefresh(
@@ -638,7 +679,8 @@ extension AppModel {
         in channelID: ChannelID,
         account: AppModelAccountSession
     ) async -> String {
-        await (try? account.database?.draft(channelID: channelID)) ?? ""
+        guard isCurrentAccountSession(account), let database = account.database else { return "" }
+        return (try? await composer.storedDraft(in: channelID, database: database)) ?? ""
     }
 
     func isCurrentLoad(_ channelID: ChannelID, generation: Int) -> Bool {
@@ -697,14 +739,25 @@ extension AppModel {
     }
 
     static func applyingConversationRefreshMutations(
-        _ mutations: [MessageID: ConversationRefreshMutation],
+        _ mutations: ConversationRefreshMutations,
         to messages: [Message]
     ) -> [Message] {
         var byID = Dictionary(uniqueKeysWithValues: messages.map { ($0.id, $0) })
-        for (messageID, mutation) in mutations {
+        // Message mutations already contain identity events that followed them.
+        // Apply the conversation-wide fallback first so it cannot overwrite
+        // explicit message identity fields received later.
+        for messageID in byID.keys {
+            for user in mutations.updatedUsers.values { byID[messageID]?.applyIdentityUpdate(user) }
+        }
+        for (messageID, mutation) in mutations.messages {
             switch mutation {
             case .upsert(let message):
                 byID[messageID] = message
+            case .patch(let update):
+                if var message = byID[messageID] {
+                    update.apply(to: &message)
+                    byID[messageID] = message
+                }
             case .delete:
                 byID[messageID] = nil
             }

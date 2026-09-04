@@ -4,38 +4,53 @@ import SakuraCordModels
 extension DiscordRESTProvider {
     func handleGatewayGuildEvent(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async -> Bool {
         switch name {
+        case "GUILD_DELETE":
+            await handleGuildDeleteDispatch(name: name, body: body)
         case "GUILD_CREATE":
-            await handleGuildCreateDispatch(name: name, body: body, data: data)
+            await handleGuildCreateDispatch(name: name, body: body)
         case "GUILD_UPDATE":
-            await handleGuildUpdateDispatch(name: name, body: body, data: data)
+            await handleGuildUpdateDispatch(name: name, body: body)
         case "GUILD_EMOJIS_UPDATE":
-            await handleGuildEmojisUpdateDispatch(name: name, body: body, data: data)
+            await handleGuildEmojisUpdateDispatch(name: name, body: body)
         case "GUILD_ROLE_CREATE", "GUILD_ROLE_UPDATE":
-            await handleGuildRoleCreateDispatch(name: name, body: body, data: data)
+            await handleGuildRoleCreateDispatch(name: name, body: body)
         case "GUILD_ROLE_DELETE":
-            await handleGuildRoleDeleteDispatch(name: name, body: body, data: data)
-        case "GUILD_MEMBER_ADD", "GUILD_MEMBER_UPDATE":
-            await handleGuildMemberAddDispatch(name: name, body: body, data: data)
-        case "GUILD_MEMBER_REMOVE":
-            await handleGuildMemberRemoveDispatch(name: name, body: body, data: data)
-        case "USER_UPDATE":
-            await handleUserUpdateDispatch(name: name, body: body, data: data)
+            await handleGuildRoleDeleteDispatch(name: name, body: body)
         default:
             return false
         }
         return true
     }
 
+    func handleGuildDeleteDispatch(
+        name: String,
+        body: JSONValue
+    ) async {
+        guard
+            let deleted = try? JSONValueDecoder().decode(
+                GatewayDeletedEntityDTO.self, from: body
+            ), let guildID = GuildID(deleted.id)
+        else { return }
+        invalidateApplicationCommandCatalog(.guild(guildID))
+        if deleted.unavailable == true {
+            if var guild = cachedGuilds[guildID] {
+                guild.isUnavailable = true
+                cachedGuilds[guildID] = guild
+                continuation?.yield(.guildChanged(guild))
+            }
+        } else {
+            removeGuild(guildID)
+        }
+    }
+
     func handleGuildCreateDispatch(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async {
-        if let patch = try? JSONDecoder().decode(GatewayGuildPatchDTO.self, from: data),
+        if let patch = try? JSONValueDecoder().decode(GatewayGuildPatchDTO.self, from: body),
            let guildID = GuildID(patch.id),
            var guild = patch.applying(
                to: cachedGuilds[guildID], currentUserID: currentUser?.id
@@ -47,7 +62,7 @@ extension DiscordRESTProvider {
             insertGuildIntoRailIfNeeded(guildID)
             publishGuildLayout()
         }
-        if let catalog = try? JSONDecoder().decode(GatewayGuildCatalogDTO.self, from: data),
+        if let catalog = try? JSONValueDecoder().decode(GatewayGuildCatalogDTO.self, from: body),
            let guildID = GuildID(catalog.id)
         {
             if let channels = catalog.channels {
@@ -120,17 +135,17 @@ extension DiscordRESTProvider {
                 }
             }
         }
-        if let emojiSnapshot = try? JSONDecoder().decode(
+        if let emojiSnapshot = try? JSONValueDecoder().decode(
             GatewayGuildEmojiSnapshotDTO.self,
-            from: data
+            from: body
         ),
             let guildID = GuildID(emojiSnapshot.id),
             let emojis = emojiSnapshot.emojis
         {
             publishEmojiCollection(emojis, guildID: guildID)
         }
-        if let snapshot = try? JSONDecoder().decode(
-            GuildVoiceStateSnapshotDTO.self, from: data
+        if let snapshot = try? JSONValueDecoder().decode(
+            GuildVoiceStateSnapshotDTO.self, from: body
         ) {
             let states = snapshot.domainVoiceStates
             gatewayLogger.info(
@@ -144,11 +159,10 @@ extension DiscordRESTProvider {
 
     func handleGuildUpdateDispatch(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async {
         guard
-            let patch = try? JSONDecoder().decode(GatewayGuildPatchDTO.self, from: data),
+            let patch = try? JSONValueDecoder().decode(GatewayGuildPatchDTO.self, from: body),
             let guildID = GuildID(patch.id),
             let guild = patch.applying(
                 to: cachedGuilds[guildID], currentUserID: currentUser?.id
@@ -160,13 +174,12 @@ extension DiscordRESTProvider {
 
     func handleGuildEmojisUpdateDispatch(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async {
         guard
-            let update = try? JSONDecoder().decode(
+            let update = try? JSONValueDecoder().decode(
                 GatewayGuildEmojiSnapshotDTO.self,
-                from: data
+                from: body
             ),
             let guildID = GuildID(update.id),
             let emojis = update.emojis
@@ -176,12 +189,11 @@ extension DiscordRESTProvider {
 
     func handleGuildRoleCreateDispatch(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async {
         guard
-            let update = try? JSONDecoder().decode(
-                GatewayGuildRoleEventDTO.self, from: data
+            let update = try? JSONValueDecoder().decode(
+                GatewayGuildRoleEventDTO.self, from: body
             ), let guildID = GuildID(update.guildID)
         else { return }
         var roles = cachedGuildRoles[guildID] ?? []
@@ -194,12 +206,11 @@ extension DiscordRESTProvider {
 
     func handleGuildRoleDeleteDispatch(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async {
         guard
-            let deletion = try? JSONDecoder().decode(
-                GatewayGuildRoleDeleteDTO.self, from: data
+            let deletion = try? JSONValueDecoder().decode(
+                GatewayGuildRoleDeleteDTO.self, from: body
             ), let guildID = GuildID(deletion.guildID)
         else { return }
         cachedGuildRoles[guildID]?.removeAll { $0.id == deletion.roleID }
@@ -213,63 +224,5 @@ extension DiscordRESTProvider {
         }
         clearCurrentUserPermissionSnapshot(guildID)
         publishGuildRoles(guildID)
-    }
-
-    func handleGuildMemberAddDispatch(
-        name: String,
-        body: JSONValue,
-        data: Data
-    ) async {
-        guard
-            let update = try? JSONDecoder().decode(
-                GatewayGuildMemberEventDTO.self, from: data
-            ), let guildID = GuildID(update.guildID),
-            let member = try? update.member.domain(
-                currentUserID: currentUser?.id,
-                currentStatus: presenceStatus,
-                guildRoles: cachedGuildRoles[guildID] ?? [],
-                guildID: guildID
-            )
-        else { return }
-        quickSwitcherGuildMemberUserIDsByGuildID[guildID, default: []].insert(member.id)
-        if update.member.joinedAt != nil, member.isPending != true {
-            quickSwitcherJoinedMemberIDsByGuildID[guildID, default: []]
-                .insert(member.id)
-        } else {
-            quickSwitcherJoinedMemberIDsByGuildID[guildID]?.remove(member.id)
-        }
-        cacheLiveSearchUsers([update.member.user])
-        publishMemberChange(member, guildID: guildID)
-        publishUserSearchAliases()
-        scheduleForwardSearchPeopleCachePersistence()
-    }
-
-    func handleGuildMemberRemoveDispatch(
-        name: String,
-        body: JSONValue,
-        data: Data
-    ) async {
-        guard
-            let deletion = try? JSONDecoder().decode(
-                GatewayGuildMemberRemoveDTO.self, from: data
-            ), let guildID = GuildID(deletion.guildID),
-            let userID = UserID(deletion.user.id)
-        else { return }
-        quickSwitcherGuildMemberUserIDsByGuildID[guildID]?.remove(userID)
-        quickSwitcherJoinedMemberIDsByGuildID[guildID]?.remove(userID)
-        removeMember(userID: userID, guildID: guildID)
-        publishUserSearchAliases()
-        scheduleForwardSearchPeopleCachePersistence()
-    }
-
-    func handleUserUpdateDispatch(
-        name: String,
-        body: JSONValue,
-        data: Data
-    ) async {
-        guard let dto = try? JSONDecoder().decode(UserDTO.self, from: data),
-              let user = try? dto.domain()
-        else { return }
-        applyUserUpdate(dto: dto, user: user)
     }
 }

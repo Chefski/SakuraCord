@@ -7,7 +7,7 @@ struct DiscordTypingResolutionInput {
     var currentStatus: PresenceStatus
     var cachedMembers: [GuildID: [Member]]
     var cachedChannels: [Channel]
-    var cachedMessages: [Message]
+    var cachedAuthor: User?
     var cachedGuildRoles: [GuildID: [GuildRoleDTO]]
 }
 
@@ -19,7 +19,6 @@ enum DiscordTypingEventResolver {
         let currentStatus = input.currentStatus
         let cachedMembers = input.cachedMembers
         let cachedChannels = input.cachedChannels
-        let cachedMessages = input.cachedMessages
         let cachedGuildRoles = input.cachedGuildRoles
         let guildID = typing.guildID.flatMap(GuildID.init)
         if let member = typing.member,
@@ -46,9 +45,7 @@ enum DiscordTypingEventResolver {
         {
             return recipient
         }
-        if let author = cachedMessages.first(where: { $0.author.id == userID })?.author {
-            return author
-        }
+        if let author = input.cachedAuthor, author.id == userID { return author }
         return currentUser?.id == userID ? currentUser : nil
     }
 }

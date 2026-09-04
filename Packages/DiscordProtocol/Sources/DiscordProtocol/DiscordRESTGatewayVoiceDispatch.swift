@@ -4,24 +4,27 @@ import SakuraCordModels
 extension DiscordRESTProvider {
     func handleGatewayVoiceEvent(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async -> Bool {
         switch name {
         case "VOICE_SERVER_UPDATE":
-            await handleVoiceServerUpdateDispatch(name: name, body: body, data: data)
+            await handleVoiceServerUpdateDispatch(name: name, body: body)
         case "STREAM_CREATE", "STREAM_UPDATE":
-            await handleStreamCreateDispatch(name: name, body: body, data: data)
+            await handleStreamCreateDispatch(name: name, body: body)
         case "STREAM_SERVER_UPDATE":
-            await handleStreamServerUpdateDispatch(name: name, body: body, data: data)
+            await handleStreamServerUpdateDispatch(name: name, body: body)
         case "STREAM_DELETE":
-            await handleStreamDeleteDispatch(name: name, body: body, data: data)
+            await handleStreamDeleteDispatch(name: name, body: body)
         case "CALL_CREATE":
-            await handleCallCreateDispatch(name: name, body: body, data: data)
+            await handleCallCreateDispatch(name: name, body: body)
         case "CALL_UPDATE":
-            await handleCallUpdateDispatch(name: name, body: body, data: data)
+            await handleCallUpdateDispatch(name: name, body: body)
         case "CALL_DELETE":
-            await handleCallDeleteDispatch(name: name, body: body, data: data)
+            await handleCallDeleteDispatch(name: name, body: body)
+        case "VOICE_CHANNEL_STATUS_UPDATE", "VOICE_CHANNEL_START_TIME_UPDATE":
+            await handleVoiceChannelStatusUpdateDispatch(name: name, body: body)
+        case "VOICE_STATE_UPDATE":
+            await handleVoiceStateUpdateDispatch(name: name, body: body)
         default:
             return false
         }
@@ -30,10 +33,9 @@ extension DiscordRESTProvider {
 
     func handleVoiceServerUpdateDispatch(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async {
-        guard let update = try? JSONDecoder().decode(VoiceServerUpdateDTO.self, from: data)
+        guard let update = try? JSONValueDecoder().decode(VoiceServerUpdateDTO.self, from: body)
         else {
             return
         }
@@ -60,10 +62,9 @@ extension DiscordRESTProvider {
 
     func handleStreamCreateDispatch(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async {
-        guard let update = try? JSONDecoder().decode(ApplicationStreamDTO.self, from: data),
+        guard let update = try? JSONValueDecoder().decode(ApplicationStreamDTO.self, from: body),
               let key = ApplicationStreamKey(rawValue: update.streamKey),
               let stream = update.merging(applicationStreams[key])
         else { return }
@@ -72,24 +73,22 @@ extension DiscordRESTProvider {
 
     func handleStreamServerUpdateDispatch(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async {
-        guard let update = try? JSONDecoder().decode(
+        guard let update = try? JSONValueDecoder().decode(
             ApplicationStreamServerUpdateDTO.self,
-            from: data
+            from: body
         ) else { return }
         reconcileApplicationStreamServer(update)
     }
 
     func handleStreamDeleteDispatch(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async {
-        guard let deletion = try? JSONDecoder().decode(
+        guard let deletion = try? JSONValueDecoder().decode(
             ApplicationStreamDeleteDTO.self,
-            from: data
+            from: body
         ), let key = ApplicationStreamKey(rawValue: deletion.streamKey)
         else { return }
         if deletion.unavailable != true {
@@ -113,10 +112,9 @@ extension DiscordRESTProvider {
 
     func handleCallCreateDispatch(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async {
-        guard let update = try? JSONDecoder().decode(PrivateCallDTO.self, from: data),
+        guard let update = try? JSONValueDecoder().decode(PrivateCallDTO.self, from: body),
               let call = update.domain()
         else { return }
         privateCallsByChannel[call.channelID] = call
@@ -125,10 +123,9 @@ extension DiscordRESTProvider {
 
     func handleCallUpdateDispatch(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async {
-        guard let update = try? JSONDecoder().decode(PrivateCallDTO.self, from: data),
+        guard let update = try? JSONValueDecoder().decode(PrivateCallDTO.self, from: body),
               let incoming = update.domain()
         else { return }
         let existing = privateCallsByChannel[incoming.channelID]
@@ -148,10 +145,9 @@ extension DiscordRESTProvider {
 
     func handleCallDeleteDispatch(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async {
-        guard let deletion = try? JSONDecoder().decode(PrivateCallDeleteDTO.self, from: data),
+        guard let deletion = try? JSONValueDecoder().decode(PrivateCallDeleteDTO.self, from: body),
               let channelID = ChannelID(deletion.channelID)
         else { return }
         privateCallsByChannel[channelID] = nil
@@ -161,5 +157,48 @@ extension DiscordRESTProvider {
                 unavailable: deletion.unavailable ?? false
             )
         )
+    }
+
+    func handleVoiceChannelStatusUpdateDispatch(
+        name: String,
+        body: JSONValue
+    ) async {
+        guard
+            let update = try? JSONValueDecoder().decode(
+                GatewayVoiceChannelMetadataDTO.self, from: body
+            ), let guildID = GuildID(update.guildID),
+            cachedGuildChannelDTOs[guildID]?[update.id] != nil
+        else { return }
+        if name == "VOICE_CHANNEL_STATUS_UPDATE" {
+            cachedGuildChannelDTOs[guildID]?[update.id]?.status = update.status
+        } else {
+            cachedGuildChannelDTOs[guildID]?[update.id]?.voiceStartTime =
+                update.voiceStartTime
+        }
+        publishGuildChannels(guildID)
+    }
+
+    func handleVoiceStateUpdateDispatch(
+        name: String,
+        body: JSONValue
+    ) async {
+        guard let state = try? JSONValueDecoder().decode(VoiceStateUpdateDTO.self, from: body),
+              let participant = state.domain()
+        else { return }
+        continuation?.yield(.voiceStateChanged(participant))
+        reconcilePrivateCallVoiceState(participant)
+        if participant.userID == currentUser?.id {
+            if participant.channelID == nil {
+                activeVoiceConnection = nil
+            } else if participant.channelID == activeVoiceConnection?.channelID {
+                activeVoiceConnection?.sessionID = participant.sessionID
+            }
+        }
+        if participant.userID == currentUser?.id,
+           participant.channelID == pendingVoiceNegotiation?.channelID
+        {
+            pendingVoiceNegotiation?.sessionID = participant.sessionID
+            finishVoiceNegotiationIfReady()
+        }
     }
 }

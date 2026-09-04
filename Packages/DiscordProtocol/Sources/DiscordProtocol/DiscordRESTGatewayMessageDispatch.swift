@@ -4,43 +4,141 @@ import SakuraCordModels
 extension DiscordRESTProvider {
     func handleGatewayMessageEvent(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async -> Bool {
         switch name {
+        case "TYPING_START":
+            await handleTypingStartDispatch(name: name, body: body)
+        case "MESSAGE_REACTION_ADD":
+            await handleMessageReactionAddDispatch(name: name, body: body)
+        case "MESSAGE_CREATE":
+            await handleMessageCreateDispatch(name: name, body: body)
+        case "MESSAGE_ACK":
+            await handleMessageAckDispatch(name: name, body: body)
         case "MESSAGE_REACTION_REMOVE":
-            await handleMessageReactionRemoveDispatch(name: name, body: body, data: data)
+            await handleMessageReactionRemoveDispatch(name: name, body: body)
         case "MESSAGE_REACTION_REMOVE_ALL":
-            await handleMessageReactionRemoveAllDispatch(name: name, body: body, data: data)
+            await handleMessageReactionRemoveAllDispatch(name: name, body: body)
         case "MESSAGE_REACTION_REMOVE_EMOJI":
-            await handleMessageReactionRemoveEmojiDispatch(name: name, body: body, data: data)
+            await handleMessageReactionRemoveEmojiDispatch(name: name, body: body)
         case "MESSAGE_UPDATE":
-            await handleMessageUpdateDispatch(name: name, body: body, data: data)
+            await handleMessageUpdateDispatch(name: name, body: body)
         case "MESSAGE_DELETE":
-            await handleMessageDeleteDispatch(name: name, body: body, data: data)
+            await handleMessageDeleteDispatch(name: name, body: body)
         case "MESSAGE_DELETE_BULK":
-            await handleMessageDeleteBulkDispatch(name: name, body: body, data: data)
-        case "CHANNEL_PINS_UPDATE":
-            await handleChannelPinsUpdateDispatch(name: name, body: body, data: data)
-        case "GUILD_MEMBER_LIST_UPDATE":
-            await handleGuildMemberListUpdateDispatch(name: name, body: body, data: data)
-        case "GUILD_MEMBERS_CHUNK":
-            await handleGuildMembersChunkDispatch(name: name, body: body, data: data)
+            await handleMessageDeleteBulkDispatch(name: name, body: body)
         default:
             return false
         }
         return true
     }
 
-    func handleMessageReactionRemoveDispatch(
+    func handleTypingStartDispatch(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
+    ) async {
+        guard let typing = try? JSONValueDecoder().decode(TypingStartDTO.self, from: body),
+              let channelID = ChannelID(typing.channelID),
+              let userID = UserID(typing.userID),
+              let user = DiscordTypingEventResolver.resolve(.init(
+                  typing: typing,
+                  userID: userID,
+                  currentUser: currentUser,
+                  currentStatus: presenceStatus,
+                  cachedMembers: cachedMembers,
+                  cachedChannels: cachedChannels.values.flatMap(\.self),
+                  cachedAuthor: cachedGatewayUsersByID[typing.userID].flatMap { try? $0.domain() }
+                      ?? cachedForwardSearchUsersByID[userID],
+                  cachedGuildRoles: cachedGuildRoles
+              ))
+        else {
+            gatewayLogger.debug("Ignored an unresolved or malformed typing event")
+            return
+        }
+        continuation?.yield(.typing(channelID: channelID, user: user))
+    }
+
+    func handleMessageReactionAddDispatch(
+        name: String,
+        body: JSONValue
     ) async {
         guard
-            let value = try? JSONDecoder().decode(
+            let value = try? JSONValueDecoder().decode(
                 GatewayMessageReactionUserDTO.self,
-                from: data
+                from: body
+            ),
+            let update = value.domainUpdate(isAddition: true)
+        else { return }
+        applyGatewayReactionUpdate(update)
+    }
+
+    func handleMessageCreateDispatch(
+        name: String,
+        body: JSONValue
+    ) async {
+        if let dto = try? JSONValueDecoder().decode(MessageDTO.self, from: body),
+           let message = try? dto.domain()
+        {
+            cacheMessageSearchUsers(dto.searchIndexUsers)
+            cacheForwardSearchMessageAliases([message])
+            cachedMessages[message.id] = message
+            continuation?.yield(.messageCreated(message))
+            promotePrivateChannel(
+                channelID: message.channelID,
+                lastMessageID: message.id
+            )
+            updateForumPostForMessage(message, marksUnread: true)
+        }
+    }
+
+    func handleMessageAckDispatch(
+        name: String,
+        body: JSONValue
+    ) async {
+        guard let ack = try? JSONValueDecoder().decode(GatewayMessageAckDTO.self, from: body),
+              let channelID = ChannelID(ack.channelID)
+        else { return }
+        forumReadStates[channelID] = ForumReadState(
+            lastReadMessageID: ack.messageID.flatMap(MessageID.init),
+            mentionCount: ack.mentionCount ?? 0
+        )
+        continuation?.yield(
+            .readStateChanged(
+                ChannelReadState(
+                    channelID: channelID,
+                    lastAcknowledgedMessageID: ack.messageID.flatMap(MessageID.init),
+                    mentionCount: ack.mentionCount ?? 0,
+                    isManual: ack.manual ?? false,
+                    flags: ack.flags,
+                    lastViewed: ack.lastViewed,
+                    version: ack.version
+                )
+            )
+        )
+        for (parentID, posts) in cachedForumPosts where posts[channelID] != nil {
+            if let lastMessageID = posts[channelID]?.thread.lastMessageID {
+                cachedForumPosts[parentID]?[channelID]?.isUnread =
+                    (ack.mentionCount ?? 0) > 0
+                    || (ack.messageID.flatMap(MessageID.init).map {
+                        lastMessageID > $0
+                    } ?? true)
+            } else {
+                cachedForumPosts[parentID]?[channelID]?.isUnread =
+                    (ack.mentionCount ?? 0) > 0
+            }
+            publishForumPosts(parentID: parentID)
+            break
+        }
+    }
+
+    func handleMessageReactionRemoveDispatch(
+        name: String,
+        body: JSONValue
+    ) async {
+        guard
+            let value = try? JSONValueDecoder().decode(
+                GatewayMessageReactionUserDTO.self,
+                from: body
             ),
             let update = value.domainUpdate(isAddition: false)
         else { return }
@@ -49,13 +147,12 @@ extension DiscordRESTProvider {
 
     func handleMessageReactionRemoveAllDispatch(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async {
         guard
-            let value = try? JSONDecoder().decode(
+            let value = try? JSONValueDecoder().decode(
                 GatewayMessageReactionRemoveAllDTO.self,
-                from: data
+                from: body
             ),
             let update = value.domainUpdate
         else { return }
@@ -64,13 +161,12 @@ extension DiscordRESTProvider {
 
     func handleMessageReactionRemoveEmojiDispatch(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async {
         guard
-            let value = try? JSONDecoder().decode(
+            let value = try? JSONValueDecoder().decode(
                 GatewayMessageReactionRemoveEmojiDTO.self,
-                from: data
+                from: body
             ),
             let update = value.domainUpdate
         else { return }
@@ -79,29 +175,37 @@ extension DiscordRESTProvider {
 
     func handleMessageUpdateDispatch(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async {
-        if let update = try? JSONDecoder().decode(MessageUpdateDTO.self, from: data),
-           let messageID = MessageID(update.id), ChannelID(update.channelID) != nil,
-           var message = cachedMessages[messageID]
-        {
-            if let mentions = update.mentions?.elements {
-                cacheMessageSearchUsers(mentions.map(\.searchIndexUser))
-            }
+        guard let dto = try? JSONValueDecoder().decode(MessageUpdateDTO.self, from: body),
+              let messageID = MessageID(dto.id), let channelID = ChannelID(dto.channelID)
+        else { return }
+        if let mentions = dto.mentions?.elements { cacheMessageSearchUsers(mentions.map(\.searchIndexUser)) }
+        let guildID = cachedMessages[messageID]?.guildID
+            ?? cachedJoinedThreads[channelID]?.guildID
+            ?? cachedForumPosts.values.lazy.compactMap { $0[channelID]?.thread.guildID }.first
+            ?? cachedChannels.values.lazy.flatMap(\.self).first { $0.id == channelID }?.guildID
+        guard let update = dto.domain(guildID: guildID) else { return }
+        if var message = cachedMessages[messageID] {
             update.apply(to: &message)
             cachedMessages[messageID] = message
             continuation?.yield(.messageUpdated(message))
             updateForumPostForMessage(message)
+        } else {
+            continuation?.yield(.messagePatched(update))
+            if let post = cachedForumPosts.values.lazy.compactMap({ $0[channelID] }).first,
+               var message = [post.firstMessage, post.mostRecentMessage].compactMap({ $0 }).first(where: { $0.id == messageID }) {
+                update.apply(to: &message)
+                updateForumPostForMessage(message)
+            }
         }
     }
 
     func handleMessageDeleteDispatch(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async {
-        if let value = try? JSONDecoder().decode(MessageDeleteDTO.self, from: data),
+        if let value = try? JSONValueDecoder().decode(MessageDeleteDTO.self, from: body),
            let channelID = ChannelID(value.channelID), let messageID = MessageID(value.id)
         {
             cachedMessages[messageID] = nil
@@ -111,12 +215,11 @@ extension DiscordRESTProvider {
 
     func handleMessageDeleteBulkDispatch(
         name: String,
-        body: JSONValue,
-        data: Data
+        body: JSONValue
     ) async {
         guard
-            let deletion = try? JSONDecoder().decode(
-                GatewayMessageDeleteBulkDTO.self, from: data
+            let deletion = try? JSONValueDecoder().decode(
+                GatewayMessageDeleteBulkDTO.self, from: body
             ), let channelID = ChannelID(deletion.channelID)
         else { return }
         for messageID in deletion.ids.compactMap(MessageID.init) {
@@ -124,173 +227,6 @@ extension DiscordRESTProvider {
             continuation?.yield(
                 .messageDeleted(channelID: channelID, messageID: messageID)
             )
-        }
-    }
-
-    func handleChannelPinsUpdateDispatch(
-        name: String,
-        body: JSONValue,
-        data: Data
-    ) async {
-        guard
-            let update = try? JSONDecoder().decode(
-                GatewayChannelPinsUpdateDTO.self, from: data
-            ), let channelID = ChannelID(update.channelID)
-        else { return }
-        let timestamp = update.lastPinTimestamp.flatMap(DiscordDate.parse)
-        if let guildID = update.guildID.flatMap(GuildID.init) {
-            cachedGuildChannelDTOs[guildID]?[update.channelID]?.lastPinTimestamp =
-                update.lastPinTimestamp
-            publishGuildChannels(guildID)
-        } else if var channels = cachedChannels[nil],
-                  let index = channels.firstIndex(where: { $0.id == channelID })
-        {
-            channels[index].lastPinTimestamp = timestamp
-            cachedChannels[nil] = channels
-            continuation?.yield(.channelsChanged(guildID: nil, channels: channels))
-        }
-        continuation?.yield(.channelPinsInvalidated(channelID: channelID))
-    }
-
-    func handleGuildMemberListUpdateDispatch(
-        name: String,
-        body: JSONValue,
-        data: Data
-    ) async {
-        guard let update = try? JSONDecoder().decode(GuildMemberListUpdateDTO.self, from: data),
-              let guildID = GuildID(update.guildID)
-        else {
-            gatewayLogger.error("Member-list update could not be decoded; bytes=\(data.count)")
-            return
-        }
-        let syncItemCount = update.ops.reduce(0) { $0 + ($1.items?.count ?? 0) }
-        if syncItemCount > 0 {
-            gatewayLogger.info("Member-list range synchronized; items=\(syncItemCount)")
-        }
-        // Discord's UserSearchManager deliberately does not subscribe to
-        // GUILD_MEMBER_LIST_UPDATE. These members remain available to the
-        // visible member list and nickname store, but must not leak into
-        // the account-wide Forward user-search index.
-        applyMemberListOperations(
-            update.ops, guildID: guildID, memberListID: update.id
-        )
-        if let groups = update.groups {
-            cachedMemberListGroups[guildID, default: [:]][update.id] = groups.map {
-                GuildMemberListGroup(id: $0.id, count: $0.count)
-            }
-        }
-        let changedUserIDs = Self.memberListChangedUserIDs(in: update.ops)
-        let members = decodedMemberListMembers(
-            guildID: guildID,
-            memberListID: update.id,
-            restrictingTo: changedUserIDs
-        )
-        cachedMembers[guildID] = DiscordMemberStoreOrdering.merging(
-            existing: cachedMembers[guildID] ?? [], updates: members
-        )
-        publishUserSearchAliases()
-        if guildID == pendingMemberGuildID,
-           update.id == selectedMemberListID[guildID]
-        {
-            continuation?.yield(
-                .membersChanged(
-                    guildID: guildID,
-                    members: orderedMemberListMembers(guildID: guildID) ?? members,
-                    groups: cachedMemberListGroups[guildID]?[update.id] ?? []
-                )
-            )
-        }
-    }
-
-    func handleGuildMembersChunkDispatch(
-        name: String,
-        body: JSONValue,
-        data: Data
-    ) async {
-        guard
-            let chunk = try? JSONDecoder().decode(GatewayGuildMembersChunkDTO.self, from: data),
-            let guildID = GuildID(chunk.guildID)
-        else { return }
-        let guildRoles = cachedGuildRoles[guildID] ?? []
-        let guildRoleCatalog = GuildMemberRoleCatalog(guildRoles)
-        let decodedMembers = chunk.members.compactMap {
-            try? $0.domain(
-                currentUserID: currentUser?.id,
-                currentStatus: presenceStatus,
-                guildRoles: guildRoles,
-                guildRoleCatalog: guildRoleCatalog,
-                guildID: guildID
-            )
-        }
-        let responseUserIDs = Set(decodedMembers.map(\.id)).union(
-            (chunk.notFound ?? []).compactMap(UserID.init)
-        )
-        let roleMemberRequestID = pendingRoleMemberRequestID(
-            guildID: guildID,
-            responseUserIDs: responseUserIDs
-        )
-        if roleMemberRequestID == nil {
-            // Discord's SearchContextManager handles unsolicited and
-            // search-driven GUILD_MEMBERS_CHUNK_BATCH users. SakuraCord
-            // also issues private member-resolution requests solely to
-            // hydrate timeline presentation; those extra requests must
-            // not expand message-search UserStore beyond Discord's live
-            // source set.
-            cacheLiveSearchUsers(chunk.members.map(\.user))
-        } else {
-            for member in chunk.members {
-                cacheGatewayUser(member.user, messageSearchEligible: false)
-            }
-        }
-        let joinedUserIDs = Set<UserID>(chunk.members.compactMap { member -> UserID? in
-            guard member.joinedAt != nil, member.pending != true else { return nil }
-            return UserID(member.user.id)
-        })
-        mergeResolvedMembers(
-            decodedMembers, guildID: guildID, joinedUserIDs: joinedUserIDs
-        )
-        // The first-party SearchContext worker records membership from
-        // every GUILD_MEMBERS_CHUNK_BATCH result. Keep this index separate
-        // from the bounded visible-member cache so @ searches can filter
-        // a newly resolved user immediately within this live connection.
-        quickSwitcherGuildMemberUserIDsByGuildID[guildID, default: []]
-            .formUnion(decodedMembers.map(\.id))
-        publishUserSearchAliases()
-        if let requestID = roleMemberRequestID,
-           var request = pendingRoleMemberRequests[requestID]
-        {
-            request.members.append(contentsOf: decodedMembers)
-            request.receivedChunks.insert(chunk.chunkIndex)
-            if request.receivedChunks.count >= max(1, chunk.chunkCount) {
-                pendingRoleMemberRequests[requestID] = nil
-                request.timeoutTask.cancel()
-                request.continuation.resume(returning: request.members)
-            } else {
-                pendingRoleMemberRequests[requestID] = request
-            }
-            return
-        }
-
-        guard let requestID = pendingMemberSearchRequestByGuild[guildID],
-              var search = pendingMemberSearchRequests[requestID]
-        else {
-            return
-        }
-        search.members.append(contentsOf: decodedMembers)
-        search.receivedChunks.insert(chunk.chunkIndex)
-        if search.receivedChunks.count >= max(1, chunk.chunkCount) {
-            _ = removeMemberSearchRequest(requestID: requestID)
-            search.timeoutTask.cancel()
-            let responseMembers = Array(search.members.prefix(search.maximumResults))
-            mergeResolvedMembers(responseMembers, guildID: guildID)
-            let members = DiscordMemberStoreOrdering.searchResults(
-                in: cachedMembers[guildID] ?? [],
-                matching: responseMembers,
-                limit: search.maximumResults
-            )
-            search.continuation.resume(returning: members)
-        } else {
-            pendingMemberSearchRequests[requestID] = search
         }
     }
 }

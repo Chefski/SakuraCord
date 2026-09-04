@@ -74,11 +74,13 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     let usesForwardSearchPeopleDiskCache: Bool
     let persistsResolvedInstallationID: Bool
     var clientAppState = "focused"
-    var continuation: AsyncStream<ClientEvent>.Continuation?
+    var continuation: SessionEventBuffer<ClientEvent>?
     var currentUser: User?
     var authorizationValue: String?
     var installationResolutionAttempted = false
-    var cachedMessages: [MessageID: Message] = [:]
+    var isClearingDerivedCaches = false
+    var derivedCacheGeneration: UInt64 = 0
+    var cachedMessages = DiscordMessageCache()
     var cachedChannels: [GuildID?: [Channel]] = [:]
     // Discord's global channel search iterates ChannelStore insertion order,
     // which is independent of the category/position order used by the sidebar.
@@ -233,6 +235,9 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     var subscribedPrivateCallChannelIDs: Set<ChannelID> = []
     #if DEBUG
         var suspendsForumCatalogueRefreshForTesting = false
+        var eventOverflowDidStopRequestsForTesting: (@Sendable () -> Void)?
+        var derivedCacheClearDidBeginForTesting: (@Sendable () -> Void)?
+        var emojiResponseReceivedForTesting: (@Sendable () async -> Void)?
     #endif
 
     struct ForumCatalogueLoadKey: Hashable {

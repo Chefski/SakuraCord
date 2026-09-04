@@ -517,7 +517,7 @@ import Testing
     model.uploadOversizedAttachment(prompt, using: .catbox)
     #expect(await eventuallyUploadCallCount(1, from: uploader))
 
-    model.resetAccountScopedLoadsAndForumState()
+    await model.resetAccountScopedLoadsAndForumState()
     await uploader.release(
         call: 1,
         with: URL(string: "https://files.catbox.moe/stale.bin")!
@@ -1999,12 +1999,12 @@ private func downArrowKeyEvent(
     )
     #expect(await provider.sendCount == 1)
     let nonce = try #require(failed.nonce)
-    #expect(model.outgoingMessages.draftsByNonce[nonce] != nil)
+    #expect(model.composer.outbox.draftsByNonce[nonce] != nil)
 
     model.discardFailedOutgoingMessage(failed)
 
     #expect(model.messages.allSatisfy { $0.nonce != nonce })
-    #expect(model.outgoingMessages.draftsByNonce[nonce] == nil)
+    #expect(model.composer.outbox.draftsByNonce[nonce] == nil)
     #expect(await provider.sendCount == 1)
 }
 
@@ -2183,7 +2183,7 @@ private func downArrowKeyEvent(
     #expect(pending.stickers.first?.mediaURL == sticker.pickerMediaURL)
     #expect(MessageOutboxPresentation.mediaOpacity(for: pending.outboxState) == 0.55)
     let nonce = try #require(pending.nonce)
-    #expect(model.outgoingMessages.draftsByNonce[nonce]?.stickerIDs == [sticker.id])
+    #expect(model.composer.outbox.draftsByNonce[nonce]?.stickerIDs == [sticker.id])
 
     await provider.releaseSend()
     #expect(await send.value)
@@ -2192,7 +2192,7 @@ private func downArrowKeyEvent(
     #expect(confirmed.stickers.first?.mediaURL == sticker.pickerMediaURL)
     #expect(MessageRowIdentity(confirmed) == pendingIdentity)
     #expect(MessageOutboxPresentation.mediaOpacity(for: confirmed.outboxState) == 1)
-    #expect(model.outgoingMessages.draftsByNonce[nonce] == nil)
+    #expect(model.composer.outbox.draftsByNonce[nonce] == nil)
 }
 
 @MainActor
@@ -2215,7 +2215,7 @@ private func downArrowKeyEvent(
     #expect(failed.outboxState == .failed)
     #expect(MessageOutboxPresentation.interactionMode(for: failed.outboxState) == .failed)
     let nonce = try #require(failed.nonce)
-    #expect(model.outgoingMessages.draftsByNonce[nonce]?.stickerIDs == [sticker.id])
+    #expect(model.composer.outbox.draftsByNonce[nonce]?.stickerIDs == [sticker.id])
 
     #expect(await model.retrySending(failed))
     let confirmed = try #require(model.messages.last { $0.nonce == nonce })

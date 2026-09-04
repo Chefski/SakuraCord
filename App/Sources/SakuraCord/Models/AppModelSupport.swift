@@ -224,23 +224,6 @@ nonisolated enum ComposerSubmissionResult: Equatable, Sendable {
     }
 }
 
-struct OutgoingMessageState {
-    var draftsByNonce: [String: SendMessageDraft] = [:]
-    var stickerUploadSourceURLByNonce: [String: URL] = [:]
-    private var nextOptimisticMessageRawValue = UInt64.max
-
-    mutating func nextOptimisticMessageID() -> MessageID {
-        defer { nextOptimisticMessageRawValue &-= 1 }
-        return MessageID(rawValue: nextOptimisticMessageRawValue)
-    }
-
-    mutating func reset() {
-        draftsByNonce.removeAll(keepingCapacity: false)
-        stickerUploadSourceURLByNonce.removeAll(keepingCapacity: false)
-        nextOptimisticMessageRawValue = UInt64.max
-    }
-}
-
 nonisolated enum MessageComposerDestination: Hashable, Sendable {
     case channel
     case thread

@@ -5,6 +5,43 @@ import Testing
 
 @Suite(.serialized)
 struct ProviderRequestContractTests {
+    @Test func `pre-clear emoji requests cannot restore cleared memory or disk catalogs`() async throws {
+        RateLimitURLProtocol.reset()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [RateLimitURLProtocol.self]
+        let provider = DiscordRESTProvider(
+            credentials: TestCredentialStore(), handle: CredentialHandle(accountID: "emoji-clear-\(UUID().uuidString)"),
+            session: URLSession(configuration: configuration), usesForwardSearchPeopleDiskCache: false
+        )
+        let guildID = GuildID(rawValue: 987_654_321_012_345_678)
+        let cacheURL = try await provider.emojiCacheURL(for: guildID)
+        defer { try? FileManager.default.removeItem(at: cacheURL.deletingLastPathComponent()) }
+        let received = AsyncStream<Void>.makeStream()
+        let release = AsyncStream<Void>.makeStream()
+        await provider.setEmojiResponseGate {
+            received.continuation.yield(())
+            var iterator = release.stream.makeAsyncIterator()
+            _ = await iterator.next()
+        }
+        let load = Task { try await provider.emojis(in: guildID) }
+        var receivedIterator = received.stream.makeAsyncIterator()
+        _ = await receivedIterator.next()
+        try await provider.clearLocalSearchCache()
+        release.continuation.yield(())
+        _ = try await load.value
+        #expect(await provider.cachedEmojis[guildID] == nil)
+        #expect(!FileManager.default.fileExists(atPath: cacheURL.path))
+        #expect(RateLimitURLProtocol.guildEmojiRequests == 1)
+
+        // A new post-clear request may establish a new catalog normally.
+        await provider.setEmojiResponseGate(nil)
+        _ = try await provider.emojis(in: guildID)
+        #expect(await provider.cachedEmojis[guildID] != nil)
+        #expect(FileManager.default.fileExists(atPath: cacheURL.path))
+        #expect(RateLimitURLProtocol.guildEmojiRequests == 2)
+        await provider.disconnect()
+    }
+
     @Test func `REST scheduling learns server buckets without a global cadence`() async throws {
         let provider = DiscordRESTProvider(
             credentials: TestCredentialStore(),
@@ -679,6 +716,25 @@ struct ProviderRequestContractTests {
         #expect(RateLimitURLProtocol.threadMemberMethods.count == 4)
     }
 
+    @Test(arguments: [false, true])
+    func `reaction intents outside the working set reload before deciding whether to mutate`(reacted: Bool) async throws {
+        RateLimitURLProtocol.reset()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [RateLimitURLProtocol.self]
+        let provider = DiscordRESTProvider(
+            credentials: TestCredentialStore(), handle: CredentialHandle(accountID: "1"),
+            session: URLSession(configuration: configuration), installationID: "fixture"
+        )
+        let channelID = ChannelID(rawValue: 200)
+        let messageID = MessageID(rawValue: 350)
+        #expect(await provider.cachedMessages[messageID] == nil)
+        try await provider.setReaction("🔥", reacted: reacted, messageID: messageID, channelID: channelID)
+        #expect(RateLimitURLProtocol.messageHistoryQueryItems.count == 1)
+        #expect(Set(RateLimitURLProtocol.messageHistoryQueryItems[0]) == Set(["around=350", "limit=1"]))
+        #expect(RateLimitURLProtocol.reactionMethods == (reacted ? ["PUT"] : []))
+        await provider.disconnect()
+    }
+
     @Test func `reaction gateway dispatches decode every documented mutation variant`() async throws {
         try await ReactionGatewayScenario().run
     }
@@ -777,4 +833,10 @@ struct ProviderRequestContractTests {
         try await ApplicationCommandScenario().run
     }
 
+}
+
+private extension DiscordRESTProvider {
+    func setEmojiResponseGate(_ callback: (@Sendable () async -> Void)?) {
+        emojiResponseReceivedForTesting = callback
+    }
 }

@@ -201,8 +201,8 @@ extension AppModel {
             optimistic.outboxState = .uploading
             optimistic.attachments[0].proxyURL = sticker.pickerMediaURL ?? remoteURL
             appendOutgoingMessage(optimistic)
-            outgoingMessages.draftsByNonce[outgoing.nonce] = outgoing
-            outgoingMessages.stickerUploadSourceURLByNonce[outgoing.nonce] = remoteURL
+            composer.outbox.draftsByNonce[outgoing.nonce] = outgoing
+            composer.outbox.stickerUploadSourceURLByNonce[outgoing.nonce] = remoteURL
             return await performStickerUpload(
                 outgoing,
                 sourceURL: remoteURL,
@@ -307,7 +307,7 @@ extension AppModel {
             stickers: [presentedSticker]
         )
         appendOutgoingMessage(optimistic)
-        outgoingMessages.draftsByNonce[draft.nonce] = draft
+        composer.outbox.draftsByNonce[draft.nonce] = draft
         let didSend = await performOutgoingSend(draft, isRetry: false)
         if didSend {
             completeConversationReadingAndAdvance(channelID: channelID)

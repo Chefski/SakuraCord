@@ -4,8 +4,10 @@ public enum ConnectionState: String, Codable, Equatable, Sendable {
 
 public enum ClientEvent: Equatable, Sendable {
     case connectionChanged(ConnectionState)
+    case sessionInvalidated(String)
     case messageCreated(Message)
     case messageUpdated(Message)
+    case messagePatched(MessageUpdate)
     case messageReactionUpdated(MessageReactionUpdate)
     case messageDeleted(channelID: ChannelID, messageID: MessageID)
     case channelPinsInvalidated(channelID: ChannelID)

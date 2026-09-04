@@ -62,6 +62,7 @@ extension DiscordRESTProvider {
     }
 
     func persistQuickSwitcherChannelStoreCache() {
+        guard !isClearingDerivedCaches, !requestSafetyCircuitIsOpen else { return }
         guard let url = quickSwitcherChannelStoreCacheURL() else { return }
         try? DiscordQuickSwitcherChannelStoreCache(
             channelIDs: Array(cachedForwardChannelStoreOrder.suffix(
@@ -77,7 +78,7 @@ extension DiscordRESTProvider {
             with: "-",
             options: .regularExpression
         )
-        let base = forwardPeopleCacheDirectoryOverride
+        let base = forwardPeopleCacheDirectoryOverride?.appending(path: "QuickSwitcherChannelStore")
             ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
                 .appending(
                     path: "dev.sakuracord.SakuraCord/QuickSwitcherChannelStore",

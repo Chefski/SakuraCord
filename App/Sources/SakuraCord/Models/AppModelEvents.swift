@@ -122,8 +122,13 @@ extension AppModel {
             return
         }
         flushPendingCreatedMessages()
+        let messageForTextPlan: Message? = switch event {
+        case .messageUpdated(let message): message
+        case .messagePatched(let update): applyingMessageUpdate(update)
+        default: nil
+        }
         let preparedTextPlan: NativeTimelineTextPlan? =
-            if case let .messageUpdated(message) = event,
+            if let message = messageForTextPlan,
                message.channelID == selectedChannelID
             {
                 await Task.detached(priority: .userInitiated) {
@@ -159,6 +164,7 @@ extension AppModel {
         consumeImmediately(
             event,
             preparedTextPlan: preparedTextPlan,
+            preparedTextPlanSource: messageForTextPlan,
             preparedMemberListPresentation: preparedMemberListPresentation
         )
     }
@@ -231,6 +237,7 @@ extension AppModel {
     func consumeImmediately(
         _ event: ClientEvent,
         preparedTextPlan: NativeTimelineTextPlan? = nil,
+        preparedTextPlanSource: Message? = nil,
         preparedMemberListPresentation: PreparedMemberListPresentation? = nil
     ) {
         switch event {
@@ -246,6 +253,16 @@ extension AppModel {
             let reconciled = applyingPendingPinIntent(to: incoming)
             consumeMessageUpdated(reconciled, preparedTextPlan: preparedTextPlan)
             reconcilePinnedMessage(reconciled)
+        case .messagePatched(let update):
+            recordConversationRefreshMutation(.patch(update), messageID: update.messageID, channelID: update.channelID)
+            if let message = applyingMessageUpdate(update) {
+                let reconciled = applyingPendingPinIntent(to: message)
+                consumeMessageUpdated(
+                    reconciled, preparedTextPlan: preparedTextPlan,
+                    recordsRefreshMutation: false, preparedTextPlanSource: preparedTextPlanSource
+                )
+                reconcilePinnedMessage(reconciled)
+            }
         case .messageReactionUpdated(let update):
             applyReactionUpdate(update)
         case .messageDeleted(let channelID, let messageID):
@@ -476,8 +493,8 @@ extension AppModel {
                 &message, currentUser: snapshot?.currentUser
             )
             commandComposer.interactionSucceeded(nonce: nonce)
-            outgoingMessages.draftsByNonce[nonce] = nil
-            outgoingMessages.stickerUploadSourceURLByNonce[nonce] = nil
+            composer.outbox.draftsByNonce[nonce] = nil
+            composer.outbox.stickerUploadSourceURLByNonce[nonce] = nil
             pruneOwnedPromisedAttachmentFiles()
         }
         recordAuthoritativeMessageUpsert(message)
@@ -526,17 +543,23 @@ extension AppModel {
 
     func consumeMessageUpdated(
         _ incoming: Message,
-        preparedTextPlan: NativeTimelineTextPlan?
+        preparedTextPlan: NativeTimelineTextPlan?,
+        recordsRefreshMutation: Bool = true,
+        preparedTextPlanSource: Message? = nil
     ) {
         let message = reactionPresentationPreserving(
             outgoingMediaPresentationPreserving(incoming)
         )
-        recordAuthoritativeMessageUpsert(message)
+        // Sparse updates are merged again after asynchronous preparation. A
+        // history refresh or local reconciliation may have changed the source.
+        let matchingTextPlan = recordsRefreshMutation || preparedTextPlanSource == message
+            ? preparedTextPlan : nil
+        if recordsRefreshMutation { recordAuthoritativeMessageUpsert(message) }
         if message.channelID == openThread?.id {
             reconcileThreadUpdate(message)
         }
         if message.channelID == selectedChannelID {
-            reconcileSelectedMessageUpdate(message, preparedTextPlan: preparedTextPlan)
+            reconcileSelectedMessageUpdate(message, preparedTextPlan: matchingTextPlan)
         } else {
             reconcileCachedMessageUpdate(message)
         }
@@ -922,9 +945,11 @@ extension AppModel {
     }
 
     func consumeCurrentUserChanged(_ user: User) {
-        guard var value = snapshot else { return }
-        value.currentUser = user
-        snapshot = value
+        if var value = snapshot {
+            value.currentUser = user
+            snapshot = value
+        }
+        reconcileRetainedMessageIdentities(user)
         if let index = members.firstIndex(where: { $0.id == user.id }) {
             members[index].user = user
         }

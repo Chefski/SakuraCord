@@ -161,7 +161,7 @@ import Testing
     model.emojiUsageCounts = ["wave": 4]
     model.discordFavoriteEmojiKeys = ["wave"]
 
-    model.clearLocalActivity()
+    try await model.clearLocalActivity()
 
     #expect(model.messageSearch.queryText == "private query")
     #expect(model.messageSearch.isPresented)

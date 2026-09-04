@@ -4,6 +4,39 @@ import SakuraCordModels
 import SakuraCordPersistence
 
 extension AppModel {
+    var replyingTo: Message? {
+        get { composer.replyingTo }
+        set { composer.replyingTo = newValue }
+    }
+    var threadReplyingTo: Message? {
+        get { composer.threadReplyingTo }
+        set { composer.threadReplyingTo = newValue }
+    }
+    var replyMentionsAuthor: Bool {
+        get { composer.replyMentionsAuthor }
+        set { composer.replyMentionsAuthor = newValue }
+    }
+    var threadReplyMentionsAuthor: Bool {
+        get { composer.threadReplyMentionsAuthor }
+        set { composer.threadReplyMentionsAuthor = newValue }
+    }
+    var draft: String {
+        get { composer.draft }
+        set { composer.draft = newValue }
+    }
+    var threadDraft: String {
+        get { composer.threadDraft }
+        set { composer.threadDraft = newValue }
+    }
+    var channelComposerAttachments: [ForumPostAttachment] {
+        get { composer.channelAttachments }
+        set { composer.channelAttachments = newValue }
+    }
+    var threadComposerAttachments: [ForumPostAttachment] {
+        get { composer.threadAttachments }
+        set { composer.threadAttachments = newValue }
+    }
+
     func reply(to message: Message) {
         let destination: MessageComposerDestination
         if message.channelID == selectedChannelID {
@@ -119,10 +152,8 @@ extension AppModel {
             quickSwitcherDraftChannelIDs.insert(channelID, at: 0)
         }
         let session = accountSession()
-        Task { [weak self] in
-            guard let self, self.isCurrentAccountSession(session) else { return }
-            try? await session.database?.saveDraft(value, channelID: channelID)
-        }
+        guard isCurrentAccountSession(session) else { return }
+        composer.persistDraft(value, channelID: channelID, database: session.database)
     }
 
     func updateThreadDraft(_ value: String) {
