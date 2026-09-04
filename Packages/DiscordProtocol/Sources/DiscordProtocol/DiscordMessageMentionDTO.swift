@@ -1,0 +1,38 @@
+import Foundation
+import SakuraCordModels
+
+struct MessageMentionDTO: Decodable {
+    private struct PartialMemberDTO: Decodable {
+        var nick: String?
+        var avatar: String?
+    }
+
+    private var user: UserDTO
+    private var member: PartialMemberDTO?
+
+    private enum CodingKeys: String, CodingKey { case member }
+
+    init(from decoder: Decoder) throws {
+        user = try UserDTO(from: decoder)
+        member = try decoder.container(keyedBy: CodingKeys.self)
+            .decodeIfPresent(PartialMemberDTO.self, forKey: .member)
+    }
+
+    func domain(guildID: GuildID?) throws -> User {
+        var value = try user.domain()
+        if let nickname = member?.nick?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !nickname.isEmpty
+        {
+            value.displayName = nickname
+        }
+        if let guildID, let avatarHash = member?.avatar {
+            value.avatarURL = URL(
+                string:
+                "https://cdn.discordapp.com/guilds/\(guildID)/users/\(value.id)/avatars/\(avatarHash).webp?size=128&animated=\(avatarHash.hasPrefix("a_") ? "true" : "false")"
+            )
+        }
+        return value
+    }
+
+    var searchIndexUser: UserDTO { user }
+}

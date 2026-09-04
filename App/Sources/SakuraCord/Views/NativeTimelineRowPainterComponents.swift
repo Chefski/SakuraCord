@@ -388,94 +388,87 @@ extension NativeTimelineRowPainter {
         )
     }
 
-    static var componentsDrawOperation:
-        @MainActor (NativeTimelineComponentsDrawInput) -> Void
-    {
-        { input in
-            let layout = input.layout
-            let bubbleRegion = input.bubbleRegion
-            let model = input.model
-            let messageID = input.messageID
-            let itemIdentifier = input.itemIdentifier
-            let layoutIndex = input.layoutIndex
-            let textSelection = input.textSelection
-            let hoveredMention = input.hoveredMention
-            let hoveredTextLink = input.hoveredTextLink
-            let hoveredTextSpoiler = input.hoveredTextSpoiler
-            let revealedTextSpoilerState = input.revealedTextSpoilerState
-            let spoilerRevealStore = input.spoilerRevealStore
-            let hoveredComponentButton = input.hoveredComponentButton
-            let activeComponentChoiceTarget =
-                input.activeComponentChoiceTarget
-            let pressedComponentButton = input.pressedComponentButton
-            let componentButtonPressProgress = input.componentButtonPressProgress
+    static func drawComponents(_ input: NativeTimelineComponentsDrawInput) {
         let hiddenContainerFrames =
-            spoilerRevealStore.map {
+            input.spoilerRevealStore.map {
                 NativeTimelineSpoilerConcealmentPolicy
                     .hiddenContainerFrames(
-                        in: layout,
-                        messageID: messageID,
+                        in: input.layout,
+                        messageID: input.messageID,
                         store: $0
                     )
             } ?? []
-        @MainActor
-        func isInsideHiddenContainer(_ frame: CGRect) -> Bool {
-            NativeTimelineSpoilerConcealmentPolicy
-                .isInsideHiddenContainer(
-                    frame,
-                    hiddenContainerFrames: hiddenContainerFrames
-                )
-        }
-        @MainActor
-        func isConcealed(
-            contentID: String,
-            isSpoiler: Bool
-        ) -> Bool {
-            spoilerRevealStore.map {
-                NativeTimelineSpoilerConcealmentPolicy.isConcealed(
-                    messageID: messageID,
-                    contentID: contentID,
-                    isSpoiler: isSpoiler,
-                    store: $0
-                )
-            } ?? false
-        }
+        drawComponentChrome(input, hiddenContainerFrames: hiddenContainerFrames)
+        drawComponentText(input, hiddenContainerFrames: hiddenContainerFrames)
+        drawComponentImages(input, hiddenContainerFrames: hiddenContainerFrames)
+        drawComponentMedia(input, hiddenContainerFrames: hiddenContainerFrames)
+        drawComponentFiles(input, hiddenContainerFrames: hiddenContainerFrames)
+        drawComponentControls(input, hiddenContainerFrames: hiddenContainerFrames)
+        drawUnsupportedComponents(input, hiddenContainerFrames: hiddenContainerFrames)
 
-        for container in layout.containers {
+    }
+
+    private static func isInsideHiddenComponentContainer(
+        _ frame: CGRect,
+        hiddenContainerFrames: [CGRect]
+    ) -> Bool {
+        NativeTimelineSpoilerConcealmentPolicy.isInsideHiddenContainer(
+            frame,
+            hiddenContainerFrames: hiddenContainerFrames
+        )
+    }
+
+    private static func isConcealedComponentContent(
+        contentID: String,
+        isSpoiler: Bool,
+        input: NativeTimelineComponentsDrawInput
+    ) -> Bool {
+        input.spoilerRevealStore.map {
+            NativeTimelineSpoilerConcealmentPolicy.isConcealed(
+                messageID: input.messageID,
+                contentID: contentID,
+                isSpoiler: isSpoiler,
+                store: $0
+            )
+        } ?? false
+    }
+
+    private static func drawComponentChrome(
+        _ input: NativeTimelineComponentsDrawInput,
+        hiddenContainerFrames: [CGRect]
+    ) {
+        for container in input.layout.containers {
             let isHidden = hiddenContainerFrames.contains(container.frame)
-            if !isHidden, isInsideHiddenContainer(container.frame) {
-                continue
-            }
+            if !isHidden,
+               isInsideHiddenComponentContainer(
+                   container.frame,
+                   hiddenContainerFrames: hiddenContainerFrames
+               ) { continue }
             switch container.chrome {
             case .bubbleSection:
-                if let bubbleRegion {
+                if let bubbleRegion = input.bubbleRegion {
                     bubbleIntegratedSection(
                         container.chromeFrame,
                         bubbleRegion: bubbleRegion,
                         accentColor: container.accentColor,
-                        drawsTopSeparator:
-                            layout.drawsTopSeparator
-                                || container.chromeFrame.minY
-                                    > layout.frame.minY + 0.5,
+                        drawsTopSeparator: input.layout.drawsTopSeparator
+                            || container.chromeFrame.minY > input.layout.frame.minY + 0.5,
                         drawsNeutralRail: false
                     )
                 }
             case .card:
-                componentContainer(
-                    container.frame,
-                    accentColor: container.accentColor
-                )
+                componentContainer(container.frame, accentColor: container.accentColor)
             }
             if isHidden {
-                spoilerConcealedBase(
-                    in: container.frame,
-                    cornerRadius: container.cornerRadius
-                )
+                spoilerConcealedBase(in: container.frame, cornerRadius: container.cornerRadius)
             }
         }
-        for separator in layout.separators
+        for separator in input.layout.separators
         where separator.drawsDivider
-            && !isInsideHiddenContainer(separator.frame) {
+            && !isInsideHiddenComponentContainer(
+                separator.frame,
+                hiddenContainerFrames: hiddenContainerFrames
+            ) {
             NSColor.separatorColor.setFill()
             CGRect(
                 x: separator.frame.minX,
@@ -484,64 +477,62 @@ extension NativeTimelineRowPainter {
                 height: 1
             ).fill()
         }
-        for (textIndex, region) in layout.textRegions.enumerated()
-        where !isInsideHiddenContainer(region.frame) {
+    }
+
+    private static func drawComponentText(
+        _ input: NativeTimelineComponentsDrawInput,
+        hiddenContainerFrames: [CGRect]
+    ) {
+        for (textIndex, region) in input.layout.textRegions.enumerated()
+        where !isInsideHiddenComponentContainer(
+            region.frame,
+            hiddenContainerFrames: hiddenContainerFrames
+        ) {
+            let textRegion = NativeTimelineTextRegion.component(
+                layoutIndex: input.layoutIndex,
+                textIndex: textIndex
+            )
             attributedText(
                 region.text,
                 in: region.frame,
-                model: model,
+                model: input.model,
                 selectionRange:
-                    textSelection?.itemIdentifier == itemIdentifier
-                        && textSelection?.region == .component(
-                            layoutIndex: layoutIndex,
-                            textIndex: textIndex
-                        )
-                    ? textSelection?.range
-                    : nil,
+                    input.textSelection?.itemIdentifier == input.itemIdentifier
+                        && input.textSelection?.region == textRegion
+                    ? input.textSelection?.range : nil,
                 hoveredMentionCharacterIndex:
-                    hoveredMention?.itemIdentifier == itemIdentifier
-                        && hoveredMention?.region == .component(
-                            layoutIndex: layoutIndex,
-                            textIndex: textIndex
-                        )
-                    ? hoveredMention?.characterIndex
-                    : nil,
+                    input.hoveredMention?.itemIdentifier == input.itemIdentifier
+                        && input.hoveredMention?.region == textRegion
+                    ? input.hoveredMention?.characterIndex : nil,
                 hoveredLinkCharacterIndex:
-                    hoveredTextLink?.itemIdentifier == itemIdentifier
-                        && hoveredTextLink?.region == .component(
-                            layoutIndex: layoutIndex,
-                            textIndex: textIndex
-                        )
-                    ? hoveredTextLink?.characterIndex
-                    : nil,
+                    input.hoveredTextLink?.itemIdentifier == input.itemIdentifier
+                        && input.hoveredTextLink?.region == textRegion
+                    ? input.hoveredTextLink?.characterIndex : nil,
                 hoveredSpoilerRangeLocation:
-                    hoveredTextSpoiler?.itemIdentifier
-                        == itemIdentifier
-                        && hoveredTextSpoiler?.region == .component(
-                            layoutIndex: layoutIndex,
-                            textIndex: textIndex
-                        )
-                    ? hoveredTextSpoiler?.rangeLocation
-                    : nil,
+                    input.hoveredTextSpoiler?.itemIdentifier == input.itemIdentifier
+                        && input.hoveredTextSpoiler?.region == textRegion
+                    ? input.hoveredTextSpoiler?.rangeLocation : nil,
                 revealedSpoilerLocations:
-                    revealedTextSpoilerState.locations(
-                        in: .component(
-                            layoutIndex: layoutIndex,
-                            textIndex: textIndex
-                        )
-                    )
+                    input.revealedTextSpoilerState.locations(in: textRegion)
             )
         }
-        for region in layout.images
-        where !isInsideHiddenContainer(region.frame) {
-            if isConcealed(
+    }
+
+    private static func drawComponentImages(
+        _ input: NativeTimelineComponentsDrawInput,
+        hiddenContainerFrames: [CGRect]
+    ) {
+        for region in input.layout.images
+        where !isInsideHiddenComponentContainer(
+            region.frame,
+            hiddenContainerFrames: hiddenContainerFrames
+        ) {
+            if isConcealedComponentContent(
                 contentID: region.componentID,
-                isSpoiler: region.isSpoiler
+                isSpoiler: region.isSpoiler,
+                input: input
             ) {
-                spoilerConcealedBase(
-                    in: region.frame,
-                    cornerRadius: region.cornerRadius
-                )
+                spoilerConcealedBase(in: region.frame, cornerRadius: region.cornerRadius)
                 continue
             }
             NSColor.secondaryLabelColor.withAlphaComponent(0.08).setFill()
@@ -549,12 +540,10 @@ extension NativeTimelineRowPainter {
                 concentricRoundedRect: region.frame,
                 cornerRadius: region.cornerRadius
             ).fill()
-            if let image = mediaImage(
-                for: .media(
-                    region.displayURL,
-                    maximumPixelDimension: region.maximumPixelDimension
-                )
-            ) {
+            if let image = mediaImage(for: .media(
+                region.displayURL,
+                maximumPixelDimension: region.maximumPixelDimension
+            )) {
                 drawImage(
                     image,
                     in: region.frame,
@@ -562,62 +551,56 @@ extension NativeTimelineRowPainter {
                     fillsFrame: false
                 )
             } else {
-                systemSymbol(
-                    "photo",
-                    in: region.frame,
-                    color: .secondaryLabelColor,
-                    inset: 22
-                )
+                systemSymbol("photo", in: region.frame, color: .secondaryLabelColor, inset: 22)
             }
         }
-        for region in layout.media
-        where !isInsideHiddenContainer(region.frame) {
-            if isConcealed(
+    }
+
+    private static func drawComponentMedia(
+        _ input: NativeTimelineComponentsDrawInput,
+        hiddenContainerFrames: [CGRect]
+    ) {
+        for region in input.layout.media
+        where !isInsideHiddenComponentContainer(
+            region.frame,
+            hiddenContainerFrames: hiddenContainerFrames
+        ) {
+            if isConcealedComponentContent(
                 contentID: region.componentID,
-                isSpoiler: region.isSpoiler
+                isSpoiler: region.isSpoiler,
+                input: input
             ) {
-                spoilerConcealedBase(
-                    in: region.frame,
-                    cornerRadius: 8
-                )
+                spoilerConcealedBase(in: region.frame, cornerRadius: 8)
                 continue
             }
             NSColor.secondaryLabelColor.withAlphaComponent(0.10).setFill()
-            NSBezierPath(
-                concentricRoundedRect: region.frame,
-                cornerRadius: 8
-            ).fill()
-            if let image = mediaImage(
-                for: .media(region.displayURL)
-            ) {
-                drawImage(
-                    image,
-                    in: region.frame,
-                    cornerRadius: 8,
-                    fillsFrame: true
-                )
+            NSBezierPath(concentricRoundedRect: region.frame, cornerRadius: 8).fill()
+            if let image = mediaImage(for: .media(region.displayURL)) {
+                drawImage(image, in: region.frame, cornerRadius: 8, fillsFrame: true)
             } else if region.isVideo {
-                systemSymbol(
-                    "film",
-                    in: region.frame,
-                    color: .secondaryLabelColor,
-                    inset: 30
-                )
+                systemSymbol("film", in: region.frame, color: .secondaryLabelColor, inset: 30)
             }
-            if region.isVideo {
-                mediaPlayGlyph(in: region.frame)
-            }
+            if region.isVideo { mediaPlayGlyph(in: region.frame) }
         }
-        for region in layout.files
-        where !isInsideHiddenContainer(region.frame) {
-            if isConcealed(
+    }
+
+    private static func drawComponentFiles(
+        _ input: NativeTimelineComponentsDrawInput,
+        hiddenContainerFrames: [CGRect]
+    ) {
+        for region in input.layout.files
+        where !isInsideHiddenComponentContainer(
+            region.frame,
+            hiddenContainerFrames: hiddenContainerFrames
+        ) {
+            if isConcealedComponentContent(
                 contentID: region.componentID,
-                isSpoiler: region.isSpoiler
+                isSpoiler: region.isSpoiler,
+                input: input
             ) {
                 spoilerConcealedBase(
                     in: region.frame,
-                    cornerRadius:
-                        DiscordRichMessageMetrics.cardCornerRadius
+                    cornerRadius: DiscordRichMessageMetrics.cardCornerRadius
                 )
                 continue
             }
@@ -625,50 +608,69 @@ extension NativeTimelineRowPainter {
                 region,
                 cornerRadius: bubbleConcentricCornerRadius(
                     for: region.frame,
-                    in: bubbleRegion,
+                    in: input.bubbleRegion,
                     fallback: DiscordRichMessageMetrics.cardCornerRadius
                 )
             )
         }
-        for region in layout.buttons
-        where !isInsideHiddenContainer(region.frame) {
+    }
+
+    private static func drawComponentControls(
+        _ input: NativeTimelineComponentsDrawInput,
+        hiddenContainerFrames: [CGRect]
+    ) {
+        for region in input.layout.buttons
+        where !isInsideHiddenComponentContainer(
+            region.frame,
+            hiddenContainerFrames: hiddenContainerFrames
+        ) {
             let target = NativeTimelineComponentButtonTarget(
-                messageID: messageID,
+                messageID: input.messageID,
                 componentID: region.componentID
             )
             componentButton(
                 region,
-                isHovered: hoveredComponentButton == target,
-                pressProgress:
-                    pressedComponentButton == target
-                        ? componentButtonPressProgress
-                        : 0,
+                isHovered: input.hoveredComponentButton == target,
+                pressProgress: input.pressedComponentButton == target
+                    ? input.componentButtonPressProgress : 0,
                 cornerRadius: bubbleConcentricCornerRadius(
                     for: region.frame,
-                    in: bubbleRegion,
+                    in: input.bubbleRegion,
                     fallback: 6
                 )
             )
         }
-        for region in layout.selects
-        where !isInsideHiddenContainer(region.frame) {
+        for region in input.layout.selects
+        where !isInsideHiddenComponentContainer(
+            region.frame,
+            hiddenContainerFrames: hiddenContainerFrames
+        ) {
             let target = NativeTimelineComponentSelectTarget(
-                messageID: messageID,
+                messageID: input.messageID,
                 componentID: region.componentID
             )
-            if target != activeComponentChoiceTarget {
+            if target != input.activeComponentChoiceTarget {
                 componentSelect(
                     region,
                     cornerRadius: bubbleConcentricCornerRadius(
                         for: region.frame,
-                        in: bubbleRegion,
+                        in: input.bubbleRegion,
                         fallback: 11
                     )
                 )
             }
         }
-        for region in layout.unsupported
-        where !isInsideHiddenContainer(region.frame) {
+    }
+
+    private static func drawUnsupportedComponents(
+        _ input: NativeTimelineComponentsDrawInput,
+        hiddenContainerFrames: [CGRect]
+    ) {
+        for region in input.layout.unsupported
+        where !isInsideHiddenComponentContainer(
+            region.frame,
+            hiddenContainerFrames: hiddenContainerFrames
+        ) {
             systemSymbol(
                 "questionmark.square.dashed",
                 in: CGRect(
@@ -692,12 +694,6 @@ extension NativeTimelineRowPainter {
                 color: .secondaryLabelColor
             )
         }
-
-        }
-    }
-
-    static func drawComponents(_ input: NativeTimelineComponentsDrawInput) {
-        componentsDrawOperation(input)
     }
 
     static func componentContainer(
@@ -948,18 +944,25 @@ extension NativeTimelineRowPainter {
         )
     }
 
-    static var reactionDrawOperation:
-        @MainActor (
-            NativeTimelineRowLayout.ReactionRegion,
-            AppModel?,
-            Bool,
-            NativeTimelineReactionCountTransition?
-        ) -> Void
-    {
-        { region, model, isHovered, countTransition in
+    static func reaction(
+        _ region: NativeTimelineRowLayout.ReactionRegion,
+        model: AppModel?,
+        isHovered: Bool,
+        countTransition: NativeTimelineReactionCountTransition?
+    ) {
         let selected = region.reaction.didCurrentUserReact
+        drawReactionBackground(region.frame, selected: selected, isHovered: isHovered)
+        drawReactionEmoji(region, model: model)
+        drawReactionMetadata(region, selected: selected, countTransition: countTransition)
+    }
+
+    private static func drawReactionBackground(
+        _ frame: CGRect,
+        selected: Bool,
+        isHovered: Bool
+    ) {
         let shape = NSBezierPath(
-            roundedRect: region.frame,
+            roundedRect: frame,
             xRadius: 9,
             yRadius: 9
         )
@@ -982,7 +985,12 @@ extension NativeTimelineRowPainter {
             shape.lineWidth = 1
             shape.stroke()
         }
+    }
 
+    private static func drawReactionEmoji(
+        _ region: NativeTimelineRowLayout.ReactionRegion,
+        model: AppModel?
+    ) {
         let reference = region.reaction.emojiReference
         if let id = reference.id {
             NSColor.secondaryLabelColor.withAlphaComponent(0.12).setFill()
@@ -1027,6 +1035,13 @@ extension NativeTimelineRowPainter {
                 fillsFrame: false
             )
         }
+    }
+
+    private static func drawReactionMetadata(
+        _ region: NativeTimelineRowLayout.ReactionRegion,
+        selected: Bool,
+        countTransition: NativeTimelineReactionCountTransition?
+    ) {
         if let countFrame = region.countFrame, countTransition == nil {
             reactionCount(
                 region.reaction.count,
@@ -1060,17 +1075,6 @@ extension NativeTimelineRowPainter {
                 alignment: .center
             )
         }
-
-        }
-    }
-
-    static func reaction(
-        _ region: NativeTimelineRowLayout.ReactionRegion,
-        model: AppModel?,
-        isHovered: Bool,
-        countTransition: NativeTimelineReactionCountTransition?
-    ) {
-        reactionDrawOperation(region, model, isHovered, countTransition)
     }
 
     static func reactionAddControl(
@@ -1113,15 +1117,12 @@ extension NativeTimelineRowPainter {
         )
     }
 
-    static var componentButtonDrawOperation:
-        @MainActor (
-            NativeTimelineComponentLayout.ButtonRegion,
-            Bool,
-            CGFloat,
-            CGFloat
-        ) -> Void
-    {
-        { region, isHovered, pressProgress, cornerRadius in
+    static func componentButton(
+        _ region: NativeTimelineComponentLayout.ButtonRegion,
+        isHovered: Bool,
+        pressProgress: CGFloat,
+        cornerRadius: CGFloat = 6
+    ) {
         let pressProgress = min(max(pressProgress, 0), 1)
         let scale = NativeTimelineComponentButtonVisualState.scale(
             pressProgress: pressProgress
@@ -1176,7 +1177,19 @@ extension NativeTimelineRowPainter {
         )
         border.lineWidth = 1
         border.stroke()
+        drawComponentButtonContent(
+            region,
+            brightness: brightness,
+            opacity: opacity
+        )
+        NSGraphicsContext.restoreGraphicsState()
+    }
 
+    private static func drawComponentButtonContent(
+        _ region: NativeTimelineComponentLayout.ButtonRegion,
+        brightness: CGFloat,
+        opacity: CGFloat
+    ) {
         var horizontalPosition = region.frame.minX + 12
         if let emoji = region.emoji {
             componentEmoji(emoji, in: CGRect(
@@ -1239,23 +1252,6 @@ extension NativeTimelineRowPainter {
                 inset: 1
             )
         }
-        NSGraphicsContext.restoreGraphicsState()
-
-        }
-    }
-
-    static func componentButton(
-        _ region: NativeTimelineComponentLayout.ButtonRegion,
-        isHovered: Bool,
-        pressProgress: CGFloat,
-        cornerRadius: CGFloat = 6
-    ) {
-        componentButtonDrawOperation(
-            region,
-            isHovered,
-            pressProgress,
-            cornerRadius
-        )
     }
 
     static func adjustedBrightness(

@@ -860,16 +860,65 @@ enum NativeTimelineTextHitTester {
         )
     }
 
-    static var textHitOperation:
-        @MainActor (NSAttributedString, CTFramesetter, CGRect, CGPoint) -> NativeTimelineTextHit?
-    {
-        { value, framesetter, frame, point in
+    private struct CoreTextFrameLayout {
+        let frame: CTFrame
+        let lines: NSArray
+        let origins: [CGPoint]
+    }
+
+    static func hit(
+        value: NSAttributedString,
+        framesetter: CTFramesetter,
+        frame: CGRect,
+        point: CGPoint
+    ) -> NativeTimelineTextHit? {
         guard value.length > 0,
               frame.width > 0,
               frame.height > 0,
               frame.contains(point)
         else { return nil }
+        let layout = coreTextFrameLayout(value: value, framesetter: framesetter, frame: frame)
+        guard !layout.origins.isEmpty else { return nil }
+        let paintedSpoiler = spoilerRegions(
+            value: value,
+            textFrame: layout.frame,
+            frame: frame
+        ).first(where: { $0.frame.contains(point) })
+        if let hit = inlineAttachmentHit(
+            value: value,
+            layout: layout,
+            outerFrame: frame,
+            point: point,
+            paintedSpoiler: paintedSpoiler
+        ) { return hit }
+        if let link = linkRegions(
+            value: value,
+            textFrame: layout.frame,
+            outerFrame: frame
+        ).first(where: { $0.frame.contains(point) }) {
+            return NativeTimelineTextHit(
+                characterIndex: link.characterIndex,
+                url: link.url,
+                mention: nil,
+                spoilerRange: link.spoilerRange
+            )
+        }
+        return textLineHit(value: value, layout: layout, frame: frame, point: point)
+            ?? paintedSpoiler.map {
+                NativeTimelineTextHit(
+                    characterIndex: $0.range.location,
+                    url: nil,
+                    mention: nil,
+                    spoilerRange: $0.range
+                )
+            }
+    }
 
+    private static func coreTextFrameLayout(
+        value: NSAttributedString,
+        framesetter: CTFramesetter,
+        frame: CGRect
+    ) -> CoreTextFrameLayout {
         let path = CGPath(
             rect: CGRect(origin: .zero, size: frame.size),
             transform: nil
@@ -881,34 +930,35 @@ enum NativeTimelineTextHitTester {
             nil
         )
         let lines = CTFrameGetLines(textFrame) as NSArray
-        guard lines.count > 0 else { return nil }
-        var origins = Array(
-            repeating: CGPoint.zero,
-            count: lines.count
-        )
+        var origins = Array(repeating: CGPoint.zero, count: lines.count)
         CTFrameGetLineOrigins(
             textFrame,
             CFRange(location: 0, length: lines.count),
             &origins
         )
-        let paintedSpoiler = spoilerRegions(
-            value: value,
-            textFrame: textFrame,
-            frame: frame
-        ).first(where: { $0.frame.contains(point) })
+        return CoreTextFrameLayout(frame: textFrame, lines: lines, origins: origins)
+    }
+
+    private static func inlineAttachmentHit(
+        value: NSAttributedString,
+        layout: CoreTextFrameLayout,
+        outerFrame: CGRect,
+        point: CGPoint,
+        paintedSpoiler: NativeTimelineTextSpoilerHitRegion?
+    ) -> NativeTimelineTextHit? {
         // Inline mentions are taller than the surrounding text line. Check
         // their exact painted run rectangles first so the whole visible pill,
         // including its top and bottom padding, is clickable.
-        for index in 0 ..< lines.count {
-            let line = coreTextLine(lines[index])
-            let lineOrigin = origins[index]
+        for index in 0 ..< layout.lines.count {
+            let line = coreTextLine(layout.lines[index])
+            let lineOrigin = layout.origins[index]
             for case let run as CTRun in CTLineGetGlyphRuns(line) as NSArray {
                 let range = CTRunGetStringRange(run)
                 let attachmentFrame = inlineAttachmentFrame(
                     run: run,
                     line: line,
                     lineOrigin: lineOrigin,
-                    outerFrame: frame
+                    outerFrame: outerFrame
                 )
                 guard range.location >= 0,
                       range.location < value.length,
@@ -951,25 +1001,22 @@ enum NativeTimelineTextHitTester {
                 )
             }
         }
-        if let link = linkRegions(
-            value: value,
-            textFrame: textFrame,
-            outerFrame: frame
-        ).first(where: { $0.frame.contains(point) }) {
-            return NativeTimelineTextHit(
-                characterIndex: link.characterIndex,
-                url: link.url,
-                mention: nil,
-                spoilerRange: link.spoilerRange
-            )
-        }
+        return nil
+    }
+
+    private static func textLineHit(
+        value: NSAttributedString,
+        layout: CoreTextFrameLayout,
+        frame: CGRect,
+        point: CGPoint
+    ) -> NativeTimelineTextHit? {
         let local = CGPoint(
             x: point.x - frame.minX,
             y: frame.maxY - point.y
         )
-        for index in 0 ..< lines.count {
-            let line = coreTextLine(lines[index])
-            let origin = origins[index]
+        for index in 0 ..< layout.lines.count {
+            let line = coreTextLine(layout.lines[index])
+            let origin = layout.origins[index]
             var ascent: CGFloat = 0
             var descent: CGFloat = 0
             var leading: CGFloat = 0
@@ -1033,26 +1080,7 @@ enum NativeTimelineTextHitTester {
                         : nil
             )
         }
-        if let paintedSpoiler {
-            return NativeTimelineTextHit(
-                characterIndex: paintedSpoiler.range.location,
-                url: nil,
-                mention: nil,
-                spoilerRange: paintedSpoiler.range
-            )
-        }
         return nil
-
-        }
-    }
-
-    static func hit(
-        value: NSAttributedString,
-        framesetter: CTFramesetter,
-        frame: CGRect,
-        point: CGPoint
-    ) -> NativeTimelineTextHit? {
-        textHitOperation(value, framesetter, frame, point)
     }
 
     static func caretIndex(
@@ -1072,76 +1100,55 @@ enum NativeTimelineTextHitTester {
         )
     }
 
-    static var clampedCaretIndexOperation:
-        @MainActor (NSAttributedString, CTFramesetter, CGRect, CGPoint, Bool) -> Int?
-    {
-        { value, framesetter, frame, point, clampsToText in
+    static func caretIndex(
+        value: NSAttributedString,
+        framesetter: CTFramesetter,
+        frame: CGRect,
+        point: CGPoint,
+        clampsToText: Bool
+    ) -> Int? {
         guard value.length > 0,
               frame.width > 0,
               frame.height > 0,
               clampsToText || frame.contains(point)
         else { return nil }
-        let path = CGPath(
-            rect: CGRect(origin: .zero, size: frame.size),
-            transform: nil
-        )
-        let textFrame = CTFramesetterCreateFrame(
-            framesetter,
-            CFRange(location: 0, length: value.length),
-            path,
-            nil
-        )
-        let lines = CTFrameGetLines(textFrame) as NSArray
-        guard lines.count > 0 else { return nil }
-        var origins = Array(
-            repeating: CGPoint.zero,
-            count: lines.count
-        )
-        CTFrameGetLineOrigins(
-            textFrame,
-            CFRange(location: 0, length: lines.count),
-            &origins
-        )
+        let layout = coreTextFrameLayout(value: value, framesetter: framesetter, frame: frame)
+        guard !layout.origins.isEmpty else { return nil }
         let local = CGPoint(
             x: point.x - frame.minX,
             y: frame.maxY - point.y
         )
         if clampsToText {
-            let firstLine = coreTextLine(lines[0])
-            let lastLine = coreTextLine(lines[lines.count - 1])
-            let firstOrigin = origins[0]
-            let lastOrigin = origins[lines.count - 1]
-            var firstAscent: CGFloat = 0
-            var firstDescent: CGFloat = 0
-            var firstLeading: CGFloat = 0
-            _ = CTLineGetTypographicBounds(
-                firstLine,
-                &firstAscent,
-                &firstDescent,
-                &firstLeading
-            )
-            var lastAscent: CGFloat = 0
-            var lastDescent: CGFloat = 0
-            var lastLeading: CGFloat = 0
-            _ = CTLineGetTypographicBounds(
-                lastLine,
-                &lastAscent,
-                &lastDescent,
-                &lastLeading
-            )
-            if local.y > firstOrigin.y + firstAscent + firstLeading {
-                return max(0, CTLineGetStringRange(firstLine).location)
-            }
-            if local.y < lastOrigin.y - lastDescent {
-                let range = CTLineGetStringRange(lastLine)
-                return min(value.length, range.location + range.length)
-            }
+            if let boundary = boundaryCaretIndex(
+                valueLength: value.length,
+                layout: layout,
+                localPoint: local
+            ) { return boundary }
         }
+        guard let selectedLineIndex = selectedCaretLineIndex(
+            layout: layout,
+            localY: local.y,
+            clampsToText: clampsToText
+        ) else { return nil }
+        return caretIndex(
+            valueLength: value.length,
+            line: coreTextLine(layout.lines[selectedLineIndex]),
+            origin: layout.origins[selectedLineIndex],
+            localX: local.x,
+            clampsToText: clampsToText
+        )
+    }
+
+    private static func selectedCaretLineIndex(
+        layout: CoreTextFrameLayout,
+        localY: CGFloat,
+        clampsToText: Bool
+    ) -> Int? {
         var selectedLineIndex: Int?
         var nearestDistance = CGFloat.greatestFiniteMagnitude
-        for index in 0 ..< lines.count {
-            let line = coreTextLine(lines[index])
-            let origin = origins[index]
+        for index in 0 ..< layout.lines.count {
+            let line = coreTextLine(layout.lines[index])
+            let origin = layout.origins[index]
             var ascent: CGFloat = 0
             var descent: CGFloat = 0
             var leading: CGFloat = 0
@@ -1153,22 +1160,49 @@ enum NativeTimelineTextHitTester {
             )
             let lower = origin.y - descent
             let upper = origin.y + ascent + leading
-            if local.y >= lower, local.y <= upper {
+            if localY >= lower, localY <= upper {
                 selectedLineIndex = index
                 break
             }
             guard clampsToText else { continue }
-            let distance = local.y < lower
-                ? lower - local.y
-                : local.y - upper
+            let distance = localY < lower ? lower - localY : localY - upper
             if distance < nearestDistance {
                 nearestDistance = distance
                 selectedLineIndex = index
             }
         }
-        guard let selectedLineIndex else { return nil }
-        let line = coreTextLine(lines[selectedLineIndex])
-        let origin = origins[selectedLineIndex]
+        return selectedLineIndex
+    }
+
+    private static func boundaryCaretIndex(
+        valueLength: Int,
+        layout: CoreTextFrameLayout,
+        localPoint: CGPoint
+    ) -> Int? {
+        let firstLine = coreTextLine(layout.lines[0])
+        let lastLine = coreTextLine(layout.lines[layout.lines.count - 1])
+        var firstAscent: CGFloat = 0
+        var firstLeading: CGFloat = 0
+        _ = CTLineGetTypographicBounds(firstLine, &firstAscent, nil, &firstLeading)
+        var lastDescent: CGFloat = 0
+        _ = CTLineGetTypographicBounds(lastLine, nil, &lastDescent, nil)
+        if localPoint.y > layout.origins[0].y + firstAscent + firstLeading {
+            return max(0, CTLineGetStringRange(firstLine).location)
+        }
+        if localPoint.y < layout.origins.last!.y - lastDescent {
+            let range = CTLineGetStringRange(lastLine)
+            return min(valueLength, range.location + range.length)
+        }
+        return nil
+    }
+
+    private static func caretIndex(
+        valueLength: Int,
+        line: CTLine,
+        origin: CGPoint,
+        localX: CGFloat,
+        clampsToText: Bool
+    ) -> Int? {
         let lineRange = CTLineGetStringRange(line)
         guard lineRange.length > 0 else { return nil }
         let width = CGFloat(CTLineGetTypographicBounds(
@@ -1178,36 +1212,24 @@ enum NativeTimelineTextHitTester {
             nil
         ))
         if !clampsToText,
-           local.x < origin.x || local.x > origin.x + max(1, width)
+           localX < origin.x || localX > origin.x + max(1, width)
         {
             return nil
         }
-        if local.x <= origin.x {
+        if localX <= origin.x {
             return lineRange.location
         }
-        if local.x >= origin.x + width {
+        if localX >= origin.x + width {
             return min(
-                value.length,
+                valueLength,
                 lineRange.location + lineRange.length
             )
         }
         let index = CTLineGetStringIndexForPosition(
             line,
-            CGPoint(x: local.x - origin.x, y: 0)
+            CGPoint(x: localX - origin.x, y: 0)
         )
         guard index != kCFNotFound else { return nil }
-        return min(value.length, max(0, index))
-
-        }
-    }
-
-    static func caretIndex(
-        value: NSAttributedString,
-        framesetter: CTFramesetter,
-        frame: CGRect,
-        point: CGPoint,
-        clampsToText: Bool
-    ) -> Int? {
-        clampedCaretIndexOperation(value, framesetter, frame, point, clampsToText)
+        return min(valueLength, max(0, index))
     }
 }

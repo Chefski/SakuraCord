@@ -604,16 +604,6 @@ private func seconds(_ duration: Duration) -> Double {
     return Double(parts.seconds) + Double(parts.attoseconds) / 1e18
 }
 
-private func eventually(_ condition: @escaping @Sendable () async -> Bool) async -> Bool {
-    for _ in 0 ..< 500 {
-        if await condition() {
-            return true
-        }
-        try? await Task.sleep(for: .milliseconds(1))
-    }
-    return await condition()
-}
-
 private enum FakeGatewayError: Error { case closed, unavailable }
 
 private actor FakeGatewaySocket: GatewaySocket {

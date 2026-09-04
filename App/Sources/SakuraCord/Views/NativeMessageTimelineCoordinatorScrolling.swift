@@ -90,6 +90,118 @@ nonisolated enum NativeTimelineWidthRelayoutPolicy {
     }
 }
 
+@MainActor
+final class NativeTimelineBenchmarkStartupState {
+    let ticker = NativeTimelineDisplayLinkTicker()
+    let startedAt = ProcessInfo.processInfo.systemUptime
+    var previousTickUptime = ProcessInfo.processInfo.systemUptime
+    var maximumTickInterval = 0.0
+    var delayedTicks = 0
+    var completedTicks = 0
+    var phase = "initial-render"
+    var lastDelayedTickUptime = ProcessInfo.processInfo.systemUptime
+
+    func recordTick(at uptime: TimeInterval) -> TimeInterval {
+        let interval = uptime - previousTickUptime
+        previousTickUptime = uptime
+        completedTicks += 1
+        maximumTickInterval = max(maximumTickInterval, interval)
+        if interval > 0.033 {
+            delayedTicks += 1
+            lastDelayedTickUptime = uptime
+        }
+        return interval
+    }
+}
+
+@MainActor
+final class NativeTimelineBenchmarkRunState {
+    let startedAt = ProcessInfo.processInfo.systemUptime
+    let ticker = NativeTimelineDisplayLinkTicker()
+    let scrollsTowardLater: Bool
+    let closeMeasurement: () -> Void
+    var controller: NativeTimelineBenchmarkScrollController
+    var previousTickUptime: TimeInterval
+    var maximumTickInterval = 0.0
+    var maximumScrollWork = 0.0
+    var completedTicks = 0
+    var delayedTicks = 0
+    var tickIntervals: [TimeInterval] = []
+    var delayedTickSamples: [NativeTimelineBenchmarkArtifact.DelayedTick] = []
+    var maximumTickItemCount: Int
+    var maximumTickDocumentY = 0.0
+    var historyStarvedTicks = 0
+    var consecutiveHistoryStarvedTicks = 0
+    var maximumHistoryStarvedTicks = 0
+    var didFinish = false
+
+    init(
+        scrollsTowardLater: Bool,
+        initialItemCount: Int,
+        closeMeasurement: @escaping () -> Void
+    ) {
+        self.scrollsTowardLater = scrollsTowardLater
+        self.closeMeasurement = closeMeasurement
+        controller = NativeTimelineBenchmarkScrollController(startedAt: startedAt)
+        previousTickUptime = startedAt
+        maximumTickItemCount = initialItemCount
+        tickIntervals.reserveCapacity(1_500)
+        delayedTickSamples.reserveCapacity(64)
+    }
+
+    func recordTick(at uptime: TimeInterval, itemCount: Int, documentY: CGFloat) -> TimeInterval {
+        let interval = uptime - previousTickUptime
+        previousTickUptime = uptime
+        completedTicks += 1
+        tickIntervals.append(interval)
+        if interval > 0.033 {
+            delayedTicks += 1
+            delayedTickSamples.append(
+                .init(offset: uptime - startedAt, interval: interval)
+            )
+        }
+        if interval > maximumTickInterval {
+            maximumTickInterval = interval
+            maximumTickItemCount = itemCount
+            maximumTickDocumentY = documentY
+        }
+        return interval
+    }
+
+    func recordHistoryProgress(didAdvance: Bool, hasMoreHistory: Bool) {
+        if !didAdvance, hasMoreHistory {
+            historyStarvedTicks += 1
+            consecutiveHistoryStarvedTicks += 1
+            maximumHistoryStarvedTicks = max(
+                maximumHistoryStarvedTicks,
+                consecutiveHistoryStarvedTicks
+            )
+        } else {
+            consecutiveHistoryStarvedTicks = 0
+        }
+    }
+
+    @discardableResult
+    func finish(
+        now: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+        endActivity: () -> Void = { AppScrollWorkGate.endActivity() },
+        beforeMeasurementClose: () -> Void,
+        performBookkeeping: (_ elapsed: TimeInterval) -> Void
+    ) -> TimeInterval? {
+        guard !didFinish else { return nil }
+        didFinish = true
+        endActivity()
+        ticker.stop()
+        beforeMeasurementClose()
+        return NativeTimelineBenchmarkFinishSequence.run(
+            startedAt: startedAt,
+            now: now,
+            closeMeasurement: closeMeasurement,
+            performBookkeeping: performBookkeeping
+        )
+    }
+}
+
 extension NativeMessageTimelineCoordinator {
         func replaceItem(
             at index: Int,
@@ -1520,376 +1632,6 @@ extension NativeMessageTimelineCoordinator {
                     viewportMinimumY: visibleRect.minY,
                     viewportMaximumY: visibleRect.maxY
                 )
-        }
-
-        var performanceAutoScrollStartOperation: () -> Void {
-            { [self] in
-            guard parent.runsPerformanceAutoScroll,
-                  !didStartPerformanceAutoScroll,
-                  items.count >= 100,
-                  let canvas
-            else { return }
-            didStartPerformanceAutoScroll = true
-            isPreparingOrRunningPerformanceBenchmark = true
-            let handoffDisplayLinkTicker =
-                NativeTimelineDisplayLinkTicker()
-            var previousHandoffTickUptime =
-                ProcessInfo.processInfo.systemUptime
-            var maximumHandoffTickInterval = 0.0
-            var delayedHandoffTicks = 0
-            var completedHandoffTicks = 0
-            var handoffPhase = "initial-render"
-            let handoffStartUptime = ProcessInfo.processInfo.systemUptime
-            var lastDelayedHandoffUptime = handoffStartUptime
-            handoffDisplayLinkTicker.start(on: canvas) {
-                let uptime = ProcessInfo.processInfo.systemUptime
-                let interval = uptime - previousHandoffTickUptime
-                previousHandoffTickUptime = uptime
-                completedHandoffTicks += 1
-                maximumHandoffTickInterval = max(
-                    maximumHandoffTickInterval,
-                    interval
-                )
-                if interval > 0.033 {
-                    delayedHandoffTicks += 1
-                    lastDelayedHandoffUptime = uptime
-                    Self.performanceLogger.notice(
-                        "SakuraCord delayed benchmark startup tick: \(interval * 1_000, format: .fixed(precision: 2), privacy: .public) ms; phase \(handoffPhase, privacy: .public)"
-                    )
-                }
-            }
-            // Benchmark launch used to spend its warm-up interval as an
-            // ordinary interactive timeline. That installed tracking and
-            // accessibility proxies beneath a stationary pointer, then
-            // tore them down on the first measured scroll frame. Besides
-            // producing a visible hover/highlight phase, the transition
-            // made the beginning of every run materially colder than the
-            // rest. Enter the scrolling presentation before warm-up.
-            //
-            // Do not eagerly rasterize rows here. During active scrolling
-            // the canvas deliberately paints uncached rows directly; a
-            // prewarm would defeat that fallback and make the first cold
-            // AppKit/CoreText bitmap block the main thread before motion.
-            canvas.dismissHoverPresentationForScroll()
-            noteScrollActivity()
-            handoffPhase = "launch-stabilization"
-            performanceAutoScrollTask = Task { @MainActor [weak self] in
-                do {
-                    // A fixed delay can expire before AppKit has presented even
-                    // one timeline frame. Starting in that state leaves the
-                    // ordinary hover/tracking presentation installed and the
-                    // bottom overlay clipped until the first real display
-                    // transaction arrives. Gate on frames actually delivered
-                    // by this view, then require a brief responsive interval.
-                    let startupDeadline =
-                        ProcessInfo.processInfo.systemUptime + 3
-                    while !NativeTimelineBenchmarkStartupPolicy.isReady(
-                        completedTicks: completedHandoffTicks,
-                        uptime: ProcessInfo.processInfo.systemUptime,
-                        lastDelayedTickUptime: lastDelayedHandoffUptime
-                    ),
-                        ProcessInfo.processInfo.systemUptime < startupDeadline
-                    {
-                        try await Task.sleep(for: .milliseconds(16))
-                    }
-                } catch {
-                    handoffDisplayLinkTicker.stop()
-                    return
-                }
-                guard let self,
-                      let scrollView = self.scrollView,
-                      let canvas = self.canvas
-                else { return }
-                // The bottom spacer deliberately keeps the newest message
-                // above the floating composer. Starting the benchmark at that
-                // exact edge made its first frames look clipped at a hard
-                // footer line; only after consuming the spacer did rows travel
-                // beneath the overlay like the rest of the run. Move past the
-                // spacer before telemetry and live-arrival stress begin.
-                handoffPhase = "position-shift"
-                let initialRect = scrollView.contentView.bounds
-                let scrollsTowardLater =
-                    parent.conversation.loaderKind == .pins
-                let positionShift =
-                    bottomInset + min(160, initialRect.height * 0.25)
-                scroll(
-                    toDocumentY:
-                        scrollsTowardLater
-                            ? initialRect.minY + positionShift
-                            : initialRect.minY - positionShift,
-                    scrollView: scrollView
-                )
-                handoffPhase = "settling"
-                let ticksBeforePositionShift = completedHandoffTicks
-                let positionShiftDeadline =
-                    ProcessInfo.processInfo.systemUptime + 0.250
-                do {
-                    // Do not switch to measured motion until AppKit has
-                    // presented the position shift that moves rows beneath the
-                    // floating composer.
-                    while completedHandoffTicks <= ticksBeforePositionShift,
-                          ProcessInfo.processInfo.systemUptime
-                            < positionShiftDeadline
-                    {
-                        try await Task.sleep(for: .milliseconds(8))
-                    }
-                } catch {
-                    handoffDisplayLinkTicker.stop()
-                    return
-                }
-                handoffDisplayLinkTicker.stop()
-                Self.performanceLogger.notice(
-                    """
-                    SakuraCord timeline benchmark startup: \
-                    max handoff tick \(maximumHandoffTickInterval * 1_000, format: .fixed(precision: 2), privacy: .public) ms; \
-                    max canvas draw \(canvas.maximumDrawDuration * 1_000, format: .fixed(precision: 2), privacy: .public) ms; \
-                    max row raster \(canvas.maximumRowRasterDuration * 1_000, format: .fixed(precision: 2), privacy: .public) ms \
-                    over \(completedHandoffTicks, privacy: .public) ticks (\(delayedHandoffTicks, privacy: .public) above 33 ms)
-                    """
-                )
-                canvas.resetDrawTelemetry()
-                // Exercise native pagination directly. This synthetic workload
-                // must never invoke the user-interaction callback: that callback
-                // deliberately unblocks read acknowledgements for real input.
-                beginPerformanceBenchmarkPaginationIntent(
-                    towardLater: scrollsTowardLater
-                )
-                let signpost = Self.performanceSignposter.beginInterval(
-                    "MessageTimelineAutoScrollBenchmark"
-                )
-                AppPerformanceSignposts.beginResourceWindow(
-                    named: "MessageTimelineAutoScrollBenchmark"
-                )
-                let benchmarkStartUptime = ProcessInfo.processInfo.systemUptime
-                var benchmarkController = NativeTimelineBenchmarkScrollController(
-                    startedAt: benchmarkStartUptime
-                )
-                var previousTickUptime = benchmarkStartUptime
-                var maximumTickInterval = 0.0
-                var maximumScrollWork = 0.0
-                var completedTicks = 0
-                var delayedTicks = 0
-                var tickIntervals: [TimeInterval] = []
-                tickIntervals.reserveCapacity(1_500)
-                var delayedTickSamples:
-                    [NativeTimelineBenchmarkArtifact.DelayedTick] = []
-                delayedTickSamples.reserveCapacity(64)
-                var maximumTickItemCount = items.count
-                var maximumTickDocumentY = 0.0
-                var historyStarvedTicks = 0
-                var consecutiveHistoryStarvedTicks = 0
-                var maximumHistoryStarvedTicks = 0
-                let displayLinkTicker = NativeTimelineDisplayLinkTicker()
-                self.performanceDisplayLinkTicker = displayLinkTicker
-                var didFinish = false
-                let finish: (NativeTimelineBenchmarkFinishOutcome) -> Void = { [weak self, weak canvas, weak displayLinkTicker] outcome in
-                    guard !didFinish else { return }
-                    didFinish = true
-                    AppScrollWorkGate.endActivity()
-                    displayLinkTicker?.stop()
-                    switch outcome {
-                    case .completed:
-                        Self.performanceSignposter.emitEvent(
-                            "MessageTimelineAutoScrollBenchmarkCompleted"
-                        )
-                    case .insufficientHistory:
-                        Self.performanceSignposter.emitEvent(
-                            "MessageTimelineAutoScrollBenchmarkInsufficientHistory"
-                        )
-                    case .cancelled:
-                        Self.performanceSignposter.emitEvent(
-                            "MessageTimelineAutoScrollBenchmarkCancelled"
-                        )
-                    case .paginationFailed:
-                        Self.performanceSignposter.emitEvent(
-                            "MessageTimelineAutoScrollBenchmarkPaginationFailed"
-                        )
-                    }
-                    let benchmarkElapsed =
-                        NativeTimelineBenchmarkFinishSequence.run(
-                            startedAt: benchmarkStartUptime,
-                            now: {
-                                ProcessInfo.processInfo.systemUptime
-                            },
-                            closeMeasurement: {
-                                // Exclude synchronous artifact/resource I/O
-                                // from the measured UI workload.
-                                Self.performanceSignposter.endInterval(
-                                    "MessageTimelineAutoScrollBenchmark",
-                                    signpost
-                                )
-                            },
-                            performBookkeeping: { elapsed in
-                                NativeTimelineBenchmarkArtifact.write(
-                                    outcome: outcome,
-                                    completedDistance:
-                                        benchmarkController.completedDistance,
-                                    elapsed: elapsed,
-                                    completedTicks: completedTicks,
-                                    delayedTicks: delayedTicks,
-                                    tickIntervals: tickIntervals,
-                                    delayedTickSamples: delayedTickSamples,
-                                    maximumTickInterval: maximumTickInterval,
-                                    maximumScrollWork: maximumScrollWork,
-                                    historyStarvedTicks: historyStarvedTicks,
-                                    maximumConsecutiveHistoryStarvedTicks:
-                                        maximumHistoryStarvedTicks,
-                                    renderTelemetry: canvas?.renderTelemetry
-                                )
-                                AppPerformanceSignposts.endResourceWindow(
-                                    named:
-                                        "MessageTimelineAutoScrollBenchmark",
-                                    nominalDuration:
-                                        outcome == .completed
-                                            ? NativeTimelineBenchmarkScrollPolicy
-                                                .duration
-                                            : nil
-                                )
-                            }
-                        )
-                    let summary = String(
-                        format:
-                            "SakuraCord timeline benchmark: max main-thread tick interval %.2f ms; "
-                                + "max scroll work %.2f ms; max canvas draw %.2f ms; "
-                                + "max row raster %.2f ms (height %.0f) over %d ticks "
-                                + "(%d above 33 ms; max at %d items, y %.0f); "
-                                + "history-starved %d ticks (max %d consecutive); "
-                                + "spatial work %.0f / %.0f nominal points in %.2f s",
-                        maximumTickInterval * 1_000,
-                        maximumScrollWork * 1_000,
-                        (canvas?.maximumDrawDuration ?? 0) * 1_000,
-                        (canvas?.maximumRowRasterDuration ?? 0) * 1_000,
-                        canvas?.maximumRowRasterHeight ?? 0,
-                        completedTicks,
-                        delayedTicks,
-                        maximumTickItemCount,
-                        maximumTickDocumentY,
-                        historyStarvedTicks,
-                        maximumHistoryStarvedTicks,
-                        benchmarkController.completedDistance,
-                        NativeTimelineBenchmarkScrollPolicy.nominalDistance,
-                        benchmarkElapsed
-                    )
-                    Self.performanceLogger.notice(
-                        "\(summary, privacy: .public)"
-                    )
-                    self?.isPreparingOrRunningPerformanceBenchmark = false
-                    self?.endPerformanceBenchmarkPaginationIntent(
-                        towardLater: scrollsTowardLater
-                    )
-                    self?.performanceDisplayLinkTicker = nil
-                    self?.performanceBenchmarkFinish = nil
-                    self?.finishScrollActivity()
-                }
-                self.performanceBenchmarkFinish = finish
-                // The deterministic workload bypasses NSEvent, but production
-                // loading isolation keys off the same cross-surface gate as a
-                // real gesture. Exercise that scheduling policy here so the
-                // permanent benchmark catches priority regressions.
-                AppScrollWorkGate.beginActivity()
-                displayLinkTicker.start(on: canvas) { [weak self, weak scrollView] in
-                    guard let self, let scrollView else {
-                        finish(.cancelled)
-                        return
-                    }
-                    let tickUptime = ProcessInfo.processInfo.systemUptime
-                    let tickInterval = tickUptime - previousTickUptime
-                    previousTickUptime = tickUptime
-                    completedTicks += 1
-                    tickIntervals.append(tickInterval)
-                    let visibleRect = scrollView.contentView.bounds
-                    if tickInterval > 0.033 {
-                        delayedTicks += 1
-                        delayedTickSamples.append(
-                            .init(
-                                offset: tickUptime - benchmarkStartUptime,
-                                interval: tickInterval
-                            )
-                        )
-                    }
-                    if tickInterval > maximumTickInterval {
-                        maximumTickInterval = tickInterval
-                        maximumTickItemCount = items.count
-                        maximumTickDocumentY = visibleRect.minY
-                    }
-                    if tickInterval >= 0.080 {
-                        Self.performanceLogger.notice(
-                            """
-                            SakuraCord delayed timeline tick: \
-                            \(tickInterval * 1_000, format: .fixed(precision: 2), privacy: .public) ms; \
-                            last update \(self.performanceUpdatePath, privacy: .public) \
-                            \(self.lastPerformanceUpdateDuration, format: .fixed(precision: 2), privacy: .public) ms; \
-                            items \(self.items.count, privacy: .public); revision \(self.rowsRevision, privacy: .public)
-                            """
-                        )
-                    }
-                    let workStart = ProcessInfo.processInfo.systemUptime
-                    let scrollDistance =
-                        NativeTimelineBenchmarkScrollPolicy.distance(
-                            tickInterval: tickInterval
-                        )
-                    let targetDocumentY = scrollsTowardLater
-                        ? visibleRect.minY + scrollDistance
-                        : visibleRect.minY - scrollDistance
-                    scroll(
-                        toDocumentY: targetDocumentY,
-                        scrollView: scrollView
-                    )
-                    let didAdvance =
-                        scrollsTowardLater
-                            ? scrollView.contentView.bounds.minY
-                                > visibleRect.minY + 0.5
-                            : scrollView.contentView.bounds.minY
-                                < visibleRect.minY - 0.5
-                    let hasMoreHistory = scrollsTowardLater
-                        ? parent.hasMoreLaterMessages
-                        : parent.hasMoreMessages
-                    if !didAdvance, hasMoreHistory {
-                        historyStarvedTicks += 1
-                        consecutiveHistoryStarvedTicks += 1
-                        maximumHistoryStarvedTicks = max(
-                            maximumHistoryStarvedTicks,
-                            consecutiveHistoryStarvedTicks
-                        )
-                    } else {
-                        consecutiveHistoryStarvedTicks = 0
-                    }
-                    maximumScrollWork = max(
-                        maximumScrollWork,
-                        ProcessInfo.processInfo.systemUptime - workStart
-                    )
-                    switch benchmarkController.recordTick(
-                        uptime: tickUptime,
-                        previousDocumentY:
-                            scrollsTowardLater
-                                ? -visibleRect.minY : visibleRect.minY,
-                        currentDocumentY:
-                            scrollsTowardLater
-                                ? -scrollView.contentView.bounds.minY
-                                : scrollView.contentView.bounds.minY,
-                        hasMoreMessages: hasMoreHistory,
-                        paginationFailed:
-                            scrollsTowardLater
-                                ? parent.laterHistoryLoadFailed
-                                : parent.earlierHistoryLoadFailed
-                    ) {
-                    case .continueBenchmark:
-                        break
-                    case .completed:
-                        finish(.completed)
-                    case .insufficientHistory:
-                        finish(.insufficientHistory)
-                    case .paginationFailed:
-                        finish(.paginationFailed)
-                    }
-                }
-                NativeTimelinePerformanceBenchmarkGate.shared.begin()
-            }
-        }
-        }
-
-        func startPerformanceAutoScrollIfNeeded() {
-            performanceAutoScrollStartOperation()
         }
 
         func beginPerformanceBenchmarkPaginationIntent(towardLater: Bool) {

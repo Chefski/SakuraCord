@@ -115,6 +115,16 @@ run_check() {
     status=1
   fi
 
+  echo "SwiftLint file-length suppression guard"
+  if grep -R -n \
+    --include='*.swift' \
+    --exclude-dir='.build' \
+    -E 'swiftlint:disable(:next|:this)?[^[:cntrl:]]*(file_length|[[:space:],]all([[:space:],]|$))' \
+    "${source_paths[@]}"; then
+    echo "File-length suppressions and blanket disables are not allowed." >&2
+    status=1
+  fi
+
   echo "SwiftLint $SWIFTLINT_VERSION (strict, no cache)"
   if ! "$SWIFTLINT_BIN" lint \
     --strict \

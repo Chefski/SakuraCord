@@ -1,6 +1,92 @@
+import CoreAudio
+import DiscordProtocol
+import Foundation
+import MediaPipeline
+import OSLog
 import SakuraCordModels
+import SakuraCordPersistence
+import UniformTypeIdentifiers
 
 extension AppModel {
+    func isChannelUnread(_ channelID: ChannelID) -> Bool {
+        readState.unread(channelID: channelID)
+    }
+
+    func channelNotificationOverride(
+        for channel: Channel
+    ) -> ChannelNotificationOverride? {
+        readState.notificationOverride(
+            channelID: channel.id,
+            guildID: channel.guildID
+        )
+    }
+
+    func isChannelMuted(_ channel: Channel) -> Bool {
+        readState.isChannelMuted(channel)
+    }
+
+    func inheritedChannelNotificationLevel(
+        for channel: Channel
+    ) -> MessageNotificationLevel {
+        readState.inheritedNotificationLevel(for: channel)
+    }
+
+    func isChannelNotificationMutationPending(_ channelID: ChannelID) -> Bool {
+        channelNotificationMutationTasks[channelID] != nil
+            || categoryCollapseMutationTasks[channelID] != nil
+    }
+
+    func guildNotificationSettings(for guild: Guild) -> GuildNotificationSettings {
+        readState.notificationSettings(guildID: guild.id)
+            ?? GuildNotificationSettings(
+                guildID: guild.id,
+                messageNotifications: guild.defaultMessageNotifications
+            )
+    }
+
+    func isGuildNotificationMutationPending(_ guildID: GuildID) -> Bool {
+        guildNotificationMutationTasks[guildID] != nil
+            || guildAcknowledgementTasks[guildID] != nil
+    }
+
+    func isForumPostUnread(_ post: ForumPost) -> Bool {
+        readState.entries[post.id]?.isUnread ?? post.isUnread
+    }
+
+    func isForumNotificationMutationPending(_ postID: ChannelID) -> Bool {
+        forumNotificationMutationTasks[postID] != nil
+    }
+
+    func inheritedForumPostNotificationLevel(
+        _ post: ForumPost
+    ) -> MessageNotificationLevel {
+        guard let parentID = post.thread.parentID,
+              let parent =
+              snapshot?.channels.first(where: { $0.id == parentID })
+                ?? visibleChannels.first(where: { $0.id == parentID })
+        else { return .onlyMentions }
+        if let configured = channelNotificationOverride(for: parent)?
+            .messageNotifications,
+           configured != .inherit
+        {
+            return configured
+        }
+        return inheritedChannelNotificationLevel(for: parent)
+    }
+
+    func isForumPostNew(_ post: ForumPost) -> Bool {
+        readState.isNewForumPost(post)
+    }
+
+    func shouldEmphasizeForumPost(_ post: ForumPost) -> Bool {
+        isForumPostUnread(post) || readState.isUnopenedForumPost(post)
+    }
+
+    func forumUnreadMessageCount(_ post: ForumPost) -> Int {
+        guard isForumPostUnread(post) else { return 0 }
+        return readState.unreadMessageCount(channelID: post.id)
+    }
+
     func deliverNativeNotification(for message: Message, isMention: Bool = false) {
         // Keep synthetic performance events away from Notification Center's XPC queue.
         guard !runsChatPerformanceBenchmark else { return }

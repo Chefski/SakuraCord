@@ -1,6 +1,12 @@
 import Foundation
 
 nonisolated extension SettingsCatalog {
+    static let aboutPage = page(
+        .about, group: .sakuraCord, title: "About", image: "info.circle",
+        help: "View SakuraCord version, project links, acknowledgements, and update availability.",
+        keywords: ["version", "build", "website", "source", "roadmap", "acknowledgements"]
+    )
+
     static let aboutControls: [SettingsControlMetadata] = [
         aboutControl(
             .aboutVersionInformation, section: .aboutVersion,
@@ -67,16 +73,17 @@ nonisolated extension SettingsCatalog {
         owner: SettingsValueOwner,
         persistence: SettingsPersistence = .notApplicable
     ) -> SettingsControlMetadata {
-        SettingsControlMetadata(
-            id: id,
-            destination: SettingsDestination(page: .about, section: section),
-            label: LocalizedStringResource(label, bundle: #bundle),
-            help: LocalizedStringResource(help, bundle: #bundle),
-            keywords: keywords.map { LocalizedStringResource($0, bundle: #bundle) },
+        control(
+            id,
+            page: .about,
+            section: section,
+            label: label,
+            help: help,
+            keywords: keywords,
             owner: owner,
             scope: .appWideLocal,
             persistence: persistence,
-            resetCapability: .notApplicable,
+            reset: .notApplicable,
             availability: .available
         )
     }

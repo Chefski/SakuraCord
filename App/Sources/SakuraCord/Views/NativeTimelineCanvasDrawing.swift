@@ -713,8 +713,7 @@ extension NativeTimelineCanvasView {
         return intersectingMessage
     }
 
-    var drawOperation: @MainActor (NSRect) -> Void {
-        { [self] dirtyRect in
+    func drawTimeline(in dirtyRect: NSRect) {
         let startUptime = ProcessInfo.processInfo.systemUptime
         defer {
             let duration =
@@ -738,211 +737,174 @@ extension NativeTimelineCanvasView {
         guard !items.isEmpty,
               var index = rowIndex(at: max(0, dirtyRect.minY))
         else { return }
-
         while items.indices.contains(index),
               displayedRowOrigin(at: index) < dirtyRect.maxY
         {
             let rowFrame = rowFrame(at: index)
             if rowFrame.intersects(dirtyRect) {
-                let item = items[index]
-                let preparedMediaKeys = visibleMediaKeys[item.identifier]
-                    ?? mediaKeys(for: item, at: index)
-                drawMessageJumpHighlight(at: index)
-                let revealedTextSpoilerState =
-                    textSpoilerRevealState(
-                        for: item.identifier
-                    )
-                if item.messageID == editingMessageID {
-                    NSGraphicsContext.current?.cgContext.clear(
-                        rowFrame.intersection(dirtyRect)
-                    )
-                    enqueueVisibleMediaRequests(
-                        identifier: item.identifier,
-                        keys: preparedMediaKeys
-                    )
-                    NativeTimelineRowPainter.draw(
-                        item: item,
-                        layout: layouts[index],
-                        in: rowFrame,
-                        model: model,
-                        isHovered: false,
-                        hidesMessageContent: true,
-                        spoilerRevealStore: spoilerRevealStore
-                    )
-                    if let snapshot = editingRowScrollSnapshot {
-                        snapshot.draw(
-                            in: editingOverlayFrame(at: index),
-                            from: .zero,
-                            operation: .sourceOver,
-                            fraction: 1,
-                            respectFlipped: true,
-                            hints: nil
-                        )
-                    }
-                    index += 1
-                    continue
-                }
-                enqueueVisibleMediaRequests(
-                    identifier: item.identifier,
-                    keys: preparedMediaKeys
+                drawTimelineRow(
+                    at: index,
+                    rowFrame: rowFrame,
+                    dirtyRect: dirtyRect,
+                    visibleMediaKeys: visibleMediaKeys
                 )
-                let countTransitions = reactionCountTransitions(
-                    inMessageAt: index
-                )
-                let presentsMediaViewerHighlight =
-                    mediaViewerHighlightedMessageID == item.messageID
-                if hoveredRow == index
-                    || presentsMediaViewerHighlight
-                    || hoveredCompactTimestampRow == index
-                    || hoveredAuthorMessageID == item.messageID
-                    || hoveredMention?.itemIdentifier
-                        == item.identifier
-                    || hoveredTextLink?.itemIdentifier
-                        == item.identifier
-                    || hoveredTextSpoiler?.itemIdentifier
-                        == item.identifier
-                    || hoveredComponentButton?.messageID
-                        == item.messageID
-                    || activeComponentChoiceTarget?.messageID
-                        == item.messageID
-                    || visualPressedComponentButton?.messageID
-                        == item.messageID
-                    || hoveredForwardedSourceMessageID
-                        == item.messageID
-                    || !countTransitions.isEmpty
-                    || textSelection?.itemIdentifier
-                        == item.identifier
-                    || !revealedTextSpoilerState.isEmpty
-                {
-                    NativeTimelineRowPainter.draw(
-                        item: item,
-                        layout: layouts[index],
-                        in: rowFrame,
-                        model: model,
-                        isHovered:
-                            hoveredRow == index
-                                || presentsMediaViewerHighlight,
-                        showsCompactTimestamp:
-                            hoveredCompactTimestampRow == index,
-                        isAuthorHovered: hoveredAuthorMessageID == item.messageID,
-                        hoveredMention:
-                            hoveredMention?.itemIdentifier
-                                == item.identifier
-                            ? hoveredMention
-                            : nil,
-                        hoveredTextLink:
-                            hoveredTextLink?.itemIdentifier
-                                == item.identifier
-                            ? hoveredTextLink
-                            : nil,
-                        hoveredTextSpoiler:
-                            hoveredTextSpoiler?.itemIdentifier
-                                == item.identifier
-                            ? hoveredTextSpoiler
-                            : nil,
-                        hoveredComponentButton:
-                            hoveredComponentButton?.messageID
-                                == item.messageID
-                            ? hoveredComponentButton
-                            : nil,
-                        activeComponentChoiceTarget:
-                            activeComponentChoiceTarget?.messageID
-                                == item.messageID
-                            ? activeComponentChoiceTarget
-                            : nil,
-                        pressedComponentButton:
-                            visualPressedComponentButton?.messageID
-                                == item.messageID
-                            ? visualPressedComponentButton
-                            : nil,
-                        componentButtonPressProgress:
-                            visualPressedComponentButton?.messageID
-                                == items[index].messageID
-                            ? componentButtonPressProgress
-                            : 0,
-                        isForwardedSourceHovered:
-                            hoveredForwardedSourceMessageID
-                                == item.messageID,
-                        hoveredReactionID: hoveredReactionID(
-                            inMessageAt: index
-                        ),
-                        isAddReactionHovered: isAddReactionHovered(
-                            inMessageAt: index
-                        ),
-                        textSelection: textSelection,
-                        revealedTextSpoilerState:
-                            revealedTextSpoilerState,
-                        spoilerRevealStore: spoilerRevealStore,
-                        reactionCountTransitions: countTransitions
-                    )
-                } else {
-                    let cachedBitmap = cachedBitmap(
-                        for: item,
-                        width: rowFrame.width
-                    )
-                    if NativeTimelineScrollingRenderPolicy
-                        .usesDirectPainter(
-                            isScrolling: suppressesHoverPresentation
-                                || AppScrollActivity.isActive,
-                            hasCachedBitmap: cachedBitmap != nil,
-                            estimatedBitmapCost: Self.estimatedBitmapCost(
-                                width: rowFrame.width,
-                                height: layouts[index].height,
-                                scale: window?.backingScaleFactor
-                                    ?? NSScreen.main?.backingScaleFactor
-                                    ?? 2
-                            ),
-                            cacheCostLimit: Self.bitmapCostLimit
-                        )
-                    {
-                        liveScrollDirectPaintCount += 1
-                        AppPerformanceSignposts.measureSync(
-                            "TimelineLiveScrollDirectPaint"
-                        ) {
-                            NativeTimelineRowPainter.draw(
-                                item: item,
-                                layout: layouts[index],
-                                in: rowFrame,
-                                model: model,
-                                isHovered: false,
-                                revealedTextSpoilerState:
-                                    revealedTextSpoilerState,
-                                spoilerRevealStore: spoilerRevealStore
-                            )
-                        }
-                    } else {
-                        (cachedBitmap ?? bitmap(
-                            for: item,
-                            at: index,
-                            layout: layouts[index],
-                            width: rowFrame.width,
-                            preparedMediaKeys: preparedMediaKeys
-                        )).draw(
-                            in: rowFrame,
-                            from: .zero,
-                            operation: .sourceOver,
-                            fraction: 1,
-                            respectFlipped: true,
-                            hints: nil
-                        )
-                    }
-                }
-                if let hoveredCodeBlock,
-                   hoveredCodeBlock.itemIdentifier
-                    == items[index].identifier
-                {
-                    drawCodeBlockCopyControl(hoveredCodeBlock)
-                }
             }
             index += 1
         }
+    }
 
+    private func drawTimelineRow(
+        at index: Int,
+        rowFrame: CGRect,
+        dirtyRect: CGRect,
+        visibleMediaKeys: [NativeMessageTimelineItem.Identifier: Set<NativeTimelineMediaKey>]
+    ) {
+        let item = items[index]
+        let preparedMediaKeys = visibleMediaKeys[item.identifier]
+            ?? mediaKeys(for: item, at: index)
+        drawMessageJumpHighlight(at: index)
+        let revealState = textSpoilerRevealState(for: item.identifier)
+        if item.messageID == editingMessageID {
+            drawEditingTimelineRow(
+                item, at: index, rowFrame: rowFrame, dirtyRect: dirtyRect,
+                preparedMediaKeys: preparedMediaKeys
+            )
+            return
+        } else if timelineRowRequiresDirectPresentation(
+            item: item, index: index, revealState: revealState
+        ) {
+            drawInteractiveTimelineRow(
+                item, at: index, rowFrame: rowFrame,
+                preparedMediaKeys: preparedMediaKeys, revealState: revealState
+            )
+        } else {
+            drawStableTimelineRow(
+                item, at: index, rowFrame: rowFrame,
+                preparedMediaKeys: preparedMediaKeys, revealState: revealState
+            )
+        }
+        if let hoveredCodeBlock, hoveredCodeBlock.itemIdentifier == item.identifier {
+            drawCodeBlockCopyControl(hoveredCodeBlock)
+        }
+    }
+
+    private func drawEditingTimelineRow(
+        _ item: NativeMessageTimelineItem,
+        at index: Int,
+        rowFrame: CGRect,
+        dirtyRect: CGRect,
+        preparedMediaKeys: Set<NativeTimelineMediaKey>
+    ) {
+        NSGraphicsContext.current?.cgContext.clear(rowFrame.intersection(dirtyRect))
+        enqueueVisibleMediaRequests(identifier: item.identifier, keys: preparedMediaKeys)
+        NativeTimelineRowPainter.draw(
+            item: item, layout: layouts[index], in: rowFrame, model: model,
+            isHovered: false, hidesMessageContent: true,
+            spoilerRevealStore: spoilerRevealStore
+        )
+        editingRowScrollSnapshot?.draw(
+            in: editingOverlayFrame(at: index), from: .zero, operation: .sourceOver,
+            fraction: 1, respectFlipped: true, hints: nil
+        )
+    }
+
+    private func timelineRowRequiresDirectPresentation(
+        item: NativeMessageTimelineItem,
+        index: Int,
+        revealState: NativeTimelineTextSpoilerRevealState
+    ) -> Bool {
+        hoveredRow == index
+            || mediaViewerHighlightedMessageID == item.messageID
+            || hoveredCompactTimestampRow == index
+            || hoveredAuthorMessageID == item.messageID
+            || hoveredMention?.itemIdentifier == item.identifier
+            || hoveredTextLink?.itemIdentifier == item.identifier
+            || hoveredTextSpoiler?.itemIdentifier == item.identifier
+            || hoveredComponentButton?.messageID == item.messageID
+            || activeComponentChoiceTarget?.messageID == item.messageID
+            || visualPressedComponentButton?.messageID == item.messageID
+            || hoveredForwardedSourceMessageID == item.messageID
+            || !reactionCountTransitions(inMessageAt: index).isEmpty
+            || textSelection?.itemIdentifier == item.identifier
+            || !revealState.isEmpty
+    }
+
+    private func drawInteractiveTimelineRow(
+        _ item: NativeMessageTimelineItem,
+        at index: Int,
+        rowFrame: CGRect,
+        preparedMediaKeys: Set<NativeTimelineMediaKey>,
+        revealState: NativeTimelineTextSpoilerRevealState
+    ) {
+        enqueueVisibleMediaRequests(identifier: item.identifier, keys: preparedMediaKeys)
+        let presentsViewerHighlight = mediaViewerHighlightedMessageID == item.messageID
+        NativeTimelineRowPainter.draw(
+            item: item,
+            layout: layouts[index],
+            in: rowFrame,
+            model: model,
+            isHovered: hoveredRow == index || presentsViewerHighlight,
+            showsCompactTimestamp: hoveredCompactTimestampRow == index,
+            isAuthorHovered: hoveredAuthorMessageID == item.messageID,
+            hoveredMention: hoveredMention?.itemIdentifier == item.identifier ? hoveredMention : nil,
+            hoveredTextLink: hoveredTextLink?.itemIdentifier == item.identifier ? hoveredTextLink : nil,
+            hoveredTextSpoiler: hoveredTextSpoiler?.itemIdentifier == item.identifier ? hoveredTextSpoiler : nil,
+            hoveredComponentButton: hoveredComponentButton?.messageID == item.messageID ? hoveredComponentButton : nil,
+            activeComponentChoiceTarget: activeComponentChoiceTarget?.messageID == item.messageID ? activeComponentChoiceTarget : nil,
+            pressedComponentButton: visualPressedComponentButton?.messageID == item.messageID ? visualPressedComponentButton : nil,
+            componentButtonPressProgress: visualPressedComponentButton?.messageID == item.messageID ? componentButtonPressProgress : 0,
+            isForwardedSourceHovered: hoveredForwardedSourceMessageID == item.messageID,
+            hoveredReactionID: hoveredReactionID(inMessageAt: index),
+            isAddReactionHovered: isAddReactionHovered(inMessageAt: index),
+            textSelection: textSelection,
+            revealedTextSpoilerState: revealState,
+            spoilerRevealStore: spoilerRevealStore,
+            reactionCountTransitions: reactionCountTransitions(inMessageAt: index)
+        )
+    }
+
+    private func drawStableTimelineRow(
+        _ item: NativeMessageTimelineItem,
+        at index: Int,
+        rowFrame: CGRect,
+        preparedMediaKeys: Set<NativeTimelineMediaKey>,
+        revealState: NativeTimelineTextSpoilerRevealState
+    ) {
+        enqueueVisibleMediaRequests(identifier: item.identifier, keys: preparedMediaKeys)
+        let cached = cachedBitmap(for: item, width: rowFrame.width)
+        let drawsDirectly = NativeTimelineScrollingRenderPolicy.usesDirectPainter(
+            isScrolling: suppressesHoverPresentation || AppScrollActivity.isActive,
+            hasCachedBitmap: cached != nil,
+            estimatedBitmapCost: Self.estimatedBitmapCost(
+                width: rowFrame.width,
+                height: layouts[index].height,
+                scale: window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
+            ),
+            cacheCostLimit: Self.bitmapCostLimit
+        )
+        if drawsDirectly {
+            liveScrollDirectPaintCount += 1
+            AppPerformanceSignposts.measureSync("TimelineLiveScrollDirectPaint") {
+                NativeTimelineRowPainter.draw(
+                    item: item, layout: layouts[index], in: rowFrame, model: model,
+                    isHovered: false, revealedTextSpoilerState: revealState,
+                    spoilerRevealStore: spoilerRevealStore
+                )
+            }
+        } else {
+            (cached ?? bitmap(
+                for: item, at: index, layout: layouts[index], width: rowFrame.width,
+                preparedMediaKeys: preparedMediaKeys
+            )).draw(
+                in: rowFrame, from: .zero, operation: .sourceOver,
+                fraction: 1, respectFlipped: true, hints: nil
+            )
         }
     }
 
     override func draw(_ dirtyRect: NSRect) {
         AppPerformanceSignposts.measureSync("TimelineCanvasDraw") {
-            drawOperation(dirtyRect)
+            drawTimeline(in: dirtyRect)
         }
         if let presentedConversationID,
            AppPerformanceSignposts.reportConversationFirstFrame(
@@ -1426,565 +1388,4 @@ extension NativeTimelineCanvasView {
         bitmapCost = 0
     }
 
-    func requestMedia(
-        for item: NativeMessageTimelineItem,
-        at index: Int,
-        preparedMediaKeys: Set<NativeTimelineMediaKey>? = nil,
-        priority: MediaLoadPriority = .visible
-    ) {
-        let identifier = item.identifier
-        let requestOwner = visibleMediaPinOwner
-        let keys = preparedMediaKeys ?? mediaKeys(for: item, at: index)
-        for key in keys {
-            NativeTimelineMediaStore.shared.request(
-                key,
-                owner: requestOwner,
-                subscriber: identifier,
-                priority: priority
-            ) { [weak self] _ in
-                self?.scheduleMediaInvalidation(identifier)
-            }
-        }
-    }
-
-    func enqueueVisibleMediaRequests(
-        identifier: NativeMessageTimelineItem.Identifier,
-        keys: Set<NativeTimelineMediaKey>
-    ) {
-        guard !keys.isEmpty else { return }
-        pendingVisibleMediaRequests[identifier, default: []]
-            .formUnion(keys)
-        guard visibleMediaRequestTask == nil else { return }
-        visibleMediaRequestTask = Task { @MainActor [weak self] in
-            let interval = AppPerformanceSignposts.signposter.beginInterval(
-                "TimelineVisibleMediaRequestDeferral"
-            )
-            defer {
-                AppPerformanceSignposts.signposter.endInterval(
-                    "TimelineVisibleMediaRequestDeferral",
-                    interval
-                )
-            }
-            do {
-                // Missing media cannot affect the draw currently in progress.
-                // Dispatching ImageIO from inside draw(_:) made decoder work
-                // compete with the same cold frame on another core.
-                try await Task.sleep(for: .milliseconds(8))
-            } catch {
-                return
-            }
-            guard let self else { return }
-            self.visibleMediaRequestTask = nil
-            let requests = self.pendingVisibleMediaRequests
-            self.pendingVisibleMediaRequests.removeAll(keepingCapacity: true)
-            let viewport = self.enclosingScrollView?.documentVisibleRect
-                ?? self.visibleRect
-            let priority: MediaLoadPriority =
-                suppressesHoverPresentation || AppScrollActivity.isActive
-                    ? .prefetch
-                    : .visible
-            for (identifier, keys) in requests {
-                guard let index = self.items.firstIndex(where: {
-                    $0.identifier == identifier
-                }),
-                self.rowFrame(at: index).intersects(viewport)
-                else { continue }
-                self.requestMedia(
-                    for: self.items[index],
-                    at: index,
-                    preparedMediaKeys: keys,
-                    priority: priority
-                )
-            }
-        }
-    }
-
-    func reconcileVisibleReactionPreviewLoads() {
-        let viewport =
-            enclosingScrollView?.documentVisibleRect ?? visibleRect
-        guard window != nil,
-              viewport.width > 0,
-              viewport.height > 0,
-              !items.isEmpty,
-              !layouts.isEmpty,
-              var index = rowIndex(at: max(0, viewport.minY))
-        else {
-            cancelReactionPreviewLoads()
-            return
-        }
-
-        var desired:
-            [ReactionPreviewLoadKey: (reaction: Reaction, message: Message)] = [:]
-        while items.indices.contains(index),
-              layouts.indices.contains(index),
-              displayedRowOrigin(at: index) < viewport.maxY
-        {
-            if rowFrame(at: index).intersects(viewport),
-               case let .message(row, _, _) = items[index]
-            {
-                let reactions = layouts[index].reactionRegions.map(\.reaction)
-                for reaction in MessageReactionPresentation
-                    .previewLoadCandidates(fromPresented: reactions)
-                {
-                    let key = ReactionPreviewLoadKey(
-                        messageID: row.message.id,
-                        reactionID: reaction.id
-                    )
-                    desired[key] = (reaction, row.message)
-                }
-            }
-            index += 1
-        }
-
-        let obsolete = visibleReactionPreviewLoadKeys.subtracting(desired.keys)
-        for key in obsolete {
-            reactionPreviewLoadTasks.removeValue(forKey: key)?.cancel()
-            visibleReactionPreviewLoadKeys.remove(key)
-        }
-
-        for (key, input) in desired
-        where visibleReactionPreviewLoadKeys.insert(key).inserted
-        {
-            reactionPreviewLoadTasks[key] = Task { @MainActor [weak self] in
-                guard let self,
-                      self.visibleReactionPreviewLoadKeys.contains(key),
-                      let model = self.model
-                else { return }
-                await model.loadReactionReactors(
-                    input.reaction,
-                    on: input.message
-                )
-            }
-        }
-    }
-
-    func cancelReactionPreviewLoads() {
-        for task in reactionPreviewLoadTasks.values {
-            task.cancel()
-        }
-        reactionPreviewLoadTasks.removeAll(keepingCapacity: true)
-        visibleReactionPreviewLoadKeys.removeAll(keepingCapacity: true)
-    }
-
-    func scheduleMediaInvalidation(
-        _ identifier: NativeMessageTimelineItem.Identifier
-    ) {
-        pendingMediaInvalidations.insert(identifier)
-        mediaInvalidationTask?.cancel()
-        mediaInvalidationTask = Task { @MainActor [weak self] in
-            do {
-                // Gallery tiles frequently finish in the same display frame.
-                // Collapse their row-wide bitmap rebuilds into one transaction.
-                try await Task.sleep(for: .milliseconds(16))
-            } catch {
-                return
-            }
-            guard let self else { return }
-            self.mediaInvalidationTask = nil
-            let identifiers = self.pendingMediaInvalidations
-            self.pendingMediaInvalidations.removeAll(keepingCapacity: true)
-            self.refreshVisibleMediaPins()
-            var dirtyRect = CGRect.null
-            for identifier in identifiers {
-                self.invalidateBitmap(identifier)
-                if let index = self.items.firstIndex(where: {
-                    $0.identifier == identifier
-                }) {
-                    dirtyRect = dirtyRect.union(self.rowFrame(at: index))
-                }
-            }
-            if !dirtyRect.isNull {
-                self.setNeedsDisplay(dirtyRect)
-            }
-        }
-    }
-
-    @discardableResult
-    func refreshVisibleMediaPins()
-        -> [NativeMessageTimelineItem.Identifier: Set<NativeTimelineMediaKey>]
-    {
-        let interval = AppPerformanceSignposts.signposter.beginInterval(
-            "TimelineVisibleMediaProjection"
-        )
-        defer {
-            AppPerformanceSignposts.signposter.endInterval(
-                "TimelineVisibleMediaProjection",
-                interval
-            )
-        }
-        let viewport =
-            enclosingScrollView?.documentVisibleRect ?? visibleRect
-        guard viewport.height > 0,
-              !items.isEmpty,
-              !layouts.isEmpty,
-              var index = rowIndex(at: max(0, viewport.minY))
-        else {
-            visibleMediaProjection = nil
-            NativeTimelineMediaStore.shared.retainVisibleImages(
-                for: [],
-                owner: visibleMediaPinOwner
-            )
-            NativeTimelineMediaStore.shared
-                .cancelStaticRequestsOutsideVisibleSet(
-                    owner: visibleMediaPinOwner
-                )
-            return [:]
-        }
-
-        var lowerBound: Int?
-        var upperBound: Int?
-        while items.indices.contains(index),
-              layouts.indices.contains(index),
-              displayedRowOrigin(at: index) < viewport.maxY
-        {
-            if rowFrame(at: index).intersects(viewport) {
-                lowerBound = lowerBound ?? index
-                upperBound = index + 1
-            }
-            index += 1
-        }
-        guard let lowerBound, let upperBound else {
-            visibleMediaProjection = nil
-            NativeTimelineMediaStore.shared.retainVisibleImages(
-                for: [],
-                owner: visibleMediaPinOwner
-            )
-            NativeTimelineMediaStore.shared
-                .cancelStaticRequestsOutsideVisibleSet(
-                    owner: visibleMediaPinOwner
-                )
-            return [:]
-        }
-        let rowRange = lowerBound ..< upperBound
-        if let visibleMediaProjection,
-           visibleMediaProjection.rowRange == rowRange
-        {
-            return visibleMediaProjection.keysByIdentifier
-        }
-
-        var keys: Set<NativeTimelineMediaKey> = []
-        var keysByIdentifier:
-            [NativeMessageTimelineItem.Identifier:
-                Set<NativeTimelineMediaKey>] = [:]
-        for index in rowRange
-        where rowFrame(at: index).intersects(viewport) {
-            let rowKeys = mediaKeys(for: items[index], at: index)
-            keys.formUnion(rowKeys)
-            keysByIdentifier[items[index].identifier] = rowKeys
-        }
-        visibleMediaProjection = VisibleMediaProjection(
-            rowRange: rowRange,
-            keysByIdentifier: keysByIdentifier
-        )
-        NativeTimelineMediaStore.shared.retainVisibleImages(
-            for: keys,
-            owner: visibleMediaPinOwner
-        )
-        NativeTimelineMediaStore.shared
-            .cancelStaticRequestsOutsideVisibleSet(
-                owner: visibleMediaPinOwner
-            )
-        return keysByIdentifier
-    }
-
-    var mediaKeysOperation:
-        @MainActor (NativeMessageTimelineItem, Int?) -> Set<NativeTimelineMediaKey>
-    {
-        { [self] item, index in
-        guard let index,
-              layouts.indices.contains(index),
-              case let .message(row, _, _) = item
-        else { return [] }
-        let message = row.message
-        let visibleEmbedCount =
-            (model?.chatSettings.expandsEmbedsByDefault == false)
-                ? 0
-                : MessageEmbedPresentation.visibleEmbeds(
-                    for: message,
-                    showsAutomaticLinkPreviews:
-                        model?.chatSettings.showsAutomaticLinkPreviews ?? true
-                ).count
-        var keys: [NativeTimelineMediaKey] = []
-        keys.reserveCapacity(
-            1 + message.attachments.count + visibleEmbedCount
-                + message.stickers.count
-        )
-        let author = model?.authorPresentation(for: message)
-        if let url = author?.user.avatarURL ?? message.author.avatarURL {
-            keys.append(.avatar(url))
-        }
-        if let url =
-            author?.user.avatarDecorationURL
-                ?? message.author.avatarDecorationURL
-        {
-            keys.append(.avatarDecoration(url))
-        }
-        if let url = message.interactionMetadata?.user?.avatarURL {
-            keys.append(.avatar(url))
-        }
-        if let url = layouts[index].forwardedSourceRegion?.iconURL {
-            keys.append(.avatar(url))
-        }
-        if let preview = row.replyPreview,
-           let url = model?.authorPresentation(for: preview).user.avatarURL {
-            keys.append(.avatar(url))
-        } else if let key = NativeTimelineReplyMediaPolicy.avatarKey(
-            for: row.replyPreview
-        ) {
-            keys.append(key)
-        }
-        for region in layouts[index].linkedImageRegions {
-            keys.append(.media(
-                region.reference.displayURL,
-                maximumPixelDimension: region.reference.isEmoji ? 96 : 720
-            ))
-        }
-        if let model {
-            let mentionResolver = MessageMentionResolver(
-                model: model,
-                message: message
-            )
-            for token in presentedTextPlan(for: row).preparedText?.tokens ?? [] {
-                switch token {
-                case let .customEmoji(emoji):
-                    let reference = EmojiReference(rawToken: emoji.rawToken)
-                    guard let url =
-                        reference.id.flatMap({ model.customEmojiURLsByID[$0] })
-                        ?? reference.imageURL(size: 64)
-                    else { continue }
-                    keys.append(.media(url, maximumPixelDimension: 64))
-                case let .mention(mention):
-                    if let url = mentionResolver.avatarURL(mention) {
-                        keys.append(.avatar(url))
-                    }
-                }
-            }
-        }
-        for region in layouts[index].attachmentRegions {
-            let attachment = region.attachment
-            guard NativeTimelineSpoilerConcealmentPolicy
-                .shouldLoadOrAnimate(
-                    messageID: message.id,
-                    contentID:
-                        NativeTimelineComponentRevealKey
-                            .attachmentComponentID(attachment.id),
-                    isSpoiler: attachment.isSpoiler,
-                    store: spoilerRevealStore
-                )
-            else { continue }
-            switch attachment.mediaKind {
-            case .image, .animatedImage:
-                if let key = NativeTimelineMediaKey.attachment(attachment) {
-                    keys.append(key)
-                }
-            case .video, .audio, .file:
-                break
-            }
-        }
-        for region in layouts[index].embedRegions {
-            for image in region.imageRegions {
-                keys.append(
-                    .media(
-                        image.url,
-                        maximumPixelDimension: image.maximumPixelDimension
-                    )
-                )
-            }
-            for textRegion in region.textRegions {
-                let value = textRegion.text.value
-                let range = NSRange(location: 0, length: value.length)
-                value.enumerateAttribute(
-                    .discordEmojiToken,
-                    in: range
-                ) { rawValue, _, _ in
-                    guard let rawToken = rawValue as? String else { return }
-                    let reference = EmojiReference(rawToken: rawToken)
-                    let customURL = reference.id.flatMap { id in
-                        model?.customEmojiURLsByID[id]
-                    }
-                    guard let url = customURL
-                        ?? reference.imageURL(size: 64)
-                    else { return }
-                    keys.append(.media(url, maximumPixelDimension: 64))
-                }
-                value.enumerateAttribute(
-                    .nativeTimelineMention,
-                    in: range
-                ) { rawValue, _, _ in
-                    guard let mention =
-                        (rawValue as? NativeTimelineMentionBox)?
-                        .presentation,
-                        let url = mention.avatarURL
-                    else { return }
-                    keys.append(.avatar(url))
-                }
-            }
-            if !region.mediaIsVideo,
-               let url = region.mediaURL
-            {
-                keys.append(.media(url))
-            }
-        }
-        for componentLayout in layouts[index].componentLayouts {
-            let hiddenContainerFrames =
-                NativeTimelineSpoilerConcealmentPolicy
-                    .hiddenContainerFrames(
-                        in: componentLayout,
-                        messageID: message.id,
-                        store: spoilerRevealStore
-                    )
-            for image in componentLayout.images {
-                guard !NativeTimelineSpoilerConcealmentPolicy
-                    .isInsideHiddenContainer(
-                        image.frame,
-                        hiddenContainerFrames:
-                            hiddenContainerFrames
-                    ),
-                      !NativeTimelineSpoilerConcealmentPolicy.isConcealed(
-                          messageID: message.id,
-                          contentID: image.componentID,
-                          isSpoiler: image.isSpoiler,
-                          store: spoilerRevealStore
-                      )
-                else { continue }
-                keys.append(
-                    .media(
-                        image.displayURL,
-                        maximumPixelDimension: image.maximumPixelDimension
-                    )
-                )
-            }
-            for media in componentLayout.media {
-                guard !NativeTimelineSpoilerConcealmentPolicy
-                    .isInsideHiddenContainer(
-                        media.frame,
-                        hiddenContainerFrames:
-                            hiddenContainerFrames
-                    ),
-                      !NativeTimelineSpoilerConcealmentPolicy.isConcealed(
-                          messageID: message.id,
-                          contentID: media.componentID,
-                          isSpoiler: media.isSpoiler,
-                          store: spoilerRevealStore
-                      )
-                else { continue }
-                keys.append(.media(media.displayURL))
-            }
-            for button in componentLayout.buttons {
-                guard !NativeTimelineSpoilerConcealmentPolicy
-                    .isInsideHiddenContainer(
-                        button.frame,
-                        hiddenContainerFrames:
-                            hiddenContainerFrames
-                    )
-                else { continue }
-                guard let emoji = button.emoji,
-                      emoji.id != nil,
-                      let url = emoji.imageURL(size: 32)
-                else { continue }
-                keys.append(.media(url, maximumPixelDimension: 64))
-            }
-            keys += componentLayout.selectMediaKeys(hiddenContainerFrames)
-            for textRegion in componentLayout.textRegions {
-                guard !NativeTimelineSpoilerConcealmentPolicy
-                    .isInsideHiddenContainer(
-                        textRegion.frame,
-                        hiddenContainerFrames:
-                            hiddenContainerFrames
-                    )
-                else { continue }
-                appendInlineMediaKeys(
-                    from: textRegion.text.value,
-                    model: model,
-                    into: &keys
-                )
-            }
-        }
-        for sticker in message.stickers where sticker.format != .lottie {
-            if let url = sticker.mediaURL {
-                keys.append(.media(url, maximumPixelDimension: 384))
-            }
-        }
-        for region in layouts[index].reactionRegions {
-            let reference = region.reaction.emojiReference
-            if let id = reference.id,
-               let url = model?.customEmojiURLsByID[id]
-                    ?? reference.imageURL(size: 64)
-            {
-                keys.append(.media(url, maximumPixelDimension: 64))
-            }
-            for avatar in region.avatarRegions {
-                if let url = avatar.reactor.avatarURL {
-                    keys.append(.avatar(url))
-                }
-            }
-        }
-
-        return Set(keys)
-
-        }
-    }
-
-    func mediaKeys(
-        for item: NativeMessageTimelineItem,
-        at index: Int?
-    ) -> Set<NativeTimelineMediaKey> {
-        let identifier = item.identifier
-        if let cached = mediaKeysByIdentifier[identifier] {
-            return cached
-        }
-        let keys = mediaKeysOperation(item, index)
-        mediaKeysByIdentifier[identifier] = keys
-        return keys
-    }
-
-    func invalidateVisibleMediaProjection(keepingCapacity: Bool) {
-        visibleMediaProjection = nil
-        mediaKeysByIdentifier.removeAll(keepingCapacity: keepingCapacity)
-    }
-
-    func appendInlineMediaKeys(
-        from value: NSAttributedString,
-        model: AppModel?,
-        into keys: inout [NativeTimelineMediaKey]
-    ) {
-        let range = NSRange(location: 0, length: value.length)
-        value.enumerateAttribute(
-            .discordEmojiToken,
-            in: range
-        ) { rawValue, _, _ in
-            guard let rawToken = rawValue as? String else { return }
-            let reference = EmojiReference(rawToken: rawToken)
-            let customURL = reference.id.flatMap { id in
-                model?.customEmojiURLsByID[id]
-            }
-            guard let url = customURL
-                ?? reference.imageURL(size: 64)
-            else { return }
-            keys.append(.media(url, maximumPixelDimension: 64))
-        }
-        value.enumerateAttribute(
-            .nativeTimelineMention,
-            in: range
-        ) { rawValue, _, _ in
-            guard let mention =
-                (rawValue as? NativeTimelineMentionBox)?.presentation,
-                let url = mention.avatarURL
-            else { return }
-            keys.append(.avatar(url))
-        }
-    }
-
-    func invalidateBitmap(
-        _ identifier: NativeMessageTimelineItem.Identifier
-    ) {
-        guard let removed = bitmapCache.removeValue(forKey: identifier) else {
-            return
-        }
-        bitmapCost -= removed.cost
-        bitmapInsertionOrder.removeAll { $0 == identifier }
-        NativeTimelineMediaStore.shared.releasePinnedImages(
-            owner: removed.mediaPinOwner
-        )
-    }
 }

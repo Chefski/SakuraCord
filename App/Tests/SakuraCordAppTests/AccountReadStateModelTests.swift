@@ -111,7 +111,7 @@ struct AccountReadStateModelTests {
         incremental.setCurrentUserID(currentUser.id)
 
         let batched = AccountReadStateModel()
-        batched.applyInitialState(AccountReadStateModel.makeInitialState(
+        batched.applyInitialState(AccountReadStateModel.makeInitialState(.init(
             accountID: "account",
             guilds: guilds,
             channels: channels,
@@ -120,7 +120,7 @@ struct AccountReadStateModelTests {
             notificationSettings: settings,
             usesNewNotifications: true,
             currentUserID: currentUser.id
-        ))
+        )))
 
         #expect(batched.entries == incremental.entries)
         #expect(batched.settingsByGuild == incremental.settingsByGuild)

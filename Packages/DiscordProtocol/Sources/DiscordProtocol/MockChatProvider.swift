@@ -1,6 +1,5 @@
 import Foundation
 import SakuraCordModels
-import UniformTypeIdentifiers
 
 public actor MockChatProvider: ChatProvider {
     private let currentUser: User
@@ -20,91 +19,18 @@ public actor MockChatProvider: ChatProvider {
     private var continuation: AsyncStream<ClientEvent>.Continuation?
     private var nextMessageID: UInt64
     public private(set) var typingRequests: [ChannelID] = []
-    public struct PinMutationRequest: Equatable, Sendable {
-        public var channelID: ChannelID
-        public var messageID: MessageID
-        public var isPinned: Bool
-    }
-
     public private(set) var pinMutationRequests: [PinMutationRequest] = []
-    public struct VoiceJoinRequest: Equatable, Sendable {
-        public var channelID: ChannelID
-        public var guildID: GuildID?
-        public var selfMute: Bool
-        public var selfDeaf: Bool
-
-        public init(
-            channelID: ChannelID,
-            guildID: GuildID?,
-            selfMute: Bool,
-            selfDeaf: Bool
-        ) {
-            self.channelID = channelID
-            self.guildID = guildID
-            self.selfMute = selfMute
-            self.selfDeaf = selfDeaf
-        }
-    }
-
     public private(set) var voiceJoinRequests: [VoiceJoinRequest] = []
-    public struct SoundboardSendRequest: Equatable, Sendable {
-        public var sound: SoundboardSound
-        public var channelID: ChannelID
-    }
-
     public private(set) var soundboardSendRequests: [SoundboardSendRequest] = []
-    public struct AcknowledgementRequest: Equatable, Sendable {
-        public var channelID: ChannelID
-        public var messageID: MessageID
-        public var token: String?
-        public var manual: Bool
-        public var mentionCount: Int?
-        public var flags: UInt64?
-        public var lastViewed: Int?
-    }
-
     public private(set) var acknowledgementRequests: [AcknowledgementRequest] = []
     public private(set) var bulkAcknowledgementRequests:
         [[BulkReadStateAcknowledgement]] = []
     private var bulkAckAcceptedPrefixBeforeFailure: Int?
-    public struct GuildNotificationRequest: Equatable, Sendable {
-        public var guildID: GuildID
-        public var level: MessageNotificationLevel?
-        public var isMuted: Bool?
-        public var muteEndTime: Date?
-        public var toggle: GuildNotificationToggle?
-        public var isEnabled: Bool?
-    }
-
     public private(set) var guildNotificationRequests: [GuildNotificationRequest] = []
-    public struct ChannelNotificationRequest: Equatable, Sendable {
-        public var guildID: GuildID?
-        public var channelID: ChannelID
-        public var level: MessageNotificationLevel?
-        public var isMuted: Bool?
-        public var muteEndTime: Date?
-    }
-
     public private(set) var channelNotificationRequests: [ChannelNotificationRequest] = []
-    public struct CategoryNotificationRequest: Equatable, Sendable {
-        public var guildID: GuildID
-        public var categoryID: ChannelID
-        public var level: MessageNotificationLevel?
-        public var isMuted: Bool?
-        public var muteEndTime: Date?
-        public var isCollapsed: Bool?
-    }
-
     public private(set) var categoryNotificationRequests: [CategoryNotificationRequest] = []
     private var categoryCollapsedUpdatesAreSuspended = false
     private var categoryCollapsedUpdateWaiters: [CheckedContinuation<Void, Never>] = []
-    public struct ThreadNotificationRequest: Equatable, Sendable {
-        public var threadID: ChannelID
-        public var level: MessageNotificationLevel?
-        public var isMuted: Bool?
-        public var muteEndTime: Date?
-    }
-
     public private(set) var threadNotificationRequests: [ThreadNotificationRequest] = []
     private var forumQueriesByChannel: [ChannelID: [ForumPostQuery]] = [:]
 
@@ -827,7 +753,11 @@ public actor MockChatProvider: ChatProvider {
         nextMessageID += 1
         let threadID = ChannelID(rawValue: nextMessageID)
         let attachments = try draft.attachments.enumerated().map { index, item in
-            var value = try Self.stageAttachment(item.url, messageID: nextMessageID, index: index)
+            var value = try MockChatMediaFixtures.stageAttachment(
+                item.url,
+                messageID: nextMessageID,
+                index: index
+            )
             value.filename = item.filename
             value.description = item.description.isEmpty ? nil : item.description
             value.isSpoiler = item.isSpoiler
@@ -984,7 +914,7 @@ public actor MockChatProvider: ChatProvider {
         }
         nextMessageID += 1
         let attachments = try draft.attachments.enumerated().map { index, attachment in
-            var staged = try Self.stageAttachment(
+            var staged = try MockChatMediaFixtures.stageAttachment(
                 attachment.url,
                 messageID: nextMessageID,
                 index: index
@@ -1458,15 +1388,15 @@ public extension MockChatProvider {
     }
 
     func trendingGIFs() async throws -> [GIFSearchResult] {
-        try Self.demoGIFs(query: "Trending")
+        try MockChatMediaFixtures.gifs(query: "Trending")
     }
 
     func searchGIFs(query: String) async throws -> [GIFSearchResult] {
-        try Self.demoGIFs(query: query.isEmpty ? "GIF" : query)
+        try MockChatMediaFixtures.gifs(query: query.isEmpty ? "GIF" : query)
     }
 
     func gifPickerLanding() async throws -> GIFPickerLanding {
-        let preview = try Self.demoGIFs(query: "Category").first?.previewURL
+        let preview = try MockChatMediaFixtures.gifs(query: "Category").first?.previewURL
         return GIFPickerLanding(
             categories: [
                 "hello", "lol", "love", "happy birthday", "thank you", "excited",
@@ -1498,71 +1428,11 @@ public extension MockChatProvider {
             MessageSticker(
                 id: "demo-wave", name: "Wave", description: "Offline demo sticker",
                 tags: "wave,hello",
-                format: .png, guildID: guildID, assetURL: Self.demoGIFs(query: "Sticker").first?.url
+                format: .png,
+                guildID: guildID,
+                assetURL: MockChatMediaFixtures.gifs(query: "Sticker").first?.url
             )
         ]
-    }
-
-    private static func demoGIFs(query: String) throws -> [GIFSearchResult] {
-        let directory = FileManager.default.temporaryDirectory.appending(
-            path: "SakuraCordDemoMedia", directoryHint: .isDirectory
-        )
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let url = directory.appending(path: "demo.gif")
-        if !FileManager.default.fileExists(atPath: url.path) {
-            let data = Data(
-                base64Encoded: "R0lGODlhAQABAPAAAP///wAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw=="
-            )!
-            try data.write(to: url, options: .atomic)
-        }
-        let sizes = [(640, 640), (498, 210), (374, 352), (498, 498), (200, 150), (640, 492)]
-        return (0 ..< 50).map { index in
-            let size = sizes[index % sizes.count]
-            return GIFSearchResult(
-                id: "demo-gif-\(index)",
-                title: "\(query) demo \(index + 1)",
-                url: URL(string: "https://example.invalid/mock-gif/\(index)")!,
-                previewURL: url,
-                width: size.0,
-                height: size.1,
-                thumbnailURL: url,
-                mediaURL: url
-            )
-        }
-    }
-
-    private static func stageAttachment(_ sourceURL: URL, messageID: UInt64, index: Int) throws
-        -> Attachment
-    {
-        let accessed = sourceURL.startAccessingSecurityScopedResource()
-        defer {
-            if accessed {
-                sourceURL.stopAccessingSecurityScopedResource()
-            }
-        }
-        let directory = FileManager.default.temporaryDirectory
-            .appending(path: "SakuraCordDemoAttachments", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let fileExtension = sourceURL.pathExtension
-        let filename =
-            sourceURL.lastPathComponent.isEmpty
-                ? "attachment-\(index)" : sourceURL.lastPathComponent
-        let destination = directory.appending(
-            path: "\(messageID)-\(index)\(fileExtension.isEmpty ? "" : ".\(fileExtension)")"
-        )
-        if FileManager.default.fileExists(atPath: destination.path) {
-            try FileManager.default.removeItem(at: destination)
-        }
-        try FileManager.default.copyItem(at: sourceURL, to: destination)
-        let values = try destination.resourceValues(forKeys: [.fileSizeKey])
-        let mediaType = UTType(filenameExtension: fileExtension)?.preferredMIMEType
-        return Attachment(
-            id: "\(messageID)-\(index)",
-            filename: filename,
-            url: destination,
-            mediaType: mediaType,
-            size: values.fileSize ?? 0
-        )
     }
 
     func edit(messageID: MessageID, channelID: ChannelID, content: String) async throws

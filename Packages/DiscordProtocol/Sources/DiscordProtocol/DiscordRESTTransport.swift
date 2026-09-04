@@ -1,6 +1,28 @@
 import Foundation
 import SakuraCordModels
 
+private struct DiscordRESTRequestContext {
+    let path: String
+    let method: String
+    let query: [URLQueryItem]
+    let body: [String: JSONValue]?
+    let headers: [String: String]
+    let majorParameter: String
+    let rateLimitKey: String
+    let isMessageHistoryRequest: Bool
+    let canRetryAsRead: Bool
+    let maximumAttempts: Int
+}
+
+private struct DiscordRESTPreparedRequest {
+    let request: URLRequest
+    let reservation: DiscordRESTProvider.RESTRateLimitReservation
+    let attempt: Int
+    let started: ContinuousClock.Instant
+    let session: URLSession
+    let sessionGeneration: Int
+}
+
 extension DiscordRESTProvider {
     #if DEBUG
         func orderedMemberListIDsForTesting(
@@ -162,57 +184,52 @@ extension DiscordRESTProvider {
         return userIDs
     }
 
-    static var memberListOperationApplication:
-        (
-            inout [GuildMemberListUpdateDTO.Item?],
-            GuildMemberListUpdateDTO.Operation
-        ) -> Void
-    {
-        { items, operation in
-        for operation in CollectionOfOne(operation) {
-            switch operation.op {
-            case "SYNC":
-                guard let range = operation.range, range.count == 2, let values = operation.items
-                else {
-                    continue
-                }
-                let lower = max(0, range[0])
-                let upper = max(lower, range[1])
-                if items.count <= upper {
-                    items.append(contentsOf: repeatElement(nil, count: upper + 1 - items.count))
-                }
-                for (offset, value) in values.enumerated() where lower + offset <= upper {
-                    items[lower + offset] = value
-                }
-            case "INSERT":
-                guard let index = operation.index, let item = operation.item else { continue }
-                items.insert(item, at: min(max(0, index), items.count))
-            case "UPDATE":
-                guard let index = operation.index, index >= 0, let item = operation.item else {
-                    continue
-                }
-                if items.count <= index {
-                    items.append(contentsOf: repeatElement(nil, count: index + 1 - items.count))
-                }
-                items[index] = item
-            case "DELETE":
-                guard let index = operation.index, items.indices.contains(index) else { continue }
-                items.remove(at: index)
-            case "INVALIDATE":
-                guard let range = operation.range, range.count == 2, !items.isEmpty else {
-                    continue
-                }
-                let lower = max(0, range[0])
-                let upper = min(items.count - 1, range[1])
-                if lower <= upper {
-                    for index in lower ... upper {
-                        items[index] = nil
-                    }
-                }
-            default:
-                continue
+    static func applyMemberListOperation(
+        _ operation: GuildMemberListUpdateDTO.Operation,
+        to items: inout [GuildMemberListUpdateDTO.Item?]
+    ) {
+        switch operation.op {
+        case "SYNC":
+            applyMemberListSync(operation, to: &items)
+        case "INSERT":
+            guard let index = operation.index, let item = operation.item else { return }
+            items.insert(item, at: min(max(0, index), items.count))
+        case "UPDATE":
+            guard let index = operation.index, index >= 0, let item = operation.item else { return }
+            if items.count <= index {
+                items.append(contentsOf: repeatElement(nil, count: index + 1 - items.count))
             }
+            items[index] = item
+        case "DELETE":
+            guard let index = operation.index, items.indices.contains(index) else { return }
+            items.remove(at: index)
+        case "INVALIDATE":
+            guard let range = operation.range, range.count == 2, !items.isEmpty else { return }
+            let lower = max(0, range[0])
+            let upper = min(items.count - 1, range[1])
+            guard lower <= upper else { return }
+            for index in lower ... upper {
+                items[index] = nil
+            }
+        default:
+            return
         }
+    }
+
+    private static func applyMemberListSync(
+        _ operation: GuildMemberListUpdateDTO.Operation,
+        to items: inout [GuildMemberListUpdateDTO.Item?]
+    ) {
+        guard let range = operation.range, range.count == 2,
+              let values = operation.items
+        else { return }
+        let lower = max(0, range[0])
+        let upper = max(lower, range[1])
+        if items.count <= upper {
+            items.append(contentsOf: repeatElement(nil, count: upper + 1 - items.count))
+        }
+        for (offset, value) in values.enumerated() where lower + offset <= upper {
+            items[lower + offset] = value
         }
     }
 
@@ -223,7 +240,7 @@ extension DiscordRESTProvider {
     ) {
         var items = cachedMemberListItems[guildID]?[memberListID] ?? []
         for operation in operations {
-            Self.memberListOperationApplication(&items, operation)
+            Self.applyMemberListOperation(operation, to: &items)
         }
         cachedMemberListItems[guildID, default: [:]][memberListID] = items
     }
@@ -300,17 +317,14 @@ extension DiscordRESTProvider {
         }
     }
 
-    var requestPerformance:
-        @isolated(any) (
-            String,
-            String,
-            [URLQueryItem],
-            [String: JSONValue]?,
-            [String: String],
-            Int?
-        ) async throws -> (Data, HTTPURLResponse)
-    {
-        { [self] path, method, query, body, headers, requestedMaximumAttempts in
+    func requestPerformance(
+        _ path: String,
+        _ method: String,
+        _ query: [URLQueryItem],
+        _ body: [String: JSONValue]?,
+        _ headers: [String: String],
+        _ requestedMaximumAttempts: Int?
+    ) async throws -> (Data, HTTPURLResponse) {
         guard !requestSafetyCircuitIsOpen else {
             throw ChatProviderError.invalidRequest(
                 "Discord networking was stopped for this session after an authentication or permission response. Restart only after checking the account status."
@@ -325,7 +339,51 @@ extension DiscordRESTProvider {
             && path.hasSuffix("/messages")
         let canRetryAsRead = Self.canRetryAsRead(method: method, path: path)
         let maximumAttempts = requestedMaximumAttempts ?? (canRetryAsRead ? 2 : 1)
+        let context = DiscordRESTRequestContext(
+            path: path,
+            method: method,
+            query: query,
+            body: body,
+            headers: headers,
+            majorParameter: majorParameter,
+            rateLimitKey: requestRateLimitKey,
+            isMessageHistoryRequest: isMessageHistoryRequest,
+            canRetryAsRead: canRetryAsRead,
+            maximumAttempts: maximumAttempts
+        )
         for attempt in 0 ..< maximumAttempts {
+            if let result = try await performRESTRequestAttempt(
+                context: context,
+                attempt: attempt
+            ) {
+                return result
+            }
+        }
+        throw ChatProviderError.invalidRequest("Discord rate limiting did not recover.")
+    }
+
+    private func performRESTRequestAttempt(
+        context: DiscordRESTRequestContext,
+        attempt: Int
+    ) async throws -> (Data, HTTPURLResponse)? {
+            let prepared = try await prepareRESTRequest(
+                context: context,
+                attempt: attempt
+            )
+            return try await executeRESTRequest(prepared, context: context)
+    }
+
+    private func prepareRESTRequest(
+        context: DiscordRESTRequestContext,
+        attempt: Int
+    ) async throws -> DiscordRESTPreparedRequest {
+            let path = context.path
+            let method = context.method
+            let query = context.query
+            let body = context.body
+            let headers = context.headers
+            let requestRateLimitKey = context.rateLimitKey
+            let isMessageHistoryRequest = context.isMessageHistoryRequest
             let scheduling = isMessageHistoryRequest
                 ? discordPerformanceSignposter.beginInterval(
                     "MessageHistoryRequestScheduling",
@@ -388,8 +446,6 @@ extension DiscordRESTProvider {
                 attempt: requestAttempt
             )
             let requestStarted = ContinuousClock.now
-            let data: Data
-            let rawResponse: URLResponse
             let requestSession = restSession
             let requestSessionGeneration = restSessionGeneration
             if let scheduling {
@@ -398,6 +454,27 @@ extension DiscordRESTProvider {
                     scheduling
                 )
             }
+            return DiscordRESTPreparedRequest(
+                request: request,
+                reservation: rateLimitReservation,
+                attempt: requestAttempt,
+                started: requestStarted,
+                session: requestSession,
+                sessionGeneration: requestSessionGeneration
+            )
+    }
+
+    private func executeRESTRequest(
+        _ prepared: DiscordRESTPreparedRequest,
+        context: DiscordRESTRequestContext
+    ) async throws -> (Data, HTTPURLResponse)? {
+            let method = context.method
+            let path = context.path
+            let requestRateLimitKey = context.rateLimitKey
+            let majorParameter = context.majorParameter
+            let isMessageHistoryRequest = context.isMessageHistoryRequest
+            let data: Data
+            let rawResponse: URLResponse
             do {
                 let networkName: StaticString = isMessageHistoryRequest
                     ? "MessageHistoryNetworkAttempt"
@@ -412,38 +489,40 @@ extension DiscordRESTProvider {
                         network
                     )
                 }
-                (data, rawResponse) = try await requestSession.data(for: request)
+                (data, rawResponse) = try await prepared.session.data(
+                    for: prepared.request
+                )
             } catch {
-                finishRateLimitReservation(rateLimitReservation)
+                finishRateLimitReservation(prepared.reservation)
                 apiDiagnostics.recordHTTPFailure(
                     method: method,
                     path: path,
-                    attempt: requestAttempt,
-                    duration: requestStarted.duration(to: .now),
+                    attempt: prepared.attempt,
+                    duration: prepared.started.duration(to: .now),
                     error: error
                 )
                 let canRetryOnCurrentSession = recoverRESTSessionIfNeeded(
                     after: error,
-                    requestGeneration: requestSessionGeneration
+                    requestGeneration: prepared.sessionGeneration
                 )
-                if canRetryAsRead,
-                   attempt + 1 < maximumAttempts,
+                if context.canRetryAsRead,
+                   prepared.attempt < context.maximumAttempts,
                    canRetryOnCurrentSession
                 {
-                    continue
+                    return nil
                 }
                 throw error
             }
             guard let response = rawResponse as? HTTPURLResponse else {
-                finishRateLimitReservation(rateLimitReservation)
+                finishRateLimitReservation(prepared.reservation)
                 let error = ChatProviderError.invalidRequest(
                     "Discord returned an invalid HTTP response."
                 )
                 apiDiagnostics.recordHTTPFailure(
                     method: method,
                     path: path,
-                    attempt: requestAttempt,
-                    duration: requestStarted.duration(to: .now),
+                    attempt: prepared.attempt,
+                    duration: prepared.started.duration(to: .now),
                     error: error
                 )
                 throw error
@@ -451,18 +530,36 @@ extension DiscordRESTProvider {
             apiDiagnostics.recordHTTPResponse(
                 method: method,
                 path: path,
-                attempt: requestAttempt,
+                attempt: prepared.attempt,
                 response: response,
                 body: data,
-                duration: requestStarted.duration(to: .now)
+                duration: prepared.started.duration(to: .now)
             )
             recordRateLimitState(
                 response: response,
                 routeKey: requestRateLimitKey,
                 majorParameter: majorParameter
             )
-            finishRateLimitReservation(rateLimitReservation)
+            finishRateLimitReservation(prepared.reservation)
 
+            return try await handleRESTResponse(
+                data: data,
+                response: response,
+                context: context,
+                attempt: prepared.attempt - 1
+            )
+    }
+
+    private func handleRESTResponse(
+        data: Data,
+        response: HTTPURLResponse,
+        context: DiscordRESTRequestContext,
+        attempt: Int
+    ) async throws -> (Data, HTTPURLResponse)? {
+            let path = context.path
+            let method = context.method
+            let requestRateLimitKey = context.rateLimitKey
+            let maximumAttempts = context.maximumAttempts
             if response.statusCode == 429 {
                 let retryAfter = Self.retryAfter(from: data, response: response)
                 let retryDate = Date.now.addingTimeInterval(retryAfter)
@@ -494,7 +591,7 @@ extension DiscordRESTProvider {
                 if attempt + 1 >= maximumAttempts {
                     return (data, response)
                 }
-                continue
+                return nil
             }
 
             let discordCode = Self.discordErrorCode(from: data)
@@ -543,9 +640,6 @@ extension DiscordRESTProvider {
                 unexpectedNotFoundCounts[route] = nil
             }
             return (data, response)
-        }
-        throw ChatProviderError.invalidRequest("Discord rate limiting did not recover.")
-        }
     }
 
     func perform(

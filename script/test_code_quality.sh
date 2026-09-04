@@ -183,4 +183,43 @@ git -C "$FIXTURE_ROOT" add App/Sources/LintFixture.swift
     | ./.githooks/pre-push
 )
 
+printf '\n// swiftlint:disable file_length\n' >>"$FIXTURE_ROOT/App/Sources/Fixture.swift"
+set +e
+SUPPRESSION_OUTPUT="$(
+  SAKURACORD_CODE_QUALITY_ROOT="$FIXTURE_ROOT" \
+    SAKURACORD_CODE_QUALITY_TOOLS_DIR="$TOOLS_DIR" \
+    "$FIXTURE_ROOT/script/code_quality.sh" check 2>&1
+)"
+SUPPRESSION_STATUS=$?
+set -e
+if [[ "$SUPPRESSION_STATUS" -eq 0 ]]; then
+  echo "Expected code quality to reject a file-length suppression." >&2
+  exit 1
+fi
+if [[ "$SUPPRESSION_OUTPUT" != *"File-length suppressions and blanket disables are not allowed"* ]]; then
+  echo "Expected the file-length suppression guard diagnostic." >&2
+  echo "$SUPPRESSION_OUTPUT" >&2
+  exit 1
+fi
+
+sed -i '' 's/swiftlint:disable file_length/swiftlint:disable all/' \
+  "$FIXTURE_ROOT/App/Sources/Fixture.swift"
+set +e
+SUPPRESSION_OUTPUT="$(
+  SAKURACORD_CODE_QUALITY_ROOT="$FIXTURE_ROOT" \
+    SAKURACORD_CODE_QUALITY_TOOLS_DIR="$TOOLS_DIR" \
+    "$FIXTURE_ROOT/script/code_quality.sh" check 2>&1
+)"
+SUPPRESSION_STATUS=$?
+set -e
+if [[ "$SUPPRESSION_STATUS" -eq 0 ]]; then
+  echo "Expected code quality to reject a blanket SwiftLint suppression." >&2
+  exit 1
+fi
+if [[ "$SUPPRESSION_OUTPUT" != *"File-length suppressions and blanket disables are not allowed"* ]]; then
+  echo "Expected the blanket suppression guard diagnostic." >&2
+  echo "$SUPPRESSION_OUTPUT" >&2
+  exit 1
+fi
+
 echo "Code-quality regression fixture passed."

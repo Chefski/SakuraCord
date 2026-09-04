@@ -9,13 +9,24 @@ import SakuraCordModels
 import SwiftUI
 
 extension NativeTimelineCanvasView {
-    var animatedMediaKeysOperation:
-        @MainActor (MessageRowPresentation, NativeTimelineRowLayout) -> Set<NativeTimelineMediaKey>
-    {
-        { [self] row, layout in
-        let message = row.message
+    func animatedMediaKeys(
+        for row: MessageRowPresentation,
+        layout: NativeTimelineRowLayout
+    ) -> Set<NativeTimelineMediaKey> {
         var keys: Set<NativeTimelineMediaKey> = []
+        appendAnimatedAvatarKeys(for: row, layout: layout, into: &keys)
+        appendAnimatedContentKeys(for: row, layout: layout, into: &keys)
+        appendAnimatedComponentKeys(for: row, layout: layout, into: &keys)
+        appendAnimatedStickerAndReactionKeys(for: row, layout: layout, into: &keys)
+        return keys
+    }
 
+    private func appendAnimatedAvatarKeys(
+        for row: MessageRowPresentation,
+        layout: NativeTimelineRowLayout,
+        into keys: inout Set<NativeTimelineMediaKey>
+    ) {
+        let message = row.message
         let author =
             model?.authorPresentation(for: message).user
             ?? message.author
@@ -62,7 +73,14 @@ extension NativeTimelineCanvasView {
                 }
             }
         }
+    }
 
+    private func appendAnimatedContentKeys(
+        for row: MessageRowPresentation,
+        layout: NativeTimelineRowLayout,
+        into keys: inout Set<NativeTimelineMediaKey>
+    ) {
+        let message = row.message
         for region in layout.linkedImageRegions
         where Self.isPotentiallyAnimated(region.reference.displayURL) {
             keys.insert(.media(
@@ -119,6 +137,14 @@ extension NativeTimelineCanvasView {
                 )
             }
         }
+    }
+
+    private func appendAnimatedComponentKeys(
+        for row: MessageRowPresentation,
+        layout: NativeTimelineRowLayout,
+        into keys: inout Set<NativeTimelineMediaKey>
+    ) {
+        let message = row.message
         for component in layout.componentLayouts {
             let hiddenContainerFrames =
                 NativeTimelineSpoilerConcealmentPolicy
@@ -186,6 +212,14 @@ extension NativeTimelineCanvasView {
                 )
             }
         }
+    }
+
+    private func appendAnimatedStickerAndReactionKeys(
+        for row: MessageRowPresentation,
+        layout: NativeTimelineRowLayout,
+        into keys: inout Set<NativeTimelineMediaKey>
+    ) {
+        let message = row.message
         for sticker in message.stickers
         where sticker.format == .apng || sticker.format == .gif {
             if let url = sticker.mediaURL {
@@ -201,16 +235,6 @@ extension NativeTimelineCanvasView {
             else { continue }
             keys.insert(.media(url, maximumPixelDimension: 64))
         }
-        return keys
-
-        }
-    }
-
-    func animatedMediaKeys(
-        for row: MessageRowPresentation,
-        layout: NativeTimelineRowLayout
-    ) -> Set<NativeTimelineMediaKey> {
-        animatedMediaKeysOperation(row, layout)
     }
 
     func appendAnimatedInlineKeys(

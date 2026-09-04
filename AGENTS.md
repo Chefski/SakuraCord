@@ -36,6 +36,8 @@ manifests.
 
 - Inspect current code, tests, configuration, and Git state before relying on
   documentation or roadmap descriptions. Preserve unrelated and dirty work.
+- Before implementing a feature, identify its model, provider, and presentation
+  owner; keep each responsibility with that owner.
 - For work that is not exclusively UI, prefer a read-only authenticated
   verification pass against a configured session when it can exercise the
   changed behavior. Agent-run verification must not deliberately mutate remote

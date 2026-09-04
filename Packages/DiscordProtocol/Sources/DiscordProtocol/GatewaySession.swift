@@ -402,9 +402,6 @@ actor GatewaySession {
         }
     }
 
-    // The receive loop deliberately owns framing, decoding, diagnostics, and
-    // lifecycle teardown so a malformed payload closes one exact socket.
-    // swiftlint:disable:next function_body_length
     private func runConnection(generation activeGeneration: Int) async -> ConnectionOutcome {
         transition(to: .connecting)
         eventContinuation.yield(.stateChanged(.connecting))
@@ -456,45 +453,11 @@ actor GatewaySession {
         }
 
         do {
-            while isActive(activeGeneration) {
-                let message = try await activeSocket.receive()
-                let framing = discordPerformanceSignposter.beginInterval(
-                    "GatewayPayloadFraming",
-                    id: discordPerformanceSignposter.makeSignpostID()
-                )
-                let payloads = try framer.append(message)
-                discordPerformanceSignposter.endInterval(
-                    "GatewayPayloadFraming", framing
-                )
-                for payload in payloads {
-                    let envelope: GatewayEnvelope
-                    do {
-                        let decoding = discordPerformanceSignposter.beginInterval(
-                            "GatewayEnvelopeDecode",
-                            id: discordPerformanceSignposter.makeSignpostID()
-                        )
-                        defer {
-                            discordPerformanceSignposter.endInterval(
-                                "GatewayEnvelopeDecode", decoding
-                            )
-                        }
-                        envelope = try codec.decode(payload)
-                    } catch {
-                        apiDiagnostics.recordGatewayData(
-                            transport: "gateway",
-                            direction: "response",
-                            data: payload
-                        )
-                        throw error
-                    }
-                    apiDiagnostics.recordGateway(direction: "response", envelope: envelope)
-                    if let outcome = try await process(envelope, generation: activeGeneration) {
-                        await activeSocket.close(code: 4000)
-                        return outcome
-                    }
-                }
-            }
-            return .cancelled
+            return try await receiveConnectionMessages(
+                from: activeSocket,
+                framer: framer,
+                generation: activeGeneration
+            )
         } catch is CancellationError {
             return .cancelled
         } catch {
@@ -514,6 +477,58 @@ actor GatewaySession {
             }
             let closeCode = await activeSocket.closeCode()
             return classify(closeCode: closeCode)
+        }
+    }
+
+    // The receive loop deliberately owns framing and decoding so a malformed
+    // payload closes one exact socket in `runConnection`.
+    private func receiveConnectionMessages(
+        from activeSocket: any GatewaySocket,
+        framer initialFramer: GatewayPayloadFramer,
+        generation activeGeneration: Int
+    ) async throws -> ConnectionOutcome {
+        var framer = initialFramer
+        while isActive(activeGeneration) {
+            let message = try await activeSocket.receive()
+            let framing = discordPerformanceSignposter.beginInterval(
+                "GatewayPayloadFraming",
+                id: discordPerformanceSignposter.makeSignpostID()
+            )
+            let payloads = try framer.append(message)
+            discordPerformanceSignposter.endInterval(
+                "GatewayPayloadFraming", framing
+            )
+            for payload in payloads {
+                let envelope = try decodeGatewayPayload(payload)
+                apiDiagnostics.recordGateway(direction: "response", envelope: envelope)
+                if let outcome = try await process(envelope, generation: activeGeneration) {
+                    await activeSocket.close(code: 4000)
+                    return outcome
+                }
+            }
+        }
+        return .cancelled
+    }
+
+    private func decodeGatewayPayload(_ payload: Data) throws -> GatewayEnvelope {
+        do {
+            let decoding = discordPerformanceSignposter.beginInterval(
+                "GatewayEnvelopeDecode",
+                id: discordPerformanceSignposter.makeSignpostID()
+            )
+            defer {
+                discordPerformanceSignposter.endInterval(
+                    "GatewayEnvelopeDecode", decoding
+                )
+            }
+            return try codec.decode(payload)
+        } catch {
+            apiDiagnostics.recordGatewayData(
+                transport: "gateway",
+                direction: "response",
+                data: payload
+            )
+            throw error
         }
     }
 

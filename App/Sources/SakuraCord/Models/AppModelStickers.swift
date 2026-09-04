@@ -254,4 +254,65 @@ extension AppModel {
             return false
         }
     }
+
+    func loadStickersIfNeeded(in guildID: GuildID) {
+        guard stickersByGuild[guildID] == nil, stickerLoadTasks[guildID] == nil else { return }
+        let session = accountSession()
+        let generation = stickerLoadGeneration
+        stickerLoadTasks[guildID] = Task { [weak self] in
+            guard let self else { return }
+            defer {
+                if self.isCurrentAccountSession(session),
+                   self.stickerLoadGeneration == generation
+                {
+                    self.stickerLoadTasks[guildID] = nil
+                }
+            }
+            guard await session.provider.supports(.stickers),
+                  self.isCurrentAccountSession(session),
+                  self.stickerLoadGeneration == generation,
+                  !Task.isCancelled
+            else {
+                guard self.isCurrentAccountSession(session),
+                      self.stickerLoadGeneration == generation,
+                      !Task.isCancelled
+                else { return }
+                stickersByGuild[guildID] = []
+                return
+            }
+            let stickers = await (try? session.provider.stickers(in: guildID)) ?? []
+            guard self.isCurrentAccountSession(session),
+                  self.stickerLoadGeneration == generation,
+                  !Task.isCancelled
+            else { return }
+            stickersByGuild[guildID] = stickers
+        }
+    }
+
+    @discardableResult
+    func sendSticker(_ sticker: MessageSticker) async -> Bool {
+        let session = accountSession()
+        guard let channelID = selectedChannelID,
+              supportedCapabilities.contains(.stickerSending),
+              isCurrentAccountSession(session)
+        else {
+            return false
+        }
+        let draft = SendMessageDraft(channelID: channelID, content: "", stickerIDs: [sticker.id])
+        var presentedSticker = sticker
+        presentedSticker.assetURL = sticker.pickerMediaURL ?? sticker.mediaURL
+        let optimistic = optimisticMessage(
+            for: draft,
+            replyPreview: nil,
+            stickers: [presentedSticker]
+        )
+        appendOutgoingMessage(optimistic)
+        outgoingMessages.draftsByNonce[draft.nonce] = draft
+        let didSend = await performOutgoingSend(draft, isRetry: false)
+        if didSend {
+            completeConversationReadingAndAdvance(channelID: channelID)
+        }
+        return didSend
+    }
+
 }

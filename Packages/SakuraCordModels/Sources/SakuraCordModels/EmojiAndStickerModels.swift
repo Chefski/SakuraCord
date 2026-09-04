@@ -1,0 +1,105 @@
+import Foundation
+
+public struct DiscordEmoji: Identifiable, Codable, Hashable, Sendable {
+    public let id: String
+    public var name: String
+    public var isAnimated: Bool
+    public var guildID: GuildID
+    public var isAvailable: Bool
+    public var assetURL: URL?
+
+    public init(
+        id: String,
+        name: String,
+        isAnimated: Bool = false,
+        guildID: GuildID,
+        isAvailable: Bool = true,
+        assetURL: URL? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.isAnimated = isAnimated
+        self.guildID = guildID
+        self.isAvailable = isAvailable
+        self.assetURL = assetURL
+    }
+
+    public var messageToken: String {
+        "<\(isAnimated ? "a" : ""):\(name):\(id)>"
+    }
+
+    public var reactionToken: String {
+        "\(name):\(id)"
+    }
+
+    public var imageURL: URL? {
+        if let assetURL {
+            return assetURL
+        }
+        return URL(
+            string:
+            "https://cdn.discordapp.com/emojis/\(id).webp?size=96&animated=\(isAnimated ? "true" : "false")"
+        )
+    }
+
+    public var linkedImageMarkdown: String {
+        "[\(name)](https://cdn.discordapp.com/emojis/\(id).\(isAnimated ? "gif" : "webp")?size=48&animated=\(isAnimated ? "true" : "false")&name=\(name)&lossless=true)"
+    }
+}
+
+public struct EmojiUserSettings: Equatable, Sendable {
+    public var favoriteKeys: [String]
+    public var frequentlyUsedKeys: [String]
+    public var usageScores: [String: Int]
+    public var guildAndChannelUsageScores: [String: Int]
+    public var guildAndChannelUsage: [String: DiscordFrecencyUsage]
+    public var guildAndChannelUsageOrder: [String]
+
+    public init(
+        favoriteKeys: [String] = [],
+        frequentlyUsedKeys: [String] = [],
+        usageScores: [String: Int] = [:],
+        guildAndChannelUsageScores: [String: Int] = [:],
+        guildAndChannelUsage: [String: DiscordFrecencyUsage] = [:],
+        guildAndChannelUsageOrder: [String] = []
+    ) {
+        self.favoriteKeys = favoriteKeys
+        self.frequentlyUsedKeys = frequentlyUsedKeys
+        self.usageScores = usageScores
+        self.guildAndChannelUsageScores = guildAndChannelUsageScores
+        self.guildAndChannelUsage = guildAndChannelUsage
+        self.guildAndChannelUsageOrder = guildAndChannelUsageOrder
+    }
+}
+
+public struct DiscordFrecencyUsage: Codable, Equatable, Sendable {
+    public var totalUses: Int
+    public var recentUses: [UInt64]
+
+    public init(totalUses: Int, recentUses: [UInt64]) {
+        self.totalUses = totalUses
+        self.recentUses = recentUses
+    }
+}
+
+public struct StickerUserSettings: Equatable, Sendable {
+    public var favoriteIDs: [String]
+    public var frequentlyUsedIDs: [String]
+    public var usageScores: [String: Int]
+    public var usage: [String: DiscordFrecencyUsage]
+    public var usageOrder: [String]
+
+    public init(
+        favoriteIDs: [String] = [],
+        frequentlyUsedIDs: [String] = [],
+        usageScores: [String: Int] = [:],
+        usage: [String: DiscordFrecencyUsage] = [:],
+        usageOrder: [String] = []
+    ) {
+        self.favoriteIDs = favoriteIDs
+        self.frequentlyUsedIDs = frequentlyUsedIDs
+        self.usageScores = usageScores
+        self.usage = usage
+        self.usageOrder = usageOrder
+    }
+}
