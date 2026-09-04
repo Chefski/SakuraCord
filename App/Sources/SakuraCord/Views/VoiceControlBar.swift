@@ -58,7 +58,10 @@ struct VoiceControlBar<SettingsControl: View>: View {
             .buttonStyle(.plain)
             .foregroundStyle(statusColor)
             .help("Voice Details")
-            .popover(isPresented: $showConnectionDetails, arrowEdge: .trailing) {
+            .escapeDismissiblePopover(
+                isPresented: $showConnectionDetails,
+                arrowEdge: .trailing
+            ) {
                 VoiceConnectionDetails(model: model, statusLabel: statusLabel, statusColor: statusColor)
             }
 
@@ -99,7 +102,10 @@ struct VoiceControlBar<SettingsControl: View>: View {
                 primaryAction: { Task { await model.toggleCamera() } },
                 secondaryAction: { showCameraControls.toggle() }
             )
-            .popover(isPresented: $showCameraControls, arrowEdge: .trailing) {
+            .escapeDismissiblePopover(
+                isPresented: $showCameraControls,
+                arrowEdge: .trailing
+            ) {
                 VoiceCameraControls(model: model)
             }
             .contextMenu { cameraMenu }
@@ -112,7 +118,10 @@ struct VoiceControlBar<SettingsControl: View>: View {
                 primaryAction: { Task { await model.toggleVoiceMute() } },
                 secondaryAction: { showInputControls.toggle() }
             )
-            .popover(isPresented: $showInputControls, arrowEdge: .trailing) {
+            .escapeDismissiblePopover(
+                isPresented: $showInputControls,
+                arrowEdge: .trailing
+            ) {
                 VoiceInputControls(model: model)
             }
 
@@ -124,7 +133,10 @@ struct VoiceControlBar<SettingsControl: View>: View {
                 primaryAction: { Task { await model.toggleVoiceDeafen() } },
                 secondaryAction: { showOutputControls.toggle() }
             )
-            .popover(isPresented: $showOutputControls, arrowEdge: .trailing) {
+            .escapeDismissiblePopover(
+                isPresented: $showOutputControls,
+                arrowEdge: .trailing
+            ) {
                 VoiceOutputControls(model: model)
             }
 
@@ -531,7 +543,10 @@ struct VoiceCallControlDock: View {
                         primaryAction: { Task { await model.stopScreenSharing() } },
                         secondaryAction: { showScreenShareControls.toggle() }
                     )
-                    .popover(isPresented: $showScreenShareControls, arrowEdge: .bottom) {
+                    .escapeDismissiblePopover(
+                        isPresented: $showScreenShareControls,
+                        arrowEdge: .bottom
+                    ) {
                         ScreenShareControlsPopover(model: model)
                     }
                 }
@@ -547,7 +562,10 @@ struct VoiceCallControlDock: View {
                     primaryAction: { Task { await model.toggleCamera() } },
                     secondaryAction: { showCameraControls.toggle() }
                 )
-                .popover(isPresented: $showCameraControls, arrowEdge: .bottom) {
+                .escapeDismissiblePopover(
+                    isPresented: $showCameraControls,
+                    arrowEdge: .bottom
+                ) {
                     VoiceCameraControls(model: model)
                 }
                 .contextMenu { cameraMenu }
@@ -561,7 +579,10 @@ struct VoiceCallControlDock: View {
                     primaryAction: { Task { await model.toggleVoiceMute() } },
                     secondaryAction: { showInputControls.toggle() }
                 )
-                .popover(isPresented: $showInputControls, arrowEdge: .bottom) {
+                .escapeDismissiblePopover(
+                    isPresented: $showInputControls,
+                    arrowEdge: .bottom
+                ) {
                     VoiceInputControls(model: model)
                 }
 
@@ -574,7 +595,10 @@ struct VoiceCallControlDock: View {
                     primaryAction: { Task { await model.toggleVoiceDeafen() } },
                     secondaryAction: { showOutputControls.toggle() }
                 )
-                .popover(isPresented: $showOutputControls, arrowEdge: .bottom) {
+                .escapeDismissiblePopover(
+                    isPresented: $showOutputControls,
+                    arrowEdge: .bottom
+                ) {
                     VoiceOutputControls(model: model)
                 }
 
@@ -667,7 +691,10 @@ private struct ScreenShareControlsPopover: View {
             }
             .buttonStyle(.plain)
             .screenSharePopoverHoverEffect()
-            .popover(isPresented: $showFrameRateControls, arrowEdge: .trailing) {
+            .escapeDismissiblePopover(
+                isPresented: $showFrameRateControls,
+                arrowEdge: .trailing
+            ) {
                 ScreenShareFrameRatePopover(model: model)
             }
 
@@ -686,7 +713,10 @@ private struct ScreenShareControlsPopover: View {
             }
             .buttonStyle(.plain)
             .screenSharePopoverHoverEffect()
-            .popover(isPresented: $showQualityControls, arrowEdge: .trailing) {
+            .escapeDismissiblePopover(
+                isPresented: $showQualityControls,
+                arrowEdge: .trailing
+            ) {
                 ScreenShareQualityPopover(model: model)
             }
 

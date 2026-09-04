@@ -3,6 +3,7 @@ import SwiftUI
 @MainActor
 final class StablePopoverHostingController<Content: View>: NSHostingController<Content> {
     private let dismiss: () -> Void
+    private var escapeKeyRegistration: PopoverEscapeKeyRegistration?
 
     init(rootView: Content, dismiss: @escaping () -> Void) {
         self.dismiss = dismiss
@@ -16,5 +17,30 @@ final class StablePopoverHostingController<Content: View>: NSHostingController<C
 
     override func cancelOperation(_ sender: Any?) {
         dismiss()
+    }
+
+    func monitorEscapeKey(
+        in popoverWindow: NSWindow?,
+        presentingWindow: NSWindow?
+    ) {
+        guard let popoverWindow else { return }
+        if let escapeKeyRegistration {
+            escapeKeyRegistration.update(
+                popoverWindow: popoverWindow,
+                presentingWindow: presentingWindow,
+                dismiss: dismiss
+            )
+        } else {
+            escapeKeyRegistration = PopoverEscapeKeyCoordinator.shared.register(
+                popoverWindow: popoverWindow,
+                presentingWindow: presentingWindow,
+                dismiss: dismiss
+            )
+        }
+    }
+
+    override func viewDidDisappear() {
+        super.viewDidDisappear()
+        escapeKeyRegistration = nil
     }
 }

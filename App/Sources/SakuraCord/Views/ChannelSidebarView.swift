@@ -932,7 +932,10 @@ private struct YouPopoverOptions: View {
             .screenSharePopoverHoverEffect()
             .disabled(!isStatusEnabled)
             .opacity(isStatusEnabled ? 1 : 0.45)
-            .popover(isPresented: $isStatusPopoverPresented, arrowEdge: .trailing) {
+            .escapeDismissiblePopover(
+                isPresented: $isStatusPopoverPresented,
+                arrowEdge: .trailing
+            ) {
                 StatusSelectionPopover(
                     currentStatus: currentStatus,
                     updateStatus: updateStatus
@@ -960,7 +963,10 @@ private struct YouPopoverOptions: View {
             .screenSharePopoverHoverEffect()
             .disabled(!isAccountSwitchingEnabled)
             .opacity(isAccountSwitchingEnabled ? 1 : 0.45)
-            .popover(isPresented: $isAccountPopoverPresented, arrowEdge: .trailing) {
+            .escapeDismissiblePopover(
+                isPresented: $isAccountPopoverPresented,
+                arrowEdge: .trailing
+            ) {
                 AccountSelectionPopover(
                     savedAccounts: savedAccounts,
                     activeAccountID: activeAccountID,

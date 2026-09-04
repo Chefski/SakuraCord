@@ -231,7 +231,10 @@ private struct ScreenSharePreviewFooter: View {
                     title: model.screenShareSettings.frameRate.title,
                     systemImage: "gauge.with.dots.needle.67percent"
                 ) { showFrameRateControls.toggle() }
-                .popover(isPresented: $showFrameRateControls, arrowEdge: .bottom) {
+                .escapeDismissiblePopover(
+                    isPresented: $showFrameRateControls,
+                    arrowEdge: .bottom
+                ) {
                     ScreenShareFrameRatePopover(model: model)
                 }
 
@@ -239,7 +242,10 @@ private struct ScreenSharePreviewFooter: View {
                     title: model.screenShareSettings.quality.title,
                     systemImage: "sparkles.tv"
                 ) { showQualityControls.toggle() }
-                .popover(isPresented: $showQualityControls, arrowEdge: .bottom) {
+                .escapeDismissiblePopover(
+                    isPresented: $showQualityControls,
+                    arrowEdge: .bottom
+                ) {
                     ScreenShareQualityPopover(model: model)
                 }
 

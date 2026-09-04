@@ -689,16 +689,15 @@ private struct ChatRootView: View {
                         Label("Pinned Messages", systemImage: "pin.fill")
                     }
                     .help("Pinned Messages")
-                    .popover(
-                        isPresented: Binding(
-                            get: { model.pinnedMessages.isPresented },
-                            set: { presented in
-                                if !presented { model.dismissPinnedMessages() }
-                            }
-                        ),
-                        arrowEdge: .bottom
-                    ) {
-                        PinnedMessagesPopoverView(model: model)
+                    .background {
+                        StableAnchoredPopoverPresenter(
+                            isPresented: model.pinnedMessages.isPresented,
+                            configuration: .toolbarPanel,
+                            onDismiss: model.dismissPinnedMessages
+                        ) {
+                            PinnedMessagesPopoverView(model: model)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 }
                 .visibilityPriority(.high)
@@ -1283,7 +1282,7 @@ private struct ChannelTopicToolbarButton: View {
                 textSize: textSize
             )
         }
-        .popover(
+        .escapeDismissiblePopover(
             isPresented: $isTopicPresented,
             attachmentAnchor: .rect(.bounds),
             arrowEdge: .bottom

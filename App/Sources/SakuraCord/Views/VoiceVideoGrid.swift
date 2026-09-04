@@ -756,7 +756,7 @@ private struct VoiceParticipantTile: View {
                 .glassEffect(.regular.interactive(), in: Circle())
                 .help("User Volume")
                 .padding(metrics.value(10))
-                .popover(isPresented: $showVolume, arrowEdge: .top) {
+                .escapeDismissiblePopover(isPresented: $showVolume, arrowEdge: .top) {
                     ParticipantVolumeControl(
                         name: participant.name,
                         initialVolume: participant.volume,

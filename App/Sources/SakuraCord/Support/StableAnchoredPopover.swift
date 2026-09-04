@@ -167,6 +167,15 @@ struct StablePopoverConfiguration {
         contentSizing: .constrained(CGSize(width: 520, height: 760)),
         stabilizesInitialContentSize: true
     )
+
+    static let toolbarPanel = StablePopoverConfiguration(
+        preferredEdge: .minY,
+        behavior: .semitransient,
+        animates: true,
+        ignoresMouseEvents: false,
+        contentSizing: .constrained(CGSize(width: 520, height: 760)),
+        stabilizesInitialContentSize: true
+    )
 }
 
 nonisolated struct StablePopoverAnchorSnapshot: Equatable, Sendable {
@@ -592,6 +601,12 @@ struct StableAnchoredPopoverPresenter<Content: View>: NSViewRepresentable {
             popover.show(relativeTo: anchorView.bounds, of: anchorView, preferredEdge: placement.edge)
             popover.contentViewController?.view.window?.ignoresMouseEvents =
                 configuration.ignoresMouseEvents
+            if !configuration.ignoresMouseEvents {
+                hostingController.monitorEscapeKey(
+                    in: popover.contentViewController?.view.window,
+                    presentingWindow: anchor?.sourceView?.window
+                )
+            }
         }
 
         private func refreshPresentation() {

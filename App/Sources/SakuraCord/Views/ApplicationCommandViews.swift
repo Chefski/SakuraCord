@@ -900,7 +900,7 @@ private struct CommandEntityOptionEditor: View {
             .background(.background.opacity(0.55), in: ConcentricRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
-        .popover(isPresented: $isPresented, arrowEdge: .bottom) {
+        .escapeDismissiblePopover(isPresented: $isPresented, arrowEdge: .bottom) {
             CommandEntityResolver(
                 title: title, query: $query, candidates: filteredCandidates
             ) { candidate in

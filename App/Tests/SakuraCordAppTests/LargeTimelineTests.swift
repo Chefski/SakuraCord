@@ -934,6 +934,23 @@ func `text spoiler reveal state stays scoped to its exact native text region`() 
 }
 
 @Test
+func `timeline text links tolerate pointer jitter before selection begins`() {
+    let gesture = NativeTimelineTextSelectionGesture(
+        itemIdentifier: .message(.server(
+            channelID: ChannelID(rawValue: 1),
+            messageID: MessageID(rawValue: 2)
+        )),
+        region: .content,
+        anchor: 0,
+        initialPoint: CGPoint(x: 100, y: 100)
+    )
+
+    #expect(!gesture.hasExceededDragThreshold(at: CGPoint(x: 101, y: 100)))
+    #expect(!gesture.hasExceededDragThreshold(at: CGPoint(x: 102, y: 102)))
+    #expect(gesture.hasExceededDragThreshold(at: CGPoint(x: 103, y: 100)))
+}
+
+@Test
 @MainActor
 func `hidden text spoilers stay private to accessibility until revealed`() {
     let value = NSMutableAttributedString(

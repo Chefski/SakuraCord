@@ -376,7 +376,8 @@ extension NativeTimelineCanvasView {
         textSelectionGesture = NativeTimelineTextSelectionGesture(
             itemIdentifier: candidate.itemIdentifier,
             region: candidate.region,
-            anchor: candidate.caret
+            anchor: candidate.caret,
+            initialPoint: point
         )
         didDragTextSelection = false
         if event.clickCount >= 3 {
@@ -434,9 +435,12 @@ extension NativeTimelineCanvasView {
             super.mouseDragged(with: event)
             return
         }
-        didDragTextSelection = true
-        _ = autoscroll(with: event)
         let point = convert(event.locationInWindow, from: nil)
+        if !didDragTextSelection {
+            guard gesture.hasExceededDragThreshold(at: point) else { return }
+            didDragTextSelection = true
+        }
+        _ = autoscroll(with: event)
         guard let candidate = timelineTextCaret(
             at: point,
             itemIdentifier: gesture.itemIdentifier,

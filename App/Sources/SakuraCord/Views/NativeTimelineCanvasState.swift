@@ -23,9 +23,19 @@ nonisolated struct NativeTimelineCodeBlockPointerTarget: Equatable {
 }
 
 nonisolated struct NativeTimelineTextSelectionGesture {
+    static let minimumDragDistance: CGFloat = 3
+
     let itemIdentifier: NativeMessageTimelineItem.Identifier
     let region: NativeTimelineTextRegion
     let anchor: Int
+    let initialPoint: CGPoint
+
+    func hasExceededDragThreshold(at point: CGPoint) -> Bool {
+        let deltaX = point.x - initialPoint.x
+        let deltaY = point.y - initialPoint.y
+        return deltaX * deltaX + deltaY * deltaY
+            >= Self.minimumDragDistance * Self.minimumDragDistance
+    }
 }
 
 @MainActor

@@ -729,7 +729,10 @@ private struct ProfileMutualSummary: View {
             )
             .foregroundStyle(.secondary)
             .padding(.horizontal, layout == .inspector ? 14 : 16)
-            .popover(item: $presentedList, arrowEdge: .trailing) { list in
+            .escapeDismissiblePopover(
+                item: $presentedList,
+                arrowEdge: .trailing
+            ) { list in
                 switch list {
                 case .servers:
                     ProfileMutualGuildsList(guilds: guilds)

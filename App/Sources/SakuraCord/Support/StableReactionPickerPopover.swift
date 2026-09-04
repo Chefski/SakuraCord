@@ -146,6 +146,10 @@ struct StableReactionPickerPresenter<Content: View>: NSViewRepresentable {
                 of: snapshotAnchor,
                 preferredEdge: placement.edge
             )
+            hostingController.monitorEscapeKey(
+                in: popover.contentViewController?.view.window,
+                presentingWindow: window
+            )
         }
 
         private static var maximumContentSize: CGSize {
