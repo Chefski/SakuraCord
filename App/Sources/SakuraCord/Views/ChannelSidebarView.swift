@@ -1120,6 +1120,8 @@ private extension PresenceStatus {
 }
 
 private struct ChannelRow: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     let model: AppModel
     let channel: Channel
     var rulesChannelID: ChannelID?
@@ -1130,7 +1132,7 @@ private struct ChannelRow: View {
     var body: some View {
         HStack(spacing: 8) {
             Capsule()
-                .fill(Color.primary)
+                .fill(colorScheme == .dark ? Color.white : Color.black)
                 .frame(width: 4, height: 8)
                 .opacity(showsUnread ? 1 : 0)
                 .frame(width: 8)
