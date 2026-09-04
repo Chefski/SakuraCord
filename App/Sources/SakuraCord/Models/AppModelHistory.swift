@@ -63,13 +63,14 @@ extension AppModel {
         hasCompletedInitialMessageLoad = false
         stopLocalTyping(clearThrottle: true)
         replyingTo = nil
+        // A cached conversation still needs its own draft restored.
+        draft = ""
 
         guard let channelID = selectedChannelID,
               selectedChannel?.kind != .voice || isVoiceChatOpen,
               selectedConversationAccess.isReadable
         else {
             replaceSelectedMessages(with: [])
-            draft = ""
             hasMoreMessages = false
             hasMoreLaterMessages = false
             isLoadingMessages = false
@@ -105,7 +106,6 @@ extension AppModel {
         }
         isLoadingMessages = true
         preserveUnreadDividerIfNeeded(channelID: channelID)
-        draft = ""
         let account = accountSession()
         channelLoadTask = startAccountChildTask(account: account) { model, account in
             await model.loadSelectedChannel(

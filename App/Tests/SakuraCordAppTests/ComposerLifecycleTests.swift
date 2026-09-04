@@ -6,6 +6,37 @@ import SakuraCordPersistence
 import Testing
 
 @MainActor
+@Test(arguments: ["", "destination draft"], [false, true])
+func cachedChannelDraftIsolation(destinationDraft: String, editsDuringRestoration: Bool) async throws {
+    let model = AppModel(launchMode: .offlineTesting)
+    let database = try #require(model.database)
+    let user = User(id: UserID(rawValue: 1), username: "author", displayName: "Author")
+    let source = Channel(id: ChannelID(rawValue: 200), guildID: nil, name: "source", kind: .directMessage)
+    let destination = Channel(id: ChannelID(rawValue: 201), guildID: nil, name: "destination", kind: .directMessage)
+    model.snapshot = BootstrapSnapshot(currentUser: user, guilds: [], channels: [source, destination], members: [])
+    model.hasMoreCache[source.id] = false
+    model.hasMoreCache[destination.id] = false
+    try await database.saveDraft(destinationDraft, channelID: destination.id)
+
+    model.selectedChannelID = source.id
+    await model.channelLoadTask?.value
+    model.updateDraft("source draft")
+    model.selectedChannelID = destination.id
+    #expect(model.draft.isEmpty, "The source draft must disappear before destination restoration suspends")
+    if editsDuringRestoration { model.updateDraft("new destination edit") }
+    await model.channelLoadTask?.value
+    let expectedDestinationDraft = editsDuringRestoration ? "new destination edit" : destinationDraft
+    #expect(model.draft == expectedDestinationDraft)
+
+    model.selectedChannelID = source.id
+    await model.channelLoadTask?.value
+    #expect(model.draft == "source draft")
+    await model.composer.flushDraftOperations()
+    #expect(try await database.draft(channelID: source.id) == "source draft")
+    #expect(try await database.draft(channelID: destination.id) == expectedDestinationDraft)
+}
+
+@MainActor
 @Test func `composer reset drains ordered writes into their original account database`() async throws {
     let first = try SakuraCordDatabase(inMemory: true)
     let second = try SakuraCordDatabase(inMemory: true)
