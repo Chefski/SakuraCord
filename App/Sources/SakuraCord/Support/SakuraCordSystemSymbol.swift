@@ -3,6 +3,7 @@ import SwiftUI
 
 enum SakuraCordSystemSymbol {
     nonisolated static let emojiFaceGrinning = "emoji.face.grinning"
+    nonisolated static let stickerFill = "sticker.fill"
 
     private static let privateSymbolsBundle = Bundle(
         path: "/System/Library/PrivateFrameworks/SFSymbols.framework/Resources/CoreGlyphsPrivate.bundle"
@@ -13,6 +14,13 @@ enum SakuraCordSystemSymbol {
             return Image(systemName: emojiFaceGrinning)
         }
         return Image(emojiFaceGrinning, bundle: privateSymbolsBundle)
+    }
+
+    static var stickerFillImage: Image {
+        guard let privateSymbolsBundle else {
+            return Image(systemName: stickerFill)
+        }
+        return Image(stickerFill, bundle: privateSymbolsBundle)
     }
 
     static func image(

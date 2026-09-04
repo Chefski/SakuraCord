@@ -199,7 +199,7 @@ struct ComposerView: View {
                         }
                         if model.supportedCapabilities.contains(.stickers) {
                             ComposerActionButton(
-                                icon: Image(systemName: "face.smiling.inverse"),
+                                icon: SakuraCordSystemSymbol.stickerFillImage,
                                 help: "Choose sticker",
                                 iconSize: 19,
                                 iconWeight: .medium,
