@@ -83,8 +83,7 @@ extension ProviderRequestContractTests {
         let identifyBody = try #require(identify["d"] as? [String: Any])
         #expect(
             (identifyBody["capabilities"] as? NSNumber)?.intValue
-                == DiscordProductionBaseline.august2026
-                    .privateChannelObfuscationCapabilities
+                == DiscordProductionBaseline.august2026.defaultCapabilities
         )
         let identifyProperties = try #require(identifyBody["properties"] as? [String: Any])
         #expect(identifyProperties["installation_id"] == nil)

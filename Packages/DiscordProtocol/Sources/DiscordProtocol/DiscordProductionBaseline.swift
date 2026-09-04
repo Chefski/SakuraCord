@@ -16,7 +16,6 @@ public struct DiscordProductionBaseline: Codable, Equatable, Sendable {
     public var desktopGatewayEncoding: String
     public var desktopGatewayCompression: String
     public var defaultCapabilities: Int
-    public var privateChannelObfuscationCapabilities: Int
     public var qosHeartbeatVersion: Int
 
     public static let august2026 = DiscordProductionBaseline(
@@ -33,7 +32,6 @@ public struct DiscordProductionBaseline: Codable, Equatable, Sendable {
         desktopGatewayEncoding: "etf",
         desktopGatewayCompression: "zstd-stream",
         defaultCapabilities: 1_734_653,
-        privateChannelObfuscationCapabilities: 1_767_421,
         qosHeartbeatVersion: 29
     )
 }

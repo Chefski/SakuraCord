@@ -762,19 +762,20 @@ minutes inactive and the REST super-properties update with the same session.
 Paicord supplies current JSON/zstd and 40/41 cross-checks. Swiftcord v1 supplies
 the historical JSON/zlib and opcode-1 subset and has no 13, 37, 40, or 41.
 
-Current first-party Identify normally uses capability bitfield `1734653`; the
-clean account received `1767421` because the first-party
-`private_channel_obfuscation` experiment adds bit 15. As rechecked on 13 August
-2026, SakuraCord now advertises `1767421`: its existing Ready Supplemental path
-hydrates `lazy_private_channels` from the supplemental user table, merges them
-with ordinary private channels, applies the same last-message ordering, and
-reconciles subsequent channel/message Gateway events. Discord's public Gateway
-documentation does not define user-client capability bit 15. The current web
-bundle supplies the operational contract. Pinned Paicord declares capability
-bits only through 14 and 16 and leaves `ReadySupplemental` empty; pinned
-Swiftcord v1 has no corresponding capability or supplemental implementation.
-Their absence was treated as an explicit compatibility gap, not as evidence to
-omit the current first-party shape.
+Current first-party Identify normally uses capability bitfield `1734653` and
+conditionally adds bit 15 (`1767421`) only when its
+`private_channel_obfuscation` experiment enables channel obfuscation. The
+current web bundle selects that bit at Gateway connection time and implements
+the corresponding guild-channel integrity and resynchronization protocol.
+SakuraCord advertises `1734653`: it does not implement that experimental
+protocol, and requesting it causes Discord to replace inaccessible guild
+channel names with the `__hidden__` sentinel. Its Ready Supplemental decoder
+still accepts `lazy_private_channels` when Discord supplies them and hydrates
+their recipients through the shared user table. Discord's public Gateway
+documentation does not define user-client capability bit 15. Pinned Paicord
+declares capability bits only through 14 and 16 and leaves `ReadySupplemental`
+empty; pinned Swiftcord v1 has no corresponding capability or supplemental
+implementation.
 
 ### Dispatch reconciliation
 

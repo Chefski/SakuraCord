@@ -164,7 +164,6 @@ private func appendETFBinary(_ value: String, to data: inout Data) {
     #expect(baseline.desktopGatewayEncoding == "etf")
     #expect(baseline.desktopGatewayCompression == "zstd-stream")
     #expect(baseline.defaultCapabilities == 1_734_653)
-    #expect(baseline.privateChannelObfuscationCapabilities == 1_767_421)
     #expect(baseline.qosHeartbeatVersion == 29)
 }
 

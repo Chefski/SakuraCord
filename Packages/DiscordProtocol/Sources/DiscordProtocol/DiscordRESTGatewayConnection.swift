@@ -233,13 +233,11 @@ extension DiscordRESTProvider {
             op: 2,
             data: .object([
                 "token": .string(token),
-                // Bit 15 asks Ready Supplemental to carry prioritized private
-                // channels separately. Both the ordinary and lazy lists flow
-                // through the same recipient hydration, ordering, and Gateway
-                // reconciliation path below.
-                "capabilities": .number(
-                    Double(baseline.privateChannelObfuscationCapabilities)
-                ),
+                // Discord adds bit 15 only when its channel-obfuscation
+                // experiment is active. Advertising it without the matching
+                // integrity and resync protocol replaces inaccessible channel
+                // names with the server sentinel instead of their real names.
+                "capabilities": .number(Double(baseline.defaultCapabilities)),
                 "properties": .object(clientMetadata.gatewayProperties()),
                 "client_state": .object(["guild_versions": .object([:])]),
             ])
