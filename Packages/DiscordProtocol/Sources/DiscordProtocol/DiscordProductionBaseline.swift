@@ -18,14 +18,14 @@ public struct DiscordProductionBaseline: Codable, Equatable, Sendable {
     public var defaultCapabilities: Int
     public var qosHeartbeatVersion: Int
 
-    public static let august2026 = DiscordProductionBaseline(
-        observedAt: Date(timeIntervalSince1970: 1_785_773_429),
-        webBuildNumber: 587_597,
+    public static let current = DiscordProductionBaseline(
+        observedAt: Date(timeIntervalSince1970: 1_788_566_400),
+        webBuildNumber: 607_562,
         apiVersion: 9,
-        desktopVersion: "0.0.403",
+        desktopVersion: "0.0.408",
         electronVersion: "42.7.1",
         chromiumVersion: "148.0.7778.280",
-        nativeBuildNumber: 87_263,
+        nativeBuildNumber: 89_799,
         apexAppSurface: 2,
         webGatewayEncoding: "json",
         webGatewayCompression: "zlib-stream",

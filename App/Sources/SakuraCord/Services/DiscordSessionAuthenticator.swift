@@ -367,7 +367,7 @@ actor DiscordSessionAuthenticator {
                     method: "GET",
                     queryItems: [URLQueryItem(
                         name: "surface",
-                        value: String(DiscordProductionBaseline.august2026.apexAppSurface)
+                        value: String(DiscordProductionBaseline.current.apexAppSurface)
                     )],
                     requestContext: .appBootstrap
                 )
@@ -461,7 +461,7 @@ actor DiscordSessionAuthenticator {
         requestContext: DiscordAuthenticationRequestContext = .standardREST,
         maximumRetries: Int = 3
     ) async throws -> (Data, HTTPURLResponse) {
-        let apiVersion = DiscordProductionBaseline.august2026.apiVersion
+        let apiVersion = DiscordProductionBaseline.current.apiVersion
         var components = URLComponents()
         components.scheme = "https"
         components.host = requestContext.host

@@ -183,6 +183,7 @@ final class NativeMemberListCanvasView: NSView {
     var presentation = NativeMemberListPresentation()
     var loadedItemIndexes: [Int] = []
     var selectedMemberID: UserID?
+    var openGame: ((ProfileGame) -> Void)?
     var profilePresentation: ProfilePresentationState?
     var isProfilePresented = false
     var dismissProfile: () -> Void = {}

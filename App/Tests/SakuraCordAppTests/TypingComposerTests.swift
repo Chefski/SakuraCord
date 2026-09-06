@@ -766,7 +766,7 @@ import Testing
     #expect(custom[0].matchesCompletionName("WAVE"))
 }
 
-@Test func `message emoji permissions use Nitro tokens and non Nitro linked image fallbacks`() {
+@Test func `emoji permissions preserve message fallbacks and profile entitlement locks`() {
     let currentGuild = GuildID(rawValue: 10)
     let otherGuild = GuildID(rawValue: 20)
     let localStatic = DiscordEmoji(id: "100", name: "local", guildID: currentGuild)
@@ -797,6 +797,15 @@ import Testing
         for: remoteAnimated, currentGuildID: currentGuild, premiumType: 0
     ) == remoteAnimated.linkedImageMarkdown)
     #expect(localAnimated.linkedImageMarkdown.contains(".gif?"))
+    for useCase in [DiscordEmojiUseCase.profile, .customStatus] {
+        #expect(DiscordEmojiPermissionPolicy.canShow(remoteStatic, for: useCase, premiumType: 0))
+        #expect(DiscordEmojiPermissionPolicy.isPremiumLocked(remoteStatic, for: useCase, premiumType: 0))
+        #expect(DiscordEmojiPermissionPolicy.isPremiumLocked(localStatic, for: useCase, premiumType: 0))
+        #expect(!DiscordEmojiPermissionPolicy.isPremiumLocked(remoteAnimated, for: useCase, premiumType: 2))
+    }
+    let managed = DiscordEmoji(id: "500", name: "managed", guildID: otherGuild, isManaged: true)
+    #expect(!DiscordEmojiPermissionPolicy.isPremiumLocked(managed, for: .profile, premiumType: 0))
+    #expect(DiscordEmojiPermissionPolicy.isPremiumLocked(managed, for: .customStatus, premiumType: 0))
 
     for premiumType in 1 ... 3 {
         #expect(DiscordEmojiPermissionPolicy.composerText(

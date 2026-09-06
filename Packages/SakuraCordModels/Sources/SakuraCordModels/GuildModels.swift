@@ -11,6 +11,7 @@ public struct Guild: Identifiable, Codable, Hashable, Sendable {
     public var currentUserPermissions: UInt64?
     public var rulesChannelID: ChannelID?
     public var features: Set<String>
+    public var profileTag: PrimaryGuildIdentity?
     public var defaultMessageNotifications: MessageNotificationLevel
     public var isUnavailable: Bool
 
@@ -19,6 +20,7 @@ public struct Guild: Identifiable, Codable, Hashable, Sendable {
         unreadCount: Int = 0, mentionCount: Int = 0, isOwnedByCurrentUser: Bool? = nil,
         currentUserPermissions: UInt64? = nil, rulesChannelID: ChannelID? = nil,
         features: Set<String> = [],
+        profileTag: PrimaryGuildIdentity? = nil,
         defaultMessageNotifications: MessageNotificationLevel = .onlyMentions,
         isUnavailable: Bool = false
     ) {
@@ -32,13 +34,14 @@ public struct Guild: Identifiable, Codable, Hashable, Sendable {
         self.currentUserPermissions = currentUserPermissions
         self.rulesChannelID = rulesChannelID
         self.features = features
+        self.profileTag = profileTag
         self.defaultMessageNotifications = defaultMessageNotifications
         self.isUnavailable = isUnavailable
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, name, iconURL, accentHex, unreadCount, mentionCount, isOwnedByCurrentUser
-        case currentUserPermissions, rulesChannelID, features, defaultMessageNotifications
+        case currentUserPermissions, rulesChannelID, features, profileTag, defaultMessageNotifications
         case isUnavailable
     }
 
@@ -54,6 +57,7 @@ public struct Guild: Identifiable, Codable, Hashable, Sendable {
         currentUserPermissions = try values.decodeIfPresent(UInt64.self, forKey: .currentUserPermissions)
         rulesChannelID = try values.decodeIfPresent(ChannelID.self, forKey: .rulesChannelID)
         features = try values.decodeIfPresent(Set<String>.self, forKey: .features) ?? []
+        profileTag = try values.decodeIfPresent(PrimaryGuildIdentity.self, forKey: .profileTag)
         defaultMessageNotifications =
             try values.decodeIfPresent(MessageNotificationLevel.self, forKey: .defaultMessageNotifications)
                 ?? .onlyMentions

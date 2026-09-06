@@ -183,6 +183,8 @@ extension DiscordRESTProvider {
     }
 
     public func disconnect() async {
+        profileApexAssignments = nil
+        resetProfileEditingState()
         derivedCacheGeneration &+= 1
         stickerFrecencyFlushGeneration &+= 1
         stickerFrecencyFlushTask?.cancel()
@@ -249,7 +251,7 @@ extension DiscordRESTProvider {
         guard gatewaySession == nil else { return }
         initialGatewaySnapshotResult = nil
         let token = try await authorizationToken()
-        let baseline = DiscordProductionBaseline.august2026
+        let baseline = DiscordProductionBaseline.current
         let identifyEnvelope = GatewayEnvelope(
             op: 2,
             data: .object([

@@ -688,6 +688,7 @@ struct GatewayReadyGuildsDTO: Decodable {
         var rulesChannelID: String?
         var defaultMessageNotifications: Int?
         var features: Set<String>
+        var profile: GuildProfileTagDTO?
         var voiceStates: [VoiceStateUpdateDTO]
         var emojis: GatewayGuildEmojiCollectionDTO?
         var stickers: [MessageStickerDTO]
@@ -698,7 +699,7 @@ struct GatewayReadyGuildsDTO: Decodable {
         var activityInstances: [GatewayActivityInstanceDTO]
 
         enum CodingKeys: String, CodingKey {
-            case id, name, icon, owner, permissions, properties, features
+            case id, name, icon, owner, permissions, properties, features, profile
             case ownerID = "owner_id"
             case rulesChannelID = "rules_channel_id"
             case defaultMessageNotifications = "default_message_notifications"
@@ -732,6 +733,9 @@ struct GatewayReadyGuildsDTO: Decodable {
             )) ?? nested?.defaultMessageNotifications
             features = (try? container.decode(Set<String>.self, forKey: .features))
                 ?? nested?.features ?? []
+            profile = container.contains(.profile)
+                ? try container.decodeIfPresent(GuildProfileTagDTO.self, forKey: .profile)
+                : nested?.profile
             voiceStates =
                 (try? container.decode(
                     LossyList<VoiceStateUpdateDTO>.self,
@@ -787,6 +791,7 @@ struct GatewayReadyGuildsDTO: Decodable {
                 currentUserPermissions: permissions.flatMap(UInt64.init),
                 rulesChannelID: rulesChannelID.flatMap(ChannelID.init),
                 features: features,
+                profileTag: profile?.domain(guildID: id),
                 defaultMessageNotifications:
                     defaultMessageNotifications.flatMap(
                         MessageNotificationLevel.init(rawValue:)
@@ -799,6 +804,7 @@ struct GatewayReadyGuildsDTO: Decodable {
     var privateChannels: [ChannelDTO]
     var lazyPrivateChannels: [ChannelDTO]
     var currentUser: UserDTO?
+    var apexExperiments: ProfileApexAssignmentsDTO?
     var users: [UserDTO]
     var friendUserIDs: Set<UserID>
     var blockedOrIgnoredUserIDs: Set<UserID>
@@ -817,6 +823,7 @@ struct GatewayReadyGuildsDTO: Decodable {
         case privateChannels = "private_channels"
         case lazyPrivateChannels = "lazy_private_channels"
         case currentUser = "user"
+        case apexExperiments = "apex_experiments"
         case users
         case relationships
         case presences
@@ -843,6 +850,7 @@ struct GatewayReadyGuildsDTO: Decodable {
                 LossyList<ChannelDTO>.self, forKey: .lazyPrivateChannels
             ))?.elements ?? []
         currentUser = try? container.decode(UserDTO.self, forKey: .currentUser)
+        apexExperiments = try? container.decode(ProfileApexAssignmentsDTO.self, forKey: .apexExperiments)
         users =
             (try? container.decode(
                 LossyList<UserDTO>.self, forKey: .users
@@ -1216,11 +1224,16 @@ struct ReadyMergedMemberDTO: Decodable {
     var bio: String?
     var pending: Bool?
     var joinedAt: String?
+    var avatarDecorationData: UserDTO.AvatarDecorationDTO?
+    var collectibles: UserCollectiblesDTO?
+    var displayNameStyles: UserDTO.DisplayNameStyleDTO?
 
     enum CodingKeys: String, CodingKey {
         case userID = "user_id"
-        case nick, roles, presence, avatar, banner, bio, pending
+        case nick, roles, presence, avatar, banner, bio, pending, collectibles
         case joinedAt = "joined_at"
+        case avatarDecorationData = "avatar_decoration_data"
+        case displayNameStyles = "display_name_styles"
     }
 
     func hydrated(using usersByID: [String: UserDTO]) -> GuildMemberDTO? {
@@ -1234,7 +1247,10 @@ struct ReadyMergedMemberDTO: Decodable {
             banner: banner,
             bio: bio,
             pending: pending,
-            joinedAt: joinedAt
+            joinedAt: joinedAt,
+            avatarDecorationData: avatarDecorationData,
+            collectibles: collectibles,
+            displayNameStyles: displayNameStyles
         )
     }
 }

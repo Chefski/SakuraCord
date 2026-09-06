@@ -658,21 +658,28 @@ private struct MediaViewerFile: View {
 
 struct ViewerAVPlayer: NSViewRepresentable {
     let url: URL
+    var autoplays = false
+    var mutesOnStart = false
+    var showsFullScreenToggleButton = false
 
     func makeNSView(context: Context) -> AVPlayerView {
         let view = AVPlayerView()
         view.controlsStyle = .inline
         view.videoGravity = .resizeAspect
+        view.showsFullScreenToggleButton = showsFullScreenToggleButton
         return view
     }
 
     func updateNSView(_ view: AVPlayerView, context: Context) {
+        view.showsFullScreenToggleButton = showsFullScreenToggleButton
         guard context.coordinator.url != url else { return }
         context.coordinator.player?.pause()
         let player = AVPlayer(url: url)
+        player.isMuted = mutesOnStart
         context.coordinator.url = url
         context.coordinator.player = player
         view.player = player
+        if autoplays { player.play() }
     }
 
     static func dismantleNSView(

@@ -2,6 +2,7 @@ import Foundation
 
 nonisolated enum SettingsPageID: String, CaseIterable, Codable, Identifiable, Sendable {
     case myAccount
+    case profiles
     case general
     case appearance
     case interface
@@ -407,6 +408,7 @@ nonisolated extension SettingsCatalog {
 
     static let foundationPages: [SettingsPageMetadata] = [
         myAccountPage,
+        profilesPage,
         generalPage,
         appearancePage,
         interfacePage,

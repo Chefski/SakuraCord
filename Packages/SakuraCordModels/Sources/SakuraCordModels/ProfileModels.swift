@@ -19,6 +19,7 @@ public struct ProfileEffect: Identifiable, Codable, Hashable, Sendable {
     public var title: String?
     public var accessibilityLabel: String?
     public var staticURL: URL?
+    public var thumbnailURL: URL?
     public var reducedMotionURL: URL?
     public var animations: [ProfileEffectAnimation]
 
@@ -27,6 +28,7 @@ public struct ProfileEffect: Identifiable, Codable, Hashable, Sendable {
         title: String? = nil,
         accessibilityLabel: String? = nil,
         staticURL: URL? = nil,
+        thumbnailURL: URL? = nil,
         reducedMotionURL: URL? = nil,
         animations: [ProfileEffectAnimation] = []
     ) {
@@ -34,12 +36,13 @@ public struct ProfileEffect: Identifiable, Codable, Hashable, Sendable {
         self.title = title
         self.accessibilityLabel = accessibilityLabel
         self.staticURL = staticURL
+        self.thumbnailURL = thumbnailURL
         self.reducedMotionURL = reducedMotionURL
         self.animations = animations
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, accessibilityLabel, staticURL, reducedMotionURL, animations
+        case id, title, accessibilityLabel, staticURL, thumbnailURL, reducedMotionURL, animations
     }
 
     public init(from decoder: Decoder) throws {
@@ -48,6 +51,7 @@ public struct ProfileEffect: Identifiable, Codable, Hashable, Sendable {
         title = try container.decodeIfPresent(String.self, forKey: .title)
         accessibilityLabel = try container.decodeIfPresent(String.self, forKey: .accessibilityLabel)
         staticURL = try container.decodeIfPresent(URL.self, forKey: .staticURL)
+        thumbnailURL = try container.decodeIfPresent(URL.self, forKey: .thumbnailURL)
         reducedMotionURL = try container.decodeIfPresent(URL.self, forKey: .reducedMotionURL)
         animations =
             try container.decodeIfPresent([ProfileEffectAnimation].self, forKey: .animations) ?? []
@@ -140,12 +144,16 @@ public struct UserProfile: Identifiable, Codable, Hashable, Sendable {
     public var user: User
     public var displayName: String
     public var avatarURL: URL?
+    public var defaultAvatarURL: URL?
     public var bannerURL: URL?
     public var accentHex: UInt32?
     public var themeHexes: [UInt32]
     public var bio: String?
     public var pronouns: String?
     public var effect: ProfileEffect?
+    public var frame: ProfileFrame?
+    public var widgets: [ProfileWidget]?
+    public var widgetResources: ProfileWidgetResources?
     public var badges: [ProfileBadge]
     public var mutualGuilds: [MutualGuild]
     public var mutualFriends: [User]
@@ -162,12 +170,16 @@ public struct UserProfile: Identifiable, Codable, Hashable, Sendable {
         user: User,
         displayName: String? = nil,
         avatarURL: URL? = nil,
+        defaultAvatarURL: URL? = nil,
         bannerURL: URL? = nil,
         accentHex: UInt32? = nil,
         themeHexes: [UInt32] = [],
         bio: String? = nil,
         pronouns: String? = nil,
         effect: ProfileEffect? = nil,
+        frame: ProfileFrame? = nil,
+        widgets: [ProfileWidget]? = nil,
+        widgetResources: ProfileWidgetResources? = nil,
         badges: [ProfileBadge] = [],
         mutualGuilds: [MutualGuild] = [],
         mutualFriends: [User] = [],
@@ -183,12 +195,16 @@ public struct UserProfile: Identifiable, Codable, Hashable, Sendable {
         self.user = user
         self.displayName = displayName ?? user.displayName
         self.avatarURL = avatarURL ?? user.avatarURL
+        self.defaultAvatarURL = defaultAvatarURL
         self.bannerURL = bannerURL
         self.accentHex = accentHex
         self.themeHexes = themeHexes
         self.bio = bio
         self.pronouns = pronouns
         self.effect = effect
+        self.frame = frame
+        self.widgets = widgets
+        self.widgetResources = widgetResources
         self.badges = badges
         self.mutualGuilds = mutualGuilds
         self.mutualFriends = mutualFriends

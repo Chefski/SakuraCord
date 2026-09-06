@@ -76,6 +76,22 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     var clientAppState = "focused"
     var continuation: SessionEventBuffer<ClientEvent>?
     var currentUser: User?
+    var profileApexAssignments: ProfileApexAssignmentsDTO?
+    var profileEditingResponses: [ProfileEditingScope: ProfileEditingResponseDTO] = [:]
+    var profileWidgetCatalogues: [Bool: [ProfileApplicationWidget]] = [:]
+    var profileWidgetConfigurations: [String: [ProfileApplicationWidget]] = [:]
+    var profileWidgetIdentities: [UserID: [ProfileWidgetApplicationIdentity]] = [:]
+    var profileWidgetConnectionStates: [String: ProfileWidgetConnection] = [:]
+    var profileWidgetAuthorizationTokenIDs: [String: String] = [:]
+    var profileWidgetConnectionRevision = UUID()
+    var profileWidgetConnectionTasks: [String: Task<[String: ProfileWidgetConnection], Error>] = [:]
+    var profileWidgetGameDetails: [String: ProfileGame] = [:]
+    var profileSimilarGameIDs: [String: [String]] = [:]
+    var profileGameAnnouncementCache: [String: ProfileGameAnnouncements] = [:]
+    var profileWidgetGameSearches: [String: ProfileGameAutocompleteCacheEntry] = [:]
+    var profileWidgetGameSearchFailures: [String: ProfileGameAutocompleteFailure] = [:]
+    var profileWidgetGameSearchTasks: [String: Task<[ProfileGame], Error>] = [:]
+    var profileDeveloperMode = false
     var authorizationValue: String?
     var installationResolutionAttempted = false
     var isClearingDerivedCaches = false
@@ -185,12 +201,24 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     var cachedGuildLayout: DiscordGuildLayout?
     var cachedProfiles: [ProfileCacheKey: UserProfile] = [:]
     var profileTasks: [ProfileCacheKey: Task<UserProfile, Error>] = [:]
-    var collectibleProductTasks: [String: Task<CollectibleProductDTO?, Never>] = [:]
+    var collectibleProductTasks: [String: Task<ProfileCollectibleProductDTO, Error>] = [:]
+    var profileCollectibleProducts: [String: ProfileCollectibleProductDTO] = [:]
+    var profileDetailedProductIDs: Set<String> = []
+    var profileInventory: ProfileCollectibleInventory?
+    var profileInventoryTask: Task<ProfileCollectibleInventory, Error>?
+    var profileEditingGeneration: UInt64 = 0
+    var profilePresentationGeneration: UInt64 = 0
+    var profilePresentationRevisions: [UserID: UInt64] = [:]
+    var profileResponses: [ProfileCacheKey: UserProfileDTO] = [:]
+    var profileSaveID: UUID?
     var cachedEmojis: [GuildID: EmojiCacheEntry] = [:]
     var emojiTasks: [GuildID: Task<[DiscordEmoji], Error>] = [:]
     var cachedEmojiUserSettings: EmojiUserSettings?
     var emojiUserSettingsTask: Task<EmojiUserSettings, Error>?
     var cachedFrecencySettingsProto: Data?
+    var profileStatusSettings: Data?
+    var profileStatusSaveID: UUID?
+    var profileCustomStatusExpiryTask: Task<Void, Never>?
     var frecencySettingsTask: Task<Data, Error>?
     var cachedStickersByGuild: [GuildID: [MessageSticker]] = [:]
     var cachedStandardStickerPacks: [StickerPack]?
@@ -319,7 +347,7 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
         restSessionConfiguration = session == nil ? defaultRESTConfiguration : nil
         gatewayTransport = URLSessionGatewayTransport(session: gatewaySession)
         gatewayCodec = ETFGatewayCodec()
-        gatewayEncoding = DiscordProductionBaseline.august2026.desktopGatewayEncoding
+        gatewayEncoding = DiscordProductionBaseline.current.desktopGatewayEncoding
         gatewayCompression = .zstdStream
         usesDesktopHeartbeat = true
         clientMetadata = DiscordClientMetadata(
@@ -351,7 +379,7 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
         restSessionConfiguration = session == nil ? defaultRESTConfiguration : nil
         gatewayTransport = URLSessionGatewayTransport(session: gatewaySession)
         gatewayCodec = ETFGatewayCodec()
-        gatewayEncoding = DiscordProductionBaseline.august2026.desktopGatewayEncoding
+        gatewayEncoding = DiscordProductionBaseline.current.desktopGatewayEncoding
         gatewayCompression = .zstdStream
         usesDesktopHeartbeat = true
         clientMetadata = DiscordClientMetadata(
@@ -456,7 +484,7 @@ public extension DiscordRESTProvider {
     private func ensureInstallationID() async throws {
         guard clientMetadata.installationID == nil, !installationResolutionAttempted else { return }
         installationResolutionAttempted = true
-        let baseline = DiscordProductionBaseline.august2026
+        let baseline = DiscordProductionBaseline.current
         var installationID: String?
         do {
             installationID = try await fetchInstallationID(

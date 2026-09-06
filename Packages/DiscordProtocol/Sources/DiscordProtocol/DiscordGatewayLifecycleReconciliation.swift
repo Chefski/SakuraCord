@@ -112,6 +112,8 @@ extension DiscordRESTProvider {
     }
 
     func applyUserUpdate(dto: UserDTO, user: User) {
+        var user = user
+        if dto.nsfwAllowed == nil { user.allowsAdultContent = currentUser?.allowsAdultContent }
         cacheGatewayUser(dto)
         currentUser = user
 
@@ -134,17 +136,7 @@ extension DiscordRESTProvider {
             guard var members = cachedMembers[guildID],
                   let index = members.firstIndex(where: { $0.id == user.id })
             else { continue }
-            let oldGlobalName = members[index].globalDisplayName
-            let oldDisplayName = members[index].user.displayName
-            var memberUser = user
-            if let oldGlobalName, oldDisplayName != oldGlobalName {
-                memberUser.displayName = oldDisplayName
-            }
-            if let guildAvatarURL = members[index].guildAvatarURL {
-                memberUser.avatarURL = guildAvatarURL
-            }
-            members[index].user = memberUser
-            members[index].globalDisplayName = user.displayName
+            members[index].applyGlobalProfileUser(user)
             cachedMembers[guildID] = members
             continuation?.yield(
                 .membersChanged(

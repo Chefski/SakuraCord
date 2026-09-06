@@ -13,6 +13,7 @@ struct EmojiDocumentRowView: View {
     let toggleFavorite: (EmojiPickerItem) -> Void
     let retry: (GuildID) -> Void
     let becameVisible: (EmojiDocumentSection) -> Void
+    var lockReason: (EmojiPickerItem) -> String? = { _ in nil }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -30,7 +31,8 @@ struct EmojiDocumentRowView: View {
                             skinTone: skinTone,
                             interaction: interaction,
                             select: { choose(cell, $0) },
-                            toggleFavorite: { toggleFavorite(cell.item) }
+                            toggleFavorite: { toggleFavorite(cell.item) },
+                            lockReason: lockReason(cell.item)
                         )
                     }
                     if cells.count < EmojiPickerDocumentStore.itemsPerRow {

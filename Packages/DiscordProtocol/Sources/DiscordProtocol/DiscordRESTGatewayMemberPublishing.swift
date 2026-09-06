@@ -2,18 +2,22 @@ import SakuraCordModels
 
 extension DiscordRESTProvider {
     func publishMemberChange(_ member: Member, guildID: GuildID) {
+        let previous = cachedMembers[guildID]?.first { $0.id == member.id }
         cachedMembers[guildID] = DiscordMemberStoreOrdering.merging(
             existing: cachedMembers[guildID] ?? [], updates: [member]
         )
         let members = cachedMembers[guildID] ?? []
-        continuation?.yield(
-            .membersChanged(
-                guildID: guildID,
-                members: members,
-                groups: selectedMemberListGroups(guildID: guildID)
+        if previous != members.first(where: { $0.id == member.id }) {
+            continuation?.yield(
+                .membersChanged(
+                    guildID: guildID,
+                    members: members,
+                    groups: selectedMemberListGroups(guildID: guildID)
+                )
             )
-        )
-        if member.id == currentUser?.id {
+        }
+        if member.id == currentUser?.id,
+           previous?.roleIDs != member.roleIDs || previous?.isPending != member.isPending {
             continuation?.yield(
                 .currentUserRolesChanged(guildID: guildID, roleIDs: member.roleIDs)
             )

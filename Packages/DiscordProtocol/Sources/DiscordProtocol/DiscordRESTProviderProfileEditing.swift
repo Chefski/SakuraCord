@@ -1,0 +1,94 @@
+import Foundation
+import SakuraCordModels
+
+public extension DiscordRESTProvider {
+    func cachedProfileEditingSnapshot(in scope: ProfileEditingScope) async throws -> ProfileEditingSnapshot? {
+        guard let user = currentUser else { throw ChatProviderError.unauthenticated }
+        guard let response = profileEditingResponses[scope], response.profile.user.id == user.id.description else { return nil }
+        if scope.guildID != nil, response.serverIdentity == nil || response.serverMetadata == nil { return nil }
+        let key = ProfileCacheKey(userID: user.id, guildID: scope.guildID)
+        guard var presentation = cachedProfiles[key] else { return nil }
+        presentation.widgetResources = cachedProfileWidgetResources(for: user.id)
+        return try makeProfileEditingSnapshot(response, in: scope, presentation: presentation)
+    }
+
+    func profileEditingSnapshot(in scope: ProfileEditingScope) async throws -> ProfileEditingSnapshot {
+        guard let user = currentUser else { throw ChatProviderError.unauthenticated }
+        let generation = profileEditingGeneration
+        var query = [
+            URLQueryItem(name: "type", value: "modal"),
+            URLQueryItem(name: "with_mutual_guilds", value: "true"),
+            URLQueryItem(name: "with_mutual_friends", value: "false"),
+            URLQueryItem(name: "with_mutual_friends_count", value: "true"),
+        ]
+        if let guildID = scope.guildID {
+            query.append(URLQueryItem(name: "guild_id", value: guildID.description))
+        }
+        let response: ProfileEditingResponseDTO = try await request("/users/\(user.id)/profile", query: query)
+        guard response.profile.user.id == user.id.description else {
+            throw ChatProviderError.invalidRequest("Discord returned a different account's profile.")
+        }
+        if scope.guildID != nil, response.serverIdentity == nil || response.serverMetadata == nil {
+            throw ChatProviderError.invalidRequest("This server profile is unavailable.")
+        }
+        try Task.checkCancellation()
+        guard currentUser?.id == user.id, profileEditingGeneration == generation, !requestSafetyCircuitIsOpen else {
+            throw CancellationError()
+        }
+        let presentation = try await resolveProfile(response.profile, in: scope.guildID)
+        let snapshot = try makeProfileEditingSnapshot(response, in: scope, presentation: presentation)
+        try Task.checkCancellation()
+        guard currentUser?.id == user.id, profileEditingGeneration == generation, !requestSafetyCircuitIsOpen else {
+            throw CancellationError()
+        }
+        profileEditingResponses[scope] = response
+        profileResponses[ProfileCacheKey(userID: user.id, guildID: scope.guildID)] = response.profile
+        cachedProfiles[ProfileCacheKey(userID: user.id, guildID: scope.guildID)] = presentation
+        return snapshot
+    }
+
+    internal func makeProfileEditingSnapshot(
+        _ response: ProfileEditingResponseDTO, in scope: ProfileEditingScope, presentation: UserProfile
+    ) throws -> ProfileEditingSnapshot {
+        guard let user = currentUser, response.profile.user.id == user.id.description else {
+            throw CancellationError()
+        }
+        var presentation = presentation
+        if let profileStatusSettings {
+            presentation.customStatus = DiscordSettingsProto.customStatus(in: profileStatusSettings)?.displayText
+        }
+        var eligibility = profileApexAssignments?.widgetEligibility(for: user)
+            ?? ProfileWidgetEligibility(hasFullNitro: user.premiumType == 2, hasPersonalWidgetAccess: false)
+        eligibility.showsDeveloperWidgets = profileDeveloperMode
+        var mainDTO = response.profile
+        mainDTO.guildMember = nil
+        mainDTO.guildMemberProfile = nil
+        mainDTO.guildBadges = nil
+        let mainEffectID = mainDTO.userProfile?.profileEffect?.resolvedID
+        var mainPresentation = try mainDTO.domain(
+            guildID: nil, guilds: cachedGuilds, guildRoles: [],
+            effectConfig: mainEffectID.flatMap { profileEffects?[$0] },
+            frame: resolvedProfileFrame(skuID: mainDTO.frameSKUID)
+        )
+        mainPresentation.widgetResources = presentation.widgetResources
+        mainPresentation.customStatus = presentation.customStatus
+        return ProfileEditingSnapshot(
+            scope: scope,
+            mainIdentity: response.identity.fields,
+            mainMetadata: response.metadata?.fields ?? ProfileMetadataFields(),
+            serverIdentity: response.serverIdentity?.fields,
+            serverMetadata: response.serverMetadata?.fields,
+            serverTag: response.identity.serverTag,
+            serverTagGuilds: gatewayGuildIDs.compactMap { id in
+                guard let guild = cachedGuilds[id], guild.features.contains("GUILD_TAGS"), guild.profileTag?.tag != nil,
+                      let member = cachedMembers[id]?.first(where: { $0.id == user.id }),
+                      member.joinedAt != nil, member.isPending != true else { return nil }
+                return guild
+            },
+            customStatus: profileStatusSettings.flatMap(DiscordSettingsProto.customStatus(in:)),
+            presentation: presentation,
+            mainPresentation: mainPresentation,
+            widgetEligibility: eligibility
+        )
+    }
+}

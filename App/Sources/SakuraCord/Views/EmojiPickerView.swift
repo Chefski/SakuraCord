@@ -52,6 +52,7 @@ struct EmojiPickerButton: View {
     let interaction: EmojiPickerInteractionModel
     let select: (Bool) -> Void
     let toggleFavorite: () -> Void
+    var lockReason: String?
 
     var body: some View {
         Button {
@@ -59,6 +60,12 @@ struct EmojiPickerButton: View {
         } label: {
             cell.item.preview(skinTone: skinTone)
                 .frame(width: EmojiPickerGridMetrics.cellSize, height: EmojiPickerGridMetrics.cellSize)
+                .opacity(lockReason == nil ? 1 : 0.4)
+                .overlay(alignment: .bottomTrailing) {
+                    if lockReason != nil {
+                        Image(systemName: "lock.fill").font(.caption2).padding(3)
+                    }
+                }
         }
         .buttonStyle(.plain)
         .focusable(false)
@@ -75,7 +82,7 @@ struct EmojiPickerButton: View {
             guard hovering else { return }
             interaction.select(cell)
         }
-        .help(cell.item.shortcode)
+        .help(lockReason.map { "\(cell.item.shortcode): \($0)" } ?? cell.item.shortcode)
         .overlay {
             EmojiPickerContextMenuBridge(
                 item: cell.item,
@@ -362,6 +369,7 @@ struct EmojiPickerView: View {
     @State private var searchIsFocused = false
     @State private var pendingVisibleGuilds: [GuildID] = []
     @State private var visibleGuildLoadTask: Task<Void, Never>?
+    @State private var emojiLockMessage: String?
     @FocusState private var keyboardNavigationIsFocused: Bool
     @AppStorage("emojiSkinTone") private var skinToneRawValue = NativeEmojiSkinTone.standard.rawValue
 
@@ -416,7 +424,8 @@ struct EmojiPickerView: View {
                                 choose: choose,
                                 toggleFavorite: toggleFavorite,
                                 retry: retry,
-                                becameVisible: sectionBecameVisible
+                                becameVisible: sectionBecameVisible,
+                                lockReason: lockReason
                             )
                             Divider()
                             EmojiHoverPreviewBar(
@@ -454,6 +463,9 @@ struct EmojiPickerView: View {
         }
         .frame(width: ChatChromeMetrics.emojiPickerWidth, height: 420)
         .onExitCommand(perform: handleEscapeCommand)
+        .alert("Emoji Unavailable", isPresented: Binding(get: { emojiLockMessage != nil }, set: { if !$0 { emojiLockMessage = nil } })) {
+            Button("OK", role: .cancel) { emojiLockMessage = nil }
+        } message: { Text(emojiLockMessage ?? "") }
         .onChange(of: skinToneRawValue) { _, _ in
             requestSearchFocus()
         }
@@ -507,6 +519,7 @@ struct EmojiPickerView: View {
     }
 
     private func activate(_ item: EmojiPickerItem, shiftPressed: Bool) {
+        if let reason = lockReason(item) { emojiLockMessage = reason; return }
         let selection = item.selection(skinTone: selectedSkinTone)
         model.recordEmojiUse(selection.usageKey)
         let keepsPickerPresented = EmojiPickerActivationPolicy.keepsPickerPresented(
@@ -523,6 +536,12 @@ struct EmojiPickerView: View {
         document.synchronize(with: model, useCase: useCase)
         interaction.synchronize(with: document.selectableCells)
         keyboardNavigationIsFocused = true
+    }
+
+    private func lockReason(_ item: EmojiPickerItem) -> String? {
+        guard case let .custom(emoji) = item else { return nil }
+        guard DiscordEmojiPermissionPolicy.isPremiumLocked(emoji, for: useCase, premiumType: model.snapshot?.currentUser.premiumType ?? 0) else { return nil }
+        return String(localized: "Using this emoji in your profile requires Nitro.", bundle: #bundle)
     }
 
     private func toggleFavorite(_ item: EmojiPickerItem) {
@@ -652,6 +671,7 @@ private struct EmojiPickerDocumentList: View {
     let toggleFavorite: (EmojiPickerItem) -> Void
     let retry: (GuildID) -> Void
     let becameVisible: (EmojiDocumentSection) -> Void
+    let lockReason: (EmojiPickerItem) -> String?
 
     var body: some View {
         List(document.rows) { row in
@@ -663,7 +683,8 @@ private struct EmojiPickerDocumentList: View {
                 choose: choose,
                 toggleFavorite: toggleFavorite,
                 retry: retry,
-                becameVisible: becameVisible
+                becameVisible: becameVisible,
+                lockReason: lockReason
             )
             .id(row.id)
             .listRowInsets(row.listInsets)

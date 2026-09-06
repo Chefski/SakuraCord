@@ -8,7 +8,8 @@ let package = Package(
     dependencies: [
         .package(path: "../SakuraCordModels"),
         .package(path: "../DaveKit"),
-        .package(url: "https://github.com/jedisct1/swift-sodium.git", from: "0.9.1")
+        .package(url: "https://github.com/jedisct1/swift-sodium.git", from: "0.9.1"),
+        .package(url: "https://github.com/SDWebImage/libwebp-Xcode.git", exact: "1.6.0")
     ],
     targets: [
         .target(
@@ -17,7 +18,8 @@ let package = Package(
                 "SakuraCordModels",
                 "DaveKit",
                 .product(name: "Sodium", package: "swift-sodium"),
-                .product(name: "Clibsodium", package: "swift-sodium")
+                .product(name: "Clibsodium", package: "swift-sodium"),
+                .product(name: "libwebp", package: "libwebp-Xcode")
             ],
             swiftSettings: [.interoperabilityMode(.Cxx)]
         ),

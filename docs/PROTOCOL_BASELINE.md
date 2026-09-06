@@ -37,6 +37,18 @@ using:
   and [rate-limit](https://docs.discord.com/developers/topics/rate-limits)
   documentation where applicable.
 
+Profile-editor research on 5–6 September 2026 refreshed the shared transport
+metadata against a separately installed clean stable desktop client: web build
+`607562`, desktop `0.0.408`, native updater `89799`, Electron `42.7.1`, and
+Chromium `148.0.7778.280`. Its captured client hints contain
+`"Not/A)Brand";v="99", "Chromium";v="148"`. The current baseline uses these
+observed versions; the earlier feature audits retain their own observation
+dates. Application focus covers every SakuraCord window, including Settings;
+the main chat window's read-acknowledgement eligibility remains separate.
+Native language preferences and the platform's canonical time-zone identifier
+can differ from Electron's browser defaults and legacy ICU aliases. Session,
+heartbeat, launch, and installation identifiers remain owned by each client.
+
 No token, cookie, authorization header, message body, personal payload,
 fingerprint, installation identifier, or unsanitized traffic is stored in this
 repository. Treat every build number and observed payload as a dated snapshot,
@@ -227,6 +239,72 @@ revision still has only its placeholder picker and generated favourites
 schema, with no GIF media fetch. The pinned Swiftcord v1 and DiscordKit
 revisions still have no GIF picker or media path. Those absences provide no
 alternative origin, header, retry, or fallback behavior to copy.
+
+The profile-image GIF path was separately checked on 6 September 2026 in
+clean desktop build `607562`/`0.0.408`. Unlike result thumbnails, cropping
+loads the response's editable `gif_src` through `https://discord.com/tenor`,
+`/giphy`, or `/klipy`, preserving the validated provider path and dropping
+its query. Other approved HTTPS image origins retain their supplied URL.
+The official picker starts this image fetch before dispatching an independent
+`POST /gifs/select` with `id` and the current query `q` (empty for Trending).
+That notification is not awaited by image selection and must not make a valid
+image unusable if it fails. The image download retains normal cancellation;
+the notification has one attempt. This profile-only contract does not change
+the message picker's result-media or sending path.
+
+Main and server profile editing was researched on 5–6 September 2026 against
+the separately installed, unmodified desktop build `607562`/`0.0.408`, with CDP
+attached before interaction. The editor uses its own `type=modal` profile read,
+separate from the existing popover read below. Identity, metadata and server-tag
+changes retain their distinct routes and execute sequentially; widget saving
+is an independent group. Unchanged fields are omitted. Empty edited text is an
+empty string, while image removal and server inheritance use the field-specific
+null representation. Server theme reset sends two ordered null endpoints and can
+return a single null theme; effect/frame removal sends an empty SKU array.
+The main profile has no theme reset action. Editing either colour sends both
+displayed endpoints. Unset theme colours are derived from the avatar's first
+two median-cut palette entries, using the clean client's 80-point asset request
+at the display scale; they are not a fixed default gradient.
+The server-member response can omit `avatar_decoration_data` after a null clear.
+That observed omission is accepted only for this operation, rather than making
+all missing saved fields valid.
+
+Image uploads send the cropped data URI and an `X-Discord-Original-MD5` value
+computed from the selected source bytes. The header's field name distinguishes
+`user_default_profile_avatar`, `user_guild_profile_avatar`,
+`user_default_profile_banner` and `user_guild_profile_banner`. Reusing an
+unchanged history image sends only `avatar_id`; editing that crop creates a new
+upload. Avatar upload descriptions retain the source name and local edit time.
+Widget images first allocate storage and upload bytes, then save the returned
+reference in the widget list. Native image encoders can produce different bytes;
+crop geometry, animation, source hash, MIME type and resulting appearance remain
+separate verification requirements.
+
+Widget eligibility uses `READY.apex_experiments`, experiment
+`2026-07-personal-widget` (hash `2369760879`) in the current account's assignment.
+Variants 1 and 2 permit editing only with full Nitro (`premium_type=2`); variant
+2 exposes creation, and the eligibility-only flag (`flags & 8`) does not grant
+access. Missing or unknown assignments fail closed. Collectibles are resolved
+from catalogue variants and owned purchases; a Nitro inclusion alone does not
+grant an unowned item. Purchase type 7 additionally requires full Nitro.
+Unavailable owned-frame and other-account entitlement branches were not
+exercised with the configured account. Activity, Wishlist, purchase and general
+connected-account mutation paths are outside this profile editor's scope.
+
+The same profile audit rechecked the pinned Paicord, Swiftcord v1 and DiscordKit
+revisions above. Paicord corroborates profile reads, main/server cosmetic
+response models and protobuf status fields, but its settings write helpers are
+unimplemented and its generic current-user payload contains only username,
+avatar and banner. Swiftcord v1 and DiscordKit corroborate the version-1
+settings-proto route; Swiftcord also sends an immediate Gateway presence update,
+which is not evidence for the current official client's invisible-status flow.
+None supplies the current complete editor, avatar-history, display-name-style
+or custom-widget write contract. Discord's public
+[user reference](https://docs.discord.com/developers/resources/user) corroborates
+the premium tiers, nullable user cosmetics and primary-guild response fields;
+its [image reference](https://docs.discord.com/developers/reference#image-formatting)
+corroborates CDN asset formats. These are supporting sources, while the dated
+official-client actions and modules establish the undocumented editing flows.
 
 The emoji-picker favourite and context-menu paths were statically re-audited
 on 29 August 2026 against clean public web build 603738 and production asset
@@ -527,7 +605,28 @@ and retained as evidence.
 | `GET /guilds/{guild}/roles` | Visible role/member UI cache miss; no body, coalesced. | Public guild semantics and all three client references. |
 | `GET /guilds/{guild}/roles/{role}/member-ids` | Explicit role inspection; no body; result display capped at 1,000. | Current first-party route; P−, S−. |
 | `GET /users/{user}/profile` | Explicit profile; `with_mutual_guilds=true`, `with_mutual_friends=true`, `with_mutual_friends_count=true`, plus `guild_id` only in guild context; coalesced by user and guild context. A `404` for an unavailable user remains scoped to the profile presentation and does not stop the session. | Current first-party and Paicord; Swiftcord has historical profile data but no equivalent complete route. |
-| `GET /collectibles-products/{product}` | At most one cache-miss read for a profile effect returned by the profile response; query contains the current `locale`. | Current first-party route; P−, S−. The obsolete `/user-profile-effects` fallback was removed. |
+| `GET /collectibles-products/{product}` | Coalesced cache-miss read for a profile effect or frame returned by the profile response; query contains the current `locale`. | Current first-party route and September profile research; P−, S−. The obsolete `/user-profile-effects` fallback was removed. |
+| `GET /users/{user}/profile?type=modal&with_mutual_guilds=true&with_mutual_friends=false&with_mutual_friends_count=true` | Editable current-user snapshot; append `guild_id` only for server scope. Preserve raw main and scoped field presence alongside resolved presentation. | Clean September profile-editor entry and scope selection. |
+| `PATCH /users/@me` | Changed main identity fields: `global_name`, avatar data/description or `avatar_id`, `avatar_decoration_sku_id`, `nameplate_sku_id`, and the three `display_name_*` style fields. A returned credential is adopted before subsequent writes. | Clean September identity, style, history and upload actions; first-party main-profile save dispatcher. |
+| `PATCH /guilds/{guild}/members/@me` | Changed server identity fields use `nick`; a nameplate is `collectibles.nameplate.sku_id`, with `collectibles.nameplate:null` for inheritance. Other identity fields use the same names as main scope. | Clean September server identity, cosmetics, inheritance and image actions. |
+| `PATCH /users/%40me/profile` and `PATCH /guilds/{guild}/profile/%40me` | Changed `bio`, `pronouns`, `banner`, ordered `theme_colors`, and `collectibles_sku_ids`. Preserve encoded `%40me` in these paths. | Clean September main/server metadata saves, clears and partial-save recovery. |
+| `PUT /users/@me/clan` | `identity_guild_id` and `identity_enabled`; clearing sends null/false. Eligible guilds come from joined, nonpending Gateway memberships with `GUILD_TAGS` and a tag. | Clean September tag selection/removal and first-party eligibility resolver. |
+| `PATCH /users/@me/settings-proto/1` | Independent custom-status update; JSON contains `settings`. Send root field 11 with the retained status settings, replacing or removing its custom-status field 2 while preserving siblings and unknown fields. Reconcile the authoritative returned settings. | Clean September status saves, clears and expiry; first-party protobuf/settings implementation. |
+| `GET /collectibles-categories/v2?include_bundles=true&variants_return_style=2&skip_num_categories=0` | First collectible-picker catalogue load; retain server categories, variants and asset descriptors. | Clean September picker and catalogue requests. |
+| `GET /users/@me/collectibles-purchases?variants_return_style=2` | Owned inventory, including purchase type and expiry used by selection/save gates. | Clean September inventory requests and first-party ownership resolver. |
+| `GET /users/@me/avatars` | Image chooser's recent-avatar history; archived WebP thumbnails use size128 and crop sources size2048. Both append animated=true for an a_-prefixed storage hash; omitting it loses animation. | Clean September chooser and history actions. |
+| `DELETE /users/@me/avatars/{avatar}` | Explicit recent-avatar removal; one attempt, expected 204. Reload history after an ambiguous result before an explicit retry. | Clean September removal of temporary test entries. |
+| `GET /widget-configs/featured` and `GET /widget-configs/developer` | Add Widget catalogue; developer route only when developer mode is enabled. | Clean September widget-picker requests. |
+| `GET /applications/{application}/widget-configs` | Resolve an application widget already present on a profile. | Clean September widget-resource requests. |
+| `GET /users/{user}/application-identities?with_profiles=true` | Application-widget identity and display resources. | Clean September profile and widget-picker requests. |
+| `GET /oauth2/tokens` | Read connection state for widget applications using repeated `application_ids`; no authorization or revocation is implied. | Clean September widget connection-state requests. |
+| `GET /users/@me/widgets/suggested-games` | Server-supplied game suggestion feeds, combined with the versioned first-party fallback policy. | Clean September game-widget picker and source policy. |
+| `GET /games` | Resolve game IDs with repeated ordered `game_ids`, retaining metadata needed by widgets and game details. | Clean September suggestion, search, widget and game-detail requests. |
+| `GET /games/autocomplete?q={query}` | Explicit nonempty game search, first-party normalization and debounce; cache only the matching query's result. | Clean September game search and first-party autocomplete source. |
+| `GET /content-inventory/users/@me/similar-games/{game}` | Similar games for an opened game detail. | Clean September game-detail flow. |
+| `GET /games/{game}/announcements?limit=8` | Announcements for an opened game detail. | Clean September game-detail flow. |
+| `POST /users/@me/widgets/assets/upload` | Allocate a widget image with its exact `filename` and `file_size`; PUT the bytes to the validated returned storage URL without Discord account credentials. | Clean September cover/field image uploads. |
+| `PUT /users/@me/widgets` | Complete ordered `widgets` list; retain existing IDs, omit IDs for new entries, preserve unknown originals, and encode pending/stored image references distinctly. | Clean September widget edits, reordering, removals and image saves. |
 | `GET /guilds/{guild}/emojis` | Stale/missing Gateway and disk-cache fallback; no body, coalesced. | Public emoji semantics and all three client references. |
 | `GET /users/@me/settings-proto/2` | Explicit emoji-, GIF-, or sticker-settings cache miss; no body, coalesced for the provider session. Sticker favourites come from ordered packed fixed64 IDs in top-level field 3; sticker frecency comes from the field-4 map. | Current first-party clean-client actions and Paicord's generated Frecency settings schema; Swiftcord has the versioned settings-proto path but no complete expression picker. |
 | `PATCH /users/@me/settings-proto/2` | One explicit emoji, GIF, or sticker favourite add/remove, or a delayed sticker-frecency flush. JSON contains only `settings`; emoji/GIF mutations carry the complete updated base64 Frecency proto, while sticker mutations carry only changed fields and consume the complete merged proto returned by the server. An empty sticker-favourites list is encoded as the exact two-byte empty field 3. A sticker favourite action includes dirty field 4 when present; ordinary sends debounce that field rather than synchronously coupling the settings mutation to the message POST. A sticker-use update rewrites only the selected field-4 map entry, preserving all other entries byte-for-byte and retaining unknown fields on the selected entry. Emoji favourites are ordered, deduplicated repeated strings in field 5 and capped by the first-party client at 250. The GIF favourite map key is the canonical GIF URL; its value contains format (`IMAGE = 1`, `VIDEO = 2`), source URL, width, height, and monotonically increasing order, displayed descending by order. The declared format is preserved on reads, including extensionless CDN sources. Unrelated and unknown top-level proto fields are preserved. | Sanitized first-party sticker/favourite/frecency actions and SakuraCord rejection diagnosis on 3 September 2026, current first-party emoji/GIF actions, and generated Paicord schema; Swiftcord v1 has no corresponding complete favourite mutation. |
@@ -535,6 +634,7 @@ and retained as evidence.
 | `GET /gifs/trending?locale={locale}&media_format=webm` | Opening the GIF picker; one cacheable landing read returning the current base categories in server order and their preview media. | Current first-party route and clean-client request; P−, S−. |
 | `GET /gifs/trending-gifs?media_format=webm&locale={locale}` | Explicit Trending GIFs selection; no body. The returned order is preserved. | Current first-party route and clean-client request; P−, S−. |
 | `GET /gifs/search?q={query}&media_format=webm&locale={locale}` | Nonempty picker search after the current 250 ms debounce; no speculative or paginated follow-up. The live default response is 50 results and its order is preserved. | Current first-party route/action and clean-client `hello` request; P−, S−. |
+| `POST /gifs/select` | Profile-image GIF selection only; `id` plus query `q`, empty for Trending. Independent one-attempt notification after starting the editable image fetch; does not gate image selection. | Clean September profile-image selection and first-party picker actions; P−, S−. |
 | `GET /channels/{channel}/messages` | Visible history and explicit reaction intents whose target is absent from the provider working set; the latter reads `around={message}&limit=1` before deciding whether a mutation is needed (see reaction rules below). Guild history requires effective `VIEW_CHANNEL` and `READ_MESSAGE_HISTORY`, and voice-channel history additionally requires `CONNECT`. The current clean client uses `limit=10` for a newly selected uncached channel, which SakuraCord matches once per channel per uninterrupted Gateway connection. A dispatched newest-page read is allowed to finish and populate the session stores after a later selection supersedes its presentation; rapid navigation does not abort those reads. Reopening a loaded newest-backed channel restores its bounded session-memory page and sends no history request. After a Gateway gap, the retained page is presented immediately but its completeness marker is invalidated; returning to Ready refreshes the selected page once and later reopened pages refresh once on selection. Distant navigation uses `around={message}&limit=50` as a replacement window; its older and newer edges paginate independently with `before={oldest}&limit=20` and `after={newest}&limit=20`. A historical window is not cached as though it were newest-backed. No body. | Public message semantics and `before`/`after`/`around` pagination, current first-party permission/message paths and stale-connection refresh, and Paicord's permission-checked channel store. Swiftcord v1 checks `VIEW_CHANNEL` before presentation but otherwise supplies only a historical unguarded/refetching history path. Paicord retains a per-channel in-memory store and uses a historical 50-message initial page. The current first-party cache behavior and connection-generation invalidation take precedence. |
 | `GET /channels/{channel}/messages/pins` | Opening or paginating native pins; `limit=25` and optional ISO-8601 `before` equal to the last returned `pinned_at`. Response items carry `pinned_at` plus the complete message and are presented newest-pin first. Reads require `VIEW_CHANNEL`; without `READ_MESSAGE_HISTORY` Discord returns no pins. Safe-read cancellation, one confirmed transport recovery, central rate limiting, diagnostics, and session ownership match history reads. | Sanitized clean desktop empty, 25-item, and one-item second-page requests on 30 August 2026 plus current public message and permission documentation for the 1–50 limit and access behavior. |
 | `PUT` or `DELETE /channels/{channel}/messages/pins/{message}` | One explicit Pin or Unpin action, empty body, guarded by effective `PIN_MESSAGES` (`1 << 51`). The local message and open pins surface update optimistically; one mutation per message is in flight, later conflicting intent waits for it, definite 4xx failure rolls back, and ambiguous failure is not replayed. | Sanitized clean desktop PUT/DELETE requests and HTTP 204 responses on 30 August 2026, current public message endpoint, and 23 February 2026 permission change log. Live Gateway samples corroborated `pinned:true`/`false`, channel-pin invalidation, null final-pin timestamp, and independent pinned-message deletion. |
@@ -566,8 +666,9 @@ and retained as evidence.
 
 The first-party asset also defines `/gifs/select`, `/gifs/suggest`, and
 `/gifs/trending-search`. They are not required for picker content, search,
-favourite persistence, or message sending and SakuraCord deliberately does not
-issue those analytics/suggestion requests. A picker open creates the landing
+favourite persistence, or message sending and SakuraCord's message picker does
+not issue those analytics/suggestion requests. Profile-image selection uses
+the separately audited `/gifs/select` notification above. A message-picker open creates the landing
 read and the shared settings read only. Search and trending each create one
 GET, and each favourite action creates one non-retried PATCH.
 
@@ -905,6 +1006,10 @@ is not the whole network surface. The remaining production connections are:
   or picker dismissal cancels
   waiters and removes staged video files. No Authorization, client metadata,
   fingerprint, installation, Discord routing, or cookie header is added.
+- profile-image GIF cropping applies the provider-specific first-party proxy
+  paths described above. It uses the same unauthenticated, cookie-free media
+  queue; authenticated selection notification remains on the shared REST
+  transport. Proxy mapping does not apply to ordinary picker thumbnails.
 
 The current official desktop and SakuraCord use ETF with `zstd-stream` for the
 main Gateway. The public web client uses JSON with compressed Gateway

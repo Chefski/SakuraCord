@@ -152,13 +152,13 @@ private func appendETFBinary(_ value: String, to data: inout Data) {
 }
 
 @Test func `production baseline matches observed bootstrap`() {
-    let baseline = DiscordProductionBaseline.august2026
+    let baseline = DiscordProductionBaseline.current
     #expect(baseline.apiVersion == 9)
-    #expect(baseline.webBuildNumber == 587_597)
-    #expect(baseline.desktopVersion == "0.0.403")
+    #expect(baseline.webBuildNumber == 607_562)
+    #expect(baseline.desktopVersion == "0.0.408")
     #expect(baseline.electronVersion == "42.7.1")
     #expect(baseline.chromiumVersion == "148.0.7778.280")
-    #expect(baseline.nativeBuildNumber == 87_263)
+    #expect(baseline.nativeBuildNumber == 89_799)
     #expect(baseline.webGatewayEncoding == "json")
     #expect(baseline.webGatewayCompression == "zlib-stream")
     #expect(baseline.desktopGatewayEncoding == "etf")
@@ -176,8 +176,8 @@ private func appendETFBinary(_ value: String, to data: inout Data) {
     )
 
     #expect(metadata.acceptLanguage == "en-US,en-GB;q=0.9")
-    #expect(metadata.properties["client_version"] == .string("0.0.403"))
-    #expect(metadata.properties["client_build_number"] == .number(587_597))
+    #expect(metadata.properties["client_version"] == .string("0.0.408"))
+    #expect(metadata.properties["client_build_number"] == .number(607_562))
     #expect(metadata.properties["os_version"] == .string("27.0.0"))
     #expect(metadata.properties["os_sdk_version"] == .string("27"))
     #expect(metadata.properties["system_locale"] == .string("en-US"))
@@ -190,8 +190,8 @@ private func appendETFBinary(_ value: String, to data: inout Data) {
         metadata.properties(clientAppState: "unfocused")["client_app_state"]
             == .string("unfocused")
     )
-    #expect(metadata.properties["native_build_number"] == .number(87_263))
-    #expect(metadata.userAgent.contains("discord/0.0.403"))
+    #expect(metadata.properties["native_build_number"] == .number(89_799))
+    #expect(metadata.userAgent.contains("discord/0.0.408"))
     #expect(metadata.userAgent.contains("Chrome/148.0.7778.280"))
     #expect(metadata.userAgent.contains("Electron/42.7.1"))
 
@@ -245,7 +245,7 @@ private func appendETFBinary(_ value: String, to data: inout Data) {
 }
 
 @Test func `client hints derive their Chromium major version from the baseline`() throws {
-    var baseline = DiscordProductionBaseline.august2026
+    var baseline = DiscordProductionBaseline.current
     baseline.chromiumVersion = "151.2.3456.7"
     let metadata = DiscordClientMetadata(baseline: baseline)
     var request = URLRequest(url: URL(string: "https://discord.com/api/v9/users/@me")!)
@@ -255,7 +255,7 @@ private func appendETFBinary(_ value: String, to data: inout Data) {
     #expect(metadata.userAgent.contains("Chrome/151.2.3456.7"))
     #expect(
         request.value(forHTTPHeaderField: "Sec-CH-UA")
-            == "\"Not)A;Brand\";v=\"8\", \"Chromium\";v=\"151\""
+            == "\"Not/A)Brand\";v=\"99\", \"Chromium\";v=\"151\""
     )
 }
 

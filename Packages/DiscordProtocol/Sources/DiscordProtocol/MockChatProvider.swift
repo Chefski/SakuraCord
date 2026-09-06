@@ -423,6 +423,33 @@ public actor MockChatProvider: ChatProvider {
         return profile
     }
 
+    public func profileEditingSnapshot(in scope: ProfileEditingScope) async throws -> ProfileEditingSnapshot {
+        let presentation = try await profile(for: currentUser.id, in: scope.guildID)
+        let identity = ProfileIdentityFields(
+            name: .value(presentation.user.displayName),
+            displayNameStyle: presentation.user.displayNameStyle.map { .value($0) } ?? .null
+        )
+        let colors = presentation.themeHexes
+        let metadata = ProfileMetadataFields(
+            bio: .value(presentation.bio ?? ""),
+            pronouns: .value(presentation.pronouns ?? ""),
+            accentColor: presentation.accentHex.map { .value($0) } ?? .null,
+            themeColors: colors.count == 2
+                ? .value(ProfileThemeColors(primary: colors[0], accent: colors[1])) : .null
+        )
+        return ProfileEditingSnapshot(
+            scope: scope,
+            mainIdentity: identity,
+            mainMetadata: metadata,
+            serverIdentity: scope.guildID.map { _ in ProfileIdentityFields() },
+            serverMetadata: scope.guildID.map { _ in ProfileMetadataFields() },
+            presentation: presentation,
+            widgetEligibility: ProfileWidgetEligibility(
+                hasFullNitro: currentUser.premiumType == 2, hasPersonalWidgetAccess: false
+            )
+        )
+    }
+
     public func currentStatus() async -> PresenceStatus {
         .online
     }

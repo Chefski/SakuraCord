@@ -133,6 +133,24 @@ public enum DiscordMarkdown {
         return output
     }
 
+    /// Personal profile widgets allow emphasis, underline and links, but no
+    /// message-only blocks, code, spoilers, strike-through or emoji parsing.
+    public static func profileWidgetAttributed(_ source: String, font: Font = .body, links: Bool = true) -> AttributedString {
+        let runs = inlineRuns(source[...], inheritedTraits: [], inheritedLink: nil, widgetRules: true)
+        var output = AttributedString()
+        for run in runs {
+            var value = AttributedString(run.text)
+            var runFont = font
+            if run.traits.contains(.bold) { runFont = runFont.bold() }
+            if run.traits.contains(.italic) { runFont = runFont.italic() }
+            value.font = runFont
+            if run.traits.contains(.underline) { value.underlineStyle = .single }
+            if links { value.link = run.link }
+            output.append(value)
+        }
+        return output
+    }
+
     public static func appKitAttributed(
         _ source: String,
         baseFontSize: CGFloat = 15
@@ -488,7 +506,8 @@ public enum DiscordMarkdown {
     private static func inlineRuns(
         _ source: Substring,
         inheritedTraits: AppKitPlan.InlineTraits,
-        inheritedLink: URL?
+        inheritedLink: URL?,
+        widgetRules: Bool = false
     ) -> [AppKitPlan.InlineRun] {
         var result: [AppKitPlan.InlineRun] = []
         var plain = ""
@@ -515,7 +534,7 @@ public enum DiscordMarkdown {
                 }
             }
 
-            if source[cursor] == "`",
+            if !widgetRules, source[cursor] == "`",
                let close = source[source.index(after: cursor)...]
                 .firstIndex(of: "`")
             {
@@ -549,7 +568,8 @@ public enum DiscordMarkdown {
             if let link = markdownLink(
                 in: source,
                 at: cursor,
-                inheritedTraits: inheritedTraits
+                inheritedTraits: inheritedTraits,
+                widgetRules: widgetRules
             )
             {
                 flushPlain()
@@ -575,7 +595,8 @@ public enum DiscordMarkdown {
                 in: source,
                 at: cursor,
                 inheritedTraits: inheritedTraits,
-                inheritedLink: inheritedLink
+                inheritedLink: inheritedLink,
+                widgetRules: widgetRules
             ) {
                 flushPlain()
                 result.append(contentsOf: match.runs)
@@ -620,7 +641,8 @@ public enum DiscordMarkdown {
     private static func markdownLink(
         in source: Substring,
         at cursor: String.Index,
-        inheritedTraits: AppKitPlan.InlineTraits
+        inheritedTraits: AppKitPlan.InlineTraits,
+        widgetRules: Bool = false
     ) -> (runs: [AppKitPlan.InlineRun], endIndex: String.Index)? {
         guard source[cursor] == "[",
               let labelEnd = source[cursor...].firstIndex(of: "]")
@@ -643,7 +665,8 @@ public enum DiscordMarkdown {
             inlineRuns(
                 source[source.index(after: cursor) ..< labelEnd],
                 inheritedTraits: inheritedTraits,
-                inheritedLink: url
+                inheritedLink: url,
+                widgetRules: widgetRules
             ),
             source.index(after: closingParenthesis)
         )
@@ -673,10 +696,12 @@ public enum DiscordMarkdown {
         in source: Substring,
         at cursor: String.Index,
         inheritedTraits: AppKitPlan.InlineTraits,
-        inheritedLink: URL?
+        inheritedLink: URL?,
+        widgetRules: Bool = false
     ) -> (runs: [AppKitPlan.InlineRun], endIndex: String.Index)? {
         for delimiter in delimiters
         where source[cursor...].hasPrefix(delimiter.marker) {
+            if widgetRules, !delimiter.traits.isDisjoint(with: [.strikethrough, .spoiler]) { continue }
             let contentStart = source.index(
                 cursor,
                 offsetBy: delimiter.marker.count
@@ -692,7 +717,8 @@ public enum DiscordMarkdown {
                 inlineRuns(
                     source[contentStart ..< closingRange.lowerBound],
                     inheritedTraits: inheritedTraits.union(delimiter.traits),
-                    inheritedLink: inheritedLink
+                    inheritedLink: inheritedLink,
+                    widgetRules: widgetRules
                 ),
                 closingRange.upperBound
             )

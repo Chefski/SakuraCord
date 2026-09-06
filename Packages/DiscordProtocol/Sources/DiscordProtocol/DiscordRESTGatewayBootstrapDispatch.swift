@@ -11,6 +11,8 @@ extension DiscordRESTProvider {
             await handleReadyDispatch(name: name, body: body)
         case "USER_SETTINGS_PROTO_UPDATE":
             await handleUserSettingsProtoUpdateDispatch(name: name, body: body)
+        case "OAUTH2_TOKEN_CREATE", "OAUTH2_TOKEN_DELETE":
+            handleProfileWidgetAuthorizationEvent(name: name, body: body)
         case "GUILD_STICKERS_UPDATE":
             await handleGuildStickersUpdateDispatch(name: name, body: body)
         case "USER_GUILD_SETTINGS_UPDATE":
@@ -112,6 +114,8 @@ extension DiscordRESTProvider {
         await loadStartupSearchCaches()
         cachedBlockedOrIgnoredUserIDs = ready.blockedOrIgnoredUserIDs
         cachedRelationshipNicknamesByUserID = ready.relationshipNicknamesByUserID
+        profileApexAssignments = ready.apexExperiments
+        resetProfileEditingState()
     }
 
     private func applyReadyUserAndReadState(
@@ -360,6 +364,7 @@ extension DiscordRESTProvider {
                 "Ready voice-state snapshot received; count=\(voiceStateCount)")
         }
         applyGuildSettingsProto(ready.userSettingsProto)
+        applyProfileSettingsProto(ready.userSettingsProto, isPartial: false)
         finishInitialGatewaySnapshot(
             InitialGatewaySnapshot(
                 readStates: readStates,
@@ -379,6 +384,7 @@ extension DiscordRESTProvider {
         ) else { return }
         switch update.settings.type {
         case 1:
+            applyProfileSettingsProto(update.settings.proto, isPartial: update.partial == true)
             applyGuildSettingsProto(
                 update.settings.proto,
                 replacesAllSettings: update.partial != true

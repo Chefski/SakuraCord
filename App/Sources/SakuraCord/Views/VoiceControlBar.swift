@@ -689,8 +689,7 @@ private struct ScreenShareControlsPopover: View {
                 .frame(height: 34)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .screenSharePopoverHoverEffect()
+            .buttonStyle(PopoverRowButtonStyle())
             .escapeDismissiblePopover(
                 isPresented: $showFrameRateControls,
                 arrowEdge: .trailing
@@ -711,8 +710,7 @@ private struct ScreenShareControlsPopover: View {
                 .frame(height: 34)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .screenSharePopoverHoverEffect()
+            .buttonStyle(PopoverRowButtonStyle())
             .escapeDismissiblePopover(
                 isPresented: $showQualityControls,
                 arrowEdge: .trailing
@@ -741,8 +739,7 @@ private struct ScreenShareControlsPopover: View {
                 .frame(height: 34)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .screenSharePopoverHoverEffect()
+            .buttonStyle(PopoverRowButtonStyle())
         }
         .font(.callout)
         .padding(12)
@@ -762,8 +759,7 @@ private struct ScreenShareControlsPopover: View {
                 .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .screenSharePopoverHoverEffect()
+        .buttonStyle(PopoverRowButtonStyle())
     }
 }
 
@@ -797,36 +793,12 @@ struct ScreenShareQualityPopover: View {
                     .frame(height: 30)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                .screenSharePopoverHoverEffect()
+                .buttonStyle(PopoverRowButtonStyle())
             }
         }
         .font(.callout)
         .padding(12)
         .frame(width: 190)
-    }
-}
-
-private struct ScreenSharePopoverHoverEffect: ViewModifier {
-    @State private var isHovered = false
-
-    func body(content: Content) -> some View {
-        content
-            .background(
-                isHovered ? Color.primary.opacity(0.09) : Color.clear,
-                in: ConcentricRectangle(cornerRadius: 7, style: .continuous)
-            )
-            .onHover { hovering in
-                withAnimation(.snappy(duration: 0.14)) {
-                    isHovered = hovering
-                }
-            }
-    }
-}
-
-extension View {
-    func screenSharePopoverHoverEffect() -> some View {
-        modifier(ScreenSharePopoverHoverEffect())
     }
 }
 

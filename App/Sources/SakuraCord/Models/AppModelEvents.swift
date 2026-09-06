@@ -345,6 +345,7 @@ extension AppModel {
     func consumePresenceAndCommandEvent(_ event: ClientEvent) {
         if consumeForwardSearchPeopleEvent(event) { return }
         if consumeApplicationStreamEvent(event) { return }
+        if consumeProfileEvent(event) { return }
         switch event {
         case .currentUserRolesChanged, .currentUserRolesSnapshot:
             consumeCurrentUserRoleEvent(event)
@@ -374,6 +375,20 @@ extension AppModel {
         default:
             break
         }
+    }
+
+    private func consumeProfileEvent(_ event: ClientEvent) -> Bool {
+        switch event {
+        case let .profileChanged(userID, scope, profile):
+            consumeProfileChanged(userID: userID, scope: scope, value: profile)
+        case let .profileCustomStatusChanged(userID, status):
+            consumeProfileCustomStatusChanged(userID: userID, status: status)
+        case let .profileWidgetConnectionsChanged(userID, connections):
+            consumeProfileWidgetConnectionsChanged(userID: userID, connections: connections)
+        default:
+            return false
+        }
+        return true
     }
 
     func consumeGatewayWorkspaceStateEvent(_ event: ClientEvent) {
@@ -951,7 +966,7 @@ extension AppModel {
         }
         reconcileRetainedMessageIdentities(user)
         if let index = members.firstIndex(where: { $0.id == user.id }) {
-            members[index].user = user
+            members[index].applyGlobalProfileUser(user)
         }
     }
 

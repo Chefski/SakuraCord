@@ -3,10 +3,11 @@ import SwiftUI
 
 struct ProfileRichTextView: View {
     let source: String
+    var editing: ProfileBioTextEditing?
     @State private var emojiImages: [String: NSImage] = [:]
 
     var body: some View {
-        ProfileTextRepresentable(source: source, emojiImages: emojiImages)
+        ProfileTextRepresentable(source: source, emojiImages: emojiImages, editing: editing)
             .task(id: source) {
                 emojiImages = [:]
                 for emoji in Set(EmojiDescriptor.all(in: source)) {
@@ -131,15 +132,19 @@ private struct ProfileStatusTextRepresentable: NSViewRepresentable {
 private struct ProfileTextRepresentable: NSViewRepresentable {
     let source: String
     let emojiImages: [String: NSImage]
+    let editing: ProfileBioTextEditing?
 
     func makeCoordinator() -> Coordinator {
-        Coordinator()
+        Coordinator(parent: self)
     }
 
     func makeNSView(context: Context) -> HoverLinkTextView {
         let textView = HoverLinkTextView()
         textView.delegate = context.coordinator
-        textView.isEditable = false
+        textView.isEditable = editing != nil
+        textView.isRichText = true
+        textView.importsGraphics = false
+        textView.allowsUndo = true
         textView.isSelectable = true
         textView.drawsBackground = false
         textView.textContainerInset = .zero
@@ -156,10 +161,24 @@ private struct ProfileTextRepresentable: NSViewRepresentable {
     }
 
     func updateNSView(_ textView: HoverLinkTextView, context: Context) {
+        context.coordinator.parent = self
+        editing?.interaction.textView = textView
+        textView.onBeginEditing = editing?.onBegin
+        textView.onEndEditing = editing?.onEnd
+        textView.onCancelEditing = editing?.onCancel
+        textView.isEditable = editing != nil
+        textView.setAccessibilityLabel(editing == nil ? nil : String(localized: "Edit Bio", bundle: #bundle))
         let selection = textView.selectedRange()
         textView.applySakuraCordTextSelectionAppearance()
-        textView.textStorage?.setAttributedString(attributedText())
-        textView.setSelectedRange(selection.clamped(toLength: textView.string.utf16.count))
+        // Preserve the live text storage and native caret during keystrokes.
+        if editing == nil || ComposerEmojiAttributedText.serialize(textView.attributedString()) != source
+            || context.coordinator.images != emojiImages || context.coordinator.wasActive != editing?.isActive {
+            textView.textStorage?.setAttributedString(attributedText())
+            textView.setSelectedRange(selection.clamped(toLength: textView.string.utf16.count))
+        }
+        context.coordinator.images = emojiImages
+        context.coordinator.wasActive = editing?.isActive
+        textView.typingAttributes = ComposerEmojiAttributedText.textAttributes(.systemFont(ofSize: 14))
         textView.invalidateIntrinsicContentSize()
     }
 
@@ -189,7 +208,25 @@ private struct ProfileTextRepresentable: NSViewRepresentable {
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
+        var parent: ProfileTextRepresentable
+        var images: [String: NSImage] = [:]
+        var wasActive: Bool?
+
+        init(parent: ProfileTextRepresentable) { self.parent = parent }
+
+        func textDidChange(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+            parent.editing?.onChange(ComposerEmojiAttributedText.serialize(textView.attributedString()))
+            textView.invalidateIntrinsicContentSize()
+        }
+
+        func textViewDidChangeSelection(_ notification: Notification) {
+            guard parent.editing != nil, let textView = notification.object as? NSTextView else { return }
+            textView.typingAttributes = ComposerEmojiAttributedText.textAttributes(.systemFont(ofSize: 14))
+        }
+
         func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
+            if parent.editing != nil { return true }
             guard let url = link as? URL else { return false }
             var linkRange = NSRange(location: 0, length: 0)
             textView.attributedString().attribute(
@@ -245,31 +282,28 @@ enum ProfileInlineAttributedText {
                     color: color
                 ))
             }
-            let name = sourceString.substring(with: match.range(at: 2))
             let token = sourceString.substring(with: match.range)
-            if let image = emojiImages[token] {
-                let size = font.pointSize * 1.15
-                let attachment = NSTextAttachment()
-                attachment.image = image
-                attachment.bounds = CGRect(
-                    x: 0,
-                    y: ComposerEmojiAttributedText.attachmentOriginY(font: font, size: size),
-                    width: size,
-                    height: size
-                )
-                let value = NSMutableAttributedString(attachment: attachment)
-                value.addAttributes(
-                    [
-                        .discordEmojiToken: token,
-                        .font: font,
-                        .foregroundColor: color
-                    ],
-                    range: NSRange(location: 0, length: value.length)
-                )
-                output.append(value)
-            } else {
-                output.append(styledText(":\(name):", font: font, color: color))
-            }
+            let size = font.pointSize * 1.15
+            let image = emojiImages[token] ?? ComposerEmojiImageStore.shared.cachedImage(for: token)
+                ?? ComposerEmojiAttributedText.placeholderImage(name: sourceString.substring(with: match.range(at: 2)), size: size)
+            let attachment = NSTextAttachment()
+            attachment.image = image
+            attachment.bounds = CGRect(
+                x: 0,
+                y: ComposerEmojiAttributedText.attachmentOriginY(font: font, size: size),
+                width: size,
+                height: size
+            )
+            let value = NSMutableAttributedString(attachment: attachment)
+            value.addAttributes(
+                [
+                    .discordEmojiToken: token,
+                    .font: font,
+                    .foregroundColor: color
+                ],
+                range: NSRange(location: 0, length: value.length)
+            )
+            output.append(value)
             cursor = NSMaxRange(match.range)
         }
         if cursor < sourceString.length {
@@ -369,6 +403,35 @@ private final class ProfileStatusNSTextView: ProfileSelectableTextView {
 }
 
 private final class HoverLinkTextView: ProfileSelectableTextView {
+    var onBeginEditing: (() -> Void)?
+    var onEndEditing: (() -> Void)?
+    var onCancelEditing: (() -> Void)?
+
+    override func becomeFirstResponder() -> Bool {
+        let accepted = super.becomeFirstResponder()
+        if accepted { onBeginEditing?() }
+        return accepted
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let accepted = super.resignFirstResponder()
+        if accepted { onEndEditing?() }
+        return accepted
+    }
+
+    override func cancelOperation(_ sender: Any?) {
+        if let onCancelEditing { onCancelEditing() } else { super.cancelOperation(sender) }
+    }
+
+    override func paste(_ sender: Any?) { pasteAsPlainText(sender) }
+
+    override func insertTab(_ sender: Any?) {
+        if onBeginEditing != nil { window?.selectNextKeyView(sender) } else { super.insertTab(sender) }
+    }
+
+    override func insertBacktab(_ sender: Any?) {
+        if onBeginEditing != nil { window?.selectPreviousKeyView(sender) } else { super.insertBacktab(sender) }
+    }
     private var tracking: NSTrackingArea?
     private var underlinedRange: NSRange?
 

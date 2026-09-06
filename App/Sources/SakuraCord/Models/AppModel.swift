@@ -213,6 +213,7 @@ final class AppModel {
         [MessageID: Set<MessageID>] = [:]
     var messageNavigationRequest: MessageNavigationRequest?
     var conversationNewestRequest: ConversationNewestRequest?
+    var presentedProfileGame: ProfileGame?
     var mediaViewerPresentation: NativeTimelineMediaViewerPresentation?
     var unreadDividerMessageIDs: [ChannelID: MessageID] = [:]
     var members: [Member] = [] {
@@ -256,6 +257,8 @@ final class AppModel {
 
     var membersByID: [UserID: Member] = [:]
     @ObservationIgnored var membersByGuildID: [GuildID: [UserID: Member]] = [:]
+    var profileCustomStatus: ProfileCustomStatus?
+    var profileWidgetConnectionsRevision = UUID()
     @ObservationIgnored var memberListsByGuildID: [GuildID: [Member]] = [:]
     @ObservationIgnored var memberListGroupsByGuildID: [GuildID: [GuildMemberListGroup]] = [:]
     @ObservationIgnored var defersMemberPresentationRebuild = false
@@ -1175,6 +1178,7 @@ final class AppModel {
         [ChannelID: Task<Void, Never>] = [:]
     @ObservationIgnored var forumNotificationMutationGeneration = 0
     @ObservationIgnored var mainWindowIsActive = false
+    @ObservationIgnored var applicationIsActive = false
     @ObservationIgnored var clientAppStateUpdateTask: Task<Void, Never>?
     @ObservationIgnored var currentUserRoleIDsByGuild: [GuildID: Set<RoleID>] = [:]
     @ObservationIgnored let readAcknowledgementTiming: ReadAcknowledgementTiming

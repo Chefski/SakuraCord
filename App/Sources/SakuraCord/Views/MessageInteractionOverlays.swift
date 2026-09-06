@@ -860,7 +860,7 @@ struct MessageProfilePopoverContent: View {
                presentation.member.id == userID,
                presentation.requestID == requestID
             {
-                ProfilePresentationContent(presentation: presentation)
+                ProfilePresentationContent(presentation: presentation, openGame: { model.presentedProfileGame = $0 })
             } else {
                 Color.clear.frame(width: 330, height: 250)
             }

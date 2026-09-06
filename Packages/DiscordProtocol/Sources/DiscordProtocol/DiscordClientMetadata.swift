@@ -30,7 +30,7 @@ public final class DiscordClientMetadata: @unchecked Sendable {
     }
 
     public init(
-        baseline: DiscordProductionBaseline = .august2026,
+        baseline: DiscordProductionBaseline = .current,
         locale: String = Locale.preferredLanguages.first ?? "en-US",
         systemLocale: String? = nil,
         timeZone: String = TimeZone.current.identifier,
@@ -50,7 +50,7 @@ public final class DiscordClientMetadata: @unchecked Sendable {
         let chromiumMajorVersion = baseline.chromiumVersion.split(separator: ".").first
             .map(String.init) ?? baseline.chromiumVersion
         clientHintsUserAgent =
-            "\"Not)A;Brand\";v=\"8\", \"Chromium\";v=\"\(chromiumMajorVersion)\""
+            "\"Not/A)Brand\";v=\"99\", \"Chromium\";v=\"\(chromiumMajorVersion)\""
         self.fingerprint = fingerprint?.isEmpty == false ? fingerprint : nil
         storedInstallationID = installationID?.isEmpty == false ? installationID : nil
         heartbeatSession = DiscordHeartbeatSession(

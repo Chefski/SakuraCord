@@ -595,6 +595,8 @@ nonisolated enum DiscordCustomEmojiCatalog {
 nonisolated enum DiscordEmojiUseCase: Equatable, Sendable {
     case message
     case reaction(guildID: GuildID?)
+    case profile
+    case customStatus
 }
 
 nonisolated enum DiscordEmojiPermissionPolicy {
@@ -617,7 +619,7 @@ nonisolated enum DiscordEmojiPermissionPolicy {
         -> Bool
     {
         switch useCase {
-        case .message:
+        case .message, .profile, .customStatus:
             true
         case .reaction(let guildID):
             hasNitro(premiumType: premiumType)
@@ -631,10 +633,19 @@ nonisolated enum DiscordEmojiPermissionPolicy {
         premiumType: Int
     ) -> Bool {
         switch useCase {
-        case .message:
+        case .message, .profile, .customStatus:
             true
         case .reaction(let currentGuildID):
             hasNitro(premiumType: premiumType) || guildID == currentGuildID
+        }
+    }
+
+    static func isPremiumLocked(_ emoji: DiscordEmoji, for useCase: DiscordEmojiUseCase, premiumType: Int) -> Bool {
+        guard !hasNitro(premiumType: premiumType) else { return false }
+        switch useCase {
+        case .customStatus: return true
+        case .profile: return !emoji.isManaged || emoji.isAnimated
+        case .message, .reaction: return false
         }
     }
 

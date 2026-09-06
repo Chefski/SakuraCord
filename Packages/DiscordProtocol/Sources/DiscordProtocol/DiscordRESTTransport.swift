@@ -392,7 +392,7 @@ extension DiscordRESTProvider {
                 : nil
             guard var components = URLComponents(
                 string:
-                "https://discord.com/api/v\(DiscordProductionBaseline.august2026.apiVersion)\(path)"
+                "https://discord.com/api/v\(DiscordProductionBaseline.current.apiVersion)\(path)"
             ) else {
                 throw ChatProviderError.invalidRequest("Could not construct the Discord API path.")
             }
@@ -604,7 +604,8 @@ extension DiscordRESTProvider {
                 status: response.statusCode,
                 discordCode: discordCode,
                 method: method,
-                data: data
+                data: data,
+                path: path
             ) {
                 await openSafetyCircuit(
                     status: response.statusCode,
@@ -929,7 +930,7 @@ extension DiscordRESTProvider {
         return (object["code"] as? NSNumber)?.intValue
     }
 
-    static func isSafetyStop(status: Int, discordCode: Int?, method: String, data: Data)
+    static func isSafetyStop(status: Int, discordCode: Int?, method: String, data: Data, path: String = "")
         -> Bool
     {
         if isAuthenticationFailure(status: status, discordCode: discordCode) {
@@ -947,8 +948,9 @@ extension DiscordRESTProvider {
         {
             return true
         }
-        // A client-generated mutation reaching HTTP 400 means SakuraCord's
-        // contract is malformed. Do not let another user action repeat it.
+        // A structured error for user-entered profile text/media is editable.
+        // Other mutation 400s still indicate a malformed client contract.
+        if status == 400, profileValidationError(data: data, method: method, path: path) != nil { return false }
         return status == 400 && method != "GET"
     }
 

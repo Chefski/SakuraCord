@@ -192,7 +192,7 @@ actor GatewaySession {
 
     nonisolated let events: AsyncStream<GatewaySessionEvent>
 
-    private let configuration: Configuration
+    private var configuration: Configuration
     private let transport: any GatewayTransport
     private let clock: any GatewayClock
     private let random: any GatewayRandomSource
@@ -246,6 +246,17 @@ actor GatewaySession {
         lifecycleTask = Task { [weak self] in
             await self?.runLifecycle(generation: activeGeneration)
         }
+    }
+
+    func replaceCredential(_ token: String) throws {
+        guard !intentionallyStopped else { throw GatewaySessionError.stopped }
+        var identify = try codec.decode(configuration.identifyPayload)
+        guard case var .object(body) = identify.data else { throw GatewaySessionError.malformedPayload }
+        body["token"] = .string(token)
+        identify.data = .object(body)
+        let payload = try codec.encode(identify)
+        configuration.token = token
+        configuration.identifyPayload = payload
     }
 
     func stop() async {

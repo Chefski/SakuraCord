@@ -5,6 +5,7 @@ import SwiftUI
 enum ProfilePresentationLayout {
     case popover
     case inspector
+    case editor
 }
 
 struct ProfilePresentationContent<Footer: View>: View {
@@ -13,12 +14,14 @@ struct ProfilePresentationContent<Footer: View>: View {
     var maximumPopoverHeight: CGFloat = 560
     var showsRoles = true
     let footer: Footer
+    var openGame: ((ProfileGame) -> Void)?
 
     init(
         presentation: ProfilePresentationState,
         layout: ProfilePresentationLayout = .popover,
         maximumPopoverHeight: CGFloat = 560,
         showsRoles: Bool = true,
+        openGame: ((ProfileGame) -> Void)? = nil,
         @ViewBuilder footer: () -> Footer
     ) {
         self.presentation = presentation
@@ -26,6 +29,7 @@ struct ProfilePresentationContent<Footer: View>: View {
         self.maximumPopoverHeight = maximumPopoverHeight
         self.showsRoles = showsRoles
         self.footer = footer()
+        self.openGame = openGame
     }
 
     var body: some View {
@@ -37,7 +41,8 @@ struct ProfilePresentationContent<Footer: View>: View {
             layout: layout,
             maximumPopoverHeight: maximumPopoverHeight,
             showsRoles: showsRoles,
-            footer: footer
+            footer: footer,
+            openGame: openGame
         )
     }
 }
@@ -47,13 +52,15 @@ extension ProfilePresentationContent where Footer == EmptyView {
         presentation: ProfilePresentationState,
         layout: ProfilePresentationLayout = .popover,
         maximumPopoverHeight: CGFloat = 560,
-        showsRoles: Bool = true
+        showsRoles: Bool = true,
+        openGame: ((ProfileGame) -> Void)? = nil
     ) {
         self.init(
             presentation: presentation,
             layout: layout,
             maximumPopoverHeight: maximumPopoverHeight,
-            showsRoles: showsRoles
+            showsRoles: showsRoles,
+            openGame: openGame
         ) {
             EmptyView()
         }
@@ -71,16 +78,24 @@ struct MemberProfilePopover<Footer: View>: View {
     var maximumPopoverHeight: CGFloat = 560
     var showsRoles = true
     let footer: Footer
+    var openGame: ((ProfileGame) -> Void)?
+    var editor: ProfileEditorState?
+    var openEditorPicker: ((ProfileEditorPicker) -> Void)?
+    var showsDetails = true
 
     @Environment(\.stablePopoverPresentationContext)
     private var popoverPresentationContext
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.displayScale) private var displayScale
+    @Environment(\.profileAnimationsPaused) private var animationsPaused
+    @Environment(\.profileEditorModal) private var editorModal
     @State private var contentHeight: CGFloat = 320
+    @State private var theme = ProfileThemeState()
 
     var body: some View {
         Group {
             switch layout {
-            case .popover:
+            case .popover, .editor:
                 profileContent
                     .frame(
                         width: width,
@@ -100,9 +115,23 @@ struct MemberProfilePopover<Footer: View>: View {
                     .background { inspectorBackground }
             }
         }
+        .clipShape(ConcentricRectangle(cornerRadius: layout == .inspector ? 0 : 16))
+        .background {
+            if let frame = profile?.frame {
+                ProfileFrameOverlay(frame: frame, order: "back")
+            }
+        }
+        .overlay {
+            if let frame = profile?.frame {
+                ProfileFrameOverlay(frame: frame, order: "front")
+            }
+        }
         .onPreferenceChange(ProfileContentHeightKey.self) { newHeight in
             guard newHeight.isFinite, newHeight > 0 else { return }
             contentHeight = max(250, newHeight)
+        }
+        .task(id: theme.source(for: profile, scale: displayScale, isPreview: editor != nil)) {
+            await theme.load(theme.source(for: profile, scale: displayScale, isPreview: editor != nil))
         }
     }
 
@@ -127,9 +156,11 @@ struct MemberProfilePopover<Footer: View>: View {
                             themeHexes: profileThemeHexes,
                             colorScheme: colorScheme
                         ),
-                        topCornerRadius: layout == .popover ? 16 : 0,
+                        topCornerRadius: layout == .inspector ? 0 : 16,
                         statusBubbleWidth: statusBubbleWidth,
-                        animatesRemoteMedia: animatesRemoteMedia
+                        animatesRemoteMedia: animatesRemoteMedia,
+                        editor: editor,
+                        openEditorPicker: openEditorPicker
                     )
                     .zIndex(10)
 
@@ -148,16 +179,30 @@ struct MemberProfilePopover<Footer: View>: View {
                             .padding(.horizontal, 18)
                     }
 
-                    if let profile {
-                        ProfileMutualSummary(
-                            guilds: profile.mutualGuilds,
-                            friends: profile.mutualFriends,
-                            mutualFriendCount: profile.mutualFriendsCount,
-                            layout: layout
-                        )
-                        if let bio = profile.bio, !bio.isEmpty {
-                            ProfileAboutSection(bio: bio)
+                    if let profile, showsDetails {
+                        if layout != .editor {
+                            ProfileMutualSummary(
+                                guilds: profile.mutualGuilds,
+                                friends: profile.mutualFriends,
+                                mutualFriendCount: profile.mutualFriendsCount,
+                                layout: layout
+                            )
                         }
+                        if let editor, editor.scope == .main || editor.isNitro {
+                            ProfileInlineBioEditor(value: Binding(get: { editor.bio }, set: { editor.bio = $0 }), displayValue: profile.bio, model: editor.model)
+                            .padding(.horizontal, 16)
+                        } else if let bio = profile.bio, !bio.isEmpty {
+                            ProfileAboutSection(bio: bio)
+                                .padding(.horizontal, 16)
+                        }
+                        if layout != .editor, let widgets = profile.widgets, !widgets.isEmpty {
+                            ProfileWidgetsSection(displayName: profile.displayName, widgets: widgets, resources: profile.widgetResources, animates: animatesRemoteMedia, openGame: openGame,
+                                                  connectApplication: profile.widgetResources?.connections == nil ? nil : { configuration in
+                                                      if let url = configuration.connectionURL { _ = MessageLinkActivator.activate(url, model: nil, displayedText: url.absoluteString) }
+                                                  })
+                                .padding(.horizontal, 16)
+                        }
+                        ProfileMembershipSection(createdAt: profile.id.createdAt)
                         if showsRoles, !profile.roles.isEmpty {
                             ProfileRolesSection(roles: profile.roles)
                                 .id(profile.id)
@@ -165,6 +210,7 @@ struct MemberProfilePopover<Footer: View>: View {
                         if !profile.connectedAccounts.isEmpty {
                             ProfileConnectionsSection(accounts: profile.connectedAccounts)
                         }
+
                     }
 
                     footer
@@ -176,7 +222,8 @@ struct MemberProfilePopover<Footer: View>: View {
                     }
                 }
             }
-            .scrollIndicators(contentHeight > maximumPopoverHeight ? .visible : .hidden)
+            .scrollIndicators(layout != .editor && editorModal == nil && contentHeight > maximumPopoverHeight ? .visible : .hidden)
+            .scrollDisabled(layout == .editor)
             .padding(surfaceInset)
 
             if let effect = profile?.effect {
@@ -216,19 +263,19 @@ struct MemberProfilePopover<Footer: View>: View {
     }
 
     private var profileThemeHexes: [UInt32] {
-        profile?.themeHexes ?? []
+        theme.colors(for: profile, scale: displayScale, isPreview: editor != nil)
     }
 
     private var animatesRemoteMedia: Bool {
-        popoverPresentationContext?.hasFinishedPresenting ?? true
+        !animationsPaused && (editorModal?.animationState.isVisible ?? true) && (popoverPresentationContext?.hasFinishedPresenting ?? true)
     }
 
     private var surfaceInset: CGFloat {
-        layout == .popover ? 3 : 0
+        layout == .inspector ? 0 : 3
     }
 
     private var innerCornerRadius: CGFloat {
-        layout == .popover ? 16 : 0
+        layout == .inspector ? 0 : 16
     }
 
     private var width: CGFloat {
@@ -265,6 +312,11 @@ private struct ProfileHeroSection: View {
     let topCornerRadius: CGFloat
     let statusBubbleWidth: CGFloat
     let animatesRemoteMedia: Bool
+    var editor: ProfileEditorState?
+    var openEditorPicker: ((ProfileEditorPicker) -> Void)?
+
+    private var avatarSize: CGFloat { 70 }
+    private var horizontalInset: CGFloat { 16 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -273,38 +325,41 @@ private struct ProfileHeroSection: View {
                 accentHex: profile?.accentHex,
                 themeHexes: themeHexes,
                 topCornerRadius: topCornerRadius,
-                animates: animatesRemoteMedia
+                animates: animatesRemoteMedia,
+                height: ProfileBannerLayout.height
             )
                 .overlay(alignment: .topLeading) {
                     Circle()
                         .fill(.black)
                         .frame(width: 84.4, height: 84.4)
-                        .offset(x: 16, y: 58)
+                        .offset(x: horizontalInset, y: 58)
                         .blendMode(.destinationOut)
                 }
                 .compositingGroup()
+                .modifier(ProfileEditorImageMenu(editor: editor, target: .banner, open: openEditorPicker))
 
             HStack(alignment: .bottom, spacing: 6) {
                 AvatarPresenceView(
                     status: profile?.status ?? member.status,
-                    avatarSize: 70,
+                    avatarSize: avatarSize,
                     indicatorSize: 15
                 ) {
                     DecoratedAvatarView(
                         name: profile?.displayName ?? member.user.displayName,
                         avatarURL: profile?.avatarURL ?? member.guildAvatarURL ?? member.user.avatarURL,
                         decorationURL: profile?.user.avatarDecorationURL ?? member.user.avatarDecorationURL,
-                        size: 70,
+                        size: avatarSize,
                         animatesDecoration: animatesRemoteMedia
                     )
                     .padding(3)
                 }
+                .modifier(ProfileEditorImageMenu(editor: editor, target: .avatar, open: openEditorPicker))
                 .offset(y: -34)
 
                 Spacer(minLength: 0)
             }
             .frame(height: 44)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, horizontalInset)
 
             ProfileIdentitySection(
                 displayName: profile?.displayName ?? member.user.displayName,
@@ -316,28 +371,34 @@ private struct ProfileHeroSection: View {
                 isBot: profile?.user.isBot ?? member.user.isBot,
                 badges: profile?.badges ?? [],
                 premiumSince: profile?.premiumSince,
-                premiumGuildSince: profile?.premiumGuildSince
+                premiumGuildSince: profile?.premiumGuildSince,
+                nameSize: 17,
+                background: avatarCutoutColor,
+                editor: editor,
+                openEditorPicker: openEditorPicker
             )
-            .padding(.horizontal, 16)
+            .padding(.horizontal, horizontalInset)
         }
         .overlay(alignment: .topLeading) {
-            if let customStatus = profile?.customStatus ?? member.customStatus, !customStatus.isEmpty {
+            if editor != nil || (profile?.customStatus ?? member.customStatus)?.isEmpty == false {
                 ProfileStatusThoughtDots(surfaceColor: avatarCutoutColor)
                     .offset(x: 82, y: 106)
                     .allowsHitTesting(false)
 
-                ProfileStatusBubble(
-                    text: customStatus,
-                    surfaceColor: avatarCutoutColor,
-                    width: statusBubbleWidth
-                )
+                Group {
+                    if let editor, let profile {
+                        ProfileCustomStatusControl(editor: editor, profile: profile, surfaceColor: avatarCutoutColor, width: statusBubbleWidth)
+                    } else {
+                        ProfileStatusBubble(text: profile?.customStatus ?? member.customStatus ?? "", surfaceColor: avatarCutoutColor, width: statusBubbleWidth)
+                    }
+                }
                     .offset(x: 97, y: 118)
             }
         }
     }
 }
 
-private struct ProfileStatusBubble: View {
+struct ProfileStatusBubble: View {
     let text: String
     let surfaceColor: Color
     let width: CGFloat
@@ -402,6 +463,7 @@ private struct ProfileBanner: View {
     let themeHexes: [UInt32]
     let topCornerRadius: CGFloat
     let animates: Bool
+    var height: CGFloat = ProfileBannerLayout.height
 
     var body: some View {
         GeometryReader { proxy in
@@ -421,14 +483,14 @@ private struct ProfileBanner: View {
                         contentMode: .fill,
                         accessibilityCategory: .decoration
                     )
-                    .frame(width: width, height: ProfileBannerLayout.height)
+                    .frame(width: width, height: height)
                     .clipped()
                 }
             }
-            .frame(width: width, height: ProfileBannerLayout.height)
+            .frame(width: width, height: height)
         }
         .frame(maxWidth: .infinity)
-        .frame(height: ProfileBannerLayout.height)
+        .frame(height: height)
         .clipShape(
             ConcentricRectangle(
                 topLeadingCorner: .concentric(
@@ -464,17 +526,32 @@ private struct ProfileIdentitySection: View {
     let badges: [ProfileBadge]
     let premiumSince: Date?
     let premiumGuildSince: Date?
+    var nameSize: CGFloat = 17
+    var background: Color = Color(nsColor: .controlBackgroundColor)
+    var editor: ProfileEditorState?
+    var openEditorPicker: ((ProfileEditorPicker) -> Void)?
 
     var body: some View {
         let hasPronouns = pronouns?.isEmpty == false
 
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 7) {
-                Text(displayName)
-                    .font(.title2.weight(.bold))
-                    .foregroundStyle(nameGradient)
-                    .textSelection(.enabled)
-                    .tint(SakuraCordAccentColor.color)
+                if let editor {
+                    ProfileInlineTextEditor(
+                        label: "Edit Display Name", value: Binding(get: { editor.name }, set: { editor.name = $0 }),
+                        font: .system(size: nameSize, weight: .bold), nameStyle: nameStyle, nameSize: nameSize, maximumLength: 32
+                    ) {
+                        styledName
+                    }
+                } else { styledName }
+                if editor != nil, let openEditorPicker {
+                    Button { openEditorPicker(.nameStyle) } label: {
+                        Image(systemName: "textformat").font(.body).padding(4)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Change Display Name Style")
+                    .accessibilityLabel("Change Display Name Style")
+                }
                 if isBot {
                     Text("APP")
                         .font(.caption.weight(.bold))
@@ -490,13 +567,21 @@ private struct ProfileIdentitySection: View {
                     usesSeparatorSlot: hasPronouns
                 )
                     .layoutPriority(1)
-                if let pronouns, !pronouns.isEmpty {
+                if let editor, editor.scope == .main || editor.isNitro {
+                    ProfileInlineTextEditor(label: "Edit Pronouns", value: Binding(get: { editor.pronouns }, set: { editor.pronouns = $0 }), font: .callout, maximumLength: 40) {
+                        Text(pronouns?.isEmpty == false ? pronouns ?? "" : String(localized: "Add pronouns", bundle: #bundle))
+                            .font(.callout).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                } else if let pronouns, !pronouns.isEmpty {
                     Text(pronouns)
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
-                if let primaryGuildIdentity, let tag = primaryGuildIdentity.tag, !tag.isEmpty {
+                if let editor, editor.scope == .main {
+                    ProfileServerTagPicker(editor: editor, identity: primaryGuildIdentity)
+                }
+                if editor == nil, let primaryGuildIdentity, let tag = primaryGuildIdentity.tag, !tag.isEmpty {
                     ProfileGuildIdentity(identity: primaryGuildIdentity, tag: tag)
                         .fixedSize(horizontal: true, vertical: false)
                 }
@@ -513,13 +598,9 @@ private struct ProfileIdentitySection: View {
         }
     }
 
-    private var nameGradient: LinearGradient {
-        let colors = nameStyle?.colors.map(Color.init(hex:)) ?? []
-        return LinearGradient(
-            colors: colors.isEmpty ? [.primary] : colors,
-            startPoint: .leading,
-            endPoint: .trailing
-        )
+    private var styledName: some View {
+        ProfileDisplayName(name: displayName, style: nameStyle, size: nameSize, background: background)
+            .tint(SakuraCordAccentColor.color)
     }
 }
 
@@ -761,7 +842,6 @@ private struct ProfileAboutSection: View {
     var body: some View {
         if let bio, !bio.isEmpty {
             ProfileRichTextView(source: bio)
-                .padding(.horizontal, 16)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -898,7 +978,7 @@ enum ProfileRolePresentation {
     }
 }
 
-private struct ProfileRoleFlowLayout: Layout {
+struct ProfileRoleFlowLayout: Layout {
     let spacing: CGFloat
 
     func sizeThatFits(
@@ -1145,7 +1225,7 @@ nonisolated enum ProfileEffectLayout {
     }
 }
 
-private struct ProfileEffectOverlay: View {
+struct ProfileEffectOverlay: View {
     let effect: ProfileEffect
     let animates: Bool
 
@@ -1201,7 +1281,7 @@ private struct ProfileEffectOverlay: View {
     }
 }
 
-private struct ProfileGuildIdentity: View {
+struct ProfileGuildIdentity: View {
     let identity: PrimaryGuildIdentity
     let tag: String
 
@@ -1224,7 +1304,7 @@ private struct ProfileGuildIdentity: View {
     }
 }
 
-private enum ProfilePalette {
+enum ProfilePalette {
     private static let innerSurfaceThemeAmount = 0.36
 
     static func colors(themeHexes: [UInt32], accentHex: UInt32?) -> [Color] {

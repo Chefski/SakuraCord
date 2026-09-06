@@ -129,7 +129,7 @@ extension AppModel {
         let nextProvider = AppPerformanceSignposts.measureSync("ProviderCreation") {
             authenticatedProviderFactory(handle, installationID)
         }
-        await nextProvider.updateClientAppState(isFocused: mainWindowIsActive)
+        await nextProvider.updateClientAppState(isFocused: applicationIsActive)
         do {
             // Enumerating Keychain item attributes reveals the account handle
             // without necessarily authorizing access to its secret. Preparing
@@ -316,6 +316,8 @@ extension AppModel {
         messageRowCacheOrder = []
         hasMoreCache = [:]
         membersByGuildID = [:]
+        profileCustomStatus = nil
+        presentedProfileGame = nil
         memberListsByGuildID = [:]
         memberListGroupsByGuildID = [:]
         memberListViewportRequest = nil

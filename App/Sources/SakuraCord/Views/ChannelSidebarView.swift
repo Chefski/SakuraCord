@@ -843,8 +843,9 @@ private struct CurrentUserCapsule: View {
             ProfilePresentationContent(
                 presentation: presentation,
                 maximumPopoverHeight: 720,
-                showsRoles: false
-            ) {
+                showsRoles: false,
+                openGame: { model.presentedProfileGame = $0 },
+            footer: {
                 YouPopoverOptions(
                     currentStatus: currentStatus,
                     isStatusEnabled: isAuthenticated && !isOfflineTesting,
@@ -863,7 +864,7 @@ private struct CurrentUserCapsule: View {
                         isYouPopoverPresented = false
                     }
                 )
-            }
+            })
         } else {
             ProgressView("Loading profile…")
                 .padding(24)
@@ -928,8 +929,7 @@ private struct YouPopoverOptions: View {
                 .frame(height: 38)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .screenSharePopoverHoverEffect()
+            .buttonStyle(PopoverRowButtonStyle())
             .disabled(!isStatusEnabled)
             .opacity(isStatusEnabled ? 1 : 0.45)
             .escapeDismissiblePopover(
@@ -959,8 +959,7 @@ private struct YouPopoverOptions: View {
                 .frame(height: 38)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .screenSharePopoverHoverEffect()
+            .buttonStyle(PopoverRowButtonStyle())
             .disabled(!isAccountSwitchingEnabled)
             .opacity(isAccountSwitchingEnabled ? 1 : 0.45)
             .escapeDismissiblePopover(
@@ -1012,8 +1011,7 @@ private struct StatusSelectionPopover: View {
                     .frame(height: 34)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                .screenSharePopoverHoverEffect()
+                .buttonStyle(PopoverRowButtonStyle())
             }
         }
         .font(.callout)
@@ -1056,8 +1054,7 @@ private struct AccountSelectionPopover: View {
                     .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .screenSharePopoverHoverEffect()
+            .buttonStyle(PopoverRowButtonStyle())
         }
         .font(.callout)
         .padding(12)
@@ -1101,8 +1098,7 @@ private struct AccountSelectionPopover: View {
             .frame(height: 36)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .screenSharePopoverHoverEffect()
+        .buttonStyle(PopoverRowButtonStyle())
         .disabled(switchingAccountID != nil)
     }
 }

@@ -103,6 +103,7 @@ final class NativeMemberListCoordinator: NSObject {
         canvas.selectMember = { [weak self] member in
             self?.parent.selectMember(member)
         }
+        canvas.openGame = parent.openGame
         canvas.setInteractionsBlocked(parent.interactionsBlocked)
         AppPerformanceSignposts.measureSync("MemberListCanvasUpdate") {
             canvas.updatePresentation(

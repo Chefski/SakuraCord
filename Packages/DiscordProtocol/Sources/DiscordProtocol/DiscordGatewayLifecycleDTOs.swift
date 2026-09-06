@@ -33,11 +33,13 @@ struct GatewayGuildPropertiesDTO: Decodable {
     var rulesChannelID: String?
     var defaultMessageNotifications: Int?
     var features: Set<String>?
+    var profile: GuildProfileTagDTO?
+    var containsProfile: Bool
     var containsIcon: Bool
     var containsRulesChannelID: Bool
 
     enum CodingKeys: String, CodingKey {
-        case name, icon, owner, permissions, features
+        case name, icon, owner, permissions, features, profile
         case ownerID = "owner_id"
         case rulesChannelID = "rules_channel_id"
         case defaultMessageNotifications = "default_message_notifications"
@@ -57,6 +59,8 @@ struct GatewayGuildPropertiesDTO: Decodable {
             Int.self, forKey: .defaultMessageNotifications
         )
         features = try? values.decode(Set<String>.self, forKey: .features)
+        profile = try values.decodeIfPresent(GuildProfileTagDTO.self, forKey: .profile)
+        containsProfile = values.contains(.profile)
         containsIcon = values.contains(.icon)
         containsRulesChannelID = values.contains(.rulesChannelID)
     }
@@ -72,11 +76,14 @@ struct GatewayGuildPatchDTO: Decodable {
     var rulesChannelID: String?
     var defaultMessageNotifications: Int?
     var unavailable: Bool?
+    var features: Set<String>?
+    var profile: GuildProfileTagDTO?
+    var containsProfile: Bool
     var containsIcon: Bool
     var containsRulesChannelID: Bool
 
     enum CodingKeys: String, CodingKey {
-        case id, name, icon, owner, permissions, unavailable, properties
+        case id, name, icon, owner, permissions, unavailable, properties, features, profile
         case ownerID = "owner_id"
         case rulesChannelID = "rules_channel_id"
         case defaultMessageNotifications = "default_message_notifications"
@@ -98,6 +105,14 @@ struct GatewayGuildPatchDTO: Decodable {
             Int.self, forKey: .defaultMessageNotifications
         )) ?? nested?.defaultMessageNotifications
         unavailable = try? values.decode(Bool.self, forKey: .unavailable)
+        features = (try? values.decode(Set<String>.self, forKey: .features)) ?? nested?.features
+        if values.contains(.profile) {
+            profile = try values.decodeIfPresent(GuildProfileTagDTO.self, forKey: .profile)
+            containsProfile = true
+        } else {
+            profile = nested?.profile
+            containsProfile = nested?.containsProfile ?? false
+        }
         if values.contains(.icon) {
             icon = try? values.decode(String.self, forKey: .icon)
             containsIcon = true
@@ -144,6 +159,8 @@ struct GatewayGuildPatchDTO: Decodable {
             rulesChannelID: containsRulesChannelID
                 ? rulesChannelID.flatMap(ChannelID.init)
                 : existing?.rulesChannelID,
+            features: features ?? existing?.features ?? [],
+            profileTag: containsProfile ? profile?.domain(guildID: guildID) : existing?.profileTag,
             defaultMessageNotifications:
                 defaultMessageNotifications.flatMap(MessageNotificationLevel.init(rawValue:))
                 ?? existing?.defaultMessageNotifications

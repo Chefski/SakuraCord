@@ -207,6 +207,8 @@ nonisolated enum GIFPickerMediaPolicy {
 struct GIFPickerView: View {
     let model: AppModel
     let dismiss: () -> Void
+    var selectionHandler: ((GIFSearchResult, GIFPickerPage) -> Void)?
+    var hidesFavorites = false
 
     @State private var page: GIFPickerPage = .landing
     @State private var query = ""
@@ -247,11 +249,11 @@ struct GIFPickerView: View {
 
     private var landing: some View {
         ScrollView {
-            Grid(
-                horizontalSpacing: GIFMasonryLayout.spacing,
-                verticalSpacing: GIFMasonryLayout.spacing
+            LazyVGrid(
+                columns: [GridItem(.flexible(), spacing: GIFMasonryLayout.spacing), GridItem(.flexible())],
+                spacing: GIFMasonryLayout.spacing
             ) {
-                GridRow {
+                if !hidesFavorites {
                     GIFCategoryButton(
                         title: "Favourites",
                         systemImage: "star.fill",
@@ -259,26 +261,17 @@ struct GIFPickerView: View {
                     ) {
                         page = .favorites
                     }
-                    GIFCategoryButton(
-                        title: "Trending GIFs",
-                        systemImage: "arrow.up.right",
-                        previewURL: model.gifTrendingPreviewURL
-                    ) {
-                        page = .trending
-                        model.searchGIFs("")
-                    }
                 }
-                ForEach(categoryRowStarts, id: \.self) { start in
-                    GridRow {
-                        categoryButton(model.gifCategories[start])
-                        if model.gifCategories.indices.contains(start + 1) {
-                            categoryButton(model.gifCategories[start + 1])
-                        } else {
-                            Color.clear
-                                .frame(maxWidth: .infinity, minHeight: 102)
-                                .accessibilityHidden(true)
-                        }
-                    }
+                GIFCategoryButton(
+                    title: "Trending GIFs",
+                    systemImage: "arrow.up.right",
+                    previewURL: model.gifTrendingPreviewURL
+                ) {
+                    page = .trending
+                    model.searchGIFs("")
+                }
+                ForEach(model.gifCategories) { category in
+                    categoryButton(category)
                 }
             }
             .frame(maxWidth: .infinity)
@@ -294,10 +287,6 @@ struct GIFPickerView: View {
                 GIFPickerStatus(message: error, retry: model.loadGIFPicker)
             }
         }
-    }
-
-    private var categoryRowStarts: [Int] {
-        Array(stride(from: 0, to: model.gifCategories.count, by: 2))
     }
 
     private func categoryButton(_ category: GIFPickerCategory) -> some View {
@@ -377,6 +366,10 @@ struct GIFPickerView: View {
     }
 
     private func choose(_ gif: GIFSearchResult) {
+        if let selectionHandler {
+            selectionHandler(gif, page)
+            return
+        }
         Task {
             if await model.sendGIF(gif) { dismiss() }
         }

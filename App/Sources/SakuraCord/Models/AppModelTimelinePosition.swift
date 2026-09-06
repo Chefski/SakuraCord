@@ -58,13 +58,6 @@ extension AppModel {
     func reportMainWindowActive(_ isActive: Bool) {
         mainWindowIsActive = isActive
         updateApplicationStreamWindowActivity(isActive)
-        let session = accountSession()
-        let precedingUpdate = clientAppStateUpdateTask
-        clientAppStateUpdateTask = Task {
-            await precedingUpdate?.value
-            guard !Task.isCancelled else { return }
-            await session.provider.updateClientAppState(isFocused: isActive)
-        }
         if let selectedChannelID {
             preserveUnreadDividerIfNeeded(channelID: selectedChannelID)
             if let target = readState.updatePresentation(
@@ -85,6 +78,17 @@ extension AppModel {
             ) {
                 scheduleAutomaticAcknowledgement(channelID: threadID, messageID: target)
             }
+        }
+    }
+
+    func reportApplicationActive(_ isActive: Bool) {
+        applicationIsActive = isActive
+        let session = accountSession()
+        let precedingUpdate = clientAppStateUpdateTask
+        clientAppStateUpdateTask = Task {
+            await precedingUpdate?.value
+            guard !Task.isCancelled, isCurrentAccountSession(session) else { return }
+            await session.provider.updateClientAppState(isFocused: isActive)
         }
     }
 

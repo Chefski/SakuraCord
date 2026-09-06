@@ -67,6 +67,12 @@ private struct DiscordGIFPickerLandingDTO: Decodable {
 }
 
 public extension DiscordRESTProvider {
+    func recordProfileGIFSelection(id: String, query: String?) async throws {
+        var body: [String: JSONValue] = ["id": .string(id)]
+        if let query { body["q"] = .string(query) }
+        try await requestEmpty("/gifs/select", method: "POST", body: body)
+    }
+
     func searchGIFs(query: String) async throws -> [GIFSearchResult] {
         let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { return try await trendingGIFs() }

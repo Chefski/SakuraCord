@@ -396,8 +396,7 @@ struct ScreenShareFrameRatePopover: View {
                     .frame(height: 30)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                .screenSharePopoverHoverEffect()
+                .buttonStyle(PopoverRowButtonStyle())
             }
         }
         .font(.callout)

@@ -180,7 +180,9 @@ extension DiscordRESTProvider {
                 guildID: guildID
             )
         else { return }
-        quickSwitcherGuildMemberUserIDsByGuildID[guildID, default: []].insert(member.id)
+        let previousMember = cachedMembers[guildID]?.first { $0.id == member.id }
+        let membershipAdded = quickSwitcherGuildMemberUserIDsByGuildID[guildID, default: []].insert(member.id).inserted
+        let wasJoined = quickSwitcherJoinedMemberIDsByGuildID[guildID]?.contains(member.id) == true
         if update.member.joinedAt != nil, member.isPending != true {
             quickSwitcherJoinedMemberIDsByGuildID[guildID, default: []]
                 .insert(member.id)
@@ -189,8 +191,14 @@ extension DiscordRESTProvider {
         }
         cacheLiveSearchUsers([update.member.user])
         publishMemberChange(member, guildID: guildID)
-        publishUserSearchAliases()
-        scheduleForwardSearchPeopleCachePersistence()
+        let isJoined = quickSwitcherJoinedMemberIDsByGuildID[guildID]?.contains(member.id) == true
+        // A global profile edit fans out to every guild. Avatar-only updates
+        // do not change the account-wide membership or nickname indexes.
+        if previousMember == nil || membershipAdded || wasJoined != isJoined
+            || forwardSearchNickname(from: previousMember) != forwardSearchNickname(from: member) {
+            publishUserSearchAliases()
+            scheduleForwardSearchPeopleCachePersistence()
+        }
     }
 
     func handleGuildMemberRemoveDispatch(

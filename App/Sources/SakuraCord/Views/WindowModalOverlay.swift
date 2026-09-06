@@ -262,11 +262,10 @@ where Presentation.ID: Hashable {
                 ),
                       let self,
                       self.presentation != nil,
-                      event.window === window
-                          || NSApp.keyWindow === window
-                          || NSApp.mainWindow === window
+                      self.overlayView?.isTopmostPresentedOverlay == true,
+                      event.window === window || event.window == nil && NSApp.keyWindow === window
                 else { return event }
-                self.overlayView?.requestDismissal()
+                self.overlayView?.animationState.handleEscape()
                 return nil
             }
         }
@@ -284,6 +283,7 @@ where Presentation.ID: Hashable {
 
         private func removeOverlay(ifPresentationID presentationID: AnyHashable) {
             guard overlayView?.presentationID == presentationID else { return }
+            if let window = presentationWindow { restorePreviousFirstResponder(in: window) }
             removeOverlay()
         }
     }
@@ -307,6 +307,13 @@ final class WindowModalHostingView: NSHostingView<AnyView> {
     private let reducesMotion: Bool
     private var isModalPresented = false
     var isPresented: Bool { isModalPresented }
+
+    var isTopmostPresentedOverlay: Bool {
+        guard isPresented, let siblings = superview?.subviews else { return false }
+        let overlays = siblings.compactMap { $0 as? WindowModalHostingView }.filter(\.isPresented)
+        let highest = overlays.map { $0.layer?.zPosition ?? 0 }.max()
+        return overlays.last(where: { $0.layer?.zPosition == highest }) === self
+    }
 
     override var acceptsFirstResponder: Bool { true }
 
@@ -355,19 +362,19 @@ final class WindowModalHostingView: NSHostingView<AnyView> {
     }
 
     override func cancelOperation(_ sender: Any?) {
-        if behavior.capturesEscape {
-            requestDismissal()
+        if behavior.capturesEscape, isTopmostPresentedOverlay {
+            animationState.handleEscape()
         } else {
             super.cancelOperation(sender)
         }
     }
 
     override func keyDown(with event: NSEvent) {
-        if behavior.capturesEscape, WindowModalKeyPolicy.isEscape(
+        if behavior.capturesEscape, isTopmostPresentedOverlay, WindowModalKeyPolicy.isEscape(
             keyCode: event.keyCode,
             characters: event.charactersIgnoringModifiers
         ) {
-            requestDismissal()
+            animationState.handleEscape()
         } else {
             super.keyDown(with: event)
         }
@@ -375,13 +382,14 @@ final class WindowModalHostingView: NSHostingView<AnyView> {
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if behavior.capturesEscape,
+           isTopmostPresentedOverlay,
            event.type == .keyDown,
            WindowModalKeyPolicy.isEscape(
                keyCode: event.keyCode,
                characters: event.charactersIgnoringModifiers
            )
         {
-            requestDismissal()
+            animationState.handleEscape()
             return true
         }
         return super.performKeyEquivalent(with: event)
@@ -441,7 +449,7 @@ final class WindowModalHostingView: NSHostingView<AnyView> {
     }
 
     func requestDismissal(committingPresentation: Bool = true) {
-        guard animationState.canBeginDismissal else { return }
+        guard animationState.canBeginDismissal, !committingPresentation || !animationState.preventsDismissal else { return }
         if !behavior.animates || reducesMotion {
             alphaValue = 0
         } else {
@@ -462,6 +470,8 @@ final class WindowModalHostingView: NSHostingView<AnyView> {
 @MainActor
 @Observable
 final class WindowModalAnimationState {
+    var preventsDismissal = false
+    var escapeAction: (() -> Void)?
     fileprivate var requestDismissal: ((Bool) -> Void)?
     private(set) var isVisible = false
     private var dismissalTask: Task<Void, Never>?
@@ -488,6 +498,10 @@ final class WindowModalAnimationState {
 
     func dismiss(committingPresentation: Bool) {
         requestDismissal?(committingPresentation)
+    }
+
+    func handleEscape() {
+        if let escapeAction { escapeAction() } else { dismiss(committingPresentation: true) }
     }
 
     fileprivate func present() {

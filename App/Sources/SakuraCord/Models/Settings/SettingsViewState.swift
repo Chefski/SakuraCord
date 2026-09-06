@@ -18,9 +18,13 @@ nonisolated struct SettingsRevealRequest: Equatable, Identifiable, Sendable {
 
 @Observable
 final class SettingsViewState {
-    var selectedPage: SettingsPageID = .myAccount {
-        didSet {
-            guard selectedPage != oldValue else { return }
+    private var currentPage: SettingsPageID = .myAccount
+    @ObservationIgnored var allowsNavigation: ((SettingsPageID) -> Bool)?
+    var selectedPage: SettingsPageID {
+        get { currentPage }
+        set {
+            guard newValue != currentPage, allowsNavigation?(newValue) != false else { return }
+            currentPage = newValue
             if revealRequest != nil {
                 revealRequest = nil
             }
@@ -110,6 +114,7 @@ final class SettingsViewState {
         controlID: SettingsControlID
     ) {
         selectedPage = destination.page
+        guard selectedPage == destination.page else { return }
         revealRequest = SettingsRevealRequest(
             id: UUID(),
             destination: destination,

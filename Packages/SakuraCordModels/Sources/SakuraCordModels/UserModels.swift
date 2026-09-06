@@ -54,6 +54,7 @@ public struct User: Identifiable, Codable, Hashable, Sendable {
     public var displayNameStyle: DisplayNameStyle?
     public var publicFlags: UInt64
     public var premiumType: Int
+    public var allowsAdultContent: Bool?
 
     public init(
         id: UserID,
@@ -68,7 +69,8 @@ public struct User: Identifiable, Codable, Hashable, Sendable {
         primaryGuild: PrimaryGuildIdentity? = nil,
         displayNameStyle: DisplayNameStyle? = nil,
         publicFlags: UInt64 = 0,
-        premiumType: Int = 0
+        premiumType: Int = 0,
+        allowsAdultContent: Bool? = nil
     ) {
         self.id = id
         self.username = username
@@ -83,11 +85,12 @@ public struct User: Identifiable, Codable, Hashable, Sendable {
         self.displayNameStyle = displayNameStyle
         self.publicFlags = publicFlags
         self.premiumType = premiumType
+        self.allowsAdultContent = allowsAdultContent
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, username, discriminator, displayName, avatarURL, isBot, isSystem, avatarDecorationURL, nameplate
-        case primaryGuild, displayNameStyle, publicFlags, premiumType
+        case primaryGuild, displayNameStyle, publicFlags, premiumType, allowsAdultContent
     }
 
     public init(from decoder: Decoder) throws {
@@ -108,6 +111,7 @@ public struct User: Identifiable, Codable, Hashable, Sendable {
         )
         publicFlags = try container.decodeIfPresent(UInt64.self, forKey: .publicFlags) ?? 0
         premiumType = try container.decodeIfPresent(Int.self, forKey: .premiumType) ?? 0
+        allowsAdultContent = try container.decodeIfPresent(Bool.self, forKey: .allowsAdultContent)
     }
 
     public var tag: String {

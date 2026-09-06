@@ -698,7 +698,10 @@ extension DiscordRESTProvider {
         }
         let total = ((try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size]) as? NSNumber)?.int64Value ?? 0
         progress(.uploading(fileName: file.name, completed: 0, total: total))
-        let response = try await performAttachmentUpload(fileURL: fileURL, uploadURL: uploadURL, slotID: slot.id)
+        let response = try await performStorageUpload(
+            fileURL: fileURL, uploadURL: uploadURL, contentType: "application/octet-stream",
+            diagnosticTransport: "attachment_storage", diagnosticPath: "/attachments/\(slot.id)"
+        )
         guard (200 ..< 300).contains(response.statusCode) else {
             throw ChatProviderError.invalidRequest(
                 "Discord's attachment storage rejected \(file.name).")
@@ -706,17 +709,18 @@ extension DiscordRESTProvider {
         progress(.uploading(fileName: file.name, completed: total, total: total))
     }
 
-    func performAttachmentUpload(
+    func performStorageUpload(
         fileURL: URL,
         uploadURL: URL,
-        slotID: Int
+        contentType: String,
+        diagnosticTransport: String,
+        diagnosticPath path: String
     ) async throws -> HTTPURLResponse {
         var uploadRequest = URLRequest(url: uploadURL)
         uploadRequest.httpMethod = "PUT"
-        uploadRequest.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
-        let path = "/attachments/\(slotID)"
+        uploadRequest.setValue(contentType, forHTTPHeaderField: "Content-Type")
         apiDiagnostics.recordHTTPRequest(
-            transport: "attachment_storage", method: "PUT", path: path, body: nil, attempt: 1
+            transport: diagnosticTransport, method: "PUT", path: path, body: nil, attempt: 1
         )
         let started = ContinuousClock.now
         let session = restSession
@@ -728,13 +732,13 @@ extension DiscordRESTProvider {
                     "Discord's attachment storage returned an invalid HTTP response.")
             }
             apiDiagnostics.recordHTTPResponse(
-                transport: "attachment_storage", method: "PUT", path: path, attempt: 1,
+                transport: diagnosticTransport, method: "PUT", path: path, attempt: 1,
                 response: response, body: Data(), duration: started.duration(to: .now)
             )
             return response
         } catch {
             apiDiagnostics.recordHTTPFailure(
-                transport: "attachment_storage", method: "PUT", path: path, attempt: 1,
+                transport: diagnosticTransport, method: "PUT", path: path, attempt: 1,
                 duration: started.duration(to: .now), error: error
             )
             _ = recoverRESTSessionIfNeeded(after: error, requestGeneration: generation)

@@ -40,6 +40,27 @@ public protocol ChatProvider: Sendable {
     func roles(in guildID: GuildID) async throws -> [GuildRole]
     func members(withRole roleID: RoleID, in guildID: GuildID) async throws -> RoleMemberResult
     func profile(for userID: UserID, in guildID: GuildID?) async throws -> UserProfile
+    func profileEditingSnapshot(in scope: ProfileEditingScope) async throws -> ProfileEditingSnapshot
+    func cachedProfileEditingSnapshot(in scope: ProfileEditingScope) async throws -> ProfileEditingSnapshot?
+    func profileCollectibleInventory() async throws -> ProfileCollectibleInventory
+    func profileCollectibleProduct(id: String) async throws -> ProfileCollectibleProduct
+    func profileAvatarHistory() async throws -> [ProfileAvatarHistoryEntry]
+    func deleteProfileAvatarHistoryEntry(id: String) async throws
+    func uploadProfileWidgetImage(fileURL: URL, filename: String, contentType: String) async throws -> ProfileWidgetImage
+    func suggestedProfileWidgetGames() async throws -> ProfileWidgetGameSuggestions
+    func defaultProfileWidgetGames() async throws -> [ProfileGame]
+    func searchProfileWidgetGames(query: String) async throws -> [ProfileGame]
+    func profileWidgetGames(ids: [String]) async throws -> [ProfileGame]
+    func similarProfileGames(to gameID: String) async throws -> [ProfileGame]
+    func profileGameAnnouncements(gameID: String) async throws -> ProfileGameAnnouncements
+    func profileWidgetCatalogue(developer: Bool) async throws -> [ProfileApplicationWidget]
+    func profileWidgetApplication(id: String) async throws -> [ProfileApplicationWidget]
+    func profileWidgetApplicationIdentities(for userID: UserID) async throws -> [ProfileWidgetApplicationIdentity]
+    func profileWidgetConnections(applicationIDs: [String]) async throws -> [String: ProfileWidgetConnection]
+    func saveProfileChanges(
+        _ changes: ProfileEditChanges, in scope: ProfileEditingScope,
+        didSave: @Sendable (ProfileSaveConfirmation) async -> Void
+    ) async throws
     func emojis(in guildID: GuildID) async throws -> [DiscordEmoji]
     func emojiUserSettings() async throws -> EmojiUserSettings
     func setEmojiFavorite(_ key: String, isFavorite: Bool) async throws -> EmojiUserSettings
@@ -51,6 +72,7 @@ public protocol ChatProvider: Sendable {
     func sendSoundboardSound(_ sound: SoundboardSound, in channelID: ChannelID) async throws
     func currentStatus() async -> PresenceStatus
     func updateStatus(_ status: PresenceStatus) async throws
+    func updateProfileCustomStatus(_ status: ProfileCustomStatus?) async throws -> ProfileCustomStatus?
     func messages(in channelID: ChannelID, before: MessageID?, limit: Int) async throws -> MessagePage
     func messages(
         in channelID: ChannelID,
@@ -113,6 +135,7 @@ public protocol ChatProvider: Sendable {
     func searchGIFs(query: String) async throws -> [GIFSearchResult]
     func trendingGIFs() async throws -> [GIFSearchResult]
     func gifPickerLanding() async throws -> GIFPickerLanding
+    func recordProfileGIFSelection(id: String, query: String?) async throws
     func favoriteGIFs() async throws -> [GIFSearchResult]
     func setGIFFavorite(_ gif: GIFSearchResult, isFavorite: Bool) async throws
         -> [GIFSearchResult]
@@ -239,6 +262,83 @@ public protocol PendingCredentialChatProvider: ChatProvider {
 }
 
 public extension ChatProvider {
+    func updateProfileCustomStatus(_ status: ProfileCustomStatus?) async throws -> ProfileCustomStatus? {
+        throw ChatProviderError.invalidRequest("Custom status editing is unavailable for this session.")
+    }
+
+    func defaultProfileWidgetGames() async throws -> [ProfileGame] {
+        throw ChatProviderError.invalidRequest("Profile widget games are unavailable for this session.")
+    }
+
+    func profileWidgetCatalogue(developer: Bool) async throws -> [ProfileApplicationWidget] {
+        throw ChatProviderError.invalidRequest("Application widgets are unavailable for this session.")
+    }
+
+    func profileWidgetApplication(id: String) async throws -> [ProfileApplicationWidget] {
+        throw ChatProviderError.invalidRequest("Application widgets are unavailable for this session.")
+    }
+
+    func profileWidgetApplicationIdentities(for userID: UserID) async throws -> [ProfileWidgetApplicationIdentity] {
+        throw ChatProviderError.invalidRequest("Application widgets are unavailable for this session.")
+    }
+
+    func profileWidgetConnections(applicationIDs: [String]) async throws -> [String: ProfileWidgetConnection] {
+        throw ChatProviderError.invalidRequest("Application connections are unavailable for this session.")
+    }
+
+    func uploadProfileWidgetImage(fileURL: URL, filename: String, contentType: String) async throws -> ProfileWidgetImage {
+        throw ChatProviderError.invalidRequest("Widget image uploads are unavailable for this session.")
+    }
+
+    func suggestedProfileWidgetGames() async throws -> ProfileWidgetGameSuggestions {
+        throw ChatProviderError.invalidRequest("Profile widget games are unavailable for this session.")
+    }
+
+    func searchProfileWidgetGames(query: String) async throws -> [ProfileGame] {
+        throw ChatProviderError.invalidRequest("Profile widget games are unavailable for this session.")
+    }
+
+    func profileWidgetGames(ids: [String]) async throws -> [ProfileGame] {
+        throw ChatProviderError.invalidRequest("Profile widget games are unavailable for this session.")
+    }
+
+    func similarProfileGames(to gameID: String) async throws -> [ProfileGame] {
+        throw ChatProviderError.invalidRequest("Game profiles are unavailable for this session.")
+    }
+
+    func profileGameAnnouncements(gameID: String) async throws -> ProfileGameAnnouncements {
+        throw ChatProviderError.invalidRequest("Game announcements are unavailable for this session.")
+    }
+
+    func profileEditingSnapshot(in scope: ProfileEditingScope) async throws -> ProfileEditingSnapshot {
+        throw ChatProviderError.invalidRequest("Profile editing is unavailable for this session.")
+    }
+
+    func cachedProfileEditingSnapshot(in scope: ProfileEditingScope) async throws -> ProfileEditingSnapshot? { nil }
+
+    func profileCollectibleInventory() async throws -> ProfileCollectibleInventory {
+        throw ChatProviderError.invalidRequest("Profile collectibles are unavailable for this session.")
+    }
+
+    func profileCollectibleProduct(id: String) async throws -> ProfileCollectibleProduct {
+        throw ChatProviderError.invalidRequest("Profile collectibles are unavailable for this session.")
+    }
+
+    func profileAvatarHistory() async throws -> [ProfileAvatarHistoryEntry] {
+        throw ChatProviderError.invalidRequest("Avatar history is unavailable for this session.")
+    }
+
+    func deleteProfileAvatarHistoryEntry(id: String) async throws {
+        throw ChatProviderError.invalidRequest("Avatar history is unavailable for this session.")
+    }
+
+    func saveProfileChanges(
+        _ changes: ProfileEditChanges, in scope: ProfileEditingScope,
+        didSave: @Sendable (ProfileSaveConfirmation) async -> Void
+    ) async throws {
+        throw ChatProviderError.invalidRequest("Profile editing is unavailable for this session.")
+    }
+
     func clearLocalSearchCache() async throws {}
 
     func prepareAuthentication() async throws {}
@@ -508,6 +608,10 @@ public extension ChatProvider {
     }
 
     func gifPickerLanding() async throws -> GIFPickerLanding {
+        throw ChatProviderError.capabilityDisabled(.gifs)
+    }
+
+    func recordProfileGIFSelection(id: String, query: String?) async throws {
         throw ChatProviderError.capabilityDisabled(.gifs)
     }
 

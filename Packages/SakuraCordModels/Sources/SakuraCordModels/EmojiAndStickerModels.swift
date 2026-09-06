@@ -6,6 +6,7 @@ public struct DiscordEmoji: Identifiable, Codable, Hashable, Sendable {
     public var isAnimated: Bool
     public var guildID: GuildID
     public var isAvailable: Bool
+    public var isManaged: Bool
     public var assetURL: URL?
 
     public init(
@@ -14,7 +15,8 @@ public struct DiscordEmoji: Identifiable, Codable, Hashable, Sendable {
         isAnimated: Bool = false,
         guildID: GuildID,
         isAvailable: Bool = true,
-        assetURL: URL? = nil
+        assetURL: URL? = nil,
+        isManaged: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -22,6 +24,22 @@ public struct DiscordEmoji: Identifiable, Codable, Hashable, Sendable {
         self.guildID = guildID
         self.isAvailable = isAvailable
         self.assetURL = assetURL
+        self.isManaged = isManaged
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, isAnimated, guildID, isAvailable, assetURL, isManaged
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        isAnimated = try container.decode(Bool.self, forKey: .isAnimated)
+        guildID = try container.decode(GuildID.self, forKey: .guildID)
+        isAvailable = try container.decode(Bool.self, forKey: .isAvailable)
+        assetURL = try container.decodeIfPresent(URL.self, forKey: .assetURL)
+        isManaged = try container.decodeIfPresent(Bool.self, forKey: .isManaged) ?? false
     }
 
     public var messageToken: String {

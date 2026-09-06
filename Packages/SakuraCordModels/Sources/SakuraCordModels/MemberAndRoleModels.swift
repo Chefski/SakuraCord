@@ -70,11 +70,14 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
     /// The account-wide display name before `user.displayName` is replaced by
     /// a guild nickname for presentation.
     public var globalDisplayName: String?
+    public var guildNickname: String?
+    public var guildProfileCosmetics: GuildProfileCosmetics?
     public var activityText: String?
     public var customStatus: String?
     /// Discord's membership-screening state. A pending member does not have
     /// normal guild channel access even when role IDs are already present.
     public var isPending: Bool?
+    public var joinedAt: Date?
     /// Absolute row index in Discord's virtualized guild member list. This is
     /// absent for DMs, fallback stores, and member lookups that are not backed
     /// by a `GUILD_MEMBER_LIST_UPDATE` range.
@@ -95,9 +98,12 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
         roles: [GuildRole] = [],
         guildAvatarURL: URL? = nil,
         globalDisplayName: String? = nil,
+        guildNickname: String? = nil,
+        guildProfileCosmetics: GuildProfileCosmetics? = nil,
         activityText: String? = nil,
         customStatus: String? = nil,
         isPending: Bool? = nil,
+        joinedAt: Date? = nil,
         memberListIndex: Int? = nil
     ) {
         self.user = user
@@ -110,9 +116,12 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
         self.roles = roles
         self.guildAvatarURL = guildAvatarURL
         self.globalDisplayName = globalDisplayName
+        self.guildNickname = guildNickname
+        self.guildProfileCosmetics = guildProfileCosmetics
         self.activityText = activityText
         self.customStatus = customStatus
         self.isPending = isPending
+        self.joinedAt = joinedAt
         self.memberListIndex = memberListIndex
     }
 
@@ -127,9 +136,12 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
         roles: [GuildRole] = [],
         guildAvatarURL: URL? = nil,
         globalDisplayName: String? = nil,
+        guildNickname: String? = nil,
+        guildProfileCosmetics: GuildProfileCosmetics? = nil,
         activityText: String? = nil,
         customStatus: String? = nil,
         isPending: Bool? = nil,
+        joinedAt: Date? = nil,
         memberListIndex: Int? = nil
     ) {
         self.user = user
@@ -142,16 +154,19 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
         self.roles = roles
         self.guildAvatarURL = guildAvatarURL
         self.globalDisplayName = globalDisplayName
+        self.guildNickname = guildNickname
+        self.guildProfileCosmetics = guildProfileCosmetics
         self.activityText = activityText
         self.customStatus = customStatus
         self.isPending = isPending
+        self.joinedAt = joinedAt
         self.memberListIndex = memberListIndex
     }
 
     private enum CodingKeys: String, CodingKey {
         case user, roleName, roleID, rolePosition, isRoleCategory, status, roleIDs, roles,
              guildAvatarURL,
-             globalDisplayName, activityText, customStatus, memberListIndex
+             globalDisplayName, guildNickname, guildProfileCosmetics, activityText, customStatus, memberListIndex, joinedAt
     }
 
     public init(from decoder: Decoder) throws {
@@ -166,9 +181,21 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
         roles = try container.decodeIfPresent([GuildRole].self, forKey: .roles) ?? []
         guildAvatarURL = try container.decodeIfPresent(URL.self, forKey: .guildAvatarURL)
         globalDisplayName = try container.decodeIfPresent(String.self, forKey: .globalDisplayName)
+        guildNickname = try container.decodeIfPresent(String.self, forKey: .guildNickname)
+        guildProfileCosmetics = try container.decodeIfPresent(GuildProfileCosmetics.self, forKey: .guildProfileCosmetics)
         activityText = try container.decodeIfPresent(String.self, forKey: .activityText)
         customStatus = try container.decodeIfPresent(String.self, forKey: .customStatus)
         memberListIndex = try container.decodeIfPresent(Int.self, forKey: .memberListIndex)
+        joinedAt = try container.decodeIfPresent(Date.self, forKey: .joinedAt)
+    }
+
+    public mutating func applyGlobalProfileUser(_ value: User) {
+        let oldName = user.displayName
+        let inheritedName = globalDisplayName
+        user = guildProfileCosmetics?.applying(to: value) ?? value
+        if let guildNickname, !guildNickname.isEmpty { user.displayName = guildNickname } else if let inheritedName, oldName != inheritedName { user.displayName = oldName }
+        if let guildAvatarURL { user.avatarURL = guildAvatarURL }
+        globalDisplayName = value.displayName
     }
 }
 

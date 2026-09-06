@@ -11,22 +11,26 @@ struct SettingsView: View {
     @State private var state = SettingsViewState()
     @State private var launchAtLogin = LaunchAtLoginController()
     @State private var isSearchPresented = false
+    @State private var profileEditor: ProfileEditorState?
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
     private let navigationRouter = SettingsNavigationRouter.shared
 
     var body: some View {
         @Bindable var state = state
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             SettingsSidebar(
                 state: state,
                 onSearchResultActivated: dismissSearchFocus
             )
+            .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 280)
         } detail: {
             SettingsDetailRouter(
                 model: model,
                 updateController: updateController,
                 state: state,
                 launchAtLogin: launchAtLogin,
-                selectedAccountID: $storedSelectedAccount
+                selectedAccountID: $storedSelectedAccount,
+                profileEditor: profileEditor
             )
             .modifier(
                 SettingsContrastModifier(
@@ -58,6 +62,23 @@ struct SettingsView: View {
         }
         .task {
             state.updateLocale(locale)
+            if profileEditor == nil { profileEditor = ProfileEditorState(model: model) }
+            let navigationEditor = profileEditor
+            state.allowsNavigation = { [weak navigationEditor] destination in
+                guard let profileEditor = navigationEditor, profileEditor.hasChanges || profileEditor.isSaving else { return true }
+                guard destination != .profiles else { return true }
+                profileEditor.showsUnsavedReminder = true
+                return false
+            }
+        }
+        .windowResizeBehavior(.enabled)
+        .dismissalConfirmationDialog("Profile Changes", shouldPresent: profileEditor?.hasChanges == true || profileEditor?.isSaving == true) {
+            if profileEditor?.isSaving != true {
+                Button("Discard Changes", role: .destructive) { profileEditor?.resetDraft() }
+            }
+            Button("Keep Editing", role: .cancel) {}
+        } message: {
+            Text(profileEditor?.isSaving == true ? "Wait for your profile changes to finish saving." : "Your profile has unsaved changes.", bundle: #bundle)
         }
         .task(id: navigationRouter.request?.id) {
             guard let request = navigationRouter.request else { return }
@@ -141,7 +162,6 @@ private struct SettingsWindowBehaviorBridge: NSViewRepresentable {
         func applyWindowBehavior() {
             guard let window else { return }
             window.toolbarStyle = .unified
-            window.styleMask.insert(.resizable)
             window.contentMaxSize = NSSize(
                 width: CGFloat.greatestFiniteMagnitude,
                 height: CGFloat.greatestFiniteMagnitude
@@ -186,6 +206,7 @@ private struct SettingsDetailRouter: View {
     let state: SettingsViewState
     let launchAtLogin: LaunchAtLoginController
     @Binding var selectedAccountID: String
+    let profileEditor: ProfileEditorState?
 
     var body: some View {
         switch state.selectedPage {
@@ -195,6 +216,8 @@ private struct SettingsDetailRouter: View {
                 state: state,
                 selectedAccountID: $selectedAccountID
             )
+        case .profiles:
+            if let profileEditor { ProfilesSettingsPage(model: model, state: state, editor: profileEditor) } else { ProgressView() }
         case .general:
             GeneralSettingsPage(
                 model: model,

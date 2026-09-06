@@ -5,6 +5,345 @@ import Testing
 
 @Suite(.serialized)
 struct DirectMessageProviderContractTests {
+    @Test func `widget game search coalesces normalized requests and retains failed query cooldown`() async throws {
+        DirectMessageURLProtocol.reset()
+        let provider = makeProvider()
+        await provider.receiveGatewayDispatchForTesting(name: "READY", data: .object([
+            "user": .object(["id": .string("2"), "username": .string("maya")]), "guilds": .array([])
+        ]))
+        async let first = provider.searchProfileWidgetGames(query: "  Test_Game  ")
+        async let second = provider.searchProfileWidgetGames(query: "test game")
+        let results = try await (first, second)
+        #expect(results.0.map(\.id) == ["21"])
+        #expect(results.1 == results.0)
+        #expect(DirectMessageURLProtocol.requests.count == 1)
+        #expect(DirectMessageURLProtocol.requests.first?.query == [CapturedQueryItem(name: "q", value: "test game")])
+        _ = try await provider.searchProfileWidgetGames(query: "test game")
+        #expect(DirectMessageURLProtocol.requests.count == 1)
+        for _ in 0 ..< 2 {
+            await #expect(throws: ChatProviderError.self) { try await provider.searchProfileWidgetGames(query: "unavailable") }
+        }
+        #expect(DirectMessageURLProtocol.requests.count == 2)
+        await provider.disconnect()
+    }
+
+    @Test func `game profiles hydrate filtered similar games and cache announcement reads per session`() async throws {
+        DirectMessageURLProtocol.reset()
+        let provider = makeProvider()
+        await provider.receiveGatewayDispatchForTesting(name: "READY", data: .object([
+            "user": .object(["id": .string("2"), "username": .string("maya"), "nsfw_allowed": .bool(false)]), "guilds": .array([])
+        ]))
+        #expect(try await provider.similarProfileGames(to: "700136079562375258").isEmpty)
+        #expect(DirectMessageURLProtocol.requests.isEmpty)
+        let similar = try await provider.similarProfileGames(to: "21")
+        #expect(similar.map(\.id) == ["22"])
+        #expect(DirectMessageURLProtocol.requests.map(\.path) == [
+            "/api/v9/content-inventory/users/@me/similar-games/21", "/api/v9/games"
+        ])
+        #expect(DirectMessageURLProtocol.requests[1].query == ["22", "23", "24"].map { CapturedQueryItem(name: "game_ids", value: $0) })
+        let news = try await provider.profileGameAnnouncements(gameID: "21")
+        #expect(news.messages.map(\.title) == ["Update", "Embed title", nil])
+        #expect(news.messages[0].body == "New features")
+        #expect(news.messages[1].body == "Embed body")
+        #expect(news.messages[1].embedSource?.provider?.name == "Publisher")
+        #expect(news.messages[1].media?.url?.absoluteString == "https://example.com/poster.png")
+        #expect(news.messages[2].poll?.question == "Next update?")
+        #expect(news.messages[2].poll?.answers.map(\.text) == ["New map"])
+        #expect(news.channelID == ChannelID("41"))
+        #expect(news.guildID == GuildID("10"))
+        let request = try #require(DirectMessageURLProtocol.requests.last)
+        #expect(request.path == "/api/v9/games/21/announcements")
+        #expect(request.query == [CapturedQueryItem(name: "limit", value: "8")])
+        #expect(DirectMessageURLProtocol.requests.allSatisfy { $0.method == "GET" && $0.hadAuthorization && $0.body == nil })
+        _ = try await provider.profileGameAnnouncements(gameID: "21")
+        _ = try await provider.similarProfileGames(to: "21")
+        #expect(DirectMessageURLProtocol.requests.count == 3)
+        await provider.receiveGatewayDispatchForTesting(name: "USER_UPDATE", data: .object([
+            "id": .string("2"), "username": .string("maya"), "nsfw_allowed": .bool(true)
+        ]))
+        #expect(try await provider.similarProfileGames(to: "21").map(\.id) == ["22", "24"])
+        #expect(DirectMessageURLProtocol.requests.count == 3)
+        await provider.disconnect()
+        #expect(await provider.profileSimilarGameIDs.isEmpty)
+        #expect(await provider.profileGameAnnouncementCache.isEmpty)
+    }
+
+    @Test func `custom status saves the status subtree and leaves profile drafts independent`() async throws {
+        DirectMessageURLProtocol.reset()
+        let provider = makeProvider()
+        let retained = try #require(Data(base64Encoded: "CgsKCWludmlzaWJsZRoAKgcIxf7s0YU0"))
+        let initial = DiscordSettingsProto.protoLengthDelimitedField(11, retained).base64EncodedString()
+        await provider.receiveGatewayDispatchForTesting(name: "READY", data: .object([
+            "user": .object(["id": .string("2"), "username": .string("maya"), "premium_type": .number(2)]),
+            "guilds": .array([]), "user_settings_proto": .string(initial)
+        ]))
+        let saved = try await provider.updateProfileCustomStatus(ProfileCustomStatus(text: "  Growing flowers  ", emojiName: "🌸"))
+        #expect(saved?.text == "Growing flowers")
+        #expect(saved?.emojiName == "🌸")
+        #expect(saved?.expiresAt == nil)
+        #expect(saved?.createdAt != nil)
+        #expect(DirectMessageURLProtocol.requests.count == 1)
+        let request = try #require(DirectMessageURLProtocol.requests.first)
+        #expect(request.method == "PATCH")
+        #expect(request.encodedPath == "/api/v9/users/@me/settings-proto/1")
+        #expect(request.query.isEmpty)
+        #expect(request.hadAuthorization)
+        #expect(request.body?.keys.sorted() == ["settings"])
+        let response = try await provider.updateProfileCustomStatus(nil)
+        #expect(response == nil)
+        #expect(DirectMessageURLProtocol.requests.last?.body?["settings"] as? String == initial)
+        await provider.disconnect()
+    }
+
+    @Test func `widget image upload gates access before reservation and omits credentials from storage`() async throws {
+        DirectMessageURLProtocol.reset()
+        let provider = makeProvider()
+        await provider.receiveGatewayDispatchForTesting(name: "READY", data: .object([
+            "user": .object(["id": .string("2"), "username": .string("maya"), "premium_type": .number(2)]),
+            "guilds": .array([])
+        ]))
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try Data([1, 2, 3]).write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        await #expect(throws: ChatProviderError.self) {
+            try await provider.uploadProfileWidgetImage(fileURL: file, filename: "cover.png", contentType: "image/png")
+        }
+        #expect(DirectMessageURLProtocol.requests.isEmpty)
+        await provider.receiveGatewayDispatchForTesting(name: "READY", data: .object([
+            "user": .object(["id": .string("2"), "username": .string("maya"), "premium_type": .number(2)]),
+            "guilds": .array([]),
+            "apex_experiments": .object(["assignments": .object(["1": .object(["2": .object([
+                "assignments": .array([.array([.number(2_369_760_879), .number(1), .number(2), .number(1)])])
+            ])])])])
+        ]))
+        let image = try await provider.uploadProfileWidgetImage(fileURL: file, filename: "cover.png", contentType: "image/png")
+        #expect(image.reference == .pendingUpload(filename: "reserved/cover.png"))
+        let requests = DirectMessageURLProtocol.requests
+        #expect(requests.map(\.method) == ["POST", "PUT"])
+        #expect(requests.map(\.path) == ["/api/v9/users/@me/widgets/assets/upload", "/widget-image"])
+        #expect(requests.map(\.hadAuthorization) == [true, false])
+        #expect(requests.first?.body?["filename"] as? String == "cover.png")
+        #expect(requests.first?.body?["file_size"] as? Int == 3)
+        #expect(requests.last?.contentType == "image/png")
+        #expect(requests.last?.query == [CapturedQueryItem(name: "signature", value: "fixture")])
+        await provider.disconnect()
+    }
+
+    @Test func `widget save follows a failed profile group and acknowledges only the saved widgets`() async throws {
+        DirectMessageURLProtocol.reset()
+        let provider = makeProvider()
+        await provider.receiveGatewayDispatchForTesting(name: "READY", data: .object([
+            "user": .object(["id": .string("2"), "username": .string("maya"), "global_name": .string("Maya"), "premium_type": .number(2)]),
+            "guilds": .array([]),
+            "apex_experiments": .object(["assignments": .object(["1": .object(["2": .object([
+                "assignments": .array([.array([.number(2_369_760_879), .number(1), .number(2), .number(1)])])
+            ])])])])
+        ]))
+        _ = try await provider.profileEditingSnapshot(in: .main)
+        var changes = ProfileEditChanges(widgets: [ProfileWidget(content: .application(id: "7"))])
+        changes.metadata.bio = .set("rejected-bio")
+        let receipt = ProfileSaveReceipt(changes)
+        await #expect(throws: ProfileValidationError.self) {
+            try await provider.saveProfileChanges(changes, in: .main) { await receipt.accept($0) }
+        }
+        #expect(await receipt.stages == [.widgets])
+        #expect(await receipt.changes.widgets == nil)
+        #expect(await receipt.changes.metadata.bio == .set("rejected-bio"))
+        #expect(await receipt.snapshots.last??.presentation.widgets?.first?.serverID == "700")
+        #expect(DirectMessageURLProtocol.requests.map(\.path) == [
+            "/api/v9/users/2/profile", "/api/v9/users/@me/profile", "/api/v9/users/@me/widgets"
+        ])
+        #expect(DirectMessageURLProtocol.requests.last?.method == "PUT")
+        await provider.disconnect()
+    }
+
+    @Test func `profile save acknowledges successful identity before metadata failure and retries only remaining changes`() async throws {
+        DirectMessageURLProtocol.reset()
+        let provider = makeProvider()
+        await provider.receiveGatewayDispatchForTesting(name: "READY", data: .object([
+            "user": user(id: "2", username: "maya", globalName: "Maya"), "guilds": .array([])
+        ]))
+        _ = try await provider.profileEditingSnapshot(in: .main)
+        var changes = ProfileEditChanges()
+        changes.identity.name = .set("Updated")
+        changes.metadata.bio = .set("rejected-bio")
+        let receipt = ProfileSaveReceipt(changes)
+        await #expect(throws: ProfileValidationError.self) {
+            try await provider.saveProfileChanges(changes, in: .main) { await receipt.accept($0) }
+        }
+        #expect(await receipt.stages == [.identity])
+        var remaining = await receipt.changes
+        #expect(!remaining.identity.hasChanges)
+        #expect(remaining.metadata.bio == .set("rejected-bio"))
+        remaining.metadata.bio = .set("Accepted bio")
+        try await provider.saveProfileChanges(remaining, in: .main) { await receipt.accept($0) }
+        #expect(await receipt.stages == [.identity, .metadata])
+        #expect(await receipt.snapshots.last??.presentation.bio == "Accepted bio")
+        #expect(DirectMessageURLProtocol.requests.map(\.path) == [
+            "/api/v9/users/2/profile", "/api/v9/users/@me", "/api/v9/users/@me/profile", "/api/v9/users/@me/profile"
+        ])
+        #expect(DirectMessageURLProtocol.requests.suffix(3).allSatisfy { $0.method == "PATCH" })
+        #expect(DirectMessageURLProtocol.requests.suffix(2).allSatisfy { $0.encodedPath == "/api/v9/users/%40me/profile" })
+        await provider.disconnect()
+    }
+
+    @Test func `server decoration reset accepts omitted inherited decoration and continues metadata save`() async throws {
+        DirectMessageURLProtocol.reset()
+        let provider = makeProvider()
+        await provider.receiveGatewayDispatchForTesting(name: "READY", data: .object([
+            "user": .object(["id": .string("2"), "username": .string("maya"), "premium_type": .number(2)]),
+            "guilds": .array([])
+        ]))
+        let scope = ProfileEditingScope.server(GuildID(rawValue: 10))
+        _ = try await provider.profileEditingSnapshot(in: scope)
+        var changes = ProfileEditChanges()
+        changes.identity.decorationSKUID = .clear
+        changes.identity.nameplateSKUID = .clear
+        changes.metadata.collectibleSKUIDs = .clear
+        let receipt = ProfileSaveReceipt(changes)
+        try await provider.saveProfileChanges(changes, in: scope) { await receipt.accept($0) }
+        #expect(await receipt.stages == [.identity, .metadata])
+        #expect(await receipt.snapshots.first??.serverIdentity?.decorationSKUID == .missing)
+        #expect(await receipt.snapshots.first??.serverIdentity?.nameplateSKUID == .null)
+        #expect(await receipt.changes.hasChanges == false)
+        #expect(DirectMessageURLProtocol.requests.map(\.path) == [
+            "/api/v9/users/2/profile", "/api/v9/guilds/10/members/@me", "/api/v9/guilds/10/profile/@me"
+        ])
+        await provider.disconnect()
+    }
+
+    @Test func `successful but malformed profile response is acknowledged and requires a reload`() async throws {
+        DirectMessageURLProtocol.reset()
+        let provider = makeProvider()
+        await provider.receiveGatewayDispatchForTesting(name: "READY", data: .object([
+            "user": user(id: "2", username: "maya", globalName: "Maya"), "guilds": .array([])
+        ]))
+        _ = try await provider.profileEditingSnapshot(in: .main)
+        var changes = ProfileEditChanges()
+        changes.identity.name = .set("malformed-response")
+        changes.metadata.bio = .set("Must not be sent")
+        let receipt = ProfileSaveReceipt(changes)
+        await #expect(throws: ChatProviderError.self) {
+            try await provider.saveProfileChanges(changes, in: .main) { await receipt.accept($0) }
+        }
+        #expect(await receipt.stages == [.identity])
+        #expect(await receipt.snapshots == [nil])
+        let remaining = await receipt.changes
+        await #expect(throws: ChatProviderError.self) {
+            try await provider.saveProfileChanges(remaining, in: .main) { await receipt.accept($0) }
+        }
+        #expect(DirectMessageURLProtocol.requests.count == 2)
+        await provider.disconnect()
+    }
+
+    @Test func `profile editor loads the official modal query and READY widget eligibility`() async throws {
+        for scope in [ProfileEditingScope.main, .server(GuildID(rawValue: 10))] {
+            DirectMessageURLProtocol.reset()
+            let provider = makeProvider()
+            await provider.receiveGatewayDispatchForTesting(
+                name: "READY",
+                data: .object([
+                    "user": .object([
+                        "id": .string("2"), "username": .string("maya"),
+                        "global_name": .string("Maya"), "premium_type": .number(2),
+                    ]),
+                    "guilds": .array([]),
+                    "user_settings_proto": .string(Data([0x6A, 0x02, 0x10, 0x01]).base64EncodedString()),
+                    "apex_experiments": .object([
+                        "assignments": .object([
+                            "1": .object([
+                                "2": .object([
+                                    "assignments": .array([
+                                        .array([.number(2_369_760_879), .number(1), .number(2), .number(1)])
+                                    ])
+                                ])
+                            ])
+                        ])
+                    ]),
+                ])
+            )
+            let snapshot = try await provider.profileEditingSnapshot(in: scope)
+            #expect(snapshot.scope == scope)
+            #expect(snapshot.mainIdentity.avatarHash == .null)
+            #expect(snapshot.widgetEligibility.canEditPersonalWidget)
+            #expect(snapshot.widgetEligibility.showsDeveloperWidgets)
+            await provider.applyProfileSettingsProto(Data([0x6A, 0x02, 0x08, 0x01]).base64EncodedString(), isPartial: true)
+            #expect(await provider.profileDeveloperMode)
+            #expect(snapshot.presentation.user.premiumType == 2)
+            let cachedEditing = try await provider.cachedProfileEditingSnapshot(in: scope)
+            #expect(cachedEditing?.identity == snapshot.identity)
+            #expect(cachedEditing?.metadata == snapshot.metadata)
+            let cachedPopover = try await provider.profile(for: snapshot.presentation.id, in: scope.guildID)
+            #expect(cachedPopover.id == snapshot.presentation.id)
+            #expect(DirectMessageURLProtocol.requests.count == 1)
+            let request = try #require(DirectMessageURLProtocol.requests.first)
+            var expectedQuery = [
+                CapturedQueryItem(name: "type", value: "modal"),
+                CapturedQueryItem(name: "with_mutual_guilds", value: "true"),
+                CapturedQueryItem(name: "with_mutual_friends", value: "false"),
+                CapturedQueryItem(name: "with_mutual_friends_count", value: "true"),
+            ]
+            if scope.guildID != nil {
+                expectedQuery.append(CapturedQueryItem(name: "guild_id", value: "10"))
+                #expect(snapshot.serverIdentity?.name == .null)
+                #expect(snapshot.serverMetadata?.pronouns == .value(""))
+            }
+            #expect(request.method == "GET")
+            #expect(request.path == "/api/v9/users/2/profile")
+            #expect(request.query == expectedQuery)
+            #expect(request.hadAuthorization)
+            #expect(request.body == nil)
+            if scope == .main {
+                let suggestions = try await provider.suggestedProfileWidgetGames()
+                #expect(suggestions.gameIDs == ["21", "22"])
+                #expect(suggestions.wantedGameIDs == ["31"])
+                #expect(!suggestions.fallbackGameIDs.isEmpty)
+                let suggestionRequest = try #require(DirectMessageURLProtocol.requests.last)
+                #expect(suggestionRequest.method == "GET")
+                #expect(suggestionRequest.path == "/api/v9/users/@me/widgets/suggested-games")
+                #expect(suggestionRequest.query.isEmpty)
+                #expect(suggestionRequest.body == nil)
+                #expect(suggestionRequest.hadAuthorization)
+            }
+            await provider.disconnect()
+        }
+    }
+
+    @Test func `widget connection reads preserve repeated query keys and reconcile grants without another request`() async throws {
+        DirectMessageURLProtocol.reset()
+        let provider = makeProvider()
+        await provider.receiveGatewayDispatchForTesting(name: "READY", data: .object([
+            "user": user(id: "2", username: "maya", globalName: "Maya"), "guilds": .array([])
+        ]))
+        let connections = try await provider.profileWidgetConnections(applicationIDs: ["21", "22", "23", "21"])
+        #expect(connections == ["21": .linked(sharesProfileData: true), "22": .linked(sharesProfileData: false), "23": .unlinked])
+        let request = try #require(DirectMessageURLProtocol.requests.first)
+        #expect(request.method == "GET")
+        #expect(request.path == "/api/v9/oauth2/tokens")
+        #expect(request.query == ["21", "22", "23"].map { CapturedQueryItem(name: "application_ids", value: $0) })
+        #expect(request.hadAuthorization && request.body == nil)
+        _ = try await provider.profileWidgetConnections(applicationIDs: ["23", "21"])
+        #expect(DirectMessageURLProtocol.requests.count == 1)
+        await provider.receiveGatewayDispatchForTesting(name: "OAUTH2_TOKEN_CREATE", data: .object([
+            "id": .string("new-grant"), "application": .object(["id": .string("22")]),
+            "scopes": .array([.string("sdk.social_layer_presence")])
+        ]))
+        #expect(try await provider.profileWidgetConnections(applicationIDs: ["22"]) == ["22": .linked(sharesProfileData: true)])
+        await provider.receiveGatewayDispatchForTesting(name: "OAUTH2_TOKEN_DELETE", data: .object([
+            "id": .string("old-grant"), "application_id": .string("22")
+        ]))
+        #expect(try await provider.profileWidgetConnections(applicationIDs: ["22"]) == ["22": .linked(sharesProfileData: true)])
+        await provider.receiveGatewayDispatchForTesting(name: "OAUTH2_TOKEN_DELETE", data: .object([
+            "id": .string("new-grant"), "application_id": .string("22")
+        ]))
+        #expect(try await provider.profileWidgetConnections(applicationIDs: ["22"]) == ["22": .unlinked])
+        #expect(DirectMessageURLProtocol.requests.count == 1)
+        await provider.disconnect()
+    }
+
+}
+
+extension DirectMessageProviderContractTests {
     @Test func `DM history stays a read and extends the forwarding user index`() async throws {
         DirectMessageURLProtocol.reset()
         let provider = makeProvider()
@@ -70,6 +409,7 @@ struct DirectMessageProviderContractTests {
 
         #expect(profile.effect?.id == "900")
         #expect(profile.effect?.title == "Aurora")
+        #expect(profile.effect?.thumbnailURL?.absoluteString == "https://cdn.discordapp.com/assets/content/aurora-preview")
         #expect(duplicateProfile == profile)
         #expect(DirectMessageURLProtocol.requests.map(\.path) == [
             "/api/v9/users/2/profile",
@@ -1232,6 +1572,20 @@ private actor DirectMessageCredentialStore: CredentialStore {
     }
 }
 
+private actor ProfileSaveReceipt {
+    var changes: ProfileEditChanges
+    var stages: [ProfileSaveStage] = []
+    var snapshots: [ProfileEditingSnapshot?] = []
+
+    init(_ changes: ProfileEditChanges) { self.changes = changes }
+
+    func accept(_ confirmation: ProfileSaveConfirmation) {
+        changes.acknowledge(confirmation.stage)
+        stages.append(confirmation.stage)
+        snapshots.append(confirmation.snapshot)
+    }
+}
+
 private struct CapturedQueryItem: Equatable, Sendable {
     var name: String
     var value: String?
@@ -1240,8 +1594,10 @@ private struct CapturedQueryItem: Equatable, Sendable {
 private struct CapturedDirectMessageRequest: @unchecked Sendable {
     var method: String
     var path: String
+    var encodedPath: String
     var query: [CapturedQueryItem]
     var hadAuthorization: Bool
+    var contentType: String?
     var body: [String: Any]?
 }
 
@@ -1271,6 +1627,9 @@ private final class DirectMessageURLProtocol:
     }
 
     override func startLoading() {
+        let requestBody = Self.requestBody(request).flatMap {
+            try? JSONSerialization.jsonObject(with: $0) as? [String: Any]
+        }
         let query = URLComponents(
             url: request.url!,
             resolvingAgainstBaseURL: false
@@ -1281,49 +1640,32 @@ private final class DirectMessageURLProtocol:
             CapturedDirectMessageRequest(
                 method: request.httpMethod ?? "",
                 path: request.url?.path ?? "",
+                encodedPath: URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.percentEncodedPath ?? "",
                 query: query,
                 hadAuthorization:
                     request.value(
                         forHTTPHeaderField: "Authorization"
                     ) != nil,
-                body: Self.requestBody(request).flatMap {
-                    try? JSONSerialization.jsonObject(with: $0) as? [String: Any]
-                }
+                contentType: request.value(forHTTPHeaderField: "Content-Type"),
+                body: requestBody
             )
         )
 
         let body: String
-        switch request.url?.path {
-        case "/api/v9/channels/41/messages":
-            body = #"""
-            [{
-              "id":"800","channel_id":"41",
-              "author":{"id":"77","username":"history-author","global_name":"History Author"},
-              "content":"history","timestamp":"2026-07-29T08:00:00.000Z",
-              "mentions":[{"id":"78","username":"history-mention","global_name":"History Mention"}],
-              "attachments":[],"reactions":[]
-            }]
-            """#
-        case "/api/v9/users/2/profile":
-            body = Self.profileHasEffect
-                ? #"""
-                {
-                  "user":{"id":"2","username":"maya","global_name":"Maya","avatar":null},
-                  "user_profile":{"profile_effect":{"sku_id":"900"}},
-                  "mutual_guilds":[],"mutual_friends":[],"mutual_friends_count":0
-                }
-                """#
-                : #"{"user":{"id":"2","username":"maya","global_name":"Maya","avatar":null},"mutual_guilds":[],"mutual_friends":[],"mutual_friends_count":0}"#
-        case "/api/v9/collectibles-products/900":
-            body = #"{"items":[{"type":1,"sku_id":"900","title":"Aurora","effects":[] }]}"#
-        case "/api/v9/channels/41/call":
-            body = #"{"ringable":true}"#
-        default:
-            body = "{}"
+        do {
+            body = try Self.responseBody(path: request.url?.path, query: query, requestBody: requestBody)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+            return
         }
-        let status =
-            request.url?.path == "/api/v9/channels/41/call/ring"
-            ? Self.ringStatus : 200
+        let status: Int
+        if requestBody?["bio"] as? String == "rejected-bio" {
+            status = 400
+        } else if request.url?.path == "/api/v9/games/autocomplete", query.first?.value == "unavailable" {
+            status = 503
+        } else {
+            status = request.url?.path == "/api/v9/channels/41/call/ring" ? Self.ringStatus : 200
+        }
         let response = HTTPURLResponse(
             url: request.url!,
             statusCode: status,
@@ -1337,6 +1679,99 @@ private final class DirectMessageURLProtocol:
         )
         client?.urlProtocol(self, didLoad: Data(body.utf8))
         client?.urlProtocolDidFinishLoading(self)
+    }
+
+    private static func responseBody(
+        path: String?,
+        query: [CapturedQueryItem],
+        requestBody: [String: Any]?
+    ) throws -> String {
+        switch path {
+        case "/api/v9/oauth2/tokens":
+            return #"[{"id":"grant21","application":{"id":"21"},"scopes":["application_identities.write"]},{"id":"old-grant","application":{"id":"22"},"scopes":["identify"]}]"#
+        case "/api/v9/users/@me/settings-proto/1":
+            return String(data: try JSONSerialization.data(withJSONObject: ["settings": requestBody?["settings"] as? String ?? ""]), encoding: .utf8)!
+        case "/api/v9/users/@me/widgets/assets/upload":
+            return #"{"upload_url":"https://storage.example/widget-image?signature=fixture","upload_filename":"reserved/cover.png"}"#
+        case "/api/v9/users/@me/widgets/suggested-games":
+            return #"{"suggested_games":["21","22"],"suggested_wishlist_games":["31"]}"#
+        case "/widget-image":
+            return ""
+        case "/api/v9/users/@me":
+            return requestBody?["global_name"] as? String == "malformed-response"
+                ? "{}" : #"{"id":"2","username":"maya","global_name":"Updated","avatar":null}"#
+        case "/api/v9/users/@me/profile":
+            return requestBody?["bio"] as? String == "rejected-bio"
+                ? #"{"code":50035,"message":"Invalid Form Body","errors":{"bio":{"_errors":[{"code":"BASE_TYPE_MAX_LENGTH","message":"About Me is too long."}]}}}"#
+                : #"{"bio":"Accepted bio","pronouns":"","banner":null,"theme_colors":null,"collectibles":[]}"#
+        case "/api/v9/guilds/10/members/@me":
+            return #"{"user":{"id":"2","username":"maya"},"roles":[],"nick":null,"avatar":null,"collectibles":{"nameplate":null}}"#
+        case "/api/v9/guilds/10/profile/@me":
+            return #"{"bio":"","pronouns":"","banner":null,"theme_colors":null,"collectibles":[]}"#
+        case "/api/v9/users/@me/widgets":
+            return #"{"widgets":[{"id":"700","updated_at":"2026-09-05T12:00:00.000000+00:00","data":{"type":"application","application_id":"7"}}]}"#
+        case "/api/v9/channels/41/messages":
+            return #"""
+            [{
+              "id":"800","channel_id":"41",
+              "author":{"id":"77","username":"history-author","global_name":"History Author"},
+              "content":"history","timestamp":"2026-07-29T08:00:00.000Z",
+              "mentions":[{"id":"78","username":"history-mention","global_name":"History Mention"}],
+              "attachments":[],"reactions":[]
+            }]
+            """#
+        case "/api/v9/users/2/profile":
+            return profileHasEffect
+                ? #"""
+                {
+                  "user":{"id":"2","username":"maya","global_name":"Maya","avatar":null},
+                  "user_profile":{"profile_effect":{"sku_id":"900"}},
+                  "mutual_guilds":[],"mutual_friends":[],"mutual_friends_count":0
+                }
+                """#
+                : query.contains(where: { $0.name == "guild_id" })
+                    ? #"""
+                    {"user":{"id":"2","username":"maya","global_name":"Maya","avatar":null},"premium_type":2,
+                     "guild_member":{"nick":null,"avatar":null},"guild_member_profile":{"bio":"","pronouns":"","theme_colors":null},
+                     "mutual_guilds":[],"mutual_friends":[],"mutual_friends_count":0}
+                    """#
+                    : #"{"user":{"id":"2","username":"maya","global_name":"Maya","avatar":null},"premium_type":2,"widgets":[],"mutual_guilds":[],"mutual_friends":[],"mutual_friends_count":0}"#
+        case "/api/v9/collectibles-products/900":
+            return #"""
+            {"sku_id":"900","name":"Aurora","summary":"Profile effect","type":1,"premium_type":0,
+             "items":[{"type":1,"sku_id":"900","title":"Aurora",
+             "thumbnailPreviewSrc":"https://cdn.discordapp.com/assets/content/aurora-preview","effects":[] }]}
+            """#
+        case "/api/v9/channels/41/call":
+            return #"{"ringable":true}"#
+        default:
+            return gameResponseBody(path: path, query: query)
+        }
+    }
+
+    private static func gameResponseBody(path: String?, query: [CapturedQueryItem]) -> String {
+        switch path {
+        case "/api/v9/content-inventory/users/@me/similar-games/21":
+            return #"{"similar_games":["21","22","23","24","700136079562375258"]}"#
+        case "/api/v9/games":
+            return #"[{"id":"22","name":"Available","game_flags":0},{"id":"23","name":"Hidden","game_flags":1},{"id":"24","name":"Adult","content_classification":{"discord_classifications":8}}]"#
+        case "/api/v9/games/21/announcements":
+            return ##"""
+            {"messages":[
+              {"id":"800","channel_id":"41","author":{"id":"77","username":"publisher"},"content":"# Update\nNew features","timestamp":"2026-09-05T12:00:00Z"},
+              {"id":"801","channel_id":"41","author":{"id":"77","username":"publisher"},
+               "content":"https://example.com/news","timestamp":"2026-09-05T12:00:00Z",
+               "embeds":[{"title":"Embed title","description":"Embed body","provider":{"name":"Publisher"},"video":{"url":"https://example.com/video.mp4"},
+               "thumbnail":{"url":"https://example.com/poster.png"}}]},
+              {"id":"802","channel_id":"41","author":{"id":"77","username":"publisher"},"content":"","timestamp":"2026-09-05T12:00:00Z",
+               "poll":{"question":{"text":"Next update?"},"answers":[{"answer_id":1,"poll_media":{"text":"New map"}}],"expiry":"2026-09-06T12:00:00Z"}}
+            ],"channel_id":"41","guild_id":"10"}
+            """##
+        case "/api/v9/games/autocomplete":
+            return query.first?.value == "unavailable" ? #"{"message":"Unavailable"}"# : #"[{"id":"21","name":"Test Game"}]"#
+        default:
+            return "{}"
+        }
     }
 
     override func stopLoading() {}

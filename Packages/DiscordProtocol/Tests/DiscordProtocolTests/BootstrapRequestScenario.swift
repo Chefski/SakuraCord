@@ -294,7 +294,7 @@ struct BootstrapRequestScenario {
         let properties = try #require(JSONSerialization.jsonObject(with: propertiesData) as? [String: Any])
         #expect(properties["browser"] as? String == "Discord Client")
         #expect(properties["browser_user_agent"] as? String == RateLimitURLProtocol.messageUserAgent)
-        #expect((properties["client_build_number"] as? NSNumber)?.intValue == DiscordProductionBaseline.august2026.webBuildNumber)
+        #expect((properties["client_build_number"] as? NSNumber)?.intValue == DiscordProductionBaseline.current.webBuildNumber)
 
         let mentionDraft = SendMessageDraft(
             channelID: ChannelID(rawValue: 200),

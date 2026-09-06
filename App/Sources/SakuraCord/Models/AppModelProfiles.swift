@@ -3,6 +3,54 @@ import Foundation
 import SakuraCordModels
 
 extension AppModel {
+    func consumeProfileWidgetConnectionsChanged(userID: UserID, connections: [String: ProfileWidgetConnection]) {
+        guard userID == snapshot?.currentUser.id else { return }
+        for key in profileCache.keys where key.userID == userID { profileCache[key]?.widgetResources?.connections = connections }
+        for destination in [ProfilePresentationDestination.inspector, .contextual] {
+            guard var presentation = profilePresentation(for: destination), presentation.member.id == userID else { continue }
+            presentation.profile?.widgetResources?.connections = connections
+            setProfilePresentation(presentation, for: destination)
+        }
+        profileWidgetConnectionsRevision = UUID()
+    }
+
+    func consumeProfileCustomStatusChanged(userID: UserID, status: ProfileCustomStatus?) {
+        profileCustomStatus = status
+        let text = status?.displayText
+        for key in profileCache.keys where key.userID == userID { profileCache[key]?.customStatus = text }
+        for guildID in membersByGuildID.keys { membersByGuildID[guildID]?[userID]?.customStatus = text }
+        for index in members.indices where members[index].id == userID { members[index].customStatus = text }
+        for destination in [ProfilePresentationDestination.inspector, .contextual] {
+            guard var presentation = profilePresentation(for: destination), presentation.member.id == userID else { continue }
+            presentation.member.customStatus = text
+            presentation.profile?.customStatus = text
+            setProfilePresentation(presentation, for: destination)
+        }
+    }
+
+    func consumeProfileChanged(userID: UserID, scope: ProfileEditingScope, value: UserProfile?) {
+        let key = ProfileCacheKey(userID: userID, guildID: scope.guildID)
+        profileCache[key] = value
+        guard selectedGuildID == scope.guildID else { return }
+        for destination in [ProfilePresentationDestination.inspector, .contextual] {
+            guard var presentation = profilePresentation(for: destination), presentation.member.id == userID else { continue }
+            switch destination {
+            case .inspector: inspectorProfileTask?.cancel()
+            case .contextual: contextualProfileTask?.cancel()
+            }
+            if let value {
+                presentation.member.user = value.user
+                presentation.profile = profile(value, applyingPresenceFrom: presentation.member)
+                presentation.errorMessage = nil
+            } else {
+                presentation.profile = nil
+                presentation.errorMessage = "This profile changed. Reopen it to load the saved result."
+            }
+            presentation.isLoading = false
+            setProfilePresentation(presentation, for: destination)
+        }
+    }
+
     func updateStatus(_ status: PresenceStatus) async {
         let session = accountSession()
         do {

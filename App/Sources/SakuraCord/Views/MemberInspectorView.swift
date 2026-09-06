@@ -68,6 +68,7 @@ struct MemberInspectorView: View {
     let dismissProfile: () -> Void
     let viewportIdentity: ChannelID?
     let updateViewport: (ClosedRange<Int>) -> Void
+    var openGame: ((ProfileGame) -> Void)?
     var presentation = NativeMemberListPresentation()
 
     init(
@@ -80,6 +81,7 @@ struct MemberInspectorView: View {
         dismissProfile: @escaping () -> Void,
         viewportIdentity: ChannelID? = nil,
         presentation: NativeMemberListPresentation = .init(),
+        openGame: ((ProfileGame) -> Void)? = nil,
         updateViewport: @escaping (ClosedRange<Int>) -> Void = { _ in }
     ) {
         self.sections = sections
@@ -92,6 +94,7 @@ struct MemberInspectorView: View {
         self.viewportIdentity = viewportIdentity
         self.presentation = presentation
         self.updateViewport = updateViewport
+        self.openGame = openGame
     }
 
     var body: some View {
@@ -106,7 +109,8 @@ struct MemberInspectorView: View {
             runsPerformanceAutoScroll: runsPerformanceAutoScroll,
             viewportIdentity: viewportIdentity,
             presentation: presentation,
-            onViewportRange: updateViewport
+            onViewportRange: updateViewport,
+            openGame: openGame
         )
     }
 }
@@ -419,10 +423,16 @@ struct MemberRow: View {
                         MemberAvatar(member: member)
                         VStack(alignment: .leading, spacing: 2) {
                             HStack(spacing: 5) {
-                                Text(member.user.displayName)
-                                    .font(.body.weight(.semibold))
-                                    .foregroundStyle(nameColor)
-                                    .lineLimit(1)
+                                if let style = member.user.displayNameStyle {
+                                    ProfileDisplayName(name: member.user.displayName, style: style, size: 13,
+                                                       showsEffects: false, plainColor: nameColor)
+                                        .allowsHitTesting(false)
+                                } else {
+                                    Text(member.user.displayName)
+                                        .font(.body.weight(.semibold))
+                                        .foregroundStyle(nameColor)
+                                        .lineLimit(1)
+                                }
                                 if member.user.isBot {
                                     Text("APP")
                                         .font(.caption2.weight(.bold))

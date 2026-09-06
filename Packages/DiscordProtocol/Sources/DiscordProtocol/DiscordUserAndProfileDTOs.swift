@@ -85,6 +85,7 @@ struct UserDTO: Decodable {
     var bio: String?
     var publicFlags: UInt64?
     var premiumType: Int?
+    var nsfwAllowed: Bool?
     var avatarDecorationData: AvatarDecorationDTO?
     var collectibles: UserCollectiblesDTO?
     var primaryGuild: PrimaryGuildDTO?
@@ -97,6 +98,7 @@ struct UserDTO: Decodable {
         case bio
         case publicFlags = "public_flags"
         case premiumType = "premium_type"
+        case nsfwAllowed = "nsfw_allowed"
         case avatarDecorationData = "avatar_decoration_data"
         case collectibles
         case primaryGuild = "primary_guild"
@@ -121,6 +123,7 @@ struct UserDTO: Decodable {
         bio = try? container.decode(String.self, forKey: .bio)
         publicFlags = try? container.decode(UInt64.self, forKey: .publicFlags)
         premiumType = try? container.decode(Int.self, forKey: .premiumType)
+        nsfwAllowed = try? container.decode(Bool.self, forKey: .nsfwAllowed)
         avatarDecorationData = try? container.decode(
             AvatarDecorationDTO.self,
             forKey: .avatarDecorationData
@@ -201,12 +204,21 @@ struct UserDTO: Decodable {
             primaryGuild: guildIdentity,
             displayNameStyle: nameStyle,
             publicFlags: publicFlags ?? 0,
-            premiumType: premiumType ?? 0
+            premiumType: premiumType ?? 0,
+            allowsAdultContent: nsfwAllowed
         )
     }
 }
 
 struct ProfileMetadataDTO: Decodable {
+    struct CollectibleDTO: Decodable {
+        var skuID: String
+        var type: Int
+        enum CodingKeys: String, CodingKey {
+            case skuID = "sku_id"
+            case type
+        }
+    }
     struct EffectDTO: Decodable {
         var id: String?
         var skuID: String?
@@ -224,10 +236,16 @@ struct ProfileMetadataDTO: Decodable {
     var pronouns: String?
     var banner: String?
     var accentColor: UInt32?
-    var themeColors: [UInt32]?
+    var themeColors: [UInt32?]?
+    var renderedThemeColors: [UInt32]? {
+        guard let themeColors else { return nil }
+        guard themeColors.count == 2, themeColors.allSatisfy({ $0 != nil }) else { return [] }
+        return themeColors.compactMap { $0 }
+    }
     var profileEffect: EffectDTO?
+    var collectibles: [CollectibleDTO]?
     enum CodingKeys: String, CodingKey {
-        case bio, pronouns, banner
+        case bio, pronouns, banner, collectibles
         case accentColor = "accent_color"
         case themeColors = "theme_colors"
         case profileEffect = "profile_effect"
@@ -331,6 +349,15 @@ struct ProfileGuildMemberDTO: Decodable {
     var avatar: String?
     var banner: String?
     var bio: String?
+    var avatarDecorationData: UserDTO.AvatarDecorationDTO?
+    var collectibles: UserCollectiblesDTO?
+    var displayNameStyles: UserDTO.DisplayNameStyleDTO?
+
+    enum CodingKeys: String, CodingKey {
+        case nick, roles, avatar, banner, bio, collectibles
+        case avatarDecorationData = "avatar_decoration_data"
+        case displayNameStyles = "display_name_styles"
+    }
 }
 
 struct ProfileEffectConfigDTO: Decodable, Sendable {
@@ -373,11 +400,12 @@ struct ProfileEffectConfigDTO: Decodable, Sendable {
     var accessibilityLabel: String?
     var reducedMotionSrc: String?
     var staticFrameSrc: String?
+    var thumbnailPreviewSrc: String?
     var effects: LossyList<AnimationDTO>?
     enum CodingKeys: String, CodingKey {
         case type, id
         case skuID = "sku_id"
-        case title, accessibilityLabel, reducedMotionSrc, staticFrameSrc, effects
+        case title, accessibilityLabel, reducedMotionSrc, staticFrameSrc, thumbnailPreviewSrc, effects
     }
 
     var domain: ProfileEffect {
@@ -386,6 +414,7 @@ struct ProfileEffectConfigDTO: Decodable, Sendable {
             title: title,
             accessibilityLabel: accessibilityLabel,
             staticURL: staticFrameSrc.flatMap(URL.init),
+            thumbnailURL: thumbnailPreviewSrc.flatMap(URL.init),
             reducedMotionURL: reducedMotionSrc.flatMap(URL.init),
             animations: (effects?.elements ?? []).compactMap(\.domain).sorted {
                 $0.zIndex < $1.zIndex
@@ -404,12 +433,10 @@ struct ProfileEffectPositionDTO: Decodable, Sendable {
     }
 }
 
-struct CollectibleProductDTO: Decodable, Sendable {
-    var items: LossyList<ProfileEffectConfigDTO>?
-}
-
 struct UserProfileDTO: Decodable {
     var user: UserDTO
+    var widgets: [ProfileWidgetDTO]?
+    var premiumType: Int?
     var userProfile: ProfileMetadataDTO?
     var guildMember: ProfileGuildMemberDTO?
     var guildMemberProfile: ProfileMetadataDTO?
@@ -422,8 +449,13 @@ struct UserProfileDTO: Decodable {
     var premiumSince: String?
     var premiumGuildSince: String?
     var legacyUsername: String?
+    var frameSKUID: String? {
+        guildMemberProfile?.collectibles?.first(where: { $0.type == 3 })?.skuID
+            ?? userProfile?.collectibles?.first(where: { $0.type == 3 })?.skuID
+    }
     enum CodingKeys: String, CodingKey {
-        case user
+        case user, widgets
+        case premiumType = "premium_type"
         case userProfile = "user_profile"
         case guildMember = "guild_member"
         case guildMemberProfile = "guild_member_profile"
@@ -442,9 +474,11 @@ struct UserProfileDTO: Decodable {
         guildID: GuildID?,
         guilds: [GuildID: Guild],
         guildRoles: [GuildRoleDTO],
-        effectConfig: ProfileEffectConfigDTO?
+        effectConfig: ProfileEffectConfigDTO?,
+        frame: ProfileFrame? = nil
     ) throws -> UserProfile {
         var domainUser = try user.domain()
+        if let premiumType { domainUser.premiumType = premiumType }
         let displayName =
             guildMember?.nick.flatMap { $0.isEmpty ? nil : $0 } ?? domainUser.displayName
         let guildAvatarURL = guildID.flatMap { guildID in
@@ -455,9 +489,20 @@ struct UserProfileDTO: Decodable {
                 )
             }
         }
-        let avatarURL = guildAvatarURL ?? domainUser.avatarURL
+        let defaultAvatarURL = DiscordProfileImageAssets.defaultAvatarURL(userID: user.id, discriminator: user.discriminator)
+        let avatarURL = guildAvatarURL ?? domainUser.avatarURL ?? defaultAvatarURL
         domainUser.displayName = displayName
         domainUser.avatarURL = avatarURL
+        if let guildMember {
+            var scopedUser = user
+            scopedUser.avatarDecorationData = guildMember.avatarDecorationData ?? user.avatarDecorationData
+            scopedUser.collectibles = guildMember.collectibles?.nameplate != nil ? guildMember.collectibles : user.collectibles
+            scopedUser.displayNameStyles = guildMember.displayNameStyles ?? user.displayNameStyles
+            let cosmetics = try scopedUser.domain()
+            domainUser.avatarDecorationURL = cosmetics.avatarDecorationURL
+            domainUser.nameplate = cosmetics.nameplate
+            domainUser.displayNameStyle = cosmetics.displayNameStyle
+        }
 
         let globalMetadata = userProfile
         let guildMetadata = guildMemberProfile
@@ -501,14 +546,17 @@ struct UserProfileDTO: Decodable {
             user: domainUser,
             displayName: displayName,
             avatarURL: avatarURL,
+            defaultAvatarURL: defaultAvatarURL,
             bannerURL: bannerURL,
             accentHex: guildMetadata?.accentColor ?? globalMetadata?.accentColor
                 ?? user.accentColor,
-            themeHexes: guildMetadata?.themeColors ?? globalMetadata?.themeColors ?? [],
+            themeHexes: guildMetadata?.renderedThemeColors ?? globalMetadata?.renderedThemeColors ?? [],
             bio: Self.firstNonEmpty(
                 guildMetadata?.bio, guildMember?.bio, globalMetadata?.bio, user.bio),
             pronouns: Self.firstNonEmpty(guildMetadata?.pronouns, globalMetadata?.pronouns),
             effect: effect,
+            frame: frame,
+            widgets: try widgets?.map { try $0.domain(userID: domainUser.id) },
             badges: uniqueBadges,
             mutualGuilds: mutualServers,
             mutualFriends: friends,

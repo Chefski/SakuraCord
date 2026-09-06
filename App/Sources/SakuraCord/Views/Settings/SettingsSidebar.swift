@@ -43,7 +43,6 @@ struct SettingsSidebar: View {
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
-            .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 280)
             .accessibilityLabel(
                 LocalizedStringResource(
                     "Settings categories",

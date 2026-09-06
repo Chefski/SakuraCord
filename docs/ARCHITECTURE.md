@@ -13,7 +13,7 @@ workspace is a convenience entry point.
 | `DiscordProtocol` | Provider contract, REST and Gateway implementation, Discord DTO decoding, credentials, request scheduling, and offline provider. |
 | `SakuraCordPersistence` | Account-scoped GRDB database, migrations, and user-authored drafts. Discord workspace and history state is never persisted. |
 | `MessageRendering` | Parsed message documents, Discord Markdown conversion, and attributed-content planning support. |
-| `MediaPipeline` | Media cache interfaces plus voice/video signaling, transport, capture, playback, Opus, H.264, and DAVE integration. |
+| `MediaPipeline` | Media cache interfaces, profile image processing, plus voice/video signaling, transport, capture, playback, Opus, H.264, and DAVE integration. |
 | `SakuraCordPluginSDK` | Plugin manifest, capability, and permission contracts. |
 | `DaveKit` | Swift wrapper over the vendored libdave/MLS implementation used by `MediaPipeline`. |
 
@@ -250,6 +250,78 @@ and rendering. They use real credentials and network data while suppressing
 acknowledgements and other account mutations; offline fixtures are not accepted
 as production performance evidence.
 
+## Profile editing and rendering
+
+`SakuraCordModels` owns profile snapshots, scoped editable values, draft changes,
+collectibles, name styles and widgets. Editable fields preserve missing, null
+and explicit values; draft changes separately represent unchanged, clear and
+set. `ProfileDraftProjection` resolves main and server inheritance into the same
+`UserProfile` used by member popovers, without erasing the raw values needed for
+later saves and resets.
+
+The Settings-owned `ProfileEditorState` manages scope selection, local changes,
+validation feedback and temporary preview files. It retains the originating
+account session and invalidates obsolete loads with a revision and draft
+generation. Unsaved edits block scope changes and Settings dismissal until
+saved or reset. Reentering Profiles refreshes a clean snapshot in its selected
+scope while preserving unsaved changes and explicit recovery state.
+`ProfilesSettingsPage` feeds draft projections into
+`MemberProfilePopover`; display-name fonts and effects, avatar decorations,
+nameplates, profile effects and frames, membership sections and widget cards
+share their production renderers. Editor actions are supplied through the
+environment. Nested profile editors use `WindowModalOverlay`, the same window
+host, dimming and dismissal animation as message forwarding. The profile and
+widget board sit side by side when space permits and stack at narrower widths,
+inside the same `SettingsPageForm` used by other Settings pages, including its
+catalog title, search reveal, grouped form, background and native scrolling.
+The page has no profile-derived background or custom form-group styling.
+Eight equally sized customization tiles reflow from four
+columns to two. The scope picker is a native trailing toolbar button showing
+the main-profile symbol or selected server icon. Scope and server-tag
+selectors use native popovers; selectable popover rows derive their highlight
+shape from the system container. Name and pronoun fields overlay their rendered
+text without adding layout padding. Bio editing keeps the shared native rich-text
+view and emoji attachments in place, preserving inherited values until an edit.
+The emoji picker returns to that text view's selection through its own window;
+normal typing leaves selection with the native editor. Application widgets use their configured
+`mini_profile` surface in member profiles, with full statistics available on demand.
+
+`ProfileThemeState` resolves explicit theme colours or an avatar-derived palette
+for the shared card and colour controls. `MediaPipeline`
+extracts that palette using the reference median-cut algorithm and Chromium's
+opaque WebP chroma interpolation. Derived colours remain presentation data;
+editing one endpoint saves the other displayed endpoint explicitly. Server
+theme reset clears both overrides together. The profile retains the user's
+default avatar asset separately so removing an avatar can preview that result.
+
+`DiscordRESTProvider` owns editable snapshots, catalogues, avatar history,
+entitlement checks, widget resources and all authenticated profile requests.
+Identity, profile metadata and server-tag writes execute in order; widget
+writes form an independent save group. Each confirmed stage is removed from
+the draft even if a later stage fails. Ambiguous transport failures require an
+authoritative reload before another explicit save; confirmed stages are never
+replayed. Credential rotation from a confirmed main identity response completes
+before the following stage. Profile presentation generations prevent older
+reads from replacing newer REST or Gateway state. Saved identity and scoped
+profile events update retained popovers, members and message projections.
+
+Custom status is an independent settings-protobuf update. Its provider retains
+the surrounding status settings, preserves unrelated fields, reconciles the
+response and schedules expiry. Personal and game widget editing requires both
+full Nitro and the matching early-access assignment, with the same checks at
+presentation and provider boundaries. Activity and Wishlist are outside the
+profile presentation and editor.
+
+`MediaPipeline` owns profile crop geometry and static/animated image processing.
+File-import actions read fresh bytes under their security-scoped access;
+immutable remote images and generated preview files use the shared media loader.
+Profile GIF selection uses Discord's provider-specific image proxy, while its
+selection notification proceeds independently. Avatar and banner changes stay
+local until profile save. Widget images use the provider's upload allocation and
+signed upload URL before their returned reference enters the local widget draft.
+Crop work is cancellable, and the owning editor removes its temporary previews
+when they are reset or released.
+
 ## Message and media flow
 
 History responses and Gateway events decode into the same domain message
@@ -291,6 +363,12 @@ process-memory caches and is discarded at process exit.
 `MediaPipeline` owns public-media caching and the complete native voice/video
 stack. `DaveKit` is an implementation dependency of `MediaPipeline`; the app
 target does not import it directly.
+
+Profile image processing also belongs to `MediaPipeline`. Animated WebP export
+uses the pinned libwebp SwiftPM dependency because the current macOS ImageIO
+destination API can decode WebP but cannot write it. This is a codec capability
+gap; the app continues to target macOS 27. The codec receives image bytes and
+pixel transforms and has no Discord credentials or networking responsibilities.
 
 ## Plugins
 

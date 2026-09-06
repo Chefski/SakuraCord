@@ -6,6 +6,12 @@ import Testing
 @Test func `markdown removes delimiters`() {
     let value = DiscordMarkdown.attributed("Hello **native** `client`")
     #expect(String(value.characters) == "Hello native client")
+    let widgetSource = "# **Bold** __underlined__ *italic* `code` ~~strike~~ ||spoiler||\n[label](https://example.com) <a:emoji:123>"
+    let widget = DiscordMarkdown.profileWidgetAttributed(widgetSource)
+    #expect(String(widget.characters) == "# Bold underlined italic `code` ~~strike~~ ||spoiler||\nlabel <a:emoji:123>")
+    #expect(widget.runs.contains { $0.link?.absoluteString == "https://example.com" })
+    let preview = DiscordMarkdown.profileWidgetAttributed(widgetSource, links: false)
+    #expect(preview.runs.allSatisfy { $0.link == nil })
 }
 
 @Test func `angle bracket masked links match discord rendering`() throws {

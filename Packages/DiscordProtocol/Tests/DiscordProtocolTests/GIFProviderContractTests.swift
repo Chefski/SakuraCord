@@ -20,6 +20,10 @@ struct GIFProviderContractTests {
         #expect(searched.map(\.id) == ["one", "two"])
         #expect(searched[0].thumbnailURL?.absoluteString == "https://static.klipy.com/one.webm")
         #expect(searched[0].previewURL?.absoluteString == "https://static.klipy.com/one.webp")
+        #expect(DiscordProfileImageAssets.editableGIFURL(searched[0].previewURL)?.absoluteString == "https://discord.com/klipy/one.webp")
+        #expect(DiscordProfileImageAssets.editableGIFURL(URL(string: "https://static.klipy.com/unexpected.svg")) == nil)
+        #expect(DiscordProfileImageAssets.editableGIFURL(URL(string: "https://media.tenor.com/id/name.gif?discard=this"))?.absoluteString == "https://discord.com/tenor/id/name.gif")
+        #expect(DiscordProfileImageAssets.editableGIFURL(URL(string: "https://media.giphy.com/media/id/name.gif"))?.absoluteString == "https://discord.com/giphy/media/id/name.gif")
         #expect(searched[1].previewURL?.host() == "static.klipy.com")
         #expect(trending.map(\.id) == ["one", "two"])
         #expect(GIFURLProtocol.requests.map(\.path) == [

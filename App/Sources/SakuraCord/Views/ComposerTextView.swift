@@ -256,7 +256,7 @@ enum ComposerEmojiAttributedText {
         (font.ascender + font.descender - size) / 2
     }
 
-    private static func placeholderImage(name: String, size: CGFloat) -> NSImage {
+    static func placeholderImage(name: String, size: CGFloat) -> NSImage {
         let image = SakuraCordSystemSymbol.image(
             named: SakuraCordSystemSymbol.emojiFaceGrinning,
             accessibilityDescription: name

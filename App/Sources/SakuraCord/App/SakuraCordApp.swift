@@ -244,6 +244,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateController.start()
         if let model = SakuraCordRuntimeModelHolder.shared.model {
             self.model = model
+            model.reportApplicationActive(NSApp.isActive)
             Task { await startSession(for: model) }
         }
     }
@@ -254,6 +255,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             sessionStartTask = Task { await model.start() }
         }
         await sessionStartTask?.value
+        model.reportApplicationActive(NSApp.isActive)
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        model?.reportApplicationActive(true)
+    }
+
+    func applicationDidResignActive(_ notification: Notification) {
+        model?.reportApplicationActive(false)
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
