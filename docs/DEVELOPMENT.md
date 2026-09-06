@@ -21,6 +21,12 @@ session:
 ./script/build_and_run.sh --offline
 ```
 
+To launch the existing `dist/SakuraCord.app` without rebuilding, use
+`./script/run.sh` or `./script/run.sh --offline`. These are also available as
+the Codex environment actions **Run** and **Run Offline**. Both restart the
+checkout's app so the selected mode takes effect, and require a previously
+built bundle.
+
 The focused offline scenes exercise larger or specialized UI states without
 contacting Discord:
 

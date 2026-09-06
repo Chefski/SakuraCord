@@ -6,6 +6,16 @@ name = "SakuraCord"
 script = "./script/setup.sh"
 
 [[actions]]
+name = "Run"
+icon = "run"
+command = "./script/run.sh"
+
+[[actions]]
+name = "Run Offline"
+icon = "run"
+command = "./script/run.sh --offline"
+
+[[actions]]
 name = "Build & Run"
 icon = "run"
 command = "./script/build_and_run.sh"
