@@ -2,10 +2,19 @@ import AppKit
 import SwiftUI
 
 struct SakuraCordCommands: Commands {
+    @Environment(\.openWindow) private var openWindow
+
     let model: AppModel
     let updateController: AppUpdateController
 
     var body: some Commands {
+        CommandGroup(replacing: .appSettings) {
+            Button("Settings…") {
+                openWindow(value: SettingsWindowIdentity.settings)
+            }
+            .keyboardShortcut(",")
+        }
+
         CommandGroup(replacing: .appInfo) {
             Button("About SakuraCord") {
                 NSApp.orderFrontStandardAboutPanel(options: [

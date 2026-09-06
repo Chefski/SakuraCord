@@ -703,7 +703,7 @@ private struct CurrentUserCapsule: View {
     let connectAccount: () -> Void
     let updateStatus: (PresenceStatus) async -> Void
 
-    @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
     @State private var isMainHovering = false
     @State private var isSettingsHovering = false
     @State private var isYouPopoverPresented = false
@@ -770,7 +770,7 @@ private struct CurrentUserCapsule: View {
                 help: "Settings",
                 diameter: SidebarAccountControlMetrics.settingsDiameter,
                 onHoverChanged: { isSettingsHovering = $0 },
-                action: { openSettings() }
+                action: { openWindow(value: SettingsWindowIdentity.settings) }
             )
             .padding(.trailing, 7)
             .frame(

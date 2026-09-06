@@ -5,7 +5,7 @@ import SwiftUI
 struct VoiceControlBar<SettingsControl: View>: View {
     let model: AppModel
     let settingsControl: SettingsControl
-    @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
     @State private var showConnectionDetails = false
     @State private var showInputControls = false
     @State private var showOutputControls = false
@@ -186,7 +186,7 @@ struct VoiceControlBar<SettingsControl: View>: View {
         Divider()
         Button {
             SettingsNavigationRouter.shared.open(page: .voiceVideo)
-            openSettings()
+            openWindow(value: SettingsWindowIdentity.settings)
         } label: {
             Label("Voice & Video Settings…", systemImage: "gearshape")
         }
@@ -499,7 +499,7 @@ private struct SidebarVoiceGlassButton: View {
 
 struct VoiceCallControlDock: View {
     let model: AppModel
-    @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
     @State private var showInputControls = false
     @State private var showOutputControls = false
     @State private var showCameraControls = false
@@ -644,7 +644,7 @@ struct VoiceCallControlDock: View {
         Divider()
         Button {
             SettingsNavigationRouter.shared.open(page: .voiceVideo)
-            openSettings()
+            openWindow(value: SettingsWindowIdentity.settings)
         } label: {
             Label("Voice & Video Settings…", systemImage: "gearshape")
         }
