@@ -32,6 +32,7 @@ private struct GradientThemeEditorHeader: View {
             }
             Spacer(minLength: 16)
             HStack(spacing: 8) {
+                ThemeRandomizeButton(themeStore: themeStore)
                 ThemeShareCopyButton(
                     themeStore: themeStore,
                     appearance: appearance
@@ -127,6 +128,7 @@ private struct ThemeColorCountControls: View {
                         themeStore.addColor()
                     }
                 }
+                .modifier(ThemeColorMenu(themeStore: themeStore, colorIndex: nil))
             }
         }
         .accessibilityElement(children: .contain)
@@ -167,14 +169,26 @@ private struct GradientThemeControls: View {
     var body: some View {
         GlassEffectContainer(spacing: 20) {
             HStack(alignment: .center, spacing: 0) {
-                CircularBrightnessControl(themeStore: themeStore)
+                CircularThemeControl(
+                    value: themeStore.activeTheme.brightness,
+                    systemImage: "sun.max.fill",
+                    label: "Theme brightness",
+                    setter: themeStore.setBrightness,
+                    finishInteraction: themeStore.finishInteraction
+                )
                     .frame(maxWidth: .infinity)
                 GradientHuePicker(themeStore: themeStore)
                     .frame(
                         width: ThemePickerGeometry.diameter,
                         height: ThemePickerGeometry.diameter
                     )
-                ThemeRandomizeButton(themeStore: themeStore)
+                CircularThemeControl(
+                    value: themeStore.activeTheme.saturation,
+                    systemImage: "drop.halffull",
+                    label: "Theme saturation",
+                    setter: themeStore.setSaturation,
+                    finishInteraction: themeStore.finishInteraction
+                )
                     .frame(maxWidth: .infinity)
             }
         }
@@ -226,7 +240,9 @@ private struct GradientHuePicker: View {
                     hue: theme.colors[index].hue,
                     order: theme.activeColorCount == 1 ? nil : index + 1,
                     setter: { themeStore.setHue($0, at: index) },
-                    finishInteraction: themeStore.finishInteraction
+                    finishInteraction: themeStore.finishInteraction,
+                    themeStore: themeStore,
+                    colorIndex: index
                 )
             }
 
@@ -250,6 +266,8 @@ private struct ThemeHueHandle: View {
     let order: Int?
     let setter: (Double) -> Void
     let finishInteraction: () -> Void
+    let themeStore: SakuraCordThemeStore
+    let colorIndex: Int
 
     @State private var lastHapticStep: Int?
 
@@ -272,6 +290,8 @@ private struct ThemeHueHandle: View {
             height: ThemePickerGeometry.hueHandleHitSize
         )
         .contentShape(Circle())
+        .accessibilityElement(children: .ignore)
+        .modifier(ThemeColorMenu(themeStore: themeStore, colorIndex: colorIndex))
         // `position`, unlike `offset`, moves layout and hit testing together.
         .position(ThemePickerGeometry.hueHandleCenter(for: hue))
         .gesture(
@@ -485,14 +505,18 @@ private nonisolated struct IntensityWaveShape: Shape {
     }
 }
 
-private struct CircularBrightnessControl: View {
-    let themeStore: SakuraCordThemeStore
+private struct CircularThemeControl: View {
+    let value: Double
+    let systemImage: String
+    let label: LocalizedStringKey
+    let setter: (Double) -> Void
+    let finishInteraction: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var lastHapticStep: Int?
 
     var body: some View {
-        let brightness = themeStore.activeTheme.brightness
+        let brightness = value
         let indicatorAngle = ThemePickerGeometry.brightnessAngle(for: brightness)
 
         ZStack {
@@ -510,7 +534,7 @@ private struct CircularBrightnessControl: View {
                     )
             }
 
-            Image(systemName: "sun.max.fill")
+            Image(systemName: systemImage)
                 .font(.title2.weight(.medium))
                 .foregroundStyle(.primary.opacity(0.78))
 
@@ -534,14 +558,14 @@ private struct CircularBrightnessControl: View {
                 .onChanged { value in
                     let brightness = ThemePickerGeometry.brightness(
                         at: value.location,
-                        preservingEndpointFor: themeStore.activeTheme.brightness
+                        preservingEndpointFor: self.value
                     )
                     updateHaptics(for: brightness)
-                    themeStore.setBrightness(brightness)
+                    setter(brightness)
                 }
                 .onEnded { _ in
                     lastHapticStep = nil
-                    themeStore.finishInteraction()
+                    finishInteraction()
                 }
         )
         .simultaneousGesture(
@@ -549,18 +573,18 @@ private struct CircularBrightnessControl: View {
                 .onEnded { value in
                     let brightness = ThemePickerGeometry.brightness(at: value.location)
                     withAnimation(reduceMotion ? nil : .themeRandomizationTransition) {
-                        themeStore.setBrightness(brightness)
+                        setter(brightness)
                     }
-                    themeStore.finishInteraction()
+                    finishInteraction()
                 }
         )
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Theme brightness")
+        .accessibilityLabel(label)
         .accessibilityValue("\(Int((brightness * 100).rounded())) percent")
         .accessibilityAdjustableAction { direction in
             let step = direction == .increment ? 0.05 : -0.05
-            themeStore.setBrightness(brightness + step)
-            themeStore.finishInteraction()
+            setter(brightness + step)
+            finishInteraction()
         }
     }
 
@@ -608,23 +632,24 @@ private struct ThemeRandomizeButton: View {
             }
         } label: {
             Image(systemName: "shuffle")
-                .font(.system(size: 32, weight: .semibold))
+                .font(.body.weight(.semibold))
                 .foregroundStyle(Color(nsColor: .labelColor))
                 .rotationEffect(.degrees(rotation))
                 .frame(
-                    width: ThemePickerGeometry.sideControlDiameter,
-                    height: ThemePickerGeometry.sideControlDiameter
+                    width: ThemePickerGeometry.colorCountButtonDiameter,
+                    height: ThemePickerGeometry.colorCountButtonDiameter
                 )
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .frame(
-            width: ThemePickerGeometry.sideControlDiameter,
-            height: ThemePickerGeometry.sideControlDiameter
+            width: ThemePickerGeometry.colorCountButtonDiameter,
+            height: ThemePickerGeometry.colorCountButtonDiameter
         )
         .glassEffect(.regular.interactive(), in: Circle())
         .contentShape(Circle())
         .accessibilityLabel("Randomise theme")
+        .help("Randomise theme")
         .onDisappear {
             randomizationTask?.cancel()
         }
@@ -751,7 +776,7 @@ nonisolated enum ThemePickerGeometry {
     }
 }
 
-private extension Animation {
+extension Animation {
     static let themeControlResponse = Animation.easeInOut(
         duration: SakuraCordThemeStore.randomizationDurationSeconds
     )

@@ -416,6 +416,7 @@ func `Public beta accents migrate into native-surface single-color themes`(
         for _ in 0 ..< 20 {
             let randomized = themeStore.randomizedTheme()
             #expect(randomized.activeColorCount == colorCount)
+            #expect(randomized.colors.allSatisfy { $0.saturation == randomized.colors[0].saturation })
             let colors = Array(randomized.activeColors)
             for firstIndex in colors.indices {
                 for secondIndex in colors.indices where secondIndex > firstIndex {
@@ -737,4 +738,86 @@ func `Public beta accents migrate into native-surface single-color themes`(
         let brightnessCenter = ThemePickerGeometry.brightnessHandleCenter(for: value)
         #expect(abs(ThemePickerGeometry.brightness(at: brightnessCenter) - value) < 0.0001)
     }
+}
+
+@MainActor
+@Test func `Shared saturation and hex edits persist and survive theme sharing`() async throws {
+    let preferences = SettingsPreferenceStore(defaults: InMemoryPreferences())
+    let persistence = SakuraCordThemeSettingsStore(preferences: preferences)
+    let store = SakuraCordThemeStore(persistence: persistence)
+    store.addColor()
+    store.addColor()
+    store.removeColor()
+    store.setBrightness(0.37)
+    store.setSaturation(0.24)
+    store.finishInteraction()
+    #expect(persistence.load().colors.allSatisfy { $0.saturation == 0.24 })
+    store.addColor()
+    #expect(store.activeTheme.colors.allSatisfy { $0.saturation == 0.24 })
+
+    let originalHues = store.activeTheme.colors.map(\.hue)
+    let color = try #require(SakuraCordThemeColor(hexCode: " #80c040 "))
+    await store.applyColor(color, at: 1, reduceMotion: true)
+    #expect(store.activeTheme.colors[0].hue == originalHues[0])
+    #expect(store.activeTheme.colors[1].hue == color.hue)
+    #expect(store.activeTheme.colors[2].hue == originalHues[2])
+    #expect(store.activeTheme.colors.allSatisfy { $0.saturation == color.saturation })
+    #expect(store.activeTheme.brightness == 0.37)
+    #expect(store.activeTheme == store.committedTheme)
+    #expect(persistence.load() == store.activeTheme)
+
+    let token = try SakuraCordThemeShareCodec.token(for: .init(appearance: .dark, theme: store.activeTheme))
+    guard case let .current(shared) = SakuraCordThemeShareCodec.decode(token) else {
+        Issue.record("Edited theme did not survive sharing")
+        return
+    }
+    #expect(shared.theme.activeColors.allSatisfy { abs($0.saturation - color.saturation) < 1.0 / 65_535 })
+
+    store.setSaturation(0)
+    for appearance in [SakuraCordThemeAppearance.light, .dark] {
+        for color in store.activeTheme.activeColors {
+            let tint = store.activeTheme.backgroundTintRGB(color, for: appearance)
+            #expect(tint.red == tint.green && tint.green == tint.blue)
+        }
+    }
+}
+
+@Test func `Hex colors accept RGB forms and reject invalid input`() {
+    let expected = SakuraCordThemeColor(sRGBRed: 0xAA, green: 0xBB, blue: 0xCC)
+    for input in ["abc", "#ABC", "aabbcc", "#AaBbCc", "  #abc  "] {
+        #expect(SakuraCordThemeColor(hexCode: input) == expected)
+    }
+    for input in ["", "#", "##abc", "12", "12345", "12345678", "ggg", "0x1234", "ab cd ef", "１２３"] {
+        #expect(SakuraCordThemeColor(hexCode: input) == nil)
+    }
+}
+
+@Test func `Removing a selected gradient color preserves order and remembered colors`() throws {
+    var theme = SakuraCordGradientTheme(
+        colors: [0.1, 0.3, 0.5, 0.7].map { .init(hue: $0, saturation: 0.8) },
+        activeColorCount: 3,
+        intensity: 0.6,
+        brightness: 0.4
+    )
+    let removedMiddle = theme.removeColor(at: 1)
+    #expect(removedMiddle)
+    #expect(theme.activeColors.map(\.hue) == [0.1, 0.5])
+    #expect(theme.colors.map(\.hue) == [0.1, 0.5, 0.3, 0.7])
+    let removedNegative = theme.removeColor(at: -1)
+    #expect(!removedNegative)
+    let removedInactive = theme.removeColor(at: 2)
+    #expect(!removedInactive)
+    let restoredColor = theme.addColor()
+    #expect(restoredColor)
+    #expect(theme.activeColors.map(\.hue) == [0.1, 0.5, 0.3])
+    let explicitColor = try #require(SakuraCordThemeColor(hexCode: "#4080C0"))
+    let addedExplicit = theme.addColor(explicitColor)
+    #expect(addedExplicit)
+    #expect(theme.activeColors.last == explicitColor)
+    #expect(theme.colors.allSatisfy { $0.saturation == explicitColor.saturation })
+    while theme.removeColor(at: 0) {}
+    #expect(theme.activeColorCount == 1)
+    let removedLast = theme.removeColor(at: 0)
+    #expect(!removedLast)
+    #expect(theme.brightness == 0.4 && theme.intensity == 0.6)
 }

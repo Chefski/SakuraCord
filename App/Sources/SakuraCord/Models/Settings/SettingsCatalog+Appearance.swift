@@ -22,8 +22,8 @@ nonisolated extension SettingsCatalog {
             page: .appearance,
             section: .appearanceTheme,
             label: "Theme Designer",
-            help: "Create a theme with color, intensity, brightness, and randomisation controls.",
-            keywords: ["gradient", "theme", "designer", "color", "intensity", "brightness", "randomise"],
+            help: "Create a theme with color, saturation, intensity, brightness, and randomisation controls.",
+            keywords: ["gradient", "theme", "designer", "color", "saturation", "intensity", "brightness", "hex", "randomise"],
             scope: .appWideLocal
         ),
     ]

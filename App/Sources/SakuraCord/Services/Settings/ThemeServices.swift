@@ -36,6 +36,25 @@ nonisolated struct SakuraCordThemeColor: Codable, Equatable, Hashable, Sendable 
         )
     }
 
+    init?(hexCode: String) {
+        var digits = hexCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        if digits.hasPrefix("#") { digits.removeFirst() }
+        guard [3, 6].contains(digits.utf8.count),
+              digits.utf8.allSatisfy({
+                  (48 ... 57).contains($0) || (65 ... 70).contains($0) || (97 ... 102).contains($0)
+              })
+        else { return nil }
+        if digits.count == 3 {
+            digits = digits.map { "\($0)\($0)" }.joined()
+        }
+        guard let rgb = UInt32(digits, radix: 16) else { return nil }
+        self.init(
+            sRGBRed: Int((rgb >> 16) & 0xFF),
+            green: Int((rgb >> 8) & 0xFF),
+            blue: Int(rgb & 0xFF)
+        )
+    }
+
     static let discordBlurple = Self(sRGBRed: 0x58, green: 0x65, blue: 0xF2)
 
     private static func normalizedHue(_ hue: Double) -> Double {
@@ -220,6 +239,44 @@ nonisolated struct SakuraCordGradientTheme: Codable, Equatable, Hashable, Sendab
 
     var activeColors: ArraySlice<SakuraCordThemeColor> {
         colors.prefix(activeColorCount)
+    }
+
+    // Existing themes can contain different saturations. Preserve them until
+    // the user edits the shared dial, which sets every stored color together.
+    var saturation: Double {
+        activeColors.reduce(0) { $0 + $1.saturation } / Double(activeColorCount)
+    }
+
+    mutating func setSaturation(_ saturation: Double) {
+        for index in colors.indices {
+            colors[index].saturation = saturation.clamped(to: 0 ... 1)
+        }
+    }
+
+    mutating func setColor(_ color: SakuraCordThemeColor, at index: Int) {
+        guard activeColors.indices.contains(index) else { return }
+        colors[index].hue = color.hue
+        setSaturation(color.saturation)
+    }
+
+    @discardableResult
+    mutating func addColor(_ color: SakuraCordThemeColor) -> Bool {
+        guard addColor() else { return false }
+        setColor(color, at: activeColorCount - 1)
+        return true
+    }
+
+    @discardableResult
+    mutating func removeColor(at index: Int) -> Bool {
+        guard activeColorCount > Self.minimumColorCount,
+              activeColors.indices.contains(index)
+        else { return false }
+        // Retain the removed color after the active palette, like the minus
+        // button, so adding a color can restore it without losing its hue.
+        let removed = colors.remove(at: index)
+        activeColorCount -= 1
+        colors.insert(removed, at: activeColorCount)
+        return true
     }
 
     var storageValue: String {
@@ -485,12 +542,10 @@ nonisolated struct SakuraCordGradientTheme: Codable, Equatable, Hashable, Sendab
         // Dark surfaces use a deep version of the selected color rather
         // than a faint full-brightness color over gray. This preserves hue
         // and saturation without lifting the whole window's luminance.
-        let saturation = color.saturation
-            + (1 - color.saturation) * intensity * 0.65
         let surfaceBrightness = 0.28 * pow(brightness, 0.72)
         return SakuraCordThemeRGB(
             hue: color.hue,
-            saturation: saturation,
+            saturation: color.saturation,
             brightness: surfaceBrightness
         )
     }
@@ -620,8 +675,14 @@ final class SakuraCordThemeStore {
         editTheme { $0.setHue(hue, at: index) }
     }
 
-    func addColor() {
-        editTheme { $0.addColor() }
+    func addColor(_ color: SakuraCordThemeColor? = nil) {
+        editTheme { theme in
+            if let color {
+                theme.addColor(color)
+            } else {
+                theme.addColor()
+            }
+        }
         commit()
     }
 
@@ -632,6 +693,22 @@ final class SakuraCordThemeStore {
 
     func setIntensity(_ intensity: Double) {
         editTheme { $0.intensity = intensity.clamped(to: 0 ... 1) }
+    }
+
+    func setSaturation(_ saturation: Double) {
+        editTheme { $0.setSaturation(saturation) }
+    }
+
+    func applyColor(_ color: SakuraCordThemeColor, at index: Int, reduceMotion: Bool) async {
+        var target = activeTheme
+        guard target.activeColors.indices.contains(index) else { return }
+        target.setColor(color, at: index)
+        await transition(to: target, reduceMotion: reduceMotion)
+    }
+
+    func removeColor(at index: Int) {
+        editTheme { $0.removeColor(at: index) }
+        commit()
     }
 
     func setBrightness(_ brightness: Double) {
@@ -654,10 +731,14 @@ final class SakuraCordThemeStore {
         let randomizedHues = Self.randomizedSeparatedHues(
             count: activeTheme.activeColorCount
         )
+        let saturation = Double.random(in: 0.60 ... 0.90)
+        for index in colors.indices {
+            colors[index].saturation = saturation
+        }
         for index in 0 ..< activeTheme.activeColorCount {
             colors[index] = SakuraCordThemeColor(
                 hue: randomizedHues[index],
-                saturation: .random(in: 0.60 ... 0.90)
+                saturation: saturation
             )
         }
         return SakuraCordGradientTheme(
@@ -669,9 +750,12 @@ final class SakuraCordThemeStore {
     }
 
     func randomize(reduceMotion: Bool) async {
+        await transition(to: randomizedTheme(), reduceMotion: reduceMotion)
+    }
+
+    private func transition(to target: SakuraCordGradientTheme, reduceMotion: Bool) async {
         interactionGeneration &+= 1
         let generation = interactionGeneration
-        let target = randomizedTheme()
         if reduceMotion {
             activeTheme = target
             commit()
@@ -706,7 +790,7 @@ final class SakuraCordThemeStore {
             let themeAppearance: SakuraCordThemeAppearance = isDark ? .dark : .light
             let source = SakuraCordThemeRGB(
                 hue: accentColor.hue,
-                saturation: max(0.54, accentColor.saturation),
+                saturation: accentColor.saturation,
                 brightness: 0.82
             )
             return NSColor(theme.readableForeground(source, for: themeAppearance))
