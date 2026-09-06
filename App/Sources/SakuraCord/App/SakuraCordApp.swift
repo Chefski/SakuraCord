@@ -210,21 +210,13 @@ struct SakuraCordApp: App {
             )
         }
 
-        // Settings caches its closed NSWindow. A value-identified group keeps one
-        // instance while open and discards it on close, including its old Space.
-        WindowGroup("Settings", for: SettingsWindowIdentity.self) { _ in
+        Settings {
             SettingsView(
                 model: model,
                 updateController: appDelegate.updateController
             )
-        } defaultValue: {
-            .settings
         }
-        .commandsRemoved()
-        .defaultLaunchBehavior(.suppressed)
         .defaultSize(width: 980, height: 700)
-        .defaultPosition(.center)
-        .windowToolbarStyle(.unified)
         .windowResizability(.contentMinSize)
         .windowManagerRole(.associated)
         .restorationBehavior(.disabled)

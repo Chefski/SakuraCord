@@ -53,6 +53,7 @@ struct SettingsView: View {
             ZStack {
                 SakuraCordThemeBackground()
                     .ignoresSafeArea()
+                SettingsWindowBehaviorBridge()
                 SakuraCordTextInputAccentBridge()
             }
         }
@@ -71,7 +72,6 @@ struct SettingsView: View {
             }
         }
         .windowResizeBehavior(.enabled)
-        .windowMinimizeBehavior(.disabled)
         .dismissalConfirmationDialog("Profile Changes", shouldPresent: profileEditor?.hasChanges == true || profileEditor?.isSaving == true) {
             if profileEditor?.isSaving != true {
                 Button("Discard Changes", role: .destructive) { profileEditor?.resetDraft() }
@@ -135,6 +135,54 @@ struct SettingsView: View {
             default:
                 return .ignored
             }
+        }
+    }
+}
+
+/// Applies the Settings-specific behavior that SwiftUI doesn't expose.
+private struct SettingsWindowBehaviorBridge: NSViewRepresentable {
+    func makeNSView(context: Context) -> WindowBehaviorView {
+        WindowBehaviorView()
+    }
+
+    func updateNSView(_ view: WindowBehaviorView, context: Context) {
+        view.applyWindowBehavior()
+    }
+
+    final class WindowBehaviorView: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            applyWindowBehavior()
+            DispatchQueue.main.async { [weak self] in
+                self?.applyWindowBehavior()
+                self?.centerWindow()
+            }
+        }
+
+        func applyWindowBehavior() {
+            guard let window else { return }
+            window.toolbarStyle = .unified
+            window.contentMaxSize = NSSize(
+                width: CGFloat.greatestFiniteMagnitude,
+                height: CGFloat.greatestFiniteMagnitude
+            )
+        }
+
+        private func centerWindow() {
+            guard let window else { return }
+            let screen = NSApp.windows.first {
+                $0 !== window
+                    && $0.isVisible
+                    && $0.styleMask.contains(.fullScreen)
+            }?.screen ?? NSScreen.main ?? window.screen
+            guard let screen else { return }
+
+            let visibleFrame = screen.visibleFrame
+            let origin = NSPoint(
+                x: visibleFrame.midX - window.frame.width / 2,
+                y: visibleFrame.midY - window.frame.height / 2
+            )
+            window.setFrameOrigin(origin)
         }
     }
 }

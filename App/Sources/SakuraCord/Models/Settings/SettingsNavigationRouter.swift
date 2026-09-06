@@ -1,10 +1,6 @@
 import Foundation
 import Observation
 
-nonisolated enum SettingsWindowIdentity: String, Codable, Hashable, Sendable {
-    case settings
-}
-
 nonisolated struct SettingsNavigationRequest: Equatable, Identifiable, Sendable {
     let id: UUID
     let destination: SettingsDestination

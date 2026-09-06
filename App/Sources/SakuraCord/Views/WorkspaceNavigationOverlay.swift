@@ -99,7 +99,7 @@ private nonisolated struct QuickSwitcherIndexRequest: Hashable, Sendable {
 private struct QuickSwitcherView: View {
     let model: AppModel
     let animationState: WindowModalAnimationState
-    @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
     @State private var query = ""
     @State private var searchIndex: ForwardDestinationSearchPolicy.Index?
     @State private var searchInput: QuickSwitcherSearchInput?
@@ -555,7 +555,7 @@ private struct QuickSwitcherView: View {
             model.activateQuickSwitcherDestination(destination)
         case .navigation:
             model.dismissWorkspaceNavigationOverlay()
-            openWindow(value: SettingsWindowIdentity.settings)
+            openSettings()
         }
     }
 
