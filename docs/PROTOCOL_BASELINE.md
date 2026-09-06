@@ -1081,6 +1081,23 @@ implementation records.
   `enforce_nonce: true`, `tts: false`, `flags: 0`, the clean macOS host's
   `mobile_network_type: "unknown"`, attachments only when present, and
   `chat_input` context.
+- Slowmode uses each channel or thread's `rate_limit_per_user`; thread messages
+  inherit permissions from their parent but use the thread's own interval.
+  Current immunity is `BYPASS_SLOWMODE` (`1 << 52`), including owner and
+  administrator permission resolution, plus bots. Manage Messages, Manage
+  Channels, and Manage Threads alone no longer bypass slowmode, per Discord's
+  [February 2026 permission split](https://docs.discord.com/developers/change-log#permission-changes-going-into-effect-february-2026-for-pin_messages-bypass_slowmode-create_guild_expressions-and-create_events).
+  SakuraCord deliberately starts its local countdown on confirmation, not upload
+  start. The first REST or own-user Gateway message confirmation starts it;
+  duplicate confirmations do not restart it. Recent confirmed history can seed
+  a reopened session without persisting Discord messages or cooldowns. Discord
+  error `20016` returns its `retry_after` to the composer without replaying the
+  mutation or treating slowmode as a generic REST bucket delay. These semantics
+  were checked against public documentation on 7 September 2026 and the retained
+  4 September production asset `web.f803cc09a978437c.js`, whose slowmode store
+  separates message and thread-creation cooldowns. The pinned Paicord model
+  retains the channel interval; its app and pinned Swiftcord v1 have no comparable
+  local slowmode controller. No new outbound request shape is introduced.
 - Native sticker sends enter the same nonce-keyed optimistic outbox as ordinary
   messages. Picker dismissal and timeline insertion do not wait for REST; the
   selected sticker's loaded media identity remains attached to the row through

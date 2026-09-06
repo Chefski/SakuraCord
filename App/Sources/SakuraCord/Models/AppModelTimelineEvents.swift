@@ -452,6 +452,7 @@ extension AppModel {
                 commit
             )
         }
+        seedSlowmodeHistory(newMessages)
         let oldMessages = messages
         messages = newMessages
         rebuildSelectedMessageIndexes()

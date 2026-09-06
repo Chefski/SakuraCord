@@ -206,6 +206,7 @@ nonisolated enum GIFPickerMediaPolicy {
 
 struct GIFPickerView: View {
     let model: AppModel
+    var destination: MessageComposerDestination = .channel
     let dismiss: () -> Void
     var selectionHandler: ((GIFSearchResult, GIFPickerPage) -> Void)?
     var hidesFavorites = false
@@ -371,7 +372,7 @@ struct GIFPickerView: View {
             return
         }
         Task {
-            if await model.sendGIF(gif) { dismiss() }
+            if await model.sendGIF(gif, in: destination) { dismiss() }
         }
     }
 

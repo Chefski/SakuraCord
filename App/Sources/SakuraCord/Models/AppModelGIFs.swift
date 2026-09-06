@@ -110,7 +110,17 @@ extension AppModel {
     }
 
     @discardableResult
-    func sendGIF(_ gif: GIFSearchResult) async -> Bool {
+    func sendGIF(_ gif: GIFSearchResult, in destination: MessageComposerDestination = .channel) async -> Bool {
+        if destination == .thread {
+            guard let thread = openThread, openThreadAccess.canSend else { return false }
+            return await sendThreadMessage(
+                content: gif.url.absoluteString,
+                replyTo: threadReplyingTo?.id,
+                mentionsRepliedUser: threadReplyMentionsAuthor,
+                replyPreview: threadReplyingTo.map(MessageReplyPreview.init),
+                attachments: [], thread: thread, clearsComposer: false
+            )
+        }
         guard let channelID = selectedChannelID,
               selectedConversationAccess.canSend
         else { return false }

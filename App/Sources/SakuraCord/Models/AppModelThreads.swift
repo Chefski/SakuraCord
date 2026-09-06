@@ -146,6 +146,7 @@ extension AppModel {
             hasMoreBefore: page.hasMoreBefore,
             authoritativeOldestMessageID: page.messages.map(\.id).min()
         )
+        seedSlowmodeHistory(threadMessages)
         hasMoreThreadMessages = page.hasMoreBefore
         threadErrorMessage = nil
         threadErrorScope = nil
@@ -285,6 +286,7 @@ extension AppModel {
         attachments: [ForumPostAttachment]
     ) async -> ComposerSubmissionResult {
         guard let thread = openThread, openThreadAccess.canSend else { return .rejected }
+        guard allowSlowmodeSubmission(in: thread.id) else { return .rejected }
         let content = threadDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !content.isEmpty || !attachments.isEmpty else { return .rejected }
         guard validateAttachmentCount(attachments) else { return .rejected }
@@ -312,6 +314,7 @@ extension AppModel {
         thread: MessageThreadSummary,
         clearsComposer: Bool
     ) async -> Bool {
+        guard allowSlowmodeSubmission(in: thread.id) else { return false }
         let draft = SendMessageDraft(
             channelID: thread.id,
             content: content,

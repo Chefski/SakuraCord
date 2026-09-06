@@ -146,6 +146,7 @@ struct MessageThreadDTO: Decodable {
         var locked: Bool?
     }
 
+    var rateLimitPerUser: Int?
     var id: String
     var guildID: String?
     var parentID: String?
@@ -155,6 +156,7 @@ struct MessageThreadDTO: Decodable {
     var lastMessageID: String?
     var threadMetadata: Metadata?
     enum CodingKeys: String, CodingKey {
+        case rateLimitPerUser = "rate_limit_per_user"
         case id, name
         case guildID = "guild_id"
         case parentID = "parent_id"
@@ -170,7 +172,8 @@ struct MessageThreadDTO: Decodable {
             id: id, guildID: guildID.flatMap(GuildID.init), parentID: parentID.flatMap(ChannelID.init),
             name: name ?? "Thread", messageCount: messageCount ?? 0, memberCount: memberCount ?? 0,
             lastMessageID: lastMessageID.flatMap(MessageID.init),
-            isArchived: threadMetadata?.archived ?? false, isLocked: threadMetadata?.locked ?? false
+            isArchived: threadMetadata?.archived ?? false, isLocked: threadMetadata?.locked ?? false,
+            rateLimitPerUser: rateLimitPerUser ?? 0
         )
     }
 }

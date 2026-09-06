@@ -101,6 +101,7 @@ extension AppModel {
         guard let channelID = selectedChannelID, selectedConversationAccess.canSend else {
             return .rejected
         }
+        guard allowSlowmodeSubmission(in: channelID) else { return .rejected }
         let content = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !content.isEmpty || !attachments.isEmpty else { return .rejected }
         guard validateAttachmentCount(attachments) else { return .rejected }
@@ -111,6 +112,7 @@ extension AppModel {
             MessageReplyPreview(message: $0)
         }
         guard await prepareChannelMessageSubmission(channelID: channelID, account: session) else { return .rejected }
+        guard allowSlowmodeSubmission(in: channelID) else { return .rejected }
         let confirmed = await sendChannelMessage(
             channelID: channelID,
             content: content,
@@ -143,6 +145,7 @@ extension AppModel {
         attachments: [ForumPostAttachment],
         clearsComposer: Bool
     ) async -> Bool {
+        guard allowSlowmodeSubmission(in: channelID) else { return false }
         let outgoing = SendMessageDraft(
             channelID: channelID,
             content: content,
@@ -177,6 +180,7 @@ extension AppModel {
               outgoingState(nonce: nonce, channelID: message.channelID) == .failed,
               let outgoing = composer.outbox.draftsByNonce[nonce]
         else { return false }
+        guard allowSlowmodeSubmission(in: message.channelID) else { return false }
         if let sourceURL = composer.outbox.stickerUploadSourceURLByNonce[nonce] {
             updateOutgoingState(.uploading, nonce: nonce, channelID: message.channelID)
             return await performStickerUpload(
@@ -190,7 +194,15 @@ extension AppModel {
     }
 
     func performOutgoingSend(_ outgoing: SendMessageDraft, isRetry: Bool) async -> Bool {
+        guard allowSlowmodeSubmission(in: outgoing.channelID) else {
+            updateOutgoingState(.failed, nonce: outgoing.nonce, channelID: outgoing.channelID)
+            return false
+        }
         let session = accountSession()
+        composer.slowmode.begin(in: outgoing.channelID)
+        defer {
+            if isCurrentAccountSession(session) { composer.slowmode.end(in: outgoing.channelID) }
+        }
         let attachmentURLs = outgoing.attachmentURLs
         beginUsingOwnedPromisedFiles(attachmentURLs)
         let securityScopedURLs = attachmentURLs.filter {
@@ -212,6 +224,7 @@ extension AppModel {
         do {
             let confirmed = try await session.provider.send(outgoing)
             guard isCurrentAccountSession(session) else { return false }
+            confirmSlowmodeMessage(confirmed)
             let reconciled = reconcileVisibleOrCached(confirmed)
             composer.outbox.draftsByNonce[outgoing.nonce] = nil
             composer.outbox.stickerUploadSourceURLByNonce[outgoing.nonce] = nil
@@ -227,6 +240,7 @@ extension AppModel {
             return true
         } catch {
             guard isCurrentAccountSession(session) else { return false }
+            recoverSlowmode(from: error, in: outgoing.channelID)
             let state: OutboxState
             if (error as? URLError)?.code == .timedOut {
                 state = .awaitingReconciliation

@@ -376,7 +376,7 @@ extension AppModel {
             destinations: destinations,
             context: context,
             contextDestinationIDs: contextDestinationIDs,
-            provider: session.provider,
+            session: session,
             existingFailures: resolutionFailures
         )
         guard isCurrentAccountSession(session) else { return false }
@@ -390,29 +390,17 @@ extension AppModel {
         destinations: [ChannelID],
         context: String,
         contextDestinationIDs: Set<ChannelID>,
-        provider: any ChatProvider,
+        session: AppModelAccountSession,
         existingFailures: [String]
     ) async -> [String] {
         await withTaskGroup(of: String?.self, returning: [String].self) { group in
             for destinationID in destinations {
                 group.addTask {
-                    do {
-                        _ = try await provider.forward(ForwardMessageDraft(
-                            sourceMessageID: message.id,
-                            sourceChannelID: message.channelID,
-                            sourceGuildID: message.guildID,
-                            destinationChannelID: destinationID
-                        ))
-                        if !context.isEmpty, contextDestinationIDs.contains(destinationID) {
-                            _ = try await provider.send(SendMessageDraft(
-                                channelID: destinationID,
-                                content: context
-                            ))
-                        }
-                        return nil
-                    } catch {
-                        return error.localizedDescription
-                    }
+                    await self.sendForward(
+                        message, to: destinationID,
+                        context: contextDestinationIDs.contains(destinationID) ? context : "",
+                        session: session
+                    )
                 }
             }
             var failures = existingFailures
@@ -420,6 +408,42 @@ extension AppModel {
                 if let failure { failures.append(failure) }
             }
             return failures
+        }
+    }
+
+    private func sendForward(
+        _ message: Message, to destinationID: ChannelID,
+        context: String, session: AppModelAccountSession
+    ) async -> String? {
+        guard isCurrentAccountSession(session) else { return nil }
+        guard allowSlowmodeSubmission(in: destinationID) else {
+            return "Wait for slowmode before forwarding to this conversation."
+        }
+        composer.slowmode.begin(in: destinationID)
+        defer {
+            if isCurrentAccountSession(session) { composer.slowmode.end(in: destinationID) }
+        }
+        do {
+            let confirmed = try await session.provider.forward(ForwardMessageDraft(
+                sourceMessageID: message.id,
+                sourceChannelID: message.channelID,
+                sourceGuildID: message.guildID,
+                destinationChannelID: destinationID
+            ))
+            guard isCurrentAccountSession(session) else { return nil }
+            confirmSlowmodeMessage(confirmed)
+            if !context.isEmpty, shouldSendForwardContext(to: destinationID) {
+                let confirmedContext = try await session.provider.send(SendMessageDraft(
+                    channelID: destinationID, content: context
+                ))
+                guard isCurrentAccountSession(session) else { return nil }
+                confirmSlowmodeMessage(confirmedContext)
+            }
+            return nil
+        } catch {
+            guard isCurrentAccountSession(session) else { return nil }
+            recoverSlowmode(from: error, in: destinationID)
+            return error.localizedDescription
         }
     }
 

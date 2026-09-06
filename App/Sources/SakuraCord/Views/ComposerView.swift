@@ -246,15 +246,40 @@ struct ComposerView: View {
                 .frame(height: ChatChromeMetrics.composerControlHeight)
             },
             send: {
-                ComposerSendButton(
-                    action: submitComposer,
-                    appearance: appearance
-                )
-                .disabled(!composerCanSubmit)
+                TimelineView(.periodic(from: .now, by: 0.25)) { context in
+                    let coolingDown = activeConversationID.map {
+                        model.slowmodeRemaining(in: $0, now: context.date) > 0
+                    } ?? false
+                    ComposerSendButton(
+                        action: submitComposer,
+                        appearance: appearance,
+                        isSlowmodeBlocked: coolingDown
+                    )
+                    .disabled(!composerCanSubmit && !coolingDown)
+                }
             },
             overlay: { composerOverlay }
         )
-        chrome
+        VStack(spacing: 0) {
+            if let activeConversationID {
+                ComposerSlowmodeIndicator(model: model, channelID: activeConversationID)
+            }
+            chrome
+                .keyframeAnimator(
+                    initialValue: CGFloat.zero,
+                    trigger: activeConversationID.map {
+                        model.composer.slowmode.rejectedAttempts[$0, default: 0]
+                    } ?? 0
+                ) { content, offset in
+                    content.offset(x: offset)
+                } keyframes: { _ in
+                    LinearKeyframe(-5, duration: 0.04)
+                    LinearKeyframe(5, duration: 0.06)
+                    LinearKeyframe(-3, duration: 0.06)
+                    LinearKeyframe(3, duration: 0.06)
+                    LinearKeyframe(0, duration: 0.04)
+                }
+        }
         .fileImporter(
             isPresented: $showFileImporter,
             allowedContentTypes: [.item],
@@ -444,7 +469,7 @@ struct ComposerView: View {
     }
 
     private var composerGIFPicker: some View {
-        GIFPickerView(model: model) {
+        GIFPickerView(model: model, destination: conversation) {
             showGIFPicker = false
             Task { @MainActor in
                 await Task.yield()
@@ -454,7 +479,7 @@ struct ComposerView: View {
     }
 
     private var composerStickerPicker: some View {
-        StickerPickerView(model: model) {
+        StickerPickerView(model: model, destination: conversation) {
             showStickerPicker = false
             Task { @MainActor in
                 await Task.yield()
@@ -557,6 +582,7 @@ struct ComposerView: View {
     }
 
     private func send() {
+        guard let activeConversationID, model.allowSlowmodeSubmission(in: activeConversationID) else { return }
         guard !isSubmitting,
               !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty
         else { return }
@@ -870,6 +896,7 @@ struct ComposerView: View {
     }
 
     private func submitComposer() {
+        guard let activeConversationID, model.allowSlowmodeSubmission(in: activeConversationID) else { return }
         if hasActiveCommand {
             guard model.commandComposer.canSubmit else { return }
             model.executeApplicationCommand()

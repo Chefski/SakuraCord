@@ -560,6 +560,11 @@ extension DiscordRESTProvider {
             let method = context.method
             let requestRateLimitKey = context.rateLimitKey
             let maximumAttempts = context.maximumAttempts
+            if response.statusCode == 429, Self.discordErrorCode(from: data) == 20016 {
+                throw ChatProviderError.slowmode(
+                    retryAfter: Self.retryAfter(from: data, response: response, addsSafetyMargin: false)
+                )
+            }
             if response.statusCode == 429 {
                 let retryAfter = Self.retryAfter(from: data, response: response)
                 let retryDate = Date.now.addingTimeInterval(retryAfter)
@@ -1054,14 +1059,16 @@ extension DiscordRESTProvider {
         return value
     }
 
-    static func retryAfter(from data: Data, response: HTTPURLResponse) -> TimeInterval {
+    static func retryAfter(
+        from data: Data, response: HTTPURLResponse, addsSafetyMargin: Bool = true
+    ) -> TimeInterval {
         if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let value = object["retry_after"] as? NSNumber
         {
-            return max(value.doubleValue, 0.25) + 0.25
+            return addsSafetyMargin ? max(value.doubleValue, 0.25) + 0.25 : max(value.doubleValue, 0)
         }
         if let value = response.value(forHTTPHeaderField: "Retry-After").flatMap(Double.init) {
-            return max(value, 0.25) + 0.25
+            return addsSafetyMargin ? max(value, 0.25) + 0.25 : max(value, 0)
         }
         return 2
     }

@@ -501,6 +501,7 @@ extension AppModel {
         _ message: inout Message,
         preparedTextPlan: NativeTimelineTextPlan?
     ) {
+        confirmSlowmodeMessage(message)
         message = outgoingMediaPresentationPreserving(message)
         typingState.clear(userID: message.author.id, in: message.channelID)
         if let nonce = message.nonce {
@@ -654,6 +655,9 @@ extension AppModel {
 
     func consumeChannelsChanged(guildID: GuildID?, channels: [Channel]) {
         let previousChannels = snapshot?.channels ?? []
+        for channel in channels where previousChannels.first(where: { $0.id == channel.id })?.rateLimitPerUser != channel.rateLimitPerUser {
+            composer.slowmode.updateInterval(in: channel.id, to: channel.rateLimitPerUser)
+        }
         if var value = snapshot {
             if let firstIndex = value.channels.firstIndex(where: { $0.guildID == guildID }) {
                 value.channels.removeAll { $0.guildID == guildID }
@@ -763,6 +767,9 @@ extension AppModel {
         with threads: [MessageThreadSummary]
     ) {
         guard var value = snapshot else { return }
+        for thread in threads where value.threads.first(where: { $0.id == thread.id })?.rateLimitPerUser != thread.rateLimitPerUser {
+            composer.slowmode.updateInterval(in: thread.id, to: thread.rateLimitPerUser)
+        }
         value.threads.removeAll { $0.parentID == parentID }
         value.threads.append(contentsOf: threads)
         snapshot = value
@@ -776,6 +783,9 @@ extension AppModel {
         )
         for thread in threads {
             if let index = indicesByID[thread.id] {
+                if value.threads[index].rateLimitPerUser != thread.rateLimitPerUser {
+                    composer.slowmode.updateInterval(in: thread.id, to: thread.rateLimitPerUser)
+                }
                 value.threads[index] = thread
             } else {
                 indicesByID[thread.id] = value.threads.count

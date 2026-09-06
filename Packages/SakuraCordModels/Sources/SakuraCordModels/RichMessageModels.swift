@@ -382,6 +382,7 @@ public struct MessageThreadSummary: Codable, Hashable, Sendable {
     public var createdAt: Date?
     public var autoArchiveDuration: Int?
     public var totalMessageSent: Int
+    public var rateLimitPerUser: Int
     public var notificationSettings: ThreadNotificationSettings?
 
     public init(
@@ -391,8 +392,9 @@ public struct MessageThreadSummary: Codable, Hashable, Sendable {
         ownerID: UserID? = nil, appliedTagIDs: [ForumTagID] = [], flags: UInt64 = 0,
         archiveTimestamp: Date? = nil, createdAt: Date? = nil,
         autoArchiveDuration: Int? = nil, totalMessageSent: Int = 0,
-        notificationSettings: ThreadNotificationSettings? = nil
+        notificationSettings: ThreadNotificationSettings? = nil, rateLimitPerUser: Int = 0
     ) {
+        self.rateLimitPerUser = rateLimitPerUser
         self.id = id
         self.guildID = guildID
         self.parentID = parentID
@@ -418,11 +420,12 @@ public struct MessageThreadSummary: Codable, Hashable, Sendable {
         case id, guildID, parentID, name, messageCount, memberCount, lastMessageID
         case isArchived, isLocked, ownerID, appliedTagIDs, flags, archiveTimestamp
         case createdAt, autoArchiveDuration, totalMessageSent
-        case notificationSettings
+        case notificationSettings, rateLimitPerUser
     }
 
     public init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        rateLimitPerUser = try values.decodeIfPresent(Int.self, forKey: .rateLimitPerUser) ?? 0
         id = try values.decode(ChannelID.self, forKey: .id)
         guildID = try values.decodeIfPresent(GuildID.self, forKey: .guildID)
         parentID = try values.decodeIfPresent(ChannelID.self, forKey: .parentID)

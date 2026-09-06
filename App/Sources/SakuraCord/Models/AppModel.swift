@@ -870,29 +870,8 @@ final class AppModel {
     }
 
     func shouldSendForwardContext(to channelID: ChannelID) -> Bool {
-        guard let channel = snapshot?.channels.first(where: { $0.id == channelID })
-                ?? visibleChannels.first(where: { $0.id == channelID }),
-              channel.rateLimitPerUser > 0
-        else { return true }
-        guard let guildID = channel.guildID,
-              let guild = serverRailGuildsByID[guildID],
-              let currentUserID = snapshot?.currentUser.id
-        else { return false }
-        let member =
-            membersByGuildID[guildID]?[currentUserID]
-            ?? (guildID == selectedGuildID ? membersByID[currentUserID] : nil)
-        let roles =
-            guildRolesByGuildID[guildID]
-            ?? (guildID == selectedGuildID ? guildRoles : [])
-        let permissions = ConversationPermissionResolver.effectivePermissions(
-            guild: guild,
-            channel: channel,
-            currentUserID: currentUserID,
-            currentMember: member,
-            roles: roles,
-            currentRoleIDs: currentUserRoleIDsByGuild[guildID]
-        )
-        return permissions.map { $0 & DiscordPermissionBits.bypassSlowmode != 0 } ?? false
+        let configuration = slowmodeConfiguration(in: channelID)
+        return configuration.interval == 0 || configuration.immune
     }
 
     func canJoinVoice(_ channel: Channel) -> Bool {

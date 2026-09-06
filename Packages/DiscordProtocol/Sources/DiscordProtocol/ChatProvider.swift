@@ -868,6 +868,7 @@ public extension ChatProvider {
 public enum ChatProviderError: LocalizedError, Equatable, Sendable {
     case unauthenticated
     case channelNotFound
+    case slowmode(retryAfter: TimeInterval)
     case messageNotFound
     case invalidRequest(String)
     case transport(status: Int, requestID: String?)
@@ -876,6 +877,7 @@ public enum ChatProviderError: LocalizedError, Equatable, Sendable {
     public var errorDescription: String? {
         switch self {
         case .unauthenticated: "The account session is no longer valid."
+        case .slowmode: "This conversation is on a slowmode cooldown. Please wait before sending again."
         case .channelNotFound: "The selected channel is unavailable."
         case .messageNotFound: "The message no longer exists."
         case let .invalidRequest(message): message

@@ -4,6 +4,13 @@ import SakuraCordModels
 import SakuraCordPersistence
 
 extension AppModel {
+    func composerSendChannelID(in destination: MessageComposerDestination) -> ChannelID? {
+        switch destination {
+        case .channel: selectedConversationAccess.canSend ? selectedChannelID : nil
+        case .thread: openThreadAccess.canSend ? openThread?.id : nil
+        }
+    }
+
     var replyingTo: Message? {
         get { composer.replyingTo }
         set { composer.replyingTo = newValue }

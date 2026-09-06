@@ -296,7 +296,8 @@ struct ChannelDTO: Decodable {
                 createdAt: threadMetadata?.createTimestamp.flatMap(DiscordDate.parse),
                 autoArchiveDuration: threadMetadata?.autoArchiveDuration,
                 totalMessageSent: totalMessageSent ?? messageCount ?? 0,
-                notificationSettings: member?.domain
+                notificationSettings: member?.domain,
+                rateLimitPerUser: rateLimitPerUser ?? 0
             ),
             owner: ownerUser ?? firstMessage?.author,
             firstMessage: firstMessage,

@@ -294,6 +294,7 @@ extension AppModel {
                   channelID: channelID, guildID: selectedGuildID
               )
         else { return }
+        guard allowSlowmodeSubmission(in: channelID) else { return }
         commandAutocompleteTask?.cancel()
         stopLocalTyping(clearThrottle: true)
         updateDraft("")

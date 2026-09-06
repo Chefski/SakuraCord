@@ -140,6 +140,8 @@ struct ComposerSendButton: View {
     let action: () -> Void
     var appearance: ComposerBarAppearance = .defaultStyle
 
+    var isSlowmodeBlocked = false
+
     @Environment(\.isEnabled) private var isEnabled
     @State private var isHovering = false
 
@@ -147,7 +149,7 @@ struct ComposerSendButton: View {
         Button(action: action) {
             Image(systemName: "paperplane.circle.fill")
                 .font(.system(size: 21, weight: .medium))
-                .foregroundStyle(isEnabled ? Color.white : Color.gray.opacity(0.62))
+                .foregroundStyle(isEnabled && !isSlowmodeBlocked ? Color.white : Color.gray.opacity(0.62))
                 .frame(
                     width: ChatChromeMetrics.composerControlHeight,
                     height: ChatChromeMetrics.composerControlHeight
@@ -171,7 +173,7 @@ struct ComposerSendButton: View {
     }
 
     private var hoverColor: Color {
-        appearance == .legacy && isHovering && isEnabled
+        appearance == .legacy && isHovering && isEnabled && !isSlowmodeBlocked
             ? .primary.opacity(0.14)
             : .clear
     }

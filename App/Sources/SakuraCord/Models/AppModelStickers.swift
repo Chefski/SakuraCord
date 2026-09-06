@@ -135,7 +135,9 @@ extension AppModel {
     }
 
     @discardableResult
-    func sendStickerFromPicker(_ sticker: MessageSticker) async -> Bool {
+    func sendStickerFromPicker(
+        _ sticker: MessageSticker, in destination: MessageComposerDestination = .channel
+    ) async -> Bool {
         let route = StickerSendPolicy.route(
             for: sticker,
             currentGuildID: selectedGuildID,
@@ -144,9 +146,9 @@ extension AppModel {
         let sent: Bool
         switch route {
         case .native:
-            sent = await sendSticker(sticker)
+            sent = await sendSticker(sticker, in: destination)
         case .fakeNitroUpload:
-            sent = await sendStickerAsUpload(sticker)
+            sent = await sendStickerAsUpload(sticker, in: destination)
         }
         guard sent else { return false }
         await recordStickerUse(sticker.id)
@@ -161,12 +163,15 @@ extension AppModel {
         stickerUserSettings = settings
     }
 
-    private func sendStickerAsUpload(_ sticker: MessageSticker) async -> Bool {
+    private func sendStickerAsUpload(
+        _ sticker: MessageSticker, in destination: MessageComposerDestination
+    ) async -> Bool {
         let session = accountSession()
-        guard let channelID = selectedChannelID,
+        guard let channelID = composerSendChannelID(in: destination),
               let remoteURL = sticker.pickerImageLink,
               isCurrentAccountSession(session)
         else { return false }
+        guard allowSlowmodeSubmission(in: channelID) else { return false }
         let directory: URL
         do {
             directory = try ComposerPromisedFileStorage.makeReceivingDirectory()
@@ -290,14 +295,17 @@ extension AppModel {
     }
 
     @discardableResult
-    func sendSticker(_ sticker: MessageSticker) async -> Bool {
+    func sendSticker(
+        _ sticker: MessageSticker, in destination: MessageComposerDestination = .channel
+    ) async -> Bool {
         let session = accountSession()
-        guard let channelID = selectedChannelID,
+        guard let channelID = composerSendChannelID(in: destination),
               supportedCapabilities.contains(.stickerSending),
               isCurrentAccountSession(session)
         else {
             return false
         }
+        guard allowSlowmodeSubmission(in: channelID) else { return false }
         let draft = SendMessageDraft(channelID: channelID, content: "", stickerIDs: [sticker.id])
         var presentedSticker = sticker
         presentedSticker.assetURL = sticker.pickerMediaURL ?? sticker.mediaURL

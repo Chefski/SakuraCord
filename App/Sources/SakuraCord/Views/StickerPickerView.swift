@@ -319,6 +319,7 @@ private final class StickerPickerInteractionModel {
 
 struct StickerPickerView: View {
     let model: AppModel
+    var destination: MessageComposerDestination = .channel
     let dismiss: () -> Void
     @State private var document = StickerPickerDocumentStore()
     @State private var interaction = StickerPickerInteractionModel()
@@ -484,11 +485,14 @@ struct StickerPickerView: View {
     }
 
     private func activate(_ cell: StickerPickerCell) {
+        guard let channelID = model.composerSendChannelID(in: destination),
+              model.allowSlowmodeSubmission(in: channelID)
+        else { return }
         interaction.select(cell)
         StickerPreview.prepareTimelinePresentation(for: cell.item.sticker)
         dismiss()
         Task { @MainActor in
-            await model.sendStickerFromPicker(cell.item.sticker)
+            await model.sendStickerFromPicker(cell.item.sticker, in: destination)
         }
     }
 

@@ -8,6 +8,7 @@ import SakuraCordPersistence
 @MainActor
 @Observable
 final class MessageComposerState {
+    let slowmode = SlowmodeState()
     var draft = "" { didSet { draftRevision &+= 1 } }
     var threadDraft = "" { didSet { threadDraftRevision &+= 1 } }
     @ObservationIgnored private(set) var draftRevision: UInt64 = 0
@@ -87,6 +88,7 @@ final class MessageComposerState {
         channelAttachments = []
         threadAttachments = []
         outbox.reset()
+        slowmode.reset()
         await pendingWrite?.value
     }
 }

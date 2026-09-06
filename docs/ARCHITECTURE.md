@@ -47,7 +47,11 @@ Launch state is explicit:
 High-frequency presentation state such as remote typing is kept in narrower
 observable models so it does not invalidate the complete app tree.
 `MessageComposerState` owns channel/thread drafts, reply targets, attachments,
-and the outbox. Draft writes capture their account database, are serialized,
+and the outbox. Its account-local slowmode state keeps per-conversation
+confirmation deadlines and in-flight send reservations. All message send entry
+points check that state before consuming drafts or dispatching; REST and Gateway
+confirmations reconcile by message ID. Both composer appearances share the same
+countdown and native, non-interactive hover popover. Draft writes capture their account database, are serialized,
 and drain during account teardown. Clearing drafts joins the same write queue:
 earlier edits are deleted and later edits are preserved, including when clearing
 all accounts. Draft restoration also joins this queue before reading stored text
