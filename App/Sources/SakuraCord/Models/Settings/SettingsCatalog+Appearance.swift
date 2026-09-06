@@ -2,7 +2,7 @@ import Foundation
 
 nonisolated extension SettingsCatalog {
     static let appearancePage = page(
-        .appearance, group: .preferences, title: "Appearance", image: "circle.lefthalf.filled",
+        .appearance, group: .preferences, title: "Theme", image: "paintbrush.fill",
         help: "Choose how SakuraCord's interface looks.",
         keywords: ["appearance", "look", "style", "accent", "color", "theme"]
     )

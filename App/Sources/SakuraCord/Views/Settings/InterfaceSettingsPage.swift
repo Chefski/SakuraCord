@@ -47,27 +47,27 @@ struct InterfaceSettingsPage: View {
             model.applyAppearanceSettings(newValue)
         }
         .confirmationDialog(
-            "Reset Interface Settings?",
+            "Reset Appearance Settings?",
             isPresented: $confirmsReset
         ) {
-            Button("Reset Interface Settings", role: .destructive) {
+            Button("Reset Appearance Settings", role: .destructive) {
                 resetPreferences()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(
-                "This restores only registered local Interface preferences. Credentials and Discord data are unchanged."
+                "This restores only registered local Appearance preferences. Credentials and Discord data are unchanged."
             )
         }
         .fileExporter(
             isPresented: $isExporting,
             item: exportedPreferences,
             contentTypes: [.json],
-            defaultFilename: "SakuraCord-Interface-Settings-v1"
+            defaultFilename: "SakuraCord-Appearance-Settings-v1"
         ) { result in
             switch result {
             case .success:
-                operationMessage = "Exported Interface settings."
+                operationMessage = "Exported Appearance settings."
             case let .failure(error):
                 operationMessage = "Export failed: \(error.localizedDescription)"
             }
@@ -100,7 +100,7 @@ struct InterfaceSettingsPage: View {
         )
         value = InterfaceSettingsStore.shared.load()
         appearanceValue = AppearanceSettingsStore.shared.load()
-        operationMessage = "Restored Interface settings to their defaults."
+        operationMessage = "Restored Appearance settings to their defaults."
     }
 }
 
@@ -268,9 +268,9 @@ private struct InterfaceLocalDataSection: View {
     var body: some View {
         Section {
             HStack {
-                Button("Export Interface Settings…", action: export)
+                Button("Export Appearance Settings…", action: export)
                     .settingsControlAnchor(.exportInterfaceSettings, state: state)
-                Button("Reset Interface Settings…", role: .destructive, action: requestReset)
+                Button("Reset Appearance Settings…", role: .destructive, action: requestReset)
                     .settingsControlAnchor(.resetInterfaceSettings, state: state)
             }
             if let operationMessage {
@@ -281,7 +281,7 @@ private struct InterfaceLocalDataSection: View {
         } header: {
             Text("Local data", bundle: #bundle)
         } footer: {
-            Text("Reset and export cover only registered app-wide Interface preferences on this Mac.")
+            Text("Reset and export cover only registered app-wide Appearance preferences on this Mac.")
         }
     }
 }

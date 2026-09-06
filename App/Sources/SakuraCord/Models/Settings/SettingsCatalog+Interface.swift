@@ -2,7 +2,7 @@ import Foundation
 
 nonisolated extension SettingsCatalog {
     static let interfacePage = page(
-        .interface, group: .preferences, title: "Interface", image: "macwindow",
+        .interface, group: .preferences, title: "Appearance", image: "circle.lefthalf.filled",
         help: "Choose message appearance, timestamps, grouping, links, member-list, and role presentation.",
         keywords: ["messages", "bubbles", "density", "composer", "input bar", "clock", "timestamp", "roles", "member list", "links", "grouping", "message actions"]
     )
@@ -40,7 +40,7 @@ nonisolated extension SettingsCatalog {
             page: .interface,
             section: .interfaceMessages,
             label: "Reset to Defaults",
-            help: "Restore the default message layout, density, and input bar without changing other Interface settings.",
+            help: "Restore the default message layout, density, and input bar without changing other Appearance settings.",
             keywords: ["messages", "defaults", "restore", "reset", "density", "input bar"],
             scope: .appWideLocal,
             reset: .categoryAction
@@ -121,7 +121,7 @@ nonisolated extension SettingsCatalog {
             .interfacePreview,
             page: .interface,
             section: .interfacePreview,
-            label: "Interface preview",
+            label: "Appearance preview",
             help: "Preview sidebar and message presentation without using Discord data.",
             keywords: ["sample", "live preview", "appearance"],
             owner: .appModel,
@@ -133,8 +133,8 @@ nonisolated extension SettingsCatalog {
             .exportInterfaceSettings,
             page: .interface,
             section: .interfaceLocalData,
-            label: "Export Interface Settings",
-            help: "Export registered Interface preferences as versioned JSON.",
+            label: "Export Appearance Settings",
+            help: "Export registered Appearance preferences as versioned JSON.",
             keywords: ["backup", "JSON", "save preferences"],
             scope: .appWideLocal,
             persistence: .notApplicable,
@@ -144,8 +144,8 @@ nonisolated extension SettingsCatalog {
             .resetInterfaceSettings,
             page: .interface,
             section: .interfaceLocalData,
-            label: "Reset Interface Settings",
-            help: "Restore registered Interface preferences without changing credentials or Discord state.",
+            label: "Reset Appearance Settings",
+            help: "Restore registered Appearance preferences without changing credentials or Discord state.",
             keywords: ["defaults", "restore", "clear interface preferences"],
             scope: .appWideLocal,
             persistence: .appPreferences,

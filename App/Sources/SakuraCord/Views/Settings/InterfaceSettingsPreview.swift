@@ -26,7 +26,7 @@ struct InterfaceSettingsPreview: View {
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .allowsHitTesting(false)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Interface settings preview")
+        .accessibilityLabel("Appearance settings preview")
         .accessibilityValue(accessibilitySummary)
     }
 

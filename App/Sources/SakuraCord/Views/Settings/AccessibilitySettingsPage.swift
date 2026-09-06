@@ -148,7 +148,7 @@ struct AccessibilitySettingsPage: View {
             .tint(SakuraCordAccentColor.color)
             .settingsControlAnchor(.accessibilityLargerTargets, state: state)
 
-            Button("Open Underline Links in Interface…") {
+            Button("Open Underline Links in Appearance…") {
                 state.navigate(
                     to: SettingsDestination(page: .interface, section: .interfaceVisibility),
                     controlID: .underlineLinks
@@ -156,7 +156,7 @@ struct AccessibilitySettingsPage: View {
             }
             .settingsControlAnchor(.accessibilityUnderlineLinks, state: state)
 
-            Button("Open Message Actions in Interface…") {
+            Button("Open Message Actions in Appearance…") {
                 state.navigate(
                     to: SettingsDestination(page: .interface, section: .interfaceVisibility),
                     controlID: .messageActionVisibility
@@ -168,7 +168,7 @@ struct AccessibilitySettingsPage: View {
         } footer: {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Unread state uses weight, labels, counts, and separators; presence states use distinct shapes as well as color.")
-                Text("Link and message-action controls live in Interface so there is only one setting for each behavior.")
+                Text("Link and message-action controls live in Appearance so there is only one setting for each behavior.")
             }
         }
     }

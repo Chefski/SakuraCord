@@ -31,7 +31,7 @@ nonisolated enum SettingsLaunchDestination: String, CaseIterable, Identifiable, 
             )
         case .preferredAccountLastLocation:
             LocalizedStringResource(
-                "Uses the launch account chosen in My Account, then restores its last accessible conversation.",
+                "Uses the launch account chosen in Manage Accounts, then restores its last accessible conversation.",
                 bundle: #bundle
             )
         case .accountPicker:

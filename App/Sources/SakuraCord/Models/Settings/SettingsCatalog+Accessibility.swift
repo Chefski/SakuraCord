@@ -73,14 +73,14 @@ nonisolated extension SettingsCatalog {
         control(
             .accessibilityUnderlineLinks, page: .accessibility,
             section: .accessibilityReadability, label: "Underline links",
-            help: "Open the canonical Interface control for link underlining.",
+            help: "Open the canonical Appearance control for link underlining.",
             keywords: ["hyperlink", "URL", "not color alone"], owner: .appModel,
             scope: .appWideLocal, persistence: .notApplicable, reset: .notApplicable
         ),
         control(
             .accessibilityMessageActions, page: .accessibility,
             section: .accessibilityReadability, label: "Always-visible message actions",
-            help: "Open the canonical Interface control for message action visibility.",
+            help: "Open the canonical Appearance control for message action visibility.",
             keywords: ["hover", "reply", "toolbar", "visible controls"], owner: .appModel,
             scope: .appWideLocal, persistence: .notApplicable, reset: .notApplicable
         ),
