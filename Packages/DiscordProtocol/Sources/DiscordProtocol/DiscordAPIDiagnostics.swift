@@ -1,10 +1,11 @@
+import Darwin
 import Foundation
 
 /// A bounded, session-local record of Discord protocol traffic.
 ///
-/// Payloads are sanitized before they enter the store. The export therefore
-/// cannot recover credentials, message text, names, profile text, URLs, or
-/// other user-authored strings that were deliberately discarded here.
+/// Ordinary payloads remain in bounded memory until saving or exporting, when
+/// sensitive values are discarded. Authentication and key-exchange traffic is
+/// sanitized immediately. Every output uses the same redaction boundary.
 public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
     public static let shared = DiscordAPIDiagnosticStore()
     public static let defaultMaximumDiskBytes = 64 * 1_024 * 1_024
@@ -24,6 +25,8 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
     private struct State {
         var entries: [RetainedEntry?]
         var capturesPayloadDetails: Bool
+        var enablesPanicSave = false
+        var panicSaveErrorDescription: String?
         var diskCapture: DiskCapture?
         var diskLoggingErrorDescription: String?
         var headIndex = 0
@@ -66,6 +69,22 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
             retainedEstimatedByteCount += estimatedByteCount
         }
 
+        /// Reconcile materialized caches before releasing the store lock.
+        /// The current output owns its snapshot even if these entries are evicted.
+        mutating func reconcileRetainedSizes(maximumRetainedBytes: Int) {
+            retainedEstimatedByteCount = 0
+            for offset in 0 ..< entryCount {
+                let index = (headIndex + offset) % entries.count
+                guard let retained = entries[index] else { continue }
+                let size = DiscordAPIDiagnosticStore.estimatedEntryByteCount(retained.entry)
+                entries[index] = RetainedEntry(entry: retained.entry, estimatedByteCount: size)
+                retainedEstimatedByteCount += size
+            }
+            while retainedEstimatedByteCount > maximumRetainedBytes {
+                removeOldest()
+            }
+        }
+
         mutating func clear() {
             entries = Array(repeating: nil, count: entries.count)
             headIndex = 0
@@ -95,7 +114,50 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
         }
     }
 
-    private struct Entry: Codable {
+    /// Raw sources cannot be encoded without passing through this boundary.
+    /// Materialization and retention accounting share the store lock. Replacing
+    /// the source releases raw data and records the sanitized cache's size.
+    private final class Payload: Encodable {
+        enum Source {
+            case json(JSONValue)
+            case data(Data)
+            case sanitized(JSONValue)
+            case object([String: Payload])
+        }
+
+        private var source: Source
+        private(set) var estimatedByteCount: Int
+
+        init(_ source: Source) {
+            self.source = source
+            estimatedByteCount = switch source {
+            case let .json(value), let .sanitized(value):
+                DiscordAPIDiagnosticStore.estimatedJSONByteCount(value)
+            case let .data(data): data.count
+            case let .object(fields):
+                16 + fields.reduce(0) { $0 + $1.key.utf8.count + $1.value.estimatedByteCount + 16 }
+            }
+        }
+
+        func encode(to encoder: any Encoder) throws {
+            try sanitizedValue().encode(to: encoder)
+        }
+
+        private func sanitizedValue() -> JSONValue {
+            let value: JSONValue
+            switch source {
+            case let .sanitized(cached): return cached
+            case let .json(raw): value = DiscordDiagnosticSanitizer.sanitize(raw)
+            case let .data(raw): value = DiscordAPIDiagnosticStore.sanitizedPayload(raw) ?? .null
+            case let .object(fields): value = .object(fields.mapValues { $0.sanitizedValue() })
+            }
+            source = .sanitized(value)
+            estimatedByteCount = DiscordAPIDiagnosticStore.estimatedJSONByteCount(value)
+            return value
+        }
+    }
+
+    private struct Entry: Encodable {
         let sequence: UInt64
         let timestamp: Date
         let transport: String
@@ -107,7 +169,7 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
         let statusCode: Int?
         let durationMilliseconds: Int?
         let headers: [String: String]?
-        let payload: JSONValue?
+        let payload: Payload?
         let errorType: String?
     }
 
@@ -124,17 +186,6 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
         let format: String
         let startedAt: Date
         let redaction: String
-    }
-
-    private struct EntrySizeComponents {
-        let transport: String
-        let direction: String
-        let operation: String
-        let method: String?
-        let path: String?
-        let headers: [String: String]?
-        let payload: JSONValue?
-        let errorType: String?
     }
 
     private let lock = NSLock()
@@ -170,14 +221,36 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
         try? state.diskCapture?.handle.close()
     }
 
-    /// Detailed payload diagnostics deliberately default to off. Sanitizing a
-    /// large message or member response otherwise decodes and walks the same
-    /// payload a second time on every ordinary request. Route, status, timing,
-    /// rate-limit headers, and byte counts remain available in the lightweight
-    /// default mode.
+    /// Explicit detailed capture and panic save both retain payloads for sanitized output.
+    /// The app restores panic save's default-on preference before networking starts.
     public var capturesPayloadDetails: Bool {
         get { withLock { $0.capturesPayloadDetails } }
         set { withLock { $0.capturesPayloadDetails = newValue } }
+    }
+
+    public var enablesPanicSave: Bool {
+        get { withLock { $0.enablesPanicSave } }
+        set { withLock { $0.enablesPanicSave = newValue } }
+    }
+
+    public var retainsPayloadDetails: Bool {
+        withLock { $0.capturesPayloadDetails || $0.enablesPanicSave }
+    }
+
+    /// The newest snapshot. The two preceding snapshots use numbered siblings.
+    public var panicSaveURL: URL {
+        panicSaveURLs[0]
+    }
+
+    private var panicSaveURLs: [URL] {
+        (1 ... 3).map { index in
+            let suffix = index == 1 ? "" : "-\(index)"
+            return diskDirectoryURL.appending(path: "SakuraCord Discord API Panic Save\(suffix).jsonl")
+        }
+    }
+
+    public var panicSaveErrorDescription: String? {
+        withLock { $0.panicSaveErrorDescription }
     }
 
     public var retainedEntryCount: Int {
@@ -244,6 +317,10 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
             }
             do {
                 try Self.removeDiskCaptures(in: diskDirectoryURL)
+                for url in panicSaveURLs where FileManager.default.fileExists(atPath: url.path) {
+                    try FileManager.default.removeItem(at: url)
+                }
+                state.panicSaveErrorDescription = nil
                 if resumesDiskCapture {
                     state.diskCapture = try Self.makeDiskCapture(
                         directoryURL: diskDirectoryURL,
@@ -269,12 +346,12 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
         body: Data?,
         attempt: Int
     ) {
-        var object: [String: JSONValue] = [:]
+        var object: [String: Payload] = [:]
         if !query.isEmpty {
-            object["query"] = .object(Self.sanitizedQuery(query))
+            object["query"] = Payload(.sanitized(.object(Self.sanitizedQuery(query))))
         }
         if let body {
-            object["body"] = payloadForRetention(body)
+            object["body"] = payloadForRetention(body, sanitizeImmediately: Self.isAuthentication(transport: transport, path: path))
         }
         append(
             transport: transport,
@@ -283,7 +360,7 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
             method: method,
             path: path,
             attempt: attempt,
-            payload: object.isEmpty ? nil : .object(object)
+            payload: object.isEmpty ? nil : Payload(.object(object))
         )
     }
 
@@ -306,7 +383,8 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
             statusCode: response.statusCode,
             durationMilliseconds: Self.milliseconds(duration),
             headers: Self.sanitizedHeaders(response.allHeaderFields),
-            payload: payloadForRetention(body)
+            payload: payloadForRetention(body, sanitizeImmediately: Self.isAuthentication(transport: transport, path: path)),
+            triggersPanicSave: Self.isUnknownHTTPError(status: response.statusCode, body: body)
         )
     }
 
@@ -335,23 +413,24 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
         direction: String,
         envelope: GatewayEnvelope
     ) {
-        var payload: [String: JSONValue] = [
-            "op": .number(Double(envelope.op)),
-            "sequence": envelope.sequence.map { .number(Double($0)) } ?? .null,
-            "event": envelope.eventName.map(JSONValue.string) ?? .null,
+        var payload: [String: Payload] = [
+            "op": Payload(.sanitized(.number(Double(envelope.op)))),
+            "sequence": Payload(.sanitized(envelope.sequence.map { .number(Double($0)) } ?? .null)),
+            "event": Payload(.sanitized(envelope.eventName.map(JSONValue.string) ?? .null)),
         ]
-        if capturesPayloadDetails {
-            payload["data"] = Self.sanitize(
-                envelope.data ?? .null,
-                key: "data",
-                depth: 0
-            )
+        if retainsPayloadDetails {
+            let data = envelope.data ?? .null
+            // Identify/resume and session/voice setup carry credentials.
+            let containsCredentials = [2, 6].contains(envelope.op)
+                || ["READY", "VOICE_SERVER_UPDATE"].contains(envelope.eventName ?? "")
+            payload["data"] = Payload(containsCredentials
+                ? .sanitized(DiscordDiagnosticSanitizer.sanitize(data)) : .json(data))
         }
         append(
             transport: transport,
             direction: direction,
             operation: envelope.eventName ?? "opcode_\(envelope.op)",
-            payload: .object(payload)
+            payload: Payload(.object(payload))
         )
     }
 
@@ -368,7 +447,7 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
             transport: transport,
             direction: direction,
             operation: "unparsed_payload",
-            payload: .object(["byte_count": .number(Double(data.count))])
+            payload: Payload(.sanitized(Self.payloadSummary(data)))
         )
     }
 
@@ -377,31 +456,23 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
         direction: String,
         data: Data
     ) {
-        guard capturesPayloadDetails else {
+        guard retainsPayloadDetails else {
             append(
                 transport: transport,
                 direction: direction,
                 operation: "websocket_payload",
-                payload: Self.payloadSummary(data)
+                payload: Payload(.sanitized(Self.payloadSummary(data)))
             )
             return
         }
-        let rawPayload = try? JSONDecoder().decode(JSONValue.self, from: data)
-        let operation: String
-        if case let .object(object)? = rawPayload,
-           case let .string(op)? = object["op"]
-        {
-            operation = String(op.prefix(128))
-        } else {
-            operation = "websocket_payload"
-        }
+        // This entrypoint serves remote-auth and voice sockets, which carry
+        // authentication proofs or encryption keys; redact those immediately.
+        let decoded = try? JSONDecoder().decode(DiscordDiagnosticSanitizer.WebSocketPayload.self, from: data)
         append(
             transport: transport,
             direction: direction,
-            operation: operation,
-            payload: rawPayload.map {
-                Self.sanitize($0, key: nil, depth: 0)
-            } ?? .object(["byte_count": .number(Double(data.count))])
+            operation: decoded?.operation.map { String($0.prefix(128)) } ?? "websocket_payload",
+            payload: Payload(.sanitized(decoded?.value ?? Self.payloadSummary(data)))
         )
     }
 
@@ -434,56 +505,51 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
             transport: transport,
             direction: "lifecycle",
             operation: String(operation.prefix(128)),
-            payload: fields.isEmpty ? nil : .object(fields)
+            payload: fields.isEmpty ? nil : Payload(.sanitized(.object(fields))),
+            triggersPanicSave: ((transport == "gateway" && operation == "socket_closed")
+                || (["voice_gateway", "stream_voice_gateway"].contains(transport) && operation == "socket_receive_failed"))
+                && [4_000, 1_011].contains(integers["close_code"] ?? 0)
         )
     }
 
     public func exportData() throws -> Data {
-        let snapshot = withLock { state in
-            (
-                entries: state.orderedEntries,
-                retainedEstimatedByteCount:
-                    state.retainedEstimatedByteCount,
-                droppedEntryCount: state.droppedEntryCount
+        try withLock { state in
+            defer { state.reconcileRetainedSizes(maximumRetainedBytes: maximumRetainedBytes) }
+            let entries = state.orderedEntries
+            let metadata = ExportMetadata(
+                format: "sakuracord-discord-api-log-v2",
+                generatedAt: .now,
+                retainedEntryCount: entries.count,
+                retainedEstimatedByteCount: state.retainedEstimatedByteCount,
+                droppedEntryCount: state.droppedEntryCount,
+                redaction: Self.redactionDescription
             )
+            var result = try Self.encodedJSONLine(metadata)
+            for entry in entries {
+                result.append(try Self.encodedJSONLine(entry))
+            }
+            return result
         }
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-
-        let metadata = ExportMetadata(
-            format: "sakuracord-discord-api-log-v2",
-            generatedAt: .now,
-            retainedEntryCount: snapshot.entries.count,
-            retainedEstimatedByteCount:
-                snapshot.retainedEstimatedByteCount,
-            droppedEntryCount: snapshot.droppedEntryCount,
-            redaction:
-                "Sensitive values are discarded before retention. Message content, names, usernames, profile text, credentials, cookies, "
-                    + "challenge data, filenames, URLs, IDs, nonces, request IDs, and rate-limit bucket IDs are not included."
-        )
-        var result = try encoder.encode(metadata)
-        result.append(0x0A)
-        for entry in snapshot.entries {
-            result.append(try encoder.encode(entry))
-            result.append(0x0A)
-        }
-        return result
     }
 
     public static func sanitizedPayload(_ data: Data) -> JSONValue? {
-        guard let value = try? JSONDecoder().decode(JSONValue.self, from: data) else {
-            return .object(["byte_count": .number(Double(data.count))])
-        }
-        return sanitize(value, key: nil, depth: 0)
+        (try? DiscordDiagnosticSanitizer.decode(data)) ?? payloadSummary(data)
     }
 
-    private func payloadForRetention(_ data: Data) -> JSONValue {
-        guard capturesPayloadDetails else {
-            return Self.payloadSummary(data)
+    private func payloadForRetention(_ data: Data, sanitizeImmediately: Bool) -> Payload {
+        guard retainsPayloadDetails else {
+            return Payload(.sanitized(Self.payloadSummary(data)))
         }
-        return Self.sanitizedPayload(data) ?? Self.payloadSummary(data)
+        return Payload(sanitizeImmediately
+            ? .sanitized(Self.sanitizedPayload(data) ?? Self.payloadSummary(data)) : .data(data))
     }
+
+    private static func isAuthentication(transport: String, path: String) -> Bool {
+        transport == "authentication" || path.split(separator: "/").contains("auth")
+    }
+
+    private static let redactionDescription =
+        "Sensitive and user-authored values, URLs, IDs, nonces, request IDs, and rate-limit bucket IDs are discarded before writing."
 
     private static func payloadSummary(_ data: Data) -> JSONValue {
         .object(["byte_count": .number(Double(data.count))])
@@ -499,19 +565,10 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
         statusCode: Int? = nil,
         durationMilliseconds: Int? = nil,
         headers: [String: String]? = nil,
-        payload: JSONValue? = nil,
-        errorType: String? = nil
+        payload: Payload? = nil,
+        errorType: String? = nil,
+        triggersPanicSave: Bool = false
     ) {
-        let estimatedByteCount = Self.estimatedEntryByteCount(.init(
-            transport: transport,
-            direction: direction,
-            operation: operation,
-            method: method,
-            path: path,
-            headers: headers,
-            payload: payload,
-            errorType: errorType
-        ))
         withLock { state in
             let entry = Entry(
                 sequence: state.nextSequence,
@@ -529,31 +586,135 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
                 errorType: errorType
             )
             state.nextSequence &+= 1
+            // Disk capture may expand the payload into a sanitized cache. Account
+            // for that representation before inserting it into the memory ring.
+            appendToDisk(entry, state: &state)
             state.append(
                 entry,
-                estimatedByteCount: estimatedByteCount,
+                estimatedByteCount: Self.estimatedEntryByteCount(entry),
                 maximumRetainedBytes: maximumRetainedBytes
             )
-            guard var capture = state.diskCapture else { return }
-            do {
-                let line = try Self.encodedJSONLine(entry)
-                guard capture.byteCount + line.count <= maximumDiskBytes else {
-                    try? capture.handle.close()
-                    state.diskCapture = nil
-                    state.diskLoggingErrorDescription =
-                        "Disk diagnostics reached the per-session size limit and stopped."
-                    return
-                }
-                try capture.handle.write(contentsOf: line)
-                capture.byteCount += line.count
-                state.diskCapture = capture
-            } catch {
+            if triggersPanicSave, state.enablesPanicSave {
+                savePanicSnapshot(state: &state, triggeringEntry: entry)
+            }
+        }
+    }
+
+    /// Called under the store lock, before the entry's retention size is fixed.
+    private func appendToDisk(_ entry: Entry, state: inout State) {
+        guard var capture = state.diskCapture else { return }
+        do {
+            let line = try Self.encodedJSONLine(entry)
+            guard capture.byteCount + line.count <= maximumDiskBytes else {
                 try? capture.handle.close()
                 state.diskCapture = nil
-                state.diskLoggingErrorDescription = String(
-                    reflecting: type(of: error)
-                )
+                state.diskLoggingErrorDescription =
+                    "Disk diagnostics reached the per-session size limit and stopped."
+                return
             }
+            try capture.handle.write(contentsOf: line)
+            capture.byteCount += line.count
+            state.diskCapture = capture
+        } catch {
+            try? capture.handle.close()
+            state.diskCapture = nil
+            state.diskLoggingErrorDescription = String(
+                reflecting: type(of: error)
+            )
+        }
+    }
+
+    private static func isUnknownHTTPError(status: Int, body: Data) -> Bool {
+        guard status >= 400 else { return false }
+        if status >= 500 { return true }
+        struct ErrorResponse: Decodable {
+            let code: Int?
+            let message: String?
+        }
+        let error = try? JSONDecoder().decode(ErrorResponse.self, from: body)
+        if error?.message?.localizedCaseInsensitiveContains("unknown error") == true {
+            return true
+        }
+        // Authentication, missing resources, permissions, and rate limits have
+        // defined behavior even when Discord omits a JSON error code.
+        guard ![401, 403, 404, 429].contains(status) else { return false }
+        return error?.code == nil || error?.code == 0
+    }
+
+    /// Called under the store lock so the triggering entry, replacement, clear,
+    /// and preference changes are ordered with all other diagnostic writes.
+    private func savePanicSnapshot(state: inout State, triggeringEntry: Entry) {
+        defer { state.reconcileRetainedSizes(maximumRetainedBytes: maximumRetainedBytes) }
+        do {
+            var entries = state.orderedEntries
+            let recoveredTrigger = entries.last?.sequence != triggeringEntry.sequence
+            if recoveredTrigger {
+                entries.append(triggeringEntry)
+            }
+            var lines: [Data] = []
+            var byteCount = 0
+            // Reserve room for export metadata and keep the newest complete lines.
+            for entry in entries.reversed() {
+                let line = try Self.encodedJSONLine(entry)
+                guard byteCount + line.count + 1_024 <= maximumDiskBytes else { break }
+                lines.append(line)
+                byteCount += line.count
+            }
+            guard !lines.isEmpty else { throw CocoaError(.fileWriteOutOfSpace) }
+            let metadata = ExportMetadata(
+                format: "sakuracord-discord-api-log-v2",
+                generatedAt: .now,
+                retainedEntryCount: lines.count,
+                retainedEstimatedByteCount: byteCount,
+                droppedEntryCount: state.droppedEntryCount - (recoveredTrigger ? 1 : 0)
+                    + entries.count - lines.count,
+                redaction: Self.redactionDescription
+            )
+            var data = try Self.encodedJSONLine(metadata)
+            for line in lines.reversed() { data.append(line) }
+            guard data.count <= maximumDiskBytes else { throw CocoaError(.fileWriteOutOfSpace) }
+            try Self.writePrivateSnapshot(data, rotating: panicSaveURLs)
+            state.panicSaveErrorDescription = nil
+        } catch {
+            state.panicSaveErrorDescription = "Panic save failed (\(String(reflecting: type(of: error))))."
+        }
+    }
+
+    private static func writePrivateSnapshot(_ data: Data, rotating destinations: [URL]) throws {
+        let destination = destinations[0]
+        let fileManager = FileManager.default
+        let directory = destination.deletingLastPathComponent()
+        try fileManager.createDirectory(
+            at: directory, withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+        for url in destinations where fileManager.fileExists(atPath: url.path) {
+            let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+            guard values.isRegularFile == true, values.isSymbolicLink != true else {
+                throw CocoaError(.fileWriteInvalidFileName)
+            }
+        }
+        let temporary = directory.appending(path: ".panic-\(UUID().uuidString).tmp")
+        guard fileManager.createFile(
+            atPath: temporary.path, contents: nil, attributes: [.posixPermissions: 0o600]
+        ) else { throw CocoaError(.fileWriteUnknown) }
+        defer { try? fileManager.removeItem(at: temporary) }
+        let handle = try FileHandle(forWritingTo: temporary)
+        defer { try? handle.close() }
+        try handle.write(contentsOf: data)
+        try handle.synchronize()
+        // Finish writing before rotating, preserving existing snapshots on write
+        // failure. Each rename is atomic; the oldest slot is replaced first.
+        for index in stride(from: destinations.count - 1, through: 1, by: -1) {
+            let previous = destinations[index - 1]
+            guard fileManager.fileExists(atPath: previous.path) else { continue }
+            guard rename(previous.path, destinations[index].path) == 0 else {
+                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            }
+        }
+        guard rename(temporary.path, destination.path) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
     }
 
@@ -566,111 +727,11 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
         return try operation(&state)
     }
 
-    private static let sensitiveKeys: Set<String> = [
-        "authorization", "cookie", "set_cookie", "token", "access_token",
-        "refresh_token", "password", "login", "email", "phone", "content",
-        "username", "global_name", "display_name", "nick", "nickname", "name",
-        "topic", "title", "description", "bio", "state", "custom_status",
-        "filename", "uploaded_filename", "url", "proxy_url", "avatar", "banner",
-        "icon", "splash", "session_id", "resume_gateway_url", "fingerprint",
-        "analytics_token", "captcha_key", "captcha_rqdata", "captcha_rqtoken",
-        "captcha_session_id", "ticket", "secret", "secret_key", "key",
-        "public_key", "private_key", "encryption_key", "reason", "message",
-        "nonce_proof", "encrypted_nonce", "encrypted_user_payload",
-        "encoded_public_key",
-    ]
-
-    private static let safeStringKeys: Set<String> = [
-        "status", "type", "event", "locale", "method", "platform",
-        "release_channel", "os", "browser", "device", "scope",
-    ]
-
-    private static let maximumCollectionCount = 100
-    private static let maximumPayloadDepth = 10
-
-    private static func sanitize(
-        _ value: JSONValue,
-        key: String?,
-        depth: Int
-    ) -> JSONValue {
-        guard depth < maximumPayloadDepth else {
-            return .string("<truncated-depth>")
-        }
-        let normalizedKey = key?.lowercased().replacingOccurrences(of: "-", with: "_")
-        if let normalizedKey, sensitiveKeys.contains(normalizedKey) {
-            return .string("<redacted>")
-        }
-        if normalizedKey.map(isIDKey) == true || normalizedKey == "nonce" {
-            return .string("<redacted-id>")
-        }
-        switch value {
-        case let .object(object):
-            return sanitizedObject(object, depth: depth)
-        case let .array(values):
-            return sanitizedArray(values, key: normalizedKey, depth: depth)
-        case let .string(string):
-            let preservesString = normalizedKey.map { safeStringKeys.contains($0) } == true
-            if preservesString {
-                return .string(String(string.prefix(256)))
-            }
-            return .string("<redacted>")
-        case .number, .bool, .null:
-            return value
-        }
-    }
-
-    private static func sanitizedObject(
-        _ object: [String: JSONValue],
-        depth: Int
-    ) -> JSONValue {
-        let retainedPairs = object.sorted { $0.key < $1.key }
-            .prefix(maximumCollectionCount)
-        var result: [String: JSONValue] = [:]
-        for (index, pair) in retainedPairs.enumerated() {
-            let retainedKey = isIdentifierString(pair.key)
-                ? "<redacted-id-key-\(index + 1)>"
-                : pair.key
-            result[retainedKey] = sanitize(
-                pair.value,
-                key: pair.key,
-                depth: depth + 1
-            )
-        }
-        if object.count > result.count {
-            result["truncated_field_count"] = .number(
-                Double(object.count - result.count)
-            )
-        }
-        return .object(result)
-    }
-
-    private static func sanitizedArray(
-        _ values: [JSONValue],
-        key: String?,
-        depth: Int
-    ) -> JSONValue {
-        let retained = values.prefix(maximumCollectionCount).map {
-            sanitize($0, key: key, depth: depth + 1)
-        }
-        guard values.count > retained.count else {
-            return .array(retained)
-        }
-        return .array(
-            retained + [
-                .object([
-                    "truncated_count": .number(
-                        Double(values.count - retained.count)
-                    )
-                ])
-            ]
-        )
-    }
-
     private static func sanitizedQuery(_ query: [URLQueryItem]) -> [String: JSONValue] {
         var result: [String: JSONValue] = [:]
         for item in query {
             let key = item.name.lowercased()
-            let isIdentifier = isIDKey(key)
+            let isIdentifier = DiscordDiagnosticSanitizer.isIDKey(key)
                 || ["before", "after", "around"].contains(key)
             let preservesValue = ["limit", "type", "with_counts"]
                     .contains(key)
@@ -720,38 +781,27 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
                 return "<redacted-id>"
             }
             redactedChildCount = identifierChildCounts[segment.lowercased()] ?? 0
-            return isIdentifierString(segment) ? "<redacted-id>" : segment
+            return DiscordDiagnosticSanitizer.isIdentifierString(segment) ? "<redacted-id>" : segment
         }.joined(separator: "/")
     }
 
-    private static func isIdentifierString(_ value: String) -> Bool {
-        !value.isEmpty && (value.allSatisfy(\.isNumber) || UUID(uuidString: value) != nil)
-    }
-
-    private static func isIDKey(_ key: String) -> Bool {
-        key == "id"
-            || key.hasSuffix("_id")
-            || key.hasSuffix("_ids")
-            || key == "sequence"
-    }
-
     private static func estimatedEntryByteCount(
-        _ components: EntrySizeComponents
+        _ entry: Entry
     ) -> Int {
         var size = 256
-        size += components.transport.utf8.count
-        size += components.direction.utf8.count
-        size += components.operation.utf8.count
-        size += components.method?.utf8.count ?? 0
-        size += components.path?.utf8.count ?? 0
-        size += components.errorType?.utf8.count ?? 0
-        if let headers = components.headers {
+        size += entry.transport.utf8.count
+        size += entry.direction.utf8.count
+        size += entry.operation.utf8.count
+        size += entry.method?.utf8.count ?? 0
+        size += entry.path?.utf8.count ?? 0
+        size += entry.errorType?.utf8.count ?? 0
+        if let headers = entry.headers {
             size += headers.reduce(0) {
                 $0 + $1.key.utf8.count + $1.value.utf8.count + 16
             }
         }
-        if let payload = components.payload {
-            size += estimatedJSONByteCount(payload)
+        if let payload = entry.payload {
+            size += payload.estimatedByteCount
         }
         return size
     }
@@ -837,8 +887,7 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
             let metadata = DiskMetadata(
                 format: "sakuracord-discord-api-log-v2",
                 startedAt: .now,
-                redaction:
-                    "Sensitive and user-authored values, URLs, IDs, nonces, request IDs, and rate-limit bucket IDs are discarded before writing."
+                redaction: Self.redactionDescription
             )
             let line = try encodedJSONLine(metadata)
             guard line.count <= maximumBytes else {

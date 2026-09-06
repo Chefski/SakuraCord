@@ -85,7 +85,7 @@ nonisolated extension SettingsCatalog {
             page: .diagnostics,
             section: .apiDiagnostics,
             label: "Capture detailed sanitized payloads",
-            help: "Retain allowlisted protocol details after sensitive values are discarded.",
+            help: "Retain protocol payloads in bounded memory and discard sensitive values when saving or exporting.",
             keywords: ["API", "JSON", "redaction"],
             owner: .appModel,
             scope: .appWideLocal,
@@ -103,11 +103,23 @@ nonisolated extension SettingsCatalog {
             reset: .categoryAction
         ),
         control(
+            .diagnosticPanicSave,
+            page: .diagnostics,
+            section: .apiDiagnostics,
+            label: "Enable panic save",
+            help: "Keep three snapshots on unknown or server errors, always including detailed sanitized payloads even when detailed capture is off.",
+            keywords: ["automatic", "error", "panic", "save", "logs"],
+            owner: .appModel,
+            scope: .appWideLocal,
+            persistence: .appPreferences,
+            reset: .categoryAction
+        ),
+        control(
             .diagnosticRetainedEntries,
             page: .diagnostics,
             section: .apiDiagnostics,
             label: "Retained entries",
-            help: "Show the number of sanitized diagnostic entries in memory.",
+            help: "Show the number of diagnostic entries in memory.",
             keywords: ["count", "ring buffer"],
             owner: .appModel,
             scope: .appWideLocal,

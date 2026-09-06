@@ -7,7 +7,7 @@ import Testing
 import UserNotifications
 
 @MainActor
-@Test func `Diagnostics capture preferences restore both modes across launches`() throws {
+@Test func `Diagnostics capture preferences restore capture and default on panic save across launches`() throws {
     let directory = FileManager.default.temporaryDirectory.appending(
         path: "SakuraCordDiagnosticsPreferenceTests-\(UUID().uuidString)",
         directoryHint: .isDirectory
@@ -15,21 +15,26 @@ import UserNotifications
     defer { try? FileManager.default.removeItem(at: directory) }
     let defaults = InMemoryPreferences()
     let settings = SettingsPreferenceStore(defaults: defaults)
+    #expect(settings.value(for: .diagnosticPanicSave) == .bool(true))
     settings.set(.bool(true), for: .diagnosticDetailedPayloads)
     settings.set(.bool(true), for: .diagnosticDiskCapture)
     let store = DiscordAPIDiagnosticStore(diskDirectoryURL: directory)
 
     DiagnosticsPreferences.restore(defaults: defaults, store: store)
 
+    #expect(store.enablesPanicSave)
     #expect(store.capturesPayloadDetails)
     #expect(store.savesDiagnosticsToDisk)
     #expect(settings.value(for: .diagnosticDetailedPayloads) == .bool(true))
     #expect(settings.value(for: .diagnosticDiskCapture) == .bool(true))
 
+    settings.set(.bool(false), for: .diagnosticPanicSave)
     settings.set(.bool(false), for: .diagnosticDetailedPayloads)
     settings.set(.bool(false), for: .diagnosticDiskCapture)
     DiagnosticsPreferences.restore(defaults: defaults, store: store)
 
+    #expect(!store.enablesPanicSave)
+    #expect(!store.retainsPayloadDetails)
     #expect(!store.capturesPayloadDetails)
     #expect(!store.savesDiagnosticsToDisk)
 }
@@ -262,7 +267,7 @@ import UserNotifications
         .diagnosticsStatusOverview, .diagnosticsRefresh,
         .diagnosticsSupportPreview, .diagnosticsSupportCopy,
         .diagnosticsSupportExport, .diagnosticsOpenFolder,
-        .diagnosticDetailedPayloads, .diagnosticDiskCapture,
+        .diagnosticDetailedPayloads, .diagnosticDiskCapture, .diagnosticPanicSave,
         .diagnosticRetainedEntries, .diagnosticExport, .diagnosticClear,
     ]
     let controls = SettingsCatalog.foundation.controls.filter {

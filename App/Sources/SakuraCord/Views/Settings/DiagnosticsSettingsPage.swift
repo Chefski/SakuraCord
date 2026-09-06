@@ -13,6 +13,9 @@ struct DiagnosticsSettingsPage: View {
     private var capturesDetailedAPIPayloads = false
     @AppStorage(DiagnosticsPreferences.savesDiagnosticsToDiskKey)
     private var savesAPIDiagnosticsToDisk = false
+    @AppStorage(DiagnosticsPreferences.enablesPanicSaveKey)
+    private var enablesPanicSave = true
+    @State private var panicSaveErrorDescription: String?
     @State private var apiDiagnosticEntryCount = 0
     @State private var notificationAuthorization: UNAuthorizationStatus?
     @State private var mediaPermissions = VoiceMediaPermissionSnapshot.current()
@@ -30,6 +33,9 @@ struct DiagnosticsSettingsPage: View {
         .task { await refresh() }
         .onChange(of: capturesDetailedAPIPayloads) { _, captures in
             DiscordAPIDiagnosticStore.shared.capturesPayloadDetails = captures
+        }
+        .onChange(of: enablesPanicSave) { _, enabled in
+            DiscordAPIDiagnosticStore.shared.enablesPanicSave = enabled
         }
         .onChange(of: savesAPIDiagnosticsToDisk) { _, savesToDisk in
             updateDiskLogging(savesToDisk)
@@ -54,7 +60,7 @@ struct DiagnosticsSettingsPage: View {
             system: DiagnosticsSupportSummary.currentSystemSnapshot,
             statusItems: statusItems,
             diagnosticModes: .init(
-                capturesDetailedSanitizedPayloads: capturesDetailedAPIPayloads,
+                capturesDetailedSanitizedPayloads: DiscordAPIDiagnosticStore.shared.retainsPayloadDetails,
                 savesSanitizedDiagnosticsToDisk: DiscordAPIDiagnosticStore.shared
                     .savesDiagnosticsToDisk,
                 retainedEntryCount: apiDiagnosticEntryCount
@@ -129,6 +135,14 @@ struct DiagnosticsSettingsPage: View {
             .tint(SakuraCordAccentColor.color)
             .settingsControlAnchor(.diagnosticDiskCapture, state: state)
 
+            Toggle("Enable panic save", isOn: $enablesPanicSave)
+                .tint(SakuraCordAccentColor.color)
+                .settingsControlAnchor(.diagnosticPanicSave, state: state)
+            if let panicSaveErrorDescription {
+                Text(panicSaveErrorDescription)
+                    .foregroundStyle(.red)
+            }
+
             LabeledContent("Retained entries") {
                 Text(apiDiagnosticEntryCount.formatted())
                     .monospacedDigit()
@@ -197,6 +211,8 @@ struct DiagnosticsSettingsPage: View {
     private func refreshAPIDiagnosticState() {
         let store = DiscordAPIDiagnosticStore.shared
         apiDiagnosticEntryCount = store.retainedEntryCount
+        enablesPanicSave = store.enablesPanicSave
+        panicSaveErrorDescription = store.panicSaveErrorDescription
         capturesDetailedAPIPayloads = store.capturesPayloadDetails
         if savesAPIDiagnosticsToDisk != store.savesDiagnosticsToDisk {
             savesAPIDiagnosticsToDisk = store.savesDiagnosticsToDisk

@@ -488,6 +488,11 @@ actor GatewaySession {
                 return .terminal(authenticationFailed: false)
             }
             let closeCode = await activeSocket.closeCode()
+            apiDiagnostics.recordWebSocketLifecycle(
+                transport: "gateway",
+                operation: "socket_closed",
+                integers: closeCode.map { ["close_code": $0] } ?? [:]
+            )
             return classify(closeCode: closeCode)
         }
     }

@@ -9,12 +9,14 @@ import UserNotifications
 
 nonisolated enum DiagnosticsPreferences {
     static let capturesDetailedPayloadsKey = "captureDetailedAPIPayloads"
+    static let enablesPanicSaveKey = "enableAPIDiagnosticsPanicSave"
     static let savesDiagnosticsToDiskKey = "saveAPIDiagnosticsToDisk"
 
     static func restore(
         defaults: any PreferenceStoring = UserDefaults.standard,
         store: DiscordAPIDiagnosticStore = .shared
     ) {
+        store.enablesPanicSave = defaults.object(forKey: enablesPanicSaveKey) as? Bool ?? true
         store.capturesPayloadDetails = defaults.bool(
             forKey: capturesDetailedPayloadsKey
         )

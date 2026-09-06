@@ -742,6 +742,13 @@ nonisolated struct SettingsPreferenceRegistry: Sendable {
             resets: false
         ),
         SettingsPreferenceRegistration(
+            id: .diagnosticPanicSave,
+            page: .diagnostics,
+            storage: .appWide(key: DiagnosticsPreferences.enablesPanicSaveKey),
+            defaultValue: .bool(true),
+            resets: false
+        ),
+        SettingsPreferenceRegistration(
             id: .diagnosticDiskCapture,
             page: .diagnostics,
             storage: .appWide(key: DiagnosticsPreferences.savesDiagnosticsToDiskKey),

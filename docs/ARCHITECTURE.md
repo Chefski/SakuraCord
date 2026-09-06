@@ -134,18 +134,46 @@ Within the production provider:
   result is inserted into the originating draft.
 - `DiscordAPIDiagnosticStore` receives REST attempts and responses, attachment
   uploads, native-authentication traffic, and main, voice, and remote-auth
-  Gateway envelopes at those transport boundaries. It discards user-authored and
-  credential-bearing values, IDs, nonces, request IDs, and rate-limit bucket IDs
-  before retaining a bounded in-memory session log. The export also retains
-  scalar-only Voice socket closure, reconnect, timeout, migration, and app-state
-  lifecycle events even when detailed payload capture is disabled, so transport
-  loops remain diagnosable without retaining content. The Diagnostics settings
-  pane exports the retained JSON Lines data and reports when older entries were
-  dropped. Its optional disk capture is off by default and writes private JSON
-  Lines session files under Application Support only after the user enables it.
-  Each capture stops at 64 MiB, the directory retains at most four managed
-  session files (256 MiB total), and Clear Logs removes both the memory ring and
-  saved session files while resuming a fresh bounded file when capture remains
+  Gateway envelopes at those transport boundaries. Detailed capture retains
+  ordinary REST request/response bytes and already-parsed Gateway values in a
+  session memory ring bounded by entry count and estimated retained size,
+  initially accounting for original payloads. A shared encoding boundary
+  discards user-authored and credential-bearing values, IDs, nonces, request
+  IDs, and rate-limit bucket IDs before any export or disk write. It caches
+  the sanitized payload and releases the raw source on first output. Cache
+  size changes and eviction are reconciled under the store lock before output
+  returns; continuous capture accounts for the sanitized cache before
+  retaining each entry. An output keeps its captured history even if caching
+  evicts entries from memory. Eviction and Clear Logs also release retained
+  sources. Authentication HTTP traffic, Gateway identify/resume and
+  session/voice setup, and remote-auth and voice sockets are sanitized
+  immediately because they carry credentials or encryption material.
+  Continuous disk capture sanitizes each write; otherwise ordinary payload
+  sanitization waits for manual export or panic save. The export also retains
+  scalar-only Voice socket closure, reconnect, timeout, migration, and
+  app-state lifecycle events even when detailed payload capture is disabled,
+  so transport loops remain diagnosable without retaining content. The
+  Diagnostics settings pane exports the retained JSON Lines data and reports
+  when older entries were dropped. Its optional disk capture is off by default
+  and writes private JSON Lines session files under Application Support only
+  after the user enables it. Each capture stops at 64 MiB, the directory
+  retains at most four managed session files (256 MiB total), and Clear Logs
+  removes both the memory ring and saved session files while resuming a fresh
+  bounded file when capture remains enabled.
+
+  Default-on panic save retains detailed payloads for sanitized output in that
+  bounded memory ring, even when explicit detailed capture is off. Generic
+  REST failures (code zero or no code, excluding ordinary authentication,
+  permission, missing-resource, and rate-limit responses), explicit unknown
+  errors, HTTP server errors, and remotely reported unknown/internal Gateway
+  closures save the latest three private snapshots in the same directory. The
+  newest is `SakuraCord Discord API Panic Save.jsonl`; `-2` and `-3` filename
+  suffixes mark its predecessors. Each snapshot includes the triggering event
+  and newest complete entries within the 64 MiB disk limit (192 MiB total),
+  independently of continuous capture. A new snapshot finishes writing before
+  atomic renames rotate the older files. Clear Logs also removes all three
+  snapshots. Disabling panic save prevents future automatic writes and
+  restores lightweight capture unless explicit detailed capture remains
   enabled.
 
 The current production capability gates and request contracts are documented

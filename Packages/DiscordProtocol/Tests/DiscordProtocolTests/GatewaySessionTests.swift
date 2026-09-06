@@ -543,6 +543,29 @@ import Testing
     await session.stop()
 }
 
+@Test func `remote unknown Gateway closure saves diagnostics before reconnecting`() async throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appending(path: "SakuraCordGatewayPanicTests-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let diagnostics = DiscordAPIDiagnosticStore(diskDirectoryURL: directory)
+    diagnostics.enablesPanicSave = true
+    let socket = FakeGatewaySocket()
+    let session = makeGatewaySession(
+        transport: FakeGatewayTransport(sockets: [socket]),
+        clock: ManualGatewayClock(), randomValues: [0.5], apiDiagnostics: diagnostics
+    )
+    await session.connect()
+    await socket.push(envelope(op: 10, data: .object(["heartbeat_interval": .number(40000)])))
+    #expect(await eventually { await socket.sentCount == 1 })
+    await socket.terminate(code: 4000)
+    #expect(await eventually { await session.snapshot().state == .backingOff(attempt: 1) })
+    await session.stop()
+    let text = try String(contentsOf: diagnostics.panicSaveURL, encoding: .utf8)
+    #expect(text.contains(#""close_code":4000"#))
+    #expect(text.contains("response_failure"))
+    #expect(!text.contains("test-token"))
+}
+
 private func makeGatewaySession(
     transport: FakeGatewayTransport,
     clock: ManualGatewayClock,
