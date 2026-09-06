@@ -158,12 +158,11 @@ enum NativeTimelineSakuraCordDeepLinkLayout {
         maximumWidth: CGFloat
     ) -> NativeTimelineRowLayout.SakuraCordDeepLinkRegion {
         let hasPalette = deepLink.action.themePreview != nil
-        let width = min(Self.maximumWidth, maximumWidth)
-        let cardWidth = max(1, width - 12)
+        let width = max(1, min(Self.maximumWidth, maximumWidth))
         let titleXOffset = horizontalInset + symbolSize + itemSpacing
         let regularHorizontalSpace = max(
             1,
-            cardWidth - titleXOffset - itemSpacing - horizontalInset
+            width - titleXOffset - itemSpacing - horizontalInset
         )
         let titleWidth = measuredWidth(
             deepLink.action.title,
@@ -186,10 +185,10 @@ enum NativeTimelineSakuraCordDeepLinkLayout {
             origin: origin,
             size: CGSize(
                 width: width,
-                height: cardHeight + 12
+                height: cardHeight
             )
         )
-        let cardFrame = frame.insetBy(dx: 6, dy: 6)
+        let cardFrame = frame
         let leading = cardFrame.minX + horizontalInset
         let headerTop = cardFrame.minY + horizontalInset
         let symbolBackgroundFrame = CGRect(
