@@ -3,8 +3,8 @@ import Foundation
 nonisolated extension SettingsCatalog {
     static let interfacePage = page(
         .interface, group: .preferences, title: "Appearance", image: "circle.lefthalf.filled",
-        help: "Choose message appearance, timestamps, grouping, links, member-list, and role presentation.",
-        keywords: ["messages", "bubbles", "density", "composer", "input bar", "clock", "timestamp", "roles", "member list", "links", "grouping", "message actions"]
+        help: "Choose message appearance, input bar icons, and timestamps.",
+        keywords: ["messages", "bubbles", "density", "composer", "input bar", "clock", "timestamp"]
     )
 
     static let interfaceControls: [SettingsControlMetadata] = [
@@ -29,7 +29,7 @@ nonisolated extension SettingsCatalog {
         control(
             .composerBarAppearance,
             page: .interface,
-            section: .interfaceMessages,
+            section: .interfaceInputBar,
             label: "Input bar",
             help: "Choose the current split input bar or SakuraCord's legacy unified input bar.",
             keywords: ["composer", "message input", "default", "legacy", "pill"],
@@ -40,8 +40,8 @@ nonisolated extension SettingsCatalog {
             page: .interface,
             section: .interfaceMessages,
             label: "Reset to Defaults",
-            help: "Restore the default message layout, density, and input bar without changing other Appearance settings.",
-            keywords: ["messages", "defaults", "restore", "reset", "density", "input bar"],
+            help: "Restore the default message layout and density without changing other Appearance settings.",
+            keywords: ["messages", "defaults", "restore", "reset", "density"],
             scope: .appWideLocal,
             reset: .categoryAction
         ),
@@ -58,98 +58,20 @@ nonisolated extension SettingsCatalog {
             .timestampSeconds,
             page: .interface,
             section: .interfaceTime,
-            label: "Show seconds in full timestamps",
-            help: "Include seconds in expanded message timestamps and their accessibility value.",
-            keywords: ["clock seconds", "precise time", "expanded timestamp"],
+            label: "Show seconds",
+            help: "Include seconds in message timestamps, including grouped messages.",
+            keywords: ["clock seconds", "precise time", "grouped timestamp"],
             scope: .appWideLocal
         ),
         control(
-            .groupingInterval,
-            page: .interface,
-            section: .interfaceTime,
-            label: "Consecutive-message grouping",
-            help: "Choose how many minutes consecutive messages from one author remain grouped.",
-            keywords: ["group interval", "continuation", "author", "minutes"],
-            scope: .appWideLocal
+            .alwaysShowTimestamps, page: .interface, section: .interfaceTime,
+            label: "Always show timestamps", help: "Keep grouped message timestamps visible without hovering.",
+            keywords: ["time", "hover", "grouped"], scope: .appWideLocal
         ),
         control(
-            .underlineLinks,
-            page: .interface,
-            section: .interfaceVisibility,
-            label: "Underline links",
-            help: "Underline links in message content in addition to using the system link color.",
-            keywords: ["URL", "hyperlink", "decoration", "readability"],
-            scope: .appWideLocal
-        ),
-        control(
-            .showMemberList,
-            page: .interface,
-            section: .interfaceVisibility,
-            label: "Show member list",
-            help: "Show the member inspector for ordinary conversations.",
-            keywords: ["members", "people", "inspector", "right sidebar"],
-            scope: .appWideLocal
-        ),
-        control(
-            .showActivityDetails,
-            page: .interface,
-            section: .interfaceVisibility,
-            label: "Show activity and presence details",
-            help: "Show member activity text and presence indicators in the member list.",
-            keywords: ["presence", "status", "activity", "game", "member details"],
-            scope: .appWideLocal
-        ),
-        control(
-            .messageActionVisibility,
-            page: .interface,
-            section: .interfaceVisibility,
-            label: "Message actions",
-            help: "Reveal message actions on hover or keep an action affordance visible.",
-            keywords: ["hover", "always visible", "reply", "reaction", "toolbar"],
-            scope: .appWideLocal
-        ),
-        control(
-            .showRoleColors,
-            page: .interface,
-            section: .interfaceVisibility,
-            label: "Show Discord role colors",
-            help: "Use role colors for member and message author names when Discord provides them.",
-            keywords: ["roles", "author color", "member color", "Discord color"],
-            scope: .appWideLocal
-        ),
-        control(
-            .interfacePreview,
-            page: .interface,
-            section: .interfacePreview,
-            label: "Appearance preview",
-            help: "Preview sidebar and message presentation without using Discord data.",
-            keywords: ["sample", "live preview", "appearance"],
-            owner: .appModel,
-            scope: .appWideLocal,
-            persistence: .notApplicable,
-            reset: .notApplicable
-        ),
-        control(
-            .exportInterfaceSettings,
-            page: .interface,
-            section: .interfaceLocalData,
-            label: "Export Appearance Settings",
-            help: "Export registered Appearance preferences as versioned JSON.",
-            keywords: ["backup", "JSON", "save preferences"],
-            scope: .appWideLocal,
-            persistence: .notApplicable,
-            reset: .notApplicable
-        ),
-        control(
-            .resetInterfaceSettings,
-            page: .interface,
-            section: .interfaceLocalData,
-            label: "Reset Appearance Settings",
-            help: "Restore registered Appearance preferences without changing credentials or Discord state.",
-            keywords: ["defaults", "restore", "clear interface preferences"],
-            scope: .appWideLocal,
-            persistence: .appPreferences,
-            reset: .categoryAction
+            .composerIcons, page: .interface, section: .interfaceInputBar,
+            label: "Input bar icons", help: "Drag icons to reorder them.",
+            keywords: ["composer", "GIF", "sticker", "emoji", "reorder"], scope: .appWideLocal
         ),
     ]
 }

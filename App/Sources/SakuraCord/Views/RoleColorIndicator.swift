@@ -46,3 +46,18 @@ struct RoleColorIndicator: View {
             .accessibilityHidden(true)
     }
 }
+
+extension EnvironmentValues {
+    @Entry var roleColorDisplay: RoleColorDisplay = .inNames
+}
+
+struct NameRoleColorIndicator: View {
+    let colorHex: UInt32?
+    @Environment(\.roleColorDisplay) private var display
+
+    var body: some View {
+        if display == .nextToNames, let colorHex, colorHex != 0 {
+            RoleColorIndicator(colorHex: colorHex, size: 8)
+        }
+    }
+}

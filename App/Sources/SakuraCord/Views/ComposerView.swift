@@ -31,9 +31,7 @@ struct ComposerView: View {
     var body: some View {
         @Bindable var model = model
         let appearance = model.appearanceSettings.composerBarAppearance
-        let accessoryButtonSize = appearance == .defaultStyle
-            ? ChatChromeMetrics.composerAccessoryButtonSize
-            : ChatChromeMetrics.composerControlHeight
+        let accessoryButtonSize = appearance.accessoryButtonSize
         let chrome = ComposerChromeLayout(
             appearance: appearance,
             focus: { isFocused = true },
@@ -74,14 +72,7 @@ struct ComposerView: View {
             leading: {
                 Group {
                     if !hasActiveCommand {
-                        ComposerActionButton(
-                            icon: Image(systemName: "plus"),
-                            help: "Add attachments",
-                            iconSize: 19,
-                            iconWeight: .regular,
-                            showsHoverBackground: appearance == .legacy,
-                            appearance: appearance
-                        ) {
+                        ComposerAttachmentButton(appearance: appearance) {
                             showFileImporter = true
                         }
                     }
@@ -174,72 +165,58 @@ struct ComposerView: View {
             accessories: {
                 HStack(spacing: 1) {
                     if !hasActiveCommand {
-                        if model.supportedCapabilities.contains(.gifs) {
-                            ComposerActionButton(
-                                icon: Image("gif.square", bundle: .module),
-                                help: "Choose GIF",
-                                iconSize: 20,
-                                iconWeight: .medium,
-                                size: accessoryButtonSize,
-                                appearance: appearance
-                            ) {
-                                toggleGIFPicker()
-                            }
-                            .fixedSize()
-                            .background {
-                                StableReactionPickerPresenter(
-                                    isPresented: $showGIFPicker,
-                                    preferredEdge: .maxY,
-                                    accessibilityIdentifier: "composer-gif-picker"
-                                ) {
-                                    composerGIFPicker
+                        ForEach(model.appearanceSettings.composerIcons.order) { icon in
+                            switch icon {
+                            case .gif:
+                                if model.supportedCapabilities.contains(.gifs) {
+                                    ComposerIconView(icon: .gif, appearance: appearance) {
+                                        toggleGIFPicker()
+                                    }
+                                    .fixedSize()
+                                    .background {
+                                        StableReactionPickerPresenter(
+                                            isPresented: $showGIFPicker,
+                                            preferredEdge: .maxY,
+                                            accessibilityIdentifier: "composer-gif-picker"
+                                        ) {
+                                            composerGIFPicker
+                                        }
+                                        .frame(width: accessoryButtonSize, height: accessoryButtonSize)
+                                    }
                                 }
-                                .frame(width: accessoryButtonSize, height: accessoryButtonSize)
-                            }
-                        }
-                        if model.supportedCapabilities.contains(.stickers) {
-                            ComposerActionButton(
-                                icon: SakuraCordSystemSymbol.stickerFillImage,
-                                help: "Choose sticker",
-                                iconSize: 19,
-                                iconWeight: .medium,
-                                size: accessoryButtonSize,
-                                appearance: appearance
-                            ) {
-                                toggleStickerPicker()
-                            }
-                            .fixedSize()
-                            .background {
-                                StableReactionPickerPresenter(
-                                    isPresented: $showStickerPicker,
-                                    preferredEdge: .maxY,
-                                    accessibilityIdentifier: "composer-sticker-picker"
-                                ) {
-                                    composerStickerPicker
+                            case .sticker:
+                                if model.supportedCapabilities.contains(.stickers) {
+                                    ComposerIconView(icon: .sticker, appearance: appearance) {
+                                        toggleStickerPicker()
+                                    }
+                                    .fixedSize()
+                                    .background {
+                                        StableReactionPickerPresenter(
+                                            isPresented: $showStickerPicker,
+                                            preferredEdge: .maxY,
+                                            accessibilityIdentifier: "composer-sticker-picker"
+                                        ) {
+                                            composerStickerPicker
+                                        }
+                                        .frame(width: accessoryButtonSize, height: accessoryButtonSize)
+                                    }
                                 }
-                                .frame(width: accessoryButtonSize, height: accessoryButtonSize)
+                            case .emoji:
+                                ComposerIconView(icon: .emoji, appearance: appearance) {
+                                    toggleEmojiPicker()
+                                }
+                                .fixedSize()
+                                .background {
+                                    StableReactionPickerPresenter(
+                                        isPresented: $showEmojiPicker,
+                                        preferredEdge: .maxY,
+                                        accessibilityIdentifier: "composer-emoji-picker"
+                                    ) {
+                                        composerEmojiPicker
+                                    }
+                                    .frame(width: accessoryButtonSize, height: accessoryButtonSize)
+                                }
                             }
-                        }
-                        ComposerActionButton(
-                            icon: SakuraCordSystemSymbol.emojiFaceGrinningImage,
-                            help: "Choose emoji",
-                            iconSize: 19,
-                            iconWeight: .medium,
-                            size: accessoryButtonSize,
-                            appearance: appearance
-                        ) {
-                            toggleEmojiPicker()
-                        }
-                        .fixedSize()
-                        .background {
-                            StableReactionPickerPresenter(
-                                isPresented: $showEmojiPicker,
-                                preferredEdge: .maxY,
-                                accessibilityIdentifier: "composer-emoji-picker"
-                            ) {
-                                composerEmojiPicker
-                            }
-                            .frame(width: accessoryButtonSize, height: accessoryButtonSize)
                         }
                     }
                 }
@@ -265,6 +242,8 @@ struct ComposerView: View {
                 ComposerSlowmodeIndicator(model: model, channelID: activeConversationID)
             }
             chrome
+                .padding(.horizontal, ChatChromeMetrics.composerWindowInset)
+                .padding(.bottom, ChatChromeMetrics.composerWindowInset)
                 .keyframeAnimator(
                     initialValue: CGFloat.zero,
                     trigger: activeConversationID.map {

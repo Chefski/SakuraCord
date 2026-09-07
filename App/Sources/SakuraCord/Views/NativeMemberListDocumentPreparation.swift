@@ -586,19 +586,17 @@ extension NativeMemberListCanvasView {
                 preparedText[item.id] = existing
                 continue
             }
-            let nameColor = presentation.showsRoleColors
+            let nameColor = presentation.roleColorDisplay == .inNames
                 ? MessageAuthorPresentation.topRoleColor(in: member.roles)
                     .map(Self.color(hex:)) ?? .labelColor
                 : .labelColor
-            let alpha: CGFloat = presentation.showsActivityDetails
-                && !member.isOnline ? 0.55 : 1
+            let alpha: CGFloat = !member.isOnline ? 0.55 : 1
             let name = Self.line(
                 member.user.displayName,
                 font: nameFont,
                 color: nameColor.withAlphaComponent(alpha)
             )
-            let activity = presentation.showsActivityDetails
-                ? member.activityText.flatMap { text -> CTLine? in
+            let activity = member.activityText.flatMap { text -> CTLine? in
                 guard !text.isEmpty else { return nil }
                 return NativeMemberActivityPresentation.line(
                     text,
@@ -606,7 +604,6 @@ extension NativeMemberListCanvasView {
                     color: Self.memberActivityColor.withAlphaComponent(alpha)
                 )
                 }
-                : nil
             let activityTruncationToken = activity.map { _ in
                 Self.line(
                     "…",

@@ -123,8 +123,7 @@ extension AppModel {
             messageIndex: selectedMessageIndex(for:),
             replyingMessageIDs:
                 selectedReplyMessageIDsByTarget[resolved.id] ?? [],
-            replacementTextPlan: preparedTextPlan,
-            continuationInterval: interfaceSettings.groupingInterval
+            replacementTextPlan: preparedTextPlan
         )
         publishMessageRowsUpdate(
             change: .replace(changedIndexes),
@@ -167,8 +166,7 @@ extension AppModel {
             neighborIndex: index,
             messageIndex: selectedMessageIndex(for:),
             replyingMessageIDs:
-                selectedReplyMessageIDsByTarget[id] ?? [],
-            continuationInterval: interfaceSettings.groupingInterval
+                selectedReplyMessageIDsByTarget[id] ?? []
         )
         publishMessageRowsUpdate(
             change: .remove(
@@ -467,8 +465,7 @@ extension AppModel {
             messageRows = MessageGrouping.updating(
                 existing: messageRows,
                 oldMessages: oldMessages,
-                newMessages: newMessages,
-                continuationInterval: interfaceSettings.groupingInterval
+                newMessages: newMessages
             )
         }
         AppPerformanceSignposts.signposter.endInterval(
@@ -488,8 +485,7 @@ extension AppModel {
         messageRows = MessageGrouping.updating(
             existing: messageRows,
             oldMessages: oldMessages,
-            newMessages: messages,
-            continuationInterval: interfaceSettings.groupingInterval
+            newMessages: messages
         )
         publishMessageRowsUpdate(invalidatesAllRows: true)
         messageRowsNonAppendRevision &+= 1
@@ -555,8 +551,7 @@ extension AppModel {
             preparedInsertedRows: preparedInsertedRows,
             existingMessageIndex: selectedMessageIndex(for:),
             replyingMessageIDsByTarget:
-                selectedReplyMessageIDsByTarget,
-            continuationInterval: interfaceSettings.groupingInterval
+                selectedReplyMessageIDsByTarget
         )
         let changedMessageIDs = Set(
             potentiallyChangedMessageIDs.filter { id in
@@ -641,8 +636,7 @@ extension AppModel {
             preparedInsertedRows: preparedRows,
             existingMessage: { [self] id in
                 selectedMessageIndex(for: id).map { messages[$0] }
-            },
-            continuationInterval: interfaceSettings.groupingInterval
+            }
         )
         if preparedRows == nil, !preparedTextPlans.isEmpty {
             for index in insertionStart ..< messageRows.count {

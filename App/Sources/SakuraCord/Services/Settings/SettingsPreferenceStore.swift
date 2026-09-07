@@ -214,46 +214,31 @@ nonisolated struct SettingsPreferenceRegistry: Sendable {
             defaultValue: .string(InterfaceTimestampFormat.system.rawValue)
         ),
         SettingsPreferenceRegistration(
+            id: .alwaysShowTimestamps, page: .interface,
+            storage: .appWide(key: "settings.interface.alwaysShowTimestamps"),
+            defaultValue: .bool(false)
+        ),
+        SettingsPreferenceRegistration(
+            id: .roleColorDisplay, page: .accessibility,
+            storage: .appWide(key: "settings.accessibility.roleColorDisplay"),
+            defaultValue: .string(RoleColorDisplay.inNames.rawValue)
+        ),
+        SettingsPreferenceRegistration(
+            id: .composerIcons, page: .interface,
+            storage: .appWide(key: "settings.appearance.composerIcons"),
+            defaultValue: .string(ComposerIconLayout.defaults.storageValue)
+        ),
+        SettingsPreferenceRegistration(
             id: .timestampSeconds,
             page: .interface,
             storage: .appWide(key: "settings.interface.timestampSeconds"),
             defaultValue: .bool(false)
         ),
         SettingsPreferenceRegistration(
-            id: .groupingInterval,
-            page: .interface,
-            storage: .appWide(key: "settings.interface.groupingIntervalMinutes"),
-            defaultValue: .integer(7)
-        ),
-        SettingsPreferenceRegistration(
             id: .underlineLinks,
-            page: .interface,
+            page: .accessibility,
             storage: .appWide(key: "settings.interface.underlineLinks"),
             defaultValue: .bool(false)
-        ),
-        SettingsPreferenceRegistration(
-            id: .showMemberList,
-            page: .interface,
-            storage: .appWide(key: "settings.memberListVisible"),
-            defaultValue: .bool(true)
-        ),
-        SettingsPreferenceRegistration(
-            id: .showActivityDetails,
-            page: .interface,
-            storage: .appWide(key: "settings.interface.showActivityDetails"),
-            defaultValue: .bool(true)
-        ),
-        SettingsPreferenceRegistration(
-            id: .messageActionVisibility,
-            page: .interface,
-            storage: .appWide(key: "settings.interface.messageActionVisibility"),
-            defaultValue: .string(InterfaceMessageActionVisibility.onHover.rawValue)
-        ),
-        SettingsPreferenceRegistration(
-            id: .showRoleColors,
-            page: .interface,
-            storage: .appWide(key: "settings.interface.showRoleColors"),
-            defaultValue: .bool(true)
         ),
         SettingsPreferenceRegistration(
             id: .sendWithReturn,
@@ -856,6 +841,20 @@ final class SettingsPreferenceStore {
     ) {
         self.registry = registry
         self.defaults = defaults
+        // Retire removed Appearance preferences; member-list restoration belongs
+        // to General and continues to use its existing key.
+        for key in ["settings.interface.groupingIntervalMinutes",
+                    "settings.interface.showActivityDetails",
+                    "settings.interface.messageActionVisibility"] {
+            defaults.removeObject(forKey: key)
+        }
+        let legacyRoleKey = "settings.interface.showRoleColors"
+        let roleKey = "settings.accessibility.roleColorDisplay"
+        if defaults.object(forKey: roleKey) == nil,
+           let enabled = defaults.object(forKey: legacyRoleKey) as? Bool {
+            defaults.set(enabled ? RoleColorDisplay.inNames.rawValue : RoleColorDisplay.hidden.rawValue, forKey: roleKey)
+        }
+        defaults.removeObject(forKey: legacyRoleKey)
     }
 
     func value(

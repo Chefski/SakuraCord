@@ -393,6 +393,7 @@ private struct MemberSectionHeader: View {
 }
 
 struct MemberRow: View {
+    @Environment(\.roleColorDisplay) private var roleColorDisplay
     let member: Member
     let isSelected: Bool
     var showsContents = true
@@ -433,6 +434,7 @@ struct MemberRow: View {
                                         .foregroundStyle(nameColor)
                                         .lineLimit(1)
                                 }
+                                NameRoleColorIndicator(colorHex: MessageAuthorPresentation.topRoleColor(in: member.roles))
                                 if member.user.isBot {
                                     Text("APP")
                                         .font(.caption2.weight(.bold))
@@ -473,7 +475,7 @@ struct MemberRow: View {
     }
 
     private var nameColor: Color {
-        MessageAuthorPresentation.topRoleColor(in: member.roles).map(Color.init(hex:)) ?? .primary
+        roleColorDisplay == .inNames ? MessageAuthorPresentation.topRoleColor(in: member.roles).map(Color.init(hex:)) ?? .primary : .primary
     }
 }
 

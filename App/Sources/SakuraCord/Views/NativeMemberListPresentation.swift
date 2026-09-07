@@ -20,8 +20,7 @@ nonisolated enum NativeMemberListMetrics {
 }
 
 nonisolated struct NativeMemberListPresentation: Equatable, Sendable {
-    var showsActivityDetails = true
-    var showsRoleColors = true
+    var roleColorDisplay: RoleColorDisplay = .inNames
 }
 
 nonisolated enum MemberListSkeletonLayout {

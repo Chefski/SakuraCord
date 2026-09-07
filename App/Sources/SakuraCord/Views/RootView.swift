@@ -74,9 +74,6 @@ struct RootView: View {
             }
         }
         .onChange(of: model.showInspector) { _, isVisible in
-            if model.interfaceSettings.showsMemberList != isVisible {
-                model.interfaceSettings.showsMemberList = isVisible
-            }
             guard SettingsPreferenceStore.shared.value(
                 for: .rememberMemberListVisibility
             ) == .bool(true) else { return }
@@ -94,6 +91,7 @@ struct RootView: View {
                 channelID: selectedChannel.id.description
             )
         }
+        .environment(\.roleColorDisplay, model.accessibilitySettings.roleColorDisplay)
         .contrast(
             model.accessibilitySettings.increasesContrast
                 && systemColorSchemeContrast == .standard

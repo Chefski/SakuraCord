@@ -91,6 +91,23 @@ struct UploadProgressView: View {
     }
 }
 
+struct ComposerAttachmentButton: View {
+    let appearance: ComposerBarAppearance
+    let action: (() -> Void)?
+
+    var body: some View {
+        ComposerActionButton(
+            icon: Image(systemName: "plus"),
+            help: "Add attachments",
+            iconSize: 19,
+            iconWeight: .regular,
+            showsHoverBackground: appearance == .legacy,
+            appearance: appearance,
+            action: action
+        )
+    }
+}
+
 struct ComposerActionButton: View {
     let icon: Image
     let help: String
@@ -99,19 +116,19 @@ struct ComposerActionButton: View {
     var size = ChatChromeMetrics.composerControlHeight
     var showsHoverBackground = true
     var appearance: ComposerBarAppearance = .defaultStyle
-    let action: () -> Void
+    let action: (() -> Void)?
 
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.colorScheme) private var colorScheme
     @State private var isHovering = false
 
     var body: some View {
-        Button(action: action) {
-            icon
-                .symbolVariant(.none)
-                .font(.system(size: iconSize, weight: iconWeight))
-                .foregroundStyle(.primary)
-                .frame(width: size, height: size)
-                .contentShape(buttonShape)
+        Group {
+            if let action {
+                Button(action: action) { buttonLabel }
+            } else {
+                buttonLabel
+            }
         }
         .buttonStyle(.plain)
         .background(hoverColor, in: buttonShape)
@@ -120,12 +137,21 @@ struct ComposerActionButton: View {
         .help(help)
     }
 
+    private var buttonLabel: some View {
+        icon
+            .symbolVariant(.none)
+            .font(.system(size: iconSize, weight: iconWeight))
+            .foregroundStyle(colorScheme == .dark ? Color.white : Color.black)
+            .frame(width: size, height: size)
+            .contentShape(buttonShape)
+    }
+
     private var buttonShape: AnyShape {
         switch appearance {
         case .defaultStyle:
             AnyShape(Circle())
         case .legacy:
-            AnyShape(ConcentricRectangle(cornerRadius: 9, style: .continuous))
+            AnyShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         }
     }
 
@@ -137,7 +163,7 @@ struct ComposerActionButton: View {
 }
 
 struct ComposerSendButton: View {
-    let action: () -> Void
+    let action: (() -> Void)?
     var appearance: ComposerBarAppearance = .defaultStyle
 
     var isSlowmodeBlocked = false
@@ -146,15 +172,12 @@ struct ComposerSendButton: View {
     @State private var isHovering = false
 
     var body: some View {
-        Button(action: action) {
-            Image(systemName: "paperplane.circle.fill")
-                .font(.system(size: 21, weight: .medium))
-                .foregroundStyle(isEnabled && !isSlowmodeBlocked ? Color.white : Color.gray.opacity(0.62))
-                .frame(
-                    width: ChatChromeMetrics.composerControlHeight,
-                    height: ChatChromeMetrics.composerControlHeight
-                )
-                .contentShape(buttonShape)
+        Group {
+            if let action {
+                Button(action: action) { buttonLabel }
+            } else {
+                buttonLabel
+            }
         }
         .buttonStyle(.plain)
         .background(hoverColor, in: buttonShape)
@@ -163,12 +186,23 @@ struct ComposerSendButton: View {
         .help("Send message")
     }
 
+    private var buttonLabel: some View {
+        Image(systemName: "paperplane.circle.fill")
+            .font(.system(size: 21, weight: .medium))
+            .foregroundStyle(isEnabled && !isSlowmodeBlocked ? Color.white : Color.gray.opacity(0.62))
+            .frame(
+                width: ChatChromeMetrics.composerControlHeight,
+                height: ChatChromeMetrics.composerControlHeight
+            )
+            .contentShape(buttonShape)
+    }
+
     private var buttonShape: AnyShape {
         switch appearance {
         case .defaultStyle:
             AnyShape(Circle())
         case .legacy:
-            AnyShape(ConcentricRectangle(cornerRadius: 9, style: .continuous))
+            AnyShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         }
     }
 

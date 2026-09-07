@@ -20,8 +20,6 @@ struct ComposerChromeLayout<Header: View, Leading: View, Input: View, Accessorie
             }
         }
         .fixedSize(horizontal: false, vertical: true)
-        .padding(.horizontal, ChatChromeMetrics.composerWindowInset)
-        .padding(.bottom, ChatChromeMetrics.composerWindowInset)
     }
 
     private var defaultLayout: some View {
@@ -43,10 +41,7 @@ struct ComposerChromeLayout<Header: View, Leading: View, Input: View, Accessorie
             .background { ComposerFocusSurface(focus: focus) }
             .glassEffect(
                 .regular.interactive(),
-                in: ConcentricRectangle(
-                    cornerRadius: ChatChromeMetrics.composerCornerRadius,
-                    style: .continuous
-                )
+                in: RoundedRectangle(cornerRadius: ChatChromeMetrics.composerCornerRadius, style: .continuous)
             )
             .composerOverlay(overlay)
 
@@ -61,13 +56,15 @@ struct ComposerChromeLayout<Header: View, Leading: View, Input: View, Accessorie
             HStack(alignment: .bottom, spacing: 9) {
                 leading
                 input
-                accessories
-                Capsule()
-                    .fill(.primary.opacity(0.16))
-                    .frame(width: 1, height: 16)
-                    .frame(width: 9, height: ChatChromeMetrics.composerControlHeight)
-                    .accessibilityHidden(true)
-                send
+                HStack(spacing: 1) {
+                    accessories
+                    Capsule()
+                        .fill(.primary.opacity(0.16))
+                        .frame(width: 1, height: 16)
+                        .frame(width: 9, height: ChatChromeMetrics.composerControlHeight)
+                        .accessibilityHidden(true)
+                    send
+                }
             }
             .padding(.horizontal, 11)
             .padding(.vertical, 6)
@@ -76,12 +73,7 @@ struct ComposerChromeLayout<Header: View, Leading: View, Input: View, Accessorie
         .background { ComposerFocusSurface(focus: focus) }
         .glassEffect(
             .regular.interactive(),
-            in: ConcentricRectangle(
-                corners: .concentric(
-                    minimum: .fixed(ChatChromeMetrics.composerMinimumCornerRadius)
-                ),
-                isUniform: true
-            )
+            in: RoundedRectangle(cornerRadius: ChatChromeMetrics.composerMinimumCornerRadius, style: .continuous)
         )
         .composerOverlay(overlay)
     }

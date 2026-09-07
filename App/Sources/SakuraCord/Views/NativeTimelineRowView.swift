@@ -624,7 +624,9 @@ struct NativeTimelineRowLayout {
             ? MessageRowLayoutMetrics.horizontalInset
             : 22
         let avatarWidth = MessageRowLayoutMetrics.avatarDiameter
-        let columnGap = MessageRowLayoutMetrics.avatarColumnGap
+        let timestampSettings = model?.interfaceSettings ?? .defaults
+        let timestampGutterWidth = max(avatarWidth, NativeTimelineCompactTimestampMetrics.width(settings: timestampSettings))
+        let columnGap = MessageRowLayoutMetrics.avatarColumnGap + timestampGutterWidth - avatarWidth
         let usesComponentsV2 = message.flags.contains(.isComponentsV2)
         let chatSettings = model?.chatSettings ?? .defaults
         let unstyledContentPresentation = NativeTimelineTextPresentation.make(
@@ -761,8 +763,11 @@ struct NativeTimelineRowLayout {
                 ofSize: NSFont.preferredFont(forTextStyle: .headline).pointSize,
                 weight: .semibold
             )
+            let showsRoleIndicator = model?.accessibilitySettings.roleColorDisplay == .nextToNames
+                && model?.authorPresentation(for: message).roleColorHex != nil
+            let indicatorWidth: CGFloat = showsRoleIndicator ? 14 : 0
             let authorWidth = min(
-                ordinaryContentWidth,
+                max(0, ordinaryContentWidth - indicatorWidth),
                 NativeTimelineRowLayout.measuredTextWidth(author.displayName, font: authorFont)
             )
             authorFrame = CGRect(
@@ -771,7 +776,7 @@ struct NativeTimelineRowLayout {
                 width: authorWidth,
                 height: MessageRowLayoutMetrics.authorLineHeight
             )
-            var headerX = contentX + authorWidth
+            var headerX = contentX + authorWidth + indicatorWidth
             if author.isBot {
                 headerX += 7
                 let badgeFont = NSFont.systemFont(
@@ -851,7 +856,7 @@ struct NativeTimelineRowLayout {
             compactTimestampFrame = CGRect(
                 x: horizontalInset,
                 y: verticalOffset,
-                width: avatarWidth,
+                width: timestampGutterWidth,
                 height: MessageRowLayoutMetrics.compactContentHeight
             )
         }
@@ -1621,6 +1626,9 @@ struct NativeTimelineRowLayout {
         )
     }
 
+}
+
+extension NativeTimelineRowLayout {
     fileprivate static func measuredTextHeight(
         _ framesetter: CTFramesetter,
         value: NSAttributedString,

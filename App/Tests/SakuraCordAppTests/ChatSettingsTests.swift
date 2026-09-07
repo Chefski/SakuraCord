@@ -428,7 +428,7 @@ import Testing
         #expect(state.selectedPage == .interface)
         #expect(state.revealRequest?.controlID == control)
         #expect(state.highlightedControlID == control)
-        #expect(state.revealRequest?.destination.section == .interfaceMessages)
+        #expect(state.revealRequest?.destination.section == (control == .composerBarAppearance ? .interfaceInputBar : .interfaceMessages))
     }
     #expect(SakuraCordDeepLinkPresentation.all(in: "https://sakuracord.app/settings/diagnostics/send").map(\.action) == [.sendDiagnostics])
     for url in [

@@ -981,23 +981,29 @@ private struct ForumPostStatusRow: View {
 }
 
 private struct ForumPostAuthorName: View {
+    @Environment(\.roleColorDisplay) private var roleColorDisplay
     let presentation: MessageAuthorPresentation
 
     var body: some View {
-        Text(presentation.user.displayName)
-            .fontWeight(.semibold)
-            .foregroundStyle(nameColor)
-            .lineLimit(1)
-            .accessibilityLabel("Posted by \(presentation.user.displayName)")
+        HStack(spacing: 4) {
+            Text(presentation.user.displayName)
+                .fontWeight(.semibold)
+                .foregroundStyle(nameColor)
+                .lineLimit(1)
+            NameRoleColorIndicator(colorHex: presentation.roleColorHex)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Posted by \(presentation.user.displayName)")
     }
 
     private var nameColor: Color {
         if presentation.user.isBot { return SakuraCordAccentColor.color }
-        return presentation.roleColorHex.map(Color.init(hex:)) ?? .primary
+        return roleColorDisplay == .inNames ? presentation.roleColorHex.map(Color.init(hex:)) ?? .primary : .primary
     }
 }
 
 private struct ForumPostStarterExcerpt: View {
+    @Environment(\.roleColorDisplay) private var roleColorDisplay
     let presentation: MessageAuthorPresentation
     let content: String
     let isEmphasized: Bool
@@ -1005,15 +1011,24 @@ private struct ForumPostStarterExcerpt: View {
     var body: some View {
         let messageColor: Color = isEmphasized ? .primary : .secondary
         Text(
-            "\(Text(presentation.user.displayName).fontWeight(.semibold).foregroundColor(nameColor))\(Text(": ").foregroundColor(messageColor))\(Text(.init(content)).foregroundColor(messageColor))"
+            "\(authorText)\(roleIndicator)\(Text(": ").foregroundColor(messageColor))\(Text(.init(content)).foregroundColor(messageColor))"
         )
         .lineLimit(2)
         .accessibilityLabel("\(presentation.user.displayName): \(content)")
     }
 
+    private var authorText: Text {
+        Text(presentation.user.displayName).fontWeight(.semibold).foregroundColor(nameColor)
+    }
+
+    private var roleIndicator: Text {
+        guard roleColorDisplay == .nextToNames, let hex = presentation.roleColorHex, hex != 0 else { return Text("") }
+        return Text(" ") + Text(Image(systemName: "circle.fill")).font(.system(size: 8)).foregroundColor(Color(hex: hex))
+    }
+
     private var nameColor: Color {
         if presentation.user.isBot { return SakuraCordAccentColor.color }
-        return presentation.roleColorHex.map(Color.init(hex:)) ?? .primary
+        return roleColorDisplay == .inNames ? presentation.roleColorHex.map(Color.init(hex:)) ?? .primary : .primary
     }
 }
 

@@ -2,6 +2,21 @@ import AppKit
 import Foundation
 import SakuraCordModels
 
+nonisolated enum RoleColorDisplay: String, CaseIterable, Identifiable, Sendable {
+    case inNames
+    case nextToNames
+    case hidden
+
+    var id: Self { self }
+    var title: LocalizedStringResource {
+        switch self {
+        case .inNames: LocalizedStringResource("In names", bundle: #bundle)
+        case .nextToNames: LocalizedStringResource("Next to names", bundle: #bundle)
+        case .hidden: LocalizedStringResource("Don't show role colours", bundle: #bundle)
+        }
+    }
+}
+
 nonisolated enum AccessibilityMotionOverride: String, CaseIterable, Identifiable, Sendable {
     case followMacOS
     case alwaysReduce
@@ -45,6 +60,9 @@ nonisolated struct AccessibilitySettingsSnapshot: Equatable, Sendable {
         announcesAttachmentTypes: true,
         announcesNewMessages: false
     )
+
+    var underlinesLinks = false
+    var roleColorDisplay: RoleColorDisplay = .inNames
 
     var motionOverride: AccessibilityMotionOverride
     var reducesAnimatedContent: Bool
@@ -97,6 +115,8 @@ final class AccessibilitySettingsStore {
 
     func load() -> AccessibilitySettingsSnapshot {
         var value = AccessibilitySettingsSnapshot.defaults
+        value.underlinesLinks = bool(.underlineLinks) ?? false
+        value.roleColorDisplay = enumValue(.roleColorDisplay) ?? .inNames
         value.motionOverride = enumValue(.accessibilityMotionOverride)
             ?? value.motionOverride
         value.reducesAnimatedContent = bool(.accessibilityReduceAnimatedContent)
@@ -130,6 +150,8 @@ final class AccessibilitySettingsStore {
     }
 
     func save(_ value: AccessibilitySettingsSnapshot) {
+        preferences.set(.bool(value.underlinesLinks), for: .underlineLinks)
+        preferences.set(.string(value.roleColorDisplay.rawValue), for: .roleColorDisplay)
         preferences.set(.string(value.motionOverride.rawValue), for: .accessibilityMotionOverride)
         preferences.set(.bool(value.reducesAnimatedContent), for: .accessibilityReduceAnimatedContent)
         preferences.set(.bool(value.reducesAnimatedEmoji), for: .accessibilityReduceAnimatedEmoji)

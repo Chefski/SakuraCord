@@ -292,6 +292,7 @@ extension NativeTimelineRowPainter {
             value,
             framesetter: framesetter,
             hoveredLinkCharacterIndex: hoveredLinkCharacterIndex,
+            underlinesLinks: model?.accessibilitySettings.underlinesLinks == true,
             revealedSpoilerLocations: revealedSpoilerLocations
         )
         let path = CGPath(rect: CGRect(origin: .zero, size: frame.size), transform: nil)
@@ -333,6 +334,7 @@ extension NativeTimelineRowPainter {
         _ value: NSAttributedString,
         framesetter: CTFramesetter,
         hoveredLinkCharacterIndex: Int?,
+        underlinesLinks: Bool,
         revealedSpoilerLocations: Set<Int>
     ) -> (NSAttributedString, CTFramesetter) {
         let fullRange = NSRange(location: 0, length: value.length)
@@ -345,7 +347,15 @@ extension NativeTimelineRowPainter {
                 spoilerRanges.append(range)
             }
         }
-        if spoilerRanges.isEmpty, hoveredLinkCharacterIndex == nil {
+        var hasUnderlinedLinks = false
+        if underlinesLinks {
+            value.enumerateAttribute(.link, in: fullRange) { link, _, stop in
+                guard link != nil else { return }
+                hasUnderlinedLinks = true
+                stop.pointee = true
+            }
+        }
+        if spoilerRanges.isEmpty, hoveredLinkCharacterIndex == nil, !hasUnderlinedLinks {
             return (value, framesetter)
         }
         let revealed = NSMutableAttributedString(attributedString: value)
@@ -356,7 +366,8 @@ extension NativeTimelineRowPainter {
         }
         NativeTimelineLinkAppearance.applyHover(
             to: revealed,
-            characterIndex: hoveredLinkCharacterIndex
+            characterIndex: hoveredLinkCharacterIndex,
+            underlinesAllLinks: underlinesLinks
         )
         return (revealed, CTFramesetterCreateWithAttributedString(revealed))
     }

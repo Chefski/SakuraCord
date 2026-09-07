@@ -61,7 +61,7 @@ extension NativeMemberListCanvasView {
             weight: .semibold
         )
         let isRoleSection = if case .role = section.id { true } else { false }
-        let showsRoleIndicator = presentation.showsRoleColors && isRoleSection
+        let showsRoleIndicator = presentation.roleColorDisplay != .hidden && isRoleSection
         let color: NSColor = if showsRoleIndicator {
             SakuraCordAccentColor.nsColor(forRoleColorHex: section.colorHex)
         } else {
@@ -191,15 +191,13 @@ extension NativeMemberListCanvasView {
             context: context,
             style: style
         )
-        if presentation.showsActivityDetails {
-            drawSkeletonShape(
-                in: presence,
-                radius: 5.5,
-                opacity: 1,
-                context: context,
-                style: style
-            )
-        }
+        drawSkeletonShape(
+            in: presence,
+            radius: 5.5,
+            opacity: 1,
+            context: context,
+            style: style
+        )
 
         let textX = contentX
             + NativeMemberListMetrics.avatarContainerSize + 8
@@ -339,7 +337,9 @@ extension NativeMemberListCanvasView {
         let nameY = prepared.activity == nil ? row.minY + 13 : row.minY + 5
         let botBadgeWidth: CGFloat = 30
         let tagPresentation = member.user.primaryGuild.flatMap(guildTagPresentation)
-        let accessoryWidths = (member.user.isBot ? [botBadgeWidth] : [])
+        let roleColor = presentation.roleColorDisplay == .nextToNames
+            ? MessageAuthorPresentation.topRoleColor(in: member.roles).map(Self.color(hex:)) : nil
+        let accessoryWidths: [CGFloat] = (roleColor != nil ? [8] : []) + (member.user.isBot ? [botBadgeWidth] : [])
             + (tagPresentation.map { [$0.width] } ?? [])
         let nameLayout = NativeMemberNameLayout.layout(
             measuredNameWidth: prepared.nameWidth,
@@ -356,6 +356,11 @@ extension NativeMemberListCanvasView {
         }
 
         var accessoryIndex = 0
+        if let roleColor, let accessory = nameLayout.accessoryFrames.first {
+            context.setFillColor(roleColor.cgColor)
+            context.fillEllipse(in: CGRect(x: textX + accessory.minX, y: nameY + 5, width: min(8, accessory.width), height: 8))
+            accessoryIndex += 1
+        }
         if member.user.isBot, nameLayout.accessoryFrames.indices.contains(accessoryIndex) {
             let accessory = nameLayout.accessoryFrames[accessoryIndex]
             if accessory.width >= botBadgeWidth {
@@ -430,8 +435,7 @@ extension NativeMemberListCanvasView {
             width: NativeMemberListMetrics.avatarSize,
             height: NativeMemberListMetrics.avatarSize
         )
-        let opacity: CGFloat = presentation.showsActivityDetails
-            && !member.isOnline ? 0.55 : 1
+        let opacity: CGFloat = !member.isOnline ? 0.55 : 1
         let presenceIndicatorRect = AvatarPresencePresentation.indicatorRect(
             avatarRect: avatar,
             indicatorSize: NativeMemberListMetrics.presenceIndicatorSize
@@ -495,13 +499,11 @@ extension NativeMemberListCanvasView {
 
         context.restoreGState()
 
-        if presentation.showsActivityDetails {
-            drawPresenceIndicator(
-                member.status,
-                in: presenceIndicatorRect,
-                context: context
-            )
-        }
+        drawPresenceIndicator(
+            member.status,
+            in: presenceIndicatorRect,
+            context: context
+        )
     }
 
     func drawAvatarFallback(

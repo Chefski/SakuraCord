@@ -6,15 +6,14 @@ import SwiftUI
 
 @MainActor
 final class NativeMemberAccessibilityProxyView: NSButton {
-    var showsActivityDetails = true
     var member: Member? {
         didSet {
             guard let member else { return }
             setAccessibilityLabel(member.user.displayName)
             setAccessibilityHelp(member.user.username)
-            let activity = showsActivityDetails ? member.activityText.flatMap {
+            let activity = member.activityText.flatMap {
                 $0.isEmpty ? nil : NativeMemberActivityPresentation.accessibilityText($0)
-            } : nil
+            }
             setAccessibilityValue(activity)
             toolTip = member.user.username
         }

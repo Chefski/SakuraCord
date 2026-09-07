@@ -71,17 +71,16 @@ import Testing
 }
 
 @MainActor
-@Test func `Interface preferences persist export and reset by page`() {
+@Test func `Timestamp preferences persist by page`() {
     let defaults = InMemoryPreferences()
     let preferences = SettingsPreferenceStore(defaults: defaults)
     let store = InterfaceSettingsStore(preferences: preferences)
-    preferences.set(.integer(90), for: .groupingInterval)
 
     var loaded = store.load()
-    #expect(loaded.groupingIntervalMinutes == 30)
 
     loaded.timestampFormat = .twentyFourHour
-    loaded.showsMemberList = false
+    loaded.alwaysShowsTimestamps = true
+    loaded.includesTimestampSeconds = true
     store.save(loaded)
     #expect(store.load() == loaded)
     let export = preferences.export(scope: .appWide, page: .interface)
@@ -96,66 +95,7 @@ import Testing
 }
 
 @MainActor
-@Test func `Interface grouping interval changes continuation boundaries`() throws {
-    let author = User(
-        id: UserID(rawValue: 1),
-        username: "fixture",
-        displayName: "Fixture"
-    )
-    let base = Date(timeIntervalSince1970: 1_700_000_000)
-    let messages = [
-        Message(
-            id: MessageID(rawValue: 1),
-            channelID: ChannelID(rawValue: 2),
-            author: author,
-            content: "First",
-            timestamp: base
-        ),
-        Message(
-            id: MessageID(rawValue: 2),
-            channelID: ChannelID(rawValue: 2),
-            author: author,
-            content: "Second",
-            timestamp: base.addingTimeInterval(5 * 60)
-        ),
-    ]
-
-    let fiveMinutes = MessageGrouping.rows(
-        for: messages,
-        continuationInterval: 5 * 60
-    )
-    let sixMinutes = MessageGrouping.rows(
-        for: messages,
-        continuationInterval: 6 * 60
-    )
-    #expect(try #require(fiveMinutes.last).startsGroup)
-    #expect(!(try #require(sixMinutes.last)).startsGroup)
-}
-
-@MainActor
-@Test func `Interface live changes invalidate only affected timeline presentation`() {
-    let model = AppModel(launchMode: .offlineTesting)
-    model.applyInterfaceSettings(.defaults, persists: false)
-    let initialRevision = model.timelinePresentationRevision
-
-    var actions = model.interfaceSettings
-    actions.messageActionVisibility = .always
-    model.applyInterfaceSettings(actions, persists: false)
-    #expect(model.timelinePresentationRevision == initialRevision)
-
-    var links = model.interfaceSettings
-    links.underlinesLinks = true
-    model.applyInterfaceSettings(links, persists: false)
-    #expect(model.timelinePresentationRevision > initialRevision)
-
-    var memberList = model.interfaceSettings
-    memberList.showsMemberList = false
-    model.applyInterfaceSettings(memberList, persists: false)
-    #expect(!model.showInspector)
-}
-
-@MainActor
-@Test func `Interface link decoration reaches native timeline layout`() throws {
+@Test func `Always underlined links share hover styling without changing timeline geometry`() throws {
     let model = AppModel(launchMode: .offlineTesting)
     let message = Message(
         id: MessageID(rawValue: 10),
@@ -180,63 +120,20 @@ import Testing
         isHighlighted: false
     )
 
-    var settings = InterfaceSettingsSnapshot.defaults
+    let original = NativeTimelineRowLayout.make(item: item, width: 620, model: model)
+    var settings = AccessibilitySettingsSnapshot.defaults
     settings.underlinesLinks = true
-    model.applyInterfaceSettings(settings, persists: false)
-    let layout = NativeTimelineRowLayout.make(
-        item: item,
-        width: 620,
-        model: model
-    )
-
-    let underline = try #require(
-        layout.attributedContent?.attribute(
-            .underlineStyle,
-            at: 0,
-            effectiveRange: nil
-        ) as? Int
-    )
-    #expect(underline == NSUnderlineStyle.single.rawValue)
-}
-
-@MainActor
-@Test func `Interface member presentation hides activity`() throws {
-    let member = Member(
-        user: User(
-            id: UserID(rawValue: 20),
-            username: "member",
-            displayName: "Member"
-        ),
-        roleName: "Member",
-        status: .online,
-        activityText: "Building SakuraCord"
-    )
-    let sections = [
-        MemberSection(
-            id: .online,
-            title: "Online",
-            colorHex: nil,
-            totalCount: 1,
-            members: [member]
-        ),
-    ]
-    let shown = try #require(NativeMemberListCanvasView.prepareDocument(
-        sections: sections,
-        presentation: NativeMemberListPresentation(
-            showsActivityDetails: true,
-            showsRoleColors: true
-        )
-    ))
-    let hidden = try #require(NativeMemberListCanvasView.prepareDocument(
-        sections: sections,
-        presentation: NativeMemberListPresentation(
-            showsActivityDetails: false,
-            showsRoleColors: false
-        )
-    ))
-    let itemID = NativeMemberListCanvasView.ItemID.member(member.id)
-    #expect(try #require(shown.preparedText[itemID]).activity != nil)
-    #expect(try #require(hidden.preparedText[itemID]).activity == nil)
+    model.applyAccessibilitySettings(settings, persists: false)
+    let layout = NativeTimelineRowLayout.make(item: item, width: 620, model: model)
+    #expect(layout.height == original.height)
+    #expect(layout.contentFrame == original.contentFrame)
+    let content = try #require(layout.attributedContent)
+    #expect(content == original.attributedContent)
+    let hovered = NSMutableAttributedString(attributedString: content)
+    NativeTimelineLinkAppearance.applyHover(to: hovered, characterIndex: 0)
+    let always = NSMutableAttributedString(attributedString: content)
+    NativeTimelineLinkAppearance.applyHover(to: always, characterIndex: nil, underlinesAllLinks: true)
+    #expect(always == hovered)
 }
 
 @MainActor
@@ -248,15 +145,8 @@ import Testing
         .resetMessageAppearance,
         .timestampFormat,
         .timestampSeconds,
-        .groupingInterval,
-        .underlineLinks,
-        .showMemberList,
-        .showActivityDetails,
-        .messageActionVisibility,
-        .showRoleColors,
-        .interfacePreview,
-        .exportInterfaceSettings,
-        .resetInterfaceSettings,
+        .alwaysShowTimestamps,
+        .composerIcons,
     ]
     let controls = SettingsCatalog.foundation.controls.filter {
         $0.destination.page == .interface
@@ -268,8 +158,7 @@ import Testing
     let searchCases: [(String, SettingsControlID)] = [
         ("clock", .timestampFormat),
         ("timestamp", .timestampFormat),
-        ("roles", .showRoleColors),
-        ("member list", .showMemberList),
+        ("roles", .roleColorDisplay),
         ("bubbles", .messageAppearance),
         ("density", .messageDensity),
         ("input bar", .composerBarAppearance),
@@ -282,4 +171,42 @@ import Testing
             "Missing Interface search result for \(term)"
         )
     }
+}
+
+@MainActor
+@Test func `Composer icon order persists and repairs duplicate or missing icons`() {
+    let preferences = SettingsPreferenceStore(defaults: InMemoryPreferences())
+    let store = AppearanceSettingsStore(preferences: preferences)
+    var settings = store.load()
+    settings.composerIcons.move([.emoji], before: .gif)
+    store.save(settings)
+    #expect(store.load().composerIcons.order == [.emoji, .gif, .sticker])
+    settings = store.load()
+    settings.composerIcons.move([.emoji, .gif], before: nil)
+    store.save(settings)
+    #expect(store.load().composerIcons.order == [.sticker, .emoji, .gif])
+    let repaired = ComposerIconLayout(storageValue: "{\"order\":[\"emoji\",\"emoji\"]}")
+    #expect(repaired.order == [.emoji, .gif, .sticker])
+}
+
+@MainActor
+@Test func `Retired appearance preferences are removed and role colour choice migrates`() {
+    let defaults = InMemoryPreferences()
+    defaults.set(false, forKey: "settings.interface.showRoleColors")
+    defaults.set(22, forKey: "settings.interface.groupingIntervalMinutes")
+    defaults.set(false, forKey: "settings.interface.showActivityDetails")
+    defaults.set("always", forKey: "settings.interface.messageActionVisibility")
+    defaults.set(true, forKey: "settings.interface.underlineLinks")
+    let preferences = SettingsPreferenceStore(defaults: defaults)
+    let store = AccessibilitySettingsStore(preferences: preferences)
+    #expect(store.load().roleColorDisplay == .hidden)
+    #expect(store.load().underlinesLinks)
+    for key in ["settings.interface.showRoleColors", "settings.interface.groupingIntervalMinutes",
+                "settings.interface.showActivityDetails", "settings.interface.messageActionVisibility"] {
+        #expect(defaults.object(forKey: key) == nil)
+    }
+    var settings = store.load()
+    settings.roleColorDisplay = .nextToNames
+    store.save(settings)
+    #expect(store.load() == settings)
 }

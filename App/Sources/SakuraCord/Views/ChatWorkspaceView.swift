@@ -190,8 +190,7 @@ private struct ChatWorkspaceSupplementaryContent: View {
                     dismissProfile: model.dismissInspectorProfile,
                     viewportIdentity: model.selectedChannelID,
                     presentation: NativeMemberListPresentation(
-                        showsActivityDetails: model.interfaceSettings.showsActivityDetails,
-                        showsRoleColors: model.interfaceSettings.showsRoleColors
+                        roleColorDisplay: model.accessibilitySettings.roleColorDisplay
                     ),
                     openGame: { model.presentedProfileGame = $0 },
                     updateViewport: model.updateMemberListViewport

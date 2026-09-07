@@ -71,18 +71,14 @@ nonisolated extension SettingsCatalog {
             keywords: ["button size", "motor", "click target", "toolbar"], scope: .appWideLocal
         ),
         control(
-            .accessibilityUnderlineLinks, page: .accessibility,
-            section: .accessibilityReadability, label: "Underline links",
-            help: "Open the canonical Appearance control for link underlining.",
-            keywords: ["hyperlink", "URL", "not color alone"], owner: .appModel,
-            scope: .appWideLocal, persistence: .notApplicable, reset: .notApplicable
+            .underlineLinks, page: .accessibility, section: .accessibilityReadability,
+            label: "Underline links", help: "Always use the hover underline for message links.",
+            keywords: ["links", "URL", "readability"], scope: .appWideLocal
         ),
         control(
-            .accessibilityMessageActions, page: .accessibility,
-            section: .accessibilityReadability, label: "Always-visible message actions",
-            help: "Open the canonical Appearance control for message action visibility.",
-            keywords: ["hover", "reply", "toolbar", "visible controls"], owner: .appModel,
-            scope: .appWideLocal, persistence: .notApplicable, reset: .notApplicable
+            .roleColorDisplay, page: .accessibility, section: .accessibilityReadability,
+            label: "Role colours", help: "Show role colours in names, next to names, or hide them.",
+            keywords: ["roles", "color", "colour", "names"], scope: .appWideLocal
         ),
         control(
             .accessibilityAnnounceTimestamp, page: .accessibility,

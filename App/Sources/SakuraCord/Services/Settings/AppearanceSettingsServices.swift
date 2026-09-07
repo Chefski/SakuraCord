@@ -121,6 +121,7 @@ nonisolated struct AppearanceSettingsSnapshot: Equatable, Sendable {
         messageSpacing: defaultMessageSpacing
     )
 
+    var composerIcons: ComposerIconLayout = .defaults
     var colorScheme: AppColorScheme
     var composerBarAppearance: ComposerBarAppearance
     var messageAppearance: MessageAppearance
@@ -179,11 +180,15 @@ final class AppearanceSettingsStore {
             messageAppearance: messageAppearance,
             messageSpacing: messageSpacing
         )
+        if case let .string(stored) = preferences.value(for: .composerIcons) {
+            value.composerIcons = ComposerIconLayout(storageValue: stored)
+        }
         value.normalize()
         return value
     }
 
     func save(_ value: AppearanceSettingsSnapshot) {
+        preferences.set(.string(value.composerIcons.storageValue), for: .composerIcons)
         preferences.set(
             .string(value.colorScheme.rawValue),
             for: .appColorScheme

@@ -366,8 +366,7 @@ final class AppModel {
             let newRows = MessageGrouping.updating(
                 existing: threadMessageRows,
                 oldMessages: oldValue,
-                newMessages: threadMessages,
-                continuationInterval: interfaceSettings.groupingInterval
+                newMessages: threadMessages
             )
             let nextRevision = threadMessageRowsRevision &+ 1
             let record = MessageRowsUpdateRecordBuilder.make(

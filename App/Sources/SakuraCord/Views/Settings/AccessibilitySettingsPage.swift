@@ -148,28 +148,20 @@ struct AccessibilitySettingsPage: View {
             .tint(SakuraCordAccentColor.color)
             .settingsControlAnchor(.accessibilityLargerTargets, state: state)
 
-            Button("Open Underline Links in Appearance…") {
-                state.navigate(
-                    to: SettingsDestination(page: .interface, section: .interfaceVisibility),
-                    controlID: .underlineLinks
-                )
+            Toggle("Underline links", isOn: $value.underlinesLinks)
+                .tint(SakuraCordAccentColor.color)
+                .settingsControlAnchor(.underlineLinks, state: state)
+            Picker("Role colours", selection: $value.roleColorDisplay) {
+                ForEach(RoleColorDisplay.allCases) { option in
+                    Text(option.title).tag(option)
+                }
             }
-            .settingsControlAnchor(.accessibilityUnderlineLinks, state: state)
-
-            Button("Open Message Actions in Appearance…") {
-                state.navigate(
-                    to: SettingsDestination(page: .interface, section: .interfaceVisibility),
-                    controlID: .messageActionVisibility
-                )
-            }
-            .settingsControlAnchor(.accessibilityMessageActions, state: state)
+            .pickerStyle(.menu)
+            .settingsControlAnchor(.roleColorDisplay, state: state)
         } header: {
             Text("Readability & Interaction", bundle: #bundle)
         } footer: {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Unread state uses weight, labels, counts, and separators; presence states use distinct shapes as well as color.")
-                Text("Link and message-action controls live in Appearance so there is only one setting for each behavior.")
-            }
+            Text("Unread state uses weight, labels, counts, and separators; presence states use distinct shapes as well as color.")
         }
     }
 

@@ -266,7 +266,6 @@ extension NativeMemberListCanvasView {
                 accessibilityRows[id] = value
                 return value
             }()
-            proxy.showsActivityDetails = presentation.showsActivityDetails
             proxy.member = member
             proxy.activation = { [weak self] member in self?.selectMember(member) }
             proxy.frame = paintedRowRect(at: index)

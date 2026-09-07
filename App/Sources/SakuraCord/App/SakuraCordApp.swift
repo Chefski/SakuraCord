@@ -90,7 +90,6 @@ struct SakuraCordApp: App {
             appModel.showInspector = GeneralWindowRestorationStore.shared
                 .memberListIsVisible
         }
-        appModel.interfaceSettings.showsMemberList = appModel.showInspector
         AppAppearanceController.shared.apply(
             appModel.appearanceSettings.colorScheme
         )

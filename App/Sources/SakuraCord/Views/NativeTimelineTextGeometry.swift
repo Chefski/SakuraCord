@@ -52,8 +52,16 @@ enum NativeTimelineLinkAppearance {
 
     static func applyHover(
         to value: NSMutableAttributedString,
-        characterIndex: Int?
+        characterIndex: Int?,
+        underlinesAllLinks: Bool = false
     ) {
+        if underlinesAllLinks {
+            value.enumerateAttribute(.link, in: NSRange(location: 0, length: value.length)) { link, range, _ in
+                guard link != nil else { return }
+                value.addAttribute(.underlineStyle, value: hoverUnderlineStyle, range: range)
+            }
+            return
+        }
         guard let characterIndex,
               characterIndex >= 0,
               characterIndex < value.length

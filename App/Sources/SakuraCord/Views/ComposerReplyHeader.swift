@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ComposerReplyHeader: View {
+    @Environment(\.roleColorDisplay) private var roleColorDisplay
     let authorName: String
     let avatarURL: URL?
     let roleColorHex: UInt32?
@@ -25,6 +26,7 @@ struct ComposerReplyHeader: View {
                     .fontWeight(.semibold)
                     .foregroundStyle(authorColor)
                     .lineLimit(1)
+                NameRoleColorIndicator(colorHex: roleColorHex)
             }
 
             Spacer(minLength: 8)
@@ -52,7 +54,7 @@ struct ComposerReplyHeader: View {
     }
 
     private var authorColor: Color {
-        roleColorHex.map(Color.init(hex:)) ?? .primary
+        roleColorDisplay == .inNames ? roleColorHex.map(Color.init(hex:)) ?? .primary : .primary
     }
 }
 

@@ -141,11 +141,16 @@ extension NativeTimelineRowPainter {
                 ),
                 color: presentedAuthor.isBot
                     ? .sakuraCordAccentColor
-                    : input.model?.interfaceSettings.showsRoleColors == false
+                    : input.model?.accessibilitySettings.roleColorDisplay != .inNames
                     ? .labelColor
                     : roleColor(author?.roleColorHex) ?? .labelColor,
                 isInteractiveHovered: input.isAuthorHovered
             )
+            if input.model?.accessibilitySettings.roleColorDisplay == .nextToNames,
+               let color = roleColor(author?.roleColorHex) {
+                color.setFill()
+                NSBezierPath(ovalIn: CGRect(x: frame.maxX + 5, y: frame.midY - 4, width: 8, height: 8)).fill()
+            }
         }
         drawMessageIdentityMetadata(input)
     }
@@ -181,14 +186,13 @@ extension NativeTimelineRowPainter {
                 color: .secondaryLabelColor
             )
         }
-        if input.showsCompactTimestamp,
+        if input.showsCompactTimestamp || input.model?.interfaceSettings.alwaysShowsTimestamps == true,
            let frame = input.layout.compactTimestampFrame
         {
             text(
                 NativeTimelineTimestamp.text(
                     for: input.row.message.timestamp,
-                    settings: input.model?.interfaceSettings ?? .defaults,
-                    includesSeconds: false
+                    settings: input.model?.interfaceSettings ?? .defaults
                 ),
                 in: frame,
                 font: NativeTimelineCompactTimestampMetrics.font,
@@ -936,6 +940,9 @@ extension NativeTimelineRowPainter {
             author.displayName,
             font: font
         )
+        let roleColor = roleColor(presentation?.roleColorHex)
+        let showsIndicator = model?.accessibilitySettings.roleColorDisplay == .nextToNames && roleColor != nil
+        let indicatorWidth: CGFloat = showsIndicator ? 14 : 0
         let authorFrame = CGRect(
             x: avatarFrame.maxX
                 + NativeTimelineReplyMetrics.horizontalSpacing,
@@ -945,7 +952,7 @@ extension NativeTimelineRowPainter {
                 max(
                     0,
                     frame.maxX - avatarFrame.maxX
-                        - NativeTimelineReplyMetrics.horizontalSpacing
+                        - NativeTimelineReplyMetrics.horizontalSpacing - indicatorWidth
                 )
             ),
             height: 20
@@ -956,9 +963,13 @@ extension NativeTimelineRowPainter {
             font: font,
             color: author.isBot
                 ? .sakuraCordAccentColor
-                : roleColor(presentation?.roleColorHex) ?? .labelColor
+                : model?.accessibilitySettings.roleColorDisplay == .inNames ? roleColor ?? .labelColor : .labelColor
         )
-        return authorFrame
+        if showsIndicator, let roleColor {
+            roleColor.setFill()
+            NSBezierPath(ovalIn: CGRect(x: authorFrame.maxX + 5, y: authorFrame.midY - 4, width: 8, height: 8)).fill()
+        }
+        return CGRect(x: authorFrame.minX, y: authorFrame.minY, width: authorFrame.width + indicatorWidth, height: authorFrame.height)
     }
 
     static func replyConnector(in connectorFrame: CGRect) {

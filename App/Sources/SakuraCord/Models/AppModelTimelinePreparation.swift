@@ -17,8 +17,7 @@ extension AppModel {
             messageRows = MessageGrouping.updating(
                 existing: messageRows,
                 oldMessages: oldMessages,
-                newMessages: restoredMessages,
-                continuationInterval: interfaceSettings.groupingInterval
+                newMessages: restoredMessages
             )
         }
         publishMessageRowsUpdate(invalidatesAllRows: true)
@@ -29,14 +28,12 @@ extension AppModel {
         for messages: [Message],
         priority: TaskPriority
     ) async -> [MessageRowPresentation] {
-        let groupingInterval = interfaceSettings.groupingInterval
         let rows = await AppPerformanceSignposts.measure(
             "TimelineRowGrouping"
         ) {
             await Task.detached(priority: priority) {
                 await MessageGrouping.rowsCooperatively(
-                    for: messages,
-                    continuationInterval: groupingInterval
+                    for: messages
                 )
             }.value
         }
@@ -47,9 +44,7 @@ extension AppModel {
                 model: self,
                 baseFontSize: row.message.type.hasGeneratedContent
                     ? row.textPlan.baseFontSize
-                    : InterfaceTypographyMetrics.messageTextSize,
-                underlinesLinks: !row.message.type.hasGeneratedContent
-                    && interfaceSettings.underlinesLinks
+                    : InterfaceTypographyMetrics.messageTextSize
             )
         }
         guard !preparations.isEmpty else { return rows }
