@@ -2018,11 +2018,16 @@ private func downArrowKeyEvent(
 }
 
 @MainActor
-@Test func `retry resends the exact failed draft through sending and confirmed states`() async throws {
+@Test(arguments: [false, true])
+func `retry resends the exact failed draft through sending and confirmed states`(timesOut: Bool) async throws {
     let provider = TypingTestProvider()
     let model = AppModel(launchMode: .offlineTesting, provider: provider)
     await model.start()
-    await provider.failNextSend()
+    if timesOut {
+        await provider.timeOutNextSend()
+    } else {
+        await provider.failNextSend()
+    }
     let attachment = ForumPostAttachment(
         url: URL(fileURLWithPath: "/tmp/sakuracord-retry-image.png"),
         filename: "renamed-image.png",
@@ -2234,23 +2239,68 @@ private func downArrowKeyEvent(
 }
 
 @MainActor
-@Test func `ambiguous timeout keeps the optimistic message pending`() async {
+@Test func `timed out send can be discarded without replaying the request`() async throws {
     let provider = TypingTestProvider()
     let model = AppModel(launchMode: .offlineTesting, provider: provider)
     await model.start()
     await provider.timeOutNextSend()
 
-    model.updateDraft("await reconciliation")
+    model.updateDraft("timed out message")
     let didSend = await model.send()
     #expect(!didSend)
 
-    let pending = model.messages.last { $0.content == "await reconciliation" }
-    #expect(pending?.outboxState == .awaitingReconciliation)
-    #expect(
-        pending.map {
-            MessageOutboxPresentation.textOpacity(for: $0.outboxState)
-        } == 0.55
+    let failed = try #require(model.messages.last { $0.content == "timed out message" })
+    let nonce = try #require(failed.nonce)
+    #expect(failed.outboxState == .failed)
+    #expect(model.composer.outbox.draftsByNonce[nonce] != nil)
+    #expect(await provider.sendCount == 1)
+
+    model.discardFailedOutgoingMessage(failed)
+
+    #expect(model.messages.allSatisfy { $0.nonce != nonce })
+    #expect(model.composer.outbox.draftsByNonce[nonce] == nil)
+    #expect(await provider.sendCount == 1)
+}
+
+@MainActor
+@Test(arguments: [false, true])
+func `Gateway confirmation wins before or after a send timeout`(confirmsBeforeTimeout: Bool) async throws {
+    let provider = TypingTestProvider()
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    await provider.timeOutNextSend()
+    await provider.suspendNextSend()
+    model.updateDraft("confirmed through Gateway")
+    let send = Task { await model.send() }
+    await provider.waitUntilSendStarts()
+    let pending = try #require(model.messages.last { $0.content == "confirmed through Gateway" })
+    let nonce = try #require(pending.nonce)
+    let confirmed = Message(
+        id: MessageID(rawValue: 500),
+        channelID: pending.channelID,
+        author: pending.author,
+        content: pending.content,
+        nonce: nonce
     )
+
+    if confirmsBeforeTimeout {
+        model.consumeImmediately(.messageCreated(confirmed))
+    }
+    await provider.releaseSend()
+    #expect(await send.value == confirmsBeforeTimeout)
+    if !confirmsBeforeTimeout {
+        #expect(model.outgoingState(nonce: nonce, channelID: pending.channelID) == .failed)
+        model.consumeImmediately(.messageCreated(confirmed))
+    }
+
+    let reconciled = model.messages.filter { $0.nonce == nonce }
+    #expect(reconciled.count == 1)
+    #expect(reconciled.first?.id == confirmed.id)
+    #expect(reconciled.first?.outboxState == .confirmed)
+    #expect(model.composer.outbox.draftsByNonce[nonce] == nil)
+    var staleFailedMessage = pending
+    staleFailedMessage.outboxState = .failed
+    #expect(!(await model.retrySending(staleFailedMessage)))
     #expect(await provider.sendCount == 1)
 }
 
@@ -2511,15 +2561,8 @@ private actor TypingTestProvider: ChatProvider {
         sendCount += 1
         sentNonces.append(draft.nonce)
         sentDrafts.append(draft)
-        if let failure = nextSendFailure {
-            nextSendFailure = nil
-            switch failure {
-            case .definite:
-                throw ChatProviderError.invalidRequest("Synthetic send failure")
-            case .timedOut:
-                throw URLError(.timedOut)
-            }
-        }
+        let failure = nextSendFailure
+        nextSendFailure = nil
         if suspendsNextSend {
             suspendsNextSend = false
             didStartSuspendedSend = true
@@ -2527,6 +2570,14 @@ private actor TypingTestProvider: ChatProvider {
             sendStartedWaiter = nil
             await withCheckedContinuation { continuation in
                 sendReleaseWaiter = continuation
+            }
+        }
+        if let failure {
+            switch failure {
+            case .definite:
+                throw ChatProviderError.invalidRequest("Synthetic send failure")
+            case .timedOut:
+                throw URLError(.timedOut)
             }
         }
         nextMessageID += 1

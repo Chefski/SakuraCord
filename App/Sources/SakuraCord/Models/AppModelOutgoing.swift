@@ -240,15 +240,17 @@ extension AppModel {
             return true
         } catch {
             guard isCurrentAccountSession(session) else { return false }
-            recoverSlowmode(from: error, in: outgoing.channelID)
-            let state: OutboxState
-            if (error as? URLError)?.code == .timedOut {
-                state = .awaitingReconciliation
-                updateOutgoingState(state, nonce: outgoing.nonce, channelID: outgoing.channelID)
-            } else {
-                state = .failed
-                updateOutgoingState(state, nonce: outgoing.nonce, channelID: outgoing.channelID)
+            // A Gateway confirmation is authoritative even if the REST request
+            // subsequently times out or fails on the retired transport.
+            if outgoingState(nonce: outgoing.nonce, channelID: outgoing.channelID) == .confirmed {
+                return true
             }
+            recoverSlowmode(from: error, in: outgoing.channelID)
+            // A timeout ends this attempt without proving whether it was delivered.
+            // Keep the draft and nonce for explicit retry or discard; a late
+            // Gateway confirmation can still reconcile the failed message.
+            let state = OutboxState.failed
+            updateOutgoingState(state, nonce: outgoing.nonce, channelID: outgoing.channelID)
             let nsError = error as NSError
             Self.messageSendLogger.error(
                 """
