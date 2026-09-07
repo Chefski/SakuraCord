@@ -10,6 +10,9 @@ struct InterfaceSettingsPage: View {
         SettingsPageForm(page: .interface, state: state) {
             InterfaceMessagesSection(
                 value: $appearanceValue,
+                interface: value,
+                accessibility: model.accessibilitySettings,
+                chat: model.chatSettings,
                 reset: resetMessageAppearance,
                 state: state
             )
@@ -37,6 +40,9 @@ struct InterfaceSettingsPage: View {
 
 private struct InterfaceMessagesSection: View {
     @Binding var value: AppearanceSettingsSnapshot
+    let interface: InterfaceSettingsSnapshot
+    let accessibility: AccessibilitySettingsSnapshot
+    let chat: ChatSettingsSnapshot
     let reset: () -> Void
     let state: SettingsViewState
 
@@ -80,6 +86,11 @@ private struct InterfaceMessagesSection: View {
                 "\(Int(value.messageSpacing)) points between messages"
             )
             .settingsControlAnchor(.messageDensity, state: state)
+
+            MessageAppearancePreview(
+                appearance: value, interface: interface,
+                accessibility: accessibility, chat: chat
+            )
 
             Button("Reset to Defaults", action: reset)
                 .disabled(isUsingDefaults)

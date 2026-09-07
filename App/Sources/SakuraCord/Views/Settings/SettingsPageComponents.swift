@@ -60,7 +60,7 @@ struct SettingsPageForm<Content: View>: View {
 private extension SettingsPageID {
     var showsConstructionNotice: Bool {
         switch self {
-        case .profiles, .appearance, .privacySafety, .storageDownloads, .diagnostics,
+        case .profiles, .interface, .appearance, .privacySafety, .storageDownloads, .diagnostics,
              .softwareUpdates, .extensions, .about:
             false
         default:

@@ -131,6 +131,24 @@ public actor MockChatProvider: ChatProvider {
         }
     }
 
+    /// A self-contained local conversation for interactive previews.
+    public init(snapshot: BootstrapSnapshot, messages: [Message]) {
+        currentUser = snapshot.currentUser
+        self.snapshot = snapshot
+        membersByGuild = [:]
+        emojisByGuild = [:]
+        messagesByChannel = Dictionary(grouping: messages, by: \.channelID)
+        pinnedAtByMessageID = Dictionary(
+            uniqueKeysWithValues: messages.filter(\.isPinned).map { ($0.id, $0.timestamp) }
+        )
+        pinMutationFailureStatus = nil
+        forumPostsByChannel = [:]
+        profilesByUser = Dictionary(uniqueKeysWithValues: snapshot.knownUsers.map {
+            ($0.id, UserProfile(user: $0))
+        })
+        nextMessageID = (messages.map { $0.id.rawValue }.max() ?? 9000) + 1
+    }
+
     public func bootstrap() async throws -> BootstrapSnapshot {
         continuation?.yield(.connectionChanged(.connecting))
         try await Task.sleep(for: .milliseconds(180))
