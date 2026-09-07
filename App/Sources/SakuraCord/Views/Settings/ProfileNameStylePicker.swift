@@ -76,7 +76,12 @@ struct ProfileNameStylePicker: View {
     private func surprise() {
         let catalog = DiscordProfileNameStyles.catalog
         guard let font = catalog.fonts.randomElement(), let effect = ProfileNameEffect.allCases.randomElement() else { return }
-        let palettes = ProfileStyleColorOptions.palettes(for: effect)
+        let palettes: [[UInt32]] = switch effect {
+        case .gradient: catalog.gradients
+        case .gummy: catalog.gummyPalettes
+        case .prism: catalog.prismPalettes
+        default: catalog.solidColors.map { [$0] }
+        }
         draft = DisplayNameStyle(fontID: font.id, effectID: effect.rawValue,
                                  colors: palettes.randomElement() ?? DiscordProfileNameStyles.defaultColors(for: effect, darkAppearance: colorScheme == .dark))
     }

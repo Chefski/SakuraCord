@@ -166,8 +166,7 @@ private struct ProfileThemeTile: View {
     let height: CGFloat
     @Environment(\.displayScale) private var displayScale
     @State private var theme = ProfileThemeState()
-    @State private var primaryIsPresented = false
-    @State private var accentIsPresented = false
+    @State private var isColorPickerPresented = false
     @State private var isHovered = false
 
     private var colors: ProfileThemeColors {
@@ -183,18 +182,21 @@ private struct ProfileThemeTile: View {
     private var accentColor: UInt32 { theme.colors(for: profile, scale: displayScale, isPreview: true)[1] }
 
     var body: some View {
-        VStack {
-            colorButton(isPrimary: true)
-            Spacer()
-            colorButton(isPrimary: false)
+        Button { isColorPickerPresented = true } label: {
+            ConcentricRectangle(cornerRadius: 8)
+                .fill(LinearGradient(colors: [Color(hex: primaryColor), Color(hex: accentColor)], startPoint: .top, endPoint: .bottom))
+                .overlay { Image(systemName: "pencil").foregroundStyle(.white).shadow(radius: 1) }
+                .frame(maxWidth: .infinity)
+                .frame(height: height)
+                .contentShape(ConcentricRectangle(cornerRadius: 8))
         }
-        .padding(6)
-        .frame(maxWidth: .infinity)
-        .frame(height: height)
-        .background(
-            LinearGradient(colors: [Color(hex: primaryColor), Color(hex: accentColor)], startPoint: .top, endPoint: .bottom),
-            in: ConcentricRectangle(cornerRadius: 8)
-        )
+        .buttonStyle(.plain)
+        .accessibilityLabel("Profile theme colours")
+        .sakuraCordColorPicker(isPresented: $isColorPickerPresented, colors: Binding(get: {
+            [primaryColor, accentColor]
+        }, set: { colors in
+            editor.setTheme(ProfileThemeColors(primary: colors[0], accent: colors[1]))
+        }), colorCount: 2 ... 2)
         .overlay(alignment: .topTrailing) {
             if canReset, isHovered {
                 Button { editor.setTheme(nil) } label: {
@@ -213,26 +215,6 @@ private struct ProfileThemeTile: View {
         .disabled(!editor.isNitro)
         .task(id: theme.source(for: profile, scale: displayScale, isPreview: true)) {
             await theme.load(theme.source(for: profile, scale: displayScale, isPreview: true))
-        }
-    }
-
-    private func colorButton(isPrimary: Bool) -> some View {
-        let color = isPrimary ? primaryColor : accentColor
-        return Button { if isPrimary { primaryIsPresented = true } else { accentIsPresented = true } } label: {
-            ConcentricRectangle(cornerRadius: 5).fill(Color(hex: color))
-                .frame(width: 20, height: 20)
-                .padding(2)
-                .overlay { ConcentricRectangle(cornerRadius: 8).stroke(.white, lineWidth: 1.5).shadow(color: .black.opacity(0.5), radius: 1) }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(isPrimary ? "Theme Primary Colour" : "Theme Accent Colour")
-        .profileEditorOverlay(isPresented: isPrimary ? $primaryIsPresented : $accentIsPresented, title: "Choose Colour") {
-            ProfileColorPopover(value: Binding(get: {
-                isPrimary ? primaryColor : accentColor
-            }, set: { value in
-                editor.setTheme(ProfileThemeColors(primary: isPrimary ? value : primaryColor, accent: isPrimary ? accentColor : value))
-            }))
-            .disabled(!editor.isNitro)
         }
     }
 }

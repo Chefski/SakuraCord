@@ -265,6 +265,11 @@ where Presentation.ID: Hashable {
                       self.overlayView?.isTopmostPresentedOverlay == true,
                       event.window === window || event.window == nil && NSApp.keyWindow === window
                 else { return event }
+                // A nested popover owns Escape even when this modal's local
+                // monitor receives the event before the popover's monitor.
+                if let window, PopoverEscapeKeyCoordinator.shared.dismissTopmostPopover(in: window) {
+                    return nil
+                }
                 self.overlayView?.animationState.handleEscape()
                 return nil
             }
