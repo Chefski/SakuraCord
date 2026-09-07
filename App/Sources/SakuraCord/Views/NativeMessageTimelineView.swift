@@ -20,6 +20,7 @@ private final class NativeTimelineInputShieldScrollView: NSScrollView {
 }
 
 struct NativeMessageTimelineView: NSViewRepresentable {
+    @Environment(\.openSettings) fileprivate var openSettings
     let model: AppModel
     let conversation: NativeTimelineConversation
     let beginning: NativeTimelineBeginning?
@@ -1100,6 +1101,14 @@ extension NativeMessageTimelineCoordinator {
                 checkForUpdates: {
                     (NSApp.delegate as? AppDelegate)?
                         .updateController.checkForUpdates()
+                },
+                openSettings: { destination in
+                    SettingsNavigationRouter.shared.open(
+                        page: destination.page,
+                        section: destination.section,
+                        controlID: destination.controlID
+                    )
+                    parent.openSettings()
                 },
                 applyTheme: { [weak model = parent.model] sharedTheme in
                     SakuraCordThemeStore.shared.apply(sharedTheme.theme)

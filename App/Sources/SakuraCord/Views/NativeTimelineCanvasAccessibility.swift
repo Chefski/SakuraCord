@@ -777,6 +777,7 @@ extension NativeTimelineCanvasView {
             parent: parent
         )
         appendSakuraCordDeepLinkAccessibility(
+            message: message,
             to: &children,
             layout: layout,
             rowIndex: rowIndex,
@@ -1116,6 +1117,7 @@ extension NativeTimelineCanvasView {
     }
 
     func appendSakuraCordDeepLinkAccessibility(
+        message: Message,
         to children: inout [Any],
         layout: NativeTimelineRowLayout,
         rowIndex: Int,
@@ -1141,14 +1143,7 @@ extension NativeTimelineCanvasView {
                 ),
                 parent: group
             ) { [weak self] in
-                guard let actions = self?.actions else { return false }
-                switch region.action {
-                case .checkForUpdates, .updateToApplyTheme:
-                    actions.checkForUpdates()
-                case let .applyTheme(theme):
-                    actions.applyTheme(theme)
-                }
-                return true
+                self?.activateSakuraCordDeepLink(region.action, message: message) ?? false
             }
             group.setAccessibilityChildren([button])
             children.append(group)

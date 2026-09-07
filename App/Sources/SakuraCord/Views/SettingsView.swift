@@ -82,6 +82,8 @@ struct SettingsView: View {
         }
         .task(id: navigationRouter.request?.id) {
             guard let request = navigationRouter.request else { return }
+            state.searchText = ""
+            dismissSearchFocus()
             state.navigate(
                 to: request.destination,
                 controlID: request.controlID

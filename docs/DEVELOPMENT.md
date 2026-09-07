@@ -48,6 +48,44 @@ Use `./script/build_and_run.sh run-release` to build the optimized release
 configuration, apply the release credential restrictions, and launch the
 staged app bundle.
 
+## Settings cards in chat
+
+Paste these HTTPS links into a SakuraCord conversation to render an action card.
+Every path below uses `https://sakuracord.app/settings/` as its prefix.
+
+| Destination | Path after the prefix |
+| --- | --- |
+| Message composer appearance (Default / Legacy) | `appearance/composer` |
+| Message appearance (Default / Bubbles) | `appearance/messages` |
+| Edit Profile | `profiles` |
+| Manage Accounts | `my-account` |
+| General | `general` |
+| Appearance | `appearance` |
+| Theme | `theme` |
+| Chat | `chat` |
+| Notifications | `notifications` |
+| Voice & Video | `voice-video` |
+| Accessibility | `accessibility` |
+| Keyboard Shortcuts | `keyboard-shortcuts` |
+| Privacy | `privacy-safety` |
+| Storage & Downloads | `storage-downloads` |
+| Diagnostics | `diagnostics` |
+| Updates | `software-updates` |
+| Extensions | `extensions` |
+| About | `about` |
+| Export and send sanitised diagnostics | `diagnostics/send` |
+
+The two appearance controls use the same reveal and highlight as Settings search.
+The diagnostics action asks for confirmation naming the source conversation,
+checks message and attachment permissions, and sends the existing sanitised API
+log export there without changing the composer draft. Threads, forum posts, and
+voice chats keep their own source channel ID even if navigation changes. A
+confirmation from a replaced account cannot send. Failed uploads use the normal
+outbox retry/discard flow. No destination can be supplied through the URL.
+
+The existing `update` action and `themes/<token>` shared-theme links remain
+supported. Card rendering follows the automatic-link-preview preference.
+
 ## Local credential mode
 
 For repeated ad-hoc debug builds that cannot conveniently use Keychain, a

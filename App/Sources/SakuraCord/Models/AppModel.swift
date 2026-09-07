@@ -305,6 +305,7 @@ final class AppModel {
     var isSwitchingAccounts = false
     var savedAccounts: [SavedAccount] = []
     var activeAccountID: String?
+    @ObservationIgnored var diagnosticsShareInFlight = false
     var sessionState: SessionState
     let launchMode: AppLaunchMode
     let typingState: TypingStateModel

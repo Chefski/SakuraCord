@@ -2347,6 +2347,107 @@ private actor SequencedAttachmentUploadTestUploader: ExternalAttachmentUploading
     }
 }
 
+@MainActor
+@Test(arguments: [UInt64(10), 11, 13, 14])
+func `Diagnostics sharing binds confirmation to its source and preserves drafts and retry files`(sourceID: UInt64) async throws {
+    let provider = TypingTestProvider()
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    let source = ChannelID(rawValue: sourceID)
+    let thread = MessageThreadSummary(id: ChannelID(rawValue: 13), parentID: ChannelID(rawValue: 10), name: "thread")
+    let post = MessageThreadSummary(id: ChannelID(rawValue: 14), parentID: ChannelID(rawValue: 15), name: "post")
+    model.snapshot?.channels.append(Channel(id: ChannelID(rawValue: 15), guildID: nil, name: "forum", kind: .forum))
+    model.snapshot?.threads = [thread, post]
+    model.openThread = thread
+    let staged = URL(fileURLWithPath: "/tmp/sakuracord-diagnostics-staged")
+    await provider.failNextSend()
+    let sent = await model.shareDiagnostics(in: source, confirm: { name in
+        #expect(name == [10: "text", 11: "voice", 13: "thread", 14: "post"][sourceID])
+        #expect(await model.shareDiagnostics(in: source, confirm: { _ in
+            Issue.record("Duplicate click must not present another confirmation")
+            return true
+        }) == false)
+        model.selectedChannelID = ChannelID(rawValue: 12)
+        model.updateDraft("unfinished message")
+        model.addComposerAttachments([staged], to: .channel)
+        return true
+    }, export: { Data("sanitised fixture".utf8) })
+    #expect(!sent)
+    let outgoing = try #require(await provider.sentDrafts.first)
+    #expect(outgoing.channelID == source)
+    #expect(outgoing.content.isEmpty)
+    #expect(model.draft == "unfinished message")
+    #expect(model.channelComposerAttachments.map(\.url) == [staged])
+    let file = try #require(outgoing.attachmentURLs.first)
+    #expect(try String(contentsOf: file, encoding: .utf8) == "sanitised fixture")
+    let failed = try #require(model.composer.outbox.draftsByNonce[outgoing.nonce])
+    #expect(await model.performOutgoingSend(failed, isRetry: true))
+    #expect(await provider.sentDrafts.map(\.channelID) == [source, source])
+    #expect(!FileManager.default.fileExists(atPath: file.path))
+}
+
+@MainActor
+@Test(arguments: ["cancel", "session", "permission", "oversize", "export-error"])
+func `Diagnostics sharing stops before delivery when confirmation or export becomes invalid`(reason: String) async {
+    let provider = TypingTestProvider()
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    let source = ChannelID(rawValue: 10)
+    let sent = await model.shareDiagnostics(in: source, confirm: { _ in
+        if reason == "session" { model.invalidateAccountSession() }
+        if reason == "permission" {
+            model.snapshot?.channels.removeAll { $0.id == source }
+            model.visibleChannels.removeAll { $0.id == source }
+        }
+        return reason != "cancel"
+    }, export: {
+        if reason == "export-error" { throw CocoaError(.fileWriteUnknown) }
+        if reason == "oversize" { return Data(count: Int(model.discordAttachmentLimit) + 1) }
+        Issue.record("A rejected confirmation must not export diagnostics")
+        return Data()
+    })
+    #expect(!sent)
+    #expect(await provider.sendCount == 0)
+    #expect(model.composer.outbox.draftsByNonce.isEmpty)
+    #expect(!model.diagnosticsShareInFlight)
+}
+
+@MainActor
+@Test func `Diagnostics require source send and attachment permissions for channels threads and voice chat`() {
+    let model = AppModel(launchMode: .offlineTesting)
+    let user = User(id: UserID(rawValue: 1), username: "me", displayName: "Me")
+    let permissions = DiscordPermissionBits.viewChannel | DiscordPermissionBits.readMessageHistory
+        | DiscordPermissionBits.sendMessages | DiscordPermissionBits.sendMessagesInThreads
+        | DiscordPermissionBits.attachFiles | DiscordPermissionBits.connect
+    let guild = Guild(id: GuildID(rawValue: 20), name: "Guild", currentUserPermissions: permissions)
+    let channel = Channel(id: ChannelID(rawValue: 21), guildID: guild.id, name: "source", kind: .text)
+    let voice = Channel(id: ChannelID(rawValue: 22), guildID: guild.id, name: "voice", kind: .voice)
+    let thread = MessageThreadSummary(id: ChannelID(rawValue: 23), guildID: guild.id, parentID: channel.id, name: "thread")
+    model.snapshot = BootstrapSnapshot(currentUser: user, guilds: [guild], channels: [channel, voice], members: [])
+    model.snapshot?.threads = [thread]
+    model.serverRailGuildsByID = [guild.id: guild]
+    model.currentUserRoleIDsByGuild[guild.id] = []
+    for id in [channel.id, voice.id, thread.id] {
+        #expect(model.diagnosticsDestinationName(in: id) != nil)
+    }
+    for denied in [DiscordPermissionBits.attachFiles, DiscordPermissionBits.viewChannel] {
+        var restricted = guild
+        restricted.currentUserPermissions = permissions & ~denied
+        model.serverRailGuildsByID[guild.id] = restricted
+        for id in [channel.id, voice.id, thread.id] {
+            #expect(model.diagnosticsDestinationName(in: id) == nil)
+        }
+    }
+    var restricted = guild
+    restricted.currentUserPermissions = permissions & ~DiscordPermissionBits.sendMessagesInThreads
+    model.serverRailGuildsByID[guild.id] = restricted
+    #expect(model.diagnosticsDestinationName(in: channel.id) != nil)
+    #expect(model.diagnosticsDestinationName(in: thread.id) == nil)
+    model.serverRailGuildsByID[guild.id] = guild
+    model.snapshot?.threads[0].isLocked = true
+    #expect(model.diagnosticsDestinationName(in: thread.id) == nil)
+}
+
 private actor TypingTestProvider: ChatProvider {
     private enum SendFailure {
         case definite

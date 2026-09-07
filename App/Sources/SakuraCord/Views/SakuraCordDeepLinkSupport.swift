@@ -2,12 +2,18 @@ import AppKit
 import Foundation
 
 nonisolated enum SakuraCordDeepLinkAction: Hashable, Sendable {
+    case openSettings(SettingsDeepLinkDestination)
+    case sendDiagnostics
     case checkForUpdates
     case applyTheme(SakuraCordSharedTheme)
     case updateToApplyTheme(preview: SakuraCordSharedTheme?)
 
     var title: String {
         switch self {
+        case let .openSettings(destination):
+            destination.title
+        case .sendDiagnostics:
+            "Send Diagnostics"
         case .checkForUpdates:
             "Update SakuraCord"
         case .applyTheme:
@@ -19,6 +25,10 @@ nonisolated enum SakuraCordDeepLinkAction: Hashable, Sendable {
 
     var description: String {
         switch self {
+        case .openSettings:
+            "Open SakuraCord Settings."
+        case .sendDiagnostics:
+            "Send sanitised local diagnostics to this conversation after confirmation."
         case .checkForUpdates:
             "Ask SakuraCord to check its signed update feed without leaving the conversation."
         case .applyTheme:
@@ -30,6 +40,10 @@ nonisolated enum SakuraCordDeepLinkAction: Hashable, Sendable {
 
     var buttonTitle: String {
         switch self {
+        case .openSettings:
+            "Open Settings"
+        case .sendDiagnostics:
+            "Send Diagnostics…"
         case .checkForUpdates, .updateToApplyTheme:
             "Check for Updates"
         case .applyTheme:
@@ -39,6 +53,10 @@ nonisolated enum SakuraCordDeepLinkAction: Hashable, Sendable {
 
     var systemImage: String {
         switch self {
+        case let .openSettings(destination):
+            destination.metadata.systemImage
+        case .sendDiagnostics:
+            "doc.text.magnifyingglass"
         case .checkForUpdates, .updateToApplyTheme:
             "arrow.triangle.2.circlepath"
         case .applyTheme:
@@ -48,6 +66,10 @@ nonisolated enum SakuraCordDeepLinkAction: Hashable, Sendable {
 
     var componentID: String {
         switch self {
+        case let .openSettings(destination):
+            "sakuracord-settings-\(destination.page.rawValue)-\(destination.controlID?.rawValue ?? "overview")"
+        case .sendDiagnostics:
+            "sakuracord-send-diagnostics"
         case .checkForUpdates:
             "sakuracord-deeplink-check-for-updates"
         case .applyTheme:
@@ -59,6 +81,8 @@ nonisolated enum SakuraCordDeepLinkAction: Hashable, Sendable {
 
     var themePreview: SakuraCordSharedTheme? {
         switch self {
+        case .openSettings, .sendDiagnostics:
+            nil
         case .checkForUpdates:
             nil
         case let .applyTheme(theme):
@@ -70,6 +94,10 @@ nonisolated enum SakuraCordDeepLinkAction: Hashable, Sendable {
 
     var accessibilityHelp: String {
         switch self {
+        case let .openSettings(destination):
+            "Opens \(destination.title) in SakuraCord Settings"
+        case .sendDiagnostics:
+            "Asks to send sanitised local diagnostics to this conversation"
         case .checkForUpdates:
             "Checks SakuraCord's signed update feed"
         case .applyTheme:
@@ -120,6 +148,13 @@ nonisolated enum SakuraCordDeepLinkPresentation {
         let pathComponents = components.path.split(separator: "/")
         if pathComponents == ["settings", "update"] {
             return .checkForUpdates
+        }
+        if pathComponents == ["settings", "diagnostics", "send"] {
+            guard components.query == nil, components.fragment == nil else { return nil }
+            return .sendDiagnostics
+        }
+        if let destination = SettingsDeepLinkDestination.parse(pathComponents) {
+            return .openSettings(destination)
         }
         guard pathComponents.count == 3,
               pathComponents[0] == "settings",

@@ -410,3 +410,35 @@ import Testing
         )
     }
 }
+
+@MainActor
+@Test func `Settings cards resolve every category and reveal appearance controls through search navigation`() throws {
+    for page in SettingsPageID.allCases {
+        let url = try #require(URL(string: "https://sakuracord.app/settings/\(page.deepLinkPath)"))
+        #expect(SakuraCordDeepLinkPresentation.action(for: url) == .openSettings(.init(page: page)))
+    }
+    for (path, control) in [("composer", SettingsControlID.composerBarAppearance), ("messages", .messageAppearance)] {
+        let url = try #require(URL(string: "https://sakuracord.app/settings/appearance/\(path)"))
+        guard case let .openSettings(destination)? = SakuraCordDeepLinkPresentation.action(for: url) else {
+            Issue.record("Expected a Settings destination")
+            continue
+        }
+        let state = SettingsViewState()
+        state.navigate(to: .init(page: destination.page, section: destination.section), controlID: try #require(destination.controlID))
+        #expect(state.selectedPage == .interface)
+        #expect(state.revealRequest?.controlID == control)
+        #expect(state.highlightedControlID == control)
+        #expect(state.revealRequest?.destination.section == .interfaceMessages)
+    }
+    #expect(SakuraCordDeepLinkPresentation.all(in: "https://sakuracord.app/settings/diagnostics/send").map(\.action) == [.sendDiagnostics])
+    for url in [
+        "https://sakuracord.app.evil.test/settings/diagnostics/send",
+        "https://user@sakuracord.app/settings/diagnostics/send",
+        "http://sakuracord.app/settings/diagnostics/send",
+        "https://sakuracord.app/settings/diagnostics/send?channel=12",
+        "https://sakuracord.app/settings/diagnostics/send#12",
+        "https://sakuracord.app/settings/appearance/unknown",
+    ] {
+        #expect(SakuraCordDeepLinkPresentation.all(in: url).isEmpty)
+    }
+}
