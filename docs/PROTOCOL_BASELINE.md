@@ -1038,6 +1038,13 @@ Native authentication is implemented without an embedded Discord login page:
   valid account ID, at which point it enters `KeychainCredentialStore` exactly
   once. Cancellation, bootstrap failure, or an omitted Ready user discards it.
 
+Explicit import from the local stable Discord desktop client reuses the same
+pending-credential Gateway path without replaying login or issuing a pre-Gateway
+`GET /users/@me`. The local account ID is only a selection constraint: persistence
+requires an exact match with the authoritative `READY.user` ID. It introduces no
+new Discord endpoint. The source-storage and macOS authorization boundary is
+documented in [Authentication and persistence](ARCHITECTURE.md#authentication-and-persistence).
+
 Passwords, challenge solutions, and credentials are never written to
 preferences, fixtures, GRDB, or logs. The server-issued fingerprint and
 installation ID are persisted only in local preferences to reproduce the

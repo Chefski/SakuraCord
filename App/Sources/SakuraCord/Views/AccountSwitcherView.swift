@@ -54,7 +54,8 @@ struct AccountSwitcherView: View {
         .sheet(isPresented: $showsLogin) {
             DiscordLoginView(
                 showsCancel: true,
-                networkingEnabled: !model.isDiscordNetworkingDisabled
+                networkingEnabled: !model.isDiscordNetworkingDisabled,
+                savedAccountIDs: Set(model.savedAccounts.map(\.accountID))
             ) { credential in
                 let connected = await model.connectPendingAuthenticatedAccount(
                     credential,

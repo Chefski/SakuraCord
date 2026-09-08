@@ -14,6 +14,7 @@ struct DiscordLoginView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let showsCancel: Bool
     let networkingEnabled: Bool
+    let savedAccountIDs: Set<String>
     let onConnected: @MainActor (PendingDiscordCredential) async -> String?
 
     @State private var authenticator: any DiscordSignInAuthenticating
@@ -36,6 +37,8 @@ struct DiscordLoginView: View {
     @State private var remoteAuthState: DiscordRemoteAuthPresentationState = .connecting
     @State private var automaticRemoteAuthRestarts = 0
     @State private var isHandingOffCredential = false
+    @State private var accountImportState: DiscordAccountImportState?
+    @State private var importingAccountID: String?
     @State private var smsCooldownEndsAt: Date?
     @State private var welcomeProgress = 0.0
     @State private var formVisible = false
@@ -48,10 +51,12 @@ struct DiscordLoginView: View {
         showsCancel: Bool,
         networkingEnabled: Bool,
         offlineSignIn: Bool = false,
+        savedAccountIDs: Set<String> = [],
         onConnected: @escaping @MainActor (PendingDiscordCredential) async -> String?
     ) {
         self.showsCancel = showsCancel
         self.networkingEnabled = networkingEnabled
+        self.savedAccountIDs = savedAccountIDs
         self.onConnected = onConnected
         let offlineService = offlineSignIn ? OfflineSignInService() : nil
         _offlineService = State(initialValue: offlineService)
@@ -75,9 +80,20 @@ struct DiscordLoginView: View {
 
             GeometryReader { geometry in
                 ScrollView {
-                    ZStack {
+                    VStack(spacing: 22) {
                         SakuraCordAuthenticationCard {
-                            if let challenge {
+                            if let accountImportState {
+                                DiscordAccountImportView(
+                                    state: accountImportState,
+                                    savedAccountIDs: savedAccountIDs,
+                                    importingAccountID: importingAccountID,
+                                    errorMessage: errorMessage,
+                                    isTransitioning: isTransitioning,
+                                    goBack: goBackFromImport,
+                                    retry: loadImportAccounts,
+                                    selectAccount: importAccount
+                                )
+                            } else if let challenge {
                                 DiscordMFAForm(
                                     challenge: challenge,
                                     selectedMethod: selectedMFAMethod,
@@ -124,7 +140,15 @@ struct DiscordLoginView: View {
                                 }
                             }
                         }
-                        .frame(maxWidth: challenge == nil ? 800 : 480)
+                        .frame(maxWidth: accountImportState != nil ? 620 : challenge == nil ? 800 : 480)
+                        if challenge == nil, accountImportState == nil, networkingEnabled, offlineService == nil {
+                            Button("Import account from Discord", systemImage: "square.and.arrow.down") {
+                                beginAccountImport()
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                            .disabled(isWorking)
+                        }
                     }
                     .padding(.horizontal, 34)
                     .padding(.vertical, 42)
@@ -155,7 +179,7 @@ struct DiscordLoginView: View {
 
             windowDragRegion
 
-            if showsCancel, challenge == nil {
+            if showsCancel, challenge == nil, accountImportState == nil {
                 SakuraCordAuthenticationCloseButton { dismiss() }
                 .padding(20)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
@@ -202,6 +226,72 @@ struct DiscordLoginView: View {
             Task { await remoteAuthManager.disconnect() }
             if let captchaChallenge {
                 Task { await authenticator.cancelCaptcha(challengeID: captchaChallenge.id) }
+            }
+        }
+    }
+
+    private func beginAccountImport() {
+        guard !isWorking, !isTransitioning, networkingEnabled else { return }
+        remoteAuthTask?.cancel()
+        transitionAuthentication {
+            errorTitle = nil
+            errorMessage = nil
+            loadImportAccounts()
+        }
+    }
+
+    private func loadImportAccounts() {
+        authenticationTask?.cancel()
+        accountImportState = .loading
+        errorMessage = nil
+        authenticationTask = Task {
+            await remoteAuthManager.disconnect()
+            do {
+                let accounts = try await DiscordAccountImporter.accounts(excluding: savedAccountIDs)
+                try Task.checkCancellation()
+                accountImportState = .accounts(accounts)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard !Task.isCancelled else { return }
+                accountImportState = .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    private func goBackFromImport() {
+        guard !isWorking, !isTransitioning else { return }
+        authenticationTask?.cancel()
+        transitionAuthentication {
+            accountImportState = nil
+            errorTitle = nil
+            errorMessage = nil
+            startRemoteAuth()
+        }
+    }
+
+    private func importAccount(_ account: DiscordImportAccount) {
+        guard !isWorking, !isTransitioning, !savedAccountIDs.contains(account.id) else { return }
+        isWorking = true
+        importingAccountID = account.id
+        errorMessage = nil
+        authenticationTask?.cancel()
+        authenticationTask = Task {
+            defer {
+                isWorking = false
+                importingAccountID = nil
+            }
+            do {
+                let credential = try await DiscordAccountImporter.credential(for: account)
+                guard !Task.isCancelled else {
+                    await credential.discard()
+                    return
+                }
+                await finishConnection(credential)
+            } catch is CancellationError {
+                return
+            } catch {
+                errorMessage = error.localizedDescription
             }
         }
     }
@@ -392,7 +482,7 @@ struct DiscordLoginView: View {
             withTransaction(transaction) {
                 update()
                 isTransitioning = false
-                focusedField = challenge == nil ? .password : selectedMFAMethod == nil ? nil : .mfa
+                focusedField = accountImportState != nil ? nil : challenge == nil ? .password : selectedMFAMethod == nil ? nil : .mfa
             }
             withAnimation(SakuraCordSignInReveal.animation(reduceMotion: reduceMotion)) {
                 panelVisible = true

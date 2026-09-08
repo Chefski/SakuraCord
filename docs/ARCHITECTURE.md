@@ -204,6 +204,28 @@ authentication exchange or force an otherwise valid credential through login.
 Passwords, cookies, captured authorization headers, and analytics identifiers
 are not persisted.
 
+The login page can import a selected saved account from the stable Discord
+desktop client on this Mac. App owns automatic discovery, the bounded read-only
+Chromium local-storage reader, the integrated login step, and Electron session
+decryption. A read-only sandbox exception is scoped to the standard stable
+Discord local-storage database directories, including the two installed folder
+casings. When macOS app-data privacy denies a read, a native access panel opens
+at the discovered folder; a read-only security-scoped bookmark remembers the
+grant for subsequent imports. The grant is balanced around each scan, and
+cancelling discovery also dismisses any access panel. Session decryption still
+requires macOS Keychain authorization.
+The reader follows the current LevelDB manifest,
+sequence numbers, and tombstones; it never scans abandoned files for credentials
+or modifies Discord's storage. Only numeric account entries from the current
+`tokens` map are eligible, excluding the analytics entry. Source usernames are
+presentation hints, and avatars use the existing image pipeline. Accounts already
+saved in SakuraCord are excluded before selection. The import step shares the
+login card's transitions, loading surfaces, and Back/Escape navigation; leaving
+discovery cancels its task and restores QR sign-in. The selected session remains memory-only until the existing
+pending-provider flow receives `READY.user`, verifies that it matches the selected
+account ID, and stores it under that ID. Imported secrets, source
+storage, and Discord's Safe Storage key are never exported or logged.
+
 Multiple account credentials may coexist as separate Keychain items. The app
 keeps only the saved account's display name, username, avatar URL, last-used
 date, and preferred account identifier in user defaults so the account picker

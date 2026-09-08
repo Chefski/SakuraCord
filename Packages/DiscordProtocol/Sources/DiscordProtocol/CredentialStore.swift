@@ -25,12 +25,14 @@ public actor PendingDiscordCredential {
     }
 
     private var state: State
+    private let expectedAccountID: String?
 
-    public init(_ credential: Data) throws {
+    public init(_ credential: Data, expectedAccountID: String? = nil) throws {
         guard credential.count > 20 else {
             throw PendingDiscordCredentialError.invalidCredential
         }
         state = .available(credential)
+        self.expectedAccountID = expectedAccountID
     }
 
     func value() throws -> Data {
@@ -46,6 +48,9 @@ public actor PendingDiscordCredential {
     ) async throws -> CredentialHandle {
         guard !accountID.isEmpty, accountID.allSatisfy(\.isNumber) else {
             throw PendingDiscordCredentialError.invalidAccountID
+        }
+        guard expectedAccountID == nil || expectedAccountID == accountID else {
+            throw PendingDiscordCredentialError.accountMismatch
         }
         guard case let .available(credential) = state else {
             throw PendingDiscordCredentialError.unavailable
@@ -83,6 +88,7 @@ public enum PendingDiscordCredentialError: LocalizedError, Sendable {
     case invalidCredential
     case invalidAccountID
     case unavailable
+    case accountMismatch
 
     public var errorDescription: String? {
         switch self {
@@ -92,6 +98,8 @@ public enum PendingDiscordCredentialError: LocalizedError, Sendable {
             "Discord Gateway READY returned an invalid account identifier."
         case .unavailable:
             "The pending Discord session credential is no longer available."
+        case .accountMismatch:
+            "Discord returned a different account from the selected saved session. Import was stopped."
         }
     }
 }

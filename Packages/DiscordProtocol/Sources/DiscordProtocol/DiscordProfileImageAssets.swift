@@ -4,7 +4,7 @@ import SakuraCordModels
 public enum DiscordProfileImageAssets {
     /// The clean client's standard avatar assets, ordered by its user-ID or
     /// legacy discriminator index. These are bundled artwork, not inventory.
-    static func defaultAvatarURL(userID: String, discriminator: String?) -> URL? {
+    public static func defaultAvatarURL(userID: String, discriminator: String?) -> URL? {
         let assets = ["18e336a74a159cfd.png", "788f05731f8aa02e.png", "9855d7e3b9780976.png",
                       "2ccd8ae8b2379360.png", "411d8a698dd15ddf.png", "320d5a40d309f942.png"]
         let legacy = UInt64(discriminator ?? "0") ?? 0

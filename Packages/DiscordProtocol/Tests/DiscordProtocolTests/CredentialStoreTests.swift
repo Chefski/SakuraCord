@@ -71,13 +71,20 @@ import Testing
     #expect(await store.storeCount == 1)
 }
 
-@Test func `invalid ready account does not consume the pending credential`() async throws {
+@Test(arguments: [nil, "123456789012345678"] as [String?])
+func `invalid ready account does not consume the pending credential`(expectedAccountID: String?) async throws {
     let value = Data("pending-session-credential-value".utf8)
-    let pending = try PendingDiscordCredential(value)
+    let pending = try PendingDiscordCredential(value, expectedAccountID: expectedAccountID)
     let store = CredentialStoreSpy(credentials: [:])
 
     await #expect(throws: PendingDiscordCredentialError.invalidAccountID) {
         try await pending.persist(to: store, accountID: "not-a-snowflake")
+    }
+    if expectedAccountID != nil {
+        await #expect(throws: PendingDiscordCredentialError.accountMismatch) {
+            try await pending.persist(to: store, accountID: "999999999999999999")
+        }
+        #expect(try await store.handles().isEmpty)
     }
     let handle = try await pending.persist(to: store, accountID: "123456789012345678")
     #expect(try await store.credential(for: handle) == value)
