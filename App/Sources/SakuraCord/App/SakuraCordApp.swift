@@ -81,6 +81,8 @@ struct SakuraCordApp: App {
         let appModel = AppModel(
             launchMode: configuration.mode,
             awaitsOfflineSignIn: configuration.includesSignInFixture,
+            hasSavedAccountsAtLaunch: configuration.mode == .normal
+                && UserDefaultsSavedAccountStore.shared.hasSavedAccounts,
             provider: provider,
             notificationService: notificationService,
             soundPlayer: soundPlayer

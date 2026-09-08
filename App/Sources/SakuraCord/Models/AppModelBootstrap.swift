@@ -155,6 +155,7 @@ extension AppModel {
                     errorMessage = error.localizedDescription
                 }
             }
+            hasPendingLaunchWelcome = !didAttemptSessionRestore
             didAttemptSessionRestore = true
             isLoading = false
             sessionState = .signedOut
@@ -176,6 +177,14 @@ extension AppModel {
                 savedAccounts = await savedAccountStore.accounts(
                     matching: handles
                 )
+            }
+            if savedAccounts.isEmpty {
+                // If a remembered account disappeared, return to sign-in
+                // without playing the welcome after its loading skeleton.
+                hasPendingLaunchWelcome = sessionState == .restoring
+                isLoading = false
+                sessionState = .signedOut
+                return false
             }
             let preferredPerformanceAccountID =
                 runsChatPerformanceBenchmark
@@ -229,6 +238,7 @@ extension AppModel {
                     destination: launchDestination,
                     selectedAccountID: restoredHandle.accountID
                 )
+                sessionState = .connecting
                 _ = await connectAuthenticatedAccount(restoredHandle)
                 return false
             }

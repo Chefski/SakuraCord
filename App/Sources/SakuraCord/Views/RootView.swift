@@ -24,18 +24,21 @@ struct RootView: View {
                         DiscordLoginView(
                             showsCancel: false,
                             networkingEnabled: !model.isDiscordNetworkingDisabled,
-                            offlineSignIn: model.includesOfflineSignIn
-                        ) { credential in
-                            if model.includesOfflineSignIn {
-                                return await model.completeOfflineSignIn()
+                            offlineSignIn: model.includesOfflineSignIn,
+                            playsWelcome: model.hasPendingLaunchWelcome,
+                            onEntranceStarted: { model.hasPendingLaunchWelcome = false },
+                            onConnected: { credential in
+                                if model.includesOfflineSignIn {
+                                    return await model.completeOfflineSignIn()
+                                }
+                                return await model.connectPendingAuthenticatedAccount(
+                                    credential,
+                                    preservesInteractivePresentation: true
+                                )
+                                    ? nil
+                                    : (model.errorMessage ?? "Discord account bootstrap failed for an unknown reason.")
                             }
-                            return await model.connectPendingAuthenticatedAccount(
-                                credential,
-                                preservesInteractivePresentation: true
-                            )
-                                ? nil
-                                : (model.errorMessage ?? "Discord account bootstrap failed for an unknown reason.")
-                        }
+                        )
                     } else {
                         AccountSwitcherView(model: model, showsCancel: false)
                     }
@@ -45,7 +48,15 @@ struct RootView: View {
                         isOfflineTesting: model.isOfflineTesting
                     )
                 }
-            case .restoring, .connecting:
+            case .restoring:
+                // Credentials have not resolved yet; the destination may be
+                // sign-in, so do not expose chat skeletons or toolbar chrome.
+                SakuraCordSignInBackdrop()
+                    .ignoresSafeArea()
+                    .frame(minWidth: 860, minHeight: 600)
+                    .toolbar(removing: .title)
+                    .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+            case .connecting:
                 SakuraCordSessionLoadingView(
                     state: model.sessionState,
                     isOfflineTesting: model.isOfflineTesting,
@@ -110,7 +121,9 @@ struct RootView: View {
 
     private var showsMessageSearchToolbar: Bool {
         switch model.sessionState {
-        case .restoring, .connecting:
+        case .restoring:
+            false
+        case .connecting:
             true
         case .workspace:
             model.isSwitchingAccounts
@@ -129,7 +142,9 @@ struct RootView: View {
 
     private var showsSessionLoadingChrome: Bool {
         switch model.sessionState {
-        case .restoring, .connecting:
+        case .restoring:
+            false
+        case .connecting:
             true
         case .workspace:
             model.isSwitchingAccounts

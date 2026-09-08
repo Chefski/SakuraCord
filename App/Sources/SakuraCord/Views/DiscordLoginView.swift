@@ -15,6 +15,7 @@ struct DiscordLoginView: View {
     let showsCancel: Bool
     let networkingEnabled: Bool
     let savedAccountIDs: Set<String>
+    let onEntranceStarted: @MainActor () -> Void
     let onConnected: @MainActor (PendingDiscordCredential) async -> String?
 
     @State private var authenticator: any DiscordSignInAuthenticating
@@ -41,6 +42,7 @@ struct DiscordLoginView: View {
     @State private var importingAccountID: String?
     @State private var smsCooldownEndsAt: Date?
     @State private var welcomeProgress = 0.0
+    @State private var playsWelcome: Bool
     @State private var formVisible = false
     @State private var panelVisible = true
     @State private var isTransitioning = false
@@ -52,11 +54,16 @@ struct DiscordLoginView: View {
         networkingEnabled: Bool,
         offlineSignIn: Bool = false,
         savedAccountIDs: Set<String> = [],
+        playsWelcome: Bool = false,
+        onEntranceStarted: @escaping @MainActor () -> Void = {},
         onConnected: @escaping @MainActor (PendingDiscordCredential) async -> String?
     ) {
         self.showsCancel = showsCancel
         self.networkingEnabled = networkingEnabled
         self.savedAccountIDs = savedAccountIDs
+        self.onEntranceStarted = onEntranceStarted
+        // Retain this entrance's decision after its launch permission is consumed.
+        _playsWelcome = State(initialValue: playsWelcome)
         self.onConnected = onConnected
         let offlineService = offlineSignIn ? OfflineSignInService() : nil
         _offlineService = State(initialValue: offlineService)
@@ -71,7 +78,7 @@ struct DiscordLoginView: View {
             SakuraCordSignInBackdrop()
                 .ignoresSafeArea()
 
-            if !formVisible, !showsCancel, !reduceMotion {
+            if !formVisible, playsWelcome, !reduceMotion {
                 SakuraCordWelcomeSequence(progress: welcomeProgress)
                     .ignoresSafeArea()
                     .transition(.opacity)
@@ -297,13 +304,15 @@ struct DiscordLoginView: View {
     }
 
     private func revealEntrance() async {
+        guard !formVisible else { return }
+        onEntranceStarted()
         if reduceMotion {
             formVisible = true
             focusedField = .identifier
             return
         }
         do {
-            if showsCancel {
+            if !playsWelcome {
                 withAnimation(.smooth(duration: 0.65)) { formVisible = true }
                 try await Task.sleep(for: .milliseconds(650))
                 focusedField = .identifier
@@ -318,6 +327,7 @@ struct DiscordLoginView: View {
     }
 
     private func replayEntrance() {
+        playsWelcome = true
         welcomeProgress = 0
         formVisible = false
         focusedField = nil

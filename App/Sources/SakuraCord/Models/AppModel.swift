@@ -307,6 +307,7 @@ final class AppModel {
     var activeAccountID: String?
     @ObservationIgnored var diagnosticsShareInFlight = false
     var sessionState: SessionState
+    var hasPendingLaunchWelcome: Bool
     let launchMode: AppLaunchMode
     let typingState: TypingStateModel
     let commandComposer = ApplicationCommandComposerModel()
@@ -1176,6 +1177,7 @@ final class AppModel {
     init(
         launchMode: AppLaunchMode,
         awaitsOfflineSignIn: Bool = false,
+        hasSavedAccountsAtLaunch: Bool = false,
         provider: (any ChatProvider)? = nil,
         discordNetworkDisabledOverride: Bool? = nil,
         usesInsecureDebugCredentialsOverride: Bool? = nil,
@@ -1218,8 +1220,7 @@ final class AppModel {
         self.provider =
             provider
                 ?? (launchMode == .offlineTesting ? MockChatProvider() : SignedOutChatProvider())
-        sessionState = includesOfflineSignIn ? .signedOut
-            : (launchMode == .offlineTesting ? .connecting : .restoring)
+        hasPendingLaunchWelcome = includesOfflineSignIn
         typingState = TypingStateModel(expiry: typingExpiry)
         self.localTypingTiming = localTypingTiming
         self.reactionMutationTiming = reactionMutationTiming
@@ -1235,6 +1236,8 @@ final class AppModel {
             discordNetworkDisabledOverride
                 ?? (launchMode == .offlineTesting
                     || ProcessInfo.processInfo.environment["SAKURACORD_DISABLE_DISCORD_NETWORK"] == "1")
+        sessionState = includesOfflineSignIn ? .signedOut
+            : (launchMode == .offlineTesting || (hasSavedAccountsAtLaunch && restoresStoredSession && !discordNetworkDisabled) ? .connecting : .restoring)
         self.restoresStoredSession = restoresStoredSession
         usesInsecureDebugCredentials =
             usesInsecureDebugCredentialsOverride

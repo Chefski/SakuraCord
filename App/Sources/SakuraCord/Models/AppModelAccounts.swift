@@ -233,6 +233,7 @@ extension AppModel {
     }
 
     func resetForAccountConnection(_ handle: CredentialHandle) {
+        hasPendingLaunchWelcome = false
         resetAcknowledgementWork()
         resetChannelNotificationMutations()
         readState.reset(accountID: handle.accountID)
@@ -398,6 +399,7 @@ extension AppModel {
     }
 
     func installSignedOutAccountState() {
+        hasPendingLaunchWelcome = false
         bootstrapHistoryPrefetch?.task.cancel()
         bootstrapHistoryPrefetch = nil
         credentialHandle = nil

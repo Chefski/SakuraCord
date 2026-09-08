@@ -74,6 +74,12 @@ actor UserDefaultsSavedAccountStore: SavedAccountStoring {
         self.defaults = defaults
     }
 
+    // A presentation hint available before asynchronous credential restoration.
+    // The credential store remains authoritative for account availability.
+    nonisolated var hasSavedAccounts: Bool {
+        !storedAccounts().isEmpty
+    }
+
     func accounts(matching handles: [CredentialHandle]) -> [SavedAccount] {
         var storedByID: [String: SavedAccount] = [:]
         for account in storedAccounts() {
@@ -113,7 +119,7 @@ actor UserDefaultsSavedAccountStore: SavedAccountStoring {
         }
     }
 
-    private func storedAccounts() -> [SavedAccount] {
+    private nonisolated func storedAccounts() -> [SavedAccount] {
         guard let data = defaults.data(forKey: Self.accountsKey),
               let accounts = try? JSONDecoder().decode([SavedAccount].self, from: data)
         else { return [] }
