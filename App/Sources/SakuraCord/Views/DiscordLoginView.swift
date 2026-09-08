@@ -4,12 +4,6 @@ import CoreImage.CIFilterBuiltins
 import DiscordProtocol
 import SwiftUI
 
-private enum DiscordLoginField: Hashable {
-    case identifier
-    case password
-    case mfa
-}
-
 private enum DiscordCaptchaPurpose: Equatable {
     case credentials
     case remoteAuth
@@ -34,6 +28,7 @@ struct DiscordLoginView: View {
     @State private var captchaInteractionVisible = false
     @State private var selectedMFAMethod: DiscordMFAMethod?
     @State private var isWorking = false
+    @State private var isSendingSMS = false
     @State private var errorTitle: String?
     @State private var errorMessage: String?
     @State private var authenticationTask: Task<Void, Never>?
@@ -44,6 +39,8 @@ struct DiscordLoginView: View {
     @State private var smsCooldownEndsAt: Date?
     @State private var welcomeProgress = 0.0
     @State private var formVisible = false
+    @State private var panelVisible = true
+    @State private var isTransitioning = false
     @State private var entranceRevision = 0
     @FocusState private var focusedField: DiscordLoginField?
 
@@ -71,69 +68,74 @@ struct DiscordLoginView: View {
 
             if !formVisible, !showsCancel, !reduceMotion {
                 SakuraCordWelcomeSequence(progress: welcomeProgress)
+                    .ignoresSafeArea()
                     .transition(.opacity)
                     .allowsHitTesting(false)
             }
 
             GeometryReader { geometry in
                 ScrollView {
-                    SakuraCordAuthenticationCard {
-                        if let challenge {
-                            VStack(alignment: .leading, spacing: 18) {
-                                DiscordLoginHeader()
+                    ZStack {
+                        SakuraCordAuthenticationCard {
+                            if let challenge {
                                 DiscordMFAForm(
                                     challenge: challenge,
-                                    selectedMethod: $selectedMFAMethod,
+                                    selectedMethod: selectedMFAMethod,
                                     code: $mfaCode,
                                     isWorking: isWorking,
+                                    isTransitioning: isTransitioning,
+                                    isSendingSMS: isSendingSMS,
                                     smsCooldownEndsAt: smsCooldownEndsAt,
                                     focusedField: $focusedField,
+                                    errorMessage: errorMessage,
+                                    selectMethod: selectMFAMethod,
                                     submit: submitMFA,
                                     sendSMS: sendSMS,
-                                    goBack: resetToCredentials
+                                    goBack: goBackFromMFA
                                 )
-                                DiscordLoginStatus(
-                                    title: errorTitle,
-                                    message: errorMessage
-                                )
-                            }
-                        } else {
-                            HStack(alignment: .center, spacing: 32) {
-                                VStack(alignment: .leading, spacing: 22) {
-                                    DiscordLoginHeader()
-                                    DiscordCredentialForm(
-                                        identifier: $identifier,
-                                        password: $password,
-                                        isWorking: isWorking,
-                                        focusedField: $focusedField,
-                                        submit: submitCredentials
+                            } else {
+                                HStack(alignment: .center, spacing: 32) {
+                                    VStack(alignment: .leading, spacing: 22) {
+                                        DiscordLoginHeader()
+                                        DiscordCredentialForm(
+                                            identifier: $identifier,
+                                            password: $password,
+                                            isWorking: isWorking,
+                                            canSubmit: canSubmitCredentials,
+                                            focusedField: $focusedField,
+                                            submit: submitCredentials
+                                        )
+                                        DiscordLoginStatus(
+                                            title: errorTitle,
+                                            message: errorMessage
+                                        )
+                                    }
+                                    .frame(width: 390, alignment: .leading)
+
+                                    Rectangle()
+                                        .fill(Color(nsColor: .separatorColor).opacity(0.72))
+                                        .frame(width: 1, height: 300)
+
+                                    DiscordRemoteAuthPanel(
+                                        state: remoteAuthState,
+                                        retry: restartRemoteAuth
                                     )
-                                    DiscordLoginStatus(
-                                        title: errorTitle,
-                                        message: errorMessage
-                                    )
+                                    .frame(width: 236)
                                 }
-                                .frame(width: 390, alignment: .leading)
-
-                                Rectangle()
-                                    .fill(Color(nsColor: .separatorColor).opacity(0.72))
-                                    .frame(width: 1, height: 300)
-
-                                DiscordRemoteAuthPanel(
-                                    state: remoteAuthState,
-                                    retry: restartRemoteAuth
-                                )
-                                .frame(width: 236)
                             }
                         }
+                        .frame(maxWidth: challenge == nil ? 800 : 480)
                     }
-                    .modifier(SakuraCordSignInReveal(isVisible: formVisible, reduceMotion: reduceMotion))
-                    .allowsHitTesting(formVisible)
-                    .accessibilityHidden(!formVisible)
-                    .frame(maxWidth: challenge == nil ? 800 : 500)
                     .padding(.horizontal, 34)
                     .padding(.vertical, 42)
                     .frame(maxWidth: .infinity, minHeight: geometry.size.height)
+                    // Layout changes happen while hidden. Only the reveal below
+                    // animates; a new card never interpolates from the old origin.
+                    .transaction { $0.animation = nil }
+                    .modifier(SakuraCordSignInReveal(isVisible: panelVisible, reduceMotion: reduceMotion))
+                    .modifier(SakuraCordSignInReveal(isVisible: formVisible, reduceMotion: reduceMotion))
+                    .allowsHitTesting(formVisible && !isTransitioning)
+                    .accessibilityHidden(!formVisible || !panelVisible)
                 }
                 .scrollIndicators(.hidden)
             }
@@ -142,16 +144,18 @@ struct DiscordLoginView: View {
                 OfflineSignInControls(
                     service: offlineService,
                     canScan: remoteAuthState.isReady && !isWorking && challenge == nil,
+                    canSimulateMFA: challenge == nil,
+                    simulateMFA: { presentMFA(OfflineSignInService.mfaChallenge()) },
                     replay: replayEntrance
                 )
-                .disabled(isWorking)
+                .disabled(isWorking || isTransitioning)
                 .padding(.bottom, 12)
                 .frame(maxHeight: .infinity, alignment: .bottom)
             }
 
             windowDragRegion
 
-            if showsCancel {
+            if showsCancel, challenge == nil {
                 SakuraCordAuthenticationCloseButton { dismiss() }
                 .padding(20)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
@@ -187,6 +191,9 @@ struct DiscordLoginView: View {
             }
         }
         .task(id: entranceRevision) { await revealEntrance() }
+        .onChange(of: selectedMFAMethod) { _, method in
+            if method == .sms { sendSMS() }
+        }
         .onDisappear {
             if !isHandingOffCredential {
                 authenticationTask?.cancel()
@@ -212,9 +219,9 @@ struct DiscordLoginView: View {
                 focusedField = .identifier
                 return
             }
-            withAnimation(.linear(duration: 5.2)) { welcomeProgress = 1 }
-            try await Task.sleep(for: .milliseconds(4500))
-            withAnimation(.smooth(duration: 0.9)) { formVisible = true }
+            withAnimation(.linear(duration: 4.6)) { welcomeProgress = 1 }
+            try await Task.sleep(for: .milliseconds(4900))
+            withAnimation(SakuraCordSignInReveal.animation(reduceMotion: reduceMotion)) { formVisible = true }
             try await Task.sleep(for: .milliseconds(900))
             focusedField = .identifier
         } catch {}
@@ -238,13 +245,26 @@ struct DiscordLoginView: View {
         }
     }
 
+    private var canSubmitCredentials: Bool {
+        !isWorking && !isTransitioning
+            && !identifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && (8 ... 72).contains(password.count)
+    }
+
+    private var canSubmitMFA: Bool {
+        guard !isWorking, !isTransitioning, let selectedMFAMethod, let challenge,
+              challenge.methods.contains(selectedMFAMethod) else { return false }
+        return !mfaCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && selectedMFAMethod.normalizedCode(mfaCode).count == selectedMFAMethod.codeLength
+    }
+
     private func submitCredentials() {
+        guard canSubmitCredentials else { return }
         guard networkingEnabled || offlineService != nil else {
             errorTitle = "Sign-in unavailable"
             errorMessage = "Discord networking is disabled for this launch."
             return
         }
-        guard !isWorking else { return }
         let submittedIdentifier = identifier
         let submittedPassword = password
         errorTitle = nil
@@ -324,19 +344,65 @@ struct DiscordLoginView: View {
         case let .authenticated(credential):
             await finishConnection(credential)
         case let .mfa(value):
-            challenge = value
-            selectedMFAMethod = value.methods.first
-            mfaCode = ""
-            focusedField = .mfa
+            presentMFA(value)
         case let .captcha(value):
             presentCaptcha(value, purpose: .credentials)
         }
     }
 
+    private func presentMFA(_ value: DiscordMFAChallenge) {
+        transitionAuthentication {
+            challenge = value
+            selectedMFAMethod = nil
+            mfaCode = ""
+            smsCooldownEndsAt = nil
+            errorTitle = nil
+            errorMessage = nil
+        }
+    }
+
+    private func selectMFAMethod(_ method: DiscordMFAMethod?) {
+        guard !isWorking, !isTransitioning else { return }
+        if let method, challenge?.methods.contains(method) != true { return }
+        transitionAuthentication {
+            selectedMFAMethod = method
+            mfaCode = ""
+            errorTitle = nil
+            errorMessage = nil
+        }
+    }
+
+    private func goBackFromMFA() {
+        if selectedMFAMethod == nil {
+            resetToCredentials()
+        } else {
+            selectMFAMethod(nil)
+        }
+    }
+
+    private func transitionAuthentication(_ update: @escaping () -> Void) {
+        guard !isTransitioning else { return }
+        isTransitioning = true
+        focusedField = nil
+        withAnimation(.easeOut(duration: reduceMotion ? 0.12 : 0.18), completionCriteria: .logicallyComplete) {
+            panelVisible = false
+        } completion: {
+            var transaction = Transaction(animation: nil)
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                update()
+                isTransitioning = false
+                focusedField = challenge == nil ? .password : selectedMFAMethod == nil ? nil : .mfa
+            }
+            withAnimation(SakuraCordSignInReveal.animation(reduceMotion: reduceMotion)) {
+                panelVisible = true
+            }
+        }
+    }
+
     private func submitMFA() {
-        guard let challenge, let selectedMFAMethod, !isWorking else { return }
+        guard canSubmitMFA, let challenge, let selectedMFAMethod else { return }
         let submittedCode = mfaCode
-        mfaCode = ""
         errorTitle = nil
         errorMessage = nil
         isWorking = true
@@ -355,19 +421,25 @@ struct DiscordLoginView: View {
             } catch {
                 errorTitle = "MFA verification stopped"
                 errorMessage = error.localizedDescription
+                mfaCode = ""
                 focusedField = .mfa
             }
         }
     }
 
     private func sendSMS() {
-        guard let challenge, !isWorking else { return }
+        guard let challenge, selectedMFAMethod == .sms, challenge.methods.contains(.sms), !isWorking,
+              smsCooldownEndsAt.map({ $0 <= .now }) ?? true else { return }
         errorTitle = nil
         errorMessage = nil
         isWorking = true
+        isSendingSMS = true
         authenticationTask?.cancel()
         authenticationTask = Task {
-            defer { isWorking = false }
+            defer {
+                isWorking = false
+                isSendingSMS = false
+            }
             do {
                 try await authenticator.sendSMS(for: challenge)
                 smsCooldownEndsAt = .now.addingTimeInterval(30)
@@ -393,13 +465,16 @@ struct DiscordLoginView: View {
     }
 
     private func resetToCredentials() {
+        guard !isWorking, !isTransitioning else { return }
         authenticationTask?.cancel()
-        challenge = nil
-        selectedMFAMethod = nil
-        mfaCode = ""
-        errorTitle = nil
-        errorMessage = nil
-        focusedField = .password
+        transitionAuthentication {
+            challenge = nil
+            selectedMFAMethod = nil
+            mfaCode = ""
+            smsCooldownEndsAt = nil
+            errorTitle = nil
+            errorMessage = nil
+        }
     }
 
     private func startRemoteAuth() {
@@ -503,6 +578,7 @@ private struct DiscordCredentialForm: View {
     @Binding var identifier: String
     @Binding var password: String
     let isWorking: Bool
+    let canSubmit: Bool
     let focusedField: FocusState<DiscordLoginField?>.Binding
     let submit: () -> Void
 
@@ -519,7 +595,8 @@ private struct DiscordCredentialForm: View {
                     .onSubmit { focusedField.wrappedValue = .password }
                     .sakuracordLoginField(
                         isEditorActive: focusedField.wrappedValue == .identifier,
-                        onActivate: { focusedField.wrappedValue = .identifier }
+                        onActivate: { focusedField.wrappedValue = .identifier },
+                        onDismiss: { focusedField.wrappedValue = nil }
                     )
             }
             VStack(alignment: .leading, spacing: 8) {
@@ -533,7 +610,8 @@ private struct DiscordCredentialForm: View {
                     .onSubmit(submit)
                     .sakuracordLoginField(
                         isEditorActive: focusedField.wrappedValue == .password,
-                        onActivate: { focusedField.wrappedValue = .password }
+                        onActivate: { focusedField.wrappedValue = .password },
+                        onDismiss: { focusedField.wrappedValue = nil }
                     )
             }
             Button(action: submit) {
@@ -545,60 +623,10 @@ private struct DiscordCredentialForm: View {
             .buttonBorderShape(.capsule)
             .controlSize(.large)
             .tint(SakuraCordAccentColor.color)
-            .disabled(identifier.isEmpty || password.count < 8 || isWorking)
+            .disabled(!canSubmit)
             .authenticationLoading(isWorking, in: Capsule(), intensity: 1.8)
         }
         .disabled(isWorking)
-    }
-}
-
-private extension View {
-    func sakuracordLoginField(
-        isEditorActive: Bool,
-        onActivate: @escaping () -> Void
-    ) -> some View {
-        textFieldStyle(.plain)
-            .font(.body)
-            .foregroundStyle(.primary)
-            .padding(.horizontal, 18)
-            .frame(height: 44)
-            .background(.background.opacity(0.72), in: Capsule())
-            .overlay {
-                Capsule()
-                    .stroke(isEditorActive ? SakuraCordAccentColor.color.opacity(0.6) : .primary.opacity(0.12), lineWidth: 1)
-            }
-            .background {
-                LoginTextEditorStyleBridge(isActive: isEditorActive)
-                    .allowsHitTesting(false)
-            }
-            .contentShape(Capsule())
-            .simultaneousGesture(TapGesture().onEnded(onActivate))
-            .pointerStyle(.horizontalText)
-            .tint(SakuraCordAccentColor.color)
-    }
-}
-
-/// SwiftUI's SecureField does not consistently forward `tint` to the
-/// shared AppKit field editor. This bridge only styles that editor while
-/// its associated login field is active; SwiftUI remains the text owner.
-private struct LoginTextEditorStyleBridge: NSViewRepresentable {
-    let isActive: Bool
-
-    func makeNSView(context: Context) -> NSView {
-        NSView(frame: .zero)
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        guard isActive else { return }
-        Task { @MainActor [weak nsView] in
-            await Task.yield()
-            guard let editor = nsView?.window?.firstResponder as? NSTextView else { return }
-            editor.insertionPointColor = .sakuraCordAccentColor
-            editor.selectedTextAttributes = [
-                .backgroundColor: NSColor.sakuraCordTextSelectionBackgroundColor,
-                .foregroundColor: NSColor.selectedTextColor,
-            ]
-        }
     }
 }
 
@@ -749,13 +777,15 @@ private struct DiscordQRCodeView: View {
             }
         }
         .task(id: url) {
-            image = DiscordQRCodeRenderer.render(url: url)
+            let rendered = await DiscordQRCodeRenderer.render(url: url)
+            guard !Task.isCancelled, let rendered else { return }
+            image = NSImage(cgImage: rendered, size: NSSize(width: rendered.width, height: rendered.height))
         }
         .accessibilityLabel("Discord QR sign-in code")
     }
 }
 
-enum DiscordQRCodeRenderer {
+nonisolated enum DiscordQRCodeRenderer {
     @MainActor
     static func inkColors(theme: SakuraCordGradientTheme, colorScheme: ColorScheme) -> [Color] {
         // Start with the backdrop's rendered palette, soften it with neutral ink,
@@ -773,7 +803,10 @@ enum DiscordQRCodeRenderer {
     private static let moduleScale = 10
     private static let quietZone = 4
 
-    static func render(url: URL) -> NSImage? {
+    // Core Image initialization and module drawing must not block the welcome
+    // animation while the remote-auth session supplies its first QR code.
+    @concurrent
+    static func render(url: URL) async -> CGImage? {
         let filter = CIFilter.qrCodeGenerator()
         filter.message = Data(url.absoluteString.utf8)
         // Match Paicord's remote-auth QR density. There is no center overlay,
@@ -798,7 +831,7 @@ enum DiscordQRCodeRenderer {
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return nil }
 
-        let ink = NSColor.black.cgColor
+        let ink = CGColor(gray: 0, alpha: 1)
         context.clear(CGRect(x: 0, y: 0, width: pixelSize, height: pixelSize))
         context.setFillColor(ink)
 
@@ -830,11 +863,7 @@ enum DiscordQRCodeRenderer {
             )
         }
 
-        guard let cgImage = context.makeImage() else { return nil }
-        return NSImage(
-            cgImage: cgImage,
-            size: NSSize(width: pixelSize, height: pixelSize)
-        )
+        return context.makeImage()
     }
 
     private static func moduleBitmap(output: CIImage, count: Int) -> [UInt8] {
@@ -988,79 +1017,6 @@ enum DiscordQRCodeRenderer {
             transform: nil
         ))
         context.fillPath()
-    }
-}
-
-private struct DiscordMFAForm: View {
-    let challenge: DiscordMFAChallenge
-    @Binding var selectedMethod: DiscordMFAMethod?
-    @Binding var code: String
-    let isWorking: Bool
-    let smsCooldownEndsAt: Date?
-    let focusedField: FocusState<DiscordLoginField?>.Binding
-    let submit: () -> Void
-    let sendSMS: () -> Void
-    let goBack: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Button("Back", systemImage: "chevron.left", action: goBack)
-                .buttonStyle(.plain)
-            Text("Multi-Factor Authentication")
-                .font(.title2.bold())
-            Text("Choose a method Discord offered for this login, then enter its code.")
-                .foregroundStyle(.secondary)
-
-            Picker("Method", selection: $selectedMethod) {
-                ForEach(challenge.methods, id: \.self) { method in
-                    Label(method.title, systemImage: method.systemImage).tag(Optional(method))
-                }
-            }
-            .pickerStyle(.segmented)
-
-            TextField(selectedMethod == .backup ? "Backup code" : "6-digit code", text: $code)
-                .focused(focusedField, equals: .mfa)
-                .onSubmit(submit)
-                .sakuracordLoginField(
-                    isEditorActive: focusedField.wrappedValue == .mfa,
-                    onActivate: { focusedField.wrappedValue = .mfa }
-                )
-
-            if selectedMethod == .sms {
-                Button("Send SMS Code", action: sendSMS)
-                    .disabled(isWorking || (smsCooldownEndsAt.map { $0 > .now } ?? false))
-            }
-
-            Button(action: submit) {
-                Text(isWorking ? "Verifying…" : "Verify and Sign In")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.glassProminent)
-            .buttonBorderShape(.capsule)
-            .tint(SakuraCordAccentColor.color)
-            .controlSize(.large)
-            .disabled(code.isEmpty || isWorking || selectedMethod == nil)
-            .authenticationLoading(isWorking, in: Capsule(), intensity: 1.8)
-        }
-        .disabled(isWorking)
-    }
-}
-
-private extension DiscordMFAMethod {
-    var title: String {
-        switch self {
-        case .totp: "Authenticator"
-        case .backup: "Backup Code"
-        case .sms: "SMS"
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .totp: "lock.rotation"
-        case .backup: "key.fill"
-        case .sms: "message.fill"
-        }
     }
 }
 

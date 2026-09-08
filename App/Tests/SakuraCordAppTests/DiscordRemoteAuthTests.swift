@@ -59,11 +59,9 @@ struct DiscordRemoteAuthTests {
     }
 
     @Test(arguments: [0.0, 0.16, 0.33, 0.66, 0.9], [ColorScheme.light, .dark]) @MainActor
-    func `styled QR code has no inset background and still decodes`(hue: Double, colorScheme: ColorScheme) throws {
+    func `styled QR code has no inset background and still decodes`(hue: Double, colorScheme: ColorScheme) async throws {
         let url = try #require(URL(string: "https://discord.com/ra/sanitized-fixture"))
-        let image = try #require(DiscordQRCodeRenderer.render(url: url))
-        var proposedRect = CGRect(origin: .zero, size: image.size)
-        let transparentCode = try #require(image.cgImage(forProposedRect: &proposedRect, context: nil, hints: nil))
+        let transparentCode = try #require(await DiscordQRCodeRenderer.render(url: url))
 
         let provider = try #require(transparentCode.dataProvider)
         let data = try #require(provider.data)

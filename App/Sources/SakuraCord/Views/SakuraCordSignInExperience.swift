@@ -71,22 +71,34 @@ struct SakuraCordAuthenticationTimeline<Content: View>: View {
     }
 }
 
+@Animatable
 struct SakuraCordSignInReveal: ViewModifier {
-    let isVisible: Bool
-    let reduceMotion: Bool
+    var progress: Double
+    @AnimatableIgnored var reduceMotion: Bool
+
+    init(isVisible: Bool, reduceMotion: Bool) {
+        progress = isVisible ? 1 : 0
+        self.reduceMotion = reduceMotion
+    }
+
+    static func animation(reduceMotion: Bool) -> Animation {
+        reduceMotion ? .easeInOut(duration: 0.2) : .smooth(duration: 0.9)
+    }
 
     func body(content: Content) -> some View {
         content
-            .opacity(isVisible ? 1 : 0)
-            .blur(radius: isVisible || reduceMotion ? 0 : 12)
-            .offset(y: isVisible || reduceMotion ? 0 : 18)
-            .scaleEffect(isVisible || reduceMotion ? 1 : 0.985)
+            .opacity(progress)
+            .blur(radius: reduceMotion ? 0 : 12 * (1 - progress))
+            .offset(y: reduceMotion ? 0 : 18 * (1 - progress))
+            .scaleEffect(reduceMotion ? 1 : 0.985 + 0.015 * progress)
     }
 }
 
 struct OfflineSignInControls: View {
     let service: OfflineSignInService
     let canScan: Bool
+    let canSimulateMFA: Bool
+    let simulateMFA: () -> Void
     let replay: () -> Void
 
     var body: some View {
@@ -95,13 +107,16 @@ struct OfflineSignInControls: View {
                 .foregroundStyle(.secondary)
             Button("Simulate scan") { Task { await service.simulateScan() } }
                 .disabled(!canScan)
+            Button("Simulate MFA", action: simulateMFA)
+                .disabled(!canSimulateMFA)
             Menu("More") {
                 Button("Expire QR code") { Task { await service.expireCode() } }
                     .disabled(!canScan)
                 Button("Replay welcome", action: replay)
                 Divider()
                 Text("Any email + 8–72 character password")
-                Text("MFA: mfa@example.com, code 123456")
+                Text("Authenticator / SMS: 123456")
+                Text("Backup code: abcd1234")
                 Text("Error: password incorrect")
             }
         }

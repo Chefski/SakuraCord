@@ -5,6 +5,17 @@ nonisolated enum DiscordMFAMethod: String, CaseIterable, Codable, Sendable {
     case totp
     case backup
     case sms
+
+    var codeLength: Int { self == .backup ? 8 : 6 }
+
+    func normalizedCode(_ code: String) -> String {
+        switch self {
+        case .totp, .sms:
+            String(code.filter(\.isNumber).prefix(codeLength))
+        case .backup:
+            String(code.replacingOccurrences(of: "-", with: "").lowercased().prefix(codeLength))
+        }
+    }
 }
 
 nonisolated struct DiscordMFAChallenge: Equatable, Sendable {
@@ -230,7 +241,7 @@ actor DiscordSessionAuthenticator {
         code: String
     ) async throws -> PendingDiscordCredential {
         guard challenge.methods.contains(method) else { throw AuthenticationError.unsupportedMFA }
-        let normalizedCode = normalized(code: code, for: method)
+        let normalizedCode = method.normalizedCode(code)
         guard !normalizedCode.isEmpty else { throw AuthenticationError.invalidMFACode }
         let identifiers = try await resolvedClientIdentifiers()
         let body = try JSONEncoder().encode(MFAPayload(
@@ -592,15 +603,6 @@ actor DiscordSessionAuthenticator {
             sessionID: payload.sessionID,
             shouldServeInvisible: payload.shouldServeInvisible ?? false
         )
-    }
-
-    private func normalized(code: String, for method: DiscordMFAMethod) -> String {
-        switch method {
-        case .totp, .sms:
-            String(code.filter(\.isNumber).prefix(6))
-        case .backup:
-            String(code.replacingOccurrences(of: "-", with: "").lowercased().prefix(8))
-        }
     }
 
     private static func retryAfter(data: Data, response: HTTPURLResponse) -> TimeInterval {

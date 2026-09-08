@@ -31,26 +31,35 @@ actor OfflineSignInService: DiscordSignInAuthenticating, DiscordSignInRemoteAuth
     private var simulationTask: Task<Void, Never>?
     private static let fixtureToken = "sakuracord-offline-sign-in-fixture"
 
+    nonisolated static func mfaChallenge() -> DiscordMFAChallenge {
+        DiscordMFAChallenge(
+            ticket: "offline-mfa", loginInstanceID: nil,
+            methods: [.totp, .backup, .sms]
+        )
+    }
+
     func login(identifier: String, password: String) async throws -> DiscordNativeAuthenticationStep {
         try await Task.sleep(for: .milliseconds(1200))
         guard !identifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               (8 ... 72).contains(password.count), password != "incorrect"
         else { throw AuthenticationError.invalidCredentials }
         if identifier.lowercased().hasPrefix("mfa") {
-            return .mfa(DiscordMFAChallenge(
-                ticket: "offline-mfa", loginInstanceID: nil, methods: [.totp, .backup, .sms]
-            ))
+            return .mfa(Self.mfaChallenge())
         }
         return try .authenticated(credential())
     }
 
     func completeMFA(challenge: DiscordMFAChallenge, method: DiscordMFAMethod, code: String) async throws -> PendingDiscordCredential {
         try await Task.sleep(for: .milliseconds(1200))
-        guard code == "123456" else { throw AuthenticationError.invalidMFACode }
+        guard challenge.methods.contains(method) else { throw AuthenticationError.unsupportedMFA }
+        guard method.normalizedCode(code) == (method == .backup ? "abcd1234" : "123456") else {
+            throw AuthenticationError.invalidMFACode
+        }
         return try credential()
     }
 
     func sendSMS(for challenge: DiscordMFAChallenge) async throws {
+        guard challenge.methods.contains(.sms) else { throw AuthenticationError.unsupportedMFA }
         try await Task.sleep(for: .milliseconds(650))
     }
 

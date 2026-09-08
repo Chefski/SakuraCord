@@ -1,3 +1,4 @@
+import MetalKit
 import SwiftUI
 
 struct SakuraCordWelcomeSequence: View {
@@ -6,44 +7,43 @@ struct SakuraCordWelcomeSequence: View {
 
     var body: some View {
         let colors = SakuraCordThemeStore.shared.activeTheme.colors(for: colorScheme)
-        GeometryReader { geometry in
-            Text(verbatim: "SakuraCord")
-                .font(.system(size: min(148, geometry.size.width * 0.112), weight: .bold, design: .default))
-                .tracking(-6)
-                .foregroundStyle(.white)
-                .padding(64)
-                .modifier(SakuraCordWelcomeOptics(
-                    progress: progress,
-                    first: colors[0],
-                    last: colors[colors.count - 1],
-                    ink: colorScheme == .dark ? Color(hex: 0xF5F2FF) : Color(hex: 0x292337)
-                ))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
+        SakuraCordWelcomePetals(
+            progress: progress,
+            first: colors[0],
+            last: colors[colors.count - 1],
+            isDark: colorScheme == .dark
+        )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("SakuraCord")
         .accessibilityAddTraits(.isHeader)
     }
 }
 
-/// SwiftUI interpolates one finite phase; no repeating clock or work survives
-/// the intro. The padded text layer leaves room for the continuous refraction.
+/// SwiftUI owns the finite animation. The Metal view only draws when that
+/// interpolated value or its size changes; it has no independent display loop.
 @Animatable
-private struct SakuraCordWelcomeOptics: ViewModifier {
+private struct SakuraCordWelcomePetals: View {
     var progress: Double
     @AnimatableIgnored var first: Color
     @AnimatableIgnored var last: Color
-    @AnimatableIgnored var ink: Color
+    @AnimatableIgnored var isDark: Bool
 
-    func body(content: Content) -> some View {
-        content
-            .layerEffect(
-                ShaderLibrary.bundle(.module).sakuraWelcomeWordmark(
-                    .boundingRect, .float(progress), .color(first), .color(last), .color(ink)
-                ),
-                maxSampleOffset: CGSize(width: 32, height: 24)
-            )
-            .shadow(color: first.opacity(0.28 * pow(sin(progress * .pi), 2)), radius: 18)
-            .scaleEffect(1.06 - 0.06 * min(progress / 0.65, 1))
+    var body: some View {
+        SakuraCordWelcomeSurface(progress: progress, first: first, last: last, isDark: isDark)
+    }
+}
+
+private struct SakuraCordWelcomeSurface: NSViewRepresentable {
+    let progress: Double
+    let first: Color
+    let last: Color
+    let isDark: Bool
+
+    func makeNSView(context: Context) -> SakuraCordWelcomeMetalView {
+        SakuraCordWelcomeMetalView()
+    }
+
+    func updateNSView(_ view: SakuraCordWelcomeMetalView, context: Context) {
+        view.update(progress: progress, first: first, last: last, isDark: isDark)
     }
 }
