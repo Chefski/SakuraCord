@@ -1600,6 +1600,9 @@ import UserNotifications
 @Test func `only supported offline flags select testing mode`() {
     #expect(AppLaunchConfiguration(arguments: ["SakuraCord"]).mode == .normal)
     #expect(AppLaunchConfiguration(arguments: ["SakuraCord", "--offline"]).mode == .offlineTesting)
+    let signIn = AppLaunchConfiguration(arguments: ["SakuraCord", "--offline-sign-in"])
+    #expect(signIn.mode == .offlineTesting)
+    #expect(signIn.includesSignInFixture)
     let longList = AppLaunchConfiguration(arguments: ["SakuraCord", "--offline-long-server-list"])
     #expect(longList.mode == .offlineTesting)
     #expect(longList.includesLongServerList)
@@ -1704,11 +1707,18 @@ import UserNotifications
 }
 
 @MainActor
-@Test func `offline launch never consults its credential store`() async {
+@Test(arguments: [false, true]) func `offline launch never consults its credential store`(signIn: Bool) async {
     let credentials = CredentialAccessProbeStore()
-    let model = AppModel(launchMode: .offlineTesting, credentialStore: credentials)
+    let model = AppModel(launchMode: .offlineTesting, awaitsOfflineSignIn: signIn, credentialStore: credentials)
 
     await model.start()
+    if signIn {
+        #expect(model.sessionState == .signedOut)
+        #expect(model.snapshot == nil)
+        #expect(model.isDiscordNetworkingDisabled)
+        #expect(await credentials.accessCount == 0)
+        #expect(await model.completeOfflineSignIn() == nil)
+    }
 
     #expect(model.sessionState == .workspace)
     #expect(await credentials.accessCount == 0)

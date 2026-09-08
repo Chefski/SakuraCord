@@ -34,3 +34,13 @@ command = "./script/build_and_run.sh run-release"
 name = "Test App"
 icon = "test"
 command = "./script/test.sh app"
+
+[[actions]]
+name = "Run Offline Sign In"
+icon = "run"
+command = "./script/run.sh --offline-sign-in"
+
+[[actions]]
+name = "Build & Run Offline Sign In"
+icon = "run"
+command = "./script/build_and_run.sh --offline-sign-in"

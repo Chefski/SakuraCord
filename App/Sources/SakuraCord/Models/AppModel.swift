@@ -1170,8 +1170,12 @@ final class AppModel {
     @ObservationIgnored var promisedAttachmentFilesInFlight: Set<URL> = []
     @ObservationIgnored var externalAttachmentUploadFileURL: URL?
 
+    let includesOfflineSignIn: Bool
+    var awaitsOfflineSignIn: Bool
+
     init(
         launchMode: AppLaunchMode,
+        awaitsOfflineSignIn: Bool = false,
         provider: (any ChatProvider)? = nil,
         discordNetworkDisabledOverride: Bool? = nil,
         usesInsecureDebugCredentialsOverride: Bool? = nil,
@@ -1196,6 +1200,8 @@ final class AppModel {
         privacySafetySettingsStore: PrivacySafetySettingsStore? = nil
     ) {
         self.launchMode = launchMode
+        includesOfflineSignIn = launchMode == .offlineTesting && awaitsOfflineSignIn
+        self.awaitsOfflineSignIn = includesOfflineSignIn
         appearanceSettings = AppearanceSettingsStore.shared.load()
         interfaceSettings = InterfaceSettingsStore.shared.load()
         chatSettings = ChatSettingsStore.shared.load()
@@ -1212,7 +1218,8 @@ final class AppModel {
         self.provider =
             provider
                 ?? (launchMode == .offlineTesting ? MockChatProvider() : SignedOutChatProvider())
-        sessionState = launchMode == .offlineTesting ? .connecting : .restoring
+        sessionState = includesOfflineSignIn ? .signedOut
+            : (launchMode == .offlineTesting ? .connecting : .restoring)
         typingState = TypingStateModel(expiry: typingExpiry)
         self.localTypingTiming = localTypingTiming
         self.reactionMutationTiming = reactionMutationTiming

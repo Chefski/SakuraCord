@@ -22,8 +22,9 @@ struct DiscordLoginView: View {
     let networkingEnabled: Bool
     let onConnected: @MainActor (PendingDiscordCredential) async -> String?
 
-    @State private var authenticator: DiscordSessionAuthenticator
-    @State private var remoteAuthManager = DiscordRemoteAuthManager()
+    @State private var authenticator: any DiscordSignInAuthenticating
+    @State private var remoteAuthManager: any DiscordSignInRemoteAuthenticating
+    @State private var offlineService: OfflineSignInService?
     @State private var identifier = ""
     @State private var password = ""
     @State private var mfaCode = ""
@@ -41,33 +42,38 @@ struct DiscordLoginView: View {
     @State private var automaticRemoteAuthRestarts = 0
     @State private var isHandingOffCredential = false
     @State private var smsCooldownEndsAt: Date?
-    @State private var backgroundAnimationStart = Date()
+    @State private var welcomeProgress = 0.0
+    @State private var formVisible = false
+    @State private var entranceRevision = 0
     @FocusState private var focusedField: DiscordLoginField?
 
     init(
         showsCancel: Bool,
         networkingEnabled: Bool,
+        offlineSignIn: Bool = false,
         onConnected: @escaping @MainActor (PendingDiscordCredential) async -> String?
     ) {
         self.showsCancel = showsCancel
         self.networkingEnabled = networkingEnabled
         self.onConnected = onConnected
-        _authenticator = State(initialValue: DiscordSessionAuthenticator())
+        let offlineService = offlineSignIn ? OfflineSignInService() : nil
+        _offlineService = State(initialValue: offlineService)
+        _authenticator = State(initialValue: offlineService.map { $0 as any DiscordSignInAuthenticating }
+            ?? DiscordSessionAuthenticator())
+        _remoteAuthManager = State(initialValue: offlineService.map { $0 as any DiscordSignInRemoteAuthenticating }
+            ?? DiscordRemoteAuthManager())
     }
 
     var body: some View {
         ZStack {
-            GeometryReader { geometry in
-                TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: reduceMotion)) { timeline in
-                    let elapsed = reduceMotion ? 0 : timeline.date.timeIntervalSince(backgroundAnimationStart)
-                    ZStack {
-                        SakuraCordAuroraBackdrop(elapsed: elapsed)
-                        SakuraCordSakuraPetalField(elapsed: elapsed, size: geometry.size)
-                            .accessibilityHidden(true)
-                    }
-                }
+            SakuraCordSignInBackdrop()
+                .ignoresSafeArea()
+
+            if !formVisible, !showsCancel, !reduceMotion {
+                SakuraCordWelcomeSequence(progress: welcomeProgress)
+                    .transition(.opacity)
+                    .allowsHitTesting(false)
             }
-            .ignoresSafeArea()
 
             GeometryReader { geometry in
                 ScrollView {
@@ -121,12 +127,26 @@ struct DiscordLoginView: View {
                             }
                         }
                     }
+                    .modifier(SakuraCordSignInReveal(isVisible: formVisible, reduceMotion: reduceMotion))
+                    .allowsHitTesting(formVisible)
+                    .accessibilityHidden(!formVisible)
                     .frame(maxWidth: challenge == nil ? 800 : 500)
                     .padding(.horizontal, 34)
                     .padding(.vertical, 42)
                     .frame(maxWidth: .infinity, minHeight: geometry.size.height)
                 }
                 .scrollIndicators(.hidden)
+            }
+
+            if let offlineService, formVisible {
+                OfflineSignInControls(
+                    service: offlineService,
+                    canScan: remoteAuthState.isReady && !isWorking && challenge == nil,
+                    replay: replayEntrance
+                )
+                .disabled(isWorking)
+                .padding(.bottom, 12)
+                .frame(maxHeight: .infinity, alignment: .bottom)
             }
 
             windowDragRegion
@@ -159,15 +179,14 @@ struct DiscordLoginView: View {
         .frame(minWidth: 860, minHeight: 600)
         .toolbar(removing: .title)
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-        .onAppear {
-            backgroundAnimationStart = Date()
-            focusedField = .identifier
-            if networkingEnabled {
+        .task {
+            if networkingEnabled || offlineService != nil {
                 startRemoteAuth()
             } else {
                 remoteAuthState = .disabled
             }
         }
+        .task(id: entranceRevision) { await revealEntrance() }
         .onDisappear {
             if !isHandingOffCredential {
                 authenticationTask?.cancel()
@@ -178,6 +197,34 @@ struct DiscordLoginView: View {
                 Task { await authenticator.cancelCaptcha(challengeID: captchaChallenge.id) }
             }
         }
+    }
+
+    private func revealEntrance() async {
+        if reduceMotion {
+            formVisible = true
+            focusedField = .identifier
+            return
+        }
+        do {
+            if showsCancel {
+                withAnimation(.smooth(duration: 0.65)) { formVisible = true }
+                try await Task.sleep(for: .milliseconds(650))
+                focusedField = .identifier
+                return
+            }
+            withAnimation(.linear(duration: 5.2)) { welcomeProgress = 1 }
+            try await Task.sleep(for: .milliseconds(4500))
+            withAnimation(.smooth(duration: 0.9)) { formVisible = true }
+            try await Task.sleep(for: .milliseconds(900))
+            focusedField = .identifier
+        } catch {}
+    }
+
+    private func replayEntrance() {
+        welcomeProgress = 0
+        formVisible = false
+        focusedField = nil
+        entranceRevision += 1
     }
 
     private var windowDragRegion: some View {
@@ -192,7 +239,7 @@ struct DiscordLoginView: View {
     }
 
     private func submitCredentials() {
-        guard networkingEnabled else {
+        guard networkingEnabled || offlineService != nil else {
             errorTitle = "Sign-in unavailable"
             errorMessage = "Discord networking is disabled for this launch."
             return
@@ -211,6 +258,7 @@ struct DiscordLoginView: View {
                     identifier: submittedIdentifier,
                     password: submittedPassword
                 )
+                try Task.checkCancellation()
                 await handle(step)
             } catch is CancellationError {
                 return
@@ -367,6 +415,7 @@ struct DiscordLoginView: View {
                 case .connecting:
                     remoteAuthState = .connecting
                 case let .qrCode(url):
+                    automaticRemoteAuthRestarts = 0
                     remoteAuthState = .ready(url)
                 case let .scanned(user):
                     remoteAuthState = .scanned(user)
@@ -396,7 +445,15 @@ struct DiscordLoginView: View {
                         remoteAuthState = .failed("Discord cancelled this sign-in session. Create a fresh code when you’re ready.")
                     }
                 case let .failed(message):
-                    remoteAuthState = .failed(message)
+                    if remoteAuthState.isReady {
+                        // A displayed QR session can expire while the form is
+                        // open. Replace it automatically; a failed reconnect
+                        // still surfaces an error instead of retrying forever.
+                        remoteAuthState = .connecting
+                        await remoteAuthManager.restart()
+                    } else {
+                        remoteAuthState = .failed(message)
+                    }
                 }
             }
         }
@@ -442,106 +499,6 @@ private struct DiscordLoginHeader: View {
     }
 }
 
-struct SakuraCordAuthenticationCard<Content: View>: View {
-    @ViewBuilder let content: Content
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        let colors = SakuraCordThemeStore.shared.activeTheme.colors(for: colorScheme)
-        let firstColor = colors[0]
-        let cardColors = colors.enumerated().map { index, color in
-            let progress = colors.count == 1
-                ? 0
-                : Double(index) / Double(colors.count - 1)
-            return color.opacity(0.20 - 0.04 * progress)
-        }
-        VStack(spacing: 18) { content }
-            .padding(36)
-            .background(
-                .regularMaterial,
-                in: ConcentricRectangle(cornerRadius: 18, style: .continuous)
-            )
-            .background(
-                LinearGradient(
-                    colors: cardColors,
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ),
-                in: ConcentricRectangle(cornerRadius: 18, style: .continuous)
-            )
-            .overlay {
-                ConcentricRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(
-                        LinearGradient(
-                            colors: [firstColor.opacity(0.34), .primary.opacity(0.08)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1
-                    )
-            }
-            .shadow(color: .black.opacity(colorScheme == .dark ? 0.42 : 0.18), radius: 30, y: 18)
-    }
-}
-
-struct SakuraCordAuthenticationCloseButton: View {
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: "xmark")
-                .font(.body.weight(.semibold))
-                .frame(width: 32, height: 32)
-                .background(.primary.opacity(0.07), in: Circle())
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(.secondary)
-        .keyboardShortcut(.cancelAction)
-    }
-}
-
-struct SakuraCordAuthPrimaryButtonStyle: ButtonStyle {
-    @Environment(\.colorScheme) private var colorScheme
-
-    func makeBody(configuration: Configuration) -> some View {
-        let theme = SakuraCordThemeStore.shared.committedTheme
-        let colors = theme.activeColors.enumerated().map { index, color in
-            let progress = theme.activeColorCount == 1
-                ? 0
-                : Double(index) / Double(theme.activeColorCount - 1)
-            let rgb = SakuraCordThemeRGB(
-                hue: color.hue,
-                saturation: max(0.68 - 0.04 * progress, color.saturation),
-                brightness: colorScheme == .dark
-                    ? 0.78 - 0.06 * progress
-                    : 0.60 - 0.05 * progress
-            ).adjustedForContrast(with: .white, toward: .black)
-            return Color(red: rgb.red, green: rgb.green, blue: rgb.blue)
-        }
-        let shadowColor = colors[0]
-        configuration.label
-            .font(.body.weight(.semibold))
-            .frame(maxWidth: .infinity)
-            .frame(height: 44)
-            .contentShape(Rectangle())
-            .foregroundStyle(.white)
-            .background(
-                LinearGradient(
-                    colors: colors,
-                    startPoint: .leading,
-                    endPoint: .trailing
-                ),
-                in: ConcentricRectangle(cornerRadius: 10, style: .continuous)
-            )
-            .shadow(
-                color: shadowColor.opacity(0.28),
-                radius: 12,
-                y: 6
-            )
-            .opacity(configuration.isPressed ? 0.82 : 1)
-    }
-}
-
 private struct DiscordCredentialForm: View {
     @Binding var identifier: String
     @Binding var password: String
@@ -556,6 +513,7 @@ private struct DiscordCredentialForm: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 TextField("", text: $identifier)
+                    .accessibilityLabel("Email or phone")
                     .textContentType(.username)
                     .focused(focusedField, equals: .identifier)
                     .onSubmit { focusedField.wrappedValue = .password }
@@ -569,6 +527,7 @@ private struct DiscordCredentialForm: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 SecureField("", text: $password)
+                    .accessibilityLabel("Password")
                     .textContentType(.password)
                     .focused(focusedField, equals: .password)
                     .onSubmit(submit)
@@ -579,10 +538,15 @@ private struct DiscordCredentialForm: View {
             }
             Button(action: submit) {
                 Text(isWorking ? "Signing in…" : "Sign in")
+                .font(.body.weight(.semibold))
+                .frame(maxWidth: .infinity, minHeight: 34)
             }
-            .buttonStyle(SakuraCordAuthPrimaryButtonStyle())
-            .opacity(identifier.isEmpty || password.count < 8 || isWorking ? 0.45 : 1)
+            .buttonStyle(.glassProminent)
+            .buttonBorderShape(.capsule)
+            .controlSize(.large)
+            .tint(SakuraCordAccentColor.color)
             .disabled(identifier.isEmpty || password.count < 8 || isWorking)
+            .authenticationLoading(isWorking, in: Capsule(), intensity: 1.8)
         }
         .disabled(isWorking)
     }
@@ -596,19 +560,20 @@ private extension View {
         textFieldStyle(.plain)
             .font(.body)
             .foregroundStyle(.primary)
-            .padding(.horizontal, 13)
+            .padding(.horizontal, 18)
             .frame(height: 44)
-            .background(.background.opacity(0.72), in: ConcentricRectangle(cornerRadius: 10))
+            .background(.background.opacity(0.72), in: Capsule())
             .overlay {
-                ConcentricRectangle(cornerRadius: 10)
-                    .stroke(.primary.opacity(0.12), lineWidth: 1)
+                Capsule()
+                    .stroke(isEditorActive ? SakuraCordAccentColor.color.opacity(0.6) : .primary.opacity(0.12), lineWidth: 1)
             }
             .background {
                 LoginTextEditorStyleBridge(isActive: isEditorActive)
                     .allowsHitTesting(false)
             }
-            .contentShape(ConcentricRectangle(cornerRadius: 10, style: .continuous))
+            .contentShape(Capsule())
             .simultaneousGesture(TapGesture().onEnded(onActivate))
+            .pointerStyle(.horizontalText)
             .tint(SakuraCordAccentColor.color)
     }
 }
@@ -645,6 +610,11 @@ private enum DiscordRemoteAuthPresentationState {
     case approving
     case challenge
     case failed(String)
+
+    var isReady: Bool {
+        if case .ready = self { return true }
+        return false
+    }
 }
 
 private struct DiscordRemoteAuthPanel: View {
@@ -664,25 +634,21 @@ private struct DiscordRemoteAuthPanel: View {
                 detail("Discord networking is disabled for this launch.")
 
             case .connecting:
-                remoteAuthSymbol {
-                    ProgressView()
-                        .controlSize(.large)
-                        .tint(SakuraCordAccentColor.color)
-                }
+                remoteAuthSymbol { Color.clear }
+                    .authenticationLoading(true, in: RoundedRectangle(cornerRadius: SakuraCordAuthenticationMetrics.controlRadius, style: .continuous), intensity: 1.8)
                 title("Creating your code")
                 detail("Opening a private sign-in session…")
 
             case let .ready(url):
                 DiscordQRCodeView(url: url)
-                    .frame(width: 174, height: 174)
-                    .clipShape(ConcentricRectangle(cornerRadius: 12, style: .continuous))
-                    .padding(6)
+                    .frame(width: SakuraCordAuthenticationMetrics.qrSize, height: SakuraCordAuthenticationMetrics.qrSize)
+                    .clipShape(RoundedRectangle(cornerRadius: SakuraCordAuthenticationMetrics.controlRadius, style: .continuous))
                     .background(
-                        Color(hex: 0xFFF7FA),
-                        in: ConcentricRectangle(cornerRadius: 18, style: .continuous)
+                        Color.white,
+                        in: RoundedRectangle(cornerRadius: SakuraCordAuthenticationMetrics.controlRadius, style: .continuous)
                     )
                     .overlay {
-                        ConcentricRectangle(cornerRadius: 18, style: .continuous)
+                        RoundedRectangle(cornerRadius: SakuraCordAuthenticationMetrics.controlRadius, style: .continuous)
                             .stroke(SakuraCordAccentColor.color.opacity(0.32), lineWidth: 1)
                     }
                     .shadow(color: SakuraCordAccentColor.color.opacity(0.18), radius: 18, y: 8)
@@ -699,11 +665,8 @@ private struct DiscordRemoteAuthPanel: View {
                 detail("Approve the sign-in on your phone to finish.")
 
             case .approving:
-                remoteAuthSymbol {
-                    ProgressView()
-                        .controlSize(.large)
-                        .tint(SakuraCordAccentColor.color)
-                }
+                remoteAuthSymbol { Color.clear }
+                    .authenticationLoading(true, in: RoundedRectangle(cornerRadius: SakuraCordAuthenticationMetrics.controlRadius, style: .continuous), intensity: 1.8)
                 title("Opening SakuraCord")
                 detail("Your phone approved the sign-in.")
 
@@ -722,7 +685,7 @@ private struct DiscordRemoteAuthPanel: View {
                         .font(.system(size: 34, weight: .semibold))
                         .foregroundStyle(SakuraCordAccentColor.color)
                 }
-                title("That code expired")
+                title("QR sign-in unavailable")
                 detail(message)
                 Button("Create a new code", action: retry)
                     .buttonStyle(.plain)
@@ -750,10 +713,10 @@ private struct DiscordRemoteAuthPanel: View {
 
     private func remoteAuthSymbol(@ViewBuilder content: () -> some View) -> some View {
         content()
-            .frame(width: 174, height: 174)
-            .background(.background.opacity(0.66), in: ConcentricRectangle(cornerRadius: 18))
+            .frame(width: SakuraCordAuthenticationMetrics.qrSize, height: SakuraCordAuthenticationMetrics.qrSize)
+            .background(.background.opacity(0.66), in: RoundedRectangle(cornerRadius: SakuraCordAuthenticationMetrics.controlRadius, style: .continuous))
             .overlay {
-                ConcentricRectangle(cornerRadius: 18)
+                RoundedRectangle(cornerRadius: SakuraCordAuthenticationMetrics.controlRadius, style: .continuous)
                     .stroke(SakuraCordAccentColor.color.opacity(0.18), lineWidth: 1)
             }
     }
@@ -761,18 +724,28 @@ private struct DiscordRemoteAuthPanel: View {
 
 private struct DiscordQRCodeView: View {
     let url: URL
+    @Environment(\.colorScheme) private var colorScheme
     @State private var image: NSImage?
 
     var body: some View {
         ZStack {
             if let image {
                 Image(nsImage: image)
+                    .renderingMode(.template)
                     .resizable()
-                    .interpolation(.high)
+                    .interpolation(.none)
                     .scaledToFit()
+                    .foregroundStyle(LinearGradient(
+                        colors: DiscordQRCodeRenderer.inkColors(
+                            theme: SakuraCordThemeStore.shared.activeTheme,
+                            colorScheme: colorScheme
+                        ),
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ))
             } else {
-                ProgressView()
-                    .tint(SakuraCordAccentColor.color)
+                Color.clear
+                    .authenticationLoading(true, in: RoundedRectangle(cornerRadius: SakuraCordAuthenticationMetrics.controlRadius, style: .continuous), intensity: 1.8)
             }
         }
         .task(id: url) {
@@ -783,6 +756,20 @@ private struct DiscordQRCodeView: View {
 }
 
 enum DiscordQRCodeRenderer {
+    @MainActor
+    static func inkColors(theme: SakuraCordGradientTheme, colorScheme: ColorScheme) -> [Color] {
+        // Start with the backdrop's rendered palette, soften it with neutral ink,
+        // then keep every gradient stop dark enough for the white scan surface.
+        var palette = theme
+        palette.brightness = 1
+        return palette.activeColors.map { color in
+            let rgb = palette.renderedRGB(color, for: colorScheme == .dark ? .dark : .light)
+            .blended(toward: SakuraCordThemeRGB(red: 0.36, green: 0.36, blue: 0.36), fraction: 0.35)
+            .adjustedForContrast(with: .white, toward: .black, requiredRatio: 7)
+            return Color(red: rgb.red, green: rgb.green, blue: rgb.blue)
+        }
+    }
+
     private static let moduleScale = 10
     private static let quietZone = 4
 
@@ -811,9 +798,9 @@ enum DiscordQRCodeRenderer {
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return nil }
 
-        let plum = NSColor(calibratedRed: 0.22, green: 0.055, blue: 0.15, alpha: 1).cgColor
+        let ink = NSColor.black.cgColor
         context.clear(CGRect(x: 0, y: 0, width: pixelSize, height: pixelSize))
-        context.setFillColor(plum)
+        context.setFillColor(ink)
 
         let finderOrigins = detectedFinderOrigins(in: modules, count: moduleCount)
         func isDisplayedDataModule(x column: Int, y row: Int) -> Bool {
@@ -839,7 +826,7 @@ enum DiscordQRCodeRenderer {
             drawFinder(
                 context: context,
                 origin: CGPoint(x: origin.x, y: CGFloat(moduleCount - 7) - origin.y),
-                plum: plum
+                ink: ink
             )
         }
 
@@ -957,13 +944,13 @@ enum DiscordQRCodeRenderer {
     private static func drawFinder(
         context: CGContext,
         origin: CGPoint,
-        plum: CGColor
+        ink: CGColor
     ) {
         let unit = CGFloat(moduleScale)
         let horizontalPosition = (origin.x + CGFloat(quietZone)) * unit
         let verticalPosition = (origin.y + CGFloat(quietZone)) * unit
 
-        context.setFillColor(plum)
+        context.setFillColor(ink)
         context.addPath(CGPath(
             roundedRect: CGRect(x: horizontalPosition, y: verticalPosition, width: 7 * unit, height: 7 * unit),
             cornerWidth: 1.45 * unit,
@@ -988,7 +975,7 @@ enum DiscordQRCodeRenderer {
         context.fillPath()
         context.restoreGState()
 
-        context.setFillColor(plum)
+        context.setFillColor(ink)
         context.addPath(CGPath(
             roundedRect: CGRect(
                 x: horizontalPosition + 2 * unit,
@@ -1032,9 +1019,12 @@ private struct DiscordMFAForm: View {
             .pickerStyle(.segmented)
 
             TextField(selectedMethod == .backup ? "Backup code" : "6-digit code", text: $code)
-                .textFieldStyle(.roundedBorder)
                 .focused(focusedField, equals: .mfa)
                 .onSubmit(submit)
+                .sakuracordLoginField(
+                    isEditorActive: focusedField.wrappedValue == .mfa,
+                    onActivate: { focusedField.wrappedValue = .mfa }
+                )
 
             if selectedMethod == .sms {
                 Button("Send SMS Code", action: sendSMS)
@@ -1045,9 +1035,12 @@ private struct DiscordMFAForm: View {
                 Text(isWorking ? "Verifying…" : "Verify and Sign In")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.glassProminent)
+            .buttonBorderShape(.capsule)
+            .tint(SakuraCordAccentColor.color)
             .controlSize(.large)
             .disabled(code.isEmpty || isWorking || selectedMethod == nil)
+            .authenticationLoading(isWorking, in: Capsule(), intensity: 1.8)
         }
         .disabled(isWorking)
     }

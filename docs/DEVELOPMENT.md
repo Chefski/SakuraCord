@@ -5,7 +5,8 @@ when working on SakuraCord but too detailed for the public project README.
 
 ## Setup
 
-SakuraCord requires macOS 27, Xcode 27 with Swift 6.4, and Git. After cloning,
+SakuraCord requires macOS 27, Xcode 27 with Swift 6.4, its Metal Toolchain, and Git.
+Install the shader compiler if needed with `xcodebuild -downloadComponent MetalToolchain`. After cloning,
 complete the required [developer and agent bootstrap](README.md#developer-and-agent-bootstrap)
 before committing or pushing.
 
@@ -22,8 +23,9 @@ session:
 ```
 
 To launch the existing `dist/SakuraCord.app` without rebuilding, use
-`./script/run.sh` or `./script/run.sh --offline`. These are also available as
-the Codex environment actions **Run** and **Run Offline**. Both restart the
+`./script/run.sh`, `./script/run.sh --offline`, or
+`./script/run.sh --offline-sign-in`. These are also available as
+the Codex environment actions **Run**, **Run Offline**, and **Run Offline Sign In**. These restart the
 checkout's app so the selected mode takes effect, and require a previously
 built bundle.
 
@@ -32,11 +34,22 @@ contacting Discord:
 
 | Command | Scene |
 | --- | --- |
+| `./script/build_and_run.sh --offline-sign-in` | Welcome animation and shared native sign-in flow |
 | `./script/build_and_run.sh --offline-long-server-list` | Extended server rail |
 | `./script/build_and_run.sh --offline-forum-performance` | Large forum |
 | `./script/build_and_run.sh --offline-chat-performance` | Large native timeline |
 | `./script/build_and_run.sh --offline-pins-performance-autoscroll` | Paginated 5,000-message pins timeline benchmark |
 | `./script/build_and_run.sh --offline-incoming-private-call` | Incoming direct-message call |
+
+The offline sign-in fixture uses the production sign-in views and state handling
+with an in-memory authentication service. Use any nonempty email and an 8–72
+character password; `incorrect` exercises the error state. An email beginning
+with `mfa` offers authenticator, backup code, and SMS paths, all using `123456`.
+The preview controls simulate QR scanning/approval, expire the code, or replay
+the welcome. Successful sign-in opens the ordinary offline workspace. No saved
+account is read or changed, and no Discord transport is created. Hosted CAPTCHA
+verification requires Discord and is excluded from this offline fixture.
+**Build & Run Offline Sign In** rebuilds and launches the same mode from Codex.
 
 Use `./script/build_and_run.sh run` to launch the normal app and restore an
 existing SakuraCord session from Keychain. Read-only authenticated verification

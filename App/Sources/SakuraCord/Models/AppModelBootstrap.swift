@@ -4,7 +4,23 @@ import SakuraCordModels
 import SakuraCordPersistence
 
 extension AppModel {
+    func completeOfflineSignIn() async -> String? {
+        guard launchMode == .offlineTesting, awaitsOfflineSignIn else {
+            return "The offline sign-in session is no longer active."
+        }
+        awaitsOfflineSignIn = false
+        await start(publishesSessionState: false)
+        if snapshot != nil {
+            sessionState = .workspace
+            return nil
+        }
+        awaitsOfflineSignIn = true
+        sessionState = .signedOut
+        return errorMessage ?? "The offline workspace could not be opened."
+    }
+
     func start(publishesSessionState: Bool = true) async {
+        guard !awaitsOfflineSignIn else { return }
         let session = accountSession()
         let startSignpost = AppPerformanceSignposts.signposter.beginInterval("SessionStart")
         defer {

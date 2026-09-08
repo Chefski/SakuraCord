@@ -76,7 +76,9 @@ clients, so compatibility can change as Discord evolves.
 
 ## Build from source
 
-Building SakuraCord requires macOS 27, Xcode 27 with Swift 6.4, and Git.
+Building SakuraCord requires macOS 27, Xcode 27 with Swift 6.4 and its Metal
+Toolchain, and Git. Install the shader compiler if needed with
+`xcodebuild -downloadComponent MetalToolchain`.
 
 ```sh
 git clone https://github.com/SakuraCordApp/SakuraCord.git

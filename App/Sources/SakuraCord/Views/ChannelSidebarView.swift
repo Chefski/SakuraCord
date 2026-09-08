@@ -1104,9 +1104,7 @@ private struct AccountSelectionPopover: View {
                 Text(account.username ?? account.resolvedDisplayName)
                     .lineLimit(1)
                 Spacer()
-                if switchingAccountID == account.accountID {
-                    ProgressView().controlSize(.small)
-                } else if account.accountID == activeAccountID {
+                if account.accountID == activeAccountID {
                     Image(systemName: "checkmark")
                         .foregroundStyle(SakuraCordAccentColor.color)
                 }
@@ -1118,6 +1116,8 @@ private struct AccountSelectionPopover: View {
         }
         .buttonStyle(PopoverRowButtonStyle())
         .disabled(switchingAccountID != nil)
+        .authenticationLoading(switchingAccountID == account.accountID, in: ConcentricRectangle(cornerRadius: 8))
+        .accessibilityValue(switchingAccountID == account.accountID ? "Switching account" : "")
     }
 }
 

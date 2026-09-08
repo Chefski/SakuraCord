@@ -1,6 +1,7 @@
 import AppKit
 import DiscordProtocol
 import Foundation
+import SwiftUI
 @testable import SakuraCord
 import Testing
 import Vision
@@ -57,7 +58,8 @@ struct DiscordRemoteAuthTests {
         #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
     }
 
-    @Test @MainActor func `styled QR code has no inset background and still decodes`() throws {
+    @Test(arguments: [0.0, 0.16, 0.33, 0.66, 0.9], [ColorScheme.light, .dark]) @MainActor
+    func `styled QR code has no inset background and still decodes`(hue: Double, colorScheme: ColorScheme) throws {
         let url = try #require(URL(string: "https://discord.com/ra/sanitized-fixture"))
         let image = try #require(DiscordQRCodeRenderer.render(url: url))
         var proposedRect = CGRect(origin: .zero, size: image.size)
@@ -81,9 +83,27 @@ struct DiscordRemoteAuthTests {
             space: colorSpace,
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ))
-        context.setFillColor(NSColor(calibratedRed: 1, green: 0.969, blue: 0.98, alpha: 1).cgColor)
-        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
-        context.draw(transparentCode, in: CGRect(x: 0, y: 0, width: width, height: height))
+        let bounds = CGRect(x: 0, y: 0, width: width, height: height)
+        let theme = SakuraCordGradientTheme(
+            colors: [hue, hue + 0.12, hue + 0.24].map { SakuraCordThemeColor(hue: $0, saturation: 1) },
+            intensity: 1,
+            brightness: 1
+        )
+        let colors = DiscordQRCodeRenderer.inkColors(theme: theme, colorScheme: colorScheme)
+            .map { NSColor($0).cgColor }
+        let gradient = try #require(CGGradient(colorsSpace: colorSpace, colors: colors as CFArray, locations: nil))
+        // Match the template image's diagonal gradient, then composite on white.
+        context.draw(transparentCode, in: bounds)
+        context.setBlendMode(.sourceIn)
+        context.drawLinearGradient(
+            gradient,
+            start: CGPoint(x: 0, y: height),
+            end: CGPoint(x: width, y: 0),
+            options: [.drawsBeforeStartLocation, .drawsAfterEndLocation]
+        )
+        context.setBlendMode(.destinationOver)
+        context.setFillColor(NSColor.white.cgColor)
+        context.fill(bounds)
         let compositedCode = try #require(context.makeImage())
 
         let request = VNDetectBarcodesRequest()

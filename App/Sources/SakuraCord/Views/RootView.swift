@@ -19,13 +19,17 @@ struct RootView: View {
                     toolbarSearchFieldMetrics: toolbarSearchFieldMetrics
                 )
             case .signedOut:
-                if model.launchMode == .normal {
+                if model.launchMode == .normal || model.includesOfflineSignIn {
                     if model.savedAccounts.isEmpty {
                         DiscordLoginView(
                             showsCancel: false,
-                            networkingEnabled: !model.isDiscordNetworkingDisabled
+                            networkingEnabled: !model.isDiscordNetworkingDisabled,
+                            offlineSignIn: model.includesOfflineSignIn
                         ) { credential in
-                            await model.connectPendingAuthenticatedAccount(
+                            if model.includesOfflineSignIn {
+                                return await model.completeOfflineSignIn()
+                            }
+                            return await model.connectPendingAuthenticatedAccount(
                                 credential,
                                 preservesInteractivePresentation: true
                             )
@@ -115,7 +119,7 @@ struct RootView: View {
                     hasOpenThread: model.openThread != nil
                 )
         case .signedOut:
-            model.launchMode != .normal
+            model.launchMode != .normal && !model.includesOfflineSignIn
         }
     }
 
@@ -130,7 +134,7 @@ struct RootView: View {
         case .workspace:
             model.isSwitchingAccounts
         case .signedOut:
-            model.launchMode != .normal
+            model.launchMode != .normal && !model.includesOfflineSignIn
         }
     }
 }

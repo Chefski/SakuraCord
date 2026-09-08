@@ -6,24 +6,25 @@ struct AccountSwitcherView: View {
     var accountActivated: () -> Void = {}
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showsLogin = false
     @State private var switchingAccountID: String?
     @State private var loggingOutAccountID: String?
     @State private var accountPendingLogout: SavedAccount?
-    @State private var backgroundAnimationStart = Date()
 
     var body: some View {
         ZStack {
-            authenticationBackdrop
+            SakuraCordSignInBackdrop()
+                .ignoresSafeArea()
 
             GeometryReader { geometry in
                 ScrollView {
-                    SakuraCordAuthenticationCard {
-                        VStack(alignment: .leading, spacing: 26) {
-                            header
-                            accountList
-                            addAccountButton
+                    GlassEffectContainer {
+                        SakuraCordAuthenticationCard {
+                            VStack(alignment: .leading, spacing: 26) {
+                                header
+                                accountList
+                                addAccountButton
+                            }
                         }
                     }
                     .frame(maxWidth: 620)
@@ -49,10 +50,7 @@ struct AccountSwitcherView: View {
         .frame(minWidth: 860, minHeight: 600)
         .toolbar(removing: .title)
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-        .task {
-            backgroundAnimationStart = Date()
-            await model.refreshSavedAccounts()
-        }
+        .task { await model.refreshSavedAccounts() }
         .sheet(isPresented: $showsLogin) {
             DiscordLoginView(
                 showsCancel: true,
@@ -86,30 +84,6 @@ struct AccountSwitcherView: View {
         } message: {
             Text("SakuraCord will remove this account's saved session from macOS Keychain.")
         }
-    }
-
-    private var authenticationBackdrop: some View {
-        GeometryReader { geometry in
-            TimelineView(
-                .animation(
-                    minimumInterval: 1.0 / 30.0,
-                    paused: reduceMotion
-                )
-            ) { timeline in
-                let elapsed = reduceMotion
-                    ? 0
-                    : timeline.date.timeIntervalSince(backgroundAnimationStart)
-                ZStack {
-                    SakuraCordAuroraBackdrop(elapsed: elapsed)
-                    SakuraCordSakuraPetalField(
-                        elapsed: elapsed,
-                        size: geometry.size
-                    )
-                    .accessibilityHidden(true)
-                }
-            }
-        }
-        .ignoresSafeArea()
     }
 
     private var windowDragRegion: some View {
@@ -146,9 +120,9 @@ struct AccountSwitcherView: View {
                 accountRow(account)
             }
         }
-        .background(.regularMaterial, in: ConcentricRectangle(cornerRadius: 14, style: .continuous))
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: SakuraCordAuthenticationMetrics.controlRadius, style: .continuous))
         .overlay {
-            ConcentricRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: SakuraCordAuthenticationMetrics.controlRadius, style: .continuous)
                 .stroke(.primary.opacity(0.11), lineWidth: 1)
         }
     }
@@ -184,9 +158,9 @@ struct AccountSwitcherView: View {
             Spacer(minLength: 12)
 
             if isSwitching {
-                ProgressView()
-                    .controlSize(.small)
-                    .tint(SakuraCordAccentColor.color)
+                Text("Switching…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                     .frame(width: 78)
             } else if isActive {
                 Color.clear
@@ -196,29 +170,24 @@ struct AccountSwitcherView: View {
                 Button("Switch") {
                     switchToAccount(account)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.glass)
+                .buttonBorderShape(.capsule)
                 .controlSize(.large)
                 .tint(SakuraCordAccentColor.color)
                 .disabled(switchingAccountID != nil)
                 .frame(width: 78)
             }
 
-            if isLoggingOut {
-                ProgressView()
-                    .controlSize(.small)
-                    .tint(SakuraCordAccentColor.color)
-                    .frame(width: 28)
-            } else {
-                AccountOptionsMenuControl(
-                    isEnabled: switchingAccountID == nil
-                        && loggingOutAccountID == nil
-                ) {
-                    accountPendingLogout = account
-                }
+            AccountOptionsMenuControl(
+                isEnabled: switchingAccountID == nil && loggingOutAccountID == nil
+            ) {
+                accountPendingLogout = account
             }
         }
         .padding(.horizontal, 18)
         .frame(height: 76)
+        .authenticationLoading(isSwitching || isLoggingOut, in: RoundedRectangle(cornerRadius: SakuraCordAuthenticationMetrics.controlRadius, style: .continuous))
+        .accessibilityValue(isLoggingOut ? "Logging out" : isSwitching ? "Switching account" : "")
         .accessibilityElement(children: .contain)
     }
 
@@ -230,10 +199,14 @@ struct AccountSwitcherView: View {
                 "Add an account…",
                 systemImage: "person.crop.circle.badge.plus"
             )
+            .font(.body.weight(.semibold))
+            .frame(maxWidth: .infinity, minHeight: 34)
         }
-        .buttonStyle(SakuraCordAuthPrimaryButtonStyle())
+        .buttonStyle(.glassProminent)
+        .buttonBorderShape(.capsule)
+        .controlSize(.large)
+        .tint(SakuraCordAccentColor.color)
         .disabled(switchingAccountID != nil || loggingOutAccountID != nil)
-        .opacity(switchingAccountID == nil && loggingOutAccountID == nil ? 1 : 0.45)
     }
 
     private var pendingLogoutBinding: Binding<Bool> {
@@ -278,28 +251,18 @@ struct AccountSwitcherView: View {
 private struct AccountOptionsMenuControl: View {
     let isEnabled: Bool
     let logOut: () -> Void
-    @State private var isHovering = false
 
     var body: some View {
         NativeAccountOptionsButton(isEnabled: isEnabled, logOut: logOut)
             .frame(width: 28, height: 28)
-            .background(
-                isHovering && isEnabled
-                    ? Color.primary.opacity(0.14)
-                    : .clear,
-                in: ConcentricRectangle(cornerRadius: 7, style: .continuous)
-            )
             .overlay {
                 Image(systemName: "ellipsis")
-                    .symbolVariant(.none)
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(isHovering ? .primary : .secondary)
+                    .foregroundStyle(.secondary)
                     .allowsHitTesting(false)
             }
-            .contentShape(
-                ConcentricRectangle(cornerRadius: 7, style: .continuous)
-            )
-            .onHover { isHovering = $0 }
+            .glassEffect(.regular.interactive(), in: Circle())
+            .contentShape(Circle())
             .opacity(isEnabled ? 1 : 0.45)
             .help("Account options")
             .accessibilityLabel("Account options")

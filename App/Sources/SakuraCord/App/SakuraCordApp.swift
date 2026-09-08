@@ -80,6 +80,7 @@ struct SakuraCordApp: App {
             : MacAppSoundPlayer()
         let appModel = AppModel(
             launchMode: configuration.mode,
+            awaitsOfflineSignIn: configuration.includesSignInFixture,
             provider: provider,
             notificationService: notificationService,
             soundPlayer: soundPlayer

@@ -35,6 +35,10 @@ Launch state is explicit:
 - `--offline`, `--offline-long-server-list`, and
   `--offline-forum-performance` construct deterministic fixture providers and
   an in-memory database with Discord networking disabled.
+- `--offline-sign-in` uses the same offline provider, credential isolation, and
+  in-memory database, but waits at the production sign-in view. A transport-free
+  authentication fixture supplies password/MFA and QR events; only successful
+  completion releases the mock workspace bootstrap.
 - `--offline-pins-performance-autoscroll` opens a deterministic 5,000-message
   paginated pin fixture through the production pin state and shared native
   timeline, using the existing display-link scroll benchmark and signposts.

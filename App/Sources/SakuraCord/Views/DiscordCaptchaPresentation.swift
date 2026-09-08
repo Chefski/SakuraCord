@@ -105,16 +105,10 @@ struct DiscordCaptchaPresentation: View {
                 HStack {
                     Text("Discord verification")
                         .font(.headline)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.primary)
                     Spacer()
-                    Button(action: cancel) {
-                        Image(systemName: "xmark")
-                            .font(.body.weight(.semibold))
-                            .frame(width: 30, height: 30)
-                            .background(.white.opacity(0.08), in: Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.white.opacity(0.72))
+                    SakuraCordAuthenticationCloseButton(action: cancel)
+                        .disabled(!isVisible)
                 }
 
                 DiscordCaptchaView(
@@ -123,17 +117,18 @@ struct DiscordCaptchaPresentation: View {
                     onToken: onToken
                 )
                 .frame(width: 520, height: 590)
-                .clipShape(ConcentricRectangle(cornerRadius: 12, style: .continuous))
+                .clipShape(ConcentricRectangle(cornerRadius: SakuraCordAuthenticationMetrics.controlRadius))
             }
             .padding(18)
             .background(
-                Color(hex: 0x211824),
-                in: ConcentricRectangle(cornerRadius: 18, style: .continuous)
+                .regularMaterial,
+                in: RoundedRectangle(cornerRadius: SakuraCordAuthenticationMetrics.controlRadius + 18, style: .continuous)
             )
             .overlay {
-                ConcentricRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(Color(hex: 0xFF79AA).opacity(0.24), lineWidth: 1)
+                RoundedRectangle(cornerRadius: SakuraCordAuthenticationMetrics.controlRadius + 18, style: .continuous)
+                    .stroke(SakuraCordAccentColor.color.opacity(0.24), lineWidth: 1)
             }
+            .containerShape(.rect(cornerRadius: SakuraCordAuthenticationMetrics.controlRadius + 18))
             .shadow(color: .black.opacity(0.5), radius: 30, y: 16)
             .opacity(isVisible ? 1 : 0)
             .accessibilityHidden(!isVisible)

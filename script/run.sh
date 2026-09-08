@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ "$#" -gt 1 ]] || [[ "$#" -eq 1 && "$1" != "--offline" ]]; then
-  echo "usage: $0 [--offline]" >&2
+if [[ "$#" -gt 1 ]] || [[ "$#" -eq 1 && "$1" != "--offline" && "$1" != "--offline-sign-in" ]]; then
+  echo "usage: $0 [--offline|--offline-sign-in]" >&2
   exit 2
 fi
 
@@ -20,7 +20,7 @@ fi
 
 sakuracord_stop_scoped_app
 if [[ "$#" -eq 1 ]]; then
-  /usr/bin/open -n "$SAKURACORD_APP_BUNDLE" --args --offline
+  /usr/bin/open -n "$SAKURACORD_APP_BUNDLE" --args "$1"
 else
   /usr/bin/open -n "$SAKURACORD_APP_BUNDLE"
 fi
