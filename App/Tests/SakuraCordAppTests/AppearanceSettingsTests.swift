@@ -88,14 +88,14 @@ func `Public beta accents migrate into native-surface single-color themes`(
 }
 
 @MainActor
-@Test func `Pre-accent releases and new installs start with native-surface Blurple`() {
+@Test func `Pre-accent releases and new installs start with native-surface Sakura pink`() {
     let preferences = SettingsPreferenceStore(defaults: InMemoryPreferences())
     let persistence = SakuraCordThemeSettingsStore(preferences: preferences)
 
     let theme = persistence.load()
 
     #expect(theme == .defaultTheme)
-    #expect(theme.colors == [.discordBlurple])
+    #expect(theme.colors == [.sakuraPink])
     #expect(theme.activeColorCount == 1)
     #expect(theme.intensity == 0)
     #expect(theme.brightness == 1)

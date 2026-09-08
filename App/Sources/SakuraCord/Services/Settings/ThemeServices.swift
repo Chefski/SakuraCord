@@ -56,6 +56,7 @@ nonisolated struct SakuraCordThemeColor: Codable, Equatable, Hashable, Sendable 
     }
 
     static let discordBlurple = Self(sRGBRed: 0x58, green: 0x65, blue: 0xF2)
+    static let sakuraPink = Self(sRGBRed: 0xF7, green: 0x4F, blue: 0x9E)
 
     private static func normalizedHue(_ hue: Double) -> Double {
         let remainder = hue.truncatingRemainder(dividingBy: 1)
@@ -83,7 +84,7 @@ nonisolated enum LegacyAccentColorChoice: String, CaseIterable, Sendable {
         case .purple:
             .init(sRGBRed: 0x95, green: 0x3D, blue: 0x96)
         case .pink:
-            .init(sRGBRed: 0xF7, green: 0x4F, blue: 0x9E)
+            .sakuraPink
         case .red:
             .init(sRGBRed: 0xE0, green: 0x38, blue: 0x3E)
         case .orange:
@@ -197,7 +198,7 @@ nonisolated struct SakuraCordGradientTheme: Codable, Equatable, Hashable, Sendab
     static let minimumHueSpacing = 0.075
 
     static let defaultTheme = SakuraCordGradientTheme(
-        colors: [.discordBlurple],
+        colors: [.sakuraPink],
         intensity: 0,
         brightness: 1
     )
@@ -617,6 +618,11 @@ final class SakuraCordThemeSettingsStore {
             {
                 return stored
             }
+            return .defaultTheme
+        }
+
+        guard preferences.containsStoredValue(for: .legacyAccentColorMigration) else {
+            save(.defaultTheme)
             return .defaultTheme
         }
 
