@@ -147,6 +147,7 @@ struct AnimatedRemoteImage: View {
     let url: URL
     var animates = true
     var isLooping = true
+    var playback: AnimatedImagePlayback?
     var previewImage: NSImage?
     var fallbackSystemImage: String?
     var fallbackInset: CGFloat = 2
@@ -179,6 +180,8 @@ struct AnimatedRemoteImage: View {
         url: URL,
         animates: Bool = true,
         isLooping: Bool = true,
+        playback: AnimatedImagePlayback? = nil,
+        loadedImage: DecodedAnimatedImage? = nil,
         previewImage: NSImage? = nil,
         fallbackSystemImage: String? = nil,
         fallbackInset: CGFloat = 2,
@@ -190,6 +193,7 @@ struct AnimatedRemoteImage: View {
         self.url = url
         self.animates = animates
         self.isLooping = isLooping
+        self.playback = playback
         self.previewImage = previewImage
         self.fallbackSystemImage = fallbackSystemImage
         self.fallbackInset = fallbackInset
@@ -202,7 +206,7 @@ struct AnimatedRemoteImage: View {
             url: url,
             maximumPixelDimension: maximumPixelDimension
         )
-        let cached = AnimatedRemoteImageDisplayCache.shared.image(
+        let cached = loadedImage ?? AnimatedRemoteImageDisplayCache.shared.image(
             for: url,
             maximumPixelDimension: maximumPixelDimension
         )
@@ -217,7 +221,8 @@ struct AnimatedRemoteImage: View {
                     decodedImage: decodedImage,
                     animates: animates && !accessibilityReducesAnimation,
                     isLooping: isLooping,
-                    contentMode: contentMode
+                    contentMode: contentMode,
+                    playback: accessibilityReducesAnimation ? nil : playback
                 )
             } else if let previewImage {
                 Image(nsImage: previewImage)
@@ -418,6 +423,7 @@ nonisolated final class DecodedAnimatedImage: @unchecked Sendable {
 
     let frames: [CGImage]
     let frameDurations: [TimeInterval]
+    let playCount: Int?
     let estimatedByteCount: Int
 
     nonisolated init(
@@ -441,6 +447,11 @@ nonisolated final class DecodedAnimatedImage: @unchecked Sendable {
         }
         let frameCount = CGImageSourceGetCount(source)
         guard frameCount > 0 else { throw CocoaError(.fileReadCorruptFile) }
+        let properties = CGImageSourceCopyProperties(source, nil) as? [CFString: Any]
+        let png = properties?[kCGImagePropertyPNGDictionary] as? [CFString: Any]
+        let webP = properties?[kCGImagePropertyWebPDictionary] as? [CFString: Any]
+        playCount = (png?[kCGImagePropertyAPNGLoopCount] as? NSNumber)?.intValue
+            ?? (webP?[kCGImagePropertyWebPLoopCount] as? NSNumber)?.intValue
 
         var sourceDurations: [TimeInterval] = []
         sourceDurations.reserveCapacity(frameCount)
@@ -967,13 +978,15 @@ struct AnimatedImageRepresentable: NSViewRepresentable {
     let animates: Bool
     let isLooping: Bool
     let contentMode: ContentMode
+    var playback: AnimatedImagePlayback?
 
     func makeNSView(context: Context) -> AnimatedImageCanvas {
         Self.configuredCanvas(
             decodedImage: decodedImage,
             animates: animates,
             isLooping: isLooping,
-            contentMode: contentMode
+            contentMode: contentMode,
+            playback: playback
         )
     }
 
@@ -982,7 +995,8 @@ struct AnimatedImageRepresentable: NSViewRepresentable {
             decodedImage,
             animates: animates,
             isLooping: isLooping,
-            contentMode: contentMode
+            contentMode: contentMode,
+            playback: playback
         )
     }
 
@@ -990,14 +1004,16 @@ struct AnimatedImageRepresentable: NSViewRepresentable {
         decodedImage: DecodedAnimatedImage,
         animates: Bool,
         isLooping: Bool,
-        contentMode: ContentMode
+        contentMode: ContentMode,
+        playback: AnimatedImagePlayback? = nil
     ) -> AnimatedImageCanvas {
         let view = AnimatedImageCanvas()
         view.display(
             decodedImage,
             animates: animates,
             isLooping: isLooping,
-            contentMode: contentMode
+            contentMode: contentMode,
+            playback: playback
         )
         return view
     }
@@ -1007,8 +1023,11 @@ final class AnimatedImageCanvas: NSView {
     private(set) var displayedImage: DecodedAnimatedImage?
     private var displayedAnimationPreference: (animates: Bool, isLooping: Bool)?
     private var displayedContentMode: ContentMode?
+    private var displayedPlayback: AnimatedImagePlayback?
     private var displayedPlaybackEnabled: Bool?
     private var isPlaybackSuppressed = false
+    private var playbackClock = AnimatedImagePlaybackClock()
+    private var hasBeenAttachedToWindow = false
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -1016,18 +1035,6 @@ final class AnimatedImageCanvas: NSView {
         layer?.contentsGravity = .resizeAspect
         layer?.masksToBounds = true
         let notificationCenter = NotificationCenter.default
-        notificationCenter.addObserver(
-            self,
-            selector: #selector(playbackVisibilityDidChange(_:)),
-            name: NSApplication.didBecomeActiveNotification,
-            object: nil
-        )
-        notificationCenter.addObserver(
-            self,
-            selector: #selector(playbackVisibilityDidChange(_:)),
-            name: NSApplication.didResignActiveNotification,
-            object: nil
-        )
         notificationCenter.addObserver(
             self,
             selector: #selector(playbackVisibilityDidChange(_:)),
@@ -1047,6 +1054,17 @@ final class AnimatedImageCanvas: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        hasBeenAttachedToWindow = hasBeenAttachedToWindow || window != nil
+        applyPlaybackState(force: true)
+    }
+
+    override func viewDidHide() {
+        super.viewDidHide()
+        applyPlaybackState(force: true)
+    }
+
+    override func viewDidUnhide() {
+        super.viewDidUnhide()
         applyPlaybackState(force: true)
     }
 
@@ -1054,7 +1072,8 @@ final class AnimatedImageCanvas: NSView {
         _ image: DecodedAnimatedImage,
         animates: Bool,
         isLooping: Bool,
-        contentMode: ContentMode = .fit
+        contentMode: ContentMode = .fit,
+        playback: AnimatedImagePlayback? = nil
     ) {
         let preference = (animates: animates, isLooping: isLooping)
         guard
@@ -1062,11 +1081,19 @@ final class AnimatedImageCanvas: NSView {
             || displayedAnimationPreference?.animates != preference.animates
             || displayedAnimationPreference?.isLooping != preference.isLooping
             || displayedContentMode != contentMode
+            || displayedPlayback != playback
         else { return }
+        let replacesAnimation = displayedImage !== image
+            || displayedAnimationPreference?.isLooping != isLooping
+            || displayedPlayback != playback
         displayedImage = image
         displayedAnimationPreference = preference
         displayedContentMode = contentMode
+        displayedPlayback = playback
         layer?.contentsGravity = contentMode == .fill ? .resizeAspectFill : .resizeAspect
+        if replacesAnimation {
+            installAnimation(for: image, isLooping: isLooping)
+        }
         applyPlaybackState(force: true)
     }
 
@@ -1076,14 +1103,8 @@ final class AnimatedImageCanvas: NSView {
     /// simultaneously moving the backing surface.
     func setPlaybackSuppressed(_ isSuppressed: Bool) {
         guard isPlaybackSuppressed != isSuppressed else { return }
-        let frozenContents = isSuppressed
-            ? (layer?.presentation()?.contents ?? layer?.contents)
-            : nil
         isPlaybackSuppressed = isSuppressed
         applyPlaybackState(force: true)
-        if isSuppressed, let frozenContents {
-            layer?.contents = frozenContents
-        }
     }
 
     func displayStatic(_ image: CGImage?) {
@@ -1095,8 +1116,11 @@ final class AnimatedImageCanvas: NSView {
         displayedImage = nil
         displayedAnimationPreference = nil
         displayedContentMode = nil
+        displayedPlayback = nil
         displayedPlaybackEnabled = nil
         isPlaybackSuppressed = false
+        playbackClock = AnimatedImagePlaybackClock()
+        if let layer { playbackClock.apply(to: layer) }
         layer?.removeAnimation(forKey: "remoteAnimatedImage")
         layer?.contents = nil
     }
@@ -1112,47 +1136,55 @@ final class AnimatedImageCanvas: NSView {
     }
 
     private func applyPlaybackState(force: Bool) {
-        guard let image = displayedImage,
-              let preference = displayedAnimationPreference
+        guard displayedImage != nil,
+              let preference = displayedAnimationPreference,
+              let layer
         else { return }
-        // A detached test/preparation canvas has no compositor surface and
-        // therefore no energy cost. Keep its layer animation inspectable;
-        // only a canvas attached to a real window needs visibility gating.
-        let isAttachedToWindow = window != nil
         let playbackEnabled = AnimatedMediaPlaybackPolicy.shouldPlay(
-            isVisible: true,
-            isApplicationActive: !isAttachedToWindow || NSApp.isActive,
-            isWindowVisible: !isAttachedToWindow
-                || window?.occlusionState.contains(.visible) == true,
+            isVisible: !isHiddenOrHasHiddenAncestor,
+            isWindowVisible: window?.occlusionState.contains(.visible)
+                ?? !hasBeenAttachedToWindow,
             reduceMotion: !preference.animates,
             reduceAnimatedMedia: false
         ) && !isPlaybackSuppressed
-        guard force || displayedPlaybackEnabled != playbackEnabled else {
-            return
-        }
+        guard force || displayedPlaybackEnabled != playbackEnabled else { return }
         displayedPlaybackEnabled = playbackEnabled
-        layer?.removeAnimation(forKey: "remoteAnimatedImage")
+        let clock = displayedPlayback?.clock ?? playbackClock
+        // A late effect layer inherits the shared pause; a detached preparation
+        // canvas must not resume or pause the other layers before it is mounted.
+        if displayedPlayback?.clock == nil || window != nil {
+            clock.setPaused(!playbackEnabled, at: CACurrentMediaTime())
+        }
+        clock.apply(to: layer)
+    }
 
-        let frames = image.frames
-        let frameDurations = image.frameDurations
-        guard let firstFrame = frames.first else { return }
-        layer?.contents = firstFrame
-
-        guard playbackEnabled, frames.count > 1 else { return }
-        let totalDuration = AnimatedImageKeyframeSchedule.duration(
-            for: frameDurations
-        )
-        let animation = CAKeyframeAnimation(keyPath: "contents")
-        animation.values = frames
-        animation.keyTimes = AnimatedImageKeyframeSchedule.keyTimes(
-            for: frameDurations
-        )
-        animation.duration = totalDuration
-        animation.calculationMode = .discrete
-        animation.repeatCount = preference.isLooping ? .infinity : 1
-        animation.isRemovedOnCompletion = !preference.isLooping
-        animation.fillMode = .forwards
-        layer?.add(animation, forKey: "remoteAnimatedImage")
+    private func installAnimation(for image: DecodedAnimatedImage, isLooping: Bool) {
+        guard let layer else { return }
+        layer.removeAnimation(forKey: "remoteAnimatedImage")
+        playbackClock = AnimatedImagePlaybackClock()
+        playbackClock.apply(to: layer)
+        let animation: CAAnimation
+        if let playback = displayedPlayback {
+            layer.contents = nil
+            animation = playback.animation(for: image, isLooping: isLooping)
+            animation.beginTime = layer.convertTime(playback.startTime, from: nil)
+        } else {
+            layer.contents = image.frames.first
+            guard image.frames.count > 1 else { return }
+            let frames = CAKeyframeAnimation(keyPath: "contents")
+            frames.values = image.frames
+            frames.keyTimes = AnimatedImageKeyframeSchedule.keyTimes(
+                for: image.frameDurations
+            ) + [1]
+            frames.duration = AnimatedImageKeyframeSchedule.duration(for: image.frameDurations)
+            frames.calculationMode = .discrete
+            frames.repeatCount = isLooping ? .infinity : 1
+            frames.isRemovedOnCompletion = !isLooping
+            frames.fillMode = .forwards
+            frames.beginTime = layer.convertTime(CACurrentMediaTime(), from: nil)
+            animation = frames
+        }
+        layer.add(animation, forKey: "remoteAnimatedImage")
     }
 
 }
@@ -1228,13 +1260,11 @@ enum AnimatedImageFrameTiming {
 nonisolated enum AnimatedMediaPlaybackPolicy {
     static func shouldPlay(
         isVisible: Bool,
-        isApplicationActive: Bool = true,
         isWindowVisible: Bool = true,
         reduceMotion: Bool,
         reduceAnimatedMedia: Bool
     ) -> Bool {
         isVisible
-            && isApplicationActive
             && isWindowVisible
             && !reduceMotion
             && !reduceAnimatedMedia

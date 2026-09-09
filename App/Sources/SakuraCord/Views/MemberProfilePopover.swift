@@ -231,6 +231,7 @@ struct MemberProfilePopover<Footer: View>: View {
                     effect: effect,
                     animates: animatesRemoteMedia
                 )
+                    .id(member.id)
                     .zIndex(100)
             }
         }
@@ -1222,62 +1223,6 @@ nonisolated enum ProfileEffectLayout {
             width: CGFloat(animation.width ?? Int(defaultCanvasSize.width)) * scale,
             height: CGFloat(animation.height ?? Int(defaultCanvasSize.height)) * scale
         )
-    }
-}
-
-struct ProfileEffectOverlay: View {
-    let effect: ProfileEffect
-    let animates: Bool
-
-    var body: some View {
-        GeometryReader { proxy in
-            if !effect.animations.isEmpty {
-                let designWidth = ProfileEffectLayout.designWidth(for: effect.animations)
-                ZStack(alignment: .topLeading) {
-                    ForEach(effect.animations) { animation in
-                        let frame = ProfileEffectLayout.frame(
-                            for: animation,
-                            designWidth: designWidth,
-                            containerWidth: proxy.size.width
-                        )
-                        AnimatedRemoteImage(
-                            url: animation.sourceURL,
-                            animates: animates,
-                            isLooping: animation.isLooping,
-                            accessibilityCategory: .decoration
-                        )
-                            .frame(
-                                width: frame.width,
-                                height: frame.height
-                            )
-                            .offset(
-                                x: frame.minX,
-                                y: frame.minY
-                            )
-                            .zIndex(Double(animation.zIndex))
-                    }
-                }
-                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
-                .clipped()
-            } else if let url = effect.reducedMotionURL {
-                AnimatedRemoteImage(
-                    url: url,
-                    animates: animates,
-                    accessibilityCategory: .decoration
-                )
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-            } else if let url = effect.staticURL {
-                AsyncImage(url: url) { image in
-                    image.resizable().scaledToFit()
-                } placeholder: {
-                    Color.clear
-                }
-                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
-            }
-        }
-        .clipped()
-        .allowsHitTesting(false)
-        .accessibilityLabel(effect.accessibilityLabel ?? "Profile effect")
     }
 }
 

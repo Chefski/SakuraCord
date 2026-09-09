@@ -351,6 +351,9 @@ extension NativeTimelineCanvasView {
             removeAnimatedMediaOverlays()
             return
         }
+        // Keep the paused compositor layers and their clocks while occluded.
+        // Discarding them here would restart decorations when the window returns.
+        guard permitsAnimatedMediaPlayback else { return }
         let reduceMotion =
             NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
             || (model?.accessibilitySettings.reducesAllOptionalMotion(
@@ -358,7 +361,6 @@ extension NativeTimelineCanvasView {
             ) ?? false)
             || (model?.chatSettings.reducesAnimatedMedia
                 ?? UserDefaults.standard.bool(forKey: "reduceAnimatedMedia"))
-            || !permitsAnimatedMediaPlayback
 
         var rows:
             [NativeMessageTimelineItem.Identifier: Set<NativeTimelineMediaKey>] = [:]

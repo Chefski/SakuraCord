@@ -20,7 +20,7 @@ extension NativeTimelineCanvasView {
         let tracking = NSTrackingArea(
             rect: .zero,
             options: [
-                .activeInKeyWindow,
+                .activeAlways,
                 .inVisibleRect,
                 .mouseEnteredAndExited,
                 .mouseMoved,
@@ -981,7 +981,7 @@ extension NativeTimelineCanvasView {
                     let area = NSTrackingArea(
                         rect: frame,
                         options: [
-                            .activeInKeyWindow,
+                            .activeAlways,
                             .mouseEnteredAndExited,
                         ],
                         owner: self,

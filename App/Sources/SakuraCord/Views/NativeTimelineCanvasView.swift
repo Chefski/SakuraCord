@@ -356,22 +356,10 @@ final class NativeTimelineCanvasView: NSView {
         mediaViewerHost.frame = .zero
         addSubview(mediaViewerHost)
         let notificationCenter = NotificationCenter.default
-        notificationCenter.addObserver(
-            self,
-            selector: #selector(mediaPlaybackVisibilityDidChange(_:)),
-            name: NSApplication.didBecomeActiveNotification,
-            object: nil
-        )
         NSWorkspace.shared.notificationCenter.addObserver(
             self,
             selector: #selector(mediaPlaybackVisibilityDidChange(_:)),
             name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
-            object: nil
-        )
-        notificationCenter.addObserver(
-            self,
-            selector: #selector(mediaPlaybackVisibilityDidChange(_:)),
-            name: NSApplication.didResignActiveNotification,
             object: nil
         )
         notificationCenter.addObserver(

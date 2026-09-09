@@ -408,6 +408,7 @@ extension NativeTimelineCanvasView {
             )
         }
         suppressesHoverPresentation = false
+        updateAvatarDecorationPlayback()
         for overlay in animatedMediaOverlays.values {
             overlay.setPlaybackSuppressed(false)
         }

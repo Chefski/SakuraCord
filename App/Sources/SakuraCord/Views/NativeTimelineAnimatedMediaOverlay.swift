@@ -6,6 +6,8 @@ final class NativeTimelineAnimatedMediaOverlay: NSView {
     let imageClipView = NSView()
     let imageView = AnimatedImageCanvas()
     let selectionView = NSView()
+    private var isScrollSuppressed = false
+    private var isHoverPlaybackEnabled = true
 
     override var isFlipped: Bool { true }
 
@@ -80,7 +82,17 @@ final class NativeTimelineAnimatedMediaOverlay: NSView {
     }
 
     func setPlaybackSuppressed(_ isSuppressed: Bool) {
-        imageView.setPlaybackSuppressed(isSuppressed)
+        isScrollSuppressed = isSuppressed
+        updatePlaybackSuppression()
+    }
+
+    func setHoverPlaybackEnabled(_ isEnabled: Bool) {
+        isHoverPlaybackEnabled = isEnabled
+        updatePlaybackSuppression()
+    }
+
+    private func updatePlaybackSuppression() {
+        imageView.setPlaybackSuppressed(isScrollSuppressed || !isHoverPlaybackEnabled)
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }

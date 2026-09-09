@@ -12,7 +12,6 @@ extension NativeTimelineCanvasView {
     var permitsAnimatedMediaPlayback: Bool {
         AnimatedMediaPlaybackPolicy.shouldPlay(
             isVisible: window != nil,
-            isApplicationActive: NSApp.isActive,
             isWindowVisible: window?.occlusionState.contains(.visible) == true,
             reduceMotion: false,
             reduceAnimatedMedia: false
@@ -25,6 +24,9 @@ extension NativeTimelineCanvasView {
            changedWindow !== window
         {
             return
+        }
+        if !permitsAnimatedMediaPlayback {
+            NativeTimelineMediaStore.shared.cancelAnimatedRequests(owner: visibleMediaPinOwner)
         }
         reconcileAnimatedMedia(allowsScrolling: true)
         let reduceMotion =
@@ -666,6 +668,10 @@ extension NativeTimelineCanvasView {
                 didCreateOverlay = true
             }
             overlay.frame = hostFrame
+            overlay.setHoverPlaybackEnabled(
+                item.key.role != .authorAvatarDecoration || hoveredRow == rowIndex
+            )
+            overlay.setPlaybackSuppressed(suppressesHoverPresentation)
             overlay.display(
                 item.image,
                 mediaFrame: localMediaFrame,
@@ -705,6 +711,15 @@ extension NativeTimelineCanvasView {
             )
         }
 
+    }
+
+    func updateAvatarDecorationPlayback() {
+        let hoveredIdentifier = hoveredRow.flatMap {
+            items.indices.contains($0) ? items[$0].identifier : nil
+        }
+        for (key, overlay) in animatedMediaOverlays where key.role == .authorAvatarDecoration {
+            overlay.setHoverPlaybackEnabled(key.row == hoveredIdentifier && !suppressesHoverPresentation)
+        }
     }
 
     func positionAnimatedMediaOverlays() {

@@ -683,7 +683,7 @@ func `recent displayed images use a deterministic bounded cache`() throws {
 }
 
 @MainActor @Test
-func `animated image canvas installs discrete compositor frames and resets to its first frame`()
+func `animated image canvas suspends compositor time without discarding frames`()
     throws
 {
     let encoded =
@@ -719,19 +719,25 @@ func `animated image canvas installs discrete compositor frames and resets to it
     #expect(animation.duration == 0.2)
 
     canvas.setPlaybackSuppressed(true)
+    #expect(canvas.layer?.speed == 0)
     #expect(
-        canvas.layer?.animation(forKey: "remoteAnimatedImage") == nil
+        canvas.layer?.animation(forKey: "remoteAnimatedImage") != nil
     )
     #expect(canvas.layer?.contents != nil)
 
+    let layer = try #require(canvas.layer)
+    let pausedTime = layer.convertTime(CACurrentMediaTime(), from: nil)
+    #expect(layer.convertTime(CACurrentMediaTime() + 60, from: nil) == pausedTime)
     canvas.setPlaybackSuppressed(false)
+    #expect(layer.speed == 1)
     #expect(
         canvas.layer?.animation(forKey: "remoteAnimatedImage") != nil
     )
 
     canvas.display(decoded, animates: false, isLooping: true)
+    #expect(canvas.layer?.speed == 0)
     #expect(
-        canvas.layer?.animation(forKey: "remoteAnimatedImage") == nil
+        canvas.layer?.animation(forKey: "remoteAnimatedImage") != nil
     )
     #expect(
         (canvas.layer?.contents as AnyObject?)
@@ -758,14 +764,6 @@ func `animated image canvas installs discrete compositor frames and resets to it
     #expect(
         !AnimatedMediaPlaybackPolicy.shouldPlay(
             isVisible: false,
-            reduceMotion: false,
-            reduceAnimatedMedia: false
-        )
-    )
-    #expect(
-        !AnimatedMediaPlaybackPolicy.shouldPlay(
-            isVisible: true,
-            isApplicationActive: false,
             reduceMotion: false,
             reduceAnimatedMedia: false
         )
