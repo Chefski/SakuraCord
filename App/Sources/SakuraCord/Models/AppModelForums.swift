@@ -253,6 +253,7 @@ extension AppModel {
     }
 
     func applyForumLoadError(_ error: Error, isSearch: Bool, reset: Bool) {
+        DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
         if reset {
             forumPostError =
                 isSearch && !forumCataloguePosts.isEmpty

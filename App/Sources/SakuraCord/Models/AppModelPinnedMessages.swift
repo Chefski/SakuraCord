@@ -315,6 +315,7 @@ extension AppModel {
                       self.pinnedMessages.channelID == channelID,
                       self.pinnedMessages.loadGeneration == generation
                 else { return }
+                DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
                 self.pinnedMessages.errorMessage = error.localizedDescription
             }
             guard self.pinnedMessages.loadGeneration == generation else { return }

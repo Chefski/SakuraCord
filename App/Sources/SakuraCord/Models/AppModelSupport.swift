@@ -57,7 +57,9 @@ extension AppModel {
                     transport: transport,
                     operation: event.operation,
                     integers: event.integers,
-                    flags: event.flags
+                    flags: event.flags,
+                    error: event.error,
+                    incident: event.incident
                 )
             }
         )

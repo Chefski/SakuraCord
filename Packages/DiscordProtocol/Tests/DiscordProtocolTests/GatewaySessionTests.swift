@@ -564,6 +564,8 @@ import Testing
     #expect(text.contains(#""close_code":4000"#))
     #expect(text.contains("response_failure"))
     #expect(!text.contains("test-token"))
+    #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).count == 1)
+    #expect(try String(data: diagnostics.exportData(), encoding: .utf8)?.contains("socket_closed") == true)
 }
 
 private func makeGatewaySession(

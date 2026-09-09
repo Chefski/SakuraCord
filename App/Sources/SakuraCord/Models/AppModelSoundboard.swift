@@ -222,6 +222,7 @@ extension AppModel {
                 return
             } catch {
                 guard let self, self.soundboardLoadGeneration == generation else { return }
+                DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
                 soundboardErrorMessage = error.localizedDescription
                 Self.soundboardLogger.error("Catalog load failed: \(String(reflecting: error), privacy: .public)")
             }
@@ -278,6 +279,7 @@ extension AppModel {
             )
         } catch {
             soundboardUserSettings = await (try? provider.soundboardUserSettings()) ?? soundboardUserSettings
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             soundboardErrorMessage = error.localizedDescription
         }
     }
@@ -353,6 +355,7 @@ extension AppModel {
             }
             soundboardErrorMessage = nil
         } catch {
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             soundboardErrorMessage = error.localizedDescription
             Self.soundboardLogger.error("Playback failed: \(String(reflecting: error), privacy: .public)")
         }
@@ -442,6 +445,7 @@ extension AppModel {
                 Self.soundboardLogger.info("Incoming soundboard effect rendered locally")
             }
         } catch {
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             if mode.isPreview {
                 soundboardErrorMessage = error.localizedDescription
             }

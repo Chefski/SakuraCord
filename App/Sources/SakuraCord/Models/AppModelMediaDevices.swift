@@ -1,4 +1,5 @@
 import CoreAudio
+import DiscordProtocol
 import Foundation
 import MediaPipeline
 
@@ -37,6 +38,7 @@ extension AppModel {
                 voiceSession: session
             ) else { return false }
             voiceDeviceStatusMessage = "The microphone could not be changed."
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             voiceErrorMessage = error.localizedDescription
             errorMessage = error.localizedDescription
             return false
@@ -61,6 +63,7 @@ extension AppModel {
                 voiceSession: session
             ) else { return false }
             voiceDeviceStatusMessage = "The speaker could not be changed."
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             voiceErrorMessage = error.localizedDescription
             errorMessage = error.localizedDescription
             return false
@@ -145,6 +148,7 @@ extension AppModel {
                 ? nil : recoveryMessages.joined(separator: " ")
         } catch {
             voiceDeviceStatusMessage = "An audio device changed, but its route could not be restored."
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             voiceErrorMessage = error.localizedDescription
         }
     }

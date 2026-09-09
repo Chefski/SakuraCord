@@ -1,4 +1,5 @@
 import AppKit
+import DiscordProtocol
 import SakuraCordModels
 import SwiftUI
 
@@ -207,6 +208,7 @@ struct ProfileGameView: View {
 
     private func record(_ error: Error, section: String, id: String, session: AppModelAccountSession) {
         guard game.id == id, model.isCurrentAccountSession(session), !Task.isCancelled, !(error is CancellationError) else { return }
+        DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
         errors[section] = error.localizedDescription
     }
 }

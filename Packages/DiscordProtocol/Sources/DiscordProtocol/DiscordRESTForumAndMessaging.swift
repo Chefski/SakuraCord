@@ -921,12 +921,12 @@ extension DiscordRESTProvider {
         guard (200 ..< 300).contains(response.statusCode) else {
             if response.statusCode == 401 {
                 authorizationValue = nil
-                throw ChatProviderError.unauthenticated
+                throw apiDiagnostics.coalescing(ChatProviderError.unauthenticated, with: response)
             }
-            throw ChatProviderError.transport(
+            throw apiDiagnostics.coalescing(ChatProviderError.transport(
                 status: response.statusCode,
                 requestID: response.value(forHTTPHeaderField: "x-request-id")
-            )
+            ), with: response)
         }
         guard !data.isEmpty else { return ReadAcknowledgementResponse(token: token) }
         return try JSONDecoder().decode(ReadAcknowledgementResponse.self, from: data)

@@ -136,6 +136,7 @@ extension AppModel {
         account: AppModelAccountSession
     ) {
         guard isCurrentAccountSession(account) else { return }
+        DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
         errorMessage = error.localizedDescription
         guard launchMode == .normal else { return }
         // No workspace is published until bootstrap succeeds. A failed

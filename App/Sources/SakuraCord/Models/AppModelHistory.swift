@@ -390,6 +390,7 @@ extension AppModel {
         guard isCurrentAccountSession(account),
               isCurrentLoad(channelID, generation: generation)
         else { return }
+        DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
         messageLoadError = error.localizedDescription
         messageLoadErrorIsEarlierPage = false
         isLoadingMessages = false
@@ -562,6 +563,7 @@ extension AppModel {
             guard isCurrentAccountSession(session),
                   selectedChannelID == channelID
             else { return false }
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             messageLoadError = error.localizedDescription
             return false
         }

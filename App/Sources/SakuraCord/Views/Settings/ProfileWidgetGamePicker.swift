@@ -30,7 +30,10 @@ struct ProfileWidgetGamePicker: View {
                                     let details = try await editor.loadWidgetGames(ids: [game.id])
                                     guard let selected = details.first else { errorMessage = "This game is no longer available."; return }
                                     select(selected); dismiss?()
-                                } catch { errorMessage = error.localizedDescription }
+                                } catch {
+                                    DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
+                                    errorMessage = error.localizedDescription
+                                }
                             }
                         } label: {
                             Text(game.name).font(.system(size: 14)).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.vertical, 11)
@@ -45,7 +48,10 @@ struct ProfileWidgetGamePicker: View {
         .profileEditorModalSize(width: 400, height: 360)
         .task {
             searchFocused = true
-            do { defaults = try await editor.defaultWidgetGames() } catch is CancellationError { return } catch { errorMessage = error.localizedDescription }
+            do { defaults = try await editor.defaultWidgetGames() } catch is CancellationError { return } catch {
+                DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
+                errorMessage = error.localizedDescription
+            }
             isLoadingDefaults = false
         }
         .task(id: normalizedQuery) {
@@ -63,7 +69,10 @@ struct ProfileWidgetGamePicker: View {
                 let value = try await editor.searchWidgetGames(query: input)
                 try Task.checkCancellation()
                 matches = value; errorMessage = nil
-            } catch is CancellationError { return } catch { errorMessage = error.localizedDescription }
+            } catch is CancellationError { return } catch {
+                DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
+                errorMessage = error.localizedDescription
+            }
             isSearching = false
         }
     }

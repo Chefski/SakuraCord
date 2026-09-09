@@ -83,6 +83,7 @@ extension AppModel {
                 channelID: channel.id
             ) else { return }
             voiceSessionState = .failed
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             voiceErrorMessage = error.localizedDescription
             errorMessage = error.localizedDescription
             try? await account.provider.updateVoiceState(
@@ -165,6 +166,7 @@ extension AppModel {
                       generation: generation
                   )
             else { return }
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             voiceErrorMessage = error.localizedDescription
             errorMessage = error.localizedDescription
         }
@@ -210,6 +212,7 @@ extension AppModel {
             endLocalOutgoingPrivateCallRing(channelID: channel.id)
             // Joining succeeded and is not replayed. Surface the bounded
             // ring failure without turning it into a second call action.
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             voiceErrorMessage = error.localizedDescription
             errorMessage = error.localizedDescription
         }
@@ -261,6 +264,7 @@ extension AppModel {
                       generation: generation
                   )
             else { return }
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             voiceErrorMessage = error.localizedDescription
             errorMessage = error.localizedDescription
         }
@@ -322,6 +326,7 @@ extension AppModel {
                       generation: generation
                   )
             else { return }
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             voiceErrorMessage = error.localizedDescription
             errorMessage = error.localizedDescription
         }
@@ -596,6 +601,7 @@ extension AppModel {
                 generation: generation,
                 voiceSession: session
             ) else { return }
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             voiceErrorMessage = error.localizedDescription
             errorMessage = error.localizedDescription
         }
@@ -623,6 +629,7 @@ extension AppModel {
                 voiceSession: session
             ) else { return false }
             voiceDeviceStatusMessage = "The camera could not be changed."
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             voiceErrorMessage = error.localizedDescription
             errorMessage = error.localizedDescription
             return false
@@ -670,6 +677,7 @@ extension AppModel {
             guard isCurrentAccountSession(account),
                   generation == voiceMigrationGeneration
             else { return }
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             voiceErrorMessage = error.localizedDescription
         }
     }
@@ -810,9 +818,10 @@ extension AppModel {
                   generation == voiceMigrationGeneration
             else { return }
             voiceSessionState = .failed
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             voiceErrorMessage = error.localizedDescription
             errorMessage = error.localizedDescription
-            recordVoiceServerMigrationFailed()
+            recordVoiceServerMigrationFailed(error)
         }
     }
 
@@ -969,8 +978,10 @@ extension AppModel {
         recordVoiceLifecycle("voice_server_migration_completed")
     }
 
-    func recordVoiceServerMigrationFailed() {
-        recordVoiceLifecycle("voice_server_migration_failed")
+    func recordVoiceServerMigrationFailed(_ error: any Error) {
+        DiscordAPIDiagnosticStore.shared.recordWebSocketLifecycle(
+            transport: "voice_gateway", operation: "voice_server_migration_failed", error: error
+        )
     }
 
     func recordVoiceSessionStateReceived(_ state: VoiceSessionState) {
@@ -980,7 +991,9 @@ extension AppModel {
             flags: [
                 "has_active_channel": activeVoiceChannel != nil,
                 "has_session": voiceSession != nil,
-            ]
+            ],
+            // The session owner records the originating failure before this projection.
+            triggersPanicSave: false
         )
     }
 

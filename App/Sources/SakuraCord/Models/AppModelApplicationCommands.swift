@@ -61,6 +61,7 @@ extension AppModel {
                       isCurrentAccountSession(account),
                       selectedChannelID == channel.id
                 else { return }
+                DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
                 commandComposer.failLoading(error.localizedDescription)
             }
         }
@@ -104,6 +105,7 @@ extension AppModel {
                 guard !Task.isCancelled,
                       isCurrentAccountSession(session)
                 else { return }
+                DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
                 commandComposer.failAutocomplete(
                     nonce: request.nonce, message: error.localizedDescription
                 )
@@ -162,6 +164,7 @@ extension AppModel {
                 guard isCurrentAccountSession(session),
                       commandMemberSearchQuery == key
                 else { return }
+                DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
                 commandMemberSearchQuery = nil
                 commandMemberSearchTask = nil
                 commandMemberResults = []
@@ -227,6 +230,7 @@ extension AppModel {
                 guard isCurrentAccountSession(session),
                       mentionMemberSearchQuery == key
                 else { return }
+                DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
                 mentionMemberSearchQuery = nil
                 mentionMemberResults = []
             }
@@ -279,6 +283,7 @@ extension AppModel {
                 guard !Task.isCancelled,
                       isCurrentAccountSession(session)
                 else { return }
+                DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
                 roleMemberErrorMessage = error.localizedDescription
             }
             if isCurrentAccountSession(session) {

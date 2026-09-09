@@ -590,9 +590,19 @@ private final class DiagnosticsURLProtocol: URLProtocol, @unchecked Sendable {
     }
 
     override func startLoading() {
+        if request.url?.lastPathComponent == "tls-failure" {
+            client?.urlProtocol(self, didFailWithError: NSError(
+                domain: NSURLErrorDomain, code: URLError.secureConnectionFailed.rawValue,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "private TLS description",
+                    NSURLErrorFailingURLErrorKey: URL(string: "https://private.example/secret-token")!,
+                ]
+            ))
+            return
+        }
         let response = HTTPURLResponse(
             url: request.url!,
-            statusCode: 200,
+            statusCode: request.url?.lastPathComponent == "http-failure" ? 500 : 200,
             httpVersion: nil,
             headerFields: [
                 "Content-Type": "application/json",
@@ -613,6 +623,135 @@ private final class DiagnosticsURLProtocol: URLProtocol, @unchecked Sendable {
     }
 
     override func stopLoading() {}
+}
+
+@Test(arguments: ["tls-failure", "invalid-message-page", "http-failure"])
+func `blocked REST loads panic save transport and decoding failures`(path: String) async throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appending(path: "SakuraCordLoadingFailureTests-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = DiscordAPIDiagnosticStore(diskDirectoryURL: directory)
+    store.enablesPanicSave = true
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [DiagnosticsURLProtocol.self]
+    let provider = DiscordRESTProvider(
+        credentials: DiagnosticsCredentialStore(),
+        handle: CredentialHandle(accountID: "diagnostics-test"),
+        session: URLSession(configuration: configuration),
+        apiDiagnostics: store
+    )
+    await #expect(throws: (any Error).self) {
+        do {
+            let _: [String] = try await provider.request("/\(path)")
+        } catch {
+            store.recordClientFailure(error, operation: "app_load_failed")
+            throw error
+        }
+    }
+    await provider.disconnect()
+    let text = try String(contentsOf: store.panicSaveURL, encoding: .utf8)
+    let lines = text.split(separator: "\n")
+    let failure = try decodedJSONObject(#require(lines.last))
+    #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).count == 1)
+    #expect(try String(data: store.exportData(), encoding: .utf8)?.contains("app_load_failed") == true)
+    if path == "http-failure" {
+        #expect(failure["statusCode"] as? Int == 500)
+    } else if path == "tls-failure" {
+        #expect(failure["errorDomain"] as? String == NSURLErrorDomain)
+        #expect(failure["errorCode"] as? Int == URLError.secureConnectionFailed.rawValue)
+        #expect(failure["path"] as? String == "/tls-failure")
+    } else {
+        #expect(failure["operation"] as? String == "rest_response_decode")
+        #expect(text.contains(#""statusCode":200"#))
+        #expect(failure["errorType"] as? String == String(reflecting: DecodingError.self))
+    }
+    for secret in ["private TLS description", "private.example", "secret-token", "444444444444444444"] {
+        #expect(!text.contains(secret))
+    }
+}
+
+@Test(arguments: ["http", "websocket", "client"], ["tls", "timeout", "cancelled", "task-cancelled"])
+func `panic save captures failures but excludes normal cancellation`(boundary: String, failure: String) throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appending(path: "SakuraCordFailureTriggerTests-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = DiscordAPIDiagnosticStore(diskDirectoryURL: directory)
+    store.enablesPanicSave = true
+    let error: any Error = switch failure {
+    case "tls": URLError(.secureConnectionFailed)
+    case "timeout": URLError(.timedOut)
+    case "cancelled": URLError(.cancelled)
+    default: CancellationError()
+    }
+    switch boundary {
+    case "http":
+        store.recordHTTPFailure(
+            method: "GET", path: "/channels/123456789/messages", attempt: 1,
+            duration: .milliseconds(17), error: error
+        )
+    case "websocket":
+        store.recordWebSocketFailure(transport: "gateway", direction: "response", error: error)
+    default:
+        store.recordClientFailure(error, operation: "message_history_load")
+    }
+    #expect(FileManager.default.fileExists(atPath: store.panicSaveURL.path) == ["tls", "timeout"].contains(failure))
+    #expect(store.panicSaveErrorDescription == nil)
+}
+
+@Test func `client loading failures save context without exporting error text`() throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appending(path: "SakuraCordClientFailureTests-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = DiscordAPIDiagnosticStore(diskDirectoryURL: directory)
+    store.enablesPanicSave = true
+    let response = try #require(HTTPURLResponse(
+        url: URL(string: "https://discord.com/api/v9/channels/123456789/messages")!,
+        statusCode: 200, httpVersion: nil, headerFields: nil
+    ))
+    store.recordHTTPResponse(
+        method: "GET", path: "/channels/123456789/messages", attempt: 1,
+        response: response, body: Data(#"{"code":50001,"message":"private reason"}"#.utf8),
+        duration: .milliseconds(1)
+    )
+    #expect(!FileManager.default.fileExists(atPath: store.panicSaveURL.path))
+    let error = NSError(domain: "private domain", code: 42, userInfo: [
+        NSLocalizedDescriptionKey: "private description",
+        NSUnderlyingErrorKey: NSError(domain: "private underlying domain", code: 1),
+    ])
+    store.recordClientFailure(error, operation: "message_history_load")
+    let text = try String(contentsOf: store.panicSaveURL, encoding: .utf8)
+    #expect(text.contains(#""statusCode":200"#))
+    #expect(text.contains(#""operation":"message_history_load""#))
+    #expect(text.contains(#""errorDomain":"<redacted>""#))
+    #expect(text.contains(#""errorCode":42"#))
+    #expect(!text.contains("private"))
+    #expect(!text.contains("123456789"))
+    store.enablesPanicSave = false
+    store.recordClientFailure(error, operation: "another_load")
+    #expect(try String(contentsOf: store.panicSaveURL, encoding: .utf8) == text)
+}
+
+@Test(arguments: [
+    ("socket_closed", 1000, false),
+    ("socket_closed", 1001, false),
+    ("socket_closed", 4004, true),
+    ("socket_receive_failed", 0, true),
+    ("heartbeat_ack_missed", 0, true),
+    ("app_session_state_failed", 0, true),
+    ("socket_connect_started", 0, false),
+])
+func `panic save captures failed lifecycles and excludes normal socket closure`(
+    operation: String, closeCode: Int, shouldSave: Bool
+) throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appending(path: "SakuraCordLifecycleFailureTests-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = DiscordAPIDiagnosticStore(diskDirectoryURL: directory)
+    store.enablesPanicSave = true
+    store.recordWebSocketLifecycle(
+        transport: "voice_gateway", operation: operation, integers: ["close_code": closeCode]
+    )
+    #expect(FileManager.default.fileExists(atPath: store.panicSaveURL.path) == shouldSave)
 }
 
 @Test(arguments: [false, true])
@@ -713,16 +852,16 @@ func `panic save always retains detailed sanitized history and rotates three sna
 @Test(arguments: [
     (200, #"{"code":0}"#, false),
     (400, #"{"code":0}"#, true),
-    (400, #"{"code":50035,"message":"Invalid Form Body"}"#, false),
+    (400, #"{"code":50035,"message":"Invalid Form Body"}"#, true),
     (400, #"{"code":999999,"message":"Unknown error"}"#, true),
-    (401, "{}", false),
-    (403, "{}", false),
-    (404, #"{"code":10008,"message":"Unknown Message"}"#, false),
-    (429, #"{"retry_after":1}"#, false),
+    (401, "{}", true),
+    (403, "{}", true),
+    (404, #"{"code":10008,"message":"Unknown Message"}"#, true),
+    (429, #"{"retry_after":1}"#, true),
     (502, "upstream unavailable", true),
     (400, "malformed response", true),
 ])
-func `panic save distinguishes unknown server errors from expected HTTP outcomes`(
+func `panic save captures every failed HTTP response`(
     status: Int, body: String, shouldSave: Bool
 ) throws {
     let directory = FileManager.default.temporaryDirectory
@@ -815,29 +954,33 @@ func `panic save distinguishes unknown server errors from expected HTTP outcomes
     ]))
 }
 
-@Test func `deferred diagnostics budget original payloads and release evicted entries`() throws {
+@Test(arguments: [false, true])
+func `deferred diagnostics budget original payloads and release evicted entries`(authentication: Bool) throws {
+    let transport = authentication ? "authentication" : "rest"
+    let path = authentication ? "/auth/login" : "/channels/1/messages"
+    let operation = authentication ? "opcode_2" : "MESSAGE_CREATE"
     let store = DiscordAPIDiagnosticStore(maximumEntries: 10, maximumRetainedBytes: 4_096, capturesPayloadDetails: true)
     let body = try JSONEncoder().encode(JSONValue.object([
         "content": .string(String(repeating: "private", count: 300)),
         "flags": .number(64),
     ]))
-    store.recordHTTPRequest(method: "POST", path: "/channels/1/messages", body: body, attempt: 1)
+    store.recordHTTPRequest(transport: transport, method: "POST", path: path, body: body, attempt: 1)
     #expect(store.retainedEstimatedByteCount >= body.count)
     store.recordGateway(direction: "response", envelope: GatewayEnvelope(
-        op: 0, data: .object(["content": .string(String(repeating: "private", count: 300))]), eventName: "MESSAGE_CREATE"
+        op: authentication ? 2 : 0, data: .object(["content": .string(String(repeating: "private", count: 300))]), eventName: authentication ? nil : "MESSAGE_CREATE"
     ))
     #expect(store.retainedEntryCount == 1)
     let text = try #require(String(data: store.exportData(), encoding: .utf8))
     #expect(!text.contains("private"))
     #expect(!text.contains("\"method\":\"POST\""))
-    #expect(text.contains("MESSAGE_CREATE"))
+    #expect(text.contains(operation))
     #expect(text.contains("\"droppedEntryCount\":1"))
 
     // Even a payload which would redact to a few bytes must fit before retention.
     let oversized = try JSONEncoder().encode(JSONValue.object([
         "content": .string(String(repeating: "private", count: 1_000)),
     ]))
-    store.recordHTTPRequest(method: "POST", path: "/channels/1/messages", body: oversized, attempt: 2)
+    store.recordHTTPRequest(transport: transport, method: "POST", path: path, body: oversized, attempt: 2)
     #expect(store.retainedEntryCount == 1)
     #expect(store.retainedEstimatedByteCount <= 4_096)
     store.clear()
@@ -867,11 +1010,14 @@ func `panic save distinguishes unknown server errors from expected HTTP outcomes
     }
 }
 
-@Test(arguments: ["export", "panic", "disk", "failed-panic"])
-func `sanitized cache growth is accounted for at every output boundary`(output: String) throws {
+@Test(arguments: ["export", "panic", "disk", "failed-panic"], ["rest", "authentication", "websocket"])
+func `sanitized cache growth is accounted for at every output boundary`(output: String, source: String) throws {
     let body = try JSONEncoder().encode(JSONValue.object([
         "values": .array(Array(repeating: .array(Array(repeating: .number(0), count: 100)), count: 10)),
         "content": .string("private-content"),
+        "token": .string("private-token"),
+        "secret_key": .array([.number(11), .number(22), .number(33)]),
+        "op": .string("nonce_proof"),
         "flags": .number(64),
     ]))
     // The wire body fits both budgets. Its decoded cache only fits the larger one.
@@ -887,7 +1033,11 @@ func `sanitized cache growth is accounted for at every output boundary`(output: 
         if output == "failed-panic" {
             try FileManager.default.createDirectory(at: store.panicSaveURL, withIntermediateDirectories: true)
         }
-        store.recordHTTPRequest(method: "POST", path: "/test", body: body, attempt: 1)
+        if source == "websocket" {
+            store.recordWebSocketData(transport: "remote_auth_gateway", direction: "request", data: body)
+        } else {
+            store.recordHTTPRequest(transport: source, method: "POST", path: "/test", body: body, attempt: 1)
+        }
         store.recordWebSocketLifecycle(
             transport: "gateway", operation: "socket_closed", integers: ["close_code": 4000]
         )
@@ -912,10 +1062,104 @@ func `sanitized cache growth is accounted for at every output boundary`(output: 
             // Retention eviction must not remove the detailed entry from this output.
             #expect(text.contains(#""flags":64"#))
             #expect(text.contains(#""content":"<redacted>""#))
-            #expect(!text.contains("private-content"))
+            #expect(!text.contains("private-"))
+            #expect(text.contains(#""secret_key":"<redacted>""#))
+            if source == "websocket" {
+                #expect(text.contains(#""operation":"nonce_proof""#))
+            }
             #expect(text.contains("socket_closed"))
         }
         store.clear()
         #expect(store.retainedEstimatedByteCount == 0)
     }
+}
+
+@Test(arguments: ["url", "swift", "decode"])
+func `one propagated error saves once while independent equal errors still save`(kind: String) async throws {
+    let directory = FileManager.default.temporaryDirectory.appending(path: "SakuraCordCoalescing-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = DiscordAPIDiagnosticStore(diskDirectoryURL: directory)
+    store.enablesPanicSave = true
+    func makeError() -> any Error {
+        switch kind {
+        case "url": URLError(.secureConnectionFailed)
+        case "swift": ChatProviderError.invalidRequest("private reason")
+        default: DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "private decode"))
+        }
+    }
+    let error = makeError()
+    store.recordHTTPFailure(method: "GET", path: "/test", attempt: 1, duration: .zero, error: error)
+    let first = try Data(contentsOf: store.panicSaveURL)
+    await withTaskGroup(of: Void.self) { group in
+        for _ in 0 ..< 8 {
+            group.addTask { store.recordClientFailure(error, operation: "propagated_load") }
+        }
+    }
+    #expect(try Data(contentsOf: store.panicSaveURL) == first)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).count == 1)
+    #expect(store.retainedEntryCount == 9)
+    let distinctError = makeError()
+    store.recordClientFailure(distinctError, operation: "independent_load")
+    let previous = directory.appending(path: "SakuraCord Discord API Panic Save-2.jsonl")
+    #expect(try Data(contentsOf: previous) == first)
+    #expect(try String(contentsOf: store.panicSaveURL, encoding: .utf8).contains("propagated_load"))
+    // Clearing resets coalescing along with diagnostic history.
+    try store.clearMemoryAndDisk()
+    store.recordClientFailure(error)
+    #expect(FileManager.default.fileExists(atPath: store.panicSaveURL.path))
+}
+
+@Test func `response and socket consequences share captures without retaining private error objects`() throws {
+    let directory = FileManager.default.temporaryDirectory.appending(path: "SakuraCordIncident-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = DiscordAPIDiagnosticStore(diskDirectoryURL: directory)
+    store.enablesPanicSave = true
+    let response = try #require(HTTPURLResponse(
+        url: URL(string: "https://discord.com/api/v9/test")!, statusCode: 500,
+        httpVersion: nil, headerFields: nil
+    ))
+    store.recordHTTPResponse(method: "GET", path: "/test", attempt: 1, response: response, body: Data(), duration: .zero)
+    let first = try Data(contentsOf: store.panicSaveURL)
+    let error = store.coalescing(ChatProviderError.transport(status: 500, requestID: nil), with: response)
+    #expect(error is ChatProviderError)
+    store.recordClientFailure(error)
+    #expect(try Data(contentsOf: store.panicSaveURL) == first)
+    let incident = NSUUID()
+    weak var releasedError: NSError?
+    autoreleasepool {
+        let socketError = NSError(domain: NSURLErrorDomain, code: -1005, userInfo: ["private": "secret"])
+        releasedError = socketError
+        store.recordWebSocketFailure(transport: "gateway", direction: "response", error: socketError, incident: incident)
+        store.recordClientFailure(socketError)
+    }
+    #expect(releasedError == nil)
+    let second = try Data(contentsOf: store.panicSaveURL)
+    store.recordWebSocketLifecycle(
+        transport: "gateway", operation: "socket_closed", integers: ["close_code": 4000], incident: incident
+    )
+    #expect(try Data(contentsOf: store.panicSaveURL) == second)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).count == 2)
+    // A new connection is eligible even when the close code is identical.
+    store.recordWebSocketLifecycle(
+        transport: "gateway", operation: "socket_closed", integers: ["close_code": 4000], incident: NSUUID()
+    )
+    #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).count == 3)
+}
+
+@Test func `duplicate failures do not retry failed panic writes and disabled capture does not claim errors`() throws {
+    let directory = FileManager.default.temporaryDirectory.appending(path: "SakuraCordFailedCoalescing-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = DiscordAPIDiagnosticStore(diskDirectoryURL: directory)
+    let error: any Error = URLError(.timedOut)
+    store.recordClientFailure(error)
+    store.enablesPanicSave = true
+    try FileManager.default.createDirectory(at: store.panicSaveURL, withIntermediateDirectories: true)
+    store.recordClientFailure(error)
+    #expect(store.panicSaveErrorDescription != nil)
+    try FileManager.default.removeItem(at: store.panicSaveURL)
+    store.recordClientFailure(error)
+    #expect(!FileManager.default.fileExists(atPath: store.panicSaveURL.path))
+    store.recordClientFailure(URLError(.timedOut))
+    #expect(FileManager.default.fileExists(atPath: store.panicSaveURL.path))
+    #expect(store.panicSaveErrorDescription == nil)
 }

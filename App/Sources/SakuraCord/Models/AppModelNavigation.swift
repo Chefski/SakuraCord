@@ -86,6 +86,7 @@ extension AppModel {
                 )
             } catch {
                 guard isCurrentAccountSession(session) else { return }
+                DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
                 AppModel.memberListLogger.debug(
                     "Member-list viewport subscription failed: \(error.localizedDescription, privacy: .public)"
                 )
@@ -119,6 +120,7 @@ extension AppModel {
             )
         } catch {
             guard isCurrentAccountSession(session) else { return }
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             AppModel.memberListLogger.debug(
                 "Member-list viewport replay failed: \(error.localizedDescription, privacy: .public)"
             )
@@ -237,6 +239,7 @@ extension AppModel {
                 guard !Task.isCancelled,
                       isCurrentAccountSession(session)
                 else { return }
+                DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
                 errorMessage = error.localizedDescription
                 return
             }
@@ -320,6 +323,7 @@ extension AppModel {
                 guard isCurrentAccountSession(session),
                       openThread?.id == post.id
                 else { return }
+                DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
                 errorMessage = error.localizedDescription
                 return
             }
@@ -382,6 +386,7 @@ extension AppModel {
                     guard isCurrentAccountSession(session),
                           selectedChannelID == channel.id
                     else { return }
+                    DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
                     errorMessage = error.localizedDescription
                     return
                 }
@@ -493,6 +498,7 @@ extension AppModel {
                 guard !Task.isCancelled,
                       isCurrentAccountSession(session)
                 else { return }
+                DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
                 errorMessage = error.localizedDescription
             }
         }

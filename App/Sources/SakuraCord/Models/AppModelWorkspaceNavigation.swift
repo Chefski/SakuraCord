@@ -273,6 +273,7 @@ extension AppModel {
                     model.navigate(to: channel.id)
                 } catch {
                     guard model.isCurrentAccountSession(session) else { return }
+                    DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
                     model.errorMessage = error.localizedDescription
                 }
             }
@@ -374,6 +375,7 @@ extension AppModel {
                 self.messageSearch.page = nil
                 self.messageSearch.rows = []
                 self.messageSearch.rowsRevision &+= 1
+                DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
                 self.messageSearch.errorMessage = error.localizedDescription
                 self.messageSearch.isSearching = false
                 self.messageSearch.requestTask = nil

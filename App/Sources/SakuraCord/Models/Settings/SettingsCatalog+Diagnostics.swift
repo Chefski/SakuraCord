@@ -107,7 +107,7 @@ nonisolated extension SettingsCatalog {
             page: .diagnostics,
             section: .apiDiagnostics,
             label: "Enable panic save",
-            help: "Keep three snapshots on unknown or server errors, always including detailed sanitized payloads even when detailed capture is off.",
+            help: "Keep three snapshots when requests, connections, or client content fail to load, including detailed sanitized payloads even when detailed capture is off.",
             keywords: ["automatic", "error", "panic", "save", "logs"],
             owner: .appModel,
             scope: .appWideLocal,

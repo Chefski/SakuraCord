@@ -1,3 +1,4 @@
+import DiscordProtocol
 import SakuraCordModels
 import SwiftUI
 
@@ -166,7 +167,10 @@ struct ProfileCollectiblePicker: View {
 
     private func load() async {
         loadError = nil
-        do { try await editor.loadInventory() } catch { loadError = error.localizedDescription }
+        do { try await editor.loadInventory() } catch {
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
+            loadError = error.localizedDescription
+        }
     }
 }
 

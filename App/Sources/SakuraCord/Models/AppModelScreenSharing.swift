@@ -45,6 +45,7 @@ extension AppModel {
             try await capture.preparePreview()
         } catch {
             guard screenShareCaptureEngine === capture else { return }
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             screenShareCaptureState = .failed(error.localizedDescription)
             screenShareErrorMessage = error.localizedDescription
             await capture.stop()
@@ -173,6 +174,7 @@ extension AppModel {
                 isStartingScreenShare = false
                 return
             }
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             if let key = localApplicationStreamKey ?? expectedKey {
                 applicationStreamStates[key] = .failed(error.localizedDescription)
                 try? await account.provider.stopApplicationStream(key)
@@ -262,6 +264,7 @@ extension AppModel {
                 generation: generation,
                 account: account
             ) else { return }
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             applicationStreamStates[key] = .failed(error.localizedDescription)
             applicationStreamFrames[key] = nil
             await removeApplicationStreamSession(key, preservingCapture: false)
@@ -610,6 +613,7 @@ extension AppModel {
                 generation: generation,
                 account: account
             ) else { return }
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             applicationStreamStates[key] = .failed(error.localizedDescription)
             screenShareErrorMessage = isLocal ? error.localizedDescription : nil
         }

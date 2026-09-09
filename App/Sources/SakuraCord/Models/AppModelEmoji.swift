@@ -18,6 +18,7 @@ extension AppModel {
             applyEmojis(emojis, to: guildID)
         } catch {
             guard isCurrentAccountSession(session) else { return }
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             emojiLoadErrorsByGuild[guildID] = error.localizedDescription
         }
     }

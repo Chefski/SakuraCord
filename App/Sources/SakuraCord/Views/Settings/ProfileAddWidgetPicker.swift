@@ -70,7 +70,10 @@ struct ProfileAddWidgetPicker: View {
                 try await editor.loadWidgetCatalogue()
                 let ids = DiscordProfileWidgetTemplates.gameKinds.flatMap { DiscordProfileWidgetTemplates.artworkGameIDs(for: $0) }
                 try await editor.loadWidgetGames(ids: ids)
-            } catch is CancellationError { return } catch { errorMessage = error.localizedDescription }
+            } catch is CancellationError { return } catch {
+                DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
+                errorMessage = error.localizedDescription
+            }
             isLoading = false
         }
     }

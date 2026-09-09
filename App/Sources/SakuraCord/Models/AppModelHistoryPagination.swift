@@ -100,6 +100,7 @@ extension AppModel {
             guard isCurrentAccountSession(session),
                   selectedChannelID == request.channelID
             else { return }
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             messageLoadError = error.localizedDescription
             messageLoadErrorIsEarlierPage = direction == .earlier
             messageLoadErrorIsLaterPage = direction == .later

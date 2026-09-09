@@ -33,6 +33,7 @@ extension AppModel {
                       isCurrentAccountSession(session)
                 else { return }
                 gifResults = []
+                DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
                 gifErrorMessage = error.localizedDescription
                 isLoadingGIFs = false
             }
@@ -79,6 +80,7 @@ extension AppModel {
                       isCurrentAccountSession(session),
                       gifPickerLoadGeneration == generation
                 else { return }
+                DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
                 gifErrorMessage = error.localizedDescription
             }
         }
@@ -104,6 +106,7 @@ extension AppModel {
                 favoriteGIFs = favorites
             } catch {
                 guard isCurrentAccountSession(session) else { return }
+                DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
                 gifErrorMessage = error.localizedDescription
             }
         }

@@ -591,10 +591,10 @@ public extension DiscordRESTProvider {
             duration: requestStarted.duration(to: .now)
         )
         guard (200 ..< 300).contains(response.statusCode) else {
-            throw ChatProviderError.transport(
+            throw apiDiagnostics.coalescing(ChatProviderError.transport(
                 status: response.statusCode,
                 requestID: response.value(forHTTPHeaderField: "x-request-id")
-            )
+            ), with: response)
         }
         return try? JSONDecoder().decode(
             DiscordInstallationExperimentsDTO.self,

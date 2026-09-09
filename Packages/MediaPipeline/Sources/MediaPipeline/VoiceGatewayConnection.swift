@@ -14,15 +14,21 @@ public struct VoiceGatewayDiagnosticEvent: Equatable, Sendable {
     public let operation: String
     public let integers: [String: Int]
     public let flags: [String: Bool]
+    public let error: NSError?
+    public let incident: NSUUID?
 
     init(
         operation: String,
         integers: [String: Int] = [:],
-        flags: [String: Bool] = [:]
+        flags: [String: Bool] = [:],
+        error: NSError? = nil,
+        incident: NSUUID? = nil
     ) {
         self.operation = operation
         self.integers = integers
         self.flags = flags
+        self.error = error
+        self.incident = incident
     }
 }
 
@@ -73,6 +79,7 @@ public actor VoiceGatewayConnection {
     private var lastSequence = -1
     private var lastHeartbeatAcknowledged = true
     private var connectionGeneration = 0
+    private var diagnosticIncident = NSUUID()
     private var reportedClosedGeneration: Int?
 
     public init(
@@ -92,6 +99,7 @@ public actor VoiceGatewayConnection {
 
     public func connect(resuming: Bool = false) async throws {
         connectionGeneration &+= 1
+        diagnosticIncident = NSUUID()
         let generation = connectionGeneration
         diagnostics.record(VoiceGatewayDiagnosticEvent(
             operation: "socket_connect_started",
@@ -216,6 +224,7 @@ public actor VoiceGatewayConnection {
             } catch is CancellationError {
                 return
             } catch {
+                guard !Task.isCancelled, generation == connectionGeneration else { return }
                 let nsError = error as NSError
                 diagnostics.record(VoiceGatewayDiagnosticEvent(
                     operation: "socket_receive_failed",
@@ -224,7 +233,9 @@ public actor VoiceGatewayConnection {
                         "close_reason_byte_count": socket.closeReason?.count ?? 0,
                         "error_code": nsError.code,
                         "generation": generation,
-                    ]
+                    ],
+                    error: nsError,
+                    incident: diagnosticIncident
                 ))
                 voiceGatewayLogger.error(
                     "Voice gateway socket receive failed; error=\(String(reflecting: error), privacy: .public), closeCode=\(socket.closeCode.rawValue)"
@@ -305,6 +316,7 @@ public actor VoiceGatewayConnection {
         generation: Int
     ) {
         heartbeatTask?.cancel()
+        let incident = diagnosticIncident
         let interval = Duration.milliseconds(max(1, Int64(clamping: intervalMilliseconds)))
         heartbeatTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -314,7 +326,8 @@ public actor VoiceGatewayConnection {
                 guard acknowledged else {
                     diagnostics.record(VoiceGatewayDiagnosticEvent(
                         operation: "heartbeat_ack_missed",
-                        integers: ["generation": generation]
+                        integers: ["generation": generation],
+                        incident: incident
                     ))
                     await reportConnectionClosed(generation: generation, closeCode: 4000)
                     return
@@ -327,13 +340,17 @@ public actor VoiceGatewayConnection {
                         sequence: lastSequence
                     ))
                 } catch {
+                    guard !Task.isCancelled else { return }
+                    guard await connectionGeneration == generation else { return }
                     let nsError = error as NSError
                     diagnostics.record(VoiceGatewayDiagnosticEvent(
                         operation: "heartbeat_send_failed",
                         integers: [
                             "error_code": nsError.code,
                             "generation": generation,
-                        ]
+                        ],
+                        error: nsError,
+                        incident: incident
                     ))
                     await reportConnectionClosed(generation: generation, closeCode: 4000)
                     return
@@ -350,13 +367,29 @@ public actor VoiceGatewayConnection {
     private func sendText(_ text: String) async throws {
         guard let socket else { throw URLError(.notConnectedToInternet) }
         diagnostics.record(.request, data: Data(text.utf8))
-        try await socket.send(.string(text))
+        let incident = diagnosticIncident
+        do {
+            try await socket.send(.string(text))
+        } catch {
+            diagnostics.record(VoiceGatewayDiagnosticEvent(
+                operation: "socket_send_failed", error: error as NSError, incident: incident
+            ))
+            throw error
+        }
     }
 
     private func sendBinary(_ data: Data) async throws {
         guard let socket else { throw URLError(.notConnectedToInternet) }
         diagnostics.record(.request, data: data)
-        try await socket.send(.data(data))
+        let incident = diagnosticIncident
+        do {
+            try await socket.send(.data(data))
+        } catch {
+            diagnostics.record(VoiceGatewayDiagnosticEvent(
+                operation: "socket_send_failed", error: error as NSError, incident: incident
+            ))
+            throw error
+        }
     }
 
     private func closeSocketOnly() {
@@ -374,7 +407,8 @@ public actor VoiceGatewayConnection {
             integers: [
                 "close_code": closeCode,
                 "generation": generation,
-            ]
+            ],
+            incident: diagnosticIncident
         ))
         heartbeatTask?.cancel()
         socket?.cancel(with: .goingAway, reason: nil)

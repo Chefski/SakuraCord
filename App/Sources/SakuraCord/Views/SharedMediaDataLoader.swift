@@ -1,3 +1,4 @@
+import DiscordProtocol
 import Foundation
 import MediaPipeline
 
@@ -288,6 +289,7 @@ actor SharedMediaDataLoader {
             return value
         } catch {
             localFileLoads[url] = nil
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error, operation: "local_media_load")
             throw error
         }
     }
@@ -528,6 +530,9 @@ actor SharedMediaDataLoader {
     ) -> Data? {
         switch result {
         case let .failure(error):
+            if !waiters.isEmpty {
+                DiscordAPIDiagnosticStore.shared.recordClientFailure(error, operation: "remote_media_load")
+            }
             for waiter in waiters {
                 waiter.resume(throwing: error)
             }

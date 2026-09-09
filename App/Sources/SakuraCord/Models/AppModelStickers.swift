@@ -1,3 +1,4 @@
+import DiscordProtocol
 import Foundation
 import OSLog
 import SakuraCordModels
@@ -109,6 +110,7 @@ extension AppModel {
             stickersByGuild.merge(guildStickers) { _, newer in newer }
         } catch {
             guard isCurrentAccountSession(session), !Task.isCancelled else { return }
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             stickerPickerErrorMessage = error.localizedDescription
             Self.stickerPickerLogger.error(
                 "Catalog load failed: \(String(reflecting: error), privacy: .public)"
@@ -129,6 +131,7 @@ extension AppModel {
             return true
         } catch {
             guard isCurrentAccountSession(session) else { return false }
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             stickerPickerErrorMessage = error.localizedDescription
             return false
         }

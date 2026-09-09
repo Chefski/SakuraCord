@@ -65,6 +65,7 @@ extension AppModel {
             }
         } catch {
             guard isCurrentAccountSession(session) else { return }
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             errorMessage = error.localizedDescription
         }
     }
@@ -218,6 +219,7 @@ extension AppModel {
                 else { return }
                 var value = profilePresentation(for: destination)
                 value?.isLoading = false
+                DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
                 value?.errorMessage = error.localizedDescription
                 setProfilePresentation(value, for: destination)
             }

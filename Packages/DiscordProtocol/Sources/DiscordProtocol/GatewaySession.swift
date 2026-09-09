@@ -202,6 +202,7 @@ actor GatewaySession {
 
     private var state: State = .disconnected
     private var socket: (any GatewaySocket)?
+    private var diagnosticIncident = NSUUID()
     private var lifecycleTask: Task<Void, Never>?
     private var heartbeatTask: Task<Void, Never>?
     private var generation = 0
@@ -276,6 +277,7 @@ actor GatewaySession {
     }
 
     func send(_ data: Data) async throws {
+        let incident = diagnosticIncident
         guard !intentionallyStopped, state == .ready, let socket else { throw GatewaySessionError.stopped }
         let envelope = try JSONGatewayCodec().decode(data)
         apiDiagnostics.recordGateway(direction: "request", envelope: envelope)
@@ -285,13 +287,14 @@ actor GatewaySession {
             apiDiagnostics.recordWebSocketFailure(
                 transport: "gateway",
                 direction: "request",
-                error: error
+                error: error, incident: incident
             )
             throw error
         }
     }
 
     func updateQOS(active: Bool, heartbeatSession: DiscordHeartbeatSession?) async {
+        let incident = diagnosticIncident
         let becameActive = active && !qosActive
         qosActive = active
         let sessionChanged = heartbeatSession?.sessionID != self.heartbeatSession?.sessionID
@@ -306,7 +309,7 @@ actor GatewaySession {
             apiDiagnostics.recordWebSocketFailure(
                 transport: "gateway",
                 direction: "request",
-                error: error
+                error: error, incident: incident
             )
         }
     }
@@ -415,6 +418,8 @@ actor GatewaySession {
     }
 
     private func runConnection(generation activeGeneration: Int) async -> ConnectionOutcome {
+        diagnosticIncident = NSUUID()
+        let incident = diagnosticIncident
         transition(to: .connecting)
         eventContinuation.yield(.stateChanged(.connecting))
         forcedOutcome = nil
@@ -432,6 +437,10 @@ actor GatewaySession {
         } catch is CancellationError {
             return .cancelled
         } catch {
+            guard isActive(activeGeneration) else { return .cancelled }
+            apiDiagnostics.recordWebSocketFailure(
+                transport: "gateway", direction: "connect", error: error, incident: incident
+            )
             return .reconnectAfterBackoff(preserveSession: true)
         }
 
@@ -449,6 +458,9 @@ actor GatewaySession {
                 maximumDecompressedPayloadSize: configuration.maximumDecompressedPayloadSize
             )
         } catch {
+            apiDiagnostics.recordWebSocketFailure(
+                transport: "gateway", direction: "framing", error: error, incident: incident
+            )
             await activeSocket.close(code: 4002)
             socket = nil
             return .terminal(authenticationFailed: false)
@@ -473,10 +485,13 @@ actor GatewaySession {
         } catch is CancellationError {
             return .cancelled
         } catch {
+            guard isActive(activeGeneration) else { return .cancelled }
+            let closeCode = await activeSocket.closeCode()
             apiDiagnostics.recordWebSocketFailure(
                 transport: "gateway",
                 direction: "response",
-                error: error
+                error: error, incident: incident,
+                integers: closeCode.map { ["close_code": $0] } ?? [:]
             )
             if let forcedOutcome {
                 self.forcedOutcome = nil
@@ -487,11 +502,11 @@ actor GatewaySession {
                 await activeSocket.close(code: 4002)
                 return .terminal(authenticationFailed: false)
             }
-            let closeCode = await activeSocket.closeCode()
             apiDiagnostics.recordWebSocketLifecycle(
                 transport: "gateway",
                 operation: "socket_closed",
-                integers: closeCode.map { ["close_code": $0] } ?? [:]
+                integers: closeCode.map { ["close_code": $0] } ?? [:],
+                incident: incident
             )
             return classify(closeCode: closeCode)
         }
@@ -607,6 +622,7 @@ actor GatewaySession {
         _ envelope: GatewayEnvelope,
         generation activeGeneration: Int
     ) async throws {
+        let incident = diagnosticIncident
         guard handshakeSentGeneration != activeGeneration,
               case let .object(hello)? = envelope.data,
               case let .number(milliseconds)? = hello["heartbeat_interval"],
@@ -638,7 +654,7 @@ actor GatewaySession {
                 apiDiagnostics.recordWebSocketFailure(
                     transport: "gateway",
                     direction: "request",
-                    error: error
+                    error: error, incident: incident
                 )
                 throw error
             }
@@ -650,6 +666,7 @@ actor GatewaySession {
     }
 
     private func sendResume() async throws {
+        let incident = diagnosticIncident
         guard let sessionID, let sequence else { throw GatewaySessionError.malformedPayload }
         let envelope = GatewayEnvelope(op: 6, data: .object([
             "token": .string(configuration.token),
@@ -663,7 +680,7 @@ actor GatewaySession {
             apiDiagnostics.recordWebSocketFailure(
                 transport: "gateway",
                 direction: "request",
-                error: error
+                error: error, incident: incident
             )
             throw error
         }
@@ -685,8 +702,10 @@ actor GatewaySession {
     }
 
     private func scheduledHeartbeat(generation activeGeneration: Int) async -> Bool {
+        let incident = diagnosticIncident
         guard isActive(activeGeneration), socket != nil else { return false }
         if awaitingHeartbeatACK {
+            apiDiagnostics.recordWebSocketLifecycle(transport: "gateway", operation: "heartbeat_ack_missed", incident: incident)
             forcedOutcome = .reconnectAfterBackoff(preserveSession: true)
             let activeSocket = socket
             await activeSocket?.close(code: 4000)
@@ -704,6 +723,7 @@ actor GatewaySession {
     }
 
     private func sendHeartbeat(generation activeGeneration: Int, restartCadence: Bool) async throws {
+        let incident = diagnosticIncident
         guard isActive(activeGeneration), let socket else { throw GatewaySessionError.stopped }
         let sequenceValue: JSONValue = sequence.map { .number(Double($0)) } ?? .null
         let envelope: GatewayEnvelope
@@ -727,7 +747,7 @@ actor GatewaySession {
             apiDiagnostics.recordWebSocketFailure(
                 transport: "gateway",
                 direction: "request",
-                error: error
+                error: error, incident: incident
             )
             throw error
         }
@@ -738,6 +758,7 @@ actor GatewaySession {
     }
 
     private func sendTimeSpentSessionUpdate() async throws {
+        let incident = diagnosticIncident
         guard let socket, let heartbeatSession, let clientLaunchID = configuration.clientLaunchID else {
             return
         }
@@ -753,7 +774,7 @@ actor GatewaySession {
             apiDiagnostics.recordWebSocketFailure(
                 transport: "gateway",
                 direction: "request",
-                error: error
+                error: error, incident: incident
             )
             throw error
         }

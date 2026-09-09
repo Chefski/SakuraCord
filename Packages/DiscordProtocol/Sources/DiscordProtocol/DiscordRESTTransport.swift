@@ -266,12 +266,12 @@ extension DiscordRESTProvider {
         guard (200 ..< 300).contains(response.statusCode) else {
             if response.statusCode == 401 {
                 authorizationValue = nil
-                throw ChatProviderError.unauthenticated
+                throw apiDiagnostics.coalescing(ChatProviderError.unauthenticated, with: response)
             }
-            throw ChatProviderError.transport(
+            throw apiDiagnostics.coalescing(ChatProviderError.transport(
                 status: response.statusCode,
                 requestID: response.value(forHTTPHeaderField: "x-request-id")
-            )
+            ), with: response)
         }
         do {
             let decodeName: StaticString = isMessageHistoryRequest
@@ -289,6 +289,7 @@ extension DiscordRESTProvider {
             }
             return try JSONDecoder().decode(Response.self, from: data)
         } catch {
+            apiDiagnostics.recordClientFailure(error, operation: "rest_response_decode")
             let route = Self.routeTemplate(method: method, path: path)
             gatewayLogger.error(
                 "Discord response decoding failed for \(route, privacy: .public): \(String(reflecting: error), privacy: .public)"
@@ -308,12 +309,12 @@ extension DiscordRESTProvider {
         guard (200 ..< 300).contains(response.statusCode) else {
             if response.statusCode == 401 {
                 authorizationValue = nil
-                throw ChatProviderError.unauthenticated
+                throw apiDiagnostics.coalescing(ChatProviderError.unauthenticated, with: response)
             }
-            throw ChatProviderError.transport(
+            throw apiDiagnostics.coalescing(ChatProviderError.transport(
                 status: response.statusCode,
                 requestID: response.value(forHTTPHeaderField: "x-request-id")
-            )
+            ), with: response)
         }
     }
 
@@ -515,7 +516,7 @@ extension DiscordRESTProvider {
             }
             guard let response = rawResponse as? HTTPURLResponse else {
                 finishRateLimitReservation(prepared.reservation)
-                let error = ChatProviderError.invalidRequest(
+                let error: any Error = ChatProviderError.invalidRequest(
                     "Discord returned an invalid HTTP response."
                 )
                 apiDiagnostics.recordHTTPFailure(
@@ -561,9 +562,9 @@ extension DiscordRESTProvider {
             let requestRateLimitKey = context.rateLimitKey
             let maximumAttempts = context.maximumAttempts
             if response.statusCode == 429, Self.discordErrorCode(from: data) == 20016 {
-                throw ChatProviderError.slowmode(
+                throw apiDiagnostics.coalescing(ChatProviderError.slowmode(
                     retryAfter: Self.retryAfter(from: data, response: response, addsSafetyMargin: false)
-                )
+                ), with: response)
             }
             if response.statusCode == 429 {
                 let retryAfter = Self.retryAfter(from: data, response: response)
@@ -621,14 +622,14 @@ extension DiscordRESTProvider {
                     status: response.statusCode,
                     discordCode: discordCode
                 ) {
-                    throw ChatProviderError.unauthenticated
+                    throw apiDiagnostics.coalescing(ChatProviderError.unauthenticated, with: response)
                 }
-                throw ChatProviderError.invalidRequest(
+                throw apiDiagnostics.coalescing(ChatProviderError.invalidRequest(
                     Self.safetyStopMessage(
                         status: response.statusCode,
                         discordCode: discordCode
                     )
-                )
+                ), with: response)
             }
             if response.statusCode == 404 {
                 if Self.isExpectedResourceNotFound(method: method, path: path) {
@@ -637,9 +638,9 @@ extension DiscordRESTProvider {
                     unexpectedNotFoundCounts[route, default: 0] += 1
                     if unexpectedNotFoundCounts[route, default: 0] >= 2 {
                         await openSafetyCircuit(status: 404, discordCode: discordCode, route: route)
-                        throw ChatProviderError.invalidRequest(
+                        throw apiDiagnostics.coalescing(ChatProviderError.invalidRequest(
                             "Discord networking was stopped after this route repeatedly returned an unexpected not-found response."
-                        )
+                        ), with: response)
                     }
                 }
             } else if (200 ..< 300).contains(response.statusCode) {

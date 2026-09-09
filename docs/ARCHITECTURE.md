@@ -153,11 +153,12 @@ Within the production provider:
   returns; continuous capture accounts for the sanitized cache before
   retaining each entry. An output keeps its captured history even if caching
   evicts entries from memory. Eviction and Clear Logs also release retained
-  sources. Authentication HTTP traffic, Gateway identify/resume and
-  session/voice setup, and remote-auth and voice sockets are sanitized
-  immediately because they carry credentials or encryption material.
-  Continuous disk capture sanitizes each write; otherwise ordinary payload
-  sanitization waits for manual export or panic save. The export also retains
+  sources. Payload sanitization, including authentication HTTP traffic, Gateway
+  identify/resume and session/voice setup, and remote-auth and voice sockets,
+  waits for manual export or panic save. Continuous disk capture sanitizes each
+  write. WebSocket JSON parsing and operation-name extraction also wait for
+  output; raw payloads count toward the same memory budget before sanitization.
+  The export also retains
   scalar-only Voice socket closure, reconnect, timeout, migration, and
   app-state lifecycle events even when detailed payload capture is disabled,
   so transport loops remain diagnosable without retaining content. The
@@ -170,11 +171,24 @@ Within the production provider:
   bounded file when capture remains enabled.
 
   Default-on panic save retains detailed payloads for sanitized output in that
-  bounded memory ring, even when explicit detailed capture is off. Generic
-  REST failures (code zero or no code, excluding ordinary authentication,
-  permission, missing-resource, and rate-limit responses), explicit unknown
-  errors, HTTP server errors, and remotely reported unknown/internal Gateway
-  closures save the latest three private snapshots in the same directory. The
+  bounded memory ring, even when explicit detailed capture is off. Every HTTP
+  error response, non-cancellation HTTP or WebSocket failure (including TLS and
+  timeouts), failed socket/voice lifecycle event, missed heartbeat ACK, and
+  abnormal Gateway closure saves a snapshot. Content-loading owners also report
+  failures after checking account and presentation ownership, covering decoding,
+  message/history, search, profile, picker, member, media, and voice failures
+  above the network boundary. Normal cancellation and intentional socket shutdown
+  do not trigger saves. Failure entries retain the error type, allowlisted system
+  error domain, and numeric code; descriptions, userInfo, and arbitrary domains
+  are discarded because they can contain private URLs or content.
+  Related reports coalesce into one save attempt: the same error propagated
+  through transport and content-loading owners, a failed HTTP response and its
+  derived error, and a socket connection's failure/closure sequence. Weak object
+  identities avoid retaining errors or response metadata; independent errors with
+  equal codes and new socket connections remain eligible. Coalesced reports still
+  enter the memory ring and optional continuous log. Clear Logs resets this
+  tracking; duplicate reports do not retry a failed disk write.
+  Panic save keeps the latest three private snapshots in the same directory. The
   newest is `SakuraCord Discord API Panic Save.jsonl`; `-2` and `-3` filename
   suffixes mark its predecessors. Each snapshot includes the triggering event
   and newest complete entries within the 64 MiB disk limit (192 MiB total),

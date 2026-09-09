@@ -161,6 +161,7 @@ final class ProfileEditorState {
             requiresReload = false
         } catch {
             guard isCurrent(account, revision: requestRevision) else { return }
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             errorMessage = error.localizedDescription
         }
     }
@@ -214,7 +215,10 @@ final class ProfileEditorState {
             let feeds = try await session.provider.suggestedProfileWidgetGames()
             guard isCurrent(session, revision: requestRevision) else { throw CancellationError() }
             suggestions.load(feeds, existing: widgets)
-        } catch is CancellationError { suggestions.hasAttemptedLoad = false } catch { suggestions.errorMessage = error.localizedDescription }
+        } catch is CancellationError { suggestions.hasAttemptedLoad = false } catch {
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
+            suggestions.errorMessage = error.localizedDescription
+        }
     }
 
     func refreshWidgetConnections() async {
@@ -227,7 +231,11 @@ final class ProfileEditorState {
             guard isCurrent(session, revision: requestRevision) else { return }
             widgetResources?.connections = connections
             widgetResources?.identities = identities
-        } catch is CancellationError { return } catch { if isCurrent(session, revision: requestRevision) { errorMessage = error.localizedDescription } }
+        } catch is CancellationError { return } catch {
+            guard isCurrent(session, revision: requestRevision) else { return }
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
+            errorMessage = error.localizedDescription
+        }
     }
 
     func resolveWidgetSuggestions(for kind: ProfileGameWidgetKind) async {
@@ -240,7 +248,10 @@ final class ProfileEditorState {
             let available = Set(games.filter { $0.coverURL != nil }.map(\.id))
             suggestions.removeUnavailable(ids: Set(ids).subtracting(available), for: kind)
             suggestions.errorMessage = nil
-        } catch is CancellationError { return } catch { suggestions.errorMessage = error.localizedDescription }
+        } catch is CancellationError { return } catch {
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
+            suggestions.errorMessage = error.localizedDescription
+        }
     }
 
     func defaultWidgetGames() async throws -> [ProfileGame] {

@@ -510,7 +510,7 @@ public actor DiscordVoiceSession: DaveSessionDelegate {
             if state == .connecting {
                 connectContinuation?.resume(throwing: error)
                 connectContinuation = nil
-                transition(to: .failed)
+                transition(to: .failed, error: error)
             }
         }
     }
@@ -1475,20 +1475,22 @@ extension DiscordVoiceSession {
         engine?.stop()
     }
 
-    private func transition(to state: VoiceSessionState) {
+    private func transition(to state: VoiceSessionState, error: (any Error)? = nil) {
         guard self.state != state else { return }
         self.state = state
         gatewayDiagnostics.record(VoiceGatewayDiagnosticEvent(
-            operation: "session_state_\(state.rawValue)"
+            operation: "session_state_\(state.rawValue)",
+            error: error.map { $0 as NSError }
         ))
         eventContinuation.yield(.stateChanged(state))
     }
 
     private func failConnectIfPending(id: UUID) {
         guard connectContinuation != nil else { return }
-        connectContinuation?.resume(throwing: VoiceSessionError.connectionTimedOut)
+        let error: any Error = VoiceSessionError.connectionTimedOut
+        transition(to: .failed, error: error)
+        connectContinuation?.resume(throwing: error)
         connectContinuation = nil
-        transition(to: .failed)
     }
 
     private func cancelPendingConnect() {
@@ -1656,7 +1658,8 @@ private extension DiscordVoiceSession {
         } catch {
             gatewayDiagnostics.record(VoiceGatewayDiagnosticEvent(
                 operation: "udp_setup_failed",
-                integers: ["error_code": (error as NSError).code]
+                integers: ["error_code": (error as NSError).code],
+                error: error as NSError
             ))
             await udp.close()
             throw error
@@ -1749,7 +1752,8 @@ private extension DiscordVoiceSession {
                     "error_code": nsError.code,
                     "generation": Int(clamping: generation),
                 ],
-                flags: ["resuming": resuming]
+                flags: ["resuming": resuming],
+                error: nsError
             ))
             scheduleGatewayReconnect(resuming: resuming)
             return

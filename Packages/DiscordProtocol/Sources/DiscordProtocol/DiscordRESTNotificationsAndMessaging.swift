@@ -204,7 +204,7 @@ extension DiscordRESTProvider {
             )
             guard response.statusCode == 204 else {
                 pendingAutocompleteTypes[request.nonce] = nil
-                throw interactionTransportError(response)
+                throw apiDiagnostics.coalescing(interactionTransportError(response), with: response)
             }
         } catch {
             pendingAutocompleteTypes[request.nonce] = nil
@@ -258,7 +258,7 @@ extension DiscordRESTProvider {
             "/interactions", method: "POST", query: [], body: body
         )
         guard response.statusCode == 204 else {
-            throw interactionTransportError(response)
+            throw apiDiagnostics.coalescing(interactionTransportError(response), with: response)
         }
         progress(.awaitingResponse(nonce: invocation.nonce))
     }
@@ -319,7 +319,7 @@ extension DiscordRESTProvider {
         let (_, response) = try await perform(
             "/interactions", method: "POST", query: [], body: body
         )
-        guard response.statusCode == 204 else { throw interactionTransportError(response) }
+        guard response.statusCode == 204 else { throw apiDiagnostics.coalescing(interactionTransportError(response), with: response) }
         pendingModalContexts[nonce] = nil
     }
 
@@ -349,13 +349,13 @@ extension DiscordRESTProvider {
                 continue
             }
             if response.statusCode == 429 {
-                guard attempt < 2 else { throw interactionTransportError(response) }
+                guard attempt < 2 else { throw apiDiagnostics.coalescing(interactionTransportError(response), with: response) }
                 let delay = Self.retryAfter(from: data, response: response)
                 try await Task.sleep(for: .seconds(delay))
                 continue
             }
             guard (200 ..< 300).contains(response.statusCode) else {
-                throw interactionTransportError(response)
+                throw apiDiagnostics.coalescing(interactionTransportError(response), with: response)
             }
             return try ApplicationCommandIndexDecoder.decode(data, target: target)
         }
@@ -703,8 +703,8 @@ extension DiscordRESTProvider {
             diagnosticTransport: "attachment_storage", diagnosticPath: "/attachments/\(slot.id)"
         )
         guard (200 ..< 300).contains(response.statusCode) else {
-            throw ChatProviderError.invalidRequest(
-                "Discord's attachment storage rejected \(file.name).")
+            throw apiDiagnostics.coalescing(ChatProviderError.invalidRequest(
+                "Discord's attachment storage rejected \(file.name)."), with: response)
         }
         progress(.uploading(fileName: file.name, completed: total, total: total))
     }

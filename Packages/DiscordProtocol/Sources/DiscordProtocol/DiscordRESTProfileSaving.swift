@@ -108,14 +108,14 @@ extension DiscordRESTProvider {
         guard (200 ..< 300).contains(response.statusCode) else {
             if response.statusCode == 400,
                let error = Self.profileValidationError(data: data, method: request.method, path: request.path)
-            { throw error }
+            { throw apiDiagnostics.coalescing(error, with: response) }
             if response.statusCode == 401 {
                 authorizationValue = nil
-                throw ChatProviderError.unauthenticated
+                throw apiDiagnostics.coalescing(ChatProviderError.unauthenticated, with: response)
             }
-            throw ChatProviderError.transport(
+            throw apiDiagnostics.coalescing(ChatProviderError.transport(
                 status: response.statusCode, requestID: response.value(forHTTPHeaderField: "x-request-id")
-            )
+            ), with: response)
         }
         return data
     }

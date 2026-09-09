@@ -188,12 +188,12 @@ extension DiscordRESTProvider {
                 try await Task.sleep(for: delay)
             case 401:
                 authorizationValue = nil
-                throw ChatProviderError.unauthenticated
+                throw apiDiagnostics.coalescing(ChatProviderError.unauthenticated, with: response)
             default:
-                throw ChatProviderError.transport(
+                throw apiDiagnostics.coalescing(ChatProviderError.transport(
                     status: response.statusCode,
                     requestID: response.value(forHTTPHeaderField: "x-request-id")
-                )
+                ), with: response)
             }
         }
         preconditionFailure("The bounded message-search loop always returns or throws.")

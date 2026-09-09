@@ -117,6 +117,7 @@ extension AppModel {
                 guard model.isCurrentAccountSession(account),
                       model.openThread?.id == thread.id
                 else { return }
+                DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
                 model.threadErrorMessage = error.localizedDescription
                 model.threadErrorScope = .initialPage
                 model.isLoadingThread = false
@@ -248,6 +249,7 @@ extension AppModel {
             guard isCurrentAccountSession(session),
                   openThread?.id == thread.id
             else { return }
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             threadErrorMessage = error.localizedDescription
             threadErrorScope = .earlierPage
         }

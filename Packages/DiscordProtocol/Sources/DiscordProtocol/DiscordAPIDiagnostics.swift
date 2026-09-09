@@ -3,9 +3,8 @@ import Foundation
 
 /// A bounded, session-local record of Discord protocol traffic.
 ///
-/// Ordinary payloads remain in bounded memory until saving or exporting, when
-/// sensitive values are discarded. Authentication and key-exchange traffic is
-/// sanitized immediately. Every output uses the same redaction boundary.
+/// Payloads remain in bounded memory until saving or exporting, when sensitive
+/// values are discarded. Every output uses the same redaction boundary.
 public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
     public static let shared = DiscordAPIDiagnosticStore()
     public static let defaultMaximumDiskBytes = 64 * 1_024 * 1_024
@@ -27,6 +26,9 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
         var capturesPayloadDetails: Bool
         var enablesPanicSave = false
         var panicSaveErrorDescription: String?
+        // Weak identity keys never retain error userInfo, response URLs, or
+        // completed connections. Equal error codes are separate failures.
+        let capturedFailures = NSHashTable<AnyObject>(options: [.weakMemory, .objectPointerPersonality])
         var diskCapture: DiskCapture?
         var diskLoggingErrorDescription: String?
         var headIndex = 0
@@ -91,6 +93,7 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
             entryCount = 0
             retainedEstimatedByteCount = 0
             droppedEntryCount = 0
+            capturedFailures.removeAllObjects()
         }
 
         private mutating func removeOldest() {
@@ -121,19 +124,21 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
         enum Source {
             case json(JSONValue)
             case data(Data)
+            case webSocketData(Data)
             case sanitized(JSONValue)
             case object([String: Payload])
         }
 
         private var source: Source
         private(set) var estimatedByteCount: Int
+        private(set) var operationName: String?
 
         init(_ source: Source) {
             self.source = source
             estimatedByteCount = switch source {
             case let .json(value), let .sanitized(value):
                 DiscordAPIDiagnosticStore.estimatedJSONByteCount(value)
-            case let .data(data): data.count
+            case let .data(data), let .webSocketData(data): data.count
             case let .object(fields):
                 16 + fields.reduce(0) { $0 + $1.key.utf8.count + $1.value.estimatedByteCount + 16 }
             }
@@ -143,12 +148,21 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
             try sanitizedValue().encode(to: encoder)
         }
 
+        func operationForExport() -> String {
+            _ = sanitizedValue()
+            return operationName ?? "websocket_payload"
+        }
+
         private func sanitizedValue() -> JSONValue {
             let value: JSONValue
             switch source {
             case let .sanitized(cached): return cached
             case let .json(raw): value = DiscordDiagnosticSanitizer.sanitize(raw)
             case let .data(raw): value = DiscordAPIDiagnosticStore.sanitizedPayload(raw) ?? .null
+            case let .webSocketData(raw):
+                let decoded = try? JSONDecoder().decode(DiscordDiagnosticSanitizer.WebSocketPayload.self, from: raw)
+                operationName = decoded?.operation.map { String($0.prefix(128)) }
+                value = decoded?.value ?? DiscordAPIDiagnosticStore.payloadSummary(raw)
             case let .object(fields): value = .object(fields.mapValues { $0.sanitizedValue() })
             }
             source = .sanitized(value)
@@ -157,12 +171,34 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
         }
     }
 
+    /// WebSocket operation names are extracted with the payload at output time,
+    /// avoiding a second JSON parse solely for diagnostic metadata.
+    private enum Operation: Encodable {
+        case named(String)
+        case webSocket(Payload)
+
+        var estimatedByteCount: Int {
+            switch self {
+            case let .named(name): name.utf8.count
+            case let .webSocket(payload): payload.operationName?.utf8.count ?? "websocket_payload".utf8.count
+            }
+        }
+
+        func encode(to encoder: any Encoder) throws {
+            var container = encoder.singleValueContainer()
+            switch self {
+            case let .named(name): try container.encode(name)
+            case let .webSocket(payload): try container.encode(payload.operationForExport())
+            }
+        }
+    }
+
     private struct Entry: Encodable {
         let sequence: UInt64
         let timestamp: Date
         let transport: String
         let direction: String
-        let operation: String
+        let operation: Operation
         let method: String?
         let path: String?
         let attempt: Int?
@@ -171,6 +207,8 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
         let headers: [String: String]?
         let payload: Payload?
         let errorType: String?
+        let errorDomain: String?
+        let errorCode: Int?
     }
 
     private struct ExportMetadata: Codable {
@@ -351,12 +389,12 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
             object["query"] = Payload(.sanitized(.object(Self.sanitizedQuery(query))))
         }
         if let body {
-            object["body"] = payloadForRetention(body, sanitizeImmediately: Self.isAuthentication(transport: transport, path: path))
+            object["body"] = payloadForRetention(body)
         }
         append(
             transport: transport,
             direction: "request",
-            operation: "http",
+            operation: .named("http"),
             method: method,
             path: path,
             attempt: attempt,
@@ -376,15 +414,16 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
         append(
             transport: transport,
             direction: "response",
-            operation: "http",
+            operation: .named("http"),
             method: method,
             path: path,
             attempt: attempt,
             statusCode: response.statusCode,
             durationMilliseconds: Self.milliseconds(duration),
             headers: Self.sanitizedHeaders(response.allHeaderFields),
-            payload: payloadForRetention(body, sanitizeImmediately: Self.isAuthentication(transport: transport, path: path)),
-            triggersPanicSave: Self.isUnknownHTTPError(status: response.statusCode, body: body)
+            payload: payloadForRetention(body),
+            panicIdentity: response,
+            triggersPanicSave: response.statusCode >= 400
         )
     }
 
@@ -399,12 +438,13 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
         append(
             transport: transport,
             direction: "failure",
-            operation: "http",
+            operation: .named("http"),
             method: method,
             path: path,
             attempt: attempt,
             durationMilliseconds: Self.milliseconds(duration),
-            errorType: String(reflecting: type(of: error))
+            error: error,
+            triggersPanicSave: !Self.isCancellation(error)
         )
     }
 
@@ -419,17 +459,12 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
             "event": Payload(.sanitized(envelope.eventName.map(JSONValue.string) ?? .null)),
         ]
         if retainsPayloadDetails {
-            let data = envelope.data ?? .null
-            // Identify/resume and session/voice setup carry credentials.
-            let containsCredentials = [2, 6].contains(envelope.op)
-                || ["READY", "VOICE_SERVER_UPDATE"].contains(envelope.eventName ?? "")
-            payload["data"] = Payload(containsCredentials
-                ? .sanitized(DiscordDiagnosticSanitizer.sanitize(data)) : .json(data))
+            payload["data"] = Payload(.json(envelope.data ?? .null))
         }
         append(
             transport: transport,
             direction: direction,
-            operation: envelope.eventName ?? "opcode_\(envelope.op)",
+            operation: .named(envelope.eventName ?? "opcode_\(envelope.op)"),
             payload: Payload(.object(payload))
         )
     }
@@ -446,7 +481,7 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
         append(
             transport: transport,
             direction: direction,
-            operation: "unparsed_payload",
+            operation: .named("unparsed_payload"),
             payload: Payload(.sanitized(Self.payloadSummary(data)))
         )
     }
@@ -456,36 +491,45 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
         direction: String,
         data: Data
     ) {
-        guard retainsPayloadDetails else {
-            append(
-                transport: transport,
-                direction: direction,
-                operation: "websocket_payload",
-                payload: Payload(.sanitized(Self.payloadSummary(data)))
-            )
-            return
-        }
-        // This entrypoint serves remote-auth and voice sockets, which carry
-        // authentication proofs or encryption keys; redact those immediately.
-        let decoded = try? JSONDecoder().decode(DiscordDiagnosticSanitizer.WebSocketPayload.self, from: data)
+        let payload = retainsPayloadDetails
+            ? Payload(.webSocketData(data)) : Payload(.sanitized(Self.payloadSummary(data)))
         append(
             transport: transport,
             direction: direction,
-            operation: decoded?.operation.map { String($0.prefix(128)) } ?? "websocket_payload",
-            payload: Payload(.sanitized(decoded?.value ?? Self.payloadSummary(data)))
+            operation: .webSocket(payload),
+            payload: payload
         )
     }
 
     public func recordWebSocketFailure(
         transport: String,
         direction: String,
-        error: any Error
+        error: any Error,
+        incident: NSUUID? = nil,
+        integers: [String: Int] = [:]
     ) {
         append(
             transport: transport,
             direction: "\(direction)_failure",
-            operation: "websocket",
-            errorType: String(reflecting: type(of: error))
+            operation: .named("websocket"),
+            payload: integers.isEmpty ? nil : Payload(.sanitized(.object(integers.mapValues { .number(Double($0)) }))),
+            error: error,
+            panicIdentity: incident,
+            triggersPanicSave: !Self.isCancellation(error)
+        )
+    }
+
+    /// Call when an operation leaves client content unavailable, after checking
+    /// that the load still belongs to the current account and presentation.
+    /// Static call-site names identify the feature without retaining UI text.
+    public func recordClientFailure(_ error: any Error, operation: StaticString = #function) {
+        guard !Self.isCancellation(error) else { return }
+        append(
+            transport: "client",
+            direction: "failure",
+            operation: .named(operation.description),
+            error: error,
+            triggersPanicSave: true
         )
     }
 
@@ -495,7 +539,10 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
         transport: String,
         operation: String,
         integers: [String: Int] = [:],
-        flags: [String: Bool] = [:]
+        flags: [String: Bool] = [:],
+        error: (any Error)? = nil,
+        incident: NSUUID? = nil,
+        triggersPanicSave: Bool = true
     ) {
         var fields = integers.mapValues { JSONValue.number(Double($0)) }
         fields.merge(flags.mapValues(JSONValue.bool)) { _, replacement in
@@ -504,12 +551,25 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
         append(
             transport: transport,
             direction: "lifecycle",
-            operation: String(operation.prefix(128)),
+            operation: .named(String(operation.prefix(128))),
             payload: fields.isEmpty ? nil : Payload(.sanitized(.object(fields))),
-            triggersPanicSave: ((transport == "gateway" && operation == "socket_closed")
-                || (["voice_gateway", "stream_voice_gateway"].contains(transport) && operation == "socket_receive_failed"))
-                && [4_000, 1_011].contains(integers["close_code"] ?? 0)
+            error: error,
+            panicIdentity: incident,
+            triggersPanicSave: triggersPanicSave && !(error.map(Self.isCancellation) ?? false) && (operation.hasSuffix("_failed")
+                || operation == "heartbeat_ack_missed"
+                || (operation == "socket_closed" && ![1_000, 1_001].contains(integers["close_code"] ?? 0)))
         )
+    }
+
+    /// Preserve the thrown error's type and identity while linking it to the
+    /// HTTP response that already triggered a snapshot. No error is retained.
+    func coalescing(_ error: any Error, with response: HTTPURLResponse) -> any Error {
+        withLock { state in
+            if state.capturedFailures.contains(response) {
+                state.capturedFailures.add(error as NSError)
+            }
+        }
+        return error
     }
 
     public func exportData() throws -> Data {
@@ -536,16 +596,11 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
         (try? DiscordDiagnosticSanitizer.decode(data)) ?? payloadSummary(data)
     }
 
-    private func payloadForRetention(_ data: Data, sanitizeImmediately: Bool) -> Payload {
+    private func payloadForRetention(_ data: Data) -> Payload {
         guard retainsPayloadDetails else {
             return Payload(.sanitized(Self.payloadSummary(data)))
         }
-        return Payload(sanitizeImmediately
-            ? .sanitized(Self.sanitizedPayload(data) ?? Self.payloadSummary(data)) : .data(data))
-    }
-
-    private static func isAuthentication(transport: String, path: String) -> Bool {
-        transport == "authentication" || path.split(separator: "/").contains("auth")
+        return Payload(.data(data))
     }
 
     private static let redactionDescription =
@@ -558,7 +613,7 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
     private func append(
         transport: String,
         direction: String,
-        operation: String,
+        operation: Operation,
         method: String? = nil,
         path: String? = nil,
         attempt: Int? = nil,
@@ -566,7 +621,8 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
         durationMilliseconds: Int? = nil,
         headers: [String: String]? = nil,
         payload: Payload? = nil,
-        errorType: String? = nil,
+        error: (any Error)? = nil,
+        panicIdentity: AnyObject? = nil,
         triggersPanicSave: Bool = false
     ) {
         withLock { state in
@@ -583,7 +639,9 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
                 durationMilliseconds: durationMilliseconds,
                 headers: headers?.isEmpty == false ? headers : nil,
                 payload: payload,
-                errorType: errorType
+                errorType: error.map { String(reflecting: type(of: $0)) },
+                errorDomain: error.map { Self.sanitizedErrorDomain(($0 as NSError).domain) },
+                errorCode: error.map { ($0 as NSError).code }
             )
             state.nextSequence &+= 1
             // Disk capture may expand the payload into a sanitized cache. Account
@@ -595,8 +653,32 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
                 maximumRetainedBytes: maximumRetainedBytes
             )
             if triggersPanicSave, state.enablesPanicSave {
-                savePanicSnapshot(state: &state, triggeringEntry: entry)
+                let identities = [panicIdentity, error.map { $0 as NSError }].compactMap { $0 }
+                let alreadyCaptured = identities.contains { state.capturedFailures.contains($0) }
+                for identity in identities { state.capturedFailures.add(identity) }
+                // Claim before writing: even a failed write is attempted only
+                // once per incident, and concurrent reports cannot race it.
+                if !alreadyCaptured {
+                    savePanicSnapshot(state: &state, triggeringEntry: entry)
+                }
             }
+        }
+    }
+
+    private static func isCancellation(_ error: any Error) -> Bool {
+        if error is CancellationError { return true }
+        let error = error as NSError
+        return error.domain == NSURLErrorDomain && error.code == URLError.cancelled.rawValue
+    }
+
+    private static func sanitizedErrorDomain(_ domain: String) -> String {
+        // NSError userInfo and localized descriptions can contain credentials,
+        // failing URLs, paths, and response content. Keep only system domains
+        // and numeric codes; custom domains are not trusted diagnostic text.
+        switch domain {
+        case NSURLErrorDomain, NSCocoaErrorDomain, NSPOSIXErrorDomain, NSOSStatusErrorDomain,
+             "kCFErrorDomainCFNetwork": domain
+        default: "<redacted>"
         }
     }
 
@@ -622,23 +704,6 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
                 reflecting: type(of: error)
             )
         }
-    }
-
-    private static func isUnknownHTTPError(status: Int, body: Data) -> Bool {
-        guard status >= 400 else { return false }
-        if status >= 500 { return true }
-        struct ErrorResponse: Decodable {
-            let code: Int?
-            let message: String?
-        }
-        let error = try? JSONDecoder().decode(ErrorResponse.self, from: body)
-        if error?.message?.localizedCaseInsensitiveContains("unknown error") == true {
-            return true
-        }
-        // Authentication, missing resources, permissions, and rate limits have
-        // defined behavior even when Discord omits a JSON error code.
-        guard ![401, 403, 404, 429].contains(status) else { return false }
-        return error?.code == nil || error?.code == 0
     }
 
     /// Called under the store lock so the triggering entry, replacement, clear,
@@ -791,10 +856,11 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
         var size = 256
         size += entry.transport.utf8.count
         size += entry.direction.utf8.count
-        size += entry.operation.utf8.count
+        size += entry.operation.estimatedByteCount
         size += entry.method?.utf8.count ?? 0
         size += entry.path?.utf8.count ?? 0
         size += entry.errorType?.utf8.count ?? 0
+        size += entry.errorDomain?.utf8.count ?? 0
         if let headers = entry.headers {
             size += headers.reduce(0) {
                 $0 + $1.key.utf8.count + $1.value.utf8.count + 16
