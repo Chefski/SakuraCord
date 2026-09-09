@@ -12,6 +12,12 @@ extension NativeTimelineCanvasView {
         let requestOwner = visibleMediaPinOwner
         let keys = preparedMediaKeys ?? mediaKeys(for: item, at: index)
         for key in keys {
+            // Another row may have loaded this image since the draw queued
+            // its request. The store skips cache hits without a callback.
+            if NativeTimelineRowPainter.mediaImage(for: key) != nil {
+                scheduleMediaInvalidation(identifier)
+                continue
+            }
             NativeTimelineMediaStore.shared.request(
                 key,
                 owner: requestOwner,
@@ -27,9 +33,14 @@ extension NativeTimelineCanvasView {
         identifier: NativeMessageTimelineItem.Identifier,
         keys: Set<NativeTimelineMediaKey>
     ) {
-        guard !keys.isEmpty else { return }
+        // Record what the painter actually lacked, so cache-hit completion
+        // repairs placeholders without repeatedly invalidating complete rows.
+        let missingKeys = keys.filter {
+            NativeTimelineRowPainter.mediaImage(for: $0) == nil
+        }
+        guard !missingKeys.isEmpty else { return }
         pendingVisibleMediaRequests[identifier, default: []]
-            .formUnion(keys)
+            .formUnion(missingKeys)
         guard visibleMediaRequestTask == nil else { return }
         visibleMediaRequestTask = Task { @MainActor [weak self] in
             let interval = AppPerformanceSignposts.signposter.beginInterval(

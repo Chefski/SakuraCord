@@ -1327,7 +1327,10 @@ extension NativeTimelineCanvasView {
             appearanceName: appearanceName,
             image: image,
             cost: cost,
-            mediaPinOwner: mediaPinOwner
+            mediaPinOwner: mediaPinOwner,
+            missingMediaKeys: preparedMediaKeys.filter {
+                NativeTimelineRowPainter.mediaImage(for: $0) == nil
+            }
         )
         bitmapCost += cost
         evictBitmapsIfNeeded()
@@ -1360,6 +1363,14 @@ extension NativeTimelineCanvasView {
               abs(cached.width - width) < 0.5,
               cached.appearanceName == effectiveAppearance.name
         else { return nil }
+        // Incomplete bitmaps can outlive their load subscriptions when a
+        // conversation is detached. Recheck their missing images on reuse.
+        if cached.missingMediaKeys.contains(where: {
+            NativeTimelineRowPainter.mediaImage(for: $0) != nil
+        }) {
+            invalidateBitmap(item.identifier)
+            return nil
+        }
         rowBitmapCacheHitCount += 1
         return cached.image
     }

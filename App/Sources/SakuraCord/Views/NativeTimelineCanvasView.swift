@@ -19,6 +19,7 @@ final class NativeTimelineCanvasView: NSView {
         let image: NSImage
         let cost: Int
         let mediaPinOwner: UUID
+        let missingMediaKeys: Set<NativeTimelineMediaKey>
     }
 
     struct ReactionPointerHit {
