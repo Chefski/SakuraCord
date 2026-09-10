@@ -559,10 +559,7 @@ private struct ProfileIdentitySection: View {
                         .background(.indigo, in: ConcentricRectangle(cornerRadius: 5))
                 }
             }
-            let identityLayout = editor == nil
-                ? AnyLayout(HStackLayout(spacing: 6))
-                : AnyLayout(ProfileRoleFlowLayout(spacing: 6, constrainsChildren: true, alignment: .firstTextBaseline))
-            identityLayout {
+            ProfileRoleFlowLayout(spacing: 6, constrainsChildren: true, alignment: .firstTextBaseline) {
                 CopyableProfileUsername(
                     username: username,
                     usesSeparatorSlot: hasPronouns
@@ -589,7 +586,7 @@ private struct ProfileIdentitySection: View {
                     ProfileServerTagPicker(editor: editor, identity: primaryGuildIdentity)
                 }
                 if editor == nil, let primaryGuildIdentity, let tag = primaryGuildIdentity.tag, !tag.isEmpty {
-                    ProfileGuildIdentity(identity: primaryGuildIdentity, tag: tag)
+                    ProfileServerTag(identity: primaryGuildIdentity)
                         .fixedSize(horizontal: true, vertical: false)
                 }
             }
@@ -1243,29 +1240,6 @@ nonisolated enum ProfileEffectLayout {
             width: CGFloat(animation.width ?? Int(defaultCanvasSize.width)) * scale,
             height: CGFloat(animation.height ?? Int(defaultCanvasSize.height)) * scale
         )
-    }
-}
-
-struct ProfileGuildIdentity: View {
-    let identity: PrimaryGuildIdentity
-    let tag: String
-
-    var body: some View {
-        HStack(spacing: 5) {
-            if let badgeURL = identity.badgeURL {
-                AsyncImage(url: badgeURL) { image in
-                    image.resizable().scaledToFit()
-                } placeholder: {
-                    Color.clear
-                }
-                .frame(width: 18, height: 18)
-            }
-            Text(tag)
-                .font(.subheadline.weight(.bold))
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .background(.black.opacity(0.28), in: ConcentricRectangle(cornerRadius: 7, style: .continuous))
     }
 }
 
