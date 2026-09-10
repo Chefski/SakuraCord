@@ -978,7 +978,7 @@ private struct CommandEntityResolver: View {
                                 .contentShape(Rectangle())
                                 .background(
                                     index == selectedIndex ? Color.primary.opacity(0.13) : .clear,
-                                    in: ConcentricRectangle(cornerRadius: 5)
+                                    in: ConcentricRectangle(cornerRadius: 16)
                                 )
                             }
                             .buttonStyle(.plain)
