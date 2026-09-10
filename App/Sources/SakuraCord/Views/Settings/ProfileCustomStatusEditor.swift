@@ -21,12 +21,10 @@ struct ProfileCustomStatusControl: View {
         .accessibilityLabel(profile.customStatus == nil ? "Add custom status" : "Edit custom status")
         .overlay(alignment: .topTrailing) {
             if isHovered, profile.customStatus != nil {
-                HStack(spacing: 4) {
-                    Button("Edit", systemImage: "pencil") { isPresented = true }
-                    Button("Clear Status", systemImage: "trash") { clear() }
+                HoverActionPill {
+                    HoverActionButton(systemImage: "pencil", help: String(localized: "Edit Status", bundle: #bundle)) { isPresented = true }
+                    HoverActionButton(systemImage: "trash", help: String(localized: "Clear Status", bundle: #bundle), role: .destructive) { clear() }
                 }
-                .labelStyle(.iconOnly).buttonStyle(.plain).padding(6)
-                .glassEffect(.regular.interactive(), in: .capsule)
                 .offset(y: -20)
             }
         }

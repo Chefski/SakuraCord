@@ -12,6 +12,7 @@ struct ProfileDisplayName: View {
     var animationIsActive: Bool?
     var background: Color = Color(nsColor: .controlBackgroundColor)
     var plainColor: Color = .primary
+    var wraps = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var loadedFont: NSFont?
@@ -38,12 +39,12 @@ struct ProfileDisplayName: View {
                         background: NSColor(background),
                         plainColor: NSColor(plainColor),
                         elapsed: reduceMotion ? 0 : animationStart.map { max(0, timeline.date.timeIntervalSince($0)) } ?? 0,
-                        loops: loops
+                        loops: loops, wraps: wraps
                     )
                     .padding(-max(4 + size * 0.12, size * 0.2))
                 }
             } else {
-                Text(name).font(.system(size: size, weight: .bold)).lineLimit(1)
+                Text(name).font(.system(size: size, weight: .bold)).lineLimit(wraps ? nil : 1)
                     .textSelection(.enabled)
             }
         }
@@ -99,6 +100,7 @@ private struct ProfileNameNativeText: NSViewRepresentable {
     let plainColor: NSColor
     let elapsed: Double
     let loops: Bool
+    let wraps: Bool
 
     func makeNSView(context: Context) -> ProfileNameTextView { ProfileNameTextView() }
 
@@ -107,8 +109,7 @@ private struct ProfileNameNativeText: NSViewRepresentable {
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: ProfileNameTextView, context: Context) -> CGSize? {
-        let natural = nsView.intrinsicContentSize
-        return CGSize(width: min(proposal.width ?? natural.width, natural.width), height: natural.height)
+        nsView.size(for: proposal.width)
     }
 }
 
@@ -122,8 +123,9 @@ private final class ProfileNameTextView: NSView {
     private var plainColor = NSColor.labelColor
     private var elapsed: Double = 0
     private var loops = false
+    private var wraps = false
     private var naturalLayout: ProfileNameTextLayout?
-    private var fittedLayout: ProfileNameTextLayout?
+    private var fittedLayouts: [ProfileNameTextLayout] = []
     private var fittedWidth: CGFloat?
 
     private var padding: CGFloat { max(4 + font.pointSize * 0.12, font.pointSize * 0.2) }
@@ -134,7 +136,7 @@ private final class ProfileNameTextView: NSView {
     }
 
     func configure(_ configuration: ProfileNameNativeText) {
-        let layoutChanged = name != configuration.name || font != configuration.font || tracking != configuration.tracking
+        let layoutChanged = name != configuration.name || font != configuration.font || tracking != configuration.tracking || wraps != configuration.wraps
             || (style.effectID == ProfileNameEffect.gummy.rawValue) != (configuration.style.effectID == ProfileNameEffect.gummy.rawValue)
         self.name = configuration.name
         self.font = configuration.font
@@ -145,9 +147,10 @@ private final class ProfileNameTextView: NSView {
         self.plainColor = configuration.plainColor
         self.elapsed = configuration.elapsed
         self.loops = configuration.loops
+        self.wraps = configuration.wraps
         if layoutChanged || naturalLayout == nil {
             naturalLayout = ProfileNameTextLayout(name: name, font: font, tracking: tracking, gummy: style.effectID == 8)
-            fittedLayout = nil
+            fittedLayouts = []
             fittedWidth = nil
             invalidateIntrinsicContentSize()
         }
@@ -160,23 +163,42 @@ private final class ProfileNameTextView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         guard let context = NSGraphicsContext.current?.cgContext, let naturalLayout else { return }
         let width = max(0, bounds.width - padding * 2)
-        if fittedWidth != width {
-            fittedLayout = naturalLayout.width <= width ? naturalLayout : ProfileNameTextLayout(
-                name: name, font: font, tracking: tracking, gummy: style.effectID == 8, maximumWidth: width
-            )
-            fittedWidth = width
-        }
-        guard let layout = fittedLayout else { return }
-        context.saveGState()
-        context.translateBy(x: padding, y: padding + layout.descent)
+        fit(to: width, natural: naturalLayout)
         let effect = showsEffects ? ProfileNameEffect(rawValue: style.effectID) ?? .solid : .solid
         let backdrop = ProfileNameEffectColor(effect == .toon ? NSColor(srgbRed: 0.2, green: 0.2, blue: 0.2, alpha: 1) : background)
         let colors = showsEffects ? style.colors.map {
             ProfileNameEffectColor(hex: $0).adjusted(against: backdrop, ratio: effect == .gradient || effect == .prism ? 2.5 : 3)
         } : [ProfileNameEffectColor(plainColor)]
-        ProfileNameEffectPainter.draw(layout, in: context, fontSize: font.pointSize, effect: effect,
-                                      colors: colors, elapsed: elapsed, looping: loops)
-        context.restoreGState()
+        var top = bounds.height - padding
+        for layout in fittedLayouts {
+            context.saveGState()
+            context.translateBy(x: padding, y: top - layout.ascent)
+            ProfileNameEffectPainter.draw(layout, in: context, fontSize: font.pointSize, effect: effect,
+                                          colors: colors, elapsed: elapsed, looping: loops)
+            context.restoreGState()
+            top -= ceil(layout.ascent + layout.descent) + 2
+        }
+    }
+
+    func size(for proposedWidth: CGFloat?) -> CGSize {
+        guard let naturalLayout else { return .zero }
+        let width = min(proposedWidth ?? intrinsicContentSize.width, intrinsicContentSize.width)
+        fit(to: max(0, width - padding * 2), natural: naturalLayout)
+        let height = fittedLayouts.reduce(CGFloat(0)) { $0 + ceil($1.ascent + $1.descent) }
+            + CGFloat(max(0, fittedLayouts.count - 1)) * 2 + padding * 2
+        return CGSize(width: width, height: height)
+    }
+
+    private func fit(to width: CGFloat, natural: ProfileNameTextLayout) {
+        guard fittedWidth != width else { return }
+        if wraps, natural.width > width, width > 0 {
+            fittedLayouts = ProfileNameTextLayout.wrappedLines(name: name, font: font, tracking: tracking, gummy: style.effectID == 8, width: width)
+        } else {
+            fittedLayouts = [natural.width <= width ? natural : ProfileNameTextLayout(
+                name: name, font: font, tracking: tracking, gummy: style.effectID == 8, maximumWidth: width
+            )]
+        }
+        fittedWidth = width
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {

@@ -7,58 +7,56 @@ struct ProfileWidgetsBoard: View {
     let editor: ProfileEditorState
     @State private var showsAddPicker = false
     @State private var removingWidget: ProfileWidget?
-    @State private var reorderingID: String?
-    @State private var originalOrder: [ProfileWidget]?
-    @FocusState private var focusedWidgetID: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Text("Your Widgets", bundle: #bundle).font(.system(size: 12, weight: .semibold))
-                        Spacer()
-                        Button { showsAddPicker = true } label: { Label("Add Widget", systemImage: "plus") }
-                            .disabled(!editor.canEditWidgets)
-                    }
-                    .padding(.bottom, 4)
-                    ForEach(editor.widgets) { widget in
+            HStack {
+                Text("Your Widgets", bundle: #bundle).font(.system(size: 12, weight: .semibold))
+                Spacer(minLength: 8)
+                Button { showsAddPicker = true } label: { Label("Add Widget", systemImage: "plus") }
+                    .disabled(!editor.canEditWidgets)
+            }
+            .padding(.bottom, 4)
+            VStack(spacing: 12) {
+                ForEach(editor.widgets) { widget in
+                    // Keep a stable outer identity around the card's conditional
+                    // content and menus for SwiftUI's reorder container.
+                    VStack(spacing: 0) {
                         ProfileWidgetCard(widget: widget, resources: editor.widgetResources, editor: editor, displayName: editor.name)
-                            .overlay(alignment: .topLeading) {
-                                ProfileWidgetManageHandle(
-                                    id: widget.id, title: title(widget), isEnabled: editor.canEditWidgets,
-                                    focused: $focusedWidgetID,
-                                    remove: {
-                                        if NSApp.currentEvent?.modifierFlags.contains(.shift) == true { editor.removeWidget(id: widget.id) } else { removingWidget = widget }
-                                    },
-                                    beginReordering: { originalOrder = editor.widgets; reorderingID = widget.id; focusedWidgetID = widget.id }
-                                )
+                            .overlay(alignment: .topTrailing) {
+                                Menu { managementActions(widget) } label: {
+                                    Image(systemName: "ellipsis").frame(width: 24, height: 24).contentShape(Rectangle())
+                                }
+                                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                                .accessibilityLabel("Manage widget: \(title(widget))")
+                                .disabled(!editor.canEditWidgets)
+                                .padding(8)
                             }
-                            .overlay { if reorderingID == widget.id { ConcentricRectangle(cornerRadius: 16).stroke(.tint, lineWidth: 2) } }
-                            .dropDestination(for: ProfileWidgetDragPayload.self, isEnabled: editor.canEditWidgets) { values, _ in
-                                guard editor.canEditWidgets, let id = values.first?.id, editor.widgets.contains(where: { $0.id == id }),
-                                      let target = editor.widgets.firstIndex(where: { $0.id == widget.id }) else { return }
-                                editor.moveWidget(id: id, to: target)
-                            }
+                            .contextMenu { managementActions(widget) }
                     }
+                    .contentShape(.interaction, .rect(cornerRadius: 16))
+                    .contentShape(.dragPreview, .rect(cornerRadius: 16))
+                }
+                .reorderable()
+            }
+            .reorderContainer(for: ProfileWidget.self, isEnabled: editor.canEditWidgets) { difference in
+                let before: String?
+                switch difference.destination.position {
+                case let .before(id): before = id
+                case .end: before = nil
+                }
+                editor.moveWidgets(difference.sources, before: before)
+            }
         }
-        .padding(.leading, 24)
         .frame(maxWidth: .infinity)
         .task(id: editor.scope) { await editor.loadWidgetSuggestionsIfNeeded() }
-        .onKeyPress(.upArrow) { move(-1) }
-        .onKeyPress(.downArrow) { move(1) }
-        .onKeyPress(.return) {
-            guard reorderingID != nil else { return .ignored }
-            reorderingID = nil; originalOrder = nil; return .handled
-        }
-        .onKeyPress(.escape) {
-            guard reorderingID != nil else { return .ignored }
-            if let originalOrder { editor.setWidgets(originalOrder) }
-            reorderingID = nil; originalOrder = nil; return .handled
-        }
         .profileEditorOverlay(isPresented: $showsAddPicker) {
             ProfileAddWidgetPicker(editor: editor) { configuration in
                 editor.addWidget(ProfileWidget(content: .application(id: configuration.applicationID)))
                 let connection = editor.widgetResources?.connections?[configuration.connectionApplicationID ?? configuration.applicationID]
-                if connection == .unlinked, let url = configuration.connectionURL { _ = MessageLinkActivator.activate(url, model: model, displayedText: url.absoluteString) }
+                if connection == .unlinked, let url = configuration.connectionURL {
+                    _ = MessageLinkActivator.activate(url, model: model, displayedText: url.absoluteString)
+                }
             }
         }
         .profileEditorOverlay(item: $removingWidget) { widget in
@@ -68,43 +66,28 @@ struct ProfileWidgetsBoard: View {
         }
     }
 
-    private func move(_ offset: Int) -> KeyPress.Result {
-        guard let id = reorderingID, let index = editor.widgets.firstIndex(where: { $0.id == id }) else { return .ignored }
-        editor.moveWidget(id: id, to: index + offset)
-        focusedWidgetID = id
-        return .handled
+    @ViewBuilder private func managementActions(_ widget: ProfileWidget) -> some View {
+        Button("Remove Widget", role: .destructive) {
+            if NSApp.currentEvent?.modifierFlags.contains(.shift) == true {
+                editor.removeWidget(id: widget.id)
+            } else { removingWidget = widget }
+        }
+        .disabled(!editor.canEditWidgets)
+        if let index = editor.widgets.firstIndex(where: { $0.id == widget.id }) {
+            Button("Move Up") { editor.moveWidget(id: widget.id, to: index - 1) }
+                .disabled(!editor.canEditWidgets || index == 0)
+            Button("Move Down") { editor.moveWidget(id: widget.id, to: index + 1) }
+                .disabled(!editor.canEditWidgets || index == editor.widgets.count - 1)
+        }
     }
 
     private func title(_ widget: ProfileWidget) -> String {
         switch widget.content {
-        case let .personal(personal): personal.header
+        case let .personal(personal): personal.header.isEmpty ? String(localized: "Personal", bundle: #bundle) : personal.header
         case let .games(kind, _): kind.title
         case let .application(id): editor.widgetResources?.applications.first { $0.applicationID == id }?.applicationName ?? "Widget"
         case .unrecognized: "Widget"
         }
-    }
-}
-
-private struct ProfileWidgetManageHandle: View {
-    let id: String
-    let title: String
-    let isEnabled: Bool
-    let focused: FocusState<String?>.Binding
-    let remove: () -> Void
-    let beginReordering: () -> Void
-
-    var body: some View {
-        ProfileWidgetDragMenuButton(id: id, title: title, isEnabled: isEnabled, remove: remove)
-        .frame(width: 20, height: 28).offset(x: -25, y: 8)
-        .accessibilityLabel("Manage widget: \(title)")
-        .help("Click to manage; press Command-D to start reordering")
-        .focusable(interactions: .edit)
-        .focused(focused, equals: id)
-        .onKeyPress("d", phases: .down) { event in
-            guard event.modifiers.contains(.command) || event.modifiers.contains(.control) else { return .ignored }
-            beginReordering(); return .handled
-        }
-        .disabled(!isEnabled)
     }
 }
 

@@ -191,6 +191,7 @@ extension DiscordRESTProvider {
         }
         cacheLiveSearchUsers([update.member.user])
         publishMemberChange(member, guildID: guildID)
+        if name == "GUILD_MEMBER_UPDATE" { invalidateGatewayProfile(for: member.id) }
         let isJoined = quickSwitcherJoinedMemberIDsByGuildID[guildID]?.contains(member.id) == true
         // A global profile edit fans out to every guild. Avatar-only updates
         // do not change the account-wide membership or nickname indexes.
@@ -226,6 +227,7 @@ extension DiscordRESTProvider {
               let user = try? dto.domain()
         else { return }
         applyUserUpdate(dto: dto, user: user)
+        invalidateGatewayProfile(for: user.id)
     }
 
     func handlePresenceUpdateDispatch(

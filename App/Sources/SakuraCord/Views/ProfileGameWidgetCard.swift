@@ -44,16 +44,13 @@ struct ProfileGameWidgetCard: View {
                         .accessibilityLabel("Add Game")
                 }
             }
+            .padding(.trailing, editor == nil ? 0 : 24)
             if isGrid {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 16), count: 4), spacing: 16) {
                     ForEach(Array(games.prefix(expanded ? 20 : 8))) { game in
                         ProfileWidgetGameLink(game: records.first { $0.id == game.id }, animates: animates, open: gameAction)
                             .aspectRatio(3 / 4, contentMode: .fit)
-                            .overlay(alignment: .topTrailing) {
-                                if editor?.canEditWidgets == true {
-                                    ProfileWidgetRemoveGameButton { editor?.removeWidgetGame(widgetID: widgetID, gameID: game.id) }
-                                }
-                            }
+                            .modifier(ProfileWidgetGameRemoval(isEnabled: editor?.canEditWidgets == true) { editor?.removeWidgetGame(widgetID: widgetID, gameID: game.id) })
                             .overlay(alignment: .bottomLeading) {
                                 if editor?.canEditWidgets == true {
                                     ProfileWidgetGameReorderHandle(game: game, name: records.first { $0.id == game.id }?.name,
@@ -189,9 +186,7 @@ private struct ProfileWidgetGameRow: View {
         HStack(alignment: .top, spacing: 16) {
             ProfileWidgetGameLink(game: record, animates: animates, open: openGame)
                 .frame(width: 88, height: 116)
-                .overlay(alignment: .topTrailing) {
-                    if editable { ProfileWidgetRemoveGameButton(action: remove) }
-                }
+                .modifier(ProfileWidgetGameRemoval(isEnabled: editable, action: remove))
                 .overlay(alignment: .bottomLeading) {
                     if editable, kind == .rotation {
                         ProfileWidgetGameReorderHandle(game: game, name: record?.name, focused: focused, begin: beginReordering).padding(4)
@@ -267,6 +262,7 @@ private struct ProfileWidgetGameComment: View {
                 if isEditing {
                     TextField("Add a comment", text: Binding(get: { draft }, set: updateDraft), axis: .vertical)
                         .lineLimit(3 ... 3).textFieldStyle(.plain).focused($focused)
+                        .onSubmit(commit)
                         .onKeyPress(.return, phases: .down) { event in
                             guard !event.modifiers.contains(.shift) else { return .ignored }
                             commit(); return .handled
@@ -276,6 +272,7 @@ private struct ProfileWidgetGameComment: View {
                 } else if editable {
                     Button(action: beginEditing) { Text((comment ?? "").isEmpty ? "Add a comment" : comment ?? "") }
                         .buttonStyle(.plain).foregroundStyle(.secondary)
+                        .profileEditorTextHover()
                 } else if let comment { Text(comment).foregroundStyle(.secondary) }
             }
             .font(.system(size: 12))
@@ -308,11 +305,21 @@ private struct ProfileWidgetGameComment: View {
     }
 }
 
-private struct ProfileWidgetRemoveGameButton: View {
+private struct ProfileWidgetGameRemoval: ViewModifier {
+    let isEnabled: Bool
     let action: () -> Void
-    var body: some View {
-        Button(action: action) { Image(systemName: "xmark").font(.system(size: 10, weight: .bold)).padding(5) }
-            .buttonStyle(.plain).background(.regularMaterial, in: .circle).padding(4).accessibilityLabel("Remove Game")
+    @State private var isHovered = false
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(alignment: .topTrailing) {
+                if isEnabled, isHovered {
+                    HoverActionPill {
+                        HoverActionButton(systemImage: "trash", help: String(localized: "Remove Game", bundle: #bundle), role: .destructive, action: action)
+                    }.padding(4)
+                }
+            }
+            .onHover { isHovered = $0 }
     }
 }
 

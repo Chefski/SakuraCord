@@ -90,11 +90,11 @@ private struct ProfileInterestWidgetTemplates: View {
     let select: (ProfileWidget) -> Void
 
     var body: some View {
-        if editor.snapshot?.widgetEligibility.hasPersonalWidgetAccess == true, !hasPersonalWidget {
+        if editor.canEditPersonalWidget, !hasPersonalWidget {
             Button {
                 select(ProfileWidget(content: .personal(ProfilePersonalWidget(sections: [
                     .cover(ProfileWidgetCover()),
-                    .fields(Array(repeating: ProfileWidgetField(), count: 4))
+                    .fields((0 ..< 4).map { _ in ProfileWidgetField() })
                 ]))))
             } label: {
                 ProfilePersonalWidgetTemplate()

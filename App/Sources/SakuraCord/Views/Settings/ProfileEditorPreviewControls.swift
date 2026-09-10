@@ -14,10 +14,9 @@ struct ProfileEditorImageMenu: ViewModifier {
         content
             .overlay {
                 if let editor, let open {
-                    Image(systemName: "pencil")
-                        .font(.body.weight(.semibold))
-                        .padding(10)
-                        .background(.regularMaterial, in: .circle)
+                    HoverActionPill {
+                        HoverActionControlLabel { Image(systemName: "pencil").font(.callout.weight(.medium)) }
+                    }
                         .padding(target == .banner ? 12 : 0)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: target == .avatar ? .center : .topTrailing)
                         .opacity(isHovered ? 1 : 0)
@@ -82,7 +81,9 @@ private struct ProfileImageMenuButton: NSViewRepresentable {
             let menu = NSMenu()
             switch target {
             case .avatar:
-                add(String(localized: "Change Avatar", bundle: #bundle), to: menu) { [open] in open(.avatar) }
+                if editor.scope == .main || editor.isNitro {
+                    add(String(localized: "Change Avatar", bundle: #bundle), to: menu) { [open] in open(.avatar) }
+                }
                 add(String(localized: "Change Avatar Decoration", bundle: #bundle), to: menu) { [open] in open(.collectible(.avatarDecoration)) }
                 if editor.hasAvatarSelection || editor.selectedCollectibleID(.avatarDecoration) != nil { menu.addItem(.separator()) }
                 if editor.hasAvatarSelection {
@@ -92,7 +93,7 @@ private struct ProfileImageMenuButton: NSViewRepresentable {
                     add(editor.collectibleRemovalTitle(.avatarDecoration), to: menu, destructive: true) { [editor] in editor.setCollectible(nil, kind: .avatarDecoration) }
                 }
             case .banner:
-                add(String(localized: "Change Banner", bundle: #bundle), to: menu) { [open] in open(.banner) }
+                if editor.isNitro { add(String(localized: "Change Banner", bundle: #bundle), to: menu) { [open] in open(.banner) } }
                 add(String(localized: "Change Profile Effect", bundle: #bundle), to: menu) { [open] in open(.collectible(.effect)) }
                 add(String(localized: "Change Profile Frame", bundle: #bundle), to: menu) { [open] in open(.collectible(.frame)) }
                 if editor.hasBannerSelection || editor.selectedCollectibleID(.effect) != nil || editor.selectedCollectibleID(.frame) != nil { menu.addItem(.separator()) }

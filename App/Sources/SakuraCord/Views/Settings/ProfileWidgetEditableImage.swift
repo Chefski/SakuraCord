@@ -9,7 +9,12 @@ struct ProfileWidgetEditableImage: View {
     let animates: Bool
     let editor: ProfileEditorState?
     let aspectRatio: Double
+    var isCoverHovered = false
+    var onHoverChange: ((Bool) -> Void)?
+    var removeImage: (() -> Void)?
     let update: (ProfileWidgetImage?) -> Void
+    @State private var isHovered = false
+    @State private var isActionHovered = false
     @State private var importing = false
     @State private var cropping = false
     @State private var source: ProfileImageSource?
@@ -22,29 +27,81 @@ struct ProfileWidgetEditableImage: View {
     @State private var lastEdit: ProfileWidgetImageEdit?
     @State private var initialGeometry: ProfileImageCropGeometry?
 
+    private var isActive: Bool {
+        purpose == .widgetCover ? isCoverHovered : isHovered || isActionHovered
+    }
+
     var body: some View {
         ZStack {
             ProfileWidgetImageView(url: image?.url, animates: animates, contentMode: .fill)
-            if let editor, editor.canEditWidgets, image == nil {
-                Button { importing = true } label: { Image(systemName: "photo.badge.plus").font(.system(size: 20)).frame(maxWidth: .infinity, maxHeight: .infinity) }
+            if let editor, editor.canEditPersonalWidget, image == nil {
+                Button { importing = true } label: { Image(systemName: "photo.badge.plus").font(.system(size: 20))
+                    .frame(width: 24, height: 24)
+                    .nativeHoverPopover(isPresented: .constant(isActive)) {
+                        Text("Upload Image", bundle: #bundle).font(.subheadline.weight(.medium))
+                            .fixedSize().padding(.horizontal, 12).padding(.vertical, 10)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: purpose == .widgetCover ? .topLeading : .center)
+                    .padding(purpose == .widgetCover ? 16 : 0)
+                    .contentShape(Rectangle()) }
                     .buttonStyle(.plain).accessibilityLabel("Upload Image")
+            } else if editor?.canEditPersonalWidget == true, purpose == .widgetField {
+                Button { importing = true } label: { Color.clear.contentShape(Rectangle()) }
+                    .buttonStyle(.plain).accessibilityLabel("Change Image")
             }
             if busy { ProgressView().controlSize(.small) }
         }
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(.primary.opacity(isActive && editor?.canEditPersonalWidget == true ? 0.07 : 0))
+                .allowsHitTesting(false)
+        }
+        .clipShape(.rect(cornerRadius: 8))
         .overlay(alignment: .topTrailing) {
-            if editor?.canEditWidgets == true, image != nil {
-                Menu {
-                    Button("Change Image") { importing = true }
-                    if let lastEdit, image?.reference == lastEdit.reference {
-                        Button("Edit Image") {
-                            source = lastEdit.source; sourceURL = lastEdit.url; filename = lastEdit.filename
-                            initialGeometry = lastEdit.geometry; cropping = true
+            if editor?.canEditPersonalWidget == true, image != nil || removeImage != nil {
+                HoverActionPill {
+                    if image != nil, purpose == .widgetCover {
+                        Menu {
+                            Button("Change Image") { importing = true }
+                            if let lastEdit, image?.reference == lastEdit.reference {
+                                Button("Edit Image") {
+                                    source = lastEdit.source; sourceURL = lastEdit.url; filename = lastEdit.filename
+                                    initialGeometry = lastEdit.geometry; cropping = true
+                                }
+                            }
+                            Button("Remove Image", role: .destructive) { remove() }
+                        } label: {
+                            HoverActionControlLabel { Image(systemName: "pencil").font(.callout.weight(.medium)) }
                         }
+                        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                        .accessibilityLabel("Change Image")
+                        .help("Change Image")
+                    } else if removeImage != nil {
+                        HoverActionButton(systemImage: "trash", help: String(localized: "Remove Image", bundle: #bundle), role: .destructive, action: remove)
                     }
-                    Button("Remove Image", role: .destructive) { work?.cancel(); update(nil) }
-                } label: { Image(systemName: "pencil").padding(6) }
-                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                .background(.regularMaterial, in: .circle).padding(4).accessibilityLabel("Change Image")
+                }
+                .onHover { isActionHovered = $0 }
+                .opacity(isActive ? 1 : 0)
+                .allowsHitTesting(isActive)
+                .accessibilityHidden(!isActive)
+                .padding(.trailing, purpose == .widgetCover ? 48 : 0)
+                .padding(.top, purpose == .widgetCover ? 8 : 0)
+                .offset(x: purpose == .widgetCover ? 0 : 8, y: purpose == .widgetCover ? 0 : -8)
+            }
+        }
+        .onHover { isHovered = $0 }
+        .onChange(of: isActive) { _, active in onHoverChange?(active) }
+        .onDisappear { onHoverChange?(false) }
+        .contextMenu {
+            if editor?.canEditPersonalWidget == true {
+                Button(image == nil ? "Upload Image" : "Change Image") { importing = true }
+                if let lastEdit, image?.reference == lastEdit.reference {
+                    Button("Edit Image") {
+                        source = lastEdit.source; sourceURL = lastEdit.url; filename = lastEdit.filename
+                        initialGeometry = lastEdit.geometry; cropping = true
+                    }
+                }
+                if image != nil || removeImage != nil { Button("Remove Image", role: .destructive, action: remove) }
             }
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: ["jpg", "jpeg", "jfif", "png", "gif", "webp", "avif"].compactMap { UTType(filenameExtension: $0) }) { result in
@@ -56,7 +113,7 @@ struct ProfileWidgetEditableImage: View {
         .profileEditorOverlay(isPresented: $cropping) {
             if let source, let sourceURL {
                 ProfileImageCropView(image: source, imageURL: sourceURL, filename: filename, purpose: purpose,
-                                     isProcessing: busy, canApply: editor?.canEditWidgets == true, aspectRatio: aspectRatio, initialGeometry: initialGeometry,
+                                     isProcessing: busy, canApply: editor?.canEditPersonalWidget == true, aspectRatio: aspectRatio, initialGeometry: initialGeometry,
                                      cancel: { work?.cancel(); cropping = false }, apply: crop)
                     .profileEditorDismissDisabled(busy)
             }
@@ -68,6 +125,11 @@ struct ProfileWidgetEditableImage: View {
             work?.cancel()
             for url in temporaryFiles { try? FileManager.default.removeItem(at: url) }
         }
+    }
+
+    private func remove() {
+        work?.cancel()
+        if let removeImage { removeImage() } else { update(nil) }
     }
 
     private func load(_ url: URL) {
@@ -90,7 +152,7 @@ struct ProfileWidgetEditableImage: View {
     }
 
     private func crop(_ geometry: ProfileImageCropGeometry) {
-        guard let source, let editor, editor.canEditWidgets, !busy else { return }
+        guard let source, let editor, editor.canEditPersonalWidget, !busy else { return }
         let generation = editor.draftGeneration
         work = Task {
             busy = true

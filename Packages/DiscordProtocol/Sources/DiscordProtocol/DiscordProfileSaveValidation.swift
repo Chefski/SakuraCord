@@ -12,9 +12,6 @@ extension DiscordRESTProvider {
         try checkLength(changes.metadata.bio, maximum: 300, field: "About Me")
         try checkLength(changes.metadata.pronouns, maximum: 40, field: "Pronouns")
         let hasFullNitro = user.premiumType == 2
-        if scope.guildID != nil, changes.serverTag.isChanged {
-            throw ChatProviderError.invalidRequest("Server tags are edited on the main profile.")
-        }
         try validateProfileNitroAccess(changes, in: scope, hasFullNitro: hasFullNitro)
         try validateProfileImages(changes, user: user, hasFullNitro: hasFullNitro)
         try validateProfileNameStyle(changes.identity.displayNameStyle)

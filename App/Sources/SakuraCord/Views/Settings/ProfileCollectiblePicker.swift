@@ -8,6 +8,7 @@ struct ProfileCollectiblePicker: View {
     let profile: UserProfile
 
     @Environment(\.profileEditorModal) private var dismiss
+    @Environment(\.profileEditorModalAvailableSize) private var availableSize
     @State private var selectedID: String?
     @State private var hasSelected = false
     @State private var loadError: String?
@@ -31,11 +32,13 @@ struct ProfileCollectiblePicker: View {
         return editor.inventory?.canUse(itemID: itemID, hasFullNitro: editor.isNitro) == true
     }
     private var allItems: [ProfileCollectibleItem] { editor.inventory?.items(of: kind) ?? [] }
+    private var showsPreview: Bool { availableSize.width >= 700 }
     private var purchasedItems: [ProfileCollectibleItem] {
         allItems.filter { editor.inventory?.owns(itemID: $0.id) == true && editor.inventory?.requiresNitro(itemID: $0.id) == false }
     }
     private var premiumItems: [ProfileCollectibleItem] {
-        allItems.filter { editor.inventory?.requiresNitro(itemID: $0.id) == true }
+        guard editor.isNitro else { return [] }
+        return allItems.filter { editor.inventory?.requiresNitro(itemID: $0.id) == true && editor.inventory?.canUse(itemID: $0.id, hasFullNitro: true) == true }
     }
 
     var body: some View {
@@ -60,27 +63,29 @@ struct ProfileCollectiblePicker: View {
                         }
                     }
                 }
-                .frame(width: 420)
-                VStack(alignment: .leading, spacing: 12) {
-                    preview
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(product?.name ?? String(localized: "None", bundle: #bundle)).font(.headline)
-                        if let date = product?.purchasedAt {
-                            Text("Acquired on \(date.formatted(.dateTime.month(.wide).year()))", bundle: #bundle)
-                                .font(.caption).foregroundStyle(.secondary)
+                .frame(width: showsPreview ? min(420, availableSize.width - 348) : nil)
+                if showsPreview {
+                    VStack(alignment: .leading, spacing: 12) {
+                        preview
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(product?.name ?? String(localized: "None", bundle: #bundle)).font(.headline)
+                            if let date = product?.purchasedAt {
+                                Text("Acquired on \(date.formatted(.dateTime.month(.wide).year()))", bundle: #bundle)
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                            if let date = product?.expiresAt {
+                                Text("Available until \(date.formatted(date: .abbreviated, time: .omitted))", bundle: #bundle)
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                            if !isAvailable { Label("Requires Nitro or ownership", systemImage: "lock.fill").font(.caption) }
                         }
-                        if let date = product?.expiresAt {
-                            Text("Available until \(date.formatted(date: .abbreviated, time: .omitted))", bundle: #bundle)
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                        if !isAvailable { Label("Requires Nitro or ownership", systemImage: "lock.fill").font(.caption) }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                        .overlay { ConcentricRectangle(cornerRadius: 4).stroke(.primary.opacity(0.15), lineWidth: 2) }
+                        Spacer(minLength: 0)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
-                    .overlay { ConcentricRectangle(cornerRadius: 4).stroke(.primary.opacity(0.15), lineWidth: 2) }
-                    Spacer(minLength: 0)
+                    .frame(width: 276)
                 }
-                .frame(width: 276)
             }
             .padding(.horizontal, 24)
             if let loadError {
@@ -183,7 +188,8 @@ private struct ProfileCollectibleChoice: View {
 
     var body: some View {
         Button(action: choose) {
-            Group {
+            ZStack {
+                Color.clear
                 switch item.artwork {
                 case let .nameplate(nameplate):
                     ProfileAnonymousMemberRow().padding(.horizontal, 8)
@@ -200,6 +206,8 @@ private struct ProfileCollectibleChoice: View {
                         .frame(height: 132)
                 }
             }
+            .frame(height: item.kind == .nameplate ? 42 : 132)
+            .contentShape(Rectangle())
             .clipShape(ConcentricRectangle(cornerRadius: 10))
             .overlay { if selected { ConcentricRectangle(cornerRadius: 10).stroke(SakuraCordAccentColor.color, lineWidth: 2) } }
         }

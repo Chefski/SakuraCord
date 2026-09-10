@@ -190,6 +190,8 @@ struct MemberProfilePopover<Footer: View>: View {
                         }
                         if let editor, editor.scope == .main || editor.isNitro {
                             ProfileInlineBioEditor(value: Binding(get: { editor.bio }, set: { editor.bio = $0 }), displayValue: profile.bio, model: editor.model)
+                            .id(editor.draftGeneration)
+                            .profileEditorTextHover()
                             .padding(.horizontal, 16)
                         } else if let bio = profile.bio, !bio.isEmpty {
                             ProfileAboutSection(bio: bio)
@@ -540,19 +542,14 @@ private struct ProfileIdentitySection: View {
                 if let editor {
                     ProfileInlineTextEditor(
                         label: "Edit Display Name", value: Binding(get: { editor.name }, set: { editor.name = $0 }),
+                        placeholder: editor.scope == .main ? username : editor.snapshot?.mainPresentation.displayName ?? username,
                         font: .system(size: nameSize, weight: .bold), nameStyle: nameStyle, nameSize: nameSize, maximumLength: 32
                     ) {
                         styledName
                     }
+                    .id(editor.draftGeneration)
+                    .layoutPriority(1)
                 } else { styledName }
-                if editor != nil, let openEditorPicker {
-                    Button { openEditorPicker(.nameStyle) } label: {
-                        Image(systemName: "textformat").font(.body).padding(4)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Change Display Name Style")
-                    .accessibilityLabel("Change Display Name Style")
-                }
                 if isBot {
                     Text("APP")
                         .font(.caption.weight(.bold))
@@ -562,24 +559,33 @@ private struct ProfileIdentitySection: View {
                         .background(.indigo, in: ConcentricRectangle(cornerRadius: 5))
                 }
             }
-            HStack(spacing: 6) {
+            let identityLayout = editor == nil
+                ? AnyLayout(HStackLayout(spacing: 6))
+                : AnyLayout(ProfileRoleFlowLayout(spacing: 6, constrainsChildren: true, alignment: .firstTextBaseline))
+            identityLayout {
                 CopyableProfileUsername(
                     username: username,
                     usesSeparatorSlot: hasPronouns
                 )
                     .layoutPriority(1)
                 if let editor, editor.scope == .main || editor.isNitro {
-                    ProfileInlineTextEditor(label: "Edit Pronouns", value: Binding(get: { editor.pronouns }, set: { editor.pronouns = $0 }), font: .callout, maximumLength: 40) {
+                    let placeholder = editor.scope == .main ? String(localized: "Add pronouns", bundle: #bundle)
+                        : editor.snapshot?.mainPresentation.pronouns ?? String(localized: "Add pronouns", bundle: #bundle)
+                    ProfileInlineTextEditor(label: "Edit Pronouns", value: Binding(get: { editor.pronouns }, set: { editor.pronouns = $0 }),
+                                            placeholder: placeholder,
+                                            font: .callout, maximumLength: 40) {
                         Text(pronouns?.isEmpty == false ? pronouns ?? "" : String(localized: "Add pronouns", bundle: #bundle))
-                            .font(.callout).foregroundStyle(.secondary).lineLimit(1)
+                            .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
-                } else if let pronouns, !pronouns.isEmpty {
+                    .id(editor.draftGeneration)
+                }
+                if editor == nil, let pronouns, !pronouns.isEmpty {
                     Text(pronouns)
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
-                if let editor, editor.scope == .main {
+                if let editor {
                     ProfileServerTagPicker(editor: editor, identity: primaryGuildIdentity)
                 }
                 if editor == nil, let primaryGuildIdentity, let tag = primaryGuildIdentity.tag, !tag.isEmpty {
@@ -600,7 +606,7 @@ private struct ProfileIdentitySection: View {
     }
 
     private var styledName: some View {
-        ProfileDisplayName(name: displayName, style: nameStyle, size: nameSize, background: background)
+        ProfileDisplayName(name: displayName, style: nameStyle, size: nameSize, background: background, wraps: editor != nil)
             .tint(SakuraCordAccentColor.color)
     }
 }
@@ -698,11 +704,7 @@ private struct ProfileBadgeIcon: View {
     var body: some View {
         Group {
             if let iconURL = badge.iconURL {
-                AsyncImage(url: iconURL) { image in
-                    image.resizable().scaledToFit()
-                } placeholder: {
-                    ProgressView().controlSize(.mini)
-                }
+                StaticRemoteImage(url: iconURL, maximumPixelDimension: 46)
             } else {
                 Image(systemName: isNitroBadge ? "bolt.fill" : "checkmark.seal.fill")
                     .resizable()
@@ -981,6 +983,8 @@ enum ProfileRolePresentation {
 
 struct ProfileRoleFlowLayout: Layout {
     let spacing: CGFloat
+    var constrainsChildren = false
+    var alignment: VerticalAlignment = .top
 
     func sizeThatFits(
         proposal: ProposedViewSize,
@@ -998,7 +1002,8 @@ struct ProfileRoleFlowLayout: Layout {
     ) {
         let result = layout(proposal: ProposedViewSize(width: bounds.width, height: proposal.height), subviews: subviews)
         for (index, origin) in result.origins.enumerated() {
-            subviews[index].place(at: CGPoint(x: bounds.minX + origin.x, y: bounds.minY + origin.y), proposal: .unspecified)
+            subviews[index].place(at: CGPoint(x: bounds.minX + origin.x, y: bounds.minY + origin.y),
+                                 proposal: constrainsChildren ? ProposedViewSize(width: bounds.width, height: nil) : .unspecified)
         }
     }
 
@@ -1007,24 +1012,39 @@ struct ProfileRoleFlowLayout: Layout {
         var origins: [CGPoint] = []
         var horizontalOffset: CGFloat = 0
         var verticalOffset: CGFloat = 0
-        var rowHeight: CGFloat = 0
+        var row: [(index: Int, alignment: CGFloat)] = []
+        var aboveAlignment: CGFloat = 0
+        var belowAlignment: CGFloat = 0
         var usedWidth: CGFloat = 0
 
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if horizontalOffset > 0, horizontalOffset + size.width > availableWidth {
-                horizontalOffset = 0
-                verticalOffset += rowHeight + spacing
-                rowHeight = 0
+        func finishRow() {
+            for item in row {
+                origins[item.index].y = verticalOffset + aboveAlignment - item.alignment
             }
-            origins.append(CGPoint(x: horizontalOffset, y: verticalOffset))
-            horizontalOffset += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-            usedWidth = max(usedWidth, horizontalOffset - spacing)
+            verticalOffset += aboveAlignment + belowAlignment
+            row.removeAll(keepingCapacity: true)
+            aboveAlignment = 0
+            belowAlignment = 0
         }
 
+        for subview in subviews {
+            let size = subview.dimensions(in: constrainsChildren ? ProposedViewSize(width: proposal.width, height: nil) : .unspecified)
+            if horizontalOffset > 0, horizontalOffset + size.width > availableWidth {
+                finishRow()
+                horizontalOffset = 0
+                verticalOffset += spacing
+            }
+            row.append((origins.count, size[alignment]))
+            origins.append(CGPoint(x: horizontalOffset, y: verticalOffset))
+            horizontalOffset += size.width + spacing
+            aboveAlignment = max(aboveAlignment, size[alignment])
+            belowAlignment = max(belowAlignment, size.height - size[alignment])
+            usedWidth = max(usedWidth, horizontalOffset - spacing)
+        }
+        finishRow()
+
         let width = availableWidth.isFinite ? availableWidth : usedWidth
-        return (CGSize(width: width, height: verticalOffset + rowHeight), origins)
+        return (CGSize(width: width, height: verticalOffset), origins)
     }
 }
 

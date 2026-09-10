@@ -85,7 +85,7 @@ struct ProfileGameView: View {
                 Button { if let previous = navigation.popLast() { game = previous } } label: { Image(systemName: "chevron.left") }
                     .accessibilityLabel("Back").disabled(editor.isSaving)
             }
-            if editor.snapshot?.widgetEligibility.canEditPersonalWidget == true {
+            if editor.canEditWidgets {
                 Menu {
                     ForEach(ProfileGameWidgetKind.allCases, id: \.self) { kind in
                         let entries = widgetGames(kind)

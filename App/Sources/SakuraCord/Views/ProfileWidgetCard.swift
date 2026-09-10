@@ -7,7 +7,11 @@ struct ProfileWidgetImageView: View {
     var contentMode: ContentMode = .fit
 
     var body: some View {
-        if let url { AnimatedRemoteImage(url: url, animates: animates, contentMode: contentMode) } else { Rectangle().fill(.primary.opacity(0.06)).accessibilityHidden(true) }
+        if let url {
+            // macOS 27's automatic drag snapshots flip NSViewRepresentable images,
+            // including NSImageView. SwiftUI images preserve their orientation.
+            AnimatedRemoteImage(url: url, animates: animates, contentMode: contentMode, usesSwiftUIRendering: true)
+        } else { Rectangle().fill(.primary.opacity(0.06)).accessibilityHidden(true) }
     }
 }
 

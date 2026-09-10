@@ -82,4 +82,19 @@ struct ProfileNameTextLayout {
         for outline in outlines { path.addPath(outline.path) }
         return path
     }
+
+    static func wrappedLines(name: String, font: NSFont, tracking: CGFloat, gummy: Bool, width: CGFloat) -> [Self] {
+        let source = name as NSString
+        let typesetter = CTTypesetterCreateWithAttributedString(NSAttributedString(string: name, attributes: [.font: font, .kern: tracking]))
+        var offset = 0
+        var lines: [Self] = []
+        while offset < source.length {
+            let suggested = CTTypesetterSuggestLineBreak(typesetter, offset, Double(max(1, width)))
+            let length = suggested > 0 ? suggested : source.rangeOfComposedCharacterSequence(at: offset).length
+            let line = source.substring(with: NSRange(location: offset, length: min(length, source.length - offset)))
+            lines.append(Self(name: line, font: font, tracking: tracking, gummy: gummy))
+            offset += length
+        }
+        return lines
+    }
 }

@@ -259,6 +259,7 @@ final class AppModel {
     @ObservationIgnored var membersByGuildID: [GuildID: [UserID: Member]] = [:]
     var profileCustomStatus: ProfileCustomStatus?
     var profileWidgetConnectionsRevision = UUID()
+    var profileInvalidationRevision = UUID()
     @ObservationIgnored var memberListsByGuildID: [GuildID: [Member]] = [:]
     @ObservationIgnored var memberListGroupsByGuildID: [GuildID: [GuildMemberListGroup]] = [:]
     @ObservationIgnored var defersMemberPresentationRebuild = false

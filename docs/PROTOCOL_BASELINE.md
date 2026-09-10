@@ -49,6 +49,27 @@ Native language preferences and the platform's canonical time-zone identifier
 can differ from Electron's browser defaults and legacy ICU aliases. Session,
 heartbeat, launch, and installation identifiers remain owned by each client.
 
+Profile-editor interaction was rechecked on 9 September 2026 using authenticated
+CDP capture in clean stable web build `608660` (`861472c`), desktop `0.0.411`,
+and native updater `89799`. Reopening the editor and revisiting a server reused
+profiles fetched within 60 seconds; stale entries refreshed without hiding the
+cached profile. The current first-party fetcher also coalesces in-flight reads
+by user and server. Main-profile pronouns saved independently on both full-Nitro
+and free accounts. The free account could save `accent_color` as an sRGB integer
+and restore its original null value, and could add a game widget through the
+ordinary ordered-list `PUT /users/@me/widgets` route. Game and application
+widgets do not require the personal-widget Nitro/rollout entitlement; creating
+or changing personal widgets and uploading their images still do. Existing
+personal widgets may be retained unchanged when editing the rest of the board.
+The same clean build omits new personal widgets without section content from
+the save payload. Once content exists, a widget name is required to save.
+Blank and partially completed widgets remain removable, with the ordinary
+removal confirmation. Saving prunes empty fields and sections; adding empty
+blocks to an existing saved widget still activates its unsaved-change controls.
+All temporary text, color, and widget changes were restored and re-read. The
+pinned Paicord and Swiftcord sources have historical profile caching but no
+comparable complete editor; current first-party interaction is authoritative.
+
 No token, cookie, authorization header, message body, personal payload,
 fingerprint, installation identifier, or unsanitized traffic is stored in this
 repository. Treat every build number and observed payload as a dated snapshot,
@@ -609,8 +630,8 @@ and retained as evidence.
 | `GET /users/{user}/profile?type=modal&with_mutual_guilds=true&with_mutual_friends=false&with_mutual_friends_count=true` | Editable current-user snapshot; append `guild_id` only for server scope. Preserve raw main and scoped field presence alongside resolved presentation. | Clean September profile-editor entry and scope selection. |
 | `PATCH /users/@me` | Changed main identity fields: `global_name`, avatar data/description or `avatar_id`, `avatar_decoration_sku_id`, `nameplate_sku_id`, and the three `display_name_*` style fields. A returned credential is adopted before subsequent writes. | Clean September identity, style, history and upload actions; first-party main-profile save dispatcher. |
 | `PATCH /guilds/{guild}/members/@me` | Changed server identity fields use `nick`; a nameplate is `collectibles.nameplate.sku_id`, with `collectibles.nameplate:null` for inheritance. Other identity fields use the same names as main scope. | Clean September server identity, cosmetics, inheritance and image actions. |
-| `PATCH /users/%40me/profile` and `PATCH /guilds/{guild}/profile/%40me` | Changed `bio`, `pronouns`, `banner`, ordered `theme_colors`, and `collectibles_sku_ids`. Preserve encoded `%40me` in these paths. | Clean September main/server metadata saves, clears and partial-save recovery. |
-| `PUT /users/@me/clan` | `identity_guild_id` and `identity_enabled`; clearing sends null/false. Eligible guilds come from joined, nonpending Gateway memberships with `GUILD_TAGS` and a tag. | Clean September tag selection/removal and first-party eligibility resolver. |
+| `PATCH /users/%40me/profile` and `PATCH /guilds/{guild}/profile/%40me` | Changed `bio`, `pronouns`, `banner`, `accent_color`, ordered `theme_colors`, and `collectibles_sku_ids`. Preserve encoded `%40me` in these paths. | Clean September main/server metadata saves, clears and partial-save recovery. |
+| `PUT /users/@me/clan` | Account-wide `identity_guild_id` and `identity_enabled`, editable from either main or server profiles; clearing sends null/false. One save reconciles the shared user and every cached profile without follow-up reads. Eligible guilds come from joined, nonpending Gateway memberships with `GUILD_TAGS` and a tag. | Clean September tag selection/removal and first-party eligibility resolver; 10 September editor-scope correction and cache-reconciliation coverage. |
 | `PATCH /users/@me/settings-proto/1` | Independent custom-status update; JSON contains `settings`. Send root field 11 with the retained status settings, replacing or removing its custom-status field 2 while preserving siblings and unknown fields. Reconcile the authoritative returned settings. | Clean September status saves, clears and expiry; first-party protobuf/settings implementation. |
 | `GET /collectibles-categories/v2?include_bundles=true&variants_return_style=2&skip_num_categories=0` | First collectible-picker catalogue load; retain server categories, variants and asset descriptors. | Clean September picker and catalogue requests. |
 | `GET /users/@me/collectibles-purchases?variants_return_style=2` | Owned inventory, including purchase type and expiry used by selection/save gates. | Clean September inventory requests and first-party ownership resolver. |
@@ -919,6 +940,21 @@ exception dispatches.
   `GUILD_ROLE_*`, `GUILD_MEMBER_*`, and `USER_UPDATE` likewise update the
   shared role, member, permission, current-user, DM-recipient, and loaded-
   message projections without a REST probe.
+- `USER_UPDATE` and `GUILD_MEMBER_UPDATE` also invalidate full profile data,
+  matching `UserProfileStore` in public asset `web.831e884588cb7b8b.js`, checked
+  on 10 September 2026. Invalidation prevents older in-flight reads from
+  publishing and adds no request by itself. A visible, clean profile editor
+  performs one modal-profile refresh while retaining its preview; dirty drafts
+  defer the refresh. Returning to the app also refreshes that visible editor.
+  An authenticated clean-client capture added and immediately removed one
+  temporary personal widget through the ordinary ordered-list PUT (both 200),
+  restoring the original widget records exactly. Neither operation dispatched
+  `USER_UPDATE` or `GUILD_MEMBER_UPDATE` in that connected client. The bundle's
+  `WIDGET_PENDING_SAVE_SUCCESS` is a local action applying the PUT response,
+  not an inbound Gateway event. Foreground refresh therefore covers widget
+  changes made in another client without introducing periodic profile polling.
+  Pinned Swiftcord v1 and Paicord's current-user store provide no separate
+  personal-widget Gateway update contract.
 - `MESSAGE_DELETE_BULK` removes every named loaded message and publishes the
   same per-message deletion boundary as a single delete.
   `CHANNEL_PINS_UPDATE` carries the channel and optional last-pin timestamp; it

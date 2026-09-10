@@ -93,6 +93,12 @@ struct SettingsView: View {
         .onChange(of: locale) { _, locale in
             state.updateLocale(locale)
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            refreshProfileAfterExternalChange()
+        }
+        .onChange(of: model.profileInvalidationRevision) { _, _ in
+            refreshProfileAfterExternalChange()
+        }
         .frame(
             minWidth: 760,
             idealWidth: 980,
@@ -104,6 +110,12 @@ struct SettingsView: View {
     private func dismissSearchFocus() {
         isSearchPresented = false
         NSApp.keyWindow?.makeFirstResponder(nil)
+    }
+
+    private func refreshProfileAfterExternalChange() {
+        profileEditor?.invalidateSnapshot()
+        guard state.selectedPage == .profiles else { return }
+        Task { await profileEditor?.refreshIfNeeded() }
     }
 
     private func handleSearchKeyPress(_ press: KeyPress) -> KeyPress.Result {

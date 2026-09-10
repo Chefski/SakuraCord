@@ -72,6 +72,12 @@ struct StaticRemoteImage: NSViewRepresentable {
             guard self.request != request else { return }
             self.request = request
             task?.cancel()
+            if let cached = SharedDecodedImageLoader.shared.cachedImage(
+                for: request.url, maximumPixelDimension: request.maximumPixelDimension
+            ) {
+                view.display(cached)
+                return
+            }
             view.clear()
             task = Task { @MainActor [weak self, weak view] in
                 let image = await SharedDecodedImageLoader.shared.image(
@@ -155,6 +161,7 @@ struct AnimatedRemoteImage: View {
     var contentMode: ContentMode = .fit
     var onFailure: (() -> Void)?
     var accessibilityCategory: AccessibilityAnimationCategory = .gif
+    var usesSwiftUIRendering = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityPlayAnimatedImages) private var playsAnimatedImages
@@ -188,6 +195,7 @@ struct AnimatedRemoteImage: View {
         maximumPixelDimension: Int? = nil,
         contentMode: ContentMode = .fit,
         accessibilityCategory: AccessibilityAnimationCategory = .gif,
+        usesSwiftUIRendering: Bool = false,
         onFailure: (() -> Void)? = nil
     ) {
         self.url = url
@@ -200,6 +208,7 @@ struct AnimatedRemoteImage: View {
         self.maximumPixelDimension = maximumPixelDimension
         self.contentMode = contentMode
         self.accessibilityCategory = accessibilityCategory
+        self.usesSwiftUIRendering = usesSwiftUIRendering
         self.onFailure = onFailure
 
         let loadID = AnimatedRemoteImageRequestIdentity(
@@ -217,13 +226,19 @@ struct AnimatedRemoteImage: View {
     var body: some View {
         Group {
             if let decodedImage {
-                AnimatedImageRepresentable(
-                    decodedImage: decodedImage,
-                    animates: animates && !accessibilityReducesAnimation,
-                    isLooping: isLooping,
-                    contentMode: contentMode,
-                    playback: accessibilityReducesAnimation ? nil : playback
-                )
+                if usesSwiftUIRendering {
+                    SwiftUIAnimatedImage(image: decodedImage, animates: animates && !accessibilityReducesAnimation,
+                                         isLooping: isLooping, contentMode: contentMode)
+                        .id(ObjectIdentifier(decodedImage))
+                } else {
+                    AnimatedImageRepresentable(
+                        decodedImage: decodedImage,
+                        animates: animates && !accessibilityReducesAnimation,
+                        isLooping: isLooping,
+                        contentMode: contentMode,
+                        playback: accessibilityReducesAnimation ? nil : playback
+                    )
+                }
             } else if let previewImage {
                 Image(nsImage: previewImage)
                     .resizable()

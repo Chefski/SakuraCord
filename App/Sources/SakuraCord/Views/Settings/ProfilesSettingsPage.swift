@@ -9,23 +9,30 @@ struct ProfilesSettingsPage: View {
     @State private var nicknames: [GuildID: String] = [:]
 
     var body: some View {
-        SettingsPageForm(page: .profiles, state: state) {
-            if editor.isLoading {
-                ProgressView("Loading Profile…").frame(maxWidth: .infinity, minHeight: 160)
-            } else if let profile = editor.preview {
-                ProfileEditorCanvas(model: model, editor: editor, profile: profile) { picker = $0 }
-                    .id(editor.scope)
-            } else {
-                ContentUnavailableView {
-                    Label("Profile Unavailable", systemImage: "person.crop.circle.badge.exclamationmark")
-                } description: {
-                    Text(editor.errorMessage ?? String(localized: "Connect an account to edit its profile.", bundle: #bundle))
-                } actions: {
-                    Button("Retry") { Task { await editor.load(editor.scope) } }
+        GeometryReader { geometry in
+            ScrollView([.horizontal, .vertical]) {
+                VStack {
+                    if editor.isLoading {
+                        ProgressView("Loading Profile…").frame(maxWidth: .infinity, minHeight: 160)
+                    } else if let profile = editor.preview {
+                        ProfileEditorCanvas(model: model, editor: editor, profile: profile) { picker = $0 }
+                    } else {
+                        ContentUnavailableView {
+                            Label("Profile Unavailable", systemImage: "person.crop.circle.badge.exclamationmark")
+                        } description: {
+                            Text(editor.errorMessage ?? String(localized: "Connect an account to edit its profile.", bundle: #bundle))
+                        } actions: {
+                            Button("Retry") { Task { await editor.load(editor.scope, preferCached: false) } }
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 160)
+                    }
                 }
-                .frame(maxWidth: .infinity, minHeight: 160)
+                .padding(16)
+                .frame(width: max(geometry.size.width, 594))
             }
         }
+        .navigationTitle(state.catalog.page(.profiles).title)
+        .background { ProfileEditorFocusDismissal() }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 ProfileScopePicker(scope: editor.scope, guilds: model.snapshot?.guilds ?? [], nicknames: nicknames) { scope in
@@ -53,6 +60,12 @@ struct ProfilesSettingsPage: View {
             refreshNicknames()
         }
         .onChange(of: editor.snapshot) { _, _ in refreshNicknames() }
+        .onChange(of: editor.hasChanges) { _, hasChanges in
+            if !hasChanges { Task { await editor.loadIfNeeded(refreshExisting: true) } }
+        }
+        .onChange(of: editor.isSaving) { _, isSaving in
+            if !isSaving { Task { await editor.refreshIfNeeded() } }
+        }
         .onChange(of: model.profileCustomStatus) { _, status in editor.receiveCustomStatus(status) }
         .onChange(of: model.profileWidgetConnectionsRevision) { _, _ in Task { await editor.refreshWidgetConnections() } }
     }
@@ -66,7 +79,7 @@ struct ProfilesSettingsPage: View {
                 Spacer()
                 if editor.requiresReload {
                     Button("Discard Changes") { editor.resetDraft() }.disabled(editor.isSaving)
-                    Button("Reload") { Task { await editor.load(editor.scope) } }.disabled(editor.isLoading)
+                    Button("Reload") { Task { await editor.load(editor.scope, preferCached: false) } }.disabled(editor.isLoading)
                 } else {
                     Button("Reset") { editor.resetDraft() }.disabled(editor.isSaving)
                     Button { Task { await editor.save() } } label: {
@@ -100,27 +113,23 @@ private struct ProfileEditorCanvas: View {
     @State private var contentWidth: CGFloat = 680
 
     var body: some View {
-        let sideBySide = contentWidth >= 680
         VStack(spacing: 32) {
-            let layout = sideBySide
-                ? AnyLayout(HStackLayout(alignment: .top, spacing: 24))
-                : AnyLayout(VStackLayout(alignment: .center, spacing: 24))
-            layout {
+            HStack(alignment: .top, spacing: contentWidth < 760 ? 12 : 24) {
                 MemberProfilePopover(member: Member(user: profile.user, roleName: "", status: profile.status), profile: profile,
                                      isLoading: false, errorMessage: nil, layout: .editor, maximumPopoverHeight: 10_000,
                                      showsRoles: false, footer: EmptyView(),
                                      editor: editor, openEditorPicker: open)
                     .disabled(editor.isSaving || editor.requiresReload)
                 ProfileWidgetsBoard(model: model, editor: editor)
-                    .frame(maxWidth: sideBySide ? .infinity : 440)
+                    .id(editor.draftGeneration)
+                    .frame(minWidth: 220, maxWidth: 431)
             }
             ProfileStylesControls(editor: editor, profile: profile, width: contentWidth, open: open)
         }
         .frame(maxWidth: .infinity)
-        .frame(maxWidth: 820)
+        .frame(maxWidth: 785)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = $0 }
         .frame(maxWidth: .infinity)
-        // Keep the form's implicit row shape from replacing the profile's concentric corners.
         .containerShape(.rect(cornerRadius: 16))
     }
 }

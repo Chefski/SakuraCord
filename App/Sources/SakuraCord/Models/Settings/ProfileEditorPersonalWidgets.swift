@@ -2,7 +2,7 @@ import SakuraCordModels
 
 extension ProfileEditorState {
     func updatePersonalWidget(id: String, _ update: (inout ProfilePersonalWidget) -> Void) {
-        guard canEditWidgets, var widget = widgets.first(where: { $0.id == id }), case var .personal(personal) = widget.content else { return }
+        guard canEditPersonalWidget, var widget = widgets.first(where: { $0.id == id }), case var .personal(personal) = widget.content else { return }
         update(&personal)
         widget.content = .personal(personal)
         updateWidget(widget)

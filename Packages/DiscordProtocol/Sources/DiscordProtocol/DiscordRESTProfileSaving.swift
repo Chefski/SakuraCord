@@ -89,12 +89,17 @@ extension DiscordRESTProvider {
 
         var groups = [stages]
         if let widgets = changes.widgets {
-            let eligibility = profileApexAssignments?.widgetEligibility(for: user)
-            guard eligibility?.canEditPersonalWidget == true else {
-                throw ChatProviderError.invalidRequest("Custom widgets require Nitro and early access.")
-            }
             guard let originals = saved.profile.widgets else {
                 throw ChatProviderError.invalidRequest("Reload your profile before editing its widgets.")
+            }
+            if profileApexAssignments?.widgetEligibility(for: user).canEditPersonalWidget != true {
+                let originalWidgets = try originals.map { try $0.domain(userID: user.id) }
+                for widget in widgets where !widget.isDiscardable {
+                    if case .personal = widget.content,
+                       !originalWidgets.contains(where: { $0.id == widget.id && $0.hasSameEditableContent(as: widget) }) {
+                        throw ChatProviderError.invalidRequest("Personal widgets require Nitro and early access.")
+                    }
+                }
             }
             groups.append([(.widgets, try .widgets(widgets, originals: originals, userID: user.id))])
         }

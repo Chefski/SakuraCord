@@ -336,7 +336,11 @@ validation feedback and temporary preview files. It retains the originating
 account session and invalidates obsolete loads with a revision and draft
 generation. Unsaved edits block scope changes and Settings dismissal until
 saved or reset. Reentering Profiles refreshes a clean snapshot in its selected
-scope while preserving unsaved changes and explicit recovery state.
+scope while preserving unsaved changes and explicit recovery state. Returning
+to the app or receiving a profile invalidation marks retained editor data stale;
+the visible clean editor refreshes immediately while keeping its preview mounted.
+Unsaved drafts defer that refresh until reset or saved. User and member Gateway
+updates invalidate full profile caches, including reads already in flight.
 `ProfilesSettingsPage` feeds draft projections into
 `MemberProfilePopover`; display-name fonts and effects, avatar decorations,
 nameplates, profile effects and frames, membership sections and widget cards

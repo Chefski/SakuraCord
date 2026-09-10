@@ -71,6 +71,7 @@ public enum ClientEvent: Equatable, Sendable {
     case guildLayoutChanged(guilds: [Guild], railItems: [GuildRailItem])
     case guildRolesChanged(guildID: GuildID, roles: [GuildRole])
     case currentUserChanged(User)
+    case profileInvalidated(userID: UserID)
     case profileChanged(userID: UserID, scope: ProfileEditingScope, profile: UserProfile?)
     case profileCustomStatusChanged(userID: UserID, status: ProfileCustomStatus?)
     case profileWidgetConnectionsChanged(userID: UserID, connections: [String: ProfileWidgetConnection])

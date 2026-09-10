@@ -379,6 +379,9 @@ extension AppModel {
 
     private func consumeProfileEvent(_ event: ClientEvent) -> Bool {
         switch event {
+        case let .profileInvalidated(userID):
+            profileCache = profileCache.filter { $0.key.userID != userID }
+            if userID == snapshot?.currentUser.id { profileInvalidationRevision = UUID() }
         case let .profileChanged(userID, scope, profile):
             consumeProfileChanged(userID: userID, scope: scope, value: profile)
         case let .profileCustomStatusChanged(userID, status):

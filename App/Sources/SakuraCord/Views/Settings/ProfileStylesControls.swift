@@ -26,12 +26,14 @@ struct ProfileStylesControls: View {
     var body: some View {
         GlassEffectContainer(spacing: 16) {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 16, alignment: .top), count: columnCount), spacing: 24) {
-                ProfileStyleSection(title: "Avatar") {
-                    ProfileEditorTile(label: "Avatar", height: tileSize, action: { open(.avatar) },
-                                      remove: !editor.hasAvatarSelection ? nil : { editor.setAvatar(nil) },
-                                      removalTitle: editor.avatarRemovalTitle, content: {
-                        AvatarView(name: profile.displayName, url: profile.avatarURL, size: 80)
-                    })
+                if editor.scope == .main || editor.isNitro {
+                    ProfileStyleSection(title: "Avatar") {
+                        ProfileEditorTile(label: "Avatar", height: tileSize, action: { open(.avatar) },
+                                          remove: !editor.hasAvatarSelection ? nil : { editor.setAvatar(nil) },
+                                          removalTitle: editor.avatarRemovalTitle, content: {
+                            AvatarView(name: profile.displayName, url: profile.avatarURL, size: 80)
+                        })
+                    }
                 }
                 ProfileStyleSection(title: "Avatar Decoration") {
                     ProfileEditorTile(label: "Avatar Decoration", height: tileSize, action: { open(.collectible(.avatarDecoration)) },
@@ -40,19 +42,25 @@ struct ProfileStylesControls: View {
                         DecoratedAvatarView(name: "", avatarURL: nil, decorationURL: profile.user.avatarDecorationURL, size: 80)
                     })
                 }
-                ProfileStyleSection(title: "Banner", nitro: true) {
-                    ProfileEditorTile(label: "Banner", height: tileSize, action: { open(.banner) },
-                                      remove: !editor.hasBannerSelection ? nil : { editor.setBanner(nil) },
-                                      removalTitle: editor.bannerRemovalTitle, content: {
-                        if let url = profile.bannerURL {
-                            AnimatedRemoteImage(url: url, animates: false, contentMode: .fill)
-                        } else {
-                            Image(systemName: "photo.badge.plus").font(.largeTitle).foregroundStyle(.secondary)
-                        }
-                    })
-                }
-                ProfileStyleSection(title: "Theme", nitro: true) {
-                    ProfileThemeTile(editor: editor, profile: profile, height: tileSize)
+                if editor.isNitro {
+                    ProfileStyleSection(title: "Banner", nitro: true) {
+                        ProfileEditorTile(label: "Banner", height: tileSize, action: { open(.banner) },
+                                          remove: !editor.hasBannerSelection ? nil : { editor.setBanner(nil) },
+                                          removalTitle: editor.bannerRemovalTitle, content: {
+                            if let url = profile.bannerURL {
+                                AnimatedRemoteImage(url: url, animates: false, contentMode: .fill)
+                            } else {
+                                Image(systemName: "photo.badge.plus").font(.largeTitle).foregroundStyle(.secondary)
+                            }
+                        })
+                    }
+                    ProfileStyleSection(title: "Theme", nitro: true) {
+                        ProfileThemeTile(editor: editor, profile: profile, height: tileSize)
+                    }
+                } else if editor.scope == .main {
+                    ProfileStyleSection(title: "Banner Color") {
+                        ProfileBannerColorTile(editor: editor, profile: profile, height: tileSize)
+                    }
                 }
                 ProfileStyleSection(title: "Nameplate") {
                     ProfileEditorTile(label: "Nameplate", height: tileSize, action: { open(.collectible(.nameplate)) },
@@ -71,13 +79,15 @@ struct ProfileStylesControls: View {
                         .padding(12)
                     })
                 }
-                ProfileStyleSection(title: "Display Name Style", nitro: true) {
-                    ProfileEditorTile(label: "Display Name Style", height: tileSize, action: { open(.nameStyle) },
-                                      remove: !editor.hasNameStyleSelection ? nil : { editor.setStyle(nil) },
-                                      removalTitle: editor.nameStyleRemovalTitle, content: {
-                        ProfileDisplayName(name: profile.displayName, style: profile.user.displayNameStyle, size: 22)
-                            .allowsHitTesting(false).padding(12)
-                    })
+                if editor.isNitro {
+                    ProfileStyleSection(title: "Display Name Style", nitro: true) {
+                        ProfileEditorTile(label: "Display Name Style", height: tileSize, action: { open(.nameStyle) },
+                                          remove: !editor.hasNameStyleSelection ? nil : { editor.setStyle(nil) },
+                                          removalTitle: editor.nameStyleRemovalTitle, content: {
+                            ProfileDisplayName(name: profile.displayName, style: profile.user.displayNameStyle, size: 22)
+                                .allowsHitTesting(false).padding(12)
+                        })
+                    }
                 }
                 ProfileStyleSection(title: "Profile Effect") {
                     ProfileEditorTile(label: "Profile Effect", height: tileSize, action: { open(.collectible(.effect)) },
@@ -126,7 +136,11 @@ private struct ProfileEditorTile<Content: View>: View {
 
     var body: some View {
         Button(action: action) {
-            artwork
+            ZStack {
+                Color.clear
+                artwork.allowsHitTesting(false)
+            }
+                .frame(height: height)
                 .clipShape(ConcentricRectangle(cornerRadius: 8))
                 .contentShape(ConcentricRectangle(cornerRadius: 8))
         }
@@ -134,10 +148,9 @@ private struct ProfileEditorTile<Content: View>: View {
         .glassEffect(.regular.interactive(), in: ConcentricRectangle(cornerRadius: 8))
         .overlay(alignment: .topTrailing) {
             if let remove, isHovered {
-                Button(action: remove) { Image(systemName: "xmark.circle.fill").symbolRenderingMode(.palette).foregroundStyle(.primary, .background) }
-                    .buttonStyle(.plain)
-                    .padding(4)
-                    .accessibilityLabel(removalTitle.map(Text.init) ?? Text("Remove \(Text(label))"))
+                HoverActionPill {
+                    HoverActionButton(systemImage: "trash", help: removalTitle ?? String(localized: "Remove", bundle: #bundle), role: .destructive, action: remove)
+                }.padding(4)
             }
         }
         .onHover { isHovered = $0 }
@@ -199,13 +212,9 @@ private struct ProfileThemeTile: View {
         }), colorCount: 2 ... 2)
         .overlay(alignment: .topTrailing) {
             if canReset, isHovered {
-                Button { editor.setTheme(nil) } label: {
-                    Image(systemName: "arrow.counterclockwise.circle.fill")
-                        .symbolRenderingMode(.palette).foregroundStyle(.primary, .background)
-                }
-                .buttonStyle(.plain)
-                .padding(4)
-                .accessibilityLabel("Reset Theme")
+                HoverActionPill {
+                    HoverActionButton(systemImage: "arrow.counterclockwise", help: String(localized: "Reset Theme", bundle: #bundle)) { editor.setTheme(nil) }
+                }.padding(4)
             }
         }
         .onHover { isHovered = $0 }

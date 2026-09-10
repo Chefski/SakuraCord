@@ -27,17 +27,17 @@ struct ProfileScopePicker: View {
             .contentShape(Rectangle())
         }
         .escapeDismissiblePopover(isPresented: $isPresented) {
-            List {
-                ProfileScopeRow(name: String(localized: "Main Profile", bundle: #bundle), iconURL: nil, isMain: true,
-                                nickname: nil, isSelected: scope == .main) { choose(.main) }
-                ForEach(guilds) { guild in
-                    ProfileScopeRow(name: guild.name, iconURL: guild.iconURL, nickname: nicknames[guild.id],
-                                    isSelected: scope == .server(guild.id)) { choose(.server(guild.id)) }
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ProfileScopeRow(name: String(localized: "Main Profile", bundle: #bundle), iconURL: nil, isMain: true,
+                                    nickname: nil, isSelected: scope == .main) { choose(.main) }
+                    ForEach(guilds) { guild in
+                        ProfileScopeRow(name: guild.name, iconURL: guild.iconURL, nickname: nicknames[guild.id],
+                                        isSelected: scope == .server(guild.id)) { choose(.server(guild.id)) }
+                    }
                 }
+                .padding(4)
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .environment(\.defaultMinListRowHeight, 40)
             .scrollIndicators(.visible)
             .frame(width: 264, height: min(217, CGFloat(guilds.count + 1) * 40 + 8))
         }
@@ -45,6 +45,7 @@ struct ProfileScopePicker: View {
 
     private func choose(_ value: ProfileEditingScope) {
         isPresented = false
+        guard value != scope else { return }
         select(value)
     }
 }
@@ -93,9 +94,6 @@ private struct ProfileScopeRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PopoverRowButtonStyle(isSelected: isSelected))
-        .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
-        .listRowSeparator(.hidden)
-        .listRowBackground(Color.clear)
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 }

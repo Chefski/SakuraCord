@@ -5,22 +5,38 @@ struct ProfileServerTagPicker: View {
     let editor: ProfileEditorState
     let identity: PrimaryGuildIdentity?
     @State private var isPresented = false
+    @State private var isHovered = false
 
     var body: some View {
         if identity?.guildID != nil || editor.snapshot?.serverTagGuilds.isEmpty == false {
             Button { isPresented.toggle() } label: {
-                HStack(spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
                     if let identity, let tag = identity.tag {
-                        ProfileGuildIdentity(identity: identity, tag: tag)
+                        Text(tag)
+                            .overlay(alignment: .leading) {
+                                if let badgeURL = identity.badgeURL {
+                                    StaticRemoteImage(url: badgeURL, maximumPixelDimension: 32)
+                                        .frame(width: 16, height: 16)
+                                        .offset(x: -22)
+                                }
+                            }
+                            .padding(.leading, identity.badgeURL == nil ? 0 : 22)
                     } else {
-                        Text("Server Tag", bundle: #bundle).foregroundStyle(.secondary)
+                        Text("Server Tag", bundle: #bundle).italic().foregroundStyle(.secondary)
                     }
                     Image(systemName: "chevron.down").font(.caption2)
                 }
-                .padding(.vertical, 3)
+                .font(.callout).lineLimit(1)
+                .padding(.horizontal, 8)
+                .frame(height: 24)
+                .background(.primary.opacity(isHovered || isPresented ? 0.09 : 0.025), in: .rect(cornerRadius: 8))
+                .overlay { RoundedRectangle(cornerRadius: 8).strokeBorder(.primary.opacity(0.1)) }
+                .contentShape(.rect(cornerRadius: 8))
             }
             .buttonStyle(.plain)
+            .onHover { isHovered = $0 }
             .accessibilityLabel("Server Tag")
+            .accessibilityValue(identity?.tag ?? String(localized: "No Server Tag", bundle: #bundle))
             .escapeDismissiblePopover(isPresented: $isPresented) {
                 ScrollView {
                     VStack(spacing: 2) {

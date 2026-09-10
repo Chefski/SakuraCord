@@ -1,6 +1,7 @@
 import DiscordProtocol
 import Foundation
 import Observation
+import OSLog
 import SakuraCordModels
 
 @Observable
@@ -30,8 +31,15 @@ final class ProfileEditorState {
     @ObservationIgnored private var session: AppModelAccountSession?
     @ObservationIgnored let model: AppModel
     @ObservationIgnored private var ownedPreviewURLs: Set<URL> = []
+    @ObservationIgnored private var loadedAt: [ProfileEditingScope: ContinuousClock.Instant] = [:]
+    private var loadingScope: ProfileEditingScope?
+    @ObservationIgnored private var needsExternalRefresh = false
+    @ObservationIgnored private let now: () -> ContinuousClock.Instant
 
-    init(model: AppModel) { self.model = model }
+    init(model: AppModel, now: @escaping () -> ContinuousClock.Instant = { .now }) {
+        self.model = model
+        self.now = now
+    }
 
     deinit {
         for url in ownedPreviewURLs { try? FileManager.default.removeItem(at: url) }
@@ -39,8 +47,9 @@ final class ProfileEditorState {
 
     var hasChanges: Bool { changes.hasChanges }
     var isNitro: Bool { snapshot?.widgetEligibility.hasFullNitro == true }
-    var canSave: Bool { snapshot != nil && hasChanges && !isSaving && !isLoading && !requiresReload && bio.utf16.count <= 300 && widgetsAreValid }
-    var canEditWidgets: Bool { snapshot?.widgetEligibility.canEditPersonalWidget == true && !isSaving && !requiresReload }
+    var canSave: Bool { snapshot != nil && hasChanges && !isSaving && loadingScope == nil && !requiresReload && bio.utf16.count <= 300 && widgetsAreValid }
+    var canEditWidgets: Bool { snapshot != nil && !isSaving && !requiresReload }
+    var canEditPersonalWidget: Bool { canEditWidgets && snapshot?.widgetEligibility.canEditPersonalWidget == true }
     var hasAvatarSelection: Bool {
         switch changes.identity.avatar {
         case .unchanged: snapshot?.identity.avatarHash.value != nil
@@ -111,18 +120,37 @@ final class ProfileEditorState {
         set { changes.metadata.pronouns = textChange(newValue, original: snapshot?.metadata.pronouns); fieldErrors["pronouns"] = nil }
     }
 
-    func loadIfNeeded(preferCached: Bool = false, refreshExisting: Bool = false) async {
+    func loadIfNeeded(preferCached: Bool = true, refreshExisting: Bool = false) async {
         if let session, model.isCurrentAccountSession(session), snapshot != nil {
-            guard refreshExisting, !hasChanges, !isSaving, !requiresReload else { return }
+            if needsExternalRefresh {
+                await refreshIfNeeded()
+                return
+            }
+            guard refreshExisting, !hasChanges, widgetDraft == nil, !isSaving, !requiresReload else { return }
             await load(scope, preferCached: preferCached)
             return
         }
         await load(preferCached: preferCached)
     }
 
-    func load(_ requestedScope: ProfileEditingScope = .main, preferCached: Bool = false) async {
+    func invalidateSnapshot() {
+        loadedAt = [:]
+        needsExternalRefresh = snapshot != nil || loadingScope != nil
+    }
+
+    func refreshIfNeeded() async {
+        guard needsExternalRefresh, loadingScope == nil, !hasChanges, widgetDraft == nil, !isSaving, !requiresReload else { return }
+        needsExternalRefresh = false
+        await load(scope, preferCached: false)
+    }
+
+    func load(_ requestedScope: ProfileEditingScope = .main, preferCached: Bool = true) async {
         if let previous = session, !model.isCurrentAccountSession(previous) {
             revision = UUID()
+            isLoading = false
+            loadingScope = nil
+            loadedAt = [:]
+            needsExternalRefresh = false
             isSaving = false
             inventory = nil
             history = []
@@ -133,37 +161,77 @@ final class ProfileEditorState {
             resetDraft()
         }
         guard !isSaving else { return }
-        if hasChanges, !requiresReload {
-            showsUnsavedReminder = true
+        guard loadingScope != requestedScope else { return }
+        if !requiresReload, hasChanges || (requestedScope == scope && widgetDraft != nil) {
+            if requestedScope != scope { showsUnsavedReminder = true }
             return
         }
         let requestRevision = UUID()
+        let interval = AppPerformanceSignposts.signposter.beginInterval("ProfileEditorLoad", id: AppPerformanceSignposts.signposter.makeSignpostID())
+        defer { AppPerformanceSignposts.signposter.endInterval("ProfileEditorLoad", interval) }
         let remainingChanges = requiresReload && requestedScope == scope ? changes : ProfileEditChanges()
         if !requiresReload || requestedScope != scope { widgetDraft = nil }
         revision = requestRevision
-        draftGeneration = UUID()
+        loadingScope = requestedScope
         let account = model.accountSession()
         session = account
-        scope = requestedScope
-        snapshot = nil
         changes = remainingChanges
         errorMessage = nil
         fieldErrors = [:]
-        isLoading = true
-        defer { if revision == requestRevision { isLoading = false } }
+        defer { finishLoad(revision: requestRevision) }
         do {
-            let cached = preferCached ? try await account.provider.cachedProfileEditingSnapshot(in: requestedScope) : nil
-            let value: ProfileEditingSnapshot
-            if let cached { value = cached } else { value = try await account.provider.profileEditingSnapshot(in: requestedScope) }
+            let cached = preferCached && !requiresReload ? try await account.provider.cachedProfileEditingSnapshot(in: requestedScope) : nil
             guard isCurrent(account, revision: requestRevision) else { return }
+            let retained = snapshot?.scope == requestedScope ? snapshot : nil
+            selectLoadedScope(requestedScope)
+            let value: ProfileEditingSnapshot
+            if let cached {
+                snapshot = cached
+                widgetResources = cached.presentation.widgetResources
+                // The official profile cache is fresh for one minute. Refresh
+                // older data on entry while retaining the usable preview.
+                if let loaded = loadedAt[requestedScope], loaded.duration(to: now()) < .seconds(60) {
+                    AppPerformanceSignposts.signposter.emitEvent("ProfileEditorCacheHit")
+                    return
+                }
+                AppPerformanceSignposts.signposter.emitEvent("ProfileEditorBackgroundRefresh")
+                value = try await account.provider.profileEditingSnapshot(in: requestedScope)
+            } else {
+                snapshot = retained
+                isLoading = retained == nil
+                AppPerformanceSignposts.signposter.emitEvent("ProfileEditorCacheMiss")
+                value = try await account.provider.profileEditingSnapshot(in: requestedScope)
+            }
+            guard isCurrent(account, revision: requestRevision) else { return }
+            loadedAt[requestedScope] = now()
+            guard changes == remainingChanges, !isSaving else { return }
             snapshot = value
             widgetResources = value.presentation.widgetResources
             requiresReload = false
+            showsUnsavedReminder = false
         } catch {
             guard isCurrent(account, revision: requestRevision) else { return }
+            if error is CancellationError { return }
+            if scope != requestedScope { snapshot = nil }
+            scope = requestedScope
+            // A failed refresh must not replace a usable cached profile.
             DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func finishLoad(revision requestRevision: UUID) {
+        guard revision == requestRevision else { return }
+        isLoading = false
+        loadingScope = nil
+        if needsExternalRefresh { Task { await refreshIfNeeded() } }
+    }
+
+    private func selectLoadedScope(_ requestedScope: ProfileEditingScope) {
+        // Rebuild local editors only when their baseline changes. Resetting the
+        // entire canvas before awaiting a cache read adds avoidable layout work.
+        if requestedScope != scope || requiresReload { draftGeneration = UUID() }
+        scope = requestedScope
     }
 
     func loadInventory() async throws {
@@ -290,7 +358,7 @@ final class ProfileEditorState {
     }
 
     func uploadWidgetImage(fileURL: URL, filename: String, contentType: String) async throws -> ProfileWidgetImage {
-        guard canEditWidgets, let session, model.isCurrentAccountSession(session) else { throw CancellationError() }
+        guard canEditPersonalWidget, let session, model.isCurrentAccountSession(session) else { throw CancellationError() }
         let requestRevision = revision
         let generation = draftGeneration
         let image = try await session.provider.uploadProfileWidgetImage(fileURL: fileURL, filename: filename, contentType: contentType)
@@ -375,7 +443,6 @@ final class ProfileEditorState {
     }
 
     func setServerTag(_ identity: PrimaryGuildIdentity?) {
-        guard scope == .main else { return }
         let original = snapshot?.serverTag.value
         let originalID = original?.isEnabled.value == true ? original?.guildID.value : nil
         let selectedID = identity?.guildID
@@ -401,15 +468,16 @@ final class ProfileEditorState {
 
     func setWidgets(_ value: [ProfileWidget]) {
         guard canEditWidgets else { return }
-        widgetDraft = value
-        let saveable = value.filter { !$0.isDiscardable }
         let original = snapshot?.presentation.widgets ?? []
+        widgetDraft = value == original ? nil : value
+        let saveable = value.filter { !$0.isDiscardable }
         let unchanged = saveable.count == original.count && zip(saveable, original).allSatisfy { $0.hasSameEditableContent(as: $1) }
         changes.widgets = unchanged ? nil : saveable
         fieldErrors["widgets"] = nil
     }
 
     func addWidget(_ widget: ProfileWidget) {
+        if case .personal = widget.content, !canEditPersonalWidget { return }
         setWidgets([widget] + widgets)
     }
 
@@ -475,8 +543,25 @@ final class ProfileEditorState {
         setWidgets(updated)
     }
 
+    func moveWidgets(_ ids: [String], before destination: String?) {
+        let moving = Set(ids)
+        guard !moving.isEmpty, destination.map({ !moving.contains($0) }) ?? true else { return }
+        let current = widgets
+        guard destination == nil || current.contains(where: { $0.id == destination }) else { return }
+        let moved = current.filter { moving.contains($0.id) }
+        guard !moved.isEmpty else { return }
+        var remaining = current.filter { !moving.contains($0.id) }
+        let insertion = destination.flatMap { id in remaining.firstIndex { $0.id == id } } ?? remaining.endIndex
+        remaining.insert(contentsOf: moved, at: insertion)
+        setWidgets(remaining)
+    }
+
     func setTheme(_ colors: ProfileThemeColors?) {
         changes.metadata.themeColors = change(colors, original: snapshot?.metadata.themeColors)
+    }
+
+    func setBannerColor(_ color: UInt32?) {
+        changes.metadata.accentColor = change(color, original: snapshot?.metadata.accentColor)
     }
 
     func setAvatar(_ selection: ProfileAvatarSelection?, previewURL: URL? = nil) {
@@ -519,6 +604,7 @@ final class ProfileEditorState {
         if confirmation.stage == .widgets { widgetDraft = nil }
         if let value = confirmation.snapshot {
             snapshot = value
+            loadedAt[scope] = now()
             if confirmation.stage == .identity { releasePreview(avatarPreviewURL); avatarPreviewURL = nil }
             if confirmation.stage == .metadata { releasePreview(bannerPreviewURL); bannerPreviewURL = nil }
         } else {

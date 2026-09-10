@@ -129,17 +129,24 @@ struct DirectMessageProviderContractTests {
         await provider.disconnect()
     }
 
-    @Test func `widget save follows a failed profile group and acknowledges only the saved widgets`() async throws {
+    @Test(arguments: [0, 2]) func `widget save follows a failed profile group and acknowledges only the saved widgets`(premiumType: Int) async throws {
         DirectMessageURLProtocol.reset()
         let provider = makeProvider()
         await provider.receiveGatewayDispatchForTesting(name: "READY", data: .object([
-            "user": .object(["id": .string("2"), "username": .string("maya"), "global_name": .string("Maya"), "premium_type": .number(2)]),
+            "user": .object(["id": .string("2"), "username": .string("maya"), "global_name": .string("Maya"), "premium_type": .number(Double(premiumType))]),
             "guilds": .array([]),
             "apex_experiments": .object(["assignments": .object(["1": .object(["2": .object([
                 "assignments": .array([.array([.number(2_369_760_879), .number(1), .number(2), .number(1)])])
             ])])])])
         ]))
         _ = try await provider.profileEditingSnapshot(in: .main)
+        if premiumType == 0 {
+            let personal = ProfileWidget(content: .personal(ProfilePersonalWidget(header: "Personal", sections: [.cover(ProfileWidgetCover(title: "Content"))])))
+            await #expect(throws: ChatProviderError.self) {
+                try await provider.saveProfileChanges(ProfileEditChanges(widgets: [personal]), in: .main) { _ in }
+            }
+            #expect(DirectMessageURLProtocol.requests.count == 1)
+        }
         var changes = ProfileEditChanges(widgets: [ProfileWidget(content: .application(id: "7"))])
         changes.metadata.bio = .set("rejected-bio")
         let receipt = ProfileSaveReceipt(changes)
@@ -233,6 +240,67 @@ struct DirectMessageProviderContractTests {
             try await provider.saveProfileChanges(remaining, in: .main) { await receipt.accept($0) }
         }
         #expect(DirectMessageURLProtocol.requests.count == 2)
+        await provider.disconnect()
+    }
+
+    @Test func `server tag saves from either editor update every cached profile with one account request`() async throws {
+        let scopes: [ProfileEditingScope] = [.main, .server(GuildID(rawValue: 10)), .server(GuildID(rawValue: 11))]
+        for origin in scopes.prefix(2) {
+            DirectMessageURLProtocol.reset()
+            let provider = makeProvider()
+            await provider.receiveGatewayDispatchForTesting(name: "READY", data: .object([
+                "user": user(id: "2", username: "maya", globalName: "Maya"), "guilds": .array([])
+            ]))
+            for scope in scopes { _ = try await provider.profileEditingSnapshot(in: scope) }
+            for tag: GuildID? in [GuildID(rawValue: 99), nil] {
+                let requestCount = DirectMessageURLProtocol.requests.count
+                let receipt = ProfileSaveReceipt(ProfileEditChanges(serverTag: tag.map(ProfileChange.set) ?? .clear))
+                try await provider.saveProfileChanges(await receipt.changes, in: origin) { await receipt.accept($0) }
+                #expect(await receipt.stages == [.serverTag])
+                #expect(await receipt.changes.hasChanges == false)
+                for scope in scopes {
+                    let cached = try #require(try await provider.cachedProfileEditingSnapshot(in: scope))
+                    #expect(cached.presentation.user.primaryGuild?.guildID == tag)
+                    #expect(cached.mainPresentation.user.primaryGuild?.guildID == tag)
+                    #expect(cached.serverTag.value?.guildID.value == tag)
+                    #expect(cached.serverTag.value?.isEnabled.value == (tag != nil))
+                    #expect(cached.presentation.user.displayName == "Maya")
+                    if scope.guildID != nil { #expect(cached.serverIdentity?.name == .null) }
+                }
+                #expect(DirectMessageURLProtocol.requests.count == requestCount + 1)
+                let request = try #require(DirectMessageURLProtocol.requests.last)
+                #expect(request.path == "/api/v9/users/@me/clan")
+                #expect(request.method == "PUT")
+                #expect(request.body?["identity_enabled"] as? Bool == (tag != nil))
+                if let tag { #expect(request.body?["identity_guild_id"] as? String == tag.description) } else {
+                    #expect(request.body?["identity_guild_id"] is NSNull)
+                }
+            }
+            await provider.disconnect()
+        }
+    }
+
+    @Test func `user and member updates invalidate profile snapshots without issuing requests`() async throws {
+        DirectMessageURLProtocol.reset()
+        let provider = makeProvider()
+        let account = user(id: "2", username: "maya", globalName: "Maya")
+        await provider.receiveGatewayDispatchForTesting(name: "READY", data: .object([
+            "user": account, "guilds": .array([])
+        ]))
+        let scopes: [ProfileEditingScope] = [.main, .server(GuildID(rawValue: 10))]
+        for event in ["USER_UPDATE", "GUILD_MEMBER_UPDATE"] {
+            for scope in scopes { _ = try await provider.profileEditingSnapshot(in: scope) }
+            let requestCount = DirectMessageURLProtocol.requests.count
+            let revision = await provider.profilePresentationRevisions[UserID(rawValue: 2), default: 0]
+            let body: JSONValue = event == "USER_UPDATE" ? account : .object([
+                "guild_id": .string("10"), "user": account, "roles": .array([]),
+                "joined_at": .string("2026-01-01T00:00:00Z")
+            ])
+            await provider.receiveGatewayDispatchForTesting(name: event, data: body)
+            for scope in scopes { #expect(try await provider.cachedProfileEditingSnapshot(in: scope) == nil) }
+            #expect(await provider.profilePresentationRevisions[UserID(rawValue: 2), default: 0] > revision)
+            #expect(DirectMessageURLProtocol.requests.count == requestCount)
+        }
         await provider.disconnect()
     }
 
@@ -1720,6 +1788,26 @@ private final class DirectMessageURLProtocol:
               "attachments":[],"reactions":[]
             }]
             """#
+        case "/api/v9/collectibles-products/900":
+            return #"""
+            {"sku_id":"900","name":"Aurora","summary":"Profile effect","type":1,"premium_type":0,
+             "items":[{"type":1,"sku_id":"900","title":"Aurora",
+             "thumbnailPreviewSrc":"https://cdn.discordapp.com/assets/content/aurora-preview","effects":[] }]}
+            """#
+        case "/api/v9/channels/41/call":
+            return #"{"ringable":true}"#
+        default:
+            return try profileResponseBody(path: path, query: query, requestBody: requestBody)
+                ?? gameResponseBody(path: path, query: query)
+        }
+    }
+
+    private static func profileResponseBody(
+        path: String?, query: [CapturedQueryItem], requestBody: [String: Any]?
+    ) throws -> String? {
+        switch path {
+        case "/api/v9/users/@me/clan":
+            return try serverTagResponse(requestBody)
         case "/api/v9/users/2/profile":
             return profileHasEffect
                 ? #"""
@@ -1736,17 +1824,18 @@ private final class DirectMessageURLProtocol:
                      "mutual_guilds":[],"mutual_friends":[],"mutual_friends_count":0}
                     """#
                     : #"{"user":{"id":"2","username":"maya","global_name":"Maya","avatar":null},"premium_type":2,"widgets":[],"mutual_guilds":[],"mutual_friends":[],"mutual_friends_count":0}"#
-        case "/api/v9/collectibles-products/900":
-            return #"""
-            {"sku_id":"900","name":"Aurora","summary":"Profile effect","type":1,"premium_type":0,
-             "items":[{"type":1,"sku_id":"900","title":"Aurora",
-             "thumbnailPreviewSrc":"https://cdn.discordapp.com/assets/content/aurora-preview","effects":[] }]}
-            """#
-        case "/api/v9/channels/41/call":
-            return #"{"ringable":true}"#
-        default:
-            return gameResponseBody(path: path, query: query)
+        default: return nil
         }
+    }
+
+    private static func serverTagResponse(_ requestBody: [String: Any]?) throws -> String {
+        let enabled = requestBody?["identity_enabled"] as? Bool == true
+        let data = try JSONSerialization.data(withJSONObject: [
+            "id": "2", "username": "maya", "global_name": "Maya", "avatar": NSNull(),
+            "primary_guild": ["identity_guild_id": requestBody?["identity_guild_id"] ?? NSNull(),
+                              "identity_enabled": enabled, "tag": enabled ? "TEST" as Any : NSNull()]
+        ])
+        return String(data: data, encoding: .utf8)!
     }
 
     private static func gameResponseBody(path: String?, query: [CapturedQueryItem]) -> String {

@@ -73,6 +73,13 @@ extension DiscordRESTProvider {
         }
     }
 
+    func invalidateGatewayProfile(for userID: UserID) {
+        // These dispatches invalidate the full profile in the official client,
+        // even when the user fields themselves did not change.
+        invalidateSavedProfilePresentation(for: userID)
+        continuation?.yield(.profileInvalidated(userID: userID))
+    }
+
     func invalidateSavedProfilePresentation(for userID: UserID? = nil) {
         if let userID { profilePresentationRevisions[userID, default: 0] &+= 1 } else {
             profilePresentationGeneration &+= 1

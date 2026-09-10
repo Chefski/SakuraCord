@@ -107,6 +107,8 @@ private struct ProfileEditorOverlaySurface<Content: View>: View {
                     .fixedSize()
                     .background(Color(nsColor: .windowBackgroundColor), in: ConcentricRectangle(cornerRadius: 16, style: .continuous))
                     .clipShape(ConcentricRectangle(cornerRadius: 16, style: .continuous))
+                    .contentShape(Rectangle())
+                    .onTapGesture {}
                     .overlay { ConcentricRectangle(cornerRadius: 16, style: .continuous).stroke(.separator, lineWidth: 1) }
                     .shadow(color: .black.opacity(0.28), radius: 24, y: 10)
                     .scaleEffect(animationState.isVisible ? 1 : 0.965)

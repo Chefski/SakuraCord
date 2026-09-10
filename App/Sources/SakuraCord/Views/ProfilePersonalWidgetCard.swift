@@ -9,28 +9,45 @@ struct ProfilePersonalWidgetCard: View {
     var editor: ProfileEditorState?
     @State private var expanded = false
     @State private var hasClippedText = false
+    @State private var imageVisibilityOverrides: [ProfileWidgetField.ID: Bool] = [:]
+
+    private var hasCover: Bool { widget.sections.contains { if case .cover = $0 { true } else { false } } }
+    private var hasFields: Bool { widget.sections.contains { if case let .fields(fields) = $0 { !fields.isEmpty } else { false } } }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 4) {
-                Image(systemName: "sparkles").font(.system(size: 12))
+            HStack(spacing: 5) {
+                Image(systemName: "sparkles").font(.system(size: 14)).frame(width: 16, height: 16)
                 ProfileWidgetText(value: widget.header, placeholder: "Add Widget Name", limit: 50, lines: 1, size: 14, weight: .medium, markdown: false,
-                                  edit: editor?.canEditWidgets == true ? { value in editor?.updatePersonalWidget(id: id) { $0.header = value } } : nil)
+                                  edit: editor?.canEditPersonalWidget == true ? { value in editor?.updatePersonalWidget(id: id) { $0.header = value } } : nil)
+            }
+            .padding(.trailing, editor == nil ? 0 : 24)
+            if let editor, editor.canEditPersonalWidget, !hasCover {
+                ProfileWidgetSectionInsertion(title: String(localized: "Add Header", bundle: #bundle)) {
+                    editor.updatePersonalWidget(id: id) { $0.sections.insert(.cover(ProfileWidgetCover()), at: 0) }
+                }
             }
             ForEach(Array(widget.sections.enumerated()), id: \.offset) { index, section in
                 switch section {
                 case let .cover(cover):
-                    if !cover.isEmpty || editor?.canEditWidgets == true {
+                    if !cover.isEmpty || editor?.canEditPersonalWidget == true {
                         ProfilePersonalWidgetCover(id: id, section: index, cover: cover, animates: animates, editor: editor)
                     }
                 case let .fields(fields):
-                    ProfilePersonalWidgetFields(id: id, section: index, fields: fields, animates: animates, editor: editor)
+                    if !fields.isEmpty {
+                        ProfilePersonalWidgetFields(id: id, section: index, fields: fields, animates: animates, editor: editor, imageVisibilityOverrides: $imageVisibilityOverrides)
+                    }
                 }
             }
-            if let editor, editor.canEditWidgets, !widget.sections.contains(where: { if case .cover = $0 { true } else { false } }) {
-                Button { editor.updatePersonalWidget(id: id) { $0.sections.insert(.cover(ProfileWidgetCover()), at: 0) } } label: {
-                    Label("Add Cover", systemImage: "plus").frame(maxWidth: .infinity).padding(8)
-                }.buttonStyle(.plain)
+            if let editor, editor.canEditPersonalWidget, !hasFields {
+                if hasCover {
+                    ProfileWidgetSectionInsertion(title: String(localized: "Add Blocks", bundle: #bundle)) { addFields(2, editor: editor) }
+                } else {
+                    HStack(spacing: 16) {
+                        ProfileWidgetAddField(alwaysVisible: true) { addFields(1, editor: editor) }
+                        Color.clear.frame(maxWidth: .infinity, maxHeight: 48)
+                    }
+                }
             }
             if expanded || hasClippedText {
                 Button(expanded ? "Show Less" : "Show More") { expanded.toggle() }
@@ -39,8 +56,21 @@ struct ProfilePersonalWidgetCard: View {
         }
         .environment(\.profileWidgetTextExpanded, expanded)
         .onPreferenceChange(ProfileWidgetClippedTextKey.self) { hasClippedText = $0.values.contains(true) }
+        .onChange(of: widget.sections) { _, sections in
+            let ids = Set(sections.flatMap { section -> [ProfileWidgetField.ID] in
+                if case let .fields(fields) = section { fields.map(\.id) } else { [] }
+            })
+            imageVisibilityOverrides = imageVisibilityOverrides.filter { ids.contains($0.key) }
+        }
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
         .background(.primary.opacity(0.035), in: ConcentricRectangle(cornerRadius: 16))
+    }
+
+    private func addFields(_ count: Int, editor: ProfileEditorState) {
+        editor.updatePersonalWidget(id: id) { personal in
+            personal.sections.removeAll { if case let .fields(fields) = $0 { fields.isEmpty } else { false } }
+            personal.sections.append(.fields((0 ..< count).map { _ in ProfileWidgetField() }))
+        }
     }
 }
 
@@ -50,23 +80,24 @@ private struct ProfilePersonalWidgetCover: View {
     let cover: ProfileWidgetCover
     let animates: Bool
     let editor: ProfileEditorState?
+    @State private var isHovered = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             ProfileWidgetText(value: cover.title, placeholder: "Add Title", limit: 50, lines: 2, size: 24, weight: .semibold,
-                              edit: editor?.canEditWidgets == true ? { value in editor?.updateWidgetCover(id: id, section: section) { $0.title = value } } : nil)
+                              edit: editor?.canEditPersonalWidget == true ? { value in editor?.updateWidgetCover(id: id, section: section) { $0.title = value } } : nil)
             ProfileWidgetText(value: cover.subtitle, placeholder: "Add description", limit: 150, lines: 3, size: 14, weight: .medium,
-                              edit: editor?.canEditWidgets == true ? { value in editor?.updateWidgetCover(id: id, section: section) { $0.subtitle = value } } : nil)
+                              edit: editor?.canEditPersonalWidget == true ? { value in editor?.updateWidgetCover(id: id, section: section) { $0.subtitle = value } } : nil)
         }
         .frame(maxWidth: .infinity, minHeight: cover.image != nil || editor != nil ? 54 : nil, alignment: .bottomLeading)
         .padding(cover.image != nil || editor != nil ? 16 : 0)
         .padding(.top, cover.image != nil || editor != nil ? 56 : 0)
         .foregroundStyle(cover.image == nil ? Color.primary : .white)
         .background {
-            if cover.image != nil || editor?.canEditWidgets == true {
+            if cover.image != nil || editor?.canEditPersonalWidget == true {
                 GeometryReader { geometry in
                     ProfileWidgetEditableImage(image: cover.image, purpose: .widgetCover, animates: animates, editor: editor,
-                                               aspectRatio: geometry.size.width / max(geometry.size.height, 1)) { image in
+                                               aspectRatio: geometry.size.width / max(geometry.size.height, 1), isCoverHovered: isHovered) { image in
                         editor?.updateWidgetCover(id: id, section: section) { $0.image = image }
                     }
                     .overlay {
@@ -80,15 +111,32 @@ private struct ProfilePersonalWidgetCover: View {
         }
         .clipShape(.rect(cornerRadius: 8))
         .overlay(alignment: .topTrailing) {
-            if let editor, editor.canEditWidgets, cover.image == nil {
-                Button {
-                    editor.updatePersonalWidget(id: id) { value in
-                        guard value.sections.indices.contains(section), case .cover = value.sections[section] else { return }
-                        value.sections.remove(at: section)
+            if let editor, editor.canEditPersonalWidget, isHovered {
+                HoverActionPill {
+                    HoverActionButton(systemImage: "trash", help: String(localized: "Remove Block", bundle: #bundle), role: .destructive) {
+                        removeBlock()
                     }
-                } label: { Image(systemName: "trash").padding(6) }
-                .buttonStyle(.plain).background(.regularMaterial, in: .circle).padding(8).accessibilityLabel("Remove Block")
+                }
+                .padding(8)
             }
+        }
+        .onHover { isHovered = $0 }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Widget Header")
+        .accessibilityActions {
+            if editor?.canEditPersonalWidget == true { Button("Remove Block", role: .destructive, action: removeBlock) }
+        }
+        .contextMenu {
+            if editor?.canEditPersonalWidget == true {
+                Button("Remove Block", role: .destructive, action: removeBlock)
+            }
+        }
+    }
+
+    private func removeBlock() {
+        editor?.updatePersonalWidget(id: id) { value in
+            guard value.sections.indices.contains(section), case .cover = value.sections[section] else { return }
+            value.sections.remove(at: section)
         }
     }
 }
@@ -99,21 +147,21 @@ private struct ProfilePersonalWidgetFields: View {
     let fields: [ProfileWidgetField]
     let animates: Bool
     let editor: ProfileEditorState?
+    @Binding var imageVisibilityOverrides: [ProfileWidgetField.ID: Bool]
 
     var body: some View {
-        LazyVGrid(columns: [.init(.flexible(), spacing: 16), .init(.flexible(), spacing: 16)], alignment: .leading, spacing: 16) {
-            ForEach(fields.filter { !$0.isEmpty || editor?.canEditWidgets == true }) { field in
-                ProfilePersonalWidgetField(id: id, section: section, field: field, animates: animates, editor: editor)
+        LazyVGrid(columns: [.init(.flexible(), spacing: 16, alignment: .topLeading), .init(.flexible(), spacing: 16, alignment: .topLeading)], alignment: .leading, spacing: 16) {
+            ForEach(fields.filter { !$0.isEmpty || editor?.canEditPersonalWidget == true }) { field in
+                ProfilePersonalWidgetField(id: id, section: section, field: field, animates: animates, editor: editor, imageVisibilityOverrides: $imageVisibilityOverrides)
             }
-            if let editor, editor.canEditWidgets, fields.count % 2 == 1, fields.count < 4 {
-                Button { editor.addWidgetFields(id: id, section: section, count: 1) } label: { Label("Add field", systemImage: "plus") }
-                    .buttonStyle(.plain).frame(maxWidth: .infinity, minHeight: 48)
+            if let editor, editor.canEditPersonalWidget, fields.count % 2 == 1, fields.count < 4 {
+                ProfileWidgetAddField { editor.addWidgetFields(id: id, section: section, count: 1) }
             }
         }
-        if let editor, editor.canEditWidgets, fields.count % 2 == 0, fields.count < 4 {
-            Button { editor.addWidgetFields(id: id, section: section, count: 2) } label: {
-                Label("Add Blocks", systemImage: "plus").frame(maxWidth: .infinity).padding(8)
-            }.buttonStyle(.plain)
+        if let editor, editor.canEditPersonalWidget, fields.count % 2 == 0, fields.count < 4 {
+            ProfileWidgetSectionInsertion(title: String(localized: "Add Blocks", bundle: #bundle)) {
+                editor.addWidgetFields(id: id, section: section, count: 2)
+            }
         }
     }
 }
@@ -124,44 +172,84 @@ private struct ProfilePersonalWidgetField: View {
     let field: ProfileWidgetField
     let animates: Bool
     let editor: ProfileEditorState?
-    @State private var hidesImage = false
+    @Binding var imageVisibilityOverrides: [ProfileWidgetField.ID: Bool]
+    @State private var isHovered = false
+    @State private var isActionHovered = false
+    @State private var isImageHovered = false
 
-    init(id: String, section: Int, field: ProfileWidgetField, animates: Bool, editor: ProfileEditorState?) {
-        self.id = id; self.section = section; self.field = field; self.animates = animates; self.editor = editor
+    private var hidesImage: Bool {
+        if let hidden = imageVisibilityOverrides[field.id] { return hidden }
         let original = editor?.snapshot?.presentation.widgets?.first { $0.id == id }
-        let savedField: Bool
         if case let .personal(personal) = original?.content {
-            savedField = personal.sections.contains { value in
-                if case let .fields(fields) = value { return fields.contains { $0.id == field.id } }
+            return field.image == nil && personal.sections.contains { value in
+                if case let .fields(fields) = value { return fields.contains { $0.id == field.id && $0.image == nil } }
                 return false
             }
-        } else { savedField = false }
-        _hidesImage = State(initialValue: field.image == nil && savedField)
+        }
+        return false
     }
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            if field.image != nil || (editor?.canEditWidgets == true && !hidesImage) {
-                ProfileWidgetEditableImage(image: field.image, purpose: .widgetField, animates: animates, editor: editor, aspectRatio: 1) { image in
+            if field.image != nil || (editor?.canEditPersonalWidget == true && !hidesImage) {
+                ProfileWidgetEditableImage(image: field.image, purpose: .widgetField, animates: animates, editor: editor, aspectRatio: 1, onHoverChange: { isImageHovered = $0 }, removeImage: {
+                    imageVisibilityOverrides[field.id] = true
+                    editor?.updateWidgetField(id: id, section: section, fieldID: field.id) { $0.image = nil }
+                }, update: { image in
                     editor?.updateWidgetField(id: id, section: section, fieldID: field.id) { $0.image = image }
-                }
-                .frame(width: 48, height: 48).clipShape(.rect(cornerRadius: 8))
+                })
+                .frame(width: 48, height: 48)
                 .contextMenu {
-                    if editor?.canEditWidgets == true, field.image == nil { Button("Remove Image") { hidesImage = true } }
+                    if editor?.canEditPersonalWidget == true, field.image == nil { Button("Remove Image") { imageVisibilityOverrides[field.id] = true } }
                 }
             }
             VStack(alignment: .leading, spacing: 4) {
                 ProfileWidgetText(value: field.title, placeholder: "Add title", limit: 40, lines: 2, size: 14, weight: .medium,
-                                  edit: editor?.canEditWidgets == true ? { value in editor?.updateWidgetField(id: id, section: section, fieldID: field.id) { $0.title = value } } : nil)
+                                  edit: editor?.canEditPersonalWidget == true ? { value in editor?.updateWidgetField(id: id, section: section, fieldID: field.id) { $0.title = value } } : nil)
                 ProfileWidgetText(value: field.description, placeholder: "Add description", limit: 90, lines: 4, size: 12,
-                                  edit: editor?.canEditWidgets == true ? { value in editor?.updateWidgetField(id: id, section: section, fieldID: field.id) { $0.description = value } } : nil)
+                                  edit: editor?.canEditPersonalWidget == true ? { value in editor?.updateWidgetField(id: id, section: section, fieldID: field.id) { $0.description = value } } : nil)
                     .foregroundStyle(.secondary)
             }
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .overlay(alignment: .topTrailing) {
+            if let editor, editor.canEditPersonalWidget {
+                HoverActionPill {
+                    if hidesImage {
+                        HoverActionButton(systemImage: "photo.badge.plus", help: String(localized: "Add Image", bundle: #bundle)) { imageVisibilityOverrides[field.id] = false }
+                    }
+                    HoverActionButton(systemImage: "trash", help: String(localized: "Remove Block", bundle: #bundle), role: .destructive) {
+                        editor.removeWidgetField(id: id, section: section, fieldID: field.id)
+                    }
+                }
+                .onHover { isActionHovered = $0 }
+                .opacity((isHovered || isActionHovered) && !isImageHovered ? 1 : 0)
+                .allowsHitTesting((isHovered || isActionHovered) && !isImageHovered)
+                .accessibilityHidden((!isHovered && !isActionHovered) || isImageHovered)
+                .offset(x: 8, y: -12)
+            }
+        }
+        .onHover { isHovered = $0 }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Widget Field")
+        .accessibilityActions {
+            if let editor, editor.canEditPersonalWidget {
+                if hidesImage {
+                    Button("Add Image") { imageVisibilityOverrides[field.id] = false }
+                } else {
+                    Button("Remove Image", role: .destructive) {
+                        imageVisibilityOverrides[field.id] = true
+                        editor.updateWidgetField(id: id, section: section, fieldID: field.id) { $0.image = nil }
+                    }
+                }
+                Button("Remove Block", role: .destructive) { editor.removeWidgetField(id: id, section: section, fieldID: field.id) }
+            }
+        }
         .contextMenu {
-            if let editor, editor.canEditWidgets {
-                if hidesImage { Button("Add Image") { hidesImage = false } }
+            if let editor, editor.canEditPersonalWidget {
+                if hidesImage { Button("Add Image") { imageVisibilityOverrides[field.id] = false } }
                 Button("Remove Block", role: .destructive) { editor.removeWidgetField(id: id, section: section, fieldID: field.id) }
             }
         }
@@ -191,6 +279,7 @@ struct ProfileWidgetText: View {
             if isEditing {
                 TextField(placeholder, text: Binding(get: { draft }, set: updateDraft), axis: lines > 1 ? .vertical : .horizontal)
                     .textFieldStyle(.plain).lineLimit(1 ... lines).focused($focused)
+                    .onSubmit(commit)
                     .onKeyPress(.return, phases: .down) { event in
                         guard lines == 1 || !event.modifiers.contains(.shift) else { return .ignored }
                         commit(); return .handled
@@ -205,6 +294,11 @@ struct ProfileWidgetText: View {
             } else if !value.isEmpty { renderedText }
         }
         .font(.system(size: size, weight: weight))
+        .multilineTextAlignment(.leading)
+        .frame(minWidth: 0, alignment: .leading)
+        .clipped()
+        .profileEditorTextHover(isEnabled: edit != nil && !isEditing)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .preference(key: ProfileWidgetClippedTextKey.self, value: [measurementID: !isEditing && fullHeight - displayedHeight > 1])
         .onChange(of: edit != nil) { _, available in
             if !available { isEditing = false; focused = false }
@@ -221,7 +315,9 @@ struct ProfileWidgetText: View {
             ? DiscordMarkdown.profileWidgetAttributed(value, font: .system(size: size, weight: weight), links: edit == nil)
             : AttributedString(value)
         return Text(content)
+            .font(.system(size: size, weight: weight))
             .lineLimit(expanded ? nil : lines)
+            .fixedSize(horizontal: false, vertical: true)
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { displayedHeight = $0 }
             .background(alignment: .topLeading) {
                 Text(content).fixedSize(horizontal: false, vertical: true)

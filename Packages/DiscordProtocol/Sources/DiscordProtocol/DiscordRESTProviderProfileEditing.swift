@@ -15,6 +15,7 @@ public extension DiscordRESTProvider {
     func profileEditingSnapshot(in scope: ProfileEditingScope) async throws -> ProfileEditingSnapshot {
         guard let user = currentUser else { throw ChatProviderError.unauthenticated }
         let generation = profileEditingGeneration
+        let revision = profilePresentationRevisions[user.id, default: 0]
         var query = [
             URLQueryItem(name: "type", value: "modal"),
             URLQueryItem(name: "with_mutual_guilds", value: "true"),
@@ -32,13 +33,15 @@ public extension DiscordRESTProvider {
             throw ChatProviderError.invalidRequest("This server profile is unavailable.")
         }
         try Task.checkCancellation()
-        guard currentUser?.id == user.id, profileEditingGeneration == generation, !requestSafetyCircuitIsOpen else {
+        guard currentUser?.id == user.id, profileEditingGeneration == generation,
+              profilePresentationRevisions[user.id, default: 0] == revision, !requestSafetyCircuitIsOpen else {
             throw CancellationError()
         }
         let presentation = try await resolveProfile(response.profile, in: scope.guildID)
         let snapshot = try makeProfileEditingSnapshot(response, in: scope, presentation: presentation)
         try Task.checkCancellation()
-        guard currentUser?.id == user.id, profileEditingGeneration == generation, !requestSafetyCircuitIsOpen else {
+        guard currentUser?.id == user.id, profileEditingGeneration == generation,
+              profilePresentationRevisions[user.id, default: 0] == revision, !requestSafetyCircuitIsOpen else {
             throw CancellationError()
         }
         profileEditingResponses[scope] = response

@@ -142,22 +142,7 @@ private struct ProfileApplicationWidgetHero: View {
     let animates: Bool
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            if surface.layout == "widget_top_hero" {
-                HStack(spacing: 0) {
-                    Spacer(minLength: 0)
-                    ProfileConfiguredWidgetImage(field: surface.components["hero_image"]?["image"], data: data, animates: animates)
-                        .frame(width: 210)
-                        .mask { LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.32)], startPoint: .leading, endPoint: .trailing) }
-                }
-            } else if surface.layout == "widget_top_contained" {
-                HStack {
-                    Spacer()
-                    ProfileConfiguredWidgetImage(field: surface.components["contained_image"]?["image"], data: data, animates: animates)
-                        .frame(width: 120, height: 120)
-                }
-                .padding(16)
-            }
+        HStack(alignment: .top, spacing: 0) {
             VStack(alignment: .leading, spacing: 26) {
                 HStack(spacing: 5) {
                     ProfileWidgetImageView(url: configuration.applicationIconURL, animates: animates).frame(width: 16, height: 16)
@@ -171,12 +156,30 @@ private struct ProfileApplicationWidgetHero: View {
                             .font(.system(size: 14)).foregroundStyle(.secondary)
                     }
                 }
-                .frame(maxWidth: 220, alignment: .leading)
             }
             .padding(16)
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+            if surface.layout == "widget_top_hero" || surface.layout == "widget_top_contained" {
+                Color.clear
+                    .overlay {
+                        let contained = surface.layout == "widget_top_contained"
+                        ProfileConfiguredWidgetImage(field: surface.components[contained ? "contained_image" : "hero_image"]?["image"], data: data, animates: animates)
+                            .padding(contained ? 16 : 0)
+                            .mask {
+                                if contained {
+                                    Color.black
+                                } else {
+                                    LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.32)], startPoint: .leading, endPoint: .trailing)
+                                }
+                            }
+                    }
+                    .clipped()
+                    .frame(minWidth: 0, maxWidth: .infinity)
+            }
         }
-        .frame(height: 152)
-        .clipped()
+        .frame(minHeight: 152, alignment: .top)
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 
