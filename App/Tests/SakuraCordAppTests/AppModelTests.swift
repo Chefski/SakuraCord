@@ -3651,7 +3651,7 @@ func `GIF completion preserves newer text and channel drafts`(changesChannel: Bo
 }
 
 @MainActor
-@Test func `selecting member loads full profile`() async throws {
+@Test func `selecting member loads full profile and expands independently`() async throws {
     let model = AppModel(launchMode: .offlineTesting)
     await model.start()
     let member = try #require(model.members.first)
@@ -3665,6 +3665,23 @@ func `GIF completion preserves newer text and channel drafts`(changesChannel: Bo
     #expect(!profile.badges.isEmpty)
     #expect(!profile.mutualGuilds.isEmpty)
     #expect(profile.status == member.status)
+
+    let presentation = try #require(model.inspectorProfilePresentation)
+    model.expandProfile(presentation)
+    model.dismissInspectorProfile()
+    #expect(model.expandedProfilePresentation?.profile?.id == member.id)
+    #expect(model.expandedProfilePresentation?.isLoading == false)
+    #expect(!model.isInspectorProfilePresented)
+
+    var updated = member
+    updated.status = .idle
+    updated.customStatus = "Reading"
+    model.refreshPresentedMembers(from: [updated])
+    #expect(model.expandedProfilePresentation?.profile?.status == .idle)
+    #expect(model.expandedProfilePresentation?.profile?.customStatus == "Reading")
+
+    model.dismissAllProfiles(clearsCache: true)
+    #expect(model.expandedProfilePresentation == nil)
 }
 
 @MainActor

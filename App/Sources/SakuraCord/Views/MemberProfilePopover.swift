@@ -6,6 +6,7 @@ enum ProfilePresentationLayout {
     case popover
     case inspector
     case editor
+    case expanded
 }
 
 struct ProfilePresentationContent<Footer: View>: View {
@@ -14,14 +15,14 @@ struct ProfilePresentationContent<Footer: View>: View {
     var maximumPopoverHeight: CGFloat = 560
     var showsRoles = true
     let footer: Footer
-    var openGame: ((ProfileGame) -> Void)?
+    var openProfile: ((ProfilePresentationState) -> Void)?
 
     init(
         presentation: ProfilePresentationState,
         layout: ProfilePresentationLayout = .popover,
         maximumPopoverHeight: CGFloat = 560,
         showsRoles: Bool = true,
-        openGame: ((ProfileGame) -> Void)? = nil,
+        openProfile: ((ProfilePresentationState) -> Void)? = nil,
         @ViewBuilder footer: () -> Footer
     ) {
         self.presentation = presentation
@@ -29,7 +30,7 @@ struct ProfilePresentationContent<Footer: View>: View {
         self.maximumPopoverHeight = maximumPopoverHeight
         self.showsRoles = showsRoles
         self.footer = footer()
-        self.openGame = openGame
+        self.openProfile = openProfile
     }
 
     var body: some View {
@@ -42,7 +43,7 @@ struct ProfilePresentationContent<Footer: View>: View {
             maximumPopoverHeight: maximumPopoverHeight,
             showsRoles: showsRoles,
             footer: footer,
-            openGame: openGame
+            openProfile: openProfile.map { action in { action(presentation) } }
         )
     }
 }
@@ -53,14 +54,14 @@ extension ProfilePresentationContent where Footer == EmptyView {
         layout: ProfilePresentationLayout = .popover,
         maximumPopoverHeight: CGFloat = 560,
         showsRoles: Bool = true,
-        openGame: ((ProfileGame) -> Void)? = nil
+        openProfile: ((ProfilePresentationState) -> Void)? = nil
     ) {
         self.init(
             presentation: presentation,
             layout: layout,
             maximumPopoverHeight: maximumPopoverHeight,
             showsRoles: showsRoles,
-            openGame: openGame
+            openProfile: openProfile
         ) {
             EmptyView()
         }
@@ -78,7 +79,7 @@ struct MemberProfilePopover<Footer: View>: View {
     var maximumPopoverHeight: CGFloat = 560
     var showsRoles = true
     let footer: Footer
-    var openGame: ((ProfileGame) -> Void)?
+    var openProfile: (() -> Void)?
     var editor: ProfileEditorState?
     var openEditorPicker: ((ProfileEditorPicker) -> Void)?
     var showsDetails = true
@@ -105,6 +106,9 @@ struct MemberProfilePopover<Footer: View>: View {
                         )
                     )
                     .background { popoverBackground }
+            case .expanded:
+                profileContent
+                    .frame(width: width, height: maximumPopoverHeight, alignment: .top)
             case .inspector:
                 profileContent
                     .frame(
@@ -115,7 +119,7 @@ struct MemberProfilePopover<Footer: View>: View {
                     .background { inspectorBackground }
             }
         }
-        .clipShape(ConcentricRectangle(cornerRadius: layout == .inspector ? 0 : 16))
+        .clipShape(profileShape)
         .background {
             if let frame = profile?.frame {
                 ProfileFrameOverlay(frame: frame, order: "back")
@@ -137,7 +141,7 @@ struct MemberProfilePopover<Footer: View>: View {
 
     private var profileContent: some View {
         ZStack(alignment: .top) {
-            if !profileThemeHexes.isEmpty {
+            if !profileThemeHexes.isEmpty, layout != .expanded {
                 ConcentricRectangle(
                     cornerRadius: innerCornerRadius,
                     style: .continuous
@@ -157,11 +161,26 @@ struct MemberProfilePopover<Footer: View>: View {
                             colorScheme: colorScheme
                         ),
                         topCornerRadius: layout == .inspector ? 0 : 16,
+                        roundsTopTrailingCorner: layout != .expanded,
                         statusBubbleWidth: statusBubbleWidth,
                         animatesRemoteMedia: animatesRemoteMedia,
                         editor: editor,
                         openEditorPicker: openEditorPicker
                     )
+                    .overlay(alignment: .topTrailing) {
+                        if openProfile != nil {
+                            Button(action: expandProfile) {
+                                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .frame(width: 28, height: 28)
+                                    .background(.regularMaterial, in: Circle())
+                            }
+                            .buttonStyle(.plain)
+                            .help("Expand Profile")
+                            .accessibilityLabel("Expand Profile")
+                            .padding(10)
+                        }
+                    }
                     .zIndex(10)
 
                     if isLoading {
@@ -197,11 +216,8 @@ struct MemberProfilePopover<Footer: View>: View {
                             ProfileAboutSection(bio: bio)
                                 .padding(.horizontal, 16)
                         }
-                        if layout != .editor, let widgets = profile.widgets, !widgets.isEmpty {
-                            ProfileWidgetsSection(displayName: profile.displayName, widgets: widgets, resources: profile.widgetResources, animates: animatesRemoteMedia, openGame: openGame,
-                                                  connectApplication: profile.widgetResources?.connections == nil ? nil : { configuration in
-                                                      if let url = configuration.connectionURL { _ = MessageLinkActivator.activate(url, model: nil, displayedText: url.absoluteString) }
-                                                  })
+                        if openProfile != nil, let widgets = profile.widgets, !widgets.isEmpty {
+                            ProfileWidgetCollectionButton(widgets: widgets, resources: profile.widgetResources, open: expandProfile)
                                 .padding(.horizontal, 16)
                         }
                         ProfileMembershipSection(createdAt: profile.id.createdAt)
@@ -234,6 +250,8 @@ struct MemberProfilePopover<Footer: View>: View {
                     animates: animatesRemoteMedia
                 )
                     .id(member.id)
+                    .clipShape(layout == .expanded ? profileShape : ConcentricRectangle(cornerRadius: 0))
+                    .padding(layout == .expanded ? surfaceInset : 0)
                     .zIndex(100)
             }
         }
@@ -269,6 +287,11 @@ struct MemberProfilePopover<Footer: View>: View {
         theme.colors(for: profile, scale: displayScale, isPreview: editor != nil)
     }
 
+    private func expandProfile() {
+        openProfile?()
+        popoverPresentationContext?.dismiss?()
+    }
+
     private var animatesRemoteMedia: Bool {
         !animationsPaused && (editorModal?.animationState.isVisible ?? true) && (popoverPresentationContext?.hasFinishedPresenting ?? true)
     }
@@ -279,6 +302,16 @@ struct MemberProfilePopover<Footer: View>: View {
 
     private var innerCornerRadius: CGFloat {
         layout == .inspector ? 0 : 16
+    }
+
+    private var profileShape: ConcentricRectangle {
+        guard layout == .expanded else { return ConcentricRectangle(cornerRadius: innerCornerRadius) }
+        return ConcentricRectangle(
+            topLeadingCorner: .concentric(minimum: .fixed(innerCornerRadius)),
+            topTrailingCorner: .fixed(0),
+            bottomLeadingCorner: .concentric(minimum: .fixed(innerCornerRadius)),
+            bottomTrailingCorner: .fixed(0)
+        )
     }
 
     private var width: CGFloat {
@@ -313,6 +346,7 @@ private struct ProfileHeroSection: View {
     let themeHexes: [UInt32]
     let avatarCutoutColor: Color
     let topCornerRadius: CGFloat
+    let roundsTopTrailingCorner: Bool
     let statusBubbleWidth: CGFloat
     let animatesRemoteMedia: Bool
     var editor: ProfileEditorState?
@@ -328,6 +362,7 @@ private struct ProfileHeroSection: View {
                 accentHex: profile?.accentHex,
                 themeHexes: themeHexes,
                 topCornerRadius: topCornerRadius,
+                roundsTopTrailingCorner: roundsTopTrailingCorner,
                 animates: animatesRemoteMedia,
                 height: ProfileBannerLayout.height
             )
@@ -465,6 +500,7 @@ private struct ProfileBanner: View {
     let accentHex: UInt32?
     let themeHexes: [UInt32]
     let topCornerRadius: CGFloat
+    let roundsTopTrailingCorner: Bool
     let animates: Bool
     var height: CGFloat = ProfileBannerLayout.height
 
@@ -499,9 +535,9 @@ private struct ProfileBanner: View {
                 topLeadingCorner: .concentric(
                     minimum: .fixed(topCornerRadius)
                 ),
-                topTrailingCorner: .concentric(
+                topTrailingCorner: roundsTopTrailingCorner ? .concentric(
                     minimum: .fixed(topCornerRadius)
-                ),
+                ) : .fixed(0),
                 bottomLeadingCorner: .fixed(0),
                 bottomTrailingCorner: .fixed(0)
             )

@@ -68,7 +68,7 @@ struct MemberInspectorView: View {
     let dismissProfile: () -> Void
     let viewportIdentity: ChannelID?
     let updateViewport: (ClosedRange<Int>) -> Void
-    var openGame: ((ProfileGame) -> Void)?
+    var openProfile: ((ProfilePresentationState) -> Void)?
     var presentation = NativeMemberListPresentation()
 
     init(
@@ -81,7 +81,7 @@ struct MemberInspectorView: View {
         dismissProfile: @escaping () -> Void,
         viewportIdentity: ChannelID? = nil,
         presentation: NativeMemberListPresentation = .init(),
-        openGame: ((ProfileGame) -> Void)? = nil,
+        openProfile: ((ProfilePresentationState) -> Void)? = nil,
         updateViewport: @escaping (ClosedRange<Int>) -> Void = { _ in }
     ) {
         self.sections = sections
@@ -94,7 +94,7 @@ struct MemberInspectorView: View {
         self.viewportIdentity = viewportIdentity
         self.presentation = presentation
         self.updateViewport = updateViewport
-        self.openGame = openGame
+        self.openProfile = openProfile
     }
 
     var body: some View {
@@ -110,7 +110,7 @@ struct MemberInspectorView: View {
             viewportIdentity: viewportIdentity,
             presentation: presentation,
             onViewportRange: updateViewport,
-            openGame: openGame
+            openProfile: openProfile
         )
     }
 }

@@ -87,25 +87,13 @@ extension AppModel {
     }
 
     func refreshPresentedMembers(from members: [Member]) {
-        if let selectedMember,
-           let updated = members.first(where: { $0.id == selectedMember.id })
-        {
-            inspectorProfilePresentation?.member = updated
-            if var profile = inspectorProfilePresentation?.profile {
-                profile.status = updated.status
-                profile.customStatus = updated.customStatus
-                inspectorProfilePresentation?.profile = profile
-            }
-        }
-        if let contextualMember = contextualProfilePresentation?.member,
-           let updated = members.first(where: { $0.id == contextualMember.id })
-        {
-            contextualProfilePresentation?.member = updated
-            if var profile = contextualProfilePresentation?.profile {
-                profile.status = updated.status
-                profile.customStatus = updated.customStatus
-                contextualProfilePresentation?.profile = profile
-            }
+        for destination in [ProfilePresentationDestination.inspector, .contextual, .expanded] {
+            guard var presentation = profilePresentation(for: destination),
+                  let updated = members.first(where: { $0.id == presentation.member.id }) else { continue }
+            presentation.member = updated
+            presentation.profile?.status = updated.status
+            presentation.profile?.customStatus = updated.customStatus
+            setProfilePresentation(presentation, for: destination)
         }
     }
 }

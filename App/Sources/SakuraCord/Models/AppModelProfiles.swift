@@ -6,7 +6,7 @@ extension AppModel {
     func consumeProfileWidgetConnectionsChanged(userID: UserID, connections: [String: ProfileWidgetConnection]) {
         guard userID == snapshot?.currentUser.id else { return }
         for key in profileCache.keys where key.userID == userID { profileCache[key]?.widgetResources?.connections = connections }
-        for destination in [ProfilePresentationDestination.inspector, .contextual] {
+        for destination in [ProfilePresentationDestination.inspector, .contextual, .expanded] {
             guard var presentation = profilePresentation(for: destination), presentation.member.id == userID else { continue }
             presentation.profile?.widgetResources?.connections = connections
             setProfilePresentation(presentation, for: destination)
@@ -20,7 +20,7 @@ extension AppModel {
         for key in profileCache.keys where key.userID == userID { profileCache[key]?.customStatus = text }
         for guildID in membersByGuildID.keys { membersByGuildID[guildID]?[userID]?.customStatus = text }
         for index in members.indices where members[index].id == userID { members[index].customStatus = text }
-        for destination in [ProfilePresentationDestination.inspector, .contextual] {
+        for destination in [ProfilePresentationDestination.inspector, .contextual, .expanded] {
             guard var presentation = profilePresentation(for: destination), presentation.member.id == userID else { continue }
             presentation.member.customStatus = text
             presentation.profile?.customStatus = text
@@ -32,11 +32,12 @@ extension AppModel {
         let key = ProfileCacheKey(userID: userID, guildID: scope.guildID)
         profileCache[key] = value
         guard selectedGuildID == scope.guildID else { return }
-        for destination in [ProfilePresentationDestination.inspector, .contextual] {
+        for destination in [ProfilePresentationDestination.inspector, .contextual, .expanded] {
             guard var presentation = profilePresentation(for: destination), presentation.member.id == userID else { continue }
             switch destination {
             case .inspector: inspectorProfileTask?.cancel()
             case .contextual: contextualProfileTask?.cancel()
+            case .expanded: expandedProfileTask?.cancel()
             }
             if let value {
                 presentation.member.user = value.user
@@ -178,6 +179,9 @@ extension AppModel {
         case .contextual:
             contextualProfileTask?.cancel()
             contextualProfilePresentation = presentation
+        case .expanded:
+            expandedProfileTask?.cancel()
+            expandedProfilePresentation = presentation
         }
         guard cachedProfile == nil else { return requestID }
         let session = accountSession()
@@ -229,8 +233,22 @@ extension AppModel {
             inspectorProfileTask = task
         case .contextual:
             contextualProfileTask = task
+        case .expanded:
+            expandedProfileTask = task
         }
         return requestID
+    }
+
+    func expandProfile(_ presentation: ProfilePresentationState) {
+        presentProfile(for: presentation.member, destination: .expanded)
+        dismissContextualProfile()
+        isInspectorProfilePresented = false
+    }
+
+    func dismissExpandedProfile() {
+        expandedProfileTask?.cancel()
+        expandedProfileTask = nil
+        expandedProfilePresentation = nil
     }
 
     func dismissInspectorProfile() {
@@ -261,6 +279,7 @@ extension AppModel {
     func dismissAllProfiles(clearsCache: Bool = false) {
         dismissInspectorProfile()
         dismissContextualProfile()
+        dismissExpandedProfile()
         if clearsCache {
             currentUserProfilePrefetch?.task.cancel()
             currentUserProfilePrefetch = nil
@@ -276,6 +295,8 @@ extension AppModel {
             inspectorProfilePresentation
         case .contextual:
             contextualProfilePresentation
+        case .expanded:
+            expandedProfilePresentation
         }
     }
 
@@ -288,6 +309,8 @@ extension AppModel {
             inspectorProfilePresentation = value
         case .contextual:
             contextualProfilePresentation = value
+        case .expanded:
+            expandedProfilePresentation = value
         }
     }
 

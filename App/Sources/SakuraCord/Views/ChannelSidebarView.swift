@@ -862,7 +862,7 @@ private struct CurrentUserCapsule: View {
                 presentation: presentation,
                 maximumPopoverHeight: 720,
                 showsRoles: false,
-                openGame: { model.presentedProfileGame = $0 },
+                openProfile: model.expandProfile,
             footer: {
                 YouPopoverOptions(
                     currentStatus: currentStatus,

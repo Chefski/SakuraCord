@@ -118,7 +118,6 @@ private struct ProfileEditorOverlaySurface<Content: View>: View {
                 }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .ignoresSafeArea()
         .focusable().focusEffectDisabled().accessibilityAddTraits(.isModal)
         .animation(.easeOut(duration: WindowModalAnimationTiming.openingSeconds), value: animationState.isVisible)
         .onExitCommand { context() }

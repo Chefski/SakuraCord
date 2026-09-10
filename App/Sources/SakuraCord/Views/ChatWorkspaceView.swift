@@ -192,7 +192,7 @@ private struct ChatWorkspaceSupplementaryContent: View {
                     presentation: NativeMemberListPresentation(
                         roleColorDisplay: model.accessibilitySettings.roleColorDisplay
                     ),
-                    openGame: { model.presentedProfileGame = $0 },
+                    openProfile: model.expandProfile,
                     updateViewport: model.updateMemberListViewport
                 )
                 .frame(width: ChatChromeMetrics.memberListWidth)
@@ -220,7 +220,7 @@ private struct DirectMessageProfileInspector: View {
                 ProfilePresentationContent(
                     presentation: presentation,
                     layout: .inspector,
-                    openGame: { model.presentedProfileGame = $0 }
+                    openProfile: model.expandProfile
                 )
             } else {
                 ProgressView("Loading profile…")

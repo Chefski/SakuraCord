@@ -17,7 +17,7 @@ struct NativeMemberListView: NSViewRepresentable {
     var presentation = NativeMemberListPresentation()
     var onViewportRange: (ClosedRange<Int>) -> Void = { _ in }
 
-    var openGame: ((ProfileGame) -> Void)?
+    var openProfile: ((ProfilePresentationState) -> Void)?
 
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)

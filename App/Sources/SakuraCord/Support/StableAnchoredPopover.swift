@@ -5,6 +5,7 @@ import SwiftUI
 @Observable
 final class StablePopoverPresentationContext {
     private(set) var hasFinishedPresenting = false
+    var dismiss: (() -> Void)?
 
     func markPresentationFinished() {
         hasFinishedPresenting = true
@@ -500,6 +501,9 @@ struct StableAnchoredPopoverPresenter<Content: View>: NSViewRepresentable {
                 return
             }
             let presentationContext = StablePopoverPresentationContext()
+            presentationContext.dismiss = { [weak self] in
+                self?.dismissFromCancelOperation()
+            }
             let hostingController = StablePopoverHostingController(
                 rootView: StablePopoverHostedContent(
                     content: content,
@@ -797,6 +801,7 @@ struct StableAnchoredPopoverPresenter<Content: View>: NSViewRepresentable {
             presentationIsScheduled = false
             refreshIsScheduled = false
             closeIsScheduled = false
+            hostingController?.stopMonitoringEscapeKey()
             if let popover {
                 programmaticallyClosingPopovers[ObjectIdentifier(popover)] = popover
                 popover.close()

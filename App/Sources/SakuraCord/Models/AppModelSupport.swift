@@ -252,7 +252,8 @@ nonisolated struct ConversationNewestRequest: Equatable, Sendable {
     let channelID: ChannelID
 }
 
-struct ProfilePresentationState {
+struct ProfilePresentationState: Identifiable {
+    var id: UUID { requestID }
     let requestID: UUID
     var member: Member
     var profile: UserProfile?
@@ -273,6 +274,7 @@ struct CurrentUserProfilePrefetch {
 enum ProfilePresentationDestination {
     case inspector
     case contextual
+    case expanded
 }
 
 nonisolated enum UnreadPresentationPublicationPolicy {

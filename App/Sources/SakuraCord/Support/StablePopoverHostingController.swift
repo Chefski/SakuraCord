@@ -41,6 +41,10 @@ final class StablePopoverHostingController<Content: View>: NSHostingController<C
 
     override func viewDidDisappear() {
         super.viewDidDisappear()
+        stopMonitoringEscapeKey()
+    }
+
+    func stopMonitoringEscapeKey() {
         escapeKeyRegistration = nil
     }
 }

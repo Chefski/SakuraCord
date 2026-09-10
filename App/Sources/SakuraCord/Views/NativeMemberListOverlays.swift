@@ -362,7 +362,7 @@ extension NativeMemberListCanvasView {
                 self?.dismissProfile(ifCurrent: presentation.requestID)
             },
             presentationIdentity: AnyHashable(presentation.member.id),
-            content: AnyView(ProfilePresentationContent(presentation: presentation, openGame: openGame))
+            content: AnyView(ProfilePresentationContent(presentation: presentation, openProfile: openProfile))
         )
     }
 

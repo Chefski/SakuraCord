@@ -64,7 +64,7 @@ struct ProfileWidgetsSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             ForEach(widgets) { widget in
-                ProfileWidgetCard(widget: widget, resources: resources, animates: animates, compact: true, displayName: displayName, openGame: openGame, connectApplication: connectApplication)
+                ProfileWidgetCard(widget: widget, resources: resources, animates: animates, displayName: displayName, openGame: openGame, connectApplication: connectApplication)
             }
         }
     }

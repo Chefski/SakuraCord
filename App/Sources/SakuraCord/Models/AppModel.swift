@@ -426,6 +426,7 @@ final class AppModel {
         ProfilePresentationState?
     var contextualProfilePresentation:
         ProfilePresentationState?
+    var expandedProfilePresentation: ProfilePresentationState?
     var isInspectorProfilePresented = false
     var selectedMember: Member? {
         inspectorProfilePresentation?.member
@@ -1043,6 +1044,7 @@ final class AppModel {
         Task<Void, Never>?
     @ObservationIgnored var contextualProfileTask:
         Task<Void, Never>?
+    @ObservationIgnored var expandedProfileTask: Task<Void, Never>?
     @ObservationIgnored var currentUserProfilePrefetch: CurrentUserProfilePrefetch?
     @ObservationIgnored var profileCache: [ProfileCacheKey: UserProfile] = [:]
     @ObservationIgnored var channelLoadTask: Task<Void, Never>?

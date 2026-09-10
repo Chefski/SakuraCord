@@ -318,6 +318,7 @@ private struct ChatRootView: View {
             )
             .frame(width: 0, height: 0)
         }
+        .modifier(ExpandedProfilePresentationModifier(model: model))
         .modifier(ProfileGamePresentationModifier(model: model))
         .background {
             CommunicationWindowOverlays(model: model)
