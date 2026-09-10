@@ -69,6 +69,26 @@ struct SakuraCordAuthenticationCloseButton: View {
     }
 }
 
+struct SakuraCordOnboardingContinueButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Text("Continue", bundle: #bundle)
+                Image(systemName: "arrow.right")
+            }
+            .font(.body.weight(.semibold))
+            .padding(.horizontal, 20)
+            .frame(height: 44)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .glassEffect(.regular.interactive(), in: Capsule())
+        .keyboardShortcut(.defaultAction)
+    }
+}
+
 extension View {
     func authenticationLoading<S: Shape>(_ isLoading: Bool, in shape: S, intensity: Double = 1) -> some View {
         modifier(AuthenticationLoadingSurface(isLoading: isLoading, shape: shape, intensity: intensity))

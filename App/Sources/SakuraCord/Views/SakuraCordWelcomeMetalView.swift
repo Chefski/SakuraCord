@@ -72,7 +72,9 @@ final class SakuraCordWelcomeMetalView: MTKView {
         else { return }
         uniforms.viewport.x = Float(bounds.width)
         uniforms.viewport.y = Float(bounds.height)
-        uniforms.viewport.w = Float(min(1, bounds.width * 0.112 / SakuraCordWelcomePetalAtlas.fontSize))
+        uniforms.viewport.w = Float(
+            SakuraCordWelcomePetalAtlas.displayHeight(for: bounds.width) / SakuraCordWelcomePetalAtlas.fontSize
+        )
         uniforms.atlas.x = petalAtlas.size.x
         uniforms.atlas.y = petalAtlas.size.y
         encoder.setRenderPipelineState(pipeline)

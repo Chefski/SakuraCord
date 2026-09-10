@@ -9,6 +9,11 @@ private enum DiscordCaptchaPurpose: Equatable {
     case remoteAuth
 }
 
+private enum DiscordOnboardingStep: Hashable {
+    case welcome
+    case theme
+}
+
 struct DiscordLoginView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -16,6 +21,7 @@ struct DiscordLoginView: View {
     let networkingEnabled: Bool
     let savedAccountIDs: Set<String>
     let onEntranceStarted: @MainActor () -> Void
+    let onOnboardingCompleted: @MainActor () -> Void
     let onConnected: @MainActor (PendingDiscordCredential) async -> String?
 
     @State private var authenticator: any DiscordSignInAuthenticating
@@ -42,6 +48,8 @@ struct DiscordLoginView: View {
     @State private var importingAccountID: String?
     @State private var smsCooldownEndsAt: Date?
     @State private var welcomeProgress = 0.0
+    @State private var onboardingStep: DiscordOnboardingStep?
+    @State private var showsContinue = false
     @State private var playsWelcome: Bool
     @State private var formVisible = false
     @State private var panelVisible = true
@@ -55,13 +63,17 @@ struct DiscordLoginView: View {
         offlineSignIn: Bool = false,
         savedAccountIDs: Set<String> = [],
         playsWelcome: Bool = false,
+        showsOnboarding: Bool = false,
         onEntranceStarted: @escaping @MainActor () -> Void = {},
+        onOnboardingCompleted: @escaping @MainActor () -> Void = {},
         onConnected: @escaping @MainActor (PendingDiscordCredential) async -> String?
     ) {
         self.showsCancel = showsCancel
         self.networkingEnabled = networkingEnabled
         self.savedAccountIDs = savedAccountIDs
         self.onEntranceStarted = onEntranceStarted
+        self.onOnboardingCompleted = onOnboardingCompleted
+        _onboardingStep = State(initialValue: showsOnboarding ? .welcome : nil)
         // Retain this entrance's decision after its launch permission is consumed.
         _playsWelcome = State(initialValue: playsWelcome)
         self.onConnected = onConnected
@@ -78,7 +90,7 @@ struct DiscordLoginView: View {
             SakuraCordSignInBackdrop()
                 .ignoresSafeArea()
 
-            if !formVisible, playsWelcome, !reduceMotion {
+            if onboardingStep == nil, !formVisible, playsWelcome, !reduceMotion {
                 SakuraCordWelcomeSequence(progress: welcomeProgress)
                     .ignoresSafeArea()
                     .transition(.opacity)
@@ -88,90 +100,60 @@ struct DiscordLoginView: View {
             GeometryReader { geometry in
                 ScrollView {
                     VStack(spacing: 22) {
-                        SakuraCordAuthenticationCard {
-                            if let accountImportState {
-                                DiscordAccountImportView(
-                                    state: accountImportState,
-                                    savedAccountIDs: savedAccountIDs,
-                                    importingAccountID: importingAccountID,
-                                    errorMessage: errorMessage,
-                                    isTransitioning: isTransitioning,
-                                    goBack: goBackFromImport,
-                                    retry: loadImportAccounts,
-                                    selectAccount: importAccount
-                                )
-                            } else if let challenge {
-                                DiscordMFAForm(
-                                    challenge: challenge,
-                                    selectedMethod: selectedMFAMethod,
-                                    code: $mfaCode,
-                                    isWorking: isWorking,
-                                    isTransitioning: isTransitioning,
-                                    isSendingSMS: isSendingSMS,
-                                    smsCooldownEndsAt: smsCooldownEndsAt,
-                                    focusedField: $focusedField,
-                                    errorMessage: errorMessage,
-                                    selectMethod: selectMFAMethod,
-                                    submit: submitMFA,
-                                    sendSMS: sendSMS,
-                                    goBack: goBackFromMFA
-                                )
-                            } else {
-                                HStack(alignment: .center, spacing: 32) {
-                                    VStack(alignment: .leading, spacing: 22) {
-                                        DiscordLoginHeader()
-                                        DiscordCredentialForm(
-                                            identifier: $identifier,
-                                            password: $password,
-                                            isWorking: isWorking,
-                                            canSubmit: canSubmitCredentials,
-                                            focusedField: $focusedField,
-                                            submit: submitCredentials
-                                        )
-                                        DiscordLoginStatus(
-                                            title: errorTitle,
-                                            message: errorMessage
-                                        )
+                        Group {
+                            if onboardingStep == .welcome {
+                                Color.clear
+                                    .frame(height: SakuraCordWelcomePetalAtlas.displayHeight(for: geometry.size.width))
+                                    .overlay {
+                                        SakuraCordWelcomeSequence(progress: welcomeProgress)
+                                            .frame(width: geometry.size.width, height: geometry.size.height)
                                     }
-                                    .frame(width: 390, alignment: .leading)
-
-                                    Rectangle()
-                                        .fill(Color(nsColor: .separatorColor).opacity(0.72))
-                                        .frame(width: 1, height: 300)
-
-                                    DiscordRemoteAuthPanel(
-                                        state: remoteAuthState,
-                                        retry: restartRemoteAuth
-                                    )
-                                    .frame(width: 236)
-                                }
+                                    .allowsHitTesting(false)
+                            } else {
+                                authenticationCard
                             }
                         }
-                        .frame(maxWidth: accountImportState != nil ? 620 : challenge == nil ? 800 : 480)
-                        if challenge == nil, accountImportState == nil, networkingEnabled, offlineService == nil {
+                        // Change content while hidden, then use the same reveal
+                        // as the login, MFA, and account-import stages.
+                        .transaction {
+                            if onboardingStep != .welcome { $0.animation = nil }
+                        }
+                        .modifier(SakuraCordSignInReveal(isVisible: panelVisible, reduceMotion: reduceMotion))
+                        .accessibilityHidden(!panelVisible)
+
+                        if onboardingStep != nil {
+                            GlassEffectContainer {
+                                if showsContinue {
+                                    SakuraCordOnboardingContinueButton(action: advanceOnboarding)
+                                        .id(onboardingStep)
+                                }
+                            }
+                            .frame(height: 44)
+                            .disabled(isTransitioning)
+                        }
+
+                        if onboardingStep == nil, challenge == nil, accountImportState == nil,
+                           networkingEnabled, offlineService == nil {
                             Button("Import account from Discord", systemImage: "square.and.arrow.down") {
                                 beginAccountImport()
                             }
                             .buttonStyle(.plain)
                             .foregroundStyle(.secondary)
                             .disabled(isWorking)
+                            .modifier(SakuraCordSignInReveal(isVisible: panelVisible, reduceMotion: reduceMotion))
                         }
                     }
                     .padding(.horizontal, 34)
                     .padding(.vertical, 42)
                     .frame(maxWidth: .infinity, minHeight: geometry.size.height)
-                    // Layout changes happen while hidden. Only the reveal below
-                    // animates; a new card never interpolates from the old origin.
-                    .transaction { $0.animation = nil }
-                    .modifier(SakuraCordSignInReveal(isVisible: panelVisible, reduceMotion: reduceMotion))
                     .modifier(SakuraCordSignInReveal(isVisible: formVisible, reduceMotion: reduceMotion))
                     .allowsHitTesting(formVisible && !isTransitioning)
-                    .accessibilityHidden(!formVisible || !panelVisible)
+                    .accessibilityHidden(!formVisible)
                 }
                 .scrollIndicators(.hidden)
             }
 
-            if let offlineService, formVisible {
+            if let offlineService, formVisible, onboardingStep == nil {
                 OfflineSignInControls(
                     service: offlineService,
                     canScan: remoteAuthState.isReady && !isWorking && challenge == nil,
@@ -214,7 +196,12 @@ struct DiscordLoginView: View {
         .frame(minWidth: 860, minHeight: 600)
         .toolbar(removing: .title)
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-        .task {
+        .task(id: onboardingStep == nil) {
+            guard onboardingStep == nil else {
+                remoteAuthTask?.cancel()
+                await remoteAuthManager.disconnect()
+                return
+            }
             if networkingEnabled || offlineService != nil {
                 startRemoteAuth()
             } else {
@@ -235,6 +222,71 @@ struct DiscordLoginView: View {
                 Task { await authenticator.cancelCaptcha(challengeID: captchaChallenge.id) }
             }
         }
+    }
+
+    private var authenticationCard: some View {
+        SakuraCordAuthenticationCard {
+            if onboardingStep == .theme {
+                GradientThemeEditor(themeStore: .shared, presentation: .onboarding)
+            } else if let accountImportState {
+                DiscordAccountImportView(
+                    state: accountImportState,
+                    savedAccountIDs: savedAccountIDs,
+                    importingAccountID: importingAccountID,
+                    errorMessage: errorMessage,
+                    isTransitioning: isTransitioning,
+                    goBack: goBackFromImport,
+                    retry: loadImportAccounts,
+                    selectAccount: importAccount
+                )
+            } else if let challenge {
+                DiscordMFAForm(
+                    challenge: challenge,
+                    selectedMethod: selectedMFAMethod,
+                    code: $mfaCode,
+                    isWorking: isWorking,
+                    isTransitioning: isTransitioning,
+                    isSendingSMS: isSendingSMS,
+                    smsCooldownEndsAt: smsCooldownEndsAt,
+                    focusedField: $focusedField,
+                    errorMessage: errorMessage,
+                    selectMethod: selectMFAMethod,
+                    submit: submitMFA,
+                    sendSMS: sendSMS,
+                    goBack: goBackFromMFA
+                )
+            } else {
+                HStack(alignment: .center, spacing: 32) {
+                    VStack(alignment: .leading, spacing: 22) {
+                        DiscordLoginHeader()
+                        DiscordCredentialForm(
+                            identifier: $identifier,
+                            password: $password,
+                            isWorking: isWorking,
+                            canSubmit: canSubmitCredentials,
+                            focusedField: $focusedField,
+                            submit: submitCredentials
+                        )
+                        DiscordLoginStatus(
+                            title: errorTitle,
+                            message: errorMessage
+                        )
+                    }
+                    .frame(width: 390, alignment: .leading)
+
+                    Rectangle()
+                        .fill(Color(nsColor: .separatorColor).opacity(0.72))
+                        .frame(width: 1, height: 300)
+
+                    DiscordRemoteAuthPanel(
+                        state: remoteAuthState,
+                        retry: restartRemoteAuth
+                    )
+                    .frame(width: 236)
+                }
+            }
+        }
+        .frame(maxWidth: accountImportState != nil ? 620 : challenge == nil ? 800 : 480)
     }
 
     private func beginAccountImport() {
@@ -306,6 +358,20 @@ struct DiscordLoginView: View {
     private func revealEntrance() async {
         guard !formVisible else { return }
         onEntranceStarted()
+        if onboardingStep == .welcome {
+            formVisible = true
+            if reduceMotion {
+                welcomeProgress = 1
+                showsContinue = true
+                return
+            }
+            withAnimation(.linear(duration: 4.6)) { welcomeProgress = 1 }
+            do {
+                try await Task.sleep(for: .milliseconds(4900))
+                withAnimation(.themeControlResponse) { showsContinue = true }
+            } catch {}
+            return
+        }
         if reduceMotion {
             formVisible = true
             focusedField = .identifier
@@ -327,11 +393,37 @@ struct DiscordLoginView: View {
     }
 
     private func replayEntrance() {
+        authenticationTask?.cancel()
+        identifier = ""
+        password = ""
+        challenge = nil
+        selectedMFAMethod = nil
+        mfaCode = ""
+        smsCooldownEndsAt = nil
+        errorTitle = nil
+        errorMessage = nil
+        onboardingStep = .welcome
+        showsContinue = false
         playsWelcome = true
         welcomeProgress = 0
         formVisible = false
+        panelVisible = true
         focusedField = nil
         entranceRevision += 1
+    }
+
+    private func advanceOnboarding() {
+        guard let onboardingStep, !isTransitioning else { return }
+        transitionAuthentication {
+            switch onboardingStep {
+            case .welcome:
+                self.onboardingStep = .theme
+            case .theme:
+                SakuraCordThemeStore.shared.finishInteraction()
+                onOnboardingCompleted()
+                self.onboardingStep = nil
+            }
+        }
     }
 
     private var windowDragRegion: some View {
@@ -482,20 +574,33 @@ struct DiscordLoginView: View {
 
     private func transitionAuthentication(_ update: @escaping () -> Void) {
         guard !isTransitioning else { return }
+        let hidesOnboardingButton = onboardingStep != nil
         isTransitioning = true
         focusedField = nil
-        withAnimation(.easeOut(duration: reduceMotion ? 0.12 : 0.18), completionCriteria: .logicallyComplete) {
+        withAnimation(
+            .easeOut(duration: reduceMotion ? 0.12 : 0.18),
+            completionCriteria: hidesOnboardingButton ? .removed : .logicallyComplete
+        ) {
             panelVisible = false
+            if hidesOnboardingButton { showsContinue = false }
         } completion: {
+            // Finish the outgoing glass removal before replacing its container.
             var transaction = Transaction(animation: nil)
             transaction.disablesAnimations = true
             withTransaction(transaction) {
                 update()
                 isTransitioning = false
-                focusedField = accountImportState != nil ? nil : challenge == nil ? .password : selectedMFAMethod == nil ? nil : .mfa
+                if onboardingStep != nil || accountImportState != nil {
+                    focusedField = nil
+                } else if challenge == nil {
+                    focusedField = identifier.isEmpty ? .identifier : .password
+                } else {
+                    focusedField = selectedMFAMethod == nil ? nil : .mfa
+                }
             }
             withAnimation(SakuraCordSignInReveal.animation(reduceMotion: reduceMotion)) {
                 panelVisible = true
+                if onboardingStep == .theme { showsContinue = true }
             }
         }
     }

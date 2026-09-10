@@ -17,6 +17,10 @@ struct SakuraCordWelcomePetalAtlas {
     let petals: any MTLBuffer
     let count: Int
 
+    static func displayHeight(for width: CGFloat) -> CGFloat {
+        min(fontSize, width * 0.112)
+    }
+
     init?(device: any MTLDevice) {
         let font = NSFont.systemFont(ofSize: Self.fontSize, weight: .bold)
         let line = CTLineCreateWithAttributedString(NSAttributedString(

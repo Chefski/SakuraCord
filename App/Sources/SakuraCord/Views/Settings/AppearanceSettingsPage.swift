@@ -30,7 +30,7 @@ struct AppearanceSettingsPage: View {
 
                 GradientThemeEditor(
                     themeStore: .shared,
-                    appearance: value.colorScheme
+                    presentation: .settings(appearance: value.colorScheme)
                 )
                     .settingsControlAnchor(.themeDesigner, state: state)
             } header: {

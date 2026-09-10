@@ -233,11 +233,20 @@ struct SakuraCordApp: App {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    let updateController = AppUpdateController()
+    let updateController: AppUpdateController
     weak var model: AppModel?
     private let notificationCenterDelegate = SakuraCordNotificationCenterDelegate()
     private var terminationPromptIsPresented = false
     private var sessionStartTask: Task<Void, Never>?
+
+    override init() {
+        let configuration = AppLaunchConfiguration(arguments: ProcessInfo.processInfo.arguments)
+        if configuration.mode == .normal {
+            SakuraCordOnboardingStore.registerInstallation()
+        }
+        updateController = AppUpdateController()
+        super.init()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         UNUserNotificationCenter.current().delegate = notificationCenterDelegate

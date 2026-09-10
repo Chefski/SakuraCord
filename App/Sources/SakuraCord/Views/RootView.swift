@@ -26,7 +26,13 @@ struct RootView: View {
                             networkingEnabled: !model.isDiscordNetworkingDisabled,
                             offlineSignIn: model.includesOfflineSignIn,
                             playsWelcome: model.hasPendingLaunchWelcome,
+                            showsOnboarding: showsInitialOnboarding,
                             onEntranceStarted: { model.hasPendingLaunchWelcome = false },
+                            onOnboardingCompleted: {
+                                if model.launchMode == .normal {
+                                    SakuraCordOnboardingStore.complete()
+                                }
+                            },
                             onConnected: { credential in
                                 if model.includesOfflineSignIn {
                                     return await model.completeOfflineSignIn()
@@ -88,6 +94,12 @@ struct RootView: View {
                 model.dismissMessageSearch()
             }
         }
+        .onChange(of: model.sessionState) { _, state in
+            if model.launchMode == .normal,
+               state == .workspace || !model.savedAccounts.isEmpty {
+                SakuraCordOnboardingStore.complete()
+            }
+        }
         .onChange(of: model.showInspector) { _, isVisible in
             guard SettingsPreferenceStore.shared.value(
                 for: .rememberMemberListVisibility
@@ -117,6 +129,12 @@ struct RootView: View {
             SakuraCordThemeBackground()
                 .ignoresSafeArea()
         }
+    }
+
+    private var showsInitialOnboarding: Bool {
+        model.hasPendingLaunchWelcome
+            && (model.includesOfflineSignIn
+                || (model.launchMode == .normal && SakuraCordOnboardingStore.needsThemeSetup))
     }
 
     private var showsMessageSearchToolbar: Bool {

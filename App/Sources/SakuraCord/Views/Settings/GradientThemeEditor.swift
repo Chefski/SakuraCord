@@ -2,14 +2,19 @@ import AppKit
 import SwiftUI
 
 struct GradientThemeEditor: View {
+    enum Presentation {
+        case settings(appearance: AppColorScheme)
+        case onboarding
+    }
+
     let themeStore: SakuraCordThemeStore
-    let appearance: AppColorScheme
+    let presentation: Presentation
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             GradientThemeEditorHeader(
                 themeStore: themeStore,
-                appearance: appearance
+                presentation: presentation
             )
             GradientThemeControls(themeStore: themeStore)
         }
@@ -19,26 +24,42 @@ struct GradientThemeEditor: View {
 
 private struct GradientThemeEditorHeader: View {
     let themeStore: SakuraCordThemeStore
-    let appearance: AppColorScheme
+    let presentation: GradientThemeEditor.Presentation
 
     var body: some View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("Theme Designer", bundle: #bundle)
+                Text(title, bundle: #bundle)
                     .font(.title3.weight(.semibold))
-                Text("Create your perfect theme.", bundle: #bundle)
+                Text(subtitle, bundle: #bundle)
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 16)
             HStack(spacing: 8) {
                 ThemeRandomizeButton(themeStore: themeStore)
-                ThemeShareCopyButton(
-                    themeStore: themeStore,
-                    appearance: appearance
-                )
+                if case let .settings(appearance) = presentation {
+                    ThemeShareCopyButton(
+                        themeStore: themeStore,
+                        appearance: appearance
+                    )
+                }
                 ThemeColorCountControls(themeStore: themeStore)
             }
+        }
+    }
+
+    private var title: LocalizedStringKey {
+        switch presentation {
+        case .settings: "Theme Designer"
+        case .onboarding: "Make SakuraCord yours"
+        }
+    }
+
+    private var subtitle: LocalizedStringKey {
+        switch presentation {
+        case .settings: "Create your perfect theme."
+        case .onboarding: "Pick colors you love. You can change them anytime in Settings."
         }
     }
 }
