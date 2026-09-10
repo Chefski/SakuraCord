@@ -1050,6 +1050,14 @@ final class ComposerUnfocusedTypingMonitor {
                   !Self.isEditingText(window.firstResponder)
             else { return event }
 
+            // Popovers can leave the main window key. Its composer monitor may
+            // receive Escape first, so honor popover dismissal before composer actions.
+            if event.keyCode == 53,
+               PopoverEscapeKeyCoordinator.shared.dismissTopmostPopover(in: window)
+            {
+                return nil
+            }
+
             if Self.handlePaste(
                 keyCode: event.keyCode,
                 modifierFlags: event.modifierFlags,
