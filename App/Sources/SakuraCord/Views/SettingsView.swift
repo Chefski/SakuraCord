@@ -100,10 +100,12 @@ struct SettingsView: View {
             refreshProfileAfterExternalChange()
         }
         .frame(
-            minWidth: 760,
+            minWidth: 980,
             idealWidth: 980,
+            maxWidth: 980,
             minHeight: 520,
-            idealHeight: 700
+            idealHeight: 700,
+            maxHeight: .infinity
         )
     }
 
@@ -176,10 +178,6 @@ private struct SettingsWindowBehaviorBridge: NSViewRepresentable {
         func applyWindowBehavior() {
             guard let window else { return }
             window.toolbarStyle = .unified
-            window.contentMaxSize = NSSize(
-                width: CGFloat.greatestFiniteMagnitude,
-                height: CGFloat.greatestFiniteMagnitude
-            )
         }
 
         private func centerWindow() {
