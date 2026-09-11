@@ -101,7 +101,7 @@ struct MemberProfilePopover<Footer: View>: View {
                     .frame(
                         width: width,
                         height: min(
-                            contentHeight + surfaceInsets.top + surfaceInsets.bottom,
+                            contentHeight + surfaceInset * 2,
                             maximumPopoverHeight
                         )
                     )
@@ -123,7 +123,7 @@ struct MemberProfilePopover<Footer: View>: View {
         .overlay(alignment: .trailing) {
             if layout == .expanded {
                 Rectangle().fill(.separator).frame(width: 1)
-                    .padding(.trailing, surfaceInsets.trailing)
+                    .padding(.trailing, surfaceInset)
                     .allowsHitTesting(false)
             }
         }
@@ -154,102 +154,105 @@ struct MemberProfilePopover<Footer: View>: View {
                     style: .continuous
                 )
                     .fill(ProfilePalette.innerSurfaceOverlay(for: colorScheme))
-                    .padding(surfaceInsets)
+                    .padding(surfaceInset)
             }
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 11) {
-                    ProfileHeroSection(
-                        member: member,
-                        profile: profile,
-                        themeHexes: profileThemeHexes,
-                        avatarCutoutColor: ProfilePalette.innerSurfaceColor(
+            GeometryReader { geometry in
+                ScrollView(.vertical) {
+                    VStack(alignment: .leading, spacing: 11) {
+                        ProfileHeroSection(
+                            member: member,
+                            profile: profile,
                             themeHexes: profileThemeHexes,
-                            colorScheme: colorScheme
-                        ),
-                        topCornerRadius: layout == .inspector ? 0 : 16,
-                        roundsTopTrailingCorner: layout != .expanded,
-                        statusBubbleWidth: statusBubbleWidth,
-                        animatesRemoteMedia: animatesRemoteMedia,
-                        editor: editor,
-                        openEditorPicker: openEditorPicker
-                    )
-                    .overlay(alignment: .topTrailing) {
-                        if openProfile != nil {
-                            Button(action: expandProfile) {
-                                Image(systemName: "arrow.up.left.and.arrow.down.right")
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .frame(width: 28, height: 28)
-                                    .background(.regularMaterial, in: Circle())
+                            avatarCutoutColor: ProfilePalette.innerSurfaceColor(
+                                themeHexes: profileThemeHexes,
+                                colorScheme: colorScheme
+                            ),
+                            topCornerRadius: layout == .inspector ? 0 : 16,
+                            roundsTopTrailingCorner: layout != .expanded,
+                            statusBubbleWidth: statusBubbleWidth,
+                            animatesRemoteMedia: animatesRemoteMedia,
+                            editor: editor,
+                            openEditorPicker: openEditorPicker
+                        )
+                        .overlay(alignment: .topTrailing) {
+                            if openProfile != nil {
+                                Button(action: expandProfile) {
+                                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .frame(width: 28, height: 28)
+                                        .background(.regularMaterial, in: Circle())
+                                }
+                                .buttonStyle(.plain)
+                                .help("Expand Profile")
+                                .accessibilityLabel("Expand Profile")
+                                .padding(10)
                             }
-                            .buttonStyle(.plain)
-                            .help("Expand Profile")
-                            .accessibilityLabel("Expand Profile")
-                            .padding(10)
                         }
-                    }
-                    .zIndex(10)
+                        .zIndex(10)
 
-                    if isLoading {
-                        HStack(spacing: 9) {
-                            ProgressView()
-                                .controlSize(.small)
-                            Text("Loading full profile…")
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(.horizontal, 18)
-                    } else if let errorMessage {
-                        Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                            .font(.subheadline)
-                            .foregroundStyle(.orange)
+                        if isLoading {
+                            HStack(spacing: 9) {
+                                ProgressView()
+                                    .controlSize(.small)
+                                Text("Loading full profile…")
+                                    .foregroundStyle(.secondary)
+                            }
                             .padding(.horizontal, 18)
-                    }
-
-                    if let profile, showsDetails {
-                        if layout != .editor {
-                            ProfileMutualSummary(
-                                guilds: profile.mutualGuilds,
-                                friends: profile.mutualFriends,
-                                mutualFriendCount: profile.mutualFriendsCount,
-                                layout: layout
-                            )
+                        } else if let errorMessage {
+                            Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                                .font(.subheadline)
+                                .foregroundStyle(.orange)
+                                .padding(.horizontal, 18)
                         }
-                        if let editor, editor.scope == .main || editor.isNitro {
-                            ProfileInlineBioEditor(value: Binding(get: { editor.bio }, set: { editor.bio = $0 }), displayValue: profile.bio, model: editor.model)
-                            .id(editor.draftGeneration)
-                            .profileEditorTextHover()
-                            .padding(.horizontal, 16)
-                        } else if let bio = profile.bio, !bio.isEmpty {
-                            ProfileAboutSection(bio: bio)
+
+                        if let profile, showsDetails {
+                            if layout != .editor {
+                                ProfileMutualSummary(
+                                    guilds: profile.mutualGuilds,
+                                    friends: profile.mutualFriends,
+                                    mutualFriendCount: profile.mutualFriendsCount,
+                                    layout: layout
+                                )
+                            }
+                            if let editor, editor.scope == .main || editor.isNitro {
+                                ProfileInlineBioEditor(value: Binding(get: { editor.bio }, set: { editor.bio = $0 }), displayValue: profile.bio, model: editor.model)
+                                .id(editor.draftGeneration)
+                                .profileEditorTextHover()
                                 .padding(.horizontal, 16)
-                        }
-                        if openProfile != nil, let widgets = profile.widgets, !widgets.isEmpty {
-                            ProfileWidgetCollectionButton(widgets: widgets, resources: profile.widgetResources, open: expandProfile)
-                                .padding(.horizontal, 16)
-                        }
-                        ProfileMembershipSection(createdAt: profile.id.createdAt)
-                        if showsRoles, !profile.roles.isEmpty {
-                            ProfileRolesSection(roles: profile.roles)
-                                .id(profile.id)
-                        }
-                        if !profile.connectedAccounts.isEmpty {
-                            ProfileConnectionsSection(accounts: profile.connectedAccounts)
+                            } else if let bio = profile.bio, !bio.isEmpty {
+                                ProfileAboutSection(bio: bio)
+                                    .padding(.horizontal, 16)
+                            }
+                            if openProfile != nil, let widgets = profile.widgets, !widgets.isEmpty {
+                                ProfileWidgetCollectionButton(widgets: widgets, resources: profile.widgetResources, open: expandProfile)
+                                    .padding(.horizontal, 16)
+                            }
+                            ProfileMembershipSection(createdAt: profile.id.createdAt)
+                            if showsRoles, !profile.roles.isEmpty {
+                                ProfileRolesSection(roles: profile.roles)
+                                    .id(profile.id)
+                            }
+                            if !profile.connectedAccounts.isEmpty {
+                                ProfileConnectionsSection(accounts: profile.connectedAccounts, wraps: layout == .expanded)
+                            }
+
                         }
 
+                        footer
                     }
-
-                    footer
-                }
-                .padding(.bottom, 14)
-                .background {
-                    GeometryReader { proxy in
-                        Color.clear.preference(key: ProfileContentHeightKey.self, value: proxy.size.height)
+                    .frame(width: geometry.size.width, alignment: .leading)
+                    .padding(.bottom, 14)
+                    .background {
+                        GeometryReader { proxy in
+                            Color.clear.preference(key: ProfileContentHeightKey.self, value: proxy.size.height)
+                        }
                     }
                 }
+                .scrollIndicators(layout != .editor && editorModal == nil && contentHeight > maximumPopoverHeight ? .visible : .hidden)
+                .scrollDisabled(layout == .editor)
             }
-            .scrollIndicators(layout != .editor && editorModal == nil && contentHeight > maximumPopoverHeight ? .visible : .hidden)
-            .scrollDisabled(layout == .editor)
-            .padding(surfaceInsets)
+            .padding(surfaceInset)
 
             if let effect = profile?.effect {
                 ProfileEffectOverlay(
@@ -258,7 +261,7 @@ struct MemberProfilePopover<Footer: View>: View {
                 )
                     .id(member.id)
                     .clipShape(layout == .expanded ? profileShape : ConcentricRectangle(cornerRadius: 0))
-                    .padding(layout == .expanded ? surfaceInsets : EdgeInsets())
+                    .padding(layout == .expanded ? surfaceInset : 0)
                     .zIndex(100)
             }
         }
@@ -303,14 +306,12 @@ struct MemberProfilePopover<Footer: View>: View {
         !animationsPaused && (editorModal?.animationState.isVisible ?? true) && (popoverPresentationContext?.hasFinishedPresenting ?? true)
     }
 
-    private var surfaceInsets: EdgeInsets {
-        let inset: CGFloat = layout == .inspector ? 0 : 3
-        return EdgeInsets(
-            top: inset,
-            leading: layout == .expanded ? 0 : inset,
-            bottom: inset,
-            trailing: inset
-        )
+    private var surfaceInset: CGFloat {
+        switch layout {
+        case .inspector: 0
+        case .expanded: profileThemeHexes.count >= 2 ? 3 : 0
+        case .popover, .editor: 3
+        }
     }
 
     private var innerCornerRadius: CGFloat {
@@ -1180,19 +1181,29 @@ private enum ProfileMutualListMetrics {
 
 private struct ProfileConnectionsSection: View {
     let accounts: [ConnectedAccount]
+    var wraps = false
 
     var body: some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 10) {
-                ForEach(accounts) { account in
-                    ProfileConnectionIcon(account: account)
+        Group {
+            if wraps {
+                ProfileRoleFlowLayout(spacing: 10) { icons }
+                    .padding(.vertical, 3)
+            } else {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 10) { icons }
+                        .padding(.vertical, 3)
                 }
+                .scrollIndicators(.hidden)
+                .scrollClipDisabled()
             }
-            .padding(.vertical, 3)
         }
-        .scrollIndicators(.hidden)
-        .scrollClipDisabled()
         .padding(.horizontal, 16)
+    }
+
+    private var icons: some View {
+        ForEach(accounts) { account in
+            ProfileConnectionIcon(account: account)
+        }
     }
 }
 

@@ -53,6 +53,8 @@ struct ExpandedProfileView: View {
             }
         }
         .profileEditorModalSize(width: 820, height: 720)
+        .background(ProfileVerticalScrollInput())
+        .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
         .containerShape(.rect(cornerRadius: 16))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Expanded Profile")
@@ -67,21 +69,24 @@ struct ExpandedProfileView: View {
     @ViewBuilder
     private var widgetBoard: some View {
         if let profile = presentation.profile, let widgets = profile.widgets, !widgets.isEmpty {
-            ScrollView {
-                ProfileWidgetsSection(
-                    displayName: profile.displayName,
-                    widgets: widgets,
-                    resources: profile.widgetResources,
-                    animates: modal?.animationState.isVisible ?? true,
-                    openGame: { selectedGame = $0 },
-                    connectApplication: profile.widgetResources?.connections == nil ? nil : { configuration in
-                        if let url = configuration.connectionURL {
-                            _ = MessageLinkActivator.activate(url, model: model, displayedText: url.absoluteString)
+            GeometryReader { geometry in
+                ScrollView(.vertical) {
+                    ProfileWidgetsSection(
+                        displayName: profile.displayName,
+                        widgets: widgets,
+                        resources: profile.widgetResources,
+                        animates: modal?.animationState.isVisible ?? true,
+                        openGame: { selectedGame = $0 },
+                        connectApplication: profile.widgetResources?.connections == nil ? nil : { configuration in
+                            if let url = configuration.connectionURL {
+                                _ = MessageLinkActivator.activate(url, model: model, displayedText: url.absoluteString)
+                            }
                         }
-                    }
-                )
-                .padding(16)
-                .padding(.top, 26)
+                    )
+                    .padding(16)
+                    .padding(.top, 26)
+                    .frame(width: geometry.size.width, alignment: .leading)
+                }
             }
         } else if presentation.isLoading {
             ProgressView("Loading widgets…").padding(48)

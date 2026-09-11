@@ -259,8 +259,7 @@ codesign --force --sign "$CODE_SIGN_IDENTITY" \
   --entitlements "$ENTITLEMENTS_STAGING" "$APP_BUNDLE" >/dev/null
 
 open_app() {
-  /usr/bin/open -n "$APP_BUNDLE" "$@"
-  sakuracord_wait_for_scoped_app
+  sakuracord_launch_scoped_app "$@"
 }
 open_offline_app() { open_app --args --offline; }
 open_offline_long_server_list() { open_app --args --offline-long-server-list; }
@@ -282,17 +281,17 @@ open_offline_incoming_private_call() {
   open_app --args --offline-incoming-private-call
 }
 open_media_viewer_benchmark() {
-  /usr/bin/open -n \
-    --env SAKURACORD_MEDIA_VIEWER_BENCHMARK=1 \
-    "$APP_BUNDLE"
-  sakuracord_wait_for_scoped_app
+  sakuracord_launch_scoped_app --env SAKURACORD_MEDIA_VIEWER_BENCHMARK=1
 }
 
 case "$MODE" in
   package|package-release) ;;
   run) open_app ;;
   run-release) open_app ;;
-  --debug) lldb -- "$MACOS/$APP_NAME" ;;
+  --debug)
+    sakuracord_stop_scoped_app
+    lldb -- "$MACOS/$APP_NAME"
+    ;;
   --logs)
     open_app
     /usr/bin/log stream --info --style compact --predicate "process == \"$APP_NAME\""

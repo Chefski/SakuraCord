@@ -29,6 +29,11 @@ the Codex environment actions **Run**, **Run Offline**, and **Run Offline Sign I
 checkout's app so the selected mode takes effect, and require a previously
 built bundle.
 
+Both launch scripts stop and wait for the checkout's app immediately before
+launching, including when another launcher reopened it during a build. They
+abort if it will not exit and avoid forcing a second instance. Wait for the
+script to finish before using Computer Use, which can launch an app on its own.
+
 The focused offline scenes exercise larger or specialized UI states without
 contacting Discord:
 

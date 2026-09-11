@@ -69,6 +69,22 @@ sakuracord_wait_for_scoped_app() {
   sakuracord_is_scoped_app_running
 }
 
+sakuracord_launch_scoped_app() {
+  # A launcher can reopen the old app while compilation or packaging runs.
+  # Check again at launch time, and let LaunchServices reuse an instance if
+  # another launcher races this final check instead of forcing a duplicate.
+  sakuracord_stop_scoped_app || return
+  /usr/bin/open "$SAKURACORD_APP_BUNDLE" "$@" || return
+  sakuracord_wait_for_scoped_app || return
+
+  local pids
+  pids="$(sakuracord_scoped_pids)"
+  if [[ -z "$pids" || "$pids" == *$'\n'* ]]; then
+    echo "Expected one SakuraCord instance after launch (PIDs: $pids)." >&2
+    return 1
+  fi
+}
+
 sakuracord_release_operation_lock() {
   if [[ -f "$SAKURACORD_OPERATION_LOCK/pid" ]] \
     && [[ "$(cat "$SAKURACORD_OPERATION_LOCK/pid" 2>/dev/null || true)" == "$$" ]]; then

@@ -18,10 +18,8 @@ if [[ ! -x "$SAKURACORD_EXECUTABLE_PATH" ]]; then
   exit 1
 fi
 
-sakuracord_stop_scoped_app
 if [[ "$#" -eq 1 ]]; then
-  /usr/bin/open -n "$SAKURACORD_APP_BUNDLE" --args "$1"
+  sakuracord_launch_scoped_app --args "$1"
 else
-  /usr/bin/open -n "$SAKURACORD_APP_BUNDLE"
+  sakuracord_launch_scoped_app
 fi
-sakuracord_wait_for_scoped_app
