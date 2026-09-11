@@ -28,6 +28,9 @@ struct ExpandedProfileView: View {
                     layout: .expanded,
                     maximumPopoverHeight: geometry.size.height
                 )
+                .anchorPreference(key: ProfileFrameAnchorKey.self, value: .bounds) { bounds in
+                    presentation.profile?.frame.map { ProfileFrameAnchor(frame: $0, bounds: bounds) }
+                }
 
                 widgetBoard
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -48,12 +51,6 @@ struct ExpandedProfileView: View {
                         }
                 }
             }
-            .overlay(alignment: .leading) {
-                Rectangle().fill(.separator).frame(width: 1)
-                    .padding(.vertical, 16)
-                    .offset(x: MemberProfilePopover<EmptyView>.preferredWidth)
-                    .allowsHitTesting(false)
-            }
         }
         .profileEditorModalSize(width: 820, height: 720)
         .containerShape(.rect(cornerRadius: 16))
@@ -67,9 +64,10 @@ struct ExpandedProfileView: View {
         }
     }
 
+    @ViewBuilder
     private var widgetBoard: some View {
-        ScrollView {
-            if let profile = presentation.profile, let widgets = profile.widgets, !widgets.isEmpty {
+        if let profile = presentation.profile, let widgets = profile.widgets, !widgets.isEmpty {
+            ScrollView {
                 ProfileWidgetsSection(
                     displayName: profile.displayName,
                     widgets: widgets,
@@ -84,17 +82,17 @@ struct ExpandedProfileView: View {
                 )
                 .padding(16)
                 .padding(.top, 26)
-            } else if presentation.isLoading {
-                ProgressView("Loading widgets…").padding(48)
-            } else if let error = presentation.errorMessage {
-                ContentUnavailableView {
-                    Label("Couldn't Load Widgets", systemImage: "exclamationmark.triangle")
-                } description: {
-                    Text(error)
-                }
-            } else {
-                ContentUnavailableView("No Widgets", systemImage: "square.grid.2x2", description: Text("This person hasn't added any widgets to their profile."))
             }
+        } else if presentation.isLoading {
+            ProgressView("Loading widgets…").padding(48)
+        } else if let error = presentation.errorMessage {
+            ContentUnavailableView {
+                Label("Couldn't Load Widgets", systemImage: "exclamationmark.triangle")
+            } description: {
+                Text(error)
+            }
+        } else {
+            ContentUnavailableView("No Widgets", systemImage: "square.grid.2x2", description: Text("This person hasn't added any widgets to their profile."))
         }
     }
 }

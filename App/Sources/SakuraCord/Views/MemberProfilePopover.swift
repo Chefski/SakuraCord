@@ -101,7 +101,7 @@ struct MemberProfilePopover<Footer: View>: View {
                     .frame(
                         width: width,
                         height: min(
-                            contentHeight + surfaceInset * 2,
+                            contentHeight + surfaceInsets.top + surfaceInsets.bottom,
                             maximumPopoverHeight
                         )
                     )
@@ -120,13 +120,20 @@ struct MemberProfilePopover<Footer: View>: View {
             }
         }
         .clipShape(profileShape)
+        .overlay(alignment: .trailing) {
+            if layout == .expanded {
+                Rectangle().fill(.separator).frame(width: 1)
+                    .padding(.trailing, surfaceInsets.trailing)
+                    .allowsHitTesting(false)
+            }
+        }
         .background {
-            if let frame = profile?.frame {
+            if layout == .editor, let frame = profile?.frame {
                 ProfileFrameOverlay(frame: frame, order: "back")
             }
         }
         .overlay {
-            if let frame = profile?.frame {
+            if layout == .editor, let frame = profile?.frame {
                 ProfileFrameOverlay(frame: frame, order: "front")
             }
         }
@@ -147,7 +154,7 @@ struct MemberProfilePopover<Footer: View>: View {
                     style: .continuous
                 )
                     .fill(ProfilePalette.innerSurfaceOverlay(for: colorScheme))
-                    .padding(surfaceInset)
+                    .padding(surfaceInsets)
             }
 
             ScrollView {
@@ -242,7 +249,7 @@ struct MemberProfilePopover<Footer: View>: View {
             }
             .scrollIndicators(layout != .editor && editorModal == nil && contentHeight > maximumPopoverHeight ? .visible : .hidden)
             .scrollDisabled(layout == .editor)
-            .padding(surfaceInset)
+            .padding(surfaceInsets)
 
             if let effect = profile?.effect {
                 ProfileEffectOverlay(
@@ -251,7 +258,7 @@ struct MemberProfilePopover<Footer: View>: View {
                 )
                     .id(member.id)
                     .clipShape(layout == .expanded ? profileShape : ConcentricRectangle(cornerRadius: 0))
-                    .padding(layout == .expanded ? surfaceInset : 0)
+                    .padding(layout == .expanded ? surfaceInsets : EdgeInsets())
                     .zIndex(100)
             }
         }
@@ -296,8 +303,14 @@ struct MemberProfilePopover<Footer: View>: View {
         !animationsPaused && (editorModal?.animationState.isVisible ?? true) && (popoverPresentationContext?.hasFinishedPresenting ?? true)
     }
 
-    private var surfaceInset: CGFloat {
-        layout == .inspector ? 0 : 3
+    private var surfaceInsets: EdgeInsets {
+        let inset: CGFloat = layout == .inspector ? 0 : 3
+        return EdgeInsets(
+            top: inset,
+            leading: layout == .expanded ? 0 : inset,
+            bottom: inset,
+            trailing: inset
+        )
     }
 
     private var innerCornerRadius: CGFloat {

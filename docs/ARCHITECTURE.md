@@ -362,6 +362,12 @@ The emoji picker returns to that text view's selection through its own window;
 normal typing leaves selection with the native editor. Application widgets use their configured
 `mini_profile` surface in member profiles, with full statistics available on demand.
 
+Expanded profiles pass their existing card bounds to the modal host through
+`ProfileFrameAnchorKey`. The host draws rear and front frame artwork outside its
+rounded clip, preserving the profile's layout, theme, corners and scrolling.
+Editor previews use the same frame renderer; native popovers and inspectors
+omit frames until their hosts can accommodate artwork outside the card.
+
 `ProfileThemeState` resolves explicit theme colours or an avatar-derived palette
 for the shared card and colour controls. `MediaPipeline`
 extracts that palette using the reference median-cut algorithm and Chromium's
