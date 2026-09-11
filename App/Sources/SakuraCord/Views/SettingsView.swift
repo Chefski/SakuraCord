@@ -100,9 +100,9 @@ struct SettingsView: View {
             refreshProfileAfterExternalChange()
         }
         .frame(
-            minWidth: 980,
-            idealWidth: 980,
-            maxWidth: 980,
+            minWidth: 1060,
+            idealWidth: 1060,
+            maxWidth: 1060,
             minHeight: 520,
             idealHeight: 700,
             maxHeight: .infinity

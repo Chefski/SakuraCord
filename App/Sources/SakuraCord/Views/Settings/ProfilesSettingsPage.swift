@@ -9,27 +9,25 @@ struct ProfilesSettingsPage: View {
     @State private var nicknames: [GuildID: String] = [:]
 
     var body: some View {
-        GeometryReader { geometry in
-            ScrollView([.horizontal, .vertical]) {
-                VStack {
-                    if editor.isLoading {
-                        ProgressView("Loading Profile…").frame(maxWidth: .infinity, minHeight: 160)
-                    } else if let profile = editor.preview {
-                        ProfileEditorCanvas(model: model, editor: editor, profile: profile) { picker = $0 }
-                    } else {
-                        ContentUnavailableView {
-                            Label("Profile Unavailable", systemImage: "person.crop.circle.badge.exclamationmark")
-                        } description: {
-                            Text(editor.errorMessage ?? String(localized: "Connect an account to edit its profile.", bundle: #bundle))
-                        } actions: {
-                            Button("Retry") { Task { await editor.load(editor.scope, preferCached: false) } }
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 160)
+        ScrollView(.vertical) {
+            VStack {
+                if editor.isLoading {
+                    ProgressView("Loading Profile…").frame(maxWidth: .infinity, minHeight: 160)
+                } else if let profile = editor.preview {
+                    ProfileEditorCanvas(model: model, editor: editor, profile: profile) { picker = $0 }
+                } else {
+                    ContentUnavailableView {
+                        Label("Profile Unavailable", systemImage: "person.crop.circle.badge.exclamationmark")
+                    } description: {
+                        Text(editor.errorMessage ?? String(localized: "Connect an account to edit its profile.", bundle: #bundle))
+                    } actions: {
+                        Button("Retry") { Task { await editor.load(editor.scope, preferCached: false) } }
                     }
+                    .frame(maxWidth: .infinity, minHeight: 160)
                 }
-                .padding(16)
-                .frame(width: max(geometry.size.width, 594))
             }
+            .padding(16)
+            .frame(maxWidth: .infinity)
         }
         .navigationTitle(state.catalog.page(.profiles).title)
         .background { ProfileEditorFocusDismissal() }
