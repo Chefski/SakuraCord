@@ -230,7 +230,7 @@ struct MemberProfilePopover<Footer: View>: View {
                             }
                             ProfileMembershipSection(createdAt: profile.id.createdAt)
                             if showsRoles, !profile.roles.isEmpty {
-                                ProfileRolesSection(roles: profile.roles)
+                                ProfileRolesSection(roles: profile.roles, keepsExpanded: layout == .expanded)
                                     .id(profile.id)
                             }
                             if !profile.connectedAccounts.isEmpty {
@@ -899,6 +899,7 @@ private struct ProfileAboutSection: View {
 
 private struct ProfileRolesSection: View {
     let roles: [GuildRole]
+    var keepsExpanded = false
     @State private var isExpanded = false
 
     private var normalizedRoles: [ProfileRoleItem] {
@@ -910,7 +911,7 @@ private struct ProfileRolesSection: View {
     }
 
     private var visibleRoles: ArraySlice<ProfileRoleItem> {
-        isExpanded
+        keepsExpanded || isExpanded
             ? normalizedRoles[...]
             : normalizedRoles.prefix(ProfileRolePresentation.collapsedLimit)
     }
@@ -929,7 +930,7 @@ private struct ProfileRolesSection: View {
                     isExpanded = true
                 }
                 .help("Show \(hiddenCount) more roles")
-            } else if isExpanded, normalizedRoles.count > ProfileRolePresentation.collapsedLimit {
+            } else if !keepsExpanded, isExpanded, normalizedRoles.count > ProfileRolePresentation.collapsedLimit {
                 RoleExpansionButton(systemImage: "chevron.left") {
                     isExpanded = false
                 }

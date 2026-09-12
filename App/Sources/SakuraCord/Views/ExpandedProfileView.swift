@@ -83,6 +83,7 @@ struct ExpandedProfileView: View {
                             }
                         }
                     )
+                    .padding(.top, 12)
                     .padding(16)
                     .padding(.top, 26)
                     .frame(width: geometry.size.width, alignment: .leading)
