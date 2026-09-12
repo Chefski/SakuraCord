@@ -8,6 +8,7 @@ struct SwiftUIAnimatedImage: View {
     let animates: Bool
     let isLooping: Bool
     let contentMode: ContentMode
+    var resetsWhenStopped = false
     @Environment(\.scenePhase) private var scenePhase
     @State private var isVisible = true
     @State private var startedAt = CACurrentMediaTime()
@@ -21,9 +22,15 @@ struct SwiftUIAnimatedImage: View {
         } else {
             TimelineView(.animation(minimumInterval: image.frameDurations.min(), paused: !plays)) { _ in
                 let elapsed = max(0, (clock.pausedAt ?? CACurrentMediaTime()) - clock.pausedDuration - startedAt)
-                if let frame = frame(at: elapsed) {
+                if let frame = frame(at: resetsWhenStopped && !animates ? 0 : elapsed) {
                     Image(decorative: frame, scale: 1).resizable().aspectRatio(contentMode: contentMode)
                 }
+            }
+            .onChange(of: animates) { _, _ in
+                guard resetsWhenStopped else { return }
+                startedAt = CACurrentMediaTime()
+                clock = AnimatedImagePlaybackClock()
+                clock.setPaused(!plays, at: startedAt)
             }
             .onChange(of: plays, initial: true) { _, playing in clock.setPaused(!playing, at: CACurrentMediaTime()) }
             .onScrollVisibilityChange { isVisible = $0 }

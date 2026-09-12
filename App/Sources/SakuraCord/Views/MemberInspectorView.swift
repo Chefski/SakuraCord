@@ -500,6 +500,7 @@ struct DecoratedAvatarView: View {
     let decorationURL: URL?
     let size: CGFloat
     var animatesDecoration = true
+    var resetsDecorationWhenStopped = false
 
     var body: some View {
         ZStack {
@@ -509,7 +510,8 @@ struct DecoratedAvatarView: View {
                     url: decorationURL,
                     animates: animatesDecoration,
                     maximumPixelDimension: decorationPixelDimension,
-                    accessibilityCategory: .decoration
+                    accessibilityCategory: .decoration,
+                    resetsWhenStopped: resetsDecorationWhenStopped
                 )
                     .frame(width: size * 1.22, height: size * 1.22)
                     .allowsHitTesting(false)

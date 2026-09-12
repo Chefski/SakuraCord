@@ -683,7 +683,7 @@ func `recent displayed images use a deterministic bounded cache`() throws {
 }
 
 @MainActor @Test
-func `animated image canvas suspends compositor time without discarding frames`()
+func `animated image canvas pauses or resets without discarding frames`()
     throws
 {
     let encoded =
@@ -751,6 +751,20 @@ func `animated image canvas suspends compositor time without discarding frames`(
         contentMode: .fill
     )
     #expect(canvas.layer?.contentsGravity == .resizeAspectFill)
+
+    canvas.display(decoded, animates: true, isLooping: true, resetsWhenStopped: true)
+    let hoverAnimation = try #require(layer.animation(forKey: "remoteAnimatedImage"))
+    canvas.display(decoded, animates: false, isLooping: true, resetsWhenStopped: true)
+    #expect(layer.animation(forKey: "remoteAnimatedImage") == nil)
+    #expect((layer.contents as AnyObject?) === decoded.frames.first)
+    #expect(layer.speed == 0)
+    #expect(canvas.displayedImage === decoded)
+
+    canvas.display(decoded, animates: true, isLooping: true, resetsWhenStopped: true)
+    let restartedAnimation = try #require(layer.animation(forKey: "remoteAnimatedImage"))
+    #expect(restartedAnimation.beginTime >= hoverAnimation.beginTime)
+    #expect(layer.speed == 1)
+    #expect(canvas.displayedImage === decoded)
 }
 
 @Test func `animated media only plays while visible and motion is enabled`() {

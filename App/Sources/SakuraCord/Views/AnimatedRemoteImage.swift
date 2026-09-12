@@ -162,6 +162,7 @@ struct AnimatedRemoteImage: View {
     var onFailure: (() -> Void)?
     var accessibilityCategory: AccessibilityAnimationCategory = .gif
     var usesSwiftUIRendering = false
+    var resetsWhenStopped = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityPlayAnimatedImages) private var playsAnimatedImages
@@ -196,6 +197,7 @@ struct AnimatedRemoteImage: View {
         contentMode: ContentMode = .fit,
         accessibilityCategory: AccessibilityAnimationCategory = .gif,
         usesSwiftUIRendering: Bool = false,
+        resetsWhenStopped: Bool = false,
         onFailure: (() -> Void)? = nil
     ) {
         self.url = url
@@ -209,6 +211,7 @@ struct AnimatedRemoteImage: View {
         self.contentMode = contentMode
         self.accessibilityCategory = accessibilityCategory
         self.usesSwiftUIRendering = usesSwiftUIRendering
+        self.resetsWhenStopped = resetsWhenStopped
         self.onFailure = onFailure
 
         let loadID = AnimatedRemoteImageRequestIdentity(
@@ -228,7 +231,7 @@ struct AnimatedRemoteImage: View {
             if let decodedImage {
                 if usesSwiftUIRendering {
                     SwiftUIAnimatedImage(image: decodedImage, animates: animates && !accessibilityReducesAnimation,
-                                         isLooping: isLooping, contentMode: contentMode)
+                                         isLooping: isLooping, contentMode: contentMode, resetsWhenStopped: resetsWhenStopped)
                         .id(ObjectIdentifier(decodedImage))
                 } else {
                     AnimatedImageRepresentable(
@@ -236,7 +239,8 @@ struct AnimatedRemoteImage: View {
                         animates: animates && !accessibilityReducesAnimation,
                         isLooping: isLooping,
                         contentMode: contentMode,
-                        playback: accessibilityReducesAnimation ? nil : playback
+                        playback: accessibilityReducesAnimation ? nil : playback,
+                        resetsWhenStopped: resetsWhenStopped
                     )
                 }
             } else if let previewImage {
@@ -994,6 +998,7 @@ struct AnimatedImageRepresentable: NSViewRepresentable {
     let isLooping: Bool
     let contentMode: ContentMode
     var playback: AnimatedImagePlayback?
+    var resetsWhenStopped = false
 
     func makeNSView(context: Context) -> AnimatedImageCanvas {
         Self.configuredCanvas(
@@ -1001,7 +1006,8 @@ struct AnimatedImageRepresentable: NSViewRepresentable {
             animates: animates,
             isLooping: isLooping,
             contentMode: contentMode,
-            playback: playback
+            playback: playback,
+            resetsWhenStopped: resetsWhenStopped
         )
     }
 
@@ -1011,7 +1017,8 @@ struct AnimatedImageRepresentable: NSViewRepresentable {
             animates: animates,
             isLooping: isLooping,
             contentMode: contentMode,
-            playback: playback
+            playback: playback,
+            resetsWhenStopped: resetsWhenStopped
         )
     }
 
@@ -1020,7 +1027,8 @@ struct AnimatedImageRepresentable: NSViewRepresentable {
         animates: Bool,
         isLooping: Bool,
         contentMode: ContentMode,
-        playback: AnimatedImagePlayback? = nil
+        playback: AnimatedImagePlayback? = nil,
+        resetsWhenStopped: Bool = false
     ) -> AnimatedImageCanvas {
         let view = AnimatedImageCanvas()
         view.display(
@@ -1028,7 +1036,8 @@ struct AnimatedImageRepresentable: NSViewRepresentable {
             animates: animates,
             isLooping: isLooping,
             contentMode: contentMode,
-            playback: playback
+            playback: playback,
+            resetsWhenStopped: resetsWhenStopped
         )
         return view
     }
@@ -1036,7 +1045,13 @@ struct AnimatedImageRepresentable: NSViewRepresentable {
 
 final class AnimatedImageCanvas: NSView {
     private(set) var displayedImage: DecodedAnimatedImage?
-    private var displayedAnimationPreference: (animates: Bool, isLooping: Bool)?
+    private struct AnimationPreference: Equatable {
+        let animates: Bool
+        let isLooping: Bool
+        let resetsWhenStopped: Bool
+    }
+
+    private var displayedAnimationPreference: AnimationPreference?
     private var displayedContentMode: ContentMode?
     private var displayedPlayback: AnimatedImagePlayback?
     private var displayedPlaybackEnabled: Bool?
@@ -1088,19 +1103,21 @@ final class AnimatedImageCanvas: NSView {
         animates: Bool,
         isLooping: Bool,
         contentMode: ContentMode = .fit,
-        playback: AnimatedImagePlayback? = nil
+        playback: AnimatedImagePlayback? = nil,
+        resetsWhenStopped: Bool = false
     ) {
-        let preference = (animates: animates, isLooping: isLooping)
+        let preference = AnimationPreference(animates: animates, isLooping: isLooping, resetsWhenStopped: resetsWhenStopped)
         guard
             displayedImage !== image
-            || displayedAnimationPreference?.animates != preference.animates
-            || displayedAnimationPreference?.isLooping != preference.isLooping
+            || displayedAnimationPreference != preference
             || displayedContentMode != contentMode
             || displayedPlayback != playback
         else { return }
         let replacesAnimation = displayedImage !== image
-            || displayedAnimationPreference?.isLooping != isLooping
             || displayedPlayback != playback
+            || displayedAnimationPreference?.isLooping != isLooping
+            || displayedAnimationPreference?.resetsWhenStopped != resetsWhenStopped
+            || (resetsWhenStopped && displayedAnimationPreference?.animates != animates)
         displayedImage = image
         displayedAnimationPreference = preference
         displayedContentMode = contentMode
@@ -1108,6 +1125,10 @@ final class AnimatedImageCanvas: NSView {
         layer?.contentsGravity = contentMode == .fill ? .resizeAspectFill : .resizeAspect
         if replacesAnimation {
             installAnimation(for: image, isLooping: isLooping)
+            if resetsWhenStopped, !animates {
+                layer?.removeAnimation(forKey: "remoteAnimatedImage")
+                layer?.contents = image.frames.first
+            }
         }
         applyPlaybackState(force: true)
     }

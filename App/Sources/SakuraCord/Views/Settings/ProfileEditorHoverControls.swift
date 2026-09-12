@@ -5,6 +5,10 @@ enum ProfileEditorCardStyle {
     static var shape: RoundedRectangle { RoundedRectangle(cornerRadius: 12, style: .continuous) }
 }
 
+extension EnvironmentValues {
+    @Entry var profileEditorCardIsHovered = false
+}
+
 extension View {
     func profileEditorCardHover() -> some View {
         modifier(ProfileEditorCardHover())
@@ -22,6 +26,7 @@ private struct ProfileEditorCardHover: ViewModifier {
     func body(content: Content) -> some View {
         let highlighted = isEnabled && isHovered
         content
+            .environment(\.profileEditorCardIsHovered, highlighted)
             .overlay {
                 ProfileEditorCardStyle.shape
                     .fill(.white.opacity(highlighted ? 0.08 : 0))
@@ -33,6 +38,7 @@ private struct ProfileEditorCardHover: ViewModifier {
                     .animation(.easeOut(duration: 0.12), value: highlighted)
             }
             .onModalHover { isHovered = $0 }
+            .onDisappear { isHovered = false }
     }
 }
 

@@ -158,9 +158,9 @@ struct ProfileEffectOverlay: View {
                 }
             }
         }
-        .onChange(of: animates) { _, playing in
-            if playing, restartsOnHover {
-                // Rewind the presentation without throwing away decoded frames or mounted image views.
+        .onChange(of: animates) { _, _ in
+            if restartsOnHover {
+                // Reset on hover exit as well as entry, retaining decoded frames and mounted image views.
                 playbackClock = AnimatedImagePlaybackClock()
                 startTime = nil
             }

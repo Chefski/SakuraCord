@@ -38,14 +38,16 @@ struct ProfileStylesControls: View {
                 }
                 ProfileStyleSection(title: "Avatar Decoration") {
                     ProfileCustomizationTile(label: "Avatar Decoration", selection: .collectible(.avatarDecoration), editor: editor, profile: profile, content: {
-                        DecoratedAvatarView(name: "", avatarURL: nil, decorationURL: profile.user.avatarDecorationURL, size: 80)
+                        ProfileEditorCosmeticPreview(profile: profile, kind: .avatarDecoration)
                     })
                 }
                 if editor.isNitro {
                     ProfileStyleSection(title: "Banner", nitro: true) {
                         ProfileCustomizationTile(label: "Banner", selection: .banner, editor: editor, profile: profile, content: {
                             if let url = profile.bannerURL {
-                                AnimatedRemoteImage(url: url, animates: false, contentMode: .fill)
+                                AnimatedRemoteImage(url: url, animates: false, contentMode: .fit, usesSwiftUIRendering: true)
+                                    .clipShape(.rect(cornerRadius: 8))
+                                    .padding(12)
                             } else {
                                 Image(systemName: "photo.badge.plus").font(.largeTitle).foregroundStyle(.secondary)
                             }
@@ -61,17 +63,7 @@ struct ProfileStylesControls: View {
                 }
                 ProfileStyleSection(title: "Nameplate") {
                     ProfileCustomizationTile(label: "Nameplate", selection: .collectible(.nameplate), editor: editor, profile: profile, content: {
-                        ZStack {
-                            if let nameplate = profile.user.nameplate { NameplateBackground(nameplate: nameplate, isAnimated: false) }
-                            HStack(spacing: 10) {
-                                Image(systemName: "person.crop.circle.fill").font(.system(size: 28))
-                                Capsule().frame(height: 10)
-                            }
-                            .foregroundStyle(.secondary.opacity(0.6)).padding(.horizontal, 10)
-                        }
-                        .frame(height: 42)
-                        .clipShape(.rect(cornerRadius: 8))
-                        .padding(12)
+                        ProfileEditorCosmeticPreview(profile: profile, kind: .nameplate)
                     })
                 }
                 if editor.isNitro {
@@ -84,17 +76,48 @@ struct ProfileStylesControls: View {
                 }
                 ProfileStyleSection(title: "Profile Effect") {
                     ProfileCustomizationTile(label: "Profile Effect", selection: .collectible(.effect), editor: editor, profile: profile, content: {
-                        ProfileCosmeticTileArtwork(effect: profile.effect, kind: .effect)
+                        ProfileEditorCosmeticPreview(profile: profile, kind: .effect)
                     })
                 }
                 ProfileStyleSection(title: "Profile Frame") {
                     ProfileCustomizationTile(label: "Profile Frame", selection: .collectible(.frame), editor: editor, profile: profile, content: {
-                        ProfileCosmeticTileArtwork(frame: profile.frame, kind: .frame)
+                        ProfileEditorCosmeticPreview(profile: profile, kind: .frame)
                     })
                 }
             }
         }
         .disabled(editor.isSaving || editor.requiresReload)
+    }
+}
+
+/// The card's highlight and artwork share one hover signal, including modal suppression.
+private struct ProfileEditorCosmeticPreview: View {
+    let profile: UserProfile
+    let kind: ProfileCollectibleKind
+    @Environment(\.profileEditorCardIsHovered) private var isHovered
+
+    var body: some View {
+        switch kind {
+        case .avatarDecoration:
+            DecoratedAvatarView(name: "", avatarURL: nil, decorationURL: profile.user.avatarDecorationURL, size: 80, animatesDecoration: isHovered,
+                                resetsDecorationWhenStopped: true)
+        case .nameplate:
+            ZStack {
+                if let nameplate = profile.user.nameplate { NameplateBackground(nameplate: nameplate, isAnimated: isHovered) }
+                HStack(spacing: 10) {
+                    Image(systemName: "person.crop.circle.fill").font(.system(size: 28))
+                    Capsule().frame(height: 10)
+                }
+                .foregroundStyle(.secondary.opacity(0.6)).padding(.horizontal, 10)
+            }
+            .frame(height: 42)
+            .clipShape(.rect(cornerRadius: 8))
+            .padding(12)
+        case .effect:
+            ProfileCosmeticTileArtwork(effect: profile.effect, kind: .effect, animates: isHovered)
+        case .frame:
+            ProfileCosmeticTileArtwork(frame: profile.frame, kind: .frame)
+        }
     }
 }
 
