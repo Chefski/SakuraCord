@@ -231,7 +231,7 @@ struct GuildRailButton: View {
         .anchorPreference(key: ServerRailHoverPreferenceKey.self, value: .bounds) { bounds in
             isHovering ? ServerRailHoverItem(name: displayName, bounds: bounds) : nil
         }
-        .onHover { isHovering = $0 }
+        .onModalHover { isHovering = $0 }
         .animation(.snappy(duration: 0.18), value: isHovering)
     }
 }
@@ -310,7 +310,7 @@ private struct HomeRailButton: View {
         }
         .frame(width: ChatChromeMetrics.serverRailWidth, height: 46, alignment: .leading)
         .contentShape(Rectangle())
-        .onHover { isHovering = $0 }
+        .onModalHover { isHovering = $0 }
         .help("Direct Messages")
     }
 }

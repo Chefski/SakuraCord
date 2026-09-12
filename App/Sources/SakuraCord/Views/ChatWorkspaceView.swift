@@ -185,7 +185,6 @@ private struct ChatWorkspaceSupplementaryContent: View {
                     profilePresentation:
                         model.inspectorProfilePresentation,
                     isProfilePresented: model.isInspectorProfilePresented,
-                    interactionsBlocked: model.workspaceNavigationOverlay != nil,
                     selectMember: model.selectMember,
                     dismissProfile: model.dismissInspectorProfile,
                     viewportIdentity: model.selectedChannelID,

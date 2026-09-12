@@ -6,7 +6,7 @@ struct ProfileWidgetGamePicker: View {
     let editor: ProfileEditorState
     let selectedIDs: Set<String>
     let select: (ProfileGame) -> Void
-    @Environment(\.profileEditorModal) private var dismiss
+    @Environment(\.windowModalContext) private var dismiss
     @State private var query = ""
     @State private var defaults: [ProfileGame] = []
     @State private var matches: [ProfileGame] = []
@@ -45,7 +45,7 @@ struct ProfileWidgetGamePicker: View {
                 }
             }
         }
-        .profileEditorModalSize(width: 400, height: 360)
+        .windowModalSize(width: 400, height: 360)
         .task {
             searchFocused = true
             do { defaults = try await editor.defaultWidgetGames() } catch is CancellationError { return } catch {

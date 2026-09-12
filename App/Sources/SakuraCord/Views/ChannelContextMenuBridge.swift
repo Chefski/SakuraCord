@@ -711,7 +711,12 @@ private extension NSRange {
     }
 }
 
-final class ChannelNativeRowInteractionView: NSView {
+final class ChannelNativeRowInteractionView: NSView, WindowModalInputParticipant {
+    func modalInputDidChange() {
+        synchronizeHoverWithCurrentPointer()
+        window?.invalidateCursorRects(for: self)
+    }
+
     var menuProvider: (() -> NSMenu?)?
     var hoverChanged: ((Bool) -> Void)?
     var pointerLocationInWindowProvider: (() -> NSPoint?)?
@@ -750,6 +755,7 @@ final class ChannelNativeRowInteractionView: NSView {
     }
 
     override func mouseEntered(with event: NSEvent) {
+        guard WindowModalCoordinator.allowsInput(for: self) else { return }
         synchronizeHover(atWindowPoint: event.locationInWindow)
     }
 
@@ -768,7 +774,7 @@ final class ChannelNativeRowInteractionView: NSView {
     }
 
     func synchronizeHover(atWindowPoint point: NSPoint?) {
-        guard let point, window != nil else {
+        guard let point, window != nil, WindowModalCoordinator.allowsInput(for: self) else {
             setReportedHover(false)
             return
         }

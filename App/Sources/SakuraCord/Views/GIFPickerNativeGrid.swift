@@ -562,6 +562,7 @@ private final class GIFPickerCollectionCellView: NSView {
     }
 
     override func mouseEntered(with event: NSEvent) {
+        guard WindowModalCoordinator.allowsInput(for: self) else { return }
         setHovered(true)
     }
 

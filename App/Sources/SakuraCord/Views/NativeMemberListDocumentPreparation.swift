@@ -35,6 +35,10 @@ extension NativeMemberListCanvasView {
         )
     }
 
+    func modalInputDidChange() {
+        setInteractionsBlocked(!WindowModalCoordinator.allowsInput(for: self))
+    }
+
     func setInteractionsBlocked(_ blocked: Bool) {
         guard interactionsBlocked != blocked else { return }
         interactionsBlocked = blocked

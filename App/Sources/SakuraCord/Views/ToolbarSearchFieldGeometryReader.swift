@@ -451,6 +451,7 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
                 let eventObject = SendableNotificationObject(event)
                 let handled = MainActor.assumeIsolated {
                     guard let event = eventObject.value as? NSEvent else { return false }
+                    guard let field = self?.searchField, WindowModalCoordinator.allowsInput(for: field) else { return false }
                     return self?.handleClipboardShortcut(event) == true
                 }
                 return handled ? nil : event
@@ -462,6 +463,7 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
                           let event = eventObject.value as? NSEvent,
                           event.window === self.window,
                           let field = self.searchField,
+                          WindowModalCoordinator.allowsInput(for: field),
                           let cell = field.cell as? NSSearchFieldCell
                     else { return }
                     let point = field.convert(event.locationInWindow, from: nil)

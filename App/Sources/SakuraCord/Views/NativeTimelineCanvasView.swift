@@ -11,7 +11,7 @@ import SwiftUI
 /// A viewless, virtualized message surface. One AppKit view owns the entire
 /// timeline; only rows intersecting the dirty rectangle are painted.
 @MainActor
-final class NativeTimelineCanvasView: NSView {
+final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
     struct CachedRowBitmap {
         let item: NativeMessageTimelineItem
         let width: CGFloat

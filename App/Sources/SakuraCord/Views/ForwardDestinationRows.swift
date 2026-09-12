@@ -68,7 +68,7 @@ struct ForwardDestinationRow: View {
         .opacity(destination.unavailableReason == nil ? 1 : 0.62)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityIdentifier(destination.id.accessibilityIdentifier)
-        .onHover { hovering in
+        .onModalHover { hovering in
             isHovered = hovering
         }
     }

@@ -495,6 +495,10 @@ struct StableAnchoredPopoverPresenter<Content: View>: NSViewRepresentable {
         }
 
         private func show(content: Content) {
+            guard let source = anchor?.sourceView, WindowModalCoordinator.allowsInput(for: source) else {
+                dismissBecauseAnchorIsUnavailable()
+                return
+            }
             guard programmaticallyClosingPopovers.isEmpty else { return }
             guard attachAnchor() != nil else {
                 dismissBecauseAnchorIsUnavailable()
@@ -691,6 +695,14 @@ struct StableAnchoredPopoverPresenter<Content: View>: NSViewRepresentable {
                 observedView = view.superview
             }
             if let window = sourceView.window {
+                let token = NotificationCenter.default.addObserver(forName: WindowModalCoordinator.inputDidChange, object: window, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated {
+                        guard let self, let source = self.anchor?.sourceView,
+                              !WindowModalCoordinator.allowsInput(for: source) else { return }
+                        self.dismissBecauseAnchorIsUnavailable()
+                    }
+                }
+                geometryObserverTokens.append(token)
                 observeGeometry(name: NSWindow.didResizeNotification, object: window)
                 observeGeometry(name: NSWindow.didMoveNotification, object: window)
             }

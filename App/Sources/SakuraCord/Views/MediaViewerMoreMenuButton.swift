@@ -326,6 +326,7 @@ final class MediaViewerMenuNSControl: NSControl {
     }
 
     override func mouseEntered(with event: NSEvent) {
+        guard WindowModalCoordinator.allowsInput(for: self) else { return }
         pointerIsInside = true
         updateBackground()
     }

@@ -778,7 +778,7 @@ private struct CurrentUserCapsule: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .onHover { isMainHovering = $0 }
+            .onModalHover { isMainHovering = $0 }
             .stableMemberProfilePopover(isPresented: $isYouPopoverPresented) {
                 youPopover
             }

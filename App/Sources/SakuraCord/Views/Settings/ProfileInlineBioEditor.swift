@@ -59,7 +59,7 @@ struct ProfileInlineBioEditor: View {
                 showsEmojiPicker = true
             }
             .buttonStyle(.plain).labelStyle(.iconOnly)
-            .profileEditorOverlay(isPresented: $showsEmojiPicker, title: "Emoji") {
+            .windowModal(isPresented: $showsEmojiPicker, title: "Emoji") {
                 EmojiPickerView(model: model, useCase: .profile, dismiss: { showsEmojiPicker = false }, select: { activation in
                     switch activation.selection {
                     case let .native(emoji): pickedEmoji = emoji

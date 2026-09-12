@@ -7,7 +7,7 @@ struct ProfileNameStylePicker: View {
     let hasNitro: Bool
     let apply: (DisplayNameStyle) -> Void
 
-    @Environment(\.profileEditorModal) private var dismiss
+    @Environment(\.windowModalContext) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
     @State private var draft: DisplayNameStyle
     @State private var previewIsDark = true
@@ -61,7 +61,7 @@ struct ProfileNameStylePicker: View {
             .padding(.horizontal, 24)
             .frame(height: 88)
         }
-        .profileEditorModalSize(width: 832, height: 736)
+        .windowModalSize(width: 832, height: 736)
         .overlay(alignment: .topTrailing) {
             HoverCloseButton(help: "Close", accessibilityIdentifier: "profile-editor-close") { dismiss?() }
                 .padding(16)
@@ -167,7 +167,7 @@ private struct ProfileStyleOption<Content: View>: View {
                 }
         }
         .buttonStyle(.plain)
-        .onHover { isHovered = $0 }
+        .onModalHover { isHovered = $0 }
         .help(label)
         .accessibilityLabel(label)
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])

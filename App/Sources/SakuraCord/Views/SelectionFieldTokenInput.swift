@@ -669,6 +669,7 @@ final class SelectionFieldNSTextView: NSTextView {
     }
 
     override func mouseMoved(with event: NSEvent) {
+        guard WindowModalCoordinator.allowsInput(for: self) else { return }
         let next = attachmentHit(at: event)?.attachment
         guard next !== hoveredAttachment else { return }
         hoveredAttachment?.image = hoveredAttachment?.normalImage

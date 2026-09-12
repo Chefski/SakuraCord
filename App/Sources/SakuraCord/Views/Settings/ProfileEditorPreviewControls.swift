@@ -24,7 +24,7 @@ struct ProfileEditorImageMenu: ViewModifier {
                     ProfileImageMenuButton(editor: editor, target: target, open: open)
                 }
             }
-            .onHover { isHovered = $0 }
+            .onModalHover { isHovered = $0 }
     }
 }
 

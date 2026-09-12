@@ -17,7 +17,7 @@ struct PopoverRowButtonStyle: ButtonStyle {
             configuration.label
                 .background(.primary.opacity(configuration.isPressed ? 0.18 : isHovered || isSelected ? 0.1 : 0), in: ConcentricRectangle(cornerRadius: 16))
                 .contentShape(ConcentricRectangle(cornerRadius: 16))
-                .onHover { isHovered = $0 }
+                .onModalHover { isHovered = $0 }
         }
     }
 }

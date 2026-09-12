@@ -105,6 +105,7 @@ struct SakuraCordApp: App {
         // every previously opened main window on the next launch.
         Window("SakuraCord", id: "main") {
             RootView(model: model)
+                .windowModalInputScope()
                 .frame(minWidth: 860, minHeight: 560)
                 .onAppear {
                     appDelegate.model = model
@@ -217,6 +218,7 @@ struct SakuraCordApp: App {
                 model: model,
                 updateController: appDelegate.updateController
             )
+            .windowModalInputScope()
         }
         .defaultSize(width: 1060, height: 700)
         .windowResizability(.contentSize)

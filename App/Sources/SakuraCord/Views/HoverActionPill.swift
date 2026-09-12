@@ -61,7 +61,7 @@ struct HoverCloseButton: View {
         }
         .buttonStyle(.plain)
         .contentShape(Circle())
-        .onHover { isHovered = $0 }
+        .onModalHover { isHovered = $0 }
         .help(help)
         .accessibilityIdentifier(accessibilityIdentifier)
     }
@@ -121,7 +121,7 @@ struct HoverActionControlLabel<Content: View>: View {
             .contentShape(Circle())
             .background(backgroundColor, in: Circle())
             .contentShape(Circle())
-            .onHover {
+            .onModalHover {
                 isHovering = $0
                 onHoverChanged?($0)
             }

@@ -539,15 +539,18 @@ private struct MediaViewerTrackpadPanBridge: NSViewRepresentable {
             eventMonitor = NSEvent.addLocalMonitorForEvents(
                 matching: .scrollWheel
             ) { [weak self] event in
-                self?.handle(event) ?? event
+                guard let self else { return event }
+                return handle(event)
             }
         }
 
         private func handle(_ event: NSEvent) -> NSEvent? {
             guard isEnabled,
                   let view,
+                  WindowModalCoordinator.allowsInput(for: view),
                   let observedWindow,
                   event.window === observedWindow,
+                  WindowModalCoordinator.coordinator(for: observedWindow).allowsScroll(phase: event.phase, momentumPhase: event.momentumPhase),
                   view.bounds.contains(
                       view.convert(event.locationInWindow, from: nil)
                   )

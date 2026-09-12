@@ -9,7 +9,6 @@ struct NativeMemberListView: NSViewRepresentable {
     let customEmojiURLsByID: [String: URL]
     let profilePresentation: ProfilePresentationState?
     let isProfilePresented: Bool
-    let interactionsBlocked: Bool
     let selectMember: (Member) -> Void
     let dismissProfile: () -> Void
     let runsPerformanceAutoScroll: Bool
@@ -46,6 +45,11 @@ final class NativeMemberListScrollView: NSScrollView {
     let inputPerformanceProbe = ScrollInputPerformanceProbe(
         surface: .memberList
     )
+
+    override func scrollWheel(with event: NSEvent) {
+        guard WindowModalCoordinator.allowsInput(for: self) else { return }
+        super.scrollWheel(with: event)
+    }
 
     override func layout() {
         super.layout()

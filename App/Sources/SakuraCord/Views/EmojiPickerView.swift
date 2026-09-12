@@ -78,7 +78,7 @@ struct EmojiPickerButton: View {
                 )
         }
         .contentShape(Rectangle())
-        .onHover { hovering in
+        .onModalHover { hovering in
             guard hovering else { return }
             interaction.select(cell)
         }

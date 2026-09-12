@@ -62,7 +62,7 @@ struct ProfileDisplayName: View {
                 fontError = String(localized: "The display-name font could not be loaded.")
             }
         }
-        .onHover { hovering in
+        .onModalHover { hovering in
             guard !loops, animationIsActive == nil else { return }
             animationFinished = false
             animationStart = hovering ? .now : nil

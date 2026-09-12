@@ -424,6 +424,10 @@ extension NativeTimelineCanvasView {
         synchronizeHoverWithCurrentPointer()
     }
 
+    func modalInputDidChange() {
+        setOverlayInteractionBlocked(!WindowModalCoordinator.allowsInput(for: self), mediaViewerHighlightedMessageID: mediaViewerHighlightedMessageID)
+    }
+
     func setOverlayInteractionBlocked(
         _ isBlocked: Bool,
         mediaViewerHighlightedMessageID: MessageID?

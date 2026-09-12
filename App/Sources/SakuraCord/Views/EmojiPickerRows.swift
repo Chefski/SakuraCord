@@ -117,7 +117,7 @@ struct EmojiNativeJumpButton: View {
         .focusable(false)
         .frame(width: EmojiSidebarLayout.railWidth, height: 38)
         .contentShape(Rectangle())
-        .onHover { isHovering = $0 }
+        .onModalHover { isHovering = $0 }
         .help("Jump to native emojis")
         .accessibilityLabel("Jump to native emojis")
     }

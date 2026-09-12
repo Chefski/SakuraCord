@@ -120,7 +120,7 @@ private struct ProfilePersonalWidgetCover: View {
                 .padding(8)
             }
         }
-        .onHover { isHovered = $0 }
+        .onModalHover { isHovered = $0 }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Widget Header")
         .accessibilityActions {
@@ -224,14 +224,14 @@ private struct ProfilePersonalWidgetField: View {
                         editor.removeWidgetField(id: id, section: section, fieldID: field.id)
                     }
                 }
-                .onHover { isActionHovered = $0 }
+                .onModalHover { isActionHovered = $0 }
                 .opacity((isHovered || isActionHovered) && !isImageHovered ? 1 : 0)
                 .allowsHitTesting((isHovered || isActionHovered) && !isImageHovered)
                 .accessibilityHidden((!isHovered && !isActionHovered) || isImageHovered)
                 .offset(x: 8, y: -12)
             }
         }
-        .onHover { isHovered = $0 }
+        .onModalHover { isHovered = $0 }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Widget Field")
         .accessibilityActions {

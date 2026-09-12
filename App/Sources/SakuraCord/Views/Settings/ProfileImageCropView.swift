@@ -15,7 +15,7 @@ struct ProfileImageCropView: View {
     @State private var dragOrigin: CGPoint?
     private enum Control: Hashable { case crop, zoom }
     @FocusState private var focusedControl: Control?
-    @Environment(\.profileEditorModal) private var modal
+    @Environment(\.windowModalContext) private var modal
 
     init(image: ProfileImageSource, imageURL: URL, filename: String, purpose: ProfileImagePurpose,
          isProcessing: Bool, canApply: Bool, aspectRatio: Double? = nil, initialGeometry: ProfileImageCropGeometry? = nil,
@@ -81,10 +81,10 @@ struct ProfileImageCropView: View {
             .controlSize(.large)
             .padding(24)
         }
-        .profileEditorModalSize(width: 480)
+        .windowModalSize(width: 480)
         .defaultFocus($focusedControl, .crop)
-        .onAppear { modal?.animationState.escapeAction = cancel }
-        .onDisappear { modal?.animationState.escapeAction = nil }
+        .onAppear { modal?.escapeAction = cancel }
+        .onDisappear { modal?.escapeAction = nil }
     }
 
     private var cropViewport: some View {

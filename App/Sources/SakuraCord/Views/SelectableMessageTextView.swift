@@ -582,6 +582,7 @@ final class RichMessageNSTextView: NSTextView {
     }
 
     override func mouseMoved(with event: NSEvent) {
+        guard WindowModalCoordinator.allowsInput(for: self) else { return }
         let point = convert(event.locationInWindow, from: nil)
         updateHoveredMention(at: point)
         setHoveredLink(link(at: point)?.range)
@@ -595,6 +596,7 @@ final class RichMessageNSTextView: NSTextView {
     }
 
     override func cursorUpdate(with event: NSEvent) {
+        guard WindowModalCoordinator.allowsInput(for: self) else { return }
         let point = convert(event.locationInWindow, from: nil)
         if mentionAttachment(at: point) == nil, link(at: point) == nil {
             NSCursor.iBeam.set()

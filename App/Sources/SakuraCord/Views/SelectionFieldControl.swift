@@ -405,6 +405,7 @@ private final class SelectionFieldControlContentView<
     }
 
     override func mouseMoved(with event: NSEvent) {
+        guard WindowModalCoordinator.allowsInput(for: self) else { return }
         guard !isExpanded else { return }
         let point = convert(event.locationInWindow, from: nil)
         let next = tokens().first(where: { $0.rect.contains(point) })?.id

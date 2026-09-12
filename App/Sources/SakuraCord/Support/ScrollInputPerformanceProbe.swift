@@ -320,7 +320,7 @@ final class ScrollInputPerformanceProbe {
     }
 
     private func observe(_ event: NSEvent) {
-        guard let scrollView,
+        guard let scrollView, WindowModalCoordinator.allowsInput(for: scrollView),
               event.window === scrollView.window,
               event.scrollingDeltaX != 0 || event.scrollingDeltaY != 0
         else { return }

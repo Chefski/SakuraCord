@@ -40,7 +40,7 @@ final class MessageSearchState {
     var submittedQuery: MessageSearchQuery?
     var errorMessage: String?
     var isSearching = false
-    var isFilterSheetPresented = false
+    var isFilterModalPresented = false
     var selectedMessageID: MessageID?
     var lastCompletedLatencyMilliseconds: Int?
     var parsedInputText: String?
@@ -91,7 +91,7 @@ final class MessageSearchState {
         submittedQuery = nil
         errorMessage = nil
         isSearching = false
-        isFilterSheetPresented = false
+        isFilterModalPresented = false
         selectedMessageID = nil
         lastCompletedLatencyMilliseconds = nil
         isInputFocused = false

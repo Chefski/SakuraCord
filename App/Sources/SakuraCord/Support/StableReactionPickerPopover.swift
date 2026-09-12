@@ -41,6 +41,7 @@ struct StableReactionPickerPresenter<Content: View>: NSViewRepresentable {
         _ nsView: StableReactionPickerSourceView,
         coordinator: Coordinator
     ) {
+        nsView.modalInputChanged = nil
         coordinator.close(notifyBinding: false)
     }
 
@@ -64,9 +65,13 @@ struct StableReactionPickerPresenter<Content: View>: NSViewRepresentable {
             content: Content,
             setPresented: @escaping (Bool) -> Void
         ) {
+            sourceView.modalInputChanged = { [weak self, weak sourceView] in
+                guard let sourceView, !WindowModalCoordinator.allowsInput(for: sourceView) else { return }
+                self?.close(notifyBinding: true)
+            }
             self.setPresented = setPresented
             shouldPresent = isPresented
-            guard isPresented else {
+            guard isPresented, WindowModalCoordinator.allowsInput(for: sourceView) else {
                 close(notifyBinding: false)
                 return
             }
@@ -95,7 +100,7 @@ struct StableReactionPickerPresenter<Content: View>: NSViewRepresentable {
             behavior: NSPopover.Behavior,
             content: Content
         ) {
-            guard popover == nil,
+            guard popover == nil, WindowModalCoordinator.allowsInput(for: sourceView),
                   let window = sourceView.window,
                   !sourceView.bounds.isEmpty
             else { return }
@@ -206,7 +211,7 @@ struct StableReactionPickerPresenter<Content: View>: NSViewRepresentable {
                   let responder = returnResponder
             else { return }
             if let view = responder as? NSView,
-               view.window !== window
+               view.window !== window || !WindowModalCoordinator.allowsInput(for: view)
             {
                 return
             }
@@ -225,7 +230,10 @@ struct StableReactionPickerPresenter<Content: View>: NSViewRepresentable {
     }
 }
 
-final class StableReactionPickerSourceView: NSView {
+final class StableReactionPickerSourceView: NSView, WindowModalInputParticipant {
+    var modalInputChanged: (() -> Void)?
+    func modalInputDidChange() { modalInputChanged?() }
+
     private let snapshotAnchor = StableReactionPickerSnapshotView()
 
     func installSnapshotAnchor(in window: NSWindow) -> NSView {

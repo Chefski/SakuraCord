@@ -53,7 +53,7 @@ struct EmojiAutocompleteRow: View {
                 style: .continuous
             )
         )
-        .onHover { hovering in
+        .onModalHover { hovering in
             guard hovering else { return }
             highlight()
         }
@@ -133,7 +133,7 @@ struct ComposerActionButton: View {
         .buttonStyle(.plain)
         .background(hoverColor, in: buttonShape)
         .contentShape(buttonShape)
-        .onHover { isHovering = showsHoverBackground && $0 }
+        .onModalHover { isHovering = showsHoverBackground && $0 }
         .help(help)
     }
 
@@ -182,7 +182,7 @@ struct ComposerSendButton: View {
         .buttonStyle(.plain)
         .background(hoverColor, in: buttonShape)
         .contentShape(buttonShape)
-        .onHover { isHovering = appearance == .legacy && $0 }
+        .onModalHover { isHovering = appearance == .legacy && $0 }
         .help("Send message")
     }
 

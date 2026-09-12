@@ -114,7 +114,7 @@ private struct DirectMessageCallResizeHandle: View {
                 .onChanged { value in onChanged(value.translation.height) }
                 .onEnded { _ in onEnded() }
         )
-        .onHover { hovering in
+        .onModalHover { hovering in
             isHovering = hovering
             if hovering {
                 NSCursor.resizeUpDown.push()
@@ -282,14 +282,31 @@ private struct PrivateCallGlassButton: View {
     }
 }
 
+private struct IncomingCallModalPresentation: Identifiable {
+    let id: ChannelID
+}
+
+/// Incoming calls explicitly block the workspace until answered, declined or withdrawn.
+struct IncomingPrivateCallWindowOverlay: View {
+    let model: AppModel
+
+    var body: some View {
+        WindowModalOverlay(
+            presentation: model.incomingPrivateCalls.first.map { IncomingCallModalPresentation(id: $0.channelID) },
+            dismiss: {},
+            content: { _, context in
+            IncomingPrivateCallOverlay(model: model)
+                .onAppear { context.preventsDismissal = true }
+        })
+    }
+}
+
 struct IncomingPrivateCallOverlay: View {
     let model: AppModel
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.18)
-                .ignoresSafeArea()
-                .accessibilityHidden(true)
+            WindowModalBackdrop(opacity: 0.18)
 
             if let call = model.incomingPrivateCalls.first,
                let channel = model.snapshot?.channels.first(where: {

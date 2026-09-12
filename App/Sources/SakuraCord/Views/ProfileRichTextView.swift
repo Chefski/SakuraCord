@@ -353,6 +353,7 @@ class ProfileSelectableTextView: NSTextView {
     }
 
     override func resetCursorRects() {
+        guard WindowModalCoordinator.allowsInput(for: self) else { return }
         super.resetCursorRects()
         addCursorRect(bounds, cursor: .iBeam)
     }
@@ -367,7 +368,12 @@ class ProfileSelectableTextView: NSTextView {
 
 }
 
-private final class ProfileStatusNSTextView: ProfileSelectableTextView {
+private final class ProfileStatusNSTextView: ProfileSelectableTextView, WindowModalInputParticipant {
+    func modalInputDidChange() {
+        if !WindowModalCoordinator.allowsInput(for: self) { onHoverChange(false) }
+        updateTrackingAreas()
+    }
+
     var onHoverChange: (Bool) -> Void = { _ in }
     private var hoverTrackingArea: NSTrackingArea?
 
@@ -392,8 +398,9 @@ private final class ProfileStatusNSTextView: ProfileSelectableTextView {
     }
 
     override func mouseEntered(with event: NSEvent) {
+        guard WindowModalCoordinator.allowsInput(for: self) else { return }
         super.mouseEntered(with: event)
-        onHoverChange(true)
+        onHoverChange(WindowModalCoordinator.allowsInput(for: self))
     }
 
     override func mouseExited(with event: NSEvent) {
@@ -451,6 +458,7 @@ private final class HoverLinkTextView: ProfileSelectableTextView {
     }
 
     override func mouseMoved(with event: NSEvent) {
+        guard WindowModalCoordinator.allowsInput(for: self) else { return }
         super.mouseMoved(with: event)
         guard let layoutManager, let textContainer, let textStorage else { return }
         let point = convert(event.locationInWindow, from: nil)

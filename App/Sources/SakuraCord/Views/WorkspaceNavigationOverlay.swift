@@ -12,16 +12,11 @@ enum WorkspaceNavigationOverlay: String, Identifiable {
 struct WorkspaceNavigationOverlayView: View {
     let model: AppModel
     let presentation: WorkspaceNavigationOverlay
-    let animationState: WindowModalAnimationState
+    let animationState: WindowModalContext
 
     var body: some View {
         ZStack {
-            Color.black.opacity(
-                WindowModalVisualStyle.menuBackgroundDimmingOpacity
-            )
-                .ignoresSafeArea()
-                .contentShape(Rectangle())
-                .onTapGesture { model.dismissWorkspaceNavigationOverlay() }
+            WindowModalBackdrop(dismiss: model.dismissWorkspaceNavigationOverlay)
 
             QuickSwitcherView(model: model, animationState: animationState)
         }
@@ -98,7 +93,7 @@ private nonisolated struct QuickSwitcherIndexRequest: Hashable, Sendable {
 
 private struct QuickSwitcherView: View {
     let model: AppModel
-    let animationState: WindowModalAnimationState
+    let animationState: WindowModalContext
     @Environment(\.openSettings) private var openSettings
     @State private var query = ""
     @State private var searchIndex: ForwardDestinationSearchPolicy.Index?
@@ -167,6 +162,7 @@ private struct QuickSwitcherView: View {
             .containerShape(.rect(cornerRadius: 18, style: .continuous))
             .shadow(color: .black.opacity(0.22), radius: 24, y: 14)
             .onContinuousHover(coordinateSpace: .local) { phase in
+                guard animationState.isInputActive else { return }
                 switch phase {
                 case .active(let location):
                     if let lastPointerLocation,
@@ -808,7 +804,12 @@ private struct QuickSwitcherCanvasConfiguration {
     let activate: (QuickSwitcherResult) -> Void
 }
 
-private final class QuickSwitcherResultCanvas: NSView {
+private final class QuickSwitcherResultCanvas: NSView, WindowModalInputParticipant {
+    func modalInputDidChange() {
+        if !WindowModalCoordinator.allowsInput(for: self) { hoveredIndex = nil; pressedIndex = nil }
+        updateTrackingAreas()
+    }
+
     private static let horizontalInset: CGFloat = 8
     private static let contentInset: CGFloat = 10
     private static let topInset: CGFloat = 8
@@ -900,6 +901,7 @@ private final class QuickSwitcherResultCanvas: NSView {
 
     override func updateTrackingAreas() {
         if let trackingArea { removeTrackingArea(trackingArea) }
+        guard WindowModalCoordinator.allowsInput(for: self) else { return }
         let trackingArea = NSTrackingArea(
             rect: .zero,
             options: [.activeInKeyWindow, .inVisibleRect, .mouseMoved, .mouseEnteredAndExited],
@@ -911,6 +913,7 @@ private final class QuickSwitcherResultCanvas: NSView {
     }
 
     override func mouseMoved(with event: NSEvent) {
+        guard WindowModalCoordinator.allowsInput(for: self) else { return }
         let index = selectableIndex(at: convert(event.locationInWindow, from: nil))
         guard index != hoveredIndex else { return }
         hoveredIndex = index

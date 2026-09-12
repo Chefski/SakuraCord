@@ -38,7 +38,7 @@ private struct NativeHoverHelp: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .onHover { isPresented = $0 }
+            .onModalHover { isPresented = $0 }
             .nativeHoverPopover(isPresented: $isPresented) {
                 Text(title).font(.subheadline.weight(.medium))
                     .fixedSize().padding(.horizontal, 12).padding(.vertical, 10)

@@ -573,7 +573,7 @@ private struct VoiceStreamTile: View {
                 )
         }
         .contentShape(Rectangle())
-        .onHover { hovering in
+        .onModalHover { hovering in
             withAnimation(.snappy(duration: 0.14)) { isHovering = hovering }
         }
         .onGeometryChange(for: CGSize.self) { proxy in
@@ -793,7 +793,7 @@ private struct VoiceParticipantTile: View {
             }
         }
         .contentShape(Rectangle())
-        .onHover { hovering in
+        .onModalHover { hovering in
             withAnimation(.snappy(duration: 0.14)) { isHovering = hovering }
         }
         .onGeometryChange(for: CGSize.self) { proxy in

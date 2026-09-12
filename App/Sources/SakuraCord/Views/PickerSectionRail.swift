@@ -83,7 +83,7 @@ where Section.ID == String {
                     .fill(Color.primary.opacity(0.08))
             }
         }
-        .onHover { isHovering = $0 }
+        .onModalHover { isHovering = $0 }
         .help(help)
         .accessibilityLabel(help)
         .id(section.id)

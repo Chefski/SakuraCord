@@ -2,256 +2,16 @@ import AppKit
 import Observation
 import SwiftUI
 
-/// Installs the viewer above the window frame hierarchy so SwiftUI toolbar
-/// items cannot render or receive events over the modal surface.
-struct MediaViewerWindowOverlay: NSViewRepresentable {
+/// Media transitions stay feature-owned; window input and lifetime use the shared host.
+struct MediaViewerWindowOverlay: View {
     let presentation: NativeTimelineMediaViewerPresentation?
     let dismiss: () -> Void
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
+    var body: some View {
+        WindowModalOverlay(presentation: presentation, behavior: { _ in .contentAnimated }, dismiss: dismiss, content: { presentation, context in
+            MediaViewerWindowAnimatedContent(presentation: presentation, context: context)
+        })
     }
-
-    func makeNSView(context: Context) -> MediaViewerWindowAttachmentView {
-        let view = MediaViewerWindowAttachmentView()
-        context.coordinator.attach(to: view)
-        return view
-    }
-
-    func updateNSView(
-        _ view: MediaViewerWindowAttachmentView,
-        context: Context
-    ) {
-        context.coordinator.update(
-            presentation: presentation,
-            dismiss: dismiss
-        )
-    }
-
-    static func dismantleNSView(
-        _ view: MediaViewerWindowAttachmentView,
-        coordinator: Coordinator
-    ) {
-        coordinator.detach()
-        view.windowChanged = nil
-    }
-
-    @MainActor
-    final class Coordinator {
-        private weak var attachmentView: MediaViewerWindowAttachmentView?
-        private weak var presentationWindow: NSWindow?
-        private var overlayView: MediaViewerWindowHostingView?
-        private var presentation: NativeTimelineMediaViewerPresentation?
-        private var dismiss: (() -> Void)?
-        private var keyMonitor: Any?
-
-        func attach(to view: MediaViewerWindowAttachmentView) {
-            attachmentView = view
-            view.windowChanged = { [weak self] window in
-                self?.windowDidChange(window)
-            }
-        }
-
-        func update(
-            presentation: NativeTimelineMediaViewerPresentation?,
-            dismiss: @escaping () -> Void
-        ) {
-            self.presentation = presentation
-            self.dismiss = dismiss
-            reconcileOverlay()
-        }
-
-        func detach() {
-            presentation = nil
-            dismiss = nil
-            removeOverlay()
-            attachmentView = nil
-            presentationWindow = nil
-        }
-
-        private func windowDidChange(_ window: NSWindow?) {
-            guard presentationWindow !== window else { return }
-            removeOverlay()
-            presentationWindow = window
-            reconcileOverlay()
-        }
-
-        private func reconcileOverlay() {
-            guard let presentation,
-                  let dismiss,
-                  let window = attachmentView?.window ?? presentationWindow,
-                  let container = window.contentView?.superview
-                      ?? window.contentView
-            else {
-                overlayView?.requestDismissal(committingPresentation: false)
-                return
-            }
-
-            if overlayView?.presentationID == presentation.id,
-               overlayView?.superview === container
-            {
-                installKeyMonitorIfNeeded(for: window)
-                return
-            }
-
-            removeOverlay()
-            presentationWindow = window
-            let overlay = MediaViewerWindowHostingView(
-                presentationID: presentation.id,
-                presentation: presentation,
-                dismiss: dismiss,
-                didFinishDismissal: { [weak self] in
-                    self?.removeOverlay(ifPresentationID: presentation.id)
-                }
-            )
-            overlay.frame = container.bounds
-            overlay.autoresizingMask = [.width, .height]
-            overlay.wantsLayer = true
-            overlay.layer?.zPosition = 100_000
-            container.addSubview(overlay, positioned: .above, relativeTo: nil)
-            overlayView = overlay
-            overlay.resolveTransitionSourceFrame()
-            MediaViewerPresentationPerformanceProbe.shared
-                .reportOverlayAttached(to: overlay)
-            installKeyMonitorIfNeeded(for: window)
-            window.makeFirstResponder(overlay)
-        }
-
-        private func installKeyMonitorIfNeeded(for window: NSWindow) {
-            guard keyMonitor == nil else { return }
-            keyMonitor = NSEvent.addLocalMonitorForEvents(
-                matching: .keyDown
-            ) { [weak self, weak window] event in
-                guard event.keyCode == 53,
-                      let self,
-                      self.presentation != nil,
-                      event.window === window
-                          || NSApp.keyWindow === window
-                          || NSApp.mainWindow === window
-                else { return event }
-                self.overlayView?.requestDismissal()
-                return nil
-            }
-        }
-
-        private func removeOverlay() {
-            overlayView?.removeFromSuperview()
-            overlayView = nil
-            if let keyMonitor {
-                NSEvent.removeMonitor(keyMonitor)
-                self.keyMonitor = nil
-            }
-        }
-
-        private func removeOverlay(ifPresentationID presentationID: UUID) {
-            guard overlayView?.presentationID == presentationID else { return }
-            removeOverlay()
-        }
-    }
-}
-
-@MainActor
-final class MediaViewerWindowAttachmentView: NSView {
-    var windowChanged: ((NSWindow?) -> Void)?
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        windowChanged?(window)
-    }
-}
-
-@MainActor
-final class MediaViewerWindowHostingView: NSHostingView<AnyView> {
-    let presentationID: UUID
-    private let animationState: MediaViewerWindowAnimationState
-    private let transitionSourceFrameInWindow: CGRect?
-    private let transitionSourceVisibleFrameInWindow: CGRect?
-
-    override var acceptsFirstResponder: Bool { true }
-
-    init(
-        presentationID: UUID,
-        presentation: NativeTimelineMediaViewerPresentation,
-        dismiss: @escaping () -> Void,
-        didFinishDismissal: @escaping () -> Void
-    ) {
-        self.presentationID = presentationID
-        transitionSourceFrameInWindow =
-            presentation.transitionSource?.frameInWindow
-        transitionSourceVisibleFrameInWindow =
-            presentation.transitionSource?.visibleFrameInWindow
-        let animationState = MediaViewerWindowAnimationState(
-            hasTransitionSource: presentation.transitionSource != nil,
-            dismiss: dismiss,
-            didFinishDismissal: didFinishDismissal
-        )
-        self.animationState = animationState
-        super.init(
-            rootView: AnyView(
-                MediaViewerWindowAnimatedContent(
-                    presentation: presentation,
-                    animationState: animationState
-                )
-            )
-        )
-    }
-
-    @available(*, unavailable)
-    required init(rootView: AnyView) {
-        fatalError("init(rootView:) has not been implemented")
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    override func cancelOperation(_ sender: Any?) {
-        requestDismissal()
-    }
-
-    override func keyDown(with event: NSEvent) {
-        if event.keyCode == 53 {
-            requestDismissal()
-        } else {
-            super.keyDown(with: event)
-        }
-    }
-
-    override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if event.type == .keyDown, event.keyCode == 53 {
-            requestDismissal()
-            return true
-        }
-        return super.performKeyEquivalent(with: event)
-    }
-
-    override func layout() {
-        super.layout()
-        resolveTransitionSourceFrame()
-    }
-
-    func resolveTransitionSourceFrame() {
-        animationState.setTransitionSourceFrames(
-            frame: transitionSourceFrameInWindow.map {
-                convert($0, from: nil)
-            },
-            visibleFrame: transitionSourceVisibleFrameInWindow.map {
-                convert($0, from: nil)
-            }
-        )
-    }
-
-    func requestDismissal(
-        committingPresentation: Bool = true,
-        interactively: Bool = false
-    ) {
-        animationState.dismiss(
-            committingPresentation: committingPresentation,
-            interactively: interactively
-        )
-    }
-
 }
 
 @MainActor
@@ -260,20 +20,11 @@ private final class MediaViewerWindowAnimationState {
     private(set) var isVisible = false
     private(set) var transitionSourceFrame: CGRect?
     private(set) var transitionSourceVisibleFrame: CGRect?
-    private var dismissalTask: Task<Void, Never>?
     private var reducesMotion = false
     private let hasTransitionSource: Bool
-    private let dismissPresentation: () -> Void
-    private let didFinishDismissal: () -> Void
 
-    init(
-        hasTransitionSource: Bool,
-        dismiss: @escaping () -> Void,
-        didFinishDismissal: @escaping () -> Void
-    ) {
+    init(hasTransitionSource: Bool) {
         self.hasTransitionSource = hasTransitionSource
-        dismissPresentation = dismiss
-        self.didFinishDismissal = didFinishDismissal
     }
 
     func setTransitionSourceFrames(
@@ -288,7 +39,7 @@ private final class MediaViewerWindowAnimationState {
     }
 
     func present(reducesMotion: Bool) {
-        guard !isVisible, dismissalTask == nil else { return }
+        guard !isVisible else { return }
         self.reducesMotion = reducesMotion
         withAnimation(
             reducesMotion
@@ -310,11 +61,7 @@ private final class MediaViewerWindowAnimationState {
             .reportAnimationTransactionStarted()
     }
 
-    func dismiss(
-        committingPresentation: Bool,
-        interactively: Bool = false
-    ) {
-        guard dismissalTask == nil else { return }
+    func dismiss(interactively: Bool) -> TimeInterval {
         let duration = if reducesMotion {
             0.12
         } else if hasTransitionSource {
@@ -339,46 +86,84 @@ private final class MediaViewerWindowAnimationState {
         ) {
             isVisible = false
         }
-        dismissalTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(duration + 0.01))
-            guard !Task.isCancelled else { return }
-            if committingPresentation {
-                dismissPresentation()
-            }
-            didFinishDismissal()
-        }
+        return duration + 0.01
     }
 }
 
 private struct MediaViewerWindowAnimatedContent: View {
     let presentation: NativeTimelineMediaViewerPresentation
-    let animationState: MediaViewerWindowAnimationState
+    let context: WindowModalContext
+    @State private var animationState: MediaViewerWindowAnimationState
     @Environment(\.accessibilityReduceMotion) private var reducesMotion
+
+    init(presentation: NativeTimelineMediaViewerPresentation, context: WindowModalContext) {
+        self.presentation = presentation
+        self.context = context
+        _animationState = State(initialValue: MediaViewerWindowAnimationState(hasTransitionSource: presentation.transitionSource != nil))
+    }
 
     var body: some View {
         MediaViewer(
             presentation: presentation,
             isVisible: animationState.isVisible,
-            transitionSourceFrame: reducesMotion
-                ? nil
-                : animationState.transitionSourceFrame,
-            transitionSourceVisibleFrame: reducesMotion
-                ? nil
-                : animationState.transitionSourceVisibleFrame,
-            close: {
-                animationState.dismiss(committingPresentation: true)
-            },
-            closeInteractively: {
-                animationState.dismiss(
-                    committingPresentation: true,
-                    interactively: true
-                )
-            }
+            transitionSourceFrame: reducesMotion ? nil : animationState.transitionSourceFrame,
+            transitionSourceVisibleFrame: reducesMotion ? nil : animationState.transitionSourceVisibleFrame,
+            close: { context.dismiss() },
+            closeInteractively: { context.dismiss(interactively: true) }
         )
+        .background {
+            MediaViewerTransitionFrameReader(presentation: presentation, animationState: animationState)
+        }
         .onAppear {
+            context.dismissalTransition = { [animationState] interactively in
+                animationState.dismiss(interactively: interactively)
+            }
             Task { @MainActor in
                 await Task.yield()
+                guard context.isVisible else { return }
                 animationState.present(reducesMotion: reducesMotion)
+            }
+        }
+        .onDisappear { context.dismissalTransition = nil }
+    }
+}
+
+/// Convert the thumbnail source into the same full-window coordinate space used before.
+private struct MediaViewerTransitionFrameReader: NSViewRepresentable {
+    let presentation: NativeTimelineMediaViewerPresentation
+    let animationState: MediaViewerWindowAnimationState
+
+    func makeNSView(context: Context) -> Reader { Reader() }
+    func updateNSView(_ view: Reader, context: Context) {
+        view.sourceFrame = presentation.transitionSource?.frameInWindow
+        view.sourceVisibleFrame = presentation.transitionSource?.visibleFrameInWindow
+        view.animationState = animationState
+        view.resolveFrames()
+    }
+
+    final class Reader: NSView {
+        var sourceFrame: CGRect?
+        var sourceVisibleFrame: CGRect?
+        var animationState: MediaViewerWindowAnimationState?
+        private weak var reportedHost: NSView?
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); resolveFrames() }
+        override func layout() { super.layout(); resolveFrames() }
+        func resolveFrames() {
+            var ancestor = superview
+            while let view = ancestor {
+                if let host = view as? WindowModalHostingView {
+                    animationState?.setTransitionSourceFrames(
+                        frame: sourceFrame.map { host.convert($0, from: nil) },
+                        visibleFrame: sourceVisibleFrame.map { host.convert($0, from: nil) }
+                    )
+                    if reportedHost !== host {
+                        reportedHost = host
+                        MediaViewerPresentationPerformanceProbe.shared.reportOverlayAttached(to: host)
+                    }
+                    return
+                }
+                ancestor = view.superview
             }
         }
     }

@@ -31,7 +31,7 @@ struct ComposerSlowmodeIndicator: View {
                         LinearKeyframe(0, duration: 0.18)
                     }
                     .contentShape(Rectangle())
-                    .onHover { isHovering = $0 }
+                    .onModalHover { isHovering = $0 }
                     .nativeHoverPopover(isPresented: $isHovering) {
                         Text("Slowmode is enabled. Members can send one message every \(Self.intervalDescription(configuration.interval)).")
                             .font(.callout)

@@ -5,7 +5,7 @@ import SakuraCordModels
 import SwiftUI
 
 @MainActor
-final class NativeMemberListCanvasView: NSView {
+final class NativeMemberListCanvasView: NSView, WindowModalInputParticipant {
     nonisolated struct Header: Equatable, Sendable {
         let id: MemberSection.SectionIdentifier
         let title: String
@@ -277,6 +277,7 @@ final class NativeMemberListCanvasView: NSView {
         }
     }
     override func mouseMoved(with event: NSEvent) {
+        guard WindowModalCoordinator.allowsInput(for: self) else { return }
         guard !isScrolling, !interactionsBlocked else { return }
         let newIndex = index(at: convert(event.locationInWindow, from: nil))
         guard newIndex != hoveredIndex else { return }

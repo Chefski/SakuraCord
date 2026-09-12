@@ -28,9 +28,9 @@ struct ProfileCustomStatusControl: View {
                 .offset(y: -20)
             }
         }
-        .onHover { isHovered = $0 }
+        .onModalHover { isHovered = $0 }
         .disabled(isClearing)
-        .profileEditorOverlay(isPresented: $isPresented) { ProfileCustomStatusEditor(editor: editor, profile: profile) }
+        .windowModal(isPresented: $isPresented) { ProfileCustomStatusEditor(editor: editor, profile: profile) }
         .alert("Couldn’t Update Status", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) { errorMessage = nil }
         } message: { Text(errorMessage ?? "") }
@@ -48,7 +48,7 @@ struct ProfileCustomStatusControl: View {
 private struct ProfileCustomStatusEditor: View {
     let editor: ProfileEditorState
     let profile: UserProfile
-    @Environment(\.profileEditorModal) private var dismiss
+    @Environment(\.windowModalContext) private var dismiss
     @State private var text: String
     @State private var emojiID: String?
     @State private var emojiName: String?
@@ -99,7 +99,7 @@ private struct ProfileCustomStatusEditor: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Status emoji: \(emojiName ?? String(localized: "not set", bundle: #bundle))")
-                    .profileEditorOverlay(isPresented: $showsEmojiPicker, title: "Emoji") {
+                    .windowModal(isPresented: $showsEmojiPicker, title: "Emoji") {
                         EmojiPickerView(model: editor.model, useCase: .customStatus, dismiss: { showsEmojiPicker = false }, select: { activation in
                             switch activation.selection {
                             case let .native(value): emojiID = nil; emojiName = value
@@ -155,9 +155,9 @@ private struct ProfileCustomStatusEditor: View {
                 .buttonStyle(.borderedProminent).controlSize(.large).keyboardShortcut(.defaultAction)
             }
         }
-        .padding(24).profileEditorModalSize(width: 460, height: 520)
+        .padding(24).windowModalSize(width: 460, height: 520)
         .disabled(isSaving)
-        .profileEditorDismissDisabled(isSaving)
+        .windowModalDismissDisabled(isSaving)
         .onExitCommand { if !isSaving { dismiss?() } }
         .onAppear { isTextFocused = true }
     }

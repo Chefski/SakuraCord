@@ -83,7 +83,7 @@ private struct ComposerReplyMentionButton: View {
         }
         .buttonStyle(.plain)
         .contentShape(Capsule())
-        .onHover { isHovered = $0 }
+        .onModalHover { isHovered = $0 }
         .help(
             mentionsAuthor
                 ? "Disable reply notification"

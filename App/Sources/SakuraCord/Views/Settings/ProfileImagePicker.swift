@@ -10,7 +10,7 @@ struct ProfileImagePicker: View {
     let purpose: ProfileImagePurpose
     let apply: (ProfileAvatarSelection, URL) -> Void
 
-    @Environment(\.profileEditorModal) private var dismiss
+    @Environment(\.windowModalContext) private var dismiss
     @State private var showsFileImporter = false
     @State private var showsGIFs = false
     @State private var source: ProfileImageSource?
@@ -27,7 +27,7 @@ struct ProfileImagePicker: View {
 
     var body: some View {
         pickerContent
-        .profileEditorDismissDisabled(isBusy)
+        .windowModalDismissDisabled(isBusy)
         .fileImporter(isPresented: $showsFileImporter, allowedContentTypes: Self.allowedImageTypes) { result in
             switch result {
             case let .success(url): loadFile(url)
@@ -37,7 +37,7 @@ struct ProfileImagePicker: View {
         .alert("Unable to Use Image", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) { errorMessage = nil }
         } message: { Text(errorMessage ?? "") }
-        .profileEditorOverlay(item: $deleteCandidate) { entry in
+        .windowModal(item: $deleteCandidate) { entry in
             VStack(alignment: .leading, spacing: 16) {
                 HStack {
                     Text("Remove Recent Avatar?", bundle: #bundle).font(.title2.bold())
@@ -53,7 +53,7 @@ struct ProfileImagePicker: View {
                     Button("Remove", role: .destructive) { delete(entry) }.buttonStyle(.borderedProminent)
                 }
             }
-            .padding(24).profileEditorModalSize(width: 400)
+            .padding(24).windowModalSize(width: 400)
         }
         .task {
             guard purpose == .avatar else { return }
@@ -150,7 +150,7 @@ struct ProfileImagePicker: View {
             }
         }
         .padding(24)
-        .profileEditorModalSize(width: 480)
+        .windowModalSize(width: 480)
         .disabled(isBusy)
         .overlay { if isBusy { ProgressView().padding().glassEffect() } }
     }
@@ -272,7 +272,7 @@ private struct ProfileRecentAvatarButton: View {
                     .labelStyle(.iconOnly).buttonStyle(.bordered).buttonBorderShape(.circle).controlSize(.mini)
             }
         }
-        .onHover { isHovered = $0 }
+        .onModalHover { isHovered = $0 }
         .help(entry.description)
         .accessibilityLabel(entry.description)
         .contextMenu { Button("Remove Avatar", systemImage: "trash", role: .destructive, action: remove) }

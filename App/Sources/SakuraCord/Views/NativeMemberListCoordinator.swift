@@ -104,7 +104,7 @@ final class NativeMemberListCoordinator: NSObject {
             self?.parent.selectMember(member)
         }
         canvas.openProfile = parent.openProfile
-        canvas.setInteractionsBlocked(parent.interactionsBlocked)
+        canvas.modalInputDidChange()
         AppPerformanceSignposts.measureSync("MemberListCanvasUpdate") {
             canvas.updatePresentation(
                 customEmojiURLsByID: parent.customEmojiURLsByID,

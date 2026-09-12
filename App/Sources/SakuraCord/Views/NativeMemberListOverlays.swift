@@ -12,7 +12,7 @@ extension NativeMemberListCanvasView {
         if scrolling {
             hoveredIndex = nil
             removeRowOverlay()
-        } else if let window {
+        } else if !interactionsBlocked, let window {
             let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
             hoveredIndex = index(at: point)
         }
@@ -280,6 +280,10 @@ extension NativeMemberListCanvasView {
     }
 
     func installRowOverlayIfNeeded() {
+        guard !interactionsBlocked, WindowModalCoordinator.allowsInput(for: self) else {
+            removeRowOverlay()
+            return
+        }
         installProfileAnchorIfNeeded()
         let requestedIndex: Int? = if isScrolling {
             nil

@@ -16,7 +16,7 @@ nonisolated enum WindowModalAnimationTiming {
 }
 
 nonisolated enum WindowModalVisualStyle {
-    static let menuBackgroundDimmingOpacity = 0.70
+    static let standardBackdropOpacity = 0.70
     static let mediaViewerBackgroundDimmingOpacity = 0.91
 }
 
@@ -24,6 +24,9 @@ nonisolated struct WindowModalBehavior: Sendable {
     var animates: Bool
     var capturesEscape: Bool
     var retainsHostWhenDismissed: Bool = false
+    var contentOwnsAnimation: Bool = false
+
+    static let contentAnimated = WindowModalBehavior(animates: false, capturesEscape: true, contentOwnsAnimation: true)
 
     static let standard = WindowModalBehavior(animates: true, capturesEscape: true)
     static let instantKeyboardOwned = WindowModalBehavior(
@@ -40,28 +43,25 @@ struct WindowModalOverlay<Presentation: Identifiable, Content: View>: NSViewRepr
 where Presentation.ID: Hashable {
     let presentation: Presentation?
     let preloadedPresentation: Presentation?
-    let zPosition: CGFloat
     let behavior: (Presentation) -> WindowModalBehavior
     let dismiss: () -> Void
     @ViewBuilder let content: (
         Presentation,
-        WindowModalAnimationState
+        WindowModalContext
     ) -> Content
 
     init(
         presentation: Presentation?,
         preloadedPresentation: Presentation? = nil,
-        zPosition: CGFloat = 100_000,
         behavior: @escaping (Presentation) -> WindowModalBehavior = { _ in .standard },
         dismiss: @escaping () -> Void,
         @ViewBuilder content: @escaping (
             Presentation,
-            WindowModalAnimationState
+            WindowModalContext
         ) -> Content
     ) {
         self.presentation = presentation
         self.preloadedPresentation = preloadedPresentation
-        self.zPosition = zPosition
         self.behavior = behavior
         self.dismiss = dismiss
         self.content = content
@@ -84,7 +84,6 @@ where Presentation.ID: Hashable {
         context.coordinator.update(
             presentation: presentation,
             preloadedPresentation: preloadedPresentation,
-            zPosition: zPosition,
             behavior: behavior,
             dismiss: dismiss,
             content: content
@@ -106,12 +105,9 @@ where Presentation.ID: Hashable {
         private var overlayView: WindowModalHostingView?
         private var presentation: Presentation?
         private var preloadedPresentation: Presentation?
-        private var zPosition: CGFloat = 100_000
         private var behavior: ((Presentation) -> WindowModalBehavior)?
         private var dismiss: (() -> Void)?
-        private var content: ((Presentation, WindowModalAnimationState) -> Content)?
-        private var keyMonitor: Any?
-        private weak var previousFirstResponder: NSResponder?
+        private var content: ((Presentation, WindowModalContext) -> Content)?
 
         func attach(to view: WindowModalAttachmentView) {
             attachmentView = view
@@ -123,15 +119,13 @@ where Presentation.ID: Hashable {
         func update(
             presentation: Presentation?,
             preloadedPresentation: Presentation?,
-            zPosition: CGFloat,
             behavior: @escaping (Presentation) -> WindowModalBehavior,
             dismiss: @escaping () -> Void,
-            content: @escaping (Presentation, WindowModalAnimationState) -> Content
+            content: @escaping (Presentation, WindowModalContext) -> Content
         ) {
             self.presentation = presentation
             self.preloadedPresentation = preloadedPresentation
-            self.zPosition = zPosition
-            self.behavior = behavior
+                self.behavior = behavior
             self.dismiss = dismiss
             self.content = content
             reconcileOverlay()
@@ -183,20 +177,12 @@ where Presentation.ID: Hashable {
                 overlayView.updateDismissCallback(dismiss)
                 if isPresented {
                     if !overlayView.isPresented {
-                        previousFirstResponder = window.firstResponder
                         overlayView.present()
-                        window.makeFirstResponder(overlayView)
                     }
-                    reconcileKeyMonitor(
-                        for: window,
-                        capturesEscape: modalBehavior.capturesEscape
-                    )
                 } else {
                     if overlayView.isPresented {
                         overlayView.hideImmediately()
-                        restorePreviousFirstResponder(in: window)
                     }
-                    reconcileKeyMonitor(for: window, capturesEscape: false)
                 }
                 return
             }
@@ -217,78 +203,25 @@ where Presentation.ID: Hashable {
             overlay.frame = container.bounds
             overlay.autoresizingMask = [.width, .height]
             overlay.wantsLayer = true
-            overlay.layer?.zPosition = zPosition
             container.addSubview(overlay, positioned: .above, relativeTo: nil)
             overlayView = overlay
             if isPresented {
-                previousFirstResponder = window.firstResponder
-                reconcileKeyMonitor(
-                    for: window,
-                    capturesEscape: modalBehavior.capturesEscape
-                )
                 overlay.present()
-                window.makeFirstResponder(overlay)
             } else {
                 overlay.hideImmediately()
             }
         }
 
-        private func restorePreviousFirstResponder(in window: NSWindow) {
-            if let previousFirstResponder,
-               previousFirstResponder !== overlayView
-            {
-                window.makeFirstResponder(previousFirstResponder)
-            } else {
-                window.makeFirstResponder(window.contentView)
-            }
-            self.previousFirstResponder = nil
-        }
-
-        private func reconcileKeyMonitor(for window: NSWindow, capturesEscape: Bool) {
-            guard capturesEscape else {
-                if let keyMonitor {
-                    NSEvent.removeMonitor(keyMonitor)
-                    self.keyMonitor = nil
-                }
-                return
-            }
-            guard keyMonitor == nil else { return }
-            keyMonitor = NSEvent.addLocalMonitorForEvents(
-                matching: .keyDown
-            ) { [weak self, weak window] event in
-                guard WindowModalKeyPolicy.isEscape(
-                    keyCode: event.keyCode,
-                    characters: event.charactersIgnoringModifiers
-                ),
-                      let self,
-                      self.presentation != nil,
-                      self.overlayView?.isTopmostPresentedOverlay == true,
-                      event.window === window || event.window == nil && NSApp.keyWindow === window
-                else { return event }
-                // A nested popover owns Escape even when this modal's local
-                // monitor receives the event before the popover's monitor.
-                if let window, PopoverEscapeKeyCoordinator.shared.dismissTopmostPopover(in: window) {
-                    return nil
-                }
-                self.overlayView?.animationState.handleEscape()
-                return nil
-            }
-        }
-
         private func removeOverlay() {
             overlayView?.cancelPendingDismissal()
+            overlayView?.unregisterInput()
             overlayView?.removeFromSuperview()
             overlayView = nil
-            previousFirstResponder = nil
-            if let keyMonitor {
-                NSEvent.removeMonitor(keyMonitor)
-                self.keyMonitor = nil
-            }
+
         }
 
         private func removeOverlay(ifPresentationID presentationID: AnyHashable) {
             guard overlayView?.presentationID == presentationID else { return }
-            if let window = presentationWindow { restorePreviousFirstResponder(in: window) }
             removeOverlay()
         }
     }
@@ -307,17 +240,22 @@ final class WindowModalAttachmentView: NSView {
 @MainActor
 final class WindowModalHostingView: NSHostingView<AnyView> {
     let presentationID: AnyHashable
-    let animationState: WindowModalAnimationState
+    let animationState: WindowModalContext
     private let behavior: WindowModalBehavior
     private let reducesMotion: Bool
     private var isModalPresented = false
     var isPresented: Bool { isModalPresented }
 
+    var capturesEscape: Bool { behavior.capturesEscape }
     var isTopmostPresentedOverlay: Bool {
-        guard isPresented, let siblings = superview?.subviews else { return false }
-        let overlays = siblings.compactMap { $0 as? WindowModalHostingView }.filter(\.isPresented)
-        let highest = overlays.map { $0.layer?.zPosition ?? 0 }.max()
-        return overlays.last(where: { $0.layer?.zPosition == highest }) === self
+        guard isPresented, let window else { return false }
+        return WindowModalCoordinator.coordinator(for: window).topmost === self
+    }
+
+    func unregisterInput() {
+        isModalPresented = false
+        guard let window else { return }
+        WindowModalCoordinator.coordinator(for: window).remove(self)
     }
 
     override var acceptsFirstResponder: Bool { true }
@@ -327,7 +265,7 @@ final class WindowModalHostingView: NSHostingView<AnyView> {
         dismiss: @escaping () -> Void,
         didFinishDismissal: @escaping () -> Void,
         behavior: WindowModalBehavior,
-        content: (WindowModalAnimationState) -> AnyView
+        content: (WindowModalContext) -> AnyView
     ) {
         self.presentationID = presentationID
         let reducesMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
@@ -336,7 +274,7 @@ final class WindowModalHostingView: NSHostingView<AnyView> {
                 systemReduceMotion: false
             )
         self.reducesMotion = reducesMotion
-        let animationState = WindowModalAnimationState(
+        let animationState = WindowModalContext(
             dismiss: dismiss,
             didFinishDismissal: didFinishDismissal,
             animates: behavior.animates,
@@ -345,10 +283,10 @@ final class WindowModalHostingView: NSHostingView<AnyView> {
         self.animationState = animationState
         self.behavior = behavior
         super.init(
-            rootView: content(animationState)
+            rootView: AnyView(WindowModalHostedContent(context: animationState, content: content(animationState)))
         )
-        animationState.requestDismissal = { [weak self] commitsPresentation in
-            self?.requestDismissal(committingPresentation: commitsPresentation)
+        animationState.requestDismissal = { [weak self] commitsPresentation, interactively in
+            self?.requestDismissal(committingPresentation: commitsPresentation, interactively: interactively)
         }
         alphaValue = behavior.animates && !reducesMotion ? 0 : 1
         setAccessibilityElement(true)
@@ -401,9 +339,12 @@ final class WindowModalHostingView: NSHostingView<AnyView> {
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        guard isModalPresented, bounds.contains(point) else { return nil }
+        guard isTopmostPresentedOverlay, bounds.contains(point) else { return nil }
         return super.hitTest(point) ?? self
     }
+
+    // Unhandled wheel input ends here instead of escaping the modal responder chain.
+    override func scrollWheel(with event: NSEvent) {}
 
     func updateDismissCallback(_ dismiss: @escaping () -> Void) {
         animationState.updateDismissCallback(dismiss)
@@ -414,6 +355,7 @@ final class WindowModalHostingView: NSHostingView<AnyView> {
         isModalPresented = true
         isHidden = false
         setAccessibilityHidden(false)
+        if let window { WindowModalCoordinator.coordinator(for: window).present(self) }
         guard behavior.animates,
               !reducesMotion
         else {
@@ -423,7 +365,7 @@ final class WindowModalHostingView: NSHostingView<AnyView> {
         }
         Task { @MainActor [weak self] in
             await Task.yield()
-            guard let self else { return }
+            guard let self, isModalPresented, superview != nil, animationState.canBeginDismissal else { return }
             animationState.present()
             await NSAnimationContext.runAnimationGroup { context in
                 context.duration = WindowModalAnimationTiming.openingSeconds
@@ -446,6 +388,7 @@ final class WindowModalHostingView: NSHostingView<AnyView> {
         // both the hosting view and its root content are accessibility-hidden.
         isHidden = false
         isModalPresented = false
+        unregisterInput()
         setAccessibilityHidden(true)
         animationState.hideImmediately()
         needsLayout = true
@@ -453,9 +396,11 @@ final class WindowModalHostingView: NSHostingView<AnyView> {
         AppPerformanceSignposts.reportQuickSwitcherClosed()
     }
 
-    func requestDismissal(committingPresentation: Bool = true) {
+    func requestDismissal(committingPresentation: Bool = true, interactively: Bool = false) {
         guard animationState.canBeginDismissal, !committingPresentation || !animationState.preventsDismissal else { return }
-        if !behavior.animates || reducesMotion {
+        if behavior.contentOwnsAnimation {
+            // The media viewer supplies its existing transition and completion delay.
+        } else if !behavior.animates || reducesMotion {
             alphaValue = 0
         } else {
             NSAnimationContext.runAnimationGroup { context in
@@ -464,7 +409,7 @@ final class WindowModalHostingView: NSHostingView<AnyView> {
                 animator().alphaValue = 0
             }
         }
-        animationState.beginDismissal(committingPresentation: committingPresentation)
+        animationState.beginDismissal(committingPresentation: committingPresentation, interactively: interactively)
     }
 
     func cancelPendingDismissal() {
@@ -474,10 +419,13 @@ final class WindowModalHostingView: NSHostingView<AnyView> {
 
 @MainActor
 @Observable
-final class WindowModalAnimationState {
+final class WindowModalContext {
+    var isInputActive = false
     var preventsDismissal = false
+    /// Starts a feature-owned closing transition and returns its removal delay.
+    var dismissalTransition: ((Bool) -> TimeInterval)?
     var escapeAction: (() -> Void)?
-    fileprivate var requestDismissal: ((Bool) -> Void)?
+    fileprivate var requestDismissal: ((Bool, Bool) -> Void)?
     private(set) var isVisible = false
     private var dismissalTask: Task<Void, Never>?
     private var dismissPresentation: () -> Void
@@ -501,8 +449,13 @@ final class WindowModalAnimationState {
         dismissPresentation = dismiss
     }
 
-    func dismiss(committingPresentation: Bool) {
-        requestDismissal?(committingPresentation)
+    func dismiss(committingPresentation: Bool = true, interactively: Bool = false) {
+        requestDismissal?(committingPresentation, interactively)
+    }
+
+    func callAsFunction(allowsDisabled: Bool = false) {
+        if allowsDisabled { preventsDismissal = false }
+        dismiss()
     }
 
     func handleEscape() {
@@ -520,8 +473,9 @@ final class WindowModalAnimationState {
         }
     }
 
-    fileprivate func beginDismissal(committingPresentation: Bool) {
+    fileprivate func beginDismissal(committingPresentation: Bool, interactively: Bool) {
         guard dismissalTask == nil else { return }
+        let customDelay = dismissalTransition?(interactively)
         let reduceMotion = !animates || self.reducesMotion
         if reduceMotion {
             isVisible = false
@@ -531,11 +485,8 @@ final class WindowModalAnimationState {
             }
         }
         dismissalTask = Task { @MainActor in
-            if !reduceMotion {
-                try? await Task.sleep(
-                    for: .milliseconds(WindowModalAnimationTiming.removalDelayMilliseconds)
-                )
-            }
+            let delay = customDelay ?? (reduceMotion ? 0 : Double(WindowModalAnimationTiming.removalDelayMilliseconds) / 1_000)
+            if delay > 0 { try? await Task.sleep(for: .seconds(delay)) }
             guard !Task.isCancelled else { return }
             if committingPresentation {
                 dismissPresentation()
@@ -557,5 +508,17 @@ final class WindowModalAnimationState {
     func cancelPendingDismissal() {
         dismissalTask?.cancel()
         dismissalTask = nil
+    }
+}
+
+private struct WindowModalHostedContent: View {
+    let context: WindowModalContext
+    let content: AnyView
+
+    var body: some View {
+        content
+            .environment(\.windowModalInputAllowed, context.isInputActive)
+            .allowsHitTesting(context.isInputActive)
+            .accessibilityHidden(!context.isInputActive)
     }
 }

@@ -5,7 +5,7 @@ import SwiftUI
 struct ForwardMessageOverlay: View {
     let model: AppModel
     let message: Message
-    let animationState: WindowModalAnimationState
+    let animationState: WindowModalContext
     let dismiss: () -> Void
     @State private var query = ""
     @State private var context = ""
@@ -119,12 +119,7 @@ struct ForwardMessageOverlay: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                Color.black.opacity(
-                    WindowModalVisualStyle.menuBackgroundDimmingOpacity
-                )
-                    .ignoresSafeArea()
-                    .contentShape(Rectangle())
-                    .onTapGesture(perform: dismiss)
+                WindowModalBackdrop(dismiss: dismiss)
                 GlassEffectContainer(spacing: 0) {
                     VStack(spacing: 0) {
                         header

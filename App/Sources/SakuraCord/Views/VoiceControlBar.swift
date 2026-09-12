@@ -269,7 +269,7 @@ struct VoiceSidebarControlPanel: View {
                 )
             }
             .buttonStyle(.plain)
-            .onHover { hovering in
+            .onModalHover { hovering in
                 withAnimation(.snappy(duration: 0.14)) {
                     isHeaderHovering = hovering
                 }

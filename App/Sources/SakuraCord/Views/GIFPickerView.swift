@@ -441,7 +441,7 @@ private struct GIFPickerBackButton: View {
         }
         .buttonStyle(.plain)
         .contentShape(Circle())
-        .onHover { isHovered = $0 }
+        .onModalHover { isHovered = $0 }
         .help("All GIF categories")
         .accessibilityIdentifier("gif-picker-back")
     }
@@ -504,7 +504,7 @@ private struct GIFCategoryButton: View {
         }
         .scaleEffect(hovering ? 1.012 : 1)
         .animation(.snappy(duration: 0.16), value: hovering)
-        .onHover { hovering = $0 }
+        .onModalHover { hovering = $0 }
     }
 }
 

@@ -45,7 +45,7 @@ struct ProfilesSettingsPage: View {
             }
         }
         .environment(\.profileAnimationsPaused, picker != nil)
-        .profileEditorOverlay(item: $picker) { selection in
+        .windowModal(item: $picker) { selection in
             if let profile = editor.preview {
                 ProfileEditorPickerContent(model: model, editor: editor, profile: profile, selection: selection)
             }

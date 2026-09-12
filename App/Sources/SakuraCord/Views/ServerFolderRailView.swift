@@ -104,7 +104,7 @@ struct ServerFolderRailView: View {
         .anchorPreference(key: ServerRailHoverPreferenceKey.self, value: .bounds) { bounds in
             isHovering ? ServerRailHoverItem(name: displayName, bounds: bounds) : nil
         }
-        .onHover { isHovering = $0 }
+        .onModalHover { isHovering = $0 }
         .animation(.snappy(duration: 0.18), value: isHovering)
     }
 

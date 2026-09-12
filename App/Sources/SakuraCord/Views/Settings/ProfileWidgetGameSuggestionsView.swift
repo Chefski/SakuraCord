@@ -62,7 +62,7 @@ private struct ProfileSuggestedGameButton: View {
                     }
                 }
         }
-        .buttonStyle(.plain).focused($isFocused).onHover { isHovered = $0 }
+        .buttonStyle(.plain).focused($isFocused).onModalHover { isHovered = $0 }
         .accessibilityLabel("Add \(game?.name ?? "game")")
         .help("Add \(game?.name ?? "game")")
     }

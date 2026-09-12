@@ -50,7 +50,7 @@ struct ProfileWidgetsBoard: View {
         }
         .frame(maxWidth: .infinity)
         .task(id: editor.scope) { await editor.loadWidgetSuggestionsIfNeeded() }
-        .profileEditorOverlay(isPresented: $showsAddPicker) {
+        .windowModal(isPresented: $showsAddPicker) {
             ProfileAddWidgetPicker(editor: editor) { configuration in
                 editor.addWidget(ProfileWidget(content: .application(id: configuration.applicationID)))
                 let connection = editor.widgetResources?.connections?[configuration.connectionApplicationID ?? configuration.applicationID]
@@ -59,7 +59,7 @@ struct ProfileWidgetsBoard: View {
                 }
             }
         }
-        .profileEditorOverlay(item: $removingWidget) { widget in
+        .windowModal(item: $removingWidget) { widget in
             ProfileRemoveWidgetConfirmation(widget: widget, resources: editor.widgetResources) {
                 editor.removeWidget(id: widget.id); removingWidget = nil
             }
@@ -95,7 +95,7 @@ private struct ProfileRemoveWidgetConfirmation: View {
     let widget: ProfileWidget
     let resources: ProfileWidgetResources?
     let remove: () -> Void
-    @Environment(\.profileEditorModal) private var dismiss
+    @Environment(\.windowModalContext) private var dismiss
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -114,6 +114,6 @@ private struct ProfileRemoveWidgetConfirmation: View {
                 Button("Remove Widget", role: .destructive, action: remove).buttonStyle(.borderedProminent)
             }
         }
-        .padding(24).profileEditorModalSize(width: 440)
+        .padding(24).windowModalSize(width: 440)
     }
 }

@@ -13,7 +13,7 @@ struct ProfileServerTagPicker: View {
                 ProfileServerTag(identity: identity, showsDisclosure: true, isHighlighted: isHovered || isPresented)
             }
             .buttonStyle(.plain)
-            .onHover { isHovered = $0 }
+            .onModalHover { isHovered = $0 }
             .accessibilityLabel("Server Tag")
             .accessibilityValue(identity?.tag ?? String(localized: "No Server Tag", bundle: #bundle))
             .escapeDismissiblePopover(isPresented: $isPresented) {

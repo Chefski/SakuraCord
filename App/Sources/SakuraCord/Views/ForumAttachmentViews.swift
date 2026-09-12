@@ -123,7 +123,7 @@ struct ForumComposerAttachmentControl: View {
 
             if isExpanded, attachments.count < 10 {
                 addAttachmentButton
-                    .onHover { hovering in
+                    .onModalHover { hovering in
                         if hovering {
                             clearHoveredAttachment()
                         }
@@ -150,7 +150,7 @@ struct ForumComposerAttachmentControl: View {
             hoveredAttachmentActions
         }
         .contentShape(ConcentricRectangle(cornerRadius: 18, style: .continuous))
-        .onHover { hovering in
+        .onModalHover { hovering in
             isExpanded = hovering
             if !hovering {
                 clearHoveredAttachment()
@@ -212,7 +212,7 @@ struct ForumComposerAttachmentControl: View {
                     x: frame.maxX - hoverPillWidth + 8,
                     y: frame.minY - 8
                 )
-                .onHover { hovering in
+                .onModalHover { hovering in
                     isHoveringAttachmentActions = hovering
                     if hovering {
                         hoverDismissalTask?.cancel()
@@ -373,7 +373,7 @@ private struct ForumComposerAttachmentTile: View {
                 .stroke(.separator, lineWidth: 1)
         }
         .contentShape(ConcentricRectangle(cornerRadius: 14, style: .continuous))
-        .onHover(perform: hoverChanged)
+        .onModalHover(perform: hoverChanged)
         .help(attachment.filename)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(attachment.filename)

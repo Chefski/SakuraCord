@@ -287,7 +287,7 @@ private struct ApplicationCommandPickerRow: View {
                 .fill(isSelected ? Color.primary.opacity(0.13) : .clear)
         }
         .contentShape(Rectangle())
-        .onHover { hovering in
+        .onModalHover { hovering in
             guard hovering else { return }
             highlight()
         }
@@ -982,7 +982,7 @@ private struct CommandEntityResolver: View {
                                 )
                             }
                             .buttonStyle(.plain)
-                            .onHover { hovering in
+                            .onModalHover { hovering in
                                 if hovering { selectedIndex = index }
                             }
                         }

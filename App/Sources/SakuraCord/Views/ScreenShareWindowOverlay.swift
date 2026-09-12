@@ -24,7 +24,6 @@ struct ScreenShareWindowOverlay: View {
         WindowModalOverlay(
             presentation: model.isScreenSharePreviewPresented
                 ? ScreenShareOverlayPresentation() : nil,
-            zPosition: 100_150,
             dismiss: {
                 Task { await model.dismissScreenSharePreview() }
             },
@@ -40,17 +39,11 @@ struct ScreenShareWindowOverlay: View {
 
 private struct ScreenSharePreviewOverlay: View {
     let model: AppModel
-    let animationState: WindowModalAnimationState
+    let animationState: WindowModalContext
 
     var body: some View {
         ZStack {
-            Color.black
-                .opacity(WindowModalVisualStyle.menuBackgroundDimmingOpacity)
-                .ignoresSafeArea()
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    animationState.dismiss(committingPresentation: true)
-                }
+            WindowModalBackdrop(dismiss: { animationState.dismiss() })
 
             VStack(spacing: 20) {
                 ScreenSharePreviewHeader(
@@ -83,7 +76,7 @@ private struct ScreenSharePreviewOverlay: View {
 
 private struct ScreenSharePreviewHeader: View {
     let model: AppModel
-    let animationState: WindowModalAnimationState
+    let animationState: WindowModalContext
 
     var body: some View {
         HStack(spacing: 12) {
@@ -163,7 +156,7 @@ private struct ScreenSharePreviewSurface: View {
                     lineWidth: 1
                 )
         }
-        .onHover { hovering in
+        .onModalHover { hovering in
             withAnimation(.snappy(duration: 0.16)) {
                 isHovered = hovering
             }

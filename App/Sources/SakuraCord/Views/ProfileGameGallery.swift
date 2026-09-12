@@ -58,7 +58,7 @@ struct ProfileGameGallery: View {
                 }
             }
             .onChange(of: game.id) { _, _ in selectedIndex = 0; presentation = nil }
-            .profileEditorOverlay(item: $presentation) { value in
+            .windowModal(item: $presentation) { value in
                 MediaViewer(presentation: value, close: { presentation = nil }, closeInteractively: { presentation = nil })
                     .frame(width: 1180, height: 760)
             }

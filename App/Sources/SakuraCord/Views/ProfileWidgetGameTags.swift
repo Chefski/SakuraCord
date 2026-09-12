@@ -92,7 +92,7 @@ struct ProfileWidgetGameTags: View {
                 Button { showsPicker = true } label: { Label("Add tags", systemImage: "plus") }
                     .buttonStyle(.plain).font(.system(size: 12, weight: .medium))
                     .padding(.horizontal, 6).padding(.vertical, 4)
-                    .profileEditorOverlay(isPresented: $showsPicker, title: "Game Tags") {
+                    .windowModal(isPresented: $showsPicker, title: "Game Tags") {
                         ProfileWidgetGameTagPicker(tags: tags) { update?($0) }
                     }
             }
@@ -171,7 +171,7 @@ private struct ProfileWidgetGameTagPicker: View {
         .padding(8)
         }
         .scrollIndicators(.hidden)
-        .profileEditorModalSize(width: 240, height: 568)
+        .windowModalSize(width: 240, height: 568)
     }
 
     private func setTags(_ value: [String]) {

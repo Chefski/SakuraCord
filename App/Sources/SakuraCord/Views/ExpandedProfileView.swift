@@ -8,7 +8,7 @@ struct ExpandedProfileView: View {
     @State private var selectedGame: ProfileGame?
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.displayScale) private var displayScale
-    @Environment(\.profileEditorModal) private var modal
+    @Environment(\.windowModalContext) private var modal
 
     private var presentation: ProfilePresentationState {
         guard let current = model.expandedProfilePresentation,
@@ -52,7 +52,7 @@ struct ExpandedProfileView: View {
                 }
             }
         }
-        .profileEditorModalSize(width: 820, height: 720)
+        .windowModalSize(width: 820, height: 720)
         .background(ProfileVerticalScrollInput())
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
         .containerShape(.rect(cornerRadius: 16))
@@ -61,7 +61,7 @@ struct ExpandedProfileView: View {
         .task(id: theme.source(for: presentation.profile, scale: displayScale)) {
             await theme.load(theme.source(for: presentation.profile, scale: displayScale))
         }
-        .profileEditorOverlay(item: $selectedGame) { game in
+        .windowModal(item: $selectedGame) { game in
             ProfileGameView(model: model, game: game)
         }
     }
@@ -75,7 +75,7 @@ struct ExpandedProfileView: View {
                         displayName: profile.displayName,
                         widgets: widgets,
                         resources: profile.widgetResources,
-                        animates: modal?.animationState.isVisible ?? true,
+                        animates: modal?.isVisible ?? true,
                         openGame: { selectedGame = $0 },
                         connectApplication: profile.widgetResources?.connections == nil ? nil : { configuration in
                             if let url = configuration.connectionURL {
@@ -106,7 +106,7 @@ struct ExpandedProfilePresentationModifier: ViewModifier {
     @Bindable var model: AppModel
 
     func body(content: Content) -> some View {
-        content.profileEditorOverlay(item: Binding(
+        content.windowModal(item: Binding(
             get: { model.expandedProfilePresentation },
             set: { if $0 == nil { model.dismissExpandedProfile() } }
         )) { presentation in

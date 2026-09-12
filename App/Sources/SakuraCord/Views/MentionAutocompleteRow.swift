@@ -42,7 +42,7 @@ struct MentionAutocompleteRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .onHover { if $0 { highlight() } }
+        .onModalHover { if $0 { highlight() } }
     }
 
     @ViewBuilder

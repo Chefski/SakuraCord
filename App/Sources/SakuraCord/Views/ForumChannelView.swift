@@ -717,7 +717,7 @@ private struct ForumTimestampLabel: View {
                 .contentShape(Rectangle())
         }
         .onTapGesture(perform: open)
-        .onHover { isHovering = $0 }
+        .onModalHover { isHovering = $0 }
         .nativeHoverPopover(isPresented: $isHovering) {
             Text("\(exactPrefix) \(date.formatted(date: .complete, time: .shortened))")
                 .font(.subheadline.weight(.medium))
@@ -1432,29 +1432,23 @@ struct ForumPostComposerOverlay: View {
     @Binding var isPresented: Bool
 
     var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                Color.black.opacity(0.48)
-                    .ignoresSafeArea()
-                    .contentShape(Rectangle())
-
-                GlassEffectContainer(spacing: 0) {
-                    ForumPostComposer(
-                        model: model,
-                        channel: channel,
-                        isPresented: $isPresented
-                    )
-                    .frame(
-                        width: min(760, max(0, geometry.size.width - 48)),
-                        height: min(560, max(0, geometry.size.height - 48))
-                    )
-                    .padding(24)
+        WindowModalOverlay(presentation: isPresented ? channel : nil, dismiss: { isPresented = false }, content: { channel, context in
+            GeometryReader { geometry in
+                ZStack {
+                    WindowModalBackdrop(opacity: 0.48)
+                    GlassEffectContainer(spacing: 0) {
+                        ForumPostComposer(model: model, channel: channel, isPresented: Binding(
+                            get: { isPresented },
+                            set: { if !$0 { context(allowsDisabled: true) } }
+                        ))
+                        .environment(\.windowModalContext, context)
+                        .frame(width: min(760, max(0, geometry.size.width - 48)), height: min(560, max(0, geometry.size.height - 48)))
+                        .padding(24)
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .zIndex(1_000)
-        .accessibilityAddTraits(.isModal)
+        })
     }
 }
 
@@ -1536,6 +1530,7 @@ private struct ForumPostComposer: View {
             await Task.yield()
             isTitleFocused = true
         }
+        .windowModalDismissDisabled(isSubmitting)
         .onExitCommand {
             if !isSubmitting {
                 isPresented = false

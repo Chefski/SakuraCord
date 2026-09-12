@@ -17,7 +17,7 @@ private struct ProfileEditorTextHover: ViewModifier {
                     .strokeBorder(.primary.opacity(isEnabled && isHovered ? 0.3 : 0), lineWidth: 1)
                     .padding(-3).allowsHitTesting(false)
             }
-            .onHover { isHovered = $0 }
+            .onModalHover { isHovered = $0 }
     }
 }
 
@@ -43,7 +43,7 @@ struct ProfileWidgetSectionInsertion: View {
                 }
         }
         .buttonStyle(.plain).focused($isFocused)
-        .onHover { isHovered = $0 }
+        .onModalHover { isHovered = $0 }
         .nativeHoverHelp(title)
         .accessibilityLabel(title)
     }
@@ -68,7 +68,7 @@ struct ProfileWidgetAddField: View {
                 }
         }
         .buttonStyle(.plain).focused($isFocused)
-        .onHover { isHovered = $0 }
+        .onModalHover { isHovered = $0 }
         .accessibilityLabel("Add Field")
     }
 }

@@ -404,7 +404,7 @@ private struct ApplicationCommandSuggestionRow: View {
                 style: .continuous
             )
         )
-        .onHover { hovering in
+        .onModalHover { hovering in
             guard hovering else { return }
             highlight()
         }

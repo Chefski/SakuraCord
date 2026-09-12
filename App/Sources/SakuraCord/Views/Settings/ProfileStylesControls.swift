@@ -153,7 +153,7 @@ private struct ProfileEditorTile<Content: View>: View {
                 }.padding(4)
             }
         }
-        .onHover { isHovered = $0 }
+        .onModalHover { isHovered = $0 }
         .accessibilityLabel(label)
         .accessibilityActions {
             if let remove {
@@ -217,7 +217,7 @@ private struct ProfileThemeTile: View {
                 }.padding(4)
             }
         }
-        .onHover { isHovered = $0 }
+        .onModalHover { isHovered = $0 }
         .accessibilityActions {
             if canReset { Button("Reset Theme") { editor.setTheme(nil) } }
         }

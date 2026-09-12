@@ -1,15 +1,12 @@
 import SwiftUI
 
-/// Presents Forward with the same window-level modal host as the media viewer.
-/// The workspace remains geometrically stable while the full-window host owns
-/// pointer, accessibility, keyboard, and closing-animation behavior.
+/// Presents Forward through the shared window modal lifecycle.
 struct ForwardMessageWindowOverlay: View {
     let model: AppModel
 
     var body: some View {
         WindowModalOverlay(
             presentation: model.forwardingMessage,
-            zPosition: 100_100,
             dismiss: model.dismissForwarding
         ) { message, animationState in
             ForwardMessageOverlay(

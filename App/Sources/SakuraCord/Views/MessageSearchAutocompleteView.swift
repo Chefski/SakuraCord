@@ -701,6 +701,7 @@ enum MessageSearchAutocompletePolicy {
 }
 
 struct MessageSearchAutocompleteView: View {
+    @Environment(\.windowModalInputAllowed) private var modalInputAllowed
     let model: AppModel
     let width: CGFloat
     @State private var selectedID: String?
@@ -788,6 +789,8 @@ struct MessageSearchAutocompleteView: View {
     }
 
     private func handleKeyDown(_ event: NSEvent) -> Bool {
+        guard modalInputAllowed, let window = event.window,
+              WindowModalCoordinator.coordinator(for: window).topmost == nil else { return false }
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         switch event.keyCode {
         case 53:
@@ -1039,6 +1042,7 @@ private final class MessageSearchAutocompleteCanvas: NSView {
     }
 
     override func mouseMoved(with event: NSEvent) {
+        guard WindowModalCoordinator.allowsInput(for: self) else { return }
         let index = selectableIndex(at: convert(event.locationInWindow, from: nil))
         guard index != hoveredIndex else { return }
         hoveredIndex = index

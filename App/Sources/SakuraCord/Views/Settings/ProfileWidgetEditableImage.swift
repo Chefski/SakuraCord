@@ -80,7 +80,7 @@ struct ProfileWidgetEditableImage: View {
                         HoverActionButton(systemImage: "trash", help: String(localized: "Remove Image", bundle: #bundle), role: .destructive, action: remove)
                     }
                 }
-                .onHover { isActionHovered = $0 }
+                .onModalHover { isActionHovered = $0 }
                 .opacity(isActive ? 1 : 0)
                 .allowsHitTesting(isActive)
                 .accessibilityHidden(!isActive)
@@ -89,7 +89,7 @@ struct ProfileWidgetEditableImage: View {
                 .offset(x: purpose == .widgetCover ? 0 : 8, y: purpose == .widgetCover ? 0 : -8)
             }
         }
-        .onHover { isHovered = $0 }
+        .onModalHover { isHovered = $0 }
         .onChange(of: isActive) { _, active in onHoverChange?(active) }
         .onDisappear { onHoverChange?(false) }
         .contextMenu {
@@ -110,12 +110,12 @@ struct ProfileWidgetEditableImage: View {
             case let .failure(error): errorMessage = error.localizedDescription
             }
         }
-        .profileEditorOverlay(isPresented: $cropping) {
+        .windowModal(isPresented: $cropping) {
             if let source, let sourceURL {
                 ProfileImageCropView(image: source, imageURL: sourceURL, filename: filename, purpose: purpose,
                                      isProcessing: busy, canApply: editor?.canEditPersonalWidget == true, aspectRatio: aspectRatio, initialGeometry: initialGeometry,
                                      cancel: { work?.cancel(); cropping = false }, apply: crop)
-                    .profileEditorDismissDisabled(busy)
+                    .windowModalDismissDisabled(busy)
             }
         }
         .alert("Unable to Use Image", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {

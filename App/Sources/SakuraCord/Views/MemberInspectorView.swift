@@ -63,7 +63,6 @@ struct MemberInspectorView: View {
     let customEmojiURLsByID: [String: URL]
     let profilePresentation: ProfilePresentationState?
     let isProfilePresented: Bool
-    let interactionsBlocked: Bool
     let selectMember: (Member) -> Void
     let dismissProfile: () -> Void
     let viewportIdentity: ChannelID?
@@ -76,7 +75,6 @@ struct MemberInspectorView: View {
         customEmojiURLsByID: [String: URL] = [:],
         profilePresentation: ProfilePresentationState?,
         isProfilePresented: Bool,
-        interactionsBlocked: Bool = false,
         selectMember: @escaping (Member) -> Void,
         dismissProfile: @escaping () -> Void,
         viewportIdentity: ChannelID? = nil,
@@ -88,7 +86,6 @@ struct MemberInspectorView: View {
         self.customEmojiURLsByID = customEmojiURLsByID
         self.profilePresentation = profilePresentation
         self.isProfilePresented = isProfilePresented
-        self.interactionsBlocked = interactionsBlocked
         self.selectMember = selectMember
         self.dismissProfile = dismissProfile
         self.viewportIdentity = viewportIdentity
@@ -103,7 +100,6 @@ struct MemberInspectorView: View {
             customEmojiURLsByID: customEmojiURLsByID,
             profilePresentation: profilePresentation,
             isProfilePresented: isProfilePresented,
-            interactionsBlocked: interactionsBlocked,
             selectMember: selectMember,
             dismissProfile: dismissProfile,
             runsPerformanceAutoScroll: runsPerformanceAutoScroll,
@@ -470,7 +466,7 @@ struct MemberRow: View {
             .contentShape(ConcentricRectangle(cornerRadius: 9, style: .continuous))
         }
         .buttonStyle(.plain)
-        .onHover { isHovered = $0 }
+        .onModalHover { isHovered = $0 }
         .help(member.user.username)
     }
 

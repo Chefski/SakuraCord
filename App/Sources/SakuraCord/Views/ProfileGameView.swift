@@ -12,7 +12,7 @@ struct ProfileGameView: View {
     @State private var errors: [String: String] = [:]
     @State private var isLoading = true
     @State private var navigation: [ProfileGame] = []
-    @Environment(\.profileEditorModal) private var dismiss
+    @Environment(\.windowModalContext) private var dismiss
 
     init(model: AppModel, game: ProfileGame, editor: ProfileEditorState? = nil) {
         self.model = model
@@ -57,7 +57,7 @@ struct ProfileGameView: View {
             }
             .padding(24)
         }
-        .profileEditorModalSize(width: 1180, height: 760)
+        .windowModalSize(width: 1180, height: 760)
         .background(alignment: .top) {
             if let artwork = game.metadata?.artwork.first {
                 ProfileWidgetImageView(url: artwork, contentMode: .fill)
@@ -67,7 +67,7 @@ struct ProfileGameView: View {
         }
         .background(.regularMaterial)
         .task(id: game.id) { await load() }
-        .profileEditorDismissDisabled(editor.isSaving)
+        .windowModalDismissDisabled(editor.isSaving)
         .onChange(of: model.installedAccountSessionRevision) { _, _ in dismiss?() }
         .onChange(of: model.isSwitchingAccounts) { _, switching in if switching { dismiss?() } }
     }
@@ -216,7 +216,7 @@ struct ProfileGameView: View {
 struct ProfileGamePresentationModifier: ViewModifier {
     @Bindable var model: AppModel
     func body(content: Content) -> some View {
-        content.profileEditorOverlay(item: $model.presentedProfileGame) { game in
+        content.windowModal(item: $model.presentedProfileGame) { game in
             ProfileGameView(model: model, game: game)
         }
     }

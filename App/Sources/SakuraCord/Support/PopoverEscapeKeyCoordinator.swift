@@ -100,10 +100,11 @@ final class PopoverEscapeKeyCoordinator {
 }
 
 private struct PopoverEscapeKeyReader: NSViewRepresentable {
+    let source: PopoverPresentingWindow
     let dismiss: () -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(dismiss: dismiss)
+        Coordinator(source: source, dismiss: dismiss)
     }
 
     func makeNSView(context: Context) -> PopoverEscapeTrackingView {
@@ -129,10 +130,12 @@ private struct PopoverEscapeKeyReader: NSViewRepresentable {
 
     @MainActor
     final class Coordinator {
+        let source: PopoverPresentingWindow
         var dismiss: () -> Void
         var registration: PopoverEscapeKeyRegistration?
 
-        init(dismiss: @escaping () -> Void) {
+        init(source: PopoverPresentingWindow, dismiss: @escaping () -> Void) {
+            self.source = source
             self.dismiss = dismiss
         }
 
@@ -144,13 +147,13 @@ private struct PopoverEscapeKeyReader: NSViewRepresentable {
             if let registration {
                 registration.update(
                     popoverWindow: window,
-                    presentingWindow: window.parent,
+                    presentingWindow: source.window ?? window.parent,
                     dismiss: dismiss
                 )
             } else {
                 registration = PopoverEscapeKeyCoordinator.shared.register(
                     popoverWindow: window,
-                    presentingWindow: window.parent,
+                    presentingWindow: source.window ?? window.parent,
                     dismiss: dismiss
                 )
             }
@@ -176,18 +179,21 @@ extension View {
         arrowEdge: Edge = .top,
         @ViewBuilder content: @escaping () -> PopoverContent
     ) -> some View {
-        popover(
-            isPresented: isPresented,
-            attachmentAnchor: attachmentAnchor,
-            arrowEdge: arrowEdge
-        ) {
-            content()
-                .background {
-                    PopoverEscapeKeyReader {
-                        isPresented.wrappedValue = false
+        PopoverSourceScope { source in
+            modifier(WindowModalPopoverGuard(dismiss: { isPresented.wrappedValue = false }))
+            .popover(
+                isPresented: isPresented,
+                attachmentAnchor: attachmentAnchor,
+                arrowEdge: arrowEdge
+            ) {
+                content()
+                    .background {
+                        PopoverEscapeKeyReader(source: source) {
+                            isPresented.wrappedValue = false
+                        }
+                        .frame(width: 0, height: 0)
                     }
-                    .frame(width: 0, height: 0)
-                }
+            }
         }
     }
 
@@ -197,18 +203,70 @@ extension View {
         arrowEdge: Edge = .top,
         @ViewBuilder content: @escaping (Item) -> PopoverContent
     ) -> some View {
-        popover(
-            item: item,
-            attachmentAnchor: attachmentAnchor,
-            arrowEdge: arrowEdge
-        ) { value in
-            content(value)
-                .background {
-                    PopoverEscapeKeyReader {
-                        item.wrappedValue = nil
+        PopoverSourceScope { source in
+            modifier(WindowModalPopoverGuard(dismiss: { item.wrappedValue = nil }))
+            .popover(
+                item: item,
+                attachmentAnchor: attachmentAnchor,
+                arrowEdge: arrowEdge
+            ) { value in
+                content(value)
+                    .background {
+                        PopoverEscapeKeyReader(source: source) {
+                            item.wrappedValue = nil
+                        }
+                        .frame(width: 0, height: 0)
                     }
-                    .frame(width: 0, height: 0)
-                }
+            }
+        }
+    }
+}
+
+/// A native popover belongs to the modal (or workspace) containing its anchor.
+private struct WindowModalPopoverGuard: ViewModifier {
+    @Environment(\.windowModalInputAllowed) private var inputAllowed
+    let dismiss: () -> Void
+
+    func body(content: Content) -> some View {
+        content.onChange(of: inputAllowed) { _, allowed in
+            if !allowed { dismiss() }
+        }
+    }
+}
+
+@MainActor
+private final class PopoverPresentingWindow {
+    weak var window: NSWindow?
+}
+
+private struct PopoverSourceScope<Content: View>: View {
+    @State private var source = PopoverPresentingWindow()
+    @ViewBuilder let content: (PopoverPresentingWindow) -> Content
+
+    var body: some View {
+        content(source).background {
+            PopoverSourceWindowReader(source: source).frame(width: 0, height: 0)
+        }
+    }
+}
+
+private struct PopoverSourceWindowReader: NSViewRepresentable {
+    let source: PopoverPresentingWindow
+    func makeNSView(context: Context) -> Reader { Reader(source: source) }
+    func updateNSView(_ view: Reader, context: Context) { source.window = view.window }
+
+    final class Reader: NSView {
+        let source: PopoverPresentingWindow
+        init(source: PopoverPresentingWindow) {
+            self.source = source
+            super.init(frame: .zero)
+        }
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            source.window = window
         }
     }
 }

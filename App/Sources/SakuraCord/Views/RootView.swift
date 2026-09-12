@@ -90,7 +90,7 @@ struct RootView: View {
         }
         .onChange(of: model.isSwitchingAccounts) { _, isSwitching in
             if isSwitching {
-                search.isFilterSheetPresented = false
+                search.isFilterModalPresented = false
                 model.dismissMessageSearch()
             }
         }
@@ -173,6 +173,7 @@ struct RootView: View {
 }
 
 private struct ChatRootView: View {
+    @Environment(\.windowModalInputAllowed) private var modalInputAllowed
     let model: AppModel
     let toolbarSearchFieldMetrics: ToolbarSearchFieldMetrics
     @State private var showAccountSwitcher = false
@@ -188,7 +189,7 @@ private struct ChatRootView: View {
     @State private var modifierPollingTask: Task<Void, Never>?
     @State private var composerDropInteraction = ComposerDropInteractionState()
 
-    var body: some View {
+    @ViewBuilder private var workspace: some View {
         @Bindable var model = model
         NavigationSplitView(columnVisibility: $columnVisibility) {
             HStack(spacing: 0) {
@@ -284,11 +285,8 @@ private struct ChatRootView: View {
             .ignoresSafeArea()
             .allowsHitTesting(false)
         }
-        .overlay {
-            if !model.incomingPrivateCalls.isEmpty {
-                IncomingPrivateCallOverlay(model: model)
-                    .zIndex(500)
-            }
+        .background {
+            IncomingPrivateCallWindowOverlay(model: model).frame(width: 0, height: 0)
         }
         .overlay {
             if model.isSwitchingAccounts {
@@ -350,7 +348,7 @@ private struct ChatRootView: View {
             }
             .frame(width: 1, height: 1)
         }
-        .overlay {
+        .background {
             if presentsForumComposer,
                let channel = model.selectedChannel,
                channel.kind == .forum
@@ -360,6 +358,7 @@ private struct ChatRootView: View {
                     channel: channel,
                     isPresented: $presentsForumComposer
                 )
+                .frame(width: 0, height: 0)
             }
         }
         .overlay {
@@ -374,6 +373,11 @@ private struct ChatRootView: View {
                 .allowsHitTesting(false)
             }
         }
+    }
+
+    var body: some View {
+        @Bindable var model = model
+        workspace
         .onGeometryChange(for: CGRect.self) { proxy in
             proxy.frame(in: .global)
         } action: { frame in
@@ -400,34 +404,7 @@ private struct ChatRootView: View {
                 updateModifierPolling(isTargeted: targeted)
             }
         )
-        .overlay {
-            ComposerPromisedFileDropBridge(
-                isEnabled: canAcceptWindowDrops,
-                targetChanged: { targeted, location, instant in
-                    let destination = targeted ? composerDestination(at: location) : nil
-                    isFileDropTargeted = destination != nil
-                    isInstantUpload = destination != nil && instant
-                    hoveredFileDropDestination = destination
-                },
-                receiveFiles: { batch, location, instant in
-                    guard let destination = composerDestination(at: location) else {
-                        batch.discard()
-                        return
-                    }
-                    if instant {
-                        sendDroppedPromisedAttachmentsImmediately(
-                            batch,
-                            to: destination
-                        )
-                    } else {
-                        model.addPromisedComposerAttachments(
-                            batch,
-                            to: destination
-                        )
-                    }
-                }
-            )
-        }
+        .overlay { promisedFileDropBridge }
         .onPreferenceChange(ThreadPaneFramePreferenceKey.self) { frame in
             supplementaryPaneFrame = frame
         }
@@ -777,8 +754,38 @@ private struct ChatRootView: View {
         return guild.name.isEmpty ? "Unnamed Server" : guild.name
     }
 
+    private var promisedFileDropBridge: some View {
+            ComposerPromisedFileDropBridge(
+                isEnabled: canAcceptWindowDrops,
+                targetChanged: { targeted, location, instant in
+                    let destination = targeted ? composerDestination(at: location) : nil
+                    isFileDropTargeted = destination != nil
+                    isInstantUpload = destination != nil && instant
+                    hoveredFileDropDestination = destination
+                },
+                receiveFiles: { batch, location, instant in
+                    guard let destination = composerDestination(at: location) else {
+                        batch.discard()
+                        return
+                    }
+                    if instant {
+                        sendDroppedPromisedAttachmentsImmediately(
+                            batch,
+                            to: destination
+                        )
+                    } else {
+                        model.addPromisedComposerAttachments(
+                            batch,
+                            to: destination
+                        )
+                    }
+                }
+            )
+    }
+
     private var canAcceptWindowDrops: Bool {
-        !presentsForumComposer
+        modalInputAllowed
+            && !presentsForumComposer
             && !showAccountSwitcher
             && model.presentedInteractionModal == nil
             && (model.isComposerDropEligible(.channel)
@@ -1088,7 +1095,7 @@ private struct MessageSearchExperienceModifier: ViewModifier {
             }
             .onChange(of: isEnabled) { wasVisible, isVisible in
                 guard wasVisible, !isVisible else { return }
-                search.isFilterSheetPresented = false
+                search.isFilterModalPresented = false
                 model.dismissMessageSearch()
             }
     }

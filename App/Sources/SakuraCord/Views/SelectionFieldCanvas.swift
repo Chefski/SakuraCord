@@ -146,6 +146,7 @@ private final class SelectionFieldResultCanvas: NSView {
     }
 
     override func mouseMoved(with event: NSEvent) {
+        guard WindowModalCoordinator.allowsInput(for: self) else { return }
         let nextIndex = rowIndex(at: convert(event.locationInWindow, from: nil))
         guard nextIndex != hoveredIndex else { return }
         let previousIndex = hoveredIndex

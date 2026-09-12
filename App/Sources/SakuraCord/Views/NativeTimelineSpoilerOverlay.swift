@@ -170,6 +170,7 @@ final class NativeTimelineSpoilerOverlayHost: NSView {
     }
 
     override func mouseEntered(with event: NSEvent) {
+        guard WindowModalCoordinator.allowsInput(for: self) else { return }
         isHovered = true
         updateAppearance()
     }

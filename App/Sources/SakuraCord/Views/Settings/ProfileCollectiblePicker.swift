@@ -7,8 +7,8 @@ struct ProfileCollectiblePicker: View {
     let kind: ProfileCollectibleKind
     let profile: UserProfile
 
-    @Environment(\.profileEditorModal) private var dismiss
-    @Environment(\.profileEditorModalAvailableSize) private var availableSize
+    @Environment(\.windowModalContext) private var dismiss
+    @Environment(\.windowModalAvailableSize) private var availableSize
     @State private var selectedID: String?
     @State private var hasSelected = false
     @State private var loadError: String?
@@ -103,7 +103,7 @@ struct ProfileCollectiblePicker: View {
             .controlSize(.large)
             .padding(24)
         }
-        .profileEditorModalSize(width: 768, height: 560)
+        .windowModalSize(width: 768, height: 560)
         .overlay { if editor.inventory == nil, loadError == nil { ProgressView().padding().glassEffect() } }
         .task { await load() }
     }
@@ -212,7 +212,7 @@ private struct ProfileCollectibleChoice: View {
             .overlay { if selected { ConcentricRectangle(cornerRadius: 10).stroke(SakuraCordAccentColor.color, lineWidth: 2) } }
         }
         .buttonStyle(.plain)
-        .onHover { isHovered = $0 }
+        .onModalHover { isHovered = $0 }
         .help(item.label)
         .accessibilityLabel(item.label)
         .accessibilityAddTraits(selected ? [.isSelected] : [])

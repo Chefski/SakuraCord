@@ -717,7 +717,7 @@ private struct StickerPickerButton: View {
         .buttonStyle(.plain)
         .focusable(false)
         .contentShape(Rectangle())
-        .onHover { if $0 { hover() } }
+        .onModalHover { if $0 { hover() } }
         .help(item.sticker.name)
         .overlay {
             StickerPickerContextMenuBridge(

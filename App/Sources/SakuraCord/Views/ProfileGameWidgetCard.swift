@@ -136,10 +136,10 @@ struct ProfileGameWidgetCard: View {
             editor?.restoreWidgetGameOrder(widgetID: widgetID, ids: originalGameOrder)
             reorderingID = nil; originalGameOrder = []; return .handled
         }
-        .profileEditorOverlay(item: $selectedGame) { game in
+        .windowModal(item: $selectedGame) { game in
             if let editor { ProfileGameView(model: editor.model, game: game, editor: editor) }
         }
-        .profileEditorOverlay(isPresented: $showsPicker, title: "Add Game") {
+        .windowModal(isPresented: $showsPicker, title: "Add Game") {
             if let editor {
                 ProfileWidgetGamePicker(editor: editor, selectedIDs: Set(games.map(\.id))) {
                     editor.addWidgetGame(widgetID: widgetID, gameID: $0.id); expanded = true
@@ -319,7 +319,7 @@ private struct ProfileWidgetGameRemoval: ViewModifier {
                     }.padding(4)
                 }
             }
-            .onHover { isHovered = $0 }
+            .onModalHover { isHovered = $0 }
     }
 }
 

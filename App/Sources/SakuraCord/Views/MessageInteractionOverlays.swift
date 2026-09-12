@@ -517,7 +517,7 @@ private struct ReactionActionMenu: View {
         .contentShape(
             ConcentricRectangle(cornerRadius: cornerRadius, style: .continuous)
         )
-        .onHover { isHovering = $0 }
+        .onModalHover { isHovering = $0 }
         .help("Add reaction")
         .background {
             StableReactionPickerPresenter(
@@ -828,7 +828,7 @@ private struct InlineEditTextButton: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .onHover { isHovering = $0 }
+        .onModalHover { isHovering = $0 }
         .animation(.easeOut(duration: 0.12), value: isHovering)
         .opacity(isEnabled ? 1 : 0.45)
     }

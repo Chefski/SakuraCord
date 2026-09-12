@@ -398,7 +398,7 @@ private struct SoundboardButton: View {
                 )
         }
         .contentShape(ConcentricRectangle(cornerRadius: 8, style: .continuous))
-        .onHover { isHovering = $0 }
+        .onModalHover { isHovering = $0 }
         .offset(y: isPressed ? 2 : 0)
         .animation(.easeOut(duration: 0.08), value: isPressed)
         .overlay {
@@ -568,7 +568,7 @@ private struct SoundboardActionButton: View {
         }
         .buttonStyle(SoundboardStaticButtonStyle())
         .contentShape(Circle())
-        .onHover { isHovering = $0 }
+        .onModalHover { isHovering = $0 }
         .help(help)
         .accessibilityLabel(help)
     }

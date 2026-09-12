@@ -21,19 +21,10 @@ struct ProfileVerticalScrollInput: NSViewRepresentable {
             monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
                 guard let self, let window = self.window, event.window === window,
                       self.bounds.contains(self.convert(event.locationInWindow, from: nil)),
-                      self.modalHost?.isTopmostPresentedOverlay == true
+                      WindowModalCoordinator.allowsInput(for: self)
                 else { return event }
                 return Self.verticalEvent(event)
             }
-        }
-
-        private var modalHost: WindowModalHostingView? {
-            var ancestor = superview
-            while let view = ancestor {
-                if let host = view as? WindowModalHostingView { return host }
-                ancestor = view.superview
-            }
-            return nil
         }
 
         private static func verticalEvent(_ event: NSEvent) -> NSEvent {

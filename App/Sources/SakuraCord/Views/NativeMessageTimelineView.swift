@@ -5,16 +5,12 @@ import SwiftUI
 
 @MainActor
 private final class NativeTimelineInputShieldScrollView: NSScrollView {
-    weak var model: AppModel?
     let inputPerformanceProbe = ScrollInputPerformanceProbe(
         surface: .timeline
     )
 
     override func scrollWheel(with event: NSEvent) {
-        guard model?.mediaViewerPresentation == nil,
-              model?.forwardingMessage == nil,
-              model?.workspaceNavigationOverlay == nil
-        else { return }
+        guard WindowModalCoordinator.allowsInput(for: self) else { return }
         super.scrollWheel(with: event)
     }
 }
@@ -345,7 +341,6 @@ extension NativeMessageTimelineCoordinator {
             documentView.addSubview(canvas)
 
             let scrollView = NativeTimelineInputShieldScrollView()
-            scrollView.model = parent.model
             scrollView.inputPerformanceProbe.install(on: scrollView)
             scrollView.documentView = documentView
             scrollView.drawsBackground = false
@@ -871,11 +866,8 @@ extension NativeMessageTimelineCoordinator {
                 parent.model.chatSettings.spoilerRevealMode
             canvas?.spoilerRevealStore.revealMode =
                 parent.model.chatSettings.spoilerRevealMode
-            (scrollView as? NativeTimelineInputShieldScrollView)?.model = parent.model
             canvas?.setOverlayInteractionBlocked(
-                parent.model.mediaViewerPresentation != nil
-                    || parent.model.forwardingMessage != nil
-                    || parent.model.workspaceNavigationOverlay != nil,
+                !WindowModalCoordinator.allowsInput(for: scrollView),
                 mediaViewerHighlightedMessageID:
                     parent.model.mediaViewerPresentation?.messageID
             )

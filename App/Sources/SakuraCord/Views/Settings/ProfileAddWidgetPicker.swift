@@ -5,7 +5,7 @@ import SwiftUI
 struct ProfileAddWidgetPicker: View {
     let editor: ProfileEditorState
     let selectApplication: (ProfileApplicationWidget) -> Void
-    @Environment(\.profileEditorModal) private var dismiss
+    @Environment(\.windowModalContext) private var dismiss
     @State private var category = "Interests"
     @State private var isLoading = true
     @State private var errorMessage: String?
@@ -64,7 +64,7 @@ struct ProfileAddWidgetPicker: View {
                 }
             }
         }
-        .profileEditorModalSize(width: 680, height: 604)
+        .windowModalSize(width: 680, height: 604)
         .task {
             do {
                 try await editor.loadWidgetCatalogue()

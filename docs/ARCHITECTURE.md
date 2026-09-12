@@ -91,6 +91,26 @@ its workflow build number is lower. The normal Sparkle alert, verification,
 download, installation, and relaunch flow remain in place; Regular builds keep
 upstream downgrade protection enabled.
 
+## Window modal presentation
+
+Custom full-window modals use `WindowModalOverlay`. Feature models and local
+bindings own presentation values; `WindowModalCoordinator` owns presentation
+order, input ownership and focus restoration for each window. A covered view
+cannot receive modal input, and closing transitions retain ownership until
+removal. Retained, closed quick-switcher hosts never own input. Native input
+surfaces consult the coordinator and clear transient hover state when ownership
+changes; SwiftUI window roots use `windowModalInputScope` and hover controls use
+`onModalHover`. Event monitors also check their source view's ownership. The
+window root keeps hit testing enabled: disabling it on `NavigationSplitView`
+changes sidebar toolbar insets. The native modal host blocks background pointer
+input without changing workspace layout.
+
+`windowModal` adds the shared panel surface and sizing/dismissal environment.
+The media viewer uses the same host with its own visual transition and removal
+delay. Forum composition and blocking incoming calls use that host too. Native
+sheets and anchored popovers retain their platform presentation; covered anchor
+popovers close, while a popover belonging to the active modal owns Escape first.
+
 ## Discord boundary
 
 `ChatProvider` is the application-facing boundary. `MockChatProvider` provides

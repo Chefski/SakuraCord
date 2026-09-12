@@ -90,7 +90,7 @@ private struct MessageSearchResultsHeader: View {
                 .contentTransition(.numericText())
             Spacer(minLength: 8)
             Button {
-                search.isFilterSheetPresented = true
+                search.isFilterModalPresented = true
             } label: {
                 Label("Filters", systemImage: "line.3.horizontal.decrease")
             }
@@ -271,11 +271,10 @@ struct MessageSearchFiltersWindowOverlay: View {
 
     var body: some View {
         WindowModalOverlay(
-            presentation: model.messageSearch.isFilterSheetPresented
+            presentation: model.messageSearch.isFilterModalPresented
                 ? MessageSearchFilterPresentation() : nil,
-            zPosition: 100_125,
             dismiss: {
-                model.messageSearch.isFilterSheetPresented = false
+                model.messageSearch.isFilterModalPresented = false
             },
             content: { _, animationState in
                 MessageSearchFiltersOverlay(
@@ -296,7 +295,7 @@ struct MessageSearchFiltersOverlay: View {
 
     let model: AppModel
     let search: MessageSearchState
-    let animationState: WindowModalAnimationState
+    let animationState: WindowModalContext
     let dismiss: () -> Void
     @State private var draft = MessageSearchFilters()
     @State private var beforeEnabled = false
@@ -308,10 +307,7 @@ struct MessageSearchFiltersOverlay: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                Color.black.opacity(0.48)
-                    .ignoresSafeArea()
-                    .contentShape(Rectangle())
-                    .onTapGesture(perform: dismiss)
+                WindowModalBackdrop(opacity: 0.48, dismiss: dismiss)
                 GlassEffectContainer(spacing: 0) {
                     panel
                         .background(

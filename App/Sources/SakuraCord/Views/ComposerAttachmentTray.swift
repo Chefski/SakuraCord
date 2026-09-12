@@ -63,7 +63,7 @@ struct ComposerAttachmentTray: View {
                     .stroke(.separator, lineWidth: 1)
             }
             .contentShape(ConcentricRectangle(cornerRadius: 14, style: .continuous))
-            .onHover { hovering in
+            .onModalHover { hovering in
                 hoveredID =
                     hovering
                         ? attachment.id

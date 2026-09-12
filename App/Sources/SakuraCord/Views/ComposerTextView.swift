@@ -1043,6 +1043,7 @@ final class ComposerUnfocusedTypingMonitor {
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self,
                   let textView = self.textView,
+                  WindowModalCoordinator.allowsInput(for: textView),
                   let window = textView.window,
                   event.window === window,
                   window.isKeyWindow,

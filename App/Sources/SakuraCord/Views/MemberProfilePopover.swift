@@ -89,7 +89,7 @@ struct MemberProfilePopover<Footer: View>: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.displayScale) private var displayScale
     @Environment(\.profileAnimationsPaused) private var animationsPaused
-    @Environment(\.profileEditorModal) private var editorModal
+    @Environment(\.windowModalContext) private var editorModal
     @State private var contentHeight: CGFloat = 320
     @State private var theme = ProfileThemeState()
 
@@ -303,7 +303,7 @@ struct MemberProfilePopover<Footer: View>: View {
     }
 
     private var animatesRemoteMedia: Bool {
-        !animationsPaused && (editorModal?.animationState.isVisible ?? true) && (popoverPresentationContext?.hasFinishedPresenting ?? true)
+        !animationsPaused && (editorModal?.isVisible ?? true) && (popoverPresentationContext?.hasFinishedPresenting ?? true)
     }
 
     private var surfaceInset: CGFloat {
@@ -475,7 +475,7 @@ struct ProfileStatusBubble: View {
                     .stroke(.primary.opacity(0.14), lineWidth: 1)
             }
             .contentShape(ConcentricRectangle(cornerRadius: 14, style: .continuous))
-            .onHover { isBubbleHovering = $0 }
+            .onModalHover { isBubbleHovering = $0 }
             .animation(.snappy(duration: 0.16), value: isExpanded)
             .help(displayText)
             .accessibilityLabel("Custom status: \(displayText)")
@@ -706,7 +706,7 @@ private struct CopyableProfileUsername: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .onHover { isHovering = $0 }
+        .onModalHover { isHovering = $0 }
         .animation(.easeOut(duration: 0.12), value: isHovering)
         .animation(.easeOut(duration: 0.12), value: didCopy)
         .help(didCopy ? "Username copied" : "Copy username")
@@ -762,7 +762,7 @@ private struct ProfileBadgeIcon: View {
         .frame(width: 23, height: 23)
         .help(helpText)
         .accessibilityLabel(helpText)
-        .onHover { isShowingDetails = $0 }
+        .onModalHover { isShowingDetails = $0 }
         .nativeHoverPopover(isPresented: $isShowingDetails) {
             Text(helpText)
                 .font(.subheadline.weight(.medium))
@@ -1003,7 +1003,7 @@ private struct RoleExpansionButton: View {
             ConcentricRectangle(cornerRadius: 9, style: .continuous)
                 .stroke(.white.opacity(isHovering ? 0.16 : 0.09), lineWidth: 1)
         }
-        .onHover { isHovering = $0 }
+        .onModalHover { isHovering = $0 }
     }
 }
 
@@ -1221,7 +1221,7 @@ private struct ProfileConnectionIcon: View {
             }
         }
         .contentShape(Rectangle())
-        .onHover { isHovered = $0 }
+        .onModalHover { isHovered = $0 }
         .help(account.name)
         .nativeHoverPopover(isPresented: $isHovered) {
             Text(account.name)

@@ -35,6 +35,7 @@ extension NativeTimelineCanvasView {
     }
 
     override func resetCursorRects() {
+        guard WindowModalCoordinator.allowsInput(for: self) else { return }
         guard !suppressesHoverPresentation,
               !overlayBlocksInteractions
         else { return }
@@ -164,6 +165,7 @@ extension NativeTimelineCanvasView {
     }
 
     override func mouseEntered(with event: NSEvent) {
+        guard WindowModalCoordinator.allowsInput(for: self) else { return }
         guard !suppressesHoverPresentation,
               !overlayBlocksInteractions,
               editingMessageID == nil,
@@ -203,6 +205,7 @@ extension NativeTimelineCanvasView {
     }
 
     override func mouseMoved(with event: NSEvent) {
+        guard WindowModalCoordinator.allowsInput(for: self) else { return }
         guard !suppressesHoverPresentation,
               !overlayBlocksInteractions,
               editingMessageID == nil
@@ -999,7 +1002,7 @@ extension NativeTimelineCanvasView {
     }
 
     func synchronizeHoverWithCurrentPointer() {
-        guard !suppressesHoverPresentation,
+        guard WindowModalCoordinator.allowsInput(for: self), !overlayBlocksInteractions, !suppressesHoverPresentation,
               editingMessageID == nil,
               window?.isKeyWindow == true
         else { return }
