@@ -531,7 +531,7 @@ private struct ProfileBanner: View {
                     AnimatedRemoteImage(
                         url: url,
                         animates: animates,
-                        maximumPixelDimension: 600,
+                        maximumPixelDimension: ProfileBannerLayout.maximumPixelDimension,
                         contentMode: .fill,
                         accessibilityCategory: .decoration
                     )
@@ -559,6 +559,7 @@ private struct ProfileBanner: View {
 }
 
 nonisolated enum ProfileBannerLayout {
+    static let maximumPixelDimension = 600
     static let height: CGFloat = 112
 
     static func constrainedWidth(_ proposedWidth: CGFloat) -> CGFloat {

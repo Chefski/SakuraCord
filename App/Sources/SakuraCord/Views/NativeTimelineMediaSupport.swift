@@ -14,6 +14,7 @@ nonisolated enum NativeTimelineMediaMemoryPolicy {
     static let pinnedImageBytes = 16 * 1_024 * 1_024
     static let sharedAnimatedImageBytes = 24 * 1_024 * 1_024
     static let displayedAnimatedImageBytes = 16 * 1_024 * 1_024
+    static let animatedImagePosterBytes = 8 * 1_024 * 1_024
     static let timelineAnimatedImageBytes = 16 * 1_024 * 1_024
     static let rowBitmapBytes = 32 * 1_024 * 1_024
 
@@ -26,6 +27,7 @@ nonisolated enum NativeTimelineMediaMemoryPolicy {
         + pinnedImageBytes
         + sharedAnimatedImageBytes
         + displayedAnimatedImageBytes
+        + animatedImagePosterBytes
         + timelineAnimatedImageBytes
         + rowBitmapBytes
 

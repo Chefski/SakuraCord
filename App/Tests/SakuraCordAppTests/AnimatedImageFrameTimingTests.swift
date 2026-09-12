@@ -123,7 +123,7 @@ import Testing
 @Test func `timeline media declares every byte limited memory cache`() {
     #expect(
         NativeTimelineMediaMemoryPolicy.decodedImageCacheBytes
-            == 168 * 1_024 * 1_024
+            == 176 * 1_024 * 1_024
     )
     #expect(
         SharedMediaDataMemoryPolicy.retainedBytes
@@ -131,7 +131,7 @@ import Testing
     )
     #expect(
         NativeTimelineMediaMemoryPolicy.declaredMemoryCacheBytes
-            == 224 * 1_024 * 1_024
+            == 232 * 1_024 * 1_024
     )
 }
 
@@ -580,10 +580,27 @@ func `recent displayed images use a deterministic bounded cache`() throws {
             "https://cdn.example/recent-\(cache.maximumCountForTesting).png"
     ))
     #expect(cache.image(for: oldest, maximumPixelDimension: 1) == nil)
+    // Evicting complete animations must not blank a remounted image view.
+    #expect(AnimatedImagePosterCache.shared.image(for: oldest, maximumPixelDimension: 1) === decoded.frames.first)
     #expect(
         cache.image(for: newest, maximumPixelDimension: 1) === decoded
     )
     cache.removeAll()
+
+    // The independent poster budget still evicts by cost and recent use.
+    let frame = try #require(decoded.frames.first)
+    let posters = AnimatedImagePosterCache(maximumCost: frame.bytesPerRow * frame.height * 2)
+    let third = try #require(URL(string: "https://cdn.example/third.png"))
+    posters.insert(frame, for: oldest, maximumPixelDimension: 1)
+    posters.insert(frame, for: newest, maximumPixelDimension: 1)
+    #expect(posters.image(for: oldest, maximumPixelDimension: 1) === frame)
+    posters.insert(frame, for: third, maximumPixelDimension: 1)
+    #expect(posters.image(for: newest, maximumPixelDimension: 1) == nil)
+    #expect(posters.image(for: oldest, maximumPixelDimension: 1) === frame)
+    #expect(posters.image(for: third, maximumPixelDimension: 1) === frame)
+    #expect(posters.image(for: third, maximumPixelDimension: 2) == nil)
+    posters.removeAll()
+    #expect(posters.image(for: third, maximumPixelDimension: 1) == nil)
 }
 
 @Test func `animated image decoding respects the requested display pixel budget`() throws {

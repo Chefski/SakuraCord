@@ -181,6 +181,7 @@ struct AnimatedRemoteImage: View {
     @AppStorage("settings.accessibility.reduceDecorations")
     private var reducesDecorations = false
     @State private var decodedImage: DecodedAnimatedImage?
+    @State private var cachedPoster: CGImage?
     @State private var displayedLoadID: AnimatedRemoteImageRequestIdentity?
     @State private var didFail = false
 
@@ -223,13 +224,16 @@ struct AnimatedRemoteImage: View {
             maximumPixelDimension: maximumPixelDimension
         )
         _decodedImage = State(initialValue: cached)
+        _cachedPoster = State(initialValue: cached?.frames.first ?? AnimatedImagePosterCache.shared.image(
+            for: url, maximumPixelDimension: maximumPixelDimension
+        ))
         _displayedLoadID = State(initialValue: cached == nil ? nil : loadID)
     }
 
     var body: some View {
         Group {
             if let decodedImage {
-                if usesSwiftUIRendering {
+                if usesSwiftUIRendering || decodedImage.frames.count == 1 {
                     SwiftUIAnimatedImage(image: decodedImage, animates: animates && !accessibilityReducesAnimation,
                                          isLooping: isLooping, contentMode: contentMode, resetsWhenStopped: resetsWhenStopped)
                         .id(ObjectIdentifier(decodedImage))
@@ -245,6 +249,10 @@ struct AnimatedRemoteImage: View {
                 }
             } else if let previewImage {
                 Image(nsImage: previewImage)
+                    .resizable()
+                    .aspectRatio(contentMode: contentMode)
+            } else if let cachedPoster {
+                Image(decorative: cachedPoster, scale: 1)
                     .resizable()
                     .aspectRatio(contentMode: contentMode)
             } else if didFail,
@@ -278,6 +286,9 @@ struct AnimatedRemoteImage: View {
                     for: url,
                     maximumPixelDimension: maximumPixelDimension
                 )
+                cachedPoster = decodedImage?.frames.first ?? AnimatedImagePosterCache.shared.image(
+                    for: url, maximumPixelDimension: maximumPixelDimension
+                )
                 displayedLoadID = decodedImage == nil ? nil : loadID
             }
             guard decodedImage == nil else {
@@ -297,8 +308,10 @@ struct AnimatedRemoteImage: View {
                     maximumPixelDimension: maximumPixelDimension
                 )
                 decodedImage = image
+                cachedPoster = image.frames.first
                 displayedLoadID = loadID
             } catch {
+                guard !Task.isCancelled else { return }
                 decodedImage = nil
                 displayedLoadID = nil
                 didFail = true
@@ -362,6 +375,9 @@ final class AnimatedRemoteImageDisplayCache: @unchecked Sendable {
         for url: URL,
         maximumPixelDimension: Int?
     ) {
+        if let frame = image.frames.first {
+            AnimatedImagePosterCache.shared.insert(frame, for: url, maximumPixelDimension: maximumPixelDimension)
+        }
         let key = key(
             url: url,
             maximumPixelDimension: maximumPixelDimension
