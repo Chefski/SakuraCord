@@ -5,6 +5,8 @@ import SakuraCordModels
 extension AppModel {
     func consumeProfileWidgetConnectionsChanged(userID: UserID, connections: [String: ProfileWidgetConnection]) {
         guard userID == snapshot?.currentUser.id else { return }
+        preparedProfileEditingSnapshot?.presentation.widgetResources?.connections = connections
+        preparedProfileEditingSnapshot?.mainPresentation.widgetResources?.connections = connections
         for key in profileCache.keys where key.userID == userID { profileCache[key]?.widgetResources?.connections = connections }
         for destination in [ProfilePresentationDestination.inspector, .contextual, .expanded] {
             guard var presentation = profilePresentation(for: destination), presentation.member.id == userID else { continue }
@@ -15,11 +17,26 @@ extension AppModel {
     }
 
     func consumeProfileCustomStatusChanged(userID: UserID, status: ProfileCustomStatus?) {
+        guard snapshot?.currentUser.id == nil || snapshot?.currentUser.id == userID else { return }
+        profileCustomStatusUserID = userID
         profileCustomStatus = status
         let text = status?.displayText
+        if preparedProfileEditingSnapshot?.presentation.id == userID {
+            preparedProfileEditingSnapshot?.customStatus = status
+            preparedProfileEditingSnapshot?.presentation.customStatus = text
+            preparedProfileEditingSnapshot?.mainPresentation.customStatus = text
+        }
         for key in profileCache.keys where key.userID == userID { profileCache[key]?.customStatus = text }
         for guildID in membersByGuildID.keys { membersByGuildID[guildID]?[userID]?.customStatus = text }
+        for guildID in memberListsByGuildID.keys {
+            memberListsByGuildID[guildID] = memberListsByGuildID[guildID]?.map { member in
+                var member = member
+                if member.id == userID { member.customStatus = text }
+                return member
+            }
+        }
         for index in members.indices where members[index].id == userID { members[index].customStatus = text }
+        for index in mentionAutocompleteMembers.indices where mentionAutocompleteMembers[index].id == userID { mentionAutocompleteMembers[index].customStatus = text }
         for destination in [ProfilePresentationDestination.inspector, .contextual, .expanded] {
             guard var presentation = profilePresentation(for: destination), presentation.member.id == userID else { continue }
             presentation.member.customStatus = text
@@ -29,6 +46,7 @@ extension AppModel {
     }
 
     func consumeProfileChanged(userID: UserID, scope: ProfileEditingScope, value: UserProfile?) {
+        if userID == snapshot?.currentUser.id { preparedProfileEditingSnapshot = nil }
         let key = ProfileCacheKey(userID: userID, guildID: scope.guildID)
         profileCache[key] = value
         guard selectedGuildID == scope.guildID else { return }
@@ -156,6 +174,8 @@ extension AppModel {
         for member: Member,
         destination: ProfilePresentationDestination
     ) -> UUID {
+        var member = member
+        if member.id == profileCustomStatusUserID { member.customStatus = profileCustomStatus?.displayText }
         let requestID = UUID()
         let guildID = selectedGuildID
         let cacheKey = ProfileCacheKey(
@@ -284,6 +304,7 @@ extension AppModel {
             currentUserProfilePrefetch?.task.cancel()
             currentUserProfilePrefetch = nil
             profileCache.removeAll(keepingCapacity: false)
+            preparedProfileEditingSnapshot = nil
         }
     }
 
@@ -320,7 +341,13 @@ extension AppModel {
     ) -> UserProfile {
         var result = value
         result.status = member.status
-        result.customStatus = member.customStatus
+        if member.id == profileCustomStatusUserID {
+            // Account settings also represent an explicit clear. Lazy member lists
+            // and the synthetic You member are not authoritative for our own status.
+            result.customStatus = profileCustomStatus?.displayText
+        } else if member.id != snapshot?.currentUser.id {
+            result.customStatus = member.customStatus
+        }
         return result
     }
 
@@ -350,6 +377,13 @@ extension AppModel {
                       model.isCurrentAccountSession(session)
                 else { return }
                 model.profileCache[cacheKey] = profile
+                let invalidation = model.profileInvalidationRevision
+                let baseline = try await session.provider.cachedProfileEditingSnapshot(in: .main)
+                guard !Task.isCancelled, model.isCurrentAccountSession(session), model.profileInvalidationRevision == invalidation else { return }
+                model.preparedProfileEditingSnapshot = baseline
+                model.startAccountChildTask(account: session) { _, _ in
+                    await ProfilePreviewPreparation.preload(baseline?.presentation ?? profile)
+                }
             } catch {
                 // Prefetching is speculative. The normal profile presentation
                 // path remains responsible for surfacing load failures.

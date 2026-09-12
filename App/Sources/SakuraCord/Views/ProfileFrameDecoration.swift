@@ -14,7 +14,7 @@ struct ProfileFrameAnchorKey: PreferenceKey {
     }
 }
 
-/// The modal host draws the artwork outside its clip without changing the card.
+/// The profile surface host draws the artwork outside its clip without changing the card.
 struct ProfileFrameDecoration: View {
     let anchor: ProfileFrameAnchor?
     let order: String

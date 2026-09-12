@@ -5,7 +5,6 @@ import SwiftUI
 enum ProfilePresentationLayout {
     case popover
     case inspector
-    case editor
     case expanded
 }
 
@@ -96,7 +95,7 @@ struct MemberProfilePopover<Footer: View>: View {
     var body: some View {
         Group {
             switch layout {
-            case .popover, .editor:
+            case .popover:
                 profileContent
                     .frame(
                         width: width,
@@ -107,8 +106,11 @@ struct MemberProfilePopover<Footer: View>: View {
                     )
                     .background { popoverBackground }
             case .expanded:
-                profileContent
-                    .frame(width: width, height: maximumPopoverHeight, alignment: .top)
+                if editor != nil {
+                    profileContent.frame(width: width, alignment: .top)
+                } else {
+                    profileContent.frame(width: width, height: maximumPopoverHeight, alignment: .top)
+                }
             case .inspector:
                 profileContent
                     .frame(
@@ -127,18 +129,8 @@ struct MemberProfilePopover<Footer: View>: View {
                     .allowsHitTesting(false)
             }
         }
-        .background {
-            if layout == .editor, let frame = profile?.frame {
-                ProfileFrameOverlay(frame: frame, order: "back")
-            }
-        }
-        .overlay {
-            if layout == .editor, let frame = profile?.frame {
-                ProfileFrameOverlay(frame: frame, order: "front")
-            }
-        }
         .onPreferenceChange(ProfileContentHeightKey.self) { newHeight in
-            guard newHeight.isFinite, newHeight > 0 else { return }
+            guard editor == nil, newHeight.isFinite, newHeight > 0 else { return }
             contentHeight = max(250, newHeight)
         }
         .task(id: theme.source(for: profile, scale: displayScale, isPreview: editor != nil)) {
@@ -157,100 +149,12 @@ struct MemberProfilePopover<Footer: View>: View {
                     .padding(surfaceInset)
             }
 
-            GeometryReader { geometry in
-                ScrollView(.vertical) {
-                    VStack(alignment: .leading, spacing: 11) {
-                        ProfileHeroSection(
-                            member: member,
-                            profile: profile,
-                            themeHexes: profileThemeHexes,
-                            avatarCutoutColor: ProfilePalette.innerSurfaceColor(
-                                themeHexes: profileThemeHexes,
-                                colorScheme: colorScheme
-                            ),
-                            topCornerRadius: layout == .inspector ? 0 : 16,
-                            roundsTopTrailingCorner: layout != .expanded,
-                            statusBubbleWidth: statusBubbleWidth,
-                            animatesRemoteMedia: animatesRemoteMedia,
-                            editor: editor,
-                            openEditorPicker: openEditorPicker
-                        )
-                        .overlay(alignment: .topTrailing) {
-                            if openProfile != nil {
-                                Button(action: expandProfile) {
-                                    Image(systemName: "arrow.up.left.and.arrow.down.right")
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .frame(width: 28, height: 28)
-                                        .background(.regularMaterial, in: Circle())
-                                }
-                                .buttonStyle(.plain)
-                                .help("Expand Profile")
-                                .accessibilityLabel("Expand Profile")
-                                .padding(10)
-                            }
-                        }
-                        .zIndex(10)
-
-                        if isLoading {
-                            HStack(spacing: 9) {
-                                ProgressView()
-                                    .controlSize(.small)
-                                Text("Loading full profile…")
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(.horizontal, 18)
-                        } else if let errorMessage {
-                            Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                                .font(.subheadline)
-                                .foregroundStyle(.orange)
-                                .padding(.horizontal, 18)
-                        }
-
-                        if let profile, showsDetails {
-                            if layout != .editor {
-                                ProfileMutualSummary(
-                                    guilds: profile.mutualGuilds,
-                                    friends: profile.mutualFriends,
-                                    mutualFriendCount: profile.mutualFriendsCount,
-                                    layout: layout
-                                )
-                            }
-                            if let editor, editor.scope == .main || editor.isNitro {
-                                ProfileInlineBioEditor(value: Binding(get: { editor.bio }, set: { editor.bio = $0 }), displayValue: profile.bio, model: editor.model)
-                                .id(editor.draftGeneration)
-                                .profileEditorTextHover()
-                                .padding(.horizontal, 16)
-                            } else if let bio = profile.bio, !bio.isEmpty {
-                                ProfileAboutSection(bio: bio)
-                                    .padding(.horizontal, 16)
-                            }
-                            if openProfile != nil, let widgets = profile.widgets, !widgets.isEmpty {
-                                ProfileWidgetCollectionButton(widgets: widgets, resources: profile.widgetResources, open: expandProfile)
-                                    .padding(.horizontal, 16)
-                            }
-                            ProfileMembershipSection(createdAt: profile.id.createdAt)
-                            if showsRoles, !profile.roles.isEmpty {
-                                ProfileRolesSection(roles: profile.roles, keepsExpanded: layout == .expanded)
-                                    .id(profile.id)
-                            }
-                            if !profile.connectedAccounts.isEmpty {
-                                ProfileConnectionsSection(accounts: profile.connectedAccounts, wraps: layout == .expanded)
-                            }
-
-                        }
-
-                        footer
-                    }
-                    .frame(width: geometry.size.width, alignment: .leading)
-                    .padding(.bottom, 14)
-                    .background {
-                        GeometryReader { proxy in
-                            Color.clear.preference(key: ProfileContentHeightKey.self, value: proxy.size.height)
-                        }
-                    }
+            Group {
+                if editor != nil {
+                    profileScrollContent(width: width - surfaceInset * 2)
+                } else {
+                    GeometryReader { geometry in profileScrollContent(width: geometry.size.width) }
                 }
-                .scrollIndicators(layout != .editor && editorModal == nil && contentHeight > maximumPopoverHeight ? .visible : .hidden)
-                .scrollDisabled(layout == .editor)
             }
             .padding(surfaceInset)
 
@@ -265,6 +169,100 @@ struct MemberProfilePopover<Footer: View>: View {
                     .zIndex(100)
             }
         }
+    }
+
+    private func profileScrollContent(width contentWidth: CGFloat) -> some View {
+        ScrollView(.vertical) {
+            VStack(alignment: .leading, spacing: 11) {
+                ProfileHeroSection(
+                    member: member,
+                    profile: profile,
+                    themeHexes: profileThemeHexes,
+                    avatarCutoutColor: ProfilePalette.innerSurfaceColor(
+                        themeHexes: profileThemeHexes,
+                        colorScheme: colorScheme
+                    ),
+                    topCornerRadius: layout == .inspector ? 0 : 16,
+                    roundsTopTrailingCorner: layout != .expanded,
+                    statusBubbleWidth: statusBubbleWidth,
+                    animatesRemoteMedia: animatesRemoteMedia,
+                    editor: editor,
+                    openEditorPicker: openEditorPicker
+                )
+                .overlay(alignment: .topTrailing) {
+                    if openProfile != nil {
+                        Button(action: expandProfile) {
+                            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                .font(.system(size: 12, weight: .semibold))
+                                .frame(width: 28, height: 28)
+                                .background(.regularMaterial, in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .help("Expand Profile")
+                        .accessibilityLabel("Expand Profile")
+                        .padding(10)
+                    }
+                }
+                .zIndex(10)
+
+                if isLoading {
+                    HStack(spacing: 9) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Loading full profile…")
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 18)
+                } else if let errorMessage {
+                    Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                        .font(.subheadline)
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, 18)
+                }
+
+                if let profile, showsDetails {
+                    if editor == nil {
+                        ProfileMutualSummary(
+                            guilds: profile.mutualGuilds,
+                            friends: profile.mutualFriends,
+                            mutualFriendCount: profile.mutualFriendsCount,
+                            layout: layout
+                        )
+                    }
+                    if let editor, editor.scope == .main || editor.isNitro {
+                        ProfileInlineBioEditor(value: Binding(get: { editor.bio }, set: { editor.bio = $0 }), displayValue: profile.bio, model: editor.model)
+                        .id(editor.draftGeneration)
+                        .padding(.horizontal, 16)
+                    } else if let bio = profile.bio, !bio.isEmpty {
+                        ProfileAboutSection(bio: bio)
+                            .padding(.horizontal, 16)
+                    }
+                    if openProfile != nil, let widgets = profile.widgets, !widgets.isEmpty {
+                        ProfileWidgetCollectionButton(widgets: widgets, resources: profile.widgetResources, open: expandProfile)
+                            .padding(.horizontal, 16)
+                    }
+                    ProfileMembershipSection(createdAt: profile.id.createdAt)
+                    if showsRoles, !profile.roles.isEmpty {
+                        ProfileRolesSection(roles: profile.roles, keepsExpanded: layout == .expanded)
+                            .id(profile.id)
+                    }
+                    if !profile.connectedAccounts.isEmpty {
+                        ProfileConnectionsSection(accounts: profile.connectedAccounts, wraps: layout == .expanded)
+                    }
+
+                }
+
+                footer
+            }
+            .frame(width: contentWidth, alignment: .leading)
+            .padding(.bottom, 14)
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(key: ProfileContentHeightKey.self, value: proxy.size.height)
+                }
+            }
+        }
+        .scrollIndicators(editorModal == nil && (editor != nil || contentHeight > maximumPopoverHeight) ? .visible : .hidden)
     }
 
     @ViewBuilder
@@ -310,7 +308,7 @@ struct MemberProfilePopover<Footer: View>: View {
         switch layout {
         case .inspector: 0
         case .expanded: profileThemeHexes.count >= 2 ? 3 : 0
-        case .popover, .editor: 3
+        case .popover: 3
         }
     }
 
@@ -347,7 +345,7 @@ struct MemberProfilePopover<Footer: View>: View {
     }
 }
 
-private struct ProfileContentHeightKey: PreferenceKey {
+struct ProfileContentHeightKey: PreferenceKey {
     static var defaultValue: CGFloat = 320
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = max(value, nextValue())
@@ -454,11 +452,12 @@ struct ProfileStatusBubble: View {
     let text: String
     let surfaceColor: Color
     let width: CGFloat
+    var keepsExpanded = false
     @State private var isBubbleHovering = false
     @State private var isTextHovering = false
 
     var body: some View {
-        let isExpanded = isBubbleHovering || isTextHovering
+        let isExpanded = keepsExpanded || isBubbleHovering || isTextHovering
 
         ProfileStatusTextView(
             source: text,

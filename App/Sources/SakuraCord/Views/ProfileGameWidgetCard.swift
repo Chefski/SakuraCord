@@ -262,6 +262,7 @@ private struct ProfileWidgetGameComment: View {
                 if isEditing {
                     TextField("Add a comment", text: Binding(get: { draft }, set: updateDraft), axis: .vertical)
                         .lineLimit(3 ... 3).textFieldStyle(.plain).focused($focused)
+                        .profileEditorTextHover(isEditing: true)
                         .onSubmit(commit)
                         .onKeyPress(.return, phases: .down) { event in
                             guard !event.modifiers.contains(.shift) else { return .ignored }

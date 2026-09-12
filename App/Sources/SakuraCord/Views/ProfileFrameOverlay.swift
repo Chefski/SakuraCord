@@ -9,6 +9,22 @@ struct ProfileFrameOverlay: View {
     @State private var images: [String: CGImage] = [:]
     @State private var isSettled = false
 
+    init(frame: ProfileFrame, order: String) {
+        self.frame = frame
+        self.order = order
+        let cached = Self.cachedImages(frame: frame, order: order)
+        _images = State(initialValue: cached)
+        _isSettled = State(initialValue: cached.count == frame.layers.filter { $0.order == order }.count)
+    }
+
+    private static func cachedImages(frame: ProfileFrame, order: String) -> [String: CGImage] {
+        var result: [String: CGImage] = [:]
+        for layer in frame.layers where layer.order == order {
+            result[layer.id] = AnimatedRemoteImageDisplayCache.shared.image(for: layer.staticURL, maximumPixelDimension: 2048)?.frames.first
+        }
+        return result
+    }
+
     var body: some View {
         GeometryReader { geometry in
             let scale = geometry.size.width / max(1, frame.innerWidth)
@@ -55,13 +71,17 @@ struct ProfileFrameOverlay: View {
         .allowsHitTesting(false)
         .accessibilityHidden(true)
         .task(id: frame) {
-            images = [:]
-            isSettled = false
+            images = Self.cachedImages(frame: frame, order: order)
             let layers = frame.layers.filter { $0.order == order }
+            isSettled = images.count == layers.count
+            guard !isSettled else { return }
             let loaded = await withTaskGroup(of: (String, DecodedAnimatedImage?).self) { group in
                 for layer in layers {
                     group.addTask {
                         let image = try? await SharedAnimatedImageLoader.shared.image(for: layer.staticURL, maximumPixelDimension: 2048)
+                        if let image, !Task.isCancelled {
+                            await AnimatedRemoteImageDisplayCache.shared.insert(image, for: layer.staticURL, maximumPixelDimension: 2048)
+                        }
                         return (layer.id, image)
                     }
                 }

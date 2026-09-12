@@ -258,6 +258,7 @@ final class AppModel {
     var membersByID: [UserID: Member] = [:]
     @ObservationIgnored var membersByGuildID: [GuildID: [UserID: Member]] = [:]
     var profileCustomStatus: ProfileCustomStatus?
+    var profileCustomStatusUserID: UserID?
     var profileWidgetConnectionsRevision = UUID()
     var profileInvalidationRevision = UUID()
     @ObservationIgnored var memberListsByGuildID: [GuildID: [Member]] = [:]
@@ -1045,6 +1046,7 @@ final class AppModel {
     @ObservationIgnored var contextualProfileTask:
         Task<Void, Never>?
     @ObservationIgnored var expandedProfileTask: Task<Void, Never>?
+    @ObservationIgnored var preparedProfileEditingSnapshot: ProfileEditingSnapshot?
     @ObservationIgnored var currentUserProfilePrefetch: CurrentUserProfilePrefetch?
     @ObservationIgnored var profileCache: [ProfileCacheKey: UserProfile] = [:]
     @ObservationIgnored var channelLoadTask: Task<Void, Never>?

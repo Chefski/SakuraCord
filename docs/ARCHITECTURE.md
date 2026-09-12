@@ -355,8 +355,18 @@ The Settings-owned `ProfileEditorState` manages scope selection, local changes,
 validation feedback and temporary preview files. It retains the originating
 account session and invalidates obsolete loads with a revision and draft
 generation. Unsaved edits block scope changes and Settings dismissal until
-saved or reset. Reentering Profiles refreshes a clean snapshot in its selected
-scope while preserving unsaved changes and explicit recovery state. Returning
+saved or reset. The account-bar preload prepares a main-profile editing baseline in the account model,
+so a newly created Settings editor can initialize its fields synchronously. Selected
+avatar/banner artwork, cosmetics and derived avatar colours warm separately in the existing
+bounded media caches; artwork never blocks baseline adoption. The expanded preview
+measures both columns in its layout pass rather than resizing after a height
+preference arrives. The editor also adopts the provider's cached editable response;
+a server response also supplies its main-profile baseline. It joins an existing
+preload instead of issuing a competing request. Reentering Profiles reuses clean
+snapshots for one minute, then refreshes while preserving unsaved changes and
+explicit recovery state. An unloaded scope keeps the previous canvas visible
+under a translucent authentication-loading animation, with editing blocked until
+the new baseline arrives. Cache resolution does not display that animation. A failed scope change retains the previous scope. Returning
 to the app or receiving a profile invalidation marks retained editor data stale;
 the visible clean editor refreshes immediately while keeping its preview mounted.
 Unsaved drafts defer that refresh until reset or saved. User and member Gateway
@@ -365,18 +375,35 @@ updates invalidate full profile caches, including reads already in flight.
 `MemberProfilePopover`; display-name fonts and effects, avatar decorations,
 nameplates, profile effects and frames, membership sections and widget cards
 share their production renderers. Editor actions are supplied through the
-environment. Nested profile editors use `WindowModalOverlay`, the same window
-host, dimming and dismissal animation as message forwarding. The profile and
-widget board sit side by side when space permits and stack at narrower widths,
-inside the same `SettingsPageForm` used by other Settings pages, including its
-catalog title, search reveal, grouped form, background and native scrolling.
-The page has no profile-derived background or custom form-group styling.
+environment. Cosmetic and image pickers use `StableAnchoredPopoverPresenter`,
+the same semitransient host as the theme/gradient picker, including actions from
+the profile preview. These pickers use fixed compact sizes during loading and
+browsing. Cosmetic grids apply selections directly to the local draft, with Nitro
+items grouped below other owned items. Their clipping and selection outlines share
+one corner radius resolved from the stationary popover surface, so scrolling does
+not change individual options' rounding.
+Name style and widget dialogs use the shared `WindowModalOverlay`. The editor's
+upper section shares `ProfileExpandedSurface` and `ProfileWidgetBoardViewport`
+with the expanded profile modal: one themed surface, a fixed profile column,
+divider, and independently scrolling widget board. The editor retains inline
+fields, widget management, and anchored pickers within that presentation. Its height
+fits the taller content column up to the modal height, avoiding empty space below
+short profiles.
+The page retains the Settings background, navigation title, and outer scrolling.
+Status bubbles share their production renderer; the editor's button supplies
+hover expansion and holds the bubble expanded while its status popover is open.
+Confirmed own-account custom status updates are authoritative over member-list
+presence data, including explicit clears. Successful editor saves update the app
+model immediately; external updates refresh the saved baseline without replacing
+an unsaved status draft.
 Eight equally sized customization tiles reflow from four
 columns to two. The scope picker is a native trailing toolbar button showing
 the main-profile symbol or selected server icon. Scope and server-tag
 selectors use native popovers; selectable popover rows derive their highlight
 shape from the system container. Name and pronoun fields overlay their rendered
-text without adding layout padding. Bio editing keeps the shared native rich-text
+text without adding layout padding; editable text keeps its hover outline while
+editing. Cosmetic removal is the first ordinary tile in its option grid, with
+the same bounds and selection treatment as other items. Bio editing keeps the shared native rich-text
 view and emoji attachments in place, preserving inherited values until an edit.
 The emoji picker returns to that text view's selection through its own window;
 normal typing leaves selection with the native editor. Application widgets use their configured
@@ -407,7 +434,13 @@ before the following stage. Profile presentation generations prevent older
 reads from replacing newer REST or Gateway state. Saved identity and scoped
 profile events update retained popovers, members and message projections.
 
-Custom status is an independent settings-protobuf update. Its provider retains
+Custom status is edited locally in a compact anchored popover with an integrated
+text row, circular emoji action, and expiry menu. It shares the profile draft's
+Save Changes, Reset, and unsaved-change protection; its emoji picker opens a nested
+popover. The editor submits status through the existing settings-protobuf update
+after other profile stages succeed, retaining a failed status draft without
+repeating acknowledged profile writes. Relative expiry starts at submission.
+Its provider retains
 the surrounding status settings, preserves unrelated fields, reconciles the
 response and schedules expiry. Personal and game widget editing requires both
 full Nitro and the matching early-access assignment, with the same checks at

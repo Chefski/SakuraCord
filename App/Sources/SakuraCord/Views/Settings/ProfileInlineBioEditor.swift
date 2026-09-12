@@ -36,6 +36,7 @@ struct ProfileInlineBioEditor: View {
                 interaction.blur()
             }
         ))
+        .profileEditorTextHover(isEditing: isEditing)
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .topLeading) {
             if visibleValue.isEmpty {

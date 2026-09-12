@@ -4,11 +4,25 @@ import SakuraCordModels
 public extension DiscordRESTProvider {
     func cachedProfileEditingSnapshot(in scope: ProfileEditingScope) async throws -> ProfileEditingSnapshot? {
         guard let user = currentUser else { throw ChatProviderError.unauthenticated }
-        guard let response = profileEditingResponses[scope], response.profile.user.id == user.id.description else { return nil }
+        // A server profile response includes the main profile's editable fields.
+        // Reuse the account-bar preload even when it was fetched in a server.
+        let cachedScope: ProfileEditingScope
+        if profileEditingResponses[scope] != nil {
+            cachedScope = scope
+        } else if scope == .main, let entry = profileEditingResponses.first(where: {
+            $0.value.profile.user.id == user.id.description
+                && cachedProfiles[ProfileCacheKey(userID: user.id, guildID: $0.key.guildID)] != nil
+        }) {
+            cachedScope = entry.key
+        } else { return nil }
+        guard let response = profileEditingResponses[cachedScope], response.profile.user.id == user.id.description else { return nil }
         if scope.guildID != nil, response.serverIdentity == nil || response.serverMetadata == nil { return nil }
-        let key = ProfileCacheKey(userID: user.id, guildID: scope.guildID)
+        let key = ProfileCacheKey(userID: user.id, guildID: cachedScope.guildID)
         guard var presentation = cachedProfiles[key] else { return nil }
         presentation.widgetResources = cachedProfileWidgetResources(for: user.id)
+        if cachedScope != scope {
+            presentation = try makeProfileEditingSnapshot(response, in: cachedScope, presentation: presentation).mainPresentation
+        }
         return try makeProfileEditingSnapshot(response, in: scope, presentation: presentation)
     }
 

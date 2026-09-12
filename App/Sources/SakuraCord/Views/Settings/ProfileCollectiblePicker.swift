@@ -6,168 +6,89 @@ struct ProfileCollectiblePicker: View {
     let editor: ProfileEditorState
     let kind: ProfileCollectibleKind
     let profile: UserProfile
-
-    @Environment(\.windowModalContext) private var dismiss
-    @Environment(\.windowModalAvailableSize) private var availableSize
-    @State private var selectedID: String?
-    @State private var hasSelected = false
+    let dismiss: () -> Void
     @State private var loadError: String?
 
-    private var title: String {
-        switch kind {
-        case .avatarDecoration: String(localized: "Avatar Decoration", bundle: #bundle)
-        case .effect: String(localized: "Profile Effect", bundle: #bundle)
-        case .nameplate: String(localized: "Nameplate", bundle: #bundle)
-        case .frame: String(localized: "Profile Frame", bundle: #bundle)
+    private var items: [ProfileCollectibleItem] {
+        (editor.inventory?.items(of: kind) ?? []).filter {
+            editor.inventory?.canUse(itemID: $0.id, hasFullNitro: editor.isNitro) == true
         }
     }
-    private var originalID: String? {
-        editor.selectedCollectibleID(kind)
+
+    private var ownedItems: [ProfileCollectibleItem] {
+        items.filter { editor.inventory?.requiresNitro(itemID: $0.id) == false }
     }
-    private var itemID: String? { hasSelected ? selectedID : originalID }
-    private var item: ProfileCollectibleItem? { itemID.flatMap { editor.inventory?.item(id: $0) } }
-    private var product: ProfileCollectibleProduct? { itemID.flatMap { editor.inventory?.product(itemID: $0) } }
-    private var isAvailable: Bool {
-        guard let itemID else { return true }
-        return editor.inventory?.canUse(itemID: itemID, hasFullNitro: editor.isNitro) == true
-    }
-    private var allItems: [ProfileCollectibleItem] { editor.inventory?.items(of: kind) ?? [] }
-    private var showsPreview: Bool { availableSize.width >= 700 }
-    private var purchasedItems: [ProfileCollectibleItem] {
-        allItems.filter { editor.inventory?.owns(itemID: $0.id) == true && editor.inventory?.requiresNitro(itemID: $0.id) == false }
-    }
-    private var premiumItems: [ProfileCollectibleItem] {
-        guard editor.isNitro else { return [] }
-        return allItems.filter { editor.inventory?.requiresNitro(itemID: $0.id) == true && editor.inventory?.canUse(itemID: $0.id, hasFullNitro: true) == true }
+
+    private var nitroItems: [ProfileCollectibleItem] {
+        items.filter { editor.inventory?.requiresNitro(itemID: $0.id) == true }
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("Change \(title)", bundle: #bundle).font(.title2.bold())
-                Spacer()
-                HoverCloseButton(help: "Close", accessibilityIdentifier: "profile-editor-close") { dismiss?() }
-            }
-            .padding(.horizontal, 24).padding(.top, 20).padding(.bottom, 12)
-            HStack(alignment: .top, spacing: 24) {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 12) {
-                        Text("Your \(title)s", bundle: #bundle).font(.headline)
-                        LazyVGrid(columns: columns, spacing: 12) {
-                            entryTile(editor.scope.guildID == nil ? "None" : "Use Main Profile", image: "nosign", selected: itemID == nil) { selectedID = nil; hasSelected = true }
-                            choices(purchasedItems)
-                        }
-                        if !premiumItems.isEmpty {
-                            Text("Exclusive to Nitro", bundle: #bundle).font(.headline).padding(.top, 12)
-                            LazyVGrid(columns: columns, spacing: 12) { choices(premiumItems) }
-                        }
-                    }
+        Group {
+            if editor.inventory != nil {
+                options
+            } else if let loadError {
+                VStack(spacing: 8) {
+                    Text(loadError).font(.callout)
+                    Button("Retry") { Task { await load() } }
                 }
-                .frame(width: showsPreview ? min(420, availableSize.width - 348) : nil)
-                if showsPreview {
-                    VStack(alignment: .leading, spacing: 12) {
-                        preview
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(product?.name ?? String(localized: "None", bundle: #bundle)).font(.headline)
-                            if let date = product?.purchasedAt {
-                                Text("Acquired on \(date.formatted(.dateTime.month(.wide).year()))", bundle: #bundle)
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }
-                            if let date = product?.expiresAt {
-                                Text("Available until \(date.formatted(date: .abbreviated, time: .omitted))", bundle: #bundle)
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }
-                            if !isAvailable { Label("Requires Nitro or ownership", systemImage: "lock.fill").font(.caption) }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(12)
-                        .overlay { ConcentricRectangle(cornerRadius: 4).stroke(.primary.opacity(0.15), lineWidth: 2) }
-                        Spacer(minLength: 0)
-                    }
-                    .frame(width: 276)
-                }
+                .padding(16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .padding(.horizontal, 24)
-            if let loadError {
-                HStack { Text(loadError).font(.callout); Button("Retry") { Task { await load() } } }
-                    .padding(12)
-            }
-            HStack {
-                Spacer()
-                Button("Cancel") { dismiss?() }.keyboardShortcut(.cancelAction)
-                Button("Apply") { editor.setCollectible(item, kind: kind); dismiss?() }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!isAvailable || itemID == originalID || editor.inventory == nil)
-                    .keyboardShortcut(.defaultAction)
-            }
-            .controlSize(.large)
-            .padding(24)
         }
-        .windowModalSize(width: 768, height: 560)
-        .overlay { if editor.inventory == nil, loadError == nil { ProgressView().padding().glassEffect() } }
         .task { await load() }
     }
 
-    private var columns: [GridItem] {
-        Array(repeating: GridItem(.flexible(), spacing: 12), count: kind == .nameplate ? 1 : 3)
-    }
-
-    private var resolvedProfile: UserProfile {
-        var result = profile
-        let inherited = editor.scope.guildID == nil ? nil : editor.snapshot?.mainPresentation
-        switch kind {
-        case .avatarDecoration: result.user.avatarDecorationURL = inherited?.user.avatarDecorationURL
-        case .effect: result.effect = inherited?.effect
-        case .nameplate: result.user.nameplate = inherited?.user.nameplate
-        case .frame: result.frame = inherited?.frame
-        }
-        if let item { result.applyCollectiblePreview(item) }
-        return result
-    }
-
-    private func choices(_ items: [ProfileCollectibleItem]) -> some View {
-        ForEach(items) { candidate in
-            ProfileCollectibleChoice(item: candidate, profile: profile, selected: itemID == candidate.id) {
-                selectedID = candidate.id; hasSelected = true
-            }
-            .overlay(alignment: .topTrailing) {
-                if editor.inventory?.canUse(itemID: candidate.id, hasFullNitro: editor.isNitro) != true {
-                    Image(systemName: "lock.fill").font(.caption).padding(6).allowsHitTesting(false)
+    private var options: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                choiceGroup(ownedItems, includesNone: true)
+                if !nitroItems.isEmpty {
+                    Label("Included with Nitro", systemImage: "sparkles")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 4)
+                        .padding(.top, 4)
+                    choiceGroup(nitroItems)
                 }
             }
+            .padding(8)
         }
     }
 
-    @ViewBuilder private var preview: some View {
+    @ViewBuilder private func choiceGroup(_ items: [ProfileCollectibleItem], includesNone: Bool = false) -> some View {
         if kind == .nameplate {
+            // A short, fixed-height list needs no estimated lazy layout. Keeping
+            // its full extent stable lets NSScrollView own the elastic overscroll.
             VStack(spacing: 8) {
-                ForEach(0 ..< 2) { _ in ProfileAnonymousMemberRow() }
-                ProfileMemberNameplateRow(profile: resolvedProfile)
-                ForEach(0 ..< 2) { _ in ProfileAnonymousMemberRow() }
+                if includesNone { choice(nil) }
+                ForEach(items) { choice($0) }
             }
-            .padding(.horizontal, 26)
-            .frame(height: 190)
-            .background(.black.opacity(0.2), in: ConcentricRectangle(cornerRadius: 10))
-            .clipped()
         } else {
-            MemberProfilePopover(member: Member(user: resolvedProfile.user, roleName: "", status: resolvedProfile.status), profile: resolvedProfile,
-                                 isLoading: false, errorMessage: nil, maximumPopoverHeight: 340, showsRoles: false, footer: EmptyView())
-                .scaleEffect(276 / 330, anchor: .topLeading)
-                .frame(width: 276, height: 284, alignment: .topLeading)
+            LazyVGrid(columns: columns, spacing: 8) {
+                if includesNone { choice(nil) }
+                ForEach(items) { choice($0) }
+            }
         }
     }
 
-    private func entryTile(_ label: LocalizedStringKey, image: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 8) {
-                Image(systemName: image).font(.title)
-                Text(label, bundle: #bundle)
-            }
-            .frame(maxWidth: .infinity).frame(height: kind == .nameplate ? 80 : 132)
+    private var columns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: 8), count: kind == .nameplate ? 1 : 3)
+    }
+
+    private func choice(_ item: ProfileCollectibleItem?) -> some View {
+        ProfileCollectibleChoice(item: item, kind: kind, profile: profile, noneTitle: noneTitle,
+                                 selected: editor.selectedCollectibleID(kind) == item?.id) {
+            editor.setCollectible(item, kind: kind)
+            dismiss()
         }
-        .buttonStyle(.plain)
-        .background(.primary.opacity(0.05), in: ConcentricRectangle(cornerRadius: 10))
-        .overlay { if selected { ConcentricRectangle(cornerRadius: 10).stroke(SakuraCordAccentColor.color, lineWidth: 2) } }
+    }
+
+    private var noneTitle: String {
+        editor.scope.guildID == nil ? String(localized: "None", bundle: #bundle) : String(localized: "Use Main Profile", bundle: #bundle)
     }
 
     private func load() async {
@@ -180,41 +101,62 @@ struct ProfileCollectiblePicker: View {
 }
 
 private struct ProfileCollectibleChoice: View {
-    let item: ProfileCollectibleItem
+    let item: ProfileCollectibleItem?
+    let kind: ProfileCollectibleKind
     let profile: UserProfile
+    let noneTitle: String
     let selected: Bool
     let choose: () -> Void
     @State private var isHovered = false
+    @Environment(\.profilePickerCornerRadius) private var cornerRadius
+
+    private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: cornerRadius) }
 
     var body: some View {
         Button(action: choose) {
             ZStack {
                 Color.clear
-                switch item.artwork {
+                switch item?.artwork {
+                case nil:
+                    Label(noneTitle, systemImage: "nosign")
+                        .labelStyle(.titleAndIcon)
+                        .foregroundStyle(.secondary)
+                        .padding(8)
                 case let .nameplate(nameplate):
                     ProfileAnonymousMemberRow().padding(.horizontal, 8)
                         .frame(height: 42)
                         .background { NameplateBackground(nameplate: nameplate, isAnimated: isHovered) }
                 case let .avatarDecoration(url):
-                    DecoratedAvatarView(name: profile.displayName, avatarURL: profile.avatarURL, decorationURL: url, size: 64, animatesDecoration: isHovered)
-                        .frame(maxWidth: .infinity).frame(height: 132)
+                    DecoratedAvatarView(name: profile.displayName, avatarURL: profile.avatarURL, decorationURL: url, size: 56, animatesDecoration: isHovered)
+                        .frame(maxWidth: .infinity).frame(height: 108)
                 case let .effect(effect):
                     ProfileCosmeticTileArtwork(effect: effect, kind: .effect, fillsTile: true, animates: isHovered)
-                        .frame(height: 132)
+                        .frame(height: 108)
                 case let .frame(frame):
                     ProfileCosmeticTileArtwork(frame: frame, kind: .frame)
-                        .frame(height: 132)
+                        .frame(height: 108)
                 }
             }
-            .frame(height: item.kind == .nameplate ? 42 : 132)
-            .contentShape(Rectangle())
-            .clipShape(ConcentricRectangle(cornerRadius: 10))
-            .overlay { if selected { ConcentricRectangle(cornerRadius: 10).stroke(SakuraCordAccentColor.color, lineWidth: 2) } }
+            .frame(maxWidth: .infinity)
+            .frame(height: kind == .nameplate ? 42 : 108)
+            .background(.primary.opacity(0.05))
+            .contentShape(shape)
+            .clipShape(shape)
+            .overlay {
+                shape.fill(.primary.opacity(isHovered ? 0.08 : 0))
+                    .allowsHitTesting(false)
+                    .animation(.easeOut(duration: 0.12), value: isHovered)
+            }
+            .overlay {
+                shape.strokeBorder(selected ? SakuraCordAccentColor.color : .primary.opacity(isHovered ? 0.3 : 0), lineWidth: selected ? 2 : 1)
+                    .allowsHitTesting(false)
+                    .animation(.easeOut(duration: 0.12), value: isHovered)
+            }
         }
         .buttonStyle(.plain)
         .onModalHover { isHovered = $0 }
-        .help(item.label)
-        .accessibilityLabel(item.label)
+        .help(item?.label ?? noneTitle)
+        .accessibilityLabel(item?.label ?? noneTitle)
         .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 }
@@ -228,16 +170,5 @@ private struct ProfileAnonymousMemberRow: View {
         }
         .frame(height: 34)
         .accessibilityHidden(true)
-    }
-}
-
-extension UserProfile {
-    mutating func applyCollectiblePreview(_ item: ProfileCollectibleItem) {
-        switch item.artwork {
-        case let .avatarDecoration(url): user.avatarDecorationURL = url
-        case let .effect(effect): self.effect = effect
-        case let .nameplate(nameplate): user.nameplate = nameplate
-        case let .frame(frame): self.frame = frame
-        }
     }
 }

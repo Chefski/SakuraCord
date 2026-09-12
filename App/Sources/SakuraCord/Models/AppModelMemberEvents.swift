@@ -8,6 +8,12 @@ extension AppModel {
         preparedPresentation: PreparedMemberListPresentation? = nil
     ) {
         AppPerformanceSignposts.measureSync("MemberListEventPublication") {
+            let receivedMembers = value
+            let value = value.map { member in
+                var member = member
+                if member.id == profileCustomStatusUserID { member.customStatus = profileCustomStatus?.displayText }
+                return member
+            }
             updateCurrentUserRoles(from: value, guildID: guildID)
             memberListsByGuildID[guildID] = value
             memberListGroupsByGuildID[guildID] = groups
@@ -15,7 +21,7 @@ extension AppModel {
 
             let previousMembersByID = membersByID
             let nextSections: [MemberSection]
-            if let preparedPresentation,
+            if value == receivedMembers, let preparedPresentation,
                preparedPresentation.guildID == guildID,
                preparedPresentation.roles == guildRoles
             {
@@ -89,7 +95,8 @@ extension AppModel {
     func refreshPresentedMembers(from members: [Member]) {
         for destination in [ProfilePresentationDestination.inspector, .contextual, .expanded] {
             guard var presentation = profilePresentation(for: destination),
-                  let updated = members.first(where: { $0.id == presentation.member.id }) else { continue }
+                  var updated = members.first(where: { $0.id == presentation.member.id }) else { continue }
+            if updated.id == profileCustomStatusUserID { updated.customStatus = profileCustomStatus?.displayText }
             presentation.member = updated
             presentation.profile?.status = updated.status
             presentation.profile?.customStatus = updated.customStatus

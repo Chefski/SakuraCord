@@ -11,10 +11,18 @@ struct ProfilesSettingsPage: View {
     var body: some View {
         ScrollView(.vertical) {
             VStack {
-                if editor.isLoading {
-                    ProgressView("Loading Profile…").frame(maxWidth: .infinity, minHeight: 160)
-                } else if let profile = editor.preview {
+                if let profile = editor.displayProfile {
                     ProfileEditorCanvas(model: model, editor: editor, profile: profile) { picker = $0 }
+                        .disabled(editor.isLoading)
+                        .allowsHitTesting(!editor.isResolvingScope)
+                        .overlay {
+                            if editor.isLoading {
+                                RoundedRectangle(cornerRadius: 16).fill(.black.opacity(0.12))
+                                    .allowsHitTesting(false)
+                            }
+                        }
+                        .authenticationLoading(editor.isLoading,
+                                               in: RoundedRectangle(cornerRadius: 16), intensity: 1.8, opacity: 0.28)
                 } else {
                     ContentUnavailableView {
                         Label("Profile Unavailable", systemImage: "person.crop.circle.badge.exclamationmark")
@@ -28,6 +36,15 @@ struct ProfilesSettingsPage: View {
             }
             .padding(16)
             .frame(maxWidth: .infinity)
+            .overlay(alignment: .top) {
+                if editor.snapshot == nil, let error = editor.errorMessage {
+                    VStack(spacing: 8) {
+                        Text(error).font(.callout)
+                        Button("Retry") { Task { await editor.load(preferCached: false) } }
+                    }
+                    .padding(16).glassEffect().padding(24)
+                }
+            }
         }
         .navigationTitle(state.catalog.page(.profiles).title)
         .background { ProfileEditorFocusDismissal() }
@@ -36,7 +53,7 @@ struct ProfilesSettingsPage: View {
                 ProfileScopePicker(scope: editor.scope, guilds: model.snapshot?.guilds ?? [], nicknames: nicknames) { scope in
                     Task { await editor.load(scope) }
                 }
-                .disabled(editor.isSaving || editor.isLoading)
+                .disabled(editor.isSaving)
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -108,47 +125,43 @@ private struct ProfileEditorCanvas: View {
     let editor: ProfileEditorState
     let profile: UserProfile
     let open: (ProfileEditorPicker) -> Void
-    @State private var contentWidth: CGFloat = 680
 
     var body: some View {
         VStack(spacing: 32) {
-            HStack(alignment: .top, spacing: contentWidth < 760 ? 12 : 24) {
-                MemberProfilePopover(member: Member(user: profile.user, roleName: "", status: profile.status), profile: profile,
-                                     isLoading: false, errorMessage: nil, layout: .editor, maximumPopoverHeight: 10_000,
-                                     showsRoles: false, footer: EmptyView(),
-                                     editor: editor, openEditorPicker: open)
-                    .disabled(editor.isSaving || editor.requiresReload)
-                ProfileWidgetsBoard(model: model, editor: editor)
-                    .id(editor.draftGeneration)
-                    .frame(minWidth: 220, maxWidth: 431)
-            }
-            ProfileStylesControls(editor: editor, profile: profile, width: contentWidth, open: open)
+            ProfileEditorExpandedPreview(model: model, editor: editor, profile: profile, open: open)
+            ProfileStylesControls(editor: editor, profile: profile, open: open)
         }
         .frame(maxWidth: .infinity)
-        .frame(maxWidth: 785)
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = $0 }
+        .frame(maxWidth: 820)
         .frame(maxWidth: .infinity)
         .containerShape(.rect(cornerRadius: 16))
     }
 }
 
-private struct ProfileEditorPickerContent: View {
+struct ProfileEditorPickerContent: View {
     let model: AppModel
     let editor: ProfileEditorState
     let profile: UserProfile
     let selection: ProfileEditorPicker
+    @Environment(\.windowModalContext) private var modal
+    @Environment(\.stablePopoverPresentationContext) private var popover
+
+    private func close() {
+        if let popover { popover.dismiss?() } else { modal?() }
+    }
+
     var body: some View {
         switch selection {
         case .avatar:
-            ProfileImagePicker(model: model, editor: editor, purpose: .avatar) { selection, url in editor.setAvatar(selection, previewURL: url) }
+            ProfileImagePicker(model: model, editor: editor, purpose: .avatar, dismiss: close, apply: { selection, url in editor.setAvatar(selection, previewURL: url) })
         case .banner:
-            ProfileImagePicker(model: model, editor: editor, purpose: .banner) { selection, url in
+            ProfileImagePicker(model: model, editor: editor, purpose: .banner, dismiss: close, apply: { selection, url in
                 if case let .upload(upload) = selection { editor.setBanner(upload, previewURL: url) }
-            }
+            })
         case .nameStyle:
-            ProfileNameStylePicker(profile: profile, hasNitro: editor.isNitro) { editor.setStyle($0) }
+            ProfileNameStylePicker(profile: profile, hasNitro: editor.isNitro, apply: { editor.setStyle($0) })
         case let .collectible(kind):
-            ProfileCollectiblePicker(editor: editor, kind: kind, profile: profile)
+            ProfileCollectiblePicker(editor: editor, kind: kind, profile: profile, dismiss: close)
         }
     }
 }

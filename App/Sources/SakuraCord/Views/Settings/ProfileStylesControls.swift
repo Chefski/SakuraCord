@@ -17,36 +17,33 @@ enum ProfileEditorPicker: Hashable, Identifiable {
 struct ProfileStylesControls: View {
     let editor: ProfileEditorState
     let profile: UserProfile
-    let width: CGFloat
     let open: (ProfileEditorPicker) -> Void
 
-    private var columnCount: Int { width >= 680 ? 4 : 2 }
-    private var tileSize: CGFloat { (width - CGFloat(columnCount - 1) * 16) / CGFloat(columnCount) }
-
     var body: some View {
+        ViewThatFits(in: .horizontal) {
+            controls(columns: 4).frame(minWidth: 680)
+            controls(columns: 2)
+        }
+    }
+
+    private func controls(columns: Int) -> some View {
         GlassEffectContainer(spacing: 16) {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 16, alignment: .top), count: columnCount), spacing: 24) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 16, alignment: .top), count: columns), spacing: 24) {
                 if editor.scope == .main || editor.isNitro {
                     ProfileStyleSection(title: "Avatar") {
-                        ProfileEditorTile(label: "Avatar", height: tileSize, action: { open(.avatar) },
-                                          remove: !editor.hasAvatarSelection ? nil : { editor.setAvatar(nil) },
-                                          removalTitle: editor.avatarRemovalTitle, content: {
+                        ProfileCustomizationTile(label: "Avatar", selection: .avatar, editor: editor, profile: profile, content: {
                             AvatarView(name: profile.displayName, url: profile.avatarURL, size: 80)
                         })
                     }
                 }
                 ProfileStyleSection(title: "Avatar Decoration") {
-                    ProfileEditorTile(label: "Avatar Decoration", height: tileSize, action: { open(.collectible(.avatarDecoration)) },
-                                      remove: editor.selectedCollectibleID(.avatarDecoration) == nil ? nil : { editor.setCollectible(nil, kind: .avatarDecoration) },
-                                      removalTitle: editor.collectibleRemovalTitle(.avatarDecoration), content: {
+                    ProfileCustomizationTile(label: "Avatar Decoration", selection: .collectible(.avatarDecoration), editor: editor, profile: profile, content: {
                         DecoratedAvatarView(name: "", avatarURL: nil, decorationURL: profile.user.avatarDecorationURL, size: 80)
                     })
                 }
                 if editor.isNitro {
                     ProfileStyleSection(title: "Banner", nitro: true) {
-                        ProfileEditorTile(label: "Banner", height: tileSize, action: { open(.banner) },
-                                          remove: !editor.hasBannerSelection ? nil : { editor.setBanner(nil) },
-                                          removalTitle: editor.bannerRemovalTitle, content: {
+                        ProfileCustomizationTile(label: "Banner", selection: .banner, editor: editor, profile: profile, content: {
                             if let url = profile.bannerURL {
                                 AnimatedRemoteImage(url: url, animates: false, contentMode: .fill)
                             } else {
@@ -55,17 +52,15 @@ struct ProfileStylesControls: View {
                         })
                     }
                     ProfileStyleSection(title: "Theme", nitro: true) {
-                        ProfileThemeTile(editor: editor, profile: profile, height: tileSize)
+                        ProfileThemeTile(editor: editor, profile: profile)
                     }
                 } else if editor.scope == .main {
                     ProfileStyleSection(title: "Banner Color") {
-                        ProfileBannerColorTile(editor: editor, profile: profile, height: tileSize)
+                        ProfileBannerColorTile(editor: editor, profile: profile)
                     }
                 }
                 ProfileStyleSection(title: "Nameplate") {
-                    ProfileEditorTile(label: "Nameplate", height: tileSize, action: { open(.collectible(.nameplate)) },
-                                      remove: editor.selectedCollectibleID(.nameplate) == nil ? nil : { editor.setCollectible(nil, kind: .nameplate) },
-                                      removalTitle: editor.collectibleRemovalTitle(.nameplate), content: {
+                    ProfileCustomizationTile(label: "Nameplate", selection: .collectible(.nameplate), editor: editor, profile: profile, content: {
                         ZStack {
                             if let nameplate = profile.user.nameplate { NameplateBackground(nameplate: nameplate, isAnimated: false) }
                             HStack(spacing: 10) {
@@ -81,25 +76,19 @@ struct ProfileStylesControls: View {
                 }
                 if editor.isNitro {
                     ProfileStyleSection(title: "Display Name Style", nitro: true) {
-                        ProfileEditorTile(label: "Display Name Style", height: tileSize, action: { open(.nameStyle) },
-                                          remove: !editor.hasNameStyleSelection ? nil : { editor.setStyle(nil) },
-                                          removalTitle: editor.nameStyleRemovalTitle, content: {
+                        ProfileEditorTile(label: "Display Name Style", action: { open(.nameStyle) }, content: {
                             ProfileDisplayName(name: profile.displayName, style: profile.user.displayNameStyle, size: 22)
                                 .allowsHitTesting(false).padding(12)
                         })
                     }
                 }
                 ProfileStyleSection(title: "Profile Effect") {
-                    ProfileEditorTile(label: "Profile Effect", height: tileSize, action: { open(.collectible(.effect)) },
-                                      remove: editor.selectedCollectibleID(.effect) == nil ? nil : { editor.setCollectible(nil, kind: .effect) },
-                                      removalTitle: editor.collectibleRemovalTitle(.effect), content: {
+                    ProfileCustomizationTile(label: "Profile Effect", selection: .collectible(.effect), editor: editor, profile: profile, content: {
                         ProfileCosmeticTileArtwork(effect: profile.effect, kind: .effect)
                     })
                 }
                 ProfileStyleSection(title: "Profile Frame") {
-                    ProfileEditorTile(label: "Profile Frame", height: tileSize, action: { open(.collectible(.frame)) },
-                                      remove: editor.selectedCollectibleID(.frame) == nil ? nil : { editor.setCollectible(nil, kind: .frame) },
-                                      removalTitle: editor.collectibleRemovalTitle(.frame), content: {
+                    ProfileCustomizationTile(label: "Profile Frame", selection: .collectible(.frame), editor: editor, profile: profile, content: {
                         ProfileCosmeticTileArtwork(frame: profile.frame, kind: .frame)
                     })
                 }
@@ -127,103 +116,136 @@ private struct ProfileStyleSection<Content: View>: View {
 
 private struct ProfileEditorTile<Content: View>: View {
     let label: LocalizedStringKey
-    var height: CGFloat? = 100
     let action: () -> Void
-    var remove: (() -> Void)?
-    var removalTitle: String?
     @ViewBuilder let content: Content
-    @State private var isHovered = false
 
     var body: some View {
         Button(action: action) {
-            ZStack {
-                Color.clear
-                artwork.allowsHitTesting(false)
-            }
-                .frame(height: height)
-                .clipShape(ConcentricRectangle(cornerRadius: 8))
-                .contentShape(ConcentricRectangle(cornerRadius: 8))
+            Color.clear
+                .aspectRatio(1, contentMode: .fit)
+                .overlay { content.allowsHitTesting(false) }
+                .clipShape(ProfileEditorCardStyle.shape)
+                .contentShape(ProfileEditorCardStyle.shape)
         }
         .buttonStyle(.plain)
-        .glassEffect(.regular.interactive(), in: ConcentricRectangle(cornerRadius: 8))
-        .overlay(alignment: .topTrailing) {
-            if let remove, isHovered {
-                HoverActionPill {
-                    HoverActionButton(systemImage: "trash", help: removalTitle ?? String(localized: "Remove", bundle: #bundle), role: .destructive, action: remove)
-                }.padding(4)
-            }
-        }
-        .onModalHover { isHovered = $0 }
+        .glassEffect(.regular.interactive(), in: ProfileEditorCardStyle.shape)
+        .profileEditorCardHover()
         .accessibilityLabel(label)
-        .accessibilityActions {
-            if let remove {
-                Button(action: remove) {
-                    removalTitle.map(Text.init) ?? Text("Remove \(Text(label))")
-                }
-            }
+    }
+
+}
+
+/// Image and cosmetic pickers share the theme picker's anchored host.
+private struct ProfileCustomizationTile<Content: View>: View {
+    let label: LocalizedStringKey
+    let selection: ProfileEditorPicker
+    let editor: ProfileEditorState
+    let profile: UserProfile
+    @ViewBuilder let content: Content
+    @State private var presentedPicker: ProfileEditorPicker?
+
+    var body: some View {
+        ProfileEditorTile(label: label, action: { presentedPicker = selection }, content: { content })
+            .modifier(ProfileEditorPickerPopover(selection: $presentedPicker, editor: editor, profile: profile))
+    }
+}
+
+extension EnvironmentValues {
+    @Entry var profilePickerCornerRadius: CGFloat = 16
+}
+
+struct ProfileEditorPickerPopover: ViewModifier {
+    @Binding var selection: ProfileEditorPicker?
+    let editor: ProfileEditorState
+    let profile: UserProfile
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.locale) private var locale
+
+    private var contentSize: CGSize {
+        switch selection {
+        case .avatar, .banner: CGSize(width: 400, height: 480)
+        default: CGSize(width: 320, height: 360)
         }
     }
 
-    @ViewBuilder private var artwork: some View {
-        if let height {
-            content.frame(maxWidth: .infinity).frame(height: height)
-        } else {
-            content.frame(maxWidth: .infinity).aspectRatio(1, contentMode: .fit)
-        }
+    func body(content: Content) -> some View {
+        content
+            .overlay {
+                StableAnchoredPopoverPresenter(isPresented: selection != nil, configuration: .toolbarPanel.fixedContentSize(contentSize),
+                                               onDismiss: { selection = nil }, content: {
+                    GeometryReader { geometry in
+                        if let selection {
+                            ProfileEditorPickerContent(model: editor.model, editor: editor, profile: profile, selection: selection)
+                                .environment(\.windowModalAvailableSize, geometry.size)
+                                .environment(\.profilePickerCornerRadius, optionCornerRadius(in: geometry))
+                                .environment(\.colorScheme, colorScheme)
+                                .environment(\.locale, locale)
+                        }
+                    }
+                    .frame(width: contentSize.width, height: contentSize.height)
+                })
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .onChange(of: editor.draftGeneration) { _, _ in selection = nil }
+            .onChange(of: editor.isResolvingScope) { _, resolving in if resolving { selection = nil } }
     }
+
+    private func optionCornerRadius(in geometry: GeometryProxy) -> CGFloat {
+        // Resolve against the stationary inset surface, not each moving grid cell.
+        // Every option then keeps the same concentric corners while scrolling.
+        let padding: CGFloat = selection == .avatar || selection == .banner ? 16 : 8
+        guard let radii = geometry.concentricCornerRadii(in: CGRect(origin: .zero, size: geometry.size).insetBy(dx: padding, dy: padding)) else { return 16 }
+        return max(16, radii.topLeading, radii.topTrailing, radii.bottomLeading, radii.bottomTrailing)
+    }
+
 }
 
 private struct ProfileThemeTile: View {
     let editor: ProfileEditorState
     let profile: UserProfile
-    let height: CGFloat
     @Environment(\.displayScale) private var displayScale
     @State private var theme = ProfileThemeState()
     @State private var isColorPickerPresented = false
-    @State private var isHovered = false
-
-    private var colors: ProfileThemeColors {
-        editor.changes.metadata.themeColors.applying(to: editor.snapshot?.metadata.themeColors ?? .missing).value
-            ?? ProfileThemeColors(primary: nil, accent: nil)
-    }
-
-    private var canReset: Bool {
-        editor.scope.guildID != nil && (colors.primary != nil || colors.accent != nil)
-    }
 
     private var primaryColor: UInt32 { theme.colors(for: profile, scale: displayScale, isPreview: true)[0] }
     private var accentColor: UInt32 { theme.colors(for: profile, scale: displayScale, isPreview: true)[1] }
 
     var body: some View {
         Button { isColorPickerPresented = true } label: {
-            ConcentricRectangle(cornerRadius: 8)
+            ProfileEditorCardStyle.shape
                 .fill(LinearGradient(colors: [Color(hex: primaryColor), Color(hex: accentColor)], startPoint: .top, endPoint: .bottom))
-                .overlay { Image(systemName: "pencil").foregroundStyle(.white).shadow(radius: 1) }
-                .frame(maxWidth: .infinity)
-                .frame(height: height)
-                .contentShape(ConcentricRectangle(cornerRadius: 8))
+                .aspectRatio(1, contentMode: .fit)
+                .overlay { ProfileEditorPaintbrush() }
+                .contentShape(ProfileEditorCardStyle.shape)
         }
         .buttonStyle(.plain)
+        .profileEditorCardHover()
         .accessibilityLabel("Profile theme colours")
         .sakuraCordColorPicker(isPresented: $isColorPickerPresented, colors: Binding(get: {
             [primaryColor, accentColor]
         }, set: { colors in
             editor.setTheme(ProfileThemeColors(primary: colors[0], accent: colors[1]))
         }), colorCount: 2 ... 2)
-        .overlay(alignment: .topTrailing) {
-            if canReset, isHovered {
-                HoverActionPill {
-                    HoverActionButton(systemImage: "arrow.counterclockwise", help: String(localized: "Reset Theme", bundle: #bundle)) { editor.setTheme(nil) }
-                }.padding(4)
+        .contextMenu {
+            if editor.scope.guildID != nil {
+                Button("Use Main Profile Theme") { editor.setTheme(nil) }
             }
-        }
-        .onModalHover { isHovered = $0 }
-        .accessibilityActions {
-            if canReset { Button("Reset Theme") { editor.setTheme(nil) } }
         }
         .disabled(!editor.isNitro)
         .task(id: theme.source(for: profile, scale: displayScale, isPreview: true)) {
             await theme.load(theme.source(for: profile, scale: displayScale, isPreview: true))
+        }
+    }
+}
+
+/// Scale artwork inside the square without publishing geometry back into view state.
+struct ProfileEditorPaintbrush: View {
+    var body: some View {
+        GeometryReader { geometry in
+            Image(systemName: "paintbrush.fill")
+                .font(.system(size: geometry.size.width * 0.28, weight: .medium))
+                .foregroundStyle(.white).shadow(radius: 1)
+                .frame(width: geometry.size.width, height: geometry.size.height)
         }
     }
 }

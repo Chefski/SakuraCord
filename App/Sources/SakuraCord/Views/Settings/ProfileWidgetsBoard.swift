@@ -9,14 +9,7 @@ struct ProfileWidgetsBoard: View {
     @State private var removingWidget: ProfileWidget?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Your Widgets", bundle: #bundle).font(.system(size: 12, weight: .semibold))
-                Spacer(minLength: 8)
-                Button { showsAddPicker = true } label: { Label("Add Widget", systemImage: "plus") }
-                    .disabled(!editor.canEditWidgets)
-            }
-            .padding(.bottom, 4)
+        ProfileWidgetBoardViewport {
             VStack(spacing: 12) {
                 ForEach(editor.widgets) { widget in
                     // Keep a stable outer identity around the card's conditional
@@ -48,7 +41,11 @@ struct ProfileWidgetsBoard: View {
                 editor.moveWidgets(difference.sources, before: before)
             }
         }
-        .frame(maxWidth: .infinity)
+        .overlay(alignment: .topTrailing) {
+            Button { showsAddPicker = true } label: { Label("Add Widget", systemImage: "plus") }
+                .disabled(!editor.canEditWidgets)
+                .padding(10)
+        }
         .task(id: editor.scope) { await editor.loadWidgetSuggestionsIfNeeded() }
         .windowModal(isPresented: $showsAddPicker) {
             ProfileAddWidgetPicker(editor: editor) { configuration in

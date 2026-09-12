@@ -15,6 +15,12 @@ struct SettingsView: View {
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     private let navigationRouter = SettingsNavigationRouter.shared
 
+    init(model: AppModel, updateController: AppUpdateController) {
+        self.model = model
+        self.updateController = updateController
+        _profileEditor = State(initialValue: ProfileEditorState(model: model))
+    }
+
     var body: some View {
         @Bindable var state = state
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -62,7 +68,6 @@ struct SettingsView: View {
         }
         .task {
             state.updateLocale(locale)
-            if profileEditor == nil { profileEditor = ProfileEditorState(model: model) }
             let navigationEditor = profileEditor
             state.allowsNavigation = { [weak navigationEditor] destination in
                 guard let profileEditor = navigationEditor, profileEditor.hasChanges || profileEditor.isSaving else { return true }
@@ -70,6 +75,7 @@ struct SettingsView: View {
                 profileEditor.showsUnsavedReminder = true
                 return false
             }
+            await profileEditor?.loadIfNeeded()
         }
         .windowResizeBehavior(.enabled)
         .dismissalConfirmationDialog("Profile Changes", shouldPresent: profileEditor?.hasChanges == true || profileEditor?.isSaving == true) {

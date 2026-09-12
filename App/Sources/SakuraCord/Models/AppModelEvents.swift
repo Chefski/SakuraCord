@@ -381,7 +381,10 @@ extension AppModel {
         switch event {
         case let .profileInvalidated(userID):
             profileCache = profileCache.filter { $0.key.userID != userID }
-            if userID == snapshot?.currentUser.id { profileInvalidationRevision = UUID() }
+            if userID == snapshot?.currentUser.id {
+                preparedProfileEditingSnapshot = nil
+                profileInvalidationRevision = UUID()
+            }
         case let .profileChanged(userID, scope, profile):
             consumeProfileChanged(userID: userID, scope: scope, value: profile)
         case let .profileCustomStatusChanged(userID, status):

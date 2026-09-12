@@ -4,7 +4,6 @@ import SwiftUI
 struct ProfileBannerColorTile: View {
     let editor: ProfileEditorState
     let profile: UserProfile
-    let height: CGFloat
     @State private var isPresented = false
     @State private var theme = ProfileThemeState()
     @Environment(\.displayScale) private var displayScale
@@ -15,14 +14,14 @@ struct ProfileBannerColorTile: View {
 
     var body: some View {
         Button { isPresented = true } label: {
-            ConcentricRectangle(cornerRadius: 8)
+            ProfileEditorCardStyle.shape
                 .fill(Color(hex: color))
-                .overlay { Image(systemName: "pencil").foregroundStyle(.white).shadow(radius: 1) }
-                .frame(maxWidth: .infinity)
-                .frame(height: height)
-                .contentShape(ConcentricRectangle(cornerRadius: 8))
+                .aspectRatio(1, contentMode: .fit)
+                .overlay { ProfileEditorPaintbrush() }
+                .contentShape(ProfileEditorCardStyle.shape)
         }
         .buttonStyle(.plain)
+        .profileEditorCardHover()
         .accessibilityLabel("Banner Color")
         .sakuraCordColorPicker(isPresented: $isPresented, colors: Binding(get: {
             [color]

@@ -90,8 +90,8 @@ struct SakuraCordOnboardingContinueButton: View {
 }
 
 extension View {
-    func authenticationLoading<S: Shape>(_ isLoading: Bool, in shape: S, intensity: Double = 1) -> some View {
-        modifier(AuthenticationLoadingSurface(isLoading: isLoading, shape: shape, intensity: intensity))
+    func authenticationLoading<S: Shape>(_ isLoading: Bool, in shape: S, intensity: Double = 1, opacity: Double = 1) -> some View {
+        modifier(AuthenticationLoadingSurface(isLoading: isLoading, shape: shape, intensity: intensity, opacity: opacity))
     }
 }
 
@@ -99,6 +99,7 @@ private struct AuthenticationLoadingSurface<S: Shape>: ViewModifier {
     let isLoading: Bool
     let shape: S
     let intensity: Double
+    let opacity: Double
     @Environment(\.colorScheme) private var colorScheme
 
     func body(content: Content) -> some View {
@@ -117,6 +118,7 @@ private struct AuthenticationLoadingSurface<S: Shape>: ViewModifier {
                         ))
                         .clipShape(shape)
                 }
+                .opacity(opacity)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
             }

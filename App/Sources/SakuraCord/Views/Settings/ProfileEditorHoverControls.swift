@@ -1,20 +1,51 @@
 import SwiftUI
 
+/// Grid cards keep identical corners regardless of their surrounding containers.
+enum ProfileEditorCardStyle {
+    static var shape: RoundedRectangle { RoundedRectangle(cornerRadius: 12, style: .continuous) }
+}
+
 extension View {
-    func profileEditorTextHover(isEnabled: Bool = true) -> some View {
-        modifier(ProfileEditorTextHover(isEnabled: isEnabled))
+    func profileEditorCardHover() -> some View {
+        modifier(ProfileEditorCardHover())
+    }
+
+    func profileEditorTextHover(isEnabled: Bool = true, isEditing: Bool = false) -> some View {
+        modifier(ProfileEditorTextHover(isEnabled: isEnabled, isEditing: isEditing))
+    }
+}
+
+private struct ProfileEditorCardHover: ViewModifier {
+    @State private var isHovered = false
+    @Environment(\.isEnabled) private var isEnabled
+
+    func body(content: Content) -> some View {
+        let highlighted = isEnabled && isHovered
+        content
+            .overlay {
+                ProfileEditorCardStyle.shape
+                    .fill(.white.opacity(highlighted ? 0.08 : 0))
+                    .overlay {
+                        ProfileEditorCardStyle.shape
+                            .stroke(.white.opacity(highlighted ? 0.25 : 0), lineWidth: 1)
+                    }
+                    .allowsHitTesting(false)
+                    .animation(.easeOut(duration: 0.12), value: highlighted)
+            }
+            .onModalHover { isHovered = $0 }
     }
 }
 
 private struct ProfileEditorTextHover: ViewModifier {
     let isEnabled: Bool
+    let isEditing: Bool
     @State private var isHovered = false
 
     func body(content: Content) -> some View {
         content
             .overlay {
                 RoundedRectangle(cornerRadius: 4)
-                    .strokeBorder(.primary.opacity(isEnabled && isHovered ? 0.3 : 0), lineWidth: 1)
+                    .strokeBorder(.primary.opacity(isEnabled && (isEditing || isHovered) ? 0.3 : 0), lineWidth: 1)
                     .padding(-3).allowsHitTesting(false)
             }
             .onModalHover { isHovered = $0 }

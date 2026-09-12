@@ -8,9 +8,11 @@ struct ProfileImagePicker: View {
     let model: AppModel
     let editor: ProfileEditorState
     let purpose: ProfileImagePurpose
+    let dismiss: () -> Void
     let apply: (ProfileAvatarSelection, URL) -> Void
 
-    @Environment(\.windowModalContext) private var dismiss
+    @Environment(\.stablePopoverPresentationContext) private var popover
+    @Environment(\.profilePickerCornerRadius) private var optionCornerRadius
     @State private var showsFileImporter = false
     @State private var showsGIFs = false
     @State private var source: ProfileImageSource?
@@ -28,6 +30,7 @@ struct ProfileImagePicker: View {
     var body: some View {
         pickerContent
         .windowModalDismissDisabled(isBusy)
+        .onChange(of: isBusy, initial: true) { _, busy in popover?.preventsDismissal = busy }
         .fileImporter(isPresented: $showsFileImporter, allowedContentTypes: Self.allowedImageTypes) { result in
             switch result {
             case let .success(url): loadFile(url)
@@ -37,23 +40,11 @@ struct ProfileImagePicker: View {
         .alert("Unable to Use Image", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) { errorMessage = nil }
         } message: { Text(errorMessage ?? "") }
-        .windowModal(item: $deleteCandidate) { entry in
-            VStack(alignment: .leading, spacing: 16) {
-                HStack {
-                    Text("Remove Recent Avatar?", bundle: #bundle).font(.title2.bold())
-                    Spacer()
-                    HoverCloseButton(help: "Close", accessibilityIdentifier: "profile-editor-close") { deleteCandidate = nil }
-                }
-                Text("This image will no longer be available in your recent avatars.", bundle: #bundle)
-                Text("Pro tip: Hold Shift when removing an avatar to bypass this confirmation.", bundle: #bundle)
-                    .font(.callout).foregroundStyle(.secondary)
-                HStack {
-                    Spacer()
-                    Button("Cancel", role: .cancel) { deleteCandidate = nil }
-                    Button("Remove", role: .destructive) { delete(entry) }.buttonStyle(.borderedProminent)
-                }
-            }
-            .padding(24).windowModalSize(width: 400)
+        .alert("Remove Recent Avatar?", isPresented: Binding(get: { deleteCandidate != nil }, set: { if !$0 { deleteCandidate = nil } }), presenting: deleteCandidate) { entry in
+            Button("Cancel", role: .cancel) { deleteCandidate = nil }
+            Button("Remove", role: .destructive) { delete(entry) }
+        } message: { _ in
+            Text("This image will no longer be available in your recent avatars.", bundle: #bundle)
         }
         .task {
             guard purpose == .avatar else { return }
@@ -62,6 +53,7 @@ struct ProfileImagePicker: View {
             do { try await editor.loadHistory() } catch { errorMessage = error.localizedDescription }
         }
         .onDisappear {
+            popover?.preventsDismissal = false
             work?.cancel()
             for url in temporaryFiles { try? FileManager.default.removeItem(at: url) }
         }
@@ -70,8 +62,10 @@ struct ProfileImagePicker: View {
     @ViewBuilder
     private var pickerContent: some View {
         if let source, let sourceURL {
-                ProfileImageCropView(image: source, imageURL: sourceURL, filename: filename, purpose: purpose,
-                                     isProcessing: isBusy, canApply: canApply(source), cancel: cancelCrop, apply: process)
+                ScrollView {
+                    ProfileImageCropView(image: source, imageURL: sourceURL, filename: filename, purpose: purpose,
+                                         isProcessing: isBusy, canApply: canApply(source), cancel: cancelCrop, apply: process)
+                }
             } else if showsGIFs {
                 VStack(spacing: 0) {
                     HStack {
@@ -79,7 +73,7 @@ struct ProfileImagePicker: View {
                             .buttonStyle(.plain).accessibilityLabel("Back to Images")
                         Text("Choose GIF", bundle: #bundle).font(.headline)
                         Spacer()
-                        HoverCloseButton(help: "Close", accessibilityIdentifier: "profile-editor-close") { dismiss?() }
+                        HoverCloseButton(help: "Close", accessibilityIdentifier: "profile-editor-close") { dismiss() }
                     }
                     .padding(.horizontal, 16).padding(.vertical, 12)
                     GIFPickerView(model: model, dismiss: { showsGIFs = false }, selectionHandler: chooseGIF, hidesFavorites: true)
@@ -87,16 +81,16 @@ struct ProfileImagePicker: View {
                 .overlay { if isBusy { ProgressView().padding().glassEffect() } }
                 .disabled(isBusy)
             } else {
-                chooser
+                ScrollView { chooser }
             }
     }
 
     private var chooser: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Text("Select an Image", bundle: #bundle).font(.title2.bold())
                 Spacer()
-                HoverCloseButton(help: "Close", accessibilityIdentifier: "profile-editor-close") { dismiss?() }
+                HoverCloseButton(help: "Close", accessibilityIdentifier: "profile-editor-close") { dismiss() }
             }
             GlassEffectContainer(spacing: 8) {
                 HStack(spacing: 8) {
@@ -105,15 +99,15 @@ struct ProfileImagePicker: View {
                             Image(systemName: "photo.badge.plus").font(.system(size: 26))
                             Text("Upload Image", bundle: #bundle).font(.headline)
                         }
-                        .frame(maxWidth: .infinity).frame(height: 211)
+                        .frame(maxWidth: .infinity).frame(height: 144)
                     }
                     .buttonStyle(.plain)
-                    .glassEffect(.regular.interactive(), in: ConcentricRectangle(cornerRadius: 10))
+                    .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: optionCornerRadius))
                     Button { showsGIFs = true } label: {
                         ZStack {
                             LazyVGrid(columns: [.init(.flexible(), spacing: 0), .init(.flexible(), spacing: 0)], spacing: 0) {
                                 ForEach(DiscordProfileImageAssets.gifPickerArtwork, id: \.self) { url in
-                                    AnimatedRemoteImage(url: url, animates: false, contentMode: .fill).frame(height: 106).clipped()
+                                    AnimatedRemoteImage(url: url, animates: false, contentMode: .fill).frame(height: 72).clipped()
                                 }
                             }
                             Color.black.opacity(0.45)
@@ -123,8 +117,8 @@ struct ProfileImagePicker: View {
                             }
                             .foregroundStyle(.white)
                         }
-                        .frame(maxWidth: .infinity).frame(height: 211)
-                        .clipShape(ConcentricRectangle(cornerRadius: 10))
+                        .frame(maxWidth: .infinity).frame(height: 144)
+                        .clipShape(RoundedRectangle(cornerRadius: optionCornerRadius))
                     }
                     .buttonStyle(.plain)
                 }
@@ -133,13 +127,12 @@ struct ProfileImagePicker: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Recent Avatars", bundle: #bundle).font(.title3.bold())
                     Text("Access your 6 most recent avatar uploads.", bundle: #bundle).foregroundStyle(.secondary)
-                    HStack(spacing: 8) {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
                         ForEach(editor.history) { entry in
                             ProfileRecentAvatarButton(entry: entry, choose: { loadArchive(entry) }, remove: {
                                 if NSApp.currentEvent?.modifierFlags.contains(.shift) == true { delete(entry) } else { deleteCandidate = entry }
                             })
                         }
-                        Spacer(minLength: 0)
                     }
                     .frame(minHeight: 56)
                     .overlay {
@@ -149,7 +142,7 @@ struct ProfileImagePicker: View {
                 }
             }
         }
-        .padding(24)
+        .padding(16)
         .windowModalSize(width: 480)
         .disabled(isBusy)
         .overlay { if isBusy { ProgressView().padding().glassEffect() } }
@@ -206,7 +199,7 @@ struct ProfileImagePicker: View {
         guard let source, canApply(source) else { return }
         if let archive, !geometry.hasEdits {
             apply(.history(archive), archive.cropImageURL)
-            dismiss?()
+            dismiss()
             return
         }
         begin {
@@ -220,7 +213,7 @@ struct ProfileImagePicker: View {
             let upload = ProfileImageUpload(data: output.data, mediaType: output.mediaType, description: imageDescription(),
                                             originalMD5: source.originalMD5, isAnimated: output.isAnimated)
             apply(.upload(upload), url)
-            dismiss?(allowsDisabled: true)
+            dismiss()
         }
     }
 

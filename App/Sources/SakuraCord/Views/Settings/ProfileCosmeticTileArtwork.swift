@@ -8,19 +8,21 @@ struct ProfileCosmeticTileArtwork: View {
     let kind: ProfileCollectibleKind
     var fillsTile = false
     var animates = false
+    @State private var hasStartedAnimation = false
+    @Environment(\.displayScale) private var displayScale
 
     var body: some View {
         GeometryReader { geometry in
-            let width = fillsTile ? geometry.size.width : geometry.size.width * 0.62
-            let height = fillsTile ? geometry.size.height : geometry.size.height * (kind == .frame ? 0.62 : 0.9)
+            let width = fillsTile ? geometry.size.width : geometry.size.width * 0.56
+            let height = fillsTile ? geometry.size.height : geometry.size.height * 0.8
             miniature
                 .frame(width: width, height: height)
-                .clipShape(.rect(cornerRadius: 5))
+                .clipShape(.rect(cornerRadius: fillsTile ? 0 : 8))
                 .background { if let frame { ProfileFrameOverlay(frame: frame, order: "back") } }
                 .overlay { if let frame { ProfileFrameOverlay(frame: frame, order: "front") } }
                 .overlay {
                     if kind == .frame, frame == nil {
-                        RoundedRectangle(cornerRadius: 6).strokeBorder(.secondary.opacity(0.4), style: StrokeStyle(lineWidth: 2, dash: [1, 3]))
+                        RoundedRectangle(cornerRadius: 15).strokeBorder(.secondary.opacity(0.4), style: StrokeStyle(lineWidth: 2, dash: [1, 3]))
                             .padding(-7)
                     }
                 }
@@ -29,12 +31,14 @@ struct ProfileCosmeticTileArtwork: View {
                         Image(systemName: "plus.circle.fill").font(.system(size: 24)).foregroundStyle(.secondary)
                     }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: fillsTile || kind == .frame ? .center : .bottom)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
         .background(.black.opacity(0.16))
         .clipped()
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+        .onChange(of: animates, initial: true) { _, playing in if playing { hasStartedAnimation = true } }
+        .onChange(of: effect) { _, _ in hasStartedAnimation = false }
     }
 
     private var miniature: some View {
@@ -54,9 +58,16 @@ struct ProfileCosmeticTileArtwork: View {
                 .padding(geometry.size.width * 0.08)
                 .padding(.top, geometry.size.height * 0.2)
                 if let effect {
-                    if let url = effect.thumbnailURL ?? effect.staticURL {
-                        AnimatedRemoteImage(url: url, animates: animates, contentMode: .fill)
-                    } else { ProfileEffectOverlay(effect: effect, animates: animates) }
+                    if animates || hasStartedAnimation || (effect.thumbnailURL == nil && effect.staticURL == nil) {
+                        ProfileEffectOverlay(
+                            effect: effect, animates: animates,
+                            maximumPixelDimension: max(1, Int((max(geometry.size.width, geometry.size.height) * displayScale).rounded(.up))),
+                            idlePreviewURL: effect.thumbnailURL ?? effect.staticURL,
+                            restartsOnHover: true
+                        )
+                    } else if let url = effect.thumbnailURL ?? effect.staticURL {
+                        AnimatedRemoteImage(url: url, animates: false, contentMode: .fill)
+                    }
                 }
             }
         }

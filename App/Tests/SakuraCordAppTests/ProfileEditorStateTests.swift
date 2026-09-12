@@ -108,6 +108,85 @@ import Testing
 }
 
 @MainActor
+@Test(arguments: [ProfileEditingScope.main, .server(GuildID(rawValue: 100))])
+func `profile editor uses a preloaded editable baseline without another read`(scope: ProfileEditingScope) async throws {
+    let provider = ProfileEditorCacheProvider()
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    let editor = ProfileEditorState(model: model)
+    if scope != .main { await editor.load() }
+    let preloaded = try await provider.profileEditingSnapshot(in: scope)
+    await provider.suspendNextCacheRead()
+    let loading = Task { await editor.load(scope) }
+    await provider.waitForRead()
+    // A provider actor hop must not flash the loading overlay, but the old
+    // scope must remain locked until the new editable baseline arrives.
+    #expect(!editor.isLoading)
+    #expect(editor.isResolvingScope)
+    #expect(editor.canEditWidgets == (scope != .main))
+    #expect(!editor.canSave)
+    await provider.resumeRead()
+    await loading.value
+    #expect(editor.snapshot == preloaded)
+    #expect(!editor.isLoading && !editor.isResolvingScope)
+    #expect(await provider.reads == (scope == .main ? [.main] : [.main, scope]))
+    if scope != .main {
+        await provider.suspendNextCacheRead()
+        let switching = Task { await editor.load(.main) }
+        await provider.waitForRead()
+        editor.name = "Typed before the cached baseline arrived"
+        await provider.resumeRead()
+        await switching.value
+        #expect(editor.scope == scope)
+        #expect(editor.name == "Typed before the cached baseline arrived")
+        #expect(editor.showsUnsavedReminder)
+    }
+}
+
+@MainActor
+@Test func `prepared editor baseline is editable on construction and does not replace drafts`() async throws {
+    let provider = ProfileEditorCacheProvider()
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    let baseline = try await provider.profileEditingSnapshot(in: .main)
+    model.preparedProfileEditingSnapshot = baseline
+    let editor = ProfileEditorState(model: model)
+    #expect(editor.snapshot == baseline)
+    #expect(!editor.isResolvingScope && editor.canEditWidgets)
+    editor.name = "Immediate local edit"
+    await editor.loadIfNeeded(refreshExisting: true)
+    #expect(editor.name == "Immediate local edit")
+    #expect(editor.hasChanges && editor.canSave)
+    #expect(await provider.reads == [.main])
+    model.dismissAllProfiles(clearsCache: true)
+    #expect(model.preparedProfileEditingSnapshot == nil)
+    #expect(ProfileEditorState(model: model).snapshot == nil)
+}
+
+@MainActor
+@Test func `unloaded server profile retains the current canvas but cannot save its baseline`() async throws {
+    let provider = ProfileEditorCacheProvider()
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    let editor = ProfileEditorState(model: model)
+    await editor.load()
+    let previous = try #require(editor.preview)
+    let server = ProfileEditingScope.server(GuildID(rawValue: 100))
+    await provider.suspendNextRead()
+    let loading = Task { await editor.load(server) }
+    await provider.waitForRead()
+    #expect(editor.isLoading)
+    #expect(editor.preview == previous)
+    #expect(editor.scope == .main)
+    #expect(!editor.canSave && !editor.canEditWidgets)
+    await provider.resumeRead()
+    await loading.value
+    #expect(editor.scope == server)
+    #expect(editor.snapshot?.scope == server)
+    #expect(!editor.isLoading)
+}
+
+@MainActor
 @Test func `widget drafts remain removable and reordering preserves the exact save order`() async throws {
     let first = ProfileWidget(serverID: "1", content: .application(id: "10"))
     let second = ProfileWidget(serverID: "2", content: .application(id: "20"))
@@ -200,24 +279,149 @@ import Testing
     #expect(await provider.reads == [.main, .main, .main, .main])
 }
 
+@MainActor
+@Test func `status drafts stay local survive gateway updates and reset with profile edits`() async throws {
+    let provider = ProfileEditorCacheProvider()
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    let editor = ProfileEditorState(model: model)
+    await editor.load()
+    let original = editor.snapshot?.customStatus
+    let draft = ProfileStatusDraft(status: ProfileCustomStatus(text: "Local draft", emojiName: "🌸"), expiresAfter: 3600)
+    editor.setCustomStatusDraft(draft)
+    #expect(editor.canSave)
+    #expect(editor.preview?.customStatus == "🌸 Local draft")
+    #expect(editor.snapshot?.customStatus == original)
+    #expect(await provider.statusWrites.isEmpty)
+    await editor.load(.server(GuildID(rawValue: 100)))
+    #expect(editor.scope == .main)
+    #expect(editor.showsUnsavedReminder)
+    let remote = ProfileCustomStatus(text: "Changed elsewhere")
+    model.consumeProfileCustomStatusChanged(userID: try #require(editor.snapshot?.presentation.id), status: remote)
+    editor.receiveCustomStatus(remote)
+    #expect(editor.customStatusDraft == draft)
+    editor.resetDraft()
+    #expect(!editor.hasChanges)
+    #expect(editor.preview?.customStatus == remote.displayText)
+    #expect(await provider.statusWrites.isEmpty)
+
+    editor.setCustomStatusDraft(nil)
+    #expect(editor.canSave)
+    #expect(editor.preview?.customStatus == nil)
+    await editor.save()
+    #expect(!editor.hasChanges)
+    #expect(await provider.statusWrites.count == 1)
+    #expect(await provider.statusWrites[0] == nil)
+}
+
+@MainActor
+@Test func `profile save keeps failed status pending without repeating acknowledged profile writes`() async throws {
+    let provider = ProfileEditorCacheProvider()
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    let editor = ProfileEditorState(model: model)
+    await editor.load()
+    editor.bio = "Updated bio"
+    editor.setCustomStatusDraft(ProfileStatusDraft(status: ProfileCustomStatus(text: "Pending status"), expiresAfter: 3600))
+    await provider.failNextStatusSave()
+    await editor.save()
+    #expect(editor.errorMessage != nil)
+    #expect(!editor.changes.hasChanges)
+    #expect(editor.hasChanges)
+    #expect(editor.customStatusDraft?.status.text == "Pending status")
+    #expect(await provider.profileWrites == 1)
+    let beforeSave = Date.now
+    await editor.save()
+    #expect(editor.errorMessage == nil)
+    #expect(!editor.hasChanges)
+    #expect(await provider.profileWrites == 1)
+    #expect(await provider.statusWrites.count == 2)
+    let status = try #require(editor.snapshot?.customStatus)
+    #expect(model.profileCustomStatus == status)
+    #expect(model.profileCustomStatusUserID == editor.snapshot?.presentation.id)
+    #expect(status.text == "Pending status")
+    #expect(try #require(status.expiresAt) >= beforeSave.addingTimeInterval(3600))
+}
+
+@MainActor
+@Test func `own status survives stale member refreshes and explicit clears replace cached values`() async throws {
+    let model = AppModel(launchMode: .offlineTesting, provider: MockChatProvider())
+    await model.start()
+    let user = try #require(model.snapshot?.currentUser)
+    var member = Member(user: user, roleName: "You", status: .offline)
+    var profile = UserProfile(user: user)
+    profile.customStatus = "Saved profile status"
+    #expect(model.profile(profile, applyingPresenceFrom: member).customStatus == profile.customStatus)
+    let key = ProfileCacheKey(userID: user.id, guildID: model.selectedGuildID)
+    model.profileCache[key] = profile
+    model.presentProfile(for: member, destination: .contextual)
+    let editor = ProfileEditorState(model: model)
+    await editor.load()
+
+    let status = ProfileCustomStatus(text: "Updated elsewhere", emojiName: "🌸")
+    model.consumeProfileCustomStatusChanged(userID: user.id, status: status)
+    model.refreshPresentedMembers(from: [member])
+    #expect(model.contextualProfilePresentation?.profile?.customStatus == status.displayText)
+    #expect(editor.customStatusDraft?.status == status)
+    member.customStatus = "Stale member status"
+    model.consumeProfileCustomStatusChanged(userID: user.id, status: nil)
+    model.refreshPresentedMembers(from: [member])
+    model.presentProfile(for: member, destination: .expanded)
+    #expect(model.contextualProfilePresentation?.profile?.customStatus == nil)
+    #expect(model.expandedProfilePresentation?.profile?.customStatus == nil)
+    #expect(model.expandedProfilePresentation?.member.customStatus == nil)
+    #expect(model.profileCache[key]?.customStatus == nil)
+    #expect(editor.customStatusDraft == nil)
+}
+
 private actor ProfileEditorCacheProvider: ChatProvider {
     private let fixture = MockChatProvider()
+    private(set) var profileWrites = 0
+    private(set) var statusWrites: [ProfileCustomStatus?] = []
+    private var failsStatusSave = false
+    func failNextStatusSave() { failsStatusSave = true }
+    func updateProfileCustomStatus(_ status: ProfileCustomStatus?) async throws -> ProfileCustomStatus? {
+        statusWrites.append(status)
+        if failsStatusSave {
+            failsStatusSave = false
+            throw ChatProviderError.invalidRequest("Status rejected")
+        }
+        return status
+    }
+    func saveProfileChanges(_ changes: ProfileEditChanges, in scope: ProfileEditingScope,
+                            didSave: @Sendable (ProfileSaveConfirmation) async -> Void) async throws {
+        profileWrites += 1
+        var value = try await fixture.profileEditingSnapshot(in: scope)
+        value.mainMetadata.bio = changes.metadata.bio.applying(to: value.mainMetadata.bio)
+        await didSave(ProfileSaveConfirmation(stage: .metadata, snapshot: value))
+    }
     private var widgets: [ProfileWidget]?
     init(widgets: [ProfileWidget]? = nil) { self.widgets = widgets }
     private var cache: [ProfileEditingScope: ProfileEditingSnapshot] = [:]
     private(set) var reads: [ProfileEditingScope] = []
     private var suspendsRead = false
+    private var suspendsCacheRead = false
     private var pendingRead: CheckedContinuation<Void, Never>?
     private var readStarted: CheckedContinuation<Void, Never>?
 
     func suspendNextRead() { suspendsRead = true }
+    func suspendNextCacheRead() { suspendsCacheRead = true }
     func replaceWidgets(_ widgets: [ProfileWidget]) { self.widgets = widgets }
     func waitForRead() async {
         if pendingRead != nil { return }
         await withCheckedContinuation { readStarted = $0 }
     }
     func resumeRead() { pendingRead?.resume(); pendingRead = nil }
-    func cachedProfileEditingSnapshot(in scope: ProfileEditingScope) async throws -> ProfileEditingSnapshot? { cache[scope] }
+    func cachedProfileEditingSnapshot(in scope: ProfileEditingScope) async throws -> ProfileEditingSnapshot? {
+        if suspendsCacheRead {
+            suspendsCacheRead = false
+            await withCheckedContinuation {
+                pendingRead = $0
+                readStarted?.resume(); readStarted = nil
+            }
+        }
+        return cache[scope]
+    }
     func profileEditingSnapshot(in scope: ProfileEditingScope) async throws -> ProfileEditingSnapshot {
         reads.append(scope)
         if suspendsRead {

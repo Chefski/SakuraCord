@@ -92,7 +92,25 @@ struct DirectMessageProviderContractTests {
         let response = try await provider.updateProfileCustomStatus(nil)
         #expect(response == nil)
         #expect(DirectMessageURLProtocol.requests.last?.body?["settings"] as? String == initial)
+        let events = await provider.eventStream()
+        let external = ProfileCustomStatus(text: "Changed elsewhere", emojiName: "🌸")
+        for status in [external, nil] {
+            let proto = DiscordSettingsProto.updatingCustomStatus(status, in: retained)
+            await provider.receiveGatewayDispatchForTesting(name: "USER_SETTINGS_PROTO_UPDATE", data: .object([
+                "settings": .object(["type": .number(1), "proto": .string(proto.base64EncodedString())]), "partial": .bool(true)
+            ]))
+            #expect(await provider.profileStatusSettings.flatMap { DiscordSettingsProto.customStatus(in: $0) } == status)
+        }
         await provider.disconnect()
+        var received: [ProfileCustomStatus?] = []
+        for await event in events {
+            if case let .profileCustomStatusChanged(userID, status) = event {
+                #expect(userID == UserID("2"))
+                received.append(status)
+            }
+        }
+        #expect(received == [external, nil])
+        #expect(DirectMessageURLProtocol.requests.count == 2)
     }
 
     @Test func `widget image upload gates access before reservation and omits credentials from storage`() async throws {
@@ -341,6 +359,15 @@ struct DirectMessageProviderContractTests {
             let cachedEditing = try await provider.cachedProfileEditingSnapshot(in: scope)
             #expect(cachedEditing?.identity == snapshot.identity)
             #expect(cachedEditing?.metadata == snapshot.metadata)
+            let cachedMain = try #require(try await provider.cachedProfileEditingSnapshot(in: .main))
+            #expect(cachedMain.scope == .main)
+            #expect(cachedMain.identity == snapshot.mainIdentity)
+            #expect(cachedMain.metadata == snapshot.mainMetadata)
+            #expect(cachedMain.presentation.user == snapshot.mainPresentation.user)
+            #expect(cachedMain.presentation.displayName == snapshot.mainPresentation.displayName)
+            #expect(cachedMain.presentation.bio == snapshot.mainPresentation.bio)
+            #expect(cachedMain.presentation.pronouns == snapshot.mainPresentation.pronouns)
+            #expect(cachedMain.presentation.themeHexes == snapshot.mainPresentation.themeHexes)
             let cachedPopover = try await provider.profile(for: snapshot.presentation.id, in: scope.guildID)
             #expect(cachedPopover.id == snapshot.presentation.id)
             #expect(DirectMessageURLProtocol.requests.count == 1)

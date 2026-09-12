@@ -16,6 +16,8 @@ struct ProfileImageCropView: View {
     private enum Control: Hashable { case crop, zoom }
     @FocusState private var focusedControl: Control?
     @Environment(\.windowModalContext) private var modal
+    @Environment(\.windowModalAvailableSize) private var availableSize
+    @Environment(\.stablePopoverPresentationContext) private var popover
 
     init(image: ProfileImageSource, imageURL: URL, filename: String, purpose: ProfileImagePurpose,
          isProcessing: Bool, canApply: Bool, aspectRatio: Double? = nil, initialGeometry: ProfileImageCropGeometry? = nil,
@@ -35,6 +37,8 @@ struct ProfileImageCropView: View {
             }
             .padding(24)
             cropViewport
+                .scaleEffect(viewportScale, anchor: .topLeading)
+                .frame(width: 432 * viewportScale, height: 350 * viewportScale, alignment: .topLeading)
                 .padding(.horizontal, 24)
             HStack(spacing: 8) {
                 Spacer()
@@ -83,8 +87,16 @@ struct ProfileImageCropView: View {
         }
         .windowModalSize(width: 480)
         .defaultFocus($focusedControl, .crop)
-        .onAppear { modal?.escapeAction = cancel }
-        .onDisappear { modal?.escapeAction = nil }
+        .onAppear {
+            if let popover { popover.escapeAction = cancel } else { modal?.escapeAction = cancel }
+        }
+        .onDisappear {
+            if let popover { popover.escapeAction = nil } else { modal?.escapeAction = nil }
+        }
+    }
+
+    private var viewportScale: CGFloat {
+        min(1, max(1, availableSize.width - 48) / 432, max(1, availableSize.height - 240) / 350)
     }
 
     private var cropViewport: some View {
@@ -103,7 +115,7 @@ struct ProfileImageCropView: View {
                 .frame(width: geometry.cropSize.width, height: geometry.cropSize.height)
                 .allowsHitTesting(false)
         }
-        .frame(height: 350)
+        .frame(width: 432, height: 350)
         .clipped()
         .clipShape(ConcentricRectangle(cornerRadius: 8))
         .contentShape(Rectangle())

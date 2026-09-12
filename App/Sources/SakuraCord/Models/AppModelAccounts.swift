@@ -318,6 +318,7 @@ extension AppModel {
         hasMoreCache = [:]
         membersByGuildID = [:]
         profileCustomStatus = nil
+        profileCustomStatusUserID = nil
         presentedProfileGame = nil
         memberListsByGuildID = [:]
         memberListGroupsByGuildID = [:]

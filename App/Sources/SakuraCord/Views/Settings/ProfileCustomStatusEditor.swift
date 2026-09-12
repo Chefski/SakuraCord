@@ -6,14 +6,14 @@ struct ProfileCustomStatusControl: View {
     let profile: UserProfile
     let surfaceColor: Color
     let width: CGFloat
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.locale) private var locale
     @State private var isPresented = false
     @State private var isHovered = false
-    @State private var isClearing = false
-    @State private var errorMessage: String?
 
     var body: some View {
         Button { isPresented = true } label: {
-            ProfileStatusBubble(text: profile.customStatus ?? String(localized: "Add Status", bundle: #bundle), surfaceColor: surfaceColor, width: width)
+            ProfileStatusBubble(text: profile.customStatus ?? String(localized: "Add Status", bundle: #bundle), surfaceColor: surfaceColor, width: width, keepsExpanded: isHovered || isPresented)
                 .allowsHitTesting(false)
                 .contentShape(Rectangle())
         }
@@ -23,157 +23,172 @@ struct ProfileCustomStatusControl: View {
             if isHovered, profile.customStatus != nil {
                 HoverActionPill {
                     HoverActionButton(systemImage: "pencil", help: String(localized: "Edit Status", bundle: #bundle)) { isPresented = true }
-                    HoverActionButton(systemImage: "trash", help: String(localized: "Clear Status", bundle: #bundle), role: .destructive) { clear() }
+                    HoverActionButton(systemImage: "trash", help: String(localized: "Clear Status", bundle: #bundle), role: .destructive) { editor.setCustomStatusDraft(nil) }
                 }
                 .offset(y: -20)
             }
         }
         .onModalHover { isHovered = $0 }
-        .disabled(isClearing)
-        .windowModal(isPresented: $isPresented) { ProfileCustomStatusEditor(editor: editor, profile: profile) }
-        .alert("Couldn’t Update Status", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
-            Button("OK", role: .cancel) { errorMessage = nil }
-        } message: { Text(errorMessage ?? "") }
-    }
-
-    private func clear() {
-        isClearing = true
-        Task {
-            defer { isClearing = false }
-            do { try await editor.saveCustomStatus(nil) } catch { errorMessage = error.localizedDescription }
+        .disabled(!editor.canEditWidgets)
+        .overlay {
+            StableAnchoredPopoverPresenter(isPresented: isPresented, configuration: .toolbarPanel, onDismiss: { isPresented = false }, content: {
+                ProfileCustomStatusEditor(editor: editor, profile: profile)
+                    .environment(\.colorScheme, colorScheme)
+                    .environment(\.locale, locale)
+            })
         }
+        .onChange(of: editor.draftGeneration) { _, _ in isPresented = false }
+        .onChange(of: editor.isResolvingScope) { _, resolving in if resolving { isPresented = false } }
     }
 }
 
 private struct ProfileCustomStatusEditor: View {
     let editor: ProfileEditorState
     let profile: UserProfile
-    @Environment(\.windowModalContext) private var dismiss
-    @State private var text: String
-    @State private var emojiID: String?
-    @State private var emojiName: String?
-    @State private var expiration: ProfileStatusExpiration
-    @State private var expirationReferenceDate = Date.now
+    @Environment(\.stablePopoverPresentationContext) private var popover
+    @State private var draft: ProfileStatusDraft
     @State private var showsEmojiPicker = false
-    @State private var isSaving = false
     @State private var errorMessage: String?
     @FocusState private var isTextFocused: Bool
 
     init(editor: ProfileEditorState, profile: UserProfile) {
         self.editor = editor
         self.profile = profile
-        let status = editor.snapshot?.customStatus
-        _text = State(initialValue: status?.text ?? "")
-        _emojiID = State(initialValue: status?.emojiID)
-        _emojiName = State(initialValue: status?.emojiName)
-        _expiration = State(initialValue: ProfileStatusExpiration.initial(for: status))
-    }
-
-    private var preview: UserProfile {
-        var value = profile
-        value.customStatus = draft.displayText.isEmpty ? String(localized: "Add Status", bundle: #bundle) : draft.displayText
-        return value
+        _draft = State(initialValue: editor.customStatusDraft ?? .empty)
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(spacing: 0) {
+            inputRow
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+            Divider().padding(.horizontal, 12)
             HStack {
-                Text("Set your status", bundle: #bundle).font(.title3.bold())
-                Spacer()
-                HoverCloseButton(help: "Close", accessibilityIdentifier: "profile-editor-close") { dismiss?() }
+                expirationMenu
+                Spacer(minLength: 0)
             }
-            MemberProfilePopover(member: Member(user: preview.user, roleName: "", status: preview.status), profile: preview,
-                                 isLoading: false, errorMessage: nil, maximumPopoverHeight: 270,
-                                 showsRoles: false, footer: EmptyView(), showsDetails: false)
-                .scaleEffect(290 / 330, anchor: .top)
-                .frame(maxWidth: .infinity).frame(height: 238)
-                .allowsHitTesting(false)
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Status", bundle: #bundle).font(.headline)
-                HStack(alignment: .top, spacing: 8) {
-                    Button { showsEmojiPicker.toggle() } label: {
-                        if emojiID != nil || emojiName != nil {
-                            ProfileStatusTextView(source: ProfileCustomStatus(text: "", emojiID: emojiID, emojiName: emojiName).displayText, isExpanded: false, onHoverChange: { _ in })
-                                .frame(width: 24, height: 24)
-                        } else { Image(systemName: "face.smiling.fill").font(.title2).frame(width: 24, height: 24) }
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Status emoji: \(emojiName ?? String(localized: "not set", bundle: #bundle))")
-                    .windowModal(isPresented: $showsEmojiPicker, title: "Emoji") {
-                        EmojiPickerView(model: editor.model, useCase: .customStatus, dismiss: { showsEmojiPicker = false }, select: { activation in
-                            switch activation.selection {
-                            case let .native(value): emojiID = nil; emojiName = value
-                            case let .custom(emoji):
-                                guard profile.user.premiumType > 0 else {
-                                    errorMessage = String(localized: "Custom status emojis require Nitro.", bundle: #bundle)
-                                    return
-                                }
-                                emojiID = emoji.id; emojiName = emoji.name
-                            }
-                            showsEmojiPicker = false
-                        })
-                    }
-                    TextField("Add Status", text: $text, axis: .vertical)
-                        .textFieldStyle(.plain).lineLimit(1 ... 3).focused($isTextFocused)
-                        .onKeyPress(phases: .down) { press in
-                            guard press.key == .return else { return .ignored }
-                            if !press.modifiers.contains(.shift) { save() }
-                            return .handled
-                        }
-                        .onChange(of: text) { _, value in
-                            if value.utf16.count > 128 { while text.utf16.count > 128 { text.removeLast() } }
-                        }
-                    if !text.isEmpty || emojiName != nil || emojiID != nil {
-                        Button("Clear", systemImage: "xmark") { text = ""; emojiID = nil; emojiName = nil }
-                            .buttonStyle(.plain).labelStyle(.iconOnly)
-                    }
-                }
-                .padding(10)
-                .background(.quaternary.opacity(0.5), in: ConcentricRectangle(cornerRadius: 8))
-                .overlay { ConcentricRectangle(cornerRadius: 8).stroke(isTextFocused ? SakuraCordAccentColor.color : .primary.opacity(0.15)) }
-                if let errorMessage { Text(errorMessage).font(.callout).foregroundStyle(.red) }
-            }
-            Spacer(minLength: 0)
-            HStack {
-                Menu {
-                    Picker("Clear after", selection: $expiration) {
-                        ForEach(ProfileStatusExpiration.allCases, id: \.self) { duration in
-                            Text(duration.optionLabel(at: expirationReferenceDate)).tag(duration)
-                        }
-                    }
-                    .pickerStyle(.inline)
-                    .onAppear { expirationReferenceDate = .now }
-                } label: {
-                    Text(expiration.selectedLabel(at: expirationReferenceDate))
-                }
-                .menuStyle(.borderlessButton).fixedSize()
-                .accessibilityLabel("Clear after, \(expiration.selectedLabel(at: expirationReferenceDate))")
-                Spacer()
-                Button { save() } label: {
-                    if isSaving { ProgressView().controlSize(.small) } else { Text("Save", bundle: #bundle) }
-                }
-                .buttonStyle(.borderedProminent).controlSize(.large).keyboardShortcut(.defaultAction)
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            if let errorMessage {
+                Text(errorMessage).font(.caption).foregroundStyle(.red).padding([.horizontal, .bottom], 12)
             }
         }
-        .padding(24).windowModalSize(width: 460, height: 520)
-        .disabled(isSaving)
-        .windowModalDismissDisabled(isSaving)
-        .onExitCommand { if !isSaving { dismiss?() } }
-        .onAppear { isTextFocused = true }
+        .frame(width: 320)
+        .disabled(!editor.canEditWidgets)
+        .onChange(of: draft) { _, value in editor.setCustomStatusDraft(value) }
+        .onChange(of: showsEmojiPicker, initial: true) { _, presented in
+            popover?.escapeAction = presented ? { showsEmojiPicker = false } : nil
+            if !presented { isTextFocused = true }
+        }
+        .onChange(of: popover?.hasFinishedPresenting, initial: true) { _, presented in
+            if presented == true { isTextFocused = true }
+        }
+        .onDisappear { popover?.escapeAction = nil }
     }
 
-    private var draft: ProfileCustomStatus { ProfileCustomStatus(text: text, emojiID: emojiID, emojiName: emojiName) }
-
-    private func save() {
-        guard !isSaving else { return }
-        isSaving = true
-        errorMessage = nil
-        var status = draft
-        status.expiresAt = expiration.seconds.map { .now.addingTimeInterval($0) }
-        Task {
-            defer { isSaving = false }
-            do { try await editor.saveCustomStatus(status); dismiss?(allowsDisabled: true) } catch { errorMessage = error.localizedDescription }
+    private var inputRow: some View {
+        HStack(spacing: 6) {
+            ProfileStatusEmojiButton(status: draft.status) { showsEmojiPicker.toggle() }
+                .overlay {
+                    StableAnchoredPopoverPresenter(isPresented: showsEmojiPicker, configuration: .toolbarPanel,
+                                                   onDismiss: { showsEmojiPicker = false }, content: {
+                        EmojiPickerView(model: editor.model, useCase: .customStatus, dismiss: { showsEmojiPicker = false }, select: selectEmoji)
+                    })
+                }
+            TextField("Add Status", text: $draft.status.text, axis: .vertical)
+                .textFieldStyle(.plain)
+                .font(.body)
+                .lineLimit(1 ... 3)
+                .focused($isTextFocused)
+                .onKeyPress(.return) {
+                    popover?.dismiss?()
+                    return .handled
+                }
+                .onChange(of: draft.status.text) { _, _ in
+                    while draft.status.text.utf16.count > 128 { draft.status.text.removeLast() }
+                }
+            if !draft.status.displayText.isEmpty {
+                ComposerActionButton(icon: Image(systemName: "xmark"), help: String(localized: "Clear Status", bundle: #bundle), iconSize: 12, size: 28) {
+                    draft.status.text = ""
+                    draft.status.emojiID = nil
+                    draft.status.emojiName = nil
+                }
+            }
         }
+        .frame(minHeight: 34)
+    }
+
+    private var expirationMenu: some View {
+        Menu {
+            ForEach(ProfileStatusExpiration.allCases, id: \.self) { expiration in
+                Button(expiration.label) {
+                    draft.expiresAfter = expiration.seconds
+                    draft.status.expiresAt = nil
+                }
+            }
+        } label: {
+            Text(expirationLabel)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .accessibilityLabel("Status expiry")
+    }
+
+    private var expirationLabel: String {
+        if let seconds = draft.expiresAfter, let expiration = ProfileStatusExpiration.allCases.first(where: { $0.seconds == seconds }) {
+            return String(localized: "Clear after \(expiration.label)", bundle: #bundle)
+        }
+        if let date = draft.status.expiresAt {
+            return String(localized: "Clear at \(date.formatted(date: .omitted, time: .shortened))", bundle: #bundle)
+        }
+        return ProfileStatusExpiration.never.label
+    }
+
+    private func selectEmoji(_ activation: EmojiPickerActivation) {
+        switch activation.selection {
+        case let .native(value): draft.status.emojiID = nil; draft.status.emojiName = value
+        case let .custom(emoji):
+            guard profile.user.premiumType > 0 else {
+                errorMessage = String(localized: "Custom status emojis require Nitro.", bundle: #bundle)
+                return
+            }
+            draft.status.emojiID = emoji.id; draft.status.emojiName = emoji.name
+        }
+        errorMessage = nil
+        showsEmojiPicker = false
+    }
+}
+
+private struct ProfileStatusEmojiButton: View {
+    let status: ProfileCustomStatus
+    let action: () -> Void
+    @State private var isHovered = false
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        Button(action: action) {
+            Group {
+                if let id = status.emojiID, let url = URL(string: "https://cdn.discordapp.com/emojis/\(id).webp?size=48&animated=false") {
+                    AnimatedRemoteImage(url: url, animates: false, maximumPixelDimension: 48, accessibilityCategory: .emoji)
+                } else if let emoji = status.emojiName {
+                    Image(nsImage: ComponentUnicodeEmojiRenderer.image(for: emoji))
+                        .resizable().scaledToFit().frame(width: 22, height: 22)
+                } else {
+                    Image(systemName: "face.smiling").font(.system(size: 21)).foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 24, height: 24)
+            .allowsHitTesting(false)
+            .frame(width: 34, height: 34)
+            .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .background(.primary.opacity(isHovered && isEnabled ? 0.14 : 0), in: Circle())
+        .onModalHover { isHovered = $0 }
+        .help("Choose status emoji")
+        .accessibilityLabel("Status emoji: \(status.emojiName ?? String(localized: "not set", bundle: #bundle))")
     }
 }
 
@@ -190,7 +205,7 @@ private enum ProfileStatusExpiration: CaseIterable {
         }
     }
 
-    private var label: String {
+    var label: String {
         switch self {
         case .day: String(localized: "24 hours", bundle: #bundle)
         case .fourHours: String(localized: "4 hours", bundle: #bundle)
@@ -198,29 +213,5 @@ private enum ProfileStatusExpiration: CaseIterable {
         case .halfHour: String(localized: "30 minutes", bundle: #bundle)
         case .never: String(localized: "Don’t clear", bundle: #bundle)
         }
-    }
-
-    func optionLabel(at now: Date) -> String {
-        guard let seconds else { return label }
-        let expiry = now.addingTimeInterval(seconds)
-        let time = expiry.formatted(date: .omitted, time: .shortened)
-        let timestamp = Calendar.current.isDate(now, inSameDayAs: expiry) ? time : String(localized: "tomorrow at \(time)", bundle: #bundle)
-        return "\(label) (\(timestamp))"
-    }
-
-    func selectedLabel(at now: Date) -> String {
-        guard let seconds else { return label }
-        let expiry = now.addingTimeInterval(seconds)
-        let time = expiry.formatted(date: .omitted, time: .shortened)
-        return Calendar.current.isDate(now, inSameDayAs: expiry)
-            ? String(localized: "Clear at \(time)", bundle: #bundle)
-            : String(localized: "Clear tomorrow at \(time)", bundle: #bundle)
-    }
-
-    static func initial(for status: ProfileCustomStatus?) -> Self {
-        guard let status else { return .day }
-        guard let expiry = status.expiresAt else { return .never }
-        guard Calendar.current.isDateInToday(expiry) else { return .day }
-        return [Self.halfHour, .hour, .fourHours].first { expiry.timeIntervalSinceNow <= ($0.seconds ?? 0) } ?? .day
     }
 }

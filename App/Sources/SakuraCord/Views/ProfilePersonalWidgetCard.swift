@@ -297,7 +297,7 @@ struct ProfileWidgetText: View {
         .multilineTextAlignment(.leading)
         .frame(minWidth: 0, alignment: .leading)
         .clipped()
-        .profileEditorTextHover(isEnabled: edit != nil && !isEditing)
+        .profileEditorTextHover(isEnabled: edit != nil, isEditing: isEditing)
         .frame(maxWidth: .infinity, alignment: .leading)
         .preference(key: ProfileWidgetClippedTextKey.self, value: [measurementID: !isEditing && fullHeight - displayedHeight > 1])
         .onChange(of: edit != nil) { _, available in

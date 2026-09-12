@@ -51,7 +51,7 @@ struct ProfileInlineTextEditor<Content: View>: View {
                     }
             }
         }
-        .profileEditorTextHover(isEnabled: !isEditing)
+        .profileEditorTextHover(isEditing: isEditing)
         .onChange(of: value) { _, newValue in
             guard let maximumLength, newValue.utf16.count > maximumLength else { return }
             var length = 0
