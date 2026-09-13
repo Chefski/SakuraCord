@@ -102,15 +102,18 @@ private struct ProfileEditorCosmeticPreview: View {
             DecoratedAvatarView(name: "", avatarURL: nil, decorationURL: profile.user.avatarDecorationURL, size: 80, animatesDecoration: isHovered,
                                 resetsDecorationWhenStopped: true)
         case .nameplate:
-            ZStack {
-                if let nameplate = profile.user.nameplate { NameplateBackground(nameplate: nameplate, isAnimated: isHovered) }
-                HStack(spacing: 10) {
-                    Image(systemName: "person.crop.circle.fill").font(.system(size: 28))
-                    Capsule().frame(height: 10)
-                }
-                .foregroundStyle(.secondary.opacity(0.6)).padding(.horizontal, 10)
+            HStack(spacing: 10) {
+                Image(systemName: "person.crop.circle.fill").font(.system(size: 28))
+                Capsule().frame(height: 10)
             }
+            .foregroundStyle(.secondary.opacity(0.6)).padding(.horizontal, 10)
+            .frame(maxWidth: .infinity)
             .frame(height: 42)
+            .background {
+                if let nameplate = profile.user.nameplate {
+                    NameplateBackground(nameplate: nameplate, isAnimated: isHovered, preservesTrailingArtwork: true)
+                }
+            }
             .clipShape(.rect(cornerRadius: 8))
             .padding(12)
         case .effect:

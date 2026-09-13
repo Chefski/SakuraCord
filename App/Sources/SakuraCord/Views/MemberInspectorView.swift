@@ -556,23 +556,32 @@ nonisolated enum NameplatePresentationPolicy {
 struct NameplateBackground: View {
     let nameplate: Nameplate
     let isAnimated: Bool
+    var preservesTrailingArtwork = false
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        ZStack {
-            paletteGradient
-            staticAsset
-            if isAnimated, let url = nameplate.animatedURL {
-                AnimatedRemoteImage(
-                    url: url,
-                    maximumPixelDimension: 512,
-                    contentMode: .fill,
-                    accessibilityCategory: .decoration
-                )
+        GeometryReader { geometry in
+            ZStack {
+                paletteGradient
+                staticAsset
+                    .frame(width: geometry.size.width, height: geometry.size.height,
+                           alignment: preservesTrailingArtwork ? .trailing : .center)
+                if isAnimated, let url = nameplate.animatedURL {
+                    AnimatedRemoteImage(
+                        url: url,
+                        maximumPixelDimension: 512,
+                        contentMode: .fill,
+                        accessibilityCategory: .decoration,
+                        usesSwiftUIRendering: preservesTrailingArtwork
+                    )
+                    .frame(width: geometry.size.width, height: geometry.size.height,
+                           alignment: preservesTrailingArtwork ? .trailing : .center)
+                }
             }
-        }
+            .frame(width: geometry.size.width, height: geometry.size.height)
             .clipped()
-            .accessibilityLabel(nameplate.label)
+        }
+        .accessibilityLabel(nameplate.label)
     }
 
     @ViewBuilder
@@ -582,7 +591,8 @@ struct NameplateBackground: View {
                 url: url,
                 animates: false,
                 maximumPixelDimension: 512,
-                contentMode: .fill
+                contentMode: .fill,
+                usesSwiftUIRendering: preservesTrailingArtwork
             )
         }
     }
