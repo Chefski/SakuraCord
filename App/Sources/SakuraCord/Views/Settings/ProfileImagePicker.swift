@@ -12,30 +12,21 @@ struct ProfileImagePicker: View {
     let apply: (ProfileAvatarSelection, URL) -> Void
 
     @Environment(\.stablePopoverPresentationContext) private var popover
-    @Environment(\.profilePickerCornerRadius) private var optionCornerRadius
-    @State private var showsFileImporter = false
+    @Environment(\.profileImageImportRequest) private var imageImport
     @State private var showsGIFs = false
-    @State private var source: ProfileImageSource?
-    @State private var sourceURL: URL?
-    @State private var filename = ""
-    @State private var archive: ProfileAvatarHistoryEntry?
     @State private var deleteCandidate: ProfileAvatarHistoryEntry?
     @State private var work: Task<Void, Never>?
     @State private var isBusy = false
-    @State private var isLoadingHistory = false
+    @State private var isLoadingHistory = true
     @State private var errorMessage: String?
-    @State private var temporaryFiles: [URL] = []
-    private static let allowedImageTypes = ["jpg", "jpeg", "jfif", "png", "gif", "webp", "avif"].compactMap { UTType(filenameExtension: $0) }
+    static let allowedImageTypes = ["jpg", "jpeg", "jfif", "png", "gif", "webp", "avif"].compactMap { UTType(filenameExtension: $0) }
 
     var body: some View {
-        pickerContent
+        chooser
         .windowModalDismissDisabled(isBusy)
-        .onChange(of: isBusy, initial: true) { _, busy in popover?.preventsDismissal = busy }
-        .fileImporter(isPresented: $showsFileImporter, allowedContentTypes: Self.allowedImageTypes) { result in
-            switch result {
-            case let .success(url): loadFile(url)
-            case let .failure(error): errorMessage = error.localizedDescription
-            }
+        .onChange(of: isBusy || imageImport?.isPresented == true, initial: true) { _, blocked in popover?.preventsDismissal = blocked }
+        .onChange(of: showsGIFs) { _, presented in
+            popover?.escapeAction = presented ? { showsGIFs = false } : nil
         }
         .alert("Unable to Use Image", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) { errorMessage = nil }
@@ -50,121 +41,111 @@ struct ProfileImagePicker: View {
             guard purpose == .avatar else { return }
             isLoadingHistory = true
             defer { isLoadingHistory = false }
-            do { try await editor.loadHistory() } catch { errorMessage = error.localizedDescription }
+            do { try await editor.loadHistory() } catch is CancellationError {} catch { errorMessage = error.localizedDescription }
         }
         .onDisappear {
             popover?.preventsDismissal = false
+            popover?.escapeAction = nil
             work?.cancel()
-            for url in temporaryFiles { try? FileManager.default.removeItem(at: url) }
         }
     }
 
-    @ViewBuilder
-    private var pickerContent: some View {
-        if let source, let sourceURL {
-                ScrollView {
-                    ProfileImageCropView(image: source, imageURL: sourceURL, filename: filename, purpose: purpose,
-                                         isProcessing: isBusy, canApply: canApply(source), cancel: cancelCrop, apply: process)
-                }
-            } else if showsGIFs {
-                VStack(spacing: 0) {
-                    HStack {
-                        Button { showsGIFs = false } label: { Image(systemName: "chevron.left") }
-                            .buttonStyle(.plain).accessibilityLabel("Back to Images")
-                        Text("Choose GIF", bundle: #bundle).font(.headline)
-                        Spacer()
-                        HoverCloseButton(help: "Close", accessibilityIdentifier: "profile-editor-close") { dismiss() }
-                    }
-                    .padding(.horizontal, 16).padding(.vertical, 12)
-                    GIFPickerView(model: model, dismiss: { showsGIFs = false }, selectionHandler: chooseGIF, hidesFavorites: true)
-                }
-                .overlay { if isBusy { ProgressView().padding().glassEffect() } }
-                .disabled(isBusy)
-            } else {
-                ScrollView { chooser }
-            }
+    static func chooserSize(for purpose: ProfileImagePurpose) -> CGSize {
+        CGSize(width: 320, height: purpose == .avatar ? 148 : 64)
     }
 
     private var chooser: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text("Select an Image", bundle: #bundle).font(.title2.bold())
-                Spacer()
-                HoverCloseButton(help: "Close", accessibilityIdentifier: "profile-editor-close") { dismiss() }
-            }
-            GlassEffectContainer(spacing: 8) {
-                HStack(spacing: 8) {
-                    Button { showsFileImporter = true } label: {
-                        VStack(spacing: 12) {
-                            Image(systemName: "photo.badge.plus").font(.system(size: 26))
-                            Text("Upload Image", bundle: #bundle).font(.headline)
-                        }
-                        .frame(maxWidth: .infinity).frame(height: 144)
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                imageAction("Upload Image", icon: Image(systemName: "photo.badge.plus"), action: importImage)
+                imageAction("Choose GIF", icon: ComposerIcon.gif.image) { showsGIFs = true }
+                    .overlay {
+                        StableAnchoredPopoverPresenter(isPresented: showsGIFs, configuration: .toolbarPanel,
+                                                       onDismiss: { showsGIFs = false }, content: {
+                            GIFPickerView(model: model, dismiss: { showsGIFs = false }, selectionHandler: chooseGIF, hidesFavorites: true)
+                        })
                     }
-                    .buttonStyle(.plain)
-                    .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: optionCornerRadius))
-                    Button { showsGIFs = true } label: {
-                        ZStack {
-                            LazyVGrid(columns: [.init(.flexible(), spacing: 0), .init(.flexible(), spacing: 0)], spacing: 0) {
-                                ForEach(DiscordProfileImageAssets.gifPickerArtwork, id: \.self) { url in
-                                    AnimatedRemoteImage(url: url, animates: false, contentMode: .fill).frame(height: 72).clipped()
-                                }
-                            }
-                            Color.black.opacity(0.45)
-                            VStack(spacing: 12) {
-                                Text("GIF").font(.headline).foregroundStyle(.black).padding(4).background(.white, in: .rect(cornerRadius: 3))
-                                Label("Choose GIF", systemImage: "sparkles").font(.headline)
-                            }
-                            .foregroundStyle(.white)
-                        }
-                        .frame(maxWidth: .infinity).frame(height: 144)
-                        .clipShape(RoundedRectangle(cornerRadius: optionCornerRadius))
-                    }
-                    .buttonStyle(.plain)
-                }
             }
             if purpose == .avatar {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Recent Avatars", bundle: #bundle).font(.title3.bold())
-                    Text("Access your 6 most recent avatar uploads.", bundle: #bundle).foregroundStyle(.secondary)
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
-                        ForEach(editor.history) { entry in
-                            ProfileRecentAvatarButton(entry: entry, choose: { loadArchive(entry) }, remove: {
-                                if NSApp.currentEvent?.modifierFlags.contains(.shift) == true { delete(entry) } else { deleteCandidate = entry }
-                            })
-                        }
-                    }
-                    .frame(minHeight: 56)
-                    .overlay {
-                        if isLoadingHistory, editor.history.isEmpty { ProgressView().controlSize(.small) }
-                    }
-                    .padding(.top, 12)
+                    Divider()
+                    Text("Recent Avatars", bundle: #bundle)
+                        .font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                    recentAvatars
                 }
             }
         }
-        .padding(16)
-        .windowModalSize(width: 480)
+        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .disabled(isBusy)
         .overlay { if isBusy { ProgressView().padding().glassEffect() } }
     }
 
+    private func imageAction(_ title: LocalizedStringKey, icon: Image, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 7) {
+                icon.font(.system(size: 18)).frame(width: 22, height: 22)
+                Text(title).font(.callout.weight(.medium)).lineLimit(1)
+            }
+            .frame(maxWidth: .infinity).frame(height: 40)
+        }
+        .buttonStyle(PopoverRowButtonStyle())
+    }
+
+    private var recentAvatars: some View {
+        HStack(spacing: 4) {
+            ForEach(editor.history.prefix(6)) { entry in
+                ProfileRecentAvatarButton(entry: entry, choose: { selectArchive(entry) }, remove: {
+                    if NSApp.currentEvent?.modifierFlags.contains(.shift) == true { delete(entry) } else { deleteCandidate = entry }
+                })
+            }
+        }
+        .frame(maxWidth: .infinity).frame(height: 44)
+        .overlay {
+            if editor.history.isEmpty {
+                if isLoadingHistory {
+                    ProgressView().controlSize(.small).accessibilityLabel("Loading recent avatars")
+                } else {
+                    Text("No Recent Avatars", bundle: #bundle).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private func importImage() {
+        guard let imageImport else { return }
+        popover?.preventsDismissal = true
+        imageImport.present { result in
+            switch result {
+            case let .success(url): loadFile(url)
+            case .failure(is CancellationError): break
+            case let .failure(error): errorMessage = error.localizedDescription
+            }
+        }
+    }
+
     private func loadFile(_ url: URL) {
+        let account = model.accountSession()
         begin {
             let permitted = url.startAccessingSecurityScopedResource()
             defer { if permitted { url.stopAccessingSecurityScopedResource() } }
             let data = try await Task.detached { try Data(contentsOf: url) }.value
-            try await prepare(data, name: url.deletingPathExtension().lastPathComponent, archive: nil)
+            try await selectImage(data, name: url.deletingPathExtension().lastPathComponent, account: account)
         }
     }
 
-    private func loadArchive(_ entry: ProfileAvatarHistoryEntry) {
-        begin {
-            let data = try await SharedMediaDataLoader.shared.data(for: entry.cropImageURL)
-            try await prepare(data, name: entry.description, archive: entry)
+    private func selectArchive(_ entry: ProfileAvatarHistoryEntry) {
+        guard !isBusy else { return }
+        guard canSelect(animated: entry.storageHash.hasPrefix("a_")) else {
+            errorMessage = String(localized: "This profile image requires Nitro.", bundle: #bundle)
+            return
         }
+        apply(.history(entry), entry.imageURL)
+        dismiss()
     }
 
     private func chooseGIF(_ gif: GIFSearchResult, page: GIFPickerPage) {
+        showsGIFs = false
         begin {
             let account = model.accountSession()
             guard model.isCurrentAccountSession(account),
@@ -182,55 +163,35 @@ struct ProfileImagePicker: View {
             }
             let data = try await withTaskCancellationHandler { try await download.value } onCancel: { download.cancel() }
             guard model.isCurrentAccountSession(account) else { throw CancellationError() }
-            try await prepare(data, name: "selected", archive: nil)
+            try await selectImage(data, name: "selected", account: account)
         }
     }
 
-    private func prepare(_ data: Data, name: String, archive: ProfileAvatarHistoryEntry?) async throws {
+    private func selectImage(_ data: Data, name: String, account: AppModelAccountSession) async throws {
+        // Inspect the original bytes for type, animation and validation; do not transform them.
         let image = try await Task.detached { try ProfileImageSource(data: data) }.value
         try Task.checkCancellation()
-        let url = FileManager.default.temporaryDirectory.appending(path: "profile-image-\(UUID().uuidString)")
-        try data.write(to: url, options: [.atomic, .completeFileProtection])
-        temporaryFiles.append(url)
-        source = image; sourceURL = url; filename = name; self.archive = archive
-    }
-
-    private func process(_ geometry: ProfileImageCropGeometry) {
-        guard let source, canApply(source) else { return }
-        if let archive, !geometry.hasEdits {
-            apply(.history(archive), archive.cropImageURL)
-            dismiss()
-            return
+        guard model.isCurrentAccountSession(account) else { throw CancellationError() }
+        guard canSelect(animated: image.isAnimated || image.mediaType == "image/gif") else {
+            throw ChatProviderError.invalidRequest(String(localized: "This profile image requires Nitro.", bundle: #bundle))
         }
-        begin {
-            let account = model.accountSession()
-            let operation = Task.detached { try ProfileImageProcessor.crop(source, geometry: geometry) }
-            let output = try await withTaskCancellationHandler { try await operation.value } onCancel: { operation.cancel() }
-            try Task.checkCancellation()
-            guard model.isCurrentAccountSession(account) else { throw CancellationError() }
-            let url = FileManager.default.temporaryDirectory.appending(path: "profile-draft-\(UUID().uuidString)")
-            try output.data.write(to: url, options: [.atomic, .completeFileProtection])
-            let upload = ProfileImageUpload(data: output.data, mediaType: output.mediaType, description: imageDescription(),
-                                            originalMD5: source.originalMD5, isAnimated: output.isAnimated)
-            apply(.upload(upload), url)
-            dismiss()
-        }
-    }
-
-    private func canApply(_ source: ProfileImageSource) -> Bool {
-        if purpose == .banner || editor.scope.guildID != nil { return editor.isNitro }
-        return !source.isAnimated || editor.isNitro || editor.snapshot?.presentation.user.premiumType == 1
-    }
-
-    private func imageDescription() -> String {
-        let name = archive.map { $0.description.components(separatedBy: ", added ").first ?? $0.description } ?? filename
+        let url = FileManager.default.temporaryDirectory.appending(path: "profile-draft-\(UUID().uuidString)")
+        var adopted = false
+        defer { if !adopted { try? FileManager.default.removeItem(at: url) } }
+        try await Task.detached { try data.write(to: url, options: [.atomic, .completeFileProtection]) }.value
+        try Task.checkCancellation()
+        guard model.isCurrentAccountSession(account) else { throw CancellationError() }
         let date = Date().formatted(.dateTime.day().month(.wide).year().hour().minute())
-        return "\(name), \(archive == nil ? "added" : "edited") \(date)"
+        let upload = ProfileImageUpload(data: data, mediaType: image.mediaType, description: "\(name), added \(date)",
+                                        originalMD5: image.originalMD5, isAnimated: image.isAnimated)
+        apply(.upload(upload), url)
+        adopted = true // The profile editor now owns the preview file until reset/save.
+        dismiss()
     }
 
-    private func cancelCrop() {
-        if isBusy { work?.cancel(); return }
-        source = nil; sourceURL = nil; archive = nil; showsGIFs = false
+    private func canSelect(animated: Bool) -> Bool {
+        if purpose == .banner || editor.scope.guildID != nil { return editor.isNitro }
+        return !animated || editor.isNitro || editor.snapshot?.presentation.user.premiumType == 1
     }
 
     private func delete(_ entry: ProfileAvatarHistoryEntry) {
@@ -256,18 +217,17 @@ private struct ProfileRecentAvatarButton: View {
 
     var body: some View {
         Button(action: choose) {
-            AvatarView(name: "", url: entry.imageURL, size: 56)
+            AvatarView(name: "", url: entry.imageURL, size: 40)
+                .padding(2)
+                .background(.primary.opacity(isHovered ? 0.14 : 0), in: Circle())
+                .overlay { Circle().strokeBorder(.primary.opacity(isHovered ? 0.3 : 0), lineWidth: 2) }
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .overlay(alignment: .topTrailing) {
-            if isHovered {
-                Button("Remove Avatar", systemImage: "trash.fill", action: remove)
-                    .labelStyle(.iconOnly).buttonStyle(.bordered).buttonBorderShape(.circle).controlSize(.mini)
-            }
-        }
         .onModalHover { isHovered = $0 }
         .help(entry.description)
         .accessibilityLabel(entry.description)
+        .accessibilityAction(named: Text("Remove Recent Avatar", bundle: #bundle), remove)
         .contextMenu { Button("Remove Avatar", systemImage: "trash", role: .destructive, action: remove) }
     }
 }

@@ -183,10 +183,12 @@ struct ProfileEditorPickerPopover: ViewModifier {
     let profile: UserProfile
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.locale) private var locale
+    @Environment(\.profileImageImportRequest) private var imageImport
 
     private var contentSize: CGSize {
         switch selection {
-        case .avatar, .banner: CGSize(width: 400, height: 480)
+        case .avatar: ProfileImagePicker.chooserSize(for: .avatar)
+        case .banner: ProfileImagePicker.chooserSize(for: .banner)
         default: CGSize(width: 320, height: 360)
         }
     }
@@ -203,6 +205,7 @@ struct ProfileEditorPickerPopover: ViewModifier {
                                 .environment(\.profilePickerCornerRadius, optionCornerRadius(in: geometry))
                                 .environment(\.colorScheme, colorScheme)
                                 .environment(\.locale, locale)
+                                .environment(\.profileImageImportRequest, imageImport)
                         }
                     }
                     .frame(width: contentSize.width, height: contentSize.height)

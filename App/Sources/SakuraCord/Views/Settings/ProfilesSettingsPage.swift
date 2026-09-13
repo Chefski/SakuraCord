@@ -7,6 +7,7 @@ struct ProfilesSettingsPage: View {
     let editor: ProfileEditorState
     @State private var picker: ProfileEditorPicker?
     @State private var nicknames: [GuildID: String] = [:]
+    @State private var imageImport = ProfileImageImportRequest()
 
     var body: some View {
         ScrollView(.vertical) {
@@ -47,6 +48,10 @@ struct ProfilesSettingsPage: View {
             }
         }
         .navigationTitle(state.catalog.page(.profiles).title)
+        .environment(\.profileImageImportRequest, imageImport)
+        .fileImporter(isPresented: $imageImport.isPresented, allowedContentTypes: ProfileImagePicker.allowedImageTypes,
+                      allowsMultipleSelection: false, onCompletion: imageImport.complete, onCancellation: imageImport.cancel)
+        .onDisappear { imageImport.cancel() }
         .background { ProfileEditorFocusDismissal() }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
