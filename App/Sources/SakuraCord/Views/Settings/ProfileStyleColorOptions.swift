@@ -5,6 +5,7 @@ import SwiftUI
 struct ProfileStyleColorOptions: View {
     @Binding var style: DisplayNameStyle
     let darkAppearance: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isColorPickerPresented = false
 
     private var effect: ProfileNameEffect { ProfileNameEffect(rawValue: style.effectID) ?? .solid }
@@ -19,7 +20,8 @@ struct ProfileStyleColorOptions: View {
                     Image(systemName: "pencil").font(.caption)
                         .foregroundStyle(.white).shadow(color: .black.opacity(0.6), radius: 1)
                 }
-                .frame(width: 140, height: 28)
+                .frame(width: CGFloat(customColorCount) * 28, height: 28)
+                .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: customColorCount)
                 .padding(.vertical, 2)
                 .contentShape(Capsule())
         }
@@ -31,7 +33,8 @@ struct ProfileStyleColorOptions: View {
         }, set: { colors in
             style.colors = colors
         }), colorCount: customColorCount ... customColorCount)
-        .id(effect)
+        .frame(width: 140, alignment: .trailing)
+        .onChange(of: effect) { _, _ in isColorPickerPresented = false }
     }
 
     private var customColorCount: Int {

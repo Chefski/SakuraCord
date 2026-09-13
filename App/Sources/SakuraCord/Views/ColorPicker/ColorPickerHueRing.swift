@@ -29,7 +29,7 @@ struct ColorPickerHueRing: View {
                 .strokeBorder(wheelGradient, lineWidth: ThemePickerGeometry.ringWidth)
             ForEach(palette.stops.indices, id: \.self) { index in
                 ColorPickerHueHandle(
-                    hue: palette.stops[index].hue, index: index,
+                    hue: palette.stops[index].hue, index: index, showsNumber: palette.stops.count > 1,
                     setter: { setter($0, index) },
                     input: { input(index) }, remove: { remove(index) }, canRemove: canRemove
                 )
@@ -45,6 +45,7 @@ struct ColorPickerHueRing: View {
 private struct ColorPickerHueHandle: View {
     let hue: Double
     let index: Int
+    let showsNumber: Bool
     let setter: (Double) -> Void
     let input: () -> Void
     let remove: () -> Void
@@ -52,8 +53,13 @@ private struct ColorPickerHueHandle: View {
     @State private var lastHapticStep: Int?
 
     var body: some View {
-        Circle()
-            .fill(.clear)
+        ZStack {
+            if showsNumber {
+                Text(index + 1, format: .number)
+                    .font(.body.weight(.bold).monospacedDigit())
+            }
+        }
+            .foregroundStyle(.white)
             .frame(width: ThemePickerGeometry.hueHandleSize, height: ThemePickerGeometry.hueHandleSize)
             .contentShape(Circle())
             .glassEffect(.clear.interactive(), in: Circle())
