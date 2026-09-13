@@ -5,6 +5,36 @@ import SakuraCordModels
 import Testing
 
 @MainActor
+@Test func `name style effect changes preserve inactive draft colors and reset discards them`() async throws {
+    let model = AppModel(launchMode: .offlineTesting, provider: MockChatProvider())
+    await model.start()
+    let editor = ProfileEditorState(model: model)
+    await editor.load()
+    let original = try #require(editor.displayProfile?.user.displayNameStyle)
+    try #require(original.effectID == ProfileNameEffect.gradient.rawValue && original.colors.count == 2)
+
+    editor.setStyle(editor.nameStyle(for: .solid, darkAppearance: true))
+    #expect(editor.displayProfile?.user.displayNameStyle?.colors == Array(original.colors.prefix(1)))
+    editor.setStyle(editor.nameStyle(for: .gradient, darkAppearance: true))
+    #expect(editor.displayProfile?.user.displayNameStyle == original)
+    #expect(!editor.hasChanges)
+
+    let palette: [UInt32] = [0x112233, 0x445566, 0x778899, 0xAABBCC, 0xDDEEFF]
+    editor.setStyle(DisplayNameStyle(effectID: ProfileNameEffect.prism.rawValue, colors: palette))
+    var solid = editor.nameStyle(for: .solid, darkAppearance: true)
+    solid.colors = [0x123456]
+    editor.setStyle(solid)
+    editor.setStyle(editor.nameStyle(for: .gradient, darkAppearance: true))
+    editor.setStyle(editor.nameStyle(for: .prism, darkAppearance: true))
+    #expect(editor.displayProfile?.user.displayNameStyle?.colors == [0x123456] + palette.dropFirst())
+
+    editor.resetDraft()
+    let defaults = DiscordProfileNameStyles.defaultColors(for: .prism, darkAppearance: true)
+    #expect(editor.nameStyle(for: .prism, darkAppearance: true).colors == original.colors + defaults.dropFirst(2))
+    #expect(!editor.hasChanges)
+}
+
+@MainActor
 @Test func `server tag drafts use the same account identity in main and server editors`() async throws {
     let model = AppModel(launchMode: .offlineTesting, provider: MockChatProvider())
     await model.start()

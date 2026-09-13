@@ -3,168 +3,117 @@ import SakuraCordModels
 import SwiftUI
 
 struct ProfileNameStylePicker: View {
-    let profile: UserProfile
-    let hasNitro: Bool
-    let apply: (DisplayNameStyle) -> Void
+    static let popoverSize = CGSize(width: 380, height: 500)
 
-    @Environment(\.windowModalContext) private var dismiss
+    let editor: ProfileEditorState
     @Environment(\.colorScheme) private var colorScheme
-    @State private var draft: DisplayNameStyle
-    @State private var previewIsDark = true
 
-    init(profile: UserProfile, hasNitro: Bool, apply: @escaping (DisplayNameStyle) -> Void) {
-        self.profile = profile
-        self.hasNitro = hasNitro
-        self.apply = apply
-        _draft = State(initialValue: profile.user.displayNameStyle ?? DisplayNameStyle(colors: [0xD4D5D8]))
+    private var profile: UserProfile? { editor.displayProfile }
+    private var darkAppearance: Bool { colorScheme == .dark }
+    private var style: DisplayNameStyle {
+        var value = profile?.user.displayNameStyle ?? DisplayNameStyle()
+        let effect = ProfileNameEffect(rawValue: value.effectID) ?? .solid
+        let defaults = DiscordProfileNameStyles.defaultColors(for: effect, darkAppearance: darkAppearance)
+        if value.colors.count != defaults.count { value.colors = defaults }
+        return value
     }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        Text("Change Display Name Style", bundle: #bundle)
-                            .font(.title2.bold())
-                            .padding(.bottom, 2)
-                        ProfileFontOptions(selectedID: $draft.fontID)
-                        ProfileEffectOptions(effectID: $draft.effectID, colors: $draft.colors, darkAppearance: colorScheme == .dark)
-                        ProfileStyleColorOptions(style: $draft, darkAppearance: colorScheme == .dark)
-                    }
-                    .padding(24)
-                }
-                .frame(width: 422)
-                ProfileNameStylePreviews(profile: profile, style: draft, isDark: $previewIsDark)
-                    .frame(width: 410)
-            }
-            Divider()
-            HStack(spacing: 8) {
-                if !hasNitro {
-                    Link("Get Nitro", destination: URL(string: "https://discord.com/settings/premium")!)
-                }
-                Spacer()
-                Button {
-                    surprise()
-                } label: {
-                    Label("Surprise Me", systemImage: "dice")
-                }
-                .controlSize(.large)
-                Button("Apply") {
-                    apply(draft)
-                    dismiss?()
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .disabled(!hasNitro || draft == profile.user.displayNameStyle)
-                .keyboardShortcut(.defaultAction)
-            }
-            .padding(.horizontal, 24)
-            .frame(height: 88)
-        }
-        .windowModalSize(width: 832, height: 736)
-        .overlay(alignment: .topTrailing) {
-            HoverCloseButton(help: "Close", accessibilityIdentifier: "profile-editor-close") { dismiss?() }
-                .padding(16)
-        }
-        .onAppear {
-            if profile.user.displayNameStyle == nil {
-                draft.colors = DiscordProfileNameStyles.defaultColors(for: .solid, darkAppearance: colorScheme == .dark)
-            }
-        }
-    }
-
-    private func surprise() {
-        let catalog = DiscordProfileNameStyles.catalog
-        guard let font = catalog.fonts.randomElement(), let effect = ProfileNameEffect.allCases.randomElement() else { return }
-        let palettes: [[UInt32]] = switch effect {
-        case .gradient: catalog.gradients
-        case .gummy: catalog.gummyPalettes
-        case .prism: catalog.prismPalettes
-        default: catalog.solidColors.map { [$0] }
-        }
-        draft = DisplayNameStyle(fontID: font.id, effectID: effect.rawValue,
-                                 colors: palettes.randomElement() ?? DiscordProfileNameStyles.defaultColors(for: effect, darkAppearance: colorScheme == .dark))
-    }
-}
-
-private struct ProfileFontOptions: View {
-    @Binding var selectedID: Int
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ProfileStyleSectionHeading(title: "Choose Font")
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
+            // The preview is an overlay so its text cannot enlarge the control
+            // layout. No profile artwork participates in this popover's sizing.
+            Color.primary.opacity(0.045)
+                .frame(height: 52)
+                .overlay {
+                    ProfileDisplayName(name: profile?.displayName ?? "", style: profile?.user.displayNameStyle, size: 24)
+                        .padding(.horizontal, 12)
+                }
+                .clipShape(.rect(cornerRadius: 8))
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    fontOptions
+                    effectOptions
+                    HStack {
+                        Text("Colors", bundle: #bundle).font(.subheadline)
+                        Spacer()
+                        ProfileStyleColorOptions(style: Binding(get: { style }, set: { editor.setStyle($0) }), darkAppearance: darkAppearance)
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .disabled(editor.isLoading || editor.isSaving || editor.requiresReload || editor.isResolvingScope)
+    }
+
+    private var fontOptions: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Font", bundle: #bundle).font(.subheadline)
+            LazyVGrid(columns: columns, spacing: 6) {
                 ForEach(DiscordProfileNameStyles.catalog.fonts) { font in
-                    ProfileStyleOption(isSelected: selectedID == font.id, isNew: font.isNew, label: font.name) {
-                        selectedID = font.id
+                    ProfileNameStyleOption(label: font.name, isSelected: style.fontID == font.id) {
+                        var value = style
+                        value.fontID = font.id
+                        editor.setStyle(value)
                     } content: { _ in
-                        ProfileDisplayName(name: "Gg", style: DisplayNameStyle(fontID: font.id), size: 24, showsEffects: false)
-                            .allowsHitTesting(false)
+                        ProfileDisplayName(name: "Gg", style: DisplayNameStyle(fontID: font.id), size: 24,
+                                           showsEffects: false, animationIsActive: false)
                     }
                 }
             }
         }
     }
-}
 
-private struct ProfileEffectOptions: View {
-    @Binding var effectID: Int
-    @Binding var colors: [UInt32]
-    let darkAppearance: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ProfileStyleSectionHeading(title: "Choose Effect")
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
+    private var effectOptions: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Effect", bundle: #bundle).font(.subheadline)
+            LazyVGrid(columns: columns, spacing: 6) {
                 ForEach(ProfileNameEffect.allCases) { effect in
-                    ProfileStyleOption(isSelected: effectID == effect.rawValue, isNew: effect == .gummy || effect == .prism,
-                                       label: String(localized: effect.title)) {
-                        effectID = effect.rawValue
-                        colors = DiscordProfileNameStyles.defaultColors(for: effect, darkAppearance: darkAppearance)
+                    let selected = style.effectID == effect.rawValue
+                    ProfileNameStyleOption(label: String(localized: effect.title), isSelected: selected) {
+                        guard !selected else { return }
+                        editor.setStyle(style(for: effect))
                     } content: { hovering in
-                        ProfileDisplayName(
-                            name: String(localized: effect.title),
-                            style: DisplayNameStyle(effectID: effect.rawValue, colors: DiscordProfileNameStyles.defaultColors(for: effect, darkAppearance: darkAppearance)),
-                            size: 14, animationIsActive: hovering
-                        )
-                        .allowsHitTesting(false)
+                        ProfileDisplayName(name: String(localized: effect.title), style: style(for: effect), size: 14,
+                                           animationIsActive: hovering && effect != .solid && effect != .gradient)
                     }
                 }
             }
         }
     }
-}
 
-private struct ProfileStyleSectionHeading: View {
-    let title: LocalizedStringKey
-    var body: some View {
-        HStack(spacing: 5) {
-            Text(title, bundle: #bundle).font(.headline)
-            Image(systemName: "sparkles").font(.caption).accessibilityLabel("Exclusive to Nitro")
-        }
+    private var columns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: 6), count: 4)
     }
+
+    private func style(for effect: ProfileNameEffect) -> DisplayNameStyle {
+        editor.nameStyle(for: effect, darkAppearance: darkAppearance)
+    }
+
 }
 
-private struct ProfileStyleOption<Content: View>: View {
-    let isSelected: Bool
-    let isNew: Bool
+private struct ProfileNameStyleOption<Content: View>: View {
     let label: String
+    let isSelected: Bool
     let action: () -> Void
     @ViewBuilder let content: (Bool) -> Content
     @State private var isHovered = false
 
     var body: some View {
         Button(action: action) {
-            content(isHovered)
-                .frame(maxWidth: .infinity)
-                .frame(height: 66)
-                .background(.primary.opacity(isHovered ? 0.09 : 0.045), in: ConcentricRectangle(cornerRadius: 8))
+            Color.primary.opacity(isHovered ? 0.09 : 0.045)
+                .frame(height: 52)
                 .overlay {
-                    ConcentricRectangle(cornerRadius: 8).stroke(isSelected ? Color.accentColor : .primary.opacity(0.1), lineWidth: 1)
+                    content(isHovered)
+                        .padding(.horizontal, 6)
+                        .allowsHitTesting(false)
                 }
-                .overlay(alignment: .topTrailing) {
-                    if isNew { Circle().fill(.tint).frame(width: 4, height: 4).padding(6) }
+                .clipShape(.rect(cornerRadius: 8))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(isSelected ? SakuraCordAccentColor.color : Color.primary.opacity(0.1), lineWidth: 1)
                 }
+                .contentShape(.rect(cornerRadius: 8))
         }
         .buttonStyle(.plain)
         .onModalHover { isHovered = $0 }

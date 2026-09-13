@@ -119,7 +119,7 @@ private struct ProfileEditorCanvas: View {
     var body: some View {
         VStack(spacing: 32) {
             ProfileEditorExpandedPreview(model: model, editor: editor, profile: profile, open: open)
-            ProfileStylesControls(editor: editor, profile: profile, open: open)
+            ProfileStylesControls(editor: editor, profile: profile)
         }
         .frame(maxWidth: .infinity)
         .frame(maxWidth: 820)
@@ -149,7 +149,7 @@ struct ProfileEditorPickerContent: View {
                 if case let .upload(upload) = selection { editor.setBanner(upload, previewURL: url) }
             })
         case .nameStyle:
-            ProfileNameStylePicker(profile: profile, hasNitro: editor.isNitro, apply: { editor.setStyle($0) })
+            ProfileNameStylePicker(editor: editor)
         case let .collectible(kind):
             ProfileCollectiblePicker(editor: editor, kind: kind, profile: profile, dismiss: close)
         }

@@ -192,7 +192,7 @@ private struct ProfileWidgetTagOption: View {
                 Text(label)
                 Spacer()
                 Image(systemName: radio ? (selected ? "largecircle.fill.circle" : "circle") : (selected ? "checkmark.square.fill" : "square"))
-                    .foregroundStyle(selected ? Color.accentColor : .secondary)
+                    .foregroundStyle(selected ? SakuraCordAccentColor.color : .secondary)
             }
             .font(.system(size: 14)).padding(.horizontal, 8).padding(.vertical, 5).contentShape(.rect)
         }

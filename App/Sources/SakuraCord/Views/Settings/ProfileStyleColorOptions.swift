@@ -12,10 +12,16 @@ struct ProfileStyleColorOptions: View {
 
     var body: some View {
         Button { isColorPickerPresented = true } label: {
-            RoundedRectangle(cornerRadius: 6)
+            Capsule()
                 .fill(LinearGradient(colors: customColors.map(Color.init(hex:)), startPoint: .leading, endPoint: .trailing))
-                .overlay { Image(systemName: "pencil").font(.caption2).foregroundStyle(.white).shadow(radius: 1) }
-                .frame(width: 50, height: 50)
+                .overlay { Capsule().stroke(.primary.opacity(0.15), lineWidth: 1) }
+                .overlay {
+                    Image(systemName: "pencil").font(.caption)
+                        .foregroundStyle(.white).shadow(color: .black.opacity(0.6), radius: 1)
+                }
+                .frame(width: 140, height: 28)
+                .padding(.vertical, 2)
+                .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Edit colours")

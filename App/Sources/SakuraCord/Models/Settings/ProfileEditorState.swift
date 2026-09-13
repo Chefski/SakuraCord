@@ -14,6 +14,7 @@ final class ProfileEditorState {
     private(set) var changes = ProfileEditChanges()
     private var customStatusChange: ProfileChange<ProfileStatusDraft> = .unchanged
     private var widgetDraft: [ProfileWidget]?
+    private var nameStylePalette: [UInt32] = []
     private(set) var draftGeneration = UUID()
     private(set) var widgetCatalogue: [ProfileApplicationWidget] = []
     private(set) var widgetResources: ProfileWidgetResources?
@@ -246,6 +247,7 @@ final class ProfileEditorState {
     }
 
     private func adoptBaseline(_ value: ProfileEditingSnapshot) {
+        if !changes.identity.displayNameStyle.isChanged { nameStylePalette = [] }
         snapshot = value
         widgetResources = value.presentation.widgetResources
         if value.scope == .main { model.preparedProfileEditingSnapshot = value }
@@ -491,6 +493,7 @@ final class ProfileEditorState {
         customStatusChange = .unchanged
         widgetDraft = nil
         avatarPreviewURL = nil
+        nameStylePalette = []
         bannerPreviewURL = nil
         selectedServerTag = nil
         errorMessage = nil
@@ -499,7 +502,21 @@ final class ProfileEditorState {
     }
 
     func setStyle(_ style: DisplayNameStyle?) {
+        // Keep inactive stops in the editor, while the submitted style contains
+        // only the colors used by its effect. This survives picker dismissal.
+        let currentColors = displayProfile?.user.displayNameStyle?.colors ?? []
+        let palette = currentColors + nameStylePalette.dropFirst(currentColors.count)
+        nameStylePalette = style.map { $0.colors + palette.dropFirst($0.colors.count) } ?? []
         changes.identity.displayNameStyle = change(style, original: snapshot?.identity.displayNameStyle)
+    }
+
+    func nameStyle(for effect: ProfileNameEffect, darkAppearance: Bool) -> DisplayNameStyle {
+        var value = displayProfile?.user.displayNameStyle ?? DisplayNameStyle()
+        let palette = value.colors + nameStylePalette.dropFirst(value.colors.count)
+        let defaults = DiscordProfileNameStyles.defaultColors(for: effect, darkAppearance: darkAppearance)
+        value.colors = defaults.indices.map { palette.indices.contains($0) ? palette[$0] : defaults[$0] }
+        value.effectID = effect.rawValue
+        return value
     }
 
     func setServerTag(_ identity: PrimaryGuildIdentity?) {

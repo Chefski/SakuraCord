@@ -359,6 +359,7 @@ private struct StablePopoverHostedContent<Content: View>: View {
             \.stablePopoverPresentationContext,
             presentationContext
         )
+        .tint(SakuraCordAccentColor.color)
     }
 }
 
@@ -669,7 +670,7 @@ struct StableAnchoredPopoverPresenter<Content: View>: NSViewRepresentable {
         }
 
         private func dismissFromCancelOperation() {
-            guard presentationContext?.preventsDismissal != true else { return }
+            guard let popover, popoverShouldClose(popover) else { return }
             if let escapeAction = presentationContext?.escapeAction {
                 escapeAction()
             } else {
@@ -678,7 +679,10 @@ struct StableAnchoredPopoverPresenter<Content: View>: NSViewRepresentable {
         }
 
         private func dismissPresentation() {
-            guard shouldPresent else { return }
+            guard shouldPresent,
+                  !PopoverSheetLifecycle.hasSheet(in: popover?.contentViewController?.view.window),
+                  !PopoverSheetLifecycle.hasSheet(in: anchor?.sourceView?.window)
+            else { return }
             let onDismiss = onDismiss
             close()
             onDismiss()
@@ -812,6 +816,13 @@ struct StableAnchoredPopoverPresenter<Content: View>: NSViewRepresentable {
 
         func popoverShouldClose(_ popover: NSPopover) -> Bool {
             presentationContext?.preventsDismissal != true
+                && !PopoverSheetLifecycle.hasSheet(in: popover.contentViewController?.view.window)
+                && !PopoverSheetLifecycle.hasSheet(in: anchor?.sourceView?.window)
+        }
+
+        func popoverWillClose(_ notification: Notification) {
+            guard let closingPopover = notification.object as? NSPopover else { return }
+            PopoverSheetLifecycle.cancelSheets(in: closingPopover.contentViewController?.view.window)
         }
 
         func popoverDidClose(_ notification: Notification) {

@@ -17,7 +17,6 @@ enum ProfileEditorPicker: Hashable, Identifiable {
 struct ProfileStylesControls: View {
     let editor: ProfileEditorState
     let profile: UserProfile
-    let open: (ProfileEditorPicker) -> Void
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
@@ -68,7 +67,7 @@ struct ProfileStylesControls: View {
                 }
                 if editor.isNitro {
                     ProfileStyleSection(title: "Display Name Style", nitro: true) {
-                        ProfileEditorTile(label: "Display Name Style", action: { open(.nameStyle) }, content: {
+                        ProfileCustomizationTile(label: "Display Name Style", selection: .nameStyle, editor: editor, profile: profile, content: {
                             ProfileDisplayName(name: profile.displayName, style: profile.user.displayNameStyle, size: 22)
                                 .allowsHitTesting(false).padding(12)
                         })
@@ -191,6 +190,7 @@ struct ProfileEditorPickerPopover: ViewModifier {
         switch selection {
         case .avatar: ProfileImagePicker.chooserSize(for: .avatar)
         case .banner: ProfileImagePicker.chooserSize(for: .banner)
+        case .nameStyle: ProfileNameStylePicker.popoverSize
         default: CGSize(width: 320, height: 360)
         }
     }

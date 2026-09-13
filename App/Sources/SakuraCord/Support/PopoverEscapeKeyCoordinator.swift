@@ -89,10 +89,19 @@ final class PopoverEscapeKeyCoordinator {
 
     @discardableResult
     func dismissTopmostPopover(in eventWindow: NSWindow) -> Bool {
+        // Let AppKit cancel the alert first, including events addressed to its
+        // parent window. Dismissing the host here can orphan the modal session.
+        guard eventWindow.sheetParent == nil,
+              !PopoverSheetLifecycle.hasSheet(in: eventWindow)
+        else { return false }
         registrations.removeAll { $0.value == nil }
         guard let registration = registrations.reversed().compactMap(\.value).first(where: {
             $0.matches(eventWindow)
         }) else { return false }
+
+        guard !PopoverSheetLifecycle.hasSheet(in: registration.popoverWindow),
+              !PopoverSheetLifecycle.hasSheet(in: registration.presentingWindow)
+        else { return false }
 
         registration.dismiss()
         return true
