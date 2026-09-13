@@ -884,7 +884,8 @@ extension NativeMessageTimelineCoordinator {
                 let finalLayouts = self.items.map { item in
                     if canReusePreparedPresentation,
                        let prepared = preparedByIdentifier[item.identifier],
-                       prepared.0 == item
+                       prepared.0 == item,
+                       prepared.1.fontRevision == ProfileNameFontCache.revision
                     {
                         return prepared.1
                     }
@@ -980,6 +981,15 @@ extension NativeMessageTimelineCoordinator {
             stopObserving()
             let center = NotificationCenter.default
             observations = [
+                center.addObserver(
+                    forName: ProfileNameFontLoader.didLoadFonts,
+                    object: nil, queue: .main
+                ) { [weak self] notification in
+                    guard let ids = notification.userInfo?["fontIDs"] as? Set<Int> else { return }
+                    MainActor.assumeIsolated {
+                        self?.refreshDisplayNameFonts(ids)
+                    }
+                },
                 center.addObserver(
                     forName: NSView.boundsDidChangeNotification,
                     object: scrollView.contentView,

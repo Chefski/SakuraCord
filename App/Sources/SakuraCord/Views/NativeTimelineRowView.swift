@@ -398,6 +398,8 @@ enum NativeTimelineReactionFonts {
 }
 
 struct NativeTimelineRowLayout {
+    var fontRevision = ProfileNameFontCache.revision
+
     struct EphemeralRegion {
         let frame: CGRect
         let eyeFrame: CGRect
@@ -759,10 +761,10 @@ struct NativeTimelineRowLayout {
             let author = model.map {
                 $0.authorPresentation(for: message).user
             } ?? message.author
-            let authorFont = NSFont.systemFont(
+            let authorFont = ProfileNameFontLoader.shared.resolvedFont(for: author, fallback: .systemFont(
                 ofSize: NSFont.preferredFont(forTextStyle: .headline).pointSize,
                 weight: .semibold
-            )
+            ))
             let showsRoleIndicator = model?.accessibilitySettings.roleColorDisplay == .nextToNames
                 && model?.authorPresentation(for: message).roleColorHex != nil
             let indicatorWidth: CGFloat = showsRoleIndicator ? 14 : 0
@@ -1334,12 +1336,12 @@ struct NativeTimelineRowLayout {
         let user = message.interactionMetadata?.user
         let userLabel = user?.displayName ?? "Someone"
         let commandLabel = message.interactionMetadata?.displayName ?? "command"
-        let userFont = NSFont.systemFont(
+        let userFont = ProfileNameFontLoader.shared.resolvedFont(for: user, fallback: .systemFont(
             ofSize: NSFont.preferredFont(
                 forTextStyle: .caption2
             ).pointSize,
             weight: .semibold
-        )
+        ))
         let captionFont = NSFont.preferredFont(
             forTextStyle: .caption1
         )

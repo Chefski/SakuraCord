@@ -653,7 +653,9 @@ private struct ProfileIdentitySection: View {
     }
 
     private var styledName: some View {
-        ProfileDisplayName(name: displayName, style: nameStyle, size: nameSize, background: background, wraps: editor != nil)
+        ProfileDisplayName(name: displayName, style: nameStyle, size: nameSize, background: background, wraps: true)
+            .fixedSize(horizontal: false, vertical: true)
+            .layoutPriority(1)
             .tint(SakuraCordAccentColor.color)
     }
 }

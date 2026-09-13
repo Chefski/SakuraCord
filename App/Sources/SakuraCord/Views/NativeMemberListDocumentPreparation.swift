@@ -77,6 +77,8 @@ extension NativeMemberListCanvasView {
     ) -> Bool {
         guard document.sections != presentedSections
             || document.presentation != presentation
+            || document.stableLayoutChangedIndexes?.isEmpty == false
+            || document.preparedText.contains(where: { preparedText[$0.key]?.nameFont != $0.value.nameFont })
         else { return false }
         let previousItems = suppliedPreviousItems ?? items
         presentation = document.presentation
@@ -431,7 +433,11 @@ extension NativeMemberListCanvasView {
                     + index - projection.headerIndexes[sectionOffset]
                 desiredItem = .placeholder(gatewayIndex: gatewayIndex)
             }
-            guard snapshot.items[index] != desiredItem else { continue }
+            let fontChanged: Bool
+            if case let .member(member, _) = desiredItem {
+                fontChanged = snapshot.preparedText[desiredItem.id]?.nameFont != nameFont(for: member)
+            } else { fontChanged = false }
+            guard snapshot.items[index] != desiredItem || fontChanged else { continue }
             replacementItemsByIndex[index] = desiredItem
         }
         return replacementItemsByIndex
@@ -553,16 +559,18 @@ extension NativeMemberListCanvasView {
         )
     }
 
+    private nonisolated static func nameFont(for member: Member) -> NSFont {
+        ProfileNameFontCache.font(id: member.user.displayNameStyle?.fontID, fallback: .systemFont(
+            ofSize: InterfaceTypographyMetrics.interfaceTextSize, weight: .semibold
+        ))
+    }
+
     private nonisolated static func prepareText(
         for items: [Item],
         presentation: NativeMemberListPresentation,
         reusing preparationSnapshot: PreparationSnapshot?,
         cancelsCooperatively: Bool
     ) -> [ItemID: PreparedText]? {
-        let nameFont = NSFont.systemFont(
-            ofSize: InterfaceTypographyMetrics.interfaceTextSize,
-            weight: .semibold
-        )
         let activityFont = NSFont.systemFont(
             ofSize: max(10, InterfaceTypographyMetrics.interfaceTextSize - 1)
         )
@@ -580,12 +588,14 @@ extension NativeMemberListCanvasView {
             }
             let item = items[index]
             guard case .member(let member, _) = item else { continue }
+            let nameFont = nameFont(for: member)
             if preparationSnapshot?.presentation == presentation,
                let previousIndex = preparationSnapshot?.itemIndexesByID[item.id],
                let previousItems = preparationSnapshot?.items,
                previousItems.indices.contains(previousIndex),
                previousItems[previousIndex] == item,
-               let existing = preparationSnapshot?.preparedText[item.id]
+               let existing = preparationSnapshot?.preparedText[item.id],
+               existing.nameFont == nameFont
             {
                 preparedText[item.id] = existing
                 continue
@@ -616,6 +626,7 @@ extension NativeMemberListCanvasView {
                 )
             }
             preparedText[item.id] = PreparedText(
+                nameFont: nameFont,
                 name: name,
                 nameTruncationToken: Self.line(
                     "…",

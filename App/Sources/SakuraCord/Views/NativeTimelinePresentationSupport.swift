@@ -355,6 +355,7 @@ struct NativeTimelineMediaViewerPresentation: Identifiable {
     let messageID: MessageID?
     let items: [RichMediaItem]
     let selection: Int
+    let authorFontID: Int?
     let authorName: String
     let authorAvatarURL: URL?
     let timestamp: Date
@@ -366,6 +367,7 @@ struct NativeTimelineMediaViewerPresentation: Identifiable {
         messageID: MessageID? = nil,
         items: [RichMediaItem],
         selection: Int,
+        authorFontID: Int? = nil,
         authorName: String,
         authorAvatarURL: URL?,
         timestamp: Date,
@@ -376,6 +378,7 @@ struct NativeTimelineMediaViewerPresentation: Identifiable {
         self.messageID = messageID
         self.items = items
         self.selection = selection
+        self.authorFontID = authorFontID
         self.authorName = authorName
         self.authorAvatarURL = authorAvatarURL
         self.timestamp = timestamp
@@ -391,6 +394,7 @@ struct NativeTimelineMediaViewerPresentation: Identifiable {
             messageID: messageID,
             items: items,
             selection: selection,
+            authorFontID: authorFontID,
             authorName: authorName,
             authorAvatarURL: authorAvatarURL,
             timestamp: timestamp,
@@ -407,6 +411,7 @@ struct NativeTimelineMediaViewerPresentation: Identifiable {
             messageID: messageID,
             items: items,
             selection: selection,
+            authorFontID: authorFontID,
             authorName: authorName,
             authorAvatarURL: authorAvatarURL,
             timestamp: timestamp,
@@ -442,6 +447,7 @@ enum NativeTimelineMediaViewerPlan {
         return NativeTimelineMediaViewerPresentation(
             items: items,
             selection: selection,
+            authorFontID: author.displayNameStyle?.fontID,
             authorName: author.displayName,
             authorAvatarURL: author.avatarURL,
             timestamp: .now
@@ -585,6 +591,7 @@ enum NativeTimelineMediaViewerPlan {
             messageID: message.id,
             items: items,
             selection: selection,
+            authorFontID: message.author.displayNameStyle?.fontID,
             authorName: message.guildMember?.nickname
                 ?? message.author.displayName,
             authorAvatarURL: message.guildMember?.avatarURL

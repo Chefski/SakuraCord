@@ -1,3 +1,4 @@
+import DiscordProtocol
 import AppKit
 import SakuraCordModels
 import SwiftUI
@@ -987,7 +988,7 @@ private struct ForumPostAuthorName: View {
     var body: some View {
         HStack(spacing: 4) {
             Text(presentation.user.displayName)
-                .fontWeight(.semibold)
+                .displayNameFont(presentation.user.displayNameStyle?.fontID, textStyle: .caption1)
                 .foregroundStyle(nameColor)
                 .lineLimit(1)
             NameRoleColorIndicator(colorHex: presentation.roleColorHex)
@@ -1007,6 +1008,7 @@ private struct ForumPostStarterExcerpt: View {
     let presentation: MessageAuthorPresentation
     let content: String
     let isEmphasized: Bool
+    @State private var authorFont: NSFont?
 
     var body: some View {
         let messageColor: Color = isEmphasized ? .primary : .secondary
@@ -1015,10 +1017,16 @@ private struct ForumPostStarterExcerpt: View {
         )
         .lineLimit(2)
         .accessibilityLabel("\(presentation.user.displayName): \(content)")
+        .task(id: presentation.user.displayNameStyle?.fontID) {
+            authorFont = nil
+            guard let definition = DiscordProfileNameStyles.catalog.fonts.first(where: { $0.id == presentation.user.displayNameStyle?.fontID }) else { return }
+            authorFont = try? await ProfileNameFontLoader.shared.font(definition, size: NSFont.preferredFont(forTextStyle: .body).pointSize)
+        }
     }
 
     private var authorText: Text {
-        Text(presentation.user.displayName).fontWeight(.semibold).foregroundColor(nameColor)
+        Text(presentation.user.displayName)
+            .font(authorFont.map(Font.init) ?? .body.weight(.semibold)).foregroundColor(nameColor)
     }
 
     private var roleIndicator: Text {

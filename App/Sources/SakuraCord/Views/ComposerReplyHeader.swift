@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ComposerReplyHeader: View {
     @Environment(\.roleColorDisplay) private var roleColorDisplay
+    var authorFontID: Int?
     let authorName: String
     let avatarURL: URL?
     let roleColorHex: UInt32?
@@ -23,7 +24,7 @@ struct ComposerReplyHeader: View {
                     animates: false
                 )
                 Text(authorName)
-                    .fontWeight(.semibold)
+                    .displayNameFont(authorFontID, textStyle: .callout)
                     .foregroundStyle(authorColor)
                     .lineLimit(1)
                 NameRoleColorIndicator(colorHex: roleColorHex)

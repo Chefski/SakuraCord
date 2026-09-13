@@ -60,6 +60,7 @@ final class NativeMemberListCanvasView: NSView, WindowModalInputParticipant {
     }
 
     nonisolated final class PreparedText: @unchecked Sendable {
+        let nameFont: NSFont
         let name: CTLine
         let nameTruncationToken: CTLine
         let nameWidth: CGFloat
@@ -68,6 +69,7 @@ final class NativeMemberListCanvasView: NSView, WindowModalInputParticipant {
         let activityWidth: CGFloat
 
         init(
+            nameFont: NSFont,
             name: CTLine,
             nameTruncationToken: CTLine,
             nameWidth: CGFloat,
@@ -75,6 +77,7 @@ final class NativeMemberListCanvasView: NSView, WindowModalInputParticipant {
             activityTruncationToken: CTLine?,
             activityWidth: CGFloat
         ) {
+            self.nameFont = nameFont
             self.name = name
             self.nameTruncationToken = nameTruncationToken
             self.nameWidth = nameWidth

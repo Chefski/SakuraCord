@@ -135,10 +135,10 @@ extension NativeTimelineRowPainter {
             text(
                 presentedAuthor.displayName,
                 in: frame,
-                font: .systemFont(
+                font: ProfileNameFontLoader.shared.resolvedFont(for: presentedAuthor, fallback: .systemFont(
                     ofSize: NSFont.preferredFont(forTextStyle: .headline).pointSize,
                     weight: .semibold
-                ),
+                )),
                 color: presentedAuthor.isBot
                     ? .sakuraCordAccentColor
                     : input.model?.accessibilitySettings.roleColorDisplay != .inNames
@@ -935,7 +935,7 @@ extension NativeTimelineRowPainter {
             url: author.avatarURL,
             in: avatarFrame
         )
-        let font = NativeTimelineReplyMetrics.authorFont
+        let font = ProfileNameFontLoader.shared.resolvedFont(for: author, fallback: NativeTimelineReplyMetrics.authorFont)
         let width = NativeTimelineReplyMetrics.textWidth(
             author.displayName,
             font: font
@@ -1013,12 +1013,12 @@ extension NativeTimelineRowPainter {
         text(
             user?.displayName ?? "Someone",
             in: region.userFrame,
-            font: .systemFont(
+            font: ProfileNameFontLoader.shared.resolvedFont(for: user, fallback: .systemFont(
                 ofSize: NSFont.preferredFont(
                     forTextStyle: .caption2
                 ).pointSize,
                 weight: .semibold
-            ),
+            )),
             color: .labelColor
         )
         text(

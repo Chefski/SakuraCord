@@ -104,6 +104,7 @@ struct MediaViewer: View {
                     )
 
                     MediaViewerHeader(
+                        authorFontID: presentation.authorFontID,
                         authorName: presentation.authorName,
                         authorAvatarURL: presentation.authorAvatarURL,
                         timestamp: presentation.timestamp,

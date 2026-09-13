@@ -1208,7 +1208,8 @@ extension NativeMessageTimelineCoordinator {
                 presentationRevision: presentationRevision
             )
             if let cached = cachedItemLayouts[key],
-               cached.item == item
+               cached.item == item,
+               cached.layout.fontRevision == ProfileNameFontCache.revision
             {
                 recentLayoutCacheHits += 1
                 return cached.layout

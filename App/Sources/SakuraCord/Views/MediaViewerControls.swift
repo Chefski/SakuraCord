@@ -32,6 +32,7 @@ nonisolated enum MediaViewerTopChromeMetrics {
 }
 
 struct MediaViewerHeader: View {
+    var authorFontID: Int?
     let authorName: String
     let authorAvatarURL: URL?
     let timestamp: Date
@@ -48,7 +49,7 @@ struct MediaViewerHeader: View {
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
                     Text(authorName)
-                        .font(.callout.weight(.semibold))
+                        .displayNameFont(authorFontID, textStyle: .callout)
                         .lineLimit(1)
                     if itemCount > 1 {
                         Text("\(selection + 1) / \(itemCount)")

@@ -68,7 +68,7 @@ struct ProfileStylesControls: View {
                 if editor.isNitro {
                     ProfileStyleSection(title: "Display Name Style", nitro: true) {
                         ProfileCustomizationTile(label: "Display Name Style", selection: .nameStyle, editor: editor, profile: profile, content: {
-                            ProfileDisplayName(name: profile.displayName, style: profile.user.displayNameStyle, size: 22)
+                            ProfileDisplayName(name: profile.displayName, style: profile.user.displayNameStyle, size: 22, wraps: true)
                                 .allowsHitTesting(false).padding(12)
                         })
                     }

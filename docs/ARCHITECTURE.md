@@ -495,6 +495,14 @@ avatars/decorations, 64-pixel emoji, and 32-pixel guild badges), while full-row
 nameplates retain their 512-pixel budget. All decoded state remains in bounded
 process-memory caches and is discarded at process exit.
 
+Display-name fonts use the shared persistent media cache. The app decodes font
+assets off the main actor and retains immutable Core Text descriptors and sized
+fonts for native text preparation and drawing. Font availability refreshes the
+affected timeline identities and member-list text without replacing either
+canvas with per-name hosting views. Timeline and member-list names retain their
+existing role-color and interaction policy; profile identities use the shared
+multiline name renderer with the user's colors and effects.
+
 `MediaPipeline` owns public-media caching and the complete native voice/video
 stack. `DaveKit` is an implementation dependency of `MediaPipeline`; the app
 target does not import it directly.

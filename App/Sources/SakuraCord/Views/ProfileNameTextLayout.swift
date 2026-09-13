@@ -17,7 +17,7 @@ struct ProfileNameTextLayout {
     let descent: CGFloat
     let leading: CGFloat
 
-    init(name: String, font: NSFont, tracking: CGFloat, gummy: Bool, maximumWidth: CGFloat? = nil) {
+    init(name: String, font: NSFont, tracking: CGFloat, gummy: Bool, maximumWidth: CGFloat? = nil, characterOffset: Int = 0) {
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font, .kern: tracking, .ligature: gummy ? 0 : 1,
             .foregroundColor: NSColor.labelColor,
@@ -40,7 +40,7 @@ struct ProfileNameTextLayout {
 
         var characterByOffset: [Int: Int] = [:]
         var offset = 0
-        var styledIndex = 0
+        var styledIndex = characterOffset
         for character in name {
             let isEmoji = character.unicodeScalars.contains { $0.properties.isEmojiPresentation }
                 || character.unicodeScalars.contains { $0.value == 0xFE0F }
@@ -85,14 +85,30 @@ struct ProfileNameTextLayout {
 
     static func wrappedLines(name: String, font: NSFont, tracking: CGFloat, gummy: Bool, width: CGFloat) -> [Self] {
         let source = name as NSString
-        let typesetter = CTTypesetterCreateWithAttributedString(NSAttributedString(string: name, attributes: [.font: font, .kern: tracking]))
+        let typesetter = CTTypesetterCreateWithAttributedString(NSAttributedString(
+            string: name, attributes: [.font: font, .kern: tracking, .ligature: gummy ? 0 : 1]
+        ))
         var offset = 0
         var lines: [Self] = []
+        var characterOffset = 0
         while offset < source.length {
             let suggested = CTTypesetterSuggestLineBreak(typesetter, offset, Double(max(1, width)))
-            let length = suggested > 0 ? suggested : source.rangeOfComposedCharacterSequence(at: offset).length
-            let line = source.substring(with: NSRange(location: offset, length: min(length, source.length - offset)))
-            lines.append(Self(name: line, font: font, tracking: tracking, gummy: gummy))
+            var length = max(source.rangeOfComposedCharacterSequence(at: offset).length, suggested)
+            var text = source.substring(with: NSRange(location: offset, length: min(length, source.length - offset)))
+            var line = Self(name: text, font: font, tracking: tracking, gummy: gummy, characterOffset: characterOffset)
+            // A name may be one unbroken word. Break at a complete grapheme
+            // instead of letting the word extend beyond the profile's bounds.
+            while line.width > width, text.count > 1 {
+                text.removeLast()
+                length = text.utf16.count
+                line = Self(name: text, font: font, tracking: tracking, gummy: gummy, characterOffset: characterOffset)
+            }
+            lines.append(line)
+            characterOffset += text.filter { character in
+                !character.isWhitespace && !character.unicodeScalars.contains {
+                    $0.properties.isEmojiPresentation || $0.value == 0xFE0F
+                }
+            }.count
             offset += length
         }
         return lines

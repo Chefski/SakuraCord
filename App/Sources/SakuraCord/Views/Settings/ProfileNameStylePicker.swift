@@ -19,18 +19,13 @@ struct ProfileNameStylePicker: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // The preview is an overlay so its text cannot enlarge the control
-            // layout. No profile artwork participates in this popover's sizing.
-            Color.primary.opacity(0.045)
-                .frame(height: 52)
-                .overlay {
-                    ProfileDisplayName(name: profile?.displayName ?? "", style: profile?.user.displayNameStyle, size: 24)
-                        .padding(.horizontal, 12)
-                }
-                .clipShape(.rect(cornerRadius: 8))
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                ProfileDisplayName(name: profile?.displayName ?? "", style: profile?.user.displayNameStyle, size: 24, wraps: true)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, minHeight: 52)
+                    .background(Color.primary.opacity(0.045), in: .rect(cornerRadius: 8))
                     fontOptions
                     effectOptions
                     HStack {
@@ -38,7 +33,6 @@ struct ProfileNameStylePicker: View {
                         Spacer()
                         ProfileStyleColorOptions(style: Binding(get: { style }, set: { editor.setStyle($0) }), darkAppearance: darkAppearance)
                     }
-                }
             }
         }
         .padding(16)

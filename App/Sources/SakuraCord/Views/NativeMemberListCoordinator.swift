@@ -82,6 +82,21 @@ final class NativeMemberListCoordinator: NSObject {
                 self?.canvas?.needsDisplay = true
             }
         })
+        observations.append(center.addObserver(
+            forName: ProfileNameFontLoader.didLoadFonts,
+            object: nil, queue: .main
+        ) { [weak self] notification in
+            guard let ids = notification.userInfo?["fontIDs"] as? Set<Int> else { return }
+            MainActor.assumeIsolated {
+                guard let self, let canvas = self.canvas, let scrollView = self.scrollView,
+                      self.parent.sections.contains(where: { section in
+                          section.members.contains { $0.user.displayNameStyle.map { ids.contains($0.fontID) } == true }
+                      }) else { return }
+                self.requestedSections = nil
+                self.requestDocumentUpdate(sections: self.parent.sections, presentation: self.parent.presentation,
+                                           scrollView: scrollView, canvas: canvas)
+            }
+        })
         self.scrollView = scrollView
         self.canvas = canvas
         update(parent: parent, scrollView: scrollView)
@@ -228,6 +243,9 @@ final class NativeMemberListCoordinator: NSObject {
                 performanceStartTask?.cancel()
                 performanceStartTask = nil
             }
+        }
+        for id in Set(sections.flatMap { $0.members.compactMap { $0.user.displayNameStyle?.fontID } }) {
+            ProfileNameFontLoader.shared.request(id: id)
         }
         requestedSections = sections
         requestedPresentation = presentation

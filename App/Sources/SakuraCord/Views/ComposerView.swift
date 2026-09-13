@@ -40,6 +40,7 @@ struct ComposerView: View {
                     if !hasActiveCommand, let reply = activeReply {
                         let author = model.authorPresentation(for: reply)
                         ComposerReplyHeader(
+                            authorFontID: author.user.displayNameStyle?.fontID,
                             authorName: author.user.displayName,
                             avatarURL: author.user.avatarURL,
                             roleColorHex: author.roleColorHex,
