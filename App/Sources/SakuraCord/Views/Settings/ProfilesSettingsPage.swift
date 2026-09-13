@@ -8,43 +8,59 @@ struct ProfilesSettingsPage: View {
     @State private var picker: ProfileEditorPicker?
     @State private var nicknames: [GuildID: String] = [:]
     @State private var imageImport = ProfileImageImportRequest()
+    @State private var saveBarHeight: CGFloat = 0
+
+    private var showsSaveBar: Bool {
+        editor.hasChanges || editor.requiresReload || editor.errorMessage != nil && editor.snapshot != nil
+    }
 
     var body: some View {
-        ScrollView(.vertical) {
-            VStack {
-                if let profile = editor.displayProfile {
-                    ProfileEditorCanvas(model: model, editor: editor, profile: profile) { picker = $0 }
-                        .disabled(editor.isLoading)
-                        .allowsHitTesting(!editor.isResolvingScope)
-                        .overlay {
-                            if editor.isLoading {
-                                RoundedRectangle(cornerRadius: 16).fill(.black.opacity(0.12))
-                                    .allowsHitTesting(false)
+        ZStack(alignment: .bottom) {
+            ScrollView(.vertical) {
+                VStack {
+                    if let profile = editor.displayProfile {
+                        ProfileEditorCanvas(model: model, editor: editor, profile: profile) { picker = $0 }
+                            .disabled(editor.isLoading)
+                            .allowsHitTesting(!editor.isResolvingScope)
+                            .overlay {
+                                if editor.isLoading {
+                                    RoundedRectangle(cornerRadius: 16).fill(.black.opacity(0.12))
+                                        .allowsHitTesting(false)
+                                }
                             }
+                            .authenticationLoading(editor.isLoading,
+                                                   in: RoundedRectangle(cornerRadius: 16), intensity: 1.8, opacity: 0.28)
+                    } else {
+                        ContentUnavailableView {
+                            Label("Profile Unavailable", systemImage: "person.crop.circle.badge.exclamationmark")
+                        } description: {
+                            Text(editor.errorMessage ?? String(localized: "Connect an account to edit its profile.", bundle: #bundle))
+                        } actions: {
+                            Button("Retry") { Task { await editor.load(editor.scope, preferCached: false) } }
                         }
-                        .authenticationLoading(editor.isLoading,
-                                               in: RoundedRectangle(cornerRadius: 16), intensity: 1.8, opacity: 0.28)
-                } else {
-                    ContentUnavailableView {
-                        Label("Profile Unavailable", systemImage: "person.crop.circle.badge.exclamationmark")
-                    } description: {
-                        Text(editor.errorMessage ?? String(localized: "Connect an account to edit its profile.", bundle: #bundle))
-                    } actions: {
-                        Button("Retry") { Task { await editor.load(editor.scope, preferCached: false) } }
+                        .frame(maxWidth: .infinity, minHeight: 160)
                     }
-                    .frame(maxWidth: .infinity, minHeight: 160)
+                }
+                .padding(16)
+                // Keep overlay clearance inside the document. Scroll content margins
+                // also inset its hit region, blocking the exposed controls beside the bar.
+                .padding(.bottom, showsSaveBar ? saveBarHeight : 0)
+                .frame(maxWidth: .infinity)
+                .overlay(alignment: .top) {
+                    if editor.snapshot == nil, let error = editor.errorMessage {
+                        VStack(spacing: 8) {
+                            Text(error).font(.callout)
+                            Button("Retry") { Task { await editor.load(preferCached: false) } }
+                        }
+                        .padding(16).glassEffect().padding(24)
+                    }
                 }
             }
-            .padding(16)
-            .frame(maxWidth: .infinity)
-            .overlay(alignment: .top) {
-                if editor.snapshot == nil, let error = editor.errorMessage {
-                    VStack(spacing: 8) {
-                        Text(error).font(.callout)
-                        Button("Retry") { Task { await editor.load(preferCached: false) } }
-                    }
-                    .padding(16).glassEffect().padding(24)
-                }
+            if showsSaveBar {
+                ProfileEditorSaveBar(editor: editor)
+                    .frame(maxWidth: 640)
+                    .padding(16)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { saveBarHeight = $0 }
             }
         }
         .navigationTitle(state.catalog.page(.profiles).title)
@@ -59,11 +75,6 @@ struct ProfilesSettingsPage: View {
                     Task { await editor.load(scope) }
                 }
                 .disabled(editor.isSaving)
-            }
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if editor.hasChanges || editor.requiresReload || editor.errorMessage != nil && editor.snapshot != nil {
-                saveBar.frame(maxWidth: 640)
             }
         }
         .environment(\.profileAnimationsPaused, picker != nil)
@@ -88,32 +99,6 @@ struct ProfilesSettingsPage: View {
         }
         .onChange(of: model.profileCustomStatus) { _, status in editor.receiveCustomStatus(status) }
         .onChange(of: model.profileWidgetConnectionsRevision) { _, _ in Task { await editor.refreshWidgetConnections() } }
-    }
-
-    private var saveBar: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let error = editor.errorMessage { Text(error).font(.callout).foregroundStyle(.red) }
-            HStack {
-                Text(editor.requiresReload ? "Reload the saved profile before continuing." : "Careful — you have unsaved changes!", bundle: #bundle)
-                    .font(.callout)
-                Spacer()
-                if editor.requiresReload {
-                    Button("Discard Changes") { editor.resetDraft() }.disabled(editor.isSaving)
-                    Button("Reload") { Task { await editor.load(editor.scope, preferCached: false) } }.disabled(editor.isLoading)
-                } else {
-                    Button("Reset") { editor.resetDraft() }.disabled(editor.isSaving)
-                    Button { Task { await editor.save() } } label: {
-                        if editor.isSaving { ProgressView().controlSize(.small) } else { Text("Save Changes", bundle: #bundle) }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!editor.canSave)
-                }
-            }
-        }
-        .padding(12)
-        .glassEffect(.regular, in: ConcentricRectangle(cornerRadius: 10))
-        .overlay { if editor.showsUnsavedReminder { ConcentricRectangle(cornerRadius: 10).stroke(.orange, lineWidth: 2) } }
-        .padding(16)
     }
 
     private func refreshNicknames() {
