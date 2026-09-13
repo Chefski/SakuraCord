@@ -107,7 +107,7 @@ struct ProfileEffectOverlay: View {
         .overlay {
             if let idlePreviewURL {
                 // Keep the preview loaded, but never composite it with the effect's transparent layers.
-                AnimatedRemoteImage(url: idlePreviewURL, animates: false, contentMode: .fill)
+                ProfileEffectPreviewImage(url: idlePreviewURL)
                     .opacity(showsIdlePreview ? 1 : 0)
             }
         }
@@ -191,5 +191,18 @@ struct ProfileEffectOverlay: View {
             !pendingSources.contains($0.sourceURL)
         }) else { return }
         startTime = CACurrentMediaTime()
+    }
+}
+
+/// Match the animated effect's top-anchored canvas without letting the poster resize its container.
+struct ProfileEffectPreviewImage: View {
+    let url: URL
+
+    var body: some View {
+        GeometryReader { geometry in
+            AnimatedRemoteImage(url: url, animates: false, contentMode: .fill, usesSwiftUIRendering: true)
+                .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
+                .clipped()
+        }
     }
 }

@@ -66,10 +66,11 @@ struct ProfileCosmeticTileArtwork: View {
                             restartsOnHover: true
                         )
                     } else if let url = effect.thumbnailURL ?? effect.staticURL {
-                        AnimatedRemoteImage(url: url, animates: false, contentMode: .fill)
+                        ProfileEffectPreviewImage(url: url)
                     }
                 }
             }
+            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
         }
     }
 }
