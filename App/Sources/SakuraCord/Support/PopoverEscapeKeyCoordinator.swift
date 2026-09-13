@@ -27,8 +27,17 @@ final class PopoverEscapeKeyRegistration {
         self.dismiss = dismiss
     }
 
-    fileprivate func matches(_ window: NSWindow) -> Bool {
-        window === popoverWindow || window === presentingWindow
+    fileprivate func matches(_ window: NSWindow, registrations: [PopoverEscapeKeyRegistration]) -> Bool {
+        if window === popoverWindow { return true }
+        // Escape can remain addressed to the workspace/settings window even
+        // when several nested popovers are open above it.
+        var ancestor = presentingWindow
+        var visited: Set<ObjectIdentifier> = []
+        while let current = ancestor, visited.insert(ObjectIdentifier(current)).inserted {
+            if current === window { return true }
+            ancestor = registrations.last { $0.popoverWindow === current }?.presentingWindow
+        }
+        return false
     }
 }
 
@@ -95,8 +104,9 @@ final class PopoverEscapeKeyCoordinator {
               !PopoverSheetLifecycle.hasSheet(in: eventWindow)
         else { return false }
         registrations.removeAll { $0.value == nil }
-        guard let registration = registrations.reversed().compactMap(\.value).first(where: {
-            $0.matches(eventWindow)
+        let activeRegistrations = registrations.compactMap(\.value)
+        guard let registration = activeRegistrations.reversed().first(where: {
+            $0.matches(eventWindow, registrations: activeRegistrations)
         }) else { return false }
 
         guard !PopoverSheetLifecycle.hasSheet(in: registration.popoverWindow),

@@ -211,6 +211,7 @@ struct GIFPickerView: View {
     var selectionHandler: ((GIFSearchResult, GIFPickerPage) -> Void)?
     var hidesFavorites = false
 
+    @Environment(\.stablePopoverPresentationContext) private var popover
     @State private var page: GIFPickerPage = .landing
     @State private var query = ""
 
@@ -236,6 +237,8 @@ struct GIFPickerView: View {
         }
         .onChange(of: query, handleQueryChange)
         .onExitCommand(perform: handleEscapeCommand)
+        .onAppear { popover?.escapeAction = handleEscapeCommand }
+        .onDisappear { popover?.escapeAction = nil }
     }
 
     private func handleQueryChange(_ oldValue: String, _ value: String) {

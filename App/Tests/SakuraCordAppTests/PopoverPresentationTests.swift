@@ -16,17 +16,25 @@ import Testing
         presentingWindow: presentingWindow,
         dismiss: { dismissals.append("outer") }
     )
-    let nestedRegistration = coordinator.register(
+    var nestedRegistration: PopoverEscapeKeyRegistration? = coordinator.register(
         popoverWindow: nestedPopoverWindow,
         presentingWindow: outerPopoverWindow,
         dismiss: { dismissals.append("nested") }
     )
 
-    withExtendedLifetime((outerRegistration, nestedRegistration)) {
-        #expect(coordinator.dismissTopmostPopover(in: outerPopoverWindow))
-        #expect(dismissals == ["nested"])
+    withExtendedLifetime(outerRegistration) {
+        withExtendedLifetime(nestedRegistration) {
+            for window in [nestedPopoverWindow, outerPopoverWindow, presentingWindow] {
+                #expect(coordinator.dismissTopmostPopover(in: window))
+            }
+            #expect(dismissals == ["nested", "nested", "nested"])
+        }
+        // The host unregisters when the topmost popover closes. Only the next
+        // key press may reach its parent, regardless of the event's window.
+        nestedRegistration = nil
+        dismissals = []
         #expect(coordinator.dismissTopmostPopover(in: presentingWindow))
-        #expect(dismissals == ["nested", "outer"])
+        #expect(dismissals == ["outer"])
         #expect(!coordinator.dismissTopmostPopover(in: unrelatedWindow))
     }
 }

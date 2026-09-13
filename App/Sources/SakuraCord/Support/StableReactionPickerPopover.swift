@@ -48,7 +48,8 @@ struct StableReactionPickerPresenter<Content: View>: NSViewRepresentable {
     @MainActor
     final class Coordinator: NSObject, NSPopoverDelegate {
         private var popover: NSPopover?
-        private var hostingController: StablePopoverHostingController<Content>?
+        private var hostingController: StablePopoverHostingController<StablePopoverHostedContent<Content>>?
+        private var presentationContext: StablePopoverPresentationContext?
         private weak var snapshotAnchor: NSView?
         private weak var returnWindow: NSWindow?
         private weak var returnResponder: NSResponder?
@@ -109,11 +110,12 @@ struct StableReactionPickerPresenter<Content: View>: NSViewRepresentable {
             sourceView.layoutSubtreeIfNeeded()
             let snapshotAnchor = sourceView.installSnapshotAnchor(in: window)
 
+            let presentationContext = StablePopoverPresentationContext()
+            presentationContext.dismiss = { [weak self] in self?.close(notifyBinding: true) }
+            self.presentationContext = presentationContext
             let hostingController = StablePopoverHostingController(
-                rootView: content,
-                dismiss: { [weak self] in
-                    self?.close(notifyBinding: true)
-                }
+                rootView: StablePopoverHostedContent(content: content, presentationContext: presentationContext),
+                dismiss: { [weak self] in self?.handleEscape() }
             )
             hostingController.view.setAccessibilityIdentifier(accessibilityIdentifier)
             let popover = NSPopover()
@@ -155,6 +157,16 @@ struct StableReactionPickerPresenter<Content: View>: NSViewRepresentable {
                 in: popover.contentViewController?.view.window,
                 presentingWindow: window
             )
+            presentationContext.markPresentationFinished()
+        }
+
+        private func handleEscape() {
+            guard presentationContext?.preventsDismissal != true else { return }
+            if let escapeAction = presentationContext?.escapeAction {
+                escapeAction()
+            } else {
+                close(notifyBinding: true)
+            }
         }
 
         private static var maximumContentSize: CGSize {
@@ -177,6 +189,7 @@ struct StableReactionPickerPresenter<Content: View>: NSViewRepresentable {
                 snapshotAnchor?.removeFromSuperview()
                 snapshotAnchor = nil
                 hostingController = nil
+                presentationContext = nil
                 clearReturnResponder()
                 return
             }
@@ -190,6 +203,7 @@ struct StableReactionPickerPresenter<Content: View>: NSViewRepresentable {
         private func finishClosing(notifyBinding: Bool) {
             popover = nil
             hostingController = nil
+            presentationContext = nil
             snapshotAnchor?.removeFromSuperview()
             snapshotAnchor = nil
             clearReturnResponder()

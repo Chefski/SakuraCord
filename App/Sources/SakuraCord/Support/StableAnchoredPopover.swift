@@ -350,7 +350,7 @@ func sizeIntrinsicPopover<Content: View>(
     return contentSize
 }
 
-private struct StablePopoverHostedContent<Content: View>: View {
+struct StablePopoverHostedContent<Content: View>: View {
     let content: Content
     let presentationContext: StablePopoverPresentationContext
 
