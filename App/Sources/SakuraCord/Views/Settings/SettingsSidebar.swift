@@ -3,21 +3,11 @@ import SwiftUI
 struct SettingsSidebar: View {
     let state: SettingsViewState
     let onSearchResultActivated: () -> Void
+    @State private var selection: SettingsPageID = .myAccount
 
     var body: some View {
-        @Bindable var state = state
-        let selection = Binding(
-            get: { state.selectedPage },
-            set: { page in
-                var transaction = Transaction(animation: nil)
-                transaction.disablesAnimations = true
-                withTransaction(transaction) {
-                    state.selectedPage = page
-                }
-            }
-        )
         ScrollViewReader { proxy in
-            List(selection: selection) {
+            List(selection: $selection) {
                 if state.searchText.isEmpty {
                     ForEach(SettingsSidebarGroupID.allCases) { group in
                         Section(group.title) {
@@ -40,6 +30,18 @@ struct SettingsSidebar: View {
                         onResultActivated: onSearchResultActivated
                     )
                 }
+            }
+            .onChange(of: selection) { _, page in
+                var transaction = Transaction(animation: nil)
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    state.selectedPage = page
+                    // Restore native selection when navigation awaits confirmation.
+                    selection = state.selectedPage
+                }
+            }
+            .onChange(of: state.selectedPage, initial: true) { _, page in
+                selection = page
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)

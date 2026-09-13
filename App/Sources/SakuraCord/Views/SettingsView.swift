@@ -13,6 +13,7 @@ struct SettingsView: View {
     @State private var isSearchPresented = false
     @State private var profileEditor: ProfileEditorState?
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var pendingNavigation: SettingsNavigationRequest?
     private let navigationRouter = SettingsNavigationRouter.shared
 
     init(model: AppModel, updateController: AppUpdateController) {
@@ -69,10 +70,11 @@ struct SettingsView: View {
         .task {
             state.updateLocale(locale)
             let navigationEditor = profileEditor
-            state.allowsNavigation = { [weak navigationEditor] destination in
+            let navigationConfirmation = $pendingNavigation
+            state.allowsNavigation = { [weak navigationEditor] destination, controlID in
                 guard let profileEditor = navigationEditor, profileEditor.hasChanges || profileEditor.isSaving else { return true }
-                guard destination != .profiles else { return true }
-                profileEditor.showsUnsavedReminder = true
+                guard destination.page != .profiles else { return true }
+                navigationConfirmation.wrappedValue = SettingsNavigationRequest(id: UUID(), destination: destination, controlID: controlID)
                 return false
             }
             await profileEditor?.loadIfNeeded()
@@ -84,6 +86,18 @@ struct SettingsView: View {
             }
             Button("Keep Editing", role: .cancel) {}
         } message: {
+            Text(profileEditor?.isSaving == true ? "Wait for your profile changes to finish saving." : "Your profile has unsaved changes.", bundle: #bundle)
+        }
+        .confirmationDialog("Profile Changes", item: $pendingNavigation, titleVisibility: .visible) { request in
+            if profileEditor?.isSaving != true {
+                Button("Discard Changes", role: .destructive) {
+                    guard let profileEditor, !profileEditor.isSaving else { return }
+                    profileEditor.resetDraft()
+                    state.navigate(to: request.destination, controlID: request.controlID)
+                }
+            }
+            Button("Keep Editing", role: .cancel) {}
+        } message: { _ in
             Text(profileEditor?.isSaving == true ? "Wait for your profile changes to finish saving." : "Your profile has unsaved changes.", bundle: #bundle)
         }
         .task(id: navigationRouter.request?.id) {

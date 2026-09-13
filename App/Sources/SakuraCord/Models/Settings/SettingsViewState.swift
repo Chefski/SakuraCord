@@ -19,20 +19,13 @@ nonisolated struct SettingsRevealRequest: Equatable, Identifiable, Sendable {
 @Observable
 final class SettingsViewState {
     private var currentPage: SettingsPageID = .myAccount
-    @ObservationIgnored var allowsNavigation: ((SettingsPageID) -> Bool)?
+    @ObservationIgnored var allowsNavigation: ((SettingsDestination, SettingsControlID) -> Bool)?
     var selectedPage: SettingsPageID {
         get { currentPage }
         set {
-            guard newValue != currentPage, allowsNavigation?(newValue) != false else { return }
-            currentPage = newValue
-            if revealRequest != nil {
-                revealRequest = nil
-            }
-            if highlightedControlID != nil {
-                highlightTask?.cancel()
-                highlightTask = nil
-                highlightedControlID = nil
-            }
+            guard newValue != currentPage,
+                  allowsNavigation?(SettingsDestination(page: newValue), .overview(newValue)) != false else { return }
+            selectPage(newValue)
         }
     }
 
@@ -113,14 +106,23 @@ final class SettingsViewState {
         to destination: SettingsDestination,
         controlID: SettingsControlID
     ) {
-        selectedPage = destination.page
-        guard selectedPage == destination.page else { return }
+        guard destination.page == currentPage || allowsNavigation?(destination, controlID) != false else { return }
+        selectPage(destination.page)
         revealRequest = SettingsRevealRequest(
             id: UUID(),
             destination: destination,
             controlID: controlID
         )
         emphasize(controlID)
+    }
+
+    private func selectPage(_ page: SettingsPageID) {
+        guard page != currentPage else { return }
+        currentPage = page
+        revealRequest = nil
+        highlightTask?.cancel()
+        highlightTask = nil
+        highlightedControlID = nil
     }
 
     func emphasize(_ controlID: SettingsControlID) {

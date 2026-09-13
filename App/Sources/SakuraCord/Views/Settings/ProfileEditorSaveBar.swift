@@ -17,6 +17,7 @@ struct ProfileEditorSaveBar: NSViewRepresentable {
         view.saveButton.title = String(localized: editor.requiresReload ? "Reload" : editor.isSaving ? "Saving…" : "Save Changes", bundle: #bundle, locale: locale)
         view.resetButton.isEnabled = isEnabled && !editor.isSaving
         view.saveButton.isEnabled = isEnabled && (editor.requiresReload ? !editor.isLoading : editor.canSave)
+        view.saveButton.bezelColor = SakuraCordAccentColor.nsColor
         view.showsReminder = editor.showsUnsavedReminder
         view.reset = { editor.resetDraft() }
         view.save = {
@@ -67,7 +68,6 @@ struct ProfileEditorSaveBar: NSViewRepresentable {
             }
             resetButton.action = #selector(resetClicked)
             saveButton.action = #selector(saveClicked)
-            saveButton.bezelColor = .controlAccentColor
             wantsLayer = true
             reminder.fillColor = nil
             reminder.strokeColor = NSColor.systemOrange.cgColor
