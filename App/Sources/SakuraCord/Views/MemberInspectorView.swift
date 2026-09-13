@@ -494,13 +494,31 @@ struct MemberAvatar: View {
     }
 }
 
+enum AvatarDecorationPlayback {
+    case continuous
+    case paused
+    case hover(Bool)
+
+    var isPlaying: Bool {
+        switch self {
+        case .continuous: true
+        case .paused: false
+        case let .hover(isHovered): isHovered
+        }
+    }
+
+    var resetsWhenStopped: Bool {
+        if case .hover = self { return true }
+        return false
+    }
+}
+
 struct DecoratedAvatarView: View {
     let name: String
     let avatarURL: URL?
     let decorationURL: URL?
     let size: CGFloat
-    var animatesDecoration = true
-    var resetsDecorationWhenStopped = false
+    var playback: AvatarDecorationPlayback = .continuous
 
     var body: some View {
         ZStack {
@@ -508,11 +526,12 @@ struct DecoratedAvatarView: View {
             if let decorationURL {
                 AnimatedRemoteImage(
                     url: decorationURL,
-                    animates: animatesDecoration,
+                    animates: playback.isPlaying,
                     maximumPixelDimension: decorationPixelDimension,
                     accessibilityCategory: .decoration,
-                    resetsWhenStopped: resetsDecorationWhenStopped
+                    resetsWhenStopped: playback.resetsWhenStopped
                 )
+                    .id(decorationURL)
                     .frame(width: size * 1.22, height: size * 1.22)
                     .allowsHitTesting(false)
             }
@@ -521,7 +540,12 @@ struct DecoratedAvatarView: View {
     }
 
     var decorationPixelDimension: Int {
-        max(1, Int((size * 1.22 * 2).rounded(.up)))
+        // Reuse the same decoded frames between nearby avatar sizes (picker,
+        // profile and customization card) instead of decoding again on selection.
+        let requested = max(1, Int((size * 1.22 * 2).rounded(.up)))
+        var bucket = 64
+        while bucket < requested { bucket *= 2 }
+        return bucket
     }
 }
 

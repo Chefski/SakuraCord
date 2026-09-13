@@ -841,7 +841,7 @@ private struct CurrentUserCapsule: View {
                 avatarURL: user?.avatarURL,
                 decorationURL: user?.avatarDecorationURL,
                 size: SidebarAccountControlMetrics.avatarSize,
-                animatesDecoration: isProfileHovering
+                playback: .hover(isProfileHovering)
             )
         }
         .frame(

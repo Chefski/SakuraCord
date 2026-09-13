@@ -127,7 +127,7 @@ private struct ProfileCollectibleChoice: View {
                         .frame(height: 42)
                         .background { NameplateBackground(nameplate: nameplate, isAnimated: isHovered) }
                 case let .avatarDecoration(url):
-                    DecoratedAvatarView(name: profile.displayName, avatarURL: profile.avatarURL, decorationURL: url, size: 56, animatesDecoration: isHovered)
+                    DecoratedAvatarView(name: profile.displayName, avatarURL: profile.avatarURL, decorationURL: url, size: 56, playback: .hover(isHovered))
                         .frame(maxWidth: .infinity).frame(height: 108)
                 case let .effect(effect):
                     ProfileCosmeticTileArtwork(effect: effect, kind: .effect, fillsTile: true, animates: isHovered)

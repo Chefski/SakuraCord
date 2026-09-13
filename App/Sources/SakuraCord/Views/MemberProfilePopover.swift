@@ -399,7 +399,7 @@ private struct ProfileHeroSection: View {
                         avatarURL: profile?.avatarURL ?? member.guildAvatarURL ?? member.user.avatarURL,
                         decorationURL: profile?.user.avatarDecorationURL ?? member.user.avatarDecorationURL,
                         size: avatarSize,
-                        animatesDecoration: animatesRemoteMedia
+                        playback: animatesRemoteMedia ? .continuous : .paused
                     )
                     .padding(3)
                 }

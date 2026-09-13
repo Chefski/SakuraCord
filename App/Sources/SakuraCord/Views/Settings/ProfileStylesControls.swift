@@ -99,8 +99,7 @@ private struct ProfileEditorCosmeticPreview: View {
     var body: some View {
         switch kind {
         case .avatarDecoration:
-            DecoratedAvatarView(name: "", avatarURL: nil, decorationURL: profile.user.avatarDecorationURL, size: 80, animatesDecoration: isHovered,
-                                resetsDecorationWhenStopped: true)
+            DecoratedAvatarView(name: "", avatarURL: nil, decorationURL: profile.user.avatarDecorationURL, size: 80, playback: .hover(isHovered))
         case .nameplate:
             HStack(spacing: 10) {
                 Image(systemName: "person.crop.circle.fill").font(.system(size: 28))
