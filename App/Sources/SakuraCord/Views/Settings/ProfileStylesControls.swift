@@ -228,44 +228,6 @@ struct ProfileEditorPickerPopover: ViewModifier {
 
 }
 
-private struct ProfileThemeTile: View {
-    let editor: ProfileEditorState
-    let profile: UserProfile
-    @Environment(\.displayScale) private var displayScale
-    @State private var theme = ProfileThemeState()
-    @State private var isColorPickerPresented = false
-
-    private var primaryColor: UInt32 { theme.colors(for: profile, scale: displayScale, isPreview: true)[0] }
-    private var accentColor: UInt32 { theme.colors(for: profile, scale: displayScale, isPreview: true)[1] }
-
-    var body: some View {
-        Button { isColorPickerPresented = true } label: {
-            ProfileEditorCardStyle.shape
-                .fill(LinearGradient(colors: [Color(hex: primaryColor), Color(hex: accentColor)], startPoint: .top, endPoint: .bottom))
-                .aspectRatio(1, contentMode: .fit)
-                .overlay { ProfileEditorPaintbrush() }
-                .contentShape(ProfileEditorCardStyle.shape)
-        }
-        .buttonStyle(.plain)
-        .profileEditorCardHover()
-        .accessibilityLabel("Profile theme colours")
-        .sakuraCordColorPicker(isPresented: $isColorPickerPresented, colors: Binding(get: {
-            [primaryColor, accentColor]
-        }, set: { colors in
-            editor.setTheme(ProfileThemeColors(primary: colors[0], accent: colors[1]))
-        }), colorCount: 2 ... 2)
-        .contextMenu {
-            if editor.scope.guildID != nil {
-                Button("Use Main Profile Theme") { editor.setTheme(nil) }
-            }
-        }
-        .disabled(!editor.isNitro)
-        .task(id: theme.source(for: profile, scale: displayScale, isPreview: true)) {
-            await theme.load(theme.source(for: profile, scale: displayScale, isPreview: true))
-        }
-    }
-}
-
 /// Scale artwork inside the square without publishing geometry back into view state.
 struct ProfileEditorPaintbrush: View {
     var body: some View {
