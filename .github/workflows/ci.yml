@@ -30,6 +30,10 @@ jobs:
           printf '%s\n' "$toolchain"
           fingerprint="$(printf '%s' "$toolchain" | shasum -a 256 | awk '{print $1}')"
           echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
+      - name: Install Metal toolchain
+        run: |
+          xcodebuild -downloadComponent MetalToolchain
+          xcrun --sdk macosx metal --version
       - name: Cache SwiftPM dependencies
         if: github.event_name != 'workflow_dispatch' && !(github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
         uses: actions/cache@v5
@@ -206,6 +210,11 @@ jobs:
             echo "Set SPARKLE_ADHOC_RELEASE_ACK only after reviewing the documented distribution limitation." >&2
             exit 1
           fi
+      - name: Install Metal toolchain
+        if: steps.existing_release.outputs.published != 'true'
+        run: |
+          xcodebuild -downloadComponent MetalToolchain
+          xcrun --sdk macosx metal --version
       - name: Install DMG tooling
         if: steps.existing_release.outputs.published != 'true'
         run: |
