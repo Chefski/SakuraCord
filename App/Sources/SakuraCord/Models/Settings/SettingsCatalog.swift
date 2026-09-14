@@ -291,6 +291,7 @@ nonisolated extension SettingsControlID {
     static let aboutRoadmap = Self(rawValue: "about.roadmap")
     static let aboutSource = Self(rawValue: "about.source")
     static let aboutSupport = Self(rawValue: "about.support")
+    static let aboutSponsor = Self(rawValue: "about.sponsor")
     static let aboutAcknowledgements = Self(rawValue: "about.acknowledgements")
     static let aboutDisclaimer = Self(rawValue: "about.disclaimer")
     static let localStorageLimit = Self(rawValue: "storage.local-storage-limit")

@@ -120,6 +120,8 @@ struct AboutSettingsPage: View {
             Image("github", bundle: .module)
         case .support:
             Image("discord", bundle: .module)
+        case .sponsor:
+            Image(systemName: "heart")
         }
     }
 

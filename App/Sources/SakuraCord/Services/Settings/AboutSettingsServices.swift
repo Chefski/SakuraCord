@@ -209,6 +209,7 @@ nonisolated enum AboutProjectLink: String, CaseIterable, Identifiable, Sendable 
     case roadmap = "https://roadmap.sakuracord.app"
     case source = "https://github.com/SakuraCordApp/SakuraCord"
     case support = "https://discord.gg/hWNwFXkUTP"
+    case sponsor = "https://github.com/sponsors/SakuraCordApp"
 
     var id: Self { self }
 
@@ -220,6 +221,7 @@ nonisolated enum AboutProjectLink: String, CaseIterable, Identifiable, Sendable 
         case .roadmap: LocalizedStringResource("Roadmap", bundle: #bundle)
         case .source: LocalizedStringResource("Source", bundle: #bundle)
         case .support: LocalizedStringResource("Discord", bundle: #bundle)
+        case .sponsor: LocalizedStringResource("Sponsor", bundle: #bundle)
         }
     }
 
@@ -229,6 +231,7 @@ nonisolated enum AboutProjectLink: String, CaseIterable, Identifiable, Sendable 
         case .roadmap: .aboutRoadmap
         case .source: .aboutSource
         case .support: .aboutSupport
+        case .sponsor: .aboutSponsor
         }
     }
 }

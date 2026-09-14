@@ -219,6 +219,7 @@ func aboutProjectDestinationsAreCanonical() {
         URL(string: "https://roadmap.sakuracord.app")!,
         URL(string: "https://github.com/SakuraCordApp/SakuraCord")!,
         URL(string: "https://discord.gg/hWNwFXkUTP")!,
+        URL(string: "https://github.com/sponsors/SakuraCordApp")!,
     ]))
     #expect(AboutProjectLink.allCases.allSatisfy {
         ExternalLinkSafetyPolicy.assess($0.url).isAllowed
@@ -236,6 +237,7 @@ func aboutCatalogExposesProductionControls() {
         .aboutRoadmap,
         .aboutSource,
         .aboutSupport,
+        .aboutSponsor,
         .aboutAcknowledgements,
         .aboutDisclaimer,
     ]

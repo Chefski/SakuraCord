@@ -49,6 +49,11 @@ nonisolated extension SettingsCatalog {
             keywords: ["help", "community", "Discord server"], owner: .macOS
         ),
         aboutControl(
+            .aboutSponsor, section: .aboutLinks,
+            label: "Sponsor", help: "Open SakuraCord’s GitHub Sponsors page.",
+            keywords: ["GitHub Sponsors", "donate", "funding"], owner: .macOS
+        ),
+        aboutControl(
             .aboutAcknowledgements, section: .aboutAcknowledgements,
             label: "Third-Party Acknowledgements",
             help: "Show the third-party notices included with SakuraCord.",
