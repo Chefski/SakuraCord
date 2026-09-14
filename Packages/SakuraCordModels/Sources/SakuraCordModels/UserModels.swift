@@ -117,4 +117,10 @@ public struct User: Identifiable, Codable, Hashable, Sendable {
     public var tag: String {
         discriminator == "0" ? username : "\(username)#\(discriminator)"
     }
+
+    /// Discord's BOT_HTTP_INTERACTIONS flag identifies bots available without
+    /// a Gateway presence: https://docs.discord.com/developers/resources/user#user-flags
+    public var usesHTTPInteractions: Bool {
+        isBot && publicFlags & (1 << 19) != 0
+    }
 }

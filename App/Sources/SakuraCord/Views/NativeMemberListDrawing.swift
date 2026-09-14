@@ -435,19 +435,21 @@ extension NativeMemberListCanvasView {
             width: NativeMemberListMetrics.avatarSize,
             height: NativeMemberListMetrics.avatarSize
         )
-        let opacity: CGFloat = !member.isOnline ? 0.55 : 1
+        let opacity: CGFloat = !member.isListedOnline ? 0.55 : 1
         let presenceIndicatorRect = AvatarPresencePresentation.indicatorRect(
             avatarRect: avatar,
             indicatorSize: NativeMemberListMetrics.presenceIndicatorSize
         )
         context.saveGState()
         context.setAlpha(opacity)
-        context.addRect(context.boundingBoxOfClipPath)
-        context.addEllipse(in: AvatarPresencePresentation.cutoutRect(
-            avatarRect: avatar,
-            indicatorSize: NativeMemberListMetrics.presenceIndicatorSize
-        ))
-        context.clip(using: .evenOdd)
+        if member.memberListStatus != nil {
+            context.addRect(context.boundingBoxOfClipPath)
+            context.addEllipse(in: AvatarPresencePresentation.cutoutRect(
+                avatarRect: avatar,
+                indicatorSize: NativeMemberListMetrics.presenceIndicatorSize
+            ))
+            context.clip(using: .evenOdd)
+        }
 
         let avatarURL = member.guildAvatarURL ?? member.user.avatarURL
         context.saveGState()
@@ -499,11 +501,13 @@ extension NativeMemberListCanvasView {
 
         context.restoreGState()
 
-        drawPresenceIndicator(
-            member.status,
-            in: presenceIndicatorRect,
-            context: context
-        )
+        if let status = member.memberListStatus {
+            drawPresenceIndicator(
+                status,
+                in: presenceIndicatorRect,
+                context: context
+            )
+        }
     }
 
     func drawAvatarFallback(

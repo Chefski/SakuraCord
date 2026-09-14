@@ -132,7 +132,7 @@ extension NativeMemberListCanvasView {
             if avatarOverlayMembers[id] != member {
                 host.rootView = AnyView(
                     MemberAvatar(member: member)
-                        .opacity(member.isOnline ? 1 : 0.55)
+                        .opacity(member.isListedOnline ? 1 : 0.55)
                         .allowsHitTesting(false)
                 )
                 avatarOverlayMembers[id] = member
@@ -192,7 +192,7 @@ extension NativeMemberListCanvasView {
                 )
                 let configuration = ActivityEmojiOverlayConfiguration(
                     url: url,
-                    opacity: member.isOnline ? 1 : 0.55
+                    opacity: member.isListedOnline ? 1 : 0.55
                 )
                 visibleOverlays.append(ActivityEmojiOverlayPresentation(
                     id: id,

@@ -107,13 +107,13 @@ struct PresenceIndicator: View {
 }
 
 struct AvatarPresenceView<Avatar: View>: View {
-    let status: PresenceStatus
+    let status: PresenceStatus?
     let avatarSize: CGFloat
     let indicatorSize: CGFloat
     let avatar: Avatar
 
     init(
-        status: PresenceStatus,
+        status: PresenceStatus?,
         avatarSize: CGFloat,
         indicatorSize: CGFloat,
         @ViewBuilder avatar: () -> Avatar
@@ -126,9 +126,13 @@ struct AvatarPresenceView<Avatar: View>: View {
 
     var body: some View {
         avatar
-            .overlay { avatarCutout }
+            .overlay {
+                if status != nil { avatarCutout }
+            }
             .compositingGroup()
-            .overlay { indicator }
+            .overlay {
+                if let status { indicator(status: status) }
+            }
     }
 
     private var avatarCutout: some View {
@@ -145,7 +149,7 @@ struct AvatarPresenceView<Avatar: View>: View {
         }
     }
 
-    private var indicator: some View {
+    private func indicator(status: PresenceStatus) -> some View {
         GeometryReader { proxy in
             let indicatorRect = AvatarPresencePresentation.indicatorRect(
                 avatarRect: avatarRect(in: proxy.size),

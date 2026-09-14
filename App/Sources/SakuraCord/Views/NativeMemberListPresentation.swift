@@ -4,6 +4,16 @@ import OSLog
 import SakuraCordModels
 import SwiftUI
 
+extension Member {
+    nonisolated var isListedOnline: Bool {
+        isOnline || user.usesHTTPInteractions
+    }
+
+    nonisolated var memberListStatus: PresenceStatus? {
+        user.usesHTTPInteractions ? nil : status
+    }
+}
+
 nonisolated enum NativeMemberListMetrics {
     static let horizontalInset: CGFloat = 8
     static let verticalInset: CGFloat = 10

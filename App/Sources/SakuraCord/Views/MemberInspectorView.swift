@@ -216,7 +216,7 @@ nonisolated struct MemberSection: Identifiable, Equatable, Sendable {
         offlineMembers.reserveCapacity(members.count)
 
         for member in members {
-            guard member.isOnline else {
+            guard member.isListedOnline else {
                 offlineMembers.append(member)
                 continue
             }
@@ -294,7 +294,7 @@ nonisolated struct MemberSection: Identifiable, Equatable, Sendable {
         let inferredMembersByGroup = Dictionary(grouping: members.lazy.filter {
             $0.memberListIndex == nil
         }) { member in
-            member.roleID?.description ?? (member.isOnline ? "online" : "offline")
+            member.roleID?.description ?? (member.isListedOnline ? "online" : "offline")
         }
         let indexedMembers = members.lazy.compactMap { member -> (Int, Member)? in
             member.memberListIndex.map { ($0, member) }
@@ -454,7 +454,7 @@ struct MemberRow: View {
                                 .allowsHitTesting(false)
                             }
                         }
-                        .opacity(member.isOnline ? 1 : 0.55)
+                        .opacity(member.isListedOnline ? 1 : 0.55)
                         Spacer(minLength: 0)
                     }
                     .padding(.horizontal, 4)
@@ -480,7 +480,7 @@ struct MemberAvatar: View {
 
     var body: some View {
         AvatarPresenceView(
-            status: member.status,
+            status: member.memberListStatus,
             avatarSize: 34,
             indicatorSize: 11
         ) {

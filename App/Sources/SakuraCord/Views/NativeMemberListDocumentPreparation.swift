@@ -604,7 +604,7 @@ extension NativeMemberListCanvasView {
                 ? MessageAuthorPresentation.topRoleColor(in: member.roles)
                     .map(Self.color(hex:)) ?? .labelColor
                 : .labelColor
-            let alpha: CGFloat = !member.isOnline ? 0.55 : 1
+            let alpha: CGFloat = !member.isListedOnline ? 0.55 : 1
             let name = Self.line(
                 member.user.displayName,
                 font: nameFont,
