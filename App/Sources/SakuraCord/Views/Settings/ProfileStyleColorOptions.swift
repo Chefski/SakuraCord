@@ -12,6 +12,43 @@ struct ProfileStyleColorOptions: View {
     private var defaults: [UInt32] { DiscordProfileNameStyles.defaultColors(for: effect, darkAppearance: darkAppearance) }
 
     var body: some View {
+        HStack(spacing: 8) {
+            if effect == .solid || effect == .pop {
+                defaultColorButton
+            }
+            customColorButton
+        }
+        .frame(width: 140, alignment: .trailing)
+        .onChange(of: effect) { _, _ in isColorPickerPresented = false }
+    }
+
+    private var defaultColorButton: some View {
+        let selected = customColors == defaults
+        return Button {
+            isColorPickerPresented = false
+            style.colors = defaults
+        } label: {
+            Circle()
+                .fill(Color(hex: defaults[0]))
+                .overlay {
+                    Circle().strokeBorder(selected ? SakuraCordAccentColor.color : Color.primary.opacity(0.15), lineWidth: selected ? 2 : 1)
+                }
+                .overlay {
+                    Image(systemName: selected ? "checkmark" : "arrow.counterclockwise")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white).shadow(color: .black.opacity(0.6), radius: 1)
+                }
+                .frame(width: 28, height: 28)
+                .padding(.vertical, 2)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Default")
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
+        .help("Default")
+    }
+
+    private var customColorButton: some View {
         Button { isColorPickerPresented = true } label: {
             Capsule()
                 .fill(LinearGradient(colors: customColors.map(Color.init(hex:)), startPoint: .leading, endPoint: .trailing))
@@ -33,8 +70,6 @@ struct ProfileStyleColorOptions: View {
         }, set: { colors in
             style.colors = colors
         }), colorCount: customColorCount ... customColorCount)
-        .frame(width: 140, alignment: .trailing)
-        .onChange(of: effect) { _, _ in isColorPickerPresented = false }
     }
 
     private var customColorCount: Int {

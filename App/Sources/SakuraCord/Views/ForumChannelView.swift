@@ -1019,7 +1019,7 @@ private struct ForumPostStarterExcerpt: View {
         .accessibilityLabel("\(presentation.user.displayName): \(content)")
         .task(id: presentation.user.displayNameStyle?.fontID) {
             authorFont = nil
-            guard let definition = DiscordProfileNameStyles.catalog.fonts.first(where: { $0.id == presentation.user.displayNameStyle?.fontID }) else { return }
+            guard let definition = ProfileNameFontCache.customDefinition(for: presentation.user.displayNameStyle?.fontID) else { return }
             authorFont = try? await ProfileNameFontLoader.shared.font(definition, size: NSFont.preferredFont(forTextStyle: .body).pointSize)
         }
     }

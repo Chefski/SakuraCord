@@ -13,20 +13,11 @@ struct ProfileGameWidgetCard: View {
     @State private var selectedGame: ProfileGame?
     @State private var expanded = false
     @State private var showsPicker = false
-    @State private var dismissedSuggestions = false
     @State private var reorderingID: String?
     @State private var originalGameOrder: [String] = []
     @FocusState private var focusedGameID: String?
 
     private var isGrid: Bool { kind == .liked || kind == .wanted }
-
-    private var showsSuggestions: Bool {
-        guard let editor, editor.canEditWidgets, !dismissedSuggestions, games.count < kind.capacity else { return false }
-        return editor.snapshot?.presentation.widgets?.contains { widget in
-            if case let .games(savedKind, _) = widget.content { return savedKind == kind }
-            return false
-        } != true
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -42,6 +33,7 @@ struct ProfileGameWidgetCard: View {
                     Button { showsPicker = true } label: { Image(systemName: "plus").frame(width: 24, height: 24) }
                         .disabled(editor?.canEditWidgets != true || games.count >= kind.capacity)
                         .accessibilityLabel("Add Game")
+                        .escapeDismissiblePopover(isPresented: $showsPicker) { gamePicker }
                 }
             }
             .padding(.trailing, editor == nil ? 0 : 24)
@@ -92,6 +84,7 @@ struct ProfileGameWidgetCard: View {
                                 .background(.primary.opacity(0.05), in: .rect(cornerRadius: 8))
                         }
                         .buttonStyle(.plain).accessibilityLabel("Add Game")
+                        .escapeDismissiblePopover(isPresented: $showsPicker) { gamePicker }
                         Text("Add one game. This Widget won't show up on your profile until you add a game.", bundle: #bundle)
                             .font(.system(size: 12))
                     }
@@ -101,13 +94,7 @@ struct ProfileGameWidgetCard: View {
                         .frame(maxWidth: .infinity).padding(.vertical, 16)
                 }
             }
-            if showsSuggestions, let editor {
-                ProfileWidgetGameSuggestionsView(editor: editor, kind: kind, dismiss: { dismissedSuggestions = true }, select: { id in
-                    editor.addWidgetGame(widgetID: widgetID, gameID: id)
-                    editor.gameSuggestions.consume(id, for: kind)
-                    expanded = true
-                })
-            }
+
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -139,12 +126,16 @@ struct ProfileGameWidgetCard: View {
         .windowModal(item: $selectedGame) { game in
             if let editor { ProfileGameView(model: editor.model, game: game, editor: editor) }
         }
-        .windowModal(isPresented: $showsPicker, title: "Add Game") {
-            if let editor {
-                ProfileWidgetGamePicker(editor: editor, selectedIDs: Set(games.map(\.id))) {
-                    editor.addWidgetGame(widgetID: widgetID, gameID: $0.id); expanded = true
-                }
-            }
+        .onChange(of: editor?.draftGeneration) { _, _ in showsPicker = false }
+        .onChange(of: editor?.isResolvingScope) { _, resolving in if resolving == true { showsPicker = false } }
+    }
+
+    @ViewBuilder private var gamePicker: some View {
+        if let editor {
+            ProfileWidgetGamePicker(editor: editor, selectedIDs: Set(games.map(\.id)), dismiss: { showsPicker = false }, select: {
+                editor.addWidgetGame(widgetID: widgetID, gameID: $0.id)
+                expanded = true
+            })
         }
     }
 
@@ -254,10 +245,6 @@ private struct ProfileWidgetGameComment: View {
                     } icon: { Image(systemName: "quote.opening") }
                     .font(.system(size: 12, weight: .medium))
                     Spacer(minLength: 0)
-                    if editable {
-                        Button(action: beginEditing) { Image(systemName: "pencil") }
-                            .buttonStyle(.plain).accessibilityLabel("Edit game comment")
-                    }
                 }
                 if isEditing {
                     TextField("Add a comment", text: Binding(get: { draft }, set: updateDraft), axis: .vertical)

@@ -382,7 +382,10 @@ browsing. Cosmetic grids apply selections directly to the local draft, with Nitr
 items grouped below other owned items. Their clipping and selection outlines share
 one corner radius resolved from the stationary popover surface, so scrolling does
 not change individual options' rounding.
-Name style and widget dialogs use the shared `WindowModalOverlay`. The editor's
+Name style and widget-removal dialogs use the shared `WindowModalOverlay`.
+Add Widget, game search, and game tags use compact anchored popovers, sharing the scope
+picker’s rounded hover and selection rows. Game search uses the status editor’s
+plain input treatment; game widgets do not show suggestion carousels. The editor's
 upper section shares `ProfileExpandedSurface` and `ProfileWidgetBoardViewport`
 with the expanded profile modal: one themed surface, a fixed profile column,
 divider, and independently scrolling widget board. The editor retains inline
@@ -406,8 +409,10 @@ editing. Cosmetic removal is the first ordinary tile in its option grid, with
 the same bounds and selection treatment as other items. Bio editing keeps the shared native rich-text
 view and emoji attachments in place, preserving inherited values until an edit.
 The emoji picker returns to that text view's selection through its own window;
-normal typing leaves selection with the native editor. Application widgets use their configured
-`mini_profile` surface in member profiles, with full statistics available on demand.
+normal typing leaves selection with the native editor. Add Widget offers personal
+and game-list widgets without the Game Stats catalogue or account-linking flow.
+Existing application widgets retain their configured `mini_profile` surface,
+full statistics, identity and connection resources, and board management.
 
 Expanded profiles pass their existing card bounds to the modal host through
 `ProfileFrameAnchorKey`. The host draws rear and front frame artwork outside its

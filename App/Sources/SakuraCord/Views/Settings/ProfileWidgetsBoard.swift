@@ -3,7 +3,6 @@ import SakuraCordModels
 import SwiftUI
 
 struct ProfileWidgetsBoard: View {
-    let model: AppModel
     let editor: ProfileEditorState
     @State private var showsAddPicker = false
     @State private var removingWidget: ProfileWidget?
@@ -16,16 +15,13 @@ struct ProfileWidgetsBoard: View {
                     // content and menus for SwiftUI's reorder container.
                     VStack(spacing: 0) {
                         ProfileWidgetCard(widget: widget, resources: editor.widgetResources, editor: editor, displayName: editor.name)
+                            .overlay { widgetMenu(widget) }
                             .overlay(alignment: .topTrailing) {
-                                Menu { managementActions(widget) } label: {
-                                    Image(systemName: "ellipsis").frame(width: 24, height: 24).contentShape(Rectangle())
-                                }
-                                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                                .accessibilityLabel("Manage widget: \(title(widget))")
-                                .disabled(!editor.canEditWidgets)
-                                .padding(8)
+                                widgetMenu(widget, isButton: true)
+                                    .frame(width: 24, height: 24)
+                                    .disabled(!editor.canEditWidgets)
+                                    .padding(12)
                             }
-                            .contextMenu { managementActions(widget) }
                     }
                     .contentShape(.interaction, .rect(cornerRadius: 16))
                     .contentShape(.dragPreview, .rect(cornerRadius: 16))
@@ -44,18 +40,13 @@ struct ProfileWidgetsBoard: View {
         .overlay(alignment: .topTrailing) {
             Button { showsAddPicker = true } label: { Label("Add Widget", systemImage: "plus") }
                 .disabled(!editor.canEditWidgets)
+                .escapeDismissiblePopover(isPresented: $showsAddPicker) {
+                    ProfileAddWidgetPicker(editor: editor) { showsAddPicker = false }
+                }
                 .padding(10)
         }
-        .task(id: editor.scope) { await editor.loadWidgetSuggestionsIfNeeded() }
-        .windowModal(isPresented: $showsAddPicker) {
-            ProfileAddWidgetPicker(editor: editor) { configuration in
-                editor.addWidget(ProfileWidget(content: .application(id: configuration.applicationID)))
-                let connection = editor.widgetResources?.connections?[configuration.connectionApplicationID ?? configuration.applicationID]
-                if connection == .unlinked, let url = configuration.connectionURL {
-                    _ = MessageLinkActivator.activate(url, model: model, displayedText: url.absoluteString)
-                }
-            }
-        }
+        .onChange(of: editor.draftGeneration) { _, _ in showsAddPicker = false }
+        .onChange(of: editor.isResolvingScope) { _, resolving in if resolving { showsAddPicker = false } }
         .windowModal(item: $removingWidget) { widget in
             ProfileRemoveWidgetConfirmation(widget: widget, resources: editor.widgetResources) {
                 editor.removeWidget(id: widget.id); removingWidget = nil
@@ -63,18 +54,11 @@ struct ProfileWidgetsBoard: View {
         }
     }
 
-    @ViewBuilder private func managementActions(_ widget: ProfileWidget) -> some View {
-        Button("Remove Widget", role: .destructive) {
+    private func widgetMenu(_ widget: ProfileWidget, isButton: Bool = false) -> some View {
+        ProfileWidgetMenu(editor: editor, widgetID: widget.id, title: title(widget), isButton: isButton) {
             if NSApp.currentEvent?.modifierFlags.contains(.shift) == true {
                 editor.removeWidget(id: widget.id)
             } else { removingWidget = widget }
-        }
-        .disabled(!editor.canEditWidgets)
-        if let index = editor.widgets.firstIndex(where: { $0.id == widget.id }) {
-            Button("Move Up") { editor.moveWidget(id: widget.id, to: index - 1) }
-                .disabled(!editor.canEditWidgets || index == 0)
-            Button("Move Down") { editor.moveWidget(id: widget.id, to: index + 1) }
-                .disabled(!editor.canEditWidgets || index == editor.widgets.count - 1)
         }
     }
 

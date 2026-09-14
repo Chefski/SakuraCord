@@ -132,6 +132,7 @@ private struct ProfileCustomStatusEditor: View {
             Text(expirationLabel)
         }
         .menuStyle(.borderlessButton)
+        .tint(.primary)
         .fixedSize()
         .accessibilityLabel("Status expiry")
     }

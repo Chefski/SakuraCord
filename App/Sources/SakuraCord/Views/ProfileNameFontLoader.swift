@@ -13,6 +13,14 @@ nonisolated struct ProfileNameFontDescriptor: @unchecked Sendable {
 /// Immutable fonts are shared by native painters and background member preparation.
 /// Downloading and decoding never happen in a layout or drawing callback.
 nonisolated enum ProfileNameFontCache {
+    static let defaultFontID = DisplayNameStyle().fontID
+
+    /// Discord's default typeface follows the app's native font on every surface.
+    static func customDefinition(for id: Int?) -> ProfileNameFont? {
+        guard let id, id != defaultFontID else { return nil }
+        return DiscordProfileNameStyles.catalog.fonts.first { $0.id == id }
+    }
+
     private struct Key: Hashable {
         let id: Int
         let size: CGFloat
@@ -34,7 +42,7 @@ nonisolated enum ProfileNameFontCache {
     static var revision: UInt64 { state.withLock { $0.revision } }
 
     static func font(id: Int?, fallback: NSFont) -> NSFont {
-        guard let id else { return fallback }
+        guard let id, id != defaultFontID else { return fallback }
         let key = Key(id: id, size: fallback.pointSize)
         let face: Face? = state.withLock { state in
             if let font = state.fonts[key] { return font }
@@ -81,7 +89,7 @@ final class ProfileNameFontLoader {
         guard let id, !ProfileNameFontCache.contains(id),
               !requestedIDs.contains(id),
               retryAfter[id].map({ $0 <= .now }) ?? true,
-              let definition = DiscordProfileNameStyles.catalog.fonts.first(where: { $0.id == id })
+              let definition = ProfileNameFontCache.customDefinition(for: id)
         else { return }
         requestedIDs.insert(id)
         Task {
@@ -96,7 +104,7 @@ final class ProfileNameFontLoader {
 
     func font(_ definition: ProfileNameFont, size: CGFloat) async throws -> NSFont {
         let fallback = NSFont.systemFont(ofSize: size, weight: .bold)
-        guard let url = definition.assetURL else { return fallback }
+        guard definition.id != ProfileNameFontCache.defaultFontID, let url = definition.assetURL else { return fallback }
         if !ProfileNameFontCache.contains(definition.id) {
             let task: Task<ProfileNameFontDescriptor, any Error>
             if let existing = loads[definition.id] {

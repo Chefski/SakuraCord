@@ -21,7 +21,7 @@ struct ProfileDisplayName: View {
     @State private var animationFinished = false
 
     private var definition: ProfileNameFont? {
-        DiscordProfileNameStyles.catalog.fonts.first { $0.id == style?.fontID }
+        ProfileNameFontCache.customDefinition(for: style?.fontID)
     }
 
     private var duration: Double {

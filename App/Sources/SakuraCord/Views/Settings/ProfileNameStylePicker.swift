@@ -45,7 +45,8 @@ struct ProfileNameStylePicker: View {
             Text("Font", bundle: #bundle).font(.subheadline)
             LazyVGrid(columns: columns, spacing: 6) {
                 ForEach(DiscordProfileNameStyles.catalog.fonts) { font in
-                    ProfileNameStyleOption(label: font.name, isSelected: style.fontID == font.id) {
+                    ProfileNameStyleOption(label: font.id == ProfileNameFontCache.defaultFontID ? String(localized: "Default", bundle: #bundle) : font.name,
+                                           isSelected: style.fontID == font.id) {
                         var value = style
                         value.fontID = font.id
                         editor.setStyle(value)

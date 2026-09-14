@@ -44,6 +44,11 @@ private enum ProfileWidgetGameTag: String, CaseIterable, Identifiable {
 struct ProfileWidgetGameTags: View {
     let tags: [String]
     var update: (([String]) -> Void)?
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.locale) private var locale
+    @Namespace private var tagCoordinateSpace
+    @State private var addButtonFrame: CGRect = .zero
+    @State private var pickerAnchorFrame: CGRect = .zero
     @State private var showsPicker = false
     @State private var expanded = false
     @State private var availableWidth: CGFloat = 296
@@ -89,14 +94,29 @@ struct ProfileWidgetGameTags: View {
                 .help(expanded ? "Collapse tags" : "Show all tags")
             }
             if canAdd {
-                Button { showsPicker = true } label: { Label("Add tags", systemImage: "plus") }
+                Button {
+                    pickerAnchorFrame = addButtonFrame
+                    showsPicker = true
+                } label: { Label("Add tags", systemImage: "plus") }
                     .buttonStyle(.plain).font(.system(size: 12, weight: .medium))
                     .padding(.horizontal, 6).padding(.vertical, 4)
-                    .windowModal(isPresented: $showsPicker, title: "Game Tags") {
-                        ProfileWidgetGameTagPicker(tags: tags) { update?($0) }
-                    }
+                    .onGeometryChange(for: CGRect.self) { [tagCoordinateSpace] in $0.frame(in: .named(tagCoordinateSpace)) } action: { addButtonFrame = $0 }
             }
         }
+        .coordinateSpace(name: tagCoordinateSpace)
+        .overlay(alignment: .topLeading) {
+            // Keep the presentation source independent of the reflowing Add Tags
+            // button. Capture its position once for each opening.
+            StableAnchoredPopoverPresenter(isPresented: showsPicker, configuration: .toolbarPanel,
+                                           onDismiss: { showsPicker = false }, content: {
+                ProfileWidgetGameTagPicker(tags: tags) { update?($0) }
+                    .environment(\.colorScheme, colorScheme)
+                    .environment(\.locale, locale)
+            })
+            .frame(width: pickerAnchorFrame.width, height: pickerAnchorFrame.height)
+            .offset(x: pickerAnchorFrame.minX, y: pickerAnchorFrame.minY)
+        }
+        .onChange(of: update != nil) { _, editable in if !editable { showsPicker = false } }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { availableWidth = max($0, 1) }
         .background(alignment: .topLeading) {
             HStack(spacing: 0) {
@@ -117,72 +137,88 @@ struct ProfileWidgetGameTags: View {
     }
 
     private func chip(_ tag: ProfileWidgetGameTag) -> some View {
+        ProfileWidgetGameTagChip(tag: tag, remove: update.map { update in
+            { update(tags.filter { $0 != tag.rawValue }) }
+        })
+    }
+}
+
+private struct ProfileWidgetGameTagChip: View {
+    let tag: ProfileWidgetGameTag
+    let remove: (() -> Void)?
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var isHovered = false
+
+    var body: some View {
+        Group {
+            if let remove {
+                Button(action: remove) { label }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Text("Remove \(String(localized: tag.label)) tag"))
+                    .help("Remove tag")
+            } else { label }
+        }
+        .background(.primary.opacity(remove != nil && isEnabled && isHovered ? 0.14 : 0.07), in: .rect(cornerRadius: 4))
+        .onModalHover { isHovered = $0 }
+    }
+
+    private var label: some View {
         HStack(spacing: 4) {
             Label { Text(tag.label) } icon: { Image(systemName: tag.icon) }
-            if let update {
-                Button { update(tags.filter { $0 != tag.rawValue }) } label: { Image(systemName: "xmark") }
-                    .buttonStyle(.plain).accessibilityLabel(Text("Remove \(String(localized: tag.label)) tag"))
-                    .help("Remove tag")
-            }
+            if remove != nil { Image(systemName: "xmark") }
         }
         .font(.system(size: 12, weight: .medium))
         .padding(.horizontal, 6).padding(.vertical, 4)
-        .background(.primary.opacity(0.07), in: .rect(cornerRadius: 4))
+        .contentShape(.rect(cornerRadius: 4))
     }
 }
 
 private struct ProfileWidgetGameTagPicker: View {
-    @State private var tags: [String]
+    let tags: [String]
     let update: ([String]) -> Void
-
-    init(tags: [String], update: @escaping ([String]) -> Void) {
-        _tags = State(initialValue: tags)
-        self.update = update
-    }
 
     var body: some View {
         ScrollView {
-        VStack(alignment: .leading, spacing: 4) {
-            ForEach(0 ..< 3) { group in
-                if group > 0 { Divider().padding(.vertical, 4) }
-                Text(group == 0 ? "Skill level" : group == 1 ? "Rating" : "Looking for")
-                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary).padding(.horizontal, 8)
-                if group == 0 {
-                    ProfileWidgetTagOption(label: "None", radio: true, selected: !tags.contains { ProfileWidgetGameTag(rawValue: $0)?.group == 0 }) {
-                        setTags(tags.filter { ProfileWidgetGameTag(rawValue: $0)?.group != 0 })
-                    }
-                }
-                ForEach(ProfileWidgetGameTag.allCases.filter { $0.group == group }) { tag in
-                    ProfileWidgetTagOption(label: tag.label, radio: group == 0, selected: tags.contains(tag.rawValue)) {
-                        var result = tags
-                        if group == 0 {
-                            result.removeAll { ProfileWidgetGameTag(rawValue: $0)?.group == 0 }
-                            result.append(tag.rawValue)
-                        } else if result.contains(tag.rawValue) {
-                            result.removeAll { $0 == tag.rawValue }
-                        } else {
-                            result.append(tag.rawValue)
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(0 ..< 3) { group in
+                    if group > 0 { Divider().padding(.horizontal, 8).padding(.vertical, 4) }
+                    Text(group == 0 ? "Skill level" : group == 1 ? "Rating" : "Looking for")
+                        .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        .padding(.horizontal, 6).padding(.vertical, 8)
+                    if group == 0 {
+                        ProfileWidgetTagOption(label: "None", selected: !tags.contains { ProfileWidgetGameTag(rawValue: $0)?.group == 0 }) {
+                            setTags(tags.filter { ProfileWidgetGameTag(rawValue: $0)?.group != 0 })
                         }
-                        setTags(result)
+                    }
+                    ForEach(ProfileWidgetGameTag.allCases.filter { $0.group == group }) { tag in
+                        ProfileWidgetTagOption(label: tag.label, selected: tags.contains(tag.rawValue)) {
+                            var result = tags
+                            if group == 0 {
+                                result.removeAll { ProfileWidgetGameTag(rawValue: $0)?.group == 0 }
+                                result.append(tag.rawValue)
+                            } else if result.contains(tag.rawValue) {
+                                result.removeAll { $0 == tag.rawValue }
+                            } else {
+                                result.append(tag.rawValue)
+                            }
+                            setTags(result)
+                        }
                     }
                 }
             }
+            .padding(4)
         }
-        .padding(8)
-        }
-        .scrollIndicators(.hidden)
-        .windowModalSize(width: 240, height: 568)
+        .scrollIndicators(.visible)
+        .frame(width: 264, height: 360)
     }
 
     private func setTags(_ value: [String]) {
-        tags = value
         update(value)
     }
 }
 
 private struct ProfileWidgetTagOption: View {
     let label: LocalizedStringResource
-    let radio: Bool
     let selected: Bool
     let action: () -> Void
 
@@ -191,11 +227,13 @@ private struct ProfileWidgetTagOption: View {
             HStack {
                 Text(label)
                 Spacer()
-                Image(systemName: radio ? (selected ? "largecircle.fill.circle" : "circle") : (selected ? "checkmark.square.fill" : "square"))
-                    .foregroundStyle(selected ? SakuraCordAccentColor.color : .secondary)
+                if selected { Image(systemName: "checkmark").font(.body.bold()) }
             }
-            .font(.system(size: 14)).padding(.horizontal, 8).padding(.vertical, 5).contentShape(.rect)
+            .padding(.horizontal, 6)
+            .frame(height: 40)
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain).accessibilityAddTraits(selected ? .isSelected : [])
+        .buttonStyle(PopoverRowButtonStyle(isSelected: selected))
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

@@ -18,10 +18,12 @@ struct ProfileNameTextLayout {
     let leading: CGFloat
 
     init(name: String, font: NSFont, tracking: CGFloat, gummy: Bool, maximumWidth: CGFloat? = nil, characterOffset: Int = 0) {
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: font, .kern: tracking, .ligature: gummy ? 0 : 1,
+        var attributes: [NSAttributedString.Key: Any] = [
+            .font: font, .ligature: gummy ? 0 : 1,
             .foregroundColor: NSColor.labelColor,
         ]
+        // An explicit zero disables the font's kerning; omission matches native text fields.
+        if tracking != 0 { attributes[.kern] = tracking }
         let original = CTLineCreateWithAttributedString(NSAttributedString(string: name, attributes: attributes))
         let originalWidth = CGFloat(CTLineGetTypographicBounds(original, nil, nil, nil))
         if let maximumWidth, maximumWidth < originalWidth {
@@ -85,9 +87,9 @@ struct ProfileNameTextLayout {
 
     static func wrappedLines(name: String, font: NSFont, tracking: CGFloat, gummy: Bool, width: CGFloat) -> [Self] {
         let source = name as NSString
-        let typesetter = CTTypesetterCreateWithAttributedString(NSAttributedString(
-            string: name, attributes: [.font: font, .kern: tracking, .ligature: gummy ? 0 : 1]
-        ))
+        var attributes: [NSAttributedString.Key: Any] = [.font: font, .ligature: gummy ? 0 : 1]
+        if tracking != 0 { attributes[.kern] = tracking }
+        let typesetter = CTTypesetterCreateWithAttributedString(NSAttributedString(string: name, attributes: attributes))
         var offset = 0
         var lines: [Self] = []
         var characterOffset = 0

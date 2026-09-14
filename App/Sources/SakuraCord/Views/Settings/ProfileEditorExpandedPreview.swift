@@ -21,7 +21,7 @@ struct ProfileEditorExpandedPreview: View {
                                  footer: EmptyView(), editor: editor, openEditorPicker: open)
                 .disabled(editor.isSaving || editor.requiresReload)
         }, widgets: {
-            ProfileWidgetsBoard(model: model, editor: editor)
+            ProfileWidgetsBoard(editor: editor)
                 .id(editor.draftGeneration)
         })
         .background(Color(nsColor: .windowBackgroundColor), in: ConcentricRectangle(cornerRadius: 16, style: .continuous))

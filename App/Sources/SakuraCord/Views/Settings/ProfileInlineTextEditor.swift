@@ -62,7 +62,7 @@ struct ProfileInlineTextEditor<Content: View>: View {
         }
         .task(id: nameStyle?.fontID) {
             loadedFont = nil
-            guard let definition = DiscordProfileNameStyles.catalog.fonts.first(where: { $0.id == nameStyle?.fontID }) else { return }
+            guard let definition = ProfileNameFontCache.customDefinition(for: nameStyle?.fontID) else { return }
             loadedFont = try? await ProfileNameFontLoader.shared.font(definition, size: nameSize)
         }
         .onChange(of: isFocused) { _, focused in
@@ -78,7 +78,7 @@ struct ProfileInlineTextEditor<Content: View>: View {
 
 /// Match the field to its text's natural width, capped by the space available.
 /// The actual native field supplies the wrapped height and owns the editing UI.
-private struct ProfileInlineTextLayout: Layout {
+struct ProfileInlineTextLayout: Layout {
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let naturalWidth = subviews[0].sizeThatFits(.unspecified).width
         let width = min(proposal.width ?? naturalWidth, naturalWidth)

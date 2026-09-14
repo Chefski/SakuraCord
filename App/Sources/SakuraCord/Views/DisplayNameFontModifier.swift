@@ -15,7 +15,7 @@ struct DisplayNameFontModifier: ViewModifier {
             .font(Font(loadedFont ?? ProfileNameFontCache.font(id: fontID, fallback: fallback)))
             .task(id: fontID) {
                 loadedFont = nil
-                guard let definition = DiscordProfileNameStyles.catalog.fonts.first(where: { $0.id == fontID }) else { return }
+                guard let definition = ProfileNameFontCache.customDefinition(for: fontID) else { return }
                 loadedFont = try? await ProfileNameFontLoader.shared.font(definition, size: fallback.pointSize)
             }
     }

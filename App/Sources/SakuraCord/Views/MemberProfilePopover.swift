@@ -422,7 +422,7 @@ private struct ProfileHeroSection: View {
                 badges: profile?.badges ?? [],
                 premiumSince: profile?.premiumSince,
                 premiumGuildSince: profile?.premiumGuildSince,
-                nameSize: 17,
+                nameSize: 28,
                 background: avatarCutoutColor,
                 editor: editor,
                 openEditorPicker: openEditorPicker
@@ -579,7 +579,7 @@ private struct ProfileIdentitySection: View {
     let badges: [ProfileBadge]
     let premiumSince: Date?
     let premiumGuildSince: Date?
-    var nameSize: CGFloat = 17
+    var nameSize: CGFloat = 28
     var background: Color = Color(nsColor: .controlBackgroundColor)
     var editor: ProfileEditorState?
     var openEditorPicker: ((ProfileEditorPicker) -> Void)?
@@ -587,7 +587,7 @@ private struct ProfileIdentitySection: View {
     var body: some View {
         let hasPronouns = pronouns?.isEmpty == false
 
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 7) {
                 if let editor {
                     ProfileInlineTextEditor(

@@ -20,7 +20,10 @@ struct ProfileExpandedSurface<ProfileContent: View, Widgets: View>: View {
             widgets
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipped()
-                .padding(3)
+                // The expanded profile reserves a 3-point inner edge. Start
+                // the widget column at its divider, preserving equal card insets.
+                .padding([.top, .bottom, .trailing], 3)
+                .padding(.leading, -3)
         }
         .background {
             let colors = theme.colors(for: profile, scale: displayScale, isPreview: isPreview)

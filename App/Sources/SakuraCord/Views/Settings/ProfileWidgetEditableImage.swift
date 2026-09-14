@@ -58,7 +58,7 @@ struct ProfileWidgetEditableImage: View {
         }
         .clipShape(.rect(cornerRadius: 8))
         .overlay(alignment: .topTrailing) {
-            if editor?.canEditPersonalWidget == true, image != nil || removeImage != nil {
+            if editor?.canEditPersonalWidget == true, image != nil || removeImage != nil, isActive {
                 HoverActionPill {
                     if image != nil, purpose == .widgetCover {
                         Menu {
@@ -81,9 +81,7 @@ struct ProfileWidgetEditableImage: View {
                     }
                 }
                 .onModalHover { isActionHovered = $0 }
-                .opacity(isActive ? 1 : 0)
-                .allowsHitTesting(isActive)
-                .accessibilityHidden(!isActive)
+                .onDisappear { isActionHovered = false }
                 .padding(.trailing, purpose == .widgetCover ? 48 : 0)
                 .padding(.top, purpose == .widgetCover ? 8 : 0)
                 .offset(x: purpose == .widgetCover ? 0 : 8, y: purpose == .widgetCover ? 0 : -8)

@@ -81,13 +81,17 @@ private struct ProfilePersonalWidgetCover: View {
     let animates: Bool
     let editor: ProfileEditorState?
     @State private var isHovered = false
+    @State private var isTitleHovered = false
+    @State private var isSubtitleHovered = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             ProfileWidgetText(value: cover.title, placeholder: "Add Title", limit: 50, lines: 2, size: 24, weight: .semibold,
-                              edit: editor?.canEditPersonalWidget == true ? { value in editor?.updateWidgetCover(id: id, section: section) { $0.title = value } } : nil)
+                              edit: editor?.canEditPersonalWidget == true ? { value in editor?.updateWidgetCover(id: id, section: section) { $0.title = value } } : nil,
+                              onHoverChange: { isTitleHovered = $0 })
             ProfileWidgetText(value: cover.subtitle, placeholder: "Add description", limit: 150, lines: 3, size: 14, weight: .medium,
-                              edit: editor?.canEditPersonalWidget == true ? { value in editor?.updateWidgetCover(id: id, section: section) { $0.subtitle = value } } : nil)
+                              edit: editor?.canEditPersonalWidget == true ? { value in editor?.updateWidgetCover(id: id, section: section) { $0.subtitle = value } } : nil,
+                              onHoverChange: { isSubtitleHovered = $0 })
         }
         .frame(maxWidth: .infinity, minHeight: cover.image != nil || editor != nil ? 54 : nil, alignment: .bottomLeading)
         .padding(cover.image != nil || editor != nil ? 16 : 0)
@@ -97,7 +101,8 @@ private struct ProfilePersonalWidgetCover: View {
             if cover.image != nil || editor?.canEditPersonalWidget == true {
                 GeometryReader { geometry in
                     ProfileWidgetEditableImage(image: cover.image, purpose: .widgetCover, animates: animates, editor: editor,
-                                               aspectRatio: geometry.size.width / max(geometry.size.height, 1), isCoverHovered: isHovered) { image in
+                                               aspectRatio: geometry.size.width / max(geometry.size.height, 1),
+                                               isCoverHovered: isHovered && !isTitleHovered && !isSubtitleHovered) { image in
                         editor?.updateWidgetCover(id: id, section: section) { $0.image = image }
                     }
                     .overlay {
@@ -177,6 +182,8 @@ private struct ProfilePersonalWidgetField: View {
     @State private var isActionHovered = false
     @State private var isImageHovered = false
 
+    private var showsActions: Bool { (isHovered || isActionHovered) && !isImageHovered }
+
     private var hidesImage: Bool {
         if let hidden = imageVisibilityOverrides[field.id] { return hidden }
         let original = editor?.snapshot?.presentation.widgets?.first { $0.id == id }
@@ -215,7 +222,7 @@ private struct ProfilePersonalWidgetField: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .overlay(alignment: .topTrailing) {
-            if let editor, editor.canEditPersonalWidget {
+            if let editor, editor.canEditPersonalWidget, showsActions {
                 HoverActionPill {
                     if hidesImage {
                         HoverActionButton(systemImage: "photo.badge.plus", help: String(localized: "Add Image", bundle: #bundle)) { imageVisibilityOverrides[field.id] = false }
@@ -225,9 +232,7 @@ private struct ProfilePersonalWidgetField: View {
                     }
                 }
                 .onModalHover { isActionHovered = $0 }
-                .opacity((isHovered || isActionHovered) && !isImageHovered ? 1 : 0)
-                .allowsHitTesting((isHovered || isActionHovered) && !isImageHovered)
-                .accessibilityHidden((!isHovered && !isActionHovered) || isImageHovered)
+                .onDisappear { isActionHovered = false }
                 .offset(x: 8, y: -12)
             }
         }
@@ -265,6 +270,7 @@ struct ProfileWidgetText: View {
     var weight: Font.Weight = .regular
     var markdown = true
     var edit: ((String) -> Void)?
+    var onHoverChange: ((Bool) -> Void)?
     @Environment(\.profileWidgetTextExpanded) private var expanded
     @State private var measurementID = UUID()
     @State private var fullHeight: CGFloat = 0
@@ -277,16 +283,22 @@ struct ProfileWidgetText: View {
     var body: some View {
         Group {
             if isEditing {
-                TextField(placeholder, text: Binding(get: { draft }, set: updateDraft), axis: lines > 1 ? .vertical : .horizontal)
-                    .textFieldStyle(.plain).lineLimit(1 ... lines).focused($focused)
-                    .onSubmit(commit)
-                    .onKeyPress(.return, phases: .down) { event in
-                        guard lines == 1 || !event.modifiers.contains(.shift) else { return .ignored }
-                        commit(); return .handled
+                ProfileInlineTextLayout {
+                    Group {
+                        if draft.isEmpty { Text(placeholder) } else { Text(draft) }
                     }
-                    .onKeyPress(.escape, phases: .down) { _ in cancel(); return .handled }
-                    .onExitCommand(perform: cancel)
-                    .onChange(of: focused) { _, value in if !value { commit() } }
+                    .hidden().accessibilityHidden(true)
+                    TextField(placeholder, text: Binding(get: { draft }, set: updateDraft), axis: lines > 1 ? .vertical : .horizontal)
+                        .textFieldStyle(.plain).lineLimit(1 ... lines).focused($focused)
+                        .onSubmit(commit)
+                        .onKeyPress(.return, phases: .down) { event in
+                            guard lines == 1 || !event.modifiers.contains(.shift) else { return .ignored }
+                            commit(); return .handled
+                        }
+                        .onKeyPress(.escape, phases: .down) { _ in cancel(); return .handled }
+                        .onExitCommand(perform: cancel)
+                        .onChange(of: focused) { _, value in if !value { commit() } }
+                }
             } else if edit != nil {
                 Button { originalValue = value; draft = value; isEditing = true; focused = true } label: {
                     if value.isEmpty { Text(placeholder).italic().foregroundStyle(.secondary) } else { renderedText }
@@ -298,6 +310,8 @@ struct ProfileWidgetText: View {
         .frame(minWidth: 0, alignment: .leading)
         .clipped()
         .profileEditorTextHover(isEnabled: edit != nil, isEditing: isEditing)
+        .onModalHover { onHoverChange?($0) }
+        .onDisappear { onHoverChange?(false) }
         .frame(maxWidth: .infinity, alignment: .leading)
         .preference(key: ProfileWidgetClippedTextKey.self, value: [measurementID: !isEditing && fullHeight - displayedHeight > 1])
         .onChange(of: edit != nil) { _, available in

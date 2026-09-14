@@ -16,9 +16,7 @@ final class ProfileEditorState {
     private var widgetDraft: [ProfileWidget]?
     private var nameStylePalette: [UInt32] = []
     private(set) var draftGeneration = UUID()
-    private(set) var widgetCatalogue: [ProfileApplicationWidget] = []
     private(set) var widgetResources: ProfileWidgetResources?
-    var gameSuggestions = ProfileEditorGameSuggestions()
     private(set) var isLoading = false
     private(set) var isSaving = false
     private(set) var requiresReload = false
@@ -174,9 +172,7 @@ final class ProfileEditorState {
             isSaving = false
             inventory = nil
             history = []
-            widgetCatalogue = []
             widgetResources = nil
-            gameSuggestions = ProfileEditorGameSuggestions()
             snapshot = nil
             resetDraft()
         }
@@ -299,45 +295,6 @@ final class ProfileEditorState {
         history = value
     }
 
-    func loadWidgetCatalogue() async throws {
-        guard let session, model.isCurrentAccountSession(session), let userID = snapshot?.presentation.id else { throw CancellationError() }
-        let requestRevision = revision
-        async let featured = session.provider.profileWidgetCatalogue(developer: false)
-        async let identities = session.provider.profileWidgetApplicationIdentities(for: userID)
-        let developer = snapshot?.widgetEligibility.showsDeveloperWidgets == true ? try await session.provider.profileWidgetCatalogue(developer: true) : []
-        let (featuredWidgets, loadedIdentities) = try await (featured, identities)
-        guard isCurrent(session, revision: requestRevision) else { throw CancellationError() }
-        var seen = Set<String>()
-        widgetCatalogue = (featuredWidgets + developer).filter { seen.insert($0.id).inserted }
-        let applicationIDs = (widgetCatalogue + (widgetResources?.applications ?? [])).map { $0.connectionApplicationID ?? $0.applicationID }
-        let connections = try await session.provider.profileWidgetConnections(applicationIDs: applicationIDs)
-        guard isCurrent(session, revision: requestRevision) else { throw CancellationError() }
-        var resources = widgetResources ?? ProfileWidgetResources()
-        let catalogueIDs = Set(widgetCatalogue.map(\.id))
-        resources.applications = widgetCatalogue + resources.applications.filter { !catalogueIDs.contains($0.id) }
-        resources.identities = loadedIdentities
-        resources.connections = connections
-        widgetResources = resources
-    }
-
-    func loadWidgetSuggestionsIfNeeded() async {
-        guard canEditWidgets, !gameSuggestions.hasAttemptedLoad,
-              let session, model.isCurrentAccountSession(session) else { return }
-        let requestRevision = revision
-        let suggestions = gameSuggestions
-        suggestions.hasAttemptedLoad = true
-        suggestions.isLoading = true
-        defer { suggestions.isLoading = false }
-        do {
-            let feeds = try await session.provider.suggestedProfileWidgetGames()
-            guard isCurrent(session, revision: requestRevision) else { throw CancellationError() }
-            suggestions.load(feeds, existing: widgets)
-        } catch is CancellationError { suggestions.hasAttemptedLoad = false } catch {
-            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
-            suggestions.errorMessage = error.localizedDescription
-        }
-    }
-
     func refreshWidgetConnections() async {
         guard let session, model.isCurrentAccountSession(session), let userID = snapshot?.presentation.id,
               let resources = widgetResources, !resources.applications.isEmpty else { return }
@@ -352,22 +309,6 @@ final class ProfileEditorState {
             guard isCurrent(session, revision: requestRevision) else { return }
             DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             errorMessage = error.localizedDescription
-        }
-    }
-
-    func resolveWidgetSuggestions(for kind: ProfileGameWidgetKind) async {
-        let suggestions = gameSuggestions
-        guard suggestions.isLoaded else { return }
-        let ids = suggestions.visibleIDs[kind, default: []] + suggestions.peekIDs(for: kind)
-        guard !ids.isEmpty else { return }
-        do {
-            let games = try await loadWidgetGames(ids: ids)
-            let available = Set(games.filter { $0.coverURL != nil }.map(\.id))
-            suggestions.removeUnavailable(ids: Set(ids).subtracting(available), for: kind)
-            suggestions.errorMessage = nil
-        } catch is CancellationError { return } catch {
-            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
-            suggestions.errorMessage = error.localizedDescription
         }
     }
 

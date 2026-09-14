@@ -1,32 +1,6 @@
 import SakuraCordModels
 import SwiftUI
 
-struct ProfileApplicationWidgetTemplateArtwork: View {
-    let configuration: ProfileApplicationWidget
-    let identity: ProfileWidgetApplicationIdentity?
-
-    var body: some View {
-        if let surface = configuration.surfaces["add_widget_preview"] {
-            ZStack(alignment: .trailing) {
-                VStack(alignment: .leading, spacing: 10) {
-                    RoundedRectangle(cornerRadius: 4).fill(.primary.opacity(0.08)).frame(width: 100, height: 18)
-                    RoundedRectangle(cornerRadius: 4).fill(.primary.opacity(0.08)).frame(width: 160, height: 18)
-                    HStack(spacing: 12) {
-                        ForEach(0 ..< 4) { _ in RoundedRectangle(cornerRadius: 4).fill(.primary.opacity(0.08)).frame(width: 32, height: 36) }
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading).padding(16)
-                let key = surface.layout == "add_widget_preview_contained" ? "contained_image" : "hero_image"
-                ProfileConfiguredWidgetImage(field: surface.components[key]?["image"], data: identity?.data ?? [:], animates: false)
-                    .frame(width: 210)
-                    .mask { LinearGradient(colors: [.clear, .black, .black], startPoint: .leading, endPoint: .trailing) }
-            }
-            .frame(height: 180).clipped()
-            .background(.primary.opacity(0.04), in: .rect(cornerRadius: 8)).clipShape(.rect(cornerRadius: 8))
-        }
-    }
-}
-
 struct ProfileApplicationWidgetCard: View {
     let configuration: ProfileApplicationWidget
     let identity: ProfileWidgetApplicationIdentity?

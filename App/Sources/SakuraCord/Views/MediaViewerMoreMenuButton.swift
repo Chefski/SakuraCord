@@ -248,6 +248,9 @@ struct MediaViewerMoreMenuButton: NSViewRepresentable {
 
 @MainActor
 final class MediaViewerMenuNSControl: NSControl {
+    override var isEnabled: Bool {
+        didSet { updateBackground() }
+    }
     private var pointerIsInside = false
     private var pointerTrackingArea: NSTrackingArea?
     private let symbol: NSImage?
@@ -326,7 +329,7 @@ final class MediaViewerMenuNSControl: NSControl {
     }
 
     override func mouseEntered(with event: NSEvent) {
-        guard WindowModalCoordinator.allowsInput(for: self) else { return }
+        guard isEnabled, WindowModalCoordinator.allowsInput(for: self) else { return }
         pointerIsInside = true
         updateBackground()
     }
@@ -337,6 +340,7 @@ final class MediaViewerMenuNSControl: NSControl {
     }
 
     override func mouseDown(with event: NSEvent) {
+        guard isEnabled, WindowModalCoordinator.allowsInput(for: self) else { return }
         layer?.backgroundColor = NSColor.labelColor
             .withAlphaComponent(0.22)
             .cgColor
@@ -344,13 +348,16 @@ final class MediaViewerMenuNSControl: NSControl {
         updateBackground()
     }
 
+    override func rightMouseDown(with event: NSEvent) { mouseDown(with: event) }
+
     override func accessibilityPerformPress() -> Bool {
-        sendAction(action, to: target)
+        guard isEnabled, WindowModalCoordinator.allowsInput(for: self) else { return false }
+        return sendAction(action, to: target)
     }
 
     private func updateBackground() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            layer?.backgroundColor = pointerIsInside
+            layer?.backgroundColor = pointerIsInside && isEnabled
                 ? NSColor.labelColor.withAlphaComponent(0.14).cgColor
                 : NSColor.clear.cgColor
         }
