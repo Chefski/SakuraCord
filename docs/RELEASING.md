@@ -77,8 +77,8 @@ git push origin v0.1.5-Beta-1
 The pre-push hook and release job both reject a missing, malformed, or
 mismatched release-copy file for either track. Nightly tags run the same
 pre-commit code-quality hook, pre-push committed-tree and release-copy checks,
-pre-release `./script/ci.sh checks` job, Sparkle secret checks, packaging,
-signature validation, and reviewed update-notes validation as regular tags.
+pre-release `./script/ci.sh` build and full test matrix, Sparkle secret checks,
+packaging, signature validation, and reviewed update-notes validation as regular tags.
 
 After the release assets have been downloaded and compared, the website's
 Cloudflare Worker serves the newest published prerelease's signed

@@ -152,7 +152,7 @@ proportion to its risk:
 | `./script/test.sh app` | Run application package tests |
 | `./script/test.sh all` | Run the configured first-party test matrix |
 | `./script/code_quality.sh check` | Run the pinned SwiftFormat and SwiftLint policy |
-| `./script/ci.sh` | Run the local CI entry point |
+| `./script/ci.sh` | Run code-quality and release checks, the full first-party test matrix, and the app build |
 
 ### Persistent local code-signing identity
 
@@ -190,8 +190,6 @@ committed tests. Before proposing a broad change, the complete local check is:
 
 ```sh
 git diff --check
-./script/code_quality.sh check
-./script/test.sh all
 ./script/ci.sh
 ```
 

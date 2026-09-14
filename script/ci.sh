@@ -54,7 +54,8 @@ for attempt in 1 2 3; do
   sleep $((attempt * 5))
 done
 
-# The Swift test suite is intentionally not run in CI: GitHub does not yet offer a hosted macOS 27 runner to execute it.
+"$ROOT_DIR/script/test.sh" all
+
 swift build \
   --package-path "$SAKURACORD_PACKAGE_DIR" \
   --cache-path "$SAKURACORD_SWIFTPM_CACHE_DIR" \
