@@ -447,7 +447,11 @@ final class ProfileEditorState {
         // only the colors used by its effect. This survives picker dismissal.
         let currentColors = displayProfile?.user.displayNameStyle?.colors ?? []
         let palette = currentColors + nameStylePalette.dropFirst(currentColors.count)
-        nameStylePalette = style.map { $0.colors + palette.dropFirst($0.colors.count) } ?? []
+        if let style, !style.colors.isEmpty {
+            nameStylePalette = style.colors + palette.dropFirst(style.colors.count)
+        } else {
+            nameStylePalette = []
+        }
         changes.identity.displayNameStyle = change(style, original: snapshot?.identity.displayNameStyle)
     }
 
@@ -455,7 +459,8 @@ final class ProfileEditorState {
         var value = displayProfile?.user.displayNameStyle ?? DisplayNameStyle()
         let palette = value.colors + nameStylePalette.dropFirst(value.colors.count)
         let defaults = DiscordProfileNameStyles.defaultColors(for: effect, darkAppearance: darkAppearance)
-        value.colors = defaults.indices.map { palette.indices.contains($0) ? palette[$0] : defaults[$0] }
+        value.colors = effect == .solid && palette.isEmpty ? []
+            : defaults.indices.map { palette.indices.contains($0) ? palette[$0] : defaults[$0] }
         value.effectID = effect.rawValue
         return value
     }

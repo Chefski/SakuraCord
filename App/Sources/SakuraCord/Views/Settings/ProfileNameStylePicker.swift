@@ -11,11 +11,7 @@ struct ProfileNameStylePicker: View {
     private var profile: UserProfile? { editor.displayProfile }
     private var darkAppearance: Bool { colorScheme == .dark }
     private var style: DisplayNameStyle {
-        var value = profile?.user.displayNameStyle ?? DisplayNameStyle()
-        let effect = ProfileNameEffect(rawValue: value.effectID) ?? .solid
-        let defaults = DiscordProfileNameStyles.defaultColors(for: effect, darkAppearance: darkAppearance)
-        if value.colors.count != defaults.count { value.colors = defaults }
-        return value
+        profile?.user.displayNameStyle ?? DisplayNameStyle()
     }
 
     var body: some View {
@@ -31,7 +27,7 @@ struct ProfileNameStylePicker: View {
                     HStack {
                         Text("Colors", bundle: #bundle).font(.subheadline)
                         Spacer()
-                        ProfileStyleColorOptions(style: Binding(get: { style }, set: { editor.setStyle($0) }), darkAppearance: darkAppearance)
+                        ProfileStyleColorOptions(style: Binding(get: { style }, set: { setStyle($0) }), darkAppearance: darkAppearance)
                     }
             }
         }
@@ -49,7 +45,7 @@ struct ProfileNameStylePicker: View {
                                            isSelected: style.fontID == font.id) {
                         var value = style
                         value.fontID = font.id
-                        editor.setStyle(value)
+                        setStyle(value)
                     } content: { _ in
                         ProfileDisplayName(name: "Gg", style: DisplayNameStyle(fontID: font.id), size: 24,
                                            showsEffects: false, animationIsActive: false)
@@ -67,7 +63,7 @@ struct ProfileNameStylePicker: View {
                     let selected = style.effectID == effect.rawValue
                     ProfileNameStyleOption(label: String(localized: effect.title), isSelected: selected) {
                         guard !selected else { return }
-                        editor.setStyle(style(for: effect))
+                        setStyle(style(for: effect))
                     } content: { hovering in
                         ProfileDisplayName(name: String(localized: effect.title), style: style(for: effect), size: 14,
                                            animationIsActive: hovering && effect != .solid && effect != .gradient)
@@ -83,6 +79,17 @@ struct ProfileNameStylePicker: View {
 
     private func style(for effect: ProfileNameEffect) -> DisplayNameStyle {
         editor.nameStyle(for: effect, darkAppearance: darkAppearance)
+    }
+
+    private func setStyle(_ value: DisplayNameStyle) {
+        var value = value
+        // Discord's Solid default inherits the surrounding text color. The
+        // swatch is only a picker preview, not a color to save on the profile.
+        if value.effectID == ProfileNameEffect.solid.rawValue,
+           value.colors == DiscordProfileNameStyles.defaultColors(for: .solid, darkAppearance: darkAppearance) {
+            value.colors = []
+        }
+        editor.setStyle(value)
     }
 
 }

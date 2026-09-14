@@ -1,4 +1,4 @@
-import DiscordProtocol
+@testable import DiscordProtocol
 import Foundation
 @testable import SakuraCord
 import SakuraCordModels
@@ -32,6 +32,19 @@ import Testing
     let defaults = DiscordProfileNameStyles.defaultColors(for: .prism, darkAppearance: true)
     #expect(editor.nameStyle(for: .prism, darkAppearance: true).colors == original.colors + defaults.dropFirst(2))
     #expect(!editor.hasChanges)
+
+    // The official Solid/Default reset sends an empty array, retaining the
+    // font and effect. It must also discard the previous custom palette.
+    editor.setStyle(DisplayNameStyle())
+    var defaultStyle = editor.nameStyle(for: .solid, darkAppearance: true)
+    #expect(defaultStyle.colors.isEmpty)
+    defaultStyle.fontID = 2
+    editor.setStyle(defaultStyle)
+    let request = try #require(ProfileEditingRequest.identity(editor.changes.identity, in: .main))
+    #expect(request.body == [
+        "display_name_font_id": .number(2), "display_name_effect_id": .number(1), "display_name_colors": .array([]),
+    ])
+    #expect(editor.nameStyle(for: .prism, darkAppearance: true).colors == defaults)
 }
 
 @MainActor
@@ -382,7 +395,7 @@ func `profile editor uses a preloaded editable baseline without another read`(sc
     var profile = UserProfile(user: user)
     profile.customStatus = "Saved profile status"
     #expect(model.profile(profile, applyingPresenceFrom: member).customStatus == profile.customStatus)
-    let key = ProfileCacheKey(userID: user.id, guildID: model.selectedGuildID)
+    let key = SakuraCord.ProfileCacheKey(userID: user.id, guildID: model.selectedGuildID)
     model.profileCache[key] = profile
     model.presentProfile(for: member, destination: .contextual)
     let editor = ProfileEditorState(model: model)

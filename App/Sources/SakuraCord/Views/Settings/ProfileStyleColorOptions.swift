@@ -23,10 +23,10 @@ struct ProfileStyleColorOptions: View {
     }
 
     private var defaultColorButton: some View {
-        let selected = customColors == defaults
+        let selected = effect == .solid ? style.colors.isEmpty : customColors == defaults
         return Button {
             isColorPickerPresented = false
-            style.colors = defaults
+            style.colors = effect == .solid ? [] : defaults
         } label: {
             Circle()
                 .fill(Color(hex: defaults[0]))

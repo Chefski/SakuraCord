@@ -212,6 +212,44 @@ struct DirectMessageProviderContractTests {
         await provider.disconnect()
     }
 
+    @Test func `solid and pop defaults pass save validation and reconcile their distinct palettes`() async throws {
+        DirectMessageURLProtocol.reset()
+        let provider = makeProvider()
+        await provider.receiveGatewayDispatchForTesting(name: "READY", data: .object([
+            "user": .object(["id": .string("2"), "username": .string("maya"), "premium_type": .number(2)]),
+            "guilds": .array([])
+        ]))
+        _ = try await provider.profileEditingSnapshot(in: .main)
+        var changes = ProfileEditChanges()
+        for invalidStyle in [
+            DisplayNameStyle(colors: [0x1000000]),
+            DisplayNameStyle(colors: [0x123456, 0x654321]),
+            DisplayNameStyle(effectID: ProfileNameEffect.gradient.rawValue),
+            DisplayNameStyle(effectID: ProfileNameEffect.pop.rawValue),
+        ] {
+            changes.identity.displayNameStyle = .set(invalidStyle)
+            await #expect(throws: ChatProviderError.self) {
+                try await provider.saveProfileChanges(changes, in: .main) { _ in }
+            }
+        }
+        #expect(DirectMessageURLProtocol.requests.count == 1)
+
+        for style in [DisplayNameStyle(), DisplayNameStyle(effectID: 5, colors: [1_036_166])] {
+            changes.identity.displayNameStyle = .set(style)
+            let receipt = ProfileSaveReceipt(changes)
+            try await provider.saveProfileChanges(changes, in: .main) { await receipt.accept($0) }
+            let request = try #require(DirectMessageURLProtocol.requests.last)
+            #expect(request.method == "PATCH" && request.path == "/api/v9/users/@me")
+            #expect(request.body?["display_name_font_id"] as? Int == style.fontID)
+            #expect(request.body?["display_name_effect_id"] as? Int == style.effectID)
+            #expect(request.body?["display_name_colors"] as? [UInt32] == style.colors)
+            #expect(await receipt.stages == [.identity])
+            #expect(await receipt.snapshots.last??.presentation.user.displayNameStyle == style)
+            #expect(await receipt.changes.hasChanges == false)
+        }
+        await provider.disconnect()
+    }
+
     @Test func `server decoration reset accepts omitted inherited decoration and continues metadata save`() async throws {
         DirectMessageURLProtocol.reset()
         let provider = makeProvider()
@@ -1793,6 +1831,11 @@ private final class DirectMessageURLProtocol:
         case "/widget-image":
             return ""
         case "/api/v9/users/@me":
+            if requestBody?["display_name_colors"] != nil {
+                return requestBody?["display_name_effect_id"] as? Int == 5
+                    ? #"{"id":"2","username":"maya","premium_type":2,"display_name_styles":{"font_id":11,"effect_id":5,"colors":[1036166]}}"#
+                    : #"{"id":"2","username":"maya","premium_type":2,"display_name_styles":{"font_id":11,"effect_id":1,"colors":[]}}"#
+            }
             return requestBody?["global_name"] as? String == "malformed-response"
                 ? "{}" : #"{"id":"2","username":"maya","global_name":"Updated","avatar":null}"#
         case "/api/v9/users/@me/profile":

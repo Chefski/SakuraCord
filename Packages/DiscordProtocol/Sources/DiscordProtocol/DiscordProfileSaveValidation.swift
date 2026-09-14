@@ -63,7 +63,9 @@ extension DiscordRESTProvider {
         case .prism: 5
         default: 1
         }
-        guard style.colors.count == colorCount, style.colors.allSatisfy({ $0 <= 0xFF_FFFF }) else {
+        let usesDefaultColor = effect == .solid && style.colors.isEmpty
+        guard usesDefaultColor || style.colors.count == colorCount,
+              style.colors.allSatisfy({ $0 <= 0xFF_FFFF }) else {
             throw ChatProviderError.invalidRequest("Display name colors must be sRGB colors.")
         }
     }
