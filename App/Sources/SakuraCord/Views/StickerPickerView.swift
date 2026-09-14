@@ -101,6 +101,8 @@ private final class StickerPickerDocumentStore {
     private(set) var favoriteIDs: Set<String> = []
     private(set) var rows: [StickerPickerDocumentRow] = []
     private(set) var selectableCells: [StickerPickerCell] = []
+    private(set) var showsFavorites = false
+    private(set) var showsFrequentlyUsed = false
     var visibleSection: StickerPickerSectionID = .favorites
 
     private var stickersByGuild: [GuildID: [MessageSticker]] = [:]
@@ -146,6 +148,11 @@ private final class StickerPickerDocumentStore {
 
     private func rebuild() {
         let catalog = allItems()
+        let byID = Dictionary(catalog.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let favorites = settings.favoriteIDs.compactMap { byID[$0] }
+        let frequent = settings.frequentlyUsedIDs.compactMap { byID[$0] }
+        showsFavorites = !favorites.isEmpty
+        showsFrequentlyUsed = !frequent.isEmpty
         let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
             .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
         if !normalized.isEmpty {
@@ -162,9 +169,6 @@ private final class StickerPickerDocumentStore {
             return
         }
 
-        let byID = Dictionary(catalog.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let favorites = settings.favoriteIDs.compactMap { byID[$0] }
-        let frequent = settings.frequentlyUsedIDs.compactMap { byID[$0] }
         var result = [
             StickerPickerSection(
                 id: .favorites,
@@ -178,7 +182,7 @@ private final class StickerPickerDocumentStore {
                 items: frequent,
                 emptyMessage: "Stickers you use will appear here."
             ),
-        ]
+        ].filter { !$0.items.isEmpty }
         result.append(contentsOf: guilds.map { guild in
             StickerPickerSection(
                 id: .guild(guild.id),
@@ -200,6 +204,9 @@ private final class StickerPickerDocumentStore {
             )
         })
         sections = result
+        if !sections.contains(where: { $0.id == visibleSection }), let first = sections.first {
+            visibleSection = first.id
+        }
         rebuildSelectableCells()
     }
 
@@ -367,10 +374,10 @@ struct StickerPickerView: View {
                 document.synchronize(with: model)
                 interaction.synchronize(with: document.selectableCells)
                 await Task.yield()
-                proxy.scrollTo(
-                    StickerPickerSectionID.favorites.contentID,
-                    anchor: .top
-                )
+                if let firstSection = document.sections.first?.id {
+                    document.visibleSection = firstSection
+                    proxy.scrollTo(firstSection.contentID, anchor: .top)
+                }
                 searchIsFocused = true
             }
             .onChange(of: model.stickerUserSettings) { _, _ in
@@ -425,22 +432,28 @@ struct StickerPickerView: View {
     private func sidebar(proxy: ScrollViewProxy) -> some View {
         ScrollView {
             LazyVStack(spacing: 2) {
-                PickerSectionBookmark(
-                    section: StickerPickerSectionID.favorites,
-                    visibleSection: document.visibleSection,
-                    help: "Favorites",
-                    jump: { jump(to: $0, proxy: proxy) },
-                    content: { Image(systemName: "star.fill") }
-                )
-                PickerSectionBookmark(
-                    section: StickerPickerSectionID.frequent,
-                    visibleSection: document.visibleSection,
-                    help: "Frequently Used",
-                    jump: { jump(to: $0, proxy: proxy) },
-                    content: { Image(systemName: "clock.fill") }
-                )
+                if document.showsFavorites {
+                    PickerSectionBookmark(
+                        section: StickerPickerSectionID.favorites,
+                        visibleSection: document.visibleSection,
+                        help: "Favorites",
+                        jump: { jump(to: $0, proxy: proxy) },
+                        content: { Image(systemName: "star.fill") }
+                    )
+                }
+                if document.showsFrequentlyUsed {
+                    PickerSectionBookmark(
+                        section: StickerPickerSectionID.frequent,
+                        visibleSection: document.visibleSection,
+                        help: "Frequently Used",
+                        jump: { jump(to: $0, proxy: proxy) },
+                        content: { Image(systemName: "clock.fill") }
+                    )
+                }
                 if !document.guilds.isEmpty {
-                    Divider().frame(width: 28).padding(.vertical, 2)
+                    if document.showsFavorites || document.showsFrequentlyUsed {
+                        Divider().frame(width: 28).padding(.vertical, 2)
+                    }
                     ForEach(document.guilds) { guild in
                         PickerSectionBookmark(
                             section: StickerPickerSectionID.guild(guild.id),
@@ -452,7 +465,9 @@ struct StickerPickerView: View {
                     }
                 }
                 if !document.packs.isEmpty {
-                    Divider().frame(width: 28).padding(.vertical, 2)
+                    if document.showsFavorites || document.showsFrequentlyUsed || !document.guilds.isEmpty {
+                        Divider().frame(width: 28).padding(.vertical, 2)
+                    }
                     ForEach(document.packs) { pack in
                         PickerSectionBookmark(
                             section: StickerPickerSectionID.pack(pack.id),

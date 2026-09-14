@@ -402,6 +402,8 @@ struct EmojiPickerView: View {
                     HStack(spacing: 0) {
                         EmojiDocumentSidebar(
                             guilds: document.guilds,
+                            showsFavorites: document.showsFavorites,
+                            showsFrequentlyUsed: document.showsFrequentlyUsed,
                             visibleSection: document.visibleSection,
                             nativeCategoriesAreVisible: $nativeCategoriesAreVisibleInSidebar,
                             showsNativeJumpButton: !nativeCategoriesAreVisibleInSidebar,
@@ -453,9 +455,11 @@ struct EmojiPickerView: View {
                     }
                     document.synchronize(with: model, useCase: useCase)
                     interaction.synchronize(with: document.selectableCells)
-                    document.visibleSection = .favorites
-                    await Task.yield()
-                    proxy.scrollTo(EmojiDocumentRow.headerID(for: .favorites), anchor: .top)
+                    if let firstSection = document.rows.first?.section {
+                        document.visibleSection = firstSection
+                        await Task.yield()
+                        proxy.scrollTo(EmojiDocumentRow.headerID(for: firstSection), anchor: .top)
+                    }
                     await Task.yield()
                     searchIsFocused = true
                 }
@@ -972,7 +976,9 @@ final class EmojiPickerDocumentStore {
     private(set) var rows: [EmojiDocumentRow] = []
     private(set) var selectableCells: [EmojiPickerCell] = []
     private(set) var guilds: [Guild] = []
-    var visibleSection: EmojiDocumentSection = .favorites
+    private(set) var showsFavorites = false
+    private(set) var showsFrequentlyUsed = false
+    var visibleSection: EmojiDocumentSection = .native(.smileys)
 
     private var emojisByGuild: [GuildID: [DiscordEmoji]] = [:]
     private var loadingGuilds: Set<GuildID> = []
@@ -1085,6 +1091,9 @@ final class EmojiPickerDocumentStore {
 
     private func rebuild() {
         rows = sections().flatMap(rows(for:))
+        if !rows.contains(where: { $0.section == visibleSection }), let first = rows.first {
+            visibleSection = first.section
+        }
         selectableRows = rows.compactMap { row in
             guard case let .emojis(cells) = row.content else { return nil }
             return cells
@@ -1095,20 +1104,6 @@ final class EmojiPickerDocumentStore {
     }
 
     private func sections() -> [EmojiDocumentSectionData] {
-        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedQuery.isEmpty {
-            let normalizedQuery = EmojiSearchMatcher.normalized(trimmedQuery)
-            let matches = allItems().filter { $0.matches(normalizedQuery: normalizedQuery) }
-            return [
-                .init(
-                id: .search,
-                title: "Search Results",
-                items: matches,
-                emptyMessage: "No emojis match “\(trimmedQuery)”."
-                )
-            ]
-        }
-
         let allItems = allItems()
         let favoriteItems = orderedItems(for: discordFavorites, in: allItems)
         let frequentItems: [EmojiPickerItem]
@@ -1121,6 +1116,22 @@ final class EmojiPickerDocumentStore {
                 orderedItems(for: discordFrequentlyUsed, in: allItems).prefix(18)
             )
         }
+        showsFavorites = !favoriteItems.isEmpty
+        showsFrequentlyUsed = !frequentItems.isEmpty
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedQuery.isEmpty {
+            let normalizedQuery = EmojiSearchMatcher.normalized(trimmedQuery)
+            let matches = allItems.filter { $0.matches(normalizedQuery: normalizedQuery) }
+            return [
+                .init(
+                id: .search,
+                title: "Search Results",
+                items: matches,
+                emptyMessage: "No emojis match “\(trimmedQuery)”."
+                )
+            ]
+        }
+
         var sections: [EmojiDocumentSectionData] = [
             .init(
                 id: .favorites,
@@ -1134,7 +1145,7 @@ final class EmojiPickerDocumentStore {
                 items: frequentItems,
                 emptyMessage: "Emojis you use will appear here."
             )
-        ]
+        ].filter { !$0.items.isEmpty }
 
         sections.append(
             contentsOf: guilds.map { guild in

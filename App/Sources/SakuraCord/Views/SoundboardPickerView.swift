@@ -110,6 +110,11 @@ struct SoundboardPickerView: View {
             searchIsFocused = true
             await model.loadSoundboard()
         }
+        .onChange(of: sections.map(\.id), initial: true) { _, sectionIDs in
+            if !sectionIDs.contains(visibleSection), let first = sectionIDs.first {
+                visibleSection = first
+            }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Soundboard")
     }
@@ -142,8 +147,12 @@ struct SoundboardPickerView: View {
         GeometryReader { _ in
             ScrollView {
                 LazyVStack(spacing: 2) {
-                    bookmark(.favorites, help: "Favorites", systemImage: "star.fill", proxy: proxy)
-                    bookmark(.frequent, help: "Frequently Used", systemImage: "clock.fill", proxy: proxy)
+                    if browsingSections.contains(where: { $0.id == .favorites }) {
+                        bookmark(.favorites, help: "Favorites", systemImage: "star.fill", proxy: proxy)
+                    }
+                    if browsingSections.contains(where: { $0.id == .frequent }) {
+                        bookmark(.frequent, help: "Frequently Used", systemImage: "clock.fill", proxy: proxy)
+                    }
                     bookmark(.defaults, help: "Discord Sounds", systemImage: "waveform", proxy: proxy)
 
                     if !guilds.isEmpty {
@@ -243,10 +252,6 @@ struct SoundboardPickerView: View {
     }
 
     private var sections: [SoundboardPickerSection] {
-        let soundsByID = Dictionary(
-            model.allSoundboardSounds.map { ($0.id, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
         let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if !normalizedQuery.isEmpty {
             let matches = model.allSoundboardSounds.filter { sound in
@@ -257,6 +262,14 @@ struct SoundboardPickerView: View {
             }
             return [SoundboardPickerSection(id: .search, title: "Search Results", sounds: matches)]
         }
+        return browsingSections
+    }
+
+    private var browsingSections: [SoundboardPickerSection] {
+        let soundsByID = Dictionary(
+            model.allSoundboardSounds.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
         let favoriteIDs = Set(model.soundboardUserSettings.favoriteSoundIDs)
         var result = [
             SoundboardPickerSection(
@@ -289,10 +302,16 @@ struct SoundboardPickerView: View {
                 sounds: model.soundboardSoundsByGuild[guild.id] ?? []
             )
         }
-        return result
+        return result.filter { section in
+            switch section.id {
+            case .favorites, .frequent: !section.sounds.isEmpty
+            default: true
+            }
+        }
     }
 
     private func jump(to section: SoundboardSection, proxy: ScrollViewProxy) {
+        query = ""
         visibleSection = section
         Task { @MainActor in
             await Task.yield()

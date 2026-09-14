@@ -129,6 +129,8 @@ enum EmojiSidebarLayout {
 
 struct EmojiDocumentSidebar: View {
     let guilds: [Guild]
+    let showsFavorites: Bool
+    let showsFrequentlyUsed: Bool
     let visibleSection: EmojiDocumentSection
     @Binding var nativeCategoriesAreVisible: Bool
     let showsNativeJumpButton: Bool
@@ -141,19 +143,25 @@ struct EmojiDocumentSidebar: View {
             GeometryReader { _ in
                 ScrollView {
                     LazyVStack(spacing: 2) {
+                        if showsFavorites {
                             PickerSectionBookmark(
-                            section: .favorites, visibleSection: visibleSection,
-                            help: "Favorites", jump: jump
-                        ) { Image(systemName: "star.fill") }
+                                section: .favorites, visibleSection: visibleSection,
+                                help: "Favorites", jump: jump
+                            ) { Image(systemName: "star.fill") }
+                        }
+                        if showsFrequentlyUsed {
                             PickerSectionBookmark(
-                            section: .frequent, visibleSection: visibleSection,
-                            help: "Frequently Used", jump: jump
-                        ) { Image(systemName: "clock.fill") }
+                                section: .frequent, visibleSection: visibleSection,
+                                help: "Frequently Used", jump: jump
+                            ) { Image(systemName: "clock.fill") }
+                        }
 
                         if !guilds.isEmpty {
-                            Divider()
-                                .frame(width: 28)
-                                .padding(.vertical, 2)
+                            if showsFavorites || showsFrequentlyUsed {
+                                Divider()
+                                    .frame(width: 28)
+                                    .padding(.vertical, 2)
+                            }
 
                             ForEach(guilds) { guild in
                                 PickerSectionBookmark(
@@ -164,9 +172,11 @@ struct EmojiDocumentSidebar: View {
                         }
 
                         VStack(spacing: 2) {
-                            Divider()
-                                .frame(width: 28)
-                                .padding(.vertical, 2)
+                            if showsFavorites || showsFrequentlyUsed || !guilds.isEmpty {
+                                Divider()
+                                    .frame(width: 28)
+                                    .padding(.vertical, 2)
+                            }
 
                             ForEach(NativeEmojiCategory.allCases) { category in
                                 PickerSectionBookmark(
