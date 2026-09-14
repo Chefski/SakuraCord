@@ -37,6 +37,8 @@ struct ProfileEditorImageMenu: ViewModifier {
                 }
             }
             .animation(.easeOut(duration: 0.12), value: showsEditAffordance)
+            // Clipping the artwork does not constrain its overflow hit area.
+            .contentShape(Rectangle())
             .onModalHover { isHovered = $0 }
     }
 }

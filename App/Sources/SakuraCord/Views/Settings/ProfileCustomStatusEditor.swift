@@ -8,24 +8,38 @@ struct ProfileCustomStatusControl: View {
     let width: CGFloat
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.locale) private var locale
+    @Environment(\.isEnabled) private var isEnabled
     @State private var isPresented = false
     @State private var isHovered = false
 
     var body: some View {
+        let showsEditAffordance = isHovered && isEnabled && editor.canEditWidgets
+
         Button { isPresented = true } label: {
             ProfileStatusBubble(text: profile.customStatus ?? String(localized: "Add Status", bundle: #bundle), surfaceColor: surfaceColor, width: width, keepsExpanded: isHovered || isPresented)
+                .brightness(showsEditAffordance ? -0.45 : 0)
+                .animation(.easeOut(duration: 0.12), value: showsEditAffordance)
                 .allowsHitTesting(false)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ProfileStatusButtonStyle())
         .accessibilityLabel(profile.customStatus == nil ? "Add custom status" : "Edit custom status")
         .overlay(alignment: .topTrailing) {
-            if isHovered, profile.customStatus != nil {
-                HoverActionPill {
-                    HoverActionButton(systemImage: "pencil", help: String(localized: "Edit Status", bundle: #bundle)) { isPresented = true }
-                    HoverActionButton(systemImage: "trash", help: String(localized: "Clear Status", bundle: #bundle), role: .destructive) { editor.setCustomStatusDraft(nil) }
+            HoverActionPill {
+                HoverActionControlLabel(diameter: 20) {
+                    Image(systemName: "pencil").font(.callout.weight(.medium))
                 }
-                .offset(y: -20)
+            }
+            // A 28-point glass circle sits concentrically inside the 36-point pill.
+            .padding(4)
+            .opacity(showsEditAffordance ? 1 : 0)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+            .animation(.easeOut(duration: 0.12), value: showsEditAffordance)
+        }
+        .contextMenu {
+            if profile.customStatus != nil {
+                Button("Clear Status", role: .destructive) { editor.setCustomStatusDraft(nil) }
             }
         }
         .onModalHover { isHovered = $0 }
@@ -39,6 +53,12 @@ struct ProfileCustomStatusControl: View {
         }
         .onChange(of: editor.draftGeneration) { _, _ in isPresented = false }
         .onChange(of: editor.isResolvingScope) { _, resolving in if resolving { isPresented = false } }
+    }
+}
+
+private struct ProfileStatusButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
     }
 }
 

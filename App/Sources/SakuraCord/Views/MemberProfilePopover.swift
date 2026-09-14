@@ -331,10 +331,10 @@ struct MemberProfilePopover<Footer: View>: View {
     }
 
     private var statusBubbleWidth: CGFloat {
-        guard layout == .inspector else { return 194 }
-        let leadingAnchor: CGFloat = 97
+        guard layout == .inspector else { return 168 }
+        let leadingAnchor = ProfileStatusBubbleLayout.leadingAnchor
         let trailingInset: CGFloat = 16
-        let bubbleHorizontalPadding: CGFloat = 22
+        let bubbleHorizontalPadding = ProfileStatusBubbleLayout.horizontalPadding * 2
         return max(
             80,
             ChatChromeMetrics.memberListWidth
@@ -404,11 +404,12 @@ private struct ProfileHeroSection: View {
                     .padding(3)
                 }
                 .modifier(ProfileEditorImageMenu(editor: editor, target: .avatar, open: openEditorPicker))
-                .offset(y: -34)
+                .offset(y: -26)
 
                 Spacer(minLength: 0)
             }
-            .frame(height: 44)
+            // Keep the avatar in place while bringing the identity closer below it.
+            .frame(height: 28)
             .padding(.horizontal, horizontalInset)
 
             ProfileIdentitySection(
@@ -422,7 +423,7 @@ private struct ProfileHeroSection: View {
                 badges: profile?.badges ?? [],
                 premiumSince: profile?.premiumSince,
                 premiumGuildSince: profile?.premiumGuildSince,
-                nameSize: 28,
+                nameSize: 22,
                 background: avatarCutoutColor,
                 editor: editor,
                 openEditorPicker: openEditorPicker
@@ -431,10 +432,6 @@ private struct ProfileHeroSection: View {
         }
         .overlay(alignment: .topLeading) {
             if editor != nil || (profile?.customStatus ?? member.customStatus)?.isEmpty == false {
-                ProfileStatusThoughtDots(surfaceColor: avatarCutoutColor)
-                    .offset(x: 82, y: 106)
-                    .allowsHitTesting(false)
-
                 Group {
                     if let editor, let profile {
                         ProfileCustomStatusControl(editor: editor, profile: profile, surfaceColor: avatarCutoutColor, width: statusBubbleWidth)
@@ -442,10 +439,18 @@ private struct ProfileHeroSection: View {
                         ProfileStatusBubble(text: profile?.customStatus ?? member.customStatus ?? "", surfaceColor: avatarCutoutColor, width: statusBubbleWidth)
                     }
                 }
-                    .offset(x: 97, y: 118)
+                    // The collapsed 36-point bubble ends at the avatar's bottom.
+                    .offset(x: ProfileStatusBubbleLayout.leadingAnchor, y: 99)
             }
         }
     }
+}
+
+private enum ProfileStatusBubbleLayout {
+    static let leadingAnchor: CGFloat = 117
+    static let horizontalPadding: CGFloat = 14
+    // Preserve the one-line pill's radius as the status grows vertically.
+    static let shape = RoundedRectangle(cornerRadius: 18, style: .circular)
 }
 
 struct ProfileStatusBubble: View {
@@ -453,11 +458,13 @@ struct ProfileStatusBubble: View {
     let surfaceColor: Color
     let width: CGFloat
     var keepsExpanded = false
+    @Environment(\.colorScheme) private var colorScheme
     @State private var isBubbleHovering = false
     @State private var isTextHovering = false
 
     var body: some View {
         let isExpanded = keepsExpanded || isBubbleHovering || isTextHovering
+        let backgroundColor = surfaceColor.mix(with: .white, by: colorScheme == .dark ? 0.12 : 0)
 
         ProfileStatusTextView(
             source: text,
@@ -465,15 +472,22 @@ struct ProfileStatusBubble: View {
             onHoverChange: { isTextHovering = $0 }
         )
             .frame(width: width, alignment: .leading)
-            .padding(.horizontal, 11)
+            .frame(minHeight: 20, alignment: .topLeading)
+            .padding(.horizontal, ProfileStatusBubbleLayout.horizontalPadding)
             .padding(.vertical, 8)
             .fixedSize(horizontal: false, vertical: true)
-            .background(surfaceColor, in: ConcentricRectangle(cornerRadius: 14, style: .continuous))
+            .background(backgroundColor, in: ProfileStatusBubbleLayout.shape)
             .overlay {
-                ConcentricRectangle(cornerRadius: 14, style: .continuous)
+                ProfileStatusBubbleLayout.shape
                     .stroke(.primary.opacity(0.14), lineWidth: 1)
             }
-            .contentShape(ConcentricRectangle(cornerRadius: 14, style: .continuous))
+            .background(alignment: .topLeading) {
+                ProfileStatusThoughtDots(surfaceColor: backgroundColor)
+                    .offset(x: -12, y: -12)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+            .contentShape(ProfileStatusBubbleLayout.shape)
             .onModalHover { isBubbleHovering = $0 }
             .animation(.snappy(duration: 0.16), value: isExpanded)
             .help(displayText)
@@ -497,10 +511,12 @@ private struct ProfileStatusThoughtDots: View {
         ZStack(alignment: .topLeading) {
             Circle()
                 .fill(surfaceColor)
+                .overlay { Circle().stroke(.primary.opacity(0.14), lineWidth: 1) }
                 .frame(width: 6, height: 6)
                 .offset(x: 1, y: 1)
             Circle()
                 .fill(surfaceColor)
+                .overlay { Circle().stroke(.primary.opacity(0.14), lineWidth: 1) }
                 .frame(width: 10, height: 10)
                 .offset(x: 8, y: 8)
         }
@@ -579,7 +595,7 @@ private struct ProfileIdentitySection: View {
     let badges: [ProfileBadge]
     let premiumSince: Date?
     let premiumGuildSince: Date?
-    var nameSize: CGFloat = 28
+    var nameSize: CGFloat = 22
     var background: Color = Color(nsColor: .controlBackgroundColor)
     var editor: ProfileEditorState?
     var openEditorPicker: ((ProfileEditorPicker) -> Void)?
