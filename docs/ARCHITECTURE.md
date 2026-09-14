@@ -571,8 +571,8 @@ merge commit is explicitly validated before publication. Release validation
 also requires every stable or beta tag commit to be reachable from nightly.
 Nightly beta tags must point to commits on the `nightly` source branch, use
 human-facing `vX.Y.Z Beta N` release and Discord titles, and use tag-specific
-`SakuraCord-vX.Y.Z-Beta-N.dmg` assets. They run the same validation and
-packaging job, publish as GitHub prereleases, and select their dedicated
+`SakuraCord-vX.Y.Z-Beta-N.dmg` assets. They use the same validation, packaging, and
+publication jobs, publish as GitHub prereleases, and select their dedicated
 Discord channel and role. The application reads the latest signed prerelease
 appcast through the website's Cloudflare Worker at
 `https://sakuracord.app/updates/appcast.xml`. The Worker selects the newest

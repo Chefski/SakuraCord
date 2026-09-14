@@ -80,6 +80,36 @@ pre-commit code-quality hook, pre-push committed-tree and release-copy checks,
 pre-release `./script/ci.sh` build and full test matrix, Sparkle secret checks,
 packaging, signature validation, and reviewed update-notes validation as regular tags.
 
+### Validation, parallel packaging, and caches
+
+The release workflow starts optimized packaging while it checks for reusable
+validation. A completed, successful `CI` push run on `nightly` or `main` can
+satisfy validation only for the exact release commit, with successful checkout
+verification and the full `Build and test` step. Pull request runs, skipped
+tests, and other workflows do not qualify. A repair dispatched with a changed
+workflow also runs validation again. An unavailable lookup or missing match
+runs the complete `./script/ci.sh` suite normally.
+
+The publication job requires successful packaging and either fresh or reused
+validation. Packaging verifies the DMG and signed appcast and passes those
+files through an artifact within the same workflow run. Only publication has
+repository write permission. It takes the shared Sparkle release lock and
+rechecks release and announcement checkpoints before writing, preserving
+idempotent retries and published DMGs.
+
+SwiftPM dependency caching is enabled for tag runs as well as branch runs.
+Compiler output artifacts retain the app and all six library test builds for
+branch CI, and optimized app output for release CI. These separate caches are
+kept for seven days and can cross branch/tag boundaries. Restore accepts only
+successful first-party `CI` pushes from `main`/`nightly` for debug output or
+release tags for optimized output, and only when the source commit is an
+ancestor of the checkout. Keys include the OS, Xcode, Swift, SDK, architecture,
+workspace path, package manifests and lockfiles, and build/workflow scripts.
+Missing, expired, incompatible, or unavailable caches fall back to building
+from source. Cache upload failure does not invalidate tests or block release.
+Builds still run after restoration; caches never substitute for validation,
+packaging, signing, or checking the current release metadata.
+
 After the release assets have been downloaded and compared, the website's
 Cloudflare Worker serves the newest published prerelease's signed
 `appcast.xml` asset at `https://sakuracord.app/updates/appcast.xml`. Switching

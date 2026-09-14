@@ -10,135 +10,110 @@ on:
         required: true
         type: string
 
+permissions:
+  contents: read
+  actions: read
+
+env:
+  CI_CONTROL_ROOT: ${{ github.event_name == 'workflow_dispatch' && 'release-control' || '.' }}
+  SAKURACORD_RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
 jobs:
+  validation:
+    runs-on: ubuntu-latest
+    outputs:
+      reused: ${{ steps.validation.outputs.reused }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.sha }}
+      - name: Check out current release-control files
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@v6
+        with:
+          path: release-control
+          ref: ${{ github.workflow_sha }}
+      - name: Find successful validation of this commit
+        id: validation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node "$CI_CONTROL_ROOT/script/ci_reuse.mjs" validation
+
   build:
+    needs: validation
+    if: needs.validation.outputs.reused != 'true'
     runs-on: xcode-27
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
-      - name: Toolchain
-        id: toolchain
-        run: |
-          toolchain="$({
-            sw_vers
-            xcodebuild -version
-            swift --version
-            xcrun --sdk macosx --show-sdk-version
-            printf 'Workspace: %s\n' "${GITHUB_WORKSPACE:-$(pwd -P)}"
-          })"
-          printf '%s\n' "$toolchain"
-          fingerprint="$(printf '%s' "$toolchain" | shasum -a 256 | awk '{print $1}')"
-          echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.sha }}
+      - name: Check out current release-control files
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@v6
+        with:
+          path: release-control
+          ref: ${{ github.workflow_sha }}
       - name: Install Metal toolchain
         run: |
           xcodebuild -downloadComponent MetalToolchain
           xcrun --sdk macosx metal --version
       - name: Cache SwiftPM dependencies
-        if: github.event_name != 'workflow_dispatch' && !(github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
         uses: actions/cache@v5
         with:
           path: .codex-runtime/swiftpm-cache
           key: swiftpm-${{ runner.os }}-${{ runner.arch }}-xcode-27-${{ hashFiles('App/Package.resolved', 'App/Package.swift', 'Packages/**/Package.swift') }}
           restore-keys: |
             swiftpm-${{ runner.os }}-${{ runner.arch }}-xcode-27-
-      - name: Restore SwiftPM build artifacts
-        id: swiftpm-build-cache
-        if: github.event_name != 'workflow_dispatch' && !(github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
-        uses: actions/cache/restore@v5
-        with:
-          path: App/.build/out
-          key: swiftpm-build-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ hashFiles('App/Package.resolved', 'App/Package.swift', 'Packages/**/Package.swift', 'script/ci.sh', 'script/runtime.sh') }}-${{ github.sha }}
-          restore-keys: |
-            swiftpm-build-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ hashFiles('App/Package.resolved', 'App/Package.swift', 'Packages/**/Package.swift', 'script/ci.sh', 'script/runtime.sh') }}-
+      - name: Restore SwiftPM build cache
+        id: build-cache
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node "$CI_CONTROL_ROOT/script/ci_reuse.mjs" restore debug
+      - name: Verify checked-out commit
+        if: github.event_name != 'workflow_dispatch'
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
       - name: Build and test
         run: ./script/ci.sh
-      - name: Report SwiftPM build cache
-        if: github.event_name != 'workflow_dispatch' && !(github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
-        run: |
-          echo "Exact cache hit: ${{ steps.swiftpm-build-cache.outputs.cache-hit }}"
-          echo "Matched cache key: ${{ steps.swiftpm-build-cache.outputs.cache-matched-key }}"
-          du -sh App/.build/out
-      - name: Save SwiftPM build artifacts
-        if: success() && github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/v') && steps.swiftpm-build-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v5
+      - name: Archive SwiftPM build cache
+        id: cache-archive
+        continue-on-error: true
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/nightly' || github.ref == 'refs/heads/main')
+        run: node "$CI_CONTROL_ROOT/script/ci_reuse.mjs" archive debug
+      - name: Save SwiftPM build cache
+        continue-on-error: true
+        if: (github.event_name == 'push' && (github.ref == 'refs/heads/nightly' || github.ref == 'refs/heads/main')) && steps.cache-archive.outcome == 'success'
+        uses: actions/upload-artifact@v7
         with:
-          path: App/.build/out
-          key: ${{ steps.swiftpm-build-cache.outputs.cache-primary-key }}
+          name: ${{ steps.build-cache.outputs.key }}
+          path: ${{ runner.temp }}/swiftpm-debug.tar
+          compression-level: 1
+          retention-days: 7
+          overwrite: true
+          if-no-files-found: error
 
-  release:
+  package:
     if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || github.event_name == 'workflow_dispatch'
-    needs: build
     runs-on: xcode-27
-    concurrency:
-      group: sparkle-release
-      cancel-in-progress: false
-    permissions:
-      contents: write
+    outputs:
+      published: ${{ steps.existing_release.outputs.published }}
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
-      - name: Restore SwiftPM dependencies
-        uses: actions/cache/restore@v5
-        with:
-          path: .codex-runtime/swiftpm-cache
-          key: swiftpm-${{ runner.os }}-${{ runner.arch }}-xcode-27-${{ hashFiles('App/Package.resolved', 'App/Package.swift', 'Packages/**/Package.swift') }}
-          restore-keys: |
-            swiftpm-${{ runner.os }}-${{ runner.arch }}-xcode-27-
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.sha }}
       - name: Check out current release-control files
         if: github.event_name == 'workflow_dispatch'
         uses: actions/checkout@v6
         with:
           path: release-control
-          ref: ${{ github.sha }}
-      - name: Validate release tag and pre-made copy
-        run: |
-          release_tag="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
-          if ! git rev-parse --verify --quiet "refs/tags/$release_tag" >/dev/null; then
-            echo "Release tag $release_tag does not exist." >&2
-            exit 1
-          fi
-          release_control_root="$GITHUB_WORKSPACE"
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            release_control_root="$GITHUB_WORKSPACE/release-control"
-          fi
-          source "$release_control_root/script/release_metadata.sh"
-          if ! sakuracord_is_release_tag "$release_tag"; then
-            echo "Release tags must use vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-Beta-NUMBER." >&2
-            exit 1
-          fi
-          version="$(sakuracord_release_version_from_tag "$release_tag")"
-          release_track="$(sakuracord_release_track_from_tag "$release_tag")"
-          release_display_name="$(sakuracord_release_display_name_from_tag "$release_tag")"
-          dmg_name="$(sakuracord_release_dmg_name_from_tag "$release_tag")"
-          git fetch --no-tags origin \
-            +refs/heads/nightly:refs/remotes/origin/nightly
-          if ! git merge-base --is-ancestor \
-            "refs/tags/$release_tag^{commit}" refs/remotes/origin/nightly; then
-            if [[ "$release_track" == "nightly" ]]; then
-              echo "Nightly beta tags must point to a commit on the nightly branch." >&2
-            else
-              echo "Regular release tags must point to a commit already present on nightly." >&2
-            fi
-            exit 1
-          fi
-          release_copy="$release_control_root/Releases/$release_tag.json"
-          if [[ ! -f "$release_copy" ]]; then
-            echo "Releases/$release_tag.json must be written, reviewed, and committed before publishing." >&2
-            exit 1
-          fi
-          "$release_control_root/script/validate_release_tag.sh" \
-            "$release_control_root" "$release_tag"
-          echo "SAKURACORD_VERSION=$version" >> "$GITHUB_ENV"
-          echo "SAKURACORD_BUILD_NUMBER=$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
-          echo "SAKURACORD_RELEASE_TAG=$release_tag" >> "$GITHUB_ENV"
-          echo "SAKURACORD_RELEASE_TRACK=$release_track" >> "$GITHUB_ENV"
-          echo "SAKURACORD_RELEASE_DISPLAY_NAME=$release_display_name" >> "$GITHUB_ENV"
-          echo "SAKURACORD_RELEASE_CONTROL_ROOT=$release_control_root" >> "$GITHUB_ENV"
-          echo "SAKURACORD_RELEASE_COPY=$release_copy" >> "$GITHUB_ENV"
-          echo "SAKURACORD_DMG_PATH=dist/$dmg_name" >> "$GITHUB_ENV"
+          ref: ${{ github.workflow_sha }}
+      - name: Validate release tag, copy, and checkpoints
+        id: existing_release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash "$CI_CONTROL_ROOT/script/prepare_ci_release.sh"
       - name: Prepare exact release notes and Discord copy
         run: |
           mkdir -p dist
@@ -147,48 +122,20 @@ jobs:
             --tag "$SAKURACORD_RELEASE_TAG" \
             --output dist/release-copy.json \
             --notes-output dist/release-notes.md
-      - name: Inspect existing release checkpoints
-        id: existing_release
+      - name: Cache SwiftPM dependencies
+        if: steps.existing_release.outputs.published != 'true'
+        uses: actions/cache@v5
+        with:
+          path: .codex-runtime/swiftpm-cache
+          key: swiftpm-${{ runner.os }}-${{ runner.arch }}-xcode-27-${{ hashFiles('App/Package.resolved', 'App/Package.swift', 'Packages/**/Package.swift') }}
+          restore-keys: |
+            swiftpm-${{ runner.os }}-${{ runner.arch }}-xcode-27-
+      - name: Restore SwiftPM build cache
+        if: steps.existing_release.outputs.published != 'true'
+        id: build-cache
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          published=false
-          announced=false
-          announcement_message_id=""
-          if gh release view "$SAKURACORD_RELEASE_TAG" >/dev/null 2>&1; then
-            release_state="$(gh release view "$SAKURACORD_RELEASE_TAG" --json isDraft,isPrerelease)"
-            is_draft="$(jq -r .isDraft <<< "$release_state")"
-            is_prerelease="$(jq -r .isPrerelease <<< "$release_state")"
-            expected_prerelease=false
-            if [[ "$SAKURACORD_RELEASE_TRACK" == "nightly" ]]; then
-              expected_prerelease=true
-            fi
-            if [[ "$is_prerelease" != "$expected_prerelease" ]]; then
-              echo "Existing release prerelease state does not match $SAKURACORD_RELEASE_TRACK track." >&2
-              exit 1
-            fi
-            if [[ "$is_draft" == "false" ]]; then
-              published=true
-            fi
-            checkpoint_dir="$RUNNER_TEMP/release-checkpoints"
-            mkdir -p "$checkpoint_dir"
-            if gh release download "$SAKURACORD_RELEASE_TAG" \
-              --pattern discord-announcement.json --dir "$checkpoint_dir" >/dev/null 2>&1; then
-              checkpoint_file="$checkpoint_dir/discord-announcement.json"
-              if ! jq -e \
-                --arg tag "$SAKURACORD_RELEASE_TAG" \
-                '.schemaVersion == 1 and .tagName == $tag and (.messageId | test("^[0-9]{17,20}$"))' \
-                "$checkpoint_file" >/dev/null; then
-                echo "Existing Discord announcement checkpoint is invalid." >&2
-                exit 1
-              fi
-              announced=true
-              announcement_message_id="$(jq -r .messageId "$checkpoint_file")"
-            fi
-          fi
-          echo "published=$published" >> "$GITHUB_OUTPUT"
-          echo "announced=$announced" >> "$GITHUB_OUTPUT"
-          echo "announcement_message_id=$announcement_message_id" >> "$GITHUB_OUTPUT"
+        run: node "$CI_CONTROL_ROOT/script/ci_reuse.mjs" restore release
       - name: Validate Sparkle release secrets
         if: steps.existing_release.outputs.published != 'true'
         env:
@@ -235,6 +182,88 @@ jobs:
         run: |
           ./script/generate_appcast.sh \
             "$SAKURACORD_DMG_PATH" dist/appcast.xml dist/release-notes.md
+      - name: Upload verified release assets
+        if: steps.existing_release.outputs.published != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-assets
+          overwrite: true
+          path: |
+            dist/*.dmg
+            dist/appcast.xml
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
+      - name: Archive SwiftPM build cache
+        id: cache-archive
+        continue-on-error: true
+        if: steps.existing_release.outputs.published != 'true' && github.event_name == 'push'
+        run: node "$CI_CONTROL_ROOT/script/ci_reuse.mjs" archive release
+      - name: Save SwiftPM build cache
+        continue-on-error: true
+        if: (steps.existing_release.outputs.published != 'true' && github.event_name == 'push') && steps.cache-archive.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.build-cache.outputs.key }}
+          path: ${{ runner.temp }}/swiftpm-release.tar
+          compression-level: 1
+          retention-days: 7
+          overwrite: true
+          if-no-files-found: error
+
+  release:
+    needs: [validation, build, package]
+    if: >-
+      always() && !cancelled() &&
+      needs.validation.result == 'success' && needs.package.result == 'success' &&
+      (needs.build.result == 'success' ||
+       (needs.validation.outputs.reused == 'true' && needs.build.result == 'skipped'))
+    runs-on: xcode-27
+    concurrency:
+      group: sparkle-release
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.sha }}
+      - name: Check out current release-control files
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@v6
+        with:
+          path: release-control
+          ref: ${{ github.workflow_sha }}
+      - name: Validate release tag, copy, and checkpoints
+        id: existing_release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash "$CI_CONTROL_ROOT/script/prepare_ci_release.sh"
+      - name: Prepare exact release notes and Discord copy
+        run: |
+          mkdir -p dist
+          node "$SAKURACORD_RELEASE_CONTROL_ROOT/script/release_automation.mjs" prepare \
+            --input "$SAKURACORD_RELEASE_COPY" \
+            --tag "$SAKURACORD_RELEASE_TAG" \
+            --output dist/release-copy.json \
+            --notes-output dist/release-notes.md
+      - name: Require packaged assets for unpublished release
+        if: steps.existing_release.outputs.published != 'true'
+        env:
+          PACKAGE_WAS_PUBLISHED: ${{ needs.package.outputs.published }}
+        run: |
+          if [[ "$PACKAGE_WAS_PUBLISHED" == "true" ]]; then
+            echo "Release was removed after packaging was skipped; rerun the workflow." >&2
+            exit 1
+          fi
+      - name: Download verified release assets
+        if: steps.existing_release.outputs.published != 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: release-assets
+          path: dist
       - name: Publish or repair GitHub release
         env:
           GH_TOKEN: ${{ github.token }}

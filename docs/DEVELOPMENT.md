@@ -154,6 +154,11 @@ proportion to its risk:
 | `./script/code_quality.sh check` | Run the pinned SwiftFormat and SwiftLint policy |
 | `./script/ci.sh` | Run code-quality and release checks, the full first-party test matrix, and the app build |
 
+Hosted CI caches the app and all six library test builds. Release compilation
+runs alongside any required validation, and publication waits for both. See
+[release validation and caches](RELEASING.md#validation-parallel-packaging-and-caches)
+for the exact commit reuse rules and cache boundaries.
+
 ### Persistent local code-signing identity
 
 The build script uses an installed Apple Development identity, or the SakuraCord
