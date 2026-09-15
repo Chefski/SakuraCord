@@ -134,6 +134,7 @@ struct ComposerView: View {
                                 selection: $draftSelection,
                                 isFocused: $isFocused
                             )
+                            .frame(minHeight: ChatChromeMetrics.composerControlHeight)
                             if draft.isEmpty {
                                 Text(composerPlaceholder)
                                     .foregroundStyle(.tertiary)
