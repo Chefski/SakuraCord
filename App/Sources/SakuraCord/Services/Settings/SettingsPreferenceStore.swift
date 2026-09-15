@@ -175,6 +175,12 @@ nonisolated struct SettingsPreferenceRegistry: Sendable {
             defaultValue: .string(AppColorScheme.system.rawValue)
         ),
         SettingsPreferenceRegistration(
+            id: .windowOpacity,
+            page: .appearance,
+            storage: .appWide(key: "settings.appearance.windowOpacity"),
+            defaultValue: .double(AppearanceSettingsSnapshot.defaultWindowOpacity)
+        ),
+        SettingsPreferenceRegistration(
             id: .legacyAccentColorMigration,
             page: .appearance,
             storage: .appWide(key: "settings.appearance.accentColor"),

@@ -18,6 +18,15 @@ nonisolated extension SettingsCatalog {
             scope: .appWideLocal
         ),
         control(
+            .windowOpacity,
+            page: .appearance,
+            section: .appearanceTheme,
+            label: "Window Opacity",
+            help: "Adjust the strength of the theme over a blurred, tinted window background.",
+            keywords: ["window", "transparency", "transparent", "opacity", "background"],
+            scope: .appWideLocal
+        ),
+        control(
             .themeDesigner,
             page: .appearance,
             section: .appearanceTheme,
@@ -25,6 +34,16 @@ nonisolated extension SettingsCatalog {
             help: "Create a theme with color, saturation, intensity, brightness, and randomisation controls.",
             keywords: ["gradient", "theme", "designer", "color", "saturation", "intensity", "brightness", "hex", "randomise"],
             scope: .appWideLocal
+        ),
+        control(
+            .resetTheme,
+            page: .appearance,
+            section: .appearanceTheme,
+            label: "Reset to Defaults",
+            help: "Restore the default appearance, window opacity, and theme colors.",
+            keywords: ["theme", "appearance", "defaults", "restore", "reset", "opacity", "colors"],
+            scope: .appWideLocal,
+            reset: .categoryAction
         ),
     ]
 }

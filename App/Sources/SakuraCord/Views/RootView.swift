@@ -125,10 +125,7 @@ struct RootView: View {
                 ? 1.12
                 : 1
         )
-        .background {
-            SakuraCordThemeBackground()
-                .ignoresSafeArea()
-        }
+        .modifier(SakuraCordWindowBackground(opacity: model.appearanceSettings.windowOpacity))
     }
 
     private var showsInitialOnboarding: Bool {

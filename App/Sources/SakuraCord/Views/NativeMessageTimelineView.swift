@@ -1107,6 +1107,7 @@ extension NativeMessageTimelineCoordinator {
                     guard let model else { return }
                     var appearance = model.appearanceSettings
                     appearance.colorScheme = sharedTheme.appearance
+                    appearance.windowOpacity = sharedTheme.windowOpacity
                     model.applyAppearanceSettings(appearance)
                 }
             )

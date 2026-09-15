@@ -282,8 +282,8 @@ func `Public beta accents migrate into native-surface single-color themes`(
     )
 
     let token = try SakuraCordThemeShareCodec.token(for: sharedTheme)
-    #expect(token == "AQFKz_VpjwzNszNAALhRczO9cEn9")
-    #expect(token.count == 28)
+    #expect(token == "AQJKz_VpjwzNszNAALhRczO9cP__yjw")
+    #expect(token.count == 31)
     #expect(token.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" })
 
     let url = try SakuraCordThemeShareCodec.shareURL(for: sharedTheme)
@@ -296,6 +296,7 @@ func `Public beta accents migrate into native-surface single-color themes`(
     #expect(decoded.appearance == .dark)
     #expect(decoded.theme.activeColorCount == 3)
     #expect(decoded.theme.colors.count == 3)
+    #expect(decoded.windowOpacity == 1)
     let tolerance = 1.0 / 65_535
     #expect(abs(decoded.theme.intensity - sharedTheme.theme.intensity) <= tolerance)
     #expect(abs(decoded.theme.brightness - sharedTheme.theme.brightness) <= tolerance)
@@ -308,6 +309,25 @@ func `Public beta accents migrate into native-surface single-color themes`(
     }
     #expect(try SakuraCordThemeShareCodec.token(for: decoded) == token)
 
+    for opacity in [0.0, 0.42, 1.0] {
+        var translucentTheme = sharedTheme
+        translucentTheme.windowOpacity = opacity
+        let url = try SakuraCordThemeShareCodec.shareURL(for: translucentTheme)
+        guard case let .applyTheme(imported) = SakuraCordDeepLinkPresentation.action(for: url) else {
+            Issue.record("Theme link did not produce an import action")
+            continue
+        }
+        #expect(abs(imported.windowOpacity - opacity) <= tolerance)
+        #expect(imported.theme == decoded.theme)
+    }
+
+    let previousCompactToken = "AQFKz_VpjwzNszNAALhRczO9cEn9"
+    guard case let .current(previousCompactTheme) = SakuraCordThemeShareCodec.decode(previousCompactToken) else {
+        Issue.record("Previous compact theme token did not decode")
+        return
+    }
+    #expect(previousCompactTheme == decoded)
+
     let previousTokenWithInactiveColors =
         "AQGKz_VpjwzNszNAALhRczO9cKZmwo_Zmcet62c"
     guard case let .current(previouslyDecoded) = SakuraCordThemeShareCodec.decode(
@@ -318,6 +338,7 @@ func `Public beta accents migrate into native-surface single-color themes`(
     }
     #expect(previouslyDecoded.theme.activeColorCount == 3)
     #expect(previouslyDecoded.theme.colors.count == 5)
+    #expect(previouslyDecoded.windowOpacity == 1)
     #expect(try SakuraCordThemeShareCodec.token(for: previouslyDecoded) == token)
 
     var corrupted = token

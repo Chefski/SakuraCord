@@ -3,6 +3,7 @@ import Foundation
 nonisolated struct SakuraCordSharedTheme: Equatable, Hashable, Sendable {
     let appearance: AppColorScheme
     let theme: SakuraCordGradientTheme
+    var windowOpacity: Double = AppearanceSettingsSnapshot.defaultWindowOpacity
 }
 
 nonisolated enum SakuraCordThemeShareDecodeResult: Equatable, Sendable {
@@ -12,7 +13,7 @@ nonisolated enum SakuraCordThemeShareDecodeResult: Equatable, Sendable {
 
 nonisolated enum SakuraCordThemeShareCodec {
     static let transportVersion: UInt8 = 1
-    static let readerVersion: UInt8 = 1
+    static let readerVersion: UInt8 = 2
 
     private static let maximumTokenLength = 256
     private static let fixedHeaderLength = 3
@@ -38,7 +39,7 @@ nonisolated enum SakuraCordThemeShareCodec {
         for sharedTheme: SakuraCordSharedTheme,
         minimumReaderVersion: UInt8 = readerVersion
     ) throws -> String {
-        guard minimumReaderVersion > 0 else {
+        guard minimumReaderVersion >= readerVersion else {
             throw EncodingError.unsupportedReaderVersion
         }
 
@@ -55,6 +56,9 @@ nonisolated enum SakuraCordThemeShareCodec {
             bytes.append(contentsOf: encodedUnitScalar(color.hue))
             bytes.append(contentsOf: encodedUnitScalar(color.saturation))
         }
+        bytes.append(contentsOf: encodedUnitScalar(
+            AppearanceSettingsSnapshot.normalizedWindowOpacity(sharedTheme.windowOpacity)
+        ))
         bytes.append(contentsOf: encodedChecksum(for: bytes))
         return Data(bytes).base64URLEncodedString
     }
@@ -91,6 +95,7 @@ nonisolated enum SakuraCordThemeShareCodec {
         let knownPayloadEnd = fixedHeaderLength
             + scalarByteCount * 2
             + storedColorCount * scalarByteCount * 2
+            + (minimumReaderVersion >= 2 ? scalarByteCount : 0)
         guard bytes.count >= knownPayloadEnd + checksumByteCount else {
             return nil
         }
@@ -115,6 +120,10 @@ nonisolated enum SakuraCordThemeShareCodec {
                 saturation: decodedUnitScalar(bytes, at: &offset)
             ))
         }
+        // Version 1 predates window opacity and represents the original opaque theme.
+        let windowOpacity = minimumReaderVersion >= 2
+            ? decodedUnitScalar(bytes, at: &offset)
+            : AppearanceSettingsSnapshot.defaultWindowOpacity
 
         let sharedTheme = SakuraCordSharedTheme(
             appearance: appearance,
@@ -123,7 +132,8 @@ nonisolated enum SakuraCordThemeShareCodec {
                 activeColorCount: activeColorCount,
                 intensity: intensity,
                 brightness: brightness
-            )
+            ),
+            windowOpacity: windowOpacity
         )
         if minimumReaderVersion > readerVersion {
             return .requiresNewerClient(preview: sharedTheme)

@@ -25,6 +25,10 @@ struct MessageTimelineView: View {
 
     var body: some View {
         let conversationID = model.selectedChannelID
+        let showsLoadingSkeleton = MessageTimelineLoadingPolicy.showsInitialPlaceholder(
+            isLoading: model.isLoadingMessages,
+            messageCount: model.messages.count
+        )
         NativeMessageTimelineView(
             model: model,
             conversation: .channel(conversationID),
@@ -76,11 +80,11 @@ struct MessageTimelineView: View {
         )
         .scrollEdgeEffectStyle(.soft, for: .top)
         .ignoresSafeArea(.container, edges: .top)
+        .opacity(showsLoadingSkeleton ? 0 : 1)
+        .allowsHitTesting(!showsLoadingSkeleton)
+        .accessibilityHidden(showsLoadingSkeleton)
         .overlay {
-            if MessageTimelineLoadingPolicy.showsInitialPlaceholder(
-                isLoading: model.isLoadingMessages,
-                messageCount: model.messages.count
-            ) {
+            if showsLoadingSkeleton {
                 MessageTimelineLoadingSkeleton(
                     bottomContentInset: bottomContentInset
                 )
@@ -663,39 +667,36 @@ struct MessageTimelineLoadingSkeleton: View {
 
     var body: some View {
         SkeletonShimmerTimeline {
-            ZStack {
-                SakuraCordThemeBackground()
-                GeometryReader { geometry in
-                    VStack(alignment: .leading, spacing: 20) {
-                        ForEach(
-                            0 ..< MessageTimelineSkeletonLayout.rowCount(
-                                for: max(0, geometry.size.height - bottomContentInset)
-                            ),
-                            id: \.self
-                        ) { index in
-                            MessageTimelineSkeletonMessage(
-                                row: Self.patterns[index % Self.patterns.count],
-                                availableLineWidth: max(120, geometry.size.width - 84)
-                            )
-                        }
+            GeometryReader { geometry in
+                VStack(alignment: .leading, spacing: 20) {
+                    ForEach(
+                        0 ..< MessageTimelineSkeletonLayout.rowCount(
+                            for: max(0, geometry.size.height - bottomContentInset)
+                        ),
+                        id: \.self
+                    ) { index in
+                        MessageTimelineSkeletonMessage(
+                            row: Self.patterns[index % Self.patterns.count],
+                            availableLineWidth: max(120, geometry.size.width - 84)
+                        )
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 18)
-                    .frame(
-                        maxWidth: .infinity,
-                        minHeight: 0,
-                        maxHeight: max(0, geometry.size.height - bottomContentInset),
-                        alignment: .topLeading
-                    )
-                    .clipped()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 18)
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: 0,
+                    maxHeight: max(0, geometry.size.height - bottomContentInset),
+                    alignment: .topLeading
+                )
+                .clipped()
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         }
         // The timeline itself extends through the top scroll-edge safe area so
         // messages can flow beneath the translucent channel toolbar. Cover
-        // that same complete viewport during an initial load; otherwise stale
-        // timeline pixels remain visible above the first inset skeleton row.
+        // that same complete viewport during an initial load. The native
+        // timeline is hidden while these placeholders share the window background.
         .ignoresSafeArea(.container, edges: .top)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Loading messages")

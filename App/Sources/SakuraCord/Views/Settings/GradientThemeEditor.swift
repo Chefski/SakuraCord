@@ -3,7 +3,7 @@ import SwiftUI
 
 struct GradientThemeEditor: View {
     enum Presentation {
-        case settings(appearance: AppColorScheme)
+        case settings(appearance: AppColorScheme, windowOpacity: Double)
         case onboarding
     }
 
@@ -38,10 +38,11 @@ private struct GradientThemeEditorHeader: View {
             Spacer(minLength: 16)
             HStack(spacing: 8) {
                 ThemeRandomizeButton(themeStore: themeStore)
-                if case let .settings(appearance) = presentation {
+                if case let .settings(appearance, windowOpacity) = presentation {
                     ThemeShareCopyButton(
                         themeStore: themeStore,
-                        appearance: appearance
+                        appearance: appearance,
+                        windowOpacity: windowOpacity
                     )
                 }
                 ThemeColorCountControls(themeStore: themeStore)
@@ -67,6 +68,7 @@ private struct GradientThemeEditorHeader: View {
 private struct ThemeShareCopyButton: View {
     let themeStore: SakuraCordThemeStore
     let appearance: AppColorScheme
+    let windowOpacity: Double
 
     @State private var isShowingConfirmation = false
     @State private var confirmationTask: Task<Void, Never>?
@@ -100,7 +102,8 @@ private struct ThemeShareCopyButton: View {
     private func copyTheme() {
         let sharedTheme = SakuraCordSharedTheme(
             appearance: appearance,
-            theme: themeStore.activeTheme
+            theme: themeStore.activeTheme,
+            windowOpacity: windowOpacity
         )
         guard let url = try? SakuraCordThemeShareCodec.shareURL(
             for: sharedTheme

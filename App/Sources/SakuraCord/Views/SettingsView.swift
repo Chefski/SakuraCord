@@ -58,12 +58,11 @@ struct SettingsView: View {
         )
         .background {
             ZStack {
-                SakuraCordThemeBackground()
-                    .ignoresSafeArea()
                 SettingsWindowBehaviorBridge()
                 SakuraCordTextInputAccentBridge()
             }
         }
+        .modifier(SakuraCordWindowBackground(opacity: model.appearanceSettings.windowOpacity))
         .onKeyPress(phases: [.down, .repeat]) { press in
             handleSearchKeyPress(press)
         }

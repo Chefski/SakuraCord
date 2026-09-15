@@ -111,6 +111,8 @@ nonisolated enum MessageAppearance: String, CaseIterable, Identifiable, Sendable
 }
 
 nonisolated struct AppearanceSettingsSnapshot: Equatable, Sendable {
+    static let defaultWindowOpacity = 1.0
+    static let windowOpacityRange = 0.0 ... 1.0
     static let defaultMessageSpacing = 6.0
     static let messageSpacingRange = 0.0 ... 12.0
 
@@ -122,13 +124,20 @@ nonisolated struct AppearanceSettingsSnapshot: Equatable, Sendable {
     )
 
     var composerIcons: ComposerIconLayout = .defaults
+    var windowOpacity: Double = defaultWindowOpacity
     var colorScheme: AppColorScheme
     var composerBarAppearance: ComposerBarAppearance
     var messageAppearance: MessageAppearance
     var messageSpacing: Double
 
     mutating func normalize() {
+        windowOpacity = Self.normalizedWindowOpacity(windowOpacity)
         messageSpacing = Self.normalizedMessageSpacing(messageSpacing)
+    }
+
+    static func normalizedWindowOpacity(_ value: Double) -> Double {
+        guard value.isFinite else { return defaultWindowOpacity }
+        return min(max(value, windowOpacityRange.lowerBound), windowOpacityRange.upperBound)
     }
 
     static func normalizedMessageSpacing(_ value: Double) -> Double {
@@ -183,11 +192,18 @@ final class AppearanceSettingsStore {
         if case let .string(stored) = preferences.value(for: .composerIcons) {
             value.composerIcons = ComposerIconLayout(storageValue: stored)
         }
+        if case let .double(stored) = preferences.value(for: .windowOpacity) {
+            value.windowOpacity = stored
+        }
         value.normalize()
         return value
     }
 
     func save(_ value: AppearanceSettingsSnapshot) {
+        preferences.set(
+            .double(AppearanceSettingsSnapshot.normalizedWindowOpacity(value.windowOpacity)),
+            for: .windowOpacity
+        )
         preferences.set(.string(value.composerIcons.storageValue), for: .composerIcons)
         preferences.set(
             .string(value.colorScheme.rawValue),
@@ -216,6 +232,8 @@ extension AppModel {
         _ value: AppearanceSettingsSnapshot,
         persists: Bool = true
     ) {
+        var value = value
+        value.normalize()
         let colorSchemeChanged = appearanceSettings.colorScheme != value.colorScheme
         let messagePresentationChanged =
             appearanceSettings.messageAppearance != value.messageAppearance
