@@ -296,7 +296,15 @@ struct IncomingPrivateCallWindowOverlay: View {
             dismiss: {},
             content: { _, context in
             IncomingPrivateCallOverlay(model: model)
-                .onAppear { context.preventsDismissal = true }
+                 .onAppear {
+                    context.preventsDismissal = true
+                    context.escapeAction = {
+                        if let call = model.incomingPrivateCalls.first,
+                           !model.isPrivateCallActionInFlight(in: call.channelID) {
+                            Task { await model.declinePrivateCall(call) }
+                        }
+                    }
+                }
         })
     }
 }
@@ -331,6 +339,7 @@ struct IncomingPrivateCallOverlay: View {
         .animation(.snappy(duration: 0.24), value: model.incomingPrivateCalls.first?.channelID)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Incoming call")
+
     }
 }
 

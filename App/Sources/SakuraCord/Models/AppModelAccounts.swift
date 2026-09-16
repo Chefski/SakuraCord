@@ -305,6 +305,7 @@ extension AppModel {
         selectedChannel = nil
         selectedGuildID = nil
         selectedChannelID = nil
+        conversationNavigationHistory = ConversationNavigationHistory()
         replaceSelectedMessages(with: [])
         hasCompletedInitialMessageLoad = false
         hasCompletedInitialThreadLoad = false
@@ -470,8 +471,7 @@ extension AppModel {
         memberLoadTask?.cancel()
         memberLoadTask = nil
         memberLoadGeneration &+= 1
-        guildActivationTask?.cancel()
-        guildActivationTask = nil
+        cancelConversationNavigation()
         gifSearchTask?.cancel()
         gifSearchTask = nil
         gifPickerLoadTask?.cancel()

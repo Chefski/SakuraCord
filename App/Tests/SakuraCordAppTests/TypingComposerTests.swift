@@ -1813,8 +1813,8 @@ import Testing
     #expect(ComposerUnfocusedTypingMonitor.shouldOfferReturn(36))
     #expect(ComposerUnfocusedTypingMonitor.shouldOfferReturn(76))
     #expect(!ComposerUnfocusedTypingMonitor.shouldOfferReturn(49))
-    #expect(ComposerUnfocusedTypingMonitor.shouldOfferEscape(53))
-    #expect(!ComposerUnfocusedTypingMonitor.shouldOfferEscape(49))
+    #expect(KeyboardShortcutPolicy.isPlainEscape(keyCode: 53, modifierFlags: []))
+    #expect(!KeyboardShortcutPolicy.isPlainEscape(keyCode: 49, modifierFlags: []))
 }
 
 @MainActor
@@ -1892,11 +1892,18 @@ import Testing
 
     #expect(ComposerUnfocusedTypingMonitor.handleEscape(
         keyCode: 53,
+        modifierFlags: [],
         onEscape: actions.onEscape
     ))
     #expect(cancelCount == 2)
     #expect(!ComposerUnfocusedTypingMonitor.handleEscape(
         keyCode: 49,
+        modifierFlags: [],
+        onEscape: actions.onEscape
+    ))
+    #expect(!ComposerUnfocusedTypingMonitor.handleEscape(
+        keyCode: 53,
+        modifierFlags: .shift,
         onEscape: actions.onEscape
     ))
     #expect(cancelCount == 2)

@@ -286,8 +286,16 @@ struct ComposerView: View {
         .composerShortcutCommands(
             conversation: conversation,
             focus: { isFocused = true },
-            editLatest: { if !hasActiveCommand { _ = editLatestMessage() } },
-            chooseAttachment: { if !hasActiveCommand { showFileImporter = true } }
+            chooseAttachment: { if !hasActiveCommand { showFileImporter = true } },
+            togglePicker: { action in
+                guard !hasActiveCommand else { return }
+                switch action {
+                case .toggleEmojiPicker: toggleEmojiPicker()
+                case .toggleGIFPicker: toggleGIFPicker()
+                case .toggleStickerPicker: toggleStickerPicker()
+                default: break
+                }
+            }
         )
         .onChange(of: showEmojiPicker) { wasPresented, isPresented in
             if wasPresented, !isPresented {

@@ -4,15 +4,11 @@ import MediaPipeline
 import SwiftUI
 
 struct VoiceVideoSettingsPage: View {
-    private enum Confirmation {
-        case reset
-    }
-
     let model: AppModel
     let state: SettingsViewState
 
     @State private var tests = VoiceVideoTestController()
-    @State private var confirmation: Confirmation?
+    @State private var showsResetConfirmation = false
     @State private var exportedPreferences: SettingsPreferenceExportFile?
     @State private var isExporting = false
     @State private var operationMessage: String?
@@ -45,7 +41,7 @@ struct VoiceVideoSettingsPage: View {
                 Button("Export Voice & Video Settings…") { exportPreferences() }
                     .settingsControlAnchor(.voiceExport, state: state)
                 Button("Reset Voice & Video Settings…", role: .destructive) {
-                    confirmation = .reset
+                    showsResetConfirmation = true
                 }
                 .settingsControlAnchor(.voiceReset, state: state)
             } header: {
@@ -77,25 +73,17 @@ struct VoiceVideoSettingsPage: View {
                 operationMessage = error.localizedDescription
             }
         }
-        .confirmationDialog(
+        .settingsResetConfirmation(
             "Reset Voice & Video Settings?",
-            isPresented: Binding(
-                get: { confirmation != nil },
-                set: { if !$0 { confirmation = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button("Reset Voice & Video Settings", role: .destructive) {
-                resetPreferences()
-            }
-            Button("Cancel", role: .cancel) { confirmation = nil }
-        } message: {
-            Text(
-                "This restores SakuraCord’s app-wide call and screen-share defaults. "
-                    + "It does not change macOS permissions, Discord settings, or mute, "
-                    + "deafen, camera, and sharing state in the current call."
-            )
-        }
+            isPresented: $showsResetConfirmation,
+            resetTitle: "Reset Voice & Video Settings",
+            message: """
+            This restores SakuraCord’s app-wide call and screen-share defaults. \
+            It does not change macOS permissions, Discord settings, or mute, \
+            deafen, camera, and sharing state in the current call.
+            """,
+            reset: resetPreferences
+        )
         .alert(
             "Voice & Video",
             isPresented: Binding(
@@ -142,7 +130,6 @@ struct VoiceVideoSettingsPage: View {
     }
 
     private func resetPreferences() {
-        confirmation = nil
         tests.stopAll()
         SettingsPreferenceStore.shared.reset(scope: .appWide, page: .voiceVideo)
         model.voiceVideoPreferences.reload()

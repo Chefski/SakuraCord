@@ -4,8 +4,8 @@ extension View {
     func composerShortcutCommands(
         conversation: MessageComposerDestination,
         focus: @escaping () -> Void,
-        editLatest: @escaping () -> Void,
-        chooseAttachment: @escaping () -> Void
+        chooseAttachment: @escaping () -> Void,
+        togglePicker: @escaping (KeyboardShortcutAction) -> Void
     ) -> some View {
         onReceive(
             NotificationCenter.default.publisher(
@@ -18,20 +18,17 @@ extension View {
         }
         .onReceive(
             NotificationCenter.default.publisher(
-                for: .sakuracordEditLastMessage
-            )
-        ) { notification in
-            if Self.targets(notification, conversation: conversation) {
-                editLatest()
-            }
-        }
-        .onReceive(
-            NotificationCenter.default.publisher(
                 for: .sakuracordChooseComposerAttachment
             )
         ) { notification in
             if Self.targets(notification, conversation: conversation) {
                 chooseAttachment()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .sakuracordComposerPicker)) { notification in
+            if Self.targets(notification, conversation: conversation),
+               let action = notification.userInfo?["action"] as? KeyboardShortcutAction {
+                togglePicker(action)
             }
         }
     }

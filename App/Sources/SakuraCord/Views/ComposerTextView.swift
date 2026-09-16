@@ -337,7 +337,6 @@ struct ComposerTextView: NSViewRepresentable {
         textView.onReturn = { [weak coordinator = context.coordinator] event in
             coordinator?.handleReturn(event) ?? false
         }
-        textView.onSubmit = onSubmit
         textView.onAutocompleteCommand = { [weak coordinator = context.coordinator] command in
             coordinator?.parent.onAutocompleteCommand(command) ?? false
         }
@@ -377,7 +376,6 @@ struct ComposerTextView: NSViewRepresentable {
         textView.onReturn = { [weak coordinator = context.coordinator] event in
             coordinator?.handleReturn(event) ?? false
         }
-        textView.onSubmit = onSubmit
         textView.onAutocompleteCommand = { [weak coordinator = context.coordinator] command in
             coordinator?.parent.onAutocompleteCommand(command) ?? false
         }
@@ -698,7 +696,6 @@ final class ComposerEmojiImageStore {
 
 final class ComposerNSTextView: NSTextView {
     var onReturn: ((NSEvent) -> Bool)?
-    var onSubmit: (() -> Void)?
     var onEscape: (() -> Void)?
     var onEditLatestMessage: (() -> Bool)?
     var onNavigateReplySelection: ((MessageReplyNavigationDirection) -> Bool)?
@@ -707,7 +704,6 @@ final class ComposerNSTextView: NSTextView {
     var onDropTargetChanged: ((_ isTargeted: Bool, _ isInstant: Bool) -> Void)?
     var onDropAttachments: ((_ urls: [URL], _ isInstant: Bool) -> Bool)?
     var commandPasteboard = NSPasteboard.general
-    var shortcutSettings = KeyboardShortcutSettingsStore.shared
     var plainTypingAttributes: [NSAttributedString.Key: Any] = [:]
     var capturesUnfocusedTyping = false {
         didSet {
@@ -828,22 +824,6 @@ final class ComposerNSTextView: NSTextView {
     }
 
     override func keyDown(with event: NSEvent) {
-        if !hasMarkedText(),
-           let action = shortcutSettings.action(
-               matching: event
-           )
-        {
-            switch action {
-            case .sendMessage:
-                onSubmit?()
-                return
-            case .insertNewline:
-                insertNewline(nil)
-                return
-            default:
-                break
-            }
-        }
         let autocompleteCommand = autocompleteCommand(for: event)
         if let autocompleteCommand, onAutocompleteCommand?(autocompleteCommand) == true {
             return
@@ -863,7 +843,7 @@ final class ComposerNSTextView: NSTextView {
             }
             return
         }
-        if event.keyCode == 53 {
+        if KeyboardShortcutPolicy.isPlainEscape(keyCode: event.keyCode, modifierFlags: event.modifierFlags) {
             onEscape?()
             return
         }
@@ -884,7 +864,7 @@ final class ComposerNSTextView: NSTextView {
             case 48 where event.modifierFlags.isDisjoint(with: [.command, .option, .control]):
                 event.modifierFlags.contains(.shift) ? .previousField : .advance
             case 36, 76: .accept
-            case 53: .dismiss
+            case 53 where KeyboardShortcutPolicy.isPlainEscape(keyCode: event.keyCode, modifierFlags: event.modifierFlags): .dismiss
             case 51 where string.isEmpty: .removeField
             case 117 where string.isEmpty: .removeField
             case 123 where shouldLeaveField(backward: true, event: event): .previousField
@@ -1053,7 +1033,7 @@ final class ComposerUnfocusedTypingMonitor {
 
             // Popovers can leave the main window key. Its composer monitor may
             // receive Escape first, so honor popover dismissal before composer actions.
-            if event.keyCode == 53,
+            if KeyboardShortcutPolicy.isPlainEscape(keyCode: event.keyCode, modifierFlags: event.modifierFlags),
                PopoverEscapeKeyCoordinator.shared.dismissTopmostPopover(in: window)
             {
                 return nil
@@ -1084,6 +1064,7 @@ final class ComposerUnfocusedTypingMonitor {
             }
             if Self.handleEscape(
                 keyCode: event.keyCode,
+                modifierFlags: event.modifierFlags,
                 onEscape: self.onEscape
             ) {
                 return nil
@@ -1121,9 +1102,10 @@ final class ComposerUnfocusedTypingMonitor {
 
     static func handleEscape(
         keyCode: UInt16,
+        modifierFlags: NSEvent.ModifierFlags,
         onEscape: (() -> Void)?
     ) -> Bool {
-        guard shouldOfferEscape(keyCode) else { return false }
+        guard KeyboardShortcutPolicy.isPlainEscape(keyCode: keyCode, modifierFlags: modifierFlags) else { return false }
         onEscape?()
         return true
     }
@@ -1146,10 +1128,6 @@ final class ComposerUnfocusedTypingMonitor {
 
     nonisolated static func shouldOfferReturn(_ keyCode: UInt16) -> Bool {
         keyCode == 36 || keyCode == 76
-    }
-
-    nonisolated static func shouldOfferEscape(_ keyCode: UInt16) -> Bool {
-        keyCode == 53
     }
 
     nonisolated static func shouldOfferPaste(

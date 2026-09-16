@@ -10,7 +10,7 @@ struct MyAccountSettingsPage: View {
     @State private var operation: AccountOperation?
     @State private var pendingRemoval: SavedAccount?
     @State private var operationMessage: AccountOperationMessage?
-    @State private var confirmsReset = false
+    @State private var showsResetConfirmation = false
     @State private var exportedPreferences: SettingsPreferenceExportFile?
     @State private var exportFilename = "SakuraCord Account Preferences"
     @State private var isExporting = false
@@ -77,19 +77,13 @@ struct MyAccountSettingsPage: View {
         } message: {
             Text(removalMessage)
         }
-        .confirmationDialog(
+        .settingsResetConfirmation(
             "Reset Local Preferences?",
-            isPresented: $confirmsReset
-        ) {
-            Button("Reset Preferences", role: .destructive) {
-                resetSelectedAccountPreferences()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text(
-                "Only registered local settings for this account will return to their defaults. Credentials, drafts, other accounts, and Discord state are not changed."
-            )
-        }
+            isPresented: $showsResetConfirmation,
+            resetTitle: "Reset Preferences",
+            message: "Only registered local settings for this account will return to their defaults. Credentials, drafts, other accounts, and Discord state are not changed.",
+            reset: resetSelectedAccountPreferences
+        )
         .fileExporter(
             isPresented: $isExporting,
             item: exportedPreferences,
@@ -260,7 +254,7 @@ struct MyAccountSettingsPage: View {
                 .settingsControlAnchor(.exportAccountPreferences, state: state)
 
                 Button("Reset Local Preferences…", role: .destructive) {
-                    confirmsReset = true
+                    showsResetConfirmation = true
                 }
                 .disabled(selectedAccount == nil)
                 .settingsControlAnchor(.resetAccountPreferences, state: state)

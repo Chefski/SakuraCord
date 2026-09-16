@@ -4,10 +4,53 @@ import SakuraCordModels
 
 extension AppModel {
     func selectGuild(_ guildID: GuildID?) {
+        startConversationNavigation { model, account in
+            await model.activateGuild(guildID, account: account)
+        }
+    }
+
+    func recordConversationNavigation() {
+        if let channel = navigationChannel {
+            conversationNavigationHistory.record(channel)
+        }
+    }
+
+    private var navigationChannel: Channel? {
+        snapshot?.channels.first { $0.id == selectedChannelID }
+            ?? visibleChannels.first { $0.id == selectedChannelID }
+    }
+
+    // Sidebar choices supersede asynchronous navigation immediately.
+    var channelSidebarSelection: ChannelID? {
+        get { selectedChannelID }
+        set {
+            cancelConversationNavigation()
+            selectedChannelID = newValue
+            recordConversationNavigation()
+        }
+    }
+
+    func cancelConversationNavigation() {
         guildActivationTask?.cancel()
+        guildActivationTask = nil
+        conversationNavigationHistory.cancelNavigation()
+    }
+
+    func startConversationNavigation(
+        to destination: ConversationNavigationHistory.Destination? = nil,
+        operation: @escaping @MainActor (AppModel, AppModelAccountSession) async -> Void
+    ) {
+        cancelConversationNavigation()
         let account = accountSession()
         guildActivationTask = startAccountChildTask(account: account) { model, account in
-            await model.activateGuild(guildID, account: account)
+            // A task cancelled before it starts never opens a history transaction.
+            let navigation = model.conversationNavigationHistory.beginNavigation(to: destination)
+            defer {
+                let channel = !Task.isCancelled && model.isCurrentAccountSession(account)
+                    ? model.navigationChannel : nil
+                model.conversationNavigationHistory.finishNavigation(navigation, at: channel)
+            }
+            await operation(model, account)
         }
     }
 
@@ -17,13 +60,7 @@ extension AppModel {
             return .directMessages
         }
 
-        let guildIDs = serverRailItems.flatMap { item -> [GuildID] in
-            switch item {
-            case .guild(let guildID): [guildID]
-            case .folder(let folder): folder.guildIDs
-            }
-        }
-        let visibleGuildIDs = guildIDs.filter { serverRailGuildsByID[$0] != nil }
+        let visibleGuildIDs = orderedNavigationGuildIDs
         let guildIndex = shortcutNumber - 2
         guard visibleGuildIDs.indices.contains(guildIndex) else { return nil }
         return .guild(visibleGuildIDs[guildIndex])
@@ -171,7 +208,10 @@ extension AppModel {
         )
     }
 
-    func navigate(to channelID: ChannelID) {
+    func navigate(
+        to channelID: ChannelID,
+        historyDestination: ConversationNavigationHistory.Destination? = nil
+    ) {
         guard
             let channel = snapshot?.channels.first(where: { $0.id == channelID })
             ?? visibleChannels.first(where: { $0.id == channelID })
@@ -179,9 +219,7 @@ extension AppModel {
             errorMessage = "That mentioned channel has not been discovered yet."
             return
         }
-        guildActivationTask?.cancel()
-        let account = accountSession()
-        guildActivationTask = startAccountChildTask(account: account) { model, account in
+        startConversationNavigation(to: historyDestination) { model, account in
             if model.selectedGuildID != channel.guildID {
                 await model.activateGuild(channel.guildID, account: account)
             }
@@ -207,9 +245,7 @@ extension AppModel {
             return
         }
 
-        guildActivationTask?.cancel()
-        let session = accountSession()
-        guildActivationTask = startAccountChildTask(account: session) { [weak self] _, session in
+        startConversationNavigation { [weak self] _, session in
             guard let self else { return }
             let knownPost =
                 forumCataloguePosts.first(where: { $0.id == channelID })
@@ -341,9 +377,7 @@ extension AppModel {
     }
 
     func navigate(to guildID: GuildID?, channelID: ChannelID, messageID: MessageID) {
-        guildActivationTask?.cancel()
-        let session = accountSession()
-        guildActivationTask = startAccountChildTask(account: session) { [weak self] _, session in
+        startConversationNavigation { [weak self] _, session in
             guard let self else { return }
             if selectedGuildID != guildID {
                 await activateGuild(guildID, account: session)

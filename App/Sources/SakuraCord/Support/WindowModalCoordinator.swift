@@ -134,7 +134,7 @@ final class WindowModalCoordinator {
               event.window === window || event.window == nil && NSApp.keyWindow === window
         else { return event }
         if event.type == .keyDown {
-            guard WindowModalKeyPolicy.isEscape(keyCode: event.keyCode, characters: event.charactersIgnoringModifiers) else { return event }
+            guard KeyboardShortcutPolicy.isPlainEscape(keyCode: event.keyCode, modifierFlags: event.modifierFlags, characters: event.charactersIgnoringModifiers) else { return event }
             if window.attachedSheet != nil { return event }
             if PopoverEscapeKeyCoordinator.shared.dismissTopmostPopover(in: window) { return nil }
             guard topmost.capturesEscape else { return event }

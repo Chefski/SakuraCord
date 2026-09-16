@@ -25,13 +25,6 @@ nonisolated extension SettingsCatalog {
         )
     } + [
         control(
-            .shortcutExport, page: .keyboardShortcuts,
-            section: .shortcutLocalData, label: "Export Keyboard Shortcuts",
-            help: "Export app-wide shortcut assignments as versioned JSON.",
-            keywords: ["backup", "JSON", "save shortcuts"], scope: .appWideLocal,
-            persistence: .notApplicable, reset: .notApplicable
-        ),
-        control(
             .shortcutReset, page: .keyboardShortcuts,
             section: .shortcutLocalData, label: "Reset All Keyboard Shortcuts",
             help: "Restore every shortcut to SakuraCord's defaults.",

@@ -3,12 +3,6 @@ import Observation
 import QuartzCore
 import SwiftUI
 
-nonisolated enum WindowModalKeyPolicy {
-    static func isEscape(keyCode: UInt16, characters: String?) -> Bool {
-        keyCode == 53 || characters == "\u{1B}"
-    }
-}
-
 nonisolated enum WindowModalAnimationTiming {
     static let openingSeconds = 0.22
     static let closingSeconds = 0.16
@@ -313,8 +307,8 @@ final class WindowModalHostingView: NSHostingView<AnyView> {
     }
 
     override func keyDown(with event: NSEvent) {
-        if behavior.capturesEscape, isTopmostPresentedOverlay, WindowModalKeyPolicy.isEscape(
-            keyCode: event.keyCode,
+        if behavior.capturesEscape, isTopmostPresentedOverlay, KeyboardShortcutPolicy.isPlainEscape(
+            keyCode: event.keyCode, modifierFlags: event.modifierFlags,
             characters: event.charactersIgnoringModifiers
         ) {
             animationState.handleEscape()
@@ -327,8 +321,8 @@ final class WindowModalHostingView: NSHostingView<AnyView> {
         if behavior.capturesEscape,
            isTopmostPresentedOverlay,
            event.type == .keyDown,
-           WindowModalKeyPolicy.isEscape(
-               keyCode: event.keyCode,
+           KeyboardShortcutPolicy.isPlainEscape(
+               keyCode: event.keyCode, modifierFlags: event.modifierFlags,
                characters: event.charactersIgnoringModifiers
            )
         {

@@ -63,6 +63,7 @@ final class KeyboardShortcutRecorderButton: NSButton {
     private var clearShortcut: () -> Void = {}
     private var cancelRecording: () -> Void = {}
     private(set) var isRecording = false
+    private(set) var recordingModifiers: KeyboardShortcutModifiers = []
 
     init() {
         super.init(frame: .zero)
@@ -70,7 +71,7 @@ final class KeyboardShortcutRecorderButton: NSButton {
         setButtonType(.momentaryPushIn)
         controlSize = .regular
         focusRingType = .default
-        font = .monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .medium)
+        font = .monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
     }
 
     @available(*, unavailable)
@@ -79,6 +80,16 @@ final class KeyboardShortcutRecorderButton: NSButton {
     }
 
     override var acceptsFirstResponder: Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard let font else { return }
+        KeyboardShortcutLabel.draw(
+            isRecording ? nil : shortcut, placeholder: title,
+            recordingModifiers: recordingModifiers,
+            in: bounds, font: font
+        )
+    }
 
     func configure(
         actionTitle: String,
@@ -97,8 +108,27 @@ final class KeyboardShortcutRecorderButton: NSButton {
 
     func beginRecording() {
         isRecording = true
+        recordingModifiers = KeyboardShortcutModifiers(NSEvent.modifierFlags)
         refreshPresentation()
         window?.makeFirstResponder(self)
+    }
+
+    override func flagsChanged(with event: NSEvent) {
+        guard isRecording else {
+            super.flagsChanged(with: event)
+            return
+        }
+        recordingModifiers = KeyboardShortcutModifiers(event.modifierFlags)
+        refreshPresentation()
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard isRecording, window?.firstResponder === self else {
+            return super.performKeyEquivalent(with: event)
+        }
+        // Capture menu equivalents before AppKit dispatches their commands.
+        keyDown(with: event)
+        return true
     }
 
     override func keyDown(with event: NSEvent) {
@@ -107,10 +137,11 @@ final class KeyboardShortcutRecorderButton: NSButton {
             return
         }
         switch event.keyCode {
-        case 53:
+        case 53 where KeyboardShortcutPolicy.isPlainEscape(keyCode: event.keyCode, modifierFlags: event.modifierFlags):
             finishRecording()
             cancelRecording()
-        case 51, 117:
+        case 51 where KeyboardShortcutModifiers(event.modifierFlags).isEmpty,
+             117 where KeyboardShortcutModifiers(event.modifierFlags).isEmpty:
             finishRecording()
             clearShortcut()
         default:
@@ -127,6 +158,7 @@ final class KeyboardShortcutRecorderButton: NSButton {
         let result = super.resignFirstResponder()
         if result, isRecording {
             isRecording = false
+            recordingModifiers = []
             refreshPresentation()
             cancelRecording()
         }
@@ -135,6 +167,7 @@ final class KeyboardShortcutRecorderButton: NSButton {
 
     private func finishRecording() {
         isRecording = false
+        recordingModifiers = []
         refreshPresentation()
         window?.makeFirstResponder(nil)
     }
@@ -145,6 +178,11 @@ final class KeyboardShortcutRecorderButton: NSButton {
         } else {
             shortcut?.displayName ?? "Record Shortcut"
         }
+        // Keep AppKit's original bezel and focus ring; draw only the content ourselves.
+        attributedTitle = NSAttributedString(
+            string: title, attributes: [.foregroundColor: NSColor.clear]
+        )
+        needsDisplay = true
         toolTip = isRecording
             ? "Press a modified key. Escape cancels; Delete clears."
             : "Record a shortcut for \(actionTitle)"

@@ -61,7 +61,7 @@ private extension SettingsPageID {
     var showsConstructionNotice: Bool {
         switch self {
         case .profiles, .interface, .appearance, .privacySafety, .storageDownloads, .diagnostics,
-             .softwareUpdates, .extensions, .about:
+             .softwareUpdates, .extensions, .about, .keyboardShortcuts:
             false
         default:
             true
@@ -94,6 +94,25 @@ private struct SettingsConstructionNotice: View {
 }
 
 extension View {
+    func settingsResetConfirmation(
+        _ title: LocalizedStringKey,
+        isPresented: Binding<Bool>,
+        resetTitle: LocalizedStringKey,
+        message: LocalizedStringKey,
+        reset: @escaping () -> Void
+    ) -> some View {
+        alert(Text(title, bundle: #bundle), isPresented: isPresented) {
+            Button(role: .destructive, action: reset) {
+                Text(resetTitle, bundle: #bundle)
+            }
+            Button(role: .cancel) {} label: {
+                Text("Cancel", bundle: #bundle)
+            }
+        } message: {
+            Text(message, bundle: #bundle)
+        }
+    }
+
     func settingsControlAnchor(
         _ id: SettingsControlID,
         state: SettingsViewState

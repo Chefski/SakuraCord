@@ -6,6 +6,7 @@ struct AppearanceSettingsPage: View {
 
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var value = AppearanceSettingsSnapshot.defaults
+    @State private var showsResetConfirmation = false
 
     private let themeStore = SakuraCordThemeStore.shared
 
@@ -77,7 +78,9 @@ struct AppearanceSettingsPage: View {
                 )
                     .settingsControlAnchor(.themeDesigner, state: state)
 
-                Button("Reset to Defaults", action: resetTheme)
+                Button("Reset to Defaults…", role: .destructive) {
+                    showsResetConfirmation = true
+                }
                     .disabled(isUsingDefaults)
                     .settingsControlAnchor(.resetTheme, state: state)
             } header: {
@@ -85,6 +88,13 @@ struct AppearanceSettingsPage: View {
             }
 
         }
+        .settingsResetConfirmation(
+            "Reset Theme?",
+            isPresented: $showsResetConfirmation,
+            resetTitle: "Reset Theme",
+            message: "This resets your theme, appearance, and window opacity to their defaults. Are you sure you want to do this?",
+            reset: resetTheme
+        )
         .task {
             value = model.appearanceSettings
         }

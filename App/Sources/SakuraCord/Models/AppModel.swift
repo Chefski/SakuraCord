@@ -908,9 +908,11 @@ final class AppModel {
             isLocked: thread.isLocked
         )
     }
+    var conversationNavigationHistory = ConversationNavigationHistory()
     var selectedChannelID: ChannelID? {
         didSet {
             guard selectedChannelID != oldValue else { return }
+            recordConversationNavigation()
             timelineSpoilerRevealStore.reset()
             if let previousChannel = selectedChannel,
                let guildID = previousChannel.guildID

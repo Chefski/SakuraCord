@@ -4,11 +4,6 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct AccessibilitySettingsPage: View {
-    private enum Confirmation: String, Identifiable {
-        case reset
-        var id: String { rawValue }
-    }
-
     let model: AppModel
     let state: SettingsViewState
 
@@ -19,7 +14,7 @@ struct AccessibilitySettingsPage: View {
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @State private var value = AccessibilitySettingsSnapshot.defaults
     @State private var systemRevision = 0
-    @State private var confirmation: Confirmation?
+    @State private var showsResetConfirmation = false
     @State private var exportedPreferences: SettingsPreferenceExportFile?
     @State private var isExporting = false
     @State private var operationMessage: String?
@@ -44,20 +39,13 @@ struct AccessibilitySettingsPage: View {
         ) { _ in
             systemRevision &+= 1
         }
-        .confirmationDialog(
+        .settingsResetConfirmation(
             "Reset Accessibility Settings?",
-            isPresented: Binding(
-                get: { confirmation != nil },
-                set: { if !$0 { confirmation = nil } }
-            )
-        ) {
-            Button("Reset Accessibility Settings", role: .destructive) {
-                resetPreferences()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This restores SakuraCord’s local accessibility preferences. macOS accessibility settings are not changed.")
-        }
+            isPresented: $showsResetConfirmation,
+            resetTitle: "Reset Accessibility Settings",
+            message: "This restores SakuraCord’s local accessibility preferences. macOS accessibility settings are not changed.",
+            reset: resetPreferences
+        )
         .fileExporter(
             isPresented: $isExporting,
             item: exportedPreferences,
@@ -209,7 +197,7 @@ struct AccessibilitySettingsPage: View {
                 .settingsControlAnchor(.accessibilityExport, state: state)
 
                 Button("Reset to Defaults…", role: .destructive) {
-                    confirmation = .reset
+                    showsResetConfirmation = true
                 }
                 .settingsControlAnchor(.accessibilityReset, state: state)
             }
@@ -225,7 +213,6 @@ struct AccessibilitySettingsPage: View {
     }
 
     private func resetPreferences() {
-        confirmation = nil
         SettingsPreferenceStore.shared.reset(scope: .appWide, page: .accessibility)
         value = AccessibilitySettingsStore.shared.load()
         model.applyAccessibilitySettings(value, persists: false)

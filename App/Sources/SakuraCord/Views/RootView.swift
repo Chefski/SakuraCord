@@ -200,7 +200,7 @@ private struct ChatRootView: View {
                     unreadCategoryIDs: selectedGuild.map {
                         model.unreadCategoryIDsByGuild[$0.id] ?? []
                     } ?? [],
-                    selection: $model.selectedChannelID,
+                    selection: $model.channelSidebarSelection,
                     currentUser: model.snapshot?.currentUser,
                     connectionState: model.connectionState,
                     currentStatus: model.currentStatus,

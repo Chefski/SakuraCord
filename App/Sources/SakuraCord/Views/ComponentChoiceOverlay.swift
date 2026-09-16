@@ -188,7 +188,7 @@ final class ComponentChoiceOverlayController {
         ) { [weak self] event in
             guard let self, let anchorView, event.window === anchorView.window, WindowModalCoordinator.allowsInput(for: anchorView) else { return event }
             if event.type == .keyDown {
-                guard event.keyCode == 53 else { return event }
+                guard KeyboardShortcutPolicy.isPlainEscape(keyCode: event.keyCode, modifierFlags: event.modifierFlags) else { return event }
                 close()
                 return nil
             }

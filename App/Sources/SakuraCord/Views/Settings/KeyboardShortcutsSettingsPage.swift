@@ -1,5 +1,4 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct KeyboardShortcutsSettingsPage: View {
     private struct Conflict: Identifiable {
@@ -9,33 +8,24 @@ struct KeyboardShortcutsSettingsPage: View {
         var id: String { "\(action.rawValue):\(existingAction.rawValue)" }
     }
 
-    private enum ResetRequest: Identifiable {
-        case group(KeyboardShortcutGroup)
-        case all
-
-        var id: String {
-            switch self {
-            case let .group(group): "group:\(group.rawValue)"
-            case .all: "all"
-            }
-        }
-    }
-
     let state: SettingsViewState
     private let shortcuts = KeyboardShortcutSettingsStore.shared
-    @State private var messages: [KeyboardShortcutAction: String] = [:]
+    @State private var validationError: String?
     @State private var conflict: Conflict?
-    @State private var resetRequest: ResetRequest?
-    @State private var exportedPreferences: SettingsPreferenceExportFile?
-    @State private var isExporting = false
-    @State private var operationMessage: String?
+    @State private var showsResetConfirmation = false
+
+    private var isUsingDefaults: Bool {
+        KeyboardShortcutAction.allCases.allSatisfy {
+            shortcuts.shortcut(for: $0) == $0.defaultShortcut
+        }
+    }
 
     var body: some View {
         SettingsPageForm(page: .keyboardShortcuts, state: state) {
             ForEach(KeyboardShortcutGroup.allCases) { group in
                 shortcutSection(group)
             }
-            localDataSection
+            resetSection
         }
         .alert(
             "Shortcut Already Used",
@@ -54,36 +44,24 @@ struct KeyboardShortcutsSettingsPage: View {
         } message: { conflict in
             Text("\(conflict.shortcut.displayName) is assigned to \(conflict.existingAction.localizedTitle). Replacing it will clear that action and assign it to \(conflict.action.localizedTitle).")
         }
-        .confirmationDialog(
-            resetTitle,
+        .alert(
+            "Shortcut Unavailable",
             isPresented: Binding(
-                get: { resetRequest != nil },
-                set: { if !$0 { resetRequest = nil } }
+                get: { validationError != nil },
+                set: { if !$0 { validationError = nil } }
             )
         ) {
-            Button(resetButtonTitle, role: .destructive) {
-                performReset()
-            }
-            Button("Cancel", role: .cancel) {}
+            Button("OK", role: .cancel) {}
         } message: {
-            Text("This restores the selected app-wide shortcuts. macOS keyboard settings are not changed.")
+            Text(validationError ?? "")
         }
-        .fileExporter(
-            isPresented: $isExporting,
-            item: exportedPreferences,
-            contentTypes: [.json],
-            defaultFilename: "SakuraCord-Keyboard-Shortcuts-v1"
-        ) { result in
-            switch result {
-            case .success:
-                operationMessage = "Exported Keyboard Shortcuts."
-            case let .failure(error):
-                operationMessage = "Export failed: \(error.localizedDescription)"
-            }
-            exportedPreferences = nil
-        } onCancellation: {
-            exportedPreferences = nil
-        }
+        .settingsResetConfirmation(
+            "Reset All Keyboard Shortcuts?",
+            isPresented: $showsResetConfirmation,
+            resetTitle: "Reset All Shortcuts",
+            message: "This resets all of SakuraCord's keyboard shortcuts. Are you sure you want to do this?",
+            reset: shortcuts.resetAll
+        )
     }
 
     private func shortcutSection(_ group: KeyboardShortcutGroup) -> some View {
@@ -92,42 +70,26 @@ struct KeyboardShortcutsSettingsPage: View {
                 shortcutRow(action)
             }
         } header: {
-            HStack {
-                Text(group.title)
-                Spacer()
-                Button("Reset Section…") {
-                    resetRequest = .group(group)
-                }
-                .buttonStyle(.link)
-                .controlSize(.small)
-                .accessibilityLabel("Reset \(String(localized: group.title)) shortcuts…")
-            }
-        } footer: {
-            VStack(alignment: .leading, spacing: 4) {
-                if group == .messaging {
-                    Text("Send Message and Insert Newline apply only inside SakuraCord's composer. Return behavior remains controlled by Chat settings.")
-                } else if group == .voiceVideo {
-                    Text("Voice and video commands are unavailable until a call is active.")
-                }
-            }
+            Text(group.title)
         }
     }
 
     private func shortcutRow(_ action: KeyboardShortcutAction) -> some View {
-        LabeledContent {
+        HStack(alignment: .center, spacing: 16) {
+            Text(action.title)
+            Spacer(minLength: 0)
             HStack(spacing: 8) {
                 KeyboardShortcutRecorder(
                     actionTitle: action.localizedTitle,
                     shortcut: shortcuts.shortcut(for: action),
                     capture: { assign($0, to: action) },
-                    clear: { clear(action) },
+                    clear: { shortcuts.set(nil, for: action) },
                     cancel: {}
                 )
-                .frame(width: 142)
+                .frame(width: 142, height: 32)
 
                 Button {
-                    shortcuts.reset(action)
-                    messages[action] = nil
+                    assign(action.defaultShortcut, to: action)
                 } label: {
                     Image(systemName: "arrow.counterclockwise")
                 }
@@ -135,52 +97,17 @@ struct KeyboardShortcutsSettingsPage: View {
                 .help("Reset \(action.localizedTitle)")
                 .accessibilityLabel("Reset \(action.localizedTitle)")
             }
-        } label: {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(action.title)
-                Text(rowDetail(action))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                if let message = messages[action] {
-                    Text(message)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .accessibilityLabel("Shortcut error: \(message)")
-                }
-            }
         }
         .settingsControlAnchor(action.controlID, state: state)
     }
 
-    private var localDataSection: some View {
+    private var resetSection: some View {
         Section {
-            HStack {
-                Button("Export Shortcuts…") {
-                    exportedPreferences = SettingsPreferenceExportFile(
-                        export: SettingsPreferenceStore.shared.export(
-                            scope: .appWide,
-                            page: .keyboardShortcuts
-                        )
-                    )
-                    isExporting = true
-                }
-                .settingsControlAnchor(.shortcutExport, state: state)
-
-                Button("Reset All…", role: .destructive) {
-                    resetRequest = .all
-                }
-                .settingsControlAnchor(.shortcutReset, state: state)
+            Button("Reset All…", role: .destructive) {
+                showsResetConfirmation = true
             }
-            if let operationMessage {
-                Text(operationMessage)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .accessibilityLabel(operationMessage)
-            }
-        } header: {
-            Text("Local Data", bundle: #bundle)
-        } footer: {
-            Text("Shortcuts work only while SakuraCord is active. Global system-wide shortcuts are not registered.")
+            .disabled(isUsingDefaults)
+            .settingsControlAnchor(.shortcutReset, state: state)
         }
     }
 
@@ -190,81 +117,29 @@ struct KeyboardShortcutsSettingsPage: View {
         KeyboardShortcutAction.allCases.filter { $0.group == group }
     }
 
-    private func rowDetail(_ action: KeyboardShortcutAction) -> String {
-        if action.registersMenuShortcut {
-            return shortcuts.shortcut(for: action) == nil
-                ? "Unassigned; its menu command remains available."
-                : "The corresponding menu command updates immediately."
-        }
-        return "Composer only; not registered as an app-wide menu equivalent."
-    }
-
     private func assign(
-        _ shortcut: KeyboardShortcutChord,
+        _ shortcut: KeyboardShortcutChord?,
         to action: KeyboardShortcutAction
     ) {
-        switch KeyboardShortcutValidator.validate(
-            shortcut,
-            for: action,
-            shortcuts: shortcuts.shortcuts
-        ) {
+        switch shortcuts.set(shortcut, for: action) {
         case .valid:
-            shortcuts.set(shortcut, for: action)
-            messages[action] = nil
+            break
         case let .conflict(existingAction):
+            guard let shortcut else { return }
             conflict = Conflict(
                 action: action,
                 existingAction: existingAction,
                 shortcut: shortcut
             )
         case let .invalid(message):
-            messages[action] = message
+            validationError = message
         }
-    }
-
-    private func clear(_ action: KeyboardShortcutAction) {
-        shortcuts.set(nil, for: action)
-        messages[action] = nil
     }
 
     private func replaceConflict(_ conflict: Conflict) {
         shortcuts.set(nil, for: conflict.existingAction)
-        shortcuts.set(conflict.shortcut, for: conflict.action)
-        messages[conflict.existingAction] = nil
-        messages[conflict.action] = nil
         self.conflict = nil
+        assign(conflict.shortcut, to: conflict.action)
     }
 
-    private var resetTitle: String {
-        switch resetRequest {
-        case let .group(group): "Reset \(String(localized: group.title)) Shortcuts?"
-        case .all: "Reset All Keyboard Shortcuts?"
-        case nil: "Reset Keyboard Shortcuts?"
-        }
-    }
-
-    private var resetButtonTitle: String {
-        switch resetRequest {
-        case let .group(group): "Reset \(String(localized: group.title))"
-        case .all: "Reset All Shortcuts"
-        case nil: "Reset"
-        }
-    }
-
-    private func performReset() {
-        let request = resetRequest
-        resetRequest = nil
-        switch request {
-        case let .group(group):
-            shortcuts.reset(group)
-            for action in actions(in: group) { messages[action] = nil }
-            operationMessage = "Restored \(String(localized: group.title)) shortcuts."
-        case .all:
-            shortcuts.resetAll()
-            messages = [:]
-            operationMessage = "Restored all keyboard shortcuts."
-        case nil:
-            break
-        }
-    }
 }

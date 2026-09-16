@@ -379,7 +379,6 @@ nonisolated extension SettingsControlID {
     static let accessibilityAnnounceNewMessages = Self(rawValue: "accessibility.announce-new-messages")
     static let accessibilityExport = Self(rawValue: "accessibility.export")
     static let accessibilityReset = Self(rawValue: "accessibility.reset")
-    static let shortcutExport = Self(rawValue: "keyboard-shortcuts.export")
     static let shortcutReset = Self(rawValue: "keyboard-shortcuts.reset")
     static let privacyTypingIndicators = Self(rawValue: "privacy.typing-indicators")
     static let privacyReadAcknowledgements = Self(rawValue: "privacy.read-acknowledgements")

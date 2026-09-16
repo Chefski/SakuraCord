@@ -2,19 +2,13 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ChatSettingsPage: View {
-    private enum Confirmation: String, Identifiable {
-        case reset
-
-        var id: String { rawValue }
-    }
-
     let model: AppModel
     let state: SettingsViewState
 
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
 
     @State private var value = ChatSettingsSnapshot.defaults
-    @State private var confirmation: Confirmation?
+    @State private var showsResetConfirmation = false
     @State private var exportedPreferences: SettingsPreferenceExportFile?
     @State private var isExporting = false
     @State private var operationMessage: String?
@@ -33,22 +27,13 @@ struct ChatSettingsPage: View {
         .onChange(of: value) { _, newValue in
             model.applyChatSettings(newValue)
         }
-        .confirmationDialog(
-            confirmationTitle,
-            isPresented: Binding(
-                get: { confirmation != nil },
-                set: { if !$0 { confirmation = nil } }
-            )
-        ) {
-            if let confirmation {
-                Button(confirmationButtonTitle, role: .destructive) {
-                    perform(confirmation)
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text(confirmationMessage)
-        }
+        .settingsResetConfirmation(
+            "Reset Chat Settings?",
+            isPresented: $showsResetConfirmation,
+            resetTitle: "Reset Chat Settings",
+            message: "This restores registered Chat preferences. Drafts, credentials, local emoji history, and Discord data are unchanged.",
+            reset: resetPreferences
+        )
         .fileExporter(
             isPresented: $isExporting,
             item: exportedPreferences,
@@ -267,7 +252,7 @@ struct ChatSettingsPage: View {
                 Button("Export Chat Settings…", action: exportPreferences)
                     .settingsControlAnchor(.chatExport, state: state)
                 Button("Reset Chat Settings…", role: .destructive) {
-                    confirmation = .reset
+                    showsResetConfirmation = true
                 }
                 .settingsControlAnchor(.chatReset, state: state)
             }
@@ -296,38 +281,11 @@ struct ChatSettingsPage: View {
         return "Local fallback; Discord settings are not loaded"
     }
 
-    private var confirmationTitle: String {
-        switch confirmation {
-        case .reset: "Reset Chat Settings?"
-        case nil: "Confirm Chat Action"
-        }
-    }
-
-    private var confirmationButtonTitle: String {
-        switch confirmation {
-        case .reset: "Reset Chat Settings"
-        case nil: "Confirm"
-        }
-    }
-
-    private var confirmationMessage: String {
-        switch confirmation {
-        case .reset:
-            "This restores registered Chat preferences. Drafts, credentials, local emoji history, and Discord data are unchanged."
-        case nil:
-            "No action has been selected."
-        }
-    }
-
-    private func perform(_ confirmation: Confirmation) {
-        self.confirmation = nil
-        switch confirmation {
-        case .reset:
-            SettingsPreferenceStore.shared.reset(scope: .appWide, page: .chat)
-            value = ChatSettingsStore.shared.load()
-            model.applyChatSettings(value, persists: false)
-            operationMessage = "Restored Chat settings to their defaults."
-        }
+    private func resetPreferences() {
+        SettingsPreferenceStore.shared.reset(scope: .appWide, page: .chat)
+        value = ChatSettingsStore.shared.load()
+        model.applyChatSettings(value, persists: false)
+        operationMessage = "Restored Chat settings to their defaults."
     }
 
     private func exportPreferences() {

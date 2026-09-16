@@ -89,7 +89,7 @@ final class PopoverEscapeKeyCoordinator {
     }
 
     private func handle(_ event: NSEvent) -> NSEvent? {
-        guard event.keyCode == 53,
+        guard KeyboardShortcutPolicy.isPlainEscape(keyCode: event.keyCode, modifierFlags: event.modifierFlags),
               let eventWindow = event.window ?? NSApp.keyWindow
         else { return event }
 

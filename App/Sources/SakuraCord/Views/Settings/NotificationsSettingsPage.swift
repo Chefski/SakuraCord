@@ -3,15 +3,11 @@ import SwiftUI
 import UserNotifications
 
 struct NotificationsSettingsPage: View {
-    private enum Confirmation {
-        case reset
-    }
-
     let model: AppModel
     let state: SettingsViewState
 
     @State private var authorizationStatus: UNAuthorizationStatus?
-    @State private var confirmation: Confirmation?
+    @State private var showsResetConfirmation = false
     @State private var exportedPreferences: SettingsPreferenceExportFile?
     @State private var isExporting = false
     @State private var operationMessage: String?
@@ -32,7 +28,7 @@ struct NotificationsSettingsPage: View {
                 Button("Export Notification Settings…") { exportPreferences() }
                     .settingsControlAnchor(.notificationExport, state: state)
                 Button("Reset Notification Settings…", role: .destructive) {
-                    confirmation = .reset
+                    showsResetConfirmation = true
                 }
                 .settingsControlAnchor(.notificationReset, state: state)
             } header: {
@@ -56,19 +52,13 @@ struct NotificationsSettingsPage: View {
                 operationMessage = error.localizedDescription
             }
         }
-        .confirmationDialog(
+        .settingsResetConfirmation(
             "Reset Notification Settings?",
-            isPresented: Binding(
-                get: { confirmation != nil },
-                set: { if !$0 { confirmation = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button("Reset Notification Settings", role: .destructive) { resetPreferences() }
-            Button("Cancel", role: .cancel) { confirmation = nil }
-        } message: {
-            Text("This restores SakuraCord’s local notification preferences. macOS authorization and Discord’s server and channel settings are unchanged.")
-        }
+            isPresented: $showsResetConfirmation,
+            resetTitle: "Reset Notification Settings",
+            message: "This restores SakuraCord’s local notification preferences. macOS authorization and Discord’s server and channel settings are unchanged.",
+            reset: resetPreferences
+        )
         .alert(
             "Notifications",
             isPresented: Binding(
@@ -116,7 +106,6 @@ struct NotificationsSettingsPage: View {
     }
 
     private func resetPreferences() {
-        confirmation = nil
         SettingsPreferenceStore.shared.reset(scope: .appWide, page: .notifications)
         model.notificationPreferences.reload()
         model.refreshDockBadge()

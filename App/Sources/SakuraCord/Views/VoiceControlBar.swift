@@ -26,6 +26,10 @@ struct VoiceControlBar<SettingsControl: View>: View {
         .padding(.top, 9)
         .padding(.bottom, 10)
         .task { await model.refreshMediaDevices() }
+        .onReceive(NotificationCenter.default.publisher(for: .sakuracordToggleSoundboard)) { _ in
+            guard model.selectedChannelID != model.activeVoiceChannel?.id else { return }
+            showSoundboard.toggle()
+        }
     }
 
     private var connectionRow: some View {
@@ -516,6 +520,9 @@ struct VoiceCallControlDock: View {
             }
         }
         .frame(maxWidth: .infinity)
+        .onReceive(NotificationCenter.default.publisher(for: .sakuracordToggleSoundboard)) { _ in
+            showSoundboard.toggle()
+        }
         .onChange(of: model.isVoiceDeafened) { _, isDeafened in
             if isDeafened { showSoundboard = false }
         }

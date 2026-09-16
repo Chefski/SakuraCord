@@ -37,7 +37,15 @@ struct SakuraCordCommands: Commands {
             ShortcutCommandButton(action: .nextConversation, model: model)
             ShortcutCommandButton(action: .previousUnread, model: model)
             ShortcutCommandButton(action: .nextUnread, model: model)
+            ShortcutCommandButton(action: .previousMention, model: model)
+            ShortcutCommandButton(action: .nextMention, model: model)
+            ShortcutCommandButton(action: .previousServer, model: model)
+            ShortcutCommandButton(action: .nextServer, model: model)
             ShortcutCommandButton(action: .currentCall, model: model)
+            ShortcutCommandButton(action: .navigateBack, model: model)
+            ShortcutCommandButton(action: .navigateForward, model: model)
+            ShortcutCommandButton(action: .previousTextChannel, model: model)
+            ShortcutCommandButton(action: .toggleDirectMessages, model: model)
 
             Divider()
 
@@ -61,10 +69,8 @@ struct SakuraCordCommands: Commands {
         }
 
         CommandMenu("Message") {
-            ShortcutCommandButton(action: .focusComposer, model: model)
-            ShortcutCommandButton(action: .editLastMessage, model: model)
-            ShortcutCommandButton(action: .reply, model: model)
             ShortcutCommandButton(action: .upload, model: model)
+            ShortcutCommandButton(action: .copyChannelLink, model: model)
 
             Divider()
 
@@ -72,10 +78,19 @@ struct SakuraCordCommands: Commands {
                 action: .searchCurrentConversation,
                 model: model
             )
-            ShortcutCommandButton(action: .markRead, model: model)
+            ShortcutCommandButton(action: .markServerRead, model: model)
+            Divider()
+            ShortcutCommandButton(action: .togglePins, model: model)
+            ShortcutCommandButton(action: .toggleEmojiPicker, model: model)
+            ShortcutCommandButton(action: .toggleGIFPicker, model: model)
+            ShortcutCommandButton(action: .toggleStickerPicker, model: model)
         }
 
         CommandMenu("Voice") {
+            ShortcutCommandButton(action: .startCall, model: model)
+            ShortcutCommandButton(action: .answerCall, model: model)
+            ShortcutCommandButton(action: .toggleSoundboard, model: model)
+            Divider()
             ShortcutCommandButton(action: .toggleMute, model: model)
             ShortcutCommandButton(action: .toggleDeafen, model: model)
             ShortcutCommandButton(action: .toggleCamera, model: model)
@@ -99,9 +114,7 @@ private struct ShortcutCommandButton: View {
         }
         .disabled(!model.keyboardShortcutActionIsEnabled(action))
         .keyboardShortcut(
-            action.registersMenuShortcut
-                ? shortcuts.shortcut(for: action)?.swiftUIShortcut
-                : nil
+            shortcuts.shortcut(for: action)?.swiftUIShortcut
         )
     }
 }
