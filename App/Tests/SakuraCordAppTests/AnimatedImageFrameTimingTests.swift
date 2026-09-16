@@ -784,6 +784,32 @@ func `animated image canvas pauses or resets without discarding frames`()
     #expect(canvas.displayedImage === decoded)
 }
 
+@Test func `bounded frames preserve source loops effect gaps and completion`() {
+    func frame(_ elapsed: Double, loops: Bool = true, active: Double? = nil, delay: Double = 0, count: Int? = nil) -> Int? {
+        AnimatedImageFrameSchedule.frameIndex(
+            elapsed: elapsed, durations: [0.25, 0.5, 0.25],
+            playCount: count, isLooping: loops, activeDuration: active, loopDelay: delay
+        )
+    }
+    #expect(frame(-0.1) == nil)
+    #expect(frame(0) == 0)
+    #expect(frame(0.25) == 1)
+    #expect(frame(0.75) == 2)
+    #expect(frame(1) == 0)
+    #expect(frame(1, loops: false) == 0)
+    #expect(frame(1.25, active: 4, count: 1) == 2)
+    #expect(frame(1.25, active: 4, count: 2) == 1)
+    #expect(frame(2.25, active: 4, count: 2) == 2)
+    #expect(frame(1.25, active: 2, delay: 1) == 1)
+    #expect(frame(2, active: 2, delay: 1) == nil)
+    #expect(frame(2.75, active: 2, delay: 1) == nil)
+    #expect(frame(3, active: 2, delay: 1) == 0)
+    #expect(frame(3.25, active: 2, delay: 1, count: 1) == 1)
+    #expect(frame(1.25, loops: false, active: 2, count: 1) == 2)
+    #expect(frame(2, loops: false, active: 2, count: 1) == nil)
+    #expect(frame(1, loops: false, active: 0) == nil)
+}
+
 @Test func `animated media only plays while visible and motion is enabled`() {
     #expect(
         AnimatedMediaPlaybackPolicy.shouldPlay(

@@ -103,7 +103,7 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     // Preserve the raw Connection Open channel sequence for Forward search.
     var cachedForwardChannelStoreOrder: [ChannelID] = []
     var cachedPrivateRecipientIDsByChannelID: [ChannelID: [String]] = [:]
-    var cachedGuildChannelDTOs: [GuildID: [String: ChannelDTO]] = [:]
+    var cachedGuildChannelDTOs: [GuildID: ChannelDTOStore] = [:]
     var guildChannelTasks: [GuildID: Task<[Channel], Error>] = [:]
     var privateChannelTasks: [UserID: Task<Channel, Error>] = [:]
     var messageSendTasks: [String: Task<Message, Error>] = [:]

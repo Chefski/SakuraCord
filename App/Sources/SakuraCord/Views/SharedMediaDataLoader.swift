@@ -232,6 +232,22 @@ actor SharedMediaDataLoader {
         try await remoteDiskCache?.status()
     }
 
+    // Prepared public-media representations share the same quota, atomic file
+    // operations, and Clear Cache lifecycle as their encoded source assets.
+    func cachedPreparedMedia(for key: URL) async -> Data? {
+        try? await remoteDiskCache?.data(for: key)
+    }
+
+    func storePreparedMedia(_ data: Data, for key: URL) async -> Data? {
+        guard let remoteDiskCache else { return nil }
+        do {
+            try await remoteDiskCache.insert(data, for: key)
+            return try await remoteDiskCache.data(for: key)
+        } catch {
+            return nil
+        }
+    }
+
     func setDiskCacheLimit(_ maximumBytes: Int64) async throws {
         try await remoteDiskCache?.setMaximumBytes(maximumBytes)
     }

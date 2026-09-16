@@ -70,7 +70,7 @@ extension DiscordRESTProvider {
                     channels.compactMap { ChannelID($0.id) }
                 )
                 persistQuickSwitcherChannelStoreCache()
-                cachedGuildChannelDTOs[guildID] = Dictionary(
+                cachedGuildChannelDTOs[guildID] = ChannelDTOStore(
                     channels.map { ($0.id, $0) },
                     uniquingKeysWith: { _, newer in newer }
                 )

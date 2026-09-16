@@ -32,7 +32,9 @@ final class NativeMemberListCanvasView: NSView, WindowModalInputParticipant {
 
     nonisolated enum Item: Equatable, Sendable {
         case header(Header)
-        case member(Member, gatewayIndex: Int?)
+        // A large guild has many unloaded rows. Keep their storage independent
+        // of the full Member value while preserving the enum's value semantics.
+        indirect case member(Member, gatewayIndex: Int?)
         case placeholder(gatewayIndex: Int)
 
         var id: ItemID {
@@ -179,7 +181,7 @@ final class NativeMemberListCanvasView: NSView, WindowModalInputParticipant {
     var items: [Item] = []
     var presentedSections: [MemberSection] = []
     var itemIndexesByID: [ItemID: Int] = [:]
-    var customEmojiURLsByID: [String: URL] = [:]
+    var customEmojiURLsByID: CustomEmojiImageURLs = [:]
     var origins: [CGFloat] = []
     var contentHeight: CGFloat = 1
     var preparedText: [ItemID: PreparedText] = [:]

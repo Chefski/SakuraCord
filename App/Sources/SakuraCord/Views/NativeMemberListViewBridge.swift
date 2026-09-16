@@ -6,7 +6,7 @@ import SwiftUI
 
 struct NativeMemberListView: NSViewRepresentable {
     let sections: [MemberSection]
-    let customEmojiURLsByID: [String: URL]
+    let customEmojiURLsByID: CustomEmojiImageURLs
     let profilePresentation: ProfilePresentationState?
     let isProfilePresented: Bool
     let selectMember: (Member) -> Void

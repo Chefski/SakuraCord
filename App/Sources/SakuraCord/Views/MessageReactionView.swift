@@ -132,7 +132,7 @@ nonisolated enum MessageReactionPresentation {
         return NativeEmojiCatalogMetadata.shortcode(for: reference.name) ?? reference.name
     }
 
-    static func emojiURL(for reaction: Reaction, customEmojiURLsByID: [String: URL]) -> URL? {
+    static func emojiURL(for reaction: Reaction, customEmojiURLsByID: CustomEmojiImageURLs) -> URL? {
         let reference = reaction.emojiReference
         guard let id = reference.id else { return nil }
         return customEmojiURLsByID[id] ?? reference.imageURL(size: 64)
@@ -187,14 +187,14 @@ nonisolated enum MessageReactionPresentation {
 
 struct MessageReactionStrip<AddReactionControl: View>: View {
     let reactions: [Reaction]
-    let customEmojiURLsByID: [String: URL]
+    let customEmojiURLsByID: CustomEmojiImageURLs
     let react: (String) -> Void
     let loadReactors: (Reaction) async -> Void
     let addReactionControl: AddReactionControl
 
     init(
         reactions: [Reaction],
-        customEmojiURLsByID: [String: URL],
+        customEmojiURLsByID: CustomEmojiImageURLs,
         react: @escaping (String) -> Void,
         loadReactors: @escaping (Reaction) async -> Void,
         @ViewBuilder addReactionControl: () -> AddReactionControl

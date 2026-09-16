@@ -234,12 +234,40 @@ public struct Channel: Identifiable, Codable, Hashable, Sendable {
 }
 
 public struct ForumPost: Identifiable, Codable, Hashable, Sendable {
+    private final class StoredMessage: Codable, Hashable, Sendable {
+        let value: Message
+
+        init(_ value: Message) { self.value = value }
+        init(from decoder: any Decoder) throws { value = try Message(from: decoder) }
+        func encode(to encoder: any Encoder) throws { try value.encode(to: encoder) }
+        static func == (lhs: StoredMessage, rhs: StoredMessage) -> Bool { lhs.value == rhs.value }
+        func hash(into hasher: inout Hasher) { value.hash(into: &hasher) }
+    }
+
     public var id: ChannelID { thread.id }
     public var thread: MessageThreadSummary
     public var owner: User?
-    public var firstMessage: Message?
-    public var mostRecentMessage: Message?
+    private var storedFirstMessage: StoredMessage?
+    private var storedMostRecentMessage: StoredMessage?
     public var isUnread: Bool
+
+    // Most bootstrap thread entries have no messages. Immutable boxes keep
+    // absent messages compact and preserve independent mutation after a copy.
+    public var firstMessage: Message? {
+        get { storedFirstMessage?.value }
+        set { storedFirstMessage = newValue.map(StoredMessage.init) }
+    }
+
+    public var mostRecentMessage: Message? {
+        get { storedMostRecentMessage?.value }
+        set { storedMostRecentMessage = newValue.map(StoredMessage.init) }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case thread, owner, isUnread
+        case storedFirstMessage = "firstMessage"
+        case storedMostRecentMessage = "mostRecentMessage"
+    }
 
     public init(
         thread: MessageThreadSummary,
@@ -250,8 +278,8 @@ public struct ForumPost: Identifiable, Codable, Hashable, Sendable {
     ) {
         self.thread = thread
         self.owner = owner
-        self.firstMessage = firstMessage
-        self.mostRecentMessage = mostRecentMessage
+        storedFirstMessage = firstMessage.map(StoredMessage.init)
+        storedMostRecentMessage = mostRecentMessage.map(StoredMessage.init)
         self.isUnread = isUnread
     }
 

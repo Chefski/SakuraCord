@@ -944,6 +944,14 @@ import Testing
     let imageURLs = DiscordCustomEmojiCatalog.imageURLsByID(from: [first, local])
     #expect(imageURLs["100"] == first.imageURL)
     #expect(imageURLs["300"] == localURL)
+    #expect(imageURLs["missing"] == nil)
+    var animated = first
+    animated.isAnimated = true
+    let changedURLs = DiscordCustomEmojiCatalog.imageURLsByID(from: [first, animated, local])
+    #expect(changedURLs["100"] == animated.imageURL)
+    #expect(imageURLs["100"] == first.imageURL)
+    #expect(changedURLs.differs(from: imageURLs, cancellationCheck: { false }) == true)
+    #expect(changedURLs.differs(from: changedURLs, cancellationCheck: { true }) == nil)
 
     let prepared = try #require(DiscordCustomEmojiCatalog.prepare(
         emojisByGuild: [

@@ -453,13 +453,26 @@ nonisolated final class DecodedAnimatedImage: @unchecked Sendable {
     )
     private static let reportsPerformance =
         ProcessInfo.processInfo.arguments.contains {
-            $0.contains("chat-performance")
+            $0.contains("chat-performance") || $0 == "--debug-authenticated-gesture-scroll-performance"
         }
 
     let frames: [CGImage]
     let frameDurations: [TimeInterval]
     let playCount: Int?
     let estimatedByteCount: Int
+    let storedByteCount: Int
+    let compressedFrameData: [Data?]
+
+    init(frames: [CGImage], frameDurations: [TimeInterval], playCount: Int?, compressedFrameData: [Data?]) {
+        self.frames = frames
+        self.frameDurations = frameDurations
+        self.playCount = playCount
+        self.compressedFrameData = compressedFrameData
+        estimatedByteCount = frames.reduce(0) { $0 + $1.bytesPerRow * $1.height }
+        storedByteCount = zip(frames, compressedFrameData).reduce(0) {
+            $0 + ($1.1?.count ?? $1.0.bytesPerRow * $1.0.height)
+        }
+    }
 
     nonisolated init(
         data: Data,
@@ -505,6 +518,8 @@ nonisolated final class DecodedAnimatedImage: @unchecked Sendable {
         var frames: [CGImage] = []
         var frameDurations: [TimeInterval] = []
         var estimatedByteCount = 0
+        var storedByteCount = 0
+        var compressedFrameData: [Data?] = []
         frames.reserveCapacity(selections.count)
         frameDurations.reserveCapacity(selections.count)
         let thumbnailOptions: CFDictionary? = maximumPixelDimension.map { maximumPixelDimension in
@@ -543,27 +558,46 @@ nonisolated final class DecodedAnimatedImage: @unchecked Sendable {
             let prepared = frames.isEmpty
                 ? AnimatedImageFramePreparation.prepare(image)
                 : image
-            frames.append(prepared)
+            let storage = frames.isEmpty
+                ? CompressedAnimatedFrame.Result(image: prepared, storedByteCount: prepared.bytesPerRow * prepared.height)
+                : CompressedAnimatedFrame.store(prepared)
+            frames.append(storage.image)
             frameDurations.append(selection.duration)
             estimatedByteCount += prepared.bytesPerRow * prepared.height
+            storedByteCount += storage.storedByteCount
+            compressedFrameData.append(storage.compressedData)
+            if storage.image !== prepared {
+                CGImageSourceRemoveCacheAtIndex(source, selection.index)
+            }
         }
         guard !frames.isEmpty else { throw CocoaError(.fileReadCorruptFile) }
         self.frames = frames
         self.frameDurations = frameDurations
         self.estimatedByteCount = estimatedByteCount
-        if Self.reportsPerformance {
-            let milliseconds =
-                (ProcessInfo.processInfo.systemUptime - decodeStart) * 1_000
-            Self.performanceLogger.notice(
-                """
-                Animated decode: \(milliseconds, format: .fixed(precision: 2), privacy: .public) ms;
-                pixel max \(maximumPixelDimension ?? 0, privacy: .public);
-                source \(data.count, privacy: .public) bytes;
-                frames \(frameCount, privacy: .public) -> \(frames.count, privacy: .public);
-                decoded \(estimatedByteCount, privacy: .public) bytes
-                """
-            )
-        }
+        self.storedByteCount = storedByteCount
+        self.compressedFrameData = compressedFrameData
+        reportPerformance(
+            startedAt: decodeStart, sourceBytes: data.count,
+            sourceFrameCount: frameCount, maximumPixelDimension: maximumPixelDimension
+        )
+    }
+
+    private func reportPerformance(
+        startedAt: TimeInterval, sourceBytes: Int,
+        sourceFrameCount: Int, maximumPixelDimension: Int?
+    ) {
+        guard Self.reportsPerformance else { return }
+        let milliseconds = (ProcessInfo.processInfo.systemUptime - startedAt) * 1_000
+        Self.performanceLogger.notice(
+            """
+            Animated decode: \(milliseconds, format: .fixed(precision: 2), privacy: .public) ms;
+            pixel max \(maximumPixelDimension ?? 0, privacy: .public);
+            source \(sourceBytes, privacy: .public) bytes;
+            frames \(sourceFrameCount, privacy: .public) -> \(self.frames.count, privacy: .public);
+            decoded \(self.estimatedByteCount, privacy: .public) bytes;
+            stored \(self.storedByteCount, privacy: .public) bytes
+            """
+        )
     }
 
     private nonisolated static func checkInterruption(
@@ -668,6 +702,7 @@ enum AnimatedImageFramePreparation {
 
 actor SharedAnimatedImageLoader {
     static let shared = SharedAnimatedImageLoader()
+    private static let cacheLogger = Logger(subsystem: "dev.sakuracord.SakuraCord", category: "AnimatedMediaPerformance")
 
     private struct InFlightRequest {
         let id: UUID
@@ -715,11 +750,35 @@ actor SharedAnimatedImageLoader {
                     priority: .visible
                 )
                 try Task.checkCancellation()
-                return try await SharedAnimatedImageDecodeScheduler.shared
+                let preparedKey = url.isFileURL ? nil : PreparedAnimatedImage.key(
+                    source: data, maximumPixelDimension: key.maximumPixelDimension
+                )
+                if let preparedKey,
+                   let prepared = await SharedMediaDataLoader.shared.cachedPreparedMedia(for: preparedKey),
+                   let image = await PreparedAnimatedImage.restore(prepared)
+                {
+                    try Task.checkCancellation()
+                    if ProcessInfo.processInfo.arguments.contains("--debug-authenticated-gesture-scroll-performance") {
+                        Self.cacheLogger.notice("Prepared animation cache hit: \(prepared.count, privacy: .public) bytes; \(image.frames.count, privacy: .public) frames")
+                    }
+                    return image
+                }
+                let image = try await SharedAnimatedImageDecodeScheduler.shared
                     .decode(
                         data: data,
                         maximumPixelDimension: key.maximumPixelDimension
                     )
+                if let preparedKey,
+                   let prepared = await PreparedAnimatedImage.archive(image),
+                   !Task.isCancelled,
+                   let mapped = await SharedMediaDataLoader.shared.storePreparedMedia(prepared, for: preparedKey),
+                   let restored = await PreparedAnimatedImage.restore(mapped)
+                {
+                    try Task.checkCancellation()
+                    return restored
+                }
+                try Task.checkCancellation()
+                return image
             }
             inFlight[key] = InFlightRequest(
                 id: requestID,
@@ -1074,6 +1133,10 @@ final class AnimatedImageCanvas: NSView {
     private var isPlaybackSuppressed = false
     private var playbackClock = AnimatedImagePlaybackClock()
     private var hasBeenAttachedToWindow = false
+    private var usesBoundedPlayback = false
+    private var boundedStartTime: CFTimeInterval = 0
+    private var boundedFrameIndex: Int?
+    private let frameTicker = NativeTimelineDisplayLinkTicker()
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -1094,8 +1157,9 @@ final class AnimatedImageCanvas: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
-    deinit {
+    isolated deinit {
         NotificationCenter.default.removeObserver(self)
+        frameTicker.stop()
     }
 
     override func viewDidMoveToWindow() {
@@ -1165,6 +1229,9 @@ final class AnimatedImageCanvas: NSView {
     }
 
     func clear() {
+        frameTicker.stop()
+        usesBoundedPlayback = false
+        boundedFrameIndex = nil
         displayedImage = nil
         displayedAnimationPreference = nil
         displayedContentMode = nil
@@ -1208,13 +1275,56 @@ final class AnimatedImageCanvas: NSView {
             clock.setPaused(!playbackEnabled, at: CACurrentMediaTime())
         }
         clock.apply(to: layer)
+        if usesBoundedPlayback {
+            updateBoundedFrame()
+            if playbackEnabled, window != nil {
+                if frameTicker.displayLink == nil {
+                    frameTicker.start(on: self) { [weak self] in self?.updateBoundedFrame() }
+                }
+            } else {
+                frameTicker.stop()
+            }
+        }
+    }
+
+    private func updateBoundedFrame() {
+        guard let image = displayedImage, let preference = displayedAnimationPreference, let layer else { return }
+        let clock = displayedPlayback?.clock ?? playbackClock
+        let elapsed = (clock.pausedAt ?? CACurrentMediaTime()) - clock.pausedDuration - boundedStartTime
+        let index = preference.resetsWhenStopped && !preference.animates ? 0 : AnimatedImageFrameSchedule.frameIndex(
+            elapsed: elapsed,
+            durations: image.frameDurations,
+            playCount: image.playCount,
+            isLooping: preference.isLooping,
+            activeDuration: displayedPlayback?.duration,
+            loopDelay: displayedPlayback?.loopDelay ?? 0
+        )
+        guard index != boundedFrameIndex else { return }
+        boundedFrameIndex = index
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.contents = index.map { CompressedAnimatedFrame.transientImage(image.frames[$0]) }
+        CATransaction.commit()
     }
 
     private func installAnimation(for image: DecodedAnimatedImage, isLooping: Bool) {
         guard let layer else { return }
+        frameTicker.stop()
         layer.removeAnimation(forKey: "remoteAnimatedImage")
         playbackClock = AnimatedImagePlaybackClock()
         playbackClock.apply(to: layer)
+        // Small animations keep compositor-only playback. For larger raster
+        // sets, submit only the current frame, releasing previous uploads while
+        // preserving the compressed source and the shared presentation clock.
+        usesBoundedPlayback = image.frames.count > 1 && image.estimatedByteCount > 2 * 1_024 * 1_024
+            && image.frames.allSatisfy(CompressedAnimatedFrame.canReconstruct)
+        boundedFrameIndex = nil
+        if usesBoundedPlayback {
+            boundedStartTime = displayedPlayback?.startTime ?? CACurrentMediaTime()
+            layer.contents = nil
+            updateBoundedFrame()
+            return
+        }
         let animation: CAAnimation
         if let playback = displayedPlayback {
             layer.contents = nil

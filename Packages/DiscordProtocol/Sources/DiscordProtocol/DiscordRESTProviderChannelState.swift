@@ -12,7 +12,7 @@ extension DiscordRESTProvider {
         }
         let task = Task { [self] in
             let values: [ChannelDTO] = try await request("/guilds/\(guildID)/channels")
-            cachedGuildChannelDTOs[guildID] = Dictionary(
+            cachedGuildChannelDTOs[guildID] = ChannelDTOStore(
                 values.map { ($0.id, $0) },
                 uniquingKeysWith: { _, newer in newer }
             )

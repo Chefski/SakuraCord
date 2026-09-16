@@ -59,7 +59,10 @@ nonisolated enum ForwardDestinationSelectionPolicy {
 }
 
 nonisolated struct ForwardDestination: Identifiable, Equatable {
-    enum Kind: Equatable {
+    // A destination appears in both the ordered corpus and search records.
+    // Share its immutable payload instead of copying the largest enum case
+    // into every slot in both indexes.
+    indirect enum Kind: Equatable {
         case channel(Channel)
         case thread(MessageThreadSummary, parent: Channel?)
         case user(User, directMessage: Channel?)

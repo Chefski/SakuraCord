@@ -504,7 +504,7 @@ final class AppModel {
     @ObservationIgnored var lastDiscordFrecencyGuildID: GuildID?
     var hasLoadedDiscordEmojiSettings = false
     var orderedCustomEmojis: [DiscordEmoji] = []
-    var customEmojiURLsByID: [String: URL] = [:]
+    var customEmojiURLsByID: CustomEmojiImageURLs = [:]
     @ObservationIgnored var orderedCustomEmojiUpdateTask: Task<Void, Never>?
     @ObservationIgnored var orderedCustomEmojiUpdateGeneration: UInt64 = 0
 

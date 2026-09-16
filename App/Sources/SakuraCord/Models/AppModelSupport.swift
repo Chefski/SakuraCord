@@ -471,7 +471,7 @@ actor ReactionReactorLoadLimiter {
 
 nonisolated struct PreparedDiscordCustomEmojiCatalog: Sendable {
     var orderedEmojis: [DiscordEmoji]?
-    var imageURLsByID: [String: URL]?
+    var imageURLsByID: CustomEmojiImageURLs?
 }
 
 nonisolated enum DiscordCustomEmojiCatalog {
@@ -487,19 +487,17 @@ nonisolated enum DiscordCustomEmojiCatalog {
         return (orderedGuilds + remainingGuilds).flatMap { emojisByGuild[$0] ?? [] }
     }
 
-    static func imageURLsByID(from emojis: [DiscordEmoji]) -> [String: URL] {
-        emojis.reduce(into: [:]) { urls, emoji in
-            if let url = emoji.assetURL ?? emoji.imageURL {
-                urls[emoji.id] = url
-            }
-        }
+    static func imageURLsByID(from emojis: [DiscordEmoji]) -> CustomEmojiImageURLs {
+        var result = CustomEmojiImageURLs(minimumCapacity: emojis.count)
+        for emoji in emojis { result.insert(emoji) }
+        return result
     }
 
     static func prepare(
         emojisByGuild: [GuildID: [DiscordEmoji]],
         guildOrder: [GuildID],
         previousOrderedEmojis: [DiscordEmoji],
-        previousImageURLsByID: [String: URL],
+        previousImageURLsByID: CustomEmojiImageURLs,
         cancellationCheck: @Sendable () -> Bool = { Task.isCancelled }
     ) -> PreparedDiscordCustomEmojiCatalog? {
         guard !cancellationCheck() else { return nil }
@@ -557,14 +555,11 @@ nonisolated enum DiscordCustomEmojiCatalog {
     private static func imageURLsByIDCooperatively(
         from emojis: [DiscordEmoji],
         cancellationCheck: @Sendable () -> Bool
-    ) -> [String: URL]? {
-        var result: [String: URL] = [:]
-        result.reserveCapacity(emojis.count)
+    ) -> CustomEmojiImageURLs? {
+        var result = CustomEmojiImageURLs(minimumCapacity: emojis.count)
         for (index, emoji) in emojis.enumerated() {
             if index.isMultiple(of: 128), cancellationCheck() { return nil }
-            if let url = emoji.assetURL ?? emoji.imageURL {
-                result[emoji.id] = url
-            }
+            result.insert(emoji)
         }
         return cancellationCheck() ? nil : result
     }
@@ -583,16 +578,11 @@ nonisolated enum DiscordCustomEmojiCatalog {
     }
 
     private static func differsCooperatively(
-        _ lhs: [String: URL],
-        _ rhs: [String: URL],
+        _ lhs: CustomEmojiImageURLs,
+        _ rhs: CustomEmojiImageURLs,
         cancellationCheck: @Sendable () -> Bool
     ) -> Bool? {
-        guard lhs.count == rhs.count else { return true }
-        for (index, entry) in rhs.enumerated() {
-            if index.isMultiple(of: 128), cancellationCheck() { return nil }
-            if lhs[entry.key] != entry.value { return true }
-        }
-        return cancellationCheck() ? nil : false
+        rhs.differs(from: lhs, cancellationCheck: cancellationCheck)
     }
 }
 

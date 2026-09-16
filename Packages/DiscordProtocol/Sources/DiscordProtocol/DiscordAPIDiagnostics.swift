@@ -193,7 +193,44 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
         }
     }
 
-    private struct Entry: Encodable {
+    /// Output and capture both hold the store lock. Once redaction and encoding
+    /// succeed, retain the immutable output rather than its expanded JSON tree.
+    private final class Entry {
+        private enum Source {
+            case fields(EntryFields)
+            case encoded(Data, estimatedByteCount: Int)
+        }
+
+        let sequence: UInt64
+        private var source: Source
+
+        init(_ fields: EntryFields) {
+            sequence = fields.sequence
+            source = .fields(fields)
+        }
+
+        var estimatedByteCount: Int {
+            switch source {
+            case let .fields(fields): DiscordAPIDiagnosticStore.estimatedEntryByteCount(fields)
+            case let .encoded(_, estimatedByteCount): estimatedByteCount
+            }
+        }
+
+        func encodedLine() throws -> Data {
+            switch source {
+            case let .encoded(data, _): return data
+            case let .fields(fields):
+                let data = try DiscordAPIDiagnosticStore.encodedJSONLine(fields)
+                // Keep the existing conservative budget and eviction behavior
+                // even though the encoded representation usually costs less.
+                let cost = max(data.count, DiscordAPIDiagnosticStore.estimatedEntryByteCount(fields))
+                source = .encoded(data, estimatedByteCount: cost)
+                return data
+            }
+        }
+    }
+
+    private struct EntryFields: Encodable {
         let sequence: UInt64
         let timestamp: Date
         let transport: String
@@ -626,7 +663,7 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
         triggersPanicSave: Bool = false
     ) {
         withLock { state in
-            let entry = Entry(
+            let entry = Entry(EntryFields(
                 sequence: state.nextSequence,
                 timestamp: .now,
                 transport: transport,
@@ -642,7 +679,7 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
                 errorType: error.map { String(reflecting: type(of: $0)) },
                 errorDomain: error.map { Self.sanitizedErrorDomain(($0 as NSError).domain) },
                 errorCode: error.map { ($0 as NSError).code }
-            )
+            ))
             state.nextSequence &+= 1
             // Disk capture may expand the payload into a sanitized cache. Account
             // for that representation before inserting it into the memory ring.
@@ -853,6 +890,12 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
     private static func estimatedEntryByteCount(
         _ entry: Entry
     ) -> Int {
+        entry.estimatedByteCount
+    }
+
+    private static func estimatedEntryByteCount(
+        _ entry: EntryFields
+    ) -> Int {
         var size = 256
         size += entry.transport.utf8.count
         size += entry.direction.utf8.count
@@ -1021,6 +1064,10 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
             }
             return $0.1 < $1.1
         }
+    }
+
+    private static func encodedJSONLine(_ entry: Entry) throws -> Data {
+        try entry.encodedLine()
     }
 
     private static func encodedJSONLine<Value: Encodable>(

@@ -75,6 +75,55 @@ import Testing
     )
 }
 
+@Test func `channel DTOs and cached snapshots preserve value semantics across copies`() throws {
+    let data = Data(
+        #"""
+        {
+          "id":"200","guild_id":"300","type":11,
+          "message":{"id":"100","channel_id":"200","content":"Original",
+            "author":{"id":"1","username":"author"}}
+        }
+        """#.utf8
+    )
+    let original = try JSONDecoder().decode(ChannelDTO.self, from: data)
+    var updated = original
+    updated.message?.content = "Updated"
+    updated.message?.author?.username = "renamed"
+
+    #expect(original.message?.content == "Original")
+    #expect(original.message?.author?.username == "author")
+    #expect(updated.message?.content == "Updated")
+    #expect(updated.message?.author?.username == "renamed")
+    updated.message = nil
+    #expect(updated.message == nil)
+    #expect(original.message != nil)
+
+    var cache: ChannelDTOStore = [original.id: original]
+    let snapshot = cache
+    let values = Array(cache.values)
+    cache[original.id]?.message?.content = "Cache update"
+    cache[original.id]?.status = "Voice status"
+    #expect(cache[original.id]?.message?.content == "Cache update")
+    #expect(cache[original.id]?.status == "Voice status")
+    #expect(snapshot[original.id]?.message?.content == "Original")
+    #expect(snapshot[original.id]?.status == nil)
+    #expect(values.first?.message?.content == "Original")
+    cache[original.id] = nil
+    #expect(cache.keys.isEmpty)
+    #expect(cache.values.isEmpty)
+    #expect(snapshot[original.id] != nil)
+
+    let merged = ChannelDTOStore(
+        [(original.id, updated), (original.id, original)],
+        uniquingKeysWith: { _, newer in newer }
+    )
+    #expect(merged[original.id]?.message?.content == "Original")
+
+    for json in [#"{"id":"200","type":0}"#, #"{"id":"200","type":0,"message":null}"#] {
+        #expect(try JSONDecoder().decode(ChannelDTO.self, from: Data(json.utf8)).message == nil)
+    }
+}
+
 @Test func `rich message fixture decodes every content family and skips malformed siblings`() throws {
     let data = Data(
         #"""

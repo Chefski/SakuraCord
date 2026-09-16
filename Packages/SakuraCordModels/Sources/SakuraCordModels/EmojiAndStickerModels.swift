@@ -51,10 +51,11 @@ public struct DiscordEmoji: Identifiable, Codable, Hashable, Sendable {
     }
 
     public var imageURL: URL? {
-        if let assetURL {
-            return assetURL
-        }
-        return URL(
+        assetURL ?? Self.imageURL(id: id, isAnimated: isAnimated)
+    }
+
+    public static func imageURL(id: String, isAnimated: Bool) -> URL? {
+        URL(
             string:
             "https://cdn.discordapp.com/emojis/\(id).webp?size=96&animated=\(isAnimated ? "true" : "false")"
         )

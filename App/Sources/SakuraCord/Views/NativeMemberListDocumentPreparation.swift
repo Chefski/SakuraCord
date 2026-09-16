@@ -7,7 +7,7 @@ import SwiftUI
 @MainActor
 extension NativeMemberListCanvasView {
     func updatePresentation(
-        customEmojiURLsByID: [String: URL] = [:],
+        customEmojiURLsByID: CustomEmojiImageURLs = [:],
         profilePresentation: ProfilePresentationState?,
         isProfilePresented: Bool,
         dismissProfile: @escaping () -> Void

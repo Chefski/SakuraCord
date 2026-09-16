@@ -40,6 +40,21 @@ struct ThreadMemberDTO: Decodable {
 }
 
 struct ChannelDTO: Decodable {
+    /// Most channels have no embedded starter message. Keeping its large
+    /// value inline also reserves that space for every empty dictionary slot.
+    /// Immutable storage preserves value semantics when a ChannelDTO is copied.
+    private final class EmbeddedMessage: Decodable {
+        let value: MessageDTO
+
+        init(_ value: MessageDTO) {
+            self.value = value
+        }
+
+        init(from decoder: any Decoder) throws {
+            value = try MessageDTO(from: decoder)
+        }
+    }
+
     struct PermissionOverwriteDTO: Decodable {
         var id: String
         var type: Int
@@ -136,7 +151,12 @@ struct ChannelDTO: Decodable {
     var rateLimitPerUser: Int?
     var status: String?
     var voiceStartTime: DiscordTimestampDTO?
-    var message: MessageDTO?
+    private var embeddedMessage: EmbeddedMessage?
+
+    var message: MessageDTO? {
+        get { embeddedMessage?.value }
+        set { embeddedMessage = newValue.map(EmbeddedMessage.init) }
+    }
 
     var isThread: Bool {
         switch type {
@@ -157,7 +177,8 @@ struct ChannelDTO: Decodable {
         case lastMessageID = "last_message_id"
         case lastPinTimestamp = "last_pin_timestamp"
         case ownerID = "owner_id"
-        case owner, flags, member, message
+        case owner, flags, member
+        case embeddedMessage = "message"
         case messageCount = "message_count"
         case memberCount = "member_count"
         case totalMessageSent = "total_message_sent"

@@ -168,9 +168,11 @@ Within the production provider:
   initially accounting for original payloads. A shared encoding boundary
   discards user-authored and credential-bearing values, IDs, nonces, request
   IDs, and rate-limit bucket IDs before any export or disk write. It caches
-  the sanitized payload and releases the raw source on first output. Cache
-  size changes and eviction are reconciled under the store lock before output
-  returns; continuous capture accounts for the sanitized cache before
+  the sanitized JSON line and releases both the raw source and the sanitized
+  value tree on first successful output. Retention accounting preserves the
+  conservative sanitized payload estimate. Cache size changes and eviction are
+  reconciled under the store lock before output returns; continuous capture
+  accounts for the sanitized cache before
   retaining each entry. An output keeps its captured history even if caching
   evicts entries from memory. Eviction and Clear Logs also release retained
   sources. Payload sanitization, including authentication HTTP traffic, Gateway
@@ -304,6 +306,9 @@ before deletion. Emoji requests started before clearing cannot reinstall their
 results in the provider's catalog cache or on disk. The app's session-only emoji
 catalog remains available for display, including results of already-requested
 loads; clearing local activity does not invalidate that presentation data.
+Its renderer lookup stores compact emoji asset identities and resolves their
+image URLs on use, preserving explicit asset overrides and the existing shared
+media-cache keys.
 Live Discord identities and memberships remain available;
 only identities learned again after clearing become eligible for history
 persistence. Saved channel insertion order is discarded and rebuilt by subsequent
@@ -497,8 +502,22 @@ timeline and member-list gestures independently, so one surface ending a
 gesture cannot reopen the decode lane while another is still moving. Canvas
 image requests use presentation-sized pixel budgets (96-pixel
 avatars/decorations, 64-pixel emoji, and 32-pixel guild badges), while full-row
-nameplates retain their 512-pixel budget. All decoded state remains in bounded
-process-memory caches and is discarded at process exit.
+nameplates retain their 512-pixel budget. Animation frames use lossless raster
+compression when it saves space, expanding pixels only while Core Graphics
+reads them. Large animations submit the current frame to the compositor and
+release previous uploads; frame timing and shared playback clocks remain with
+the presentation owner. In-memory cache budgets still account for the full
+decoded raster size.
+
+The app's shared animation loader also stores prepared public-media frames in
+`MediaPipeline`'s existing bounded disk cache. Versioned keys include the source
+content hash and pixel budget; mapped files retain compressed frame bytes
+without copying them into the heap. These disposable representations share
+the media quota, eviction, and Clear Cache lifecycle with encoded assets.
+Checksummed metadata preserves frame timing, pixels, and color spaces. A
+missing, invalid, or unsupported representation uses the normal source decoder.
+This cache contains media representations, never workspace or message-history
+snapshots.
 
 Display-name fonts use the shared persistent media cache. The app decodes font
 assets off the main actor and retains immutable Core Text descriptors and sized

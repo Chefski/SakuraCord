@@ -281,7 +281,7 @@ extension DiscordRESTProvider {
                 applyGuildRulesChannelID(guild.rulesChannelID, guildID: guildID)
             }
             if let guildID, !guild.channels.isEmpty {
-                cachedGuildChannelDTOs[guildID] = Dictionary(
+                cachedGuildChannelDTOs[guildID] = ChannelDTOStore(
                     guild.channels.map { ($0.id, $0) },
                     uniquingKeysWith: { _, newer in newer }
                 )
@@ -598,7 +598,7 @@ extension DiscordRESTProvider {
                 cacheGatewayUser(member.user, messageSearchEligible: false)
             }
             if !guild.channels.isEmpty {
-                cachedGuildChannelDTOs[guildID] = Dictionary(
+                cachedGuildChannelDTOs[guildID] = ChannelDTOStore(
                     guild.channels.map { ($0.id, $0) },
                     uniquingKeysWith: { _, newer in newer }
                 )

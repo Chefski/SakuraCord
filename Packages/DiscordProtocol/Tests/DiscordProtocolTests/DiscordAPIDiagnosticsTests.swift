@@ -1020,7 +1020,7 @@ func `sanitized cache growth is accounted for at every output boundary`(output: 
         "op": .string("nonce_proof"),
         "flags": .number(64),
     ]))
-    // The wire body fits both budgets. Its decoded cache only fits the larger one.
+    // The wire body fits both budgets. Its conservative sanitized size only fits the larger one.
     for budget in [4_096, 32_768] {
         let directory = FileManager.default.temporaryDirectory
             .appending(path: "SakuraCordCacheGrowthTests-\(UUID().uuidString)")

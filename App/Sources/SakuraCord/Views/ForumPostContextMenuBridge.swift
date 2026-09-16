@@ -8,7 +8,7 @@ import SwiftUI
 struct ForumPostContextMenuBridge: NSViewRepresentable {
     let tags: [ForumTag]
     let appliedTagIDs: [ForumTagID]
-    let customEmojiURLsByID: [String: URL]
+    let customEmojiURLsByID: CustomEmojiImageURLs
     let isArchived: Bool
     let isLocked: Bool
     let isPinned: Bool
@@ -56,7 +56,7 @@ struct ForumPostContextMenuBridge: NSViewRepresentable {
     final class Coordinator: NSObject {
         private var tags: [ForumTag]
         private var appliedTagIDs: [ForumTagID]
-        private var customEmojiURLsByID: [String: URL]
+        private var customEmojiURLsByID: CustomEmojiImageURLs
         private var isArchived: Bool
         private var isLocked: Bool
         private var isPinned: Bool
