@@ -40,7 +40,6 @@ struct AvatarView: View {
                         url: url,
                         maximumPixelDimension: requestedPixelDimension,
                         contentMode: .fill,
-                        accessibilityCategory: .avatar
                     )
                 } else {
                     StaticRemoteImage(

@@ -6,6 +6,8 @@ import SwiftUI
 
 @MainActor
 final class NativeMemberListCanvasView: NSView, WindowModalInputParticipant {
+    var cosmeticPolicy = ProfileCosmeticPolicy()
+
     nonisolated struct Header: Equatable, Sendable {
         let id: MemberSection.SectionIdentifier
         let title: String

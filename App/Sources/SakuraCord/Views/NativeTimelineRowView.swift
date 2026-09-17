@@ -732,7 +732,8 @@ struct NativeTimelineRowLayout {
             commandInvocationRegion = NativeTimelineRowLayout.commandInvocation(
                 message,
                 origin: CGPoint(x: horizontalInset, y: verticalOffset),
-                maximumWidth: width - horizontalInset * 2
+                maximumWidth: width - horizontalInset * 2,
+                cosmeticPolicy: model?.cosmeticPolicy ?? .init()
             )
             verticalOffset += MessageRowLayoutMetrics.commandInvocationHeight
         }
@@ -773,7 +774,7 @@ struct NativeTimelineRowLayout {
                 NativeTimelineRowLayout.measuredTextWidth(author.displayName, font: authorFont)
             )
             authorFrame = CGRect(
-                x: contentX,
+                x: contentX + indicatorWidth,
                 y: verticalOffset,
                 width: authorWidth,
                 height: MessageRowLayoutMetrics.authorLineHeight
@@ -1164,9 +1165,7 @@ struct NativeTimelineRowLayout {
             }
             let sizes = presentedReactions.map(reactionSize)
                 + [CGSize(
-                    width: ReactionActionMenuPresentation.inline.width(
-                        enlarged: false
-                    ),
+                    width: ReactionActionMenuPresentation.inline.width,
                     height: MessageReactionMetrics.pillHeight
                 )]
             let wrapping = InlineWrappingLayoutPlan.frames(
@@ -1331,9 +1330,10 @@ struct NativeTimelineRowLayout {
         let message: Message
         let origin: CGPoint
         let maximumWidth: CGFloat
+        let cosmeticPolicy: ProfileCosmeticPolicy
 
         var region: CommandInvocationRegion {
-        let user = message.interactionMetadata?.user
+        let user = message.interactionMetadata?.user.map(cosmeticPolicy.user)
         let userLabel = user?.displayName ?? "Someone"
         let commandLabel = message.interactionMetadata?.displayName ?? "command"
         let userFont = ProfileNameFontLoader.shared.resolvedFont(for: user, fallback: .systemFont(
@@ -1457,12 +1457,14 @@ struct NativeTimelineRowLayout {
     private static func commandInvocation(
         _ message: Message,
         origin: CGPoint,
-        maximumWidth: CGFloat
+        maximumWidth: CGFloat,
+        cosmeticPolicy: ProfileCosmeticPolicy
     ) -> CommandInvocationRegion {
         CommandInvocationBuilder(
             message: message,
             origin: origin,
-            maximumWidth: maximumWidth
+            maximumWidth: maximumWidth,
+            cosmeticPolicy: cosmeticPolicy
         ).region
     }
 

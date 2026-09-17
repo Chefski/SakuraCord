@@ -68,6 +68,7 @@ extension ProfilePresentationContent where Footer == EmptyView {
 }
 
 struct MemberProfilePopover<Footer: View>: View {
+    @Environment(\.profileCosmeticPolicy) private var cosmeticPolicy
     static var preferredWidth: CGFloat { 330 }
 
     let member: Member
@@ -133,8 +134,10 @@ struct MemberProfilePopover<Footer: View>: View {
             guard editor == nil, newHeight.isFinite, newHeight > 0 else { return }
             contentHeight = max(250, newHeight)
         }
-        .task(id: theme.source(for: profile, scale: displayScale, isPreview: editor != nil)) {
-            await theme.load(theme.source(for: profile, scale: displayScale, isPreview: editor != nil))
+        .task(id: cosmeticPolicy.disables(.gradient, for: member.id) ? nil : theme.source(for: profile, scale: displayScale, isPreview: editor != nil)) {
+            if !cosmeticPolicy.disables(.gradient, for: member.id) {
+                await theme.load(theme.source(for: profile, scale: displayScale, isPreview: editor != nil))
+            }
         }
     }
 
@@ -158,7 +161,7 @@ struct MemberProfilePopover<Footer: View>: View {
             }
             .padding(surfaceInset)
 
-            if let effect = profile?.effect {
+            if !cosmeticPolicy.disables(.effect, for: member.id), let effect = profile?.effect {
                 ProfileEffectOverlay(
                     effect: effect,
                     animates: animatesRemoteMedia
@@ -292,7 +295,7 @@ struct MemberProfilePopover<Footer: View>: View {
     }
 
     private var profileThemeHexes: [UInt32] {
-        theme.colors(for: profile, scale: displayScale, isPreview: editor != nil)
+        cosmeticPolicy.disables(.gradient, for: member.id) ? [] : theme.colors(for: profile, scale: displayScale, isPreview: editor != nil)
     }
 
     private func expandProfile() {
@@ -353,6 +356,7 @@ struct ProfileContentHeightKey: PreferenceKey {
 }
 
 private struct ProfileHeroSection: View {
+    @Environment(\.profileCosmeticPolicy) private var cosmeticPolicy
     let member: Member
     let profile: UserProfile?
     let themeHexes: [UInt32]
@@ -397,7 +401,7 @@ private struct ProfileHeroSection: View {
                     DecoratedAvatarView(
                         name: profile?.displayName ?? member.user.displayName,
                         avatarURL: profile?.avatarURL ?? member.guildAvatarURL ?? member.user.avatarURL,
-                        decorationURL: profile?.user.avatarDecorationURL ?? member.user.avatarDecorationURL,
+                        decorationURL: cosmeticPolicy.disables(.avatarDecoration, for: member.id) ? nil : (profile?.user.avatarDecorationURL ?? member.user.avatarDecorationURL),
                         size: avatarSize,
                         playback: animatesRemoteMedia ? .continuous : .paused
                     )
@@ -417,7 +421,7 @@ private struct ProfileHeroSection: View {
                 username: profile?.user.username ?? member.user.username,
                 pronouns: profile?.pronouns,
                 legacyUsername: profile?.legacyUsername,
-                nameStyle: profile?.user.displayNameStyle ?? member.user.displayNameStyle,
+                nameStyle: cosmeticPolicy.disables(.nameStyle, for: member.id) ? nil : (profile?.user.displayNameStyle ?? member.user.displayNameStyle),
                 primaryGuildIdentity: profile?.user.primaryGuild ?? member.user.primaryGuild,
                 isBot: profile?.user.isBot ?? member.user.isBot,
                 badges: profile?.badges ?? [],
@@ -549,7 +553,6 @@ private struct ProfileBanner: View {
                         animates: animates,
                         maximumPixelDimension: ProfileBannerLayout.maximumPixelDimension,
                         contentMode: .fill,
-                        accessibilityCategory: .decoration
                     )
                     .frame(width: width, height: height)
                     .clipped()

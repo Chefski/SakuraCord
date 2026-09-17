@@ -25,6 +25,7 @@ struct ExpandedProfileView: View {
                         .padding(10)
                 }
         })
+        .environment(\.profileCosmeticPolicy, model.cosmeticPolicy)
         .windowModalSize(width: 820, height: 720)
         .background(ProfileVerticalScrollInput())
         .accessibilityElement(children: .contain)

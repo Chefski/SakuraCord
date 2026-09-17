@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 
 struct MediaViewer: View {
+    @Environment(\.profileCosmeticPolicy) private var cosmeticPolicy
     let presentation: NativeTimelineMediaViewerPresentation
     let isVisible: Bool
     let transitionSourceFrame: CGRect?
@@ -104,7 +105,7 @@ struct MediaViewer: View {
                     )
 
                     MediaViewerHeader(
-                        authorFontID: presentation.authorFontID,
+                        authorFontID: presentation.authorID.map { cosmeticPolicy.disables(.nameStyle, for: $0) } == true ? nil : presentation.authorFontID,
                         authorName: presentation.authorName,
                         authorAvatarURL: presentation.authorAvatarURL,
                         timestamp: presentation.timestamp,

@@ -345,8 +345,7 @@ extension NativeTimelineCanvasView {
                 + (openThread == nil ? 0 : 1))
             : 1 + (unpinMessage == nil ? 0 : 1)
         actionCapsuleSize = HoverActionPillMetrics.size(
-            controlCount: controlCount,
-            enlarged: model.accessibilitySettings.enlargesMessageActionTargets
+            controlCount: controlCount
         )
         positionActionCapsule(at: index)
     }

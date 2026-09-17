@@ -1,5 +1,4 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct MyAccountSettingsPage: View {
     let model: AppModel
@@ -10,10 +9,6 @@ struct MyAccountSettingsPage: View {
     @State private var operation: AccountOperation?
     @State private var pendingRemoval: SavedAccount?
     @State private var operationMessage: AccountOperationMessage?
-    @State private var showsResetConfirmation = false
-    @State private var exportedPreferences: SettingsPreferenceExportFile?
-    @State private var exportFilename = "SakuraCord Account Preferences"
-    @State private var isExporting = false
     @State private var reopensLastActiveAccount = true
     @State private var preferredLaunchAccountID = ""
 
@@ -28,8 +23,9 @@ struct MyAccountSettingsPage: View {
     var body: some View {
         SettingsPageForm(page: .myAccount, state: state) {
             accountIdentitySection
-            accountLaunchSection
-            accountLocalDataSection
+            if !model.savedAccounts.isEmpty {
+                accountLaunchSection
+            }
         }
         .task {
             loadLaunchPreferences()
@@ -77,29 +73,6 @@ struct MyAccountSettingsPage: View {
         } message: {
             Text(removalMessage)
         }
-        .settingsResetConfirmation(
-            "Reset Local Preferences?",
-            isPresented: $showsResetConfirmation,
-            resetTitle: "Reset Preferences",
-            message: "Only registered local settings for this account will return to their defaults. Credentials, drafts, other accounts, and Discord state are not changed.",
-            reset: resetSelectedAccountPreferences
-        )
-        .fileExporter(
-            isPresented: $isExporting,
-            item: exportedPreferences,
-            contentTypes: [.json],
-            defaultFilename: exportFilename
-        ) { result in
-            switch result {
-            case let .success(url):
-                operationMessage = .success("Exported preferences to \(url.lastPathComponent).")
-            case let .failure(error):
-                operationMessage = .error(error.localizedDescription)
-            }
-            exportedPreferences = nil
-        } onCancellation: {
-            exportedPreferences = nil
-        }
     }
 
     private var accountIdentitySection: some View {
@@ -114,34 +87,38 @@ struct MyAccountSettingsPage: View {
                     "No Saved Accounts",
                     systemImage: "person.crop.circle.badge.xmark",
                     description: Text(
-                        "Add a Discord account to inspect its identity and local settings."
+                        "Add a Discord account to get started."
                     )
                 )
                 .frame(maxWidth: .infinity, minHeight: 120)
             }
 
-            accountSelector
-                .disabled(isBusy)
-                .settingsControlAnchor(.selectedAccount, state: state)
+            if model.savedAccounts.count > 1 {
+                accountSelector
+                    .disabled(isBusy)
+                    .settingsControlAnchor(.selectedAccount, state: state)
+            }
 
             HStack {
-                Button {
-                    switchToSelectedAccount()
-                } label: {
-                    if operation == .switching(selectedAccountID) {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        Text("Switch to Account", bundle: #bundle)
+                if selectedAccount != nil {
+                    Button {
+                        switchToSelectedAccount()
+                    } label: {
+                        if operation == .switching(selectedAccountID) {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Text("Switch to Account", bundle: #bundle)
+                        }
                     }
+                    .disabled(
+                        isBusy
+                            || selectedAccount == nil
+                            || selectedAccountID == model.activeAccountID
+                            || model.isDiscordNetworkingDisabled
+                    )
+                    .settingsControlAnchor(.switchAccount, state: state)
                 }
-                .disabled(
-                    isBusy
-                        || selectedAccount == nil
-                        || selectedAccountID == model.activeAccountID
-                        || model.isDiscordNetworkingDisabled
-                )
-                .settingsControlAnchor(.switchAccount, state: state)
 
                 Button("Add Account…") {
                     showsLogin = true
@@ -151,11 +128,13 @@ struct MyAccountSettingsPage: View {
 
                 Spacer()
 
-                Button(removalButtonTitle, role: .destructive) {
-                    pendingRemoval = selectedAccount
+                if selectedAccount != nil {
+                    Button(removalButtonTitle, role: .destructive) {
+                        pendingRemoval = selectedAccount
+                    }
+                    .disabled(isBusy || selectedAccount == nil)
+                    .settingsControlAnchor(.removeSavedSession, state: state)
                 }
-                .disabled(isBusy || selectedAccount == nil)
-                .settingsControlAnchor(.removeSavedSession, state: state)
             }
 
             if model.isDiscordNetworkingDisabled {
@@ -174,28 +153,18 @@ struct MyAccountSettingsPage: View {
                     .accessibilityLabel(operationMessage.text)
             }
         } header: {
-            Text("Saved account", bundle: #bundle)
+            Text("Accounts", bundle: #bundle)
         }
     }
 
-    @ViewBuilder
     private var accountSelector: some View {
-        if model.savedAccounts.count > 1 {
-            Picker("Account to inspect", selection: $selectedAccountID) {
-                ForEach(model.savedAccounts) { account in
-                    Text(account.resolvedDisplayName)
-                        .tag(account.accountID)
-                }
-            }
-            .accessibilityHint(
-                "Changes only the account whose local preferences are shown in Settings."
-            )
-        } else {
-            LabeledContent("Account to inspect") {
-                Text(selectedAccount?.resolvedDisplayName ?? "No saved account")
-                    .foregroundStyle(.secondary)
+        Picker("Saved account", selection: $selectedAccountID) {
+            ForEach(model.savedAccounts) { account in
+                Text(account.resolvedDisplayName)
+                    .tag(account.accountID)
             }
         }
+        .accessibilityHint("Choose an account to switch to or remove.")
     }
 
     private var accountLaunchSection: some View {
@@ -230,37 +199,6 @@ struct MyAccountSettingsPage: View {
                     ? "SakuraCord reconnects the account used most recently."
                     : "SakuraCord reconnects the fixed account selected above. If it is no longer saved, the first available account is used."
             )
-        }
-    }
-
-    private var accountLocalDataSection: some View {
-        Section {
-            LabeledContent("Export format") {
-                Text("Version 1 JSON")
-                    .foregroundStyle(.secondary)
-            }
-
-            Text(
-                "Exports enumerate the registered account-local settings in this build. Account IDs, Keychain credentials, drafts, and Discord-synchronized data are excluded."
-            )
-            .font(.caption)
-            .foregroundStyle(.secondary)
-
-            HStack {
-                Button("Export Local Preferences…") {
-                    exportSelectedAccountPreferences()
-                }
-                .disabled(selectedAccount == nil)
-                .settingsControlAnchor(.exportAccountPreferences, state: state)
-
-                Button("Reset Local Preferences…", role: .destructive) {
-                    showsResetConfirmation = true
-                }
-                .disabled(selectedAccount == nil)
-                .settingsControlAnchor(.resetAccountPreferences, state: state)
-            }
-        } header: {
-            Text("Account-local data", bundle: #bundle)
         }
     }
 
@@ -414,39 +352,6 @@ struct MyAccountSettingsPage: View {
                 )
             }
         }
-    }
-
-    private func exportSelectedAccountPreferences() {
-        guard let selectedAccount else { return }
-        let export = SettingsPreferenceStore.shared.export(
-            scope: .accountLocal,
-            accountID: selectedAccount.accountID
-        )
-        exportedPreferences = SettingsPreferenceExportFile(export: export)
-        exportFilename = "SakuraCord-\(safeFilenameComponent(selectedAccount.resolvedDisplayName))-Preferences-v\(export.version)"
-        isExporting = true
-    }
-
-    private func resetSelectedAccountPreferences() {
-        operationMessage = nil
-        guard let selectedAccount else { return }
-        SettingsPreferenceStore.shared.reset(
-            scope: .accountLocal,
-            accountID: selectedAccount.accountID
-        )
-        operationMessage = .success(
-            "Reset registered local preferences for \(selectedAccount.resolvedDisplayName)."
-        )
-    }
-
-    private func safeFilenameComponent(_ value: String) -> String {
-        let allowed = value.map { character in
-            character.isLetter || character.isNumber || character == "-" || character == "_"
-                ? character
-                : "-"
-        }
-        let collapsed = String(allowed).replacingOccurrences(of: "--", with: "-")
-        return collapsed.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
     }
 }
 

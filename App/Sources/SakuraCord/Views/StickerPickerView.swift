@@ -774,7 +774,6 @@ struct StickerPreview: View {
                     url: url,
                     fallbackSystemImage: "face.smiling",
                     maximumPixelDimension: 240,
-                    accessibilityCategory: .sticker
                 )
             } else {
                 Image(systemName: "face.smiling")
@@ -810,8 +809,6 @@ struct StickerPreview: View {
 private struct StickerLottieView: NSViewRepresentable {
     let url: URL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage("settings.accessibility.reduceAnimatedStickers")
-    private var reducesAnimatedStickers = false
 
     func makeNSView(context: Context) -> NativeTimelineLottieStickerOverlay {
         NativeTimelineLottieStickerOverlay(frame: .zero)
@@ -821,7 +818,7 @@ private struct StickerLottieView: NSViewRepresentable {
         _ nsView: NativeTimelineLottieStickerOverlay,
         context: Context
     ) {
-        nsView.display(url, reduceMotion: reduceMotion || reducesAnimatedStickers)
+        nsView.display(url, reduceMotion: reduceMotion)
     }
 
     static func dismantleNSView(

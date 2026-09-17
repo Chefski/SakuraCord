@@ -53,20 +53,7 @@ nonisolated extension SettingsCatalog {
             help: "Move printable typing to the composer only when another editable field, menu, overlay, or assisted interaction does not own input.",
             keywords: ["type to focus", "keyboard", "first responder"], scope: .appWideLocal
         ),
-        control(
-            .chatCharacterCounter, page: .chat, section: .chatComposer,
-            label: "Character limit",
-            help: "Show the live character count only within 200 characters of the effective Discord message limit.",
-            keywords: ["2000", "4000", "counter", "length"], owner: .appModel,
-            scope: .mixed, persistence: .notApplicable, reset: .notApplicable
-        ),
-        control(
-            .chatDiscardConfirmationLink, page: .chat, section: .chatComposer,
-            label: "Composer discard confirmation",
-            help: "Open the single confirmation preference in General Settings.",
-            keywords: ["draft", "unsent", "confirm", "discard"],
-            scope: .appWideLocal, persistence: .notApplicable, reset: .notApplicable
-        ),
+
         control(
             .chatReadAcknowledgement, page: .chat, section: .chatMessages,
             label: "Mark messages read",
@@ -143,20 +130,7 @@ nonisolated extension SettingsCatalog {
             help: "Choose the app-wide skin-tone modifier used by the native emoji picker.",
             keywords: ["modifier", "hand", "tone", "emoji"], scope: .appWideLocal
         ),
-        control(
-            .chatEmojiSource, page: .chat, section: .chatEmoji,
-            label: "Emoji favorites and frequency",
-            help: "Report whether Discord-synchronized ordering or SakuraCord's local fallback is currently available.",
-            keywords: ["favorites", "frequent", "frecency", "source"], owner: .appModel,
-            scope: .mixed, persistence: .notApplicable, reset: .notApplicable
-        ),
-        control(
-            .chatExport, page: .chat, section: .chatLocalData,
-            label: "Export Chat Settings",
-            help: "Export registered app-wide Chat preferences as versioned JSON.",
-            keywords: ["backup", "JSON", "save preferences"],
-            scope: .appWideLocal, persistence: .notApplicable, reset: .notApplicable
-        ),
+
         control(
             .chatReset, page: .chat, section: .chatLocalData,
             label: "Reset Chat Settings",

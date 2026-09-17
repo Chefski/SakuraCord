@@ -189,7 +189,6 @@ import Testing
     let permissions = [
         SettingsControlID.voiceMicrophonePermission,
         .voiceCameraPermission,
-        .voiceScreenPermission,
     ]
     for id in permissions {
         let control = catalog.controls.first { $0.id == id }
@@ -197,7 +196,6 @@ import Testing
         #expect(control?.persistence == .systemManaged)
         #expect(control?.resetCapability == .notApplicable)
     }
-
 }
 
 @MainActor

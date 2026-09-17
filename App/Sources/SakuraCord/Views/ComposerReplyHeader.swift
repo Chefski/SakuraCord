@@ -23,11 +23,11 @@ struct ComposerReplyHeader: View {
                     maximumPixelDimension: 36,
                     animates: false
                 )
+                NameRoleColorIndicator(colorHex: roleColorHex)
                 Text(authorName)
                     .displayNameFont(authorFontID, textStyle: .callout)
                     .foregroundStyle(authorColor)
                     .lineLimit(1)
-                NameRoleColorIndicator(colorHex: roleColorHex)
             }
 
             Spacer(minLength: 8)

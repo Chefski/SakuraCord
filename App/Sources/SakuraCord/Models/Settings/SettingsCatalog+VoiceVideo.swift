@@ -166,21 +166,7 @@ nonisolated extension SettingsCatalog {
             owner: .macOS, scope: .appWideLocal,
             persistence: .systemManaged, reset: .notApplicable
         ),
-        control(
-            .voiceScreenPermission, page: .voiceVideo, section: .voicePermissions,
-            label: "Screen recording permission",
-            help: "Report whether macOS currently permits screen and system-audio capture.",
-            keywords: ["privacy", "screen recording", "system audio"],
-            owner: .macOS, scope: .appWideLocal,
-            persistence: .systemManaged, reset: .notApplicable
-        ),
-        control(
-            .voiceExport, page: .voiceVideo, section: .voiceLocalData,
-            label: "Export Voice & Video Settings",
-            help: "Export registered app-wide Voice & Video preferences as versioned JSON.",
-            keywords: ["backup", "JSON", "save preferences"], scope: .appWideLocal,
-            persistence: .notApplicable, reset: .notApplicable
-        ),
+
         control(
             .voiceReset, page: .voiceVideo, section: .voiceLocalData,
             label: "Reset Voice & Video Settings",

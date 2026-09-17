@@ -8,8 +8,6 @@ struct NotificationsSettingsPage: View {
 
     @State private var authorizationStatus: UNAuthorizationStatus?
     @State private var showsResetConfirmation = false
-    @State private var exportedPreferences: SettingsPreferenceExportFile?
-    @State private var isExporting = false
     @State private var operationMessage: String?
 
     var body: some View {
@@ -25,14 +23,12 @@ struct NotificationsSettingsPage: View {
             NotificationEventSettingsSection(preferences: preferences, state: state)
             NotificationQuietHoursSettingsSection(preferences: preferences, state: state)
             Section {
-                Button("Export Notification Settings…") { exportPreferences() }
-                    .settingsControlAnchor(.notificationExport, state: state)
                 Button("Reset Notification Settings…", role: .destructive) {
                     showsResetConfirmation = true
                 }
                 .settingsControlAnchor(.notificationReset, state: state)
             } header: {
-                Text("Local data", bundle: #bundle)
+                Text("Reset", bundle: #bundle)
             }
         }
         .task { await updateAuthorizationStatus() }
@@ -42,16 +38,6 @@ struct NotificationsSettingsPage: View {
             Task { await updateAuthorizationStatus() }
         }
         .onChange(of: preferences.dockBadgeStyle) { model.refreshDockBadge() }
-        .fileExporter(
-            isPresented: $isExporting,
-            item: exportedPreferences,
-            contentTypes: [.json],
-            defaultFilename: "SakuraCord-Notification-Settings"
-        ) { result in
-            if case let .failure(error) = result {
-                operationMessage = error.localizedDescription
-            }
-        }
         .settingsResetConfirmation(
             "Reset Notification Settings?",
             isPresented: $showsResetConfirmation,
@@ -95,16 +81,6 @@ struct NotificationsSettingsPage: View {
         }
     }
 
-    private func exportPreferences() {
-        exportedPreferences = SettingsPreferenceExportFile(
-            export: SettingsPreferenceStore.shared.export(
-                scope: .appWide,
-                page: .notifications
-            )
-        )
-        isExporting = true
-    }
-
     private func resetPreferences() {
         SettingsPreferenceStore.shared.reset(scope: .appWide, page: .notifications)
         model.notificationPreferences.reload()
@@ -146,10 +122,12 @@ private struct NotificationDeliverySettingsSection: View {
                     Text(style.title).tag(style)
                 }
             }
+            .disabled(!preferences.isEnabled)
             .settingsControlAnchor(.notificationPreview, state: state)
 
             Toggle("Play sound", isOn: $preferences.playsSound)
                 .tint(SakuraCordAccentColor.color)
+                .disabled(!preferences.isEnabled)
                 .settingsControlAnchor(.notificationSound, state: state)
 
             Picker("Dock badge", selection: $preferences.dockBadgeStyle) {
@@ -158,16 +136,10 @@ private struct NotificationDeliverySettingsSection: View {
                 }
             }
             .settingsControlAnchor(.notificationDockBadge, state: state)
-
-            LabeledContent("macOS Focus") {
-                Text("Always respected")
-                    .foregroundStyle(.secondary)
-            }
-            .settingsControlAnchor(.notificationFocus, state: state)
         } header: {
-            Text("System delivery", bundle: #bundle)
+            Text("Notifications", bundle: #bundle)
         } footer: {
-            Text("Sounds and banners use standard active Notification Center delivery, so macOS notification and Focus settings remain authoritative.")
+            Text("macOS notification permissions and Focus settings apply to all notifications.")
         }
     }
 
@@ -204,9 +176,12 @@ private struct NotificationEventSettingsSection: View {
                     .settingsControlAnchor(.notificationServerActivity, state: state)
             }
             .tint(SakuraCordAccentColor.color)
+        } header: {
+            Text("Notify Me About", bundle: #bundle)
+        }
+        .disabled(!preferences.isEnabled)
 
-            Divider()
-
+        Section {
             Group {
                 Toggle("Notify only in the background", isOn: $preferences.notifiesOnlyInBackground)
                     .settingsControlAnchor(.notificationOnlyInBackground, state: state)
@@ -223,23 +198,19 @@ private struct NotificationEventSettingsSection: View {
                     "Let calls bypass message suppression",
                     isOn: $preferences.callsBypassMessageSuppression
                 )
+                .disabled(!preferences.notifiesIncomingCalls)
                 .settingsControlAnchor(.notificationCallsBypassSuppression, state: state)
             }
             .tint(SakuraCordAccentColor.color)
-
-            LabeledContent("Discord notification controls") {
-                Text("Server and conversation context menus")
-                    .foregroundStyle(.secondary)
-            }
-            .settingsControlAnchor(.notificationDiscordOwnership, state: state)
         } header: {
-            Text("Events and behavior", bundle: #bundle)
+            Text("Delivery", bundle: #bundle)
         } footer: {
             VStack(alignment: .leading, spacing: 6) {
-                Text("These controls only narrow events already eligible under Discord’s synchronized notification and mute settings.")
-                Text("Change server, category, and channel controls from their existing right-click context menus.")
+                Text("Muted servers and conversations stay muted.")
+                Text("Manage Discord notification settings by right-clicking a server or conversation.")
             }
         }
+        .disabled(!preferences.isEnabled)
     }
 }
 
@@ -322,10 +293,11 @@ private struct NotificationQuietHoursSettingsSection: View {
                 .settingsControlAnchor(.notificationAllowCalls, state: state)
             }
         } header: {
-            Text("Quiet hours", bundle: #bundle)
+            Text("Quiet Hours", bundle: #bundle)
         } footer: {
-            Text("Ranges use the Mac’s current calendar and time zone. Overnight ranges continue into the following day; matching start and end means quiet for the entire enabled day.")
+            Text("Uses your Mac’s time zone. Overnight ranges end the next day; matching times mute the entire day.")
         }
+        .disabled(!preferences.isEnabled)
     }
 
     private var orderedWeekdays: [WeekdayDisplay] {

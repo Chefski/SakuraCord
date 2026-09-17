@@ -41,7 +41,6 @@ extension NativeTimelineCanvasView {
             }
             if let url =
                 author.avatarDecorationURL
-                    ?? message.author.avatarDecorationURL
             {
                 // Discord serves both static PNG and animated APNG decoration
                 // assets from this route. Decode only for visible rows; the

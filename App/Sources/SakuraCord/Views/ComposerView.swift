@@ -736,7 +736,7 @@ struct ComposerView: View {
         ApplicationCommandSuggestionFactory.suggestions(
             option: model.commandComposer.focusedOption,
             query: commandFieldText,
-            members: commandSuggestionMembers,
+            members: commandSuggestionMembers.map(model.cosmeticPolicy.member),
             roles: model.guildRoles,
             channels: model.visibleChannels,
             autocompleteChoices: model.commandComposer.autocompleteChoices,

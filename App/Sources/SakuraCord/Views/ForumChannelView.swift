@@ -658,7 +658,6 @@ private struct ForumTagEmoji: View {
                 url: url,
                 fallbackSystemImage: "tag",
                 maximumPixelDimension: max(1, Int(((size + 4) * 2).rounded(.up))),
-                accessibilityCategory: .emoji
             )
             .frame(width: size, height: size)
             .frame(width: size + 4, height: size + 4)
@@ -987,11 +986,11 @@ private struct ForumPostAuthorName: View {
 
     var body: some View {
         HStack(spacing: 4) {
+            NameRoleColorIndicator(colorHex: presentation.roleColorHex)
             Text(presentation.user.displayName)
                 .displayNameFont(presentation.user.displayNameStyle?.fontID, textStyle: .caption1)
                 .foregroundStyle(nameColor)
                 .lineLimit(1)
-            NameRoleColorIndicator(colorHex: presentation.roleColorHex)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Posted by \(presentation.user.displayName)")
@@ -1013,7 +1012,7 @@ private struct ForumPostStarterExcerpt: View {
     var body: some View {
         let messageColor: Color = isEmphasized ? .primary : .secondary
         Text(
-            "\(authorText)\(roleIndicator)\(Text(": ").foregroundColor(messageColor))\(Text(.init(content)).foregroundColor(messageColor))"
+            "\(roleIndicator)\(authorText)\(Text(": ").foregroundColor(messageColor))\(Text(.init(content)).foregroundColor(messageColor))"
         )
         .lineLimit(2)
         .accessibilityLabel("\(presentation.user.displayName): \(content)")
@@ -1031,7 +1030,7 @@ private struct ForumPostStarterExcerpt: View {
 
     private var roleIndicator: Text {
         guard roleColorDisplay == .nextToNames, let hex = presentation.roleColorHex, hex != 0 else { return Text("") }
-        return Text(" ") + Text(Image(systemName: "circle.fill")).font(.system(size: 8)).foregroundColor(Color(hex: hex))
+        return Text("\(Text(Image(systemName: "circle.fill")).font(.system(size: 8)).foregroundColor(Color(hex: hex))) ")
     }
 
     private var nameColor: Color {

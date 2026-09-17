@@ -5,6 +5,7 @@ import SakuraCordModels
 import SwiftUI
 
 struct NativeMemberListView: NSViewRepresentable {
+    @Environment(\.profileCosmeticPolicy) var cosmeticPolicy
     let sections: [MemberSection]
     let customEmojiURLsByID: CustomEmojiImageURLs
     let profilePresentation: ProfilePresentationState?

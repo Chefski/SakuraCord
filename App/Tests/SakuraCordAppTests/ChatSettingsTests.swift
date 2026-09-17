@@ -382,14 +382,14 @@ import Testing
     let expected: Set<SettingsControlID> = [
         .sendWithReturn, .chatSpellCheck, .chatAutomaticCorrection,
         .chatSmartQuotes, .chatSmartDashes, .chatTypingIndicators,
-        .chatFocusComposerOnTyping, .chatCharacterCounter,
-        .chatDiscardConfirmationLink, .chatReadAcknowledgement,
+        .chatFocusComposerOnTyping,
+         .chatReadAcknowledgement,
         .chatEditedMarkers, .chatExpandEmbeds, .chatSpoilerReveal,
         .chatInternalDiscordLinks, .chatAutoplayGIFs,
         .chatAutoplayStickers, .chatAutoplayVideos, .chatLinkPreviews,
         .chatInlineMediaSize, .reduceAnimatedMedia, .chatEmojiSkinTone,
-        .chatEmojiSource,
-        .chatExport, .chatReset,
+
+         .chatReset,
     ]
     let controls = SettingsCatalog.foundation.controls.filter {
         $0.destination.page == .chat

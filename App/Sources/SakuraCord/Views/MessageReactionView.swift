@@ -358,7 +358,6 @@ private struct MessageReactionEmoji: View {
                             url: url,
                             fallbackSystemImage: SakuraCordSystemSymbol.emojiFaceGrinning,
                             fallbackInset: 3,
-                            accessibilityCategory: .emoji
                         )
                     }
                 }

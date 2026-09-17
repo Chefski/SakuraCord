@@ -316,8 +316,7 @@ extension NativeTimelineCanvasView {
             keys.append(.avatar(url))
         }
         if let url =
-            author?.user.avatarDecorationURL
-                ?? message.author.avatarDecorationURL
+            (author?.user ?? message.author).avatarDecorationURL
         {
             keys.append(.avatarDecoration(url))
         }

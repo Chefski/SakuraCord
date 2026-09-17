@@ -481,15 +481,11 @@ private struct ReactionActionMenu: View {
     var presentation: ReactionActionMenuPresentation = .toolbar
     let react: (String) -> Void
     @State private var isHovering = false
-    @AppStorage("settings.accessibility.largerTargets")
-    private var usesLargerTargets = false
 
     var body: some View {
-        let width = presentation.width(enlarged: usesLargerTargets)
-        let height = presentation.height(enlarged: usesLargerTargets)
-        let cornerRadius = presentation.cornerRadius(
-            enlarged: usesLargerTargets
-        )
+        let width = presentation.width
+        let height = presentation.height
+        let cornerRadius = presentation.cornerRadius
         ZStack {
             ConcentricRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(backgroundColor)
@@ -573,19 +569,19 @@ enum ReactionActionMenuPresentation {
     case toolbar
     case inline
 
-    func width(enlarged: Bool) -> CGFloat {
+    var width: CGFloat {
         self == .toolbar
-            ? HoverActionPillMetrics.diameter(enlarged: enlarged)
+            ? HoverActionPillMetrics.controlDiameter
             : 30
     }
-    func height(enlarged: Bool) -> CGFloat {
+    var height: CGFloat {
         self == .toolbar
-            ? HoverActionPillMetrics.diameter(enlarged: enlarged)
+            ? HoverActionPillMetrics.controlDiameter
             : MessageReactionMetrics.pillHeight
     }
-    func cornerRadius(enlarged: Bool) -> CGFloat {
+    var cornerRadius: CGFloat {
         self == .toolbar
-            ? HoverActionPillMetrics.diameter(enlarged: enlarged) / 2
+            ? HoverActionPillMetrics.controlDiameter / 2
             : 9
     }
     var popoverEdge: NSRectEdge {
@@ -861,6 +857,7 @@ struct MessageProfilePopoverContent: View {
                presentation.requestID == requestID
             {
                 ProfilePresentationContent(presentation: presentation, openProfile: model.expandProfile)
+                    .environment(\.profileCosmeticPolicy, model.cosmeticPolicy)
             } else {
                 Color.clear.frame(width: 330, height: 250)
             }

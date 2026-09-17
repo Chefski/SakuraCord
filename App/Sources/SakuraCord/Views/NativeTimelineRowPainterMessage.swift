@@ -120,7 +120,6 @@ extension NativeTimelineRowPainter {
             )
             if let decorationURL =
                 presentedAuthor.avatarDecorationURL
-                    ?? message.author.avatarDecorationURL
             {
                 avatarDecoration(
                     url: decorationURL,
@@ -149,7 +148,7 @@ extension NativeTimelineRowPainter {
             if input.model?.accessibilitySettings.roleColorDisplay == .nextToNames,
                let color = roleColor(author?.roleColorHex) {
                 color.setFill()
-                NSBezierPath(ovalIn: CGRect(x: frame.maxX + 5, y: frame.midY - 4, width: 8, height: 8)).fill()
+                NSBezierPath(ovalIn: CGRect(x: frame.minX - 14, y: frame.midY - 4, width: 8, height: 8)).fill()
             }
         }
         drawMessageIdentityMetadata(input)
@@ -242,7 +241,8 @@ extension NativeTimelineRowPainter {
         if let region = input.layout.commandInvocationRegion {
             commandInvocation(
                 region,
-                message: input.row.message
+                message: input.row.message,
+                cosmeticPolicy: input.model?.cosmeticPolicy ?? .init()
             )
         }
     }
@@ -945,7 +945,7 @@ extension NativeTimelineRowPainter {
         let indicatorWidth: CGFloat = showsIndicator ? 14 : 0
         let authorFrame = CGRect(
             x: avatarFrame.maxX
-                + NativeTimelineReplyMetrics.horizontalSpacing,
+                + NativeTimelineReplyMetrics.horizontalSpacing + indicatorWidth,
             y: frame.minY,
             width: min(
                 width,
@@ -967,9 +967,9 @@ extension NativeTimelineRowPainter {
         )
         if showsIndicator, let roleColor {
             roleColor.setFill()
-            NSBezierPath(ovalIn: CGRect(x: authorFrame.maxX + 5, y: authorFrame.midY - 4, width: 8, height: 8)).fill()
+            NSBezierPath(ovalIn: CGRect(x: authorFrame.minX - indicatorWidth, y: authorFrame.midY - 4, width: 8, height: 8)).fill()
         }
-        return CGRect(x: authorFrame.minX, y: authorFrame.minY, width: authorFrame.width + indicatorWidth, height: authorFrame.height)
+        return CGRect(x: authorFrame.minX - indicatorWidth, y: authorFrame.minY, width: authorFrame.width + indicatorWidth, height: authorFrame.height)
     }
 
     static func replyConnector(in connectorFrame: CGRect) {
@@ -992,10 +992,11 @@ extension NativeTimelineRowPainter {
 
     static func commandInvocation(
         _ region: NativeTimelineRowLayout.CommandInvocationRegion,
-        message: Message
+        message: Message,
+        cosmeticPolicy: ProfileCosmeticPolicy
     ) {
         replyConnector(in: region.connectorFrame)
-        let user = message.interactionMetadata?.user
+        let user = message.interactionMetadata?.user.map(cosmeticPolicy.user)
         if let frame = region.avatarFrame, let user {
             avatar(
                 name: user.displayName,

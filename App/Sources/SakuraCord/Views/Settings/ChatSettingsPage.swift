@@ -1,5 +1,4 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct ChatSettingsPage: View {
     let model: AppModel
@@ -9,17 +8,16 @@ struct ChatSettingsPage: View {
 
     @State private var value = ChatSettingsSnapshot.defaults
     @State private var showsResetConfirmation = false
-    @State private var exportedPreferences: SettingsPreferenceExportFile?
-    @State private var isExporting = false
     @State private var operationMessage: String?
 
     var body: some View {
         SettingsPageForm(page: .chat, state: state) {
             composerSection
+            textInputSection
             messagesSection
             mediaSection
             emojiSection
-            localDataSection
+            resetSection
         }
         .task {
             value = model.chatSettings
@@ -31,25 +29,9 @@ struct ChatSettingsPage: View {
             "Reset Chat Settings?",
             isPresented: $showsResetConfirmation,
             resetTitle: "Reset Chat Settings",
-            message: "This restores registered Chat preferences. Drafts, credentials, local emoji history, and Discord data are unchanged.",
+            message: "Restore Chat settings to their defaults? Your drafts and emoji history will be kept.",
             reset: resetPreferences
         )
-        .fileExporter(
-            isPresented: $isExporting,
-            item: exportedPreferences,
-            contentTypes: [.json],
-            defaultFilename: "SakuraCord-Chat-Settings-v1"
-        ) { result in
-            switch result {
-            case .success:
-                operationMessage = "Exported Chat settings."
-            case let .failure(error):
-                operationMessage = "Export failed: \(error.localizedDescription)"
-            }
-            exportedPreferences = nil
-        } onCancellation: {
-            exportedPreferences = nil
-        }
     }
 
     private var composerSection: some View {
@@ -58,14 +40,24 @@ struct ChatSettingsPage: View {
                 .tint(SakuraCordAccentColor.color)
                 .settingsControlAnchor(.sendWithReturn, state: state)
 
-            Text(
-                value.sendsWithReturn
-                    ? "Return sends; Shift-Return inserts a newline."
-                    : "Return inserts a newline; Command-Return sends."
+            Toggle("Send typing indicators", isOn: $value.sendsTypingIndicators)
+                .tint(SakuraCordAccentColor.color)
+                .settingsControlAnchor(.chatTypingIndicators, state: state)
+            Toggle(
+                "Focus the message field when typing",
+                isOn: $value.focusesComposerOnTyping
             )
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .tint(SakuraCordAccentColor.color)
+            .settingsControlAnchor(.chatFocusComposerOnTyping, state: state)
+        } header: {
+            Text("Composer", bundle: #bundle)
+        } footer: {
+            Text(value.sendsWithReturn ? "Return sends a message. Shift-Return adds a new line." : "Return adds a new line. Command-Return sends a message.")
+        }
+    }
 
+    private var textInputSection: some View {
+        Section {
             Toggle("Check spelling while typing", isOn: $value.checksSpelling)
                 .tint(SakuraCordAccentColor.color)
                 .settingsControlAnchor(.chatSpellCheck, state: state)
@@ -81,34 +73,8 @@ struct ChatSettingsPage: View {
             Toggle("Smart dashes", isOn: $value.usesSmartDashes)
                 .tint(SakuraCordAccentColor.color)
                 .settingsControlAnchor(.chatSmartDashes, state: state)
-            Toggle("Send typing indicators", isOn: $value.sendsTypingIndicators)
-                .tint(SakuraCordAccentColor.color)
-                .settingsControlAnchor(.chatTypingIndicators, state: state)
-            Toggle(
-                "Focus composer when printable typing begins",
-                isOn: $value.focusesComposerOnTyping
-            )
-            .tint(SakuraCordAccentColor.color)
-            .settingsControlAnchor(.chatFocusComposerOnTyping, state: state)
-
-            LabeledContent("Character limit") {
-                Text("Shown only within 200 characters of Discord’s effective limit")
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.trailing)
-            }
-            .settingsControlAnchor(.chatCharacterCounter, state: state)
-
-            Button("Open Discard Confirmation in General…") {
-                state.navigate(
-                    to: SettingsDestination(page: .general, section: .confirmations),
-                    controlID: .confirmDiscardComposer
-                )
-            }
-            .settingsControlAnchor(.chatDiscardConfirmationLink, state: state)
         } header: {
-            Text("Composer", bundle: #bundle)
-        } footer: {
-            Text("Drafts remain saved by the existing conversation draft store.")
+            Text("Text Input", bundle: #bundle)
         }
     }
 
@@ -119,16 +85,8 @@ struct ChatSettingsPage: View {
                     Text(mode.title).tag(mode)
                 }
             }
-            .pickerStyle(.segmented)
+            .pickerStyle(.menu)
             .settingsControlAnchor(.chatReadAcknowledgement, state: state)
-
-            Text(
-                value.readAcknowledgementMode == .automatic
-                    ? "SakuraCord acknowledges content only after the active timeline is meaningfully visible."
-                    : "Unread state remains until you use an explicit Mark Read action."
-            )
-            .font(.caption)
-            .foregroundStyle(.secondary)
 
             Toggle("Show edited markers", isOn: $value.showsEditedMarkers)
                 .tint(SakuraCordAccentColor.color)
@@ -151,7 +109,7 @@ struct ChatSettingsPage: View {
         } header: {
             Text("Messages", bundle: #bundle)
         } footer: {
-            Text("Read acknowledgements synchronize through Discord and affect unread state in other clients.")
+            Text(value.readAcknowledgementMode == .automatic ? "Messages are marked read when viewed. Read status syncs with Discord." : "Messages stay unread until you choose Mark Read.")
         }
     }
 
@@ -159,18 +117,18 @@ struct ChatSettingsPage: View {
         Section {
             Toggle("Autoplay GIFs", isOn: $value.autoplaysGIFs)
                 .tint(SakuraCordAccentColor.color)
-                .disabled(reducesGIFPlaybackForAccessibility)
+                .disabled(value.reducesAnimatedMedia || systemReduceMotion)
                 .settingsControlAnchor(.chatAutoplayGIFs, state: state)
             Toggle(
                 "Autoplay animated stickers",
                 isOn: $value.autoplaysAnimatedStickers
             )
             .tint(SakuraCordAccentColor.color)
-            .disabled(reducesStickerPlaybackForAccessibility)
+            .disabled(value.reducesAnimatedMedia || systemReduceMotion)
             .settingsControlAnchor(.chatAutoplayStickers, state: state)
             Toggle("Autoplay inline videos", isOn: $value.autoplaysInlineVideos)
                 .tint(SakuraCordAccentColor.color)
-                .disabled(reducesAllOptionalMotionForAccessibility)
+                .disabled(value.reducesAnimatedMedia || systemReduceMotion)
                 .settingsControlAnchor(.chatAutoplayVideos, state: state)
             Toggle(
                 "Show automatic link previews",
@@ -192,35 +150,13 @@ struct ChatSettingsPage: View {
             Text("Media", bundle: #bundle)
         } footer: {
             VStack(alignment: .leading, spacing: 4) {
-                Text("macOS Reduce Motion—and the broader SakuraCord Accessibility reduction when enabled—takes precedence over autoplay choices.")
-                if reducesGIFPlaybackForAccessibility
-                    || reducesStickerPlaybackForAccessibility
-                    || reducesAllOptionalMotionForAccessibility
+                Text("Reduce animated media pauses autoplay. macOS Reduce Motion also applies.")
+                if systemReduceMotion
                 {
-                    Text("One or more autoplay choices are unavailable while the stronger Accessibility motion reduction is active.")
+                    Text("Some autoplay options are controlled by macOS Reduce Motion.")
                 }
             }
         }
-    }
-
-    private var reducesGIFPlaybackForAccessibility: Bool {
-        model.accessibilitySettings.reducesAnimation(
-            .gif,
-            systemReduceMotion: systemReduceMotion
-        )
-    }
-
-    private var reducesStickerPlaybackForAccessibility: Bool {
-        model.accessibilitySettings.reducesAnimation(
-            .sticker,
-            systemReduceMotion: systemReduceMotion
-        )
-    }
-
-    private var reducesAllOptionalMotionForAccessibility: Bool {
-        model.accessibilitySettings.reducesAllOptionalMotion(
-            systemReduceMotion: systemReduceMotion
-        )
     }
 
     private var emojiSection: some View {
@@ -231,54 +167,25 @@ struct ChatSettingsPage: View {
                 }
             }
             .settingsControlAnchor(.chatEmojiSkinTone, state: state)
-
-            LabeledContent("Favorites and frequency") {
-                Text(emojiSourceDescription)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.trailing)
-            }
-            .settingsControlAnchor(.chatEmojiSource, state: state)
-
         } header: {
             Text("Emoji", bundle: #bundle)
-        } footer: {
-            Text("Discord favorites and frequency remain untouched by local activity cleanup.")
         }
     }
 
-    private var localDataSection: some View {
+    private var resetSection: some View {
         Section {
-            HStack {
-                Button("Export Chat Settings…", action: exportPreferences)
-                    .settingsControlAnchor(.chatExport, state: state)
-                Button("Reset Chat Settings…", role: .destructive) {
-                    showsResetConfirmation = true
-                }
-                .settingsControlAnchor(.chatReset, state: state)
+            Button("Reset Chat Settings…", role: .destructive) {
+                showsResetConfirmation = true
             }
+            .settingsControlAnchor(.chatReset, state: state)
             if let operationMessage {
                 Text(operationMessage)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         } header: {
-            Text("Local data", bundle: #bundle)
-        } footer: {
-            Text("Reset and export cover registered app-wide Chat preferences only. Drafts, emoji history, and Discord data are separate.")
+            Text("Reset", bundle: #bundle)
         }
-    }
-
-    private var emojiSourceDescription: String {
-        if model.hasLoadedDiscordEmojiSettings,
-           !model.discordFavoriteEmojiKeys.isEmpty
-                || !model.discordFrequentlyUsedEmojiKeys.isEmpty
-        {
-            return "Discord, with local recents as a fallback"
-        }
-        if model.hasLoadedDiscordEmojiSettings {
-            return "Local fallback; Discord returned no saved ordering"
-        }
-        return "Local fallback; Discord settings are not loaded"
     }
 
     private func resetPreferences() {
@@ -286,15 +193,5 @@ struct ChatSettingsPage: View {
         value = ChatSettingsStore.shared.load()
         model.applyChatSettings(value, persists: false)
         operationMessage = "Restored Chat settings to their defaults."
-    }
-
-    private func exportPreferences() {
-        exportedPreferences = SettingsPreferenceExportFile(
-            export: SettingsPreferenceStore.shared.export(
-                scope: .appWide,
-                page: .chat
-            )
-        )
-        isExporting = true
     }
 }

@@ -420,6 +420,7 @@ struct MemberRow: View {
                         MemberAvatar(member: member)
                         VStack(alignment: .leading, spacing: 2) {
                             HStack(spacing: 5) {
+                                NameRoleColorIndicator(colorHex: MessageAuthorPresentation.topRoleColor(in: member.roles))
                                 if let style = member.user.displayNameStyle {
                                     ProfileDisplayName(name: member.user.displayName, style: style, size: 13,
                                                        showsEffects: false, plainColor: nameColor)
@@ -430,7 +431,6 @@ struct MemberRow: View {
                                         .foregroundStyle(nameColor)
                                         .lineLimit(1)
                                 }
-                                NameRoleColorIndicator(colorHex: MessageAuthorPresentation.topRoleColor(in: member.roles))
                                 if member.user.isBot {
                                     Text("APP")
                                         .font(.caption2.weight(.bold))
@@ -528,7 +528,6 @@ struct DecoratedAvatarView: View {
                     url: decorationURL,
                     animates: playback.isPlaying,
                     maximumPixelDimension: decorationPixelDimension,
-                    accessibilityCategory: .decoration,
                     resetsWhenStopped: playback.resetsWhenStopped
                 )
                     .id(decorationURL)
@@ -595,7 +594,6 @@ struct NameplateBackground: View {
                         url: url,
                         maximumPixelDimension: 512,
                         contentMode: .fill,
-                        accessibilityCategory: .decoration,
                         usesSwiftUIRendering: preservesTrailingArtwork
                     )
                     .frame(width: geometry.size.width, height: geometry.size.height,

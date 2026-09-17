@@ -9,7 +9,7 @@ nonisolated extension SettingsCatalog {
 
     static let myAccountPage = page(
         .myAccount, group: .account, title: "Manage Accounts", image: "person.crop.circle",
-        help: "Inspect and manage saved Discord accounts and account-local SakuraCord preferences.",
+        help: "Manage saved Discord accounts and choose which account opens at launch.",
         keywords: ["account", "profile", "login", "logout", "switch account"]
     )
 
@@ -18,8 +18,8 @@ nonisolated extension SettingsCatalog {
             .selectedAccount,
             page: .myAccount,
             section: .accountIdentity,
-            label: "Account to inspect",
-            help: "Choose which saved account's local settings this page displays without changing the active Discord session.",
+            label: "Saved account",
+            help: "Choose a saved account to switch to or remove.",
             keywords: ["selected account", "inspect", "profile", "saved account"],
             owner: .accountPreferences,
             scope: .accountLocal,
@@ -79,30 +79,6 @@ nonisolated extension SettingsCatalog {
             scope: .mixed,
             persistence: .notApplicable,
             reset: .notApplicable
-        ),
-        control(
-            .exportAccountPreferences,
-            page: .myAccount,
-            section: .accountLocalData,
-            label: "Export Local Preferences",
-            help: "Export registered local preferences for only the selected account as versioned JSON.",
-            keywords: ["backup", "JSON", "save settings", "account data"],
-            owner: .accountPreferences,
-            scope: .accountLocal,
-            persistence: .notApplicable,
-            reset: .notApplicable
-        ),
-        control(
-            .resetAccountPreferences,
-            page: .myAccount,
-            section: .accountLocalData,
-            label: "Reset Local Preferences",
-            help: "Reset only registered local preferences belonging to the selected account.",
-            keywords: ["defaults", "clear settings", "restore"],
-            owner: .accountPreferences,
-            scope: .accountLocal,
-            persistence: .accountPreferences,
-            reset: .categoryAction
         ),
     ]
 }

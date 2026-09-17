@@ -117,7 +117,6 @@ struct GeneralSettingsPage: View {
             }
         )
     }
-
 }
 
 private struct GeneralStartupRestorationSection: View {
@@ -154,17 +153,17 @@ private struct GeneralStartupRestorationSection: View {
                     .font(.caption)
                     .foregroundStyle(.red)
             }
+        } header: {
+            Text("Startup", bundle: #bundle)
+        }
 
+        Section {
             Picker("Launch destination", selection: $launchDestination) {
                 ForEach(SettingsLaunchDestination.allCases) { destination in
                     Text(destination.title).tag(destination)
                 }
             }
             .settingsControlAnchor(.launchDestination, state: state)
-
-            Text(launchDestination.detail)
-                .font(.caption)
-                .foregroundStyle(.secondary)
 
             Toggle(
                 "Show the main window at launch",
@@ -180,9 +179,9 @@ private struct GeneralStartupRestorationSection: View {
             .tint(SakuraCordAccentColor.color)
             .settingsControlAnchor(.rememberMemberListVisibility, state: state)
         } header: {
-            Text("Startup and restoration", bundle: #bundle)
+            Text("Window & Restoration", bundle: #bundle)
         } footer: {
-            Text("Window launch changes take effect the next time SakuraCord starts.")
+            Text(launchDestination.detail)
         }
     }
 }
@@ -211,7 +210,7 @@ private struct GeneralConfirmationSection: View {
             Text("Confirmations", bundle: #bundle)
         } footer: {
             Text(
-                "Ordinary quitting stays immediate. Saved message drafts are never discarded by these prompts."
+                "Ask before quitting during a call or upload, or discarding unsent changes. Saved drafts are kept."
             )
         }
     }

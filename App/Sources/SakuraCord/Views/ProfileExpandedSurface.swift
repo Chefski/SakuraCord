@@ -3,6 +3,7 @@ import SwiftUI
 
 /// Shared geometry and theme surface for the expanded profile and editable preview.
 struct ProfileExpandedSurface<ProfileContent: View, Widgets: View>: View {
+    @Environment(\.profileCosmeticPolicy) private var cosmeticPolicy
     let profile: UserProfile?
     var isPreview = false
     @ViewBuilder let profileContent: ProfileContent
@@ -11,11 +12,17 @@ struct ProfileExpandedSurface<ProfileContent: View, Widgets: View>: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.displayScale) private var displayScale
 
+    private var hidesGradient: Bool {
+        profile.map { cosmeticPolicy.disables(.gradient, for: $0.id) } ?? false
+    }
+
     var body: some View {
         ProfileExpandedColumns(profileWidth: MemberProfilePopover<EmptyView>.preferredWidth) {
             profileContent
                 .anchorPreference(key: ProfileFrameAnchorKey.self, value: .bounds) { bounds in
-                    profile?.frame.map { ProfileFrameAnchor(frame: $0, bounds: bounds) }
+                    profile.flatMap { profile in
+                        cosmeticPolicy.disables(.frame, for: profile.id) ? nil : profile.frame.map { ProfileFrameAnchor(frame: $0, bounds: bounds) }
+                    }
                 }
             widgets
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -26,7 +33,7 @@ struct ProfileExpandedSurface<ProfileContent: View, Widgets: View>: View {
                 .padding(.leading, -3)
         }
         .background {
-            let colors = theme.colors(for: profile, scale: displayScale, isPreview: isPreview)
+            let colors = hidesGradient ? [] : theme.colors(for: profile, scale: displayScale, isPreview: isPreview)
             if colors.count >= 2 {
                 LinearGradient(colors: colors.prefix(2).map(Color.init(hex:)), startPoint: .topLeading, endPoint: .bottomTrailing)
                     .overlay {
@@ -38,8 +45,10 @@ struct ProfileExpandedSurface<ProfileContent: View, Widgets: View>: View {
         }
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
         .containerShape(.rect(cornerRadius: 16))
-        .task(id: theme.source(for: profile, scale: displayScale, isPreview: isPreview)) {
-            await theme.load(theme.source(for: profile, scale: displayScale, isPreview: isPreview))
+        .task(id: hidesGradient ? nil : theme.source(for: profile, scale: displayScale, isPreview: isPreview)) {
+            if !hidesGradient {
+                await theme.load(theme.source(for: profile, scale: displayScale, isPreview: isPreview))
+            }
         }
     }
 }

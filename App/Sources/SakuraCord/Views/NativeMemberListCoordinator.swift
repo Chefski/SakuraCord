@@ -51,7 +51,9 @@ final class NativeMemberListCoordinator: NSObject {
     func makeScrollView() -> NSScrollView {
         let canvas = NativeMemberListCanvasView(frame: .zero)
         canvas.selectMember = { [weak self] member in
-            self?.parent.selectMember(member)
+            guard let self else { return }
+            let original = self.parent.sections.lazy.flatMap(\.members).first { $0.id == member.id } ?? member
+            self.parent.selectMember(original)
         }
         let scrollView = NativeMemberListScrollView()
         scrollView.inputPerformanceProbe.install(on: scrollView)
@@ -116,8 +118,12 @@ final class NativeMemberListCoordinator: NSObject {
         self.parent = parent
         guard let canvas else { return }
         canvas.selectMember = { [weak self] member in
-            self?.parent.selectMember(member)
+            guard let self else { return }
+            let original = self.parent.sections.lazy.flatMap(\.members).first { $0.id == member.id } ?? member
+            self.parent.selectMember(original)
         }
+        let cosmeticsChanged = canvas.cosmeticPolicy != parent.cosmeticPolicy
+        canvas.cosmeticPolicy = parent.cosmeticPolicy
         canvas.openProfile = parent.openProfile
         canvas.modalInputDidChange()
         AppPerformanceSignposts.measureSync("MemberListCanvasUpdate") {
@@ -128,6 +134,7 @@ final class NativeMemberListCoordinator: NSObject {
                 dismissProfile: parent.dismissProfile
             )
         }
+        if cosmeticsChanged { canvas.updateVisibleOverlaysAndPrewarming(force: true) }
         requestDocumentUpdate(
             sections: parent.sections,
             presentation: parent.presentation,
@@ -232,6 +239,11 @@ final class NativeMemberListCoordinator: NSObject {
         scrollView: NSScrollView,
         canvas: NativeMemberListCanvasView
     ) {
+        let sections = sections.map { section in
+            MemberSection(id: section.id, title: section.title, colorHex: section.colorHex,
+                          totalCount: section.totalCount, members: section.members.map(parent.cosmeticPolicy.member),
+                          gatewayStartIndex: section.gatewayStartIndex, isLoadingSkeleton: section.isLoadingSkeleton)
+        }
         guard requestedSections != sections
             || requestedPresentation != presentation
         else { return }

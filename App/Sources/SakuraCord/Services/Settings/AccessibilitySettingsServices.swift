@@ -17,43 +17,14 @@ nonisolated enum RoleColorDisplay: String, CaseIterable, Identifiable, Sendable 
     }
 }
 
-nonisolated enum AccessibilityMotionOverride: String, CaseIterable, Identifiable, Sendable {
-    case followMacOS
-    case alwaysReduce
-
-    var id: String { rawValue }
-
-    var title: LocalizedStringResource {
-        switch self {
-        case .followMacOS:
-            LocalizedStringResource("Follow macOS", bundle: #bundle)
-        case .alwaysReduce:
-            LocalizedStringResource("Always reduce in SakuraCord", bundle: #bundle)
-        }
-    }
-}
-
-nonisolated enum AccessibilityAnimationCategory: Equatable, Sendable {
-    case emoji
-    case sticker
-    case gif
-    case avatar
-    case decoration
-    case transition
-}
-
 nonisolated struct AccessibilitySettingsSnapshot: Equatable, Sendable {
     static let defaults = Self(
-        motionOverride: .followMacOS,
-        reducesAnimatedContent: false,
-        reducesAnimatedEmoji: false,
-        reducesAnimatedStickers: false,
-        reducesGIFs: false,
-        reducesAnimatedAvatars: false,
-        reducesDecorations: false,
-        reducesTransitions: false,
-        increasesContrast: false,
-        enlargesMessageActionTargets: false,
+        disablesProfileEffects: false,
+        disablesNameplates: false,
+        disablesAvatarDecorations: false,
+        disablesProfileFrames: false,
+        disablesNameStyles: false,
+        disablesProfileGradients: false,
         announcesTimestamps: true,
         announcesEditedStatus: true,
         announcesReactionCounts: true,
@@ -64,43 +35,20 @@ nonisolated struct AccessibilitySettingsSnapshot: Equatable, Sendable {
     var underlinesLinks = false
     var roleColorDisplay: RoleColorDisplay = .inNames
 
-    var motionOverride: AccessibilityMotionOverride
-    var reducesAnimatedContent: Bool
-    var reducesAnimatedEmoji: Bool
-    var reducesAnimatedStickers: Bool
-    var reducesGIFs: Bool
-    var reducesAnimatedAvatars: Bool
-    var reducesDecorations: Bool
-    var reducesTransitions: Bool
-    var increasesContrast: Bool
-    var enlargesMessageActionTargets: Bool
+    var disablesProfileEffects: Bool
+    var disablesNameplates: Bool
+    var disablesAvatarDecorations: Bool
+    var disablesProfileFrames: Bool
+    var disablesNameStyles: Bool
+    var disablesProfileGradients: Bool
     var announcesTimestamps: Bool
     var announcesEditedStatus: Bool
     var announcesReactionCounts: Bool
     var announcesAttachmentTypes: Bool
     var announcesNewMessages: Bool
 
-    func reducesAnimation(
-        _ category: AccessibilityAnimationCategory,
-        systemReduceMotion: Bool
-    ) -> Bool {
-        if reducesAllOptionalMotion(systemReduceMotion: systemReduceMotion) {
-            return true
-        }
-        return switch category {
-        case .emoji: reducesAnimatedEmoji
-        case .sticker: reducesAnimatedStickers
-        case .gif: reducesGIFs
-        case .avatar: reducesAnimatedAvatars
-        case .decoration: reducesDecorations
-        case .transition: reducesTransitions
-        }
-    }
+    var disablesOwnCosmetics = false
 
-    func reducesAllOptionalMotion(systemReduceMotion: Bool) -> Bool {
-        systemReduceMotion || motionOverride == .alwaysReduce
-            || reducesAnimatedContent
-    }
 }
 
 @MainActor
@@ -117,25 +65,17 @@ final class AccessibilitySettingsStore {
         var value = AccessibilitySettingsSnapshot.defaults
         value.underlinesLinks = bool(.underlineLinks) ?? false
         value.roleColorDisplay = enumValue(.roleColorDisplay) ?? .inNames
-        value.motionOverride = enumValue(.accessibilityMotionOverride)
-            ?? value.motionOverride
-        value.reducesAnimatedContent = bool(.accessibilityReduceAnimatedContent)
-            ?? value.reducesAnimatedContent
-        value.reducesAnimatedEmoji = bool(.accessibilityReduceAnimatedEmoji)
-            ?? value.reducesAnimatedEmoji
-        value.reducesAnimatedStickers = bool(.accessibilityReduceAnimatedStickers)
-            ?? value.reducesAnimatedStickers
-        value.reducesGIFs = bool(.accessibilityReduceGIFs) ?? value.reducesGIFs
-        value.reducesAnimatedAvatars = bool(.accessibilityReduceAnimatedAvatars)
-            ?? value.reducesAnimatedAvatars
-        value.reducesDecorations = bool(.accessibilityReduceDecorations)
-            ?? value.reducesDecorations
-        value.reducesTransitions = bool(.accessibilityReduceTransitions)
-            ?? value.reducesTransitions
-        value.increasesContrast = bool(.accessibilityIncreaseContrast)
-            ?? value.increasesContrast
-        value.enlargesMessageActionTargets = bool(.accessibilityLargerTargets)
-            ?? value.enlargesMessageActionTargets
+        value.disablesProfileEffects = bool(.accessibilityDisableProfileEffects)
+            ?? value.disablesProfileEffects
+        value.disablesNameplates = bool(.accessibilityDisableNameplates)
+            ?? value.disablesNameplates
+        value.disablesAvatarDecorations = bool(.accessibilityDisableAvatarDecorations) ?? value.disablesAvatarDecorations
+        value.disablesProfileFrames = bool(.accessibilityDisableProfileFrames)
+            ?? value.disablesProfileFrames
+        value.disablesNameStyles = bool(.accessibilityDisableNameStyles)
+            ?? value.disablesNameStyles
+        value.disablesProfileGradients = bool(.accessibilityDisableProfileGradients)
+            ?? value.disablesProfileGradients
         value.announcesTimestamps = bool(.accessibilityAnnounceTimestamp)
             ?? value.announcesTimestamps
         value.announcesEditedStatus = bool(.accessibilityAnnounceEdited)
@@ -146,22 +86,20 @@ final class AccessibilitySettingsStore {
             ?? value.announcesAttachmentTypes
         value.announcesNewMessages = bool(.accessibilityAnnounceNewMessages)
             ?? value.announcesNewMessages
+        value.disablesOwnCosmetics = bool(.accessibilityDisableOwnCosmetics) ?? false
         return value
     }
 
     func save(_ value: AccessibilitySettingsSnapshot) {
+        preferences.set(.bool(value.disablesOwnCosmetics), for: .accessibilityDisableOwnCosmetics)
         preferences.set(.bool(value.underlinesLinks), for: .underlineLinks)
         preferences.set(.string(value.roleColorDisplay.rawValue), for: .roleColorDisplay)
-        preferences.set(.string(value.motionOverride.rawValue), for: .accessibilityMotionOverride)
-        preferences.set(.bool(value.reducesAnimatedContent), for: .accessibilityReduceAnimatedContent)
-        preferences.set(.bool(value.reducesAnimatedEmoji), for: .accessibilityReduceAnimatedEmoji)
-        preferences.set(.bool(value.reducesAnimatedStickers), for: .accessibilityReduceAnimatedStickers)
-        preferences.set(.bool(value.reducesGIFs), for: .accessibilityReduceGIFs)
-        preferences.set(.bool(value.reducesAnimatedAvatars), for: .accessibilityReduceAnimatedAvatars)
-        preferences.set(.bool(value.reducesDecorations), for: .accessibilityReduceDecorations)
-        preferences.set(.bool(value.reducesTransitions), for: .accessibilityReduceTransitions)
-        preferences.set(.bool(value.increasesContrast), for: .accessibilityIncreaseContrast)
-        preferences.set(.bool(value.enlargesMessageActionTargets), for: .accessibilityLargerTargets)
+        preferences.set(.bool(value.disablesProfileEffects), for: .accessibilityDisableProfileEffects)
+        preferences.set(.bool(value.disablesNameplates), for: .accessibilityDisableNameplates)
+        preferences.set(.bool(value.disablesAvatarDecorations), for: .accessibilityDisableAvatarDecorations)
+        preferences.set(.bool(value.disablesProfileFrames), for: .accessibilityDisableProfileFrames)
+        preferences.set(.bool(value.disablesNameStyles), for: .accessibilityDisableNameStyles)
+        preferences.set(.bool(value.disablesProfileGradients), for: .accessibilityDisableProfileGradients)
         preferences.set(.bool(value.announcesTimestamps), for: .accessibilityAnnounceTimestamp)
         preferences.set(.bool(value.announcesEditedStatus), for: .accessibilityAnnounceEdited)
         preferences.set(.bool(value.announcesReactionCounts), for: .accessibilityAnnounceReactions)
@@ -228,6 +166,10 @@ nonisolated enum AccessibilityMessageMetadataPolicy {
 
 @MainActor
 extension AppModel {
+    var cosmeticPolicy: ProfileCosmeticPolicy {
+        ProfileCosmeticPolicy(settings: accessibilitySettings, currentUserID: snapshot?.currentUser.id)
+    }
+
     func applyAccessibilitySettings(
         _ value: AccessibilitySettingsSnapshot,
         persists: Bool = true

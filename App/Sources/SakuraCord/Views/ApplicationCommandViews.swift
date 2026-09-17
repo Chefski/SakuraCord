@@ -1116,7 +1116,6 @@ struct CommandApplicationIcon: View {
             if let url = application?.iconURL ?? application?.bot?.avatarURL {
                 AnimatedRemoteImage(
                     url: url,
-                    accessibilityCategory: .avatar
                 )
             } else {
                 ZStack {

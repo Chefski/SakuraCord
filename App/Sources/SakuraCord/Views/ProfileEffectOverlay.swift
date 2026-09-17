@@ -72,7 +72,6 @@ struct ProfileEffectOverlay: View {
                             },
                             loadedImage: loadedImages[animation.sourceURL],
                             maximumPixelDimension: maximumPixelDimension,
-                            accessibilityCategory: .decoration
                         )
                             .frame(
                                 width: frame.width,
@@ -95,7 +94,6 @@ struct ProfileEffectOverlay: View {
                     playback: startTime.map { AnimatedImagePlayback(startTime: $0, clock: playbackClock, duration: 0, loopDelay: 0) },
                     loadedImage: image,
                     maximumPixelDimension: maximumPixelDimension,
-                    accessibilityCategory: .decoration
                 )
                     .frame(width: proxy.size.width, height: proxy.size.height)
             } else if let url = effect.staticURL {

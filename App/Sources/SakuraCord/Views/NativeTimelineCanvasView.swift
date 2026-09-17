@@ -87,22 +87,6 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
         case sticker(String)
         case reaction(String)
 
-        nonisolated var accessibilityCategory: AccessibilityAnimationCategory {
-            switch self {
-            case .authorAvatar, .replyAvatar, .invocationAvatar, .reactionAvatar:
-                .avatar
-            case .authorAvatarDecoration:
-                .decoration
-            case .messageEmoji, .embedEmoji, .componentEmoji,
-                 .componentButton, .reaction:
-                .emoji
-            case .sticker:
-                .sticker
-            case .linkedImage, .attachment, .embedImage, .embedMedia,
-                 .componentImage, .componentMedia:
-                .gif
-            }
-        }
     }
 
     struct AnimatedMediaOverlayKey: Hashable {

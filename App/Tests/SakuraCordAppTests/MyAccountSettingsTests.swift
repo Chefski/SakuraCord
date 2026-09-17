@@ -12,8 +12,6 @@ import Testing
         .reopenLastAccount,
         .preferredLaunchAccount,
         .removeSavedSession,
-        .exportAccountPreferences,
-        .resetAccountPreferences,
     ]
     let controls = SettingsCatalog.foundation.controls.filter {
         $0.destination.page == .myAccount
@@ -38,8 +36,6 @@ import Testing
     #expect(search.searchResults.first?.id == .preferredLaunchAccount)
     search.searchText = "keychain sign out"
     #expect(search.searchResults.contains { $0.id == .removeSavedSession })
-    search.searchText = "backup account JSON"
-    #expect(search.searchResults.contains { $0.id == .exportAccountPreferences })
 }
 
 @Test func `Settings account inspection selection is independent and repairs removed accounts`() {

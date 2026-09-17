@@ -329,7 +329,7 @@ import UserNotifications
 @Test func `Notification settings catalog registers every production control`() {
     let expected: Set<SettingsControlID> = [
         .notificationPermission, .notificationEnabled, .notificationPreview,
-        .notificationSound, .notificationDockBadge, .notificationFocus,
+        .notificationSound, .notificationDockBadge,
         .notificationDirectMessages, .notificationGroupDirectMessages,
         .notificationMentions, .notificationReplies, .notificationIncomingCalls,
         .notificationServerActivity, .notificationOnlyInBackground,
@@ -338,8 +338,8 @@ import UserNotifications
         .notificationQuietHours, .notificationQuietDays, .notificationQuietStart,
         .notificationQuietEnd, .notificationWeekendQuietStart,
         .notificationWeekendQuietEnd, .notificationAllowDirectMessages,
-        .notificationAllowCalls, .notificationDiscordOwnership,
-        .notificationExport, .notificationReset,
+        .notificationAllowCalls,
+         .notificationReset,
     ]
     let controls = Set(
         SettingsCatalog.foundation.controls
@@ -352,8 +352,8 @@ import UserNotifications
         SettingsPreferenceRegistry.foundation.registrations(page: .notifications).map(\.id)
     )
     #expect(preferenceIDs == expected.subtracting([
-        .notificationPermission, .notificationFocus, .notificationDiscordOwnership,
-        .notificationExport, .notificationReset,
+        .notificationPermission,
+         .notificationReset,
     ]))
 }
 

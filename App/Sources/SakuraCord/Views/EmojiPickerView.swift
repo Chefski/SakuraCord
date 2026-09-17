@@ -211,7 +211,6 @@ enum EmojiPickerItem: Identifiable {
                 if emoji.isAnimated {
                     AnimatedRemoteImage(
                         url: url,
-                        accessibilityCategory: .emoji
                     )
                         .frame(width: dimension - 2, height: dimension - 2)
                 } else {

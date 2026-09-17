@@ -689,7 +689,7 @@ private struct AccountControlView: View {
 
                 CurrentUserCapsule(
                     model: voiceModel,
-                    user: user,
+                    user: user.map(voiceModel.cosmeticPolicy.user),
                     displayName: displayName,
                     subtitle: accountSubtitle,
                     currentStatus: currentStatus,
@@ -891,6 +891,7 @@ private struct CurrentUserCapsule: View {
                     }
                 )
             })
+            .environment(\.profileCosmeticPolicy, model.cosmeticPolicy)
         } else {
             ProgressView("Loading profile…")
                 .padding(24)

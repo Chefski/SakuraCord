@@ -192,7 +192,7 @@ private struct ProfileStatusEmojiButton: View {
         Button(action: action) {
             Group {
                 if let id = status.emojiID, let url = URL(string: "https://cdn.discordapp.com/emojis/\(id).webp?size=48&animated=false") {
-                    AnimatedRemoteImage(url: url, animates: false, maximumPixelDimension: 48, accessibilityCategory: .emoji)
+                    AnimatedRemoteImage(url: url, animates: false, maximumPixelDimension: 48)
                 } else if let emoji = status.emojiName {
                     Image(nsImage: ComponentUnicodeEmojiRenderer.image(for: emoji))
                         .resizable().scaledToFit().frame(width: 22, height: 22)

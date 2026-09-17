@@ -9,8 +9,6 @@ struct VoiceVideoSettingsPage: View {
 
     @State private var tests = VoiceVideoTestController()
     @State private var showsResetConfirmation = false
-    @State private var exportedPreferences: SettingsPreferenceExportFile?
-    @State private var isExporting = false
     @State private var operationMessage: String?
 
     var body: some View {
@@ -34,18 +32,15 @@ struct VoiceVideoSettingsPage: View {
             VoicePermissionsSettingsSection(
                 permissions: tests.permissions,
                 state: state,
-                refresh: tests.refreshPermissions,
                 openSystemSettings: openPrivacySettings
             )
             Section {
-                Button("Export Voice & Video Settings…") { exportPreferences() }
-                    .settingsControlAnchor(.voiceExport, state: state)
                 Button("Reset Voice & Video Settings…", role: .destructive) {
                     showsResetConfirmation = true
                 }
                 .settingsControlAnchor(.voiceReset, state: state)
             } header: {
-                Text("Local data", bundle: #bundle)
+                Text("Reset", bundle: #bundle)
             }
         }
         .task {
@@ -61,16 +56,6 @@ struct VoiceVideoSettingsPage: View {
         .onChange(of: model.activeVoiceChannel?.id) {
             if model.activeVoiceChannel != nil {
                 tests.stopAll()
-            }
-        }
-        .fileExporter(
-            isPresented: $isExporting,
-            item: exportedPreferences,
-            contentTypes: [.json],
-            defaultFilename: "SakuraCord-Voice-Video-Settings"
-        ) { result in
-            if case let .failure(error) = result {
-                operationMessage = error.localizedDescription
             }
         }
         .settingsResetConfirmation(
@@ -111,22 +96,12 @@ struct VoiceVideoSettingsPage: View {
     }
 
     private func openPrivacySettings() {
-        guard let url = NSWorkspace.shared.urlForApplication(
-            withBundleIdentifier: "com.apple.systempreferences"
-        ), NSWorkspace.shared.open(url) else {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security"),
+              NSWorkspace.shared.open(url)
+        else {
             operationMessage = "System Settings could not be opened. Open Privacy & Security in System Settings manually."
             return
         }
-    }
-
-    private func exportPreferences() {
-        exportedPreferences = SettingsPreferenceExportFile(
-            export: SettingsPreferenceStore.shared.export(
-                scope: .appWide,
-                page: .voiceVideo
-            )
-        )
-        isExporting = true
     }
 
     private func resetPreferences() {
@@ -189,7 +164,7 @@ private struct VoiceDevicesSettingsSection: View {
         } header: {
             Text("Devices", bundle: #bundle)
         } footer: {
-            Text("System Default follows changes made in macOS. If a saved device disappears, SakuraCord uses and saves the system default instead.")
+            Text("System Default follows your Mac’s selected device.")
         }
     }
 
@@ -286,12 +261,12 @@ private struct VoiceLevelsSettingsSection: View {
             }
             .settingsControlAnchor(.voiceSpeakerTest, state: state)
         } header: {
-            Text("Levels & tests", bundle: #bundle)
+            Text("Audio", bundle: #bundle)
         } footer: {
             if isCallActive {
                 Text("Device tests are unavailable during a call so they cannot interfere with live audio.")
             } else {
-                Text("Tests run only while their Stop button is visible. Microphone samples are metered in memory and are never retained.")
+                Text("Tests stop when you leave this page. Microphone audio is not recorded.")
             }
         }
     }
@@ -359,9 +334,9 @@ private struct VoiceCallDefaultsSettingsSection: View {
             }
             .tint(SakuraCordAccentColor.color)
         } header: {
-            Text("Call defaults", bundle: #bundle)
+            Text("Calls", bundle: #bundle)
         } footer: {
-            Text("Join defaults apply when entering the next call. Changing them never mutes or deafens a call already in progress.")
+            Text("Join settings apply to your next call.")
         }
     }
 }
@@ -374,30 +349,16 @@ private struct VoiceCameraSettingsSection: View {
     var body: some View {
         @Bindable var preferences = model.voiceVideoPreferences
         Section {
-            Group {
-                if let frame = tests.cameraFrame {
-                    Image(decorative: frame.image, scale: 1)
-                        .resizable()
-                        .scaledToFill()
-                        .scaleEffect(x: preferences.mirrorsLocalPreview ? -1 : 1, y: 1)
-                } else {
-                    ContentUnavailableView(
-                        "Camera Preview",
-                        systemImage: "video",
-                        description: Text("Start the preview to check the selected camera.")
-                    )
-                    .foregroundStyle(.white)
-                }
+            if let frame = tests.cameraFrame {
+                Image(decorative: frame.image, scale: 1)
+                    .resizable()
+                    .scaledToFit()
+                    .scaleEffect(x: preferences.mirrorsLocalPreview ? -1 : 1, y: 1)
+                    .frame(maxWidth: .infinity, maxHeight: 240)
+                    .background(.black)
+                    .clipShape(.rect(cornerRadius: 10))
+                    .accessibilityLabel("Live camera preview")
             }
-            .frame(maxWidth: .infinity, minHeight: 180, maxHeight: 240)
-            .clipped()
-            .background(.black.opacity(0.75))
-            .clipShape(.rect(cornerRadius: 10))
-            .accessibilityLabel(
-                tests.isCameraPreviewRunning
-                    ? "Live camera preview"
-                    : "Camera preview stopped"
-            )
 
             LabeledContent("Preview") {
                 Button(tests.isCameraPreviewRunning ? "Stop Preview" : "Start Preview") {
@@ -419,7 +380,7 @@ private struct VoiceCameraSettingsSection: View {
         } header: {
             Text("Camera", bundle: #bundle)
         } footer: {
-            Text("Mirroring affects only your local preview. Camera defaults apply when joining the next call; live camera controls remain in the call.")
+            Text("Mirroring changes only your preview. Camera tests are available when you’re not in a call.")
         }
     }
 
@@ -467,9 +428,9 @@ private struct ScreenShareDefaultsSettingsSection: View {
                 .tint(SakuraCordAccentColor.color)
                 .settingsControlAnchor(.voiceScreenSharePointer, state: state)
         } header: {
-            Text("Screen share defaults", bundle: #bundle)
+            Text("Screen Sharing", bundle: #bundle)
         } footer: {
-            Text("These values initialize the next share. The existing share preview remains the place to change quality, frame rate, audio, and pointer capture for the active share.")
+            Text("Defaults for your next screen share. You can also adjust them in the share preview.")
         }
     }
 }
@@ -477,7 +438,6 @@ private struct ScreenShareDefaultsSettingsSection: View {
 private struct VoicePermissionsSettingsSection: View {
     let permissions: VoiceMediaPermissionSnapshot
     let state: SettingsViewState
-    let refresh: () -> Void
     let openSystemSettings: () -> Void
 
     var body: some View {
@@ -494,20 +454,13 @@ private struct VoicePermissionsSettingsSection: View {
             }
             .settingsControlAnchor(.voiceCameraPermission, state: state)
 
-            LabeledContent("Screen & system audio recording") {
-                Text(permissions.screenRecordingAllowed ? "Allowed" : "Not allowed")
-                    .foregroundStyle(.secondary)
-            }
-            .settingsControlAnchor(.voiceScreenPermission, state: state)
-
             LabeledContent("Privacy & Security") {
-                Button("Refresh", action: refresh)
                 Button("Open System Settings…", action: openSystemSettings)
             }
         } header: {
             Text("Permissions", bundle: #bundle)
         } footer: {
-            Text("macOS owns and persists these permissions. SakuraCord reports their current state and requests access only when a feature needs it.")
+            Text("Screen sharing asks you to choose a window or display using the macOS picker.")
         }
     }
 }

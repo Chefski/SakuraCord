@@ -6,7 +6,6 @@ struct SettingsView: View {
     @ObservedObject var updateController: AppUpdateController
 
     @Environment(\.locale) private var locale
-    @Environment(\.colorSchemeContrast) private var systemColorSchemeContrast
     @SceneStorage("settings.selected-account") private var storedSelectedAccount = ""
     @State private var state = SettingsViewState()
     @State private var launchAtLogin = LaunchAtLoginController()
@@ -38,12 +37,6 @@ struct SettingsView: View {
                 launchAtLogin: launchAtLogin,
                 selectedAccountID: $storedSelectedAccount,
                 profileEditor: profileEditor
-            )
-            .modifier(
-                SettingsContrastModifier(
-                    isEnabled: model.accessibilitySettings.increasesContrast
-                        && systemColorSchemeContrast == .standard
-                )
             )
         }
         .searchable(
@@ -99,6 +92,7 @@ struct SettingsView: View {
         } message: { _ in
             Text(profileEditor?.isSaving == true ? "Wait for your profile changes to finish saving." : "Your profile has unsaved changes.", bundle: #bundle)
         }
+        .environment(\.profileCosmeticPolicy, model.cosmeticPolicy)
         .task(id: navigationRouter.request?.id) {
             guard let request = navigationRouter.request else { return }
             state.searchText = ""
@@ -214,19 +208,6 @@ private struct SettingsWindowBehaviorBridge: NSViewRepresentable {
                 y: visibleFrame.midY - window.frame.height / 2
             )
             window.setFrameOrigin(origin)
-        }
-    }
-}
-
-private struct SettingsContrastModifier: ViewModifier {
-    let isEnabled: Bool
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if isEnabled {
-            content.contrast(1.12)
-        } else {
-            content
         }
     }
 }

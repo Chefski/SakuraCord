@@ -17,17 +17,21 @@ private final class VoiceOverAnnouncementTestState {
 
     var value = store.load()
     #expect(value == .defaults)
-    value.motionOverride = .alwaysReduce
-    value.reducesAnimatedEmoji = true
-    value.increasesContrast = true
+    value.disablesProfileEffects = true
+    value.disablesNameplates = true
+    value.disablesAvatarDecorations = true
+    value.disablesProfileFrames = true
+    value.disablesNameStyles = true
+    value.disablesProfileGradients = true
+    value.disablesOwnCosmetics = true
     value.announcesNewMessages = true
     store.save(value)
 
     #expect(store.load() == value)
     let export = preferences.export(scope: .appWide, page: .accessibility)
     #expect(
-        export.values[SettingsControlID.accessibilityMotionOverride.rawValue]
-            == .string(AccessibilityMotionOverride.alwaysReduce.rawValue)
+        export.values[SettingsControlID.accessibilityDisableProfileEffects.rawValue]
+            == .bool(true)
     )
     #expect(
         export.values[SettingsControlID.accessibilityAnnounceNewMessages.rawValue]
@@ -39,30 +43,31 @@ private final class VoiceOverAnnouncementTestState {
     #expect(store.load() == .defaults)
 }
 
-@Test func `Accessibility motion policy only strengthens system choices`() {
+@Test func `Cosmetic restrictions preserve own profile unless opted in`() throws {
+    let ownID = UserID(rawValue: 1)
+    let otherID = UserID(rawValue: 2)
+    let decoration = try #require(URL(string: "https://example.com/decoration.png"))
+    let user = User(id: otherID, username: "fixture", displayName: "Fixture",
+                    avatarDecorationURL: decoration, displayNameStyle: DisplayNameStyle(fontID: 1))
     var settings = AccessibilitySettingsSnapshot.defaults
-    #expect(!settings.reducesAnimation(.gif, systemReduceMotion: false))
-    #expect(settings.reducesAnimation(.gif, systemReduceMotion: true))
-
-    settings.reducesAnimatedEmoji = true
-    #expect(settings.reducesAnimation(.emoji, systemReduceMotion: false))
-    #expect(!settings.reducesAnimation(.sticker, systemReduceMotion: false))
-
-    settings.reducesAnimatedContent = true
-    for category in [
-        AccessibilityAnimationCategory.emoji,
-        .sticker,
-        .gif,
-        .avatar,
-        .decoration,
-        .transition,
-    ] {
-        #expect(settings.reducesAnimation(category, systemReduceMotion: false))
-    }
-
-    settings.reducesAnimatedContent = false
-    settings.motionOverride = .alwaysReduce
-    #expect(settings.reducesAllOptionalMotion(systemReduceMotion: false))
+    #expect(!settings.disablesOwnCosmetics)
+    var policy = ProfileCosmeticPolicy(settings: settings, currentUserID: ownID)
+    #expect(policy.user(user) == user)
+    settings.disablesAvatarDecorations = true
+    settings.disablesNameStyles = true
+    policy.settings = settings
+    #expect(policy.user(user).avatarDecorationURL == nil)
+    #expect(policy.user(user).displayNameStyle == nil)
+    #expect(user.avatarDecorationURL == decoration)
+    #expect(policy.user(user).username == user.username)
+    policy.currentUserID = otherID
+    #expect(policy.user(user) == user)
+    policy.settings.disablesOwnCosmetics = true
+    #expect(policy.user(user).avatarDecorationURL == nil)
+    #expect(policy.user(user).displayNameStyle == nil)
+    policy.settings.disablesAvatarDecorations = false
+    #expect(policy.user(user).avatarDecorationURL == decoration)
+    #expect(policy.user(user).displayNameStyle == nil)
 }
 
 @Test func `VoiceOver metadata follows each configured field`() throws {
@@ -149,38 +154,4 @@ private final class VoiceOverAnnouncementTestState {
     state.isEnabled = false
     announcer.flush()
     #expect(state.announcements == ["3 new messages", "New message"])
-}
-
-@Test func `Larger message action targets preserve control count geometry`() {
-    let normal = HoverActionPillMetrics.size(controlCount: 4)
-    let enlarged = HoverActionPillMetrics.size(
-        controlCount: 4,
-        enlarged: true
-    )
-    #expect(normal.height == 36)
-    #expect(enlarged.height == 44)
-    #expect(enlarged.width - normal.width == 32)
-}
-
-@Test func `Timeline animation roles map to accessibility categories`() {
-    #expect(
-        NativeTimelineCanvasView.AnimatedMediaOverlayRole.authorAvatar
-            .accessibilityCategory == .avatar
-    )
-    #expect(
-        NativeTimelineCanvasView.AnimatedMediaOverlayRole.authorAvatarDecoration
-            .accessibilityCategory == .decoration
-    )
-    #expect(
-        NativeTimelineCanvasView.AnimatedMediaOverlayRole.messageEmoji(0)
-            .accessibilityCategory == .emoji
-    )
-    #expect(
-        NativeTimelineCanvasView.AnimatedMediaOverlayRole.sticker("1")
-            .accessibilityCategory == .sticker
-    )
-    #expect(
-        NativeTimelineCanvasView.AnimatedMediaOverlayRole.attachment("1")
-            .accessibilityCategory == .gif
-    )
 }

@@ -8,7 +8,7 @@ struct ProfileEditorExpandedPreview: View {
     let open: (ProfileEditorPicker) -> Void
 
     private var frameInsets: EdgeInsets {
-        guard let frame = profile.frame else { return EdgeInsets() }
+        guard !model.cosmeticPolicy.disables(.frame, for: profile.id), let frame = profile.frame else { return EdgeInsets() }
         let scale = MemberProfilePopover<EmptyView>.preferredWidth / max(1, frame.innerWidth)
         return EdgeInsets(top: ceil(max(0, frame.overflowTop) * scale), leading: 0,
                           bottom: ceil(max(0, frame.overflowBottom) * scale), trailing: 0)

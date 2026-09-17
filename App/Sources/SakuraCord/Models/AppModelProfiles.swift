@@ -152,21 +152,25 @@ extension AppModel {
     }
 
     func authorPresentation(for message: Message) -> MessageAuthorPresentation {
-        MessageAuthorPresentation.resolve(
+        let presentation = MessageAuthorPresentation.resolve(
             message: message,
             member: membersByID[message.author.id],
             roles: guildRoles
         )
+        var user = presentation.user
+        user.avatarDecorationURL = user.avatarDecorationURL ?? message.author.avatarDecorationURL
+        return MessageAuthorPresentation(user: cosmeticPolicy.user(user), roleColorHex: presentation.roleColorHex)
     }
 
     func authorPresentation(
         for replyPreview: MessageReplyPreview
     ) -> MessageAuthorPresentation {
-        MessageAuthorPresentation.resolve(
+        let presentation = MessageAuthorPresentation.resolve(
             replyPreview: replyPreview,
             member: membersByID[replyPreview.author.id],
             roles: guildRoles
         )
+        return MessageAuthorPresentation(user: cosmeticPolicy.user(presentation.user), roleColorHex: presentation.roleColorHex)
     }
 
     @discardableResult

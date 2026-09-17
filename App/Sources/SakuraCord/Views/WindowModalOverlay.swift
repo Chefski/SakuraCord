@@ -263,10 +263,6 @@ final class WindowModalHostingView: NSHostingView<AnyView> {
     ) {
         self.presentationID = presentationID
         let reducesMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-            || AccessibilitySettingsStore.shared.load().reducesAnimation(
-                .transition,
-                systemReduceMotion: false
-            )
         self.reducesMotion = reducesMotion
         let animationState = WindowModalContext(
             dismiss: dismiss,

@@ -1,30 +1,24 @@
-import AppKit
-import Combine
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct AccessibilitySettingsPage: View {
     let model: AppModel
     let state: SettingsViewState
 
-    @Environment(\.accessibilityDifferentiateWithoutColor)
-    private var differentiatesWithoutColor
-    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
-    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
-    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @State private var value = AccessibilitySettingsSnapshot.defaults
-    @State private var systemRevision = 0
     @State private var showsResetConfirmation = false
-    @State private var exportedPreferences: SettingsPreferenceExportFile?
-    @State private var isExporting = false
-    @State private var operationMessage: String?
 
     var body: some View {
         SettingsPageForm(page: .accessibility, state: state) {
-            motionSection
+            cosmeticsSection
             readabilitySection
             voiceOverSection
-            localDataSection
+            Section {
+                Button("Reset All…", role: .destructive) {
+                    showsResetConfirmation = true
+                }
+                .disabled(value == .defaults)
+                .settingsControlAnchor(.accessibilityReset, state: state)
+            }
         }
         .task {
             value = model.accessibilitySettings
@@ -32,110 +26,57 @@ struct AccessibilitySettingsPage: View {
         .onChange(of: value) { _, newValue in
             model.applyAccessibilitySettings(newValue)
         }
-        .onReceive(
-            NSWorkspace.shared.notificationCenter.publisher(
-                for: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification
-            )
-        ) { _ in
-            systemRevision &+= 1
-        }
         .settingsResetConfirmation(
-            "Reset Accessibility Settings?",
+            "Reset All Accessibility Settings?",
             isPresented: $showsResetConfirmation,
-            resetTitle: "Reset Accessibility Settings",
-            message: "This restores SakuraCord’s local accessibility preferences. macOS accessibility settings are not changed.",
+            resetTitle: "Reset All Settings",
+            message: "This resets all of SakuraCord’s accessibility settings. Are you sure you want to do this?",
             reset: resetPreferences
         )
-        .fileExporter(
-            isPresented: $isExporting,
-            item: exportedPreferences,
-            contentTypes: [.json],
-            defaultFilename: "SakuraCord-Accessibility-Settings-v1"
-        ) { result in
-            switch result {
-            case .success:
-                operationMessage = "Exported Accessibility settings."
-            case let .failure(error):
-                operationMessage = "Export failed: \(error.localizedDescription)"
-            }
-            exportedPreferences = nil
-        } onCancellation: {
-            exportedPreferences = nil
-        }
     }
 
-    private var motionSection: some View {
+    private var cosmeticsSection: some View {
         Section {
-            LabeledContent("macOS Reduce Motion") {
-                SettingsBooleanStatus(isEnabled: systemReduceMotion)
-            }
-
-            Picker("Motion preference", selection: $value.motionOverride) {
-                ForEach(AccessibilityMotionOverride.allCases) { option in
-                    Text(option.title).tag(option)
+            Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 10) {
+                GridRow {
+                    Toggle("Profile effects", isOn: $value.disablesProfileEffects)
+                        .accessibilityLabel("Disable profile effects")
+                        .settingsControlAnchor(.accessibilityDisableProfileEffects, state: state)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Toggle("Nameplates", isOn: $value.disablesNameplates)
+                        .accessibilityLabel("Disable nameplates")
+                        .settingsControlAnchor(.accessibilityDisableNameplates, state: state)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                GridRow {
+                    Toggle("Avatar decorations", isOn: $value.disablesAvatarDecorations)
+                        .accessibilityLabel("Disable avatar decorations")
+                        .settingsControlAnchor(.accessibilityDisableAvatarDecorations, state: state)
+                    Toggle("Profile frames", isOn: $value.disablesProfileFrames)
+                        .accessibilityLabel("Disable profile frames")
+                        .settingsControlAnchor(.accessibilityDisableProfileFrames, state: state)
+                }
+                GridRow {
+                    Toggle("Name styles", isOn: $value.disablesNameStyles)
+                        .accessibilityLabel("Disable name styles")
+                        .settingsControlAnchor(.accessibilityDisableNameStyles, state: state)
+                    Toggle("Nitro profile gradients", isOn: $value.disablesProfileGradients)
+                        .accessibilityLabel("Disable nitro profile gradients")
+                        .settingsControlAnchor(.accessibilityDisableProfileGradients, state: state)
                 }
             }
-            .settingsControlAnchor(.accessibilityMotionOverride, state: state)
-
-            Toggle("Reduce animated content", isOn: $value.reducesAnimatedContent)
-                .tint(SakuraCordAccentColor.color)
-                .settingsControlAnchor(.accessibilityReduceAnimatedContent, state: state)
-
-            Group {
-                Toggle("Animated emoji", isOn: $value.reducesAnimatedEmoji)
-                    .settingsControlAnchor(.accessibilityReduceAnimatedEmoji, state: state)
-                Toggle("Animated stickers", isOn: $value.reducesAnimatedStickers)
-                    .settingsControlAnchor(.accessibilityReduceAnimatedStickers, state: state)
-                Toggle("GIFs and animated images", isOn: $value.reducesGIFs)
-                    .settingsControlAnchor(.accessibilityReduceGIFs, state: state)
-                Toggle("Animated avatars", isOn: $value.reducesAnimatedAvatars)
-                    .settingsControlAnchor(.accessibilityReduceAnimatedAvatars, state: state)
-                Toggle("Profile decorations", isOn: $value.reducesDecorations)
-                    .settingsControlAnchor(.accessibilityReduceDecorations, state: state)
-                Toggle("Nonessential transitions", isOn: $value.reducesTransitions)
-                    .settingsControlAnchor(.accessibilityReduceTransitions, state: state)
-            }
+            .toggleStyle(.checkbox)
             .tint(SakuraCordAccentColor.color)
-            .disabled(value.reducesAnimatedContent)
+            Toggle("Disable own", isOn: $value.disablesOwnCosmetics)
+                .tint(SakuraCordAccentColor.color)
+                .settingsControlAnchor(.accessibilityDisableOwnCosmetics, state: state)
         } header: {
-            Text("Motion & Animated Content", bundle: #bundle)
-        } footer: {
-            VStack(alignment: .leading, spacing: 4) {
-                if value.reducesAnimatedContent {
-                    Text("The master reduction currently pauses every category above; category choices are retained for later.")
-                }
-                Text("macOS Reduce Motion always takes precedence. SakuraCord never overrides it to permit more motion.")
-            }
+            Text("Disable Cosmetics", bundle: #bundle)
         }
     }
 
     private var readabilitySection: some View {
         Section {
-            LabeledContent("macOS Increase Contrast") {
-                SettingsBooleanStatus(
-                    isEnabled: colorSchemeContrast == .increased
-                        || NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
-                )
-                .id(systemRevision)
-            }
-            LabeledContent("Differentiate Without Color") {
-                SettingsBooleanStatus(
-                    isEnabled: differentiatesWithoutColor
-                        || NSWorkspace.shared.accessibilityDisplayShouldDifferentiateWithoutColor
-                )
-                .id(systemRevision)
-            }
-
-            Toggle("Increase contrast in SakuraCord", isOn: $value.increasesContrast)
-                .tint(SakuraCordAccentColor.color)
-                .settingsControlAnchor(.accessibilityIncreaseContrast, state: state)
-            Toggle(
-                "Use larger message action targets",
-                isOn: $value.enlargesMessageActionTargets
-            )
-            .tint(SakuraCordAccentColor.color)
-            .settingsControlAnchor(.accessibilityLargerTargets, state: state)
-
             Toggle("Underline links", isOn: $value.underlinesLinks)
                 .tint(SakuraCordAccentColor.color)
                 .settingsControlAnchor(.underlineLinks, state: state)
@@ -144,71 +85,39 @@ struct AccessibilitySettingsPage: View {
                     Text(option.title).tag(option)
                 }
             }
-            .pickerStyle(.menu)
             .settingsControlAnchor(.roleColorDisplay, state: state)
         } header: {
-            Text("Readability & Interaction", bundle: #bundle)
-        } footer: {
-            Text("Unread state uses weight, labels, counts, and separators; presence states use distinct shapes as well as color.")
+            Text("Readability", bundle: #bundle)
         }
     }
 
     private var voiceOverSection: some View {
         Section {
-            LabeledContent("VoiceOver") {
-                SettingsBooleanStatus(
-                    isEnabled: voiceOverEnabled || NSWorkspace.shared.isVoiceOverEnabled
-                )
-                .id(systemRevision)
+            Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 10) {
+                GridRow {
+                    Toggle("Timestamps", isOn: $value.announcesTimestamps)
+                        .settingsControlAnchor(.accessibilityAnnounceTimestamp, state: state)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Toggle("Edited status", isOn: $value.announcesEditedStatus)
+                        .settingsControlAnchor(.accessibilityAnnounceEdited, state: state)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                GridRow {
+                    Toggle("Reaction counts", isOn: $value.announcesReactionCounts)
+                        .settingsControlAnchor(.accessibilityAnnounceReactions, state: state)
+                    Toggle("Attachment types", isOn: $value.announcesAttachmentTypes)
+                        .settingsControlAnchor(.accessibilityAnnounceAttachmentTypes, state: state)
+                }
+                GridRow {
+                    Toggle("Announce new messages", isOn: $value.announcesNewMessages)
+                        .settingsControlAnchor(.accessibilityAnnounceNewMessages, state: state)
+                        .gridCellColumns(2)
+                }
             }
-
-            Group {
-                Toggle("Include timestamps", isOn: $value.announcesTimestamps)
-                    .settingsControlAnchor(.accessibilityAnnounceTimestamp, state: state)
-                Toggle("Include edited status", isOn: $value.announcesEditedStatus)
-                    .settingsControlAnchor(.accessibilityAnnounceEdited, state: state)
-                Toggle("Include reaction counts", isOn: $value.announcesReactionCounts)
-                    .settingsControlAnchor(.accessibilityAnnounceReactions, state: state)
-                Toggle("Include attachment types", isOn: $value.announcesAttachmentTypes)
-                    .settingsControlAnchor(.accessibilityAnnounceAttachmentTypes, state: state)
-                Toggle("Announce new messages", isOn: $value.announcesNewMessages)
-                    .settingsControlAnchor(.accessibilityAnnounceNewMessages, state: state)
-            }
+            .toggleStyle(.checkbox)
             .tint(SakuraCordAccentColor.color)
         } header: {
             Text("VoiceOver", bundle: #bundle)
-        } footer: {
-            Text("New-message announcements run only while VoiceOver is active, group bursts, and say only a generic count—never sender, channel, or message content.")
-        }
-    }
-
-    private var localDataSection: some View {
-        Section {
-            HStack {
-                Button("Export Settings…") {
-                    exportedPreferences = SettingsPreferenceExportFile(
-                        export: SettingsPreferenceStore.shared.export(
-                            scope: .appWide,
-                            page: .accessibility
-                        )
-                    )
-                    isExporting = true
-                }
-                .settingsControlAnchor(.accessibilityExport, state: state)
-
-                Button("Reset to Defaults…", role: .destructive) {
-                    showsResetConfirmation = true
-                }
-                .settingsControlAnchor(.accessibilityReset, state: state)
-            }
-            if let operationMessage {
-                Text(operationMessage)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .accessibilityLabel(operationMessage)
-            }
-        } header: {
-            Text("Local Data", bundle: #bundle)
         }
     }
 
@@ -216,19 +125,5 @@ struct AccessibilitySettingsPage: View {
         SettingsPreferenceStore.shared.reset(scope: .appWide, page: .accessibility)
         value = AccessibilitySettingsStore.shared.load()
         model.applyAccessibilitySettings(value, persists: false)
-        operationMessage = "Restored Accessibility settings to their defaults. macOS settings were left unchanged."
-    }
-}
-
-private struct SettingsBooleanStatus: View {
-    let isEnabled: Bool
-
-    var body: some View {
-        Label(
-            isEnabled ? "On" : "Off",
-            systemImage: isEnabled ? "checkmark.circle.fill" : "circle"
-        )
-        .foregroundStyle(isEnabled ? .primary : .secondary)
-        .accessibilityValue(isEnabled ? "On" : "Off")
     }
 }

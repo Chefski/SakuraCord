@@ -339,11 +339,13 @@ extension NativeMemberListCanvasView {
         let tagPresentation = member.user.primaryGuild.flatMap(guildTagPresentation)
         let roleColor = presentation.roleColorDisplay == .nextToNames
             ? MessageAuthorPresentation.topRoleColor(in: member.roles).map(Self.color(hex:)) : nil
-        let accessoryWidths: [CGFloat] = (roleColor != nil ? [8] : []) + (member.user.isBot ? [botBadgeWidth] : [])
+        let indicatorWidth: CGFloat = roleColor != nil ? 13 : 0
+        let nameX = textX + indicatorWidth
+        let accessoryWidths: [CGFloat] = (member.user.isBot ? [botBadgeWidth] : [])
             + (tagPresentation.map { [$0.width] } ?? [])
         let nameLayout = NativeMemberNameLayout.layout(
             measuredNameWidth: prepared.nameWidth,
-            availableWidth: max(0, row.maxX - 4 - textX),
+            availableWidth: max(0, row.maxX - 4 - nameX),
             accessoryWidths: accessoryWidths
         )
         if nameLayout.nameWidth > 0 {
@@ -352,19 +354,18 @@ extension NativeMemberListCanvasView {
                 token: prepared.nameTruncationToken,
                 maximumWidth: nameLayout.nameWidth
             )
-            Self.draw(line: visibleName, at: CGPoint(x: textX, y: nameY), context: context)
+            Self.draw(line: visibleName, at: CGPoint(x: nameX, y: nameY), context: context)
         }
 
         var accessoryIndex = 0
-        if let roleColor, let accessory = nameLayout.accessoryFrames.first {
+        if let roleColor {
             context.setFillColor(roleColor.cgColor)
-            context.fillEllipse(in: CGRect(x: textX + accessory.minX, y: nameY + 5, width: min(8, accessory.width), height: 8))
-            accessoryIndex += 1
+            context.fillEllipse(in: CGRect(x: textX, y: nameY + 5, width: 8, height: 8))
         }
         if member.user.isBot, nameLayout.accessoryFrames.indices.contains(accessoryIndex) {
             let accessory = nameLayout.accessoryFrames[accessoryIndex]
             if accessory.width >= botBadgeWidth {
-                drawBotBadge(at: textX + accessory.minX, nameY: nameY, context: context)
+                drawBotBadge(at: nameX + accessory.minX, nameY: nameY, context: context)
             }
             accessoryIndex += 1
         }
@@ -376,7 +377,7 @@ extension NativeMemberListCanvasView {
                 tagPresentation,
                 identity: identity,
                 accessoryFrame: nameLayout.accessoryFrames[accessoryIndex],
-                textX: textX,
+                textX: nameX,
                 nameY: nameY,
                 itemIndex: index,
                 context: context

@@ -56,14 +56,7 @@ nonisolated extension SettingsCatalog {
             keywords: ["badge", "mentions", "unread conversations", "off"],
             scope: .appWideLocal
         ),
-        control(
-            .notificationFocus, page: .notifications, section: .notificationDelivery,
-            label: "macOS Focus",
-            help: "SakuraCord uses standard active notifications and never elevates messages or calls above the user's Focus policy.",
-            keywords: ["Do Not Disturb", "DND", "interruption level", "system"],
-            owner: .macOS, scope: .appWideLocal,
-            persistence: .systemManaged, reset: .notApplicable
-        ),
+
         control(
             .notificationDirectMessages, page: .notifications, section: .notificationEvents,
             label: "Direct messages", help: "Allow eligible one-to-one direct messages.",
@@ -180,21 +173,7 @@ nonisolated extension SettingsCatalog {
             help: "Let enabled incoming-call alerts through quiet hours.",
             keywords: ["quiet exception", "ring"], scope: .appWideLocal
         ),
-        control(
-            .notificationDiscordOwnership, page: .notifications,
-            section: .notificationEvents, label: "Discord notification controls",
-            help: "Server, category, channel, mention-suppression, and mute-duration controls remain in their existing context menus and synchronize through Discord.",
-            keywords: ["server mute", "channel mute", "notification level", "right click"],
-            owner: .discord, scope: .discordSynchronized,
-            persistence: .discordManaged, reset: .notApplicable
-        ),
-        control(
-            .notificationExport, page: .notifications,
-            section: .notificationLocalData, label: "Export Notification Settings",
-            help: "Export registered app-wide Notification preferences as versioned JSON.",
-            keywords: ["backup", "JSON", "save preferences"], scope: .appWideLocal,
-            persistence: .notApplicable, reset: .notApplicable
-        ),
+
         control(
             .notificationReset, page: .notifications,
             section: .notificationLocalData, label: "Reset Notification Settings",

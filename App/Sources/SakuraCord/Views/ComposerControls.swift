@@ -15,7 +15,6 @@ struct EmojiAutocompleteRow: View {
                 if let url = suggestion.imageURL {
                     AnimatedRemoteImage(
                         url: url,
-                        accessibilityCategory: .emoji
                     )
                         .frame(width: 28, height: 28)
                 } else {

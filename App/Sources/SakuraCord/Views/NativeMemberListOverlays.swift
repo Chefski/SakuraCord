@@ -232,7 +232,6 @@ extension NativeMemberListCanvasView {
                     AnimatedRemoteImage(
                         url: configuration.url,
                         maximumPixelDimension: 64,
-                        accessibilityCategory: .emoji
                     )
                     .opacity(configuration.opacity)
                     .allowsHitTesting(false)
@@ -366,7 +365,8 @@ extension NativeMemberListCanvasView {
                 self?.dismissProfile(ifCurrent: presentation.requestID)
             },
             presentationIdentity: AnyHashable(presentation.member.id),
-            content: AnyView(ProfilePresentationContent(presentation: presentation, openProfile: openProfile))
+            content: AnyView(ProfilePresentationContent(presentation: presentation, openProfile: openProfile)
+                .environment(\.profileCosmeticPolicy, cosmeticPolicy))
         )
     }
 

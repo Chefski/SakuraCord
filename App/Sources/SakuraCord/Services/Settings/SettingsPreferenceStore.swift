@@ -1,7 +1,5 @@
-import CoreTransferable
 import Foundation
 import MediaPipeline
-import UniformTypeIdentifiers
 
 nonisolated enum SettingsPreferenceValue: Codable, Equatable, Sendable {
     case bool(Bool)
@@ -622,66 +620,50 @@ nonisolated struct SettingsPreferenceRegistry: Sendable {
             storage: .appWide(key: "voice.screenShare.showsPointer"),
             defaultValue: .bool(true)
         ),
+
         SettingsPreferenceRegistration(
-            id: .accessibilityMotionOverride,
+            id: .accessibilityDisableOwnCosmetics,
             page: .accessibility,
-            storage: .appWide(key: "settings.accessibility.motionOverride"),
-            defaultValue: .string(AccessibilityMotionOverride.followMacOS.rawValue)
-        ),
-        SettingsPreferenceRegistration(
-            id: .accessibilityReduceAnimatedContent,
-            page: .accessibility,
-            storage: .appWide(key: "settings.accessibility.reduceAnimatedContent"),
+            storage: .appWide(key: "settings.accessibility.disableOwnCosmetics"),
             defaultValue: .bool(false)
         ),
         SettingsPreferenceRegistration(
-            id: .accessibilityReduceAnimatedEmoji,
+            id: .accessibilityDisableProfileEffects,
             page: .accessibility,
-            storage: .appWide(key: "settings.accessibility.reduceAnimatedEmoji"),
+            storage: .appWide(key: "settings.accessibility.disableProfileEffects"),
             defaultValue: .bool(false)
         ),
         SettingsPreferenceRegistration(
-            id: .accessibilityReduceAnimatedStickers,
+            id: .accessibilityDisableNameplates,
             page: .accessibility,
-            storage: .appWide(key: "settings.accessibility.reduceAnimatedStickers"),
+            storage: .appWide(key: "settings.accessibility.disableNameplates"),
             defaultValue: .bool(false)
         ),
         SettingsPreferenceRegistration(
-            id: .accessibilityReduceGIFs,
+            id: .accessibilityDisableAvatarDecorations,
             page: .accessibility,
-            storage: .appWide(key: "settings.accessibility.reduceGIFs"),
+            storage: .appWide(key: "settings.accessibility.disableAvatarDecorations"),
             defaultValue: .bool(false)
         ),
         SettingsPreferenceRegistration(
-            id: .accessibilityReduceAnimatedAvatars,
+            id: .accessibilityDisableProfileFrames,
             page: .accessibility,
-            storage: .appWide(key: "settings.accessibility.reduceAnimatedAvatars"),
+            storage: .appWide(key: "settings.accessibility.disableProfileFrames"),
             defaultValue: .bool(false)
         ),
         SettingsPreferenceRegistration(
-            id: .accessibilityReduceDecorations,
+            id: .accessibilityDisableNameStyles,
             page: .accessibility,
-            storage: .appWide(key: "settings.accessibility.reduceDecorations"),
+            storage: .appWide(key: "settings.accessibility.disableNameStyles"),
             defaultValue: .bool(false)
         ),
         SettingsPreferenceRegistration(
-            id: .accessibilityReduceTransitions,
+            id: .accessibilityDisableProfileGradients,
             page: .accessibility,
-            storage: .appWide(key: "settings.accessibility.reduceTransitions"),
+            storage: .appWide(key: "settings.accessibility.disableProfileGradients"),
             defaultValue: .bool(false)
         ),
-        SettingsPreferenceRegistration(
-            id: .accessibilityIncreaseContrast,
-            page: .accessibility,
-            storage: .appWide(key: "settings.accessibility.increaseContrast"),
-            defaultValue: .bool(false)
-        ),
-        SettingsPreferenceRegistration(
-            id: .accessibilityLargerTargets,
-            page: .accessibility,
-            storage: .appWide(key: "settings.accessibility.largerTargets"),
-            defaultValue: .bool(false)
-        ),
+
         SettingsPreferenceRegistration(
             id: .accessibilityAnnounceTimestamp,
             page: .accessibility,
@@ -823,16 +805,6 @@ nonisolated struct SettingsPreferenceExport: Codable, Equatable, Sendable {
     }
 }
 
-nonisolated struct SettingsPreferenceExportFile: Transferable, Sendable {
-    let export: SettingsPreferenceExport
-
-    static var transferRepresentation: some TransferRepresentation {
-        DataRepresentation(exportedContentType: .json) { file in
-            try file.export.encodedData()
-        }
-    }
-}
-
 final class SettingsPreferenceStore {
     static let shared = SettingsPreferenceStore()
 
@@ -847,11 +819,23 @@ final class SettingsPreferenceStore {
     ) {
         self.registry = registry
         self.defaults = defaults
-        // Retire removed Appearance preferences; member-list restoration belongs
+        // Retire removed preferences; member-list restoration belongs
         // to General and continues to use its existing key.
-        for key in ["settings.interface.groupingIntervalMinutes",
-                    "settings.interface.showActivityDetails",
-                    "settings.interface.messageActionVisibility"] {
+        for key in [
+            "settings.interface.groupingIntervalMinutes",
+            "settings.interface.showActivityDetails",
+            "settings.interface.messageActionVisibility",
+            "settings.accessibility.motionOverride",
+            "settings.accessibility.reduceAnimatedEmoji",
+            "settings.accessibility.reduceAnimatedStickers",
+            "settings.accessibility.reduceGIFs",
+            "settings.accessibility.reduceAnimatedAvatars",
+            "settings.accessibility.reduceDecorations",
+            "settings.accessibility.reduceTransitions",
+            "settings.accessibility.reduceAnimatedContent",
+            "settings.accessibility.increaseContrast",
+            "settings.accessibility.largerTargets",
+        ] {
             defaults.removeObject(forKey: key)
         }
         let legacyRoleKey = "settings.interface.showRoleColors"
