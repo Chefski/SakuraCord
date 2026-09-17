@@ -335,7 +335,6 @@ nonisolated extension SettingsControlID {
     static let voiceOutputVolume = Self(rawValue: "voice-video.output-volume")
     static let voiceRefreshDevices = Self(rawValue: "voice-video.refresh-devices")
     static let voiceMicrophoneTest = Self(rawValue: "voice-video.microphone-test")
-    static let voiceSpeakerTest = Self(rawValue: "voice-video.speaker-test")
     static let voiceJoinMuted = Self(rawValue: "voice-video.join-muted")
     static let voiceJoinDeafened = Self(rawValue: "voice-video.join-deafened")
     static let voiceFeedbackSounds = Self(rawValue: "voice-video.feedback-sounds")

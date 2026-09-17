@@ -61,7 +61,7 @@ private extension SettingsPageID {
     var showsConstructionNotice: Bool {
         switch self {
         case .profiles, .interface, .appearance, .privacySafety, .storageDownloads, .diagnostics,
-             .softwareUpdates, .extensions, .about, .keyboardShortcuts, .accessibility:
+             .softwareUpdates, .extensions, .about, .keyboardShortcuts, .accessibility, .voiceVideo:
             false
         default:
             true

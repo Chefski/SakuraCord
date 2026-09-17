@@ -84,7 +84,7 @@ final class VoiceVideoPreferences {
         remembersCamera = true
         mirrorsLocalPreview = true
         joinsWithCameraOff = true
-        screenShareQuality = .p1080
+        screenShareQuality = .p720
         screenShareFrameRate = .fps30
         screenShareIncludesAudio = true
         screenShareShowsPointer = true
@@ -113,7 +113,7 @@ final class VoiceVideoPreferences {
         mirrorsLocalPreview = bool(Key.mirrorsLocalPreview, default: true)
         joinsWithCameraOff = bool(Key.joinsWithCameraOff, default: true)
         screenShareQuality = defaults.string(forKey: Key.screenShareQuality)
-            .flatMap(ScreenShareQuality.init(rawValue:)) ?? .p1080
+            .flatMap(ScreenShareQuality.init(rawValue:)) ?? .p720
         screenShareFrameRate = (defaults.object(forKey: Key.screenShareFrameRate) as? Int)
             .flatMap(ScreenShareFrameRate.init(rawValue:)) ?? .fps30
         screenShareIncludesAudio = bool(Key.screenShareIncludesAudio, default: true)

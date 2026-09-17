@@ -2,7 +2,7 @@ import Foundation
 
 nonisolated extension SettingsCatalog {
     static let voiceVideoPage = page(
-        .voiceVideo, group: .preferences, title: "Voice & Video", image: "waveform.and.mic",
+        .voiceVideo, group: .preferences, title: "Voice & Video", image: "mic.fill",
         help: "Choose call devices, levels, tests, and share defaults.",
         keywords: ["microphone", "speaker", "camera", "audio", "video", "screen share"]
     )
@@ -12,7 +12,7 @@ nonisolated extension SettingsCatalog {
             .voiceInputDevice,
             page: .voiceVideo,
             section: .voiceDevices,
-            label: "Input device",
+            label: "Microphone",
             help: "Choose the microphone used by SakuraCord calls.",
             keywords: ["microphone", "system default"],
             scope: .appWideLocal,
@@ -22,7 +22,7 @@ nonisolated extension SettingsCatalog {
             .voiceOutputDevice,
             page: .voiceVideo,
             section: .voiceDevices,
-            label: "Output device",
+            label: "Speaker",
             help: "Choose the speaker or headphones used by SakuraCord calls.",
             keywords: ["speaker", "headphones", "system default"],
             scope: .appWideLocal,
@@ -31,7 +31,7 @@ nonisolated extension SettingsCatalog {
         control(
             .voiceCamera,
             page: .voiceVideo,
-            section: .voiceDevices,
+            section: .voiceCamera,
             label: "Camera",
             help: "Choose the camera used by SakuraCord calls.",
             keywords: ["webcam", "video"],
@@ -42,7 +42,7 @@ nonisolated extension SettingsCatalog {
             .voiceInputVolume,
             page: .voiceVideo,
             section: .voiceLevels,
-            label: "Input volume",
+            label: "Microphone volume",
             help: "Adjust the microphone level applied by SakuraCord.",
             keywords: ["microphone", "gain"],
             scope: .appWideLocal,
@@ -52,7 +52,7 @@ nonisolated extension SettingsCatalog {
             .voiceOutputVolume,
             page: .voiceVideo,
             section: .voiceLevels,
-            label: "Output volume",
+            label: "Speaker volume",
             help: "Adjust call playback volume in SakuraCord.",
             keywords: ["speaker", "playback"],
             scope: .appWideLocal,
@@ -68,17 +68,9 @@ nonisolated extension SettingsCatalog {
         ),
         control(
             .voiceMicrophoneTest, page: .voiceVideo, section: .voiceLevels,
-            label: "Test microphone",
-            help: "Show the selected microphone’s live level without recording or retaining samples.",
-            keywords: ["mic check", "meter", "input test"],
-            owner: .appModel, scope: .appWideLocal,
-            persistence: .sessionOnly, reset: .notApplicable
-        ),
-        control(
-            .voiceSpeakerTest, page: .voiceVideo, section: .voiceLevels,
-            label: "Test speaker",
-            help: "Play a temporary test tone through the selected output until stopped.",
-            keywords: ["headphones", "output test", "tone"],
+            label: "Test Microphone",
+            help: "Hear the selected microphone through your speaker with a short delay and view its live level.",
+            keywords: ["mic check", "meter", "input test", "speaker test", "playback"],
             owner: .appModel, scope: .appWideLocal,
             persistence: .sessionOnly, reset: .notApplicable
         ),
@@ -128,13 +120,13 @@ nonisolated extension SettingsCatalog {
         ),
         control(
             .voiceScreenShareQuality, page: .voiceVideo, section: .voiceScreenShare,
-            label: "Screen share quality",
+            label: "Default quality",
             help: "Choose the initial resolution target for the next screen share.",
             keywords: ["720p", "1080p", "1440p", "source"], scope: .appWideLocal
         ),
         control(
             .voiceScreenShareFrameRate, page: .voiceVideo, section: .voiceScreenShare,
-            label: "Screen share frame rate",
+            label: "Default frame rate",
             help: "Choose the initial frame rate for the next screen share.",
             keywords: ["FPS", "15", "30", "60"], scope: .appWideLocal
         ),

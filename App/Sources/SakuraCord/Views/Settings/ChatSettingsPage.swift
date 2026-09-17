@@ -8,7 +8,6 @@ struct ChatSettingsPage: View {
 
     @State private var value = ChatSettingsSnapshot.defaults
     @State private var showsResetConfirmation = false
-    @State private var operationMessage: String?
 
     var body: some View {
         SettingsPageForm(page: .chat, state: state) {
@@ -178,11 +177,6 @@ struct ChatSettingsPage: View {
                 showsResetConfirmation = true
             }
             .settingsControlAnchor(.chatReset, state: state)
-            if let operationMessage {
-                Text(operationMessage)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
         } header: {
             Text("Reset", bundle: #bundle)
         }
@@ -192,6 +186,5 @@ struct ChatSettingsPage: View {
         SettingsPreferenceStore.shared.reset(scope: .appWide, page: .chat)
         value = ChatSettingsStore.shared.load()
         model.applyChatSettings(value, persists: false)
-        operationMessage = "Restored Chat settings to their defaults."
     }
 }

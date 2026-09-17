@@ -1,7 +1,9 @@
 @testable import SakuraCord
 import CoreAudio
 import DiscordProtocol
+import Foundation
 import MediaPipeline
+import Observation
 import SakuraCordModels
 import Testing
 
@@ -152,35 +154,152 @@ import Testing
 }
 
 @MainActor
-@Test func `Microphone test passes selected routes and releases its engine`() async {
+@Test(.timeLimit(.minutes(1))) func `Microphone test waits for playback and cancels queued audio on stop`() async {
     let fake = ControlledMicrophoneTestEngine()
+    var permissionRequests = 0
+    let playbackRequests = AsyncStream<AsyncStream<Void>.Continuation>.makeStream()
+    var requests = playbackRequests.stream.makeAsyncIterator()
     let controller = VoiceVideoTestController(
         microphoneFactory: { fake },
-        microphonePermissionRequester: { true }
+        microphonePermissionRequester: {
+            permissionRequests += 1
+            return true
+        },
+        microphonePlaybackWait: { _ in
+            let permit = AsyncStream<Void>.makeStream()
+            playbackRequests.continuation.yield(permit.continuation)
+            var ready = permit.stream.makeAsyncIterator()
+            _ = await ready.next()
+            try Task.checkCancellation()
+            return true
+        }
     )
+
+    controller.prepareMicrophoneTest()
+    #expect(fake.startRequest == nil)
+    #expect(permissionRequests == 0)
+    #expect(!controller.isMicrophoneTestRunning)
 
     await controller.startMicrophoneTest(
         inputDeviceID: 41,
         outputDeviceID: 42,
-        inputVolume: 1.25
+        inputVolume: 1.25,
+        outputVolume: 0.75
     )
 
     #expect(controller.isMicrophoneTestRunning)
+    #expect(permissionRequests == 1)
     #expect(fake.startRequest == ControlledMicrophoneTestEngine.StartRequest(
         inputDeviceID: 41,
         outputDeviceID: 42
     ))
     #expect(fake.inputVolume == 1.25)
+    #expect(fake.outputVolume == 0.75)
+    #expect(await controller.selectMicrophoneTestInput(43))
+    #expect(fake.outputDeviceSelections.isEmpty)
+    #expect(await controller.selectMicrophoneTestOutput(44))
+    #expect(await controller.selectMicrophoneTestOutput(nil))
+    #expect(fake.inputDeviceSelections == [43])
+    #expect(fake.outputDeviceSelections == [44, nil])
+    #expect(controller.isMicrophoneTestRunning)
+    #expect(fake.stopCount == 0)
+    fake.routeError = .outputUnavailable
+    #expect(!(await controller.selectMicrophoneTestOutput(99)))
+    #expect(controller.isMicrophoneTestRunning)
+    #expect(controller.errorMessage != nil)
+    #expect(fake.stopCount == 0)
+    fake.routeError = nil
+    #expect(await controller.selectMicrophoneTestInput(45))
+    #expect(fake.inputDeviceSelections == [43, 45])
+    #expect(fake.outputDeviceSelections == [44, nil])
+    #expect(controller.isMicrophoneTestRunning)
+    #expect(fake.stopCount == 0)
+    controller.updateTestVolumes(input: 0.5, output: 1.5)
+    #expect(fake.inputVolume == 0.5)
+    #expect(fake.outputVolume == 1.5)
+    let packet = Data([1, 2, 3])
+    fake.emitFrame(packet)
+    #expect(fake.playedPackets.isEmpty)
+    var playback = fake.playback.stream.makeAsyncIterator()
+    let permit = await requests.next()
+    permit?.yield(())
+    let played = await playback.next()
+    #expect(played == packet)
+    let levelChanges = AsyncStream<Void>.makeStream()
+    withObservationTracking {
+        _ = controller.microphoneLevel
+    } onChange: {
+        levelChanges.continuation.yield(())
+    }
     fake.emitLevel(0.64)
-    await Task.yield()
+    var changes = levelChanges.stream.makeAsyncIterator()
+    _ = await changes.next()
     #expect(controller.microphoneLevel == 0.64)
 
+    fake.emitFrame(Data([9]))
+    _ = await requests.next()
     controller.stopMicrophoneTest()
     #expect(!controller.isMicrophoneTestRunning)
     #expect(controller.microphoneLevel == 0)
     #expect(fake.stopCount == 1)
     #expect(fake.inputLevelHandler == nil)
 
+    await controller.startMicrophoneTest(
+        inputDeviceID: 41, outputDeviceID: 42, inputVolume: 1, outputVolume: 1
+    )
+    let nextPacket = Data([4, 5, 6])
+    fake.emitFrame(nextPacket)
+    let nextPermit = await requests.next()
+    nextPermit?.yield(())
+    #expect(await playback.next() == nextPacket)
+    #expect(fake.playedPackets == [packet, nextPacket])
+    controller.stopAll()
+}
+
+@MainActor
+@Test(.timeLimit(.minutes(1))) func `Stopping a microphone test cancels a pending permission request`() async {
+    let requested = AsyncStream<Void>.makeStream()
+    let permission = AsyncStream<Bool>.makeStream()
+    let fake = ControlledMicrophoneTestEngine()
+    let controller = VoiceVideoTestController(
+        microphoneFactory: { fake },
+        microphonePermissionRequester: {
+            requested.continuation.yield(())
+            var response = permission.stream.makeAsyncIterator()
+            return await response.next() ?? false
+        }
+    )
+    let start = Task {
+        await controller.startMicrophoneTest(
+            inputDeviceID: nil, outputDeviceID: nil, inputVolume: 1, outputVolume: 1
+        )
+    }
+    var request = requested.stream.makeAsyncIterator()
+    _ = await request.next()
+    #expect(controller.isMicrophoneTestStarting)
+    controller.stopAll()
+    permission.continuation.yield(true)
+    await start.value
+    #expect(fake.startRequest == nil)
+    #expect(!controller.isMicrophoneTestStarting)
+    #expect(!controller.isMicrophoneTestRunning)
+}
+
+@MainActor
+@Test func `Failed microphone test startup releases partially opened audio devices`() async {
+    let fake = ControlledMicrophoneTestEngine()
+    fake.startError = VoiceAudioEngineError.outputUnavailable
+    let controller = VoiceVideoTestController(
+        microphoneFactory: { fake },
+        microphonePermissionRequester: { true }
+    )
+    await controller.startMicrophoneTest(
+        inputDeviceID: nil, outputDeviceID: nil, inputVolume: 1, outputVolume: 1
+    )
+    #expect(fake.stopCount == 1)
+    #expect(fake.inputLevelHandler == nil)
+    #expect(!controller.isMicrophoneTestRunning)
+    #expect(controller.errorMessage != nil)
 }
 
 @MainActor
@@ -206,23 +325,53 @@ private final class ControlledMicrophoneTestEngine: VoiceMicrophoneTesting {
     }
 
     var inputVolume: Float = 1
+    var outputVolume: Float = 1
+    var startError: VoiceAudioEngineError?
+    var routeError: VoiceAudioEngineError?
+    private(set) var inputDeviceSelections: [AudioDeviceID?] = []
+    private(set) var outputDeviceSelections: [AudioDeviceID?] = []
+    let playback = AsyncStream<Data>.makeStream()
+    private(set) var playedPackets: [Data] = []
+    private var capturedFrameHandler: (@Sendable (CapturedOpusFrame) -> Void)?
     var inputLevelHandler: (@Sendable (Float) -> Void)?
     private(set) var startRequest: StartRequest?
     private(set) var stopCount = 0
 
-    func start(
+    func startMicrophoneTest(
         inputDeviceID: AudioDeviceID?,
         outputDeviceID: AudioDeviceID?,
-        onCapturedFrame _: @escaping @Sendable (CapturedOpusFrame) -> Void
+        onCapturedFrame: @escaping @Sendable (CapturedOpusFrame) -> Void
     ) throws {
         startRequest = StartRequest(
             inputDeviceID: inputDeviceID,
             outputDeviceID: outputDeviceID
         )
+        capturedFrameHandler = onCapturedFrame
+        if let startError { throw startError }
+    }
+
+    func selectInputDevice(_ deviceID: AudioDeviceID?) async throws {
+        if let routeError { throw routeError }
+        inputDeviceSelections.append(deviceID)
+    }
+
+    func selectOutputDevice(_ deviceID: AudioDeviceID?) async throws {
+        if let routeError { throw routeError }
+        outputDeviceSelections.append(deviceID)
+    }
+
+    func play(opusPacket: Data, from _: String) throws {
+        playedPackets.append(opusPacket)
+        playback.continuation.yield(opusPacket)
+    }
+
+    func emitFrame(_ data: Data) {
+        capturedFrameHandler?(CapturedOpusFrame(data: data, containsVoice: true))
     }
 
     func stop() {
         stopCount += 1
+        capturedFrameHandler = nil
         inputLevelHandler = nil
     }
 

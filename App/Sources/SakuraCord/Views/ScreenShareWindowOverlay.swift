@@ -164,24 +164,12 @@ private struct ScreenSharePreviewSurface: View {
     }
 
     private var chooseSourceButton: some View {
-        Button {
+        MediaPreviewActionButton(
+            title: sourceButtonTitle,
+            systemImage: "rectangle.on.rectangle.angled"
+        ) {
             Task { await model.changeScreenShareSource() }
-        } label: {
-            Label(
-                sourceButtonTitle,
-                systemImage: "rectangle.on.rectangle.angled"
-            )
-            .font(.callout.weight(.semibold))
-            .padding(.horizontal, 16)
-            .frame(height: 42)
-            .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
-        .foregroundStyle(.white)
-        .glassEffect(
-            .regular.tint(SakuraCordAccentColor.color).interactive(),
-            in: Capsule()
-        )
         .disabled(model.isStartingScreenShare)
     }
 

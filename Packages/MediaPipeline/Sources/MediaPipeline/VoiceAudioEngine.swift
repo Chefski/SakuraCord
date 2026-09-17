@@ -134,13 +134,48 @@ public final class VoiceAudioEngine {
         outputDeviceID: AudioDeviceID? = nil,
         onCapturedFrame: @escaping @Sendable (CapturedOpusFrame) -> Void
     ) throws {
-        stop()
+        try start(
+            inputDeviceID: inputDeviceID,
+            outputDeviceID: outputDeviceID,
+            captureBeforePlayback: false,
+            onCapturedFrame: onCapturedFrame
+        )
+    }
+
+    public func startMicrophoneTest(
+        inputDeviceID: AudioDeviceID?,
+        outputDeviceID: AudioDeviceID?,
+        onCapturedFrame: @escaping @Sendable (CapturedOpusFrame) -> Void
+    ) throws {
+        try start(
+            inputDeviceID: inputDeviceID,
+            outputDeviceID: outputDeviceID,
+            captureBeforePlayback: true,
+            onCapturedFrame: onCapturedFrame
+        )
+    }
+
+    private func start(
+        inputDeviceID: AudioDeviceID?,
+        outputDeviceID: AudioDeviceID?,
+        captureBeforePlayback: Bool,
+        onCapturedFrame: @escaping @Sendable (CapturedOpusFrame) -> Void
+    ) throws {
+        if isRunning || captureOutput != nil {
+            stop()
+        }
         self.inputDeviceID = inputDeviceID
         self.outputDeviceID = outputDeviceID
         captureEncoder.handler = onCapturedFrame
         do {
+            // Local tests can warm up capture while Core Audio starts the output route.
+            if captureBeforePlayback {
+                try startCaptureGraph()
+            }
             try startPlaybackGraph()
-            try startCaptureGraph()
+            if !captureBeforePlayback {
+                try startCaptureGraph()
+            }
             isRunning = true
         } catch {
             tearDownAudioGraph()
@@ -300,24 +335,31 @@ public final class VoiceAudioEngine {
         throw VoiceAudioEngineError.inputUnavailable
     }
 
-    private func startPlaybackGraph(allowsDefaultFallback: Bool = true) throws {
+    private func startPlaybackGraph(
+        allowsDefaultFallback: Bool = true,
+        reselectCurrentDevice: Bool = true
+    ) throws {
         do {
-            try startPlaybackGraph(on: outputDeviceID)
+            try startPlaybackGraph(on: outputDeviceID, reselectCurrentDevice: reselectCurrentDevice)
         } catch {
             guard outputDeviceID != nil, allowsDefaultFallback else { throw error }
             voiceAudioLogger.warning(
                 "Selected output device failed; falling back to the system default"
             )
             outputDeviceID = nil
-            try startPlaybackGraph(on: nil)
+            try startPlaybackGraph(on: nil, reselectCurrentDevice: reselectCurrentDevice)
         }
     }
 
-    private func startPlaybackGraph(on deviceID: AudioDeviceID?) throws {
+    private func startPlaybackGraph(on deviceID: AudioDeviceID?, reselectCurrentDevice: Bool) throws {
         guard let resolvedDeviceID = deviceID ?? MediaDeviceCatalog.defaultOutputDeviceID() else {
             throw VoiceAudioEngineError.outputUnavailable
         }
-        try MediaDeviceCatalog.selectOutput(resolvedDeviceID, on: playbackEngine)
+        try MediaDeviceCatalog.selectOutput(
+            resolvedDeviceID,
+            on: playbackEngine,
+            reselectCurrentDevice: reselectCurrentDevice
+        )
         playbackEngine.mainMixerNode.outputVolume = isDeafened ? 0 : min(max(outputVolume, 0), 2)
         playbackEngine.prepare()
         try playbackEngine.start()
@@ -328,7 +370,7 @@ public final class VoiceAudioEngine {
     }
 
     private func playbackConfigurationChanged() {
-        guard isRunning, !isChangingPlaybackRoute else { return }
+        guard isRunning, !isChangingPlaybackRoute, !playbackEngine.isRunning else { return }
         voiceAudioLogger.warning(
             "Core Audio stopped the playback engine after a hardware configuration change"
         )
@@ -345,7 +387,7 @@ public final class VoiceAudioEngine {
                 }
             }
             do {
-                try await Task.sleep(for: .milliseconds(150))
+                try Task.checkCancellation()
                 guard let self,
                       self.isRunning,
                       generation == self.outputRouteGeneration
@@ -362,12 +404,21 @@ public final class VoiceAudioEngine {
     }
 
     private func recoverPlaybackRoute(generation: UInt64) async throws {
+        let startedAt = ContinuousClock.now
         guard generation == outputRouteGeneration else {
             throw CancellationError()
         }
         isChangingPlaybackRoute = true
-        defer { isChangingPlaybackRoute = false }
+        defer {
+            if generation == outputRouteGeneration {
+                isChangingPlaybackRoute = false
+            }
+        }
         do {
+            // Hardware changes leave connected nodes using their previous formats.
+            // Rebuild on the selected output, including delayed Bluetooth profile changes.
+            tearDownPlaybackGraph()
+            try startPlaybackGraph(allowsDefaultFallback: false, reselectCurrentDevice: false)
             try await stabilizePlaybackEngine(generation: generation)
         } catch {
             guard generation == outputRouteGeneration else {
@@ -381,7 +432,9 @@ public final class VoiceAudioEngine {
             try startPlaybackGraph(allowsDefaultFallback: false)
             try await stabilizePlaybackEngine(generation: generation)
         }
-        voiceAudioLogger.info("Voice playback recovered after a hardware configuration change")
+        voiceAudioLogger.info(
+            "Voice playback recovered after a hardware configuration change in \(String(describing: startedAt.duration(to: .now)), privacy: .public)"
+        )
     }
 
     private func stabilizePlaybackEngine(
@@ -390,24 +443,26 @@ public final class VoiceAudioEngine {
     ) async throws {
         var lastError: Error = VoiceAudioEngineError.outputUnavailable
         for attempt in 0 ..< maximumAttempts {
+            try Task.checkCancellation()
             guard generation == outputRouteGeneration else {
                 throw CancellationError()
             }
             if !playbackEngine.isRunning {
                 do {
-                    playbackEngine.prepare()
-                    try playbackEngine.start()
+                    tearDownPlaybackGraph()
+                    try startPlaybackGraph(allowsDefaultFallback: false, reselectCurrentDevice: false)
                     voiceAudioLogger.info(
-                        "Restarted playback after configuration change; attempt=\(attempt + 1)"
+                        "Rebuilt playback after configuration change; attempt=\(attempt + 1)"
                     )
                 } catch {
                     lastError = error
                 }
             }
-            try await Task.sleep(for: .milliseconds(200 + attempt * 100))
             if playbackEngine.isRunning {
                 return
             }
+            // Resume audio immediately on success; back off only while hardware is unavailable.
+            try await Task.sleep(for: .milliseconds(50 + attempt * 50))
         }
         throw lastError
     }

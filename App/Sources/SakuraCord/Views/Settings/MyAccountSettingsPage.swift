@@ -8,7 +8,7 @@ struct MyAccountSettingsPage: View {
     @State private var showsLogin = false
     @State private var operation: AccountOperation?
     @State private var pendingRemoval: SavedAccount?
-    @State private var operationMessage: AccountOperationMessage?
+    @State private var operationError: String?
     @State private var reopensLastActiveAccount = true
     @State private var preferredLaunchAccountID = ""
 
@@ -50,7 +50,7 @@ struct MyAccountSettingsPage: View {
                 if connected {
                     await model.refreshSavedAccounts()
                     selectedAccountID = model.activeAccountID ?? selectedAccountID
-                    operationMessage = .success("Account added and connected.")
+                    operationError = nil
                 }
                 return connected
                     ? nil
@@ -146,11 +146,10 @@ struct MyAccountSettingsPage: View {
                 .foregroundStyle(.secondary)
             }
 
-            if let operationMessage {
-                Label(operationMessage.text, systemImage: operationMessage.systemImage)
+            if let operationError {
+                Label(operationError, systemImage: "exclamationmark.triangle")
                     .font(.caption)
-                    .foregroundStyle(operationMessage.isError ? Color.red : Color.secondary)
-                    .accessibilityLabel(operationMessage.text)
+                    .foregroundStyle(.red)
             }
         } header: {
             Text("Accounts", bundle: #bundle)
@@ -307,19 +306,15 @@ struct MyAccountSettingsPage: View {
 
     private func switchToSelectedAccount() {
         guard let selectedAccount, !isBusy else { return }
-        operationMessage = nil
+        operationError = nil
         operation = .switching(selectedAccount.accountID)
         Task {
             let connected = await model.switchAccount(to: selectedAccount.accountID)
             operation = nil
-            if connected {
-                operationMessage = .success("Switched to \(selectedAccount.resolvedDisplayName).")
-            } else if Task.isCancelled {
-                operationMessage = .error("Account switch was cancelled.")
-            } else {
-                operationMessage = .error(
-                    model.errorMessage ?? "SakuraCord could not switch accounts."
-                )
+            if !connected {
+                operationError = Task.isCancelled
+                    ? "Account switch was cancelled."
+                    : model.errorMessage ?? "SakuraCord could not switch accounts."
             }
         }
     }
@@ -327,7 +322,7 @@ struct MyAccountSettingsPage: View {
     private func removeSavedSession(for account: SavedAccount) {
         guard !isBusy else { return }
         let wasActive = account.accountID == model.activeAccountID
-        operationMessage = nil
+        operationError = nil
         operation = .removing(account.accountID)
         Task {
             await model.logout(accountID: account.accountID)
@@ -341,15 +336,7 @@ struct MyAccountSettingsPage: View {
                 let prefix = wasActive
                     ? "The account was disconnected, but its saved session could not be removed."
                     : "The saved session could not be removed."
-                operationMessage = .error(
-                    model.errorMessage.map { "\(prefix) \($0)" } ?? prefix
-                )
-            } else {
-                operationMessage = .success(
-                    wasActive
-                        ? "Logged out and removed the saved session."
-                        : "Removed the saved account."
-                )
+                operationError = model.errorMessage.map { "\(prefix) \($0)" } ?? prefix
             }
         }
     }
@@ -394,26 +381,4 @@ private struct SettingsAccountIdentityHeader: View {
 private enum AccountOperation: Equatable {
     case switching(String)
     case removing(String)
-}
-
-private enum AccountOperationMessage: Equatable {
-    case success(String)
-    case error(String)
-
-    var text: String {
-        switch self {
-        case let .success(text), let .error(text): text
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .success: "checkmark.circle"
-        case .error: "exclamationmark.triangle"
-        }
-    }
-
-    var isError: Bool {
-        if case .error = self { true } else { false }
-    }
 }

@@ -600,7 +600,7 @@ nonisolated struct SettingsPreferenceRegistry: Sendable {
             id: .voiceScreenShareQuality,
             page: .voiceVideo,
             storage: .appWide(key: "voice.screenShare.quality"),
-            defaultValue: .string(ScreenShareQuality.p1080.rawValue)
+            defaultValue: .string(ScreenShareQuality.p720.rawValue)
         ),
         SettingsPreferenceRegistration(
             id: .voiceScreenShareFrameRate,

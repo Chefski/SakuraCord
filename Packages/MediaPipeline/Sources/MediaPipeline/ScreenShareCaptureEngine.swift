@@ -70,7 +70,7 @@ public struct ScreenShareSettings: Codable, Equatable, Sendable {
 
     public init(
         frameRate: ScreenShareFrameRate = .fps30,
-        quality: ScreenShareQuality = .p1080,
+        quality: ScreenShareQuality = .p720,
         includesAudio: Bool = true,
         showsCursor: Bool = true
     ) {

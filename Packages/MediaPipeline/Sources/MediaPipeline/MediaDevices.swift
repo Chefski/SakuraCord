@@ -137,8 +137,25 @@ public enum MediaDeviceCatalog {
         }
     }
 
-    public static func selectOutput(_ deviceID: AudioDeviceID, on engine: AVAudioEngine) throws {
+    public static func selectOutput(
+        _ deviceID: AudioDeviceID,
+        on engine: AVAudioEngine,
+        reselectCurrentDevice: Bool = true
+    ) throws {
         try engine.outputNode.withAudioUnit { audioUnit throws(MediaDeviceError) in
+            guard let audioUnit else { throw MediaDeviceError.audioUnitUnavailable }
+            var currentDeviceID = AudioDeviceID(0)
+            var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+            let status = AudioUnitGetProperty(
+                audioUnit,
+                kAudioOutputUnitProperty_CurrentDevice,
+                kAudioUnitScope_Global,
+                0,
+                &currentDeviceID,
+                &size
+            )
+            // Reassigning the same device can reopen its Bluetooth transport.
+            if !reselectCurrentDevice, status == noErr, currentDeviceID == deviceID { return }
             try select(deviceID, on: audioUnit)
         }
     }

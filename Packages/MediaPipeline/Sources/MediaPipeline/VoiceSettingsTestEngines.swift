@@ -1,6 +1,4 @@
-import AVFAudio
 @preconcurrency import AVFoundation
-import CoreAudio
 import CoreGraphics
 import CoreImage
 import Foundation
@@ -47,68 +45,6 @@ public struct VoiceMediaPermissionSnapshot: Equatable, Sendable {
             ),
             screenRecordingAllowed: CGPreflightScreenCaptureAccess()
         )
-    }
-}
-
-@MainActor
-public final class VoiceSpeakerTestEngine {
-    private let engine = AVAudioEngine()
-    private let player = AVAudioPlayerNode()
-
-    public init() {}
-
-    public func start(outputDeviceID: AudioDeviceID?, volume: Float) throws {
-        stop()
-        let resolvedDeviceID = outputDeviceID
-            ?? MediaDeviceCatalog.defaultOutputDeviceID()
-        guard let resolvedDeviceID else {
-            throw VoiceAudioEngineError.outputUnavailable
-        }
-        do {
-            try MediaDeviceCatalog.selectOutput(resolvedDeviceID, on: engine)
-        } catch {
-            throw VoiceAudioEngineError.outputUnavailable
-        }
-        let format = OpusCodec.pcmFormat
-        guard let buffer = Self.testTone(format: format) else {
-            throw VoiceAudioEngineError.converterUnavailable
-        }
-        engine.attach(player)
-        try engine.connectNode(player, to: engine.mainMixerNode, format: format)
-        engine.mainMixerNode.outputVolume = min(max(volume, 0), 2)
-        engine.prepare()
-        try engine.start()
-        player.scheduleBuffer(buffer, at: nil, options: .loops)
-        try player.playAudio()
-    }
-
-    public func stop() {
-        player.stop()
-        if player.engine != nil {
-            engine.disconnectNodeOutput(player)
-            engine.detach(player)
-        }
-        engine.stop()
-        engine.reset()
-    }
-
-    private static func testTone(format: AVAudioFormat) -> AVAudioPCMBuffer? {
-        let frameCount = AVAudioFrameCount(format.sampleRate / 2)
-        guard let buffer = AVAudioPCMBuffer(
-            pcmFormat: format,
-            frameCapacity: frameCount
-        ), let channels = buffer.floatChannelData else { return nil }
-        buffer.frameLength = frameCount
-        for frame in 0 ..< Int(frameCount) {
-            let envelope = min(1, Float(frame) / 800)
-                * min(1, Float(Int(frameCount) - frame) / 800)
-            let sample = sin(2 * .pi * 440 * Double(frame) / format.sampleRate)
-            let value = Float(sample) * 0.16 * envelope
-            for channel in 0 ..< Int(format.channelCount) {
-                channels[channel][frame] = value
-            }
-        }
-        return buffer
     }
 }
 

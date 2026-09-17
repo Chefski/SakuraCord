@@ -85,7 +85,6 @@ struct NotificationsSettingsPage: View {
         SettingsPreferenceStore.shared.reset(scope: .appWide, page: .notifications)
         model.notificationPreferences.reload()
         model.refreshDockBadge()
-        operationMessage = "Restored Notification settings to their defaults."
     }
 }
 
