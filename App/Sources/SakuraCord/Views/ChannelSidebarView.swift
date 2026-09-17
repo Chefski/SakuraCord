@@ -112,6 +112,7 @@ struct ChannelSidebarView: View {
     let connectAccount: () -> Void
     let updateStatus: (PresenceStatus) async -> Void
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.sakuraCordWindowIsFullScreen) private var isFullScreen
     @State private var selectionCommitter =
         ChannelSidebarSelectionCommitter()
     @State private var accountControlHeight: CGFloat = 0
@@ -181,9 +182,11 @@ struct ChannelSidebarView: View {
         .overlay {
             SidebarChromeSeparator(
                 cornerRadius: ChatChromeMetrics.sidebarContentCornerRadius,
-                strokeInset: separatorLineWidth / 2
+                strokeInset: separatorLineWidth / 2,
+                showsTopEdge: !isFullScreen
             )
             .stroke(Color(nsColor: .separatorColor), lineWidth: separatorLineWidth)
+            .ignoresSafeArea(.container, edges: isFullScreen ? .top : [])
             .allowsHitTesting(false)
         }
     }
@@ -391,11 +394,16 @@ nonisolated enum ChannelCategoryPresentation {
 struct SidebarChromeSeparator: Shape {
     let cornerRadius: CGFloat
     let strokeInset: CGFloat
+    var showsTopEdge = true
 
     nonisolated func path(in rect: CGRect) -> Path {
         let radius = min(cornerRadius, rect.width, rect.height)
         var path = Path()
         path.move(to: CGPoint(x: strokeInset, y: rect.maxY))
+        guard showsTopEdge else {
+            path.addLine(to: CGPoint(x: strokeInset, y: rect.minY))
+            return path
+        }
         path.addLine(to: CGPoint(x: strokeInset, y: radius + strokeInset))
         path.addQuadCurve(
             to: CGPoint(x: radius + strokeInset, y: strokeInset),

@@ -3,6 +3,10 @@ import Darwin
 import OSLog
 import SwiftUI
 
+extension EnvironmentValues {
+    @Entry var sakuraCordWindowIsFullScreen = false
+}
+
 struct SakuraCordWindowBackground: ViewModifier {
     let opacity: Double
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -14,6 +18,7 @@ struct SakuraCordWindowBackground: ViewModifier {
             ? 0.35 + 0.65 * AppearanceSettingsSnapshot.normalizedWindowOpacity(opacity)
             : 1
         content
+            .environment(\.sakuraCordWindowIsFullScreen, isFullScreen)
             .background {
                 // Composite the complete gradient before applying opacity so
                 // every stop keeps its position and relative color intensity.
