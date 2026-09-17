@@ -6,10 +6,11 @@ import SwiftUI
 struct SakuraCordWindowBackground: ViewModifier {
     let opacity: Double
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @State private var isFullScreen = false
 
     func body(content: Content) -> some View {
         let usesBlur = !reduceTransparency && SakuraCordWindowBlur.isAvailable
-        let themeOpacity = usesBlur
+        let themeOpacity = usesBlur && !isFullScreen
             ? 0.35 + 0.65 * AppearanceSettingsSnapshot.normalizedWindowOpacity(opacity)
             : 1
         content
@@ -28,7 +29,7 @@ struct SakuraCordWindowBackground: ViewModifier {
                 // blur changes are not committed with SwiftUI's opacity frame,
                 // so disabling blur at 100% can briefly expose the desktop.
                 // The fully opaque theme covers the blur at that endpoint.
-                WindowBlurBridge(isEnabled: usesBlur)
+                WindowBlurBridge(isEnabled: usesBlur, isFullScreen: $isFullScreen)
                     .accessibilityHidden(true)
             }
             .containerBackground(.clear, for: .window)
@@ -37,27 +38,71 @@ struct SakuraCordWindowBackground: ViewModifier {
 
 private struct WindowBlurBridge: NSViewRepresentable {
     let isEnabled: Bool
+    @Binding var isFullScreen: Bool
 
     func makeNSView(context: Context) -> BackingView { BackingView() }
 
     func updateNSView(_ nsView: BackingView, context: Context) {
         nsView.isBlurEnabled = isEnabled
+        nsView.fullScreenChanged = { isFullScreen = $0 }
         nsView.updateWindow()
+    }
+
+    static func dismantleNSView(_ nsView: BackingView, coordinator: ()) {
+        nsView.detach()
     }
 
     final class BackingView: NSView {
         var isBlurEnabled = false
+        var fullScreenChanged: ((Bool) -> Void)?
         private weak var configuredWindow: NSWindow?
         private var appliedRadius: UInt?
+        private var observers: [NotificationCenter.ObservationToken] = []
+        private var reportTask: Task<Void, Never>?
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
+            detach()
+            if let window {
+                let center = NotificationCenter.default
+                observers = [
+                    center.addObserver(of: window, for: NSWindow.DidEnterFullScreenMessage.self) { [weak self] _ in
+                        self?.windowModeDidChange()
+                    },
+                    center.addObserver(of: window, for: NSWindow.DidExitFullScreenMessage.self) { [weak self] _ in
+                        self?.windowModeDidChange()
+                    },
+                ]
+            }
+            windowModeDidChange()
+        }
+
+        private func windowModeDidChange() {
             updateWindow()
+            reportTask?.cancel()
+            // Attachment can occur during a SwiftUI update. Read the current
+            // window on the next actor turn before updating the theme opacity.
+            reportTask = Task { @MainActor [weak self] in
+                guard !Task.isCancelled, let self else { return }
+                fullScreenChanged?(window?.styleMask.contains(.fullScreen) == true)
+            }
+        }
+
+        func detach() {
+            reportTask?.cancel()
+            reportTask = nil
+            for observer in observers { NotificationCenter.default.removeObserver(observer) }
+            observers.removeAll()
+            configuredWindow = nil
+            appliedRadius = nil
         }
 
         func updateWindow() {
             guard let window else { return }
-            let radius: UInt = isBlurEnabled ? 64 : 0
+            // WindowServer background blur interferes with repeated scroll
+            // gestures in fullscreen. Use the opaque theme in that mode and
+            // restore the configured translucent backdrop on returning.
+            let radius: UInt = isBlurEnabled && !window.styleMask.contains(.fullScreen) ? 64 : 0
             guard configuredWindow !== window || appliedRadius != radius else { return }
             window.isOpaque = false
             window.backgroundColor = .clear
