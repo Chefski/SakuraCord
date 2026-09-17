@@ -12,6 +12,15 @@ import Testing
     #expect(widget.runs.contains { $0.link?.absoluteString == "https://example.com" })
     let preview = DiscordMarkdown.profileWidgetAttributed(widgetSource, links: false)
     #expect(preview.runs.allSatisfy { $0.link == nil })
+
+    // Composer nesting must not change the established message renderer.
+    let message = "**bold *literal** then *italic*"
+    _ = DiscordMarkdown.sourceFormats(message)
+    let rendered = DiscordMarkdown.appKitAttributed(message)
+    #expect(rendered.string == "bold *literal then italic")
+    let font = rendered.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+    #expect(font?.fontDescriptor.symbolicTraits.contains(.bold) == true)
+    #expect(DiscordMarkdown.appKitAttributed("**text [label*](https://example.com) end**").string == "text label* end")
 }
 
 @Test func `angle bracket masked links match discord rendering`() throws {
@@ -451,4 +460,39 @@ import Testing
             alpha: 1
         )
     )
+}
+
+@Test func `composer source formatting preserves UTF16 ranges and nested styles`() throws {
+    let source = "🌸 **bold *italic*** and __underlined__"
+    let formats = DiscordMarkdown.sourceFormats(source)
+    let italic = try #require(formats.first { $0.isItalic })
+    #expect((source as NSString).substring(with: italic.range) == "italic")
+    #expect(italic.isBold)
+    let underline = try #require(formats.first { $0.isUnderlined })
+    #expect((source as NSString).substring(with: underline.range) == "underlined")
+    for nested in ["***__test__***", "**__*test*__**", "*__**test**__*", "__***test***__", "*italic **bold***"] {
+        let content = (nested as NSString).range(of: nested.contains("italic") ? "bold" : "test")
+        let covering = DiscordMarkdown.sourceFormats(nested).filter {
+            $0.range.location <= content.location && NSMaxRange($0.range) >= NSMaxRange(content)
+        }
+        #expect(covering.contains { $0.isBold && $0.isItalic })
+        if nested.contains("__") { #expect(covering.contains { $0.isUnderlined }) }
+    }
+
+}
+
+@Test func `source formatting excludes code escaped delimiters and URL syntax`() {
+    let literal = "`**code**` \\*escaped\\* https://example.com/__path__\n```\n**fenced**\n```"
+    #expect(DiscordMarkdown.sourceFormats(literal).isEmpty)
+    let escapedClose = #"**one \** two**"#
+    let formats = DiscordMarkdown.sourceFormats(escapedClose)
+    #expect(formats.count == 1)
+    #expect(formats.first.map { (escapedClose as NSString).substring(with: $0.range) } == #"one \** two"#)
+    #expect(DiscordMarkdown.sourceFormats("**first\nsecond**").first?.range == NSRange(location: 2, length: 12))
+    for source in ["**text [label*](https://example.com) end**", "**bold *literal** then *italic*"] {
+        let bold = DiscordMarkdown.sourceFormats(source).first
+        #expect(bold?.delimiter == "**")
+        #expect(bold?.isBold == true)
+        #expect(bold?.isItalic == false)
+    }
 }

@@ -1,5 +1,6 @@
 @testable import SakuraCord
 import AppKit
+import SwiftUI
 import Testing
 
 @MainActor
@@ -295,6 +296,18 @@ private final class ShortcutRecorderTestState {
     #expect(textView.selectedRange() == NSRange(location: 8, length: 2))
     textView.wrapSelectionInMarkdown("**")
     #expect(textView.string == "hello 🌸 world")
+    textView.setSelectedRange(NSRange(location: 0, length: 0))
+    for source in ["hello 🌸 world", "**hello world**", "*hello*", "__hello__", "****"] {
+        textView.string = source
+        textView.setSelectedRange(NSRange(location: 2, length: 0))
+        for marker in ["**", "*", "__"] {
+            textView.wrapSelectionInMarkdown(marker)
+            #expect(textView.string == source)
+            #expect(textView.selectedRange() == NSRange(location: 2, length: 0))
+        }
+        textView.underline(nil)
+        #expect(textView.string == source)
+    }
 }
 
 private func keyEvent(
@@ -315,4 +328,141 @@ private func keyEvent(
         isARepeat: false,
         keyCode: keyCode
     ))
+}
+
+@MainActor
+@Test func `composer native formatting edits Markdown and preserves attachments through undo`() throws {
+    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 100), styleMask: [.titled], backing: .buffered, defer: false)
+    window.isReleasedWhenClosed = false
+    defer { window.close() }
+    let view = ComposerNSTextView(frame: window.contentView!.bounds)
+    view.isRichText = true
+    view.allowsUndo = true
+    view.usesFontPanel = true
+    view.plainTypingAttributes = ComposerEmojiAttributedText.textAttributes(.systemFont(ofSize: 15))
+    window.contentView = view
+    window.makeFirstResponder(view)
+    view.textStorage?.setAttributedString(ComposerEmojiAttributedText.make("hello <@123>"))
+    view.setSelectedRange(NSRange(location: 0, length: view.string.utf16.count))
+    let fontManager = NSFontManager()
+    fontManager.target = view
+    let nativeTraitItem = NSMenuItem(title: "", action: #selector(NSFontManager.addFontTrait(_:)), keyEquivalent: "")
+    nativeTraitItem.tag = Int(NSFontTraitMask.boldFontMask.rawValue)
+    fontManager.addFontTrait(nativeTraitItem)
+    #expect(ComposerEmojiAttributedText.serialize(view.attributedString()) == "**hello <@123>**")
+    let font = try #require(view.textStorage?.attribute(.font, at: 2, effectiveRange: nil) as? NSFont)
+    #expect(font.fontDescriptor.symbolicTraits.contains(.bold))
+    view.selectAll(nil)
+    nativeTraitItem.tag = Int(NSFontTraitMask.italicFontMask.rawValue)
+    fontManager.addFontTrait(nativeTraitItem)
+    #expect(ComposerEmojiAttributedText.serialize(view.attributedString()) == "***hello <@123>***")
+    view.wrapSelectionInMarkdown("*")
+    #expect(ComposerEmojiAttributedText.serialize(view.attributedString()) == "**hello <@123>**")
+    view.undoManager?.undo()
+    view.undoManager?.undo()
+    view.undoManager?.undo()
+    #expect(ComposerEmojiAttributedText.serialize(view.attributedString()) == "hello <@123>")
+    view.setSelectedRange(NSRange(location: 0, length: 5))
+    view.underline(nil)
+    #expect(ComposerEmojiAttributedText.serialize(view.attributedString()) == "__hello__ <@123>")
+    view.underline(nil)
+    #expect(ComposerEmojiAttributedText.serialize(view.attributedString()) == "hello <@123>")
+    #expect(!view.shouldChangeText(in: NSRange(location: 0, length: 5), replacementString: nil))
+    let vertical = NSMenuItem(title: "Vertical", action: #selector(NSTextView.changeLayoutOrientation(_:)), keyEquivalent: "")
+    vertical.tag = 1
+    view.changeLayoutOrientation(vertical)
+    #expect(view.layoutOrientation == .horizontal)
+    view.setSelectedRange(NSRange(location: 2, length: 0))
+    for trait in [NSFontTraitMask.boldFontMask, .italicFontMask] {
+        nativeTraitItem.tag = Int(trait.rawValue)
+        fontManager.addFontTrait(nativeTraitItem)
+        #expect(ComposerEmojiAttributedText.serialize(view.attributedString()) == "hello <@123>")
+        #expect(view.selectedRange() == NSRange(location: 2, length: 0))
+    }
+}
+
+private let composerFormattingOrders = [
+    ["*", "__"], ["__", "*"],
+    ["**", "*", "__"], ["**", "__", "*"],
+    ["*", "**", "__"], ["*", "__", "**"],
+    ["__", "**", "*"], ["__", "*", "**"]
+]
+
+@MainActor
+@Test(arguments: composerFormattingOrders)
+func `composer repeated mixed formatting toggles preserve the selected content`(_ order: [String]) {
+    var draft = "test"
+    var selection: NSRange? = NSRange(location: 0, length: 4)
+    let parent = ComposerTextView(
+        text: draft, placeholder: "", sendWithReturn: true,
+        onTextChange: { draft = $0 }, onSubmit: {},
+        selection: Binding(get: { selection }, set: { selection = $0 }),
+        isFocused: .constant(true)
+    )
+    let coordinator = parent.makeCoordinator()
+    let view = ComposerNSTextView()
+    view.string = "test"
+    view.delegate = coordinator
+    view.selectAll(nil)
+    for removalOrder in composerFormattingOrders where removalOrder.count == order.count {
+        var active: [String] = []
+        for marker in order + removalOrder {
+            if let index = active.firstIndex(of: marker) {
+                active.remove(at: index)
+            } else {
+                active.append(marker)
+            }
+            view.wrapSelectionInMarkdown(marker)
+            #expect(view.string == active.joined() + "test" + active.reversed().joined())
+            #expect((view.string as NSString).substring(with: view.selectedRange()) == "test")
+            let font = view.textStorage?.attribute(.font, at: view.selectedRange().location, effectiveRange: nil) as? NSFont
+            #expect(font?.fontDescriptor.symbolicTraits.contains(.bold) == active.contains("**"))
+            #expect(font?.fontDescriptor.symbolicTraits.contains(.italic) == active.contains("*"))
+            let underline = view.textStorage?.attribute(.underlineStyle, at: view.selectedRange().location, effectiveRange: nil) as? Int ?? 0
+            #expect((underline != 0) == active.contains("__"))
+            // No representable refresh between edits: returning to the old
+            // snapshot must still publish the new draft and selection.
+            #expect(draft == view.string)
+            #expect(selection == view.selectedRange())
+        }
+        #expect(view.string == "test")
+    }
+    // Recognize existing equivalent syntax, not only the spelling we emit.
+    for source in ["*__test__*", "__*test*__", "___test___"] {
+        view.string = source
+        view.setSelectedRange((source as NSString).range(of: "test"))
+        view.wrapSelectionInMarkdown("*")
+        #expect(view.string == "__test__")
+        view.wrapSelectionInMarkdown("__")
+        #expect(view.string == "test")
+    }
+}
+
+@MainActor
+@Test func `composer rich paste imports characters and derives only Markdown formatting`() throws {
+    let pasteboard = NSPasteboard.withUniqueName()
+    defer { pasteboard.releaseGlobally() }
+    let rich = NSAttributedString(string: "**hello**", attributes: [.font: NSFont.systemFont(ofSize: 40), .foregroundColor: NSColor.red])
+    let data = try rich.data(from: NSRange(location: 0, length: rich.length), documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf])
+    pasteboard.setData(data, forType: .rtf)
+    let view = ComposerNSTextView()
+    view.plainTypingAttributes = ComposerEmojiAttributedText.textAttributes(.systemFont(ofSize: 15))
+    #expect(view.readSelection(from: pasteboard, type: .rtf))
+    #expect(view.string == "**hello**")
+    let font = try #require(view.textStorage?.attribute(.font, at: 2, effectiveRange: nil) as? NSFont)
+    #expect(font.pointSize == 15)
+    #expect(font.fontDescriptor.symbolicTraits.contains(.bold))
+    view.insertText("", replacementRange: NSRange(location: 7, length: 2))
+    let unformatted = try #require(view.textStorage?.attribute(.font, at: 2, effectiveRange: nil) as? NSFont)
+    #expect(!unformatted.fontDescriptor.symbolicTraits.contains(.bold))
+
+    pasteboard.clearContents()
+    pasteboard.setString("<b style='font-size:40px;color:red'>hello &amp; 🌸</b>", forType: .html)
+    view.selectAll(nil)
+    #expect(view.readSelection(from: pasteboard, type: .html))
+    #expect(view.string == "hello & 🌸")
+    let pastedFont = try #require(view.textStorage?.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)
+    #expect(pastedFont.pointSize == 15)
+    #expect(!pastedFont.fontDescriptor.symbolicTraits.contains(.bold))
+    #expect(view.textStorage?.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor == .labelColor)
 }

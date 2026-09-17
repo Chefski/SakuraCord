@@ -75,6 +75,51 @@ public enum DiscordMarkdown {
         }
     }
 
+    /// Content ranges in the original Markdown, excluding their surrounding delimiters.
+    /// Editors use these UTF-16 ranges without converting the draft to rendered text.
+    public struct SourceFormat: Sendable {
+        public let range: NSRange
+        public let delimiter: String
+        public let isBold: Bool
+        public let isItalic: Bool
+        public let isUnderlined: Bool
+    }
+
+    public static func sourceFormats(_ source: String) -> [SourceFormat] {
+        // No supported style can begin without one of these ASCII markers.
+        guard source.utf8.contains(42) || source.utf8.contains(95) else { return [] }
+        // NSTextStorage can vend UTF-16-backed strings. Normalize once instead of
+        // paying for bridged character access throughout the recursive scan.
+        var source = source
+        source.makeContiguousUTF8()
+        var formats: [SourceFormat] = []
+        var segmentStart = source.startIndex
+        var inCodeFence = false
+        let collect: (Range<String.Index>, AppKitPlan.InlineTraits, String) -> Void = { range, traits, delimiter in
+            guard !traits.isDisjoint(with: [.bold, .italic, .underline]) else { return }
+            formats.append(SourceFormat(
+                range: NSRange(range, in: source),
+                delimiter: delimiter,
+                isBold: traits.contains(.bold),
+                isItalic: traits.contains(.italic),
+                isUnderlined: traits.contains(.underline)
+            ))
+        }
+        let collector = SourceFormatCollector(source: source, collect: collect)
+        for line in source.split(separator: "\n", omittingEmptySubsequences: false) {
+            guard line.hasPrefix("```") else { continue }
+            if !inCodeFence {
+                _ = inlineRuns(source[segmentStart ..< line.startIndex], inheritedTraits: [], inheritedLink: nil, sourceCollector: collector)
+            }
+            inCodeFence.toggle()
+            segmentStart = line.endIndex
+        }
+        if !inCodeFence {
+            _ = inlineRuns(source[segmentStart...], inheritedTraits: [], inheritedLink: nil, sourceCollector: collector)
+        }
+        return formats
+    }
+
     private struct Delimiter {
         let marker: String
         let traits: AppKitPlan.InlineTraits
@@ -507,7 +552,8 @@ public enum DiscordMarkdown {
         _ source: Substring,
         inheritedTraits: AppKitPlan.InlineTraits,
         inheritedLink: URL?,
-        widgetRules: Bool = false
+        widgetRules: Bool = false,
+        sourceCollector: SourceFormatCollector? = nil
     ) -> [AppKitPlan.InlineRun] {
         var result: [AppKitPlan.InlineRun] = []
         var plain = ""
@@ -525,6 +571,10 @@ public enum DiscordMarkdown {
         }
 
         while cursor < source.endIndex {
+            if sourceCollector != nil {
+                guard let candidate = source[cursor...].firstIndex(where: isComposerSyntaxCharacter) else { break }
+                cursor = candidate
+            }
             if source[cursor] == "\\" {
                 let next = source.index(after: cursor)
                 if next < source.endIndex {
@@ -535,14 +585,12 @@ public enum DiscordMarkdown {
             }
 
             if !widgetRules, source[cursor] == "`",
-               let close = source[source.index(after: cursor)...]
-                .firstIndex(of: "`")
+               let close = nextInlineTerminator("`", in: source, from: source.index(after: cursor), collector: sourceCollector)
             {
                 flushPlain()
-                let contentStart = source.index(after: cursor)
                 result.append(
                     AppKitPlan.InlineRun(
-                        text: String(source[contentStart ..< close]),
+                        text: String(source[source.index(after: cursor) ..< close]),
                         traits: inheritedTraits.union(.inlineCode),
                         link: inheritedLink,
                         color: nil
@@ -556,7 +604,8 @@ public enum DiscordMarkdown {
                let autolink = angleBracketAutolink(
                    in: source,
                    at: cursor,
-                   traits: inheritedTraits
+                   traits: inheritedTraits,
+                   sourceCollector: sourceCollector
                )
             {
                 flushPlain()
@@ -569,7 +618,8 @@ public enum DiscordMarkdown {
                 in: source,
                 at: cursor,
                 inheritedTraits: inheritedTraits,
-                widgetRules: widgetRules
+                widgetRules: widgetRules,
+                sourceCollector: sourceCollector
             )
             {
                 flushPlain()
@@ -579,10 +629,12 @@ public enum DiscordMarkdown {
             }
 
             if inheritedLink == nil,
+               sourceCollector == nil || source[cursor...].hasPrefix("http://") || source[cursor...].hasPrefix("https://"),
                let autolink = bareAutolink(
                    in: source,
                    at: cursor,
-                   traits: inheritedTraits
+                   traits: inheritedTraits,
+                   anchored: sourceCollector != nil
                )
             {
                 flushPlain()
@@ -591,12 +643,14 @@ public enum DiscordMarkdown {
                 continue
             }
 
-            if let match = delimitedRuns(
+            if sourceCollector == nil || isComposerDelimiterCharacter(source[cursor]),
+               let match = delimitedRuns(
                 in: source,
                 at: cursor,
                 inheritedTraits: inheritedTraits,
                 inheritedLink: inheritedLink,
-                widgetRules: widgetRules
+                widgetRules: widgetRules,
+                sourceCollector: sourceCollector
             ) {
                 flushPlain()
                 result.append(contentsOf: match.runs)
@@ -604,7 +658,7 @@ public enum DiscordMarkdown {
                 continue
             }
 
-            plain.append(source[cursor])
+            if sourceCollector == nil { plain.append(source[cursor]) }
             cursor = source.index(after: cursor)
         }
 
@@ -615,11 +669,11 @@ public enum DiscordMarkdown {
     private static func angleBracketAutolink(
         in source: Substring,
         at cursor: String.Index,
-        traits: AppKitPlan.InlineTraits
+        traits: AppKitPlan.InlineTraits,
+        sourceCollector: SourceFormatCollector? = nil
     ) -> (run: AppKitPlan.InlineRun, endIndex: String.Index)? {
         guard source[cursor] == "<",
-              let close = source[source.index(after: cursor)...]
-                .firstIndex(of: ">"),
+              let close = nextInlineTerminator(">", in: source, from: source.index(after: cursor), collector: sourceCollector),
               let url = MessageLinkPolicy.allowedURL(
                   from: String(source[cursor ... close])
               )
@@ -642,16 +696,39 @@ public enum DiscordMarkdown {
         in source: Substring,
         at cursor: String.Index,
         inheritedTraits: AppKitPlan.InlineTraits,
-        widgetRules: Bool = false
+        widgetRules: Bool = false,
+        sourceCollector: SourceFormatCollector? = nil
     ) -> (runs: [AppKitPlan.InlineRun], endIndex: String.Index)? {
+        guard let target = markdownLinkTarget(in: source, at: cursor, collector: sourceCollector) else { return nil }
+        return (
+            inlineRuns(
+                source[target.label],
+                inheritedTraits: inheritedTraits,
+                inheritedLink: target.url,
+                widgetRules: widgetRules,
+                sourceCollector: sourceCollector
+            ),
+            target.end
+        )
+    }
+
+    private static func nextInlineTerminator(
+        _ character: Character, in source: Substring, from start: String.Index, collector: SourceFormatCollector?
+    ) -> String.Index? {
+        if let collector { return collector.next(character, from: start, before: source.endIndex) }
+        return source[start...].firstIndex(of: character)
+    }
+
+    private static func markdownLinkTarget(
+        in source: Substring, at cursor: String.Index, collector: SourceFormatCollector?
+    ) -> MarkdownLinkTarget? {
         guard source[cursor] == "[",
-              let labelEnd = source[cursor...].firstIndex(of: "]")
+              let labelEnd = nextInlineTerminator("]", in: source, from: cursor, collector: collector)
         else { return nil }
         let openingParenthesis = source.index(after: labelEnd)
         guard openingParenthesis < source.endIndex,
               source[openingParenthesis] == "(",
-              let closingParenthesis = source[openingParenthesis...]
-                .firstIndex(of: ")"),
+              let closingParenthesis = nextInlineTerminator(")", in: source, from: openingParenthesis, collector: collector),
               let url = MessageLinkPolicy.allowedURL(
                   from: String(
                       source[
@@ -661,23 +738,20 @@ public enum DiscordMarkdown {
                   )
               )
         else { return nil }
-        return (
-            inlineRuns(
-                source[source.index(after: cursor) ..< labelEnd],
-                inheritedTraits: inheritedTraits,
-                inheritedLink: url,
-                widgetRules: widgetRules
-            ),
-            source.index(after: closingParenthesis)
+        return MarkdownLinkTarget(
+            label: source.index(after: cursor) ..< labelEnd,
+            url: url,
+            end: source.index(after: closingParenthesis)
         )
     }
 
     private static func bareAutolink(
         in source: Substring,
         at cursor: String.Index,
-        traits: AppKitPlan.InlineTraits
+        traits: AppKitPlan.InlineTraits,
+        anchored: Bool = false
     ) -> (run: AppKitPlan.InlineRun, endIndex: String.Index)? {
-        guard let match = firstURL(in: source[cursor...]),
+        guard let match = firstURL(in: source[cursor...], anchored: anchored),
               match.range.lowerBound == cursor
         else { return nil }
 
@@ -697,7 +771,8 @@ public enum DiscordMarkdown {
         at cursor: String.Index,
         inheritedTraits: AppKitPlan.InlineTraits,
         inheritedLink: URL?,
-        widgetRules: Bool = false
+        widgetRules: Bool = false,
+        sourceCollector: SourceFormatCollector? = nil
     ) -> (runs: [AppKitPlan.InlineRun], endIndex: String.Index)? {
         for delimiter in delimiters
         where source[cursor...].hasPrefix(delimiter.marker) {
@@ -706,22 +781,109 @@ public enum DiscordMarkdown {
                 cursor,
                 offsetBy: delimiter.marker.count
             )
+            // Only the composer source-range traversal uses nested matching.
+            // Message rendering retains its original delimiter matching exactly.
+            let closingRange = if let sourceCollector {
+                composerClosingDelimiter(delimiter.marker, in: source, after: contentStart, collector: sourceCollector)
+            } else {
+                source.range(of: delimiter.marker, range: contentStart ..< source.endIndex)
+            }
             guard contentStart <= source.endIndex,
-                  let closingRange = source.range(
-                      of: delimiter.marker,
-                      range: contentStart ..< source.endIndex
-                  ),
+                  let closingRange,
                   closingRange.lowerBound > contentStart
             else { continue }
+            sourceCollector?.collect(contentStart ..< closingRange.lowerBound, inheritedTraits.union(delimiter.traits), delimiter.marker)
             return (
                 inlineRuns(
                     source[contentStart ..< closingRange.lowerBound],
                     inheritedTraits: inheritedTraits.union(delimiter.traits),
                     inheritedLink: inheritedLink,
-                    widgetRules: widgetRules
+                    widgetRules: widgetRules,
+                    sourceCollector: sourceCollector
                 ),
                 closingRange.upperBound
             )
+        }
+        return nil
+    }
+
+    // Ignore literal markers when matching a composer's surrounding format.
+    // This affects recognition only; editing may still target any selected text.
+    private static func composerLiteralEnd(
+        in source: Substring, at cursor: String.Index, collector: SourceFormatCollector
+    ) -> String.Index? {
+        let next = source.index(after: cursor)
+        if source[cursor] == "\\", next < source.endIndex {
+            return source.index(after: next)
+        }
+        if source[cursor] == "`", let close = collector.next("`", from: next, before: source.endIndex) {
+            return source.index(after: close)
+        }
+        if let link = markdownLinkTarget(in: source, at: cursor, collector: collector) {
+            return link.end
+        }
+        if let link = angleBracketAutolink(in: source, at: cursor, traits: [], sourceCollector: collector) {
+            return link.endIndex
+        }
+        return nil
+    }
+
+    private static func composerClosingDelimiter(
+        _ marker: String, in source: Substring, after start: String.Index,
+        collector: SourceFormatCollector,
+        enclosingMarkers: Set<String> = []
+    ) -> Range<String.Index>? {
+        let openMarkers = enclosingMarkers.union([marker])
+        var cursor = start
+        while cursor < source.endIndex {
+            guard let candidateIndex = source[cursor...].firstIndex(where: isComposerSyntaxCharacter) else { return nil }
+            cursor = candidateIndex
+            if let end = composerLiteralEnd(in: source, at: cursor, collector: collector) {
+                cursor = end
+                continue
+            }
+            guard isComposerDelimiterCharacter(source[cursor]),
+                  let candidate = delimiters.first(where: { source[cursor...].hasPrefix($0.marker) }) else {
+                cursor = source.index(after: cursor)
+                continue
+            }
+            var runEnd = source.index(after: cursor)
+            while runEnd < source.endIndex, source[runEnd] == source[cursor] {
+                runEnd = source.index(after: runEnd)
+            }
+            let runLength = source.distance(from: cursor, to: runEnd)
+            let canOpen = runEnd < source.endIndex && !source[runEnd].isWhitespace
+            let closesCurrent = source[cursor...].hasPrefix(marker)
+            // An unmatched inner opener cannot consume a parent's closer. A
+            // combined closing run can close both only if it has enough marks.
+            if enclosingMarkers.contains(where: {
+                source[cursor...].hasPrefix($0)
+                    && (!closesCurrent || ($0.count > marker.count && runLength < $0.count + marker.count))
+            }) {
+                return nil
+            }
+            // A triple closing run is consumed from the inside out: the inner
+            // * in **bold *italic*** closes first, leaving ** for its parent.
+            if closesCurrent, runLength != 2 || marker.count != 1 || !canOpen {
+                return cursor ..< source.index(cursor, offsetBy: marker.count)
+            }
+            // Skip complete nested spans before looking for our own closing
+            // pair. In *__**text**__*, the inner ** cannot close the outer *.
+            // A style already open is a closer, not another recursive opener.
+            if !openMarkers.contains(candidate.marker), canOpen,
+               let nestedClose = composerClosingDelimiter(
+                   candidate.marker, in: source,
+                   after: source.index(cursor, offsetBy: candidate.marker.count),
+                   collector: collector,
+                   enclosingMarkers: openMarkers
+               ) {
+                cursor = nestedClose.upperBound
+                continue
+            }
+            if closesCurrent {
+                return cursor ..< source.index(cursor, offsetBy: marker.count)
+            }
+            cursor = runEnd
         }
         return nil
     }
@@ -779,10 +941,14 @@ public enum DiscordMarkdown {
     }
 
     private static func firstURL(
-        in source: Substring
+        in source: Substring, anchored: Bool = false
     ) -> (range: Range<String.Index>, url: URL)? {
-        let candidates = ["https://", "http://"].compactMap {
-            source.range(of: $0)
+        let candidates = ["https://", "http://"].compactMap { prefix -> Range<String.Index>? in
+            if anchored {
+                guard source.hasPrefix(prefix) else { return nil }
+                return source.startIndex ..< source.index(source.startIndex, offsetBy: prefix.count)
+            }
+            return source.range(of: prefix)
         }
         guard let prefix = candidates.min(by: {
             $0.lowerBound < $1.lowerBound
@@ -1144,6 +1310,58 @@ public enum DiscordMarkdown {
         case .quote: "quote"
         case .code: "code"
         default: nil
+        }
+    }
+}
+
+private extension DiscordMarkdown {
+    static func isComposerSyntaxCharacter(_ character: Character) -> Bool {
+        switch character {
+        case "\\", "`", "[", "<", "*", "_", "~", "|", "h": true
+        default: false
+        }
+    }
+
+    static func isComposerDelimiterCharacter(_ character: Character) -> Bool {
+        switch character {
+        case "*", "_", "~", "|": true
+        default: false
+        }
+    }
+
+    struct MarkdownLinkTarget {
+        let label: Range<String.Index>
+        let url: URL
+        let end: String.Index
+    }
+
+    /// Per-parse lookup table: unfinished syntax must not repeatedly search the
+    /// remainder of the draft for the same closing bracket or backtick.
+    final class SourceFormatCollector {
+        let collect: (Range<String.Index>, AppKitPlan.InlineTraits, String) -> Void
+        private var terminators: [Character: [String.Index]] = [:]
+
+        init(source: String, collect: @escaping (Range<String.Index>, AppKitPlan.InlineTraits, String) -> Void) {
+            self.collect = collect
+            for index in source.indices {
+                let character = source[index]
+                switch character {
+                case "]", ")", ">", "`": terminators[character, default: []].append(index)
+                default: break
+                }
+            }
+        }
+
+        func next(_ character: Character, from start: String.Index, before end: String.Index) -> String.Index? {
+            guard let indices = terminators[character] else { return nil }
+            var lower = 0
+            var upper = indices.count
+            while lower < upper {
+                let middle = (lower + upper) / 2
+                if indices[middle] < start { lower = middle + 1 } else { upper = middle }
+            }
+            guard lower < indices.count, indices[lower] < end else { return nil }
+            return indices[lower]
         }
     }
 }

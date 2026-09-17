@@ -158,32 +158,37 @@ enum ComposerEmojiAttributedText {
                 )
             )
         }
+        ComposerMarkdownPresentation.apply(to: result, font: font)
         return result
     }
 
     static func serialize(_ value: NSAttributedString, range: NSRange? = nil) -> String {
         let target = range ?? NSRange(location: 0, length: value.length)
+        let source = value.string as NSString
         var result = ""
-        value.enumerateAttributes(in: target) { attributes, range, _ in
-            guard let token = (attributes[.discordEmojiToken] ?? attributes[.discordMentionToken]) as? String,
-                  attributes[.attachment] is NSTextAttachment
-            else {
-                result += value.attributedSubstring(from: range).string
+        // Font and underline runs do not affect the outgoing Markdown. Inspect
+        // token metadata only where an attachment can change the source text.
+        value.enumerateAttribute(.attachment, in: target) { attachment, range, _ in
+            guard attachment is NSTextAttachment else {
+                result += source.substring(with: range)
                 return
             }
-
-            let source = value.string as NSString
-            var cursor = range.location
-            while cursor < NSMaxRange(range) {
-                let composedRange = NSIntersectionRange(
-                    source.rangeOfComposedCharacterSequence(at: cursor),
-                    range
-                )
-                let substring = source.substring(with: composedRange)
-                result += composedRange.length == 1 && substring == "\u{FFFC}"
-                    ? token
-                    : substring
-                cursor = NSMaxRange(composedRange)
+            value.enumerateAttributes(in: range) { attributes, tokenRange, _ in
+                guard let token = (attributes[.discordEmojiToken] ?? attributes[.discordMentionToken]) as? String else {
+                    result += source.substring(with: tokenRange)
+                    return
+                }
+                var cursor = tokenRange.location
+                while cursor < NSMaxRange(tokenRange) {
+                    let composedRange = NSIntersectionRange(
+                        source.rangeOfComposedCharacterSequence(at: cursor), tokenRange
+                    )
+                    let substring = source.substring(with: composedRange)
+                    result += composedRange.length == 1 && substring == "\u{FFFC}"
+                        ? token
+                        : substring
+                    cursor = NSMaxRange(composedRange)
+                }
             }
         }
         return result
@@ -194,18 +199,21 @@ enum ComposerEmojiAttributedText {
         mentionPresentations: [String: MentionPresentation]
     ) -> Bool {
         var isCurrent = true
-        value.enumerateAttributes(in: NSRange(location: 0, length: value.length)) { attributes, _, stop in
-            guard let token = attributes[.discordMentionToken] as? String,
+        value.enumerateAttribute(.discordMentionToken, in: NSRange(location: 0, length: value.length)) { tokenValue, range, stop in
+            guard let token = tokenValue as? String,
                   let mention = RenderedMention(rawToken: token)
             else { return }
             let expected = mentionPresentations[token]
                 ?? MentionPresentation.fallback(for: mention)
-            guard let attachment = attributes[.attachment] as? MentionTextAttachment,
-                  attachment.presentation == expected
-            else {
-                isCurrent = false
-                stop.pointee = true
-                return
+            value.enumerateAttribute(.attachment, in: range) { attachment, _, attachmentStop in
+                guard let attachment = attachment as? MentionTextAttachment,
+                      attachment.presentation == expected
+                else {
+                    isCurrent = false
+                    attachmentStop.pointee = true
+                    stop.pointee = true
+                    return
+                }
             }
         }
         return isCurrent
@@ -312,6 +320,11 @@ struct ComposerTextView: NSViewRepresentable {
         textView.isSelectable = true
         textView.isRichText = true
         textView.importsGraphics = false
+        textView.usesFontPanel = true
+        textView.usesRuler = false
+        textView.usesInspectorBar = false
+        textView.allowsDocumentBackgroundColorChange = false
+        textView.allowedWritingToolsResultOptions = .plainText
         // NSTextView is the AppKit drag destination inside the SwiftUI
         // workspace. Own file URLs here so AppKit cannot fall back to inserting
         // their paths into the message text.
@@ -408,8 +421,6 @@ struct ComposerTextView: NSViewRepresentable {
                     mentionPresentations: mentionPresentations
                 )
             )
-            textView.font = font
-            textView.textColor = .labelColor
 
             if selection == nil {
                 textView.setSelectedRange(
@@ -524,9 +535,10 @@ struct ComposerTextView: NSViewRepresentable {
                 raw = ComposerEmojiAttributedText.serialize(textView.attributedString())
             }
             updateSelection(from: textView)
-            if parent.text != raw {
-                parent.onTextChange(raw)
-            }
+            // The representable's text is a render snapshot. Rapid edits may
+            // return to that value before SwiftUI refreshes it; every native
+            // text change must still reach the current draft model.
+            parent.onTextChange(raw)
             textView.invalidateIntrinsicContentSize()
             textView.enclosingScrollView?.invalidateIntrinsicContentSize()
         }
@@ -819,7 +831,14 @@ final class ComposerNSTextView: NSTextView {
 
     override func insertText(_ insertString: Any, replacementRange: NSRange) {
         restorePlainTypingAttributes()
-        super.insertText(insertString, replacementRange: replacementRange)
+        if let attributed = insertString as? NSAttributedString {
+            let normalized = NSMutableAttributedString(attributedString: attributed)
+            let baseFont = plainTypingAttributes[.font] as? NSFont ?? .systemFont(ofSize: 15)
+            ComposerMarkdownPresentation.apply(to: normalized, font: baseFont)
+            super.insertText(normalized, replacementRange: replacementRange)
+        } else {
+            super.insertText(insertString, replacementRange: replacementRange)
+        }
         restorePlainTypingAttributes()
     }
 
@@ -914,11 +933,38 @@ final class ComposerNSTextView: NSTextView {
         if pasteAttachmentsIfAvailable() {
             return
         }
-        guard let value = commandPasteboard.string(forType: .string) else {
-            super.paste(sender)
-            return
+        _ = readSelection(from: commandPasteboard)
+    }
+
+    override func pasteAsRichText(_ sender: Any?) {
+        paste(sender)
+    }
+
+    override func readSelection(from pasteboard: NSPasteboard) -> Bool {
+        if let value = pasteboard.string(forType: .string) {
+            insertText(value, replacementRange: selectedRange())
+            return true
         }
-        insertText(value, replacementRange: selectedRange())
+        for (type, documentType) in [
+            (NSPasteboard.PasteboardType.rtf, NSAttributedString.DocumentType.rtf),
+            (.rtfd, .rtfd),
+            (.html, .html)
+        ] {
+            var options: [NSAttributedString.DocumentReadingOptionKey: Any] = [.documentType: documentType]
+            if type == .html { options[.characterEncoding] = String.Encoding.utf8.rawValue }
+            guard let data = pasteboard.data(forType: type),
+                  let attributed = try? NSAttributedString(
+                      data: data, options: options, documentAttributes: nil
+                  )
+            else { continue }
+            insertText(attributed.string, replacementRange: selectedRange())
+            return true
+        }
+        return false
+    }
+
+    override func readSelection(from pasteboard: NSPasteboard, type: NSPasteboard.PasteboardType) -> Bool {
+        readSelection(from: pasteboard)
     }
 
     private func pasteAttachmentsIfAvailable() -> Bool {
