@@ -2,7 +2,7 @@ import Foundation
 
 nonisolated extension SettingsCatalog {
     static let profilesPage = page(
-        .profiles, group: .account, title: "Edit Profile", image: "square.and.pencil.circle.fill",
+        .profiles, group: .account, title: "Edit Profile", image: "pencil.circle.fill",
         help: "Customize your active Discord account's main and per-server profiles.",
         keywords: ["profile", "avatar", "banner", "nameplate", "decoration", "font", "display name", "bio", "pronouns", "server profile", "profile effect", "frame", "gradient", "Nitro"]
     )

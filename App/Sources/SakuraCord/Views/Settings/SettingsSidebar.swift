@@ -13,17 +13,14 @@ struct SettingsSidebar: View {
                     SettingsAccountSidebarRow(account: account)
                         .tag(SettingsPageID.myAccount)
 
-                    ForEach(SettingsSidebarGroupID.allCases) { group in
+                    ForEach(state.catalog.pages(in: .account).filter { $0.id != .myAccount }) { page in
+                        SettingsSidebarPageRow(page: page, isSelected: state.selectedPage == page.id)
+                    }
+
+                    ForEach(SettingsSidebarGroupID.allCases.filter { $0 != .account }) { group in
                         Section(group.title) {
-                            ForEach(state.catalog.pages(in: group).filter { $0.id != .myAccount }) { page in
-                                Label(page.title, systemImage: page.systemImage)
-                                    .lineLimit(1)
-                                    .labelStyle(
-                                        SettingsSidebarLabelStyle(
-                                            isSelected: state.selectedPage == page.id
-                                        )
-                                    )
-                                    .tag(page.id)
+                            ForEach(state.catalog.pages(in: group)) { page in
+                                SettingsSidebarPageRow(page: page, isSelected: state.selectedPage == page.id)
                             }
                         }
                         .collapsible(false)
@@ -61,6 +58,18 @@ struct SettingsSidebar: View {
                 proxy.scrollTo(id, anchor: .center)
             }
         }
+    }
+}
+
+private struct SettingsSidebarPageRow: View {
+    let page: SettingsPageMetadata
+    let isSelected: Bool
+
+    var body: some View {
+        Label(page.title, systemImage: page.systemImage)
+            .lineLimit(1)
+            .labelStyle(SettingsSidebarLabelStyle(isSelected: isSelected))
+            .tag(page.id)
     }
 }
 
