@@ -6,7 +6,6 @@ struct SettingsView: View {
     @ObservedObject var updateController: AppUpdateController
 
     @Environment(\.locale) private var locale
-    @SceneStorage("settings.selected-account") private var storedSelectedAccount = ""
     @State private var state = SettingsViewState()
     @State private var launchAtLogin = LaunchAtLoginController()
     @State private var isSearchPresented = false
@@ -21,10 +20,18 @@ struct SettingsView: View {
         _profileEditor = State(initialValue: ProfileEditorState(model: model))
     }
 
+    private var currentAccount: SavedAccount? {
+        if let user = model.snapshot?.currentUser {
+            return SavedAccount(user: user)
+        }
+        return model.savedAccounts.first { $0.accountID == model.activeAccountID }
+    }
+
     var body: some View {
         @Bindable var state = state
         NavigationSplitView(columnVisibility: $columnVisibility) {
             SettingsSidebar(
+                account: currentAccount,
                 state: state,
                 onSearchResultActivated: dismissSearchFocus
             )
@@ -35,7 +42,7 @@ struct SettingsView: View {
                 updateController: updateController,
                 state: state,
                 launchAtLogin: launchAtLogin,
-                selectedAccountID: $storedSelectedAccount,
+                account: currentAccount,
                 profileEditor: profileEditor
             )
         }
@@ -217,7 +224,7 @@ private struct SettingsDetailRouter: View {
     @ObservedObject var updateController: AppUpdateController
     let state: SettingsViewState
     let launchAtLogin: LaunchAtLoginController
-    @Binding var selectedAccountID: String
+    let account: SavedAccount?
     let profileEditor: ProfileEditorState?
 
     var body: some View {
@@ -225,9 +232,10 @@ private struct SettingsDetailRouter: View {
         case .myAccount:
             MyAccountSettingsPage(
                 model: model,
-                state: state,
-                selectedAccountID: $selectedAccountID
+                account: account,
+                state: state
             )
+            .id(model.activeAccountID)
         case .profiles:
             if let profileEditor { ProfilesSettingsPage(model: model, state: state, editor: profileEditor) } else { ProgressView() }
         case .general:

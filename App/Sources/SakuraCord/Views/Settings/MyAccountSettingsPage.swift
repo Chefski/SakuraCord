@@ -1,350 +1,199 @@
+import SakuraCordModels
 import SwiftUI
 
 struct MyAccountSettingsPage: View {
     let model: AppModel
+    let account: SavedAccount?
     let state: SettingsViewState
-    @Binding var selectedAccountID: String
+    @State private var accountState: AccountSettingsState
+    @State private var navigationPath: [AccountSettingsDestination] = []
 
-    @State private var showsLogin = false
-    @State private var operation: AccountOperation?
-    @State private var pendingRemoval: SavedAccount?
-    @State private var operationError: String?
-    @State private var reopensLastActiveAccount = true
-    @State private var preferredLaunchAccountID = ""
-
-    private var selectedAccount: SavedAccount? {
-        model.savedAccounts.first { $0.accountID == selectedAccountID }
-    }
-
-    private var isBusy: Bool {
-        operation != nil || model.isSwitchingAccounts
+    init(model: AppModel, account: SavedAccount?, state: SettingsViewState) {
+        self.model = model
+        self.account = account
+        self.state = state
+        _accountState = State(initialValue: AccountSettingsState(model: model))
     }
 
     var body: some View {
-        SettingsPageForm(page: .myAccount, state: state) {
-            accountIdentitySection
-            if !model.savedAccounts.isEmpty {
-                accountLaunchSection
-            }
-        }
-        .task {
-            loadLaunchPreferences()
-            await model.refreshSavedAccounts()
-            normalizeSelectedAccount()
-            normalizePreferredLaunchAccount()
-        }
-        .onChange(of: model.savedAccounts.map(\.accountID)) {
-            normalizeSelectedAccount()
-            normalizePreferredLaunchAccount()
-        }
-        .sheet(isPresented: $showsLogin) {
-            DiscordLoginView(
-                showsCancel: true,
-                networkingEnabled: !model.isDiscordNetworkingDisabled,
-                savedAccountIDs: Set(model.savedAccounts.map(\.accountID))
-            ) { credential in
-                let connected = await model.connectPendingAuthenticatedAccount(
-                    credential,
-                    preservesInteractivePresentation: true
-                )
-                if connected {
-                    await model.refreshSavedAccounts()
-                    selectedAccountID = model.activeAccountID ?? selectedAccountID
-                    operationError = nil
+        NavigationStack(path: $navigationPath) {
+            SettingsPageForm(page: .myAccount, state: state) {
+                Section {
+                    if let account {
+                        SettingsAccountIdentityHeader(account: account)
+                    } else {
+                        ContentUnavailableView(
+                            "No Account",
+                            systemImage: "person.crop.circle.badge.xmark",
+                            description: Text("Sign in to view your account.", bundle: #bundle)
+                        )
+                    }
                 }
-                return connected
-                    ? nil
-                    : (model.errorMessage
-                        ?? "Discord account bootstrap failed for an unknown reason.")
-            }
-        }
-        .confirmationDialog(
-            removalTitle,
-            isPresented: pendingRemovalBinding
-        ) {
-            Button(removalConfirmationButtonTitle, role: .destructive) {
-                guard let account = pendingRemoval else { return }
-                pendingRemoval = nil
-                removeSavedSession(for: account)
-            }
-            Button("Cancel", role: .cancel) {
-                pendingRemoval = nil
-            }
-        } message: {
-            Text(removalMessage)
-        }
-    }
 
-    private var accountIdentitySection: some View {
-        Section {
-            if let selectedAccount {
-                SettingsAccountIdentityHeader(
-                    account: selectedAccount,
-                    isActive: selectedAccount.accountID == model.activeAccountID
-                )
-            } else {
-                ContentUnavailableView(
-                    "No Saved Accounts",
-                    systemImage: "person.crop.circle.badge.xmark",
-                    description: Text(
-                        "Add a Discord account to get started."
-                    )
-                )
-                .frame(maxWidth: .infinity, minHeight: 120)
-            }
-
-            if model.savedAccounts.count > 1 {
-                accountSelector
-                    .disabled(isBusy)
-                    .settingsControlAnchor(.selectedAccount, state: state)
-            }
-
-            HStack {
-                if selectedAccount != nil {
-                    Button {
-                        switchToSelectedAccount()
-                    } label: {
-                        if operation == .switching(selectedAccountID) {
-                            ProgressView()
-                                .controlSize(.small)
+                if let details = accountState.details {
+                    AccountInformationSection(details: details, state: state)
+                } else {
+                    Section {
+                        if let error = accountState.detailsError {
+                            AccountSettingsRetryRow(message: error) {
+                                await accountState.loadDetails()
+                            }
                         } else {
-                            Text("Switch to Account", bundle: #bundle)
+                            ProgressView("Loading account information…")
+                                .controlSize(.small)
+                        }
+                    } header: {
+                        Text("Account Info", bundle: #bundle)
+                    }
+                }
+
+                Section {
+                    LabeledContent {
+                        if let details = accountState.details {
+                            Text(details.isMFAEnabled ? "Enabled" : "Disabled", bundle: #bundle)
+                        } else {
+                            Text("Unavailable", bundle: #bundle)
+                        }
+                    } label: {
+                        Text("Multi-Factor Authentication", bundle: #bundle)
+                    }
+                    .settingsControlAnchor(.accountMFA, state: state)
+
+                    NavigationLink(value: AccountSettingsDestination.devices) {
+                        LabeledContent {
+                            if let devices = accountState.devices {
+                                Text("\(devices.count) devices", bundle: #bundle)
+                            } else if accountState.isLoadingDevices {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Text("Unavailable", bundle: #bundle)
+                            }
+                        } label: {
+                            Text("Logged-in Devices", bundle: #bundle)
                         }
                     }
-                    .disabled(
-                        isBusy
-                            || selectedAccount == nil
-                            || selectedAccountID == model.activeAccountID
-                            || model.isDiscordNetworkingDisabled
-                    )
-                    .settingsControlAnchor(.switchAccount, state: state)
-                }
-
-                Button("Add Account…") {
-                    showsLogin = true
-                }
-                .disabled(isBusy || model.isDiscordNetworkingDisabled)
-                .settingsControlAnchor(.addAccount, state: state)
-
-                Spacer()
-
-                if selectedAccount != nil {
-                    Button(removalButtonTitle, role: .destructive) {
-                        pendingRemoval = selectedAccount
-                    }
-                    .disabled(isBusy || selectedAccount == nil)
-                    .settingsControlAnchor(.removeSavedSession, state: state)
+                    .settingsControlAnchor(.accountDevices, state: state)
                 }
             }
-
-            if model.isDiscordNetworkingDisabled {
-                Label(
-                    "Discord account actions are unavailable while networking is disabled.",
-                    systemImage: "network.slash"
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
-
-            if let operationError {
-                Label(operationError, systemImage: "exclamationmark.triangle")
-                    .font(.caption)
-                    .foregroundStyle(.red)
-            }
-        } header: {
-            Text("Accounts", bundle: #bundle)
-        }
-    }
-
-    private var accountSelector: some View {
-        Picker("Saved account", selection: $selectedAccountID) {
-            ForEach(model.savedAccounts) { account in
-                Text(account.resolvedDisplayName)
-                    .tag(account.accountID)
+            .navigationDestination(for: AccountSettingsDestination.self) { _ in
+                AccountDevicesSettingsPage(accountState: accountState)
             }
         }
-        .accessibilityHint("Choose an account to switch to or remove.")
+        .task { await accountState.load() }
+        .onChange(of: model.profileInvalidationRevision) {
+            Task { await accountState.loadDetails() }
+        }
+        .onChange(of: state.revealRequest?.id) {
+            guard state.revealRequest?.destination.page == .myAccount else { return }
+            navigationPath.removeAll()
+        }
     }
+}
 
-    private var accountLaunchSection: some View {
+private enum AccountSettingsDestination: Hashable {
+    case devices
+}
+
+private struct AccountInformationSection: View {
+    let details: AccountDetails
+    let state: SettingsViewState
+
+    var body: some View {
         Section {
-            Toggle(
-                "Reopen the last active account",
-                isOn: reopensLastActiveAccountBinding
+            LabeledContent("Username", value: details.username)
+                .settingsControlAnchor(.accountUsername, state: state)
+            AccountContactRow(
+                title: "Email", value: details.email,
+                emptyLabel: "No email address added"
             )
-            .tint(SakuraCordAccentColor.color)
-            .settingsControlAnchor(.reopenLastAccount, state: state)
-
-            Picker(
-                "Preferred launch account",
-                selection: preferredLaunchAccountBinding
-            ) {
-                if model.savedAccounts.isEmpty {
-                    Text("No saved accounts").tag("")
-                } else {
-                    ForEach(model.savedAccounts) { account in
-                        Text(account.resolvedDisplayName)
-                            .tag(account.accountID)
-                    }
-                }
-            }
-            .disabled(reopensLastActiveAccount || model.savedAccounts.isEmpty)
-            .settingsControlAnchor(.preferredLaunchAccount, state: state)
+            .settingsControlAnchor(.accountEmail, state: state)
+            AccountContactRow(
+                title: "Phone Number", value: details.phoneNumber,
+                emptyLabel: "No phone number added"
+            )
+            .settingsControlAnchor(.accountPhone, state: state)
         } header: {
-            Text("On launch", bundle: #bundle)
-        } footer: {
-            Text(
-                reopensLastActiveAccount
-                    ? "SakuraCord reconnects the account used most recently."
-                    : "SakuraCord reconnects the fixed account selected above. If it is no longer saved, the first available account is used."
-            )
+            Text("Account Info", bundle: #bundle)
         }
     }
+}
 
-    private var reopensLastActiveAccountBinding: Binding<Bool> {
-        Binding(
-            get: { reopensLastActiveAccount },
-            set: { value in
-                reopensLastActiveAccount = value
-                SettingsPreferenceStore.shared.set(
-                    .bool(value),
-                    for: .reopenLastAccount
-                )
-                if !value {
-                    normalizePreferredLaunchAccount()
-                }
-            }
-        )
-    }
+private struct AccountContactRow: View {
+    let title: LocalizedStringKey
+    let value: String?
+    let emptyLabel: LocalizedStringKey
 
-    private var preferredLaunchAccountBinding: Binding<String> {
-        Binding(
-            get: { preferredLaunchAccountID },
-            set: { value in
-                preferredLaunchAccountID = value
-                SettingsPreferenceStore.shared.set(
-                    .string(value),
-                    for: .preferredLaunchAccount
-                )
-            }
-        )
-    }
-
-    private var pendingRemovalBinding: Binding<Bool> {
-        Binding(
-            get: { pendingRemoval != nil },
-            set: { isPresented in
-                if !isPresented {
-                    pendingRemoval = nil
-                }
-            }
-        )
-    }
-
-    private var removalButtonTitle: String {
-        selectedAccount?.accountID == model.activeAccountID
-            ? "Log Out…"
-            : "Remove Saved Account…"
-    }
-
-    private var removalConfirmationButtonTitle: String {
-        pendingRemoval?.accountID == model.activeAccountID
-            ? "Log Out"
-            : "Remove Saved Account"
-    }
-
-    private var removalTitle: String {
-        guard let pendingRemoval else { return "Remove Saved Account?" }
-        return pendingRemoval.accountID == model.activeAccountID
-            ? "Log Out of \(pendingRemoval.resolvedDisplayName)?"
-            : "Remove \(pendingRemoval.resolvedDisplayName)?"
-    }
-
-    private var removalMessage: String {
-        guard let pendingRemoval else { return "" }
-        let action = pendingRemoval.accountID == model.activeAccountID
-            ? "SakuraCord will disconnect this account and remove its saved session"
-            : "SakuraCord will remove this account's saved session without changing the active workspace"
-        return """
-        \(action). Its credential is removed from macOS Keychain and its saved account metadata is removed from this Mac. \
-        Drafts, account-local preferences, other accounts, and Discord data are kept.
-        """
-    }
-
-    private func normalizeSelectedAccount() {
-        selectedAccountID = SettingsAccountSelectionPolicy.accountID(
-            storedAccountID: selectedAccountID,
-            activeAccountID: model.activeAccountID,
-            accounts: model.savedAccounts
-        ) ?? ""
-    }
-
-    private func loadLaunchPreferences() {
-        reopensLastActiveAccount = SettingsPreferenceStore.shared.value(
-            for: .reopenLastAccount
-        ) == .bool(true)
-        if case let .string(value) = SettingsPreferenceStore.shared.value(
-            for: .preferredLaunchAccount
-        ) {
-            preferredLaunchAccountID = value
-        }
-    }
-
-    private func normalizePreferredLaunchAccount() {
-        guard !reopensLastActiveAccount else { return }
-        let availableIDs = Set(model.savedAccounts.map(\.accountID))
-        guard !availableIDs.contains(preferredLaunchAccountID) else { return }
-        let fallback = selectedAccountID.isEmpty
-            ? (model.activeAccountID ?? model.savedAccounts.first?.accountID ?? "")
-            : selectedAccountID
-        preferredLaunchAccountID = fallback
-        SettingsPreferenceStore.shared.set(
-            .string(fallback),
-            for: .preferredLaunchAccount
-        )
-    }
-
-    private func switchToSelectedAccount() {
-        guard let selectedAccount, !isBusy else { return }
-        operationError = nil
-        operation = .switching(selectedAccount.accountID)
-        Task {
-            let connected = await model.switchAccount(to: selectedAccount.accountID)
-            operation = nil
-            if !connected {
-                operationError = Task.isCancelled
-                    ? "Account switch was cancelled."
-                    : model.errorMessage ?? "SakuraCord could not switch accounts."
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 16) {
+            Text(title, bundle: #bundle)
+                .fixedSize()
+            Spacer(minLength: 0)
+            if let value {
+                AccountContactValue(title: title, value: value)
+                    // A replacement value starts concealed in its very first render.
+                    .id(value)
+            } else {
+                Text(emptyLabel, bundle: #bundle)
+                    .foregroundStyle(.secondary)
             }
         }
+        .accessibilityElement(children: .contain)
     }
+}
 
-    private func removeSavedSession(for account: SavedAccount) {
-        guard !isBusy else { return }
-        let wasActive = account.accountID == model.activeAccountID
-        operationError = nil
-        operation = .removing(account.accountID)
-        Task {
-            await model.logout(accountID: account.accountID)
-            await model.refreshSavedAccounts()
-            operation = nil
-            normalizeSelectedAccount()
-            normalizePreferredLaunchAccount()
-            if model.savedAccounts.contains(where: {
-                $0.accountID == account.accountID
-            }) {
-                let prefix = wasActive
-                    ? "The account was disconnected, but its saved session could not be removed."
-                    : "The saved session could not be removed."
-                operationError = model.errorMessage.map { "\(prefix) \($0)" } ?? prefix
-            }
+private struct AccountContactValue: View {
+    let title: LocalizedStringKey
+    let value: String
+    @State private var isRevealed = false
+    @State private var isHovered = false
+
+    var body: some View {
+        Button {
+            isRevealed.toggle()
+        } label: {
+            Text(value)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.trailing)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+                .blur(radius: isRevealed ? 0 : 5)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(.primary.opacity(isHovered ? 0.06 : 0), in: .rect(cornerRadius: 5))
+                .contentShape(.rect)
+                .accessibilityHidden(true)
+        }
+        .buttonStyle(.plain)
+        .onModalHover { isHovered = $0 }
+        .help(Text(isRevealed ? "Click to conceal" : "Click to reveal", bundle: #bundle))
+        .accessibilityLabel(Text(title, bundle: #bundle))
+        .accessibilityValue(isRevealed ? Text(value) : Text("Hidden", bundle: #bundle))
+        .accessibilityHint(Text(isRevealed ? "Click to conceal" : "Click to reveal", bundle: #bundle))
+        .privacySensitive()
+        .transition(.identity)
+        .transaction {
+            $0.animation = nil
+            $0.disablesAnimations = true
+        }
+        .onDisappear { isRevealed = false }
+    }
+}
+
+struct AccountSettingsRetryRow: View {
+    let message: String
+    let retry: () async -> Void
+
+    var body: some View {
+        HStack {
+            Text(message).foregroundStyle(.secondary)
+            Spacer()
+            Button("Retry") { Task { await retry() } }
         }
     }
 }
 
 private struct SettingsAccountIdentityHeader: View {
     let account: SavedAccount
-    let isActive: Bool
 
     var body: some View {
         HStack(spacing: 14) {
@@ -352,8 +201,7 @@ private struct SettingsAccountIdentityHeader: View {
                 name: account.resolvedDisplayName,
                 url: account.avatarURL,
                 size: 56,
-                maximumPixelDimension: 112,
-                animates: false
+                maximumPixelDimension: 140
             )
 
             VStack(alignment: .leading, spacing: 3) {
@@ -363,12 +211,6 @@ private struct SettingsAccountIdentityHeader: View {
                 Text(account.resolvedSubtitle)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                Label(
-                    isActive ? "Active account" : "Saved account",
-                    systemImage: isActive ? "checkmark.circle.fill" : "circle.dashed"
-                )
-                .font(.caption)
-                .foregroundStyle(isActive ? .green : .secondary)
             }
 
             Spacer()
@@ -376,9 +218,4 @@ private struct SettingsAccountIdentityHeader: View {
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
     }
-}
-
-private enum AccountOperation: Equatable {
-    case switching(String)
-    case removing(String)
 }

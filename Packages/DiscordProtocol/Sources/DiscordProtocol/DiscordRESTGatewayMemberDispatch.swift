@@ -226,6 +226,10 @@ extension DiscordRESTProvider {
         guard let dto = try? JSONValueDecoder().decode(UserDTO.self, from: body),
               let user = try? dto.domain()
         else { return }
+        if user.id == currentUser?.id,
+           let details = try? JSONValueDecoder().decode(DiscordAccountDetailsDTO.self, from: body) {
+            currentAccountDetails = details.domain(merging: currentAccountDetails)
+        }
         applyUserUpdate(dto: dto, user: user)
         invalidateGatewayProfile(for: user.id)
     }

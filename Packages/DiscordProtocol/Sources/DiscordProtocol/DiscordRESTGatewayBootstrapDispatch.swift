@@ -9,6 +9,11 @@ extension DiscordRESTProvider {
         switch name {
         case "READY", "RESUMED":
             await handleReadyDispatch(name: name, body: body)
+        case "AUTH_SESSION_CHANGE":
+            if case let .object(values) = body,
+               case let .string(hash) = values["auth_session_id_hash"] {
+                currentAuthSessionIDHash = hash
+            }
         case "USER_SETTINGS_PROTO_UPDATE":
             await handleUserSettingsProtoUpdateDispatch(name: name, body: body)
         case "OAUTH2_TOKEN_CREATE", "OAUTH2_TOKEN_DELETE":
@@ -66,6 +71,10 @@ extension DiscordRESTProvider {
             )
         }
         await resetReadySessionState(for: ready)
+        let account = try? JSONValueDecoder().decode(DiscordAccountReadyDTO.self, from: body)
+        accountInformationRevision = UUID()
+        currentAccountDetails = account?.user?.domain()
+        currentAuthSessionIDHash = account?.authSessionIDHash
         let metadata = applyReadyUserAndReadState(ready)
         applyReadyPrivateChannels(ready)
         let guildProjection = applyReadyGuildProjection(ready)

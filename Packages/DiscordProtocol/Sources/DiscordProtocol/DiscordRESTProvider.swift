@@ -76,6 +76,9 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     var clientAppState = "focused"
     var continuation: SessionEventBuffer<ClientEvent>?
     var currentUser: User?
+    var currentAccountDetails: AccountDetails?
+    var currentAuthSessionIDHash: String?
+    var accountInformationRevision = UUID()
     var profileApexAssignments: ProfileApexAssignmentsDTO?
     var profileEditingResponses: [ProfileEditingScope: ProfileEditingResponseDTO] = [:]
     var profileWidgetCatalogues: [Bool: [ProfileApplicationWidget]] = [:]

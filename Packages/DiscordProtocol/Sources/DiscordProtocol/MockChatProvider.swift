@@ -149,6 +149,21 @@ public actor MockChatProvider: ChatProvider {
         nextMessageID = (messages.map { $0.id.rawValue }.max() ?? 9000) + 1
     }
 
+    public func accountDetails() async throws -> AccountDetails {
+        AccountDetails(
+            userID: currentUser.id, username: currentUser.username,
+            email: "nova@example.com", phoneNumber: nil, isMFAEnabled: true
+        )
+    }
+
+    public func accountDevices() async throws -> [AccountDevice] {
+        [
+            AccountDevice(id: "demo-mac", operatingSystem: "Mac OS X", platform: "SakuraCord", location: "Kyiv, Ukraine", lastUsedAt: .now, isCurrentSession: true),
+            AccountDevice(id: "demo-phone", operatingSystem: "iOS", platform: "Discord iOS", location: "Kyiv, Ukraine", lastUsedAt: .now.addingTimeInterval(-7200), isCurrentSession: false),
+            AccountDevice(id: "demo-browser", operatingSystem: "Mac OS X", platform: "Chrome", location: "Kyiv, Ukraine", lastUsedAt: .now.addingTimeInterval(-86400), isCurrentSession: false),
+        ]
+    }
+
     public func bootstrap() async throws -> BootstrapSnapshot {
         continuation?.yield(.connectionChanged(.connecting))
         try await Task.sleep(for: .milliseconds(180))

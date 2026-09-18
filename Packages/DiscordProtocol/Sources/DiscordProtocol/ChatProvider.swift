@@ -39,6 +39,8 @@ public protocol ChatProvider: Sendable {
     ) async throws
     func roles(in guildID: GuildID) async throws -> [GuildRole]
     func members(withRole roleID: RoleID, in guildID: GuildID) async throws -> RoleMemberResult
+    func accountDetails() async throws -> AccountDetails
+    func accountDevices() async throws -> [AccountDevice]
     func profile(for userID: UserID, in guildID: GuildID?) async throws -> UserProfile
     func profileEditingSnapshot(in scope: ProfileEditingScope) async throws -> ProfileEditingSnapshot
     func cachedProfileEditingSnapshot(in scope: ProfileEditingScope) async throws -> ProfileEditingSnapshot?
@@ -268,6 +270,14 @@ public extension ChatProvider {
 
     func defaultProfileWidgetGames() async throws -> [ProfileGame] {
         throw ChatProviderError.invalidRequest("Profile widget games are unavailable for this session.")
+    }
+
+    func accountDetails() async throws -> AccountDetails {
+        throw ChatProviderError.invalidRequest("Account details are unavailable for this session.")
+    }
+
+    func accountDevices() async throws -> [AccountDevice] {
+        throw ChatProviderError.invalidRequest("Logged-in devices are unavailable for this session.")
     }
 
     func profileWidgetCatalogue(developer: Bool) async throws -> [ProfileApplicationWidget] {

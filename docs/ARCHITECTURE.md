@@ -347,6 +347,26 @@ and rendering. They use real credentials and network data while suppressing
 acknowledgements and other account mutations; offline fixtures are not accepted
 as production performance evidence.
 
+## Account settings
+
+`AccountDetails` and `AccountDevice` are private, session-only domain values;
+email and phone are never added to public `User` or persisted `SavedAccount`.
+The production provider retains READY account fields, merges sparse own-user
+updates, and owns the on-demand account/device reads and current-session hash.
+`AccountSettingsState` owns Settings loading, errors and device results, checks
+account-session ownership before publishing, and is recreated when the active
+account changes. The devices destination shares its parent's fetched list.
+The native form masks contact fields until explicitly revealed and provides
+read-only device information. Disconnect clears the provider's private data.
+`CurrentMacHardware` reads the local `hw.model` identifier once through Darwin's
+`sysctlbyname` and resolves it through `MacHardwareModels.json` in
+`Resources/MacHardwareIcons`. The catalog maps 59 model identifiers to 19 distinct
+bundled PNGs; models with identical supplied images share one resource. Only the
+current-session row uses this local icon; other sessions retain their reported
+OS icon. Unknown model identifiers
+use the generic icon. The retained PNGs are bundled unchanged,
+and no local hardware identifier is sent to Discord or persisted with accounts.
+
 ## Profile editing and rendering
 
 `SakuraCordModels` owns profile snapshots, scoped editable values, draft changes,

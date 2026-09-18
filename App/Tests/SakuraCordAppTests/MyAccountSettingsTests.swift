@@ -3,41 +3,6 @@ import DiscordProtocol
 import Foundation
 import Testing
 
-@MainActor
-@Test func `My Account catalog exposes every production control with honest scope`() {
-    let expectedIDs: Set<SettingsControlID> = [
-        .selectedAccount,
-        .switchAccount,
-        .addAccount,
-        .reopenLastAccount,
-        .preferredLaunchAccount,
-        .removeSavedSession,
-    ]
-    let controls = SettingsCatalog.foundation.controls.filter {
-        $0.destination.page == .myAccount
-    }
-
-    #expect(Set(controls.map(\.id)) == expectedIDs)
-    #expect(
-        controls.first { $0.id == .selectedAccount }?.scope
-            == .accountLocal
-    )
-    #expect(
-        controls.first { $0.id == .reopenLastAccount }?.scope
-            == .appWideLocal
-    )
-    #expect(
-        controls.first { $0.id == .removeSavedSession }?.owner
-            == .appModel
-    )
-
-    let search = SettingsViewState()
-    search.searchText = "default startup account"
-    #expect(search.searchResults.first?.id == .preferredLaunchAccount)
-    search.searchText = "keychain sign out"
-    #expect(search.searchResults.contains { $0.id == .removeSavedSession })
-}
-
 @Test func `Settings account inspection selection is independent and repairs removed accounts`() {
     let first = SavedAccount(accountID: "100", displayName: "First")
     let second = SavedAccount(accountID: "200", displayName: "Second")

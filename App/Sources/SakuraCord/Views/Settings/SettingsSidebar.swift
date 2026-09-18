@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SettingsSidebar: View {
+    let account: SavedAccount?
     let state: SettingsViewState
     let onSearchResultActivated: () -> Void
     @State private var selection: SettingsPageID = .myAccount
@@ -9,9 +10,12 @@ struct SettingsSidebar: View {
         ScrollViewReader { proxy in
             List(selection: $selection) {
                 if state.searchText.isEmpty {
+                    SettingsAccountSidebarRow(account: account)
+                        .tag(SettingsPageID.myAccount)
+
                     ForEach(SettingsSidebarGroupID.allCases) { group in
                         Section(group.title) {
-                            ForEach(state.catalog.pages(in: group)) { page in
+                            ForEach(state.catalog.pages(in: group).filter { $0.id != .myAccount }) { page in
                                 Label(page.title, systemImage: page.systemImage)
                                     .lineLimit(1)
                                     .labelStyle(
@@ -57,6 +61,39 @@ struct SettingsSidebar: View {
                 proxy.scrollTo(id, anchor: .center)
             }
         }
+    }
+}
+
+private struct SettingsAccountSidebarRow: View {
+    let account: SavedAccount?
+
+    var body: some View {
+        HStack(spacing: 8) {
+            AvatarView(
+                name: account?.resolvedDisplayName ?? "",
+                url: account?.avatarURL,
+                size: 28,
+                // Reuse the current profile's preloaded avatar rendition.
+                maximumPixelDimension: 140
+            )
+            .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 1) {
+                if let account {
+                    Text(account.resolvedDisplayName)
+                        .font(.headline)
+                } else {
+                    Text("Discord Account", bundle: #bundle)
+                        .font(.headline)
+                }
+                Text("Manage Account", bundle: #bundle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .lineLimit(1)
+        }
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
     }
 }
 

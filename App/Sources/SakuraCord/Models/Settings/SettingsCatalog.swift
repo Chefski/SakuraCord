@@ -222,6 +222,11 @@ nonisolated extension SettingsControlID {
         Self(rawValue: "\(page.rawValue).overview")
     }
 
+    static let accountUsername = Self(rawValue: "my-account.username")
+    static let accountEmail = Self(rawValue: "my-account.email")
+    static let accountPhone = Self(rawValue: "my-account.phone")
+    static let accountMFA = Self(rawValue: "my-account.mfa")
+    static let accountDevices = Self(rawValue: "my-account.devices")
     static let selectedAccount = Self(rawValue: "my-account.selected-account")
     static let switchAccount = Self(rawValue: "my-account.switch-account")
     static let addAccount = Self(rawValue: "my-account.add-account")

@@ -604,6 +604,42 @@ prerequisite for its independent `/experiments` path, which also accepts a
 returned installation. Discord's public API documentation, pinned Paicord, and
 pinned Swiftcord v1 have no corresponding Apex implementation.
 
+### Read-only account information and devices
+
+On 18 September 2026, sanitized CDP inspection of the clean official desktop
+`0.0.411`, with `web.4946991a65a94ae8.js`, observed Account and Logged-in Devices
+entry issuing `GET /api/v9/auth/sessions` (HTTP 200), with no query or body.
+The response is `{"user_sessions":[...]}`; entries have string `id_hash`,
+ISO-8601 string `approx_last_used_time`, and `client_info` containing string
+`os`, `platform`, and `location`. The first-party renderer also supports `ip`
+when `location` is absent and tolerates absent client details. Other devices
+are sorted by descending last-used time. No device logout was performed or
+implemented.
+
+The same bundle sources username, email, phone, and MFA from the current-user
+store populated by `READY.user`, transforming `mfa_enabled` to `mfaEnabled`.
+A read-only call through its existing `/users/@me` helper confirmed string
+`username` and `email`, nullable `phone`, and boolean `mfa_enabled`. Public
+[user documentation](https://docs.discord.com/developers/resources/user)
+corroborates username, nullable email, and the MFA flag; phone and auth sessions
+are private-client contracts. The pinned Paicord revision above independently
+contains the same `auth/sessions` route and `UserAuthenticationSessions` shape;
+pinned Swiftcord v1 and DiscordKit expose the account contact/MFA fields but
+have no matching auth-session implementation. The current session matches
+`READY.auth_session_id_hash` against each `id_hash`; `AUTH_SESSION_CHANGE`
+updates that hash using `auth_session_id_hash`.
+
+SakuraCord keeps this private data in provider/session memory, outside public
+user models and saved-account metadata. Complete READY account details require
+no HTTP read; opening Account uses `/users/@me` only if those details were
+incomplete, and one `/auth/sessions` read for the count and shared devices page.
+Explicit device refresh repeats that read. Sparse own-user updates preserve
+omitted fields and apply explicit nulls; disconnect discards private data.
+All reads use the shared metadata, scheduler, rate limits, safety circuit,
+cancellation and transport retry policy. Late responses cannot publish after
+session replacement. Captures retained only routes and field types, not
+credentials, account values, session hashes, locations, or raw payloads.
+
 ### Audited HTTP route surface
 
 This is the complete production Discord HTTP surface reachable from the
@@ -620,7 +656,8 @@ and retained as evidence.
 | `POST /auth/mfa/{totp,sms,backup}` | Explicit MFA; `code`, `ticket`, optional `login_instance_id`, `login_source:null`, and `gift_code_sku_id:null`. | Current official web action and Paicord; no live MFA challenge occurred in the 3 August clean-client pass; S−. |
 | `POST /auth/mfa/sms/send` | Explicit SMS choice; `ticket`. | Current official and Paicord; S−. |
 | `POST /users/@me/remote-auth/login` | Approved QR ticket exchange; `ticket`; at most one user-completed CAPTCHA replay. | Current official remote-auth v2 and Paicord; S−. |
-| `GET /users/@me` | Incomplete-Ready compatibility fallback for a previously stored session only; no body. A newly authenticated session fails closed if Ready omits its user and never sends this route. | Public user semantics and Paicord. Current official login and Swiftcord v1 obtain the authenticated user from Gateway Ready; Paicord login performs this extra read. |
+| `GET /users/@me` | Incomplete-Ready compatibility fallback for a previously stored session, or explicit Account information when READY omitted private account details; no body. A newly authenticated session still fails closed if Ready omits its user. | Public user semantics and Paicord. Current official login and Swiftcord v1 obtain the authenticated user from Gateway Ready; Paicord login performs this extra read. |
+| `GET /auth/sessions` | Explicit Account entry or device refresh; no query or body. Returns `user_sessions`; read-only and session-memory only. | Clean 18 September official CDP capture/renderer and pinned Paicord; S−. |
 | `GET /users/@me/guilds` | Incomplete-Ready compatibility fallback only; no body. | Public guild semantics; normal current official/Paicord/Swiftcord startup uses Gateway instead. |
 | `GET /guilds/{guild}/channels` | Cache-miss fallback only; no body, coalesced by guild. | Public channel semantics and all three client references. |
 | `GET /guilds/{guild}/roles` | Visible role/member UI cache miss; no body, coalesced. | Public guild semantics and all three client references. |

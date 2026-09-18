@@ -8,77 +8,26 @@ nonisolated extension SettingsCatalog {
     )
 
     static let myAccountPage = page(
-        .myAccount, group: .account, title: "Manage Accounts", image: "person.crop.circle",
-        help: "Manage saved Discord accounts and choose which account opens at launch.",
-        keywords: ["account", "profile", "login", "logout", "switch account"]
+        .myAccount, group: .account, title: "Manage Account", image: "person.crop.circle",
+        help: "View your active Discord account.",
+        keywords: ["account", "profile", "username", "display name"]
     )
 
     static let myAccountControls: [SettingsControlMetadata] = [
-        control(
-            .selectedAccount,
-            page: .myAccount,
-            section: .accountIdentity,
-            label: "Saved account",
-            help: "Choose a saved account to switch to or remove.",
-            keywords: ["selected account", "inspect", "profile", "saved account"],
-            owner: .accountPreferences,
-            scope: .accountLocal,
-            persistence: .sessionOnly,
-            reset: .notApplicable
-        ),
-        control(
-            .switchAccount,
-            page: .myAccount,
-            section: .accountIdentity,
-            label: "Switch to Account",
-            help: "Replace the active workspace with the selected saved Discord session.",
-            keywords: ["activate", "change account", "connect"],
-            owner: .appModel,
-            scope: .discordSynchronized,
-            persistence: .notApplicable,
-            reset: .notApplicable
-        ),
-        control(
-            .addAccount,
-            page: .myAccount,
-            section: .accountIdentity,
-            label: "Add Account",
-            help: "Open SakuraCord's existing Discord authentication flow.",
-            keywords: ["login", "sign in", "QR", "another account"],
-            owner: .appModel,
-            scope: .discordSynchronized,
-            persistence: .notApplicable,
-            reset: .notApplicable
-        ),
-        control(
-            .reopenLastAccount,
-            page: .myAccount,
-            section: .accountLaunch,
-            label: "Reopen the last active account",
-            help: "Reconnect the account that was active most recently when SakuraCord launches.",
-            keywords: ["startup", "launch", "restore", "last used"],
-            scope: .appWideLocal
-        ),
-        control(
-            .preferredLaunchAccount,
-            page: .myAccount,
-            section: .accountLaunch,
-            label: "Preferred launch account",
-            help: "Choose a fixed saved account to reconnect when SakuraCord launches.",
-            keywords: ["startup account", "default account", "preferred account"],
-            scope: .appWideLocal
-        ),
-        control(
-            .removeSavedSession,
-            page: .myAccount,
-            section: .accountIdentity,
-            label: "Log Out or Remove Saved Account",
-            help: "Remove the selected account's saved session from macOS Keychain; an active account is disconnected first.",
-            keywords: ["sign out", "disconnect", "forget account", "delete login", "Keychain"],
-            owner: .appModel,
-            scope: .mixed,
-            persistence: .notApplicable,
-            reset: .notApplicable
-        ),
+        control(.accountUsername, page: .myAccount, section: .accountIdentity,
+                label: "Username", help: "View your Discord username.", keywords: ["account name"],
+                owner: .appModel, scope: .discordSynchronized, persistence: .sessionOnly, reset: .notApplicable),
+        control(.accountEmail, page: .myAccount, section: .accountIdentity,
+                label: "Email", help: "View or reveal your account's email address.", keywords: ["email address"],
+                owner: .appModel, scope: .discordSynchronized, persistence: .sessionOnly, reset: .notApplicable),
+        control(.accountPhone, page: .myAccount, section: .accountIdentity,
+                label: "Phone Number", help: "View or reveal your account's phone number.", keywords: ["telephone", "mobile"],
+                owner: .appModel, scope: .discordSynchronized, persistence: .sessionOnly, reset: .notApplicable),
+        control(.accountMFA, page: .myAccount, section: .accountIdentity,
+                label: "Multi-Factor Authentication", help: "Check whether multi-factor authentication is enabled.", keywords: ["MFA", "2FA", "security"],
+                owner: .appModel, scope: .discordSynchronized, persistence: .sessionOnly, reset: .notApplicable),
+        control(.accountDevices, page: .myAccount, section: .accountIdentity,
+                label: "Logged-in Devices", help: "View your account's device sessions and their last activity.", keywords: ["sessions", "devices", "logins"],
+                owner: .appModel, scope: .discordSynchronized, persistence: .sessionOnly, reset: .notApplicable),
     ]
 }

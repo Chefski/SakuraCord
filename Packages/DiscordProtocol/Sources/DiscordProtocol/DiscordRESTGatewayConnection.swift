@@ -183,6 +183,9 @@ extension DiscordRESTProvider {
     }
 
     public func disconnect() async {
+        currentAccountDetails = nil
+        currentAuthSessionIDHash = nil
+        accountInformationRevision = UUID()
         profileApexAssignments = nil
         resetProfileEditingState()
         derivedCacheGeneration &+= 1
