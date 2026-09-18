@@ -306,6 +306,12 @@ extension AppModel {
         let session = accountSession()
         commandExecutionTask = Task { [weak self] in
             guard let self else { return }
+            let uploadsAttachments = invocation.values.contains {
+                if case .attachment = $0.argument { return true }
+                return false
+            }
+            if uploadsAttachments { activeAttachmentUploadCount += 1 }
+            defer { if uploadsAttachments { activeAttachmentUploadCount -= 1 } }
             defer {
                 if isCurrentAccountSession(session) {
                     commandExecutionTask = nil

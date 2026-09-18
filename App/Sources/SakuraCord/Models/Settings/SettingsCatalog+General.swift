@@ -12,7 +12,7 @@ nonisolated extension SettingsCatalog {
             .launchAtLogin,
             page: .general,
             section: .startupRestoration,
-            label: "Launch at Login",
+            label: "Open at login",
             help: "Ask macOS to launch SakuraCord after this user logs in.",
             keywords: ["startup", "login item", "open automatically", "Service Management"],
             owner: .macOS,
@@ -30,40 +30,19 @@ nonisolated extension SettingsCatalog {
             scope: .appWideLocal
         ),
         control(
-            .showMainWindowAtLaunch,
-            page: .general,
-            section: .startupRestoration,
-            label: "Show the main window at launch",
-            help: "Present SakuraCord's main window immediately when the app launches.",
-            keywords: ["background", "hidden", "window", "Dock"],
-            scope: .appWideLocal
-        ),
-        control(
-            .rememberMemberListVisibility,
-            page: .general,
-            section: .startupRestoration,
-            label: "Remember member list visibility",
-            help: "Restore whether the conversation member list was visible when SakuraCord last quit.",
-            keywords: ["inspector", "members", "sidebar", "restore"],
-            scope: .appWideLocal
-        ),
-        control(
             .confirmQuitActiveWork,
             page: .general,
             section: .confirmations,
-            label: "Confirm quitting during active work",
+            label: "Confirm quitting during calls or uploads",
             help: "Ask before quitting during a call, screen share, or active upload.",
             keywords: ["quit warning", "call", "screen share", "upload"],
             scope: .appWideLocal
         ),
         control(
-            .confirmDiscardComposer,
-            page: .general,
-            section: .confirmations,
-            label: "Confirm discarding composer changes",
-            help: "Ask before discarding meaningful unsent attachments, command input, or edited message text.",
-            keywords: ["draft", "unsent", "edit", "discard warning", "attachments"],
-            scope: .appWideLocal
+            .sendWithReturn, page: .general, section: .generalTextInput,
+            label: "Send messages with",
+            help: "Choose Return or Command-Return to send messages.",
+            keywords: ["enter", "return", "command", "send", "newline"], scope: .appWideLocal
         ),
         control(
             .spellCheck, page: .general, section: .generalTextInput,

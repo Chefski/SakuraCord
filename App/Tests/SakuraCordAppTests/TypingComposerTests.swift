@@ -96,6 +96,12 @@ import Testing
     #expect(ComposerReturnAction.decide(
         sendWithReturn: true, shift: false, command: false, hasMarkedText: true
     ) == .inputMethod)
+    #expect(ComposerReturnAction.decide(
+        sendWithReturn: false, shift: true, command: true, hasMarkedText: false
+    ) == .newline)
+    #expect(ComposerReturnAction.decide(
+        sendWithReturn: false, shift: false, command: true, hasMarkedText: true
+    ) == .inputMethod)
 }
 
 @Test func `up arrow edit target skips newer messages from other users`() {

@@ -6,7 +6,6 @@ import ServiceManagement
 
 nonisolated enum SettingsLaunchDestination: String, CaseIterable, Identifiable, Sendable {
     case lastVisitedConversation
-    case preferredAccountLastLocation
     case accountPicker
 
     var id: String { rawValue }
@@ -14,31 +13,9 @@ nonisolated enum SettingsLaunchDestination: String, CaseIterable, Identifiable, 
     var title: LocalizedStringResource {
         switch self {
         case .lastVisitedConversation:
-            LocalizedStringResource("Last visited conversation", bundle: #bundle)
-        case .preferredAccountLastLocation:
-            LocalizedStringResource("Preferred account's last location", bundle: #bundle)
+            LocalizedStringResource("Last open conversation", bundle: #bundle)
         case .accountPicker:
             LocalizedStringResource("Account picker", bundle: #bundle)
-        }
-    }
-
-    var detail: LocalizedStringResource {
-        switch self {
-        case .lastVisitedConversation:
-            LocalizedStringResource(
-                "Reopens the last conversation used across all saved accounts.",
-                bundle: #bundle
-            )
-        case .preferredAccountLastLocation:
-            LocalizedStringResource(
-                "Uses the launch account chosen in Manage Accounts, then restores its last accessible conversation.",
-                bundle: #bundle
-            )
-        case .accountPicker:
-            LocalizedStringResource(
-                "Shows saved accounts without contacting Discord until you choose one.",
-                bundle: #bundle
-            )
         }
     }
 }
@@ -53,33 +30,18 @@ nonisolated enum SettingsLaunchAccountPolicy {
 
     static func handle(
         from handles: [CredentialHandle],
-        destination: SettingsLaunchDestination,
         performanceAccountID: String?,
         lastVisitedAccountID: String?,
-        reopensLastActiveAccount: Bool,
-        lastActiveAccountID: String?,
-        preferredLaunchAccountID: String?
+        lastActiveAccountID: String?
     ) -> CredentialHandle? {
         if let performanceAccountID {
-            return RestoredCredentialSelectionPolicy.handle(
-                from: handles,
-                preferredAccountID: performanceAccountID
-            )
+            return RestoredCredentialSelectionPolicy.handle(from: handles, preferredAccountID: performanceAccountID)
         }
-        if destination == .lastVisitedConversation,
-           let lastVisitedAccountID
-        {
-            return RestoredCredentialSelectionPolicy.handle(
-                from: handles,
-                preferredAccountID: lastVisitedAccountID
-            )
+        if let lastVisitedAccountID,
+           let handle = handles.first(where: { $0.accountID == lastVisitedAccountID }) {
+            return handle
         }
-        return SettingsAccountLaunchPolicy.handle(
-            from: handles,
-            reopensLastActiveAccount: reopensLastActiveAccount,
-            lastActiveAccountID: lastActiveAccountID,
-            preferredLaunchAccountID: preferredLaunchAccountID
-        )
+        return RestoredCredentialSelectionPolicy.handle(from: handles, preferredAccountID: lastActiveAccountID)
     }
 }
 
@@ -94,7 +56,6 @@ final class SettingsConversationRestorationStore {
     static let shared = SettingsConversationRestorationStore()
 
     private static let globalKey = "settings.lastVisitedConversation.v1"
-    private static let accountsKey = "settings.accountConversationLocations.v1"
 
     private let defaults: any PreferenceStoring
     private var pendingLaunchRestoration: SettingsConversationRestoration?
@@ -110,9 +71,6 @@ final class SettingsConversationRestorationStore {
             channelID: channelID
         )
         persist(restoration, forKey: Self.globalKey)
-        var accounts = accountRestorations()
-        accounts[accountID] = restoration
-        persist(accounts, forKey: Self.accountsKey)
     }
 
     func preferredAccountID(for destination: SettingsLaunchDestination) -> String? {
@@ -120,18 +78,9 @@ final class SettingsConversationRestorationStore {
         return restoration(forKey: Self.globalKey)?.accountID
     }
 
-    func prepareLaunch(
-        destination: SettingsLaunchDestination,
-        selectedAccountID: String
-    ) {
-        switch destination {
-        case .lastVisitedConversation:
-            pendingLaunchRestoration = restoration(forKey: Self.globalKey)
-        case .preferredAccountLastLocation:
-            pendingLaunchRestoration = accountRestorations()[selectedAccountID]
-        case .accountPicker:
-            pendingLaunchRestoration = nil
-        }
+    func prepareLaunch(destination: SettingsLaunchDestination) {
+        pendingLaunchRestoration = destination == .lastVisitedConversation
+            ? restoration(forKey: Self.globalKey) : nil
     }
 
     func consumeLaunchRestoration(accountID: String?) -> SettingsConversationRestoration? {
@@ -143,14 +92,6 @@ final class SettingsConversationRestorationStore {
     private func restoration(forKey key: String) -> SettingsConversationRestoration? {
         guard let data = defaults.data(forKey: key) else { return nil }
         return try? JSONDecoder().decode(SettingsConversationRestoration.self, from: data)
-    }
-
-    private func accountRestorations() -> [String: SettingsConversationRestoration] {
-        guard let data = defaults.data(forKey: Self.accountsKey) else { return [:] }
-        return (try? JSONDecoder().decode(
-            [String: SettingsConversationRestoration].self,
-            from: data
-        )) ?? [:]
     }
 
     private func persist(_ value: some Encodable, forKey key: String) {
@@ -227,7 +168,7 @@ final class LaunchAtLoginController {
         status = nil
     }
 
-    var isEnabled: Bool { status == .enabled }
+    var isEnabled: Bool { status == .enabled || status == .requiresApproval }
     var requiresApproval: Bool { status == .requiresApproval }
     var isAvailable: Bool { status != nil && status != .notFound }
 
@@ -289,20 +230,6 @@ nonisolated enum GeneralQuitConfirmationPolicy {
     }
 }
 
-nonisolated enum GeneralComposerDiscardPolicy {
-    static func shouldConfirmEdit(
-        isEnabled: Bool,
-        original: String,
-        current: String
-    ) -> Bool {
-        isEnabled && current != original
-    }
-
-    static func shouldConfirmUnsentContent(isEnabled: Bool, itemCount: Int) -> Bool {
-        isEnabled && itemCount > 0
-    }
-}
-
 extension AppModel {
     var generalQuitActivities: [GeneralQuitActivity] {
         var activities: [GeneralQuitActivity] = []
@@ -312,7 +239,7 @@ extension AppModel {
         if localApplicationStreamKey != nil {
             activities.append(.screenShare)
         }
-        if externalAttachmentUploadTask != nil || externalAttachmentUploadPresentation != nil {
+        if activeAttachmentUploadCount > 0 || externalAttachmentUploadTask != nil {
             activities.append(.upload)
         }
         return activities

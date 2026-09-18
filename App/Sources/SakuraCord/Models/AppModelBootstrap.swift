@@ -197,9 +197,9 @@ extension AppModel {
                 SettingsPreferenceStore.shared.value(for: .launchDestination)
             {
                 SettingsLaunchDestination(rawValue: value)
-                    ?? .preferredAccountLastLocation
+                    ?? .lastVisitedConversation
             } else {
-                .preferredAccountLastLocation
+                .lastVisitedConversation
             }
             if SettingsLaunchAccountPolicy.presentsAccountPicker(
                 destination: launchDestination,
@@ -211,33 +211,18 @@ extension AppModel {
             }
             let preferredStoredAccountID = await savedAccountStore
                 .preferredAccountID()
-            let reopensLastActiveAccount = SettingsPreferenceStore.shared.value(
-                for: .reopenLastAccount
-            ) == .bool(true)
-            let preferredLaunchAccountID: String? = if case let .string(value) =
-                SettingsPreferenceStore.shared.value(for: .preferredLaunchAccount),
-                !value.isEmpty
-            {
-                value
-            } else {
-                nil
-            }
             let restoredHandle = handles.flatMap { handles in
                 SettingsLaunchAccountPolicy.handle(
                     from: handles,
-                    destination: launchDestination,
                     performanceAccountID: preferredPerformanceAccountID,
                     lastVisitedAccountID: SettingsConversationRestorationStore
                         .shared.preferredAccountID(for: launchDestination),
-                    reopensLastActiveAccount: reopensLastActiveAccount,
-                    lastActiveAccountID: preferredStoredAccountID,
-                    preferredLaunchAccountID: preferredLaunchAccountID
+                    lastActiveAccountID: preferredStoredAccountID
                 )
             }
             if let restoredHandle {
                 SettingsConversationRestorationStore.shared.prepareLaunch(
-                    destination: launchDestination,
-                    selectedAccountID: restoredHandle.accountID
+                    destination: launchDestination
                 )
                 sessionState = .connecting
                 _ = await connectAuthenticatedAccount(restoredHandle)
@@ -495,9 +480,9 @@ extension AppModel {
         // evaluated before history prefetch and initial guild activation,
         // so each process launch retains a genuinely cold Google Labs
         // conversation even when it is first in READY ordering.
-        return PerformanceBenchmarkInitialGuildPolicy.resolve(
+        return BootstrapInitialGuildPolicy.resolve(
             guilds: value.guilds,
-            retainedGuildID: retainedChannel?.guildID,
+            retainedChannel: retainedChannel,
             avoidingGuildNamed:
                 runsLoadingOverlapBenchmark ? "Google Labs" : nil
         )

@@ -203,6 +203,9 @@ extension AppModel {
         defer {
             if isCurrentAccountSession(session) { composer.slowmode.end(in: outgoing.channelID) }
         }
+        let uploadsAttachments = !outgoing.attachmentURLs.isEmpty
+        if uploadsAttachments { activeAttachmentUploadCount += 1 }
+        defer { if uploadsAttachments { activeAttachmentUploadCount -= 1 } }
         let attachmentURLs = outgoing.attachmentURLs
         beginUsingOwnedPromisedFiles(attachmentURLs)
         let securityScopedURLs = attachmentURLs.filter {

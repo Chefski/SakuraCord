@@ -86,12 +86,7 @@ struct SakuraCordApp: App {
             notificationService: notificationService,
             soundPlayer: soundPlayer
         )
-        if SettingsPreferenceStore.shared.value(
-            for: .rememberMemberListVisibility
-        ) == .bool(true) {
-            appModel.showInspector = GeneralWindowRestorationStore.shared
-                .memberListIsVisible
-        }
+        appModel.showInspector = GeneralWindowRestorationStore.shared.memberListIsVisible
         AppAppearanceController.shared.apply(
             appModel.appearanceSettings.colorScheme
         )
@@ -202,7 +197,7 @@ struct SakuraCordApp: App {
                     }
                 }
         }
-        .defaultLaunchBehavior(mainWindowLaunchBehavior)
+        .defaultLaunchBehavior(.presented)
         .defaultSize(width: 1280, height: 780)
         .windowBackgroundDragBehavior(.disabled)
         .commands {
@@ -223,13 +218,6 @@ struct SakuraCordApp: App {
         .windowResizability(.contentSize)
         .windowManagerRole(.associated)
         .restorationBehavior(.disabled)
-    }
-
-    private var mainWindowLaunchBehavior: SceneLaunchBehavior {
-        guard model.launchMode == .normal else { return .presented }
-        return SettingsPreferenceStore.shared.value(
-            for: .showMainWindowAtLaunch
-        ) == .bool(false) ? .suppressed : .presented
     }
 }
 

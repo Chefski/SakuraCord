@@ -894,6 +894,7 @@ private struct ApplicationCommandStructuredTextView: NSViewRepresentable {
         textView.onKeyboardCommand = onKeyboardCommand
         textView.focusedOptionIDProvider = focusedOptionIDProvider
         textView.onSubmit = onSubmit
+        textView.sendWithReturn = generalInputSettings.sendsWithReturn
         ComposerTextCheckingConfiguration.apply(generalInputSettings, to: textView)
         textView.document = document
         textView.setAccessibilityLabel("Command input")
@@ -916,6 +917,7 @@ private struct ApplicationCommandStructuredTextView: NSViewRepresentable {
         textView.onKeyboardCommand = onKeyboardCommand
         textView.focusedOptionIDProvider = focusedOptionIDProvider
         textView.onSubmit = onSubmit
+        textView.sendWithReturn = generalInputSettings.sendsWithReturn
         ComposerTextCheckingConfiguration.apply(generalInputSettings, to: textView)
         context.coordinator.apply(document: document, to: textView, viewportWidth: scrollView.bounds.width)
         context.coordinator.applyFocus(to: textView)
@@ -1357,6 +1359,7 @@ final class ApplicationCommandNSTextView: NSTextView {
     var onKeyboardCommand: (ComposerAutocompleteCommand) -> Bool = { _ in false }
     var focusedOptionIDProvider: () -> String? = { nil }
     var onSubmit: () -> Void = {}
+    var sendWithReturn = true
     private lazy var unfocusedTypingMonitor = ComposerUnfocusedTypingMonitor()
 
     override func viewDidMoveToWindow() {
@@ -1395,6 +1398,10 @@ final class ApplicationCommandNSTextView: NSTextView {
     }
 
     override func keyDown(with event: NSEvent) {
+        if hasMarkedText() {
+            super.keyDown(with: event)
+            return
+        }
         let navigationModifiers: NSEvent.ModifierFlags = [.shift, .command, .option, .control]
         let plainNavigation = event.modifierFlags.isDisjoint(with: navigationModifiers)
         if plainNavigation, event.keyCode == 124, movePastProtectedLabelIfNeeded() {
@@ -1413,21 +1420,13 @@ final class ApplicationCommandNSTextView: NSTextView {
         case 125 where plainNavigation: .next
         case 48 where event.modifierFlags.isDisjoint(with: [.command, .option, .control]):
             event.modifierFlags.contains(.shift) ? .previousField : .advance
-        case 36, 76: .accept
+        case 36, 76: plainNavigation ? .accept : nil
         case 53: .dismiss
         case 51 where currentValueIsPlaceholder: .removeField
         case 117 where currentValueIsPlaceholder: .removeField
         default: nil
         }
-        if let command, onKeyboardCommand(command) {
-            switch command {
-            case .advance, .previousField, .nextField:
-                moveCaretToFocusedValue(fallback: attributedString().length)
-            default:
-                break
-            }
-            return
-        }
+        if handleKeyboardCommand(command) { return }
         if ComposerUnfocusedTypingMonitor.shouldOfferReturn(event.keyCode),
            handleReturn(event)
         {
@@ -1436,9 +1435,20 @@ final class ApplicationCommandNSTextView: NSTextView {
         super.keyDown(with: event)
     }
 
+    private func handleKeyboardCommand(_ command: ComposerAutocompleteCommand?) -> Bool {
+        guard let command, onKeyboardCommand(command) else { return false }
+        switch command {
+        case .advance, .previousField, .nextField:
+            moveCaretToFocusedValue(fallback: attributedString().length)
+        default:
+            break
+        }
+        return true
+    }
+
     private func handleReturn(_ event: NSEvent) -> Bool {
         let action = ComposerReturnAction.decide(
-            sendWithReturn: true,
+            sendWithReturn: sendWithReturn,
             shift: event.modifierFlags.contains(.shift),
             command: event.modifierFlags.contains(.command),
             hasMarkedText: hasMarkedText()

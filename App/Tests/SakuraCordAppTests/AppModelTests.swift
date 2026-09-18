@@ -170,19 +170,27 @@ import UserNotifications
     let control = Guild(id: GuildID(rawValue: 20), name: "Control")
 
     #expect(
-        PerformanceBenchmarkInitialGuildPolicy.resolve(
+        BootstrapInitialGuildPolicy.resolve(
             guilds: [google, control],
-            retainedGuildID: google.id,
+            retainedChannel: Channel(id: ChannelID(rawValue: 11), guildID: google.id, name: "general"),
             avoidingGuildNamed: "google labs"
         ) == control.id
     )
     #expect(
-        PerformanceBenchmarkInitialGuildPolicy.resolve(
+        BootstrapInitialGuildPolicy.resolve(
             guilds: [google, control],
-            retainedGuildID: google.id,
+            retainedChannel: Channel(id: ChannelID(rawValue: 11), guildID: google.id, name: "general"),
             avoidingGuildNamed: nil
         ) == google.id
     )
+    let dm = Channel(id: ChannelID(rawValue: 30), guildID: nil, name: "Direct message")
+    #expect(BootstrapInitialGuildPolicy.resolve(
+        guilds: [google, control], retainedChannel: dm, avoidingGuildNamed: nil
+    ) == nil)
+    #expect(BootstrapInitialGuildPolicy.resolve(
+        guilds: [google, control], retainedChannel: nil, avoidingGuildNamed: nil
+    ) == google.id)
+
 }
 
 @MainActor
@@ -2777,6 +2785,25 @@ private extension DiscordRESTProvider {
     #expect(model.threadMessages.first?.content == "replacement thread newest")
     #expect(model.isLoadingEarlier)
     #expect(model.isLoadingEarlierThread)
+}
+
+@MainActor
+@Test(arguments: [false, true])
+func `quit warning tracks Discord attachment sends until success or failure`(fails: Bool) async {
+    let provider = SuspendedAccountOperationTestProvider(suspendsOperations: true, failsSend: fails)
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    let draft = SendMessageDraft(
+        channelID: provider.channelID,
+        content: "attachment",
+        attachments: [ForumPostAttachment(url: URL(filePath: "/tmp/quit-warning-fixture.txt"))]
+    )
+    #expect(!model.generalQuitActivities.contains(.upload))
+    let send = Task { await model.performOutgoingSend(draft, isRetry: false) }
+    #expect(await provider.waitUntilSendRequestStarts())
+    #expect(model.generalQuitActivities.contains(.upload))
+    await provider.releaseSendRequest()
+    #expect(await send.value == !fails)
+    #expect(!model.generalQuitActivities.contains(.upload))
 }
 
 @MainActor

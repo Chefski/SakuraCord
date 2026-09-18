@@ -389,6 +389,9 @@ extension AppModel {
             forumActionError = "You do not have permission to create posts in this forum."
             return false
         }
+        let uploadsAttachments = !draft.attachments.isEmpty
+        if uploadsAttachments { activeAttachmentUploadCount += 1 }
+        defer { if uploadsAttachments { activeAttachmentUploadCount -= 1 } }
         forumActionError = nil
         forumCreateGeneration &+= 1
         let generation = forumCreateGeneration

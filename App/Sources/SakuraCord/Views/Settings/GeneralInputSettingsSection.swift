@@ -11,6 +11,11 @@ struct GeneralInputSettingsSection: View {
 
     private var textInputSection: some View {
         Section {
+            Picker("Send messages with", selection: $value.sendsWithReturn) {
+                Text("Return", bundle: #bundle).tag(true)
+                Text("⌘Return", bundle: #bundle).tag(false)
+            }
+            .settingsControlAnchor(.sendWithReturn, state: state)
             Toggle("Check spelling while typing", isOn: $value.checksSpelling)
                 .tint(SakuraCordAccentColor.color)
                 .settingsControlAnchor(.spellCheck, state: state)

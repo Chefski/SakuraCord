@@ -26,7 +26,6 @@ struct ComposerView: View {
     @State private var isAutocompleteDismissed = false
     @State private var commandSuggestionIndex = 0
     @State private var isCommandSuggestionsDismissed = false
-    @State private var pendingDiscard: ComposerDiscardRequest?
 
     var body: some View {
         @Bindable var model = model
@@ -99,7 +98,7 @@ struct ComposerView: View {
                             ComposerTextView(
                                 text: draft,
                                 placeholder: composerPlaceholder,
-                                sendWithReturn: true,
+                                sendWithReturn: model.generalInputSettings.sendsWithReturn,
                                 generalInputSettings: model.generalInputSettings,
                                 mentionPresentations: composerMentionPresentations,
                                 onTextChange: updateDraft,
@@ -277,10 +276,6 @@ struct ComposerView: View {
                 model.addComposerAttachments(urls, to: conversation)
             }
         }
-        .composerDiscardConfirmation(
-            request: $pendingDiscard,
-            discard: performPendingDiscard
-        )
         .composerShortcutCommands(
             conversation: conversation,
             focus: { isFocused = true },
@@ -488,14 +483,7 @@ struct ComposerView: View {
         } else if showEmojiPicker {
             dismissEmojiPicker()
         } else if !attachments.isEmpty {
-            if GeneralComposerDiscardPolicy.shouldConfirmUnsentContent(
-                isEnabled: confirmsDiscardComposer,
-                itemCount: attachments.count
-            ) {
-                pendingDiscard = .attachments
-            } else {
-                _ = model.consumeEscapeForComposerAttachments(in: conversation)
-            }
+            _ = model.consumeEscapeForComposerAttachments(in: conversation)
             return
         } else if model.consumeEscapeForSupplementaryConversation() {
             return
@@ -847,39 +835,10 @@ struct ComposerView: View {
     }
 
     private func cancelCommand() {
-        if GeneralComposerDiscardPolicy.shouldConfirmUnsentContent(
-            isEnabled: confirmsDiscardComposer,
-            itemCount: model.commandComposer.hasMeaningfulDraft ? 1 : 0
-        ) {
-            pendingDiscard = .command
-            return
-        }
-        discardCommand()
-    }
-
-    private func discardCommand() {
         model.commandComposer.cancelActiveCommand()
         commandSuggestionIndex = 0
         isCommandSuggestionsDismissed = false
         isFocused = true
-    }
-
-    private var confirmsDiscardComposer: Bool {
-        SettingsPreferenceStore.shared.value(for: .confirmDiscardComposer)
-            != .bool(false)
-    }
-
-    private func performPendingDiscard() {
-        let request = pendingDiscard
-        pendingDiscard = nil
-        switch request {
-        case .attachments:
-            _ = model.consumeEscapeForComposerAttachments(in: conversation)
-        case .command:
-            discardCommand()
-        case nil:
-            break
-        }
     }
 
     private func submitComposer() {
@@ -972,7 +931,8 @@ struct ComposerView: View {
             if visibleCommandSuggestions.indices.contains(commandSuggestionIndex) {
                 acceptCommandSuggestion(visibleCommandSuggestions[commandSuggestionIndex])
             } else {
-                submitComposer()
+                // Submission goes through the text view's configured Return policy.
+                return false
             }
         case .dismiss:
             if !visibleCommandSuggestions.isEmpty

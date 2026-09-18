@@ -25,12 +25,15 @@ import Testing
     service.status = .requiresApproval
     await controller.refresh()
     await controller.setEnabled(true)
-    #expect(!controller.isEnabled)
+    #expect(controller.isEnabled)
     #expect(controller.requiresApproval)
     #expect(service.registerCount == 1)
     #expect(controller.errorMessage != nil)
     controller.openSystemSettings()
     #expect(service.openSettingsCount == 1)
+    await controller.setEnabled(false)
+    #expect(!controller.isEnabled)
+    #expect(!controller.requiresApproval)
 
     service.status = .notFound
     await controller.refresh()
@@ -45,24 +48,18 @@ import Testing
     #expect(
         SettingsLaunchAccountPolicy.handle(
             from: handles,
-            destination: .lastVisitedConversation,
             performanceAccountID: nil,
             lastVisitedAccountID: second.accountID,
-            reopensLastActiveAccount: true,
-            lastActiveAccountID: first.accountID,
-            preferredLaunchAccountID: first.accountID
+            lastActiveAccountID: first.accountID
         ) == second
     )
     #expect(
         SettingsLaunchAccountPolicy.handle(
             from: handles,
-            destination: .preferredAccountLastLocation,
             performanceAccountID: nil,
-            lastVisitedAccountID: second.accountID,
-            reopensLastActiveAccount: false,
-            lastActiveAccountID: second.accountID,
-            preferredLaunchAccountID: first.accountID
-        ) == first
+            lastVisitedAccountID: "removed-account",
+            lastActiveAccountID: second.accountID
+        ) == second
     )
     #expect(
         SettingsLaunchAccountPolicy.presentsAccountPicker(
@@ -90,27 +87,25 @@ import Testing
         store.preferredAccountID(for: .lastVisitedConversation) == "200"
     )
     store.prepareLaunch(
-        destination: .preferredAccountLastLocation,
-        selectedAccountID: "100"
+        destination: .lastVisitedConversation
     )
     #expect(
-        store.consumeLaunchRestoration(accountID: "100")
+        store.consumeLaunchRestoration(accountID: "200")
             == SettingsConversationRestoration(
-                accountID: "100",
-                guildID: "10",
-                channelID: "11"
+                accountID: "200",
+                guildID: nil,
+                channelID: "22"
             )
     )
     #expect(store.consumeLaunchRestoration(accountID: "100") == nil)
 
     store.prepareLaunch(
-        destination: .lastVisitedConversation,
-        selectedAccountID: "100"
+        destination: .lastVisitedConversation
     )
     #expect(store.consumeLaunchRestoration(accountID: "100") == nil)
     #expect(store.consumeLaunchRestoration(accountID: "200") == nil)
 
-    store.prepareLaunch(destination: .accountPicker, selectedAccountID: "100")
+    store.prepareLaunch(destination: .accountPicker)
     #expect(store.consumeLaunchRestoration(accountID: "100") == nil)
 }
 
@@ -134,40 +129,19 @@ import Testing
             activities: [.call, .screenShare, .upload]
         )
     )
-    #expect(
-        !GeneralComposerDiscardPolicy.shouldConfirmEdit(
-            isEnabled: true,
-            original: "unchanged",
-            current: "unchanged"
-        )
-    )
-    #expect(
-        GeneralComposerDiscardPolicy.shouldConfirmEdit(
-            isEnabled: true,
-            original: "before",
-            current: "after"
-        )
-    )
-    #expect(
-        !GeneralComposerDiscardPolicy.shouldConfirmUnsentContent(
-            isEnabled: true,
-            itemCount: 0
-        )
-    )
-    #expect(
-        GeneralComposerDiscardPolicy.shouldConfirmUnsentContent(
-            isEnabled: true,
-            itemCount: 1
-        )
-    )
 }
 
 @MainActor
 @Test func `General preferences export and reset safely`() {
     let defaults = InMemoryPreferences()
+    defaults.set("preferredAccountLastLocation", forKey: "settings.launchDestination")
+    defaults.set(false, forKey: "settings.showMainWindowAtLaunch")
+    defaults.set(false, forKey: "settings.memberListVisible")
     let store = SettingsPreferenceStore(defaults: defaults)
+    #expect(store.value(for: .launchDestination) == .string(SettingsLaunchDestination.lastVisitedConversation.rawValue))
+    #expect(defaults.object(forKey: "settings.showMainWindowAtLaunch") == nil)
+    #expect(!GeneralWindowRestorationStore(defaults: defaults).memberListIsVisible)
     store.set(.string(SettingsLaunchDestination.accountPicker.rawValue), for: .launchDestination)
-    store.set(.bool(false), for: .showMainWindowAtLaunch)
     store.set(.bool(false), for: .confirmQuitActiveWork)
 
     #expect(
@@ -178,15 +152,14 @@ import Testing
     store.reset(scope: .appWide, page: .general)
     #expect(
         store.value(for: .launchDestination)
-            == .string(SettingsLaunchDestination.preferredAccountLastLocation.rawValue)
+            == .string(SettingsLaunchDestination.lastVisitedConversation.rawValue)
     )
-    #expect(store.value(for: .showMainWindowAtLaunch) == .bool(true))
     #expect(store.value(for: .confirmQuitActiveWork) == .bool(true))
 
     let windowStore = GeneralWindowRestorationStore(defaults: defaults)
-    #expect(windowStore.memberListIsVisible)
-    windowStore.recordMemberListVisibility(false)
     #expect(!windowStore.memberListIsVisible)
+    windowStore.recordMemberListVisibility(true)
+    #expect(windowStore.memberListIsVisible)
 }
 
 @MainActor
@@ -194,11 +167,8 @@ import Testing
     let expected: Set<SettingsControlID> = [
         .launchAtLogin,
         .launchDestination,
-        .showMainWindowAtLaunch,
-        .rememberMemberListVisibility,
         .confirmQuitActiveWork,
-        .confirmDiscardComposer,
-        .spellCheck, .automaticCorrection, .smartQuotes, .smartDashes, .emojiSkinTone,
+        .sendWithReturn, .spellCheck, .automaticCorrection, .smartQuotes, .smartDashes, .emojiSkinTone,
     ]
     let controls = SettingsCatalog.foundation.controls.filter {
         $0.destination.page == .general
@@ -212,10 +182,6 @@ import Testing
     #expect(search.searchResults.contains { $0.id == .automaticCorrection && $0.destination.page == .general })
     search.searchText = "login item"
     #expect(search.searchResults.contains { $0.id == .launchAtLogin })
-    search.searchText = "discard unsent attachments"
-    #expect(search.searchResults.contains { $0.id == .confirmDiscardComposer })
-    search.searchText = "member inspector restore"
-    #expect(search.searchResults.contains { $0.id == .rememberMemberListVisibility })
 }
 
 @MainActor
@@ -279,10 +245,13 @@ private enum GeneralSettingsTestError: LocalizedError {
     #expect(value.checksSpelling)
     #expect(value.emojiSkinTone == .dark)
     #expect(!privacyStore.load().sendsTypingIndicators)
+    #expect(value.sendsWithReturn)
+    value.sendsWithReturn = false
     value.usesSmartQuotes = true
     store.save(value)
     #expect(store.load() == value)
     let export = preferences.export(scope: .appWide, page: .general)
+    #expect(export.values[SettingsControlID.sendWithReturn.rawValue] == .bool(false))
     #expect(export.values[SettingsControlID.spellCheck.rawValue] == .bool(true))
     #expect(export.values[SettingsControlID.emojiSkinTone.rawValue] == .string("dark"))
     #expect(export.values[SettingsControlID.privacyTypingIndicators.rawValue] == nil)

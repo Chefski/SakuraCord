@@ -3,6 +3,7 @@ import AppKit
 nonisolated struct GeneralInputSettingsSnapshot: Equatable, Sendable {
     static let defaults = Self()
 
+    var sendsWithReturn = true
     var checksSpelling = false
     var correctsSpellingAutomatically = false
     var usesSmartQuotes = false
@@ -31,6 +32,9 @@ final class GeneralInputSettingsStore {
 
     func load() -> GeneralInputSettingsSnapshot {
         var value = GeneralInputSettingsSnapshot.defaults
+        if case let .bool(saved) = preferences.value(for: .sendWithReturn) {
+            value.sendsWithReturn = saved
+        }
         if case let .bool(saved) = preferences.value(for: .spellCheck) {
             value.checksSpelling = saved
         }
@@ -51,6 +55,7 @@ final class GeneralInputSettingsStore {
     }
 
     func save(_ value: GeneralInputSettingsSnapshot) {
+        preferences.set(.bool(value.sendsWithReturn), for: .sendWithReturn)
         preferences.set(.bool(value.checksSpelling), for: .spellCheck)
         preferences.set(.bool(value.correctsSpellingAutomatically), for: .automaticCorrection)
         preferences.set(.bool(value.usesSmartQuotes), for: .smartQuotes)

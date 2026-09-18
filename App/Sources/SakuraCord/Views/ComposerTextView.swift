@@ -843,6 +843,10 @@ final class ComposerNSTextView: NSTextView {
     }
 
     override func keyDown(with event: NSEvent) {
+        if hasMarkedText() {
+            super.keyDown(with: event)
+            return
+        }
         let autocompleteCommand = autocompleteCommand(for: event)
         if let autocompleteCommand, onAutocompleteCommand?(autocompleteCommand) == true {
             return
@@ -882,7 +886,7 @@ final class ComposerNSTextView: NSTextView {
             case 125 where !usesTextNavigationModifier: .next
             case 48 where event.modifierFlags.isDisjoint(with: [.command, .option, .control]):
                 event.modifierFlags.contains(.shift) ? .previousField : .advance
-            case 36, 76: .accept
+            case 36, 76: usesTextNavigationModifier ? nil : .accept
             case 53 where KeyboardShortcutPolicy.isPlainEscape(keyCode: event.keyCode, modifierFlags: event.modifierFlags): .dismiss
             case 51 where string.isEmpty: .removeField
             case 117 where string.isEmpty: .removeField

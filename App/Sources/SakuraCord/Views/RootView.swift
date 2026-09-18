@@ -100,9 +100,6 @@ struct RootView: View {
             }
         }
         .onChange(of: model.showInspector) { _, isVisible in
-            guard SettingsPreferenceStore.shared.value(
-                for: .rememberMemberListVisibility
-            ) == .bool(true) else { return }
             GeneralWindowRestorationStore.shared.recordMemberListVisibility(
                 isVisible
             )

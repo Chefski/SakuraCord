@@ -19,10 +19,10 @@ nonisolated enum RestoredCredentialSelectionPolicy {
 }
 }
 
-nonisolated enum PerformanceBenchmarkInitialGuildPolicy {
+nonisolated enum BootstrapInitialGuildPolicy {
     static func resolve(
         guilds: [Guild],
-        retainedGuildID: GuildID?,
+        retainedChannel: Channel?,
         avoidingGuildNamed avoidedName: String?
     ) -> GuildID? {
         if let avoidedName,
@@ -33,7 +33,9 @@ nonisolated enum PerformanceBenchmarkInitialGuildPolicy {
         {
             return nonTargetGuild.id
         }
-        return retainedGuildID ?? guilds.first?.id
+        // A retained DM deliberately selects Home (nil), not the first server.
+        if let retainedChannel { return retainedChannel.guildID }
+        return guilds.first?.id
 }
 }
 

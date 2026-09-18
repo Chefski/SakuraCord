@@ -125,45 +125,15 @@ nonisolated struct SettingsPreferenceRegistry: Sendable {
 
     static let foundation = SettingsPreferenceRegistry(registrations: [
         SettingsPreferenceRegistration(
-            id: .reopenLastAccount,
-            page: .myAccount,
-            storage: .appWide(key: "settings.reopenLastActiveAccount"),
-            defaultValue: .bool(true)
-        ),
-        SettingsPreferenceRegistration(
-            id: .preferredLaunchAccount,
-            page: .myAccount,
-            storage: .appWide(key: "settings.preferredLaunchAccountID"),
-            defaultValue: .string("")
-        ),
-        SettingsPreferenceRegistration(
             id: .launchDestination,
             page: .general,
             storage: .appWide(key: "settings.launchDestination"),
-            defaultValue: .string(SettingsLaunchDestination.preferredAccountLastLocation.rawValue)
-        ),
-        SettingsPreferenceRegistration(
-            id: .showMainWindowAtLaunch,
-            page: .general,
-            storage: .appWide(key: "settings.showMainWindowAtLaunch"),
-            defaultValue: .bool(true)
-        ),
-        SettingsPreferenceRegistration(
-            id: .rememberMemberListVisibility,
-            page: .general,
-            storage: .appWide(key: "settings.rememberMemberListVisibility"),
-            defaultValue: .bool(true)
+            defaultValue: .string(SettingsLaunchDestination.lastVisitedConversation.rawValue)
         ),
         SettingsPreferenceRegistration(
             id: .confirmQuitActiveWork,
             page: .general,
             storage: .appWide(key: "settings.confirmQuitActiveWork"),
-            defaultValue: .bool(true)
-        ),
-        SettingsPreferenceRegistration(
-            id: .confirmDiscardComposer,
-            page: .general,
-            storage: .appWide(key: "settings.confirmDiscardComposer"),
             defaultValue: .bool(true)
         ),
         SettingsPreferenceRegistration(
@@ -243,6 +213,12 @@ nonisolated struct SettingsPreferenceRegistry: Sendable {
             page: .accessibility,
             storage: .appWide(key: "settings.interface.underlineLinks"),
             defaultValue: .bool(false)
+        ),
+        SettingsPreferenceRegistration(
+            id: .sendWithReturn,
+            page: .general,
+            storage: .appWide(key: "settings.chat.sendWithReturn"),
+            defaultValue: .bool(true)
         ),
         SettingsPreferenceRegistration(
             id: .spellCheck,
@@ -688,9 +664,14 @@ final class SettingsPreferenceStore {
     ) {
         self.registry = registry
         self.defaults = defaults
-        // Retire removed preferences; member-list restoration belongs
-        // to General and continues to use its existing key.
+        // Retire removed preferences while retaining the member-list visibility itself.
         for key in [
+            "settings.showMainWindowAtLaunch",
+            "settings.rememberMemberListVisibility",
+            "settings.confirmDiscardComposer",
+            "settings.reopenLastActiveAccount",
+            "settings.preferredLaunchAccountID",
+            "settings.accountConversationLocations.v1",
             "settings.interface.groupingIntervalMinutes",
             "settings.interface.showActivityDetails",
             "settings.interface.messageActionVisibility",
@@ -706,6 +687,11 @@ final class SettingsPreferenceStore {
             "settings.accessibility.largerTargets",
         ] {
             defaults.removeObject(forKey: key)
+        }
+        let launchDestinationKey = "settings.launchDestination"
+        if let rawValue = defaults.object(forKey: launchDestinationKey) as? String,
+           SettingsLaunchDestination(rawValue: rawValue) == nil {
+            defaults.removeObject(forKey: launchDestinationKey)
         }
         let legacyRoleKey = "settings.interface.showRoleColors"
         let roleKey = "settings.accessibility.roleColorDisplay"

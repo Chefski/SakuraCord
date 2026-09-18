@@ -1172,6 +1172,7 @@ final class AppModel {
     @ObservationIgnored let externalAttachmentUploader: any ExternalAttachmentUploading
     @ObservationIgnored let privacySafetySettingsStore: PrivacySafetySettingsStore
     @ObservationIgnored var queuedOversizedAttachmentPrompts: [OversizedAttachmentPrompt] = []
+    @ObservationIgnored var activeAttachmentUploadCount = 0
     @ObservationIgnored var externalAttachmentUploadTask: Task<Void, Never>?
     @ObservationIgnored var externalAttachmentUploadGeneration: UInt64 = 0
     @ObservationIgnored var promisedAttachmentDirectoryByFileURL: [URL: URL] = [:]
