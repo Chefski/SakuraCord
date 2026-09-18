@@ -5,6 +5,7 @@ enum ConnectionBrand {
     struct IconAsset: Sendable {
         let light: String
         let dark: String
+        var fileExtension: String = "svg"
     }
 
     // Discord web build 580156, observed 2026-07-18. These are Discord's own
@@ -21,7 +22,9 @@ enum ConnectionBrand {
         "epicgames": .init(light: "4fb7893066c0ef83", dark: "199eceff4fca1a0c"),
         "facebook": .init(light: "17be29f77bee4405", dark: "17be29f77bee4405"),
         "github": .init(light: "4db64e0649c64e7e", dark: "a35ff3e86ffa1eb2"),
-        "instagram": .init(light: "c05dded52023ed43", dark: "c05dded52023ed43"),
+        // AppKit omits the SVG's clipped, embedded JPEG. Use a transparent
+        // WebKit rasterization of the exact Discord asset, retaining the SVG source.
+        "instagram": .init(light: "c05dded52023ed43", dark: "c05dded52023ed43", fileExtension: "png"),
         "leagueoflegends": .init(light: "302a27a2e5cc3fb6", dark: "302a27a2e5cc3fb6"),
         "mastodon": .init(light: "0e6385723fe5cd49", dark: "0e6385723fe5cd49"),
         "paypal": .init(light: "dcb64a4ff8f61b2c", dark: "dcb64a4ff8f61b2c"),
@@ -81,9 +84,9 @@ enum ConnectionBrand {
 
         let resourceURL = Bundle.module.url(
             forResource: resourceName,
-            withExtension: "svg",
+            withExtension: asset.fileExtension,
             subdirectory: "ConnectionIcons"
-        ) ?? Bundle.module.url(forResource: resourceName, withExtension: "svg")
+        ) ?? Bundle.module.url(forResource: resourceName, withExtension: asset.fileExtension)
         guard let resourceURL, let image = NSImage(contentsOf: resourceURL) else { return nil }
         imageCache[cacheKey] = image
         return image
