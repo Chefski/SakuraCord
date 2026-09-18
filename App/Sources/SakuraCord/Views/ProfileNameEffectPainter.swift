@@ -5,12 +5,11 @@ import SakuraCordModels
 enum ProfileNameEffectPainter {
     static func draw(
         _ layout: ProfileNameTextLayout, in context: CGContext, fontSize: CGFloat,
-        effect: ProfileNameEffect, colors: [ProfileNameEffectColor], elapsed: Double,
-        looping: Bool
+        effect: ProfileNameEffect, colors: [ProfileNameEffectColor], elapsed: Double
     ) {
         let main = colors.first ?? ProfileNameEffectColor(.labelColor)
         let duration = effect == .prism ? 2.0 : 4.0
-        let progress = looping ? elapsed.truncatingRemainder(dividingBy: duration) / duration : min(1, elapsed / duration)
+        let progress = elapsed.truncatingRemainder(dividingBy: duration) / duration
         let path = layout.path
         let box = CGRect(x: 0, y: -layout.descent, width: layout.width, height: layout.ascent + layout.descent)
         switch effect {
@@ -71,7 +70,7 @@ enum ProfileNameEffectPainter {
         case .gummy:
             for outline in layout.outlines {
                 let localElapsed = max(0, elapsed - Double(outline.characterIndex) * 0.05)
-                let localProgress = looping ? localElapsed.truncatingRemainder(dividingBy: 4) / 4 : min(1, localElapsed / 4)
+                let localProgress = localElapsed.truncatingRemainder(dividingBy: 4) / 4
                 let scale = ProfileNameEffectTiming.value(localProgress, stops: [
                     (0, 1), (0.07, 1.28), (0.14, 0.82), (0.21, 1.1), (0.28, 0.96), (0.35, 1), (1, 1),
                 ])

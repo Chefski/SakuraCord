@@ -46,9 +46,9 @@ struct ProfileNameStylePicker: View {
                         var value = style
                         value.fontID = font.id
                         setStyle(value)
-                    } content: { _ in
+                    } content: {
                         ProfileDisplayName(name: "Gg", style: DisplayNameStyle(fontID: font.id), size: 24,
-                                           showsEffects: false, animationIsActive: false)
+                                           showsEffects: false)
                     }
                 }
             }
@@ -64,9 +64,8 @@ struct ProfileNameStylePicker: View {
                     ProfileNameStyleOption(label: String(localized: effect.title), isSelected: selected) {
                         guard !selected else { return }
                         setStyle(style(for: effect))
-                    } content: { hovering in
-                        ProfileDisplayName(name: String(localized: effect.title), style: style(for: effect), size: 14,
-                                           animationIsActive: hovering && effect != .solid && effect != .gradient)
+                    } content: {
+                        ProfileDisplayName(name: String(localized: effect.title), style: style(for: effect), size: 14)
                     }
                 }
             }
@@ -98,7 +97,7 @@ private struct ProfileNameStyleOption<Content: View>: View {
     let label: String
     let isSelected: Bool
     let action: () -> Void
-    @ViewBuilder let content: (Bool) -> Content
+    @ViewBuilder let content: () -> Content
     @State private var isHovered = false
 
     var body: some View {
@@ -106,7 +105,7 @@ private struct ProfileNameStyleOption<Content: View>: View {
             Color.primary.opacity(isHovered ? 0.09 : 0.045)
                 .frame(height: 52)
                 .overlay {
-                    content(isHovered)
+                    content()
                         .padding(.horizontal, 6)
                         .allowsHitTesting(false)
                 }
