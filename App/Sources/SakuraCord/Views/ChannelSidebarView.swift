@@ -7,12 +7,34 @@ nonisolated enum ChannelSidebarLayoutMetrics {
 }
 
 nonisolated enum SidebarAccountControlMetrics {
-    static let capsuleHeight: CGFloat = 48
+    static let capsuleHeight = ChatChromeMetrics.controlHeight
     static let cornerRadius = capsuleHeight / 2
     static let contentInset: CGFloat = 8
     static let avatarSize: CGFloat = 32
-    static let settingsDiameter: CGFloat = 28
+    static let settingsIconSize: CGFloat = 14
+    static let settingsDiameter: CGFloat = 30
+    static let settingsInset = (capsuleHeight - settingsDiameter) / 2
     static let surfaceSpacing: CGFloat = 6
+
+    static func bottomInset(for appearance: ComposerBarAppearance) -> CGFloat {
+        let composerHeight = appearance == .defaultStyle
+            ? ChatChromeMetrics.composerControlHeight
+            : ChatChromeMetrics.controlHeight
+        return ChatChromeMetrics.composerWindowInset - (capsuleHeight - composerHeight) / 2
+    }
+
+    static func settingsCornerRadius(for appearance: ComposerBarAppearance) -> CGFloat {
+        appearance == .defaultStyle ? settingsDiameter / 2 : 9
+    }
+
+    static func shape(for appearance: ComposerBarAppearance) -> RoundedRectangle {
+        RoundedRectangle(
+            cornerRadius: appearance == .defaultStyle
+                ? cornerRadius
+                : ChatChromeMetrics.composerMinimumCornerRadius,
+            style: .continuous
+        )
+    }
 }
 
 @MainActor
@@ -701,7 +723,12 @@ private struct AccountControlView: View {
             }
         }
         .padding(.horizontal, 8)
-        .padding(.bottom, 8)
+        .padding(
+            .bottom,
+            SidebarAccountControlMetrics.bottomInset(
+                for: voiceModel.appearanceSettings.composerBarAppearance
+            )
+        )
     }
 
     private var displayName: String {
@@ -736,6 +763,10 @@ private struct CurrentUserCapsule: View {
     @State private var profileRequestID: UUID?
 
     var body: some View {
+        let appearance = model.appearanceSettings.composerBarAppearance
+        let height = SidebarAccountControlMetrics.capsuleHeight
+        let shape = SidebarAccountControlMetrics.shape(for: appearance)
+
         ZStack {
             if let nameplate = user?.nameplate {
                 NameplateBackground(
@@ -777,10 +808,15 @@ private struct CurrentUserCapsule: View {
                     Spacer(minLength: 4)
                 }
                 .padding(.leading, SidebarAccountControlMetrics.contentInset)
-                .padding(.trailing, 42)
+                .padding(
+                    .trailing,
+                    SidebarAccountControlMetrics.settingsDiameter
+                        + SidebarAccountControlMetrics.settingsInset
+                        + SidebarAccountControlMetrics.contentInset
+                )
                 .frame(
                     maxWidth: .infinity,
-                    minHeight: SidebarAccountControlMetrics.capsuleHeight,
+                    minHeight: height,
                     alignment: .leading
                 )
                 .contentShape(Rectangle())
@@ -791,40 +827,29 @@ private struct CurrentUserCapsule: View {
                 youPopover
             }
 
-            HoverActionButton(
-                systemImage: "gearshape.fill",
+            ComposerActionButton(
+                icon: Image(systemName: "gearshape.fill"),
                 help: "Settings",
-                diameter: SidebarAccountControlMetrics.settingsDiameter,
+                iconSize: SidebarAccountControlMetrics.settingsIconSize,
+                size: SidebarAccountControlMetrics.settingsDiameter,
+                appearance: appearance,
+                cornerRadius: SidebarAccountControlMetrics.settingsCornerRadius(for: appearance),
                 onHoverChanged: { isSettingsHovering = $0 },
                 action: { openSettings() }
             )
-            .padding(.trailing, 7)
+            .accessibilityLabel("Settings")
+            .padding(.trailing, SidebarAccountControlMetrics.settingsInset)
             .frame(
                 maxWidth: .infinity,
                 maxHeight: .infinity,
                 alignment: .trailing
             )
         }
-        .frame(height: SidebarAccountControlMetrics.capsuleHeight)
-        .clipShape(
-            ConcentricRectangle(
-                cornerRadius: SidebarAccountControlMetrics.cornerRadius,
-                style: .continuous
-            )
-        )
-        .contentShape(
-            ConcentricRectangle(
-                cornerRadius: SidebarAccountControlMetrics.cornerRadius,
-                style: .continuous
-            )
-        )
-        .glassEffect(
-            .regular,
-            in: ConcentricRectangle(
-                cornerRadius: SidebarAccountControlMetrics.cornerRadius,
-                style: .continuous
-            )
-        )
+        .frame(height: height)
+        .containerShape(shape)
+        .clipShape(shape)
+        .contentShape(shape)
+        .glassEffect(.regular, in: shape)
         .animation(.snappy(duration: 0.16), value: isProfileHovering)
         .onChange(of: isYouPopoverPresented) { _, isPresented in
             guard !isPresented, let profileRequestID else { return }

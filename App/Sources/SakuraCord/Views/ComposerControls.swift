@@ -115,6 +115,8 @@ struct ComposerActionButton: View {
     var size = ChatChromeMetrics.composerControlHeight
     var showsHoverBackground = true
     var appearance: ComposerBarAppearance = .defaultStyle
+    var cornerRadius: CGFloat?
+    var onHoverChanged: ((Bool) -> Void)?
     let action: (() -> Void)?
 
     @Environment(\.isEnabled) private var isEnabled
@@ -132,7 +134,10 @@ struct ComposerActionButton: View {
         .buttonStyle(.plain)
         .background(hoverColor, in: buttonShape)
         .contentShape(buttonShape)
-        .onModalHover { isHovering = showsHoverBackground && $0 }
+        .onModalHover {
+            isHovering = showsHoverBackground && $0
+            onHoverChanged?($0)
+        }
         .help(help)
     }
 
@@ -146,7 +151,18 @@ struct ComposerActionButton: View {
     }
 
     private var buttonShape: AnyShape {
-        switch appearance {
+        if let cornerRadius {
+            return switch appearance {
+            case .defaultStyle:
+                AnyShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            case .legacy:
+                AnyShape(ConcentricRectangle(
+                    corners: .concentric(minimum: .fixed(cornerRadius)),
+                    isUniform: true
+                ))
+            }
+        }
+        return switch appearance {
         case .defaultStyle:
             AnyShape(Circle())
         case .legacy:

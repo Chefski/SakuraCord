@@ -204,7 +204,9 @@ struct SakuraCordSessionLoadingView: View {
     }
 
     private var channelSidebar: some View {
-        VStack(spacing: 0) {
+        let appearance = AppearanceSettingsStore.shared.load().composerBarAppearance
+
+        return VStack(spacing: 0) {
             ChannelListLoadingSkeleton()
 
             GlassEffectContainer(spacing: SidebarAccountControlMetrics.surfaceSpacing) {
@@ -227,19 +229,17 @@ struct SakuraCordSessionLoadingView: View {
                             height: SidebarAccountControlMetrics.settingsDiameter
                         )
                 }
-                .padding(.horizontal, SidebarAccountControlMetrics.contentInset)
+                .padding(.leading, SidebarAccountControlMetrics.contentInset)
+                .padding(.trailing, SidebarAccountControlMetrics.settingsInset)
                 .frame(height: SidebarAccountControlMetrics.capsuleHeight)
                 .glassEffect(
                     .regular,
-                    in: ConcentricRectangle(
-                        cornerRadius: SidebarAccountControlMetrics.cornerRadius,
-                        style: .continuous
-                    )
+                    in: SidebarAccountControlMetrics.shape(for: appearance)
                 )
             }
             .padding(.horizontal, 8)
             .padding(.top, SidebarAccountControlMetrics.surfaceSpacing)
-            .padding(.bottom, 8)
+            .padding(.bottom, SidebarAccountControlMetrics.bottomInset(for: appearance))
         }
         .overlay {
             SidebarChromeSeparator(
