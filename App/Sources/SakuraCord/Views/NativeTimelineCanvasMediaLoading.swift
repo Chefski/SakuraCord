@@ -283,14 +283,7 @@ extension NativeTimelineCanvasView {
               case let .message(row, _, _) = item
         else { return [] }
         let message = row.message
-        let visibleEmbedCount =
-            (model?.chatSettings.expandsEmbedsByDefault == false)
-                ? 0
-                : MessageEmbedPresentation.visibleEmbeds(
-                    for: message,
-                    showsAutomaticLinkPreviews:
-                        model?.chatSettings.showsAutomaticLinkPreviews ?? true
-                ).count
+        let visibleEmbedCount = MessageEmbedPresentation.visibleEmbeds(for: message).count
         var keys: [NativeTimelineMediaKey] = []
         keys.reserveCapacity(
             1 + message.attachments.count + visibleEmbedCount
@@ -353,7 +346,7 @@ extension NativeTimelineCanvasView {
                 model: model,
                 message: message
             )
-            for token in presentedTextPlan(for: row).preparedText?.tokens ?? [] {
+            for token in row.textPlan.preparedText?.tokens ?? [] {
                 switch token {
                 case let .customEmoji(emoji):
                     let reference = EmojiReference(rawToken: emoji.rawToken)

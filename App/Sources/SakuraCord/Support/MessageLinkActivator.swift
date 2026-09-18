@@ -61,7 +61,7 @@ enum MessageLinkActivator {
         }
         switch destination {
         case let .discordChannel(guildID, channelID):
-            if let model, model.chatSettings.opensDiscordLinksInternally {
+            if let model {
                 model.navigate(to: guildID, linkedChannelID: channelID)
             } else if !customHandler(url) {
                 confirmExternal(

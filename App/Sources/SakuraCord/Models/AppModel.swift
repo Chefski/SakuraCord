@@ -195,7 +195,7 @@ final class AppModel {
     var timelinePresentationRevision: UInt64 = 0
     var appearanceSettings: AppearanceSettingsSnapshot
     var interfaceSettings: InterfaceSettingsSnapshot
-    var chatSettings: ChatSettingsSnapshot
+    var generalInputSettings: GeneralInputSettingsSnapshot
     var accessibilitySettings: AccessibilitySettingsSnapshot
     @ObservationIgnored var messageRowsUpdateHint: MessageRowsUpdateHint?
     @ObservationIgnored let messageRowsUpdateJournal = MessageRowsUpdateJournal()
@@ -1213,7 +1213,7 @@ final class AppModel {
         self.awaitsOfflineSignIn = includesOfflineSignIn
         appearanceSettings = AppearanceSettingsStore.shared.load()
         interfaceSettings = InterfaceSettingsStore.shared.load()
-        chatSettings = ChatSettingsStore.shared.load()
+        generalInputSettings = GeneralInputSettingsStore.shared.load()
         accessibilitySettings = AccessibilitySettingsStore.shared.load()
         self.notificationService =
             notificationService ?? NoopNativeNotificationService()

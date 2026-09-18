@@ -6,7 +6,6 @@ nonisolated enum SettingsPageID: String, CaseIterable, Codable, Identifiable, Se
     case general
     case interface
     case appearance
-    case chat
     case notifications
     case voiceVideo
     case accessibility
@@ -183,11 +182,8 @@ nonisolated extension SettingsSectionID {
     static let interfaceMessages = Self(rawValue: "interface-messages")
     static let interfaceInputBar = Self(rawValue: "interface-input-bar")
     static let interfaceTime = Self(rawValue: "interface-time")
-    static let chatComposer = Self(rawValue: "chat-composer")
-    static let chatMessages = Self(rawValue: "chat-messages")
-    static let chatMedia = Self(rawValue: "chat-media")
-    static let chatEmoji = Self(rawValue: "chat-emoji")
-    static let chatLocalData = Self(rawValue: "chat-local-data")
+    static let generalTextInput = Self(rawValue: "general-text-input")
+    static let generalEmoji = Self(rawValue: "general-emoji")
     static let softwareUpdates = Self(rawValue: "software-updates")
     static let notificationDelivery = Self(rawValue: "notification-delivery")
     static let notificationEvents = Self(rawValue: "notification-events")
@@ -253,26 +249,12 @@ nonisolated extension SettingsControlID {
     static let roleColorDisplay = Self(rawValue: "accessibility.role-colors")
     static let timestampSeconds = Self(rawValue: "interface.timestamp-seconds")
     static let underlineLinks = Self(rawValue: "interface.underline-links")
-    static let sendWithReturn = Self(rawValue: "chat.send-with-return")
-    static let chatSpellCheck = Self(rawValue: "chat.spell-check")
-    static let chatAutomaticCorrection = Self(rawValue: "chat.automatic-correction")
-    static let chatSmartQuotes = Self(rawValue: "chat.smart-quotes")
-    static let chatSmartDashes = Self(rawValue: "chat.smart-dashes")
-    static let chatTypingIndicators = Self(rawValue: "chat.typing-indicators")
-    static let chatFocusComposerOnTyping = Self(rawValue: "chat.focus-composer-on-typing")
-    static let chatReadAcknowledgement = Self(rawValue: "chat.read-acknowledgement")
-    static let chatEditedMarkers = Self(rawValue: "chat.edited-markers")
-    static let chatExpandEmbeds = Self(rawValue: "chat.expand-embeds")
-    static let chatSpoilerReveal = Self(rawValue: "chat.spoiler-reveal")
-    static let chatInternalDiscordLinks = Self(rawValue: "chat.internal-discord-links")
-    static let chatAutoplayGIFs = Self(rawValue: "chat.autoplay-gifs")
-    static let chatAutoplayStickers = Self(rawValue: "chat.autoplay-stickers")
-    static let chatAutoplayVideos = Self(rawValue: "chat.autoplay-videos")
-    static let chatLinkPreviews = Self(rawValue: "chat.link-previews")
-    static let chatInlineMediaSize = Self(rawValue: "chat.inline-media-size")
-    static let reduceAnimatedMedia = Self(rawValue: "chat.reduce-animated-media")
-    static let chatEmojiSkinTone = Self(rawValue: "chat.emoji-skin-tone")
-    static let chatReset = Self(rawValue: "chat.reset")
+    // Preserve exported identifiers when moving these controls to General.
+    static let spellCheck = Self(rawValue: "chat.spell-check")
+    static let automaticCorrection = Self(rawValue: "chat.automatic-correction")
+    static let smartQuotes = Self(rawValue: "chat.smart-quotes")
+    static let smartDashes = Self(rawValue: "chat.smart-dashes")
+    static let emojiSkinTone = Self(rawValue: "chat.emoji-skin-tone")
     static let updateReleaseTrack = Self(rawValue: "software-updates.release-track")
     static let updateAutomaticChecks = Self(rawValue: "software-updates.automatic-checks")
     static let updateAutomaticDownloads = Self(rawValue: "software-updates.automatic-downloads")
@@ -353,7 +335,6 @@ nonisolated extension SettingsControlID {
     static let accessibilityReset = Self(rawValue: "accessibility.reset")
     static let shortcutReset = Self(rawValue: "keyboard-shortcuts.reset")
     static let privacyTypingIndicators = Self(rawValue: "privacy.typing-indicators")
-    static let privacyReadAcknowledgements = Self(rawValue: "privacy.read-acknowledgements")
     static let externalLinkProtection = Self(rawValue: "privacy.external-link-protection")
     static let trustedDomains = Self(rawValue: "privacy.trusted-domains")
     static let clearLocalActivity = Self(rawValue: "privacy.clear-local-activity")
@@ -378,7 +359,6 @@ nonisolated extension SettingsCatalog {
         generalPage,
         interfacePage,
         appearancePage,
-        chatPage,
         notificationsPage,
         voiceVideoPage,
         accessibilityPage,
@@ -396,7 +376,6 @@ nonisolated extension SettingsCatalog {
         + generalControls
         + appearanceControls
         + interfaceControls
-        + chatControls
         + softwareUpdatesControls
         + storageDownloadsControls
         + notificationsControls

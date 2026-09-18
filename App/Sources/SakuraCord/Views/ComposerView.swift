@@ -85,8 +85,7 @@ struct ComposerView: View {
                         ApplicationCommandInlineInput(
                             composer: model.commandComposer,
                             roles: model.guildRoles,
-                            sendWithReturn: model.chatSettings.sendsWithReturn,
-                            chatSettings: model.chatSettings,
+                            generalInputSettings: model.generalInputSettings,
                             onTextChange: { option, text in
                                 updateCommandField(text, for: option)
                             },
@@ -100,8 +99,8 @@ struct ComposerView: View {
                             ComposerTextView(
                                 text: draft,
                                 placeholder: composerPlaceholder,
-                                sendWithReturn: model.chatSettings.sendsWithReturn,
-                                chatSettings: model.chatSettings,
+                                sendWithReturn: true,
+                                generalInputSettings: model.generalInputSettings,
                                 mentionPresentations: composerMentionPresentations,
                                 onTextChange: updateDraft,
                                 onSubmit: send,
@@ -124,8 +123,7 @@ struct ComposerView: View {
                                 },
                                 onDropAttachments: handleDroppedAttachments,
                                 capturesUnfocusedTyping:
-                                    model.chatSettings.focusesComposerOnTyping
-                                        && !showEmojiPicker
+                                    !showEmojiPicker
                                         && !showGIFPicker
                                         && !showStickerPicker,
                                 verticalContentInset: appearance == .defaultStyle

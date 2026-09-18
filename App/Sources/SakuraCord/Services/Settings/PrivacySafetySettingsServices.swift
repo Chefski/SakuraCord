@@ -86,10 +86,12 @@ nonisolated enum ExternalLinkTrustedDomain {
 
 nonisolated struct PrivacySafetySettingsSnapshot: Equatable, Sendable {
     static let defaults = Self(
+        sendsTypingIndicators: true,
         externalLinkConfirmationPolicy: .untrustedDomains,
         trustedDomains: []
     )
 
+    var sendsTypingIndicators: Bool
     var externalLinkConfirmationPolicy: ExternalLinkConfirmationPolicy
     var trustedDomains: [String]
 }
@@ -106,6 +108,9 @@ final class PrivacySafetySettingsStore {
 
     func load() -> PrivacySafetySettingsSnapshot {
         var value = PrivacySafetySettingsSnapshot.defaults
+        if case let .bool(saved) = preferences.value(for: .privacyTypingIndicators) {
+            value.sendsTypingIndicators = saved
+        }
         if case let .string(rawValue) = preferences.value(for: .externalLinkProtection),
            let policy = ExternalLinkConfirmationPolicy(rawValue: rawValue)
         {
@@ -118,6 +123,7 @@ final class PrivacySafetySettingsStore {
     }
 
     func save(_ value: PrivacySafetySettingsSnapshot) {
+        preferences.set(.bool(value.sendsTypingIndicators), for: .privacyTypingIndicators)
         preferences.set(
             .string(value.externalLinkConfirmationPolicy.rawValue),
             for: .externalLinkProtection
@@ -328,6 +334,10 @@ extension AppModel {
     }
 
     func applyPrivacySafetySettings(_ value: PrivacySafetySettingsSnapshot) {
+        let wasSendingTypingIndicators = privacySafetySettings.sendsTypingIndicators
         privacySafetySettings = value
+        if wasSendingTypingIndicators, !value.sendsTypingIndicators {
+            stopLocalTyping(clearThrottle: false)
+        }
     }
 }

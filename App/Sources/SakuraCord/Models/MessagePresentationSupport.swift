@@ -72,7 +72,6 @@ struct NativeTimelineTextPlan: Equatable, Sendable {
     nonisolated static func make(
         for message: Message,
         currentUserID: UserID? = nil,
-        showsAutomaticLinkPreviews: Bool = true,
         systemActorColor: NSColor? = nil
     ) -> Self {
         let baseFontSize: CGFloat =
@@ -89,8 +88,7 @@ struct NativeTimelineTextPlan: Equatable, Sendable {
                 )
             } else {
                 MessageEmbedPresentation.visibleMessageContent(
-                    for: message,
-                    showsAutomaticLinkPreviews: showsAutomaticLinkPreviews
+                    for: message
                 )
             }
         let linkedPresentation = LinkedImagePresentation(content: visibleContent)
@@ -105,8 +103,7 @@ struct NativeTimelineTextPlan: Equatable, Sendable {
         // prepared off-main so a cold rich channel cannot move markdown
         // tokenization back onto the UI thread during first layout.
         for embed in MessageEmbedPresentation.visibleEmbeds(
-            for: message,
-            showsAutomaticLinkPreviews: showsAutomaticLinkPreviews
+            for: message
         ) {
             if let description = embed.description {
                 _ = RichMessageAttributedText.prepare(source: description)

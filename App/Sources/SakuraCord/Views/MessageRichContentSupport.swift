@@ -20,8 +20,7 @@ nonisolated enum MessageEmbedPresentationKind: Equatable {
 
 nonisolated enum MessageEmbedPresentation {
     static func visibleEmbeds(
-        for message: Message,
-        showsAutomaticLinkPreviews: Bool = true
+        for message: Message
     ) -> [MessageEmbed] {
         guard !message.flags.contains(.suppressEmbeds) else { return [] }
         let linkedEmojiURLs =
@@ -38,36 +37,20 @@ nonisolated enum MessageEmbedPresentation {
             {
                 return false
             }
-            if !showsAutomaticLinkPreviews,
-               isAutomaticLinkPreview(embed, messageContent: message.content)
-            {
-                return false
-            }
             return !(kind(for: embed) == .bareMedia
                 && embed.url.map(linkedEmojiURLs.contains) == true)
         }
     }
 
     static func visibleMessageContent(
-        for message: Message,
-        showsAutomaticLinkPreviews: Bool = true
+        for message: Message
     ) -> String {
         visibleMessageContent(
             message.content,
             embeds: visibleEmbeds(
-                for: message,
-                showsAutomaticLinkPreviews: showsAutomaticLinkPreviews
+                for: message
             )
         )
-    }
-
-    static func isAutomaticLinkPreview(
-        _ embed: MessageEmbed,
-        messageContent: String
-    ) -> Bool {
-        guard let url = embed.url?.absoluteString else { return false }
-        return messageContent.contains(url)
-            || messageContent.contains("<\(url)>")
     }
 
     static func kind(for embed: MessageEmbed) -> MessageEmbedPresentationKind {

@@ -356,8 +356,6 @@ extension NativeTimelineCanvasView {
         guard permitsAnimatedMediaPlayback else { return }
         let reduceMotion =
             NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-            || (model?.chatSettings.reducesAnimatedMedia
-                ?? UserDefaults.standard.bool(forKey: "reduceAnimatedMedia"))
 
         var rows:
             [NativeMessageTimelineItem.Identifier: Set<NativeTimelineMediaKey>] = [:]
@@ -427,11 +425,9 @@ extension NativeTimelineCanvasView {
         if !allowsScrolling {
             reconcileInlineVideoOverlays(
                 plays: !reduceMotion
-                    && (model?.chatSettings.autoplaysInlineVideos ?? true)
             )
             reconcileLottieStickerOverlays(
                 reduceMotion: reduceMotion
-                    || !(model?.chatSettings.autoplaysAnimatedStickers ?? true)
             )
         }
     }

@@ -862,10 +862,6 @@ extension NativeMessageTimelineCoordinator {
             parent: NativeMessageTimelineView,
             scrollView: NSScrollView
         ) {
-            parent.model.timelineSpoilerRevealStore.revealMode =
-                parent.model.chatSettings.spoilerRevealMode
-            canvas?.spoilerRevealStore.revealMode =
-                parent.model.chatSettings.spoilerRevealMode
             canvas?.setOverlayInteractionBlocked(
                 !WindowModalCoordinator.allowsInput(for: scrollView),
                 mediaViewerHighlightedMessageID:

@@ -814,37 +814,26 @@ func `animated image canvas pauses or resets without discarding frames`()
     #expect(
         AnimatedMediaPlaybackPolicy.shouldPlay(
             isVisible: true,
-            reduceMotion: false,
-            reduceAnimatedMedia: false
+            reduceMotion: false
         )
     )
     #expect(
         !AnimatedMediaPlaybackPolicy.shouldPlay(
             isVisible: false,
-            reduceMotion: false,
-            reduceAnimatedMedia: false
+            reduceMotion: false
         )
     )
     #expect(
         !AnimatedMediaPlaybackPolicy.shouldPlay(
             isVisible: true,
             isWindowVisible: false,
-            reduceMotion: false,
-            reduceAnimatedMedia: false
+            reduceMotion: false
         )
     )
     #expect(
         !AnimatedMediaPlaybackPolicy.shouldPlay(
             isVisible: true,
-            reduceMotion: true,
-            reduceAnimatedMedia: false
-        )
-    )
-    #expect(
-        !AnimatedMediaPlaybackPolicy.shouldPlay(
-            isVisible: true,
-            reduceMotion: false,
-            reduceAnimatedMedia: true
+            reduceMotion: true
         )
     )
 }

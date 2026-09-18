@@ -38,7 +38,6 @@ nonisolated extension SettingsPageID {
         case .general: "general"
         case .interface: "appearance"
         case .appearance: "theme"
-        case .chat: "chat"
         case .notifications: "notifications"
         case .voiceVideo: "voice-video"
         case .accessibility: "accessibility"

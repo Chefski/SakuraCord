@@ -64,7 +64,7 @@ extension AppModel {
                 channelID: selectedChannelID,
                 windowIsActive: isActive
             ) {
-                scheduleAutomaticAcknowledgement(
+                scheduleAcknowledgement(
                     channelID: selectedChannelID,
                     messageID: target
                 )
@@ -76,7 +76,7 @@ extension AppModel {
                 channelID: threadID,
                 windowIsActive: isActive
             ) {
-                scheduleAutomaticAcknowledgement(channelID: threadID, messageID: target)
+                scheduleAcknowledgement(channelID: threadID, messageID: target)
             }
         }
     }
@@ -116,7 +116,7 @@ extension AppModel {
             )
         }
         if let target {
-            scheduleAutomaticAcknowledgement(channelID: channelID, messageID: target)
+            scheduleAcknowledgement(channelID: channelID, messageID: target)
         }
     }
 
@@ -140,7 +140,7 @@ extension AppModel {
             "Timeline initial c=\(channel, privacy: .public) r=\(reached, privacy: .public) e=\(eligible, privacy: .public) m=\(targetID, privacy: .public)"
         )
         if let target {
-            scheduleAutomaticAcknowledgement(channelID: channelID, messageID: target)
+            scheduleAcknowledgement(channelID: channelID, messageID: target)
         }
     }
 
@@ -163,7 +163,7 @@ extension AppModel {
             isPresented: true,
             initialHistoryLoaded: true
         ) {
-            scheduleAutomaticAcknowledgement(channelID: channelID, messageID: target)
+            scheduleAcknowledgement(channelID: channelID, messageID: target)
         }
     }
 

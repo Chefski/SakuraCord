@@ -36,7 +36,7 @@ import Testing
 }
 
 @MainActor
-@Test func `settings search routes synonyms to stable controls`() {
+@Test func `settings search routes synonyms to stable controls`() throws {
     let state = SettingsViewState()
 
     state.searchText = "microphone gain"
@@ -58,18 +58,18 @@ import Testing
     state.searchText = "hotkeys"
     #expect(state.searchResults.first?.destination.page == .keyboardShortcuts)
 
-    state.searchText = "autoplay"
-    let autoplayIDs = state.searchResults.map(\.id)
-    #expect(autoplayIDs.count > 2)
-    #expect(state.selectedSearchResultID == autoplayIDs.first)
+    state.searchText = "typing"
+    let typingIDs = state.searchResults.map(\.id)
+    try #require(typingIDs.count > 1)
+    #expect(state.selectedSearchResultID == typingIDs.first)
     state.moveSearchSelection(by: 1)
-    #expect(state.selectedSearchResultID == autoplayIDs[1])
+    #expect(state.selectedSearchResultID == typingIDs[1])
     state.moveSearchSelection(by: -1)
-    #expect(state.selectedSearchResultID == autoplayIDs[0])
+    #expect(state.selectedSearchResultID == typingIDs[0])
     state.moveSearchSelection(by: -1)
-    #expect(state.selectedSearchResultID == autoplayIDs.last)
+    #expect(state.selectedSearchResultID == typingIDs.last)
     #expect(state.activateSelectedSearchResult())
-    #expect(state.revealRequest?.controlID == autoplayIDs.last)
+    #expect(state.revealRequest?.controlID == typingIDs.last)
     #expect(state.searchText.isEmpty)
     #expect(state.selectedSearchResultID == nil)
 
@@ -91,13 +91,13 @@ import Testing
     let registry = SettingsPreferenceRegistry(registrations: [
         SettingsPreferenceRegistration(
             id: appValueID,
-            page: .chat,
+            page: .general,
             storage: .appWide(key: "test.app-value"),
             defaultValue: .bool(true)
         ),
         SettingsPreferenceRegistration(
             id: accountValueID,
-            page: .chat,
+            page: .general,
             storage: .accountLocal(key: "test.account-value"),
             defaultValue: .string("default")
         ),
@@ -110,14 +110,14 @@ import Testing
     store.set(.string("first"), for: accountValueID, accountID: "account-a")
     store.set(.string("second"), for: accountValueID, accountID: "account-b")
 
-    let appExport = store.export(scope: .appWide, page: .chat)
+    let appExport = store.export(scope: .appWide, page: .general)
     #expect(appExport.schema == SettingsPreferenceExport.schema)
     #expect(appExport.version == SettingsPreferenceExport.currentVersion)
     #expect(appExport.values == [appValueID.rawValue: .bool(false)])
 
     let accountExport = store.export(
         scope: .accountLocal,
-        page: .chat,
+        page: .general,
         accountID: "account-a"
     )
     #expect(accountExport.values == [accountValueID.rawValue: .string("first")])
@@ -127,11 +127,11 @@ import Testing
     #expect(!encodedText.contains("account-a"))
     #expect(!encodedText.contains("second"))
 
-    store.reset(scope: .accountLocal, page: .chat, accountID: "account-a")
+    store.reset(scope: .accountLocal, page: .general, accountID: "account-a")
     #expect(store.value(for: accountValueID, accountID: "account-a") == .string("default"))
     #expect(store.value(for: accountValueID, accountID: "account-b") == .string("second"))
 
-    store.reset(scope: .appWide, page: .chat)
+    store.reset(scope: .appWide, page: .general)
     #expect(store.value(for: appValueID) == .bool(true))
     #expect(defaults.string(forKey: "unregistered.credential") == "credential-secret")
 }

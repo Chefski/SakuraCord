@@ -5,7 +5,6 @@ struct MessageAppearancePreview: View {
     let appearance: AppearanceSettingsSnapshot
     let interface: InterfaceSettingsSnapshot
     let accessibility: AccessibilitySettingsSnapshot
-    let chat: ChatSettingsSnapshot
 
     @State private var preview: AppModel?
     @State private var scrollRequest: MessageTimelineScrollRequest?
@@ -67,7 +66,6 @@ struct MessageAppearancePreview: View {
         .onChange(of: appearance) { updatePresentation() }
         .onChange(of: interface) { updatePresentation() }
         .onChange(of: accessibility) { updatePresentation() }
-        .onChange(of: chat) { updatePresentation() }
     }
 
     private func updatePresentation() {
@@ -76,7 +74,6 @@ struct MessageAppearancePreview: View {
         preview.appearanceSettings = appearance
         preview.interfaceSettings = interface
         preview.accessibilitySettings = accessibility
-        preview.chatSettings = chat
         preview.invalidateTimelinePresentation()
     }
 }

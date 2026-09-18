@@ -206,18 +206,6 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
     var rowOrigins: [CGFloat] { storage.rowOrigins }
     var contentHeight: CGFloat { storage.contentHeight }
 
-    func presentedTextPlan(for row: MessageRowPresentation) -> NativeTimelineTextPlan {
-        guard model?.chatSettings.showsAutomaticLinkPreviews == false
-            || model?.chatSettings.expandsEmbedsByDefault == false
-        else {
-            return row.textPlan
-        }
-        return NativeTimelineTextPlan.make(
-            for: row.message,
-            showsAutomaticLinkPreviews: false
-        )
-    }
-
     var model: AppModel?
     var accessibilitySettingsSnapshot = AccessibilitySettingsSnapshot.defaults
     var presentedConversationID: ChannelID?

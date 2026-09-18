@@ -709,7 +709,6 @@ private final class GIFPickerCollectionCellView: NSView {
     private func display(_ image: DecodedAnimatedImage) {
         videoCanvas.clear()
         let reducesMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-            || UserDefaults.standard.bool(forKey: "reduceAnimatedMedia")
         mediaCanvas.display(
             image,
             animates: !reducesMotion,

@@ -46,14 +46,6 @@ import Testing
     ))
     #expect(confirmations.isEmpty)
 
-    model.chatSettings.opensDiscordLinksInternally = false
-    #expect(MessageLinkActivator.activate(
-        internalURL,
-        model: model,
-        confirmExternal: { confirmations.append($0) }
-    ))
-    #expect(confirmations.map(\.url) == [internalURL])
-
     let externalURL = try #require(URL(string: "https://example.com/path"))
     #expect(MessageLinkActivator.activate(
         externalURL,
@@ -61,7 +53,7 @@ import Testing
         displayedText: "Example",
         confirmExternal: { confirmations.append($0) }
     ))
-    #expect(confirmations.map(\.url) == [internalURL, externalURL])
+    #expect(confirmations.map(\.url) == [externalURL])
 }
 
 @MainActor
@@ -82,6 +74,7 @@ import Testing
 
     let export = preferences.export(scope: .appWide, page: .privacySafety)
     #expect(export.values == [
+        SettingsControlID.privacyTypingIndicators.rawValue: .bool(true),
         SettingsControlID.externalLinkProtection.rawValue: .string("allLinks"),
     ])
     let encoded = try export.encodedData()
@@ -174,7 +167,7 @@ import Testing
 @MainActor
 @Test func `Privacy catalog exposes one searchable control for every behavior`() {
     let expected: Set<SettingsControlID> = [
-        .privacyTypingIndicators, .privacyReadAcknowledgements,
+        .privacyTypingIndicators,
         .externalLinkProtection, .trustedDomains,
         .clearLocalActivity,
     ]
@@ -193,4 +186,21 @@ import Testing
         state.searchText = term
         #expect(state.searchResults.contains { $0.id == control })
     }
+}
+
+@MainActor
+@Test func `Privacy disabling typing cancels pending signals and prevents new ones`() async throws {
+    let preferences = SettingsPreferenceStore(defaults: InMemoryPreferences())
+    let store = PrivacySafetySettingsStore(preferences: preferences)
+    let model = AppModel(launchMode: .offlineTesting, privacySafetySettingsStore: store)
+    await model.start()
+    model.scheduleLocalTyping(for: "draft")
+    let pendingSignal = try #require(model.localTypingTask)
+    var settings = model.privacySafetySettings
+    settings.sendsTypingIndicators = false
+    model.applyPrivacySafetySettings(settings)
+    #expect(pendingSignal.isCancelled)
+    #expect(model.localTypingTask == nil)
+    model.scheduleLocalTyping(for: "draft")
+    #expect(model.localTypingTask == nil)
 }

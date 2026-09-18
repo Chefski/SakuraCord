@@ -5,14 +5,13 @@ struct PrivacySafetySettingsPage: View {
     let state: SettingsViewState
 
     @State private var value = PrivacySafetySettingsSnapshot.defaults
-    @State private var chatValue = ChatSettingsSnapshot.defaults
     @State private var navigationPath: [PrivacyDestination] = []
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
             SettingsPageForm(page: .privacySafety, state: state) {
                 PrivacyDiscordActivitySection(
-                    value: $chatValue,
+                    value: $value,
                     state: state
                 )
                 PrivacyLinksServicesSection(value: $value, state: state)
@@ -27,13 +26,9 @@ struct PrivacySafetySettingsPage: View {
         }
         .task {
             value = model.privacySafetySettings
-            chatValue = model.chatSettings
         }
         .onChange(of: value) { _, newValue in
             model.applyPrivacySafetySettings(newValue)
-        }
-        .onChange(of: chatValue) { _, newValue in
-            model.applyChatSettings(newValue)
         }
         .onChange(of: state.revealRequest?.id) {
             guard state.revealRequest?.destination.page == .privacySafety else { return }
@@ -291,7 +286,7 @@ private struct TrustedDomainRow: View {
 }
 
 private struct PrivacyDiscordActivitySection: View {
-    @Binding var value: ChatSettingsSnapshot
+    @Binding var value: PrivacySafetySettingsSnapshot
     let state: SettingsViewState
 
     var body: some View {
@@ -299,13 +294,6 @@ private struct PrivacyDiscordActivitySection: View {
             Toggle("Send typing indicators", isOn: $value.sendsTypingIndicators)
                 .tint(SakuraCordAccentColor.color)
                 .settingsControlAnchor(.privacyTypingIndicators, state: state)
-
-            Toggle(
-                "Automatically mark messages as read",
-                isOn: $value.automaticallyAcknowledgesMessages
-            )
-            .tint(SakuraCordAccentColor.color)
-            .settingsControlAnchor(.privacyReadAcknowledgements, state: state)
         } header: {
             Text("Discord Activity", bundle: #bundle)
         }

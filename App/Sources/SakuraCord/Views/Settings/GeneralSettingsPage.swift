@@ -6,6 +6,7 @@ struct GeneralSettingsPage: View {
     let launchAtLogin: LaunchAtLoginController
 
     @Environment(\.scenePhase) private var scenePhase
+    @State private var inputSettings = GeneralInputSettingsSnapshot.defaults
     @State private var launchDestination: SettingsLaunchDestination
     @State private var showsMainWindowAtLaunch: Bool
     @State private var remembersMemberListVisibility: Bool
@@ -55,6 +56,7 @@ struct GeneralSettingsPage: View {
                 remembersMemberListVisibility: rememberMemberListBinding,
                 state: state
             )
+            GeneralInputSettingsSection(value: $inputSettings, state: state)
             GeneralConfirmationSection(
                 confirmsQuitActiveWork: preferenceBinding(
                     $confirmsQuitActiveWork,
@@ -67,7 +69,13 @@ struct GeneralSettingsPage: View {
                 state: state
             )
         }
-        .task { await launchAtLogin.refreshIfNeeded() }
+        .task {
+            inputSettings = GeneralInputSettingsStore.shared.load()
+            await launchAtLogin.refreshIfNeeded()
+        }
+        .onChange(of: inputSettings) { _, value in
+            model.applyGeneralInputSettings(value)
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 Task { await launchAtLogin.refresh() }

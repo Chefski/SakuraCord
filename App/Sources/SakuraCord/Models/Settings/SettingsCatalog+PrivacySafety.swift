@@ -4,7 +4,7 @@ nonisolated extension SettingsCatalog {
     static let privacySafetyPage = page(
         .privacySafety, group: .dataSecurity, title: "Privacy", image: "hand.raised",
         help: "Control local privacy, external links, and scoped data clearing.",
-        keywords: ["links", "security", "typing indicators", "read receipts", "clear data"]
+        keywords: ["links", "security", "typing indicators", "clear data"]
     )
 
     static let privacySafetyControls: [SettingsControlMetadata] = [
@@ -13,14 +13,7 @@ nonisolated extension SettingsCatalog {
             section: .privacyDiscordActivity, label: "Send Typing Indicators",
             help: "Send Discord typing events while composing.",
             keywords: ["typing status", "Discord", "composer"],
-            scope: .appWideLocal, persistence: .appPreferences, reset: .notApplicable
-        ),
-        control(
-            .privacyReadAcknowledgements, page: .privacySafety,
-            section: .privacyDiscordActivity, label: "Automatically Mark Messages as Read",
-            help: "Acknowledge visible messages automatically; turn this off to require an explicit Mark Read action.",
-            keywords: ["read receipt", "unread", "manual", "automatic"], owner: .appModel,
-            scope: .mixed, persistence: .appPreferences, reset: .notApplicable
+            scope: .appWideLocal, persistence: .appPreferences, reset: .registeredLocalValue
         ),
         control(
             .externalLinkProtection, page: .privacySafety,

@@ -630,7 +630,6 @@ struct NativeTimelineRowLayout {
         let timestampGutterWidth = max(avatarWidth, NativeTimelineCompactTimestampMetrics.width(settings: timestampSettings))
         let columnGap = MessageRowLayoutMetrics.avatarColumnGap + timestampGutterWidth - avatarWidth
         let usesComponentsV2 = message.flags.contains(.isComponentsV2)
-        let chatSettings = model?.chatSettings ?? .defaults
         let unstyledContentPresentation = NativeTimelineTextPresentation.make(
             row: row,
             model: model
@@ -818,9 +817,7 @@ struct NativeTimelineRowLayout {
                 height: 13
             )
             headerX = timestampFrame?.maxX ?? headerX
-            if message.editedTimestamp != nil,
-               model?.chatSettings.showsEditedMarkers != false
-            {
+            if message.editedTimestamp != nil {
                 headerX += 7
                 let editedFont = NSFont.preferredFont(forTextStyle: .caption2)
                 editedFrame = CGRect(
@@ -898,7 +895,7 @@ struct NativeTimelineRowLayout {
         var hasRichContent = false
         let inlineMediaMaximumWidth = min(
             contentWidth,
-            chatSettings.inlineMediaSize.maximumWidth
+            DiscordRichMessageMetrics.maximumWidth
         )
         if let attributedContent = contentPresentation.attributedContent {
             let textHeight = NativeTimelineRowLayout.measuredTextHeight(
@@ -981,8 +978,7 @@ struct NativeTimelineRowLayout {
 
         var embedRegions: [EmbedRegion] = []
         var sakuraCordDeepLinkRegions: [SakuraCordDeepLinkRegion] = []
-        if !usesComponentsV2, chatSettings.expandsEmbedsByDefault,
-           chatSettings.showsAutomaticLinkPreviews {
+        if !usesComponentsV2 {
             for (index, deepLink) in row.sakuraCordDeepLinks.enumerated() {
                 let deepLinkY = verticalOffset + (hasRichContent ? 8 : 0)
                 let region = NativeTimelineSakuraCordDeepLinkLayout.make(
@@ -996,12 +992,10 @@ struct NativeTimelineRowLayout {
                 hasRichContent = true
             }
         }
-        if !usesComponentsV2, chatSettings.expandsEmbedsByDefault {
+        if !usesComponentsV2 {
             let visibleEmbeds =
                 MessageEmbedPresentation.visibleEmbeds(
-                    for: message,
-                    showsAutomaticLinkPreviews:
-                        chatSettings.showsAutomaticLinkPreviews
+                    for: message
                 )
             embedRegions.reserveCapacity(visibleEmbeds.count)
             for embed in visibleEmbeds {

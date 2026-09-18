@@ -37,7 +37,7 @@ private final class VoiceOverAnnouncementTestState {
         export.values[SettingsControlID.accessibilityAnnounceNewMessages.rawValue]
             == .bool(true)
     )
-    #expect(export.values[SettingsControlID.chatAutoplayGIFs.rawValue] == nil)
+    #expect(export.values[SettingsControlID.smartQuotes.rawValue] == nil)
 
     preferences.reset(scope: .appWide, page: .accessibility)
     #expect(store.load() == .defaults)

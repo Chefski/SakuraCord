@@ -473,8 +473,7 @@ extension NSAttributedString.Key {
 struct ApplicationCommandInlineInput: View {
     let composer: ApplicationCommandComposerModel
     let roles: [GuildRole]
-    let sendWithReturn: Bool
-    let chatSettings: ChatSettingsSnapshot
+    let generalInputSettings: GeneralInputSettingsSnapshot
     let onTextChange: (ApplicationCommandOption, String) -> Void
     let onSubmit: () -> Void
     let onKeyboardCommand: (ComposerAutocompleteCommand) -> Bool
@@ -500,8 +499,7 @@ struct ApplicationCommandInlineInput: View {
                         focusedOptionID: composer.focusedOptionID
                     ),
                     focusedOptionID: composer.focusedOptionID,
-                    sendWithReturn: sendWithReturn,
-                    chatSettings: chatSettings,
+                    generalInputSettings: generalInputSettings,
                     onTextChange: onTextChange,
                     onFocusOption: { optionID in
                         guard let optionID,
@@ -855,8 +853,7 @@ enum ApplicationCommandClipboardSerializer {
 private struct ApplicationCommandStructuredTextView: NSViewRepresentable {
     let document: ApplicationCommandTextDocument
     let focusedOptionID: String?
-    let sendWithReturn: Bool
-    let chatSettings: ChatSettingsSnapshot
+    let generalInputSettings: GeneralInputSettingsSnapshot
     let onTextChange: (ApplicationCommandOption, String) -> Void
     let onFocusOption: (String?) -> Void
     let focusedOptionIDProvider: () -> String?
@@ -897,9 +894,7 @@ private struct ApplicationCommandStructuredTextView: NSViewRepresentable {
         textView.onKeyboardCommand = onKeyboardCommand
         textView.focusedOptionIDProvider = focusedOptionIDProvider
         textView.onSubmit = onSubmit
-        textView.sendWithReturn = sendWithReturn
-        textView.capturesUnfocusedTyping = chatSettings.focusesComposerOnTyping
-        ComposerTextCheckingConfiguration.apply(chatSettings, to: textView)
+        ComposerTextCheckingConfiguration.apply(generalInputSettings, to: textView)
         textView.document = document
         textView.setAccessibilityLabel("Command input")
         textView.applySakuraCordTextSelectionAppearance()
@@ -921,9 +916,7 @@ private struct ApplicationCommandStructuredTextView: NSViewRepresentable {
         textView.onKeyboardCommand = onKeyboardCommand
         textView.focusedOptionIDProvider = focusedOptionIDProvider
         textView.onSubmit = onSubmit
-        textView.sendWithReturn = sendWithReturn
-        textView.capturesUnfocusedTyping = chatSettings.focusesComposerOnTyping
-        ComposerTextCheckingConfiguration.apply(chatSettings, to: textView)
+        ComposerTextCheckingConfiguration.apply(generalInputSettings, to: textView)
         context.coordinator.apply(document: document, to: textView, viewportWidth: scrollView.bounds.width)
         context.coordinator.applyFocus(to: textView)
     }
@@ -1364,25 +1357,13 @@ final class ApplicationCommandNSTextView: NSTextView {
     var onKeyboardCommand: (ComposerAutocompleteCommand) -> Bool = { _ in false }
     var focusedOptionIDProvider: () -> String? = { nil }
     var onSubmit: () -> Void = {}
-    var sendWithReturn = true
-    var capturesUnfocusedTyping = true {
-        didSet {
-            unfocusedTypingMonitor.synchronize(
-                with: self,
-                enabled: capturesUnfocusedTyping,
-                onUnfocusedReturn: { [weak self] event in
-                    self?.handleReturn(event) ?? false
-                }
-            )
-        }
-    }
     private lazy var unfocusedTypingMonitor = ComposerUnfocusedTypingMonitor()
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         unfocusedTypingMonitor.synchronize(
             with: self,
-            enabled: capturesUnfocusedTyping,
+            enabled: true,
             onUnfocusedReturn: { [weak self] event in
                 self?.handleReturn(event) ?? false
             }
@@ -1457,7 +1438,7 @@ final class ApplicationCommandNSTextView: NSTextView {
 
     private func handleReturn(_ event: NSEvent) -> Bool {
         let action = ComposerReturnAction.decide(
-            sendWithReturn: sendWithReturn,
+            sendWithReturn: true,
             shift: event.modifierFlags.contains(.shift),
             command: event.modifierFlags.contains(.command),
             hasMarkedText: hasMarkedText()

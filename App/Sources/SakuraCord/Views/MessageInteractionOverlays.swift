@@ -693,12 +693,12 @@ private struct InlineMessageEditor: View {
                 text: text,
                 placeholder: "Edit message",
                 sendWithReturn: MessageEditInputPolicy.sendsWithReturn,
-                chatSettings: model.chatSettings,
+                generalInputSettings: model.generalInputSettings,
                 onTextChange: { text = $0 },
                 onSubmit: composerActions.onSubmit,
                 onEscape: composerActions.onEscape,
                 onAutocompleteCommand: handleAutocomplete,
-                capturesUnfocusedTyping: model.chatSettings.focusesComposerOnTyping,
+                capturesUnfocusedTyping: true,
                 selection: $selection,
                 isFocused: $isFocused
             )

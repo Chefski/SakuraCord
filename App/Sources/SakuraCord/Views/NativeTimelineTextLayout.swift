@@ -64,7 +64,6 @@ enum NativeTimelineTextPresentation {
         guard !message.flags.contains(.isComponentsV2) else {
             return empty
         }
-        let chatSettings = model?.chatSettings ?? .defaults
         let systemActorColor = model?.accessibilitySettings.roleColorDisplay == .inNames ? model?.authorPresentation(for: message)
             .roleColorHex.flatMap { value -> NSColor? in
                 guard value != 0 else { return nil }
@@ -80,13 +79,6 @@ enum NativeTimelineTextPresentation {
                 for: message,
                 currentUserID: model?.snapshot?.currentUser.id,
                 systemActorColor: systemActorColor
-            )
-        } else if !chatSettings.showsAutomaticLinkPreviews
-            || !chatSettings.expandsEmbedsByDefault
-        {
-            NativeTimelineTextPlan.make(
-                for: message,
-                showsAutomaticLinkPreviews: false
             )
         } else {
             row.textPlan

@@ -80,7 +80,6 @@ Every path below uses `https://sakuracord.app/settings/` as its prefix.
 | General | `general` |
 | Appearance | `appearance` |
 | Theme | `theme` |
-| Chat | `chat` |
 | Notifications | `notifications` |
 | Voice & Video | `voice-video` |
 | Accessibility | `accessibility` |
@@ -102,7 +101,7 @@ confirmation from a replaced account cannot send. Failed uploads use the normal
 outbox retry/discard flow. No destination can be supplied through the URL.
 
 The existing `update` action and `themes/<token>` shared-theme links remain
-supported. Card rendering follows the automatic-link-preview preference.
+supported.
 
 ## Local credential mode
 

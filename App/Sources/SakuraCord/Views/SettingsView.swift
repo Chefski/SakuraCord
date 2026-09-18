@@ -240,8 +240,6 @@ private struct SettingsDetailRouter: View {
             AppearanceSettingsPage(model: model, state: state)
         case .interface:
             InterfaceSettingsPage(model: model, state: state)
-        case .chat:
-            ChatSettingsPage(model: model, state: state)
         case .notifications:
             NotificationsSettingsPage(model: model, state: state)
         case .voiceVideo:

@@ -198,6 +198,7 @@ import Testing
         .rememberMemberListVisibility,
         .confirmQuitActiveWork,
         .confirmDiscardComposer,
+        .spellCheck, .automaticCorrection, .smartQuotes, .smartDashes, .emojiSkinTone,
     ]
     let controls = SettingsCatalog.foundation.controls.filter {
         $0.destination.page == .general
@@ -207,6 +208,8 @@ import Testing
     #expect(controls.allSatisfy { $0.scope == .appWideLocal })
 
     let search = SettingsViewState()
+    search.searchText = "autocorrect"
+    #expect(search.searchResults.contains { $0.id == .automaticCorrection && $0.destination.page == .general })
     search.searchText = "login item"
     #expect(search.searchResults.contains { $0.id == .launchAtLogin })
     search.searchText = "discard unsent attachments"
@@ -260,4 +263,31 @@ private enum GeneralSettingsTestError: LocalizedError {
     case denied
 
     var errorDescription: String? { "Login item change denied" }
+}
+
+@MainActor
+@Test func `General input preferences preserve existing values and reset independently of Privacy`() {
+    let defaults = InMemoryPreferences()
+    defaults.set(true, forKey: "settings.chat.spellCheck")
+    defaults.set("dark", forKey: "emojiSkinTone")
+    defaults.set(false, forKey: "settings.chat.typingIndicators")
+    let preferences = SettingsPreferenceStore(defaults: defaults)
+    let store = GeneralInputSettingsStore(preferences: preferences)
+    let privacyStore = PrivacySafetySettingsStore(preferences: preferences)
+
+    var value = store.load()
+    #expect(value.checksSpelling)
+    #expect(value.emojiSkinTone == .dark)
+    #expect(!privacyStore.load().sendsTypingIndicators)
+    value.usesSmartQuotes = true
+    store.save(value)
+    #expect(store.load() == value)
+    let export = preferences.export(scope: .appWide, page: .general)
+    #expect(export.values[SettingsControlID.spellCheck.rawValue] == .bool(true))
+    #expect(export.values[SettingsControlID.emojiSkinTone.rawValue] == .string("dark"))
+    #expect(export.values[SettingsControlID.privacyTypingIndicators.rawValue] == nil)
+
+    preferences.reset(scope: .appWide, page: .general)
+    #expect(store.load() == .defaults)
+    #expect(!privacyStore.load().sendsTypingIndicators)
 }

@@ -280,7 +280,7 @@ struct ComposerTextView: NSViewRepresentable {
     let text: String
     let placeholder: String
     let sendWithReturn: Bool
-    var chatSettings: ChatSettingsSnapshot = .defaults
+    var generalInputSettings: GeneralInputSettingsSnapshot = .defaults
     var mentionPresentations: [String: MentionPresentation] = [:]
     let onTextChange: (String) -> Void
     let onSubmit: () -> Void
@@ -366,7 +366,7 @@ struct ComposerTextView: NSViewRepresentable {
         textView.onDropTargetChanged = onDropTargetChanged
         textView.onDropAttachments = onDropAttachments
         textView.capturesUnfocusedTyping = capturesUnfocusedTyping
-        ComposerTextCheckingConfiguration.apply(chatSettings, to: textView)
+        ComposerTextCheckingConfiguration.apply(generalInputSettings, to: textView)
 
         let scrollView = NSScrollView()
         scrollView.documentView = textView
@@ -405,7 +405,7 @@ struct ComposerTextView: NSViewRepresentable {
         textView.onDropTargetChanged = onDropTargetChanged
         textView.onDropAttachments = onDropAttachments
         textView.capturesUnfocusedTyping = capturesUnfocusedTyping
-        ComposerTextCheckingConfiguration.apply(chatSettings, to: textView)
+        ComposerTextCheckingConfiguration.apply(generalInputSettings, to: textView)
         textView.setAccessibilityLabel(placeholder)
 
         if ComposerEmojiAttributedText.serialize(textView.attributedString()) != text

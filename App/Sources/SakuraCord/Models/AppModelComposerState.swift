@@ -181,7 +181,7 @@ extension AppModel {
             } else {
                 nil
             }
-        guard chatSettings.sendsTypingIndicators,
+        guard privacySafetySettings.sendsTypingIndicators,
               !value.isEmpty,
               connectionState == .ready,
               let destination,
@@ -218,7 +218,7 @@ extension AppModel {
             && !draft.isEmpty
         let isActiveThreadDraft = openThread?.id == channelID
             && !threadDraft.isEmpty
-        guard chatSettings.sendsTypingIndicators,
+        guard privacySafetySettings.sendsTypingIndicators,
               generation == localTypingGeneration,
               localTypingChannelID == channelID,
               isActiveChannelDraft || isActiveThreadDraft,

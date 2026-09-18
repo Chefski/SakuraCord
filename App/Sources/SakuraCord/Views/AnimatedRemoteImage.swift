@@ -165,7 +165,6 @@ struct AnimatedRemoteImage: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityPlayAnimatedImages) private var playsAnimatedImages
-    @AppStorage("reduceAnimatedMedia") private var reduceAnimatedMedia = false
     @State private var decodedImage: DecodedAnimatedImage?
     @State private var cachedPoster: CGImage?
     @State private var displayedLoadID: AnimatedRemoteImageRequestIdentity?
@@ -305,7 +304,7 @@ struct AnimatedRemoteImage: View {
     }
 
     private var accessibilityReducesAnimation: Bool {
-        reduceMotion || !playsAnimatedImages || reduceAnimatedMedia
+        reduceMotion || !playsAnimatedImages
     }
 }
 
@@ -1234,8 +1233,7 @@ final class AnimatedImageCanvas: NSView {
             isVisible: !isHiddenOrHasHiddenAncestor,
             isWindowVisible: window?.occlusionState.contains(.visible)
                 ?? !hasBeenAttachedToWindow,
-            reduceMotion: !preference.animates,
-            reduceAnimatedMedia: false
+            reduceMotion: !preference.animates
         ) && !isPlaybackSuppressed
         guard force || displayedPlaybackEnabled != playbackEnabled else { return }
         displayedPlaybackEnabled = playbackEnabled
@@ -1394,12 +1392,10 @@ nonisolated enum AnimatedMediaPlaybackPolicy {
     static func shouldPlay(
         isVisible: Bool,
         isWindowVisible: Bool = true,
-        reduceMotion: Bool,
-        reduceAnimatedMedia: Bool
+        reduceMotion: Bool
     ) -> Bool {
         isVisible
             && isWindowVisible
             && !reduceMotion
-            && !reduceAnimatedMedia
     }
 }

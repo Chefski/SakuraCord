@@ -12,7 +12,6 @@ struct InterfaceSettingsPage: View {
                 value: $appearanceValue,
                 interface: value,
                 accessibility: model.accessibilitySettings,
-                chat: model.chatSettings,
                 reset: resetMessageAppearance,
                 state: state
             )
@@ -42,7 +41,6 @@ private struct InterfaceMessagesSection: View {
     @Binding var value: AppearanceSettingsSnapshot
     let interface: InterfaceSettingsSnapshot
     let accessibility: AccessibilitySettingsSnapshot
-    let chat: ChatSettingsSnapshot
     let reset: () -> Void
     let state: SettingsViewState
 
@@ -89,7 +87,7 @@ private struct InterfaceMessagesSection: View {
 
             MessageAppearancePreview(
                 appearance: value, interface: interface,
-                accessibility: accessibility, chat: chat
+                accessibility: accessibility
             )
 
             Button("Reset to Defaults", action: reset)
