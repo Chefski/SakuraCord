@@ -31,7 +31,8 @@ struct VoiceVideoSettingsPage: View {
             VoicePermissionsSettingsSection(
                 permissions: tests.permissions,
                 state: state,
-                openSystemSettings: openPrivacySettings
+                openMicrophoneSettings: { openPrivacySettings("Privacy_Microphone") },
+                openCameraSettings: { openPrivacySettings("Privacy_Camera") }
             )
             Section {
                 Button("Reset All…", role: .destructive) {
@@ -95,8 +96,8 @@ struct VoiceVideoSettingsPage: View {
         Task { await model.refreshMediaDevices() }
     }
 
-    private func openPrivacySettings() {
-        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security"),
+    private func openPrivacySettings(_ pane: String) {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)"),
               NSWorkspace.shared.open(url)
         else {
             operationMessage = "System Settings could not be opened. Open Privacy & Security in System Settings manually."
@@ -283,25 +284,23 @@ private struct ScreenShareDefaultsSettingsSection: View {
 private struct VoicePermissionsSettingsSection: View {
     let permissions: VoiceMediaPermissionSnapshot
     let state: SettingsViewState
-    let openSystemSettings: () -> Void
+    let openMicrophoneSettings: () -> Void
+    let openCameraSettings: () -> Void
 
     var body: some View {
         Section {
-            LabeledContent("Microphone") {
-                Text(permissionTitle(permissions.microphone))
-                    .foregroundStyle(.secondary)
+            SettingsPermissionRow(title: "Microphone", status: permissionTitle(permissions.microphone)) {
+                Button("Open System Settings…", action: openMicrophoneSettings)
+                    .accessibilityLabel("Open Microphone Settings")
             }
             .settingsControlAnchor(.voiceMicrophonePermission, state: state)
 
-            LabeledContent("Camera") {
-                Text(permissionTitle(permissions.camera))
-                    .foregroundStyle(.secondary)
+            SettingsPermissionRow(title: "Camera", status: permissionTitle(permissions.camera)) {
+                Button("Open System Settings…", action: openCameraSettings)
+                    .accessibilityLabel("Open Camera Settings")
             }
             .settingsControlAnchor(.voiceCameraPermission, state: state)
 
-            LabeledContent("Privacy & Security") {
-                Button("Open System Settings…", action: openSystemSettings)
-            }
         } header: {
             Text("Permissions", bundle: #bundle)
         }

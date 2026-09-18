@@ -427,7 +427,17 @@ extension AppModel {
             locallyStartedOutgoingChannelIDs:
                 locallyStartedOutgoingPrivateCallRings
         )
-        soundPlayer.setLooping(.callRinging, active: state.ringsIncoming)
+        let shouldRingIncoming = state.ringsIncoming
+            && (applicationIsActive || !notificationPreferences.isEnabled)
+            && notificationPreferences.playsSound
+            && privateCallsByChannel.values.contains { call in
+                snapshot.map { call.isRinging($0.currentUser.id) } == true
+                    && notificationPreferences.allows(
+                        .incomingCall,
+                        isCurrentConversation: readState.isActivelyPresentedAtNewest(call.channelID)
+                    )
+            }
+        soundPlayer.setLooping(.callRinging, active: shouldRingIncoming)
         soundPlayer.setLooping(.callCalling, active: state.ringsOutgoing)
     }
 

@@ -453,12 +453,6 @@ nonisolated struct SettingsPreferenceRegistry: Sendable {
             defaultValue: .bool(true)
         ),
         SettingsPreferenceRegistration(
-            id: .notificationOnlyInBackground,
-            page: .notifications,
-            storage: .appWide(key: "notifications.onlyInBackground"),
-            defaultValue: .bool(false)
-        ),
-        SettingsPreferenceRegistration(
             id: .notificationSuppressCurrent,
             page: .notifications,
             storage: .appWide(key: "notifications.suppressCurrentConversation"),
@@ -468,66 +462,12 @@ nonisolated struct SettingsPreferenceRegistry: Sendable {
             id: .notificationGroupBursts,
             page: .notifications,
             storage: .appWide(key: "notifications.groupByConversation"),
-            defaultValue: .bool(false)
+            defaultValue: .bool(true)
         ),
         SettingsPreferenceRegistration(
             id: .notificationClearWhenRead,
             page: .notifications,
             storage: .appWide(key: "notifications.clearWhenRead"),
-            defaultValue: .bool(true)
-        ),
-        SettingsPreferenceRegistration(
-            id: .notificationCallsBypassSuppression,
-            page: .notifications,
-            storage: .appWide(key: "notifications.callsBypassMessageSuppression"),
-            defaultValue: .bool(true)
-        ),
-        SettingsPreferenceRegistration(
-            id: .notificationQuietHours,
-            page: .notifications,
-            storage: .appWide(key: "notifications.quietHours"),
-            defaultValue: .bool(false)
-        ),
-        SettingsPreferenceRegistration(
-            id: .notificationQuietDays,
-            page: .notifications,
-            storage: .appWide(key: "notifications.quietDays"),
-            defaultValue: .strings((1 ... 7).map(String.init))
-        ),
-        SettingsPreferenceRegistration(
-            id: .notificationQuietStart,
-            page: .notifications,
-            storage: .appWide(key: "notifications.quietStart"),
-            defaultValue: .integer(22 * 60)
-        ),
-        SettingsPreferenceRegistration(
-            id: .notificationQuietEnd,
-            page: .notifications,
-            storage: .appWide(key: "notifications.quietEnd"),
-            defaultValue: .integer(8 * 60)
-        ),
-        SettingsPreferenceRegistration(
-            id: .notificationWeekendQuietStart,
-            page: .notifications,
-            storage: .appWide(key: "notifications.weekendQuietStart"),
-            defaultValue: .integer(22 * 60)
-        ),
-        SettingsPreferenceRegistration(
-            id: .notificationWeekendQuietEnd,
-            page: .notifications,
-            storage: .appWide(key: "notifications.weekendQuietEnd"),
-            defaultValue: .integer(8 * 60)
-        ),
-        SettingsPreferenceRegistration(
-            id: .notificationAllowDirectMessages,
-            page: .notifications,
-            storage: .appWide(key: "notifications.allowDirectMessagesDuringQuietHours"),
-            defaultValue: .bool(false)
-        ),
-        SettingsPreferenceRegistration(
-            id: .notificationAllowCalls,
-            page: .notifications,
-            storage: .appWide(key: "notifications.allowCallsDuringQuietHours"),
             defaultValue: .bool(true)
         ),
         SettingsPreferenceRegistration(

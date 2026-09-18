@@ -4447,8 +4447,11 @@ private func hiddenMockChannel(
     let model = AppModel(
         launchMode: .offlineTesting,
         provider: provider,
-        soundPlayer: sounds
+        soundPlayer: sounds,
+        notificationPreferences: NotificationPreferences(defaults: InMemoryPreferences())
     )
+    model.notificationPreferences.isEnabled = false
+    model.notificationPreferences.playsSound = true
     await model.start()
     let currentUserID = try #require(model.snapshot?.currentUser.id)
     let channelID = ChannelID(rawValue: 88_800)

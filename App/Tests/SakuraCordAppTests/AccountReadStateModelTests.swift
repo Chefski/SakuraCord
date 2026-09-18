@@ -2278,7 +2278,7 @@ struct AccountReadStateModelTests {
 }
 
 @MainActor
-@Test func `notification privacy quiet hours and deep links are deterministic`() throws {
+@Test func `notification privacy and deep links are deterministic`() throws {
     let message = Message(
         id: MessageID(rawValue: 9),
         channelID: ChannelID(rawValue: 8),
@@ -2306,16 +2306,6 @@ struct AccountReadStateModelTests {
             message: message, channel: channel, guild: nil, style: .hidden
         ).title == "SakuraCord"
     )
-
-    let defaults = InMemoryPreferences()
-    let preferences = NotificationPreferences(defaults: defaults)
-    preferences.quietHoursEnabled = true
-    preferences.quietStartHour = 22
-    preferences.quietEndHour = 8
-    var calendar = Calendar(identifier: .gregorian)
-    calendar.timeZone = TimeZone(secondsFromGMT: 0)!
-    #expect(preferences.isQuiet(at: date(hour: 23, calendar: calendar), calendar: calendar))
-    #expect(!preferences.isQuiet(at: date(hour: 12, calendar: calendar), calendar: calendar))
 
     let link = NotificationDeepLink(
         accountID: "account",
@@ -2803,8 +2793,4 @@ private func eventually(_ condition: @escaping @MainActor () -> Bool) async -> B
         try? await Task.sleep(for: .milliseconds(1))
     }
     return condition()
-}
-
-private func date(hour: Int, calendar: Calendar) -> Date {
-    calendar.date(from: DateComponents(year: 2026, month: 7, day: 25, hour: hour))!
 }

@@ -2,6 +2,7 @@ import CoreAudio
 import DiscordProtocol
 import Foundation
 import MediaPipeline
+import MessageRendering
 import OSLog
 import SakuraCordModels
 import SakuraCordPersistence
@@ -101,23 +102,58 @@ extension AppModel {
         )
         guard notificationPreferences.allows(
             event,
-            isApplicationActive: mainWindowIsActive,
             isCurrentConversation: readState.isActivelyPresentedAtNewest(message.channelID)
         ) else { return }
+        if applicationIsActive || !notificationPreferences.isEnabled {
+            if notificationPreferences.playsSound { soundPlayer.play(.message) }
+            return
+        }
         let guildID = message.guildID ?? channel?.guildID
         let guild = guildID.flatMap { serverRailGuildsByID[$0] }
         let accountID = readState.accountID ?? "offline"
         let account = accountSession()
         startAccountChildTask(account: account) { model, account in
             guard model.isCurrentAccountSession(account), !Task.isCancelled else { return }
+            let presentation = NotificationContentPresentation.make(
+                message: message,
+                channel: channel,
+                guild: guild,
+                style: model.notificationPreferences.previewStyle,
+                mentionLabel: { model.notificationMentionLabel($0, message: message) }
+            )
             await model.notificationService.deliverMessage(
                 message: message,
                 channel: channel,
                 guild: guild,
                 accountID: accountID,
-                event: event,
+                presentation: presentation,
                 preferences: model.notificationPreferences
             )
+        }
+    }
+
+    private func notificationMentionLabel(_ mention: RenderedMention, message: Message) -> String {
+        let guildID = message.guildID
+            ?? snapshot?.channels.first { $0.id == message.channelID }?.guildID
+        switch mention.kind {
+        case .user:
+            let userID = UserID(mention.id)
+            let member = userID.flatMap { id in guildID.flatMap { membersByGuildID[$0]?[id] } }
+            let user = message.mentionedUsers.first { $0.id == userID }
+                ?? userID.flatMap { knownMentionMembers[$0]?.user }
+                ?? (snapshot?.currentUser.id == userID ? snapshot?.currentUser : nil)
+            return "@\(member?.user.displayName ?? user?.displayName ?? "unknown-user")"
+        case .role:
+            let roles = guildID.flatMap { guildRolesByGuildID[$0] }
+                ?? (guildID == selectedGuildID ? guildRoles : [])
+            return "@\(roles.first { String($0.id.rawValue) == mention.id }?.name ?? "unknown-role")"
+        case .channel, .channelLink:
+            let id = ChannelID(mention.id)
+            let channel = snapshot?.channels.first { $0.id == id }
+                ?? visibleChannels.first { $0.id == id }
+            return "#\(channel?.name ?? "unknown-channel")"
+        case .message:
+            return "Message link"
         }
     }
 
@@ -142,9 +178,9 @@ extension AppModel {
         else { return }
         guard notificationPreferences.allows(
             .incomingCall,
-            isApplicationActive: mainWindowIsActive,
-            isCurrentConversation: selectedChannelID == call.channelID
+            isCurrentConversation: readState.isActivelyPresentedAtNewest(call.channelID)
         ) else { return }
+        guard notificationPreferences.isEnabled, !applicationIsActive else { return }
         let channel = snapshot?.channels.first { $0.id == call.channelID }
             ?? visibleChannels.first { $0.id == call.channelID }
         let callerID = call.ongoingRings.first { $0.recipientID == currentUserID }?.senderID

@@ -70,10 +70,9 @@ struct SakuraCordApp: App {
             : nil
         performanceMockProvider = mockProvider
         let provider: (any ChatProvider)? = mockProvider
-        let notificationService: any NativeNotificationService =
-            configuration.mode == .offlineTesting
-            ? NoopNativeNotificationService()
-            : MacNativeNotificationService()
+        let notificationService = MacNativeNotificationService(
+            deliversNotifications: configuration.mode != .offlineTesting
+        )
         let soundPlayer: any AppSoundPlaying =
             configuration.mode == .offlineTesting
             ? NoopAppSoundPlayer()
@@ -334,7 +333,8 @@ extension SakuraCordNotificationCenterDelegate: UNUserNotificationCenterDelegate
         withCompletionHandler completionHandler: @escaping @Sendable (Int) -> Void
     ) {
         // C++ interoperability currently imports this NS_OPTIONS callback as Int.
-        let options: UNNotificationPresentationOptions = [.banner, .list, .sound]
+        // A background notification may finish preparing after the app becomes active.
+        let options: UNNotificationPresentationOptions = [.sound]
         completionHandler(Int(options.rawValue))
     }
 

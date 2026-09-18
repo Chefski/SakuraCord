@@ -4,7 +4,7 @@ nonisolated extension SettingsCatalog {
     static let notificationsPage = page(
         .notifications, group: .preferences, title: "Notifications", image: "bell",
         help: "Narrow local macOS notification delivery while preserving Discord server and channel settings.",
-        keywords: ["alerts", "sound", "badge", "quiet hours", "permission", "preview"]
+        keywords: ["alerts", "sound", "badge", "permission", "preview"]
     )
 
     static let notificationsControls: [SettingsControlMetadata] = [
@@ -12,7 +12,7 @@ nonisolated extension SettingsCatalog {
             .notificationPermission,
             page: .notifications,
             section: .notificationDelivery,
-            label: "System permission",
+            label: "macOS permission",
             help: "Show or request the current macOS notification authorization.",
             keywords: ["allow", "denied", "System Settings"],
             owner: .macOS,
@@ -24,7 +24,7 @@ nonisolated extension SettingsCatalog {
             .notificationEnabled,
             page: .notifications,
             section: .notificationDelivery,
-            label: "Enable native notifications",
+            label: "Desktop notifications",
             help: "Allow eligible Discord events to appear as local macOS notifications.",
             keywords: ["alerts", "master"],
             scope: .appWideLocal
@@ -42,8 +42,8 @@ nonisolated extension SettingsCatalog {
             .notificationSound,
             page: .notifications,
             section: .notificationDelivery,
-            label: "Play sound",
-            help: "Use Notification Center's standard sound so macOS sound and Focus policy remain authoritative.",
+            label: "Notification sound",
+            help: "Play the Discord message sound with desktop alerts, or through SakuraCord when desktop notifications are off.",
             keywords: ["audio", "alert", "Focus"],
             scope: .appWideLocal
         ),
@@ -59,23 +59,23 @@ nonisolated extension SettingsCatalog {
 
         control(
             .notificationDirectMessages, page: .notifications, section: .notificationEvents,
-            label: "Direct messages", help: "Allow eligible one-to-one direct messages.",
+            label: "Direct messages", help: "Allow one-to-one direct messages, including mentions and replies.",
             keywords: ["DM", "private message"], scope: .appWideLocal
         ),
         control(
             .notificationGroupDirectMessages, page: .notifications,
-            section: .notificationEvents, label: "Group direct messages",
-            help: "Allow eligible group-DM messages.",
+            section: .notificationEvents, label: "Group messages",
+            help: "Allow group direct messages, including mentions and replies.",
             keywords: ["group DM", "private group"], scope: .appWideLocal
         ),
         control(
             .notificationMentions, page: .notifications, section: .notificationEvents,
-            label: "Mentions", help: "Allow eligible direct, role, and everyone mentions.",
+            label: "Server mentions", help: "Allow eligible direct, role, and everyone mentions in servers.",
             keywords: ["@mention", "role", "everyone"], scope: .appWideLocal
         ),
         control(
             .notificationReplies, page: .notifications, section: .notificationEvents,
-            label: "Replies", help: "Allow eligible replies to one of your messages.",
+            label: "Server replies", help: "Allow eligible replies to your messages in servers.",
             keywords: ["reply", "response"], scope: .appWideLocal
         ),
         control(
@@ -85,24 +85,18 @@ nonisolated extension SettingsCatalog {
         ),
         control(
             .notificationServerActivity, page: .notifications, section: .notificationEvents,
-            label: "Server activity", help: "Allow ordinary server messages already eligible under Discord's notification settings.",
+            label: "Server messages", help: "Allow ordinary server messages already eligible under Discord's notification settings.",
             keywords: ["guild", "all messages", "server"], scope: .appWideLocal
         ),
         control(
-            .notificationOnlyInBackground, page: .notifications,
-            section: .notificationEvents, label: "Notify only in the background",
-            help: "Suppress ordinary alerts while SakuraCord is active.",
-            keywords: ["foreground", "active app", "background"], scope: .appWideLocal
-        ),
-        control(
             .notificationSuppressCurrent, page: .notifications,
-            section: .notificationEvents, label: "Suppress the current conversation",
+            section: .notificationEvents, label: "Skip the conversation I’m reading",
             help: "Do not alert for a conversation already presented at its newest message.",
             keywords: ["open channel", "visible", "current chat"], scope: .appWideLocal
         ),
         control(
             .notificationGroupBursts, page: .notifications,
-            section: .notificationEvents, label: "Group bursts by conversation",
+            section: .notificationEvents, label: "Group notifications by conversation",
             help: "Assign a native Notification Center thread to each account and conversation.",
             keywords: ["thread", "stack", "deduplicate", "group"], scope: .appWideLocal
         ),
@@ -112,68 +106,6 @@ nonisolated extension SettingsCatalog {
             help: "Remove delivered and pending message notifications when their conversation is acknowledged.",
             keywords: ["dismiss", "mark read", "remove delivered"], scope: .appWideLocal
         ),
-        control(
-            .notificationCallsBypassSuppression, page: .notifications,
-            section: .notificationEvents, label: "Let calls bypass message suppression",
-            help: "Allow enabled calls through background-only and current-conversation suppression. Quiet hours and macOS Focus still apply.",
-            keywords: ["call exception", "urgent", "foreground"], scope: .appWideLocal
-        ),
-        control(
-            .notificationQuietHours,
-            page: .notifications,
-            section: .notificationQuietHours,
-            label: "Quiet hours",
-            help: "Suppress ordinary local notifications during a configured time range.",
-            keywords: ["schedule", "do not disturb"],
-            scope: .appWideLocal
-        ),
-        control(
-            .notificationQuietDays, page: .notifications,
-            section: .notificationQuietHours, label: "Enabled days",
-            help: "Choose the local calendar days on which quiet hours begin.",
-            keywords: ["Monday", "weekdays", "weekend", "calendar"], scope: .appWideLocal
-        ),
-        control(
-            .notificationQuietStart,
-            page: .notifications,
-            section: .notificationQuietHours,
-            label: "Weekday quiet start",
-            help: "Choose when Monday-through-Friday quiet hours begin.",
-            keywords: ["schedule", "start time", "weekday"], scope: .appWideLocal
-        ),
-        control(
-            .notificationQuietEnd,
-            page: .notifications,
-            section: .notificationQuietHours,
-            label: "Weekday quiet end",
-            help: "Choose when Monday-through-Friday quiet hours end.",
-            keywords: ["schedule", "end time", "weekday"], scope: .appWideLocal
-        ),
-        control(
-            .notificationWeekendQuietStart, page: .notifications,
-            section: .notificationQuietHours, label: "Weekend quiet start",
-            help: "Choose when Saturday-and-Sunday quiet hours begin.",
-            keywords: ["schedule", "start time", "weekend"], scope: .appWideLocal
-        ),
-        control(
-            .notificationWeekendQuietEnd, page: .notifications,
-            section: .notificationQuietHours, label: "Weekend quiet end",
-            help: "Choose when Saturday-and-Sunday quiet hours end.",
-            keywords: ["schedule", "end time", "weekend"], scope: .appWideLocal
-        ),
-        control(
-            .notificationAllowDirectMessages, page: .notifications,
-            section: .notificationQuietHours, label: "Allow direct messages",
-            help: "Let enabled direct-message and group-DM events through quiet hours.",
-            keywords: ["quiet exception", "DM"], scope: .appWideLocal
-        ),
-        control(
-            .notificationAllowCalls, page: .notifications,
-            section: .notificationQuietHours, label: "Allow incoming calls",
-            help: "Let enabled incoming-call alerts through quiet hours.",
-            keywords: ["quiet exception", "ring"], scope: .appWideLocal
-        ),
-
         control(
             .notificationReset, page: .notifications,
             section: .notificationLocalData, label: "Reset Notification Settings",

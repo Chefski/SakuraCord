@@ -344,8 +344,7 @@ enum DiagnosticsStatusBuilder {
                 detail: "Checking macOS authorization"
             )
         }
-        let delivery = preferences.notifiesOnlyInBackground
-            ? "Background delivery enabled" : "Foreground and background delivery enabled"
+        let delivery = "Desktop notifications while SakuraCord is in the background"
         return switch authorization {
         case .authorized:
             DiagnosticsStatusItem(

@@ -83,6 +83,7 @@ extension AppModel {
 
     func reportApplicationActive(_ isActive: Bool) {
         applicationIsActive = isActive
+        reconcilePrivateCallSounds()
         let session = accountSession()
         let precedingUpdate = clientAppStateUpdateTask
         clientAppStateUpdateTask = Task {

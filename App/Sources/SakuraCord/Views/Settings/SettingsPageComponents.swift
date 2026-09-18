@@ -12,6 +12,23 @@ struct SettingsForm<Content: View>: View {
     }
 }
 
+struct SettingsPermissionRow<Action: View>: View {
+    let title: LocalizedStringKey
+    let status: String
+    @ViewBuilder let action: Action
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(title, bundle: #bundle)
+            Spacer()
+            Text(status)
+                .foregroundStyle(.secondary)
+            action
+        }
+        .accessibilityElement(children: .contain)
+    }
+}
+
 struct SettingsPageForm<Content: View>: View {
     let page: SettingsPageID
     let state: SettingsViewState
@@ -61,7 +78,7 @@ private extension SettingsPageID {
     var showsConstructionNotice: Bool {
         switch self {
         case .profiles, .interface, .appearance, .privacySafety, .storageDownloads, .diagnostics,
-             .softwareUpdates, .extensions, .about, .keyboardShortcuts, .accessibility, .voiceVideo:
+             .softwareUpdates, .extensions, .about, .keyboardShortcuts, .accessibility, .voiceVideo, .notifications:
             false
         default:
             true

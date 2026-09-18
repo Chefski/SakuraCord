@@ -117,8 +117,8 @@ extension AppModel {
         )
     }
 
-    func requestNotificationPermission() async -> Bool {
-        (try? await notificationService.requestAuthorization()) ?? false
+    func requestNotificationPermission() async throws -> Bool {
+        try await notificationService.requestAuthorization()
     }
 
     func requestNotificationPermissionIfNeeded() async {

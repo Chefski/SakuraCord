@@ -159,6 +159,22 @@ runs alongside any required validation, and publication waits for both. See
 [release validation and caches](RELEASING.md#validation-parallel-packaging-and-caches)
 for the exact commit reuse rules and cache boundaries.
 
+### Verifying native notification audio
+
+The packager converts the bundled Discord message clip to AIFF in the main
+app's Resources directory. The native notification uses its basename,
+`message1`, through `UNNotificationSound`; it does not play a second app sound.
+
+When adding or changing sound resources during development, Notification Center
+can retain a failed resource lookup across app rebuilds. After confirming the
+packaged file resolves with `Bundle.path(forSoundResource:)`, restarting
+Notification Center (`killall NotificationCenter`) clears its in-memory lookup
+cache without resetting notification preferences. Use this only for targeted
+development verification, not as app runtime behavior or an automatic build step.
+On macOS 27, the log `Playing notification sound { nam: ... }` only records the
+request; verify the subsequent `Playing sound message1.aiff` event and audible
+output before claiming custom playback works.
+
 ### Persistent local code-signing identity
 
 The build script uses an installed Apple Development identity, or the SakuraCord

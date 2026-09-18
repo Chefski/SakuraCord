@@ -150,6 +150,10 @@ rm -rf "$APP_BUNDLE"
 mkdir -p "$MACOS" "$FRAMEWORKS" "$RESOURCES"
 cp "$BIN_DIR/$PRODUCT_NAME" "$MACOS/$APP_NAME"
 chmod +x "$MACOS/$APP_NAME"
+# macOS named-sound lookup finds AIFF resources but skips CAF resources.
+/usr/bin/afconvert -f AIFF -d BEI16 \
+  "$PACKAGE_DIR/Sources/SakuraCord/Resources/Sounds/message1.mp3" \
+  "$RESOURCES/message1.aiff"
 install_name_tool -add_rpath "@executable_path/../Frameworks" "$MACOS/$APP_NAME"
 for resource_bundle in "$BIN_DIR"/*.bundle; do
   [[ -d "$resource_bundle" ]] || continue

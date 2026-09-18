@@ -8,17 +8,11 @@ import UserNotifications
 @Test func `Notification preferences migrate historical values export and reset`() {
     let defaults = InMemoryPreferences()
     defaults.set(false, forKey: "notifications.dockBadge")
-    defaults.set(22, forKey: "notifications.quietStart")
-    defaults.set(8, forKey: "notifications.quietEnd")
 
     let value = NotificationPreferences(defaults: defaults)
     #expect(value.dockBadgeStyle == .off)
-    #expect(value.weekdayQuietStartMinutes == 22 * 60)
-    #expect(value.weekdayQuietEndMinutes == 8 * 60)
-
     value.notifiesMentions = false
     value.groupsByConversation = true
-    value.quietDays = [2, 3, 4, 5, 6]
     let store = SettingsPreferenceStore(defaults: defaults)
     let export = store.export(scope: .appWide, page: .notifications)
     #expect(
@@ -33,8 +27,7 @@ import UserNotifications
     value.reload()
     #expect(value.dockBadgeStyle == .mentions)
     #expect(value.notifiesMentions)
-    #expect(!value.groupsByConversation)
-    #expect(value.quietDays == Set(1 ... 7))
+    #expect(value.groupsByConversation)
 }
 
 @Test func `Message notification events classify replies mentions and conversation kinds`() {
@@ -115,108 +108,54 @@ import UserNotifications
         isMention: false,
         currentUserID: currentUser.id
     ).type == .serverActivity)
+
+    var directReply = reply
+    directReply.channelID = directChannel.id
+    #expect(NotificationEventContext.message(
+        directReply,
+        channel: directChannel,
+        isMention: true,
+        currentUserID: currentUser.id
+    ).type == .directMessage)
+    directReply.channelID = groupChannel.id
+    #expect(NotificationEventContext.message(
+        directReply,
+        channel: groupChannel,
+        isMention: true,
+        currentUserID: currentUser.id
+    ).type == .groupDirectMessage)
 }
 
 @MainActor
 @Test func `Notification policy narrows events without overriding Focus`() throws {
     let preferences = NotificationPreferences(defaults: InMemoryPreferences())
     let server = NotificationEventContext(
-        type: .serverActivity,
-        isDirectConversation: false
+        type: .serverActivity
     )
     #expect(!preferences.allows(
         server,
-        isApplicationActive: true,
         isCurrentConversation: true
     ))
 
     preferences.suppressesCurrentConversation = false
-    preferences.notifiesOnlyInBackground = true
-    #expect(!preferences.allows(
-        server,
-        isApplicationActive: true,
-        isCurrentConversation: false
-    ))
     #expect(preferences.allows(
         server,
-        isApplicationActive: false,
         isCurrentConversation: false
     ))
 
     preferences.notifiesServerActivity = false
     #expect(!preferences.allows(
         server,
-        isApplicationActive: false,
         isCurrentConversation: false
     ))
+    preferences.suppressesCurrentConversation = true
     #expect(preferences.allows(
         .incomingCall,
-        isApplicationActive: true,
         isCurrentConversation: true
     ))
     #expect(NotificationFocusPolicy.interruptionLevel == .active)
     #expect(NotificationFocusPolicy.interruptionLevel != .timeSensitive)
     #expect(NotificationFocusPolicy.interruptionLevel != .critical)
-}
-
-@MainActor
-@Test func `Quiet schedules follow enabled start days overnight ranges and time zones`() throws {
-    let preferences = NotificationPreferences(defaults: InMemoryPreferences())
-    preferences.quietHoursEnabled = true
-    preferences.quietDays = [2]
-    preferences.weekdayQuietStartMinutes = 22 * 60
-    preferences.weekdayQuietEndMinutes = 8 * 60
-
-    var utc = Calendar(identifier: .gregorian)
-    utc.timeZone = try #require(TimeZone(secondsFromGMT: 0))
-    #expect(preferences.isQuiet(
-        at: try localDate(2026, 8, 24, 23, 30, calendar: utc),
-        calendar: utc
-    ))
-    #expect(preferences.isQuiet(
-        at: try localDate(2026, 8, 25, 7, 59, calendar: utc),
-        calendar: utc
-    ))
-    #expect(!preferences.isQuiet(
-        at: try localDate(2026, 8, 25, 8, 0, calendar: utc),
-        calendar: utc
-    ))
-
-    preferences.quietDays = [1, 2]
-    preferences.weekendQuietStartMinutes = 22 * 60
-    preferences.weekendQuietEndMinutes = 8 * 60
-    preferences.weekdayQuietStartMinutes = 12 * 60
-    preferences.weekdayQuietEndMinutes = 13 * 60
-    #expect(preferences.isQuiet(
-        at: try localDate(2026, 8, 24, 7, 30, calendar: utc),
-        calendar: utc
-    ))
-
-    preferences.quietDays = [7]
-    preferences.weekendQuietStartMinutes = 20 * 60
-    preferences.weekendQuietEndMinutes = 10 * 60
-    var kyiv = Calendar(identifier: .gregorian)
-    kyiv.timeZone = try #require(TimeZone(identifier: "Europe/Kyiv"))
-    #expect(preferences.isQuiet(
-        at: try localDate(2026, 3, 29, 4, 30, calendar: kyiv),
-        calendar: kyiv
-    ))
-    #expect(!preferences.isQuiet(
-        at: try localDate(2026, 3, 29, 10, 0, calendar: kyiv),
-        calendar: kyiv
-    ))
-
-    preferences.quietDays = [1]
-    preferences.weekendQuietStartMinutes = 12 * 60
-    preferences.weekendQuietEndMinutes = 12 * 60
-    #expect(preferences.isQuiet(
-        at: try localDate(2026, 3, 29, 18, 0, calendar: kyiv),
-        calendar: kyiv
-    ))
-    #expect(!preferences.isQuiet(
-        at: try localDate(2026, 3, 30, 1, 0, calendar: kyiv),
-        calendar: kyiv
-    ))
 }
 
 @Test func `Notification privacy identities grouping and call deep links are deterministic`() {
@@ -270,11 +209,14 @@ import UserNotifications
 }
 
 @MainActor
-@Test func `Incoming call notifications deduplicate and cancel at the ringing boundary`() async throws {
+@Test(arguments: [false, true])
+func `Incoming call notifications deduplicate and cancel at the ringing boundary`(appIsActive: Bool) async throws {
     let service = RecordingNotificationService()
+    let sounds = RecordingAppSoundPlayer()
     let model = AppModel(
         launchMode: .offlineTesting,
         notificationService: service,
+        soundPlayer: sounds,
         notificationPreferences: NotificationPreferences(defaults: InMemoryPreferences())
     )
     await model.start()
@@ -283,6 +225,9 @@ import UserNotifications
         $0.kind == .directMessage && !$0.recipients.isEmpty
     })
     let caller = try #require(channel.recipients.first)
+    model.selectedChannelID = channel.id
+    model.mainWindowIsActive = appIsActive
+    model.applicationIsActive = appIsActive
     var call = PrivateCall(
         channelID: channel.id,
         messageID: MessageID(rawValue: 40),
@@ -291,19 +236,22 @@ import UserNotifications
         ]
     )
 
+    let expectedNotifications = appIsActive ? [] : [channel.id]
     model.consumePrivateCallChanged(&call)
-    #expect(await eventuallyNotification { service.deliveredCallChannelIDs == [channel.id] })
+    #expect(await eventuallyNotification { service.deliveredCallChannelIDs == expectedNotifications })
+    #expect(sounds.looping[.callRinging] == appIsActive)
     model.consumePrivateCallChanged(&call)
     await Task.yield()
-    #expect(service.deliveredCallChannelIDs == [channel.id])
+    #expect(service.deliveredCallChannelIDs == expectedNotifications)
 
     call.ongoingRings = []
     model.consumePrivateCallChanged(&call)
     #expect(await eventuallyNotification { service.cancelledCallChannelIDs == [channel.id] })
+    #expect(sounds.looping[.callRinging] == false)
 }
 
 @MainActor
-@Test func `Read clearing and denied permission remain honest`() async {
+@Test func `Read clearing and denied permission remain honest`() async throws {
     let service = RecordingNotificationService(status: .denied)
     let preferences = NotificationPreferences(defaults: InMemoryPreferences())
     let model = AppModel(
@@ -312,6 +260,11 @@ import UserNotifications
         notificationPreferences: preferences
     )
     #expect(await model.notificationAuthorizationStatus() == .denied)
+    #expect(try await model.requestNotificationPermission() == false)
+    service.requestError = .unavailable
+    await #expect(throws: RecordingNotificationService.AuthorizationError.unavailable) {
+        try await model.requestNotificationPermission()
+    }
 
     let channelID = ChannelID(rawValue: 50)
     preferences.clearsWhenRead = false
@@ -332,14 +285,10 @@ import UserNotifications
         .notificationSound, .notificationDockBadge,
         .notificationDirectMessages, .notificationGroupDirectMessages,
         .notificationMentions, .notificationReplies, .notificationIncomingCalls,
-        .notificationServerActivity, .notificationOnlyInBackground,
+        .notificationServerActivity,
         .notificationSuppressCurrent, .notificationGroupBursts,
-        .notificationClearWhenRead, .notificationCallsBypassSuppression,
-        .notificationQuietHours, .notificationQuietDays, .notificationQuietStart,
-        .notificationQuietEnd, .notificationWeekendQuietStart,
-        .notificationWeekendQuietEnd, .notificationAllowDirectMessages,
-        .notificationAllowCalls,
-         .notificationReset,
+        .notificationClearWhenRead,
+        .notificationReset,
     ]
     let controls = Set(
         SettingsCatalog.foundation.controls
@@ -353,25 +302,85 @@ import UserNotifications
     )
     #expect(preferenceIDs == expected.subtracting([
         .notificationPermission,
-         .notificationReset,
+        .notificationReset,
     ]))
 }
 
-private func localDate(
-    _ year: Int,
-    _ month: Int,
-    _ day: Int,
-    _ hour: Int,
-    _ minute: Int,
-    calendar: Calendar
-) throws -> Date {
-    try #require(calendar.date(from: DateComponents(
-        year: year,
-        month: month,
-        day: day,
-        hour: hour,
-        minute: minute
-    )))
+@MainActor
+@Test(arguments: [false, true])
+func `Desktop and sound delivery are independent and share message filters`(appIsActive: Bool) async throws {
+    for (desktop, sound) in [(false, false), (false, true), (true, false), (true, true)] {
+        let service = RecordingNotificationService()
+        let sounds = RecordingAppSoundPlayer()
+        let preferences = NotificationPreferences(defaults: InMemoryPreferences())
+        preferences.isEnabled = desktop
+        preferences.playsSound = sound
+        preferences.suppressesCurrentConversation = false
+        let model = AppModel(
+            launchMode: .offlineTesting,
+            notificationService: service,
+            soundPlayer: sounds,
+            notificationPreferences: preferences
+        )
+        await model.start()
+        let sender = User(id: UserID(rawValue: 999), username: "sender", displayName: "Sender")
+        let channel = try #require(model.snapshot?.channels.first { $0.kind == .directMessage })
+        let message = Message(
+            id: MessageID(rawValue: 789), channelID: channel.id,
+            author: sender, content: "Hello", timestamp: .now
+        )
+        model.applicationIsActive = appIsActive
+        let deliversDesktop = desktop && !appIsActive
+        model.deliverNativeNotification(for: message)
+        if deliversDesktop {
+            #expect(await eventuallyNotification { service.messageSounds == [sound] })
+            #expect(sounds.played.isEmpty)
+        } else {
+            #expect(service.messageSounds.isEmpty)
+            #expect(sounds.played == (sound ? [.message] : []))
+        }
+        preferences.notifiesDirectMessages = false
+        model.deliverNativeNotification(for: message)
+        await Task.yield()
+        #expect(service.messageSounds.count == (deliversDesktop ? 1 : 0))
+        #expect(sounds.played.count == (!deliversDesktop && sound ? 1 : 0))
+    }
+}
+
+@Test func `Notification previews resolve tokens and protect private image previews`() {
+    let sender = User(id: UserID(rawValue: 1), username: "sender", displayName: "Sender")
+    let mentioned = User(id: UserID(rawValue: 2), username: "friend", displayName: "Friend")
+    let channel = Channel(id: ChannelID(rawValue: 3), guildID: nil, name: "Group", kind: .groupDirectMessage)
+    let image = Attachment(
+        id: "image", filename: "photo.png", url: URL(fileURLWithPath: "/tmp/photo.png"),
+        mediaType: "image/png"
+    )
+    var message = Message(
+        id: MessageID(rawValue: 4), channelID: channel.id, author: sender,
+        content: "Hi <@2> <@&5> <#6> <:wave:7>", timestamp: .now,
+        attachments: [image], mentionedUsers: [mentioned]
+    )
+    let preview = NotificationContentPresentation.make(
+        message: message, channel: channel, guild: nil, style: .full,
+        mentionLabel: { mention in
+            switch mention.kind {
+            case .user: "@Friend"
+            case .role: "@Designers"
+            case .channel: "#general"
+            default: "Link"
+            }
+        }
+    )
+    #expect(preview.subtitle.isEmpty)
+    #expect(preview.body == "Hi @Friend @Designers #general :wave:")
+    #expect(NotificationContentPresentation.make(
+        message: message, channel: channel, guild: nil, style: .senderOnly
+    ).body == "New message")
+    #expect(NotificationMedia.imageAttachment(in: message, style: .full) == image)
+    #expect(NotificationMedia.imageAttachment(in: message, style: .senderOnly) == nil)
+    #expect(NotificationMedia.imageAttachment(in: message, style: .hidden) == nil)
+    message.attachments[0].isSpoiler = true
+    #expect(NotificationMedia.imageAttachment(in: message, style: .full) == nil)
 }
 
 @MainActor
@@ -387,7 +396,10 @@ private func eventuallyNotification(
 
 @MainActor
 private final class RecordingNotificationService: NativeNotificationService {
+    enum AuthorizationError: Error { case unavailable }
+    var requestError: AuthorizationError?
     let status: UNAuthorizationStatus
+    private(set) var messageSounds: [Bool] = []
     private(set) var deliveredCallChannelIDs: [ChannelID] = []
     private(set) var cancelledCallChannelIDs: [ChannelID] = []
     private(set) var cancelledMessageChannelIDs: [ChannelID] = []
@@ -396,15 +408,20 @@ private final class RecordingNotificationService: NativeNotificationService {
         self.status = status
     }
 
-    func requestAuthorization() async throws -> Bool { status == .authorized }
+    func requestAuthorization() async throws -> Bool {
+        if let requestError { throw requestError }
+        return status == .authorized
+    }
     func authorizationStatus() async -> UNAuthorizationStatus { status }
     func deliver(
         message _: Message,
         channel _: Channel?,
         guild _: Guild?,
         accountID _: String,
-        preferences _: NotificationPreferences
-    ) async {}
+        preferences: NotificationPreferences
+    ) async {
+        messageSounds.append(preferences.playsSound)
+    }
 
     func deliverIncomingCall(
         call: PrivateCall,

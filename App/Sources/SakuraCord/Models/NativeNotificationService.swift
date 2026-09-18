@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import MessageRendering
 import Observation
 import OSLog
 import SakuraCordModels
@@ -50,7 +51,6 @@ nonisolated enum NotificationEventType: String, CaseIterable, Identifiable, Send
 
 nonisolated struct NotificationEventContext: Equatable, Sendable {
     var type: NotificationEventType
-    var isDirectConversation: Bool
 
     static func message(
         _ message: Message,
@@ -58,24 +58,22 @@ nonisolated struct NotificationEventContext: Equatable, Sendable {
         isMention: Bool,
         currentUserID: UserID
     ) -> Self {
-        let isDirectConversation = channel?.kind == .directMessage
-            || channel?.kind == .groupDirectMessage
         let type: NotificationEventType
-        if message.replyPreview?.author.id == currentUserID {
-            type = .reply
-        } else if isMention {
-            type = .mention
-        } else if channel?.kind == .directMessage {
+        if channel?.kind == .directMessage {
             type = .directMessage
         } else if channel?.kind == .groupDirectMessage {
             type = .groupDirectMessage
+        } else if message.replyPreview?.author.id == currentUserID {
+            type = .reply
+        } else if isMention {
+            type = .mention
         } else {
             type = .serverActivity
         }
-        return Self(type: type, isDirectConversation: isDirectConversation)
+        return Self(type: type)
     }
 
-    static let incomingCall = Self(type: .incomingCall, isDirectConversation: true)
+    static let incomingCall = Self(type: .incomingCall)
 }
 
 nonisolated enum NativeNotificationIdentity {
@@ -109,19 +107,49 @@ nonisolated struct NotificationContentPresentation: Equatable, Sendable {
         message: Message,
         channel: Channel?,
         guild: Guild?,
-        style: NotificationPreviewStyle
+        style: NotificationPreviewStyle,
+        mentionLabel: ((RenderedMention) -> String)? = nil
     ) -> Self {
         switch style {
         case .full:
             Self(
-                title: message.author.displayName,
-                subtitle: channel.map { "#\($0.name)" } ?? guild?.name ?? "",
-                body: message.content.isEmpty ? "Sent an attachment" : message.content
+                title: message.guildMember?.nickname ?? message.author.displayName,
+                subtitle: channel?.guildID != nil ? channel.map { "#\($0.name)" } ?? "" : "",
+                body: previewText(message: message, mentionLabel: mentionLabel)
             )
         case .senderOnly:
             Self(title: message.author.displayName, subtitle: "", body: "New message")
         case .hidden:
             Self(title: "SakuraCord", subtitle: "", body: "New message")
+        }
+    }
+
+    private static func previewText(
+        message: Message,
+        mentionLabel: ((RenderedMention) -> String)?
+    ) -> String {
+        guard !message.content.isEmpty else {
+            return message.attachments.count == 1 ? "Sent an attachment" : "Sent attachments"
+        }
+        return MessageDocument(source: message.content).segments.map { segment in
+            switch segment {
+            case let .markdown(text):
+                String(DiscordMarkdown.attributed(text).characters)
+            case let .customEmoji(emoji):
+                ":\(emoji.name):"
+            case let .mention(mention):
+                mentionLabel?(mention) ?? fallbackMentionLabel(mention, message: message)
+            }
+        }.joined()
+    }
+
+    private static func fallbackMentionLabel(_ mention: RenderedMention, message: Message) -> String {
+        switch mention.kind {
+        case .user:
+            "@\(message.mentionedUsers.first { String($0.id.rawValue) == mention.id }?.displayName ?? "unknown-user")"
+        case .role: "@unknown-role"
+        case .channel, .channelLink: "#unknown-channel"
+        case .message: "Message link"
         }
     }
 
@@ -159,20 +187,9 @@ final class NotificationPreferences {
         static let replies = "notifications.events.replies"
         static let incomingCalls = "notifications.events.incomingCalls"
         static let serverActivity = "notifications.events.serverActivity"
-        static let onlyInBackground = "notifications.onlyInBackground"
         static let suppressCurrentConversation = "notifications.suppressCurrentConversation"
         static let groupByConversation = "notifications.groupByConversation"
         static let clearWhenRead = "notifications.clearWhenRead"
-        static let callsBypassMessageSuppression = "notifications.callsBypassMessageSuppression"
-        static let quietHours = "notifications.quietHours"
-        static let quietDays = "notifications.quietDays"
-        static let weekdayQuietStart = "notifications.quietStart"
-        static let weekdayQuietEnd = "notifications.quietEnd"
-        static let weekendQuietStart = "notifications.weekendQuietStart"
-        static let weekendQuietEnd = "notifications.weekendQuietEnd"
-        static let allowDirectMessagesDuringQuietHours =
-            "notifications.allowDirectMessagesDuringQuietHours"
-        static let allowCallsDuringQuietHours = "notifications.allowCallsDuringQuietHours"
     }
 
     var isEnabled: Bool { didSet { defaults.set(isEnabled, forKey: Key.enabled) } }
@@ -201,9 +218,6 @@ final class NotificationPreferences {
     var notifiesServerActivity: Bool {
         didSet { defaults.set(notifiesServerActivity, forKey: Key.serverActivity) }
     }
-    var notifiesOnlyInBackground: Bool {
-        didSet { defaults.set(notifiesOnlyInBackground, forKey: Key.onlyInBackground) }
-    }
     var suppressesCurrentConversation: Bool {
         didSet {
             defaults.set(suppressesCurrentConversation, forKey: Key.suppressCurrentConversation)
@@ -215,44 +229,6 @@ final class NotificationPreferences {
     var clearsWhenRead: Bool {
         didSet { defaults.set(clearsWhenRead, forKey: Key.clearWhenRead) }
     }
-    var callsBypassMessageSuppression: Bool {
-        didSet {
-            defaults.set(
-                callsBypassMessageSuppression,
-                forKey: Key.callsBypassMessageSuppression
-            )
-        }
-    }
-    var quietHoursEnabled: Bool {
-        didSet { defaults.set(quietHoursEnabled, forKey: Key.quietHours) }
-    }
-    var quietDays: Set<Int> {
-        didSet { defaults.set(quietDays.sorted().map(String.init), forKey: Key.quietDays) }
-    }
-    var weekdayQuietStartMinutes: Int {
-        didSet { defaults.set(weekdayQuietStartMinutes, forKey: Key.weekdayQuietStart) }
-    }
-    var weekdayQuietEndMinutes: Int {
-        didSet { defaults.set(weekdayQuietEndMinutes, forKey: Key.weekdayQuietEnd) }
-    }
-    var weekendQuietStartMinutes: Int {
-        didSet { defaults.set(weekendQuietStartMinutes, forKey: Key.weekendQuietStart) }
-    }
-    var weekendQuietEndMinutes: Int {
-        didSet { defaults.set(weekendQuietEndMinutes, forKey: Key.weekendQuietEnd) }
-    }
-    var allowsDirectMessagesDuringQuietHours: Bool {
-        didSet {
-            defaults.set(
-                allowsDirectMessagesDuringQuietHours,
-                forKey: Key.allowDirectMessagesDuringQuietHours
-            )
-        }
-    }
-    var allowsCallsDuringQuietHours: Bool {
-        didSet { defaults.set(allowsCallsDuringQuietHours, forKey: Key.allowCallsDuringQuietHours) }
-    }
-
     @ObservationIgnored private let defaults: any PreferenceStoring
 
     init(defaults: any PreferenceStoring = UserDefaults.standard) {
@@ -267,19 +243,9 @@ final class NotificationPreferences {
         notifiesReplies = true
         notifiesIncomingCalls = true
         notifiesServerActivity = true
-        notifiesOnlyInBackground = false
         suppressesCurrentConversation = true
-        groupsByConversation = false
+        groupsByConversation = true
         clearsWhenRead = true
-        callsBypassMessageSuppression = true
-        quietHoursEnabled = false
-        quietDays = Set(1 ... 7)
-        weekdayQuietStartMinutes = 22 * 60
-        weekdayQuietEndMinutes = 8 * 60
-        weekendQuietStartMinutes = 22 * 60
-        weekendQuietEndMinutes = 8 * 60
-        allowsDirectMessagesDuringQuietHours = false
-        allowsCallsDuringQuietHours = true
         reload()
     }
 
@@ -303,94 +269,21 @@ final class NotificationPreferences {
         notifiesReplies = bool(Key.replies, default: true)
         notifiesIncomingCalls = bool(Key.incomingCalls, default: true)
         notifiesServerActivity = bool(Key.serverActivity, default: true)
-        notifiesOnlyInBackground = bool(Key.onlyInBackground, default: false)
         suppressesCurrentConversation = bool(Key.suppressCurrentConversation, default: true)
-        groupsByConversation = bool(Key.groupByConversation, default: false)
+        groupsByConversation = bool(Key.groupByConversation, default: true)
         clearsWhenRead = bool(Key.clearWhenRead, default: true)
-        callsBypassMessageSuppression = bool(Key.callsBypassMessageSuppression, default: true)
-        quietHoursEnabled = bool(Key.quietHours, default: false)
-        let storedDays = defaults.object(forKey: Key.quietDays) as? [String]
-        quietDays = Set(
-            (storedDays ?? (1 ... 7).map(String.init))
-                .compactMap(Int.init)
-                .filter { (1 ... 7).contains($0) }
-        )
-        weekdayQuietStartMinutes = minutes(Key.weekdayQuietStart, default: 22 * 60)
-        weekdayQuietEndMinutes = minutes(Key.weekdayQuietEnd, default: 8 * 60)
-        weekendQuietStartMinutes = minutes(Key.weekendQuietStart, default: 22 * 60)
-        weekendQuietEndMinutes = minutes(Key.weekendQuietEnd, default: 8 * 60)
-        allowsDirectMessagesDuringQuietHours = bool(
-            Key.allowDirectMessagesDuringQuietHours,
-            default: false
-        )
-        allowsCallsDuringQuietHours = bool(Key.allowCallsDuringQuietHours, default: true)
-    }
-
-    func isQuiet(at date: Date = .now, calendar: Calendar = .current) -> Bool {
-        guard quietHoursEnabled else { return false }
-        let currentDay = calendar.component(.weekday, from: date)
-        let currentMinute = minuteOfDay(date, calendar: calendar)
-        let currentSchedule = schedule(for: currentDay)
-        if quietDays.contains(currentDay), currentSchedule.start == currentSchedule.end {
-            return true
-        }
-        if quietDays.contains(currentDay), currentSchedule.start < currentSchedule.end {
-            if currentMinute >= currentSchedule.start,
-               currentMinute < currentSchedule.end
-            {
-                return true
-            }
-        }
-        if quietDays.contains(currentDay), currentMinute >= currentSchedule.start {
-            return true
-        }
-        guard let previousDate = calendar.date(byAdding: .day, value: -1, to: date) else {
-            return false
-        }
-        let previousDay = calendar.component(.weekday, from: previousDate)
-        let previousSchedule = schedule(for: previousDay)
-        return quietDays.contains(previousDay)
-            && previousSchedule.start > previousSchedule.end
-            && currentMinute < previousSchedule.end
     }
 
     func allows(
         _ event: NotificationEventContext,
-        isApplicationActive: Bool,
-        isCurrentConversation: Bool,
-        at date: Date = .now,
-        calendar: Calendar = .current
+        isCurrentConversation: Bool
     ) -> Bool {
-        guard isEnabled, isEnabled(event.type) else { return false }
-        if isQuiet(at: date, calendar: calendar) {
-            let isQuietHoursException = event.type == .incomingCall
-                ? allowsCallsDuringQuietHours
-                : event.isDirectConversation && allowsDirectMessagesDuringQuietHours
-            guard isQuietHoursException else { return false }
-        }
-        if event.type == .incomingCall, callsBypassMessageSuppression {
+        guard isEnabled || playsSound, isEnabled(event.type) else { return false }
+        if event.type == .incomingCall {
             return true
         }
-        if notifiesOnlyInBackground, isApplicationActive { return false }
         if suppressesCurrentConversation, isCurrentConversation { return false }
         return true
-    }
-
-    // Preserves the historical hourly API while migrating storage to minute precision.
-    var quietStartHour: Int {
-        get { weekdayQuietStartMinutes / 60 }
-        set {
-            weekdayQuietStartMinutes = newValue * 60
-            weekendQuietStartMinutes = newValue * 60
-        }
-    }
-
-    var quietEndHour: Int {
-        get { weekdayQuietEndMinutes / 60 }
-        set {
-            weekdayQuietEndMinutes = newValue * 60
-            weekendQuietEndMinutes = newValue * 60
-        }
     }
 
     private func isEnabled(_ event: NotificationEventType) -> Bool {
@@ -408,24 +301,6 @@ final class NotificationPreferences {
         defaults.object(forKey: key) as? Bool ?? defaultValue
     }
 
-    private func minutes(_ key: String, default defaultValue: Int) -> Int {
-        guard let stored = defaults.object(forKey: key) as? Int else { return defaultValue }
-        let migrated = (0 ... 23).contains(stored) ? stored * 60 : stored
-        return min(max(migrated, 0), 23 * 60 + 59)
-    }
-
-    private func minuteOfDay(_ date: Date, calendar: Calendar) -> Int {
-        let components = calendar.dateComponents([.hour, .minute], from: date)
-        return (components.hour ?? 0) * 60 + (components.minute ?? 0)
-    }
-
-    private func schedule(for weekday: Int) -> (start: Int, end: Int) {
-        if weekday == 1 || weekday == 7 {
-            (weekendQuietStartMinutes, weekendQuietEndMinutes)
-        } else {
-            (weekdayQuietStartMinutes, weekdayQuietEndMinutes)
-        }
-    }
 }
 
 nonisolated struct NotificationDeepLink: Codable, Equatable, Sendable {
@@ -488,7 +363,7 @@ protocol NativeNotificationService: Sendable {
         channel: Channel?,
         guild: Guild?,
         accountID: String,
-        event: NotificationEventContext,
+        presentation: NotificationContentPresentation,
         preferences: NotificationPreferences
     ) async
     func deliverIncomingCall(
@@ -509,7 +384,7 @@ extension NativeNotificationService {
         channel: Channel?,
         guild: Guild?,
         accountID: String,
-        event _: NotificationEventContext,
+        presentation: NotificationContentPresentation,
         preferences: NotificationPreferences
     ) async {
         await deliver(
@@ -553,7 +428,24 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
         subsystem: "dev.sakuracord.SakuraCord",
         category: "Notifications"
     )
+    private static let notificationSound: UNNotificationSound? = {
+        // macOS resolves this basename through AppKit's sound-resource lookup.
+        guard Bundle.main.path(forSoundResource: "message1") != nil else {
+            logger.error("The bundled notification sound is missing")
+            return nil
+        }
+        return UNNotificationSound(named: UNNotificationSoundName("message1"))
+    }()
     private var center: UNUserNotificationCenter { .current() }
+
+    // Offline demos use real system permissions without publishing fixture alerts.
+    private let deliversNotifications: Bool
+    private var pendingRequests: [String: UUID] = [:]
+
+    init(deliversNotifications: Bool = true) {
+        self.deliversNotifications = deliversNotifications
+        super.init()
+    }
 
     func requestAuthorization() async throws -> Bool {
         try await center.requestAuthorization(options: [.alert, .badge, .sound])
@@ -575,7 +467,9 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
             channel: channel,
             guild: guild,
             accountID: accountID,
-            event: NotificationEventContext(type: .serverActivity, isDirectConversation: false),
+            presentation: NotificationContentPresentation.make(
+                message: message, channel: channel, guild: guild, style: preferences.previewStyle
+            ),
             preferences: preferences
         )
     }
@@ -585,20 +479,21 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
         channel: Channel?,
         guild: Guild?,
         accountID: String,
-        event _: NotificationEventContext,
+        presentation: NotificationContentPresentation,
         preferences: NotificationPreferences
     ) async {
-        let content = UNMutableNotificationContent()
-        let presentation = NotificationContentPresentation.make(
-            message: message,
-            channel: channel,
-            guild: guild,
-            style: preferences.previewStyle
+        guard deliversNotifications, preferences.isEnabled else { return }
+        let identifier = NativeNotificationIdentity.message(
+            accountID: accountID, channelID: message.channelID, messageID: message.id
         )
+        let token = UUID()
+        let style = preferences.previewStyle
+        pendingRequests[identifier] = token
+        defer { if pendingRequests[identifier] == token { pendingRequests[identifier] = nil } }
+        let content = UNMutableNotificationContent()
         content.title = presentation.title
         content.subtitle = presentation.subtitle
         content.body = presentation.body
-        content.sound = preferences.playsSound ? .default : nil
         content.interruptionLevel = NotificationFocusPolicy.interruptionLevel
         if preferences.groupsByConversation {
             content.threadIdentifier = NativeNotificationIdentity.conversation(
@@ -612,13 +507,30 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
             channelID: message.channelID,
             messageID: message.id
         ).userInfo
-        let identifier = NativeNotificationIdentity.message(
-            accountID: accountID,
-            channelID: message.channelID,
-            messageID: message.id
+        let attachment = NotificationMedia.imageAttachment(in: message, style: style)
+        let imageData = await NotificationMedia.previewImage(
+            at: attachment?.proxyURL ?? attachment?.url, maximumDimension: 1_280
         )
-        guard !Task.isCancelled else { return }
-        await add(content, identifier: identifier, kind: "Message")
+        guard pendingRequests[identifier] == token, !Task.isCancelled,
+              preferences.isEnabled, preferences.previewStyle == style
+        else { return }
+        let temporaryDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("notification-\(token.uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+        if let imageData {
+            do {
+                try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
+                let url = temporaryDirectory.appendingPathComponent("image.png")
+                try imageData.write(to: url)
+                content.attachments = [try UNNotificationAttachment(identifier: "image", url: url)]
+            } catch {
+                Self.logger.debug("Notification image attachment could not be prepared")
+            }
+        }
+        guard pendingRequests[identifier] == token, !Task.isCancelled,
+              preferences.isEnabled, preferences.previewStyle == style
+        else { return }
+        await add(content, identifier: identifier, kind: "Message", preferences: preferences)
     }
 
     func deliverIncomingCall(
@@ -628,16 +540,21 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
         accountID: String,
         preferences: NotificationPreferences
     ) async {
+        guard deliversNotifications, preferences.isEnabled else { return }
+        let identifier = NativeNotificationIdentity.call(accountID: accountID, channelID: call.channelID)
+        let token = UUID()
+        let style = preferences.previewStyle
+        pendingRequests[identifier] = token
+        defer { if pendingRequests[identifier] == token { pendingRequests[identifier] = nil } }
         let content = UNMutableNotificationContent()
         let presentation = NotificationContentPresentation.makeIncomingCall(
             callerName: caller?.displayName,
-            conversationName: channel?.kind == .groupDirectMessage ? channel?.name : nil,
+            conversationName: nil,
             style: preferences.previewStyle
         )
         content.title = presentation.title
         content.subtitle = presentation.subtitle
         content.body = presentation.body
-        content.sound = preferences.playsSound ? .default : nil
         // Standard active notifications remain governed by the user's Focus configuration.
         content.interruptionLevel = NotificationFocusPolicy.interruptionLevel
         if preferences.groupsByConversation {
@@ -652,19 +569,16 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
             channelID: call.channelID,
             messageID: call.messageID
         ).userInfo
-        guard !Task.isCancelled else { return }
-        await add(
-            content,
-            identifier: NativeNotificationIdentity.call(
-                accountID: accountID,
-                channelID: call.channelID
-            ),
-            kind: "Call"
-        )
+        guard pendingRequests[identifier] == token, !Task.isCancelled,
+              preferences.isEnabled, preferences.previewStyle == style
+        else { return }
+        await add(content, identifier: identifier, kind: "Call", preferences: preferences)
     }
 
     func cancel(accountID: String, channelID: ChannelID) async {
+        guard deliversNotifications else { return }
         let prefix = "message:\(accountID):\(channelID):"
+        pendingRequests = pendingRequests.filter { !$0.key.hasPrefix(prefix) }
         let delivered = await center.deliveredNotifications()
         let deliveredIDs = delivered.map(\.request.identifier).filter { $0.hasPrefix(prefix) }
         center.removeDeliveredNotifications(withIdentifiers: deliveredIDs)
@@ -674,15 +588,18 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
     }
 
     func cancelIncomingCall(accountID: String, channelID: ChannelID) async {
+        guard deliversNotifications else { return }
         let identifier = NativeNotificationIdentity.call(
             accountID: accountID,
             channelID: channelID
         )
+        pendingRequests[identifier] = nil
         center.removeDeliveredNotifications(withIdentifiers: [identifier])
         center.removePendingNotificationRequests(withIdentifiers: [identifier])
     }
 
     func setDockBadge(_ count: Int, enabled: Bool) {
+        guard deliversNotifications else { return }
         NSApplication.shared.dockTile.badgeLabel =
             enabled && count > 0 ? String(count) : nil
     }
@@ -690,8 +607,13 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
     private func add(
         _ content: UNNotificationContent,
         identifier: String,
-        kind: StaticString
+        kind: StaticString,
+        preferences: NotificationPreferences
     ) async {
+        guard deliversNotifications, preferences.isEnabled,
+              let content = content.mutableCopy() as? UNMutableNotificationContent
+        else { return }
+        content.sound = preferences.playsSound ? Self.notificationSound : nil
         do {
             try await center.add(
                 UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
