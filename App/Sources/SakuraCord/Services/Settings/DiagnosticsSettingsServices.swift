@@ -8,6 +8,7 @@ import UniformTypeIdentifiers
 import UserNotifications
 
 nonisolated enum DiagnosticsPreferences {
+    static let capturesConnectionMetricsKey = "captureAPIConnectionMetrics"
     static let capturesDetailedPayloadsKey = "captureDetailedAPIPayloads"
     static let enablesPanicSaveKey = "enableAPIDiagnosticsPanicSave"
     static let savesDiagnosticsToDiskKey = "saveAPIDiagnosticsToDisk"
@@ -16,10 +17,17 @@ nonisolated enum DiagnosticsPreferences {
         defaults: any PreferenceStoring = UserDefaults.standard,
         store: DiscordAPIDiagnosticStore = .shared
     ) {
+        store.capturesConnectionMetrics = defaults.bool(forKey: capturesConnectionMetricsKey)
         store.enablesPanicSave = defaults.object(forKey: enablesPanicSaveKey) as? Bool ?? true
         store.capturesPayloadDetails = defaults.bool(
             forKey: capturesDetailedPayloadsKey
         )
+        DiagnosticsSupportSummary.startup(
+            releaseTrack: AppUpdateReleaseTrack(
+                storedValue: defaults.string(forKey: AppUpdateReleaseTrack.preferenceKey),
+                defaultingTo: AppUpdateConfiguration().installedReleaseTrack
+            )
+        ).installLogSnapshot(in: store)
         do {
             try store.setSavesDiagnosticsToDisk(
                 defaults.bool(forKey: savesDiagnosticsToDiskKey)
@@ -493,6 +501,7 @@ nonisolated struct DiagnosticsSupportSummary: Codable, Equatable, Sendable {
         let capturesDetailedSanitizedPayloads: Bool
         let savesSanitizedDiagnosticsToDisk: Bool
         let retainedEntryCount: Int
+        var capturesConnectionMetrics = false
     }
 
     static let format = "dev.sakuracord.support-summary"

@@ -570,6 +570,13 @@ nonisolated struct SettingsPreferenceRegistry: Sendable {
             exports: false
         ),
         SettingsPreferenceRegistration(
+            id: .diagnosticConnectionMetrics,
+            page: .diagnostics,
+            storage: .appWide(key: DiagnosticsPreferences.capturesConnectionMetricsKey),
+            defaultValue: .bool(false),
+            resets: false
+        ),
+        SettingsPreferenceRegistration(
             id: .diagnosticDetailedPayloads,
             page: .diagnostics,
             storage: .appWide(key: DiagnosticsPreferences.capturesDetailedPayloadsKey),

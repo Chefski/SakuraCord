@@ -490,8 +490,17 @@ extension DiscordRESTProvider {
                         network
                     )
                 }
+                let metricsDelegate = apiDiagnostics.capturesConnectionMetrics
+                    ? RESTConnectionMetricsDelegate(
+                        store: apiDiagnostics,
+                        method: method,
+                        path: path,
+                        attempt: prepared.attempt,
+                        generation: prepared.sessionGeneration
+                    ) : nil
                 (data, rawResponse) = try await prepared.session.data(
-                    for: prepared.request
+                    for: prepared.request,
+                    delegate: metricsDelegate
                 )
             } catch {
                 finishRateLimitReservation(prepared.reservation)
@@ -881,6 +890,10 @@ extension DiscordRESTProvider {
         let stalledSession = restSession
         restSession = URLSession(configuration: restSessionConfiguration)
         restSessionGeneration &+= 1
+        apiDiagnostics.recordRESTSessionReplacement(
+            previousGeneration: requestGeneration,
+            generation: restSessionGeneration
+        )
         stalledSession.invalidateAndCancel()
         gatewayLogger.error(
             "Discord REST session timed out; replaced stalled transport generation \(requestGeneration, privacy: .public)"

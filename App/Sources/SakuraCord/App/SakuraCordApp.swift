@@ -257,7 +257,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let model = SakuraCordRuntimeModelHolder.shared.model {
             self.model = model
             model.reportApplicationActive(NSApp.isActive)
-            Task { await startSession(for: model) }
+            Task {
+                await startSession(for: model)
+                await DiagnosticsSupportSummary.refreshLogSnapshot(
+                    model: model, updateController: updateController
+                )
+            }
         }
     }
 

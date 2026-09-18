@@ -886,6 +886,9 @@ func `panic save captures every failed HTTP response`(
         .appending(path: "SakuraCordPanicBoundTests-\(UUID().uuidString)")
     defer { try? FileManager.default.removeItem(at: directory) }
     let store = DiscordAPIDiagnosticStore(diskDirectoryURL: directory, maximumDiskBytes: 2_048)
+    store.setSupportSummary(.object([
+        "application": .object(["version": .string(String(repeating: "v", count: 600))]),
+    ]))
     store.enablesPanicSave = true
     for attempt in 1 ... 30 {
         store.recordHTTPRequest(method: "GET", path: "/users/@me", body: nil, attempt: attempt)
@@ -895,6 +898,7 @@ func `panic save captures every failed HTTP response`(
     )
     let data = try Data(contentsOf: store.panicSaveURL)
     #expect(data.count <= 2_048)
+    #expect(try #require(String(data: data, encoding: .utf8)).contains("supportSummary"))
     let lines = try #require(String(data: data, encoding: .utf8)).split(separator: "\n")
     #expect(try decodedJSONObject(lines[0])["droppedEntryCount"] as? Int ?? 0 > 0)
     #expect(lines.last?.contains(#""close_code":4000"#) == true)

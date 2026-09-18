@@ -343,6 +343,7 @@ nonisolated extension SettingsControlID {
     static let externalLinkProtection = Self(rawValue: "privacy.external-link-protection")
     static let trustedDomains = Self(rawValue: "privacy.trusted-domains")
     static let clearLocalActivity = Self(rawValue: "privacy.clear-local-activity")
+    static let diagnosticConnectionMetrics = Self(rawValue: "diagnostics.connection-metrics")
     static let diagnosticDetailedPayloads = Self(rawValue: "diagnostics.detailed-payloads")
     static let diagnosticPanicSave = Self(rawValue: "diagnostics.panic-save")
     static let diagnosticDiskCapture = Self(rawValue: "diagnostics.disk-capture")

@@ -131,6 +131,15 @@ Within the production provider:
   retry once on the replacement; mutations are never replayed after an
   ambiguous failure. A session-wide safety stop still cancels both without
   affecting unrelated app networking.
+- Connection diagnostics are a separate, default-off app preference. When
+  enabled, a per-task REST delegate adds allowlisted URLSession metrics to the
+  existing bounded API log: task timing offsets (including incomplete phases),
+  HTTP protocol, connection reuse, network flags, byte counts, and local pool
+  generation/task numbers. Pool replacements are logged too. Metrics never
+  retain request/response objects, addresses, ports, credentials, or content;
+  payload capture and panic save do not implicitly enable this option. Turning
+  it off also suppresses late metrics from in-flight tasks. It adds no requests
+  and does not change timeout, retry, or connection-pool behavior.
 - Every authenticated REST route uses the central transport. Views and feature
   helpers do not create one-off authenticated `URLSession` paths.
 - Production Gateway ETF is parsed directly from the decompressed bounded byte
@@ -184,6 +193,12 @@ Within the production provider:
   scalar-only Voice socket closure, reconnect, timeout, migration, and
   app-state lifecycle events even when detailed payload capture is disabled,
   so transport loops remain diagnosable without retaining content. The
+  first JSON Lines header in manual exports, disk sessions, and panic saves
+  includes the app-owned support summary and its snapshot time. Startup installs
+  the fixed non-identifying schema before disk capture begins; session startup
+  and Diagnostics refresh its health snapshot. Mode flags and the retained count
+  are filled from the log store at output time. Existing disk headers describe
+  capture start, and panic size limits include the variable-sized header. The
   Diagnostics settings pane exports the retained JSON Lines data and reports
   when older entries were dropped. Its optional disk capture is off by default
   and writes private JSON Lines session files under Application Support only

@@ -81,6 +81,18 @@ nonisolated extension SettingsCatalog {
             reset: .notApplicable
         ),
         control(
+            .diagnosticConnectionMetrics,
+            page: .diagnostics,
+            section: .apiDiagnostics,
+            label: "Capture connection diagnostics",
+            help: "Include connection reuse, protocol, timings, and recovery in API logs to investigate stalls. Excludes IP addresses, credentials, and request content.",
+            keywords: ["network", "stall", "timeout", "DNS", "TLS", "HTTP", "connection"],
+            owner: .appModel,
+            scope: .appWideLocal,
+            persistence: .appPreferences,
+            reset: .categoryAction
+        ),
+        control(
             .diagnosticDetailedPayloads,
             page: .diagnostics,
             section: .apiDiagnostics,

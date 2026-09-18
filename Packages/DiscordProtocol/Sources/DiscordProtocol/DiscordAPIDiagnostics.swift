@@ -24,6 +24,9 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
     private struct State {
         var entries: [RetainedEntry?]
         var capturesPayloadDetails: Bool
+        var supportSummary: JSONValue?
+        var supportSummaryCapturedAt: Date?
+        var capturesConnectionMetrics = false
         var enablesPanicSave = false
         var panicSaveErrorDescription: String?
         // Weak identity keys never retain error userInfo, response URLs, or
@@ -255,12 +258,16 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
         let retainedEstimatedByteCount: Int
         let droppedEntryCount: Int
         let redaction: String
+        let supportSummary: JSONValue?
+        let supportSummaryCapturedAt: Date?
     }
 
     private struct DiskMetadata: Codable {
         let format: String
         let startedAt: Date
         let redaction: String
+        let supportSummary: JSONValue?
+        let supportSummaryCapturedAt: Date?
     }
 
     private let lock = NSLock()
@@ -296,11 +303,38 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
         try? state.diskCapture?.handle.close()
     }
 
+    /// The app supplies its fixed, already-sanitized support-summary schema.
+    /// Never pass raw account data or arbitrary diagnostic payloads here.
+    public func setSupportSummary(_ summary: JSONValue) {
+        guard case .object = summary, Self.estimatedJSONByteCount(summary) <= 32 * 1_024 else { return }
+        withLock { state in
+            state.supportSummary = summary
+            state.supportSummaryCapturedAt = .now
+        }
+    }
+
+    private static func supportSummary(_ state: State, savesToDisk: Bool? = nil) -> JSONValue? {
+        guard case var .object(summary) = state.supportSummary else { return nil }
+        summary["diagnosticModes"] = .object([
+            "capturesDetailedSanitizedPayloads": .bool(state.capturesPayloadDetails || state.enablesPanicSave),
+            "capturesConnectionMetrics": .bool(state.capturesConnectionMetrics),
+            "savesSanitizedDiagnosticsToDisk": .bool(savesToDisk ?? (state.diskCapture != nil)),
+            "retainedEntryCount": .number(Double(state.entryCount)),
+        ])
+        return .object(summary)
+    }
+
     /// Explicit detailed capture and panic save both retain payloads for sanitized output.
     /// The app restores panic save's default-on preference before networking starts.
     public var capturesPayloadDetails: Bool {
         get { withLock { $0.capturesPayloadDetails } }
         set { withLock { $0.capturesPayloadDetails = newValue } }
+    }
+
+    /// Independent opt-in; panic save and payload capture never enable this.
+    public var capturesConnectionMetrics: Bool {
+        get { withLock { $0.capturesConnectionMetrics } }
+        set { withLock { $0.capturesConnectionMetrics = newValue } }
     }
 
     public var enablesPanicSave: Bool {
@@ -361,7 +395,9 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
                     state.diskCapture = try Self.makeDiskCapture(
                         directoryURL: diskDirectoryURL,
                         maximumBytes: maximumDiskBytes,
-                        maximumFileCount: maximumDiskSessionFileCount
+                        maximumFileCount: maximumDiskSessionFileCount,
+                        supportSummary: Self.supportSummary(state, savesToDisk: true),
+                        supportSummaryCapturedAt: state.supportSummaryCapturedAt
                     )
                 } catch {
                     state.diskLoggingErrorDescription = String(
@@ -400,7 +436,9 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
                     state.diskCapture = try Self.makeDiskCapture(
                         directoryURL: diskDirectoryURL,
                         maximumBytes: maximumDiskBytes,
-                        maximumFileCount: maximumDiskSessionFileCount
+                        maximumFileCount: maximumDiskSessionFileCount,
+                        supportSummary: Self.supportSummary(state, savesToDisk: true),
+                        supportSummaryCapturedAt: state.supportSummaryCapturedAt
                     )
                 }
                 state.diskLoggingErrorDescription = nil
@@ -436,6 +474,38 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
             path: path,
             attempt: attempt,
             payload: object.isEmpty ? nil : Payload(.object(object))
+        )
+    }
+
+    func recordHTTPConnectionMetrics(
+        _ metrics: RESTConnectionMetrics,
+        method: String,
+        path: String,
+        attempt: Int
+    ) {
+        append(
+            transport: "rest",
+            direction: "metrics",
+            operation: .named("http_connection"),
+            method: method,
+            path: path,
+            attempt: attempt,
+            payload: Payload(.sanitized(.object(metrics.fields))),
+            requiresConnectionMetrics: true
+        )
+    }
+
+    func recordRESTSessionReplacement(previousGeneration: Int, generation: Int) {
+        append(
+            transport: "rest",
+            direction: "lifecycle",
+            operation: .named("connection_pool_replaced"),
+            payload: Payload(.sanitized(.object([
+                "previous_generation": .number(Double(previousGeneration)),
+                "generation": .number(Double(generation)),
+                "reason": .string("request_timeout"),
+            ]))),
+            requiresConnectionMetrics: true
         )
     }
 
@@ -619,7 +689,9 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
                 retainedEntryCount: entries.count,
                 retainedEstimatedByteCount: state.retainedEstimatedByteCount,
                 droppedEntryCount: state.droppedEntryCount,
-                redaction: Self.redactionDescription
+                redaction: Self.redactionDescription,
+                supportSummary: Self.supportSummary(state),
+                supportSummaryCapturedAt: state.supportSummaryCapturedAt
             )
             var result = try Self.encodedJSONLine(metadata)
             for entry in entries {
@@ -660,9 +732,11 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
         payload: Payload? = nil,
         error: (any Error)? = nil,
         panicIdentity: AnyObject? = nil,
-        triggersPanicSave: Bool = false
+        triggersPanicSave: Bool = false,
+        requiresConnectionMetrics: Bool = false
     ) {
         withLock { state in
+            guard !requiresConnectionMetrics || state.capturesConnectionMetrics else { return }
             let entry = Entry(EntryFields(
                 sequence: state.nextSequence,
                 timestamp: .now,
@@ -755,10 +829,20 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
             }
             var lines: [Data] = []
             var byteCount = 0
-            // Reserve room for export metadata and keep the newest complete lines.
+            // Reserve the actual summary/header size plus count-field headroom.
+            let headerReserve = try Self.encodedJSONLine(ExportMetadata(
+                format: "sakuracord-discord-api-log-v2",
+                generatedAt: .now,
+                retainedEntryCount: entries.count,
+                retainedEstimatedByteCount: state.retainedEstimatedByteCount,
+                droppedEntryCount: state.droppedEntryCount + entries.count,
+                redaction: Self.redactionDescription,
+                supportSummary: Self.supportSummary(state),
+                supportSummaryCapturedAt: state.supportSummaryCapturedAt
+            )).count + 128
             for entry in entries.reversed() {
                 let line = try Self.encodedJSONLine(entry)
-                guard byteCount + line.count + 1_024 <= maximumDiskBytes else { break }
+                guard byteCount + line.count + headerReserve <= maximumDiskBytes else { break }
                 lines.append(line)
                 byteCount += line.count
             }
@@ -770,7 +854,9 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
                 retainedEstimatedByteCount: byteCount,
                 droppedEntryCount: state.droppedEntryCount - (recoveredTrigger ? 1 : 0)
                     + entries.count - lines.count,
-                redaction: Self.redactionDescription
+                redaction: Self.redactionDescription,
+                supportSummary: Self.supportSummary(state),
+                supportSummaryCapturedAt: state.supportSummaryCapturedAt
             )
             var data = try Self.encodedJSONLine(metadata)
             for line in lines.reversed() { data.append(line) }
@@ -955,7 +1041,9 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
     private static func makeDiskCapture(
         directoryURL: URL,
         maximumBytes: Int,
-        maximumFileCount: Int
+        maximumFileCount: Int,
+        supportSummary: JSONValue?,
+        supportSummaryCapturedAt: Date?
     ) throws -> DiskCapture {
         let fileManager = FileManager.default
         try fileManager.createDirectory(
@@ -996,7 +1084,9 @@ public final class DiscordAPIDiagnosticStore: @unchecked Sendable {
             let metadata = DiskMetadata(
                 format: "sakuracord-discord-api-log-v2",
                 startedAt: .now,
-                redaction: Self.redactionDescription
+                redaction: Self.redactionDescription,
+                supportSummary: supportSummary,
+                supportSummaryCapturedAt: supportSummaryCapturedAt
             )
             let line = try encodedJSONLine(metadata)
             guard line.count <= maximumBytes else {

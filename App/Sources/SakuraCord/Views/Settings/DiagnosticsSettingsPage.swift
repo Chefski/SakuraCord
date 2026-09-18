@@ -9,6 +9,8 @@ struct DiagnosticsSettingsPage: View {
     @ObservedObject var updateController: AppUpdateController
     let state: SettingsViewState
 
+    @AppStorage(DiagnosticsPreferences.capturesConnectionMetricsKey)
+    private var capturesConnectionMetrics = false
     @AppStorage(DiagnosticsPreferences.capturesDetailedPayloadsKey)
     private var capturesDetailedAPIPayloads = false
     @AppStorage(DiagnosticsPreferences.savesDiagnosticsToDiskKey)
@@ -31,8 +33,14 @@ struct DiagnosticsSettingsPage: View {
             apiLogsSection
         }
         .task { await refresh() }
+        .onChange(of: supportSummary, initial: true) { _, summary in
+            summary.installLogSnapshot()
+        }
         .onChange(of: capturesDetailedAPIPayloads) { _, captures in
             DiscordAPIDiagnosticStore.shared.capturesPayloadDetails = captures
+        }
+        .onChange(of: capturesConnectionMetrics) { _, captures in
+            DiscordAPIDiagnosticStore.shared.capturesConnectionMetrics = captures
         }
         .onChange(of: enablesPanicSave) { _, enabled in
             DiscordAPIDiagnosticStore.shared.enablesPanicSave = enabled
@@ -63,7 +71,8 @@ struct DiagnosticsSettingsPage: View {
                 capturesDetailedSanitizedPayloads: DiscordAPIDiagnosticStore.shared.retainsPayloadDetails,
                 savesSanitizedDiagnosticsToDisk: DiscordAPIDiagnosticStore.shared
                     .savesDiagnosticsToDisk,
-                retainedEntryCount: apiDiagnosticEntryCount
+                retainedEntryCount: apiDiagnosticEntryCount,
+                capturesConnectionMetrics: capturesConnectionMetrics
             )
         )
     }
@@ -121,6 +130,13 @@ struct DiagnosticsSettingsPage: View {
 
     private var apiLogsSection: some View {
         Section {
+            Toggle(isOn: $capturesConnectionMetrics) {
+                Text("Capture connection diagnostics", bundle: #bundle)
+            }
+            .tint(SakuraCordAccentColor.color)
+            .accessibilityLabel(Text("Capture connection diagnostics", bundle: #bundle))
+            .settingsControlAnchor(.diagnosticConnectionMetrics, state: state)
+
             Toggle(
                 "Capture detailed sanitized payloads",
                 isOn: $capturesDetailedAPIPayloads
@@ -211,6 +227,7 @@ struct DiagnosticsSettingsPage: View {
     private func refreshAPIDiagnosticState() {
         let store = DiscordAPIDiagnosticStore.shared
         apiDiagnosticEntryCount = store.retainedEntryCount
+        capturesConnectionMetrics = store.capturesConnectionMetrics
         enablesPanicSave = store.enablesPanicSave
         panicSaveErrorDescription = store.panicSaveErrorDescription
         capturesDetailedAPIPayloads = store.capturesPayloadDetails
@@ -248,6 +265,7 @@ struct DiagnosticsSettingsPage: View {
     }
 
     private func exportAPILogs() async {
+        supportSummary.installLogSnapshot()
         _ = try? await DiscordAPILogExporter.export()
         refreshAPIDiagnosticState()
     }

@@ -76,6 +76,7 @@ struct AccountDevicesSettingsPage: View {
             } else if accountState.isLoadingDevices {
                 ProgressView("Loading devices…")
                     .controlSize(.small)
+                    .frame(maxWidth: .infinity)
             }
         }
         .navigationTitle(Text("Logged-in Devices", bundle: #bundle))

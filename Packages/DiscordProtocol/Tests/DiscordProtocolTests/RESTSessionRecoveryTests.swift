@@ -4,9 +4,12 @@ import Testing
 
 @Suite(.serialized)
 struct RESTSessionRecoveryTests {
-    @Test func `timed out read rotates owned REST session and retries once`() async throws {
+    @Test(arguments: [false, true])
+    func `timed out read rotates owned REST session and retries once`(capturesMetrics: Bool) async throws {
         RESTSessionRecoveryURLProtocol.reset()
-        let provider = makeProvider()
+        let diagnostics = DiscordAPIDiagnosticStore()
+        diagnostics.capturesConnectionMetrics = capturesMetrics
+        let provider = makeProvider(diagnostics: diagnostics)
 
         let (_, response) = try await provider.perform(
             "/transport-recovery",
@@ -18,6 +21,8 @@ struct RESTSessionRecoveryTests {
         #expect(response.statusCode == 200)
         #expect(RESTSessionRecoveryURLProtocol.requestMethods == ["GET", "GET"])
         #expect(await provider.restSessionGeneration == 1)
+        let export = try #require(String(data: diagnostics.exportData(), encoding: .utf8))
+        #expect(export.contains("connection_pool_replaced") == capturesMetrics)
         await provider.disconnect()
     }
 
@@ -81,7 +86,7 @@ struct RESTSessionRecoveryTests {
         await provider.disconnect()
     }
 
-    private func makeProvider() -> DiscordRESTProvider {
+    private func makeProvider(diagnostics: DiscordAPIDiagnosticStore = DiscordAPIDiagnosticStore()) -> DiscordRESTProvider {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [RESTSessionRecoveryURLProtocol.self]
         return DiscordRESTProvider(
@@ -90,6 +95,7 @@ struct RESTSessionRecoveryTests {
             session: URLSession(configuration: configuration),
             gatewayTransport: RESTSessionRecoveryGatewayTransport(),
             installationID: "test-installation",
+            apiDiagnostics: diagnostics,
             ownsRESTSession: true
         )
     }

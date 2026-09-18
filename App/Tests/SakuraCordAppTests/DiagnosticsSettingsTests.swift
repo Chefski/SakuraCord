@@ -16,23 +16,34 @@ import UserNotifications
     let defaults = InMemoryPreferences()
     let settings = SettingsPreferenceStore(defaults: defaults)
     #expect(settings.value(for: .diagnosticPanicSave) == .bool(true))
+    #expect(settings.value(for: .diagnosticConnectionMetrics) == .bool(false))
+    settings.set(.bool(true), for: .diagnosticConnectionMetrics)
     settings.set(.bool(true), for: .diagnosticDetailedPayloads)
     settings.set(.bool(true), for: .diagnosticDiskCapture)
     let store = DiscordAPIDiagnosticStore(diskDirectoryURL: directory)
 
     DiagnosticsPreferences.restore(defaults: defaults, store: store)
 
+    let diskURL = try #require(store.currentDiskLogURL)
+    let diskData = try Data(contentsOf: diskURL)
+    let diskHeader = try #require(String(data: diskData, encoding: .utf8))
+        .split(separator: "\n").first
+    #expect(diskHeader?.contains("supportSummary") == true)
+    #expect(diskHeader?.contains(DiagnosticsSupportSummary.format) == true)
+    #expect(store.capturesConnectionMetrics)
     #expect(store.enablesPanicSave)
     #expect(store.capturesPayloadDetails)
     #expect(store.savesDiagnosticsToDisk)
     #expect(settings.value(for: .diagnosticDetailedPayloads) == .bool(true))
     #expect(settings.value(for: .diagnosticDiskCapture) == .bool(true))
 
+    settings.set(.bool(false), for: .diagnosticConnectionMetrics)
     settings.set(.bool(false), for: .diagnosticPanicSave)
     settings.set(.bool(false), for: .diagnosticDetailedPayloads)
     settings.set(.bool(false), for: .diagnosticDiskCapture)
     DiagnosticsPreferences.restore(defaults: defaults, store: store)
 
+    #expect(!store.capturesConnectionMetrics)
     #expect(!store.enablesPanicSave)
     #expect(!store.retainsPayloadDetails)
     #expect(!store.capturesPayloadDetails)
@@ -183,7 +194,40 @@ import UserNotifications
             retainedEntryCount: 7
         )
     )
-    let text = try summary.encodedText()
+    let logDirectory = FileManager.default.temporaryDirectory.appending(path: "support-log-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: logDirectory) }
+    let logStore = DiscordAPIDiagnosticStore(diskDirectoryURL: logDirectory)
+    summary.installLogSnapshot(in: logStore)
+    try logStore.setSavesDiagnosticsToDisk(true)
+    logStore.enablesPanicSave = true
+    logStore.recordHTTPFailure(
+        method: "GET", path: "/auth/sessions", attempt: 1,
+        duration: .seconds(30), error: URLError(.timedOut)
+    )
+    let logData = [
+        try logStore.exportData(),
+        try Data(contentsOf: #require(logStore.currentDiskLogURL)),
+        try Data(contentsOf: logStore.panicSaveURL),
+    ]
+    let summaries = try logData.map { data in
+        let line = try #require(data.split(separator: 0x0A).first)
+        let header = try #require(JSONSerialization.jsonObject(with: Data(line)) as? [String: Any])
+        #expect(header["supportSummaryCapturedAt"] is String)
+        return try #require(header["supportSummary"] as? [String: Any])
+    }
+    for headerSummary in summaries {
+        let decoded = try JSONDecoder().decode(
+            DiagnosticsSupportSummary.self,
+            from: JSONSerialization.data(withJSONObject: headerSummary)
+        )
+        #expect(decoded.application == summary.application)
+        #expect(decoded.system == summary.system)
+        #expect(decoded.features == summary.features)
+        #expect(decoded.diagnosticModes.savesSanitizedDiagnosticsToDisk)
+    }
+    let text = try summary.encodedText() + logData.map {
+        try #require(String(data: $0, encoding: .utf8))
+    }.joined()
 
     #expect(text.contains(DiagnosticsSupportSummary.format))
     #expect(text.contains("Apple M2 Pro"))
@@ -267,7 +311,7 @@ import UserNotifications
         .diagnosticsStatusOverview, .diagnosticsRefresh,
         .diagnosticsSupportPreview, .diagnosticsSupportCopy,
         .diagnosticsSupportExport, .diagnosticsOpenFolder,
-        .diagnosticDetailedPayloads, .diagnosticDiskCapture, .diagnosticPanicSave,
+        .diagnosticConnectionMetrics, .diagnosticDetailedPayloads, .diagnosticDiskCapture, .diagnosticPanicSave,
         .diagnosticRetainedEntries, .diagnosticExport, .diagnosticClear,
     ]
     let controls = SettingsCatalog.foundation.controls.filter {
