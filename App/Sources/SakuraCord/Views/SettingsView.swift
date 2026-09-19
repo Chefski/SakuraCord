@@ -8,6 +8,7 @@ struct SettingsView: View {
     @Environment(\.locale) private var locale
     @State private var state = SettingsViewState()
     @State private var launchAtLogin = LaunchAtLoginController()
+    @FocusState private var isSearchFocused: Bool
     @State private var isSearchPresented = false
     @State private var profileEditor: ProfileEditorState?
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
@@ -56,6 +57,12 @@ struct SettingsView: View {
                 comment: "Prompt for the Settings sidebar search field."
             )
         )
+        .searchFocused($isSearchFocused)
+        .focusedSceneValue(\.shortcutCommandContext, .settings {
+            columnVisibility = .all
+            isSearchPresented = true
+            isSearchFocused = true
+        })
         .background {
             ZStack {
                 SettingsWindowBehaviorBridge()
@@ -130,6 +137,7 @@ struct SettingsView: View {
     }
 
     private func dismissSearchFocus() {
+        isSearchFocused = false
         isSearchPresented = false
         NSApp.keyWindow?.makeFirstResponder(nil)
     }

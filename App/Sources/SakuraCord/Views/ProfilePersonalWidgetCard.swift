@@ -8,6 +8,7 @@ struct ProfilePersonalWidgetCard: View {
     let animates: Bool
     var editor: ProfileEditorState?
     @State private var expanded = false
+    @State private var isExpansionHovered = false
     @State private var hasClippedText = false
     @State private var imageVisibilityOverrides: [ProfileWidgetField.ID: Bool] = [:]
 
@@ -49,12 +50,15 @@ struct ProfilePersonalWidgetCard: View {
                     }
                 }
             }
-            if expanded || hasClippedText {
-                Button(expanded ? "Show Less" : "Show More") { expanded.toggle() }
-                    .buttonStyle(.plain).font(.system(size: 14, weight: .medium))
+            if editor == nil, expanded || hasClippedText {
+                Button { expanded.toggle() } label: {
+                    Text(expanded ? "Show Less" : "Show More").underline(isExpansionHovered)
+                }
+                .buttonStyle(.plain).font(.system(size: 14, weight: .medium))
+                .onModalHover { isExpansionHovered = $0 }
             }
         }
-        .environment(\.profileWidgetTextExpanded, expanded)
+        .environment(\.profileWidgetTextExpanded, editor != nil || expanded)
         .onPreferenceChange(ProfileWidgetClippedTextKey.self) { hasClippedText = $0.values.contains(true) }
         .onChange(of: widget.sections) { _, sections in
             let ids = Set(sections.flatMap { section -> [ProfileWidgetField.ID] in

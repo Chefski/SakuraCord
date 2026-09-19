@@ -437,6 +437,22 @@ struct DirectMessageProviderContractTests {
                 #expect(suggestionRequest.query.isEmpty)
                 #expect(suggestionRequest.body == nil)
                 #expect(suggestionRequest.hadAuthorization)
+            } else {
+                // Opening the main editor from a server preload must establish
+                // a saveable main baseline, including the original widget list.
+                var changes = ProfileEditChanges(widgets: [ProfileWidget(content: .application(id: "7"))])
+                changes.metadata.bio = .set("Accepted bio")
+                let receipt = ProfileSaveReceipt(changes)
+                try await provider.saveProfileChanges(changes, in: .main) { await receipt.accept($0) }
+                #expect(await receipt.stages == [.metadata, .widgets])
+                #expect(await receipt.changes.hasChanges == false)
+                #expect(DirectMessageURLProtocol.requests.map(\.method) == ["GET", "PATCH", "PUT"])
+                let saved = try #require(try await provider.cachedProfileEditingSnapshot(in: .main))
+                #expect(saved.metadata.bio == .value("Accepted bio"))
+                #expect(saved.presentation.widgets?.first?.serverID == "700")
+                #expect(saved.serverIdentity == nil)
+                #expect(saved.serverMetadata == nil)
+                #expect(try await provider.cachedProfileEditingSnapshot(in: scope)?.serverMetadata == snapshot.serverMetadata)
             }
             await provider.disconnect()
         }
@@ -1890,7 +1906,7 @@ private final class DirectMessageURLProtocol:
                 : query.contains(where: { $0.name == "guild_id" })
                     ? #"""
                     {"user":{"id":"2","username":"maya","global_name":"Maya","avatar":null},"premium_type":2,
-                     "guild_member":{"nick":null,"avatar":null},"guild_member_profile":{"bio":"","pronouns":"","theme_colors":null},
+                     "guild_member":{"nick":null,"avatar":null},"guild_member_profile":{"bio":"","pronouns":"","theme_colors":null},"widgets":[],
                      "mutual_guilds":[],"mutual_friends":[],"mutual_friends_count":0}
                     """#
                     : #"{"user":{"id":"2","username":"maya","global_name":"Maya","avatar":null},"premium_type":2,"widgets":[],"mutual_guilds":[],"mutual_friends":[],"mutual_friends_count":0}"#

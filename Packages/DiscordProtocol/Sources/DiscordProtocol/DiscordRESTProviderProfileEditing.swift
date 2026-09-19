@@ -15,15 +15,30 @@ public extension DiscordRESTProvider {
         }) {
             cachedScope = entry.key
         } else { return nil }
-        guard let response = profileEditingResponses[cachedScope], response.profile.user.id == user.id.description else { return nil }
+        guard var response = profileEditingResponses[cachedScope], response.profile.user.id == user.id.description else { return nil }
         if scope.guildID != nil, response.serverIdentity == nil || response.serverMetadata == nil { return nil }
         let key = ProfileCacheKey(userID: user.id, guildID: cachedScope.guildID)
         guard var presentation = cachedProfiles[key] else { return nil }
         presentation.widgetResources = cachedProfileWidgetResources(for: user.id)
         if cachedScope != scope {
             presentation = try makeProfileEditingSnapshot(response, in: cachedScope, presentation: presentation).mainPresentation
+            response.profile.guildMember = nil
+            response.profile.guildMemberProfile = nil
+            response.profile.guildBadges = nil
+            response.serverIdentity = nil
+            response.serverMetadata = nil
         }
-        return try makeProfileEditingSnapshot(response, in: scope, presentation: presentation)
+        let snapshot = try makeProfileEditingSnapshot(response, in: scope, presentation: presentation)
+        if cachedScope != scope {
+            // The editor and saver must share the same scoped baseline. A server
+            // preload contains main fields, but was previously never registered
+            // under .main, leaving a usable editor that could not save.
+            let key = ProfileCacheKey(userID: user.id, guildID: scope.guildID)
+            profileEditingResponses[scope] = response
+            profileResponses[key] = response.profile
+            cachedProfiles[key] = presentation
+        }
+        return snapshot
     }
 
     func profileEditingSnapshot(in scope: ProfileEditingScope) async throws -> ProfileEditingSnapshot {

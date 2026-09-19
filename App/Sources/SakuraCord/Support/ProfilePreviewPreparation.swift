@@ -33,7 +33,7 @@ enum ProfilePreviewPreparation {
                 group.addTask { await preload(layer.staticURL, maximumPixelDimension: 2048) }
             }
             let theme = ProfileThemeState()
-            await theme.load(theme.source(for: profile, scale: NSScreen.main?.backingScaleFactor ?? 2, isPreview: true))
+            await theme.load(theme.source(for: profile, scale: NSScreen.main?.backingScaleFactor ?? 2, allowsTheme: true))
         }
     }
 

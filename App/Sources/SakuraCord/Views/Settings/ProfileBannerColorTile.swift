@@ -9,7 +9,7 @@ struct ProfileBannerColorTile: View {
     @Environment(\.displayScale) private var displayScale
 
     private var color: UInt32 {
-        profile.accentHex ?? theme.colors(for: profile, scale: displayScale, isPreview: true).first ?? 0x41434A
+        profile.accentHex ?? theme.colors(for: profile, scale: displayScale, allowsTheme: true).first ?? 0x41434A
     }
 
     var body: some View {
@@ -31,8 +31,8 @@ struct ProfileBannerColorTile: View {
         .contextMenu {
             if profile.accentHex != nil { Button("Reset Banner Color") { editor.setBannerColor(nil) } }
         }
-        .task(id: theme.source(for: profile, scale: displayScale, isPreview: true)) {
-            await theme.load(theme.source(for: profile, scale: displayScale, isPreview: true))
+        .task(id: theme.source(for: profile, scale: displayScale, allowsTheme: true)) {
+            await theme.load(theme.source(for: profile, scale: displayScale, allowsTheme: true))
         }
     }
 }

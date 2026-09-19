@@ -13,85 +13,61 @@ struct ProfileGameWidgetCard: View {
     @State private var selectedGame: ProfileGame?
     @State private var expanded = false
     @State private var showsPicker = false
-    @State private var reorderingID: String?
-    @State private var originalGameOrder: [String] = []
-    @FocusState private var focusedGameID: String?
-
+    @State private var isExpansionHovered = false
     private var isGrid: Bool { kind == .liked || kind == .wanted }
+    private var visibleGames: [ProfileWidgetGame] {
+        editor != nil || expanded ? games : Array(games.prefix(isGrid ? 8 : 2))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(kind.title).font(.system(size: 14, weight: .medium))
-                    if editor != nil, !games.isEmpty {
+                    if editor != nil {
                         Text(kind == .favorite ? "Choose 1 game" : "Add up to \(kind.capacity) games").font(.system(size: 12))
                     }
                 }
                 Spacer()
-                if editor != nil, kind != .favorite {
-                    Button { showsPicker = true } label: { Image(systemName: "plus").frame(width: 24, height: 24) }
-                        .disabled(editor?.canEditWidgets != true || games.count >= kind.capacity)
-                        .accessibilityLabel("Add Game")
-                        .escapeDismissiblePopover(isPresented: $showsPicker) { gamePicker }
-                }
+
             }
             .padding(.trailing, editor == nil ? 0 : 24)
-            if isGrid {
+            if isGrid, !games.isEmpty {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 16), count: 4), spacing: 16) {
-                    ForEach(Array(games.prefix(expanded ? 20 : 8))) { game in
+                    ForEach(visibleGames) { game in
                         ProfileWidgetGameLink(game: records.first { $0.id == game.id }, animates: animates, open: gameAction)
                             .aspectRatio(3 / 4, contentMode: .fit)
-                            .modifier(ProfileWidgetGameRemoval(isEnabled: editor?.canEditWidgets == true) { editor?.removeWidgetGame(widgetID: widgetID, gameID: game.id) })
-                            .overlay(alignment: .bottomLeading) {
-                                if editor?.canEditWidgets == true {
-                                    ProfileWidgetGameReorderHandle(game: game, name: records.first { $0.id == game.id }?.name,
-                                                                  focused: $focusedGameID, begin: { beginReordering(game.id) })
-                                        .padding(4)
-                                }
-                            }
-                            .overlay { if reorderingID == game.id { RoundedRectangle(cornerRadius: 8).stroke(.tint, lineWidth: 2) } }
-                            .dropDestination(for: String.self, isEnabled: editor?.canEditWidgets == true) { values, _ in drop(values, at: game.id) }
+                            .modifier(gameActions(game))
+                            .contentShape(.interaction, .rect(cornerRadius: 8))
+                    }
+                    if editor != nil, games.count < kind.capacity {
+                        addGameButton.aspectRatio(3 / 4, contentMode: .fit)
                     }
                 }
-                if games.count > 8 {
-                    Button(expanded ? "Show Less" : "Show More") { expanded.toggle() }
-                        .buttonStyle(.plain).font(.system(size: 12, weight: .medium))
+                if editor == nil, games.count > 8 {
+                    expansionButton.font(.system(size: 12, weight: .medium))
                 }
-            } else {
-                ForEach(Array(games.prefix(expanded ? kind.capacity : 2))) { game in
-                    ProfileWidgetGameRow(
-                        game: game, record: records.first { $0.id == game.id }, kind: kind,
-                        animates: animates, displayName: displayName,
-                        editable: editor?.canEditWidgets == true,
-                        reordering: reorderingID == game.id, focused: $focusedGameID,
-                        update: { editor?.updateWidgetGame(widgetID: widgetID, game: $0) },
-                        remove: { editor?.removeWidgetGame(widgetID: widgetID, gameID: game.id) },
-                        beginReordering: { beginReordering(game.id) }, openGame: gameAction
-                    )
-                    .dropDestination(for: String.self, isEnabled: editor?.canEditWidgets == true) { values, _ in drop(values, at: game.id) }
+            } else if kind == .favorite, let game = games.first {
+                gameRow(game)
+            } else if !games.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(visibleGames) { game in
+                        gameRow(game)
+                            .contentShape(.interaction, .rect(cornerRadius: 8))
+                    }
                 }
-                if kind == .rotation, games.count > 2 {
-                    Button(expanded ? "Show Less" : "Show More") { expanded.toggle() }
-                        .buttonStyle(.plain).font(.system(size: 14, weight: .medium))
+                if editor != nil, kind == .rotation, !games.isEmpty, games.count < kind.capacity {
+                    addGameButton.frame(width: 88, height: 116)
+                }
+                if editor == nil, kind == .rotation, games.count > 2 {
+                    expansionButton.font(.system(size: 14, weight: .medium))
                 }
             }
-            if let editor, editor.canEditWidgets, games.isEmpty {
-                if kind == .favorite {
-                    HStack(spacing: 16) {
-                        Button { showsPicker = true } label: {
-                            Image(systemName: "plus").font(.system(size: 24)).frame(width: 84, height: 112)
-                                .background(.primary.opacity(0.05), in: .rect(cornerRadius: 8))
-                        }
-                        .buttonStyle(.plain).accessibilityLabel("Add Game")
-                        .escapeDismissiblePopover(isPresented: $showsPicker) { gamePicker }
-                        Text("Add one game. This Widget won't show up on your profile until you add a game.", bundle: #bundle)
-                            .font(.system(size: 12))
-                    }
-                } else {
-                    Text("Add up to \(kind.capacity) games. This Widget won't show up on your profile until you add at least 1 game.")
-                        .font(.system(size: 12)).multilineTextAlignment(.center)
-                        .frame(maxWidth: .infinity).padding(.vertical, 16)
+            if editor != nil, games.isEmpty {
+                ProfileWidgetEmptyGameLayout(isGrid: isGrid) {
+                    addGameButton
+                    Text(emptyMessage).font(.system(size: 12))
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
 
@@ -99,30 +75,6 @@ struct ProfileGameWidgetCard: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.primary.opacity(0.035), in: ConcentricRectangle(cornerRadius: 16))
-        .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow]) { event in
-            guard editor?.canEditWidgets == true, let id = reorderingID,
-                  let index = games.firstIndex(where: { $0.id == id }) else { return .ignored }
-            let offset: Int
-            switch event.key {
-            case .upArrow: offset = isGrid ? -4 : -1
-            case .downArrow: offset = isGrid ? 4 : 1
-            case .leftArrow: guard isGrid else { return .ignored }; offset = -1
-            case .rightArrow: guard isGrid else { return .ignored }; offset = 1
-            default: return .ignored
-            }
-            editor?.moveWidgetGame(widgetID: widgetID, gameID: id, to: index + offset)
-            focusedGameID = id
-            return .handled
-        }
-        .onKeyPress(.return) {
-            guard reorderingID != nil else { return .ignored }
-            reorderingID = nil; originalGameOrder = []; return .handled
-        }
-        .onKeyPress(.escape) {
-            guard reorderingID != nil else { return .ignored }
-            editor?.restoreWidgetGameOrder(widgetID: widgetID, ids: originalGameOrder)
-            reorderingID = nil; originalGameOrder = []; return .handled
-        }
         .windowModal(item: $selectedGame) { game in
             if let editor { ProfileGameView(model: editor.model, game: game, editor: editor) }
         }
@@ -130,11 +82,62 @@ struct ProfileGameWidgetCard: View {
         .onChange(of: editor?.isResolvingScope) { _, resolving in if resolving == true { showsPicker = false } }
     }
 
+    private func gameRow(_ game: ProfileWidgetGame) -> some View {
+        ProfileWidgetGameRow(
+            game: game, record: records.first { $0.id == game.id }, kind: kind,
+            animates: animates, displayName: displayName,
+            isInEditor: editor != nil, editable: editor?.canEditWidgets == true,
+            update: { editor?.updateWidgetGame(widgetID: widgetID, game: $0) },
+            actions: gameActions(game),
+            openGame: gameAction
+        )
+    }
+
+    private func gameActions(_ game: ProfileWidgetGame) -> ProfileWidgetGameActions {
+        let index = games.firstIndex { $0.id == game.id }
+        return ProfileWidgetGameActions(
+            isEnabled: editor?.canEditWidgets == true,
+            backward: index.flatMap { $0 > 0 ? { moveGame(game, by: -1) } : nil },
+            forward: index.flatMap { $0 < games.count - 1 ? { moveGame(game, by: 1) } : nil },
+            remove: { editor?.removeWidgetGame(widgetID: widgetID, gameID: game.id) }
+        )
+    }
+
+    private func moveGame(_ game: ProfileWidgetGame, by offset: Int) {
+        guard let index = games.firstIndex(where: { $0.id == game.id }), games.indices.contains(index + offset) else { return }
+        let beforeIndex = offset < 0 ? index - 1 : index + 2
+        let before = games.indices.contains(beforeIndex) ? games[beforeIndex].id : nil
+        withAnimation(.snappy(duration: 0.2)) {
+            editor?.moveWidgetGames(widgetID: widgetID, ids: [game.id], before: before)
+        }
+    }
+
+    private var addGameButton: some View {
+        Button { showsPicker = true } label: {
+            Image(systemName: "plus").font(.system(size: 24))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .modifier(CompactProfileWidgetHover(backgroundOpacity: 0.05, cornerRadius: 8))
+                .contentShape(.rect(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .disabled(editor?.canEditWidgets != true || games.count >= kind.capacity)
+        .accessibilityLabel("Add Game")
+        .escapeDismissiblePopover(isPresented: $showsPicker) { gamePicker }
+    }
+
+    private var emptyMessage: String {
+        switch kind {
+        case .favorite: String(localized: "Pick your all-time favourite game.", bundle: #bundle)
+        case .rotation: String(localized: "Show the games you're playing lately.", bundle: #bundle)
+        case .liked: String(localized: "Add games you've enjoyed.", bundle: #bundle)
+        case .wanted: String(localized: "Add games you'd like to play next.", bundle: #bundle)
+        }
+    }
+
     @ViewBuilder private var gamePicker: some View {
         if let editor {
             ProfileWidgetGamePicker(editor: editor, selectedIDs: Set(games.map(\.id)), dismiss: { showsPicker = false }, select: {
                 editor.addWidgetGame(widgetID: widgetID, gameID: $0.id)
-                expanded = true
             })
         }
     }
@@ -144,19 +147,14 @@ struct ProfileGameWidgetCard: View {
         return openGame
     }
 
-    private func beginReordering(_ id: String) {
-        guard editor?.canEditWidgets == true else { return }
-        originalGameOrder = games.map(\.id)
-        reorderingID = id
-        focusedGameID = id
+    private var expansionButton: some View {
+        Button { expanded.toggle() } label: {
+            Text(expanded ? "Show Less" : "Show More").underline(isExpansionHovered)
+        }
+        .buttonStyle(.plain)
+        .onModalHover { isExpansionHovered = $0 }
     }
 
-    private func drop(_ values: [String], at targetID: String) {
-        guard editor?.canEditWidgets == true, let id = values.first,
-              games.contains(where: { $0.id == id }), let target = games.firstIndex(where: { $0.id == targetID }) else { return }
-        editor?.moveWidgetGame(widgetID: widgetID, gameID: id, to: target)
-        focusedGameID = id
-    }
 }
 
 private struct ProfileWidgetGameRow: View {
@@ -165,28 +163,26 @@ private struct ProfileWidgetGameRow: View {
     let kind: ProfileGameWidgetKind
     let animates: Bool
     let displayName: String
+    let isInEditor: Bool
     let editable: Bool
-    let reordering: Bool
-    let focused: FocusState<String?>.Binding
     let update: (ProfileWidgetGame) -> Void
-    let remove: () -> Void
-    let beginReordering: () -> Void
+    let actions: ProfileWidgetGameActions
     var openGame: ((ProfileGame) -> Void)?
+    @State private var isNameHovered = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 16) {
             ProfileWidgetGameLink(game: record, animates: animates, open: openGame)
                 .frame(width: 88, height: 116)
-                .modifier(ProfileWidgetGameRemoval(isEnabled: editable, action: remove))
-                .overlay(alignment: .bottomLeading) {
-                    if editable, kind == .rotation {
-                        ProfileWidgetGameReorderHandle(game: game, name: record?.name, focused: focused, begin: beginReordering).padding(4)
-                    }
-                }
+                .modifier(actions)
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top) {
                     if let record, let openGame, record.metadata?.isProfileAvailable != false {
-                        Button(record.name) { openGame(record) }.buttonStyle(.plain).font(.system(size: 14, weight: .medium))
+                        Button { openGame(record) } label: {
+                            Text(record.name).underline(isNameHovered)
+                        }
+                        .buttonStyle(.plain).font(.system(size: 14, weight: .medium))
+                        .onModalHover { isNameHovered = $0 }
                     } else { Text(record?.name ?? "Game").font(.system(size: 14, weight: .medium)) }
                     Spacer(minLength: 0)
                 }
@@ -196,34 +192,13 @@ private struct ProfileWidgetGameRow: View {
                     updated.includesComment = value != nil
                     update(updated)
                 }
-                ProfileWidgetGameTags(tags: game.tags ?? [], update: editable ? { tags in
+                ProfileWidgetGameTags(tags: game.tags ?? [], alwaysExpanded: isInEditor, update: editable ? { tags in
                     var updated = game
                     updated.tags = tags; updated.includesTags = true
                     update(updated)
                 } : nil)
             }
         }
-        .overlay { if reordering { RoundedRectangle(cornerRadius: 8).stroke(.tint, lineWidth: 2) } }
-    }
-}
-
-private struct ProfileWidgetGameReorderHandle: View {
-    let game: ProfileWidgetGame
-    let name: String?
-    let focused: FocusState<String?>.Binding
-    let begin: () -> Void
-
-    var body: some View {
-        Button(action: begin) { Image(systemName: "line.3.horizontal").padding(5) }
-            .buttonStyle(.plain).background(.regularMaterial, in: .rect(cornerRadius: 4))
-            .focusable(interactions: .edit)
-            .focused(focused, equals: game.id).draggable(game.id)
-            .accessibilityLabel("Reorder \(name ?? "game")")
-            .help("Drag to reorder, or press Command-D and use the arrow keys. Enter confirms; Escape cancels.")
-            .onKeyPress("d", phases: .down) { event in
-                guard event.modifiers.contains(.command) || event.modifiers.contains(.control) else { return .ignored }
-                begin(); return .handled
-            }
     }
 }
 
@@ -293,17 +268,27 @@ private struct ProfileWidgetGameComment: View {
     }
 }
 
-private struct ProfileWidgetGameRemoval: ViewModifier {
+private struct ProfileWidgetGameActions: ViewModifier {
     let isEnabled: Bool
-    let action: () -> Void
+    var backward: (() -> Void)?
+    var forward: (() -> Void)?
+    let remove: () -> Void
     @State private var isHovered = false
+
+    private var showsReordering: Bool { backward != nil || forward != nil }
 
     func body(content: Content) -> some View {
         content
             .overlay(alignment: .topTrailing) {
                 if isEnabled, isHovered {
-                    HoverActionPill {
-                        HoverActionButton(systemImage: "trash", help: String(localized: "Remove Game", bundle: #bundle), role: .destructive, action: action)
+                    HoverActionPill(padding: showsReordering ? 3 : 4) {
+                        if showsReordering {
+                            HoverActionButton(systemImage: "chevron.left", help: String(localized: "Move Game Backward", bundle: #bundle), diameter: 22) { backward?() }
+                                .disabled(backward == nil)
+                            HoverActionButton(systemImage: "chevron.right", help: String(localized: "Move Game Forward", bundle: #bundle), diameter: 22) { forward?() }
+                                .disabled(forward == nil)
+                        }
+                        HoverActionButton(systemImage: "trash", help: String(localized: "Remove Game", bundle: #bundle), role: .destructive, diameter: showsReordering ? 22 : nil, action: remove)
                     }.padding(4)
                 }
             }
@@ -327,8 +312,19 @@ private struct ProfileWidgetGameLink: View {
     let animates: Bool
     let open: ((ProfileGame) -> Void)?
     var body: some View {
-        if let game, let open, game.metadata?.isProfileAvailable != false {
-            Button { open(game) } label: { ProfileWidgetGameCover(game: game, animates: animates) }.buttonStyle(.plain)
-        } else { ProfileWidgetGameCover(game: game, animates: animates) }
+        Group {
+            if let game, let open, game.metadata?.isProfileAvailable != false {
+                Button { open(game) } label: { cover }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(game.name)
+            } else { cover }
+        }
+        .modifier(ProfileWidgetHover(tilts: true))
+    }
+
+    private var cover: some View {
+        Color.clear
+            .overlay { ProfileWidgetGameCover(game: game, animates: animates) }
+            .clipShape(.rect(cornerRadius: 8))
     }
 }

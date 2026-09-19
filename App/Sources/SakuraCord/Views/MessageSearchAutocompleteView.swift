@@ -706,7 +706,6 @@ struct MessageSearchAutocompleteView: View {
     let width: CGFloat
     @State private var selectedID: String?
     @State private var keyboardNavigationActive = true
-    @State private var keyMonitor: Any?
 
     var body: some View {
         let result = MessageSearchAutocompletePolicy.result(model: model)
@@ -748,9 +747,8 @@ struct MessageSearchAutocompleteView: View {
         }
         .onAppear {
             synchronizeSelection(result)
-            installKeyMonitor()
         }
-        .onDisappear { removeKeyMonitor() }
+        .background { MessageSearchAutocompleteKeyInput(handle: handleKeyDown) }
         .task {
             // Discord's autocomplete consumes its authenticated FrecencyStore.
             // Load the same account-scoped settings when search first appears;
@@ -774,18 +772,6 @@ struct MessageSearchAutocompleteView: View {
     private func synchronizeSelection(_ result: MessageSearchAutocompletePolicy.Result) {
         let ids = result.suggestions.filter(\.isSelectable).map(\.id)
         selectedID = result.selectsFirst ? ids.first : nil
-    }
-
-    private func installKeyMonitor() {
-        guard keyMonitor == nil else { return }
-        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            handleKeyDown(event) ? nil : event
-        }
-    }
-
-    private func removeKeyMonitor() {
-        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
-        keyMonitor = nil
     }
 
     private func handleKeyDown(_ event: NSEvent) -> Bool {
@@ -1396,5 +1382,36 @@ private final class MessageSearchAXRow: NSView {
         guard let activation else { return false }
         activation()
         return true
+    }
+}
+
+/// The autocomplete must never consume typing addressed to another window.
+private struct MessageSearchAutocompleteKeyInput: NSViewRepresentable {
+    let handle: (NSEvent) -> Bool
+
+    func makeNSView(context: Context) -> InputView { InputView() }
+    func updateNSView(_ view: InputView, context: Context) { view.handle = handle }
+    static func dismantleNSView(_ view: InputView, coordinator: ()) { view.stopMonitoring() }
+
+    final class InputView: NSView {
+        var handle: (NSEvent) -> Bool = { _ in false }
+        private var monitor: Any?
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            stopMonitoring()
+            guard window != nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard let self, let window, event.window === window, window.isKeyWindow,
+                      WindowModalCoordinator.allowsInput(for: self) else { return event }
+                return handle(event) ? nil : event
+            }
+        }
+
+        func stopMonitoring() {
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            monitor = nil
+        }
     }
 }

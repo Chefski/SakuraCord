@@ -11,7 +11,7 @@ struct ProfileThemeTile: View {
     private enum Endpoint { case primary, accent }
 
     private var colors: [UInt32] {
-        theme.colors(for: editor.preview ?? profile, scale: displayScale, isPreview: true)
+        theme.colors(for: editor.preview ?? profile, scale: displayScale, allowsTheme: true)
     }
 
     var body: some View {
@@ -37,8 +37,8 @@ struct ProfileThemeTile: View {
             .disabled(!editor.isNitro)
             .onChange(of: editor.draftGeneration) { _, _ in selectedColor = nil }
             .onChange(of: editor.isResolvingScope) { _, resolving in if resolving { selectedColor = nil } }
-            .task(id: theme.source(for: profile, scale: displayScale, isPreview: true)) {
-                await theme.load(theme.source(for: profile, scale: displayScale, isPreview: true))
+            .task(id: theme.source(for: profile, scale: displayScale, allowsTheme: true)) {
+                await theme.load(theme.source(for: profile, scale: displayScale, allowsTheme: true))
             }
     }
 

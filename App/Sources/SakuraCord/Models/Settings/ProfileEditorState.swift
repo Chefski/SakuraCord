@@ -552,21 +552,18 @@ final class ProfileEditorState {
         updateWidget(widget)
     }
 
-    func moveWidgetGame(widgetID: String, gameID: String, to target: Int) {
-        guard var widget = widgets.first(where: { $0.id == widgetID }),
-              case let .games(kind, games) = widget.content,
-              let index = games.firstIndex(where: { $0.id == gameID }), games.indices.contains(target) else { return }
-        var updated = games
-        updated.insert(updated.remove(at: index), at: target)
-        widget.content = .games(kind, updated)
-        updateWidget(widget)
-    }
-
-    func restoreWidgetGameOrder(widgetID: String, ids: [String]) {
-        guard var widget = widgets.first(where: { $0.id == widgetID }),
+    func moveWidgetGames(widgetID: String, ids: [String], before destination: String?) {
+        guard canEditWidgets, var widget = widgets.first(where: { $0.id == widgetID }),
               case let .games(kind, games) = widget.content else { return }
-        let ordered = ids.compactMap { id in games.first { $0.id == id } }
-        widget.content = .games(kind, ordered + games.filter { !ids.contains($0.id) })
+        let moving = Set(ids)
+        guard !moving.isEmpty, destination.map({ !moving.contains($0) }) ?? true,
+              destination == nil || games.contains(where: { $0.id == destination }) else { return }
+        let moved = games.filter { moving.contains($0.id) }
+        guard !moved.isEmpty else { return }
+        var remaining = games.filter { !moving.contains($0.id) }
+        let insertion = destination.flatMap { id in remaining.firstIndex { $0.id == id } } ?? remaining.endIndex
+        remaining.insert(contentsOf: moved, at: insertion)
+        widget.content = .games(kind, remaining)
         updateWidget(widget)
     }
 

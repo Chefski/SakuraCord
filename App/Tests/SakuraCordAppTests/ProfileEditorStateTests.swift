@@ -233,12 +233,24 @@ func `profile editor uses a preloaded editable baseline without another read`(sc
 @Test func `widget drafts remain removable and reordering preserves the exact save order`() async throws {
     let first = ProfileWidget(serverID: "1", content: .application(id: "10"))
     let second = ProfileWidget(serverID: "2", content: .application(id: "20"))
-    let third = ProfileWidget(serverID: "3", content: .application(id: "30"))
+    let games = [ProfileWidgetGame(id: "a", comment: "Keep this comment"), ProfileWidgetGame(id: "b"), ProfileWidgetGame(id: "c")]
+    let third = ProfileWidget(serverID: "3", content: .games(.liked, games))
     let provider = ProfileEditorCacheProvider(widgets: [first, second, third])
     let model = AppModel(launchMode: .offlineTesting, provider: provider)
     await model.start()
     let editor = ProfileEditorState(model: model)
     await editor.load()
+    editor.moveWidgetGames(widgetID: third.id, ids: ["c", "a"], before: "b")
+    #expect(editor.widgets.last?.content == .games(.liked, [games[0], games[2], games[1]]))
+    #expect(editor.changes.widgets?.last?.content == editor.widgets.last?.content)
+    let reordered = editor.widgets
+    editor.moveWidgetGames(widgetID: third.id, ids: ["a"], before: "removed-during-drag")
+    editor.moveWidgetGames(widgetID: third.id, ids: ["a"], before: "a")
+    #expect(editor.widgets == reordered)
+    editor.moveWidgetGames(widgetID: third.id, ids: ["c"], before: nil)
+    #expect(editor.widgets.last == third)
+    #expect(!editor.hasChanges)
+
     let blank = ProfileWidget(content: .personal(ProfilePersonalWidget(sections: [.cover(ProfileWidgetCover())])))
     editor.addWidget(blank)
     #expect(editor.widgets.first?.id == blank.id)

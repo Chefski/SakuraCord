@@ -134,9 +134,9 @@ struct MemberProfilePopover<Footer: View>: View {
             guard editor == nil, newHeight.isFinite, newHeight > 0 else { return }
             contentHeight = max(250, newHeight)
         }
-        .task(id: cosmeticPolicy.disables(.gradient, for: member.id) ? nil : theme.source(for: profile, scale: displayScale, isPreview: editor != nil)) {
+        .task(id: cosmeticPolicy.disables(.gradient, for: member.id) ? nil : theme.source(for: profile, scale: displayScale, allowsTheme: editor?.isNitro)) {
             if !cosmeticPolicy.disables(.gradient, for: member.id) {
-                await theme.load(theme.source(for: profile, scale: displayScale, isPreview: editor != nil))
+                await theme.load(theme.source(for: profile, scale: displayScale, allowsTheme: editor?.isNitro))
             }
         }
     }
@@ -241,7 +241,7 @@ struct MemberProfilePopover<Footer: View>: View {
                             .padding(.horizontal, 16)
                     }
                     if openProfile != nil, let widgets = profile.widgets, !widgets.isEmpty {
-                        ProfileWidgetCollectionButton(widgets: widgets, resources: profile.widgetResources, open: expandProfile)
+                        CompactProfileWidgets(widgets: widgets, resources: profile.widgetResources, animates: animatesRemoteMedia, open: expandProfile)
                             .padding(.horizontal, 16)
                     }
                     ProfileMembershipSection(createdAt: profile.id.createdAt)
@@ -295,7 +295,7 @@ struct MemberProfilePopover<Footer: View>: View {
     }
 
     private var profileThemeHexes: [UInt32] {
-        cosmeticPolicy.disables(.gradient, for: member.id) ? [] : theme.colors(for: profile, scale: displayScale, isPreview: editor != nil)
+        cosmeticPolicy.disables(.gradient, for: member.id) ? [] : theme.colors(for: profile, scale: displayScale, allowsTheme: editor?.isNitro)
     }
 
     private func expandProfile() {

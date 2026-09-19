@@ -99,6 +99,7 @@ struct SakuraCordApp: App {
         // every previously opened main window on the next launch.
         Window("SakuraCord", id: "main") {
             RootView(model: model)
+                .focusedSceneValue(\.shortcutCommandContext, .workspace(model))
                 .windowModalInputScope()
                 .frame(minWidth: 860, minHeight: 560)
                 .onAppear {
@@ -202,7 +203,6 @@ struct SakuraCordApp: App {
         .windowBackgroundDragBehavior(.disabled)
         .commands {
             SakuraCordCommands(
-                model: model,
                 updateController: appDelegate.updateController
             )
         }

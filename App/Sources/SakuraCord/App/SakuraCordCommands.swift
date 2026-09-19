@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 struct SakuraCordCommands: Commands {
-    let model: AppModel
+    @FocusedValue(\.shortcutCommandContext) private var commandContext
     let updateController: AppUpdateController
 
     var body: some Commands {
@@ -22,42 +22,43 @@ struct SakuraCordCommands: Commands {
 
         CommandGroup(replacing: .sidebar) {
             ShortcutCommandButton(
-                action: .toggleChannelSidebar,
-                model: model
+                action: .toggleChannelSidebar
             )
         }
 
         CommandMenu("Navigate") {
-            ShortcutCommandButton(action: .quickSwitch, model: model)
-            ShortcutCommandButton(action: .messageSearch, model: model)
+            ShortcutCommandButton(action: .quickSwitch)
+            ShortcutCommandButton(action: .messageSearch)
 
             Divider()
 
-            ShortcutCommandButton(action: .previousConversation, model: model)
-            ShortcutCommandButton(action: .nextConversation, model: model)
-            ShortcutCommandButton(action: .previousUnread, model: model)
-            ShortcutCommandButton(action: .nextUnread, model: model)
-            ShortcutCommandButton(action: .previousMention, model: model)
-            ShortcutCommandButton(action: .nextMention, model: model)
-            ShortcutCommandButton(action: .previousServer, model: model)
-            ShortcutCommandButton(action: .nextServer, model: model)
-            ShortcutCommandButton(action: .currentCall, model: model)
-            ShortcutCommandButton(action: .navigateBack, model: model)
-            ShortcutCommandButton(action: .navigateForward, model: model)
-            ShortcutCommandButton(action: .previousTextChannel, model: model)
-            ShortcutCommandButton(action: .toggleDirectMessages, model: model)
+            ShortcutCommandButton(action: .previousConversation)
+            ShortcutCommandButton(action: .nextConversation)
+            ShortcutCommandButton(action: .previousUnread)
+            ShortcutCommandButton(action: .nextUnread)
+            ShortcutCommandButton(action: .previousMention)
+            ShortcutCommandButton(action: .nextMention)
+            ShortcutCommandButton(action: .previousServer)
+            ShortcutCommandButton(action: .nextServer)
+            ShortcutCommandButton(action: .currentCall)
+            ShortcutCommandButton(action: .navigateBack)
+            ShortcutCommandButton(action: .navigateForward)
+            ShortcutCommandButton(action: .previousTextChannel)
+            ShortcutCommandButton(action: .toggleDirectMessages)
 
             Divider()
 
             Button("Direct Messages") {
-                model.navigateUsingShortcut(1)
+                commandContext?.navigate(to: 1)
             }
+            .disabled(commandContext?.allowsWorkspaceNavigation != true)
             .keyboardShortcut("1")
 
             ForEach(2 ... 9, id: \.self) { shortcutNumber in
                 Button("Server \(shortcutNumber - 1)") {
-                    model.navigateUsingShortcut(shortcutNumber)
+                    commandContext?.navigate(to: shortcutNumber)
                 }
+                .disabled(commandContext?.allowsWorkspaceNavigation != true)
                 .keyboardShortcut(
                     KeyEquivalent(Character(String(shortcutNumber)))
                 )
@@ -65,54 +66,53 @@ struct SakuraCordCommands: Commands {
 
             Divider()
 
-            ShortcutCommandButton(action: .toggleMemberList, model: model)
+            ShortcutCommandButton(action: .toggleMemberList)
         }
 
         CommandMenu("Message") {
-            ShortcutCommandButton(action: .upload, model: model)
-            ShortcutCommandButton(action: .copyChannelLink, model: model)
+            ShortcutCommandButton(action: .upload)
+            ShortcutCommandButton(action: .copyChannelLink)
 
             Divider()
 
             ShortcutCommandButton(
-                action: .searchCurrentConversation,
-                model: model
+                action: .searchCurrentConversation
             )
-            ShortcutCommandButton(action: .markServerRead, model: model)
+            ShortcutCommandButton(action: .markServerRead)
             Divider()
-            ShortcutCommandButton(action: .togglePins, model: model)
-            ShortcutCommandButton(action: .toggleEmojiPicker, model: model)
-            ShortcutCommandButton(action: .toggleGIFPicker, model: model)
-            ShortcutCommandButton(action: .toggleStickerPicker, model: model)
+            ShortcutCommandButton(action: .togglePins)
+            ShortcutCommandButton(action: .toggleEmojiPicker)
+            ShortcutCommandButton(action: .toggleGIFPicker)
+            ShortcutCommandButton(action: .toggleStickerPicker)
         }
 
         CommandMenu("Voice") {
-            ShortcutCommandButton(action: .startCall, model: model)
-            ShortcutCommandButton(action: .answerCall, model: model)
-            ShortcutCommandButton(action: .toggleSoundboard, model: model)
+            ShortcutCommandButton(action: .startCall)
+            ShortcutCommandButton(action: .answerCall)
+            ShortcutCommandButton(action: .toggleSoundboard)
             Divider()
-            ShortcutCommandButton(action: .toggleMute, model: model)
-            ShortcutCommandButton(action: .toggleDeafen, model: model)
-            ShortcutCommandButton(action: .toggleCamera, model: model)
-            ShortcutCommandButton(action: .toggleScreenShare, model: model)
+            ShortcutCommandButton(action: .toggleMute)
+            ShortcutCommandButton(action: .toggleDeafen)
+            ShortcutCommandButton(action: .toggleCamera)
+            ShortcutCommandButton(action: .toggleScreenShare)
 
             Divider()
 
-            ShortcutCommandButton(action: .leaveCall, model: model)
+            ShortcutCommandButton(action: .leaveCall)
         }
     }
 }
 
 private struct ShortcutCommandButton: View {
     let action: KeyboardShortcutAction
-    let model: AppModel
+    @FocusedValue(\.shortcutCommandContext) private var commandContext
     private let shortcuts = KeyboardShortcutSettingsStore.shared
 
     var body: some View {
         Button(action.title) {
-            model.performKeyboardShortcutAction(action)
+            commandContext?.perform(action)
         }
-        .disabled(!model.keyboardShortcutActionIsEnabled(action))
+        .disabled(commandContext?.isEnabled(action) != true)
         .keyboardShortcut(
             shortcuts.shortcut(for: action)?.swiftUIShortcut
         )

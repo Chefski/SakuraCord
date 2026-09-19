@@ -6,22 +6,19 @@ struct ProfileApplicationWidgetCard: View {
     let identity: ProfileWidgetApplicationIdentity?
     var animates = true
     var compact = false
-    @State private var showsDetails = false
+    var openProfile: (() -> Void)?
     var connection: ProfileWidgetConnection?
     var connect: (() -> Void)?
+    @State private var isSubtitleHovered = false
 
     var body: some View {
-        if compact, let surface = configuration.surfaces["mini_profile"] {
-                compactCard(surface)
-                    .escapeDismissiblePopover(isPresented: $showsDetails) {
-                        ScrollView { fullCard.padding(12) }
-                            .frame(width: 400, height: 420)
-                    }
-            } else { fullCard }
+        if compact, let surface = configuration.surfaces["mini_profile"], let openProfile {
+            compactCard(surface, open: openProfile)
+        } else { fullCard }
     }
 
-    private func compactCard(_ surface: ProfileWidgetSurface) -> some View {
-        Button { showsDetails = true } label: {
+    private func compactCard(_ surface: ProfileWidgetSurface, open: @escaping () -> Void) -> some View {
+        Button(action: open) {
             ZStack(alignment: .trailing) {
                 let contained = surface.layout == "mini_profile_contained_stat"
                 ProfileConfiguredWidgetImage(field: surface.components[contained ? "contained_image" : "hero_image"]?["image"], data: identity?.data ?? [:], animates: animates)
@@ -40,19 +37,23 @@ struct ProfileApplicationWidgetCard: View {
                     VStack(alignment: .leading, spacing: 3) {
                         ProfileConfiguredWidgetText(component: surface.components["stat"], data: identity?.data ?? [:], required: true)
                             .font(.system(size: 14, weight: .semibold)).lineLimit(1)
-                        Text("View All Stats", bundle: #bundle).font(.system(size: 12)).foregroundStyle(.secondary)
+                        Text("View All Stats", bundle: #bundle)
+                            .underline(isSubtitleHovered)
+                            .font(.system(size: 12)).foregroundStyle(.secondary)
+                            .onModalHover { isSubtitleHovered = $0 }
                     }
                 }
                 .padding(10).padding(.trailing, contained ? 74 : 46)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(height: 88)
-            .background(.primary.opacity(0.035), in: ConcentricRectangle(cornerRadius: 10))
+            .modifier(CompactProfileWidgetHover())
             .clipShape(ConcentricRectangle(cornerRadius: 10))
             .contentShape(ConcentricRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("View All Stats, \(configuration.applicationName)")
+        .help("View Full Profile")
+        .accessibilityLabel("View Full Profile, \(configuration.applicationName)")
     }
 
     private var fullCard: some View {

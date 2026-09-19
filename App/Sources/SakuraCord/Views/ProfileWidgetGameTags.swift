@@ -43,6 +43,7 @@ private enum ProfileWidgetGameTag: String, CaseIterable, Identifiable {
 
 struct ProfileWidgetGameTags: View {
     let tags: [String]
+    var alwaysExpanded = false
     var update: (([String]) -> Void)?
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.locale) private var locale
@@ -80,10 +81,10 @@ struct ProfileWidgetGameTags: View {
 
     var body: some View {
         ProfileRoleFlowLayout(spacing: 4) {
-            ForEach(Array(visibleTags.prefix(expanded ? visibleTags.count : collapsedCount))) { tag in
+            ForEach(Array(visibleTags.prefix(alwaysExpanded || expanded ? visibleTags.count : collapsedCount))) { tag in
                 chip(tag)
             }
-            if collapsedCount < visibleTags.count {
+            if !alwaysExpanded, collapsedCount < visibleTags.count {
                 Button { expanded.toggle() } label: {
                     if expanded { Image(systemName: "chevron.left").frame(minWidth: 12) } else { Text("+\(visibleTags.count - collapsedCount)") }
                 }

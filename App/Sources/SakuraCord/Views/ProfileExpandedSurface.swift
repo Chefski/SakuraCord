@@ -5,7 +5,7 @@ import SwiftUI
 struct ProfileExpandedSurface<ProfileContent: View, Widgets: View>: View {
     @Environment(\.profileCosmeticPolicy) private var cosmeticPolicy
     let profile: UserProfile?
-    var isPreview = false
+    var allowsTheme: Bool?
     @ViewBuilder let profileContent: ProfileContent
     @ViewBuilder let widgets: Widgets
     @State private var theme = ProfileThemeState()
@@ -33,7 +33,7 @@ struct ProfileExpandedSurface<ProfileContent: View, Widgets: View>: View {
                 .padding(.leading, -3)
         }
         .background {
-            let colors = hidesGradient ? [] : theme.colors(for: profile, scale: displayScale, isPreview: isPreview)
+            let colors = hidesGradient ? [] : theme.colors(for: profile, scale: displayScale, allowsTheme: allowsTheme)
             if colors.count >= 2 {
                 LinearGradient(colors: colors.prefix(2).map(Color.init(hex:)), startPoint: .topLeading, endPoint: .bottomTrailing)
                     .overlay {
@@ -45,9 +45,9 @@ struct ProfileExpandedSurface<ProfileContent: View, Widgets: View>: View {
         }
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
         .containerShape(.rect(cornerRadius: 16))
-        .task(id: hidesGradient ? nil : theme.source(for: profile, scale: displayScale, isPreview: isPreview)) {
+        .task(id: hidesGradient ? nil : theme.source(for: profile, scale: displayScale, allowsTheme: allowsTheme)) {
             if !hidesGradient {
-                await theme.load(theme.source(for: profile, scale: displayScale, isPreview: isPreview))
+                await theme.load(theme.source(for: profile, scale: displayScale, allowsTheme: allowsTheme))
             }
         }
     }

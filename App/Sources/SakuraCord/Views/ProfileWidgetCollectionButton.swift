@@ -1,6 +1,32 @@
 import SakuraCordModels
 import SwiftUI
 
+struct CompactProfileWidgets: View {
+    let widgets: [ProfileWidget]
+    let resources: ProfileWidgetResources?
+    let animates: Bool
+    let open: () -> Void
+
+    private func hasMiniProfile(_ widget: ProfileWidget) -> Bool {
+        guard case let .application(id) = widget.content else { return false }
+        return resources?.applications.contains {
+            $0.applicationID == id && $0.isPublished && $0.surfaces["mini_profile"] != nil
+        } == true
+    }
+
+    var body: some View {
+        VStack(spacing: 8) {
+            ForEach(widgets.filter(hasMiniProfile)) { widget in
+                ProfileWidgetCard(widget: widget, resources: resources, animates: animates, compact: true, openProfile: open)
+            }
+            let remaining = widgets.filter { !hasMiniProfile($0) }
+            if !remaining.isEmpty {
+                ProfileWidgetCollectionButton(widgets: remaining, resources: resources, open: open)
+            }
+        }
+    }
+}
+
 /// A fixed-height entry point keeps even the largest widget board out of the popover.
 struct ProfileWidgetCollectionButton: View {
     let widgets: [ProfileWidget]
@@ -41,7 +67,7 @@ struct ProfileWidgetCollectionButton: View {
             }
             .padding(.horizontal, 10)
             .frame(height: 44)
-            .background(.primary.opacity(0.06), in: ConcentricRectangle(cornerRadius: 10))
+            .modifier(CompactProfileWidgetHover(backgroundOpacity: 0.06))
             .contentShape(ConcentricRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)

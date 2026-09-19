@@ -743,6 +743,7 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
         }
 
         private func handleClipboardShortcut(_ event: NSEvent) -> Bool {
+            guard let window, event.window === window, window.isKeyWindow else { return false }
             nativeClearPointerActivationPending = false
             guard let editor = activeSearchEditor else { return false }
             let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)

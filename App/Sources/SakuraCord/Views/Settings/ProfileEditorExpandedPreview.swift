@@ -15,7 +15,7 @@ struct ProfileEditorExpandedPreview: View {
     }
 
     var body: some View {
-        ProfileExpandedSurface(profile: profile, isPreview: true, profileContent: {
+        ProfileExpandedSurface(profile: profile, allowsTheme: editor.isNitro, profileContent: {
             MemberProfilePopover(member: Member(user: profile.user, roleName: "", status: profile.status), profile: profile,
                                  isLoading: false, errorMessage: nil, layout: .expanded, maximumPopoverHeight: 720, showsRoles: false,
                                  footer: EmptyView(), editor: editor, openEditorPicker: open)

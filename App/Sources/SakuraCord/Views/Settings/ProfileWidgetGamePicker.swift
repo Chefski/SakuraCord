@@ -18,7 +18,9 @@ struct ProfileWidgetGamePicker: View {
     @State private var lastActivation: ContinuousClock.Instant?
     @FocusState private var searchFocused: Bool
     private var normalizedQuery: String { DiscordProfileWidgetGameSearch.normalizedQuery(query) }
-    private var games: [ProfileGame] { normalizedQuery.isEmpty ? defaults : matches }
+    private var games: [ProfileGame] {
+        (normalizedQuery.isEmpty ? defaults : matches).filter { !selectedIDs.contains($0.id) }
+    }
     private var isLoading: Bool { normalizedQuery.isEmpty ? isLoadingDefaults : isSearching }
 
     var body: some View {
@@ -78,7 +80,7 @@ struct ProfileWidgetGamePicker: View {
             do {
                 let details = try await editor.loadWidgetGames(ids: [id])
                 try Task.checkCancellation()
-                guard editor.canEditWidgets else { return }
+                guard editor.canEditWidgets, !selectedIDs.contains(id) else { return }
                 guard let selected = details.first else { errorMessage = "This game is no longer available."; return }
                 select(selected)
                 dismiss()
@@ -90,24 +92,21 @@ struct ProfileWidgetGamePicker: View {
     }
 
     private func gameRow(_ game: ProfileGame) -> some View {
-        let isSelected = selectedIDs.contains(game.id)
-        return Button {
-            guard !isSelected, pendingGameID == nil else { return }
+        Button {
+            guard !selectedIDs.contains(game.id), pendingGameID == nil else { return }
             errorMessage = nil
             pendingGameID = game.id
         } label: {
             HStack(spacing: 7) {
                 Text(game.name).lineLimit(1)
                 Spacer(minLength: 4)
-                if isSelected { Image(systemName: "checkmark").font(.body.bold()) }
                 if pendingGameID == game.id { ProgressView().controlSize(.mini) }
             }
             .padding(.horizontal, 6)
             .frame(height: 40)
             .contentShape(Rectangle())
         }
-        .buttonStyle(PopoverRowButtonStyle(isSelected: isSelected))
-        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+        .buttonStyle(PopoverRowButtonStyle())
         .help(game.name)
     }
 

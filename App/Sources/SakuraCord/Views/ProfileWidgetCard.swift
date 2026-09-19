@@ -20,6 +20,7 @@ struct ProfileWidgetCard: View {
     let resources: ProfileWidgetResources?
     var animates = true
     var compact = false
+    var openProfile: (() -> Void)?
     var editor: ProfileEditorState?
     var displayName = ""
     var openGame: ((ProfileGame) -> Void)?
@@ -29,7 +30,7 @@ struct ProfileWidgetCard: View {
         switch widget.content {
         case let .application(id):
             if let configuration = resources?.applications.first(where: { $0.applicationID == id && $0.isPublished }) {
-                ProfileApplicationWidgetCard(configuration: configuration, identity: resources?.identities.first { $0.id == id }, animates: animates, compact: compact,
+                ProfileApplicationWidgetCard(configuration: configuration, identity: resources?.identities.first { $0.id == id }, animates: animates, compact: compact, openProfile: openProfile,
                                              connection: resources?.connections?[configuration.connectionApplicationID ?? id],
                                              connect: connectionAction(configuration))
             } else if let error = resources?.errorMessage {
@@ -38,7 +39,8 @@ struct ProfileWidgetCard: View {
         case let .personal(personal):
             ProfilePersonalWidgetCard(id: widget.id, widget: personal, animates: animates, editor: editor)
         case let .games(kind, games):
-            ProfileGameWidgetCard(widgetID: widget.id, kind: kind, games: games, records: resources?.games ?? [], animates: animates, editor: editor, displayName: displayName, openGame: openGame)
+            ProfileGameWidgetCard(widgetID: widget.id, kind: kind, games: games, records: resources?.games ?? [],
+                                  animates: animates, editor: editor, displayName: displayName, openGame: openGame)
         case .unrecognized: EmptyView()
         }
     }
