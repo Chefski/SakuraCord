@@ -22,7 +22,7 @@ nonisolated enum MessageEmbedPresentation {
     static func visibleEmbeds(
         for message: Message
     ) -> [MessageEmbed] {
-        guard !message.flags.contains(.suppressEmbeds) else { return [] }
+        guard !message.flags.contains(.suppressEmbeds), message.type != .pollResult else { return [] }
         let linkedEmojiURLs =
             LinkedImagePresentation(content: message.content)
                 .matchedEmojiURLs
@@ -151,6 +151,15 @@ nonisolated enum SystemMessagePresentation {
         return value
     }
 
+    private static func pollResultTextRuns(_ message: Message) -> [TextRun] {
+        let question = message.pollResultSummary?.question ?? "Poll"
+        let title = question.count > 50 ? String(question.prefix(47)) + "…" : question
+        let action = message.messageReference?.messageID.map {
+            Action.message(guildID: message.guildID, channelID: message.messageReference?.channelID ?? message.channelID, messageID: $0)
+        }
+        return [actorRun(message), .secondary("’s poll "), .emphasized(title, action: action), .secondary(" has closed.")]
+    }
+
     static func textRuns(
         for message: Message,
         currentUserID: UserID? = nil
@@ -160,6 +169,8 @@ nonisolated enum SystemMessagePresentation {
         case .recipientAdd, .recipientRemove, .channelNameChange, .channelIconChange,
              .channelPinnedMessage, .userJoin:
             conversationTextRuns(for: message, author: author)
+        case .pollResult:
+            pollResultTextRuns(message)
         case .call:
             callTextRuns(for: message, author: author, currentUserID: currentUserID)
         case .guildBoost, .guildBoostTier1, .guildBoostTier2, .guildBoostTier3:
@@ -357,6 +368,7 @@ nonisolated enum SystemMessagePresentation {
         currentUserID: UserID? = nil
     ) -> String {
         switch message.type {
+        case .pollResult: "chart.bar.xaxis"
         case .recipientAdd: "arrow.right"
         case .recipientRemove: "arrow.left"
         case .channelNameChange: "pencil"

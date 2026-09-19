@@ -86,6 +86,7 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
         case componentButton(Int, String)
         case sticker(String)
         case reaction(String)
+        case pollAnswer(Int)
 
     }
 
@@ -164,6 +165,16 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
 
     static let bitmapCostLimit =
         NativeTimelineMediaMemoryPolicy.rowBitmapBytes
+    var pollStates: [MessageID: NativeTimelinePollPresentation] = [:]
+    var pollRowIndexes: [MessageID: Int] = [:]
+    var pollSnapshots: [MessageID: MessagePoll] = [:]
+    var pollAnimations: [MessageID: (from: [Int: CGFloat], start: TimeInterval)] = [:]
+    var pollAccountID: UserID?
+    var pressedPollTarget: NativeTimelinePollTarget?
+    var hoveredPollTarget: NativeTimelinePollTarget?
+    var pollPopover: NSPopover?
+    var pollClockTask: Task<Void, Never>?
+    let pollAnimationTicker = NativeTimelineDisplayLinkTicker()
     var storage = NativeTimelineCanvasStorage()
     var baseContentOriginY: CGFloat = 0
     var contentOriginY: CGFloat = 0
@@ -358,6 +369,9 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
         MainActor.assumeIsolated {
             NotificationCenter.default.removeObserver(self)
             NSWorkspace.shared.notificationCenter.removeObserver(self)
+            pollClockTask?.cancel()
+            pollAnimationTicker.stop()
+            pollPopover?.close()
             mediaInvalidationTask?.cancel()
             visibleMediaRequestTask?.cancel()
             historySkeletonShimmerTask?.cancel()
@@ -427,7 +441,8 @@ enum NativeTimelineRowPainter {
             NativeTimelineTextSpoilerRevealState = .init(),
         spoilerRevealStore: NativeTimelineSpoilerRevealStore? = nil,
         reactionCountTransitions:
-            [String: NativeTimelineReactionCountTransition] = [:]
+            [String: NativeTimelineReactionCountTransition] = [:],
+        pollPresentation: NativeTimelinePollPresentation = .init()
     ) {
         NSGraphicsContext.saveGraphicsState()
         let transform = NSAffineTransform()
@@ -492,6 +507,7 @@ enum NativeTimelineRowPainter {
                 revealedTextSpoilerState:
                     revealedTextSpoilerState,
                 spoilerRevealStore: spoilerRevealStore,
+                pollPresentation: pollPresentation,
                 reactionCountTransitions: reactionCountTransitions
             ))
         }

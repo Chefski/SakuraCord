@@ -29,6 +29,7 @@ struct NativeTimelineMessageDrawInput {
     let textSelection: NativeTimelineTextSelection?
     let revealedTextSpoilerState: NativeTimelineTextSpoilerRevealState
     let spoilerRevealStore: NativeTimelineSpoilerRevealStore?
+    let pollPresentation: NativeTimelinePollPresentation
     let reactionCountTransitions: [String: NativeTimelineReactionCountTransition]
 }
 
@@ -42,6 +43,8 @@ extension NativeTimelineRowPainter {
         if input.hidesMessageContent { return }
         drawForwardedHeaderAndSystemIcon(input)
         drawMessageContent(input)
+        drawPoll(input)
+        drawPollResult(input)
         drawMessageLinkedImages(input)
         drawMessageAttachments(input)
         drawMessageEmbeds(input)
@@ -1296,6 +1299,14 @@ extension NativeTimelineRowPainter {
         pressProgress: CGFloat,
         colors: [NSColor]
     ) {
+        sakuraCordButton(title: region.action.buttonTitle, frame: region.buttonFrame,
+                         isHovered: isHovered, pressProgress: pressProgress, colors: colors)
+    }
+
+    static func sakuraCordButton(
+        title: String, frame: CGRect, isHovered: Bool, pressProgress: CGFloat = 0,
+        colors: [NSColor], foreground: NSColor = .white, isEnabled: Bool = true
+    ) {
         let pressProgress = min(max(pressProgress, 0), 1)
         let scale = NativeTimelineComponentButtonVisualState.scale(
             pressProgress: pressProgress
@@ -1308,48 +1319,49 @@ extension NativeTimelineRowPainter {
             adjustedBrightness($0, amount: brightness)
         }
         NSGraphicsContext.saveGraphicsState()
+        if !isEnabled { NSGraphicsContext.current?.cgContext.setAlpha(0.4) }
         if abs(scale - 1) > 0.0001 {
             let transform = NSAffineTransform()
             transform.translateX(
-                by: region.buttonFrame.midX,
-                yBy: region.buttonFrame.midY
+                by: frame.midX,
+                yBy: frame.midY
             )
             transform.scaleX(by: scale, yBy: scale)
             transform.translateX(
-                by: -region.buttonFrame.midX,
-                yBy: -region.buttonFrame.midY
+                by: -frame.midX,
+                yBy: -frame.midY
             )
             transform.concat()
         }
         let buttonPath = NSBezierPath(
-            concentricRoundedRect: region.buttonFrame,
-            cornerRadius: region.buttonFrame.height / 2
+            concentricRoundedRect: frame,
+            cornerRadius: frame.height / 2
         )
         sakuraCordGradient(buttonColors)?.draw(in: buttonPath, angle: 0)
         NSColor.black.withAlphaComponent(0.12).setFill()
         buttonPath.fill()
         adjustedBrightness(
-            .white,
+            foreground,
             amount: brightness
         ).withAlphaComponent(
             NativeTimelineComponentButtonVisualState.borderAlpha(
                 isHovered: isHovered,
-                isEnabled: true
+                isEnabled: isEnabled
             )
         ).setStroke()
         let buttonBorder = NSBezierPath(
             concentricRoundedRect:
-                region.buttonFrame.insetBy(dx: 0.5, dy: 0.5),
-            cornerRadius: region.buttonFrame.height / 2 - 0.5
+                frame.insetBy(dx: 0.5, dy: 0.5),
+            cornerRadius: frame.height / 2 - 0.5
         )
         buttonBorder.lineWidth = 1
         buttonBorder.stroke()
         text(
-            region.action.buttonTitle,
-            in: region.buttonFrame,
+            title,
+            in: frame,
             font: NativeTimelineComponentButtonMetrics.font,
             color: adjustedBrightness(
-                .white,
+                foreground,
                 amount: brightness
             ),
             alignment: .center,

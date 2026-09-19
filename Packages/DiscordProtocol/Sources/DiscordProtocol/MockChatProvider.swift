@@ -968,7 +968,7 @@ public actor MockChatProvider: ChatProvider {
         }
         guard
             !draft.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || !draft.attachmentURLs.isEmpty || !draft.stickerIDs.isEmpty
+            || !draft.attachmentURLs.isEmpty || !draft.stickerIDs.isEmpty || draft.poll != nil
         else {
             throw ChatProviderError.invalidRequest("A message needs text or an attachment.")
         }
@@ -998,7 +998,8 @@ public actor MockChatProvider: ChatProvider {
             nonce: draft.nonce,
             stickers: draft.stickerIDs.map {
                 MessageSticker(id: $0, name: "Demo sticker", format: .png)
-            }
+            },
+            poll: draft.poll?.preview()
         )
         messagesByChannel[draft.channelID, default: []].append(message)
         continuation?.yield(.messageCreated(message))
@@ -1875,4 +1876,42 @@ public extension MockChatProvider {
         }
         continuation?.yield(.messageUpdated(messages[index]))
     }
+}
+
+public extension MockChatProvider {
+    func setPollAnswers(_ answerIDs: [Int], messageID: MessageID, channelID: ChannelID) async throws {
+        guard let index = messagesByChannel[channelID]?.firstIndex(where: { $0.id == messageID }),
+              var message = messagesByChannel[channelID]?[index], var poll = message.poll,
+              !poll.isClosed(), poll.allowsMultipleAnswers || answerIDs.count <= 1,
+              answerIDs.allSatisfy({ id in poll.answers.contains { $0.id == id } }) else {
+            throw ChatProviderError.invalidRequest("This poll is unavailable.")
+        }
+        let selected = Set(answerIDs)
+        for answer in poll.answers {
+            let old = poll.selectedAnswerIDs.contains(answer.id)
+            if old != selected.contains(answer.id) {
+                poll.applyVote(answerID: answer.id, isAddition: !old, isCurrentUser: true)
+            }
+        }
+        message.poll = poll
+        messagesByChannel[channelID]?[index] = message
+        continuation?.yield(.messageUpdated(message))
+    }
+
+    func pollVoters(messageID: MessageID, channelID: ChannelID, answerID: Int, after: UserID?, limit: Int) async throws -> PollVoterPage {
+        let poll = messagesByChannel[channelID]?.first(where: { $0.id == messageID })?.poll
+        return PollVoterPage(users: after == nil && poll?.selectedAnswerIDs.contains(answerID) == true ? [currentUser] : [], hasMore: false)
+    }
+
+    func endPoll(messageID: MessageID, channelID: ChannelID) async throws -> Message {
+        guard let index = messagesByChannel[channelID]?.firstIndex(where: { $0.id == messageID }),
+              var message = messagesByChannel[channelID]?[index], message.author.id == currentUser.id,
+              message.poll?.isClosed() == false else { throw ChatProviderError.messageNotFound }
+        message.poll?.expiry = .now
+        message.poll?.results?.isFinalized = true
+        messagesByChannel[channelID]?[index] = message
+        continuation?.yield(.messageUpdated(message))
+        return message
+    }
+
 }

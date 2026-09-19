@@ -4,6 +4,7 @@ import SakuraCordModels
 
 extension AppModel {
     func edit(_ message: Message, content: String) async {
+        guard !message.hasPoll else { return }
         let session = accountSession()
         do {
             let updated = try await session.provider.edit(

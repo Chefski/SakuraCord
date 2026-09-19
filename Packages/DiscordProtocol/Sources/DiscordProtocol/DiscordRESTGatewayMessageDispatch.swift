@@ -7,6 +7,8 @@ extension DiscordRESTProvider {
         body: JSONValue
     ) async -> Bool {
         switch name {
+        case "MESSAGE_POLL_VOTE_ADD", "MESSAGE_POLL_VOTE_REMOVE", "MESSAGE_POLL_VOTE_ADD_MANY":
+            handlePollVoteDispatch(name: name, body: body)
         case "TYPING_START":
             await handleTypingStartDispatch(name: name, body: body)
         case "MESSAGE_REACTION_ADD":
@@ -77,8 +79,10 @@ extension DiscordRESTProvider {
         body: JSONValue
     ) async {
         if let dto = try? JSONValueDecoder().decode(MessageDTO.self, from: body),
-           let message = try? dto.domain()
+           var message = try? dto.domain()
         {
+            // A newly created poll starts empty; historical omitted results remain unknown.
+            if message.poll != nil, message.poll?.results == nil { message.poll?.results = PollResults() }
             cacheMessageSearchUsers(dto.searchIndexUsers)
             cacheForwardSearchMessageAliases([message])
             cachedMessages[message.id] = message

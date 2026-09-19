@@ -1078,6 +1078,7 @@ extension NativeTimelineCanvasView {
         ) else { return nil }
         let canEdit =
             row.message.author.id == model?.snapshot?.currentUser.id
+                && !row.message.hasPoll
                 && MessageReplyPresentationPolicy.allowsReplyAction(
                     for: row.message
                 )
@@ -1093,6 +1094,7 @@ extension NativeTimelineCanvasView {
                 && MessageReplyPresentationPolicy.allowsReplyAction(
                     for: row.message
                 ),
+            canEndPoll: row.message.outboxState == .confirmed && row.message.author.id == model?.snapshot?.currentUser.id && row.message.poll?.isClosed() == false,
             canForward: actions.forward != nil && model?.canForward(row.message) == true,
             canPin: model?.canManagePins(for: row.message) == true,
             isPinned: row.message.isPinned,
@@ -1184,6 +1186,8 @@ extension NativeTimelineCanvasView {
             }
         case .markUnread:
             { actions.markUnread(row.message) }
+        case .endPoll:
+            { [weak self] in self?.requestEndPoll(row.message) }
         case .editMessage:
             { [weak self] in self?.beginEditing(row: row, at: index) }
         case .deleteMessage, .discardFailedMessage:

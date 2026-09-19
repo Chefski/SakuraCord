@@ -331,6 +331,13 @@ extension NativeTimelineCanvasView {
                 cornerRadius: frame.width / 2, isLooping: true, fillsFrame: true
             )
         }
+        for answer in row.message.poll?.answers ?? [] {
+            guard answer.emoji?.isAnimated == true, let url = answer.emoji?.imageURL(size: 64),
+                  let frame = layout.pollLayout?.answers.first(where: { $0.id == answer.id })?.emojiFrame else { continue }
+            accumulator.append(row: identifier, role: .pollAnswer(answer.id),
+                               media: .media(url, maximumPixelDimension: 64), frame: frame,
+                               cornerRadius: 0, isLooping: true)
+        }
         for reaction in layout.reactionRegions {
             for (avatarIndex, avatar) in reaction.avatarRegions.enumerated() {
                 guard let url = avatar.reactor.avatarURL,

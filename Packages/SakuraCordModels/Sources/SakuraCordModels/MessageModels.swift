@@ -311,6 +311,7 @@ public struct Message: Identifiable, Codable, Hashable, Sendable {
     public var mentionedRoleIDs: [RoleID]
     public var mentionsEveryone: Bool
     public var call: MessageCall?
+    public var poll: MessagePoll?
     public var hasPoll: Bool
     public var hasActivity: Bool
     public var hasSharedClientTheme: Bool
@@ -348,6 +349,7 @@ public struct Message: Identifiable, Codable, Hashable, Sendable {
         mentionsEveryone: Bool = false,
         call: MessageCall? = nil,
         hasPoll: Bool = false,
+        poll: MessagePoll? = nil,
         hasActivity: Bool = false,
         hasSharedClientTheme: Bool = false,
         hasActivityInstance: Bool = false,
@@ -382,7 +384,8 @@ public struct Message: Identifiable, Codable, Hashable, Sendable {
         self.mentionedRoleIDs = mentionedRoleIDs
         self.mentionsEveryone = mentionsEveryone
         self.call = call
-        self.hasPoll = hasPoll
+        self.hasPoll = hasPoll || poll != nil
+        self.poll = poll
         self.hasActivity = hasActivity
         self.hasSharedClientTheme = hasSharedClientTheme
         self.hasActivityInstance = hasActivityInstance
@@ -396,7 +399,7 @@ public struct Message: Identifiable, Codable, Hashable, Sendable {
         case attachments, reactions, isPinned, nonce, outboxState, type, flags, applicationID, application
         case interactionMetadata, guildID
         case embeds, components, stickers, thread, mentionedUsers, mentionedRoleIDs, mentionsEveryone
-        case call, hasPoll, hasActivity, hasSharedClientTheme, hasActivityInstance
+        case call, poll, hasPoll, hasActivity, hasSharedClientTheme, hasActivityInstance
         case messageReference, forwardedSnapshot
     }
 
@@ -435,7 +438,8 @@ public struct Message: Identifiable, Codable, Hashable, Sendable {
         mentionedRoleIDs = try values.decodeIfPresent([RoleID].self, forKey: .mentionedRoleIDs) ?? []
         mentionsEveryone = try values.decodeIfPresent(Bool.self, forKey: .mentionsEveryone) ?? false
         call = try values.decodeIfPresent(MessageCall.self, forKey: .call)
-        hasPoll = try values.decodeIfPresent(Bool.self, forKey: .hasPoll) ?? false
+        poll = try values.decodeIfPresent(MessagePoll.self, forKey: .poll)
+        hasPoll = (try values.decodeIfPresent(Bool.self, forKey: .hasPoll) ?? false) || poll != nil
         hasActivity = try values.decodeIfPresent(Bool.self, forKey: .hasActivity) ?? false
         hasSharedClientTheme =
             try values.decodeIfPresent(Bool.self, forKey: .hasSharedClientTheme) ?? false
@@ -477,13 +481,14 @@ public struct SendMessageDraft: Equatable, Sendable {
     }
     public var nonce: String
     public var stickerIDs: [String]
+    public var poll: PollDraft?
 
     public init(
         channelID: ChannelID, content: String, replyTo: MessageID? = nil,
         mentionsRepliedUser: Bool = true,
         attachmentURLs: [URL] = [],
         attachments: [ForumPostAttachment]? = nil,
-        nonce: String = ClientNonce.make(), stickerIDs: [String] = []
+        nonce: String = ClientNonce.make(), stickerIDs: [String] = [], poll: PollDraft? = nil
     ) {
         self.channelID = channelID
         self.content = content
@@ -493,5 +498,6 @@ public struct SendMessageDraft: Equatable, Sendable {
             attachments ?? attachmentURLs.map { ForumPostAttachment(url: $0) }
         self.nonce = nonce
         self.stickerIDs = stickerIDs
+        self.poll = poll
     }
 }

@@ -398,6 +398,7 @@ extension NativeTimelineCanvasView {
             rowIndex: rowIndex,
             parent: element
         )
+        appendPollAccessibility(to: &children, message: message, layout: layout, rowIndex: rowIndex, parent: element)
         appendMessageActionsAccessibility(
             to: &children,
             message: message,

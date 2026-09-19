@@ -295,6 +295,11 @@ extension NativeTimelineCanvasView {
         appendEmbedMediaKeys(layouts[index].embedRegions, into: &keys)
         appendComponentMediaKeys(for: message, layouts: layouts[index].componentLayouts, into: &keys)
         appendStickerAndReactionMediaKeys(for: message, layout: layouts[index], into: &keys)
+        for answer in message.poll?.answers ?? [] {
+            if let url = answer.emoji?.imageURL(size: 64) {
+                keys.append(.media(url, maximumPixelDimension: 64))
+            }
+        }
         return Set(keys)
     }
 

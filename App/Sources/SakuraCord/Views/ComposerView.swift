@@ -12,6 +12,8 @@ struct ComposerView: View {
     var conversation: Conversation = .channel
     var onEditMessage: (MessageID) -> Void = { _ in }
     @State private var showFileImporter = false
+    @State private var showComposerActions = false
+    @State private var showPollCreator = false
     @State private var showGIFPicker = false
     @State private var showStickerPicker = false
     @State private var showEmojiPicker = false
@@ -73,7 +75,27 @@ struct ComposerView: View {
                 Group {
                     if !hasActiveCommand {
                         ComposerAttachmentButton(appearance: appearance) {
-                            showFileImporter = true
+                            showComposerActions.toggle()
+                        }
+                        .escapeDismissiblePopover(isPresented: $showComposerActions, arrowEdge: .top) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Button {
+                                    showComposerActions = false
+                                    showFileImporter = true
+                                } label: {
+                                    Label("Upload a File", systemImage: "doc.badge.plus")
+                                        .frame(maxWidth: .infinity, alignment: .leading).padding(8)
+                                }
+                                Button {
+                                    showComposerActions = false
+                                    showPollCreator = true
+                                } label: {
+                                    Label("Create a Poll", systemImage: "chart.bar.xaxis")
+                                        .frame(maxWidth: .infinity, alignment: .leading).padding(8)
+                                }
+                                .disabled(activeConversationID.map { !model.canCreatePoll(in: $0) } ?? true)
+                            }
+                            .buttonStyle(.plain).padding(6).frame(width: 200)
                         }
                     }
                 }
@@ -257,6 +279,11 @@ struct ComposerView: View {
                     LinearKeyframe(3, duration: 0.06)
                     LinearKeyframe(0, duration: 0.04)
                 }
+        }
+        .windowModal(isPresented: $showPollCreator, title: "Create a Poll") {
+            if let channelID = activeConversationID {
+                PollCreationView(model: model, channelID: channelID)
+            }
         }
         .fileImporter(
             isPresented: $showFileImporter,

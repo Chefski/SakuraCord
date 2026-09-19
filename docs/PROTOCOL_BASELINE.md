@@ -712,9 +712,12 @@ and retained as evidence.
 | `PATCH /users/@me/guilds/settings` | One explicit server or category notification change; `guilds` contains exactly one partial guild entry. Category changes contain one category-keyed `channel_overrides` entry and only the selected notification, mute, or collapse fields. | Current first-party; P−, S−. |
 | `GET /guilds/{guild}/application-command-index`, `/channels/{channel}/application-command-index`, `/users/@me/application-command-index`, or `/applications/{application}/application-command-index` | Target-specific index; at most three created GETs for the reviewed `202`/`429` readiness flow. | Current first-party route family; P−, S−. |
 | `POST /interactions` | One explicit type-2 execution, type-4 autocomplete, or returned modal submission; nonce-keyed, one attempt. | Current first-party and Paicord command model; Swiftcord has no current index/interaction path. |
-| `POST /channels/{channel}/messages` | One explicit send; `content`, nonce, `tts:false`, `flags:0`, macOS `mobile_network_type:"unknown"`, optional reply/attachments, and `X-Context-Properties` location `chat_input`. A reply with its author notification enabled omits `allowed_mentions`; disabling it adds `parse:["users","roles","everyone"]` and `replied_user:false`. SakuraCord deliberately adds `enforce_nonce:true` to ordinary composer sends. A native sticker-only send instead has empty `content`, one-element `sticker_ids`, and omits `enforce_nonce`; it cannot be combined with uploaded attachments. Standard, same-guild, and entitled cross-guild stickers use this route. An unentitled cross-guild custom sticker uses the existing attachment reservation/upload path with the rendered WebP and never also sends the native sticker. An explicit forward uses the same route once per selected destination (maximum five), empty `content`, nonce without `enforce_nonce`, `message_reference` with `type:1` and source IDs, and context location `forwarding`. Selected forwards start together and settle independently. Optional user-entered context is one later ordinary send per successful destination unless slowmode without bypass forbids it. Picker browsing and typing perform no HTTP or Gateway search. | Current first-party build and clean macOS CDP request/search/sticker-send observation through 3 September 2026. Pinned Paicord has no forward or complete sticker picker request; Swiftcord v1 corroborates ordinary reply mention control but has no comparable current picker. DiscordKit's later DTO-only snapshot support is decoding evidence, not request or picker evidence. |
+| `POST /channels/{channel}/messages` | One explicit send; `content`, nonce, `tts:false`, `flags:0`, macOS `mobile_network_type:"unknown"`, optional reply/attachments, and `X-Context-Properties` location `chat_input`. A reply with its author notification enabled omits `allowed_mentions`; disabling it adds `parse:["users","roles","everyone"]` and `replied_user:false`. SakuraCord deliberately adds `enforce_nonce:true` to ordinary composer sends. A poll send instead uses the exact `poll` payload and `poll_creation` context described under Polls, with empty content and no `enforce_nonce`. A native sticker-only send instead has empty `content`, one-element `sticker_ids`, and omits `enforce_nonce`; it cannot be combined with uploaded attachments. Standard, same-guild, and entitled cross-guild stickers use this route. An unentitled cross-guild custom sticker uses the existing attachment reservation/upload path with the rendered WebP and never also sends the native sticker. An explicit forward uses the same route once per selected destination (maximum five), empty `content`, nonce without `enforce_nonce`, `message_reference` with `type:1` and source IDs, and context location `forwarding`. Selected forwards start together and settle independently. Optional user-entered context is one later ordinary send per successful destination unless slowmode without bypass forbids it. Picker browsing and typing perform no HTTP or Gateway search. | Current first-party build and clean macOS CDP request/search/sticker-send observation through 3 September 2026. Pinned Paicord has no forward or complete sticker picker request; Swiftcord v1 corroborates ordinary reply mention control but has no comparable current picker. DiscordKit's later DTO-only snapshot support is decoding evidence, not request or picker evidence. |
 | `POST /channels/{channel}/attachments` | Explicit files only; `files` entries contain string index `id`, `filename`, `file_size`, and `is_clip:false`. | Current first-party upload action and Paicord; Swiftcord has no comparable presigned upload. |
 | `PUT {Discord-issued upload_url}` | One unauthenticated storage PUT per reserved file, `application/octet-stream`, raw bytes, no Discord authorization metadata. | Current first-party and Paicord; S−. |
+| `PUT /channels/{channel}/polls/{message}/answers/@me` | Explicit poll vote, replacement, or removal; `answer_ids` is a string array, empty to remove. HTTP 204; no automatic mutation retry. | Two fresh authenticated desktop captures, 19 September 2026; see Polls. |
+| `GET /channels/{channel}/polls/{message}/answers/{answer}` | Visible voter popover; `limit=100&type=2`, optional `after` user ID; response `users`. | Fresh official voter-modal capture and public pagination contract, 19 September 2026. |
+| `POST /channels/{channel}/polls/{message}/expire` | Explicit author action on an active poll; no body; returns the updated message. | Fresh official ending capture and native cross-client verification, 19 September 2026. |
 | `PATCH` or `DELETE /channels/{channel}/messages/{message}` | Explicit edit with only `content`, or explicit deletion with no body. | Public message semantics and all three references. |
 | `PUT` or `DELETE /channels/{channel}/messages/{message}/reactions/{emoji}/@me` | One coalesced explicit reaction intent; empty body. A working-set miss first performs the history GET with `around={message}&limit=1`; a failed or missing-target read prevents mutation, and an already-satisfied intent sends no mutation. | Public reaction semantics and all three references. Cache-miss sequencing is a SakuraCord policy verified by `ProviderRequestContractTests` and the public message pagination contract on 5 September 2026, not a new clean-client observation. |
 | `GET /channels/{channel}/messages/{message}/reactions/{emoji}` | Visible reactor preview only; `type=0&limit=5`, no pagination. | Public reaction-user semantics and current first-party; Paicord/Swiftcord provide historical reaction reads. |
@@ -1015,7 +1018,7 @@ exception dispatches.
   expression settings. This matches the first-party store's `mergePartial` path in public
   web asset `web.e3526df05a0a7718.js`, rechecked on 29 August 2026, and creates
   no follow-up request once the settings cache is loaded.
-- Soundboard, scheduled-event and exception, Stage, poll-vote,
+- Soundboard, scheduled-event and exception, Stage,
   integration, webhook, AutoMod, entitlement, and subscription dispatches have
   no production state consumer. They are deliberately ignored after sanitized
   transport diagnostics instead of occupying the application event stream or
@@ -1270,6 +1273,82 @@ implementation records.
   fallback; autocomplete itself performs no request.
 - Nitro eligibility comes from `premium_type`; disallowed custom emoji
   composition falls back locally without an entitlement probe.
+
+### Polls
+
+Polls were audited on 19 September 2026 using two independent authenticated CDP
+captures from the clean official macOS client `0.0.411` (`com.hnc.Discord`),
+Electron `42.11.1`, Chromium `148.0.7778.280`, API/Gateway v9 with ETF and
+zstd-stream. The loaded main asset was `web.d793fc00a2d44795.js`, SHA-256
+`da9effbe3d25465ff33a7ccce81232c9aa47cafc85247daa49c651464d45c522`, build ID
+`2ae1bc1225ba4bf504c4d700814c349182721466`. Explicitly authorized creation,
+voting, replacement/removal, voter inspection, and ending used only the private
+testing server. Both accounts and both clients exercised the same polls.
+
+Creation uses the ordinary message POST with empty `content`, nonce, `tts:false`,
+`flags:0`, `mobile_network_type:"unknown"`, and `poll`; it omits `enforce_nonce`
+and uses context location `poll_creation`. The poll contains `question.text`,
+`answers:[{poll_media:{text,emoji?}}]`, integer-hour `duration`,
+`allow_multiselect`, and `layout_type:1`. Answer IDs are assigned by Discord.
+Unicode emoji send `name`; custom emoji send string `id` and empty `name`.
+The current desktop UI requires question text up to 300 UTF-16 units and 2–10
+nonempty answer texts up to 55 units. It trims text, omits blank answer rows,
+rejects emoji-only answers, and offers 1, 4, 8, 24, 72, 168, or 336 hours.
+Creation requires sending permission and `SEND_POLLS` (bit 49) in guild channels.
+The shared emoji eligibility/picker handles account and guild restrictions.
+
+Voting replaces the complete selection with `PUT .../polls/{message}/answers/@me`
+and `answer_ids` containing **strings**, including an empty array to remove all
+votes; the observed response is 204. The desktop presents Remove Vote followed
+by a new selection, rather than editing a submitted selection in place. Poll
+questions, answers, emoji, multiselect mode, and duration have no post-creation
+edit action in the audited client. SakuraCord excludes poll messages from all
+message-edit entry points. Only the author may explicitly end an active poll.
+
+The voter list uses `GET .../polls/{message}/answers/{answer}?limit=100&type=2`,
+with `after` for subsequent pages and `users` in the response. The first-party
+hover preview separately uses `limit=3&type=2`; SakuraCord's voter popover uses
+the full-list route. A 100-user response permits another page. Reads retain the
+shared safe-read, cancellation, rate-limit, and account-session rules; poll
+mutations are never automatically replayed after an ambiguous failure.
+Known zero-vote answers display an empty voter list without issuing a GET.
+
+`MESSAGE_POLL_VOTE_ADD` and `MESSAGE_POLL_VOTE_REMOVE` carry channel, message,
+user, guild, and integer answer IDs. Ordered patches update all retained message
+projections, including when the provider's bounded cache has evicted a message.
+Current-user duplicate notifications are idempotent. The current renderer also
+handles `MESSAGE_POLL_VOTE_ADD_MANY` with `votes:[{answer_id,users:[userID]}]`;
+this batch shape was verified in the fresh first-party source, not observed as
+a live dispatch. A new poll's creation event omits results and starts empty;
+historical missing results remain unknown rather than becoming zero votes.
+
+Ending sends an empty-body `POST .../polls/{message}/expire`, returning a message.
+The observed Gateway sequence supplies an expired poll without results, then
+final answer counts and `is_finalized:true`, and a type-46 closing message with
+a `poll_result` embed. The final broadcast's `me_voted:false` values are not
+personalized; reconciliation preserves existing personal selections. Late REST
+responses and omitted results cannot overwrite a finalized tally. Summary fields
+include `poll_question_text`, `victor_answer_votes`, and `total_votes`; a unique
+winner additionally supplies `victor_answer_id` and `victor_answer_text`. Ties
+and zero-vote polls omit those winner fields.
+Natural expiry was also observed in both clients: the local deadline revealed
+results, followed by the final Gateway tally and closing message without an
+expiry request.
+
+Results stay hidden until the user votes, explicitly reveals them, or the poll
+closes. Removing one's vote hides them again. Percentages round each answer's
+count divided by total **selections**, including in multiselect polls. Visible
+result changes use the native timeline's display link and bounded drawing;
+hidden results never animate into view. The expiry clock is local and sends no
+request. Only an explicit reveal/vote on an unknown historical tally may load
+that one message through the existing history route.
+
+Discord's public poll resource and pinned Paicord
+`694761c1938b73bb60bd58942674dfe73aab1135` corroborate the model and permission
+boundaries. Pinned Swiftcord v1 has no comparable poll implementation. Recent
+DiscordKit `58cf0949336d3d1652ba09e8f65cfc6df098fef4` was inspected as a model
+and endpoint reference; its integer vote payload does not override the fresh
+string-ID desktop capture. No new networking dependency was added.
 
 ### Forums and threads
 

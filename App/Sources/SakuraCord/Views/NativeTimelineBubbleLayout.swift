@@ -30,11 +30,15 @@ enum NativeTimelineBubbleLayout {
         let isEnabled =
             model?.appearanceSettings.messageAppearance == .bubbles
                 && !message.type.hasGeneratedContent
-        let channel = model?.snapshot?.channels.first {
-            $0.id == message.channelID
-        } ?? (model?.selectedChannel?.id == message.channelID
-            ? model?.selectedChannel
-            : nil)
+        // Standard message layout never consumes bubble identity. Avoid an
+        // account-wide channel search for every newly paginated message.
+        guard isEnabled else {
+            return Context(isEnabled: false, isOutgoing: false, showsAvatar: true)
+        }
+        let selectedChannel = model?.selectedChannel
+        let channel = selectedChannel?.id == message.channelID
+            ? selectedChannel
+            : model?.snapshot?.channels.first { $0.id == message.channelID }
         return Context(
             isEnabled: isEnabled,
             isOutgoing: isEnabled
@@ -56,7 +60,7 @@ enum NativeTimelineBubbleLayout {
             minimumWidth,
             min(500, availableWidth * 0.68 - horizontalPadding * 2)
         )
-        var preferredWidth = minimumWidth
+        var preferredWidth = message.hasPoll ? min(456, maximumWidth) : minimumWidth
         if let attributedContent = content.attributedContent {
             preferredWidth = max(
                 preferredWidth,

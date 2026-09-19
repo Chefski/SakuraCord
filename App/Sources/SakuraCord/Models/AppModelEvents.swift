@@ -586,6 +586,7 @@ extension AppModel {
             reconcileCachedMessageUpdate(message)
         }
         reconcileForumMessage(message)
+        reconcilePollSearchMessage(message)
     }
 
     func consumeMessageDeleted(channelID: ChannelID, messageID: MessageID) {

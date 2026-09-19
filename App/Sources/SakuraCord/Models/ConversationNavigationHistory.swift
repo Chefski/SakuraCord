@@ -42,12 +42,12 @@ struct ConversationNavigationHistory {
         if let guildID = visit.guildID { lastGuildID = guildID }
     }
 
-    func destination(direction: Int, availableChannelIDs: Set<ChannelID>) -> Destination? {
+    func destination(direction: Int, isAvailable: (ChannelID) -> Bool) -> Destination? {
         guard direction == -1 || direction == 1 else { return nil }
         var target = index + direction
         while visits.indices.contains(target) {
             let channelID = visits[target].channelID
-            if availableChannelIDs.contains(channelID),
+            if isAvailable(channelID),
                index < 0 || channelID != visits[index].channelID {
                 return Destination(channelID: channelID, index: target)
             }

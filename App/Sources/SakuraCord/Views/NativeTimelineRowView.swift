@@ -518,6 +518,8 @@ struct NativeTimelineRowLayout {
     let ephemeralRegion: EphemeralRegion?
     let failedFrame: CGRect?
     let pinnedAtFrame: CGRect?
+    var pollLayout: NativeTimelinePollLayout?
+    var pollResultFrame: CGRect?
 
     static func make(
         item: NativeMessageTimelineItem,
@@ -709,7 +711,7 @@ struct NativeTimelineRowLayout {
 
         var replyFrame: CGRect?
         var replyContentFrame: CGRect?
-        if row.replyMessageID != nil {
+        if row.replyMessageID != nil, message.type != .pollResult {
             let frame = CGRect(
                 x: horizontalInset,
                 y: verticalOffset,
@@ -909,6 +911,21 @@ struct NativeTimelineRowLayout {
             hasRichContent = true
         }
 
+        var pollResultFrame: CGRect?
+        if message.pollResultSummary != nil {
+            if hasRichContent { verticalOffset += 8 }
+            pollResultFrame = CGRect(x: contentX, y: verticalOffset, width: min(440, contentWidth), height: 66)
+            verticalOffset += 66
+            hasRichContent = true
+        }
+        var pollLayout: NativeTimelinePollLayout?
+        if let poll = message.poll {
+            if hasRichContent { verticalOffset += 6 }
+            let layout = NativeTimelinePollLayout(poll: poll, x: contentX, y: verticalOffset, width: contentWidth)
+            pollLayout = layout
+            verticalOffset = layout.frame.maxY
+            hasRichContent = true
+        }
         var linkedImageRegions: [LinkedImageRegion] = []
         if !contentPresentation.linkedImages.isEmpty {
             if hasRichContent {
@@ -1301,7 +1318,9 @@ struct NativeTimelineRowLayout {
             addReactionFrame: addReactionFrame,
             ephemeralRegion: ephemeralRegion,
             failedFrame: failedFrame,
-            pinnedAtFrame: pinnedAtFrame
+            pinnedAtFrame: pinnedAtFrame,
+            pollLayout: pollLayout,
+            pollResultFrame: pollResultFrame
         )
         }
     }

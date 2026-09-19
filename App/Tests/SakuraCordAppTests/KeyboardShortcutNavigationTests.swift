@@ -70,6 +70,29 @@ struct KeyboardShortcutNavigationTests {
         #expect(model.keyboardShortcutConversationDestination(direction: 1, unreadOnly: true, mentionsOnly: true) == nil)
     }
 
+    @Test func `menu availability matches ordered navigation without constructing destinations`() {
+        let model = makeModel()
+        model.readState.applyRemote(ChannelReadState(channelID: ChannelID(rawValue: 20),
+                                                    lastAcknowledgedMessageID: MessageID(rawValue: 50), mentionCount: 2))
+        for selected in [10, 11, 12, 20, 30, 999] {
+            model.selectedChannelID = ChannelID(rawValue: UInt64(selected))
+            for hidden in [Set<ChannelID>(), [ChannelID(rawValue: 10), ChannelID(rawValue: 20)]] {
+                model.hiddenChannelIDs = hidden
+                for unreadOnly in [false, true] {
+                    for mentionsOnly in [false, true] {
+                        #expect(model.hasKeyboardShortcutConversationDestination(unreadOnly: unreadOnly, mentionsOnly: mentionsOnly)
+                            == (model.keyboardShortcutConversationDestination(direction: 1, unreadOnly: unreadOnly, mentionsOnly: mentionsOnly) != nil))
+                    }
+                }
+            }
+        }
+        model.readState.reset(accountID: nil)
+        #expect(!model.hasKeyboardShortcutConversationDestination(unreadOnly: true))
+        model.serverRailItems = []
+        #expect(model.hasKeyboardShortcutConversationDestination(unreadOnly: true)
+            == (model.keyboardShortcutConversationDestination(direction: 1, unreadOnly: true) != nil))
+    }
+
     @Test func `conversation history commits visits and skips unavailable destinations`() throws {
         let channels = (1 ... 4).map {
             Channel(id: ChannelID(rawValue: UInt64($0)), guildID: nil, name: "Channel \($0)")
@@ -78,33 +101,33 @@ struct KeyboardShortcutNavigationTests {
         var history = ConversationNavigationHistory()
         for channel in channels.prefix(3) { history.record(channel) }
 
-        let back = try #require(history.destination(direction: -1, availableChannelIDs: available))
+        let back = try #require(history.destination(direction: -1, isAvailable: available.contains))
         let traversal = history.beginNavigation(to: back)
         history.record(channels[0]) // Guild activation's intermediate selection.
         history.finishNavigation(traversal, at: channels[1])
         #expect(history.previousTextChannelID == channels[2].id)
-        #expect(history.destination(direction: 1, availableChannelIDs: available)?.channelID == channels[2].id)
+        #expect(history.destination(direction: 1, isAvailable: available.contains)?.channelID == channels[2].id)
 
         // Superseding a pending traversal must retain the last committed visit.
-        let pendingBack = try #require(history.destination(direction: -1, availableChannelIDs: available))
+        let pendingBack = try #require(history.destination(direction: -1, isAvailable: available.contains))
         let cancelled = history.beginNavigation(to: pendingBack)
         let replacement = history.beginNavigation()
         history.finishNavigation(cancelled, at: channels[0])
         history.record(channels[2])
         history.finishNavigation(replacement, at: channels[3])
         #expect(history.previousTextChannelID == channels[1].id)
-        #expect(history.destination(direction: -1, availableChannelIDs: available)?.channelID == channels[1].id)
-        #expect(history.destination(direction: 1, availableChannelIDs: available) == nil)
+        #expect(history.destination(direction: -1, isAvailable: available.contains)?.channelID == channels[1].id)
+        #expect(history.destination(direction: 1, isAvailable: available.contains) == nil)
 
         let remaining = available.subtracting([channels[1].id])
-        let pastDeletedChannel = try #require(history.destination(direction: -1, availableChannelIDs: remaining))
+        let pastDeletedChannel = try #require(history.destination(direction: -1, isAvailable: remaining.contains))
         #expect(pastDeletedChannel.channelID == channels[0].id)
         let cancelledTraversal = history.beginNavigation(to: pastDeletedChannel)
         history.finishNavigation(cancelledTraversal, at: nil)
-        #expect(history.destination(direction: -1, availableChannelIDs: remaining) == pastDeletedChannel)
+        #expect(history.destination(direction: -1, isAvailable: remaining.contains) == pastDeletedChannel)
         let completedTraversal = history.beginNavigation(to: pastDeletedChannel)
         history.finishNavigation(completedTraversal, at: channels[0])
-        #expect(history.destination(direction: 1, availableChannelIDs: remaining)?.channelID == channels[3].id)
+        #expect(history.destination(direction: 1, isAvailable: remaining.contains)?.channelID == channels[3].id)
     }
 
     @Test func `cross server navigation commits only the requested conversation`() async {

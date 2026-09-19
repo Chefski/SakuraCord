@@ -3,7 +3,8 @@ import SakuraCordModels
 extension AppModel {
     func applyingMessageUpdate(_ update: MessageUpdate) -> Message? {
         let pinned = pinnedMessages.items.first { $0.id == update.messageID }?.message
-        guard var message = messageInWorkspace(channelID: update.channelID, messageID: update.messageID) ?? pinned else { return nil }
+        let search = messageSearch.page?.results.lazy.flatMap(\.messages).first { $0.id == update.messageID && $0.channelID == update.channelID }
+        guard var message = messageInWorkspace(channelID: update.channelID, messageID: update.messageID) ?? pinned ?? search else { return nil }
         update.apply(to: &message)
         return message
     }

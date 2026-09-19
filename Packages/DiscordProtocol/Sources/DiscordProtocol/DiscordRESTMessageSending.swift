@@ -5,6 +5,12 @@ extension DiscordRESTProvider {
         _ draft: SendMessageDraft,
         progress: @escaping @Sendable (MessageSendProgress) -> Void
     ) async throws -> Message {
+        if let poll = draft.poll {
+            if let error = poll.validationError { throw ChatProviderError.invalidRequest(error) }
+            guard draft.content.isEmpty, draft.attachments.isEmpty, draft.stickerIDs.isEmpty, draft.replyTo == nil else {
+                throw ChatProviderError.invalidRequest("Send a poll separately from text, attachments, stickers, and replies.")
+            }
+        }
         progress(.preparing)
         guard draft.stickerIDs.isEmpty || draft.attachmentURLs.isEmpty else {
             throw ChatProviderError.invalidRequest(
@@ -24,7 +30,9 @@ extension DiscordRESTProvider {
             // action forwards that value on every ordinary message POST.
             "mobile_network_type": .string("unknown"),
         ]
-        if draft.stickerIDs.isEmpty {
+        if let poll = draft.poll {
+            body["poll"] = poll.requestPayload
+        } else if draft.stickerIDs.isEmpty {
             body["enforce_nonce"] = .bool(true)
         } else {
             body["sticker_ids"] = .array(draft.stickerIDs.map(JSONValue.string))
@@ -49,10 +57,13 @@ extension DiscordRESTProvider {
             "/channels/\(draft.channelID)/messages",
             method: "POST",
             body: body,
-            headers: ["X-Context-Properties": DiscordClientMetadata.messageContextHeader]
+            headers: ["X-Context-Properties": draft.poll == nil ? DiscordClientMetadata.messageContextHeader : "eyJsb2NhdGlvbiI6InBvbGxfY3JlYXRpb24ifQ=="]
         )
         var message = try dto.domain()
         message.nonce = draft.nonce
+        if draft.poll != nil, let current = cachedMessages[message.id]?.poll, current.results != nil {
+            message.poll = current
+        }
         cachedMessages[message.id] = message
         continuation?.yield(.messageCreated(message))
         progress(.completed(messageID: message.id))

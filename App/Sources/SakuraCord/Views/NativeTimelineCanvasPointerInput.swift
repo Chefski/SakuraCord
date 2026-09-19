@@ -104,6 +104,7 @@ extension NativeTimelineCanvasView {
                     )
                 }
                 installForwardedSourceCursor(at: index, rowOrigin: rowOrigin)
+                installPollCursors(at: index, rowOrigin: rowOrigin)
             }
             index += 1
         }
@@ -178,6 +179,7 @@ extension NativeTimelineCanvasView {
         let point = currentMouseLocationInCanvas()
         guard !actionCapsuleContains(point) else { return }
         setHoveredRow(index)
+        setHoveredPollTarget(pollPointerHit(at: point)?.target)
         setHoveredCompactTimestampRow(
             compactTimestampRowIndex(at: point)
         )
@@ -214,6 +216,7 @@ extension NativeTimelineCanvasView {
         }
         let point = currentMouseLocationInCanvas()
         guard !actionCapsuleContains(point) else { return }
+        setHoveredPollTarget(pollPointerHit(at: point)?.target)
         synchronizeHoveredRow(at: point)
         setHoveredCompactTimestampRow(
             compactTimestampRowIndex(at: point)
@@ -240,6 +243,7 @@ extension NativeTimelineCanvasView {
             "nativeTimelineTrackingKind"
         ] as? String
         if kind == "row" {
+            setHoveredPollTarget(nil)
             guard !actionCapsuleContains(currentMouseLocationInCanvas()) else {
                 return
             }
@@ -319,6 +323,7 @@ extension NativeTimelineCanvasView {
             return
         }
         if kind == "canvas" {
+            setHoveredPollTarget(nil)
             setHoveredCompactTimestampRow(nil)
             setHoveredAuthorMessageID(nil)
             setHoveredMention(nil)
@@ -338,6 +343,14 @@ extension NativeTimelineCanvasView {
         guard event.buttonNumber == 0 else { return }
         let point = convert(event.locationInWindow, from: nil)
         pressedActivationTarget = nil
+        if let hit = pollPointerHit(at: point) {
+            setHoveredPollTarget(hit.target)
+            pressedPollTarget = hit.target
+            setNeedsDisplay(visibleRect)
+            textSelectionGesture = nil
+            setTextSelection(nil)
+            return
+        }
         if let target = codeBlockCopyButtonHit(at: point) {
             setHoveredCodeBlock(target)
             pressedCodeBlockCopyButton = target
@@ -418,6 +431,10 @@ extension NativeTimelineCanvasView {
 
     override func mouseDragged(with event: NSEvent) {
         guard !overlayBlocksInteractions else { return }
+        if pressedPollTarget != nil {
+            setHoveredPollTarget(pollPointerHit(at: convert(event.locationInWindow, from: nil))?.target)
+            return
+        }
         if pressedCodeBlockCopyButton != nil {
             let point = convert(event.locationInWindow, from: nil)
             setHoveredCodeBlock(codeBlockPointerHit(at: point))
@@ -466,6 +483,14 @@ extension NativeTimelineCanvasView {
 
     override func mouseUp(with event: NSEvent) {
         guard !overlayBlocksInteractions else { return }
+        if let pressed = pressedPollTarget {
+            pressedPollTarget = nil
+            setNeedsDisplay(visibleRect)
+            if let hit = pollPointerHit(at: convert(event.locationInWindow, from: nil)), hit.target == pressed {
+                activatePoll(hit)
+            }
+            return
+        }
         if finishCodeBlockCopyClick(event) || finishComponentButtonClick(event) { return }
         if textSelectionGesture != nil {
             let consumesClick = didDragTextSelection || (textSelection?.range.length ?? 0) > 0
@@ -1009,6 +1034,7 @@ extension NativeTimelineCanvasView {
         let point = currentMouseLocationInCanvas()
         guard !actionCapsuleContains(point) else { return }
         synchronizeHoveredRow(at: point)
+        setHoveredPollTarget(visibleRect.contains(point) ? pollPointerHit(at: point)?.target : nil)
         setHoveredCompactTimestampRow(
             visibleRect.contains(point)
                 ? compactTimestampRowIndex(at: point)

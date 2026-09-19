@@ -4,6 +4,7 @@ struct MessageUpdateDTO: Decodable {
     var id: String
     var channelID: String
     var guildID: String?
+    var poll: DiscordPollDTO?
     var content: String?
     var editedTimestamp: String?
     var attachments: LossyList<AttachmentDTO>?
@@ -26,7 +27,7 @@ struct MessageUpdateDTO: Decodable {
         case id
         case channelID = "channel_id"
         case guildID = "guild_id"
-        case content
+        case content, poll
         case editedTimestamp = "edited_timestamp"
         case attachments
         case embeds, components, stickers, thread, flags, pinned, type, mentions, application, interaction
@@ -44,6 +45,7 @@ struct MessageUpdateDTO: Decodable {
         guard let messageID = MessageID(id), let channelID = ChannelID(channelID) else { return nil }
         let resolvedGuildID = self.guildID.flatMap(GuildID.init) ?? guildID
         var value = MessageUpdate(messageID: messageID, channelID: channelID)
+        if let poll { value.pollUpdates = [.snapshot(poll.domain, preservingSelection: true)] }
         value.content = content
         value.editedTimestamp = editedTimestamp.map { DiscordDate.parse($0) }
         value.attachments = attachments.map { $0.elements.compactMap { try? $0.domain() } }

@@ -36,6 +36,7 @@ extension NativeTimelineCanvasView {
         invalidateVisibleMediaProjection(keepingCapacity: true)
         self.storage = storage
         self.model = model
+        reconcilePollPresentations()
         installSpoilerRevealStore(model.timelineSpoilerRevealStore)
         self.actions = actions
         baseContentOriginY = contentOriginY
@@ -441,6 +442,9 @@ extension NativeTimelineCanvasView {
         self.mediaViewerHighlightedMessageID =
             mediaViewerHighlightedMessageID
         if isBlocked {
+            pressedPollTarget = nil
+            hoveredPollTarget = nil
+            pollPopover?.close()
             pointer.clearHoverAndPressTargets()
             reactionHoverCoordinator.close()
             closeMessageProfilePopover()
@@ -818,7 +822,9 @@ extension NativeTimelineCanvasView {
         index: Int,
         revealState: NativeTimelineTextSpoilerRevealState
     ) -> Bool {
-        hoveredRow == index
+        layouts[index].pollLayout != nil
+            || hoveredPollTarget?.messageID == item.messageID
+            || hoveredRow == index
             || mediaViewerHighlightedMessageID == item.messageID
             || hoveredCompactTimestampRow == index
             || hoveredAuthorMessageID == item.messageID
@@ -864,7 +870,8 @@ extension NativeTimelineCanvasView {
             textSelection: textSelection,
             revealedTextSpoilerState: revealState,
             spoilerRevealStore: spoilerRevealStore,
-            reactionCountTransitions: reactionCountTransitions(inMessageAt: index)
+            reactionCountTransitions: reactionCountTransitions(inMessageAt: index),
+            pollPresentation: pollPresentation(for: item.messageID)
         )
     }
 

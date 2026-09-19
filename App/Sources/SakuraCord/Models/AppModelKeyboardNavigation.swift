@@ -7,10 +7,13 @@ extension AppModel {
     }
 
     func keyboardShortcutHistoryDestination(direction: Int) -> ConversationNavigationHistory.Destination? {
-        let availableIDs = Set((snapshot?.channels ?? []).map(\.id))
-            .union(visibleChannels.map(\.id))
-            .subtracting(hiddenChannelIDs)
-        return conversationNavigationHistory.destination(direction: direction, availableChannelIDs: availableIDs)
+        // Resolve only actual history candidates; an empty Back/Forward stack
+        // must not build an account-wide channel set on every menu update.
+        conversationNavigationHistory.destination(direction: direction) { id in
+            !hiddenChannelIDs.contains(id)
+                && (visibleChannels.contains { $0.id == id }
+                    || snapshot?.channels.contains { $0.id == id } == true)
+        }
     }
 
     var orderedNavigationGuildIDs: [GuildID] {
@@ -67,6 +70,41 @@ extension AppModel {
             return channel.id
         }
         return nil
+    }
+
+    /// Menu validation needs existence, not navigation order. Sorting every
+    /// server's channels here repeats on observed workspace updates, including
+    /// history pagination, and can block the main thread between scroll frames.
+    func hasKeyboardShortcutConversationDestination(unreadOnly: Bool, mentionsOnly: Bool = false) -> Bool {
+        if !unreadOnly {
+            return visibleChannelGroups.contains { group in
+                group.channels.contains { channel in
+                    channel.guildID == selectedGuildID && channel.id != selectedChannelID
+                        && !hiddenChannelIDs.contains(channel.id)
+                        && !checkingChannelIDs.contains(channel.id)
+                }
+            }
+        }
+        let guildIDs = Set(orderedNavigationGuildIDs)
+        // Check the lightweight read entries first. In particular, an account
+        // with no mentions need not inspect/copy Channel values or observe the
+        // whole bootstrap snapshot just to disable Next/Previous Mention.
+        let candidates = Set(readState.entries.values.compactMap { entry -> ChannelID? in
+            guard entry.channelID != selectedChannelID, entry.isAccessible, entry.isUnread,
+                  !hiddenChannelIDs.contains(entry.channelID),
+                  !mentionsOnly || entry.mentionCount > 0,
+                  entry.guildID.map({ guildIDs.contains($0) }) ?? true,
+                  readState.unread(channelID: entry.channelID)
+            else { return nil }
+            return entry.channelID
+        })
+        guard !candidates.isEmpty else { return false }
+        // Some read entries are threads or no longer occur in the navigation
+        // snapshot. Resolve all candidates in one pass, not one full scan each.
+        return snapshot?.channels.contains { channel in
+            candidates.contains(channel.id)
+                && (channel.guildID.map { guildIDs.contains($0) } ?? true)
+        } ?? false
     }
 
     private func shortcutConversationChannels(acrossServers: Bool) -> [Channel] {

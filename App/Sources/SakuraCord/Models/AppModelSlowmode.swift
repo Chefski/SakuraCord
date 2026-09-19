@@ -8,8 +8,9 @@ extension AppModel {
             ?? snapshot?.activeJoinedThreads.first { $0.id == channelID }
             ?? (openThread?.id == channelID ? openThread : nil)
         let permissionChannelID = thread?.parentID ?? channelID
-        guard let channel = snapshot?.channels.first(where: { $0.id == permissionChannelID })
-                ?? visibleChannels.first(where: { $0.id == permissionChannelID }),
+        guard let channel = (selectedChannel?.id == permissionChannelID ? selectedChannel : nil)
+                ?? visibleChannels.first(where: { $0.id == permissionChannelID })
+                ?? snapshot?.channels.first(where: { $0.id == permissionChannelID }),
               let guildID = channel.guildID
         else { return (0, false) }
         let interval = max(0, thread?.rateLimitPerUser ?? channel.rateLimitPerUser)

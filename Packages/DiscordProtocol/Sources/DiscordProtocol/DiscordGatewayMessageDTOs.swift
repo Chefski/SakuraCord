@@ -415,7 +415,7 @@ struct MessageDTO: Decodable {
     var mentionRoles: [String]?
     var mentionEveryone: Bool?
     var call: CallDTO?
-    var poll: JSONValue?
+    var poll: DiscordPollDTO?
     var activity: JSONValue?
     var sharedClientTheme: JSONValue?
     var activityInstance: JSONValue?
@@ -518,6 +518,7 @@ struct MessageDTO: Decodable {
             mentionsEveryone: mentionEveryone ?? false,
             call: call?.domain,
             hasPoll: poll != nil,
+            poll: poll?.domain,
             hasActivity: activity != nil,
             hasSharedClientTheme: sharedClientTheme != nil,
             hasActivityInstance: activityInstance != nil,

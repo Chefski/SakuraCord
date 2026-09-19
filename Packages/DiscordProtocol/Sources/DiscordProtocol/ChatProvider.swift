@@ -119,6 +119,9 @@ public protocol ChatProvider: Sendable {
     func send(_ draft: SendMessageDraft) async throws -> Message
     func send(_ draft: SendMessageDraft, progress: @escaping @Sendable (MessageSendProgress) -> Void)
         async throws -> Message
+    func setPollAnswers(_ answerIDs: [Int], messageID: MessageID, channelID: ChannelID) async throws
+    func pollVoters(messageID: MessageID, channelID: ChannelID, answerID: Int, after: UserID?, limit: Int) async throws -> PollVoterPage
+    func endPoll(messageID: MessageID, channelID: ChannelID) async throws -> Message
     func forward(_ draft: ForwardMessageDraft) async throws -> Message
     func supports(_ capability: ChatCapability) async -> Bool
     func applicationCommandCatalog(for target: ApplicationCommandIndexTarget) async throws
@@ -925,5 +928,17 @@ public enum ChatCapability: String, Codable, CaseIterable, Hashable, Sendable {
         case .messageForwarding: "Message forwarding"
         case .soundboard: "Soundboard"
         }
+    }
+}
+
+public extension ChatProvider {
+    func setPollAnswers(_ answerIDs: [Int], messageID: MessageID, channelID: ChannelID) async throws {
+        throw ChatProviderError.invalidRequest("Poll voting is unavailable.")
+    }
+    func pollVoters(messageID: MessageID, channelID: ChannelID, answerID: Int, after: UserID?, limit: Int) async throws -> PollVoterPage {
+        throw ChatProviderError.invalidRequest("Poll voters are unavailable.")
+    }
+    func endPoll(messageID: MessageID, channelID: ChannelID) async throws -> Message {
+        throw ChatProviderError.invalidRequest("Ending polls is unavailable.")
     }
 }

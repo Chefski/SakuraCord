@@ -5,6 +5,7 @@ import Foundation
 public struct MessageUpdate: Equatable, Sendable {
     public let messageID: MessageID
     public let channelID: ChannelID
+    public var pollUpdates: [MessagePollUpdate] = []
     public var content: String?
     public var editedTimestamp: Date??
     public var attachments: [Attachment]?
@@ -29,6 +30,7 @@ public struct MessageUpdate: Equatable, Sendable {
 
     public mutating func merge(_ newer: MessageUpdate) {
         guard messageID == newer.messageID, channelID == newer.channelID else { return }
+        pollUpdates.append(contentsOf: newer.pollUpdates)
         content = newer.content ?? content
         if newer.editedTimestamp != nil { editedTimestamp = newer.editedTimestamp }
         attachments = newer.attachments ?? attachments
@@ -53,6 +55,7 @@ public struct MessageUpdate: Equatable, Sendable {
         guard message.id == messageID, message.channelID == channelID else { return }
         for user in updatedUsers.values { message.applyIdentityUpdate(user) }
         applyContent(to: &message)
+        for update in pollUpdates { update.apply(to: &message) }
         if let thread { message.thread = thread }
         if let flags { message.flags = flags }
         if let isPinned { message.isPinned = isPinned }

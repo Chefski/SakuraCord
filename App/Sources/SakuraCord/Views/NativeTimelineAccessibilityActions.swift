@@ -64,7 +64,7 @@ extension NativeTimelineCanvasView {
         rowIndex: Int
     ) -> [NSAccessibilityCustomAction] {
         let message = row.message
-        let canEdit = message.author.id == model?.snapshot?.currentUser.id
+        let canEdit = !message.hasPoll && message.author.id == model?.snapshot?.currentUser.id
             && MessageReplyPresentationPolicy.allowsReplyAction(for: message)
         let canDelete = model?.canDeleteMessage(message) == true
         if messageInteractionContext == .searchResult || messageInteractionContext == .pinnedResult {
@@ -114,6 +114,12 @@ extension NativeTimelineCanvasView {
             self?.actions?.markUnread(message)
             return self != nil
         })
+        if message.outboxState == .confirmed, message.author.id == model?.snapshot?.currentUser.id, message.poll?.isClosed() == false {
+            result.append(NSAccessibilityCustomAction(name: "End Poll Now") { [weak self] in
+                self?.requestEndPoll(message)
+                return self != nil
+            })
+        }
         if canEdit {
             result.append(NSAccessibilityCustomAction(
                 name: "Edit Message"

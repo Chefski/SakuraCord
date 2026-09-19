@@ -35,6 +35,7 @@ nonisolated enum NativeTimelineMessageMenuAction: Equatable {
     case reply
     case forward
     case markUnread
+    case endPoll
     case editMessage
     case pinMessage
     case unpinMessage
@@ -66,6 +67,7 @@ nonisolated enum NativeTimelineMessageMenuPolicy {
         canDelete: Bool,
         canRetry: Bool,
         canReply: Bool,
+        canEndPoll: Bool = false,
         canForward: Bool = false,
         canPin: Bool = false,
         isPinned: Bool = false,
@@ -88,7 +90,7 @@ nonisolated enum NativeTimelineMessageMenuPolicy {
             )
         }
 
-        return conversationEntries(
+        var entries = conversationEntries(
             canEdit: canEdit,
             canDelete: canDelete,
             canRetry: canRetry,
@@ -97,6 +99,10 @@ nonisolated enum NativeTimelineMessageMenuPolicy {
             canPin: canPin,
             isPinned: isPinned
         )
+        if canEndPoll {
+            entries.insert(.action(.endPoll, title: "End Poll Now", systemImage: "stop.circle"), at: min(3, entries.count))
+        }
+        return entries
     }
 
     private static func conversationEntries(

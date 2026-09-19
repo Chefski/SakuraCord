@@ -148,11 +148,11 @@ extension AppModel {
                 hasOpenThread: openThread != nil
             )
         case .previousConversation, .nextConversation:
-            keyboardShortcutConversationDestination(direction: 1, unreadOnly: false) != nil
+            hasKeyboardShortcutConversationDestination(unreadOnly: false)
         case .previousUnread, .nextUnread:
-            keyboardShortcutConversationDestination(direction: 1, unreadOnly: true) != nil
+            hasKeyboardShortcutConversationDestination(unreadOnly: true)
         case .previousMention, .nextMention:
-            keyboardShortcutConversationDestination(direction: 1, unreadOnly: true, mentionsOnly: true) != nil
+            hasKeyboardShortcutConversationDestination(unreadOnly: true, mentionsOnly: true)
         case .navigateBack:
             keyboardShortcutHistoryDestination(direction: -1) != nil
         case .navigateForward:

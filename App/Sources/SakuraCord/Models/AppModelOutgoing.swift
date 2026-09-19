@@ -143,7 +143,8 @@ extension AppModel {
         mentionsRepliedUser: Bool = true,
         replyPreview: MessageReplyPreview?,
         attachments: [ForumPostAttachment],
-        clearsComposer: Bool
+        clearsComposer: Bool,
+        poll: PollDraft? = nil
     ) async -> Bool {
         guard allowSlowmodeSubmission(in: channelID) else { return false }
         let outgoing = SendMessageDraft(
@@ -151,7 +152,8 @@ extension AppModel {
             content: content,
             replyTo: replyTo,
             mentionsRepliedUser: mentionsRepliedUser,
-            attachments: attachments
+            attachments: attachments,
+            poll: poll
         )
         if clearsComposer {
             stopLocalTyping(clearThrottle: true)
@@ -293,7 +295,8 @@ extension AppModel {
             },
             nonce: outgoing.nonce,
             outboxState: .sending,
-            stickers: stickers
+            stickers: stickers,
+            poll: outgoing.poll?.preview()
         )
     }
 
