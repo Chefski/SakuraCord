@@ -125,6 +125,10 @@ nonisolated struct SettingsPreferenceRegistry: Sendable {
 
     static let foundation = SettingsPreferenceRegistry(registrations: [
         SettingsPreferenceRegistration(
+            id: .memberListVisibility, page: .interface,
+            storage: .appWide(key: "settings.memberListVisible"), defaultValue: .bool(true)
+        ),
+        SettingsPreferenceRegistration(
             id: .launchDestination,
             page: .general,
             storage: .appWide(key: "settings.launchDestination"),

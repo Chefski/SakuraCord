@@ -362,6 +362,26 @@ and rendering. They use real credentials and network data while suppressing
 acknowledgements and other account mutations; offline fixtures are not accepted
 as production performance evidence.
 
+## Settings transfer
+
+The app-owned `SettingsTransferService` exports selected local preference categories
+into versioned JSON `.sakurasettings` documents. The typed preference registry
+allowlists transferable values; imports merge supported entries independently,
+validate types and choices, preserve omitted or unsupported values, and report
+when a newer app is needed. Runtime changes go through the existing settings
+owners. Launch at login and Sparkle preferences use their platform owners;
+download-folder bookmarks are restored only when the destination is accessible
+on the current Mac. Credentials, Discord-synchronized settings, account data,
+messages, and operating-system permission grants are never transferred.
+
+The packager registers `dev.sakuracord.settings`, compiles the document icon
+asset catalog alongside the app icon, and lets macOS compose the folded-page
+icon with a pink-to-white background, the full flower badge, and the short
+“Settings” label. The background source is
+`App/Packaging/SettingsDocumentBackground.svg`; the badge uses the transparent
+Liquid Glass flower variants in `Brand/Logos/SakuraCord-Flower/transparent`,
+filling the available center-image canvas with the complete flower.
+
 ## Account settings
 
 `AccountDetails` and `AccountDevice` are private, session-only domain values;

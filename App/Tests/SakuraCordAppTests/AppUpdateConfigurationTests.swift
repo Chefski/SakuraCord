@@ -287,6 +287,13 @@ func disabledUpdaterLifecycleStaysInert() {
     controller.setAutomaticallyChecksForUpdates(true)
     controller.setAutomaticallyDownloadsUpdates(true)
 
+    controller.importAutomaticPreference(false, for: .updateAutomaticChecks)
+    controller.importAutomaticPreference(true, for: .updateAutomaticDownloads)
+    #expect(!controller.exportAutomaticPreference(for: .updateAutomaticChecks))
+    #expect(controller.exportAutomaticPreference(for: .updateAutomaticDownloads))
+    #expect(defaults.object(forKey: "SUEnableAutomaticChecks") as? Bool == false)
+    #expect(defaults.object(forKey: "SUAutomaticallyUpdate") as? Bool == true)
+
     #expect(!controller.isEnabled)
     #expect(!controller.canCheckForUpdates)
     #expect(!controller.automaticallyChecksForUpdates)

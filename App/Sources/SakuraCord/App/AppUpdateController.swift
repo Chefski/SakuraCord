@@ -352,6 +352,23 @@ final class AppUpdateController: NSObject, ObservableObject, SPUUpdaterDelegate,
         updaterController.checkForUpdates(nil)
     }
 
+    func exportAutomaticPreference(for id: SettingsControlID) -> Bool {
+        if id == .updateAutomaticChecks {
+            return isEnabled ? automaticallyChecksForUpdates : defaults.object(forKey: "SUEnableAutomaticChecks") as? Bool ?? true
+        }
+        return isEnabled ? automaticallyDownloadsUpdates : defaults.object(forKey: "SUAutomaticallyUpdate") as? Bool ?? false
+    }
+
+    func importAutomaticPreference(_ enabled: Bool, for id: SettingsControlID) {
+        if id == .updateAutomaticChecks {
+            defaults.set(enabled, forKey: "SUEnableAutomaticChecks")
+            if isEnabled { setAutomaticallyChecksForUpdates(enabled) }
+        } else if id == .updateAutomaticDownloads {
+            defaults.set(enabled, forKey: "SUAutomaticallyUpdate")
+            if isEnabled { setAutomaticallyDownloadsUpdates(enabled) }
+        }
+    }
+
     func setAutomaticallyChecksForUpdates(_ enabled: Bool) {
         guard configuration.isEnabled else { return }
         updaterController.updater.automaticallyChecksForUpdates = enabled
@@ -370,6 +387,15 @@ final class AppUpdateController: NSObject, ObservableObject, SPUUpdaterDelegate,
         pendingReleaseTrackCheck = true
         pendingReleaseTrackUpdatePresentation = false
         continueReleaseTrackChange()
+    }
+
+    func importReleaseTrack(_ track: AppUpdateReleaseTrack) {
+        if isEnabled {
+            setReleaseTrack(track)
+        } else {
+            defaults.set(track.rawValue, forKey: AppUpdateReleaseTrack.preferenceKey)
+            releaseTrack = track
+        }
     }
 
     func feedURLString(for _: SPUUpdater) -> String? {

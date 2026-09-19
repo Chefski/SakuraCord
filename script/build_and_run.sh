@@ -190,7 +190,8 @@ xcrun actool \
   --app-icon "$APP_ICON_NAME" \
   --output-partial-info-plist "$ICON_PARTIAL_PLIST" \
   --warnings --notices --errors \
-  "$ICON_STAGING_DIR/$APP_ICON_NAME.icon"
+  "$ICON_STAGING_DIR/$APP_ICON_NAME.icon" \
+  "$ROOT_DIR/App/Packaging/SettingsDocument.xcassets"
 rm -f "$ICON_PARTIAL_PLIST"
 
 cat >"$CONTENTS/Info.plist" <<PLIST
@@ -204,6 +205,26 @@ cat >"$CONTENTS/Info.plist" <<PLIST
   <key>CFBundleDisplayName</key><string>$DISPLAY_NAME</string>
   <key>CFBundleIconFile</key><string>$APP_ICON_NAME</string>
   <key>CFBundleIconName</key><string>$APP_ICON_NAME</string>
+  <key>UTExportedTypeDeclarations</key>
+  <array><dict>
+    <key>UTTypeIdentifier</key><string>dev.sakuracord.settings</string>
+    <key>UTTypeDescription</key><string>SakuraCord Settings</string>
+    <key>UTTypeConformsTo</key><array><string>public.data</string><string>public.content</string></array>
+    <key>UTTypeTagSpecification</key><dict>
+      <key>public.filename-extension</key><array><string>sakurasettings</string></array>
+    </dict>
+    <key>UTTypeIcons</key><dict>
+      <key>UTTypeIconBackgroundName</key><string>SettingsDocumentBackground</string>
+      <key>UTTypeIconBadgeName</key><string>SettingsDocumentFlower</string>
+      <key>UTTypeIconText</key><string>Settings</string>
+    </dict>
+  </dict></array>
+  <key>CFBundleDocumentTypes</key>
+  <array><dict>
+    <key>CFBundleTypeName</key><string>SakuraCord Settings</string>
+    <key>CFBundleTypeRole</key><string>None</string>
+    <key>LSItemContentTypes</key><array><string>dev.sakuracord.settings</string></array>
+  </dict></array>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$BUNDLE_SHORT_VERSION</string>
   <key>SakuraCordReleaseDisplayVersion</key><string>$BUNDLE_DISPLAY_VERSION</string>

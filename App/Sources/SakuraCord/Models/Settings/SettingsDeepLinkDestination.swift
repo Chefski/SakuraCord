@@ -47,6 +47,7 @@ nonisolated extension SettingsPageID {
         case .diagnostics: "diagnostics"
         case .softwareUpdates: "software-updates"
         case .extensions: "extensions"
+        case .importExport: "import-export"
         case .about: "about"
         }
     }

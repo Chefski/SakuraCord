@@ -15,6 +15,7 @@ nonisolated enum SettingsPageID: String, CaseIterable, Codable, Identifiable, Se
     case diagnostics
     case softwareUpdates
     case extensions
+    case importExport
     case about
 
     var id: String { rawValue }
@@ -370,6 +371,7 @@ nonisolated extension SettingsCatalog {
         diagnosticsPage,
         softwareUpdatesPage,
         extensionsPage,
+        importExportPage,
         aboutPage,
     ]
 

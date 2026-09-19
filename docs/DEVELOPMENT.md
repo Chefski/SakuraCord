@@ -89,6 +89,7 @@ Every path below uses `https://sakuracord.app/settings/` as its prefix.
 | Diagnostics | `diagnostics` |
 | Updates | `software-updates` |
 | Extensions | `extensions` |
+| Import & Export | `import-export` |
 | About | `about` |
 | Export and send sanitised diagnostics | `diagnostics/send` |
 

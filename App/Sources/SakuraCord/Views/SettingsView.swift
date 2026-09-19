@@ -131,7 +131,7 @@ struct SettingsView: View {
             idealWidth: 1060,
             maxWidth: 1060,
             minHeight: 520,
-            idealHeight: 700,
+            idealHeight: 740,
             maxHeight: .infinity
         )
     }
@@ -281,6 +281,8 @@ private struct SettingsDetailRouter: View {
             )
         case .extensions:
             ExtensionsSettingsPage(state: state)
+        case .importExport:
+            ImportExportSettingsPage(model: model, updateController: updateController, state: state, launchAtLogin: launchAtLogin)
         case .about:
             AboutSettingsPage(
                 updateController: updateController,
