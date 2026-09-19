@@ -93,7 +93,20 @@ Every path below uses `https://sakuracord.app/settings/` as its prefix.
 | About | `about` |
 | Export and send sanitised diagnostics | `diagnostics/send` |
 
-The two appearance controls use the same reveal and highlight as Settings search.
+Every catalogued setting has a card at `<page>/<control>`, using the page paths
+above and the stable control ID without its prefix before the first dot.
+For example, `voice-video/input-device`, `general/spell-check`,
+`notifications/sound`, `theme/brightness`, `profiles/pronouns`,
+`keyboard-shortcuts/toggleMute`, and `import-export/include-theme` target
+individual controls. `appearance/composer` and `appearance/messages` retain
+their existing paths. The catalog is the source of truth; new controls receive
+links automatically.
+
+Individual cards show the setting's title and use the same reveal and highlight
+as Settings search, including fields that load asynchronously. Opening a card
+only navigates; actions such as resetting, importing, or changing a profile still
+require using the setting itself. Account and Nitro availability still apply.
+
 The diagnostics action asks for confirmation naming the source conversation,
 checks message and attachment permissions, and sends the existing sanitised API
 log export there without changing the composer draft. Threads, forum posts, and

@@ -377,6 +377,9 @@ nonisolated extension SettingsCatalog {
 
     static let foundationControls: [SettingsControlMetadata] =
         myAccountControls
+        + profilesControls
+        + themeDetailControls
+        + transferControls
         + generalControls
         + appearanceControls
         + interfaceControls

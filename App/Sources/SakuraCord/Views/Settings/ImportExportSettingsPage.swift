@@ -32,8 +32,10 @@ struct ImportExportSettingsPage: View {
                 HStack {
                     Button("Select All") { selectedPages = Set(SettingsTransferService.pages) }
                         .disabled(selectedPages.count == SettingsTransferService.pages.count)
+                        .settingsControlAnchor(.exportSelectAll, state: state)
                     Button("Deselect All") { selectedPages.removeAll() }
                         .disabled(selectedPages.isEmpty)
+                        .settingsControlAnchor(.exportDeselectAll, state: state)
                 }
             } header: {
                 Text("Include in Export", bundle: #bundle)
@@ -42,8 +44,10 @@ struct ImportExportSettingsPage: View {
                 HStack {
                     Button("Export Settings…", systemImage: "square.and.arrow.up") { exportSettings() }
                         .disabled(selectedPages.isEmpty || isWorking)
+                        .settingsControlAnchor(.settingsExport, state: state)
                     Button("Import Settings…", systemImage: "square.and.arrow.down") { showsImporter = true }
                         .disabled(isWorking)
+                        .settingsControlAnchor(.settingsImport, state: state)
                     if isWorking { ProgressView().controlSize(.small) }
                 }
             }
@@ -81,6 +85,7 @@ struct ImportExportSettingsPage: View {
                 }
             )) { Text(state.catalog.page(page).title) }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .settingsControlAnchor(.exportCategory(page), state: state)
         }
     }
 

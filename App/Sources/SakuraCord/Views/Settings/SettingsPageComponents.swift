@@ -34,36 +34,51 @@ struct SettingsPageForm<Content: View>: View {
     let state: SettingsViewState
     @ViewBuilder let content: Content
 
-    @ViewBuilder
     var body: some View {
-        if let request = state.revealRequest,
-           request.destination.page == page
-        {
-            ScrollViewReader { proxy in
-                pageForm
-                    .task(id: request.id) {
-                        await Task.yield()
-                        withAnimation(.easeInOut(duration: 0.25)) {
-                            proxy.scrollTo(request.controlID, anchor: .center)
-                        }
-                    }
-            }
-        } else {
-            pageForm
-        }
-    }
-
-    private var pageForm: some View {
-        let metadata = state.catalog.page(page)
-        return SettingsForm {
+        SettingsForm {
             content
         }
-        .navigationTitle(metadata.title)
-        .overlayPreferenceValue(SettingsControlBoundsPreferenceKey.self) { controls in
-            SettingsControlHighlightOverlay(
-                controls: controls,
-                highlightedControlID: state.highlightedControlID
-            )
+        .navigationTitle(state.catalog.page(page).title)
+        .modifier(SettingsPageNavigation(page: page, state: state))
+    }
+}
+
+extension EnvironmentValues {
+    @Entry var settingsNavigationState: SettingsViewState?
+}
+
+struct SettingsPageNavigation: ViewModifier {
+    let page: SettingsPageID
+    let state: SettingsViewState
+
+    func body(content: Content) -> some View {
+        ScrollViewReader { proxy in
+            content
+                .environment(\.settingsNavigationState, state)
+                .task(id: state.revealRequest?.id) {
+                    guard let request = state.revealRequest, request.destination.page == page else { return }
+                    await Task.yield()
+                    guard !Task.isCancelled else { return }
+                    // Ask lazy containers to materialize a target outside the viewport.
+                    proxy.scrollTo(request.controlID, anchor: .center)
+                }
+                .overlayPreferenceValue(SettingsControlBoundsPreferenceKey.self) { controls in
+                    let request = state.revealRequest
+                    let canReveal = request?.destination.page == page
+                        && controls.contains { $0.controlID == request?.controlID }
+                    SettingsControlHighlightOverlay(controls: controls, highlightedControlID: state.highlightedControlID)
+                        .allowsHitTesting(false)
+                        // Wait for the target to exist, including asynchronously loaded account/profile fields.
+                        .task(id: canReveal ? request?.id : nil) {
+                            guard canReveal, let request else { return }
+                            await Task.yield()
+                            guard !Task.isCancelled else { return }
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                proxy.scrollTo(request.controlID, anchor: .center)
+                            }
+                            state.emphasize(request.controlID)
+                        }
+                }
         }
     }
 }
@@ -94,23 +109,31 @@ extension View {
     ) -> some View {
         modifier(SettingsControlAnchorModifier(id: id, state: state))
     }
+
+    /// A precise target inside a composite editor, using the enclosing settings page's navigation.
+    func settingsControlAnchor(_ id: SettingsControlID) -> some View {
+        modifier(SettingsControlAnchorModifier(id: id, state: nil))
+    }
 }
 
 private struct SettingsControlAnchorModifier: ViewModifier {
     let id: SettingsControlID
-    let state: SettingsViewState
+    let state: SettingsViewState?
+    @Environment(\.settingsNavigationState) private var navigationState
 
     func body(content: Content) -> some View {
-        content
+        let state = state ?? navigationState
+        return content
             .id(id)
             .anchorPreference(
                 key: SettingsControlBoundsPreferenceKey.self,
                 value: .bounds
             ) { bounds in
-                [
+                guard let state else { return [] }
+                return [
                     SettingsControlBounds(
                         controlID: id,
-                        sectionID: state.sectionID(for: id),
+                        sectionID: self.state == nil ? nil : state.sectionID(for: id),
                         bounds: bounds
                     ),
                 ]
@@ -164,11 +187,11 @@ private struct SettingsControlHighlightOverlay: View {
         guard let highlightedControlID,
               let target = controls.first(where: {
                   $0.controlID == highlightedControlID
-              }),
-              let sectionID = target.sectionID
+              })
         else { return nil }
 
         let targetBounds = proxy[target.bounds]
+        guard let sectionID = target.sectionID else { return targetBounds }
         let sectionBounds = controls.lazy
             .filter { $0.sectionID == sectionID }
             .reduce(targetBounds) { bounds, control in

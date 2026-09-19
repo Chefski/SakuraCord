@@ -235,6 +235,7 @@ struct MemberProfilePopover<Footer: View>: View {
                     if let editor, editor.scope == .main || editor.isNitro {
                         ProfileInlineBioEditor(value: Binding(get: { editor.bio }, set: { editor.bio = $0 }), displayValue: profile.bio, model: editor.model)
                         .id(editor.draftGeneration)
+                        .settingsControlAnchor(.profileBio)
                         .padding(.horizontal, 16)
                     } else if let bio = profile.bio, !bio.isEmpty {
                         ProfileAboutSection(bio: bio)
@@ -617,6 +618,7 @@ private struct ProfileIdentitySection: View {
                         styledName
                     }
                     .id(editor.draftGeneration)
+                        .settingsControlAnchor(.profileName)
                     .layoutPriority(1)
                 } else { styledName }
                 if isBot {
@@ -644,6 +646,7 @@ private struct ProfileIdentitySection: View {
                             .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
                     .id(editor.draftGeneration)
+                        .settingsControlAnchor(.profilePronouns)
                 }
                 if editor == nil, let pronouns, !pronouns.isEmpty {
                     Text(pronouns)

@@ -63,6 +63,7 @@ struct ProfilesSettingsPage: View {
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { saveBarHeight = $0 }
             }
         }
+        .modifier(SettingsPageNavigation(page: .profiles, state: state))
         .navigationTitle(state.catalog.page(.profiles).title)
         .environment(\.profileImageImportRequest, imageImport)
         .fileImporter(isPresented: $imageImport.isPresented, allowedContentTypes: ProfileImagePicker.allowedImageTypes,

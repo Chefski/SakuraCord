@@ -38,12 +38,14 @@ private struct GradientThemeEditorHeader: View {
             Spacer(minLength: 16)
             HStack(spacing: 8) {
                 ThemeRandomizeButton(themeStore: themeStore)
+                    .settingsControlAnchor(.themeRandomize)
                 if case let .settings(appearance, windowOpacity) = presentation {
                     ThemeShareCopyButton(
                         themeStore: themeStore,
                         appearance: appearance,
                         windowOpacity: windowOpacity
                     )
+                    .settingsControlAnchor(.themeCopy)
                 }
                 ThemeColorCountControls(themeStore: themeStore)
             }
@@ -143,6 +145,7 @@ private struct ThemeColorCountControls: View {
                         themeStore.removeColor()
                     }
                 }
+                .settingsControlAnchor(.themeRemoveColor)
                 ThemeColorCountButton(
                     systemImage: "plus",
                     label: "Add gradient color",
@@ -152,6 +155,7 @@ private struct ThemeColorCountControls: View {
                         themeStore.addColor()
                     }
                 }
+                .settingsControlAnchor(.themeAddColor)
                 .modifier(ThemeColorMenu(themeStore: themeStore, colorIndex: nil))
             }
         }
@@ -201,7 +205,9 @@ private struct GradientThemeControls: View {
                     finishInteraction: themeStore.finishInteraction
                 )
                     .frame(maxWidth: .infinity)
+                    .settingsControlAnchor(.themeBrightness)
                 GradientHuePicker(themeStore: themeStore)
+                    .settingsControlAnchor(.themeColors)
                     .frame(
                         width: ThemePickerGeometry.diameter,
                         height: ThemePickerGeometry.diameter
@@ -214,6 +220,7 @@ private struct GradientThemeControls: View {
                     finishInteraction: themeStore.finishInteraction
                 )
                     .frame(maxWidth: .infinity)
+                    .settingsControlAnchor(.themeSaturation)
             }
         }
         .frame(maxWidth: .infinity)
@@ -273,6 +280,7 @@ private struct GradientHuePicker: View {
             // Keep the intensity control above every hue-handle hit target.
             // Its central interaction region must never lose a drag to the ring.
             ThemeIntensityControl(themeStore: themeStore)
+                .settingsControlAnchor(.themeIntensity)
                 .frame(
                     width: ThemePickerGeometry.intensityHitWidth,
                     height: ThemePickerGeometry.intensityTrackHeight

@@ -33,12 +33,14 @@ struct ProfileStylesControls: View {
                         ProfileCustomizationTile(label: "Avatar", selection: .avatar, editor: editor, profile: profile, content: {
                             AvatarView(name: profile.displayName, url: profile.avatarURL, size: 80)
                         })
+                        .settingsControlAnchor(.profileAvatar)
                     }
                 }
                 ProfileStyleSection(title: "Avatar Decoration") {
                     ProfileCustomizationTile(label: "Avatar Decoration", selection: .collectible(.avatarDecoration), editor: editor, profile: profile, content: {
                         ProfileEditorCosmeticPreview(profile: profile, kind: .avatarDecoration)
                     })
+                        .settingsControlAnchor(.profileAvatarDecoration)
                 }
                 if editor.isNitro {
                     ProfileStyleSection(title: "Banner", nitro: true) {
@@ -51,6 +53,7 @@ struct ProfileStylesControls: View {
                                 Image(systemName: "photo.badge.plus").font(.largeTitle).foregroundStyle(.secondary)
                             }
                         })
+                        .settingsControlAnchor(.profileBanner)
                     }
                     ProfileStyleSection(title: "Theme", nitro: true) {
                         ProfileThemeTile(editor: editor, profile: profile)
@@ -58,12 +61,14 @@ struct ProfileStylesControls: View {
                 } else if editor.scope == .main {
                     ProfileStyleSection(title: "Banner Color") {
                         ProfileBannerColorTile(editor: editor, profile: profile)
+                            .settingsControlAnchor(.profileBannerColor)
                     }
                 }
                 ProfileStyleSection(title: "Nameplate") {
                     ProfileCustomizationTile(label: "Nameplate", selection: .collectible(.nameplate), editor: editor, profile: profile, content: {
                         ProfileEditorCosmeticPreview(profile: profile, kind: .nameplate)
                     })
+                        .settingsControlAnchor(.profileNameplate)
                 }
                 if editor.isNitro {
                     ProfileStyleSection(title: "Display Name Style", nitro: true) {
@@ -71,17 +76,20 @@ struct ProfileStylesControls: View {
                             ProfileDisplayName(name: profile.displayName, style: profile.user.displayNameStyle, size: 22, wraps: true)
                                 .allowsHitTesting(false).padding(12)
                         })
+                        .settingsControlAnchor(.profileNameStyle)
                     }
                 }
                 ProfileStyleSection(title: "Profile Effect") {
                     ProfileCustomizationTile(label: "Profile Effect", selection: .collectible(.effect), editor: editor, profile: profile, content: {
                         ProfileEditorCosmeticPreview(profile: profile, kind: .effect)
                     })
+                        .settingsControlAnchor(.profileEffect)
                 }
                 ProfileStyleSection(title: "Profile Frame") {
                     ProfileCustomizationTile(label: "Profile Frame", selection: .collectible(.frame), editor: editor, profile: profile, content: {
                         ProfileEditorCosmeticPreview(profile: profile, kind: .frame)
                     })
+                        .settingsControlAnchor(.profileFrame)
                 }
             }
         }

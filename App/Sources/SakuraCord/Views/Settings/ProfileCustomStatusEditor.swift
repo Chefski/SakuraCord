@@ -23,6 +23,7 @@ struct ProfileCustomStatusControl: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(ProfileStatusButtonStyle())
+        .settingsControlAnchor(.profileStatus)
         .accessibilityLabel(profile.customStatus == nil ? "Add custom status" : "Edit custom status")
         .overlay(alignment: .topTrailing) {
             HoverActionPill {

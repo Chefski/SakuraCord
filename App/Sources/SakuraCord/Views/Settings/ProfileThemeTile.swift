@@ -22,7 +22,9 @@ struct ProfileThemeTile: View {
                 GlassEffectContainer(spacing: 8) {
                     VStack(spacing: 8) {
                         ProfileThemeColorButton(title: "Primary", color: colorBinding(for: .primary), isPresented: presentation(for: .primary))
+                            .settingsControlAnchor(.profileThemePrimary)
                         ProfileThemeColorButton(title: "Accent", color: colorBinding(for: .accent), isPresented: presentation(for: .accent))
+                            .settingsControlAnchor(.profileThemeAccent)
                     }
                 }
                 .padding(12)

@@ -23,6 +23,7 @@ struct ProfileEditorExpandedPreview: View {
         }, widgets: {
             ProfileWidgetsBoard(editor: editor)
                 .id(editor.draftGeneration)
+                .settingsControlAnchor(.profileWidgets)
         })
         .background(Color(nsColor: .windowBackgroundColor), in: ConcentricRectangle(cornerRadius: 16, style: .continuous))
         .clipShape(ConcentricRectangle(cornerRadius: 16, style: .continuous))

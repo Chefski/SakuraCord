@@ -246,7 +246,7 @@ import Testing
 }
 
 @MainActor
-@Test func `Settings cards resolve every category and reveal appearance controls through search navigation`() throws {
+@Test func `Settings cards resolve every category and control through search navigation`() throws {
     for page in SettingsPageID.allCases {
         let url = try #require(URL(string: "https://sakuracord.app/settings/\(page.deepLinkPath)"))
         #expect(SakuraCordDeepLinkPresentation.action(for: url) == .openSettings(.init(page: page)))
@@ -264,6 +264,20 @@ import Testing
         #expect(state.highlightedControlID == control)
         #expect(state.revealRequest?.destination.section == (control == .composerBarAppearance ? .interfaceInputBar : .interfaceMessages))
     }
+    var controlURLs = Set<URL>()
+    for control in SettingsCatalog.foundation.controls {
+        let expected = SettingsDeepLinkDestination(page: control.destination.page, controlID: control.id)
+        #expect(controlURLs.insert(expected.url).inserted)
+        let link = try #require(SakuraCordDeepLinkPresentation.all(in: "<\(expected.url.absoluteString)>.").first)
+        #expect(link.action == .openSettings(expected))
+        guard case let .openSettings(destination) = link.action else { continue }
+        let state = SettingsViewState()
+        state.navigate(to: .init(page: destination.page, section: destination.section), controlID: try #require(destination.controlID))
+        #expect(state.selectedPage == control.destination.page)
+        #expect(state.revealRequest?.destination == control.destination)
+        #expect(state.highlightedControlID == control.id)
+        #expect(!destination.title.isEmpty)
+    }
     #expect(SakuraCordDeepLinkPresentation.all(in: "https://sakuracord.app/settings/diagnostics/send").map(\.action) == [.sendDiagnostics])
     for url in [
         "https://sakuracord.app.evil.test/settings/diagnostics/send",
@@ -272,6 +286,8 @@ import Testing
         "https://sakuracord.app/settings/diagnostics/send?channel=12",
         "https://sakuracord.app/settings/diagnostics/send#12",
         "https://sakuracord.app/settings/appearance/unknown",
+        "https://sakuracord.app/settings/general/input-device",
+        "https://sakuracord.app/settings/voice-video/input-device/extra",
     ] {
         #expect(SakuraCordDeepLinkPresentation.all(in: url).isEmpty)
     }
