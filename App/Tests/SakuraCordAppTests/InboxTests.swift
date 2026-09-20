@@ -112,20 +112,34 @@ struct InboxTests {
         #expect(await provider.acknowledgementRequests.isEmpty)
     }
 
-    @Test func `empty loaded groups acknowledge without undo but restricted headers remain unread`() async throws {
+    @Test(arguments: [false, true])
+    func `empty loaded groups acknowledge without undo but preserve newer unread messages and restricted headers`(receivesNewerMessage: Bool) async throws {
         let (model, provider) = await fixture()
         model.presentInbox()
         await model.inbox.loadTask?.value
         let group = try #require(model.inbox.groups.first)
-        model.inbox.groups[0].messages = []
+        if receivesNewerMessage {
+            let sender = try #require(group.messages.first?.author)
+            let incoming = Message(id: MessageID(rawValue: 900), channelID: group.id, author: sender,
+                                   content: "Arrived outside the captured range", guildID: group.guildID,
+                                   mentionedUsers: [try #require(model.snapshot?.currentUser)])
+            model.consumeImmediately(.messageCreated(incoming))
+            #expect(model.inbox.groups.first?.messages.contains { $0.id == incoming.id } == false)
+        }
         model.inbox.groups[0].isAgeRestricted = true
+        for message in group.messages {
+            model.consumeImmediately(.messageDeleted(channelID: group.id, messageID: message.id))
+        }
+        #expect(model.inbox.groups.first?.messages.isEmpty == true)
         #expect(!model.dismissEmptyInboxGroups())
         #expect(await provider.acknowledgementRequests.isEmpty)
         model.inbox.groups[0].isAgeRestricted = false
         #expect(model.dismissEmptyInboxGroups())
+        if receivesNewerMessage { #expect((model.readState.entries[group.id]?.mentionCount ?? 0) > 0) }
         await model.acknowledgementProcessorTask?.value
         #expect(await provider.acknowledgementRequests.last?.messageID == group.newestUnreadMessageID)
         #expect(model.inbox.groups.isEmpty && model.inbox.undoGroups.isEmpty)
+        #expect(model.readState.entries[group.id]?.isUnread == receivesNewerMessage)
     }
 
     @Test func `Unread keeps server order and channel positions independent of categories`() async throws {

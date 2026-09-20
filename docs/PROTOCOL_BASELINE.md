@@ -1639,6 +1639,12 @@ capture was used for this recheck.
   atomically includes known DMs, guild channels, threads, channel read states,
   and guild notification settings; these values must not race a later event
   into the first sidebar render.
+- A fresh Ready after a rejected Resume publishes a complete replacement
+  workspace through the existing snapshot event before the connection becomes
+  ready. It replaces channel membership and notification settings and merges
+  versioned read state without resetting pending acknowledgements or their
+  token. Successful Resume continues to use Gateway event replay. Snapshot
+  assembly is shared with initial bootstrap and adds no REST requests.
 - Current Ready payloads wrap `user_guild_settings` in an object containing
   `entries` and `partial`; the legacy top-level array remains accepted. The
   separate `notification_settings.flags` bit 4 (`USE_NEW_NOTIFICATIONS`) is

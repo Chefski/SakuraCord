@@ -194,6 +194,58 @@ extension ProviderRequestContractTests {
         await provider.disconnect()
     }
 
+    @Test(arguments: [false, true])
+    func `fresh READY replaces the workspace without repeating bootstrap requests`(partialSettings: Bool) async throws {
+        RateLimitURLProtocol.reset()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [RateLimitURLProtocol.self]
+        let socket = ReadyGatewaySocket()
+        await socket.push(gatewayMessage(op: 10, data: .object(["heartbeat_interval": .number(60_000)])))
+        await socket.push(startupUnreadReadyMessage())
+        let provider = DiscordRESTProvider(
+            credentials: TestCredentialStore(), handle: CredentialHandle(accountID: "1"),
+            session: URLSession(configuration: configuration), gatewayTransport: ReadyGatewayTransport(socket: socket)
+        )
+        let initial = try await provider.bootstrap()
+        #expect(initial.channels.count == 2)
+        let requestCount = RateLimitURLProtocol.totalRequestCount
+        let stream = await provider.eventStream()
+        await provider.handleGatewayDispatch(name: "READY", body: .object([
+            "user": .object(["id": .string("1"), "username": .string("refreshed")]),
+            "guilds": .array([.object([
+                "id": .string("100"), "name": .string("Refreshed guild"),
+                "channels": .array([
+                    .object(["id": .string("200"), "type": .number(0), "name": .string("renamed"), "last_message_id": .string("900")]),
+                    .object(["id": .string("202"), "type": .number(0), "name": .string("added")]),
+                ])
+            ])]),
+            "read_state": .object(["version": .number(62), "entries": .array([
+                .object(["id": .string("200"), "last_message_id": .string("850"), "mention_count": .number(1)])
+            ])]),
+            "user_guild_settings": .object(["entries": .array([]), "partial": .bool(partialSettings)]),
+            "notification_settings": .object(["flags": .number(16)]),
+        ]))
+        await provider.handleGatewayDispatch(name: "RESUMED", body: .object([:]))
+        await provider.continuation?.finish()
+        var replacements: [BootstrapSnapshot] = []
+        for await event in stream {
+            if case let .snapshotChanged(value) = event { replacements.append(value) }
+        }
+        #expect(replacements.count == 1)
+        let refreshed = try #require(replacements.first)
+        #expect(refreshed.currentUser.username == "refreshed")
+        #expect(refreshed.guilds.first?.name == "Refreshed guild")
+        #expect(Set(refreshed.channels.map(\.id)) == [ChannelID(rawValue: 200), ChannelID(rawValue: 202)])
+        #expect(refreshed.channels.first { $0.id == ChannelID(rawValue: 200) }?.name == "renamed")
+        #expect(refreshed.readStates.first?.lastAcknowledgedMessageID == MessageID(rawValue: 850))
+        #expect(refreshed.readStates.first?.version == 62)
+        #expect(refreshed.usesNewNotifications)
+        #expect(refreshed.notificationSettings == (partialSettings ? initial.notificationSettings : []))
+        #expect(try await provider.waitForInitialGatewaySnapshot().readStates.first?.version == 62)
+        #expect(RateLimitURLProtocol.totalRequestCount == requestCount)
+        await provider.disconnect()
+    }
+
     @Test func `restriction response stops every following authenticated request`() async throws {
         RateLimitURLProtocol.reset()
         RateLimitURLProtocol.restrictMessageSend = true

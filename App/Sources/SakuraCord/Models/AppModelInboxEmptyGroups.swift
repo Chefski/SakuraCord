@@ -17,9 +17,9 @@ extension AppModel {
                 if let scope = ProcessInfo.processInfo.environment["SAKURACORD_INBOX_VERIFICATION_GUILD_ID"],
                    group.guildID?.description != scope { continue }
             #endif
-            let boundary = group.isForum ? Self.forumAcknowledgementBoundary(at: .now)
-                : readState.entries[group.id]?.latestKnownMessageID
-            markInboxGroupRead(group.id, allowsUndo: false, acknowledgementBoundary: boundary)
+            // Empty groups still own the range captured when the Inbox opened.
+            // Newer messages may have arrived without appearing in that range.
+            markInboxGroupRead(group.id, allowsUndo: false)
             removed = true
         }
         return removed

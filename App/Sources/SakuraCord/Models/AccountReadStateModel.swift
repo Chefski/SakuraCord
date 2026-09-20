@@ -133,6 +133,29 @@ extension AccountReadStateModel {
         }
     }
 
+    func replaceSnapshot(_ snapshot: BootstrapSnapshot) {
+        retainGuilds(Set(snapshot.guilds.map(\.id)))
+        merge(guilds: snapshot.guilds)
+        let channelsByGuild = Dictionary(grouping: snapshot.channels, by: \.guildID)
+        let guildIDs = Set(channelByID.values.map(\.guildID)).union(channelsByGuild.keys)
+        for guildID in guildIDs {
+            replaceChannels(in: guildID, with: channelsByGuild[guildID] ?? [])
+        }
+        let threads = snapshot.threads + snapshot.activeJoinedThreads
+        // READY can omit previously loaded archived threads. Let read-state
+        // reconciliation retain their pending intent and rollback metadata.
+        for thread in threads { merge(thread: thread) }
+        settingsByGuild.removeAll(keepingCapacity: true)
+        overridesByGuildAndChannelID.removeAll(keepingCapacity: true)
+        for settings in snapshot.notificationSettings { apply(settings) }
+        usesNewNotifications = snapshot.usesNewNotifications
+        currentUserID = snapshot.currentUser.id
+        // Keep the account's ACK token, presentation, and optimistic mutations.
+        // The versioned snapshot reconciler overlays pending intent on READY.
+        replaceReadStates(snapshot.readStates)
+        for thread in threads { merge(thread: thread) }
+    }
+
     nonisolated static func makeInitialState(_ input: InitialStateInput) -> InitialState {
         let accountID = input.accountID
         let guilds = input.guilds

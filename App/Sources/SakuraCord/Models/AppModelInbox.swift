@@ -342,7 +342,7 @@ extension AppModel {
         publishInbox()
     }
 
-    func markInboxGroupRead(_ channelID: ChannelID, allowsUndo: Bool = true, acknowledgementBoundary: MessageID? = nil) {
+    func markInboxGroupRead(_ channelID: ChannelID, allowsUndo: Bool = true) {
         guard let index = inbox.groups.firstIndex(where: { $0.id == channelID }) else { return }
         let group = inbox.groups.remove(at: index)
         if allowsUndo { inbox.undoGroups.append(group) }
@@ -350,7 +350,7 @@ extension AppModel {
             markInboxEventGroupRead(group)
             return
         }
-        let boundary = acknowledgementBoundary ?? group.newestUnreadMessageID
+        let boundary = group.newestUnreadMessageID
         inbox.pendingReadGroups[channelID] = group
         let metadata = readState.acknowledgementMetadata(channelID: channelID)
         let lastViewed = readState.entries[channelID]?.lastViewed
@@ -361,7 +361,9 @@ extension AppModel {
             messageID: boundary, manual: false, mentionCount: nil,
             flags: metadata.flags, lastViewed: lastViewed
         ))
-        cancelNativeNotifications(channelID: channelID)
+        if readState.entries[channelID]?.isUnread != true {
+            cancelNativeNotifications(channelID: channelID)
+        }
         refreshUnreadPresentation()
         publishInbox()
         loadMoreInbox()

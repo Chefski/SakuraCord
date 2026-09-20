@@ -872,16 +872,11 @@ extension AppModel {
         let previousAccessEvidence = readState.authoritativeAccessEvidenceChannelIDs()
         snapshot = value
         forwardSearchSourceRevision &+= 1
-        readState.configure(
-            accountID: readState.accountID,
-            guilds: value.guilds,
-            channels: value.channels,
-            readStates: value.readStates,
-            notificationSettings: value.notificationSettings,
-            usesNewNotifications: value.usesNewNotifications
-        )
-        for thread in value.threads {
-            readState.merge(thread: thread)
+        readState.replaceSnapshot(value)
+        composer.slowmode.updateIntervals(for: value.channels, replacing: previousSnapshot?.channels ?? [])
+        visibleChannels = value.channels.filter { $0.guildID == selectedGuildID }
+        if let selectedChannelID {
+            selectedChannel = value.channels.first { $0.id == selectedChannelID }
         }
         refreshUnreadAccessAfterSnapshotChanged(
             previousSnapshot: previousSnapshot,
@@ -927,7 +922,10 @@ extension AppModel {
             snapshot = projected
             updateServerRail(from: projected)
         }
-        selectGuild(selectedGuildID)
+        let retainedGuildID = selectedGuildID.flatMap { selected in
+            value.guilds.contains { $0.id == selected } ? selected : value.guilds.first?.id
+        }
+        selectGuild(retainedGuildID)
     }
 
     func consumeGuildChanged(_ guild: Guild) {

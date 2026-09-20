@@ -1233,6 +1233,45 @@ struct AccountReadStateModelTests {
         #expect(model.acknowledgementToken == "latest-token")
     }
 
+    @Test(arguments: [false, true], [false, true])
+    func `workspace replacement preserves pending reads for omitted threads`(
+        includesReadState: Bool, acknowledgementSucceeds: Bool
+    ) {
+        let model = makeModel(latest: 12, acknowledged: 10)
+        let threadID = ChannelID(rawValue: 300)
+        let remote = ChannelReadState(
+            channelID: threadID, lastAcknowledgedMessageID: MessageID(rawValue: 20),
+            mentionCount: 1, version: 7
+        )
+        model.merge(thread: MessageThreadSummary(
+            id: threadID, guildID: guildID, parentID: channelID, name: "Archived",
+            lastMessageID: MessageID(rawValue: 30), isArchived: true
+        ))
+        _ = model.applyRemote(remote)
+        model.markAcknowledgementPending(channelID: threadID, messageID: MessageID(rawValue: 30))
+
+        model.replaceSnapshot(BootstrapSnapshot(
+            currentUser: currentUser, guilds: [Guild(id: guildID, name: "Guild")],
+            channels: [Channel(id: channelID, guildID: guildID, name: "Parent")],
+            members: [], readStates: includesReadState ? [remote] : []
+        ))
+
+        #expect(model.entries[threadID]?.guildID == guildID)
+        #expect(model.entries[threadID]?.parentID == channelID)
+        #expect(model.entries[threadID]?.pendingAcknowledgementID == MessageID(rawValue: 30))
+        #expect(model.entries[threadID]?.lastAcknowledgedMessageID == MessageID(rawValue: 30))
+        #expect(!model.unread(channelID: threadID))
+        if acknowledgementSucceeds {
+            model.completeAcknowledgement(channelID: threadID, messageID: MessageID(rawValue: 30), token: nil)
+        } else {
+            model.failAcknowledgement(channelID: threadID, messageID: MessageID(rawValue: 30))
+        }
+        #expect(model.entries[threadID]?.pendingAcknowledgementID == nil)
+        #expect(model.entries[threadID]?.lastAcknowledgedMessageID == MessageID(rawValue: acknowledgementSucceeds ? 30 : 20))
+        #expect(model.mentions(channelID: threadID) == (acknowledgementSucceeds ? 0 : 1))
+        #expect(model.unread(channelID: threadID) == !acknowledgementSucceeds)
+    }
+
     @Test func `later acknowledgement failure preserves an earlier accepted boundary`() {
         let model = makeModel(latest: 12, acknowledged: 10, mentions: 2)
         model.markAcknowledgementPending(

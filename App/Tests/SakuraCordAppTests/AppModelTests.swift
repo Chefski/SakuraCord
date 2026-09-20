@@ -903,6 +903,51 @@ import UserNotifications
 }
 
 @MainActor
+@Test func `workspace replacement removes stale channels and settings while preserving pending read intent`() async throws {
+    let user = User(id: UserID(rawValue: 1), username: "reader", displayName: "Reader")
+    let guildID = GuildID(rawValue: 100)
+    let channelID = ChannelID(rawValue: 200)
+    let removedID = ChannelID(rawValue: 201)
+    let addedID = ChannelID(rawValue: 202)
+    let initial = BootstrapSnapshot(
+        currentUser: user, guilds: [Guild(id: guildID, name: "Fixture", isOwnedByCurrentUser: true)],
+        channels: [
+            Channel(id: channelID, guildID: guildID, name: "Before", lastMessageID: MessageID(rawValue: 900)),
+            Channel(id: removedID, guildID: guildID, name: "Removed", lastMessageID: MessageID(rawValue: 500)),
+        ], members: [], readStates: [
+            ChannelReadState(channelID: channelID, lastAcknowledgedMessageID: MessageID(rawValue: 250), mentionCount: 2, version: 1),
+            ChannelReadState(channelID: removedID, lastAcknowledgedMessageID: MessageID(rawValue: 100), mentionCount: 1, version: 1),
+        ], notificationSettings: [GuildNotificationSettings(guildID: guildID, isMuted: true)]
+    )
+    let model = AppModel(launchMode: .offlineTesting, provider: MockChatProvider(snapshot: initial, messages: []))
+    await model.start()
+    model.selectedChannelID = channelID
+    await model.channelLoadTask?.value
+    model.readState.completeAcknowledgement(channelID: channelID, messageID: MessageID(rawValue: 250), token: "retained-token")
+    model.readState.markAcknowledgementPending(channelID: channelID, messageID: MessageID(rawValue: 900))
+    var replacement = initial
+    replacement.channels = [
+        Channel(id: channelID, guildID: guildID, name: "After", lastMessageID: MessageID(rawValue: 1000)),
+        Channel(id: addedID, guildID: guildID, name: "Added", lastMessageID: MessageID(rawValue: 1100)),
+    ]
+    replacement.readStates = [
+        ChannelReadState(channelID: channelID, lastAcknowledgedMessageID: MessageID(rawValue: 850), mentionCount: 1, version: 2),
+        ChannelReadState(channelID: addedID, lastAcknowledgedMessageID: MessageID(rawValue: 1000), mentionCount: 1, version: 2),
+    ]
+    replacement.notificationSettings = []
+    model.consumeSnapshotChanged(replacement)
+    await model.guildActivationTask?.value
+    #expect(model.selectedChannel?.name == "After")
+    #expect(model.visibleChannels.map(\.id) == [channelID, addedID])
+    #expect(model.readState.entries[removedID] == nil)
+    #expect(model.readState.entries[addedID]?.lastAcknowledgedMessageID == MessageID(rawValue: 1000))
+    #expect(model.readState.notificationSettings(guildID: guildID) == nil)
+    #expect(model.readState.entries[channelID]?.lastAcknowledgedMessageID == MessageID(rawValue: 900))
+    #expect(model.readState.entries[channelID]?.pendingAcknowledgementID == MessageID(rawValue: 900))
+    #expect(model.readState.acknowledgementToken == "retained-token")
+}
+
+@MainActor
 @Test func `gateway ready refreshes the account unread notification mode`() async throws {
     let provider = MockChatProvider()
     let model = AppModel(launchMode: .offlineTesting, provider: provider)

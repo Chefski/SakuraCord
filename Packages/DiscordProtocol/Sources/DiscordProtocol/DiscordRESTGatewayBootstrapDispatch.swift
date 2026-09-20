@@ -222,7 +222,9 @@ extension DiscordRESTProvider {
         // immediately applies the complete BootstrapSnapshot again.
         // Subsequent Gateway updates still use their incremental
         // ClientEvent cases below.
-        return (readyReadStates, readyNotificationSettings)
+        return (readyReadStates, cachedGuildNotificationSettings.values.sorted {
+            ($0.guildID?.rawValue ?? 0) < ($1.guildID?.rawValue ?? 0)
+        })
     }
 
     private func applyReadyPrivateChannels(

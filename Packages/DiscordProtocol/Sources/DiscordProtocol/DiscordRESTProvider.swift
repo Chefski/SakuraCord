@@ -622,76 +622,7 @@ public extension DiscordRESTProvider {
         }
         let user = try await bootstrapCurrentUser()
         try await refreshBootstrapGuildCacheIfNeeded()
-        let currentGuilds = guildsInCurrentRailOrder()
-        let currentGuildsByID = Dictionary(
-            uniqueKeysWithValues: currentGuilds.map { ($0.id, $0) }
-        )
-        var channelGuildIDs = Set<GuildID>()
-        let channelGuilds = gatewayGuildIDs.compactMap { guildID -> Guild? in
-            guard channelGuildIDs.insert(guildID).inserted else { return nil }
-            return cachedGuilds[guildID] ?? currentGuildsByID[guildID]
-        } + currentGuilds.filter { channelGuildIDs.insert($0.id).inserted }
-        let members = [Member(user: user, roleName: "You", status: presenceStatus)]
-        var channelsByID = Dictionary(
-            (cachedChannels[nil] ?? []).map { ($0.id, $0) },
-            uniquingKeysWith: { _, newer in newer }
-        )
-        for guild in channelGuilds {
-            for channel in cachedChannels[guild.id] ?? [] {
-                channelsByID[channel.id] = channel
-            }
-        }
-        let startupChannels =
-            (cachedChannels[nil] ?? []).compactMap { channelsByID.removeValue(forKey: $0.id) }
-                + channelGuilds.flatMap { guild in
-                    (cachedChannels[guild.id] ?? []).compactMap {
-                        channelsByID.removeValue(forKey: $0.id)
-                    }
-                }
-                + channelsByID.values.sorted { $0.id < $1.id }
-        let forumThreadsByID = Dictionary(
-            cachedForumPosts.values.flatMap(\.values).map { ($0.id, $0.thread) },
-            uniquingKeysWith: { _, newer in newer }
-        )
-        var remainingForumThreads = forumThreadsByID
-        let startupThreads = cachedForumThreadOrder.compactMap {
-            remainingForumThreads.removeValue(forKey: $0)
-        } + remainingForumThreads.values.sorted { $0.id < $1.id }
-        let startupActiveJoinedThreads = currentActiveJoinedThreads()
-        let userSearchAliasesByUserID = currentUserSearchAliasesByUserID()
-        return BootstrapSnapshot(
-            currentUser: user,
-            knownUsers: currentKnownUsers(),
-            quickSwitcherUserIDs: currentQuickSwitcherUsers().map(\.id),
-            messageSearchUsers: currentMessageSearchUsers(),
-            messageSearchUserBoosterChannelIDs: Set(
-                (cachedChannels[nil] ?? []).lazy
-                    .filter {
-                        $0.kind == .directMessage
-                            && !self.lazyPrivateChannelIDs.contains($0.id)
-                    }
-                    .map(\.id)
-            ),
-            friendUserIDs: cachedFriendUserIDs,
-            blockedOrIgnoredUserIDs: cachedBlockedOrIgnoredUserIDs,
-            relationshipNicknamesByUserID: cachedRelationshipNicknamesByUserID,
-            userSearchAliasesByUserID: userSearchAliasesByUserID,
-            quickSwitcherGuildMemberUserIDs: currentQuickSwitcherGuildMemberUserIDs(),
-            quickSwitcherJoinedGuildMemberUserIDs:
-                currentQuickSwitcherJoinedGuildMemberUserIDs(),
-            quickSwitcherGuildMemberAliases: currentQuickSwitcherGuildMemberAliases(),
-            guilds: currentGuilds,
-            guildRailItems: cachedGuildRailItems,
-            forwardGuildStoreOrder: gatewayGuildIDs,
-            channels: startupChannels,
-            forwardChannelStoreOrder: cachedForwardChannelStoreOrder,
-            threads: startupThreads,
-            activeJoinedThreads: startupActiveJoinedThreads,
-            members: members,
-            readStates: ready.readStates,
-            notificationSettings: ready.notificationSettings,
-            usesNewNotifications: ready.usesNewNotifications
-        )
+        return makeBootstrapSnapshot(user: user, ready: ready)
     }
 
     private func prepareInitialGatewaySnapshot() async throws -> InitialGatewaySnapshot {
