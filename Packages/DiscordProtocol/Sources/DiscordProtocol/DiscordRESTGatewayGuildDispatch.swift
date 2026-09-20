@@ -52,6 +52,9 @@ extension DiscordRESTProvider {
         name: String,
         body: JSONValue
     ) async {
+        let delivery = continuation
+        delivery?.beginBatch()
+        defer { delivery?.endBatch() }
         applyGuildInboxEvents(body)
         if let patch = try? JSONValueDecoder().decode(GatewayGuildPatchDTO.self, from: body),
            let guildID = GuildID(patch.id),
@@ -147,6 +150,10 @@ extension DiscordRESTProvider {
         {
             publishEmojiCollection(emojis, guildID: guildID)
         }
+        publishInitialGuildVoiceStates(from: body)
+    }
+
+    private func publishInitialGuildVoiceStates(from body: JSONValue) {
         if let snapshot = try? JSONValueDecoder().decode(
             GuildVoiceStateSnapshotDTO.self, from: body
         ) {
@@ -154,8 +161,8 @@ extension DiscordRESTProvider {
             gatewayLogger.info(
                 "Initial voice-state snapshot received; guild=\(snapshot.id, privacy: .public), count=\(states.count)"
             )
-            for state in states {
-                continuation?.yield(.voiceStateChanged(state))
+            if !states.isEmpty {
+                continuation?.yield(.voiceStatesReceived(states))
             }
         }
     }

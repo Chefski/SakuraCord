@@ -883,6 +883,29 @@ extension AppModel {
         }
     }
 
+    func consumeVoiceStateEvent(_ event: ClientEvent) {
+        switch event {
+        case .voiceStateChanged(let state):
+            recordVoiceStateUpdateReceived(state)
+            consumeVoiceStateChanged(state)
+        case .voiceStatesReceived(let states):
+            consumeInitialVoiceStates(states)
+        default:
+            break
+        }
+    }
+
+    private func consumeInitialVoiceStates(_ states: [VoiceParticipantState]) {
+        defersVoiceSidebarPresentation = true
+        defer {
+            defersVoiceSidebarPresentation = false
+            refreshVoiceSidebarPresentation()
+        }
+        for state in states {
+            consumeVoiceStateChanged(state)
+        }
+    }
+
     func consumeVoiceStateChanged(_ state: VoiceParticipantState) {
         let effects = VoiceStateSoundPolicy.effects(
             previous: voiceStates[state.userID],

@@ -234,7 +234,8 @@ struct AccountSwitcherView: View {
             switchingAccountID = nil
             if connected, !dismissesManagerImmediately {
                 accountActivated()
-                dismiss()
+                // This picker is the main window's content. The model switches
+                // it to the workspace; dismissing here would close that window.
             }
         }
     }

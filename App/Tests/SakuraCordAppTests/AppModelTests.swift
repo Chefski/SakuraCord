@@ -4486,7 +4486,8 @@ func `gateway mutations keep exact indexes after repeated history prepends`(
 }
 
 @MainActor
-@Test func `private calls remain app wide and reconcile incoming ongoing and deleted state`() async throws {
+@Test(arguments: [false, true])
+func `private calls remain app wide and reconcile incoming ongoing and deleted state`(usesInitialSnapshot: Bool) async throws {
     let provider = VoiceMigrationTestProvider()
     let sounds = RecordingAppSoundPlayer()
     let model = AppModel(
@@ -4524,6 +4525,14 @@ func `gateway mutations keep exact indexes after repeated history prepends`(
     #expect(model.joinablePrivateCall(in: channelID) != nil)
     #expect(sounds.looping[.callRinging] == true)
 
+    let initialVoiceStates = [
+        VoiceParticipantState(
+            userID: senderID,
+            channelID: channelID,
+            guildID: nil,
+            sessionID: "private-session"
+        )
+    ]
     await provider.emit(
         .privateCallChanged(
             PrivateCall(
@@ -4531,18 +4540,17 @@ func `gateway mutations keep exact indexes after repeated history prepends`(
                 messageID: MessageID(rawValue: 88_802),
                 region: "rotterdam",
                 ongoingRings: [],
-                voiceStates: [
-                    VoiceParticipantState(
-                        userID: senderID,
-                        channelID: channelID,
-                        guildID: nil,
-                        sessionID: "private-session"
-                    )
-                ]
+                voiceStates: usesInitialSnapshot ? [] : initialVoiceStates
             )
         )
     )
-    try await Task.sleep(for: .milliseconds(20))
+    if usesInitialSnapshot { await provider.emit(.voiceStatesReceived(initialVoiceStates)) }
+    #expect(await eventuallyOnMain {
+        model.privateCall(in: channelID)?.voiceStates?.map(\.userID) == [senderID]
+    })
+    if usesInitialSnapshot {
+        #expect(model.voiceSidebarPresentation.entry(for: channelID).participants.map(\.id) == [senderID])
+    }
     #expect(model.incomingPrivateCalls.isEmpty)
     #expect(model.privateCall(in: channelID)?.voiceStates?.map(\.userID) == [senderID])
     #expect(model.joinablePrivateCall(in: channelID) != nil)

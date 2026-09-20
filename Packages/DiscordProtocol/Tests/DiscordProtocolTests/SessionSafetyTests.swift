@@ -6,9 +6,9 @@ import Testing
 
 @Test func `bounded event delivery preserves order and exposes overflow exactly once`() async {
     let failures = Mutex(0)
-    let buffer = SessionEventBuffer<Int>(capacity: 3, overflowEvent: -1) {
+    let buffer = SessionEventBuffer<Int>(capacity: 3, overflowEvent: -1, onOverflow: {
         failures.withLock { $0 += 1 }
-    }
+    })
     var iterator = buffer.stream.makeAsyncIterator()
     for value in 0 ..< 1_000 {
         buffer.yield(value)
@@ -17,10 +17,80 @@ import Testing
     for value in 1 ... 10 { buffer.yield(value) }
     var remaining: [Int] = []
     while let value = await iterator.next() { remaining.append(value) }
-    #expect(remaining.count <= 3)
-    #expect(remaining.last == -1)
-    #expect(remaining.filter { $0 == -1 }.count == 1)
+    #expect(remaining == [-1], "Do not drain stale UI work before reporting an overflow")
     #expect(failures.withLock { $0 } == 1)
+}
+
+@Test func `event delivery drains on finish and terminates on consumer cancellation`() async {
+    let draining = SessionEventBuffer<Int>(capacity: 3, overflowEvent: -1)
+    for value in 0 ..< 3 { draining.yield(value) }
+    draining.finish()
+    var delivered: [Int] = []
+    for await value in draining.stream { delivered.append(value) }
+    #expect(delivered == [0, 1, 2])
+
+    let buffer = SessionEventBuffer<Int>(overflowEvent: -1)
+    let started = AsyncStream<Void>.makeStream()
+    let consumer = Task {
+        started.continuation.yield(())
+        for await _ in buffer.stream {}
+    }
+    var iterator = started.stream.makeAsyncIterator()
+    _ = await iterator.next()
+    consumer.cancel()
+    await consumer.value
+    buffer.yield(42)
+    var ended = buffer.stream.makeAsyncIterator()
+    #expect(await ended.next() == nil)
+}
+
+@Test(.timeLimit(.minutes(1))) func `event delivery cancellation can race producers without deadlocking`() async {
+    for index in 0 ..< 1_000 {
+        let buffer = SessionEventBuffer<Int>(capacity: 3, overflowEvent: -1)
+        let consumer = Task { for await _ in buffer.stream {} }
+        let producer = Task {
+            if index.isMultiple(of: 2) { buffer.beginBatch() }
+            buffer.yield(index)
+            if index.isMultiple(of: 2) {
+                buffer.yield(index + 1)
+                buffer.endBatch()
+            }
+            await Task.yield()
+            buffer.finish()
+        }
+        if index.isMultiple(of: 2) { await Task.yield() }
+        consumer.cancel()
+        await producer.value
+        await consumer.value
+    }
+    var producer: SessionEventBuffer<Int>? = SessionEventBuffer(overflowEvent: -1)
+    let stream = producer!.stream
+    producer = nil
+    var iterator = stream.makeAsyncIterator()
+    #expect(await iterator.next() == nil)
+}
+
+@Test func `initial payload batches preserve order and remain subject to delivery overflow`() async {
+    let buffer = SessionEventBuffer<Int>(capacity: 3, overflowEvent: -1)
+    buffer.yield(0)
+    buffer.beginBatch()
+    for value in 1 ... 1_000 { buffer.yield(value) }
+    buffer.endBatch()
+    buffer.yield(1_001)
+    buffer.finish()
+    var delivered: [Int] = []
+    for await value in buffer.stream { delivered.append(value) }
+    #expect(delivered == Array(0 ... 1_001))
+
+    let overflowing = SessionEventBuffer<Int>(capacity: 1, overflowEvent: -1)
+    overflowing.beginBatch()
+    for value in 1 ... 10 { overflowing.yield(value) }
+    overflowing.endBatch()
+    var iterator = overflowing.stream.makeAsyncIterator()
+    #expect(await iterator.next() == 1)
+    overflowing.yield(11)
+    #expect(await iterator.next() == -1, "Overflow must discard the remainder of a partially consumed batch")
+    #expect(await iterator.next() == nil)
 }
 
 @Test func `provider overflow invalidates session and closes the request circuit`() async {

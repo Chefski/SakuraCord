@@ -71,6 +71,10 @@ extension DiscordRESTProvider {
             )
         }
         await resetReadySessionState(for: ready)
+        // No suspension while collecting the events from this READY payload.
+        let delivery = continuation
+        delivery?.beginBatch()
+        defer { delivery?.endBatch() }
         let account = try? JSONValueDecoder().decode(DiscordAccountReadyDTO.self, from: body)
         accountInformationRevision = UUID()
         currentAccountDetails = account?.user?.domain()
@@ -283,7 +287,7 @@ extension DiscordRESTProvider {
             uniqueKeysWithValues: guilds.map { ($0.id, $0) }
         )
         cachedGuildRailItems = guilds.map { .guild($0.id) }
-        var voiceStateCount = 0
+        var voiceStates: [VoiceParticipantState] = []
         var currentUserRolesByGuild: [GuildID: [RoleID]] = [:]
         for guild in readyGuilds {
             let guildID = GuildID(guild.id)
@@ -349,11 +353,13 @@ extension DiscordRESTProvider {
                 guard let participant = state.domain(defaultGuildID: guildID) else {
                     continue
                 }
-                voiceStateCount += 1
-                continuation?.yield(.voiceStateChanged(participant))
+                voiceStates.append(participant)
             }
         }
-        return (voiceStateCount, currentUserRolesByGuild)
+        if !voiceStates.isEmpty {
+            continuation?.yield(.voiceStatesReceived(voiceStates))
+        }
+        return (voiceStates.count, currentUserRolesByGuild)
     }
 
     private func finishReadyApplication(
@@ -501,6 +507,9 @@ extension DiscordRESTProvider {
         name: String,
         body: JSONValue
     ) async {
+        let delivery = continuation
+        delivery?.beginBatch()
+        defer { delivery?.endBatch() }
         if let supplemental = try? JSONValueDecoder().decode(
             GatewayReadyGuildsDTO.self, from: body
         ) {
@@ -512,8 +521,8 @@ extension DiscordRESTProvider {
             body: body,
             gatewayGuildIDs: gatewayGuildIDs
         )
-        for state in states {
-            continuation?.yield(.voiceStateChanged(state))
+        if !states.isEmpty {
+            continuation?.yield(.voiceStatesReceived(states))
         }
         gatewayLogger.info("Supplemental voice-state snapshot received; count=\(states.count)")
     }

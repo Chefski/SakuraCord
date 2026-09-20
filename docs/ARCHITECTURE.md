@@ -150,9 +150,21 @@ Within the production provider:
   responsibility. Search, history, profiles, emoji, presence, channel, member,
   and bootstrap provider methods likewise have separate files.
 - Gateway-to-provider and provider-to-app event queues each hold at most 500
-  events. Overflow publishes a terminal session-invalidated event and stops the
-  session; the app clears its incomplete projection and offers saved-account
-  reconnection. It never continues presenting a silently truncated event stream.
+  deliveries. The synchronous projection of each READY, READY_SUPPLEMENTAL, or
+  GUILD_CREATE payload uses one delivery slot, with its events still consumed
+  individually in order. Adjacent channel snapshots for the same guild collapse
+  only when their differences are limited to names and topics; cooldown, access,
+  membership, ordering, and other state changes remain delivery barriers.
+  Ordinary channel updates convert only the changed channel, while category changes rebuild the
+  dependent channel metadata. Unchanged channel projections are not republished.
+  Initial voice state arrives as one batch, preserving every participant without
+  consuming a queue entry per user. Overflow discards pending incomplete work,
+  publishes a terminal session-invalidated event, records the failed delivery
+  boundary in diagnostics, and stops the session. The app clears its incomplete
+  projection and offers saved-account reconnection without draining stale UI
+  work first. It never continues presenting a silently truncated event stream.
+  Queue continuations resume only after releasing the queue mutex, preventing
+  lock inversion with task cancellation during account teardown.
 - Provider message reconciliation keeps at most 10,000 messages, evicting the
   oldest insertion. This working set is independent of visible conversation
   caches. Reactions on evicted messages reload the target through the existing

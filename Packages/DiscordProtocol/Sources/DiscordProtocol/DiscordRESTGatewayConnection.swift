@@ -159,10 +159,12 @@ extension DiscordRESTProvider {
 
     public func eventStream() async -> AsyncStream<ClientEvent> {
         let buffer = SessionEventBuffer<ClientEvent>(
-            overflowEvent: .sessionInvalidated(Self.eventOverflowMessage)
-        ) { [weak self] in
-            Task { await self?.stopAfterEventOverflow() }
-        }
+            overflowEvent: .sessionInvalidated(Self.eventOverflowMessage),
+            coalescing: Self.coalescingChannelSnapshots,
+            onOverflow: { [weak self] in
+                Task { await self?.stopAfterEventOverflow() }
+            }
+        )
         continuation?.finish()
         continuation = buffer
         return buffer.stream
@@ -171,9 +173,13 @@ extension DiscordRESTProvider {
     private static let eventOverflowMessage =
         "The connection could not keep up with Discord updates. Reconnect your saved account to reload its state."
 
-    private func stopAfterEventOverflow() async {
+    private func stopAfterEventOverflow(gatewayDelivery: Bool = false) async {
         guard !requestSafetyCircuitIsOpen else { return }
         requestSafetyCircuitIsOpen = true
+        apiDiagnostics.recordWebSocketLifecycle(
+            transport: "client", operation: "event_delivery_failed",
+            flags: ["gateway_to_provider": gatewayDelivery]
+        )
         #if DEBUG
             eventOverflowDidStopRequestsForTesting?()
         #endif
@@ -307,7 +313,7 @@ extension DiscordRESTProvider {
     func handleGatewaySessionEvent(_ event: GatewaySessionEvent) async {
         switch event {
         case .deliveryFailed:
-            await stopAfterEventOverflow()
+            await stopAfterEventOverflow(gatewayDelivery: true)
         case .stateChanged(let connectionState):
             gatewayReady = connectionState == .ready
             if connectionState == .authenticationFailed {
@@ -740,7 +746,8 @@ extension DiscordRESTProvider {
 
     func publishGuildChannels(_ guildID: GuildID) {
         guard let values = cachedGuildChannelDTOs[guildID]?.values,
-              let channels = try? Self.domainChannels(Array(values), guildID: guildID)
+              let channels = try? Self.domainChannels(Array(values), guildID: guildID),
+              cachedChannels[guildID] != channels
         else { return }
         cachedChannels[guildID] = channels
         continuation?.yield(.channelsChanged(guildID: guildID, channels: channels))

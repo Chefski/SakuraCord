@@ -475,9 +475,10 @@ final class AppModel {
     var isLocalScreenSharePreviewPaused = false
     var voiceDeviceStatusMessage: String?
     var selectedCameraUID: String?
+    @ObservationIgnored var defersVoiceSidebarPresentation = false
     var voiceStates: [UserID: VoiceParticipantState] = [:] {
         didSet {
-            guard oldValue != voiceStates else { return }
+            guard !defersVoiceSidebarPresentation, oldValue != voiceStates else { return }
             refreshVoiceSidebarPresentation()
         }
     }

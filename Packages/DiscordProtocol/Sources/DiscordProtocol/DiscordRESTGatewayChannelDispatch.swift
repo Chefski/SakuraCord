@@ -42,7 +42,7 @@ extension DiscordRESTProvider {
                 persistQuickSwitcherChannelStoreCache()
             }
             cachedGuildChannelDTOs[guildID, default: [:]][dto.id] = dto
-            publishGuildChannels(guildID)
+            publishGuildChannelUpdate(dto, guildID: guildID)
             return
         }
         if let recipients = dto.recipients {

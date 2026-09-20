@@ -193,6 +193,51 @@ extension DiscordRESTProvider {
         }
     }
 
+    static func coalescingChannelSnapshots(_ previous: ClientEvent, _ next: ClientEvent) -> ClientEvent? {
+        guard case let .channelsChanged(previousGuild, previousChannels) = previous,
+              case let .channelsChanged(nextGuild, nextChannels) = next,
+              previousGuild == nextGuild,
+              previousChannels.count == nextChannels.count
+        else { return nil }
+        // Channel snapshots also drive cooldown, access, and removal effects.
+        // Only name/topic edits are replaceable; every other change is a barrier.
+        for (previousChannel, nextChannel) in zip(previousChannels, nextChannels) {
+            var presentationOnly = previousChannel
+            presentationOnly.name = nextChannel.name
+            presentationOnly.topic = nextChannel.topic
+            guard presentationOnly == nextChannel else { return nil }
+        }
+        return next
+    }
+
+    func publishGuildChannelUpdate(_ dto: ChannelDTO, guildID: GuildID) {
+        // Category changes affect their children. Ordinary updates only need
+        // to convert the changed channel, not every channel in the server.
+        guard dto.type != 4, var channels = cachedChannels[guildID] else {
+            publishGuildChannels(guildID)
+            return
+        }
+        let category = dto.parentID.flatMap { cachedGuildChannelDTOs[guildID]?[$0] }
+            .flatMap { $0.type == 4 ? $0 : nil }
+        guard let channel = try? dto.domain(
+            guildID: guildID, categoryName: category?.name,
+            categoryPosition: category?.position ?? -1
+        ) else { return }
+        if let index = channels.firstIndex(where: { $0.id == channel.id }) {
+            let previous = channels[index]
+            guard previous != channel else { return }
+            channels[index] = channel
+            if previous.categoryPosition != channel.categoryPosition || previous.position != channel.position {
+                channels.sort(by: Self.guildChannelPrecedes)
+            }
+        } else {
+            channels.append(channel)
+            channels.sort(by: Self.guildChannelPrecedes)
+        }
+        cachedChannels[guildID] = channels
+        continuation?.yield(.channelsChanged(guildID: guildID, channels: channels))
+    }
+
     static func domainChannels(_ values: [ChannelDTO], guildID: GuildID) throws -> [Channel] {
         let categories = Dictionary(
             uniqueKeysWithValues: values.filter { $0.type == 4 }.map { ($0.id, $0) }
@@ -204,11 +249,13 @@ extension DiscordRESTProvider {
                 categoryName: category?.name,
                 categoryPosition: category?.position ?? -1
             )
-        }.sorted { lhs, rhs in
-            if lhs.categoryPosition != rhs.categoryPosition {
-                return lhs.categoryPosition < rhs.categoryPosition
-            }
-            return lhs.position < rhs.position
+        }.sorted(by: guildChannelPrecedes)
+    }
+
+    private static func guildChannelPrecedes(_ lhs: Channel, _ rhs: Channel) -> Bool {
+        if lhs.categoryPosition != rhs.categoryPosition {
+            return lhs.categoryPosition < rhs.categoryPosition
         }
+        return lhs.position < rhs.position
     }
 }

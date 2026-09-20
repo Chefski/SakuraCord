@@ -52,6 +52,8 @@ public enum ClientEvent: Equatable, Sendable {
     case soundboardSoundsChanged(guildID: GuildID?, sounds: [SoundboardSound])
     case voiceChannelEffect(VoiceChannelEffect)
     case voiceStateChanged(VoiceParticipantState)
+    /// Initial Gateway state is delivered together, before subsequent live updates.
+    case voiceStatesReceived([VoiceParticipantState])
     case privateCallChanged(PrivateCall)
     case privateCallDeleted(channelID: ChannelID, unavailable: Bool)
     /// A nil value means Discord deallocated the current voice server and the

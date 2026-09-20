@@ -1,5 +1,5 @@
 @testable import SakuraCord
-import DiscordProtocol
+@testable import DiscordProtocol
 import Foundation
 import SakuraCordModels
 import Testing
@@ -89,7 +89,7 @@ import Testing
 }
 
 @MainActor
-@Test func `changing slowmode shortens an active cooldown without extending or restarting it`() {
+@Test func `changing slowmode shortens an active cooldown without extending or restarting it`() async {
     let state = SlowmodeState()
     let channelID = ChannelID(rawValue: 200)
     let now = Date(timeIntervalSince1970: 1000)
@@ -101,7 +101,23 @@ import Testing
     let changedAt = now.addingTimeInterval(30)
     let original = Channel(id: channelID, guildID: nil, name: "slow", rateLimitPerUser: 60)
     let shortened = Channel(id: channelID, guildID: nil, name: "slow", rateLimitPerUser: 10)
-    state.updateIntervals(for: [shortened], replacing: [original], now: changedAt)
+    let buffer = SessionEventBuffer<ClientEvent>(
+        overflowEvent: .sessionInvalidated("overflow"),
+        coalescing: DiscordRESTProvider.coalescingChannelSnapshots
+    )
+    buffer.yield(.channelsChanged(guildID: nil, channels: [shortened]))
+    buffer.yield(.channelsChanged(guildID: nil, channels: [original]))
+    buffer.finish()
+    var previous = [original]
+    var intervals: [Int] = []
+    for await event in buffer.stream {
+        if case let .channelsChanged(_, channels) = event {
+            state.updateIntervals(for: channels, replacing: previous, now: changedAt)
+            intervals.append(contentsOf: channels.map(\.rateLimitPerUser))
+            previous = channels
+        }
+    }
+    #expect(intervals == [10, 60], "The intermediate reduction must reach the cooldown state")
     #expect(state.remaining(in: channelID, interval: 10, immune: false, now: changedAt) == 10)
     state.updateInterval(in: channelID, to: 120, now: changedAt)
     #expect(state.remaining(in: channelID, interval: 120, immune: false, now: changedAt) == 10)
