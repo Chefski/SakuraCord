@@ -152,7 +152,7 @@ extension AppModel {
     }
 
     func authorPresentation(for message: Message) -> MessageAuthorPresentation {
-        let guildID = message.guildID ?? snapshot?.channels.first { $0.id == message.channelID }?.guildID
+        let guildID = message.guildID ?? messagePresentationChannel(message.channelID)?.guildID
         let member = guildID.flatMap { membersByGuildID[$0]?[message.author.id] }
             ?? (guildID == selectedGuildID ? membersByID[message.author.id] : nil)
         let roles = guildID.flatMap { guildRolesByGuildID[$0] }
@@ -166,7 +166,7 @@ extension AppModel {
     func authorPresentation(
         for replyPreview: MessageReplyPreview, in message: Message? = nil
     ) -> MessageAuthorPresentation {
-        let guildID = message.map { $0.guildID ?? snapshot?.channels.first { $0.id == message?.channelID }?.guildID } ?? selectedGuildID
+        let guildID = message.map { $0.guildID ?? messagePresentationChannel($0.channelID)?.guildID } ?? selectedGuildID
         let member = guildID.flatMap { membersByGuildID[$0]?[replyPreview.author.id] }
             ?? (guildID == selectedGuildID ? membersByID[replyPreview.author.id] : nil)
         let roles = guildID.flatMap { guildRolesByGuildID[$0] } ?? (guildID == selectedGuildID ? guildRoles : [])

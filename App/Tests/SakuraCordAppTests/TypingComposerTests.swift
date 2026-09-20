@@ -1251,6 +1251,14 @@ import Testing
         resolver.presentation(crossMention).label
             == "\(crossGuildName) / \(crossGuildChannel.name)"
     )
+    model.snapshot?.channels.reverse()
+    let targetIndex = try #require(model.snapshot?.channels.firstIndex { $0.id == crossGuildChannel.id })
+    model.snapshot?.channels[targetIndex].name = "renamed-channel"
+    #expect(resolver.presentation(crossMention).label == "\(crossGuildName) / renamed-channel")
+    model.snapshot?.channels.remove(at: targetIndex)
+    #expect(resolver.presentation(crossMention).label == "unknown-channel")
+    model.visibleChannels.append(crossGuildChannel)
+    #expect(resolver.presentation(crossMention).label == "\(crossGuildName) / \(crossGuildChannel.name)")
 }
 
 @MainActor

@@ -11,18 +11,12 @@ extension AppModel {
         // must not build an account-wide channel set on every menu update.
         conversationNavigationHistory.destination(direction: direction) { id in
             !hiddenChannelIDs.contains(id)
-                && (visibleChannels.contains { $0.id == id }
-                    || snapshot?.channels.contains { $0.id == id } == true)
+                && messagePresentationChannel(id) != nil
         }
     }
 
     var orderedNavigationGuildIDs: [GuildID] {
-        serverRailItems.flatMap { item -> [GuildID] in
-            switch item {
-            case let .guild(id): [id]
-            case let .folder(folder): folder.guildIDs
-            }
-        }.filter { serverRailGuildsByID[$0] != nil }
+        serverRailPresentation.orderedNavigationGuildIDs
     }
 
     func navigateShortcutServer(direction: Int) {
@@ -85,26 +79,44 @@ extension AppModel {
                 }
             }
         }
-        let guildIDs = Set(orderedNavigationGuildIDs)
-        // Check the lightweight read entries first. In particular, an account
-        // with no mentions need not inspect/copy Channel values or observe the
-        // whole bootstrap snapshot just to disable Next/Previous Mention.
-        let candidates = Set(readState.entries.values.compactMap { entry -> ChannelID? in
-            guard entry.channelID != selectedChannelID, entry.isAccessible, entry.isUnread,
-                  !hiddenChannelIDs.contains(entry.channelID),
-                  !mentionsOnly || entry.mentionCount > 0,
-                  entry.guildID.map({ guildIDs.contains($0) }) ?? true,
-                  readState.unread(channelID: entry.channelID)
-            else { return nil }
-            return entry.channelID
-        })
-        guard !candidates.isEmpty else { return false }
-        // Some read entries are threads or no longer occur in the navigation
-        // snapshot. Resolve all candidates in one pass, not one full scan each.
-        return snapshot?.channels.contains { channel in
-            candidates.contains(channel.id)
-                && (channel.guildID.map { guildIDs.contains($0) } ?? true)
-        } ?? false
+        let guildIDs = serverRailPresentation.navigationGuildIDs
+        let selectedID = selectedChannelID
+        let hiddenIDs = hiddenChannelIDs
+        let entries = readState.entries
+        let channels = snapshot?.channels ?? []
+        let isCandidate: (AccountReadStateModel.Entry) -> Bool = { entry in
+            entry.channelID != selectedID && entry.isAccessible && entry.isUnread
+                && !hiddenIDs.contains(entry.channelID)
+                && (!mentionsOnly || entry.mentionCount > 0)
+                && (entry.guildID.map { guildIDs.contains($0) } ?? true)
+        }
+        let isDestination: (Channel) -> Bool = { channel in
+            guard let entry = entries[channel.id], isCandidate(entry),
+                  channel.guildID.map({ guildIDs.contains($0) }) ?? true
+            else { return false }
+            return self.readState.unread(channelID: channel.id)
+        }
+        // A previously successful position is only a hint. Validate the
+        // channel currently at that position against every live input, so
+        // snapshot replacement, reordering, mute and access changes remain
+        // correct without rebuilding an account-wide index on each update.
+        let previousIndex = mentionsOnly
+            ? shortcutMentionNavigationCandidateIndex
+            : shortcutUnreadNavigationCandidateIndex
+        if let previousIndex, channels.indices.contains(previousIndex),
+           isDestination(channels[previousIndex])
+        {
+            return true
+        }
+        let candidateIndex = entries.values.contains(where: isCandidate)
+            ? channels.firstIndex(where: isDestination)
+            : nil
+        if mentionsOnly {
+            shortcutMentionNavigationCandidateIndex = candidateIndex
+        } else {
+            shortcutUnreadNavigationCandidateIndex = candidateIndex
+        }
+        return candidateIndex != nil
     }
 
     private func shortcutConversationChannels(acrossServers: Bool) -> [Channel] {

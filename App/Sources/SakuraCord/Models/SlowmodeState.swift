@@ -35,6 +35,26 @@ final class SlowmodeState {
         serverDeadlines[message.channelID] = nil
     }
 
+    func updateIntervals(
+        for channels: [Channel],
+        replacing previousChannels: [Channel],
+        now: Date = .now
+    ) {
+        let trackedIDs = Set(confirmations.keys).union(serverDeadlines.keys)
+        guard !trackedIDs.isEmpty else { return }
+        let trackedChannels = channels.filter { trackedIDs.contains($0.id) }
+        guard !trackedChannels.isEmpty else { return }
+        let previousIntervals = Dictionary(
+            previousChannels.lazy.filter { trackedIDs.contains($0.id) }
+                .map { ($0.id, $0.rateLimitPerUser) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        for channel in trackedChannels
+        where previousIntervals[channel.id] != channel.rateLimitPerUser {
+            updateInterval(in: channel.id, to: channel.rateLimitPerUser, now: now)
+        }
+    }
+
     /// A settings edit can shorten a running cooldown, but never extend it or
     /// create a fresh cooldown without another confirmed send.
     func updateInterval(in channelID: ChannelID, to interval: Int, now: Date = .now) {

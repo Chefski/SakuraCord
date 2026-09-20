@@ -99,11 +99,18 @@ import Testing
     )
     state.confirm(message, interval: 60, at: now)
     let changedAt = now.addingTimeInterval(30)
-    state.updateInterval(in: channelID, to: 10, now: changedAt)
+    let original = Channel(id: channelID, guildID: nil, name: "slow", rateLimitPerUser: 60)
+    let shortened = Channel(id: channelID, guildID: nil, name: "slow", rateLimitPerUser: 10)
+    state.updateIntervals(for: [shortened], replacing: [original], now: changedAt)
     #expect(state.remaining(in: channelID, interval: 10, immune: false, now: changedAt) == 10)
     state.updateInterval(in: channelID, to: 120, now: changedAt)
     #expect(state.remaining(in: channelID, interval: 120, immune: false, now: changedAt) == 10)
     state.updateInterval(in: channelID, to: 0, now: changedAt)
     state.updateInterval(in: channelID, to: 60, now: changedAt)
     #expect(state.remaining(in: channelID, interval: 60, immune: false, now: changedAt) == 0)
+
+    // An unrelated catalogue update must not shorten an authoritative retry.
+    state.recover(channelID: channelID, retryAfter: 75, now: changedAt)
+    state.updateIntervals(for: [shortened], replacing: [shortened], now: changedAt)
+    #expect(state.remaining(in: channelID, interval: 10, immune: false, now: changedAt) == 75)
 }

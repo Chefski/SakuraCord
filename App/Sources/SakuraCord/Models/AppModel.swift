@@ -144,17 +144,20 @@ final class AppModel {
 
     var snapshot: BootstrapSnapshot? {
         didSet {
-            snapshotSourceRevision &+= 1
-            if oldValue?.currentUser != snapshot?.currentUser {
-                refreshVoiceSidebarPresentation()
-            }
+            refreshSnapshotPresentation(replacing: oldValue)
         }
     }
+    // Keep workspace chrome independent of unrelated channel and member changes.
+    private(set) var currentUser: User?
+    private(set) var selectedGuild: Guild?
+
     @ObservationIgnored let serverRailPresentation =
         ServerRailPresentationStore()
     @ObservationIgnored let voiceSidebarPresentation =
         VoiceSidebarPresentationStore()
-    var serverRailGuildsByID: [GuildID: Guild] = [:]
+    var serverRailGuildsByID: [GuildID: Guild] = [:] {
+        didSet { serverRailPresentation.updateAvailableGuildIDs(serverRailGuildsByID.keys) }
+    }
     var serverRailHomeIsUnread = false {
         didSet {
             serverRailPresentation.home.isUnread = serverRailHomeIsUnread
@@ -232,7 +235,7 @@ final class AppModel {
             refreshVoiceSidebarPresentation(using: indexed)
             var permissionsChanged = false
             if let guildID = selectedGuildID,
-               let currentUserID = snapshot?.currentUser.id,
+               let currentUserID = currentUser?.id,
                let currentMember = indexed[currentUserID]
             {
                 let roleIDs = Set(currentMember.roles.map(\.id))
@@ -531,6 +534,7 @@ final class AppModel {
     var selectedGuildID: GuildID? {
         didSet {
             serverRailPresentation.updateSelection(selectedGuildID)
+            refreshSelectedGuildPresentation()
         }
     }
     var selectedConversationAccess: ConversationAccess {
@@ -551,7 +555,7 @@ final class AppModel {
     func canDeleteForumPost(_ post: ForumPost) -> Bool {
         return Self.canDeleteForumPost(
             ownerID: post.thread.ownerID ?? post.owner?.id,
-            currentUserID: snapshot?.currentUser.id,
+            currentUserID: currentUser?.id,
             canManage: canManageForumPosts
         )
     }
@@ -560,14 +564,14 @@ final class AppModel {
         if canManageForumPosts { return true }
         guard !post.thread.isLocked else { return false }
         let ownerID = post.thread.ownerID ?? post.owner?.id
-        return ownerID != nil && ownerID == snapshot?.currentUser.id
+        return ownerID != nil && ownerID == currentUser?.id
     }
 
     func canEditForumPostTags(_ post: ForumPost) -> Bool {
         if canManageForumPosts { return true }
         guard !post.thread.isLocked else { return false }
         let ownerID = post.thread.ownerID ?? post.owner?.id
-        return ownerID != nil && ownerID == snapshot?.currentUser.id
+        return ownerID != nil && ownerID == currentUser?.id
     }
 
     func canToggleForumTag(_ tag: ForumTag, on post: ForumPost) -> Bool {
@@ -600,7 +604,7 @@ final class AppModel {
         guard let channel = selectedChannel else { return nil }
         guard let guildID = channel.guildID else { return .max }
         guard let guild = serverRailGuildsByID[guildID],
-              let currentUserID = snapshot?.currentUser.id
+              let currentUserID = currentUser?.id
         else {
             return nil
         }
@@ -628,7 +632,7 @@ final class AppModel {
         for guildID: GuildID
     ) -> ConversationPermissionBasis? {
         guard let guild = serverRailGuildsByID[guildID],
-              let currentUserID = snapshot?.currentUser.id
+              let currentUserID = currentUser?.id
         else {
             return nil
         }
@@ -706,7 +710,7 @@ final class AppModel {
         let guildID = channel.guildID
         guard let guildID,
               let guild = serverRailGuildsByID[guildID],
-              let currentUserID = snapshot?.currentUser.id
+              let currentUserID = currentUser?.id
         else { return false }
         guard !guild.features.contains("FORWARDING_DISABLED") else { return false }
         let member =
@@ -832,7 +836,7 @@ final class AppModel {
     ) -> String? {
         guard let guildID = channel.guildID else { return nil }
         guard let guild = serverRailGuildsByID[guildID],
-              let currentUserID = snapshot?.currentUser.id
+              let currentUserID = currentUser?.id
         else { return "Destination permissions are unavailable." }
         let member =
             membersByGuildID[guildID]?[currentUserID]
@@ -892,7 +896,7 @@ final class AppModel {
         guard let thread = openThread, let channel = selectedChannel else { return .checking }
         guard let guildID = channel.guildID else { return .readable(canSend: true) }
         guard let guild = serverRailGuildsByID[guildID],
-              let currentUserID = snapshot?.currentUser.id
+              let currentUserID = currentUser?.id
         else {
             return .checking
         }
@@ -1037,6 +1041,9 @@ final class AppModel {
     @ObservationIgnored var activeUnreadPreparationGeneration: UInt64?
     @ObservationIgnored var unreadAccessProjectionGeneration: UInt64 = 0
     @ObservationIgnored var snapshotSourceRevision: UInt64 = 0
+    @ObservationIgnored var shortcutUnreadNavigationCandidateIndex: Int?
+    @ObservationIgnored var messagePresentationChannelPositions: [ChannelID: Int] = [:]
+    @ObservationIgnored var shortcutMentionNavigationCandidateIndex: Int?
     @ObservationIgnored var batchedAcknowledgementChannelIDs:
         Set<ChannelID> = []
     @ObservationIgnored let maximumCreatedMessagesPerFlush = 4
@@ -1318,8 +1325,23 @@ final class AppModel {
 }
 
 extension AppModel {
+    private func refreshSnapshotPresentation(replacing previous: BootstrapSnapshot?) {
+        snapshotSourceRevision &+= 1
+        currentUser = snapshot?.currentUser
+        refreshSelectedGuildPresentation()
+        if previous?.currentUser != snapshot?.currentUser {
+            refreshVoiceSidebarPresentation()
+        }
+    }
+
+    private func refreshSelectedGuildPresentation() {
+        selectedGuild = selectedGuildID.flatMap { guildID in
+            snapshot?.guilds.first(where: { $0.id == guildID })
+        }
+    }
+
     var incomingPrivateCalls: [PrivateCall] {
-        guard let currentUserID = snapshot?.currentUser.id else { return [] }
+        guard let currentUserID = currentUser?.id else { return [] }
         return privateCallsByChannel.values
             .filter {
                 !$0.isUnavailable

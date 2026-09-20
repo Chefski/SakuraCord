@@ -42,6 +42,11 @@ struct KeyboardShortcutNavigationTests {
     @Test func `server shortcuts wrap in rail order including folders and skip missing servers`() {
         let model = makeModel()
         #expect(model.keyboardShortcutServerDestination(direction: 1) == GuildID(rawValue: 2))
+        let removed = model.serverRailGuildsByID.removeValue(forKey: GuildID(rawValue: 2))
+        #expect(model.keyboardShortcutServerDestination(direction: 1) == GuildID(rawValue: 3))
+        #expect(!model.serverRailPresentation.navigationGuildIDs.contains(GuildID(rawValue: 2)))
+        model.serverRailGuildsByID[GuildID(rawValue: 2)] = removed
+        #expect(model.keyboardShortcutServerDestination(direction: 1) == GuildID(rawValue: 2))
         #expect(model.keyboardShortcutServerDestination(direction: -1) == GuildID(rawValue: 3))
         model.selectedGuildID = GuildID(rawValue: 3)
         #expect(model.keyboardShortcutServerDestination(direction: 1) == GuildID(rawValue: 1))
@@ -86,6 +91,21 @@ struct KeyboardShortcutNavigationTests {
                 }
             }
         }
+        // A cached navigation candidate must follow both in-place snapshot
+        // edits and account teardown, even while read entries still exist.
+        model.selectedChannelID = ChannelID(rawValue: 10)
+        model.hiddenChannelIDs = []
+        #expect(model.hasKeyboardShortcutConversationDestination(unreadOnly: true, mentionsOnly: true))
+        let originalSnapshot = model.snapshot
+        model.snapshot?.channels.reverse()
+        #expect(model.hasKeyboardShortcutConversationDestination(unreadOnly: true, mentionsOnly: true))
+        model.snapshot?.channels.removeAll { $0.id == ChannelID(rawValue: 20) }
+        #expect(!model.hasKeyboardShortcutConversationDestination(unreadOnly: true, mentionsOnly: true))
+        model.snapshot = originalSnapshot
+        #expect(model.hasKeyboardShortcutConversationDestination(unreadOnly: true, mentionsOnly: true))
+        model.snapshot = nil
+        #expect(!model.hasKeyboardShortcutConversationDestination(unreadOnly: true, mentionsOnly: true))
+        model.snapshot = originalSnapshot
         model.readState.reset(accountID: nil)
         #expect(!model.hasKeyboardShortcutConversationDestination(unreadOnly: true))
         model.serverRailItems = []

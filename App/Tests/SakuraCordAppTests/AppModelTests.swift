@@ -631,7 +631,16 @@ import UserNotifications
     gatewayGuild.unreadCount = 0
     gatewayGuild.mentionCount = 0
 
+    model.selectedGuildID = guildID
+    gatewayGuild.name = "Renamed server"
     model.consumeGuildChanged(gatewayGuild)
+
+    #expect(model.selectedGuild == model.snapshot?.guilds.first { $0.id == guildID })
+    #expect(model.messageSearchPromptTitle == "Search Renamed server")
+    #expect(model.currentUser == model.snapshot?.currentUser)
+    model.selectedGuildID = nil
+    #expect(model.selectedGuild == nil)
+    #expect(model.messageSearchPromptTitle == "Search in DMs")
 
     #expect(model.serverRailGuildsByID[guildID]?.unreadCount == 1)
     #expect(model.serverRailGuildsByID[guildID]?.mentionCount == 2)
@@ -3866,8 +3875,11 @@ private func hiddenMockChannel(
 }
 
 @MainActor
-@Test func `gateway mutations keep exact indexes after repeated history prepends`() async throws {
-    let provider = MockChatProvider(timelineMessageCount: 500)
+@Test(arguments: [false, true])
+func `gateway mutations keep exact indexes after repeated history prepends`(
+    whileScrolling: Bool
+) async throws {
+    let provider = MockChatProvider(timelineMessageCount: 2_000)
     let model = AppModel(launchMode: .offlineTesting, provider: provider)
     await model.start()
 
@@ -3877,11 +3889,17 @@ private func hiddenMockChannel(
         model.selectedChannelID == timelineChannelID
             && model.hasCompletedInitialMessageLoad
     })
+    if whileScrolling {
+        model.reportTimelineLiveScrolling(true, conversationID: timelineChannelID)
+    }
+    defer {
+        model.reportTimelineLiveScrolling(false, conversationID: timelineChannelID)
+    }
     let initialCount = model.messages.count
     for _ in 0 ..< 13 {
         await model.loadEarlier()
     }
-    #expect(model.messages.count == min(500, initialCount + 260))
+    #expect(model.messages.count == initialCount + 13 * (whileScrolling ? 100 : 20))
 
     let updateTarget = model.messages[173]
     var updated = updateTarget

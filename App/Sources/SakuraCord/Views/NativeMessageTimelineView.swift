@@ -306,6 +306,8 @@ final class NativeMessageTimelineCoordinator: NSObject {
         var lastViewportSize = CGSize.zero
         var isApplyingUpdate = false
         var pendingModelRowsUpdateTask: Task<Void, Never>?
+        var layoutPreparationTask: Task<Void, Never>?
+        var layoutPreparation: LayoutPreparation?
         var scrollIdleTask: Task<Void, Never>?
         var lastScrollActivityUptime = 0.0
         var widthRelayoutTask: Task<Void, Never>?
@@ -871,7 +873,11 @@ extension NativeMessageTimelineCoordinator {
                 mediaViewerHighlightedMessageID:
                     parent.model.mediaViewerPresentation?.messageID
             )
+            guard !prepareLayoutsIfNeeded(parent: parent, scrollView: scrollView) else {
+                return
+            }
             updateTimeline(parent: parent, scrollView: scrollView)
+            layoutPreparation = nil
         }
 
         func scheduleModelRowsUpdate() {
@@ -901,6 +907,7 @@ extension NativeMessageTimelineCoordinator {
         }
 
         func stopObserving() {
+            cancelLayoutPreparation()
             pendingModelRowsUpdateTask?.cancel()
             pendingModelRowsUpdateTask = nil
             scrollStateCallbackTask?.cancel()
@@ -1205,19 +1212,30 @@ extension NativeMessageTimelineCoordinator {
             width: CGFloat,
             presentationRevision: UInt64
         ) -> NativeTimelineRowLayout {
+            if let cached = cachedItemLayout(
+                for: item, width: width, presentationRevision: presentationRevision
+            ) {
+                recentLayoutCacheHits += 1
+                return cached
+            }
+            return layout(for: item, width: width)
+        }
+
+        func cachedItemLayout(
+            for item: NativeMessageTimelineItem,
+            width: CGFloat,
+            presentationRevision: UInt64
+        ) -> NativeTimelineRowLayout? {
             let key = CachedItemLayoutKey(
                 identifier: item.identifier,
                 roundedWidth: Int(width.rounded()),
                 presentationRevision: presentationRevision
             )
-            if let cached = cachedItemLayouts[key],
-               cached.item == item,
-               cached.layout.fontRevision == ProfileNameFontCache.revision
-            {
-                recentLayoutCacheHits += 1
-                return cached.layout
-            }
-            return layout(for: item, width: width)
+            guard let cached = cachedItemLayouts[key],
+                  cached.item == item,
+                  cached.layout.fontRevision == ProfileNameFontCache.revision
+            else { return nil }
+            return cached.layout
         }
 
         func applyFastUpdate(
@@ -1541,7 +1559,12 @@ extension NativeMessageTimelineCoordinator {
         ) {
             didPrependItems = true
             let insertedItems = rows.map { messageItem($0, from: parent) }
-            let insertedLayouts = insertedItems.map { layout(for: $0, width: width) }
+            let insertedLayouts = insertedItems.map {
+                layoutUsingRecentConversationCache(
+                    for: $0, width: width,
+                    presentationRevision: parent.presentationRevision
+                )
+            }
             items.insert(contentsOf: insertedItems, at: oldLeadingCount)
             layouts.insert(contentsOf: insertedLayouts, at: oldLeadingCount)
             rowHeights.insert(contentsOf: insertedLayouts.map(\.height), at: oldLeadingCount)

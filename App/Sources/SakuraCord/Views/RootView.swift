@@ -192,7 +192,7 @@ private struct ChatRootView: View {
                         model.unreadCategoryIDsByGuild[$0.id] ?? []
                     } ?? [],
                     selection: $model.channelSidebarSelection,
-                    currentUser: model.snapshot?.currentUser,
+                    currentUser: model.currentUser,
                     connectionState: model.connectionState,
                     currentStatus: model.currentStatus,
                     isAuthenticated: model.isAuthenticated,
@@ -999,8 +999,7 @@ private struct ChatRootView: View {
     }
 
     private var selectedGuild: Guild? {
-        guard let guildID = model.selectedGuildID else { return nil }
-        return model.snapshot?.guilds.first(where: { $0.id == guildID })
+        model.selectedGuild
     }
 }
 

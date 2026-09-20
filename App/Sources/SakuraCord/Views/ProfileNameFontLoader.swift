@@ -114,9 +114,13 @@ final class ProfileNameFontLoader {
                     let data = try await SharedMediaDataLoader.shared.data(for: url)
                     await AppScrollWorkGate.waitUntilInactive()
                     let values = CTFontManagerCreateFontDescriptorsFromData(data as CFData) as? [CTFontDescriptor]
-                    guard let descriptor = values?.first,
-                          CTFontCopyPostScriptName(CTFontCreateWithFontDescriptor(descriptor, 24, nil)) as String == definition.postScriptName
+                    guard let descriptor = values?.first else { throw URLError(.cannotDecodeContentData) }
+                    let font = CTFontCreateWithFontDescriptor(descriptor, 24, nil)
+                    guard CTFontCopyPostScriptName(font) as String == definition.postScriptName
                     else { throw URLError(.cannotDecodeContentData) }
+                    // Core Text otherwise lazily resolves the font's language
+                    // metadata during its first glyph draw on the main thread.
+                    _ = CTFontCopySupportedLanguages(font)
                     return ProfileNameFontDescriptor(value: descriptor)
                 }
                 loads[definition.id] = task

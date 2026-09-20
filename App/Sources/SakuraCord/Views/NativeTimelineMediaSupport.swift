@@ -144,9 +144,10 @@ actor SharedDecodedImageLoader {
     struct RequestKey: Hashable, Sendable {
         let url: URL
         let maximumPixelDimension: Int
+        var preparesForTimeline = false
 
         var cacheKey: NSString {
-            "\(url.absoluteString)#shared-static-pixel-max=\(maximumPixelDimension)"
+            "\(url.absoluteString)#shared-static-pixel-max=\(maximumPixelDimension)#timeline=\(preparesForTimeline)"
                 as NSString
         }
     }
@@ -166,11 +167,13 @@ actor SharedDecodedImageLoader {
 
     nonisolated func cachedImage(
         for url: URL,
-        maximumPixelDimension: Int
+        maximumPixelDimension: Int,
+        preparesForTimeline: Bool = false
     ) -> CGImage? {
         let key = RequestKey(
             url: url,
-            maximumPixelDimension: max(1, maximumPixelDimension)
+            maximumPixelDimension: max(1, maximumPixelDimension),
+            preparesForTimeline: preparesForTimeline
         )
         return cache.image(for: key.cacheKey)
     }
@@ -178,15 +181,18 @@ actor SharedDecodedImageLoader {
     func image(
         for url: URL,
         maximumPixelDimension: Int,
-        priority: MediaLoadPriority
+        priority: MediaLoadPriority,
+        preparesForTimeline: Bool = false
     ) async -> CGImage? {
         let key = RequestKey(
             url: url,
-            maximumPixelDimension: max(1, maximumPixelDimension)
+            maximumPixelDimension: max(1, maximumPixelDimension),
+            preparesForTimeline: preparesForTimeline
         )
         if let cached = cachedImage(
             for: key.url,
-            maximumPixelDimension: key.maximumPixelDimension
+            maximumPixelDimension: key.maximumPixelDimension,
+            preparesForTimeline: key.preparesForTimeline
         ) {
             return cached
         }
@@ -228,7 +234,8 @@ actor SharedDecodedImageLoader {
                         data,
                         maximumPixelDimension: key.maximumPixelDimension,
                         priority: effectivePriority,
-                        waiterID: createdRequestID
+                        waiterID: createdRequestID,
+                        preparesForTimeline: key.preparesForTimeline
                     )
                 } catch {
                     return nil
@@ -267,11 +274,13 @@ actor SharedDecodedImageLoader {
 
     func promoteImageLoad(
         for url: URL,
-        maximumPixelDimension: Int
+        maximumPixelDimension: Int,
+        preparesForTimeline: Bool = false
     ) async {
         let key = RequestKey(
             url: url,
-            maximumPixelDimension: max(1, maximumPixelDimension)
+            maximumPixelDimension: max(1, maximumPixelDimension),
+            preparesForTimeline: preparesForTimeline
         )
         guard var request = inFlight[key],
               request.priority == .prefetch
@@ -462,7 +471,8 @@ final class NativeTimelineMediaStore {
         await SharedDecodedImageLoader.shared.image(
             for: url,
             maximumPixelDimension: dimension,
-            priority: priority
+            priority: priority,
+            preparesForTimeline: true
         )
     }
 
@@ -472,7 +482,8 @@ final class NativeTimelineMediaStore {
     ) async {
         await SharedDecodedImageLoader.shared.promoteImageLoad(
             for: url,
-            maximumPixelDimension: dimension
+            maximumPixelDimension: dimension,
+            preparesForTimeline: true
         )
     }
 
@@ -900,7 +911,8 @@ actor NativeTimelineMediaDecodeScheduler {
         _ data: Data,
         maximumPixelDimension: Int,
         priority: MediaLoadPriority,
-        waiterID: UUID = UUID()
+        waiterID: UUID = UUID(),
+        preparesForTimeline: Bool = false
     ) async -> CGImage? {
         let acquiredPriority = await withTaskCancellationHandler {
             await acquire(waiterID: waiterID, priority: priority)
@@ -925,7 +937,10 @@ actor NativeTimelineMediaDecodeScheduler {
                     ? "TimelineVisibleStaticMediaDecode"
                     : "TimelinePrefetchStaticMediaDecode"
             ) {
-                decodeOperation(data, maximumPixelDimension)
+                guard let image = decodeOperation(data, maximumPixelDimension) else { return nil as CGImage? }
+                return preparesForTimeline
+                    ? NativeTimelineMediaDecoder.prepareForTimeline(image)
+                    : image
             }
             return Task.isCancelled ? nil : image
         }
@@ -1045,6 +1060,24 @@ enum NativeTimelineStaticMediaLoadOutcome: Equatable {
 }
 
 enum NativeTimelineMediaDecoder {
+    nonisolated static func prepareForTimeline(_ image: CGImage) -> CGImage {
+        // The row cache uses eight-bit device RGB. Perform high-bit-depth
+        // color conversion once on the decode worker instead of repeating it
+        // on the main thread whenever a row (or another tile) is drawn.
+        // Other shared-image consumers retain the original color precision.
+        guard image.bitsPerComponent > 8,
+              let context = CGContext(
+                data: nil, width: image.width, height: image.height,
+                bitsPerComponent: 8, bytesPerRow: 0,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+              )
+        else { return image }
+        context.setBlendMode(.copy)
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        return context.makeImage() ?? image
+    }
+
     nonisolated static func decode(
         _ data: Data,
         maximumPixelDimension: Int

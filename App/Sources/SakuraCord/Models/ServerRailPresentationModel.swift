@@ -112,6 +112,11 @@ final class ServerRailHomeEntry {
 final class ServerRailPresentationStore {
     var items: [ServerRailPresentationItem] = []
     let home = ServerRailHomeEntry()
+    private(set) var orderedNavigationGuildIDs: [GuildID] = []
+    private(set) var navigationGuildIDs: Set<GuildID> = []
+
+    @ObservationIgnored private var layoutGuildIDs: [GuildID] = []
+    @ObservationIgnored private var availableGuildIDs: Set<GuildID> = []
 
     @ObservationIgnored private var guildEntriesByID:
         [GuildID: ServerRailGuildEntry] = [:]
@@ -122,6 +127,13 @@ final class ServerRailPresentationStore {
     @ObservationIgnored private var selectedGuildID: GuildID?
 
     func updateLayout(_ layout: [GuildRailItem]) {
+        layoutGuildIDs = layout.flatMap { item -> [GuildID] in
+            switch item {
+            case let .guild(id): [id]
+            case let .folder(folder): folder.guildIDs
+            }
+        }
+        refreshNavigationGuilds()
         AppPerformanceSignposts.measureSync("ServerRailLayoutReconciliation") {
             var nextItems: [ServerRailPresentationItem] = []
             nextItems.reserveCapacity(layout.count)
@@ -158,6 +170,20 @@ final class ServerRailPresentationStore {
                 items = nextItems
             }
         }
+    }
+
+    func updateAvailableGuildIDs(_ ids: Dictionary<GuildID, Guild>.Keys) {
+        let available = Set(ids)
+        guard availableGuildIDs != available else { return }
+        availableGuildIDs = available
+        refreshNavigationGuilds()
+    }
+
+    private func refreshNavigationGuilds() {
+        let ordered = layoutGuildIDs.filter { availableGuildIDs.contains($0) }
+        guard orderedNavigationGuildIDs != ordered else { return }
+        orderedNavigationGuildIDs = ordered
+        navigationGuildIDs = Set(ordered)
     }
 
     func updateGuilds(

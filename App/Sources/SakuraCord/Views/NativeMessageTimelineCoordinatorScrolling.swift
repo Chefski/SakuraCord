@@ -278,7 +278,17 @@ extension NativeMessageTimelineCoordinator {
             for item: NativeMessageTimelineItem,
             width: CGFloat
         ) -> NativeTimelineRowLayout {
-            NativeTimelineRowLayout.make(
+            if let preparation = layoutPreparation,
+               preparation.isComplete,
+               preparation.presentationRevision == parent.presentationRevision,
+               abs(preparation.width - width) < 0.5,
+               let cached = preparation.layouts[item.identifier],
+               cached.item == item,
+               cached.layout.fontRevision == ProfileNameFontCache.revision {
+                recentLayoutCacheHits += 1
+                return cached.layout
+            }
+            return NativeTimelineRowLayout.make(
                 item: item,
                 width: width,
                 model: parent.model

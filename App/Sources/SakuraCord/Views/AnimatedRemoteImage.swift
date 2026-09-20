@@ -1113,6 +1113,7 @@ final class AnimatedImageCanvas: NSView {
         wantsLayer = true
         layer?.contentsGravity = .resizeAspect
         layer?.masksToBounds = true
+        layer?.actions = ["contents": NSNull()]
         let notificationCenter = NotificationCenter.default
         notificationCenter.addObserver(
             self,
@@ -1270,10 +1271,9 @@ final class AnimatedImageCanvas: NSView {
         )
         guard index != boundedFrameIndex else { return }
         boundedFrameIndex = index
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
+        // Keep discrete frame changes in AppKit's shared transaction instead
+        // of committing image uploads separately inside each display callback.
         layer.contents = index.map { CompressedAnimatedFrame.transientImage(image.frames[$0]) }
-        CATransaction.commit()
     }
 
     private func installAnimation(for image: DecodedAnimatedImage, isLooping: Bool) {

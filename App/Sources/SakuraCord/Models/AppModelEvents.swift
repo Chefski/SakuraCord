@@ -673,9 +673,9 @@ extension AppModel {
 
     func consumeChannelsChanged(guildID: GuildID?, channels: [Channel]) {
         let previousChannels = snapshot?.channels ?? []
-        for channel in channels where previousChannels.first(where: { $0.id == channel.id })?.rateLimitPerUser != channel.rateLimitPerUser {
-            composer.slowmode.updateInterval(in: channel.id, to: channel.rateLimitPerUser)
-        }
+        composer.slowmode.updateIntervals(
+            for: channels, replacing: previousChannels
+        )
         if var value = snapshot {
             if let firstIndex = value.channels.firstIndex(where: { $0.guildID == guildID }) {
                 value.channels.removeAll { $0.guildID == guildID }

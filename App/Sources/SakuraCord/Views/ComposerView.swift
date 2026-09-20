@@ -46,7 +46,7 @@ struct ComposerView: View {
                             avatarURL: author.user.avatarURL,
                             roleColorHex: author.roleColorHex,
                             mentionsAuthor: activeReplyMentionsAuthor,
-                            canMentionAuthor: author.user.id != model.snapshot?.currentUser.id,
+                            canMentionAuthor: author.user.id != model.currentUser?.id,
                             toggleMention: toggleReplyMention,
                             cancel: cancelReply
                         )
@@ -170,11 +170,11 @@ struct ComposerView: View {
                             }
                             if ChatCharacterLimitPolicy.shouldShowCounter(
                                 characterCount: draft.count,
-                                premiumType: model.snapshot?.currentUser.premiumType
+                                premiumType: model.currentUser?.premiumType
                             ) {
                                 ComposerCharacterCounter(
                                     characterCount: draft.count,
-                                    premiumType: model.snapshot?.currentUser.premiumType
+                                    premiumType: model.currentUser?.premiumType
                                 )
                             }
                         }
@@ -652,7 +652,7 @@ struct ComposerView: View {
     }
 
     private func openComposerAttachment(_ id: UUID) {
-        guard let currentUser = model.snapshot?.currentUser,
+        guard let currentUser = model.currentUser,
               let presentation = NativeTimelineMediaViewerPlan.composerAttachments(
                   attachments,
                   selectedAttachmentID: id,
@@ -692,8 +692,8 @@ struct ComposerView: View {
                 MentionAutocompleteSuggestionFactory.canMentionNonMentionableRoles(
                     in: model.selectedChannel,
                     guild: model.selectedGuildID.flatMap { model.serverRailGuildsByID[$0] },
-                    currentUserID: model.snapshot?.currentUser.id,
-                    currentMember: (model.snapshot?.currentUser.id).flatMap {
+                    currentUserID: model.currentUser?.id,
+                    currentMember: (model.currentUser?.id).flatMap {
                         model.membersByID[$0]
                     },
                     roles: model.guildRoles
@@ -705,8 +705,8 @@ struct ComposerView: View {
                 channels: model.visibleChannels,
                 guilds: model.serverRailGuildsByID,
                 guildAndChannelUsageScores: model.discordGuildAndChannelUsageScores,
-                currentUserID: model.snapshot?.currentUser.id,
-                currentMember: (model.snapshot?.currentUser.id).flatMap { model.membersByID[$0] },
+                currentUserID: model.currentUser?.id,
+                currentMember: (model.currentUser?.id).flatMap { model.membersByID[$0] },
                 roles: model.guildRoles
             )
         }
@@ -782,7 +782,7 @@ struct ComposerView: View {
             && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 || !attachments.isEmpty)
             && draft.count <= ChatCharacterLimitPolicy.limit(
-                premiumType: model.snapshot?.currentUser.premiumType
+                premiumType: model.currentUser?.premiumType
             )
     }
 

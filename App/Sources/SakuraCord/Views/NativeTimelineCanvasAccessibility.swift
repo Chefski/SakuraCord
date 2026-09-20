@@ -371,7 +371,7 @@ extension NativeTimelineCanvasView {
         let itemIdentifier =
             NativeMessageTimelineItem.Identifier.message(row.identity)
         let revealedTextSpoilerState =
-            textSpoilerRevealState(for: itemIdentifier)
+            textSpoilerRevealState(at: rowIndex)
         let header = makeMessageAccessibilityHeader(for: row, rowFrame: rowFrame)
         let element = header.element
         element.setAccessibilityCustomActions(

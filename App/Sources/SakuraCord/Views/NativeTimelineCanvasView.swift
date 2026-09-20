@@ -16,8 +16,8 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
         let item: NativeMessageTimelineItem
         let width: CGFloat
         let appearanceName: NSAppearance.Name
-        let image: NSImage
-        let cost: Int
+        var images: [Int: NSImage]
+        var cost: Int
         let mediaPinOwner: UUID
         let missingMediaKeys: Set<NativeTimelineMediaKey>
     }

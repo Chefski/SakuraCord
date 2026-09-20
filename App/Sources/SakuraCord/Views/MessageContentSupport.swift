@@ -167,8 +167,7 @@ struct MessageMentionResolver {
     }
 
     private func channel(_ channelID: ChannelID) -> Channel? {
-        model.snapshot?.channels.first { $0.id == channelID }
-            ?? model.visibleChannels.first { $0.id == channelID }
+        model.messagePresentationChannel(channelID)
     }
 
     private var sourceGuildID: GuildID? {

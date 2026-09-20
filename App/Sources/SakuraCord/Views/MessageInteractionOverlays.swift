@@ -568,6 +568,11 @@ enum ReactionActionMenuPresentation {
 }
 
 enum MessageReplySummary {
+    nonisolated struct Prepared: Sendable {
+        let source: String
+        let text: String
+    }
+
     private static let values: NSCache<NSString, NSString> = {
         let cache = NSCache<NSString, NSString>()
         cache.countLimit = 2_000
@@ -587,8 +592,29 @@ enum MessageReplySummary {
             }
         }
     ) -> String {
+        let source = resolvedSource(content: content, mentionLabel: mentionLabel)
+        if let cached = values.object(forKey: source as NSString) {
+            return cached as String
+        }
+        let prepared = prepare(source)
+        install(prepared)
+        return prepared.text
+    }
+
+    static func preparation(
+        content: String,
+        mentionLabel: (RenderedMention) -> String
+    ) -> String? {
+        let source = resolvedSource(content: content, mentionLabel: mentionLabel)
+        return values.object(forKey: source as NSString) == nil ? source : nil
+    }
+
+    private static func resolvedSource(
+        content: String,
+        mentionLabel: (RenderedMention) -> String
+    ) -> String {
         let document = MessageDocumentCache.shared.document(for: content)
-        let markdownSource = document.segments.reduce(into: "") { output, segment in
+        return document.segments.reduce(into: "") { output, segment in
             switch segment {
             case let .markdown(value):
                 output += value
@@ -598,19 +624,20 @@ enum MessageReplySummary {
                 output += mentionLabel(mention)
             }
         }
-        let key = markdownSource as NSString
-        if let cached = values.object(forKey: key) {
-            return cached as String
-        }
-        let plainText = String(DiscordMarkdown.attributed(markdownSource).characters)
+    }
+
+    nonisolated static func prepare(_ source: String) -> Prepared {
+        let plainText = String(DiscordMarkdown.attributed(source).characters)
         let collapsed = plainText.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        let result = collapsed.isEmpty ? "Attachment" : collapsed
+        return Prepared(source: source, text: collapsed.isEmpty ? "Attachment" : collapsed)
+    }
+
+    static func install(_ prepared: Prepared) {
         values.setObject(
-            result as NSString,
-            forKey: key,
-            cost: markdownSource.utf8.count + result.utf8.count
+            prepared.text as NSString,
+            forKey: prepared.source as NSString,
+            cost: prepared.source.utf8.count + prepared.text.utf8.count
         )
-        return result
     }
 }
 

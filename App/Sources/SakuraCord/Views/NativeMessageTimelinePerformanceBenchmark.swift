@@ -88,7 +88,7 @@ extension NativeMessageTimelineCoordinator {
                     toDocumentY:
                         scrollsTowardLater
                             ? initialRect.minY + positionShift
-                            : initialRect.minY - positionShift,
+                            : materializedHistoryMaximumY(viewportHeight: initialRect.height) - initialRect.height - min(160, initialRect.height * 0.25),
                     scrollView: scrollView
                 )
                 startup.phase = "settling"
@@ -219,6 +219,7 @@ extension NativeMessageTimelineCoordinator {
                 ? visibleRect.minY + scrollDistance
                 : visibleRect.minY - scrollDistance
             scroll(toDocumentY: targetDocumentY, scrollView: scrollView)
+            reportScrollState()
             let currentDocumentY = scrollView.contentView.bounds.minY
             let didAdvance = state.scrollsTowardLater
                 ? currentDocumentY > visibleRect.minY + 0.5

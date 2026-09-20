@@ -9,6 +9,8 @@ import SakuraCordModels
 import SwiftUI
 
 extension NativeTimelineCanvasView {
+    static let bitmapTileHeight: CGFloat = 128
+
     func apply(
         storage: NativeTimelineCanvasStorage,
         model: AppModel,
@@ -779,7 +781,7 @@ extension NativeTimelineCanvasView {
         let preparedMediaKeys = visibleMediaKeys[item.identifier]
             ?? mediaKeys(for: item, at: index)
         drawMessageJumpHighlight(at: index)
-        let revealState = textSpoilerRevealState(for: item.identifier)
+        let revealState = textSpoilerRevealState(at: index)
         if item.messageID == editingMessageID {
             drawEditingTimelineRow(
                 item, at: index, rowFrame: rowFrame, dirtyRect: dirtyRect,
@@ -795,7 +797,7 @@ extension NativeTimelineCanvasView {
             )
         } else {
             drawStableTimelineRow(
-                item, at: index, rowFrame: rowFrame,
+                item, at: index, rowFrame: rowFrame, dirtyRect: dirtyRect,
                 preparedMediaKeys: preparedMediaKeys, revealState: revealState
             )
         }
@@ -886,10 +888,35 @@ extension NativeTimelineCanvasView {
         _ item: NativeMessageTimelineItem,
         at index: Int,
         rowFrame: CGRect,
+        dirtyRect: CGRect,
         preparedMediaKeys: Set<NativeTimelineMediaKey>,
         revealState: NativeTimelineTextSpoilerRevealState
     ) {
         enqueueVisibleMediaRequests(identifier: item.identifier, keys: preparedMediaKeys)
+        // Only rasterize the exposed slices of tall messages. A one-pixel
+        // reveal must not synchronously draw an entire attachment gallery.
+        if rowFrame.height > 256 {
+            let exposed = rowFrame.intersection(dirtyRect)
+            let firstTile = max(0, Int(floor((exposed.minY - rowFrame.minY) / Self.bitmapTileHeight)))
+            let lastTile = max(firstTile, Int(ceil((exposed.maxY - rowFrame.minY) / Self.bitmapTileHeight)) - 1)
+            for tileIndex in firstTile ... lastTile {
+                let offset = CGFloat(tileIndex) * Self.bitmapTileHeight
+                let tileFrame = CGRect(
+                    x: rowFrame.minX, y: rowFrame.minY + offset,
+                    width: rowFrame.width, height: min(Self.bitmapTileHeight, rowFrame.height - offset)
+                )
+                let image = cachedBitmap(for: item, width: rowFrame.width, tileIndex: tileIndex)
+                    ?? bitmap(
+                        for: item, at: index, layout: layouts[index], width: rowFrame.width,
+                        preparedMediaKeys: preparedMediaKeys, tileIndex: tileIndex
+                    )
+                image.draw(
+                    in: tileFrame, from: .zero, operation: .sourceOver,
+                    fraction: 1, respectFlipped: true, hints: nil
+                )
+            }
+            return
+        }
         let cached = cachedBitmap(for: item, width: rowFrame.width)
         let drawsDirectly = NativeTimelineScrollingRenderPolicy.usesDirectPainter(
             isScrolling: suppressesHoverPresentation || AppScrollActivity.isActive,
@@ -991,13 +1018,15 @@ extension NativeTimelineCanvasView {
     }
 
     func textSpoilerRevealState(
-        for identifier: NativeMessageTimelineItem.Identifier
+        at rowIndex: Int
     ) -> NativeTimelineTextSpoilerRevealState {
         var result = NativeTimelineTextSpoilerRevealState()
-        guard let rowIndex = items.firstIndex(where: {
-            $0.identifier == identifier
-        }),
-           layouts.indices.contains(rowIndex),
+        // Most rows have no revealed spoilers. Avoid building selectable
+        // regions (and hashing their text) on every scrolling frame in that
+        // case; callers already know the row's current storage index.
+        guard !spoilerRevealStore.revealedText.isEmpty,
+              items.indices.contains(rowIndex),
+               layouts.indices.contains(rowIndex),
            let messageID = items[rowIndex].messageID
         else { return result }
         for selectable in selectableTextRegions(
@@ -1256,15 +1285,20 @@ extension NativeTimelineCanvasView {
         at index: Int,
         layout: NativeTimelineRowLayout,
         width: CGFloat,
-        preparedMediaKeys: Set<NativeTimelineMediaKey>
+        preparedMediaKeys: Set<NativeTimelineMediaKey>,
+        tileIndex: Int = -1
     ) -> NSImage {
-        if let cached = cachedBitmap(for: item, width: width) {
+        if let cached = cachedBitmap(for: item, width: width, tileIndex: tileIndex) {
             return cached
         }
         let appearanceName = effectiveAppearance.name
 
         let rasterStart = ProcessInfo.processInfo.systemUptime
-        let size = NSSize(width: width, height: layout.height)
+        let tileOrigin = tileIndex < 0 ? 0 : CGFloat(tileIndex) * Self.bitmapTileHeight
+        let size = NSSize(
+            width: width,
+            height: tileIndex < 0 ? layout.height : min(Self.bitmapTileHeight, layout.height - tileOrigin)
+        )
         let scale = max(
             1,
             window?.backingScaleFactor
@@ -1272,7 +1306,7 @@ extension NativeTimelineCanvasView {
                 ?? 2
         )
         let pixelWidth = max(1, Int(ceil(width * scale)))
-        let pixelHeight = max(1, Int(ceil(layout.height * scale)))
+        let pixelHeight = max(1, Int(ceil(size.height * scale)))
         guard let representation = NSBitmapImageRep(
             bitmapDataPlanes: nil,
             pixelsWide: pixelWidth,
@@ -1290,8 +1324,9 @@ extension NativeTimelineCanvasView {
         }
         NSGraphicsContext.saveGraphicsState()
         graphics.cgContext.scaleBy(x: scale, y: scale)
-        graphics.cgContext.translateBy(x: 0, y: layout.height)
+        graphics.cgContext.translateBy(x: 0, y: size.height)
         graphics.cgContext.scaleBy(x: 1, y: -1)
+        graphics.cgContext.translateBy(x: 0, y: -tileOrigin)
         let flippedGraphics = NSGraphicsContext(
             cgContext: graphics.cgContext,
             flipped: true
@@ -1301,7 +1336,7 @@ extension NativeTimelineCanvasView {
             NativeTimelineRowPainter.draw(
                 item: item,
                 layout: layout,
-                in: CGRect(origin: .zero, size: size),
+                in: CGRect(x: 0, y: 0, width: width, height: layout.height),
                 model: model,
                 isHovered: false,
                 spoilerRevealStore: spoilerRevealStore
@@ -1314,45 +1349,53 @@ extension NativeTimelineCanvasView {
         image.addRepresentation(representation)
         let rasterDuration =
             ProcessInfo.processInfo.systemUptime - rasterStart
-        rowRasterCount += 1
-        totalRowRasterDuration += rasterDuration
-        if rasterDuration > maximumRowRasterDuration {
-            maximumRowRasterDuration = rasterDuration
-            maximumRowRasterHeight = layout.height
-        }
+        recordRowRaster(duration: rasterDuration, height: size.height)
 
-        let mediaPinOwner = UUID()
+        var entry = bitmapCache[item.identifier]
+        if let previous = entry,
+           previous.item != item || abs(previous.width - width) >= 0.5
+                || previous.appearanceName != appearanceName {
+            invalidateBitmap(item.identifier)
+            entry = nil
+        }
+        let mediaPinOwner = entry?.mediaPinOwner ?? UUID()
         NativeTimelineMediaStore.shared.pinLoadedImages(
             for: preparedMediaKeys,
             owner: mediaPinOwner
         )
         let cost = Self.estimatedBitmapCost(
             width: width,
-            height: layout.height,
+            height: size.height,
             scale: scale
         )
-        if let previous = bitmapCache.removeValue(forKey: item.identifier) {
-            bitmapCost -= previous.cost
-            NativeTimelineMediaStore.shared.releasePinnedImages(
-                owner: previous.mediaPinOwner
-            )
-        }
         bitmapInsertionOrder.removeAll { $0 == item.identifier }
         bitmapInsertionOrder.append(item.identifier)
-        bitmapCache[item.identifier] = CachedRowBitmap(
+        var updated = entry ?? CachedRowBitmap(
             item: item,
             width: width,
             appearanceName: appearanceName,
-            image: image,
-            cost: cost,
+            images: [:],
+            cost: 0,
             mediaPinOwner: mediaPinOwner,
             missingMediaKeys: preparedMediaKeys.filter {
                 NativeTimelineRowPainter.mediaImage(for: $0) == nil
             }
         )
+        updated.images[tileIndex] = image
+        updated.cost += cost
+        bitmapCache[item.identifier] = updated
         bitmapCost += cost
         evictBitmapsIfNeeded()
         return image
+    }
+
+    private func recordRowRaster(duration: TimeInterval, height: CGFloat) {
+        rowRasterCount += 1
+        totalRowRasterDuration += duration
+        if duration > maximumRowRasterDuration {
+            maximumRowRasterDuration = duration
+            maximumRowRasterHeight = height
+        }
     }
 
     static func estimatedBitmapCost(
@@ -1374,7 +1417,8 @@ extension NativeTimelineCanvasView {
 
     func cachedBitmap(
         for item: NativeMessageTimelineItem,
-        width: CGFloat
+        width: CGFloat,
+        tileIndex: Int = -1
     ) -> NSImage? {
         guard let cached = bitmapCache[item.identifier],
               cached.item == item,
@@ -1389,8 +1433,9 @@ extension NativeTimelineCanvasView {
             invalidateBitmap(item.identifier)
             return nil
         }
+        guard let image = cached.images[tileIndex] else { return nil }
         rowBitmapCacheHitCount += 1
-        return cached.image
+        return image
     }
 
     func evictBitmapsIfNeeded() {

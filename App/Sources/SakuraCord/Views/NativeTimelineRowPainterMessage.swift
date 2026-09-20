@@ -392,20 +392,22 @@ extension NativeTimelineRowPainter {
 
     private static func drawMessageAttachments(_ input: NativeTimelineMessageDrawInput) {
         let layout = input.layout
+        guard !layout.attachmentRegions.isEmpty else { return }
         let message = input.row.message
         let spoilerRevealStore = input.spoilerRevealStore
         NSGraphicsContext.saveGraphicsState()
         let attachmentContext = NSGraphicsContext.current?.cgContext
-        attachmentContext?.setAlpha(
-            CGFloat(MessageOutboxPresentation.mediaOpacity(
-                for: message.outboxState
-            ))
+        let opacity = CGFloat(
+            MessageOutboxPresentation.mediaOpacity(for: message.outboxState)
         )
         // AppKit's NSImage drawing does not consistently inherit a CGContext's
         // global alpha. Composite the complete attachment gallery as one layer
         // so bitmap images, symbols, text, and placeholders share the pending
         // message presentation instead of only dimming Quartz-drawn pieces.
-        attachmentContext?.beginTransparencyLayer(auxiliaryInfo: nil)
+        if opacity < 1 {
+            attachmentContext?.setAlpha(opacity)
+            attachmentContext?.beginTransparencyLayer(auxiliaryInfo: nil)
+        }
         let attachmentFillsFrame =
             MediaGalleryImagePresentation.fillsFrame(
                 itemCount: layout.attachmentRegions.count
@@ -485,7 +487,7 @@ extension NativeTimelineRowPainter {
                 )
             }
         }
-        attachmentContext?.endTransparencyLayer()
+        if opacity < 1 { attachmentContext?.endTransparencyLayer() }
         NSGraphicsContext.restoreGraphicsState()
     }
 
@@ -640,14 +642,16 @@ extension NativeTimelineRowPainter {
                     componentButtonPressProgress
             ))
         }
+        guard !layout.stickerFrames.isEmpty else { return }
         NSGraphicsContext.saveGraphicsState()
         let stickerContext = NSGraphicsContext.current?.cgContext
-        stickerContext?.setAlpha(
-            CGFloat(MessageOutboxPresentation.mediaOpacity(
-                for: message.outboxState
-            ))
+        let opacity = CGFloat(
+            MessageOutboxPresentation.mediaOpacity(for: message.outboxState)
         )
-        stickerContext?.beginTransparencyLayer(auxiliaryInfo: nil)
+        if opacity < 1 {
+            stickerContext?.setAlpha(opacity)
+            stickerContext?.beginTransparencyLayer(auxiliaryInfo: nil)
+        }
         for (index, frame) in layout.stickerFrames.enumerated() {
             let sticker = message.stickers.indices.contains(index)
                 ? message.stickers[index]
@@ -674,7 +678,7 @@ extension NativeTimelineRowPainter {
                 )
             }
         }
-        stickerContext?.endTransparencyLayer()
+        if opacity < 1 { stickerContext?.endTransparencyLayer() }
         NSGraphicsContext.restoreGraphicsState()
     }
 

@@ -518,9 +518,7 @@ extension AppModel {
     }
 
     var messageSearchPromptTitle: String {
-        guard let selectedGuildID,
-              let guild = snapshot?.guilds.first(where: { $0.id == selectedGuildID })
-        else { return "Search in DMs" }
+        guard let guild = selectedGuild else { return "Search in DMs" }
         return "Search \(guild.name)"
     }
 
