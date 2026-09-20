@@ -12,6 +12,8 @@ public actor MockChatProvider: ChatProvider {
     private var forumPostsByChannel: [ChannelID: [ForumPost]]
     private var profilesByUser: [UserID: UserProfile]
     private var privateCallsByChannel: [ChannelID: PrivateCall] = [:]
+    private var inboxSettingsValue = InboxSettings()
+    private var dismissedInboxMentions: Set<MessageID> = []
     private var favoriteGIFValues: [GIFSearchResult] = []
     private var favoriteEmojiKeys: [String]?
     private var soundboardSoundsByGuild: [GuildID: [SoundboardSound]] = [:]
@@ -282,9 +284,7 @@ public actor MockChatProvider: ChatProvider {
         let version = (snapshot.readStates.compactMap(\.version).max() ?? 0) + 1
         let existing = snapshot.readStates.first { $0.channelID == channelID }
         let latestMessageID = snapshot.channels.first { $0.id == channelID }?.lastMessageID
-        let acknowledgedMessageID = manual
-            ? messageID
-            : max(existing?.lastAcknowledgedMessageID ?? messageID, messageID)
+        let acknowledgedMessageID = messageID
         let clearsKnownMessages = latestMessageID.map { messageID >= $0 } ?? true
         let updated = ChannelReadState(
             channelID: channelID,
@@ -1914,4 +1914,46 @@ public extension MockChatProvider {
         return message
     }
 
+}
+
+public extension MockChatProvider {
+    func inboxMentions(_ query: InboxMentionQuery, before: MessageID?) async throws -> InboxMentionPage {
+        let channels = Dictionary(uniqueKeysWithValues: snapshot.channels.map { ($0.id, $0) })
+        let matches = messagesByChannel.values.flatMap { $0 }.filter { message in
+            guard !dismissedInboxMentions.contains(message.id),
+                  before.map({ message.id < $0 }) ?? true else { return false }
+            let guildID = message.guildID ?? channels[message.channelID]?.guildID
+            guard query.guildID == nil || guildID == query.guildID else { return false }
+            let direct = message.mentionedUsers.contains { $0.id == currentUser.id }
+            let everyone = query.includesEveryone && message.mentionsEveryone
+            let member = guildID.flatMap { membersByGuild[$0]?.first { $0.id == currentUser.id } }
+            let roleIDs = Set(member?.roles.map(\.id) ?? [])
+            let role = query.includesRoles && !message.flags.contains(.failedToMentionRoles)
+                && !roleIDs.isDisjoint(with: message.mentionedRoleIDs)
+            return direct || everyone || role
+        }.sorted { $0.id > $1.id }
+        let page = Array(matches.prefix(25))
+        return InboxMentionPage(messages: page, nextBefore: page.last?.id, hasMore: page.count == 25)
+    }
+
+    func dismissInboxMention(_ messageID: MessageID) async throws {
+        dismissedInboxMentions.insert(messageID)
+        continuation?.yield(.inboxMentionDismissed(messageID))
+    }
+
+    func inboxSettings() async -> InboxSettings { inboxSettingsValue }
+
+    func updateInboxTab(_ tab: InboxTab) async throws {
+        inboxSettingsValue.tab = tab
+        continuation?.yield(.inboxSettingsChanged(inboxSettingsValue))
+    }
+
+    func updateInboxCollapsed(_ collapsed: Bool, channelID: ChannelID, guildID: GuildID?) async throws {
+        if collapsed {
+            inboxSettingsValue.collapsedChannelIDs.insert(channelID)
+        } else {
+            inboxSettingsValue.collapsedChannelIDs.remove(channelID)
+        }
+        continuation?.yield(.inboxSettingsChanged(inboxSettingsValue))
+    }
 }

@@ -1538,6 +1538,57 @@ string-ID desktop capture. No new networking dependency was added.
   payload repeats a channel entry, the newest payload-order entry wins instead
   of crashing dictionary construction.
 
+### Inbox
+
+Unread and Mentions were checked with authenticated REST and Gateway CDP
+captures of the clean official Discord desktop on 20 September 2026. Both
+saved accounts exercised disposable content in one dedicated test server.
+The loaded Inbox asset was `b7061492a30fc3b9.js`; the main asset was
+`web.d793fc00a2d44795.js`. DiscordKit revision
+`58cf0949336d3d1652ba09e8f65cfc6df098fef4` was an additional reference;
+first-party traffic determines the undocumented user-client contracts.
+
+- Mentions use `GET /users/@me/mentions` with `limit=25`, `roles`, `everyone`,
+  optional `guild_id`, and an exclusive `before` cursor from the last raw
+  response entry. Dismissal uses `DELETE /users/@me/mentions/{message_id}`
+  and `RECENT_MENTION_DELETE`. It does not acknowledge a channel or clear
+  its mention badge. Read acknowledgements do not remove recent mentions.
+- Unread freezes group order and message boundaries when opened/refreshed.
+  Priority sorting is stable over the server-rail order, with selectable
+  channels ordered by channel position (not category position) and joined
+  threads immediately after their parent. Read-state flag `4` places
+  low-importance mentions after other mentions.
+  Normal groups display up to 25 messages after the old read boundary;
+  fetching around that boundary and paging forward uses ordinary history
+  routes. New arrivals do not append to the frozen message range. Edits and
+  deletions reconcile in place. Forum groups show active posts newer than
+  the old forum boundary in ascending ID order and accept live catalogue
+  updates. Restricted groups require local server consent before expansion;
+  Mentions hide their accessories until consent and omit restricted messages
+  for accounts that cannot view adult content.
+- Mark Read acknowledges the captured newest boundary. Undo uses an ordinary
+  channel ACK with the old boundary, retaining `last_viewed` and omitting
+  `manual` and `mention_count`; it does not restore the old mention count.
+  A newer-version Gateway ACK can therefore move a read boundary backward.
+  Fully loaded, expanded empty groups acknowledge and disappear without Undo.
+  Bulk Inbox reads use frozen targets in `/read-states/ack-bulk` batches.
+- Scheduled-event groups have read-state type `1`, a guild resource ID,
+  `last_acked_id`, and `badge_count` in READY. Their individual ACK is
+  `POST /guilds/{guild_id}/ack/1/{event_id}` with `{}`, reconciled through
+  `GUILD_FEATURE_ACK`. Undo of a fully acknowledged event group restores its
+  card locally without sending an ACK. Event interests use
+  `GET /users/@me/scheduled-events?guild_ids={guild_id}` and
+  `PUT`/`DELETE /guilds/{guild_id}/scheduled-events/{event_id}/users/@me`;
+  the PUT body is `{"response":1}`. Event and RSVP Gateway dispatches update
+  the same cached entries.
+- Tab and collapsed-group settings patch `/users/@me/settings-proto/1`,
+  preserving unknown protobuf fields. Event collapse uses Discord's reserved
+  channel key within each guild's settings map; guild identity must remain
+  part of that key. Mention filter choices persist locally across sessions
+  and account switches; they are not server settings.
+
+Bookmarks and Reminders are outside this Inbox implementation.
+
 ### Unread state, acknowledgements, and notifications
 
 The durable baseline was rechecked on 2026-07-27 against Paicord revision

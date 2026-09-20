@@ -915,6 +915,20 @@ extension NativeMessageTimelineCoordinator {
             from parent: NativeMessageTimelineView,
             rows: [MessageRowPresentation]
         ) -> [NativeMessageTimelineItem] {
+            if parent.conversation == .inbox(.unread) {
+                let rowsByID = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
+                var result: [NativeMessageTimelineItem] = []
+                for group in parent.model.inbox.groups {
+                    result.append(.inboxGroup(InboxGroupHeaderPresentation(group, model: parent.model)))
+                    if !group.isCollapsed {
+                        result.append(contentsOf: group.events.map(NativeMessageTimelineItem.inboxEvent))
+                        result.append(contentsOf: group.forumPosts.map(NativeMessageTimelineItem.inboxForumPost))
+                        result.append(contentsOf: group.messages.compactMap { rowsByID[$0.id] }.map { messageItem($0, from: parent) })
+                        if !group.isLoaded { break }
+                    }
+                }
+                return result
+            }
             var result = makeLeadingItems(from: parent)
             result.reserveCapacity(rows.count + 2)
             result.append(contentsOf: rows.map {
@@ -1393,6 +1407,8 @@ extension NativeMessageTimelineCoordinator {
         ) -> Bool {
             let viewportHeight = scrollView.contentView.bounds.height
             switch target {
+            case .top:
+                scroll(toDocumentY: 0, scrollView: scrollView)
             case .bottom:
                 scroll(toDocumentY: .greatestFiniteMagnitude, scrollView: scrollView)
             case let .message(messageID, anchor):
@@ -1581,7 +1597,7 @@ extension NativeMessageTimelineCoordinator {
             let isNearLoadedBottom =
                 materializedHistoryMaximumY(
                     viewportHeight: visibleRect.height
-                ) - visibleRect.maxY < Self.prefetchDistance
+                ) - visibleRect.maxY < (parent.conversation.isInbox ? 2_000 : Self.prefetchDistance)
             return TimelineScrollState(
                 isNearTop:
                     visibleRect.minY - leadingHistoryReserve

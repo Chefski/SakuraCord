@@ -480,6 +480,12 @@ extension NativeTimelineCanvasView {
             // visibly jump into place.
             self.frame = frame
         }
+        // Supplementary Inbox rows are content, not hover presentation. Keep
+        // them materialized as the viewport moves, including momentum ticks
+        // that stay within the current overscanned backing window.
+        if case .inboxGroup = items.first {
+            reconcileInboxHeaders()
+        }
     }
 
     override func setFrameSize(_ newSize: NSSize) {
@@ -568,6 +574,7 @@ extension NativeTimelineCanvasView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        restoreInboxKeyboardFocus()
         if window != nil {
             installReactionMouseMonitor()
             Task { @MainActor [weak self] in

@@ -1166,7 +1166,7 @@ struct AccountReadStateModelTests {
         #expect(model.entries[channelID]?.lastAcknowledgedMessageID == MessageID(rawValue: 15))
         #expect(model.mentions(channelID: channelID) == 2)
 
-        #expect(!model.applyRemote(
+        #expect(model.applyRemote(
             ChannelReadState(
                 channelID: channelID,
                 lastAcknowledgedMessageID: MessageID(rawValue: 9),
@@ -1183,8 +1183,26 @@ struct AccountReadStateModelTests {
                 version: 14
             )
         ))
-        #expect(model.entries[channelID]?.lastAcknowledgedMessageID == MessageID(rawValue: 15))
+        #expect(model.entries[channelID]?.lastAcknowledgedMessageID == MessageID(rawValue: 9))
         #expect(model.readStateVersion == 15)
+        model.replaceReadStates([
+            ChannelReadState(channelID: channelID, lastAcknowledgedMessageID: MessageID(rawValue: 7), mentionCount: 0)
+        ], version: 16)
+        #expect(model.entries[channelID]?.lastAcknowledgedMessageID == MessageID(rawValue: 7))
+        #expect(model.unread(channelID: channelID))
+    }
+
+    @Test func `an in flight read acknowledgement cannot erase a queued Inbox undo`() {
+        let model = makeModel(latest: 20, acknowledged: 10, mentions: 2)
+        model.markAcknowledgementPending(channelID: channelID, messageID: MessageID(rawValue: 20))
+        model.markUnread(channelID: channelID, after: MessageID(rawValue: 10), mentionCount: 0)
+        #expect(!model.applyRemote(ChannelReadState(channelID: channelID, lastAcknowledgedMessageID: MessageID(rawValue: 20), mentionCount: 0, version: 5)))
+        model.completeAcknowledgement(channelID: channelID, messageID: MessageID(rawValue: 20), token: nil)
+        #expect(model.entries[channelID]?.lastAcknowledgedMessageID == MessageID(rawValue: 10))
+        #expect(model.entries[channelID]?.pendingAcknowledgementID == MessageID(rawValue: 10))
+        #expect(model.applyRemote(ChannelReadState(channelID: channelID, lastAcknowledgedMessageID: MessageID(rawValue: 10), mentionCount: 0, version: 6)))
+        #expect(model.entries[channelID]?.pendingAcknowledgementID == nil)
+        #expect(model.unread(channelID: channelID))
     }
 
     @Test func `stale snapshot preserves an optimistic mark read and acknowledgement token`() {

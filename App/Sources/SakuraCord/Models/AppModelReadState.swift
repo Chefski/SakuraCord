@@ -221,6 +221,10 @@ extension AppModel {
         mutation: ReadStateMutation
     ) {
         guard !runsChatPerformanceBenchmark else { return }
+        #if DEBUG
+            if let scope = ProcessInfo.processInfo.environment["SAKURACORD_INBOX_VERIFICATION_GUILD_ID"],
+               readState.entries[channelID]?.guildID?.description != scope { return }
+        #endif
         if let queued = queuedAcknowledgements[channelID] {
             if mutation.manual || !queued.manual {
                 queuedAcknowledgements[channelID] =
@@ -262,7 +266,7 @@ extension AppModel {
                     channelID: channelID,
                     messageID: mutation.messageID,
                     token: readState.acknowledgementToken,
-                    manual: mutation.manual,
+                    manual: mutation.wireManual ?? mutation.manual,
                     mentionCount: mutation.mentionCount,
                     flags: mutation.flags,
                     lastViewed: mutation.lastViewed
@@ -277,6 +281,7 @@ extension AppModel {
                     token: response.token
                 )
                 logReadAcknowledgementAccepted(channelID: channelID, mutation: mutation)
+                reconcileInboxReadState()
             } catch is CancellationError {
                 return
             } catch {
@@ -289,6 +294,7 @@ extension AppModel {
                 )
                 logReadAcknowledgementFailed(channelID: channelID, mutation: mutation)
                 refreshUnreadPresentation()
+                reconcileInboxReadState()
                 if mutation.manual {
                     errorMessage = "Discord did not accept the read-state update."
                 }
@@ -471,7 +477,7 @@ extension AppModel {
         }
     }
 
-    private func resolvePartialBulkAcknowledgement(
+    func resolvePartialBulkAcknowledgement(
         _ partial: PartialBulkReadAcknowledgementError,
         targets: [BulkReadStateAcknowledgement]
     ) {

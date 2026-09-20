@@ -727,6 +727,7 @@ extension AppModel {
         let message = reactionPresentationPreserving(
             outgoingMediaPresentationPreserving(incoming)
         )
+        reconcileInboxMessage(message)
         if message.channelID == openThread?.id {
             reconcileThread(message)
         }

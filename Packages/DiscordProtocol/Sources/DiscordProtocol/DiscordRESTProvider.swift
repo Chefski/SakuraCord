@@ -220,6 +220,9 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     var emojiUserSettingsTask: Task<EmojiUserSettings, Error>?
     var cachedFrecencySettingsProto: Data?
     var profileStatusSettings: Data?
+    var inboxScheduledEvents = InboxScheduledEvents()
+    var inboxSettingsProto: Data?
+    var inboxSettingsSaveID: UUID?
     var profileStatusSaveID: UUID?
     var profileCustomStatusExpiryTask: Task<Void, Never>?
     var frecencySettingsTask: Task<Data, Error>?

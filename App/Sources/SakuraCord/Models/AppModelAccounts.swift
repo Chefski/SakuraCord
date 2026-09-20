@@ -315,6 +315,7 @@ extension AppModel {
         hasMoreLaterMessages = false
         messageCache = [:]
         pinnedMessages.clear(notifying: self)
+        inbox.clear(notifying: self)
         messageCacheOrder = []
         messageRowCache = [:]
         messageRowCacheOrder = []

@@ -6,6 +6,7 @@ extension DiscordRESTProvider {
         name: String,
         body: JSONValue
     ) async -> Bool {
+        if handleInboxEventDispatch(name: name, body: body) { return true }
         switch name {
         case "GUILD_DELETE":
             await handleGuildDeleteDispatch(name: name, body: body)
@@ -42,6 +43,7 @@ extension DiscordRESTProvider {
                 continuation?.yield(.guildChanged(guild))
             }
         } else {
+            removeInboxEvents(in: guildID)
             removeGuild(guildID)
         }
     }
@@ -50,6 +52,7 @@ extension DiscordRESTProvider {
         name: String,
         body: JSONValue
     ) async {
+        applyGuildInboxEvents(body)
         if let patch = try? JSONValueDecoder().decode(GatewayGuildPatchDTO.self, from: body),
            let guildID = GuildID(patch.id),
            var guild = patch.applying(

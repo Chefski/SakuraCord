@@ -39,6 +39,7 @@ final class AccountReadStateModel {
         var latestUnreadMessageID: MessageID?
         var mentionCount: Int
         var unreadMessageCount: Int
+        var requiresExactBoundary = false
     }
 
     private nonisolated struct InitialStateAssembly {
@@ -618,18 +619,31 @@ extension AccountReadStateModel {
         if remoteReadStateOrderIDs.insert(state.channelID).inserted {
             remoteReadStateOrder.append(state.channelID)
         }
+        // Inbox Undo sends an ordinary ACK to an earlier boundary. Its newer
+        // account read-state version is authoritative even without `manual`.
+        let authoritativeBoundary = state.isManual || state.version.map {
+            $0 > (readStateVersion ?? Int.min)
+        } == true
         var entry = entry(for: state.channelID)
+        if let pending = entry.pendingAcknowledgementID,
+           pendingRollbacks[state.channelID]?[pending]?.requiresExactBoundary == true,
+           state.lastAcknowledgedMessageID != pending {
+            // A preceding read ACK may arrive after a queued Undo. Keep the
+            // local intent until its exact boundary succeeds or rolls back.
+            if let version = state.version { readStateVersion = max(readStateVersion ?? version, version) }
+            return false
+        }
         if let existing = entry.lastAcknowledgedMessageID,
            let incoming = state.lastAcknowledgedMessageID,
            incoming < existing,
-           !state.isManual
+           !authoritativeBoundary
         {
             if let version = state.version {
                 readStateVersion = max(readStateVersion ?? version, version)
             }
             return false
         }
-        if state.isManual {
+        if authoritativeBoundary {
             entry.lastAcknowledgedMessageID = state.lastAcknowledgedMessageID
         } else {
             entry.lastAcknowledgedMessageID = maximum(
@@ -648,7 +662,8 @@ extension AccountReadStateModel {
             : 0
         let confirmsPending = entry.pendingAcknowledgementID.map { pending in
             entry.lastAcknowledgedMessageID.map { acknowledged in
-                state.isManual ? acknowledged == pending : acknowledged >= pending
+                state.isManual || pendingRollbacks[state.channelID]?[pending]?.requiresExactBoundary == true
+                    ? acknowledged == pending : acknowledged >= pending
             } ?? false
         } ?? false
         if confirmsPending {
@@ -669,6 +684,7 @@ extension AccountReadStateModel {
            snapshotVersion < readStateVersion {
             return
         }
+        let acceptsEarlierBoundary = snapshotVersion.map { $0 >= (readStateVersion ?? Int.min) } == true
         let previousEntries = entries
         let latestStateByChannel = Dictionary(
             states.map { ($0.channelID, $0) },
@@ -691,7 +707,8 @@ extension AccountReadStateModel {
             entries[channelID] = reconciledSnapshotEntry(
                 channelID: channelID,
                 previous: previous,
-                remote: latestStateByChannel[channelID]
+                remote: latestStateByChannel[channelID],
+                acceptsEarlierBoundary: acceptsEarlierBoundary
             )
         }
         for (channelID, previous) in previousEntries {
@@ -749,7 +766,7 @@ extension AccountReadStateModel {
         for entry in entries.values where entry.isAccessible {
             guard !isGuildResourceChannel(entry) else { continue }
             if entry.isUnread {
-                if quickSwitcherUsesAllMessagesUnreadSetting(for: entry) {
+                if usesAllMessagesUnreadSetting(for: entry) {
                     unreadChannelIDs.insert(entry.channelID)
                 }
                 let ancestorID = entry.parentID.flatMap { channelByID[$0]?.categoryID }
@@ -784,7 +801,7 @@ extension AccountReadStateModel {
 
     /// Mirrors Discord's quick-switcher unread candidate policy, which is narrower
     /// than the sidebar and requires the effective setting to be `ALL_MESSAGES`.
-    private func quickSwitcherUsesAllMessagesUnreadSetting(
+    func usesAllMessagesUnreadSetting(
         for entry: Entry
     ) -> Bool {
         let isDirectMessage =
@@ -839,7 +856,8 @@ extension AccountReadStateModel {
     private func reconciledSnapshotEntry(
         channelID: ChannelID,
         previous: Entry,
-        remote: ChannelReadState?
+        remote: ChannelReadState?,
+        acceptsEarlierBoundary: Bool
     ) -> Entry {
         var value = entry(for: channelID)
         value.latestKnownMessageID = maximum(
@@ -855,6 +873,7 @@ extension AccountReadStateModel {
         if channelByID[channelID] == nil { value.kind = previous.kind }
         value.isAccessible = previous.isAccessible
         if let remote,
+           !acceptsEarlierBoundary,
            !remote.isManual,
            let previousAcknowledged = previous.lastAcknowledgedMessageID,
            remote.lastAcknowledgedMessageID.map({ $0 < previousAcknowledged }) ?? true {
@@ -884,7 +903,8 @@ extension AccountReadStateModel {
               pendingRollbacks[channelID]?[pending] != nil
         else { return }
         let confirmsPending = remote?.lastAcknowledgedMessageID.map { acknowledged in
-            remote?.isManual == true ? acknowledged == pending : acknowledged >= pending
+            remote?.isManual == true || pendingRollbacks[channelID]?[pending]?.requiresExactBoundary == true
+                ? acknowledged == pending : acknowledged >= pending
         } ?? false
         if confirmsPending {
             pendingRollbacks[channelID] = nil
@@ -951,6 +971,9 @@ extension AccountReadStateModel {
         let policy = effectivePolicy(for: entry, now: now)
         let mentionKind = mentionKind(for: message, entry: entry, policy: policy)
         if mentionKind != .none {
+            // A real mention promotes any retained low-importance count.
+            // Discord clears this flag before incrementing its mention count.
+            if let flags = entry.flags { entry.flags = flags & ~UInt64(4) }
             if entry.mentionCount == 0 {
                 // MentionStore appends newly mentioned channels. The quick switcher
                 // reverses that order, independent of read-state creation time.
@@ -1168,7 +1191,8 @@ extension AccountReadStateModel {
                         lastAcknowledgedMessageID: entry.lastAcknowledgedMessageID,
                         latestUnreadMessageID: entry.latestUnreadMessageID,
                         mentionCount: entry.mentionCount,
-                        unreadMessageCount: entry.unreadMessageCount
+                        unreadMessageCount: entry.unreadMessageCount,
+                        requiresExactBoundary: true
                     )
                 )
             ]
@@ -1534,6 +1558,16 @@ extension AccountReadStateModel {
             }
         }
         return .none
+    }
+
+    func isInboxMention(_ message: Message, query: InboxMentionQuery) -> Bool {
+        guard let currentUserID, entries[message.channelID]?.kind != .directMessage,
+              message.author.id != currentUserID || message.type == .pollResult else { return false }
+        if message.mentionedUsers.contains(where: { $0.id == currentUserID }) { return true }
+        if query.includesEveryone, message.mentionsEveryone { return true }
+        let guildID = message.guildID ?? entries[message.channelID]?.guildID
+        return query.includesRoles && !message.flags.contains(.failedToMentionRoles)
+            && guildID.flatMap { currentUserRoleIDsByGuild[$0] }.map { !$0.isDisjoint(with: message.mentionedRoleIDs) } == true
     }
 
     func setCurrentUserID(_ userID: UserID?) {

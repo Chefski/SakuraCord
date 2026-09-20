@@ -1184,6 +1184,8 @@ extension NativeTimelineCanvasView {
                 guard let forward = actions.forward else { return }
                 forward(row.message)
             }
+        case .dismissInboxMention:
+            { [weak model] in model?.dismissInboxMention(row.message) }
         case .markUnread:
             { actions.markUnread(row.message) }
         case .endPoll:

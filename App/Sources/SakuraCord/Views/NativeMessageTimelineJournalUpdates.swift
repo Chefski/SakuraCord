@@ -43,6 +43,24 @@ extension NativeMessageTimelineCoordinator {
                 return false
             }
 
+            if newParent.conversation == .inbox(.unread) {
+                let oldByID = Dictionary(uniqueKeysWithValues: zip(items, layouts).map { ($0.identifier, ($0, $1)) })
+                let newItems = makeItems(from: newParent, rows: newRows)
+                layouts = newItems.map { item in
+                    if let prior = oldByID[item.identifier], prior.0 == item { return prior.1 }
+                    return layoutUsingRecentConversationCache(for: item, width: width, presentationRevision: newParent.presentationRevision)
+                }
+                items = newItems
+                messageIDs = newRows.map(\.id)
+                rowHeights = layouts.map(\.height)
+                didMutateItems = true
+                requiresVisibleRedraw = true
+                requiresAnchorRestore = true
+                requiresFullOriginRebuild = true
+                performanceUpdatePath = "inbox-journal"
+                return true
+            }
+
             let changedMessageIDs = journalChangedMessageIDs(
                 records: records,
                 oldParent: oldParent,

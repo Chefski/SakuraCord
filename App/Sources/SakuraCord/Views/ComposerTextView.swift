@@ -1081,6 +1081,12 @@ final class ComposerUnfocusedTypingMonitor {
                   !Self.isEditingText(window.firstResponder)
             else { return event }
 
+            if let timeline = window.firstResponder as? NativeTimelineCanvasView,
+               timeline.messageInteractionContext == .inboxResult || timeline.messageInteractionContext == .inboxMention
+            {
+                return event
+            }
+
             // Popovers can leave the main window key. Its composer monitor may
             // receive Escape first, so honor popover dismissal before composer actions.
             if KeyboardShortcutPolicy.isPlainEscape(keyCode: event.keyCode, modifierFlags: event.modifierFlags),

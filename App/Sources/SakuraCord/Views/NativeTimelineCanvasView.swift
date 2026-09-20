@@ -217,6 +217,9 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
     var rowOrigins: [CGFloat] { storage.rowOrigins }
     var contentHeight: CGFloat { storage.contentHeight }
 
+    var inboxEventHosts: [ScheduledEventID: NSHostingView<InboxScheduledEventView>] = [:]
+    var inboxForumPostHosts: [ChannelID: NSHostingView<InboxForumPostView>] = [:]
+    var inboxHeaderHosts: [ChannelID: NSHostingView<InboxGroupHeaderView>] = [:]
     var model: AppModel?
     var accessibilitySettingsSnapshot = AccessibilitySettingsSnapshot.defaults
     var presentedConversationID: ChannelID?
@@ -340,6 +343,8 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
         mediaViewerHost.frame = .zero
         addSubview(mediaViewerHost)
         let notificationCenter = NotificationCenter.default
+        notificationCenter.addObserver(self, selector: #selector(restoreInboxKeyboardFocus),
+                                       name: NSApplication.didBecomeActiveNotification, object: nil)
         NSWorkspace.shared.notificationCenter.addObserver(
             self,
             selector: #selector(mediaPlaybackVisibilityDidChange(_:)),
@@ -471,6 +476,8 @@ enum NativeTimelineRowPainter {
             isHovered: isHovered
         )
         switch item {
+        case .inboxGroup, .inboxForumPost, .inboxEvent:
+            break
         case let .beginning(beginning):
             drawBeginning(
                 beginning,

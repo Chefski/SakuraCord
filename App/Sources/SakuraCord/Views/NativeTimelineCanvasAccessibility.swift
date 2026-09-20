@@ -84,11 +84,15 @@ extension NativeTimelineCanvasView {
     }
 
     override func accessibilityChildren() -> [Any]? {
+        reconcileInboxHeaders()
         reconcileAccessibilityProxies()
         var orderedChildren = accessibilityProxyRowsInTimelineOrder()
         var additionalChildren = (super.accessibilityChildren() ?? []).filter { child in
             guard let childView = child as? NSView else { return true }
             return !accessibilityProxies.contains(childView)
+                && !inboxHeaderHosts.values.contains { $0 === childView }
+                && !inboxEventHosts.values.contains { $0 === childView }
+                && !inboxForumPostHosts.values.contains { $0 === childView }
         }
         if let editingRowHost,
            let hostIndex = additionalChildren.firstIndex(where: {
@@ -243,7 +247,12 @@ extension NativeTimelineCanvasView {
     }
 
     func accessibilityProxyRowsInTimelineOrder() -> [Any] {
-        accessibilityProxies.orderedRows()
+        accessibilityProxies.order.compactMap { identifier -> Any? in
+            if case let .inboxGroup(channelID) = identifier, let host = inboxHeaderHosts[channelID] { return host }
+            if case let .inboxEvent(eventID) = identifier, let host = inboxEventHosts[eventID] { return host }
+            if case let .inboxForumPost(threadID) = identifier, let host = inboxForumPostHosts[threadID] { return host }
+            return accessibilityProxies.row(for: identifier)
+        }
     }
 
     func removeAccessibilityProxies() {
@@ -266,6 +275,33 @@ extension NativeTimelineCanvasView {
         let layout = layouts[index]
         let rowFrame = rowFrame(at: index)
         switch item {
+        case let .inboxEvent(event):
+            return accessibilityElement(role: .button, label: event.name, frame: rowFrame, parent: self) { [weak self] in
+                self?.model?.inbox.selectedEvent = event
+                return self != nil
+            }
+        case let .inboxForumPost(post):
+            return accessibilityElement(role: .button, label: post.thread.name, frame: rowFrame, parent: self) { [weak self] in
+                self?.model?.openInboxForumPost(post)
+                return self != nil
+            }
+        case let .inboxGroup(header):
+            let element = accessibilityElement(role: .row, label: header.title, identifier: "inbox-group-\(header.channelID)", frame: rowFrame, parent: self)
+            element.setAccessibilityCustomActions([
+                NSAccessibilityCustomAction(name: header.isCollapsed ? "Expand" : "Collapse") { [weak self] in
+                    self?.model?.toggleInboxGroup(header.channelID)
+                    return self != nil
+                },
+                NSAccessibilityCustomAction(name: "Mark Read") { [weak self] in
+                    self?.model?.markInboxGroupRead(header.channelID)
+                    return self != nil
+                },
+                NSAccessibilityCustomAction(name: "Open Conversation") { [weak self] in
+                    self?.model?.openInboxGroup(header.channelID)
+                    return self != nil
+                }
+            ])
+            return element
         case let .beginning(beginning):
             return accessibilityElement(
                 role: .row,

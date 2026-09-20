@@ -11,9 +11,13 @@ struct MessageMentionResolver {
         self.message = message
     }
 
+    private func member(_ id: UserID) -> Member? {
+        sourceGuildID.flatMap { model.membersByGuildID[$0]?[id] }
+            ?? (sourceGuildID == model.selectedGuildID ? model.membersByID[id] ?? model.knownMentionMembers[id] : nil)
+    }
+
     func user(_ userID: UserID) -> User? {
-        model.membersByID[userID]?.user
-            ?? model.knownMentionMembers[userID]?.user
+        member(userID)?.user
             ?? message?.mentionedUsers.first { $0.id == userID }
             ?? model.messages.first { $0.author.id == userID }?.author
             ?? model.threadMessages.first { $0.author.id == userID }?.author
@@ -38,8 +42,7 @@ struct MessageMentionResolver {
         guard mention.kind == .user,
               let userID = UserID(mention.id)
         else { return nil }
-        let member = model.membersByID[userID]
-            ?? model.knownMentionMembers[userID]
+        let member = member(userID)
         return member?.guildAvatarURL ?? user(userID)?.avatarURL
     }
 
@@ -47,8 +50,7 @@ struct MessageMentionResolver {
         guard let userID = UserID(mention.id) else {
             return MentionPresentation.fallback(for: mention)
         }
-        let member = model.membersByID[userID]
-            ?? model.knownMentionMembers[userID]
+        let member = member(userID)
         let value = user(userID)
         let topColor = member.flatMap {
             MessageAuthorPresentation.topRoleColor(in: $0.roles)
@@ -66,8 +68,9 @@ struct MessageMentionResolver {
         guard let roleID = RoleID(mention.id) else {
             return MentionPresentation.fallback(for: mention)
         }
-        let role = model.guildRoles.first { $0.id == roleID }
-            ?? model.members.lazy.flatMap(\.roles).first { $0.id == roleID }
+        let roles = sourceGuildID.flatMap { model.guildRolesByGuildID[$0] }
+            ?? (sourceGuildID == model.selectedGuildID ? model.guildRoles : [])
+        let role = roles.first { $0.id == roleID }
         return MentionPresentation(
             rawToken: mention.rawToken,
             label: "@\(role?.name ?? "unknown-role")",

@@ -637,7 +637,7 @@ extension NativeMessageTimelineCoordinator {
                 performanceUpdatePath = "awaiting-row-publication"
                 return
             }
-            if applyFastUpdate(
+            if parent.conversation != .inbox(.unread), applyFastUpdate(
                 from: preparation.oldParent,
                 to: parent,
                 rows: preparation.newRows,
@@ -740,6 +740,10 @@ extension NativeMessageTimelineCoordinator {
             preparation: TimelineUpdatePreparation,
             didAppendItems: Bool
         ) {
+            if parent.conversation.isInbox {
+                trailingHistoryReserve = parent.hasMoreLaterMessages ? 160 : 0
+                return
+            }
             let establishesBoundary = preparation.oldItemCount == 0
                 || preparation.conversationChanged
                 || !preparation.oldParent.hasMoreLaterMessages
@@ -778,7 +782,7 @@ extension NativeMessageTimelineCoordinator {
             if parent.hasMoreLaterMessages,
                trailingHistoryReserve == 0,
                preparation.conversationChanged || !preparation.oldParent.hasMoreLaterMessages {
-                trailingHistoryReserve = Self.historyReserveChunk
+                trailingHistoryReserve = parent.conversation.isInbox ? 160 : Self.historyReserveChunk
             }
             let collapsesReserve = (!parent.hasMoreMessages && leadingHistoryReserve > 0)
                 || (!parent.hasMoreLaterMessages && trailingHistoryReserve > 0)
@@ -794,7 +798,7 @@ extension NativeMessageTimelineCoordinator {
             updateInsets()
             updateHistorySkeletonPresentation()
             if let collapseAnchor { restore(collapseAnchor) }
-            if preparation.wasNearBottom,
+            if !parent.conversation.isInbox, preparation.wasNearBottom,
                preparation.bottomInsetChanged || (didMutateItems && !didPrependItems) {
                 scroll(toDocumentY: .greatestFiniteMagnitude, scrollView: scrollView)
             } else if didMutateItems,
@@ -1030,6 +1034,8 @@ extension NativeMessageTimelineCoordinator {
                         case .pins:
                             model.dismissPinnedMessages()
                             model.navigateToPinnedResult(message)
+                        case .inbox:
+                            model.navigateToInboxResult(message)
                         case .channel, .thread:
                             break
                         }

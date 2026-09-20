@@ -62,6 +62,14 @@ may observe existing state and allow normal connection or session-maintenance
 traffic, but agent-run verification must not deliberately mutate remote account
 state or content without an explicit request for that specific action.
 
+For scoped Inbox verification, debug builds accept
+`SAKURACORD_INBOX_VERIFICATION_GUILD_ID`. This limits queued channel
+acknowledgements and automatic empty-group dismissal to that guild, including
+automatic read acknowledgements during account switching. It does not authorize
+manual actions or change which conversations are shown. Leave it unset during
+normal use. Use explicit scoped fixtures for mutations and local tests for
+bulk actions that would otherwise affect unrelated conversations.
+
 Use `./script/build_and_run.sh run-release` to build the optimized release
 configuration, apply the release credential restrictions, and launch the
 staged app bundle.

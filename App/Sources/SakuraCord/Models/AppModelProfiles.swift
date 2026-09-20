@@ -152,23 +152,28 @@ extension AppModel {
     }
 
     func authorPresentation(for message: Message) -> MessageAuthorPresentation {
-        let presentation = MessageAuthorPresentation.resolve(
-            message: message,
-            member: membersByID[message.author.id],
-            roles: guildRoles
-        )
+        let guildID = message.guildID ?? snapshot?.channels.first { $0.id == message.channelID }?.guildID
+        let member = guildID.flatMap { membersByGuildID[$0]?[message.author.id] }
+            ?? (guildID == selectedGuildID ? membersByID[message.author.id] : nil)
+        let roles = guildID.flatMap { guildRolesByGuildID[$0] }
+            ?? (guildID == selectedGuildID ? guildRoles : [])
+        let presentation = MessageAuthorPresentation.resolve(message: message, member: member, roles: roles)
         var user = presentation.user
         user.avatarDecorationURL = user.avatarDecorationURL ?? message.author.avatarDecorationURL
         return MessageAuthorPresentation(user: cosmeticPolicy.user(user), roleColorHex: presentation.roleColorHex)
     }
 
     func authorPresentation(
-        for replyPreview: MessageReplyPreview
+        for replyPreview: MessageReplyPreview, in message: Message? = nil
     ) -> MessageAuthorPresentation {
+        let guildID = message.map { $0.guildID ?? snapshot?.channels.first { $0.id == message?.channelID }?.guildID } ?? selectedGuildID
+        let member = guildID.flatMap { membersByGuildID[$0]?[replyPreview.author.id] }
+            ?? (guildID == selectedGuildID ? membersByID[replyPreview.author.id] : nil)
+        let roles = guildID.flatMap { guildRolesByGuildID[$0] } ?? (guildID == selectedGuildID ? guildRoles : [])
         let presentation = MessageAuthorPresentation.resolve(
             replyPreview: replyPreview,
-            member: membersByID[replyPreview.author.id],
-            roles: guildRoles
+            member: member,
+            roles: roles
         )
         return MessageAuthorPresentation(user: cosmeticPolicy.user(presentation.user), roleColorHex: presentation.roleColorHex)
     }

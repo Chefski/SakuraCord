@@ -684,6 +684,35 @@ extension AppModel {
         navigateToMessageSearchResult(result, messageID: message.id)
     }
 
+    func navigateToInboxResult(_ message: Message, messageID: MessageID? = nil) {
+        if let guildID = message.guildID, inboxRequiresAgeAgreement(channelID: message.channelID, guildID: guildID) {
+            requestInboxAgeAgreement(guildID: guildID) { [weak self] in self?.navigateToInboxResult(message, messageID: messageID) }
+            return
+        }
+        let isThread = inbox.threads[message.channelID] != nil || snapshot?.threads.contains { $0.id == message.channelID } == true
+            || snapshot?.activeJoinedThreads.contains { $0.id == message.channelID } == true
+        dismissInbox()
+        navigateToMessageResult(source: message, messageID: messageID ?? message.id, initialMessages: isThread ? [message] : nil, isKnownThread: isThread)
+    }
+
+    func openInboxGroup(_ channelID: ChannelID) {
+        guard let group = inbox.groups.first(where: { $0.id == channelID }) else { return }
+        if group.isEvents {
+            inbox.selectedEvent = group.events.first ?? inbox.scheduledEvents.events.first { $0.guildID == group.guildID }
+            return
+        }
+        if inboxRequiresAgeAgreement(channelID: channelID, guildID: group.guildID), let guildID = group.guildID {
+            requestInboxAgeAgreement(guildID: guildID) { [weak self] in self?.openInboxGroup(channelID) }
+            return
+        }
+        if !group.isForum, let message = group.messages.first {
+            navigateToInboxResult(message)
+        } else {
+            dismissInbox()
+            navigate(to: group.guildID, linkedChannelID: channelID)
+        }
+    }
+
     func navigateToPinnedResult(_ message: Message) {
         navigateToMessageResult(
             source: message,

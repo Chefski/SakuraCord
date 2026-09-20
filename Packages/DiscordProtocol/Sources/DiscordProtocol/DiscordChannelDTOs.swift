@@ -123,6 +123,7 @@ struct ChannelDTO: Decodable {
     var name: String?
     var icon: String?
     var topic: String?
+    var nsfw: Bool?
     var type: Int
     var parentID: String?
     var position: Int?
@@ -168,7 +169,7 @@ struct ChannelDTO: Decodable {
     enum CodingKeys: String, CodingKey {
         case id
         case guildID = "guild_id"
-        case name, icon, topic, type
+        case name, icon, topic, type, nsfw
         case parentID = "parent_id"
         case position, recipients
         case recipientIDs = "recipient_ids"
@@ -265,6 +266,7 @@ struct ChannelDTO: Decodable {
             categoryID: parentID.flatMap(ChannelID.init),
             position: position ?? 0,
             categoryPosition: categoryPosition,
+            isAgeRestricted: nsfw ?? false,
             recipients: users,
             permissionOverwrites: permissionOverwrites?.map(\.domain),
             memberListID: memberListID,

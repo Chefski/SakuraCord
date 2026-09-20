@@ -4,7 +4,8 @@ extension AppModel {
     func applyingMessageUpdate(_ update: MessageUpdate) -> Message? {
         let pinned = pinnedMessages.items.first { $0.id == update.messageID }?.message
         let search = messageSearch.page?.results.lazy.flatMap(\.messages).first { $0.id == update.messageID && $0.channelID == update.channelID }
-        guard var message = messageInWorkspace(channelID: update.channelID, messageID: update.messageID) ?? pinned ?? search else { return nil }
+        let inboxMessage = inbox.mentions.first { $0.id == update.messageID } ?? inbox.groups.lazy.flatMap(\.messages).first { $0.id == update.messageID }
+        guard var message = messageInWorkspace(channelID: update.channelID, messageID: update.messageID) ?? pinned ?? search ?? inboxMessage else { return nil }
         update.apply(to: &message)
         return message
     }
@@ -17,6 +18,7 @@ extension AppModel {
         }
         let retained = messages + threadMessages + messageCache.values.flatMap { $0 }
             + pinnedMessages.items.map(\.message)
+            + inbox.mentions + inbox.groups.flatMap(\.messages)
             + forumCataloguePosts.flatMap { [$0.firstMessage, $0.mostRecentMessage].compactMap { $0 } }
         var seen = Set<MessageID>()
         for message in retained where seen.insert(message.id).inserted {

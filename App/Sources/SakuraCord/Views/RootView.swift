@@ -675,10 +675,30 @@ private struct ChatRootView: View {
                 .visibilityPriority(.high)
             }
 
-            if let pinsChannelID = toolbarPinsChannelID {
-                if hasToolbarActionBeforePins {
-                    ToolbarSpacer(.fixed)
+            if hasToolbarActionBeforeInbox {
+                ToolbarSpacer(.fixed)
+            }
+
+            ToolbarItem {
+                Button {
+                    if model.inbox.isPresented { model.dismissInbox() } else { model.presentInbox() }
+                } label: {
+                    Label("Inbox", systemImage: "tray.fill")
                 }
+                .help("Inbox")
+                .background {
+                    StableAnchoredPopoverPresenter(
+                        isPresented: model.inbox.isPresented,
+                        configuration: .toolbarPanel,
+                        onDismiss: model.dismissInbox
+                    ) { InboxPopoverView(model: model) }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .visibilityPriority(.high)
+
+            if let pinsChannelID = toolbarPinsChannelID {
+                ToolbarSpacer(.fixed)
 
                 ToolbarItem {
                     Button {
@@ -709,7 +729,7 @@ private struct ChatRootView: View {
         if model.isSwitchingAccounts
             || (!hasOpenSupplementaryToolbarConversation && selectedVoiceChannel == nil)
         {
-            if !model.isSwitchingAccounts, hasToolbarActionBeforeInspector {
+            if !model.isSwitchingAccounts {
                 ToolbarSpacer(.fixed)
             }
 
@@ -926,14 +946,9 @@ private struct ChatRootView: View {
         return model.selectedChannel
     }
 
-    private var hasToolbarActionBeforePins: Bool {
+    private var hasToolbarActionBeforeInbox: Bool {
         selectedPrivateChannel != nil
             || (selectedVoiceChannel != nil && !model.isVoiceChatOpen)
-    }
-
-    private var hasToolbarActionBeforeInspector: Bool {
-        selectedPrivateChannel != nil
-            || toolbarPinsChannelID != nil
     }
 
     private var toolbarPinsChannelID: ChannelID? {

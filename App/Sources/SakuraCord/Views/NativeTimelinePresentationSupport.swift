@@ -288,6 +288,7 @@ struct NativeTimelineActionCapsuleOverlay: View {
     @ObservedObject var state: NativeTimelineActionCapsuleState
     let jumpToMessage: (() -> Void)?
     let unpinMessage: (() -> Void)?
+    let dismissInboxMention: (() -> Void)?
     let retry: (() -> Void)?
     let edit: () -> Void
     let reply: (() -> Void)?
@@ -308,6 +309,13 @@ struct NativeTimelineActionCapsuleOverlay: View {
                         help: "Jump to Message",
                         action: jumpToMessage
                     )
+                    if let dismissInboxMention {
+                        HoverActionButton(
+                            systemImage: "envelope.open",
+                            help: "Mark as Read",
+                            action: dismissInboxMention
+                        )
+                    }
                     if let unpinMessage {
                         HoverActionButton(
                             systemImage: "pin.slash",
@@ -338,6 +346,8 @@ struct NativeTimelineActionCapsuleOverlay: View {
             }
         }
         .fixedSize()
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Message actions")
     }
 }
 

@@ -35,6 +35,7 @@ nonisolated enum NativeTimelineMessageMenuAction: Equatable {
     case reply
     case forward
     case markUnread
+    case dismissInboxMention
     case endPoll
     case editMessage
     case pinMessage
@@ -80,6 +81,13 @@ nonisolated enum NativeTimelineMessageMenuPolicy {
                 isPinned: isPinned,
                 includesMarkUnread: true
             )
+        }
+        if context == .inboxResult || context == .inboxMention {
+            var result = resultEntries(canDelete: canDelete, canPin: canPin, isPinned: isPinned, includesMarkUnread: false)
+            if context == .inboxMention {
+                result.insert(.action(.dismissInboxMention, title: "Mark as Read", systemImage: "envelope.open"), at: 1)
+            }
+            return result
         }
         if context == .pinnedResult {
             return resultEntries(

@@ -537,6 +537,17 @@ reuses normal rich rendering, menus, accessibility, and exact-message
 navigation without inheriting history acknowledgement, unread, composer, or
 sidebar ownership.
 
+Inbox follows the same ownership split. `InboxState` holds account-scoped
+Mentions pages, frozen Unread groups, prepared rows, mutation tasks, and the
+`MessageRowsUpdateJournal`. `ChatProvider` owns mention pagination/dismissal,
+Inbox protobuf settings, and scheduled-event reads and actions. Channel and
+thread acknowledgements remain in `AccountReadStateModel`; scheduled-event
+read states have their own typed provider cache. The `.inbox(tab)` conversation
+reuses the native timeline and pinned/search message navigation, with only
+visible group, forum-post, and event controls hosted in AppKit. Loading or
+scrolling this surface never inherits timeline visibility acknowledgements.
+Account changes cancel work and discard retained Inbox content.
+
 Every rendered conversation surface—guild text and announcement channels,
 direct and group direct messages, voice-channel chat, regular threads, and
 forum-post conversations—configures the same virtualized

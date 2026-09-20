@@ -132,7 +132,8 @@ final class AppModel {
         var manual: Bool
         var mentionCount: Int?
         var flags: UInt64?
-        var lastViewed: Int
+        var lastViewed: Int?
+        var wireManual: Bool?
     }
 
     struct CategoryCollapseMutationState {
@@ -188,6 +189,7 @@ final class AppModel {
     var workspaceNavigationOverlay: WorkspaceNavigationOverlay?
     let messageSearch = MessageSearchState()
     let pinnedMessages = PinnedMessagesState()
+    let inbox = InboxState()
     @ObservationIgnored var lastOpenedChannelIDsByGuild: [GuildID: ChannelID] = [:]
     @ObservationIgnored var messages: [Message] = []
     @ObservationIgnored var messageRows: [MessageRowPresentation] = []

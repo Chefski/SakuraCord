@@ -147,7 +147,7 @@ nonisolated enum NativeTimelineResultActivationPolicy {
         switch context {
         case .searchResult:
             searchCardFrame
-        case .pinnedResult:
+        case .pinnedResult, .inboxResult, .inboxMention:
             highlightFrame
         case .conversation:
             nil

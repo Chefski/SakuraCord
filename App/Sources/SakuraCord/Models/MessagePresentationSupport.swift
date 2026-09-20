@@ -149,6 +149,7 @@ nonisolated struct MessageSearchRowContext: Equatable, Sendable {
     let sectionSubtitle: String?
     let systemImage: String
     let showsSectionHeader: Bool
+    var isInbox: Bool = false
 }
 
 nonisolated enum MessageRowIdentity: Hashable, Sendable {
@@ -831,7 +832,7 @@ nonisolated enum MessageGrouping {
         existingRows.append(contentsOf: insertedRows)
     }
 
-    private static func continuesGroup(
+    static func continuesGroup(
         from previous: Message,
         to message: Message,
         calendar: Calendar,

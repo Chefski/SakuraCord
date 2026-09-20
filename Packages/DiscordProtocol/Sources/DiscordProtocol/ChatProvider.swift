@@ -87,6 +87,14 @@ public protocol ChatProvider: Sendable {
         limit: Int
     ) async throws -> MessagePage
     func searchMessages(_ query: MessageSearchQuery) async throws -> MessageSearchPage
+    func inboxMentions(_ query: InboxMentionQuery, before: MessageID?) async throws -> InboxMentionPage
+    func dismissInboxMention(_ messageID: MessageID) async throws
+    func inboxSettings() async -> InboxSettings
+    func inboxEventInterests(in guildID: GuildID) async throws -> Set<ScheduledEventID>
+    func acknowledgeInboxEvents(in guildID: GuildID, through eventID: ScheduledEventID) async throws
+    func setInboxEventInterested(_ interested: Bool, event: InboxScheduledEvent) async throws
+    func updateInboxTab(_ tab: InboxTab) async throws
+    func updateInboxCollapsed(_ collapsed: Bool, channelID: ChannelID, guildID: GuildID?) async throws
     func pinnedMessages(
         in channelID: ChannelID,
         before: Date?,

@@ -168,7 +168,7 @@ extension AppModel {
         }
     }
 
-    private func effectiveMessagePermissions(in channel: Channel) -> UInt64? {
+    func effectiveMessagePermissions(in channel: Channel) -> UInt64? {
         guard let guildID = channel.guildID,
               let basis = conversationPermissionBasis(for: guildID)
         else { return channel.guildID == nil ? .max : nil }

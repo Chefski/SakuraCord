@@ -121,11 +121,22 @@ public struct ReadAcknowledgementResponse: Codable, Equatable, Sendable {
 }
 
 public struct BulkReadStateAcknowledgement: Codable, Equatable, Sendable {
+    public var readStateType: Int
     public var channelID: ChannelID
     public var messageID: MessageID
 
-    public init(channelID: ChannelID, messageID: MessageID) {
+    public init(channelID: ChannelID, messageID: MessageID, readStateType: Int = 0) {
+        self.readStateType = readStateType
         self.channelID = channelID
         self.messageID = messageID
+    }
+
+    private enum CodingKeys: String, CodingKey { case channelID, messageID, readStateType }
+
+    public init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        channelID = try values.decode(ChannelID.self, forKey: .channelID)
+        messageID = try values.decode(MessageID.self, forKey: .messageID)
+        readStateType = try values.decodeIfPresent(Int.self, forKey: .readStateType) ?? 0
     }
 }

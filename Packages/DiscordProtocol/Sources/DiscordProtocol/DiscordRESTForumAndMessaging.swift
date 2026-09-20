@@ -961,7 +961,7 @@ extension DiscordRESTProvider {
                                 .object([
                                     "channel_id": .string(readState.channelID.description),
                                     "message_id": .string(readState.messageID.description),
-                                    "read_state_type": .number(0),
+                                    "read_state_type": .number(Double(readState.readStateType)),
                                 ])
                             }
                         )

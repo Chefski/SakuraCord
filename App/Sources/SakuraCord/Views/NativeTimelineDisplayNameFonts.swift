@@ -10,7 +10,7 @@ extension NativeMessageTimelineCoordinator {
         for index in items.indices {
             guard let row = items[index].messageRow else { continue }
             let author = parent.model.authorPresentation(for: row.message).user
-            let reply = row.replyPreview.map { parent.model.authorPresentation(for: $0).user }
+            let reply = row.replyPreview.map { parent.model.authorPresentation(for: $0, in: row.message).user }
             let users = [author, reply, row.message.interactionMetadata?.user]
             guard users.contains(where: { user in
                 user?.displayNameStyle.map { ids.contains($0.fontID) } == true

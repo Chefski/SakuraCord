@@ -240,6 +240,7 @@ extension AppModel {
         preparedTextPlanSource: Message? = nil,
         preparedMemberListPresentation: PreparedMemberListPresentation? = nil
     ) {
+        if consumeInboxEvent(event) { return }
         switch event {
         case .connectionChanged(let state):
             consumeConnectionChange(state)
@@ -249,10 +250,12 @@ extension AppModel {
             applyEmojiUpdate(upserted: upserted, deletedIDs: deletedIDs, to: guildID)
         case .messageCreated(var message):
             consumeMessageCreated(&message, preparedTextPlan: preparedTextPlan)
+            reconcileInboxMessage(message, isNew: true)
         case .messageUpdated(let incoming):
             let reconciled = applyingPendingPinIntent(to: incoming)
             consumeMessageUpdated(reconciled, preparedTextPlan: preparedTextPlan)
             reconcilePinnedMessage(reconciled)
+            reconcileInboxMessage(reconciled)
         case .messagePatched(let update):
             recordConversationRefreshMutation(.patch(update), messageID: update.messageID, channelID: update.channelID)
             if let message = applyingMessageUpdate(update) {
@@ -262,18 +265,22 @@ extension AppModel {
                     recordsRefreshMutation: false, preparedTextPlanSource: preparedTextPlanSource
                 )
                 reconcilePinnedMessage(reconciled)
+                reconcileInboxMessage(reconciled)
             }
         case .messageReactionUpdated(let update):
             applyReactionUpdate(update)
         case .messageDeleted(let channelID, let messageID):
             consumeMessageDeleted(channelID: channelID, messageID: messageID)
             removeDeletedPinnedMessage(channelID: channelID, messageID: messageID)
+            removeInboxMessage(messageID, mentionsOnly: false)
         case .channelPinsInvalidated(let channelID):
             invalidatePinnedMessages(in: channelID)
         case .readStateSnapshot(let states, let version):
             consumeReadStateSnapshot(states, version: version)
+            reconcileInboxReadState()
         case .readStateChanged(let state):
             consumeReadStateChange(state)
+            reconcileInboxReadState()
         default:
             consumeWorkspaceEvent(
                 event,
@@ -299,6 +306,7 @@ extension AppModel {
         case .notificationSettingsChanged(let settings):
             applyNotificationSettings(settings)
             refreshUnreadPresentation()
+            reconcileInboxEligibility()
         case .emojiUserSettingsChanged(let settings):
             applyDiscordEmojiSettings(settings)
             didAttemptDiscordEmojiSettings = true
@@ -318,6 +326,7 @@ extension AppModel {
             )
         case .channelsChanged(let guildID, let channels):
             consumeChannelsChanged(guildID: guildID, channels: channels)
+            reconcileInboxEligibility()
         case .forumPostsChanged(let channelID, let posts):
             consumeForumPostsChanged(channelID: channelID, posts: posts)
         case .forumPostPreviewsChanged(let channelID, let posts):
@@ -328,6 +337,7 @@ extension AppModel {
                 snapshot = value
                 forwardSearchSourceRevision &+= 1
             }
+            reconcileInboxEligibility()
         case .forumPageLoaded(let channelID, let query, let page):
             consumeForumPageLoaded(channelID: channelID, query: query, page: page)
         case .membersChanged(let guildID, let value, let groups):
@@ -464,6 +474,7 @@ extension AppModel {
         let previousState = connectionState
         connectionState = state
         handleApplicationStreamsForGatewayState(state)
+        if state == .ready, previousState != .ready, inbox.isPresented { refreshInbox() }
         if state != .ready {
             if previousState == .ready {
                 // A resumed session can reconcile missed messages through the
@@ -694,6 +705,7 @@ extension AppModel {
     }
 
     func consumeForumPostsChanged(channelID: ChannelID, posts: [ForumPost]) {
+        reconcileInboxForumPosts(channelID: channelID, posts: posts, replacesAll: true)
         let interval = AppPerformanceSignposts.signposter.beginInterval(
             "ForumPostsChanged"
         )
@@ -735,6 +747,7 @@ extension AppModel {
     }
 
     func consumeForumPostPreviewsChanged(channelID: ChannelID, posts: [ForumPost]) {
+        reconcileInboxForumPosts(channelID: channelID, posts: posts, replacesAll: false)
         mergeForwardDestinationThreads(posts.map(\.thread))
         for post in posts { readState.merge(thread: post.thread) }
         requestCoalescedUnreadPresentationRefresh()

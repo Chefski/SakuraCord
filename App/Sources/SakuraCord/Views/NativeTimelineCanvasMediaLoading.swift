@@ -325,7 +325,7 @@ extension NativeTimelineCanvasView {
             keys.append(.avatar(url))
         }
         if let preview = row.replyPreview,
-           let url = model?.authorPresentation(for: preview).user.avatarURL {
+           let url = model?.authorPresentation(for: preview, in: message).user.avatarURL {
             keys.append(.avatar(url))
         } else if let key = NativeTimelineReplyMediaPolicy.avatarKey(
             for: row.replyPreview

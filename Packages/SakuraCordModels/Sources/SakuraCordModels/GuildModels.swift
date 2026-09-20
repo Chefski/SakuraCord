@@ -14,6 +14,8 @@ public struct Guild: Identifiable, Codable, Hashable, Sendable {
     public var profileTag: PrimaryGuildIdentity?
     public var defaultMessageNotifications: MessageNotificationLevel
     public var isUnavailable: Bool
+    public var joinedAt: Date?
+    public var isAgeRestricted: Bool
 
     public init(
         id: GuildID, name: String, iconURL: URL? = nil, accentHex: UInt32 = 0x5865F2,
@@ -22,7 +24,9 @@ public struct Guild: Identifiable, Codable, Hashable, Sendable {
         features: Set<String> = [],
         profileTag: PrimaryGuildIdentity? = nil,
         defaultMessageNotifications: MessageNotificationLevel = .onlyMentions,
-        isUnavailable: Bool = false
+        isUnavailable: Bool = false,
+        joinedAt: Date? = nil,
+        isAgeRestricted: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -37,12 +41,14 @@ public struct Guild: Identifiable, Codable, Hashable, Sendable {
         self.profileTag = profileTag
         self.defaultMessageNotifications = defaultMessageNotifications
         self.isUnavailable = isUnavailable
+        self.joinedAt = joinedAt
+        self.isAgeRestricted = isAgeRestricted
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, name, iconURL, accentHex, unreadCount, mentionCount, isOwnedByCurrentUser
         case currentUserPermissions, rulesChannelID, features, profileTag, defaultMessageNotifications
-        case isUnavailable
+        case isUnavailable, joinedAt, isAgeRestricted
     }
 
     public init(from decoder: any Decoder) throws {
@@ -61,6 +67,8 @@ public struct Guild: Identifiable, Codable, Hashable, Sendable {
         defaultMessageNotifications =
             try values.decodeIfPresent(MessageNotificationLevel.self, forKey: .defaultMessageNotifications)
                 ?? .onlyMentions
+        joinedAt = try values.decodeIfPresent(Date.self, forKey: .joinedAt)
+        isAgeRestricted = try values.decodeIfPresent(Bool.self, forKey: .isAgeRestricted) ?? false
         isUnavailable = try values.decodeIfPresent(Bool.self, forKey: .isUnavailable) ?? false
     }
 }

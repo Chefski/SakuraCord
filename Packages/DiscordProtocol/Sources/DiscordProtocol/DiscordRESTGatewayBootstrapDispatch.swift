@@ -78,6 +78,7 @@ extension DiscordRESTProvider {
         let metadata = applyReadyUserAndReadState(ready)
         applyReadyPrivateChannels(ready)
         let guildProjection = applyReadyGuildProjection(ready)
+        applyReadyInboxEvents(body)
         finishReadyApplication(
             ready,
             readStates: metadata.readStates,
@@ -374,6 +375,7 @@ extension DiscordRESTProvider {
         }
         applyGuildSettingsProto(ready.userSettingsProto)
         applyProfileSettingsProto(ready.userSettingsProto, isPartial: false)
+        applyInboxSettingsProto(ready.userSettingsProto, isPartial: false)
         finishInitialGatewaySnapshot(
             InitialGatewaySnapshot(
                 readStates: readStates,
@@ -393,6 +395,7 @@ extension DiscordRESTProvider {
         ) else { return }
         switch update.settings.type {
         case 1:
+            applyInboxSettingsProto(update.settings.proto, isPartial: update.partial == true)
             applyProfileSettingsProto(update.settings.proto, isPartial: update.partial == true)
             applyGuildSettingsProto(
                 update.settings.proto,

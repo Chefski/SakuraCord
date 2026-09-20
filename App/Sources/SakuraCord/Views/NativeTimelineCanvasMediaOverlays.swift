@@ -710,6 +710,7 @@ extension NativeTimelineCanvasView {
     static let maximumLoadingIndicatorCount = 32
 
     func reconcileLoadingIndicators() {
+        reconcileInboxHeaders()
         guard !items.isEmpty,
               var index = rowIndex(at: max(0, visibleRect.minY))
         else {

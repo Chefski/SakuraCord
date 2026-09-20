@@ -1,0 +1,105 @@
+import AppKit
+import SakuraCordModels
+import SwiftUI
+
+struct InboxScheduledEventView: View {
+    let event: InboxScheduledEvent
+    let model: AppModel
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Button { model.inbox.selectedEvent = event } label: {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(event.status == 2 ? "Happening Now" : event.startTime.formatted(date: .abbreviated, time: .shortened))
+                        .font(.caption).foregroundStyle(.secondary)
+                    Text(event.name).font(.headline).lineLimit(2)
+                    if let location = event.location {
+                        Text(location).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(6)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(PopoverRowButtonStyle())
+            HoverActionButton(
+                systemImage: event.isInterested ? "star.fill" : "star",
+                help: event.isInterested ? "Remove Interest" : "Interested",
+                isSelected: event.isInterested
+            ) {
+                model.setInboxEventInterest(!event.isInterested, event: event)
+            }
+        }
+        .padding(.horizontal, 16)
+        .frame(height: 104)
+        .overlay(alignment: .bottom) { Divider().padding(.horizontal, 12) }
+    }
+}
+
+struct InboxEventDetailsView: View {
+    let event: InboxScheduledEvent
+    let model: AppModel
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        let event = model.inbox.selectedEvent ?? self.event
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text(event.name).font(.title2.weight(.semibold))
+                Spacer()
+                HoverCloseButton(help: "Close", accessibilityIdentifier: "inbox-event-close", diameter: 28) { dismiss() }
+            }
+            Text(event.startTime.formatted(date: .complete, time: .shortened)).foregroundStyle(.secondary)
+            if let description = event.description, !description.isEmpty {
+                Text(LocalizedStringKey(description)).textSelection(.enabled)
+            }
+            if let location = event.location { Label(location, systemImage: "mappin.and.ellipse") }
+            HStack {
+                if let channelID = event.channelID {
+                    Button("Open Channel") {
+                        dismiss()
+                        model.dismissInbox()
+                        model.navigate(to: event.guildID, linkedChannelID: channelID)
+                    }
+                }
+                Spacer()
+                Button(event.isInterested ? "Remove Interest" : "Interested") {
+                    model.setInboxEventInterest(!event.isInterested, event: event)
+                }.buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(24)
+        .frame(width: 440)
+    }
+}
+
+extension NativeTimelineCanvasView {
+    func reconcileInboxEventViews() {
+        var desired: [ScheduledEventID: (InboxScheduledEvent, CGRect)] = [:]
+        if let first = rowIndex(at: max(0, visibleRect.minY)) {
+            var index = first
+            while items.indices.contains(index), displayedRowOrigin(at: index) < visibleRect.maxY {
+                if case let .inboxEvent(event) = items[index] {
+                    desired[event.id] = (event, CGRect(x: 0, y: displayedRowOrigin(at: index), width: bounds.width, height: 104))
+                }
+                index += 1
+            }
+        }
+        for id in Array(inboxEventHosts.keys) where desired[id] == nil {
+            inboxEventHosts.removeValue(forKey: id)?.removeFromSuperview()
+        }
+        guard let model else { return }
+        for (id, value) in desired {
+            let host: NSHostingView<InboxScheduledEventView>
+            if let existing = inboxEventHosts[id] {
+                host = existing
+                if host.rootView.event != value.0 { host.rootView = InboxScheduledEventView(event: value.0, model: model) }
+            } else {
+                host = NSHostingView(rootView: InboxScheduledEventView(event: value.0, model: model))
+                inboxEventHosts[id] = host
+                addSubview(host)
+            }
+            host.frame = value.1
+        }
+    }
+}

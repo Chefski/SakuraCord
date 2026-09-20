@@ -306,6 +306,7 @@ extension NativeTimelineCanvasView {
             state: state,
             jumpToMessage: jumpToMessage,
             unpinMessage: unpinMessage,
+            dismissInboxMention: messageInteractionContext == .inboxMention ? { model.dismissInboxMention(row.message) } : nil,
             retry: retry,
             edit: { [weak self] in
                 self?.beginEditing(row: row, at: index)
@@ -344,7 +345,7 @@ extension NativeTimelineCanvasView {
                 + (canEdit ? 1 : 0)
                 + (canDelete ? 1 : 0)
                 + (openThread == nil ? 0 : 1))
-            : 1 + (unpinMessage == nil ? 0 : 1)
+            : 1 + (unpinMessage == nil ? 0 : 1) + (messageInteractionContext == .inboxMention ? 1 : 0)
         actionCapsuleSize = HoverActionPillMetrics.size(
             controlCount: controlCount
         )

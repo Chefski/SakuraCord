@@ -178,6 +178,8 @@ extension AppModel {
 
     func reactionMessage(for key: ReactionMutationKey) -> Message? {
         messageInWorkspace(channelID: key.channelID, messageID: key.messageID)
+            ?? inbox.mentions.first { $0.id == key.messageID }
+            ?? inbox.groups.lazy.flatMap(\.messages).first { $0.id == key.messageID }
     }
 
     func knownReactionReactor(for userID: UserID) -> ReactionReactor? {
@@ -352,6 +354,17 @@ extension AppModel {
         }
     }
 
+    private func applyInboxReactionUpdate(_ update: MessageReactionUpdate, currentUserID: UserID?, reactor: ReactionReactor?) {
+        if let message = inbox.mentions.first(where: { $0.id == update.messageID })
+            ?? inbox.groups.lazy.flatMap(\.messages).first(where: { $0.id == update.messageID }) {
+            var updated = message
+            if updated.applyReactionUpdate(update, currentUserID: currentUserID, reactor: reactor) {
+                reconcileInboxMessage(updated)
+            }
+        }
+
+    }
+
     func applyReactionUpdate(
         _ update: MessageReactionUpdate,
         persistsResult: Bool = true
@@ -399,6 +412,8 @@ extension AppModel {
         if update.channelID == openThread?.id {
             applying(to: &threadMessages)
         }
+
+        applyInboxReactionUpdate(update, currentUserID: currentUserID, reactor: reactor)
 
         if let forumIndex = forumCatalogueIndexByID[update.channelID] {
             var post = forumCataloguePosts[forumIndex]

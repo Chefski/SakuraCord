@@ -528,6 +528,12 @@ struct NativeTimelineRowLayout {
     ) -> Self {
         let width = max(220, proposedWidth)
         switch item {
+        case .inboxGroup:
+            return empty(height: 58)
+        case .inboxEvent:
+            return empty(height: 104)
+        case .inboxForumPost:
+            return empty(height: 88)
         case let .loader(isLoading, kind):
             let loaderLayout = NativeTimelineLoaderLayout.make(
                 isLoading: isLoading,
@@ -1260,8 +1266,9 @@ struct NativeTimelineRowLayout {
                     + highlightInsets.bottom
             ) + searchBottomInset
         )
-        let searchCardFrame = searchContext.map { _ in
-            CGRect(
+        let searchCardFrame = searchContext.flatMap { context -> CGRect? in
+            guard !context.isInbox else { return nil }
+            return CGRect(
                 x: 0,
                 y: highlightMinY,
                 width: width,

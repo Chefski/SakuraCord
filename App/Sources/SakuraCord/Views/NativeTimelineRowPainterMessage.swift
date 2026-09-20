@@ -232,6 +232,7 @@ extension NativeTimelineRowPainter {
                     preview: preview,
                     frame: frame,
                     contentFrame: contentFrame,
+                    message: input.row.message,
                     model: input.model
                 )
             } else {
@@ -843,6 +844,7 @@ extension NativeTimelineRowPainter {
         preview: MessageReplyPreview,
         frame: CGRect,
         contentFrame: CGRect,
+        message: Message,
         model: AppModel?
     ) {
         let connectorFrame = CGRect(
@@ -864,13 +866,14 @@ extension NativeTimelineRowPainter {
             preview: preview,
             frame: frame,
             avatarFrame: avatarFrame,
+            message: message,
             model: model
         )
 
         let summary = if let model {
             MessageReplySummary.text(
                 content: preview.content,
-                mentionLabel: MessageMentionResolver(model: model).label
+                mentionLabel: MessageMentionResolver(model: model, message: message).label
             )
         } else {
             MessageReplySummary.text(content: preview.content)
@@ -929,9 +932,10 @@ extension NativeTimelineRowPainter {
         preview: MessageReplyPreview,
         frame: CGRect,
         avatarFrame: CGRect,
+        message: Message,
         model: AppModel?
     ) -> CGRect {
-        let presentation = model?.authorPresentation(for: preview)
+        let presentation = model?.authorPresentation(for: preview, in: message)
         let author = presentation?.user ?? preview.author
         avatar(
             name: author.displayName,

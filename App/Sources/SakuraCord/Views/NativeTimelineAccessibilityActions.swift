@@ -67,12 +67,8 @@ extension NativeTimelineCanvasView {
         let canEdit = !message.hasPoll && message.author.id == model?.snapshot?.currentUser.id
             && MessageReplyPresentationPolicy.allowsReplyAction(for: message)
         let canDelete = model?.canDeleteMessage(message) == true
-        if messageInteractionContext == .searchResult || messageInteractionContext == .pinnedResult {
-            return accessibilitySearchResultActions(
-                for: message,
-                canDelete: canDelete,
-                includesMarkUnread: messageInteractionContext == .searchResult
-            )
+        if messageInteractionContext != .conversation {
+            return accessibilityInboxOrSearchActions(message, canDelete: canDelete)
         }
         var result: [NSAccessibilityCustomAction] = []
         if message.outboxState == .failed {
@@ -437,4 +433,21 @@ extension NativeTimelineCanvasView {
         reconcileActionCapsule()
     }
 
+}
+
+extension NativeTimelineCanvasView {
+    private func accessibilityInboxOrSearchActions(_ message: Message, canDelete: Bool) -> [NSAccessibilityCustomAction] {
+        var result = accessibilitySearchResultActions(
+            for: message,
+            canDelete: canDelete,
+            includesMarkUnread: messageInteractionContext == .searchResult
+        )
+        if messageInteractionContext == .inboxMention {
+            result.append(NSAccessibilityCustomAction(name: "Mark as Read") { [weak self] in
+                self?.model?.dismissInboxMention(message)
+                return self != nil
+            })
+        }
+        return result
+    }
 }

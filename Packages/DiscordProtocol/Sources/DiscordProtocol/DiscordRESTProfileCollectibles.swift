@@ -107,6 +107,9 @@ public extension DiscordRESTProvider {
         profileWidgetGameSearchTasks = [:]
         profileDeveloperMode = false
         profileStatusSettings = nil
+        inboxScheduledEvents = InboxScheduledEvents()
+        inboxSettingsProto = nil
+        inboxSettingsSaveID = nil
         profileStatusSaveID = nil
         profileCustomStatusExpiryTask?.cancel()
         profileCustomStatusExpiryTask = nil

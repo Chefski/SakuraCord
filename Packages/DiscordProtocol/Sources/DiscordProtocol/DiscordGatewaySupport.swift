@@ -679,6 +679,8 @@ struct GatewayActivityInstanceDTO: Decodable {
 
 struct GatewayReadyGuildsDTO: Decodable {
     struct GuildReference: Decodable {
+        var joinedAt: String?
+        var nsfwLevel: Int?
         var id: String
         var name: String?
         var icon: String?
@@ -700,6 +702,8 @@ struct GatewayReadyGuildsDTO: Decodable {
 
         enum CodingKeys: String, CodingKey {
             case id, name, icon, owner, permissions, properties, features, profile
+            case joinedAt = "joined_at"
+            case nsfwLevel = "nsfw_level"
             case ownerID = "owner_id"
             case rulesChannelID = "rules_channel_id"
             case defaultMessageNotifications = "default_message_notifications"
@@ -715,6 +719,8 @@ struct GatewayReadyGuildsDTO: Decodable {
             let nested = try? container.decode(
                 GatewayGuildPropertiesDTO.self, forKey: .properties
             )
+            nsfwLevel = (try? container.decode(Int.self, forKey: .nsfwLevel)) ?? nested?.nsfwLevel
+            joinedAt = try container.decodeIfPresent(String.self, forKey: .joinedAt)
             id = try container.decode(String.self, forKey: .id)
             name = (try? container.decode(String.self, forKey: .name)) ?? nested?.name
             icon = (try? container.decode(String.self, forKey: .icon)) ?? nested?.icon
@@ -795,7 +801,9 @@ struct GatewayReadyGuildsDTO: Decodable {
                 defaultMessageNotifications:
                     defaultMessageNotifications.flatMap(
                         MessageNotificationLevel.init(rawValue:)
-                    ) ?? .onlyMentions
+                    ) ?? .onlyMentions,
+                joinedAt: joinedAt.flatMap(DiscordDate.parse),
+                isAgeRestricted: nsfwLevel == 1 || nsfwLevel == 3
             )
         }
     }

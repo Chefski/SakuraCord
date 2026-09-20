@@ -17,6 +17,12 @@ extension DiscordRESTProvider {
             await handleMessageCreateDispatch(name: name, body: body)
         case "MESSAGE_ACK":
             await handleMessageAckDispatch(name: name, body: body)
+        case "RECENT_MENTION_DELETE":
+            if case let .object(values) = body,
+               case let .string(rawID) = values["message_id"],
+               let id = MessageID(rawID) {
+                continuation?.yield(.inboxMentionDismissed(id))
+            }
         case "MESSAGE_REACTION_REMOVE":
             await handleMessageReactionRemoveDispatch(name: name, body: body)
         case "MESSAGE_REACTION_REMOVE_ALL":

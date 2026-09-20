@@ -31,6 +31,7 @@ struct GatewayGuildPropertiesDTO: Decodable {
     var ownerID: String?
     var permissions: String?
     var rulesChannelID: String?
+    var nsfwLevel: Int?
     var defaultMessageNotifications: Int?
     var features: Set<String>?
     var profile: GuildProfileTagDTO?
@@ -42,11 +43,13 @@ struct GatewayGuildPropertiesDTO: Decodable {
         case name, icon, owner, permissions, features, profile
         case ownerID = "owner_id"
         case rulesChannelID = "rules_channel_id"
+        case nsfwLevel = "nsfw_level"
         case defaultMessageNotifications = "default_message_notifications"
     }
 
     init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        nsfwLevel = try? values.decode(Int.self, forKey: .nsfwLevel)
         name = try? values.decode(String.self, forKey: .name)
         icon = try? values.decode(String.self, forKey: .icon)
         owner = try? values.decode(Bool.self, forKey: .owner)
@@ -74,6 +77,7 @@ struct GatewayGuildPatchDTO: Decodable {
     var ownerID: String?
     var permissions: String?
     var rulesChannelID: String?
+    var nsfwLevel: Int?
     var defaultMessageNotifications: Int?
     var unavailable: Bool?
     var features: Set<String>?
@@ -86,6 +90,7 @@ struct GatewayGuildPatchDTO: Decodable {
         case id, name, icon, owner, permissions, unavailable, properties, features, profile
         case ownerID = "owner_id"
         case rulesChannelID = "rules_channel_id"
+        case nsfwLevel = "nsfw_level"
         case defaultMessageNotifications = "default_message_notifications"
     }
 
@@ -94,6 +99,7 @@ struct GatewayGuildPatchDTO: Decodable {
         let nested = try? values.decode(
             GatewayGuildPropertiesDTO.self, forKey: .properties
         )
+        nsfwLevel = (try? values.decode(Int.self, forKey: .nsfwLevel)) ?? nested?.nsfwLevel
         id = try values.decode(String.self, forKey: .id)
         name = (try? values.decode(String.self, forKey: .name)) ?? nested?.name
         owner = (try? values.decode(Bool.self, forKey: .owner)) ?? nested?.owner
@@ -165,7 +171,9 @@ struct GatewayGuildPatchDTO: Decodable {
                 defaultMessageNotifications.flatMap(MessageNotificationLevel.init(rawValue:))
                 ?? existing?.defaultMessageNotifications
                 ?? .onlyMentions,
-            isUnavailable: unavailable ?? existing?.isUnavailable ?? false
+            isUnavailable: unavailable ?? existing?.isUnavailable ?? false,
+            joinedAt: existing?.joinedAt,
+            isAgeRestricted: nsfwLevel.map { $0 == 1 || $0 == 3 } ?? existing?.isAgeRestricted ?? false
         )
     }
 }

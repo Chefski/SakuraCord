@@ -47,6 +47,7 @@ nonisolated enum NativeTimelineBenchmarkStartupPolicy {
 
 struct MessageTimelineScrollRequest: Equatable {
     enum Target: Equatable {
+        case top
         case bottom
         case message(MessageID, anchor: UnitPoint)
     }
@@ -145,6 +146,7 @@ enum NativeTimelineConversation: Hashable {
     case thread(ChannelID?)
     case search
     case pins(ChannelID)
+    case inbox(InboxTab)
 
     var id: ChannelID? {
         switch self {
@@ -152,22 +154,22 @@ enum NativeTimelineConversation: Hashable {
             id
         case .pins(let id):
             id
-        case .search:
+        case .search, .inbox:
             nil
         }
     }
 
     var supportsReply: Bool {
-        self != .search && !isPins
+        self != .search && !isPins && !isInbox
     }
 
     var activatesMessageOnClick: Bool {
-        self == .search || isPins
+        self == .search || isPins || isInbox
     }
 
     nonisolated var alignsUnderfilledContentToTop: Bool {
         switch self {
-        case .search, .pins:
+        case .search, .pins, .inbox:
             true
         case .channel, .thread:
             false
@@ -175,6 +177,8 @@ enum NativeTimelineConversation: Hashable {
     }
 
     var messageInteractionContext: NativeTimelineMessageInteractionContext {
+        if self == .inbox(.mentions) { return .inboxMention }
+        if isInbox { return .inboxResult }
         if self == .search { return .searchResult }
         return isPins ? .pinnedResult : .conversation
     }
@@ -186,6 +190,8 @@ enum NativeTimelineConversation: Hashable {
         case .thread:
             .replies
         case .search:
+            .messages
+        case .inbox:
             .messages
         case .pins:
             .pins
@@ -203,6 +209,8 @@ enum NativeTimelineConversation: Hashable {
             model.messageSearch.rows
         case .pins:
             model.pinnedMessages.rows
+        case .inbox:
+            model.inbox.rows
         }
     }
 
@@ -215,6 +223,8 @@ enum NativeTimelineConversation: Hashable {
             model.threadMessageRowsRevision
         case .search:
             model.messageSearch.rowsRevision
+        case .inbox:
+            model.inbox.rowsRevision
         case .pins:
             model.pinnedMessages.rowsRevision
         }
@@ -227,7 +237,7 @@ enum NativeTimelineConversation: Hashable {
             model.messageRowsUpdateHint
         case .thread:
             model.threadMessageRowsUpdateHint
-        case .search, .pins:
+        case .search, .pins, .inbox:
             nil
         }
     }
@@ -241,9 +251,16 @@ enum NativeTimelineConversation: Hashable {
             model.threadMessageRowsUpdateJournal
         case .search:
             model.messageSearch.rowsUpdateJournal
+        case .inbox:
+            model.inbox.rowsUpdateJournal
         case .pins:
             model.pinnedMessages.rowsUpdateJournal
         }
+    }
+
+    var isInbox: Bool {
+        if case .inbox = self { return true }
+        return false
     }
 
     private var isPins: Bool {
@@ -256,6 +273,8 @@ nonisolated enum NativeTimelineMessageInteractionContext: Equatable {
     case conversation
     case searchResult
     case pinnedResult
+    case inboxResult
+    case inboxMention
 }
 
 nonisolated enum NativeTimelineLoaderKind: Equatable {
@@ -382,11 +401,17 @@ enum NativeTimelineBeginning: Equatable {
 enum NativeMessageTimelineItem: Equatable {
     nonisolated enum Identifier: Hashable {
         case beginning(ChannelID)
+        case inboxGroup(ChannelID)
+        case inboxForumPost(ChannelID)
+        case inboxEvent(ScheduledEventID)
         case loader
         case message(MessageRowIdentity)
     }
 
     case beginning(NativeTimelineBeginning)
+    case inboxGroup(InboxGroupHeaderPresentation)
+    case inboxForumPost(ForumPost)
+    case inboxEvent(InboxScheduledEvent)
     case loader(isLoading: Bool, kind: NativeTimelineLoaderKind)
     case message(
         MessageRowPresentation,
@@ -406,6 +431,12 @@ enum NativeMessageTimelineItem: Equatable {
 
     var identifier: Identifier {
         switch self {
+        case let .inboxEvent(event):
+            .inboxEvent(event.id)
+        case let .inboxGroup(header):
+            .inboxGroup(header.channelID)
+        case let .inboxForumPost(post):
+            .inboxForumPost(post.id)
         case let .beginning(beginning):
             .beginning(beginning.id)
         case .loader:
