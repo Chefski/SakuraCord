@@ -44,7 +44,8 @@ import Testing
     }
 }
 
-@Test func `terminal disconnect before initial snapshot waiter is retained`() async {
+@Test(arguments: [false, true])
+func `terminal disconnect before initial snapshot waiter preserves payload failure`(rejectedPayload: Bool) async throws {
     let provider = DiscordRESTProvider(
         credentials: TestCredentialStore(),
         handle: CredentialHandle(accountID: "1"),
@@ -52,10 +53,21 @@ import Testing
         installationID: "server-issued-installation"
     )
 
+    let message = try #require(GatewaySessionError.decompressedPayloadLimitExceeded(
+        limit: 1024, observed: 1025
+    ).payloadLimitMessage)
+    if rejectedPayload {
+        await provider.handleGatewaySessionEvent(.payloadRejected(message))
+    }
     await provider.handleGatewaySessionEvent(.stateChanged(.disconnected))
 
-    await #expect(throws: ChatProviderError.self) {
-        try await provider.waitForInitialGatewaySnapshot()
+    do {
+        _ = try await provider.waitForInitialGatewaySnapshot()
+        Issue.record("A failed Gateway completed bootstrap")
+    } catch {
+        #expect(error is ChatProviderError)
+        #expect(error.localizedDescription == (rejectedPayload ? message
+            : "Discord's Gateway disconnected before initial state was ready."))
     }
 }
 

@@ -857,8 +857,16 @@ return value need not reach zero; pinned Paicord likewise continues whenever
 its destination buffer is full. Swiftcord v1/DiscordKit uses JSON with zlib and
 has no zstd counterpart. A sanitized 4 August 2026 live startup exposed the
 regression as exactly 589,824 partial bytes (nine 64 KiB chunks) from a large
-ETF Ready payload; the corrected decoder retains the existing 8 MiB compressed
-and 16 MiB decompressed safety bounds.
+ETF Ready payload. The compressed-input bound remains 8 MiB. The per-message
+decompressed bound is 64 MiB: account bootstrap data exceeded the former
+16 MiB limit in a sanitized 20 September 2026 support export. This is a
+SakuraCord resource bound, not a Discord protocol maximum. It also applies to
+fresh READY after reconnect and to uncompressed text messages. The decoder
+stops before appending bytes beyond the bound, reports scalar observed/limit
+byte counts, and preserves the size failure through bootstrap instead of
+misreporting it as a remote disconnect. It never retries a rejected payload in
+a reconnect loop. The shared zstd context and per-message output draining are
+unchanged.
 
 ETF maps may use 64-bit integer keys even though the equivalent JSON object can
 only expose string keys. The clean 4 August large-account Ready payload did so;

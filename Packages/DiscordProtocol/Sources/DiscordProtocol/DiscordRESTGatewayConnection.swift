@@ -314,6 +314,10 @@ extension DiscordRESTProvider {
         switch event {
         case .deliveryFailed:
             await stopAfterEventOverflow(gatewayDelivery: true)
+        case let .payloadRejected(message):
+            // Preserve the local cause before the following terminal disconnect
+            // would replace it with a generic bootstrap failure.
+            failInitialGatewaySnapshot(ChatProviderError.invalidRequest(message))
         case .stateChanged(let connectionState):
             gatewayReady = connectionState == .ready
             if connectionState == .authenticationFailed {

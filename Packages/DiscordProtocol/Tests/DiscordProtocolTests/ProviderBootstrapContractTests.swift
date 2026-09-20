@@ -4,6 +4,34 @@ import SakuraCordModels
 import Testing
 
 extension ProviderRequestContractTests {
+    @Test func `pending login bootstraps a compressed desktop Ready larger than sixteen MiB`() async throws {
+        RateLimitURLProtocol.reset()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [RateLimitURLProtocol.self]
+        let codec = ETFGatewayCodec()
+        let compressor = try GatewayTestZstdStream()
+        let socket = ReadyGatewaySocket()
+        await socket.push(.data(try compressor.compress(codec.encode(GatewayEnvelope(
+            op: 10, data: .object(["heartbeat_interval": .number(60_000)])
+        )))))
+        await socket.push(.data(try compressor.compress(codec.encode(largeGatewayReadyEnvelope()))))
+        let pending = try PendingDiscordCredential(Data("pending-fixture-credential".utf8))
+        let provider = DiscordRESTProvider(
+            pendingCredential: pending, session: URLSession(configuration: configuration),
+            gatewayTransport: ReadyGatewayTransport(socket: socket), gatewayCodec: codec,
+            gatewayEncoding: "etf", gatewayCompression: .zstdStream,
+            installationID: "fixture-installation", usesEmojiDiskCache: false
+        )
+        let snapshot = try await provider.bootstrap()
+        #expect(snapshot.currentUser.id == UserID(rawValue: 1))
+        #expect(snapshot.currentUser.username == "fixture")
+        #expect(RateLimitURLProtocol.totalRequestCount == 0)
+        let credential = try await provider.persistPendingCredential(to: TestCredentialStore(), accountID: "1")
+        #expect(credential.accountID == "1")
+        await provider.disconnect()
+        await pending.discard()
+    }
+
     @Test func `bootstrap uses gateway ready and does not burst guild channel requests`() async throws {
         try await BootstrapRequestScenario().run
     }

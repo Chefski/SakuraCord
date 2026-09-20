@@ -315,7 +315,7 @@ import Testing
         maximumCompressedBufferSize: 2,
         maximumDecompressedPayloadSize: 1024
     )
-    #expect(throws: GatewaySessionError.compressedBufferLimitExceeded) {
+    #expect(throws: GatewaySessionError.compressedBufferLimitExceeded(limit: 2, observed: 3)) {
         try bounded.append(.data(Data([1, 2, 3])))
     }
 }
@@ -334,7 +334,7 @@ import Testing
         maximumCompressedBufferSize: 2,
         maximumDecompressedPayloadSize: 1024
     )
-    #expect(throws: GatewaySessionError.compressedBufferLimitExceeded) {
+    #expect(throws: GatewaySessionError.compressedBufferLimitExceeded(limit: 2, observed: compressed.count)) {
         try bounded.append(.data(compressed))
     }
 
@@ -359,9 +359,117 @@ import Testing
         maximumCompressedBufferSize: 1024,
         maximumDecompressedPayloadSize: 64 * 1024
     )
-    #expect(throws: GatewaySessionError.decompressedPayloadLimitExceeded) {
+    #expect(throws: GatewaySessionError.decompressedPayloadLimitExceeded(limit: 64 * 1024, observed: 70_000)) {
         try decompressedBounded.append(.data(largeCompressed))
     }
+}
+
+@Test func `large desktop ready preserves stream dictionary live dispatch and resume`() async throws {
+    let first = FakeGatewaySocket()
+    let second = FakeGatewaySocket()
+    let transport = FakeGatewayTransport(sockets: [first, second])
+    let clock = ManualGatewayClock()
+    let codec = ETFGatewayCodec()
+    let ready = largeGatewayReadyEnvelope()
+    let readyBytes = try codec.encode(ready)
+    #expect(readyBytes.count > 16 * 1024 * 1024)
+    let session = try GatewaySession(
+        configuration: .init(
+            gatewayURL: #require(URL(string: "wss://gateway.discord.gg")),
+            identifyPayload: codec.encode(GatewayEnvelope(op: 2, data: .object(["token": .string("fixture-token")]))),
+            token: "fixture-token", gatewayEncoding: "etf", gatewayCompression: .zstdStream
+        ),
+        transport: transport, clock: clock, random: SequenceGatewayRandom(values: [0.5, 0.5, 0.5]),
+        codec: codec, apiDiagnostics: DiscordAPIDiagnosticStore(maximumEntries: 10)
+    )
+    let recorder = GatewayEventRecorder()
+    let events = Task {
+        for await event in session.events { await recorder.append(event) }
+    }
+    defer { events.cancel() }
+    let compressor = try GatewayTestZstdStream()
+    let hello = GatewayEnvelope(op: 10, data: .object(["heartbeat_interval": .number(40_000)]))
+    await session.connect()
+    await first.push(.data(try compressor.compress(codec.encode(hello))))
+    await first.push(.data(try compressor.compress(readyBytes)))
+    // Reuse the same zstd frame/dictionary, just as Discord does. A second
+    // large message must not inherit buffered output from READY.
+    await first.push(.data(try compressor.compress(codec.encode(GatewayEnvelope(
+        op: 0, data: ready.data, sequence: 2, eventName: "READY_SUPPLEMENTAL"
+    )))))
+    await first.push(.data(try compressor.compress(codec.encode(GatewayEnvelope(
+        op: 0, data: .object(["id": .string("42")]), sequence: 3, eventName: "MESSAGE_CREATE"
+    )))))
+    #expect(await eventually { await session.snapshot().sequence == 3 })
+    #expect(await eventually { await recorder.dispatchNames == ["READY", "READY_SUPPLEMENTAL", "MESSAGE_CREATE"] })
+    #expect(await session.snapshot().state == .ready)
+    #expect(await first.closeCodes.isEmpty)
+
+    await first.terminate(code: nil)
+    #expect(await eventually { await clock.activeDurations.contains(where: { seconds($0) == 1 }) })
+    await clock.advance(durationMatching: 1)
+    #expect(await eventually { await transport.connectionCount == 2 })
+    let resumedCompressor = try GatewayTestZstdStream()
+    await second.push(.data(try resumedCompressor.compress(codec.encode(hello))))
+    #expect(await eventually { await second.sentCount == 1 })
+    let resume = try codec.decode(#require(await second.sentData(at: 0)))
+    #expect(resume.op == 6)
+    #expect(resume.data == .object([
+        "token": .string("fixture-token"), "session_id": .string("large-ready-session"), "seq": .number(3)
+    ]))
+    await second.push(.data(try resumedCompressor.compress(codec.encode(GatewayEnvelope(
+        op: 0, data: .object([:]), sequence: 4, eventName: "RESUMED"
+    )))))
+    #expect(await eventually { await session.snapshot().state == .ready })
+    await session.stop()
+}
+
+@Test(arguments: [false, true])
+func `oversized gateway payload reports size and stops without retry`(textMessage: Bool) async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let diagnostics = DiscordAPIDiagnosticStore(maximumEntries: 10, diskDirectoryURL: directory)
+    diagnostics.enablesPanicSave = true
+    let socket = FakeGatewaySocket()
+    let transport = FakeGatewayTransport(sockets: [socket, FakeGatewaySocket()])
+    let session = try GatewaySession(
+        configuration: .init(
+            gatewayURL: #require(URL(string: "wss://gateway.discord.gg")),
+            identifyPayload: Data(#"{"op":2,"d":{}}"#.utf8), token: "fixture-token",
+            gatewayCompression: .zstdStream, maximumDecompressedPayloadSize: 1024
+        ),
+        transport: transport, clock: ManualGatewayClock(), random: SequenceGatewayRandom(values: []),
+        apiDiagnostics: diagnostics
+    )
+    let failure = GatewaySessionError.decompressedPayloadLimitExceeded(limit: 1024, observed: 1025)
+    let received = Task { () -> [GatewaySessionEvent] in
+        var result: [GatewaySessionEvent] = []
+        for await event in session.events {
+            result.append(event)
+            if event == .stateChanged(.disconnected) { break }
+        }
+        return result
+    }
+    defer { received.cancel() }
+    await session.connect()
+    let content = String(repeating: "x", count: 1025)
+    let message: GatewaySocketMessage = textMessage ? .text(content)
+        : .data(try GatewayTestZstdStream().compress(Data(content.utf8)))
+    await socket.push(message)
+    let events = await received.value
+    let expected: [GatewaySessionEvent] = [
+        .payloadRejected(try #require(failure.payloadLimitMessage)), .stateChanged(.disconnected)
+    ]
+    #expect(Array(events.suffix(2)) == expected)
+    #expect(await session.snapshot().state == .stopped)
+    #expect(await transport.connectionCount == 1)
+    #expect(await socket.closeCodes == [4002])
+    let exported = try String(contentsOf: diagnostics.panicSaveURL, encoding: .utf8)
+    #expect(exported.contains(#""errorCode":3"#))
+    #expect(exported.contains(#""payload_limit_bytes":1024"#))
+    #expect(exported.contains(#""observed_payload_bytes":1025"#))
+    #expect(!exported.contains(content))
+    await session.stop()
 }
 
 @Test func `desktop session announces time spent then uses QoS heartbeats`() async throws {

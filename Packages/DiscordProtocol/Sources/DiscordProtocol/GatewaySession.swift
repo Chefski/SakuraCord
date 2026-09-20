@@ -83,17 +83,9 @@ private actor URLSessionGatewaySocket: GatewaySocket {
     }
 }
 
-enum GatewaySessionError: Error, Equatable {
-    case unsupportedWebSocketMessage
-    case malformedPayload
-    case compressedBufferLimitExceeded
-    case decompressedPayloadLimitExceeded
-    case decompressionFailed
-    case stopped
-}
-
 enum GatewaySessionEvent: Sendable, Equatable {
     case deliveryFailed
+    case payloadRejected(String)
     case stateChanged(ConnectionState)
     case dispatch(name: String, data: JSONValue)
 }
@@ -145,7 +137,9 @@ actor GatewaySession {
             maximumReconnectAttempts: Int = .max,
             maximumMessageSize: Int = 16 * 1024 * 1024,
             maximumCompressedBufferSize: Int = 8 * 1024 * 1024,
-            maximumDecompressedPayloadSize: Int = 16 * 1024 * 1024,
+            // Large accounts can exceed 16 MiB in READY. Keep a per-message
+            // bound, including on fresh Identify after a failed Resume.
+            maximumDecompressedPayloadSize: Int = 64 * 1024 * 1024,
             backoffBase: Duration = .seconds(1),
             backoffCap: Duration = .seconds(60)
         ) {
@@ -487,18 +481,23 @@ actor GatewaySession {
         } catch {
             guard isActive(activeGeneration) else { return .cancelled }
             let closeCode = await activeSocket.closeCode()
+            var failureMetadata = (error as? GatewaySessionError)?.diagnosticIntegers ?? [:]
+            if let closeCode { failureMetadata["close_code"] = closeCode }
             apiDiagnostics.recordWebSocketFailure(
                 transport: "gateway",
                 direction: "response",
                 error: error, incident: incident,
-                integers: closeCode.map { ["close_code": $0] } ?? [:]
+                integers: failureMetadata
             )
             if let forcedOutcome {
                 self.forcedOutcome = nil
                 return forcedOutcome
             }
             if error is GatewaySessionError || error is DecodingError {
-                sessionLogger.fault("Gateway payload was malformed; stopping the session")
+                sessionLogger.fault("Gateway payload was rejected; stopping the session")
+                if let message = (error as? GatewaySessionError)?.payloadLimitMessage {
+                    eventContinuation.yield(.payloadRejected(message))
+                }
                 await activeSocket.close(code: 4002)
                 return .terminal(authenticationFailed: false)
             }
@@ -850,6 +849,7 @@ private func scaled(_ duration: Duration, by multiplier: Double) -> Duration {
 }
 
 struct GatewayPayloadFramer {
+    private let maximumDecompressedPayloadSize: Int
     private enum Decoder {
         case zlib(GatewayZlibStreamDecoder)
         case zstd(GatewayZstdStreamDecoder)
@@ -862,6 +862,7 @@ struct GatewayPayloadFramer {
         maximumCompressedBufferSize: Int,
         maximumDecompressedPayloadSize: Int
     ) throws {
+        self.maximumDecompressedPayloadSize = maximumDecompressedPayloadSize
         switch compression {
         case .zlibStream:
             decoder = try .zlib(GatewayZlibStreamDecoder(
@@ -878,9 +879,16 @@ struct GatewayPayloadFramer {
 
     mutating func append(_ message: GatewaySocketMessage) throws -> [Data] {
         switch message {
-        case let .text(text): [Data(text.utf8)]
+        case let .text(text):
+            let count = text.utf8.count
+            guard count <= maximumDecompressedPayloadSize else {
+                throw GatewaySessionError.decompressedPayloadLimitExceeded(
+                    limit: maximumDecompressedPayloadSize, observed: count
+                )
+            }
+            return [Data(text.utf8)]
         case let .data(data):
-            switch decoder {
+            return switch decoder {
             case let .zlib(decoder): try decoder.append(data)
             case let .zstd(decoder): try decoder.append(data)
             }
@@ -908,7 +916,9 @@ private final class GatewayZstdStreamDecoder {
 
     func append(_ data: Data) throws -> [Data] {
         guard data.count <= maximumCompressedBufferSize else {
-            throw GatewaySessionError.compressedBufferLimitExceeded
+            throw GatewaySessionError.compressedBufferLimitExceeded(
+                limit: maximumCompressedBufferSize, observed: data.count
+            )
         }
         guard !data.isEmpty else { return [] }
 
@@ -936,7 +946,9 @@ private final class GatewayZstdStreamDecoder {
                 }
                 let produced = destinationBuffer.pos
                 guard output.count + produced <= maximumDecompressedPayloadSize else {
-                    throw GatewaySessionError.decompressedPayloadLimitExceeded
+                    throw GatewaySessionError.decompressedPayloadLimitExceeded(
+                        limit: maximumDecompressedPayloadSize, observed: output.count + produced
+                    )
                 }
                 if produced > 0 {
                     output.append(destination, count: produced)
@@ -986,10 +998,12 @@ private final class GatewayZlibStreamDecoder {
     }
 
     func append(_ data: Data) throws -> [Data] {
-        compressedBuffer.append(data)
-        guard compressedBuffer.count <= maximumCompressedBufferSize else {
-            throw GatewaySessionError.compressedBufferLimitExceeded
+        guard data.count <= maximumCompressedBufferSize - compressedBuffer.count else {
+            throw GatewaySessionError.compressedBufferLimitExceeded(
+                limit: maximumCompressedBufferSize, observed: compressedBuffer.count + data.count
+            )
         }
+        compressedBuffer.append(data)
 
         var payloads: [Data] = []
         while let range = compressedBuffer.range(of: Self.flushMarker) {
@@ -1026,7 +1040,9 @@ private final class GatewayZlibStreamDecoder {
                 let produced = destinationCapacity - stream.dst_size
                 if produced > 0 {
                     guard output.count + produced <= maximumDecompressedPayloadSize else {
-                        throw GatewaySessionError.decompressedPayloadLimitExceeded
+                        throw GatewaySessionError.decompressedPayloadLimitExceeded(
+                            limit: maximumDecompressedPayloadSize, observed: output.count + produced
+                        )
                     }
                     output.append(destination, count: produced)
                 }
