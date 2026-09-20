@@ -110,6 +110,17 @@ SwiftPM manifests are the build source of truth;
 [architecture guide](docs/ARCHITECTURE.md) or
 [protocol baseline](docs/PROTOCOL_BASELINE.md) for deeper work.
 
+## Sponsors
+
+Thank you to the sponsors supporting SakuraCord's development.
+
+<p align="center">
+  <a href="https://github.com/charlie-hotel">
+    <img src="Brand/Sponsors/charlie-hotel.svg" width="80" height="80" alt="charlie-hotel's avatar"><br>
+    <strong>charlie-hotel</strong>
+  </a>
+</p>
+
 ## Follow along
 
 <table>

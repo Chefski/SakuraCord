@@ -24,6 +24,8 @@ Do not edit a downsized PNG as the source of truth. Update the appropriate
   and rounded-rectangle variants of both marks.
 - `Banners` — text-free SakuraCord gradient banners in common platform and
   generic dimensions.
+- `Sponsors` — sponsor avatars for the project README, with embedded images
+  clipped to circles for GitHub-compatible rendering.
 - `brand.json` — machine-readable brand name and gradient colors.
 
 All exported PNGs are intentionally committed uncompressed rather than wrapped
