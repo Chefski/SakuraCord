@@ -1319,6 +1319,14 @@ hover preview separately uses `limit=3&type=2`; SakuraCord's voter popover uses
 the full-list route. A 100-user response permits another page. Reads retain the
 shared safe-read, cancellation, rate-limit, and account-session rules; poll
 mutations are never automatically replayed after an ambiguous failure.
+Expected HTTP 400 poll failures remain local to their operation: voting blocked
+or expired (`520000`/`520001`), expiration of an expired or non-poll message
+(`520001`/`520006`), and poll creation with an unavailable channel type or emoji
+(`520002`/`520004`). These route-scoped exceptions use Discord's
+[documented error codes](https://docs.discord.com/developers/topics/opcodes-and-status-codes),
+checked on 21 September 2026 and covered by local transport fixtures; they are
+not additional live captures. Authentication/account restrictions, challenges,
+and malformed requests retain the shared safety stops.
 Known zero-vote answers display an empty voter list without issuing a GET.
 
 `MESSAGE_POLL_VOTE_ADD` and `MESSAGE_POLL_VOTE_REMOVE` carry channel, message,

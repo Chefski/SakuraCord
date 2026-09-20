@@ -2,6 +2,20 @@ import Foundation
 import SakuraCordModels
 
 public extension DiscordRESTProvider {
+    internal static func isExpectedPollFailure(discordCode: Int?, method: String, path: String) -> Bool {
+        let parts = path.split(separator: "/")
+        guard parts.count >= 3, parts[0] == "channels", UInt64(parts[1]) != nil else { return false }
+        if method == "POST", parts.count == 3, parts[2] == "messages" {
+            return discordCode == 520002 || discordCode == 520004
+        }
+        guard parts.count >= 5, parts[2] == "polls", UInt64(parts[3]) != nil else { return false }
+        if method == "PUT", parts.count == 6, parts[4] == "answers", parts[5] == "@me" {
+            return discordCode == 520000 || discordCode == 520001
+        }
+        return method == "POST" && parts.count == 5 && parts[4] == "expire"
+            && (discordCode == 520001 || discordCode == 520006)
+    }
+
     func setPollAnswers(_ answerIDs: [Int], messageID: MessageID, channelID: ChannelID) async throws {
         guard answerIDs.count <= 10, Set(answerIDs).count == answerIDs.count, answerIDs.allSatisfy({ $0 > 0 }) else {
             throw ChatProviderError.invalidRequest("Choose valid poll answers.")

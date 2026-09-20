@@ -968,8 +968,9 @@ extension DiscordRESTProvider {
             return true
         }
         // A structured error for user-entered profile text/media is editable.
-        // Other mutation 400s still indicate a malformed client contract.
+        // Known poll failures can race local expiry and permission checks.
         if status == 400, profileValidationError(data: data, method: method, path: path) != nil { return false }
+        if status == 400, isExpectedPollFailure(discordCode: discordCode, method: method, path: path) { return false }
         return status == 400 && method != "GET"
     }
 
