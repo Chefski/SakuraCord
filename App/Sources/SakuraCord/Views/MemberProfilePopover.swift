@@ -425,7 +425,7 @@ private struct ProfileHeroSection: View {
                 nameStyle: cosmeticPolicy.disables(.nameStyle, for: member.id) ? nil : (profile?.user.displayNameStyle ?? member.user.displayNameStyle),
                 primaryGuildIdentity: profile?.user.primaryGuild ?? member.user.primaryGuild,
                 isBot: profile?.user.isBot ?? member.user.isBot,
-                badges: profile?.badges ?? [],
+                badges: profile.map(SakuraCordSponsors.badges) ?? [],
                 premiumSince: profile?.premiumSince,
                 premiumGuildSince: profile?.premiumGuildSince,
                 nameSize: 22,
@@ -774,7 +774,11 @@ private struct ProfileBadgeIcon: View {
 
     var body: some View {
         Group {
-            if let iconURL = badge.iconURL {
+            if badge.id == SakuraCordSponsors.badge.id {
+                Image("SakuraCordSponsorBadge", bundle: .module)
+                    .resizable()
+                    .scaledToFit()
+            } else if let iconURL = badge.iconURL {
                 StaticRemoteImage(url: iconURL, maximumPixelDimension: 46)
             } else {
                 Image(systemName: isNitroBadge ? "bolt.fill" : "checkmark.seal.fill")
