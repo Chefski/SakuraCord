@@ -16,6 +16,7 @@ struct ComposerView: View {
     @State private var showStickerPicker = false
     @State private var showEmojiPicker = false
     @State private var isFocused = false
+    @State private var isComposing = false
     @State private var draftSelection: NSRange?
     @State private var selectionBeforeEmojiPicker: NSRange?
     @State private var isSubmitting = false
@@ -121,6 +122,7 @@ struct ComposerView: View {
                                     )
                                 },
                                 onDropAttachments: handleDroppedAttachments,
+                                onCompositionStateChange: { isComposing = $0 },
                                 capturesUnfocusedTyping:
                                     !showEmojiPicker
                                         && !showGIFPicker
@@ -132,7 +134,7 @@ struct ComposerView: View {
                                 isFocused: $isFocused
                             )
                             .frame(minHeight: ChatChromeMetrics.composerControlHeight)
-                            if draft.isEmpty {
+                            if draft.isEmpty && !isComposing {
                                 Text(composerPlaceholder)
                                     .foregroundStyle(.tertiary)
                                     .font(.system(size: 15))
