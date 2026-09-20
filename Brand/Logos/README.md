@@ -15,5 +15,7 @@ Each logo family contains PNGs at 1024, 512, 256, 128, 64, and 32 pixels.
   edge-to-edge SakuraCord gradient.
 - `transparent` preserves the native Liquid Glass flower rendering with
   transparent surroundings.
+- `transparent/SakuraCord-Flower-Transparent-Liquid-Badge-72.png` is a 72×72
+  profile-badge export, with the flower centered within a 60×60 artwork area.
 
 The editable source projects live in `App/Packaging`.
