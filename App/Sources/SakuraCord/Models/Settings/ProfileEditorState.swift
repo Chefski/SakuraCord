@@ -52,6 +52,15 @@ final class ProfileEditorState {
     }
 
     var hasChanges: Bool { changes.hasChanges || customStatusChange.isChanged }
+    var canEditName: Bool {
+        guard snapshot != nil else { return false }
+        guard let guildID = scope.guildID else { return true }
+        guard let basis = model.conversationPermissionBasis(for: guildID) else { return false }
+        if basis.guild.isOwnedByCurrentUser == true { return true }
+        guard let permissions = basis.resolvedBasePermissions else { return false }
+        return permissions & (DiscordPermissionBits.administrator | DiscordPermissionBits.changeNickname) != 0
+    }
+
     var isNitro: Bool { snapshot?.widgetEligibility.hasFullNitro == true }
     var canSave: Bool { snapshot != nil && hasChanges && !isSaving && loadingScope == nil && !requiresReload && bio.utf16.count <= 300 && widgetsAreValid }
     var isResolvingScope: Bool { snapshot == nil || (loadingScope != nil && loadingScope != scope) }
@@ -125,7 +134,12 @@ final class ProfileEditorState {
 
     var name: String {
         get { changes.identity.name.applying(to: snapshot?.identity.name ?? .missing).value ?? "" }
-        set { changes.identity.name = textChange(newValue, original: snapshot?.identity.name); fieldErrors["global_name"] = nil; fieldErrors["nick"] = nil }
+        set {
+            guard canEditName else { return }
+            changes.identity.name = textChange(newValue, original: snapshot?.identity.name)
+            fieldErrors["global_name"] = nil
+            fieldErrors["nick"] = nil
+        }
     }
 
     var bio: String {
@@ -390,6 +404,10 @@ final class ProfileEditorState {
 
     private func saveChanges(_ submittedChanges: ProfileEditChanges, statusChange: ProfileChange<ProfileStatusDraft> = .unchanged) async {
         guard let session, model.isCurrentAccountSession(session) else { return }
+        guard !submittedChanges.identity.name.isChanged || canEditName else {
+            errorMessage = "You don’t have permission to change your nickname in this server. Reset your changes to continue."
+            return
+        }
         let requestRevision = revision
         isSaving = true
         errorMessage = nil

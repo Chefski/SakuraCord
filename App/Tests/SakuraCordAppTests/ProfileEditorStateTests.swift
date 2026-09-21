@@ -110,6 +110,7 @@ import Testing
     let provider = ProfileEditorCacheProvider()
     let model = AppModel(launchMode: .offlineTesting, provider: provider)
     await model.start()
+    model.serverRailGuildsByID[GuildID(rawValue: 100)]?.currentUserPermissions = DiscordPermissionBits.changeNickname
     var time = ContinuousClock.now
     let editor = ProfileEditorState(model: model, now: { time })
     let server = ProfileEditingScope.server(GuildID(rawValue: 100))
@@ -156,6 +157,7 @@ func `profile editor uses a preloaded editable baseline without another read`(sc
     let provider = ProfileEditorCacheProvider()
     let model = AppModel(launchMode: .offlineTesting, provider: provider)
     await model.start()
+    model.serverRailGuildsByID[GuildID(rawValue: 100)]?.currentUserPermissions = DiscordPermissionBits.changeNickname
     let editor = ProfileEditorState(model: model)
     if scope != .main { await editor.load() }
     let preloaded = try await provider.profileEditingSnapshot(in: scope)
@@ -508,4 +510,52 @@ private actor ProfileEditorCacheProvider: ChatProvider {
     func toggleReaction(_ emoji: String, messageID: MessageID, channelID: ChannelID) async throws {}
     func eventStream() async -> AsyncStream<ClientEvent> { AsyncStream { $0.finish() } }
     func disconnect() async {}
+}
+
+@MainActor
+@Test func `server nickname editing follows current permissions and rejects revoked drafts`() async throws {
+    let model = AppModel(launchMode: .offlineTesting, provider: MockChatProvider())
+    await model.start()
+    let editor = ProfileEditorState(model: model)
+    await editor.load()
+    #expect(editor.canEditName)
+
+    let guildID = GuildID(rawValue: 100)
+    var guild = try #require(model.serverRailGuildsByID[guildID])
+    guild.isOwnedByCurrentUser = false
+    guild.currentUserPermissions = 0
+    model.serverRailGuildsByID[guildID] = guild
+    await editor.load(.server(guildID))
+    let original = editor.name
+    #expect(!editor.canEditName)
+    editor.name = "Blocked nickname"
+    #expect(editor.name == original)
+    #expect(!editor.hasChanges)
+    editor.bio = "An unrelated profile edit"
+    #expect(editor.canSave)
+    editor.resetDraft()
+
+    // Managing other members' nicknames does not grant the self-change permission.
+    for permissions: UInt64 in [1 << 27, DiscordPermissionBits.changeNickname, DiscordPermissionBits.administrator] {
+        guild.currentUserPermissions = permissions
+        model.serverRailGuildsByID[guildID] = guild
+        #expect(editor.canEditName == (permissions != 1 << 27))
+    }
+    guild.currentUserPermissions = 0
+    guild.isOwnedByCurrentUser = true
+    model.serverRailGuildsByID[guildID] = guild
+    #expect(editor.canEditName)
+    editor.name = "Allowed nickname"
+    #expect(editor.changes.identity.name.isChanged)
+
+    guild.isOwnedByCurrentUser = false
+    model.serverRailGuildsByID[guildID] = guild
+    await editor.save()
+    #expect(editor.errorMessage?.contains("permission") == true)
+    #expect(editor.changes.identity.name.isChanged)
+    #expect(editor.snapshot?.identity.name.value ?? "" == original)
+
+    editor.resetDraft()
+    model.serverRailGuildsByID[guildID] = nil
+    #expect(!editor.canEditName)
 }

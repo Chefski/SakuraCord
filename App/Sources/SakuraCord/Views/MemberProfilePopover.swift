@@ -609,7 +609,7 @@ private struct ProfileIdentitySection: View {
 
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 7) {
-                if let editor {
+                if let editor, editor.canEditName {
                     ProfileInlineTextEditor(
                         label: "Edit Display Name", value: Binding(get: { editor.name }, set: { editor.name = $0 }),
                         placeholder: editor.scope == .main ? username : editor.snapshot?.mainPresentation.displayName ?? username,
@@ -620,6 +620,9 @@ private struct ProfileIdentitySection: View {
                     .id(editor.draftGeneration)
                         .settingsControlAnchor(.profileName)
                     .layoutPriority(1)
+                } else if editor != nil {
+                    styledName
+                        .help("You don’t have permission to change your nickname in this server.")
                 } else { styledName }
                 if isBot {
                     Text("APP")

@@ -27,6 +27,7 @@ nonisolated enum DiscordPermissionBits {
     static let readMessageHistory: UInt64 = 1 << 16
     static let connect: UInt64 = 1 << 20
     static let speak: UInt64 = 1 << 21
+    static let changeNickname: UInt64 = 1 << 26
     static let manageThreads: UInt64 = 1 << 34
     static let useExternalStickers: UInt64 = 1 << 37
     static let sendMessagesInThreads: UInt64 = 1 << 38
