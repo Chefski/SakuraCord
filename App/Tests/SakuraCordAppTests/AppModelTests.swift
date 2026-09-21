@@ -3833,28 +3833,6 @@ private func eventuallyOnMain(_ condition: @escaping @MainActor () -> Bool) asyn
     return condition()
 }
 
-private func waitForVoiceLeaveCount(
-    _ expectedCount: Int,
-    from provider: SuspendedVoiceReplacementProvider
-) async -> Bool {
-    for _ in 0 ..< 500 {
-        if await provider.leaveRequestCount == expectedCount { return true }
-        try? await Task.sleep(for: .milliseconds(10))
-    }
-    return await provider.leaveRequestCount == expectedCount
-}
-
-private func waitForVoiceJoinCount(
-    _ expectedCount: Int,
-    from provider: SuspendedVoiceReplacementProvider
-) async -> Bool {
-    for _ in 0 ..< 500 {
-        if await provider.joinedChannelIDs.count == expectedCount { return true }
-        try? await Task.sleep(for: .milliseconds(10))
-    }
-    return await provider.joinedChannelIDs.count == expectedCount
-}
-
 @MainActor
 private func hiddenMockChannel(
     kind: ChannelKindValue,
@@ -4516,15 +4494,14 @@ func `gateway mutations keep exact indexes after repeated history prepends`(
     model.voiceSessionState = .connected
 
     let firstJoin = Task { await model.joinVoice(channels[1]) }
-    #expect(await waitForVoiceLeaveCount(1, from: provider))
+    await provider.waitUntilLeaveStarts(call: 1)
     let secondJoin = Task { await model.joinVoice(channels[2]) }
-    #expect(await waitForVoiceLeaveCount(2, from: provider))
+    await provider.waitUntilLeaveStarts(call: 2)
 
     await provider.releaseLeave(call: 2)
-    #expect(await waitForVoiceJoinCount(1, from: provider))
+    await secondJoin.value
     await provider.releaseLeave(call: 1)
     await firstJoin.value
-    await secondJoin.value
 
     #expect(model.activeVoiceChannel?.id == channels[2].id)
     #expect(await provider.joinedChannelIDs == [channels[2].id])
@@ -4887,9 +4864,10 @@ private actor SuspendedVoiceReplacementProvider: ChatProvider {
             kind: .directMessage
         ),
     ]
-    private(set) var leaveRequestCount = 0
+    private var leaveRequestCount = 0
     private(set) var joinedChannelIDs: [ChannelID] = []
     private var leaveContinuations: [Int: CheckedContinuation<Void, Never>] = [:]
+    private var leaveStartedContinuations: [Int: CheckedContinuation<Void, Never>] = [:]
 
     func bootstrap() async throws -> BootstrapSnapshot {
         BootstrapSnapshot(
@@ -4967,6 +4945,14 @@ private actor SuspendedVoiceReplacementProvider: ChatProvider {
         let call = leaveRequestCount
         await withCheckedContinuation { continuation in
             leaveContinuations[call] = continuation
+            leaveStartedContinuations.removeValue(forKey: call)?.resume()
+        }
+    }
+
+    func waitUntilLeaveStarts(call: Int) async {
+        guard leaveRequestCount < call else { return }
+        await withCheckedContinuation { continuation in
+            leaveStartedContinuations[call] = continuation
         }
     }
 
