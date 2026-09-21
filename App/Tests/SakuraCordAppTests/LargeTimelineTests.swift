@@ -1657,12 +1657,8 @@ func `fitting exact unread run opens at true bottom and reports newest boundary`
     let model = AppModel(launchMode: .offlineTesting)
     await model.start()
     model.navigate(to: ChannelID(rawValue: 210))
-    let deadline = ContinuousClock.now + .seconds(1)
-    while model.messages.count < 9,
-          ContinuousClock.now < deadline
-    {
-        try await Task.sleep(for: .milliseconds(2))
-    }
+    await model.guildActivationTask?.value
+    await model.channelLoadTask?.value
     let conversationID = try #require(model.selectedChannelID)
     let unreadMessage = try #require(
         model.messages.dropLast(2).last
@@ -1739,12 +1735,8 @@ func `scrolling a tall unread timeline to bottom publishes the read boundary`() 
     let model = AppModel(launchMode: .offlineTesting)
     await model.start()
     model.navigate(to: ChannelID(rawValue: 210))
-    let deadline = ContinuousClock.now + .seconds(1)
-    while model.messages.count < 9,
-          ContinuousClock.now < deadline
-    {
-        try await Task.sleep(for: .milliseconds(2))
-    }
+    await model.guildActivationTask?.value
+    await model.channelLoadTask?.value
     let conversationID = try #require(model.selectedChannelID)
     let unreadMessage = try #require(
         model.messages.dropFirst(4).dropLast(4).first
@@ -1818,12 +1810,8 @@ func `media rich timeline establishes unread context before display and preserve
     let model = AppModel(launchMode: .offlineTesting)
     await model.start()
     model.navigate(to: ChannelID(rawValue: 210))
-    let deadline = ContinuousClock.now + .seconds(1)
-    while model.messages.count < 9,
-          ContinuousClock.now < deadline
-    {
-        try await Task.sleep(for: .milliseconds(2))
-    }
+    await model.guildActivationTask?.value
+    await model.channelLoadTask?.value
     let conversationID = try #require(model.selectedChannelID)
     let targetMessage = try #require(
         model.messages.dropFirst(4).dropLast(4).first
