@@ -249,6 +249,12 @@ nonisolated struct SettingsPreferenceRegistry: Sendable {
             defaultValue: .bool(false)
         ),
         SettingsPreferenceRegistration(
+            id: .removeMediaMetadata,
+            page: .privacySafety,
+            storage: .appWide(key: "settings.privacy.removeMediaMetadata"),
+            defaultValue: .bool(true)
+        ),
+        SettingsPreferenceRegistration(
             id: .anonymiseFileNames,
             page: .privacySafety,
             storage: .appWide(key: PrivacySafetySettingsStore.anonymiseFileNamesKey),
@@ -265,6 +271,22 @@ nonisolated struct SettingsPreferenceRegistry: Sendable {
             page: .general,
             storage: .appWide(key: "emojiSkinTone"),
             defaultValue: .string(NativeEmojiSkinTone.standard.rawValue)
+        ),
+        SettingsPreferenceRegistration(
+            id: .attachmentCompactionPrompt, page: .general,
+            storage: .appWide(key: "settings.attachments.attachmentCompactionPrompt"), defaultValue: .string(AttachmentHandlingPolicy.ask.rawValue)
+        ),
+        SettingsPreferenceRegistration(
+            id: .attachmentExternalUploadPrompt, page: .general,
+            storage: .appWide(key: "settings.attachments.attachmentExternalUploadPrompt"), defaultValue: .string(AttachmentHandlingPolicy.ask.rawValue)
+        ),
+        SettingsPreferenceRegistration(
+            id: .attachmentExternalProvider, page: .general,
+            storage: .appWide(key: "settings.attachments.externalProvider"), defaultValue: .string(ExternalAttachmentHostingService.litterbox.rawValue)
+        ),
+        SettingsPreferenceRegistration(
+            id: .attachmentCompactionQuality, page: .general,
+            storage: .appWide(key: "settings.attachments.attachmentCompactionQuality"), defaultValue: .string(AttachmentCompactionOptions.Quality.balanced.rawValue)
         ),
         SettingsPreferenceRegistration(
             id: .localStorageLimit,

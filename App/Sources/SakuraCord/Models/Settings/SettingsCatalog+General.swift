@@ -74,5 +74,28 @@ nonisolated extension SettingsCatalog {
             help: "Choose the app-wide skin-tone modifier used by the native emoji picker.",
             keywords: ["modifier", "hand", "tone", "emoji"], scope: .appWideLocal
         ),
+        control(
+            .attachmentCompactionPrompt, page: .general, section: .generalAttachments,
+            label: "Compress oversized images and videos",
+            help: "Choose whether to compress oversized images and videos automatically, ask first, or never compress.",
+            keywords: ["attachment", "compression", "compaction", "upload", "file size"], scope: .appWideLocal
+        ),
+        control(
+            .attachmentExternalUploadPrompt, page: .general, section: .generalAttachments,
+            label: "Upload files that still exceed Discord’s limit",
+            help: "Uploads to a third-party host and adds a link to your draft.",
+            keywords: ["attachment", "compression", "compaction", "upload", "file size"], scope: .appWideLocal
+        ),
+        control(
+            .attachmentExternalProvider, page: .general, section: .generalAttachments,
+            label: "File host", help: "Choose the third-party host for automatic oversized uploads.",
+            keywords: ["catbox", "litterbox", "upload"], scope: .appWideLocal
+        ),
+        control(
+            .attachmentCompactionQuality, page: .general, section: .generalAttachments,
+            label: "Compression quality",
+            help: "Choose between higher quality, balanced compression, and smaller files.",
+            keywords: ["attachment", "compression", "compaction", "upload", "file size"], scope: .appWideLocal
+        ),
     ]
 }

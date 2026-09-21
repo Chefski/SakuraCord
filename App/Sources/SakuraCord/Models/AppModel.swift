@@ -89,10 +89,6 @@ final class AppModel {
         var isSending: Bool
     }
 
-    static let messageSendLogger = Logger(
-        subsystem: "dev.sakuracord.SakuraCord",
-        category: "MessageSend"
-    )
     static let unreadDiagnosticsLogger = Logger(
         subsystem: "dev.sakuracord.SakuraCord",
         category: "Unread"
@@ -201,6 +197,7 @@ final class AppModel {
     var appearanceSettings: AppearanceSettingsSnapshot
     var interfaceSettings: InterfaceSettingsSnapshot
     var generalInputSettings: GeneralInputSettingsSnapshot
+    var attachmentSettings: AttachmentSettingsSnapshot
     var accessibilitySettings: AccessibilitySettingsSnapshot
     @ObservationIgnored var messageRowsUpdateHint: MessageRowsUpdateHint?
     @ObservationIgnored let messageRowsUpdateJournal = MessageRowsUpdateJournal()
@@ -1008,6 +1005,7 @@ final class AppModel {
     }
 
     var oversizedAttachmentPrompt: OversizedAttachmentPrompt?
+    var attachmentCompactionPresentation: OversizedAttachmentPrompt?
     var externalAttachmentUploadPresentation: ExternalAttachmentUploadPresentation?
     var showInspector = true
     var errorMessage: String?
@@ -1180,6 +1178,11 @@ final class AppModel {
     @ObservationIgnored var currentUserRoleIDsByGuild: [GuildID: Set<RoleID>] = [:]
     @ObservationIgnored let readAcknowledgementTiming: ReadAcknowledgementTiming
     @ObservationIgnored let externalAttachmentUploader: any ExternalAttachmentUploading
+    @ObservationIgnored let attachmentCompactor: any AttachmentCompacting
+    @ObservationIgnored let attachmentSettingsStore: AttachmentSettingsStore
+    @ObservationIgnored var attachmentCompactionTask: Task<Void, Never>?
+    @ObservationIgnored var attachmentCompactionGeneration: UInt64 = 0
+    @ObservationIgnored let uploadPrivacyPreparation: UploadPrivacyPreparation
     @ObservationIgnored let privacySafetySettingsStore: PrivacySafetySettingsStore
     @ObservationIgnored var queuedOversizedAttachmentPrompts: [OversizedAttachmentPrompt] = []
     @ObservationIgnored var activeAttachmentUploadCount = 0
@@ -1217,7 +1220,10 @@ final class AppModel {
         readAcknowledgementTiming: ReadAcknowledgementTiming = ReadAcknowledgementTiming(),
         runsChatPerformanceBenchmarkOverride: Bool? = nil,
         externalAttachmentUploader: (any ExternalAttachmentUploading)? = nil,
-        privacySafetySettingsStore: PrivacySafetySettingsStore? = nil
+        attachmentCompactor: any AttachmentCompacting = AttachmentCompactor(),
+        attachmentSettingsStore: AttachmentSettingsStore? = nil,
+        privacySafetySettingsStore: PrivacySafetySettingsStore? = nil,
+        uploadPrivacyPreparation: UploadPrivacyPreparation? = nil
     ) {
         self.launchMode = launchMode
         includesOfflineSignIn = launchMode == .offlineTesting && awaitsOfflineSignIn
@@ -1225,6 +1231,10 @@ final class AppModel {
         appearanceSettings = AppearanceSettingsStore.shared.load()
         interfaceSettings = InterfaceSettingsStore.shared.load()
         generalInputSettings = GeneralInputSettingsStore.shared.load()
+        let resolvedAttachmentStore = attachmentSettingsStore ?? .shared
+        self.attachmentSettingsStore = resolvedAttachmentStore
+        attachmentSettings = resolvedAttachmentStore.load()
+        self.attachmentCompactor = attachmentCompactor
         accessibilitySettings = AccessibilitySettingsStore.shared.load()
         self.notificationService =
             notificationService ?? NoopNativeNotificationService()
@@ -1245,7 +1255,12 @@ final class AppModel {
         self.readAcknowledgementTiming = readAcknowledgementTiming
         let resolvedPrivacyStore = privacySafetySettingsStore ?? .shared
         let anonymisesUploadFilenames: @Sendable () async -> Bool = { await resolvedPrivacyStore.load().anonymisesFileNames }
-        self.externalAttachmentUploader = externalAttachmentUploader ?? CatboxAttachmentUploader(anonymisesUploadFilenames: anonymisesUploadFilenames)
+        let uploadPrivacy = uploadPrivacyPreparation ?? UploadPrivacyPreparation(store: resolvedPrivacyStore)
+        self.uploadPrivacyPreparation = uploadPrivacy
+        let prepareUploadFile: @Sendable (URL) async throws -> PreparedUploadFile = { try await uploadPrivacy.prepare($0) }
+        self.externalAttachmentUploader = externalAttachmentUploader ?? CatboxAttachmentUploader(
+            anonymisesUploadFilenames: anonymisesUploadFilenames, prepareUploadFile: prepareUploadFile
+        )
         self.privacySafetySettingsStore = resolvedPrivacyStore
         runsChatPerformanceBenchmark =
             runsChatPerformanceBenchmarkOverride
@@ -1265,48 +1280,32 @@ final class AppModel {
                     && Bundle.main.object(
                         forInfoDictionaryKey: "SakuraCordInsecureDebugCredentialsEnabled"
                     ) as? Bool == true)
-        let defaultCredentialStore: any CredentialStore
-        if launchMode == .offlineTesting {
-            defaultCredentialStore = OfflineCredentialStore()
-        } else if usesInsecureDebugCredentials {
-            defaultCredentialStore = InsecureDebugMigratingCredentialStore()
-        } else {
-            defaultCredentialStore = KeychainCredentialStore()
-        }
-        let resolvedCredentialStore = credentialStore ?? defaultCredentialStore
+        let resolvedCredentialStore = credentialStore ?? Self.defaultCredentialStore(
+            launchMode: launchMode, usesInsecureDebugCredentials: usesInsecureDebugCredentials
+        )
         self.credentialStore = resolvedCredentialStore
         self.savedAccountStore = savedAccountStore ?? UserDefaultsSavedAccountStore.shared
         self.authenticatedProviderFactory =
             authenticatedProviderFactory ?? { handle, installationID in
                 DiscordRESTProvider(
                     credentials: resolvedCredentialStore, handle: handle,
-                    installationID: installationID, anonymisesUploadFilenames: anonymisesUploadFilenames
+                    installationID: installationID, anonymisesUploadFilenames: anonymisesUploadFilenames, prepareUploadFile: prepareUploadFile
                 )
             }
         self.pendingAuthenticatedProviderFactory =
             pendingAuthenticatedProviderFactory ?? { credential, installationID in
                 DiscordRESTProvider(
-                    pendingCredential: credential, installationID: installationID, anonymisesUploadFilenames: anonymisesUploadFilenames
+                    pendingCredential: credential, installationID: installationID, anonymisesUploadFilenames: anonymisesUploadFilenames, prepareUploadFile: prepareUploadFile
                 )
             }
         self.accountDatabaseFactory = accountDatabaseFactory ?? { accountID in
             try? SakuraCordDatabase(accountID: accountID)
         }
         persistsEmojiPreferences = launchMode == .normal
-        let initialEmojiUsageCounts =
-            launchMode == .normal
-                ? UserDefaults.standard.dictionary(forKey: "dev.sakuracord.emoji-usage")
-                as? [String: Int]
-                ?? [:]
-                : [:]
+        let initialEmojiUsageCounts = Self.loadEmojiUsageCounts(persisted: launchMode == .normal)
         emojiUsageCounts = initialEmojiUsageCounts
-        if launchMode == .normal {
-            emojiRecentKeys = Self.loadEmojiRecents(
-                usageCounts: initialEmojiUsageCounts
-            )
-        } else {
-            emojiRecentKeys = []
-        }
+        emojiRecentKeys = launchMode == .normal
+            ? Self.loadEmojiRecents(usageCounts: initialEmojiUsageCounts) : []
         // A normal launch does not know the account yet. Opening the historical
         // account-1 fallback here only to replace it during credential restore
         // duplicates filesystem and SQLite work on every startup.
@@ -1326,6 +1325,22 @@ final class AppModel {
 }
 
 extension AppModel {
+    static let messageSendLogger = Logger(
+        subsystem: "dev.sakuracord.SakuraCord",
+        category: "MessageSend"
+    )
+
+    private static func loadEmojiUsageCounts(persisted: Bool) -> [String: Int] {
+        guard persisted else { return [:] }
+        return UserDefaults.standard.dictionary(forKey: "dev.sakuracord.emoji-usage") as? [String: Int] ?? [:]
+    }
+
+    private static func defaultCredentialStore(launchMode: AppLaunchMode, usesInsecureDebugCredentials: Bool) -> any CredentialStore {
+        if launchMode == .offlineTesting { return OfflineCredentialStore() }
+        if usesInsecureDebugCredentials { return InsecureDebugMigratingCredentialStore() }
+        return KeychainCredentialStore()
+    }
+
     private func refreshSnapshotPresentation(replacing previous: BootstrapSnapshot?) {
         snapshotSourceRevision &+= 1
         currentUser = snapshot?.currentUser

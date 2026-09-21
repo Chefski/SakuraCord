@@ -44,6 +44,15 @@ nonisolated enum SettingsImportValidation {
         case .voiceScreenShareQuality: return ScreenShareQuality(rawValue: raw) != nil
         case .externalLinkProtection: return ExternalLinkConfirmationPolicy(rawValue: raw) != nil
         case .updateReleaseTrack: return AppUpdateReleaseTrack(rawValue: raw) != nil
+        default: return acceptsAttachmentString(raw, id: id)
+        }
+    }
+
+    private static func acceptsAttachmentString(_ raw: String, id: SettingsControlID) -> Bool {
+        switch id {
+        case .attachmentCompactionPrompt, .attachmentExternalUploadPrompt: return AttachmentHandlingPolicy(rawValue: raw) != nil
+        case .attachmentExternalProvider: return ExternalAttachmentHostingService(rawValue: raw) != nil
+        case .attachmentCompactionQuality: return AttachmentCompactionOptions.Quality(rawValue: raw) != nil
         default: return acceptsStructuredString(raw, id: id)
         }
     }

@@ -239,7 +239,7 @@ extension AppModel {
         if localApplicationStreamKey != nil {
             activities.append(.screenShare)
         }
-        if activeAttachmentUploadCount > 0 || externalAttachmentUploadTask != nil {
+        if activeAttachmentUploadCount > 0 || externalAttachmentUploadTask != nil || attachmentCompactionTask != nil {
             activities.append(.upload)
         }
         return activities

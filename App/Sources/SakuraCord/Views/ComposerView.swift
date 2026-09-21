@@ -12,6 +12,7 @@ struct ComposerView: View {
     var conversation: Conversation = .channel
     var onEditMessage: (MessageID) -> Void = { _ in }
     @State private var showFileImporter = false
+    @State private var showPhotosPicker = false
     @State private var showComposerActions = false
     @State private var showPollCreator = false
     @State private var showGIFPicker = false
@@ -77,25 +78,37 @@ struct ComposerView: View {
                         ComposerAttachmentButton(appearance: appearance) {
                             showComposerActions.toggle()
                         }
+                        .disabled(!hasComposerActions)
+                        .opacity(hasComposerActions ? 1 : 0.4)
                         .escapeDismissiblePopover(isPresented: $showComposerActions, arrowEdge: .top) {
                             VStack(alignment: .leading, spacing: 4) {
-                                Button {
-                                    showComposerActions = false
-                                    showFileImporter = true
-                                } label: {
-                                    Label("Upload a File", systemImage: "doc.badge.plus")
-                                        .frame(maxWidth: .infinity, alignment: .leading).padding(8)
+                                if canAddAttachments {
+                                    Button {
+                                        showComposerActions = false
+                                        showFileImporter = true
+                                    } label: {
+                                        Label("Upload a File", systemImage: "doc.badge.plus")
+                                            .frame(maxWidth: .infinity, alignment: .leading).padding(8)
+                                    }
+                                    Button {
+                                        showComposerActions = false
+                                        showPhotosPicker = true
+                                    } label: {
+                                        Label("Select from Photos", systemImage: "photo.on.rectangle")
+                                            .frame(maxWidth: .infinity, alignment: .leading).padding(8)
+                                    }
                                 }
-                                Button {
-                                    showComposerActions = false
-                                    showPollCreator = true
-                                } label: {
-                                    Label("Create a Poll", systemImage: "chart.bar.xaxis")
-                                        .frame(maxWidth: .infinity, alignment: .leading).padding(8)
+                                if canCreatePoll {
+                                    Button {
+                                        showComposerActions = false
+                                        showPollCreator = true
+                                    } label: {
+                                        Label("Create a Poll", systemImage: "chart.bar.xaxis")
+                                            .frame(maxWidth: .infinity, alignment: .leading).padding(8)
+                                    }
                                 }
-                                .disabled(activeConversationID.map { !model.canCreatePoll(in: $0) } ?? true)
                             }
-                            .buttonStyle(.plain).padding(6).frame(width: 200)
+                            .buttonStyle(PopoverRowButtonStyle()).padding(6).frame(width: 200)
                         }
                     }
                 }
@@ -285,28 +298,35 @@ struct ComposerView: View {
                 PollCreationView(model: model, channelID: channelID)
             }
         }
+        .modifier(ComposerPhotosPicker(
+            model: model,
+            destination: conversation,
+            isPresented: $showPhotosPicker
+        ))
         .fileImporter(
             isPresented: $showFileImporter,
             allowedContentTypes: [.item],
             allowsMultipleSelection: !hasActiveCommand
         ) { result in
             guard case let .success(urls) = result else { return }
-            if hasActiveCommand,
-               let option = model.commandComposer.focusedOption, option.type == .attachment,
-               let url = urls.first, !model.attachmentURLsWithinDiscordLimit([url]).isEmpty
-            {
-                model.commandComposer.setValue(
-                    .attachment(url), displayText: url.lastPathComponent, for: option
-                )
-                focusNextCommandField()
-            } else if !hasActiveCommand {
-                model.addComposerAttachments(urls, to: conversation)
+            Task {
+                if hasActiveCommand,
+                   let option = model.commandComposer.focusedOption, option.type == .attachment,
+                   let url = urls.first, !(await model.attachmentURLsWithinDiscordLimit([url])).isEmpty
+                {
+                    model.commandComposer.setValue(
+                        .attachment(url), displayText: url.lastPathComponent, for: option
+                    )
+                    focusNextCommandField()
+                } else if !hasActiveCommand {
+                    await model.addComposerAttachments(urls, to: conversation)
+                }
             }
         }
         .composerShortcutCommands(
             conversation: conversation,
             focus: { isFocused = true },
-            chooseAttachment: { if !hasActiveCommand { showFileImporter = true } },
+            chooseAttachment: { if canAddAttachments { showFileImporter = true } },
             togglePicker: { action in
                 guard !hasActiveCommand else { return }
                 switch action {
@@ -317,6 +337,9 @@ struct ComposerView: View {
                 }
             }
         )
+        .onChange(of: hasComposerActions) { _, available in
+            if !available { showComposerActions = false }
+        }
         .onChange(of: showEmojiPicker) { wasPresented, isPresented in
             if wasPresented, !isPresented {
                 emojiPickerDismissedAt = ProcessInfo.processInfo.systemUptime
@@ -627,14 +650,12 @@ struct ComposerView: View {
     ) -> Bool {
         guard !urls.isEmpty else { return false }
         if !isInstant {
-            return model.addComposerAttachments(urls, to: conversation)
+            Task { await model.addComposerAttachments(urls, to: conversation) }
+            return true
         }
-        let acceptedURLs = model.attachmentURLsWithinDiscordLimit(
-            urls,
-            offeringExternalUploadFor: conversation
-        )
-        guard !acceptedURLs.isEmpty else { return true }
         Task {
+            let acceptedURLs = await model.attachmentURLsWithinDiscordLimit(urls, offeringExternalUploadFor: conversation)
+            guard !acceptedURLs.isEmpty else { return }
             let scopedURLs = acceptedURLs.filter {
                 $0.startAccessingSecurityScopedResource()
             }
@@ -1085,6 +1106,19 @@ struct ComposerView: View {
 
     private var hasActiveCommand: Bool {
         conversation == .channel && model.commandComposer.activeCommand != nil
+    }
+
+    private var canAddAttachments: Bool {
+        model.isComposerDropEligible(conversation)
+            && attachments.count < SendMessageDraft.maximumAttachmentCount
+    }
+
+    private var canCreatePoll: Bool {
+        activeConversationID.map { model.canCreatePoll(in: $0) } ?? false
+    }
+
+    private var hasComposerActions: Bool {
+        canAddAttachments || canCreatePoll
     }
 
     private var composerPlaceholder: String {

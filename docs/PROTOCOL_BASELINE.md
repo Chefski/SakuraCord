@@ -733,11 +733,46 @@ the separately audited `/gifs/select` notification above. A message-picker open 
 read and the shared settings read only. Search and trending each create one
 GET, and each favourite action creates one non-retried PATCH.
 
+### Upload metadata privacy
+
+The enabled-by-default Privacy setting **Remove metadata from images and videos**
+prepares local media copies before Discord attachment/widget reservations and
+before Catbox/Litterbox multipart construction. Reservation sizes use the prepared
+bytes. Attachment selection warns when sanitation fails, offering Attach Anyway
+or Cancel. Approval covers that file’s exact bytes, verified by SHA-256; uploads
+use a stable private copy. Changing the file or resetting the account invalidates
+approval. A later failure or changed file is confirmed again before uploading. Disabling the setting bypasses this
+preparation. Compaction remains independent and may itself discard metadata.
+
+Discord publicly documents EXIF removal in its
+[image pipeline](https://discord.com/blog/modern-image-formats-at-discord-supporting-webp-and-avif).
+The first-party client and backend both participate in tested image paths, as
+reported in the [2025 forensic study](https://artsandmedia.ucdenver.edu/docs/librariesprovider27/alma-mater/nash_thesis_fall2025.pdf)
+(pp. 42–44). This establishes the EXIF privacy behavior, not a guarantee for every
+Discord client, file type or external host. SakuraCord deliberately sanitizes
+locally unless the user explicitly approves uploading the original.
+
+JPEG uses ImageIO's lossless metadata rewrite; PNG/APNG, GIF, WebP and HEIF/AVIF
+use container edits because native copying retains some metadata or is unsupported.
+HEIF EXIF/XMP item extents are overwritten, including old private bytes, without
+moving image extents. Container-level XMP UUID/XML boxes and padding are cleared
+in place; unrecognized container boxes and duplicate metadata roots fail closed.
+TIFF rebuilds from full-depth pixels because native metadata
+copying leaves unreferenced private bytes. Orientation and colour profiles remain.
+AVFoundation passthrough movie export preserves video/audio/subtitle track groups,
+languages and playback defaults, with empty movie and track metadata and the
+sharing metadata filter; timed metadata tracks are omitted. Unsupported/corrupt
+media require explicit approval to upload unchanged. Documents, archives and
+standalone audio are outside this image/video policy. This is tested with synthetic
+GPS/author metadata and intercepted upload requests, without live uploads.
+
 ### Attachment selection and external-host fallback
 
 Before an attachment enters a composer, SakuraCord applies Discord's current
 per-file account cap using binary byte counts: 20 MiB for a base account,
-50 MiB for Nitro Basic or legacy Nitro Classic, and 500 MiB for Nitro. A file
+50 MiB for Nitro Basic or legacy Nitro Classic, and 500 MiB for Nitro. Selection
+uses the privacy-prepared copy's byte count, while retaining the original file
+for the draft and any compaction or external-host fallback. A prepared file
 at the exact boundary is accepted. A larger file is rejected during selection,
 before `/channels/{channel}/attachments` can be reserved; the provider repeats
 the check as a fail-closed guard.
@@ -770,8 +805,11 @@ user-selected third-party actions:
 | `POST https://litterbox.catbox.moe/resources/internals/api.php` | At most 1,000,000,000 bytes (advertised as 1 GB); anonymous multipart `reqtype=fileupload`, `time=24h`, and `fileToUpload`. | Accept only an HTTPS `litter.catbox.moe` response; the file expires after 24 hours. |
 
 These requests never carry a Discord credential, cookie, message body, or
-Discord client metadata. Nothing is uploaded until the user chooses a named
-host in the size warning. Success adds the returned URL to the same draft for
+Discord client metadata. Upload requires a named host choice in the size warning
+or the user’s saved Automatically policy and selected external provider in General
+settings. Ask remains the default; Never skips external uploads. Local compaction
+is attempted first according to its separate policy, only for oversized files.
+Success adds the returned URL to the same draft for
 review; it never sends a Discord message. Cancellation or failure performs no
 Discord mutation. Catbox's documented blocked executable and document
 extensions are rejected locally. The implementation was cross-checked against

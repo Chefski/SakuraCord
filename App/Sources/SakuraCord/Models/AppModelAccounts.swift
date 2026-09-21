@@ -488,10 +488,15 @@ extension AppModel {
         isLoadingGIFPicker = false
         gifFavoriteMutationURL = nil
         gifErrorMessage = nil
+        attachmentCompactionGeneration &+= 1
+        attachmentCompactionTask?.cancel()
+        attachmentCompactionTask = nil
+        attachmentCompactionPresentation = nil
         externalAttachmentUploadGeneration &+= 1
         externalAttachmentUploadTask?.cancel()
         externalAttachmentUploadTask = nil
         externalAttachmentUploadPresentation = nil
+        uploadPrivacyPreparation.reset()
         releaseAllOwnedPromisedFiles()
         oversizedAttachmentPrompt = nil
         queuedOversizedAttachmentPrompts.removeAll()

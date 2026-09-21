@@ -65,17 +65,21 @@ import Testing
 
     var value = store.load()
     #expect(value == .defaults)
+    #expect(value.removesMediaMetadata)
+    value.removesMediaMetadata = false
     value.anonymisesFileNames = true
     value.externalLinkConfirmationPolicy = .allLinks
     value.trustedDomains = ["Example.COM", "sub.example.com", "example.com"]
     store.save(value)
     let reloaded = store.load()
+    #expect(!reloaded.removesMediaMetadata)
     #expect(reloaded.anonymisesFileNames)
     #expect(reloaded.externalLinkConfirmationPolicy == .allLinks)
     #expect(reloaded.trustedDomains == ["example.com", "sub.example.com"])
 
     let export = preferences.export(scope: .appWide, page: .privacySafety)
     #expect(export.values == [
+        SettingsControlID.removeMediaMetadata.rawValue: .bool(false),
         SettingsControlID.anonymiseFileNames.rawValue: .bool(true),
         SettingsControlID.privacyTypingIndicators.rawValue: .bool(true),
         SettingsControlID.externalLinkProtection.rawValue: .string("allLinks"),
@@ -170,7 +174,7 @@ import Testing
 @MainActor
 @Test func `Privacy catalog exposes one searchable control for every behavior`() {
     let expected: Set<SettingsControlID> = [
-        .privacyTypingIndicators, .anonymiseFileNames,
+        .privacyTypingIndicators, .anonymiseFileNames, .removeMediaMetadata,
         .externalLinkProtection, .trustedDomains,
         .clearLocalActivity,
     ]
@@ -184,6 +188,7 @@ import Testing
         ("phishing", SettingsControlID.externalLinkProtection),
         ("allow list", .trustedDomains),
         ("randomise", .anonymiseFileNames),
+        ("GPS", .removeMediaMetadata),
         ("forward history", .clearLocalActivity),
         ("recent emoji", .clearLocalActivity),
     ] {

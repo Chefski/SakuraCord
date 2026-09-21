@@ -6,6 +6,63 @@ import libwebp
 @testable import MediaPipeline
 
 struct ProfileImageProcessingTests {
+    @Test
+    func attachmentCompactionRejectsUnsupportedFiles() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let outputDirectory = directory.appendingPathComponent("output")
+        try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = directory.appendingPathComponent("notes.bin")
+        let original = Data(repeating: 42, count: 1_000_000)
+        try original.write(to: source)
+        await #expect(throws: AttachmentCompactionError.self) {
+            try await AttachmentCompactor().compact(source, in: outputDirectory, options: .init())
+        }
+        #expect(try FileManager.default.contentsOfDirectory(atPath: outputDirectory.path).isEmpty)
+        #expect(try Data(contentsOf: source) == original)
+    }
+
+    @Test(arguments: [UTType.heic, .png, .gif])
+    func attachmentPhotosConvertStillImagesAndPreserveAnimation(type: UTType) throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let outputDirectory = directory.appendingPathComponent("output")
+        try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let inputURL = directory.appendingPathComponent("photo").appendingPathExtension(try #require(type.preferredFilenameExtension))
+        let context = try #require(CGContext(
+            data: nil, width: 3200, height: 1600, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: (type == .png ? CGImageAlphaInfo.premultipliedLast : .noneSkipLast).rawValue
+        ))
+        context.setFillColor(CGColor(red: 1, green: 0, blue: 0, alpha: type == .png ? 0.5 : 1))
+        context.fill(CGRect(x: 0, y: 0, width: 3200, height: 1600))
+        let frame = try #require(context.makeImage())
+        let count = type == .gif ? 2 : 1
+        let encoder = try #require(CGImageDestinationCreateWithURL(inputURL as CFURL, type.identifier as CFString, count, nil))
+        for _ in 0 ..< count {
+            CGImageDestinationAddImage(encoder, frame, [
+                kCGImagePropertyOrientation: type == .heic ? 6 : 1,
+                kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 0.1]
+            ] as CFDictionary)
+        }
+        #expect(CGImageDestinationFinalize(encoder))
+
+        let outputURL = try AttachmentPhotoProcessor.prepare(inputURL, in: outputDirectory, options: .init())
+        if type == .gif {
+            #expect(try Data(contentsOf: outputURL) == Data(contentsOf: inputURL))
+            return
+        }
+        #expect(outputURL.pathExtension == (type == .png ? "png" : "jpg"))
+        let source = try #require(CGImageSourceCreateWithURL(outputURL as CFURL, nil))
+        let image = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        #expect(image.width == (type == .heic ? 1280 : 2560))
+        #expect(image.height == (type == .heic ? 2560 : 1280))
+        if type == .png {
+            let colors = try pixels(image)
+            #expect((120 ... 136).contains(Int(colors[3])))
+        }
+    }
+
     @Test func cameraOrientationIsAppliedBeforeUserCrop() throws {
         let fixture = try animation()
         let source = try #require(CGImageSourceCreateWithData(fixture as CFData, nil))

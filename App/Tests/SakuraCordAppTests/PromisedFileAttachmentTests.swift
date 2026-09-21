@@ -1,7 +1,38 @@
 import DiscordProtocol
 import Foundation
+import SakuraCordModels
 @testable import SakuraCord
 import Testing
+
+@MainActor
+@Test(arguments: [false, true], [MessageComposerDestination.channel, .thread])
+func composerAttachmentPermission(canAttach: Bool, destination: MessageComposerDestination) async throws {
+    let model = AppModel(launchMode: .offlineTesting, provider: MockChatProvider())
+    await model.start()
+    var channel = try #require(model.selectedChannel)
+    let user = try #require(model.currentUser)
+    channel.permissionOverwrites = [ChannelPermissionOverwrite(
+        id: user.id.description,
+        type: 1,
+        deny: canAttach ? 0 : DiscordPermissionBits.attachFiles
+    )]
+    model.selectedChannel = channel
+    model.openThread = MessageThreadSummary(
+        id: ChannelID(rawValue: 999), guildID: channel.guildID,
+        parentID: channel.id, name: "Attachment permissions"
+    )
+    let directory = try ComposerPromisedFileStorage.makeReceivingDirectory()
+    let file = directory.appendingPathComponent("photo.txt")
+    try Data("fixture".utf8).write(to: file)
+    defer { ComposerPromisedFileStorage.removeDirectory(directory) }
+
+    #expect(model.isComposerDropEligible(destination) == canAttach)
+    #expect(await model.addPromisedComposerAttachments(
+        ComposerPromisedFileBatch(directory: directory, urls: [file]), to: destination
+    ) == canAttach)
+    #expect(model.composerAttachments(for: destination).count == (canAttach ? 1 : 0))
+    #expect(FileManager.default.fileExists(atPath: file.path) == canAttach)
+}
 
 @MainActor
 @Test func `failed promised file batch removes its receiving directory`() throws {
@@ -47,8 +78,8 @@ import Testing
     let ordinaryFile = ordinaryDirectory.appendingPathComponent("ordinary.bin")
     try Data("ordinary".utf8).write(to: ordinaryFile)
 
-    #expect(model.addPromisedComposerAttachments(batch, to: .channel))
-    #expect(model.addComposerAttachments([ordinaryFile], to: .channel))
+    #expect(await model.addPromisedComposerAttachments(batch, to: .channel))
+    #expect(await model.addComposerAttachments([ordinaryFile], to: .channel))
     let promisedAttachment = try #require(
         model.channelComposerAttachments.first { $0.url == promisedFile }
     )
@@ -79,7 +110,7 @@ import Testing
     try FileManager.default.createSymbolicLink(at: symlink, withDestinationURL: target)
     let batch = ComposerPromisedFileBatch(directory: directory, urls: [symlink])
 
-    #expect(model.addPromisedComposerAttachments(batch, to: .channel) == false)
+    #expect(await model.addPromisedComposerAttachments(batch, to: .channel) == false)
 
     #expect(!FileManager.default.fileExists(atPath: directory.path))
     #expect(FileManager.default.fileExists(atPath: target.path))

@@ -2,6 +2,7 @@ import Foundation
 import SakuraCordModels
 
 struct OversizedAttachmentPrompt: Identifiable {
+    enum Stage { case compaction, externalUpload }
     let id = UUID()
     let fileURL: URL
     let fileSize: Int64
@@ -9,6 +10,14 @@ struct OversizedAttachmentPrompt: Identifiable {
     let premiumType: Int
     let destination: MessageComposerDestination
     let channelID: ChannelID
+    var stage: Stage = .externalUpload
+    var compactionOutcome: String?
+
+    func externalUpload(after outcome: String? = nil) -> Self {
+        Self(fileURL: fileURL, fileSize: fileSize, discordLimit: discordLimit,
+             premiumType: premiumType, destination: destination, channelID: channelID,
+             stage: .externalUpload, compactionOutcome: outcome)
+    }
 
     var availableServices: [ExternalAttachmentHostingService] {
         ExternalAttachmentHostingService.allCases.filter {
@@ -32,15 +41,28 @@ extension AppModel {
     func attachmentURLsWithinDiscordLimit(
         _ urls: [URL],
         offeringExternalUploadFor destination: MessageComposerDestination? = nil
-    ) -> [URL] {
+    ) async -> [URL] {
         guard !urls.isEmpty else { return [] }
+        let generation = accountSessionGeneration
+        let channelID = destination.flatMap { conversationChannelID(for: $0) } ?? selectedChannelID
+        let checkedFiles: [UploadPrivacyPreparation.CheckedFile]
+        do {
+            checkedFiles = try await uploadPrivacyPreparation.checkSelection(urls)
+        } catch {
+            errorMessage = error.localizedDescription
+            return []
+        }
+        guard generation == accountSessionGeneration,
+              (destination.flatMap { conversationChannelID(for: $0) } ?? selectedChannelID) == channelID,
+              !Task.isCancelled else { return [] }
         let premiumType = snapshot?.currentUser.premiumType ?? 0
         let limit = DiscordAttachmentUploadPolicy.maximumFileSize(premiumType: premiumType)
         var accepted: [URL] = []
         var oversized: [(URL, Int64)] = []
 
-        for url in urls {
-            guard let size = attachmentFileSize(at: url) else {
+        for file in checkedFiles {
+            let url = file.url
+            guard let size = file.uploadSize else {
                 // Preserve the existing error path for unreadable or disappearing files.
                 accepted.append(url)
                 continue
@@ -67,7 +89,8 @@ extension AppModel {
                         discordLimit: limit,
                         premiumType: premiumType,
                         destination: destination,
-                        channelID: channelID
+                        channelID: channelID,
+                        stage: .compaction
                     )
                 )
             }
@@ -84,6 +107,10 @@ extension AppModel {
     func dismissOversizedAttachmentPrompt(id expectedID: UUID? = nil) {
         guard let prompt = oversizedAttachmentPrompt else { return }
         if let expectedID, prompt.id != expectedID { return }
+        if prompt.stage == .compaction {
+            skipAttachmentCompaction(prompt)
+            return
+        }
         oversizedAttachmentPrompt = nil
         presentNextOversizedAttachmentPrompt()
         pruneOwnedPromisedAttachmentFiles()
@@ -93,7 +120,9 @@ extension AppModel {
         _ prompt: OversizedAttachmentPrompt,
         using service: ExternalAttachmentHostingService
     ) {
-        guard prompt.availableServices.contains(service),
+        guard prompt.stage == .externalUpload,
+              prompt.availableServices.contains(service),
+              isComposerDropEligible(prompt.destination),
               conversationChannelID(for: prompt.destination) == prompt.channelID
         else { return }
 
@@ -127,6 +156,7 @@ extension AppModel {
                     using: service
                 )
                 try Task.checkCancellation()
+                guard externalAttachmentUploadGeneration == generation else { return }
                 guard conversationChannelID(for: prompt.destination) == prompt.channelID else {
                     throw ExternalAttachmentUploadError.conversationChanged(link)
                 }
@@ -206,6 +236,12 @@ extension AppModel {
                 oversizedAttachmentPrompt.fileURL.standardizedFileURL
             )
         }
+        if let source = attachmentCompactionPresentation?.fileURL {
+            retainedFileURLs.insert(source.standardizedFileURL)
+        }
+        if let source = externalAttachmentUploadFileURL {
+            retainedFileURLs.insert(source.standardizedFileURL)
+        }
         retainedFileURLs.formUnion(
             composer.outbox.draftsByNonce.values.lazy
                 .flatMap(\.attachmentURLs)
@@ -241,6 +277,7 @@ extension AppModel {
             fileSize: prompt.fileSize,
             limit: prompt.discordLimit
         )
+        if let outcome = prompt.compactionOutcome { message += "\n\n" + outcome }
         if prompt.availableServices.contains(.catbox) {
             message += "\n\nCatbox is a third-party host and keeps uploads permanently."
         }
@@ -255,7 +292,7 @@ extension AppModel {
         return message
     }
 
-    private func attachmentFileSize(at url: URL) -> Int64? {
+    func attachmentFileSize(at url: URL) -> Int64? {
         let accessed = url.startAccessingSecurityScopedResource()
         defer {
             if accessed { url.stopAccessingSecurityScopedResource() }
@@ -265,24 +302,21 @@ extension AppModel {
     }
 
     private func enqueueOversizedAttachmentPrompt(_ prompt: OversizedAttachmentPrompt) {
-        if oversizedAttachmentPrompt == nil,
-           externalAttachmentUploadPresentation == nil
-        {
-            oversizedAttachmentPrompt = prompt
-        } else {
-            queuedOversizedAttachmentPrompts.append(prompt)
-        }
+        queuedOversizedAttachmentPrompts.append(prompt)
+        presentNextOversizedAttachmentPrompt()
     }
 
-    private func presentNextOversizedAttachmentPrompt() {
+    func presentNextOversizedAttachmentPrompt() {
         guard oversizedAttachmentPrompt == nil,
               externalAttachmentUploadPresentation == nil,
+              attachmentCompactionPresentation == nil,
               !queuedOversizedAttachmentPrompts.isEmpty
         else { return }
-        oversizedAttachmentPrompt = queuedOversizedAttachmentPrompts.removeFirst()
+        let prompt = queuedOversizedAttachmentPrompts.removeFirst()
+        routeOversizedAttachment(prompt)
     }
 
-    private func conversationChannelID(
+    func conversationChannelID(
         for destination: MessageComposerDestination
     ) -> ChannelID? {
         switch destination {

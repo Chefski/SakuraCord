@@ -382,7 +382,8 @@ private struct ChatRootView: View {
                     sendDroppedAttachmentsImmediately(urls, to: destination)
                     return !urls.isEmpty
                 }
-                return model.addComposerAttachments(urls, to: destination)
+                Task { await model.addComposerAttachments(urls, to: destination) }
+                return !urls.isEmpty
             },
             isTargeted: { targeted in
                 isFileDropTargeted = targeted
@@ -432,43 +433,27 @@ private struct ChatRootView: View {
                 accountActivated: { showAccountSwitcher = false }
             )
         }
-        .alert(
-            "File Too Large",
-            isPresented: oversizedAttachmentPromptIsPresented,
-            presenting: model.oversizedAttachmentPrompt
-        ) { prompt in
-            if prompt.availableServices.contains(.catbox) {
-                Button("Upload to Catbox (Permanent)") {
-                    model.uploadOversizedAttachment(prompt, using: .catbox)
-                }
-            }
-            if prompt.availableServices.contains(.litterbox) {
-                Button("Upload to Litterbox (24 Hours)") {
-                    model.uploadOversizedAttachment(prompt, using: .litterbox)
-                }
-            }
-            Button("Cancel", role: .cancel) {
-                model.dismissOversizedAttachmentPrompt(id: prompt.id)
-            }
-        } message: { prompt in
-            Text(model.oversizedAttachmentMessage(prompt))
+        .background {
+            AttachmentPromptPresenter(model: model)
         }
         .overlay {
-            if let upload = model.externalAttachmentUploadPresentation {
+            if model.externalAttachmentUploadPresentation != nil || model.attachmentCompactionPresentation != nil {
+                let upload = model.externalAttachmentUploadPresentation
+                let compaction = model.attachmentCompactionPresentation
                 ZStack {
                     Color.black.opacity(0.28)
                         .ignoresSafeArea()
                     VStack(spacing: 14) {
                         ProgressView()
                             .controlSize(.large)
-                        Text("Uploading to \(upload.service.displayName)…")
+                        Text(upload.map { "Uploading to \($0.service.displayName)…" } ?? "Compressing file…")
                             .font(.headline)
-                        Text(upload.fileName)
+                        Text(upload?.fileName ?? compaction?.fileURL.lastPathComponent ?? "")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                         Button("Cancel", role: .cancel) {
-                            model.cancelExternalAttachmentUpload()
+                            if compaction != nil { model.cancelAttachmentCompaction() } else { model.cancelExternalAttachmentUpload() }
                         }
                     }
                     .padding(24)
@@ -511,18 +496,6 @@ private struct ChatRootView: View {
                 try? await Task.sleep(for: .milliseconds(50))
             }
         }
-    }
-
-    private var oversizedAttachmentPromptIsPresented: Binding<Bool> {
-        let presentedID = model.oversizedAttachmentPrompt?.id
-        return Binding(
-            get: { model.oversizedAttachmentPrompt != nil },
-            set: { isPresented in
-                if !isPresented {
-                    model.dismissOversizedAttachmentPrompt(id: presentedID)
-                }
-            }
-        )
     }
 
     @ToolbarContentBuilder
@@ -782,10 +755,7 @@ private struct ChatRootView: View {
                             to: destination
                         )
                     } else {
-                        model.addPromisedComposerAttachments(
-                            batch,
-                            to: destination
-                        )
+                        Task { await model.addPromisedComposerAttachments(batch, to: destination) }
                     }
                 }
             )
@@ -843,12 +813,9 @@ private struct ChatRootView: View {
         _ urls: [URL],
         to destination: MessageComposerDestination
     ) {
-        let acceptedURLs = model.attachmentURLsWithinDiscordLimit(
-            urls,
-            offeringExternalUploadFor: destination
-        )
-        guard !acceptedURLs.isEmpty else { return }
         Task {
+            let acceptedURLs = await model.attachmentURLsWithinDiscordLimit(urls, offeringExternalUploadFor: destination)
+            guard !acceptedURLs.isEmpty else { return }
             let scopedURLs = acceptedURLs.filter { $0.startAccessingSecurityScopedResource() }
             defer {
                 for url in scopedURLs {
@@ -866,12 +833,9 @@ private struct ChatRootView: View {
         _ batch: ComposerPromisedFileBatch,
         to destination: MessageComposerDestination
     ) {
-        let acceptedURLs = model.preparePromisedAttachmentsForImmediateSend(
-            batch,
-            to: destination
-        )
-        guard !acceptedURLs.isEmpty else { return }
         Task {
+            let acceptedURLs = await model.preparePromisedAttachmentsForImmediateSend(batch, to: destination)
+            guard !acceptedURLs.isEmpty else { return }
             defer { model.endUsingOwnedPromisedFiles(acceptedURLs) }
             await model.sendAttachmentsImmediately(
                 acceptedURLs.map { ForumPostAttachment(url: $0) },

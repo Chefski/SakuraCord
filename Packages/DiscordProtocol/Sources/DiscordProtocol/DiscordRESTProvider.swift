@@ -21,6 +21,7 @@ nonisolated struct AttachmentUploadFile: Equatable, Sendable {
 }
 
 public actor DiscordRESTProvider: PendingCredentialChatProvider {
+    let prepareUploadFile: @Sendable (URL) async throws -> PreparedUploadFile
     let anonymisesUploadFilenames: @Sendable () async -> Bool
     struct RESTRateLimitBucketKey: Hashable, Sendable {
         let identifier: String
@@ -342,7 +343,8 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
         apiDiagnostics: DiscordAPIDiagnosticStore = .shared,
         usesEmojiDiskCache: Bool = true,
         usesForwardSearchPeopleDiskCache: Bool? = nil,
-        anonymisesUploadFilenames: @escaping @Sendable () async -> Bool = { false }
+        anonymisesUploadFilenames: @escaping @Sendable () async -> Bool = { false },
+        prepareUploadFile: @escaping @Sendable (URL) async throws -> PreparedUploadFile = { PreparedUploadFile(url: $0) }
     ) {
         let defaultRESTConfiguration = URLSessionConfiguration.default
         let resolvedSession = session ?? URLSession(
@@ -363,6 +365,7 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
         )
         self.apiDiagnostics = apiDiagnostics
         self.anonymisesUploadFilenames = anonymisesUploadFilenames
+        self.prepareUploadFile = prepareUploadFile
         self.usesEmojiDiskCache = usesEmojiDiskCache
         self.usesForwardSearchPeopleDiskCache =
             usesForwardSearchPeopleDiskCache ?? (session == nil)
@@ -376,7 +379,8 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
         apiDiagnostics: DiscordAPIDiagnosticStore = .shared,
         usesEmojiDiskCache: Bool = true,
         usesForwardSearchPeopleDiskCache: Bool? = nil,
-        anonymisesUploadFilenames: @escaping @Sendable () async -> Bool = { false }
+        anonymisesUploadFilenames: @escaping @Sendable () async -> Bool = { false },
+        prepareUploadFile: @escaping @Sendable (URL) async throws -> PreparedUploadFile = { PreparedUploadFile(url: $0) }
     ) {
         let defaultRESTConfiguration = URLSessionConfiguration.default
         let resolvedSession = session ?? URLSession(
@@ -397,6 +401,7 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
         )
         self.apiDiagnostics = apiDiagnostics
         self.anonymisesUploadFilenames = anonymisesUploadFilenames
+        self.prepareUploadFile = prepareUploadFile
         self.usesEmojiDiskCache = usesEmojiDiskCache
         self.usesForwardSearchPeopleDiskCache =
             usesForwardSearchPeopleDiskCache ?? (session == nil)
@@ -416,7 +421,8 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
         apiDiagnostics: DiscordAPIDiagnosticStore = .shared,
         usesEmojiDiskCache: Bool = true,
         ownsRESTSession: Bool = false,
-        anonymisesUploadFilenames: @escaping @Sendable () async -> Bool = { false }
+        anonymisesUploadFilenames: @escaping @Sendable () async -> Bool = { false },
+        prepareUploadFile: @escaping @Sendable (URL) async throws -> PreparedUploadFile = { PreparedUploadFile(url: $0) }
     ) {
         credentialSource = .stored(credentials, handle)
         accountID = handle.accountID
@@ -430,6 +436,7 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
         clientMetadata = DiscordClientMetadata(installationID: installationID)
         self.apiDiagnostics = apiDiagnostics
         self.anonymisesUploadFilenames = anonymisesUploadFilenames
+        self.prepareUploadFile = prepareUploadFile
         self.usesEmojiDiskCache = usesEmojiDiskCache
         usesForwardSearchPeopleDiskCache = false
         persistsResolvedInstallationID = false
@@ -447,7 +454,8 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
         apiDiagnostics: DiscordAPIDiagnosticStore = .shared,
         usesEmojiDiskCache: Bool = true,
         ownsRESTSession: Bool = false,
-        anonymisesUploadFilenames: @escaping @Sendable () async -> Bool = { false }
+        anonymisesUploadFilenames: @escaping @Sendable () async -> Bool = { false },
+        prepareUploadFile: @escaping @Sendable (URL) async throws -> PreparedUploadFile = { PreparedUploadFile(url: $0) }
     ) {
         credentialSource = .pending(pendingCredential)
         accountID = nil
@@ -461,6 +469,7 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
         clientMetadata = DiscordClientMetadata(installationID: installationID)
         self.apiDiagnostics = apiDiagnostics
         self.anonymisesUploadFilenames = anonymisesUploadFilenames
+        self.prepareUploadFile = prepareUploadFile
         self.usesEmojiDiskCache = usesEmojiDiskCache
         usesForwardSearchPeopleDiskCache = false
         persistsResolvedInstallationID = false

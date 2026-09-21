@@ -76,7 +76,7 @@ nonisolated enum ComposerLatestMessageEditingPolicy {
 
 extension ComposerView {
     func addPastedAttachments(_ urls: [URL]) {
-        model.addComposerAttachments(urls, to: conversation)
+        Task { await model.addComposerAttachments(urls, to: conversation) }
     }
 
     func editLatestMessage() -> Bool {

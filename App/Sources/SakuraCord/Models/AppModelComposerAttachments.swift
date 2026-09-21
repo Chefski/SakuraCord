@@ -12,6 +12,9 @@ extension AppModel {
     }
 
     func isComposerDropEligible(_ destination: MessageComposerDestination) -> Bool {
+        guard let permissions = selectedEffectivePermissions,
+              permissions & DiscordPermissionBits.attachFiles != 0
+        else { return false }
         switch destination {
         case .channel:
             guard commandComposer.activeCommand == nil,
@@ -28,9 +31,11 @@ extension AppModel {
     func addPromisedComposerAttachments(
         _ batch: ComposerPromisedFileBatch,
         to destination: MessageComposerDestination
-    ) -> Bool {
+    ) async -> Bool {
         let adoptedURLs = adoptPromisedFileBatch(batch)
-        let didHandle = addComposerAttachments(adoptedURLs, to: destination)
+        beginUsingOwnedPromisedFiles(adoptedURLs)
+        defer { endUsingOwnedPromisedFiles(adoptedURLs) }
+        let didHandle = await addComposerAttachments(adoptedURLs, to: destination)
         pruneOwnedPromisedAttachmentFiles()
         return didHandle
     }
@@ -38,13 +43,14 @@ extension AppModel {
     func preparePromisedAttachmentsForImmediateSend(
         _ batch: ComposerPromisedFileBatch,
         to destination: MessageComposerDestination
-    ) -> [URL] {
+    ) async -> [URL] {
         let adoptedURLs = adoptPromisedFileBatch(batch)
         guard isComposerDropEligible(destination) else {
             pruneOwnedPromisedAttachmentFiles()
             return []
         }
-        let acceptedURLs = attachmentURLsWithinDiscordLimit(
+        beginUsingOwnedPromisedFiles(adoptedURLs)
+        let acceptedURLs = await attachmentURLsWithinDiscordLimit(
             adoptedURLs,
             offeringExternalUploadFor: destination
         )
@@ -55,7 +61,7 @@ extension AppModel {
             errorMessage =
                 "You can attach up to \(SendMessageDraft.maximumAttachmentCount) files to one message."
         }
-        beginUsingOwnedPromisedFiles(sentURLs)
+        endUsingOwnedPromisedFiles(adoptedURLs.filter { !sentURLs.contains($0) })
         pruneOwnedPromisedAttachmentFiles()
         return sentURLs
     }
@@ -64,25 +70,31 @@ extension AppModel {
     func addComposerAttachments(
         _ urls: [URL],
         to destination: MessageComposerDestination
-    ) -> Bool {
+    ) async -> Bool {
         guard isComposerDropEligible(destination), !urls.isEmpty else { return false }
-        let acceptedURLs = attachmentURLsWithinDiscordLimit(
+        let acceptedURLs = await attachmentURLsWithinDiscordLimit(
             urls,
             offeringExternalUploadFor: destination
         )
+        return appendCheckedComposerAttachments(acceptedURLs, to: destination)
+    }
+
+    @discardableResult
+    func appendCheckedComposerAttachments(_ urls: [URL], to destination: MessageComposerDestination) -> Bool {
+        guard isComposerDropEligible(destination), !Task.isCancelled else { return false }
         var attachments = composerAttachments(for: destination)
         let remaining = max(0, SendMessageDraft.maximumAttachmentCount - attachments.count)
         attachments.append(
-            contentsOf: acceptedURLs.prefix(remaining).map { ForumPostAttachment(url: $0) }
+            contentsOf: urls.prefix(remaining).map { ForumPostAttachment(url: $0) }
         )
         setComposerAttachments(attachments, for: destination)
-        if acceptedURLs.count > remaining {
+        if urls.count > remaining {
             errorMessage =
                 "You can attach up to \(SendMessageDraft.maximumAttachmentCount) files to one message."
         }
         // Claim a valid drop even when every file was rejected, preventing its path
         // from being inserted into the text field by the system fallback.
-        return remaining > 0 || !urls.isEmpty
+        return true
     }
 
     func removeComposerAttachment(

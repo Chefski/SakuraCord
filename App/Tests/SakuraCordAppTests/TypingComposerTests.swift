@@ -2,6 +2,7 @@ import DiscordProtocol
 import AppKit
 import Foundation
 import MessageRendering
+import MediaPipeline
 @testable import SakuraCord
 import SakuraCordModels
 import SakuraCordPersistence
@@ -350,7 +351,7 @@ import Testing
         URL(fileURLWithPath: "/tmp/sakuracord-composer-\($0)")
     }
 
-    #expect(model.addComposerAttachments([urls[0], urls[0]] + urls.dropFirst(), to: .channel))
+    #expect(await model.addComposerAttachments([urls[0], urls[0]] + urls.dropFirst(), to: .channel))
     #expect(
         model.channelComposerAttachments.map(\.url)
             == [urls[0], urls[0]] + Array(urls.dropFirst().prefix(8))
@@ -366,7 +367,7 @@ import Testing
     #expect(model.channelComposerAttachments.isEmpty)
     #expect(!model.consumeEscapeForComposerAttachments(in: .channel))
 
-    #expect(model.addComposerAttachments([urls[0]], to: .channel))
+    #expect(await model.addComposerAttachments([urls[0]], to: .channel))
     model.selectedChannelID = ChannelID(rawValue: 12)
     #expect(model.channelComposerAttachments.isEmpty)
 }
@@ -394,12 +395,13 @@ import Testing
         launchMode: .offlineTesting,
         provider: TypingTestProvider(),
         externalAttachmentUploader: uploader,
+        attachmentSettingsStore: AttachmentSettingsStore(preferences: SettingsPreferenceStore(defaults: InMemoryPreferences())),
         privacySafetySettingsStore: privacySafetySettingsStore
     )
     await model.start()
     model.snapshot?.currentUser.premiumType = 0
 
-    #expect(model.addComposerAttachments([exact, oversized], to: .channel))
+    #expect(await model.addComposerAttachments([exact, oversized], to: .channel))
     #expect(model.channelComposerAttachments.map(\.url) == [exact])
     let prompt = try #require(model.oversizedAttachmentPrompt)
     #expect(prompt.fileURL == oversized)
@@ -407,8 +409,14 @@ import Testing
     #expect(prompt.availableServices == [.catbox, .litterbox])
     #expect(await uploader.callCount == 0)
 
+    #expect(prompt.stage == .compaction)
+    model.skipAttachmentCompaction(prompt)
+    let externalPrompt = try #require(model.oversizedAttachmentPrompt)
+    #expect(externalPrompt.stage == .externalUpload)
+    model.dismissOversizedAttachmentPrompt(id: prompt.id)
+    #expect(model.oversizedAttachmentPrompt?.id == externalPrompt.id)
     model.updateDraft("look")
-    model.uploadOversizedAttachment(prompt, using: .catbox)
+    model.uploadOversizedAttachment(externalPrompt, using: .catbox)
     #expect(await eventuallyOnMain { model.externalAttachmentUploadPresentation == nil })
     #expect(await uploader.callCount == 1)
     #expect(model.draft == "look https://files.catbox.moe/test.bin")
@@ -418,7 +426,8 @@ import Testing
 @Test func `repeated alert dismissal cannot skip the next oversized attachment`() async throws {
     let model = AppModel(
         launchMode: .offlineTesting,
-        provider: TypingTestProvider()
+        provider: TypingTestProvider(),
+        attachmentSettingsStore: AttachmentSettingsStore(preferences: SettingsPreferenceStore(defaults: InMemoryPreferences()))
     )
     await model.start()
     let channelID = try #require(model.selectedChannelID)
@@ -454,7 +463,8 @@ import Testing
     let model = AppModel(
         launchMode: .offlineTesting,
         provider: TypingTestProvider(),
-        externalAttachmentUploader: uploader
+        externalAttachmentUploader: uploader,
+        attachmentSettingsStore: AttachmentSettingsStore(preferences: SettingsPreferenceStore(defaults: InMemoryPreferences()))
     )
     await model.start()
     let channelID = try #require(model.selectedChannelID)
@@ -507,7 +517,8 @@ import Testing
     let model = AppModel(
         launchMode: .offlineTesting,
         provider: TypingTestProvider(),
-        externalAttachmentUploader: uploader
+        externalAttachmentUploader: uploader,
+        attachmentSettingsStore: AttachmentSettingsStore(preferences: SettingsPreferenceStore(defaults: InMemoryPreferences()))
     )
     await model.start()
     let channelID = try #require(model.selectedChannelID)
@@ -531,6 +542,94 @@ import Testing
     #expect(await eventuallyOnMain { model.externalAttachmentUploadTask == nil })
     #expect(model.externalAttachmentUploadPresentation == nil)
     #expect(model.draft.isEmpty)
+}
+
+@MainActor
+@Test(arguments: AttachmentHandlingPolicy.allCases, AttachmentHandlingPolicy.allCases)
+func oversizedAttachmentPolicies(compaction: AttachmentHandlingPolicy, external: AttachmentHandlingPolicy) async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let file = directory.appendingPathComponent("oversized.bin")
+    try createSparseFile(file, size: DiscordAttachmentUploadPolicy.baseLimit + 1)
+    let worker = AttachmentCompactionTestWorker(outputSize: DiscordAttachmentUploadPolicy.baseLimit + 1)
+    let uploader = AttachmentUploadTestUploader(result: URL(string: "https://litter.catbox.moe/test.png")!)
+    let model = AppModel(launchMode: .offlineTesting, provider: TypingTestProvider(),
+                         externalAttachmentUploader: uploader, attachmentCompactor: worker,
+                         attachmentSettingsStore: AttachmentSettingsStore(preferences: SettingsPreferenceStore(defaults: InMemoryPreferences())))
+    await model.start()
+    model.snapshot?.currentUser.premiumType = 0
+    model.attachmentSettings.compactionPolicy = compaction
+    model.attachmentSettings.externalUploadPolicy = external
+    #expect(await model.addComposerAttachments([file], to: .channel))
+    if compaction == .ask {
+        let prompt = try #require(model.oversizedAttachmentPrompt)
+        #expect(prompt.stage == .compaction)
+        #expect(await worker.calls == 0)
+        model.compactOversizedAttachment(prompt)
+    }
+    await model.attachmentCompactionTask?.value
+    #expect(await worker.calls == (compaction == .never ? 0 : 1))
+    #expect(model.channelComposerAttachments.isEmpty)
+    switch external {
+    case .ask:
+        let prompt = try #require(model.oversizedAttachmentPrompt)
+        #expect(prompt.stage == .externalUpload)
+        #expect((prompt.compactionOutcome != nil) == (compaction != .never))
+        #expect(await uploader.callCount == 0)
+    case .always:
+        await model.externalAttachmentUploadTask?.value
+        #expect(await uploader.callCount == 1)
+        #expect(model.draft == "https://litter.catbox.moe/test.png")
+    case .never:
+        #expect(await uploader.callCount == 0)
+        #expect(model.oversizedAttachmentPrompt == nil)
+        #expect(model.errorMessage != nil)
+    }
+}
+
+@MainActor
+@Test func compactionFitsPreservesOriginalAndSkipsFilesWithinAccountLimit() async throws {
+    let directory = try ComposerPromisedFileStorage.makeReceivingDirectory()
+    defer { ComposerPromisedFileStorage.removeDirectory(directory) }
+    let exact = directory.appendingPathComponent("exact.bin")
+    let oversized = directory.appendingPathComponent("oversized.bin")
+    try createSparseFile(exact, size: DiscordAttachmentUploadPolicy.baseLimit)
+    try createSparseFile(oversized, size: DiscordAttachmentUploadPolicy.baseLimit + 1)
+    let worker = AttachmentCompactionTestWorker(outputSize: DiscordAttachmentUploadPolicy.baseLimit)
+    let uploader = AttachmentUploadTestUploader(result: URL(string: "https://litter.catbox.moe/unused.png")!)
+    let model = AppModel(launchMode: .offlineTesting, provider: TypingTestProvider(),
+                         externalAttachmentUploader: uploader, attachmentCompactor: worker,
+                         attachmentSettingsStore: AttachmentSettingsStore(preferences: SettingsPreferenceStore(defaults: InMemoryPreferences())))
+    await model.start()
+    model.snapshot?.currentUser.premiumType = 0
+    model.attachmentSettings.compactionPolicy = .always
+    model.attachmentSettings.externalUploadPolicy = .always
+    #expect(await model.addPromisedComposerAttachments(.init(directory: directory, urls: [exact, oversized]), to: .channel))
+    await model.attachmentCompactionTask?.value
+    #expect(await worker.calls == 1)
+    #expect(await uploader.callCount == 0)
+    #expect(model.channelComposerAttachments.count == 2)
+    #expect(model.channelComposerAttachments.first?.url == exact)
+    let compacted = try #require(model.channelComposerAttachments.last?.url)
+    #expect(compacted != oversized)
+    #expect(model.attachmentFileSize(at: compacted) == DiscordAttachmentUploadPolicy.baseLimit)
+    #expect(model.attachmentFileSize(at: oversized) == DiscordAttachmentUploadPolicy.baseLimit + 1)
+    model.clearComposerAttachments(for: .channel)
+    #expect(!FileManager.default.fileExists(atPath: compacted.path))
+    #expect(!FileManager.default.fileExists(atPath: directory.path))
+}
+
+private actor AttachmentCompactionTestWorker: AttachmentCompacting {
+    let outputSize: Int64
+    var calls = 0
+    init(outputSize: Int64) { self.outputSize = outputSize }
+    func compact(_ source: URL, in directory: URL, options: AttachmentCompactionOptions) async throws -> URL {
+        calls += 1
+        let output = directory.appendingPathComponent("compacted.bin")
+        try createSparseFile(output, size: outputSize)
+        return output
+    }
 }
 
 @Test func `external attachment hosts enforce size type and request contracts`() throws {
@@ -669,7 +768,7 @@ import Testing
     let staged = URL(fileURLWithPath: "/tmp/sakuracord-staged")
     let instant = URL(fileURLWithPath: "/tmp/sakuracord-instant")
     model.updateDraft("keep editing this")
-    model.addComposerAttachments([staged], to: .channel)
+    await model.addComposerAttachments([staged], to: .channel)
 
     #expect(
         await model.sendAttachmentsImmediately(
@@ -689,11 +788,12 @@ func `composer attachment controls preserve edits and spoiler state`(anonymisesF
     let store = PrivacySafetySettingsStore(preferences: SettingsPreferenceStore(defaults: InMemoryPreferences()))
     var privacy = store.load()
     privacy.anonymisesFileNames = anonymisesFileNames
+    privacy.removesMediaMetadata = false // This test edits names of a synthetic, nonexistent file.
     store.save(privacy)
     let model = AppModel(launchMode: .offlineTesting, provider: TypingTestProvider(), privacySafetySettingsStore: store)
     await model.start()
     let url = URL(fileURLWithPath: "/tmp/sakuracord-editable-attachment.png")
-    model.addComposerAttachments([url], to: .channel)
+    await model.addComposerAttachments([url], to: .channel)
     var attachment = try #require(model.channelComposerAttachments.first)
     #expect(attachment.isFilenameAnonymised == anonymisesFileNames)
     if anonymisesFileNames {
@@ -732,10 +832,10 @@ func `composer attachment controls preserve edits and spoiler state`(anonymisesF
     model.selectedChannelID = ChannelID(rawValue: 11)
     #expect(!model.isComposerDropEligible(.channel))
     #expect(
-        !model.addComposerAttachments(
+        !(await model.addComposerAttachments(
             [URL(fileURLWithPath: "/tmp/not-for-voice")],
             to: .channel
-        )
+        ))
     )
 }
 
@@ -2467,7 +2567,7 @@ func `Diagnostics sharing binds confirmation to its source and preserves drafts 
         }) == false)
         model.selectedChannelID = ChannelID(rawValue: 12)
         model.updateDraft("unfinished message")
-        model.addComposerAttachments([staged], to: .channel)
+        await model.addComposerAttachments([staged], to: .channel)
         return true
     }, export: { Data("sanitised fixture".utf8) })
     #expect(!sent)

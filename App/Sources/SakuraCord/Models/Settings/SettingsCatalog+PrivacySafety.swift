@@ -9,6 +9,13 @@ nonisolated extension SettingsCatalog {
 
     static let privacySafetyControls: [SettingsControlMetadata] = [
         control(
+            .removeMediaMetadata, page: .privacySafety,
+            section: .privacyDiscordActivity, label: "Remove metadata from images and videos",
+            help: "Remove location, camera and other personal metadata before Discord or external uploads, preserving media quality.",
+            keywords: ["GPS", "EXIF", "location", "photos", "metadata", "attachments", "uploads"],
+            scope: .appWideLocal, persistence: .appPreferences, reset: .registeredLocalValue
+        ),
+        control(
             .anonymiseFileNames, page: .privacySafety,
             section: .privacyDiscordActivity, label: "Anonymise file names",
             help: "Replace uploaded file names with random names, keeping file extensions and spoiler markers.",

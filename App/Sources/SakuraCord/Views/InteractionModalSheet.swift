@@ -58,7 +58,7 @@ struct InteractionModalSheet: View {
         ) { result in
             guard let id = activeFileControlID else { return }
             if case let .success(urls) = result {
-                fileURLs[id] = model.attachmentURLsWithinDiscordLimit(urls)
+                Task { fileURLs[id] = await model.attachmentURLsWithinDiscordLimit(urls) }
             }
             activeFileControlID = nil
         }

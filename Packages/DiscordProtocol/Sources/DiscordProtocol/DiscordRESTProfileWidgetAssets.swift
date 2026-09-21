@@ -21,7 +21,11 @@ public extension DiscordRESTProvider {
         let generation = profileEditingGeneration
         let accessed = fileURL.startAccessingSecurityScopedResource()
         defer { if accessed { fileURL.stopAccessingSecurityScopedResource() } }
-        let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
+        let prepared = try await prepareUploadFile(fileURL)
+        defer { prepared.discard() }
+        try Task.checkCancellation()
+        try validateProfileWidgetSession(userID: user.id, generation: generation)
+        let attributes = try FileManager.default.attributesOfItem(atPath: prepared.url.path)
         guard let size = (attributes[.size] as? NSNumber)?.int64Value, size > 0 else {
             throw ChatProviderError.invalidRequest("The selected widget image is empty.")
         }
@@ -35,7 +39,7 @@ public extension DiscordRESTProvider {
               !reservation.uploadFilename.isEmpty
         else { throw ChatProviderError.invalidRequest("Discord returned an invalid widget image upload.") }
         let response = try await performStorageUpload(
-            fileURL: fileURL, uploadURL: uploadURL, contentType: contentType,
+            fileURL: prepared.url, uploadURL: uploadURL, contentType: contentType,
             diagnosticTransport: "widget_storage", diagnosticPath: "/users/@me/widgets/assets/upload"
         )
         try validateProfileWidgetSession(userID: user.id, generation: generation)

@@ -52,14 +52,20 @@ nonisolated protocol ExternalAttachmentUploading: Sendable {
 
 nonisolated struct CatboxAttachmentUploader: ExternalAttachmentUploading {
     let session: URLSession
+    let prepareUploadFile: @Sendable (URL) async throws -> PreparedUploadFile
     let anonymisesUploadFilenames: @Sendable () async -> Bool
 
-    init(anonymisesUploadFilenames: @escaping @Sendable () async -> Bool = { false }) {
+    init(
+        anonymisesUploadFilenames: @escaping @Sendable () async -> Bool = { false },
+        prepareUploadFile: @escaping @Sendable (URL) async throws -> PreparedUploadFile = { PreparedUploadFile(url: $0) }
+    ) {
+        self.prepareUploadFile = prepareUploadFile
         self.anonymisesUploadFilenames = anonymisesUploadFilenames
         session = URLSession(configuration: Self.sessionConfiguration())
     }
 
-    init(session: URLSession) {
+    init(session: URLSession, prepareUploadFile: @escaping @Sendable (URL) async throws -> PreparedUploadFile = { PreparedUploadFile(url: $0) }) {
+        self.prepareUploadFile = prepareUploadFile
         self.session = session
         anonymisesUploadFilenames = { false }
     }
@@ -72,6 +78,10 @@ nonisolated struct CatboxAttachmentUploader: ExternalAttachmentUploading {
     }
 
     func upload(fileURL: URL, using service: ExternalAttachmentHostingService) async throws -> URL {
+        let prepared = try await prepareUploadFile(fileURL)
+        defer { prepared.discard() }
+        try Task.checkCancellation()
+        let fileURL = prepared.url
         let values = try fileURL.resourceValues(forKeys: [.fileSizeKey])
         guard let fileSize = values.fileSize,
               service.canUpload(fileURL: fileURL, size: Int64(fileSize))

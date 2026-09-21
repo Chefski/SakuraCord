@@ -610,6 +610,16 @@ extension DiscordRESTProvider {
         channelID: ChannelID,
         progress: @escaping @Sendable (MessageSendProgress) -> Void
     ) async throws -> [JSONValue] {
+        let generation = profileEditingGeneration
+        let userID = currentUser?.id
+        var prepared: [PreparedUploadFile] = []
+        defer { prepared.forEach { $0.discard() } }
+        for file in files {
+            prepared.append(try await prepareUploadFile(file.url))
+            try Task.checkCancellation()
+            guard profileEditingGeneration == generation, currentUser?.id == userID else { throw ChatProviderError.unauthenticated }
+        }
+        let files = zip(files, prepared).map { AttachmentUploadFile(url: $1.url, name: $0.name, description: $0.description) }
         let descriptors = try attachmentReservationDescriptors(for: files)
         let reservation = try await reserveAttachmentSlots(
             descriptors: descriptors,

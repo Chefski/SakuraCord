@@ -178,7 +178,8 @@ Within the production provider:
   event order: later message identity fields supersede earlier global identity
   changes, while later identity events update already-journaled message fields.
 - `CatboxAttachmentUploader` is a separate unauthenticated app service used
-  only after an explicit choice in the oversized-attachment warning. It never
+  after a host choice in the oversized-attachment warning or the user’s saved
+  Automatically policy and selected host. It never
   receives Discord credentials or sends a Discord message; its validated HTTPS
   result is inserted into the originating draft.
 - `DiscordAPIDiagnosticStore` receives REST attempts and responses, attachment
@@ -608,6 +609,33 @@ multiline name renderer with the user's colors and effects.
 `MediaPipeline` owns public-media caching and the complete native voice/video
 stack. `DaveKit` is an implementation dependency of `MediaPipeline`; the app
 target does not import it directly.
+
+Attachment compression also belongs to `MediaPipeline`. ImageIO and AVFoundation
+produce smaller image/video copies using the selected quality preset. Still images
+use JPEG automatically, or PNG when transparency must be preserved. General settings
+expose Ask/Automatically/Never policies and compression quality; the quality control
+is hidden when compression is disabled, and the file host is shown for automatic
+external uploads.
+Unsupported file types continue to the external-upload policy. The app owns
+account-limit checks, the compaction/external-upload prompt queue, temporary-file
+lifetimes, and persisted attachment policies in General settings. Files
+whose privacy-prepared upload size fits the account limit skip compaction,
+including Photos imports. Compacted outputs use the same prepared-size check.
+A compacted copy is attached only if it fits; otherwise the original proceeds
+to the external-upload policy. Neither step sends the draft.
+
+Upload metadata removal also belongs to `MediaPipeline`, independently of
+compaction. The app's Privacy setting is enabled by default and supplies one
+preparation closure to Discord and external upload providers. Providers reserve
+and send the prepared copy, then discard it on success, failure or cancellation;
+source files are never edited. Images retain pixels, colour and orientation;
+video uses passthrough movie export, preserving alternate-track groups, languages
+and playback defaults while omitting identifying and timed metadata. Unsupported
+container layouts require original-file consent. Attachment selection checks metadata removal and warns if it fails. Users can
+cancel or explicitly attach the original; approval is bound to its SHA-256 digest
+and cleared on account reset. Uploads use a stable copy of the approved bytes.
+A changed file requires new confirmation. Documents and archives are outside this
+media-only setting. See the protocol baseline for supported formats and evidence.
 
 Profile image processing also belongs to `MediaPipeline`. Animated WebP export
 uses the pinned libwebp SwiftPM dependency because the current macOS ImageIO

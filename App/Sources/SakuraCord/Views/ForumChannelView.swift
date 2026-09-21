@@ -1685,7 +1685,11 @@ private struct ForumPostComposer: View {
     }
 
     private func addAttachments(_ urls: [URL]) {
-        let allowedURLs = model.attachmentURLsWithinDiscordLimit(urls)
+        Task { await addCheckedAttachments(urls) }
+    }
+
+    private func addCheckedAttachments(_ urls: [URL]) async {
+        let allowedURLs = await model.attachmentURLsWithinDiscordLimit(urls)
         let count = max(0, 10 - attachments.count)
         let existingURLs = Set(attachments.map(\.url))
         let uniqueURLs = allowedURLs.filter { !existingURLs.contains($0) }

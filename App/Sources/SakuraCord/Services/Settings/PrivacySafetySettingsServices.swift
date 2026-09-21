@@ -91,6 +91,7 @@ nonisolated struct PrivacySafetySettingsSnapshot: Equatable, Sendable {
         trustedDomains: []
     )
 
+    var removesMediaMetadata = true
     var anonymisesFileNames = false
     var sendsTypingIndicators: Bool
     var externalLinkConfirmationPolicy: ExternalLinkConfirmationPolicy
@@ -110,6 +111,9 @@ final class PrivacySafetySettingsStore {
 
     func load() -> PrivacySafetySettingsSnapshot {
         var value = PrivacySafetySettingsSnapshot.defaults
+        if case let .bool(saved) = preferences.value(for: .removeMediaMetadata) {
+            value.removesMediaMetadata = saved
+        }
         if case let .bool(saved) = preferences.value(for: .anonymiseFileNames) {
             value.anonymisesFileNames = saved
         }
@@ -128,6 +132,7 @@ final class PrivacySafetySettingsStore {
     }
 
     func save(_ value: PrivacySafetySettingsSnapshot) {
+        preferences.set(.bool(value.removesMediaMetadata), for: .removeMediaMetadata)
         preferences.set(.bool(value.anonymisesFileNames), for: .anonymiseFileNames)
         preferences.set(.bool(value.sendsTypingIndicators), for: .privacyTypingIndicators)
         preferences.set(
