@@ -447,7 +447,8 @@ enum NativeTimelineRowPainter {
         spoilerRevealStore: NativeTimelineSpoilerRevealStore? = nil,
         reactionCountTransitions:
             [String: NativeTimelineReactionCountTransition] = [:],
-        pollPresentation: NativeTimelinePollPresentation = .init()
+        pollPresentation: NativeTimelinePollPresentation = .init(),
+        animatedReactionIDs: Set<String> = []
     ) {
         NSGraphicsContext.saveGraphicsState()
         let transform = NSAffineTransform()
@@ -515,6 +516,7 @@ enum NativeTimelineRowPainter {
                     revealedTextSpoilerState,
                 spoilerRevealStore: spoilerRevealStore,
                 pollPresentation: pollPresentation,
+                animatedReactionIDs: animatedReactionIDs,
                 reactionCountTransitions: reactionCountTransitions
             ))
         }

@@ -347,18 +347,21 @@ private struct MessageReactionEmoji: View {
     var body: some View {
         Group {
             if reaction.emojiReference.id != nil {
-                ZStack {
-                    ConcentricRectangle(cornerRadius: 5, style: .continuous)
-                        .fill(Color.secondary.opacity(0.12))
-                    SakuraCordSystemSymbol.emojiFaceGrinningImage
-                        .font(.system(size: size * 0.58, weight: .medium))
-                        .foregroundStyle(.secondary)
+                Group {
                     if let url {
                         AnimatedRemoteImage(
                             url: url,
                             fallbackSystemImage: SakuraCordSystemSymbol.emojiFaceGrinning,
                             fallbackInset: 3,
                         )
+                    } else {
+                        ZStack {
+                            ConcentricRectangle(cornerRadius: 5, style: .continuous)
+                                .fill(Color.secondary.opacity(0.12))
+                            SakuraCordSystemSymbol.emojiFaceGrinningImage
+                                .font(.system(size: size * 0.58, weight: .medium))
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
                 .frame(width: size, height: size)

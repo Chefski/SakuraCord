@@ -880,7 +880,8 @@ extension NativeTimelineCanvasView {
             revealedTextSpoilerState: revealState,
             spoilerRevealStore: spoilerRevealStore,
             reactionCountTransitions: reactionCountTransitions(inMessageAt: index),
-            pollPresentation: pollPresentation(for: item.messageID)
+            pollPresentation: pollPresentation(for: item.messageID),
+            animatedReactionIDs: animatedReactionIDs(for: item.identifier)
         )
     }
 
@@ -934,7 +935,8 @@ extension NativeTimelineCanvasView {
                 NativeTimelineRowPainter.draw(
                     item: item, layout: layouts[index], in: rowFrame, model: model,
                     isHovered: false, revealedTextSpoilerState: revealState,
-                    spoilerRevealStore: spoilerRevealStore
+                    spoilerRevealStore: spoilerRevealStore,
+                    animatedReactionIDs: animatedReactionIDs(for: item.identifier)
                 )
             }
         } else {
@@ -1339,7 +1341,8 @@ extension NativeTimelineCanvasView {
                 in: CGRect(x: 0, y: 0, width: width, height: layout.height),
                 model: model,
                 isHovered: false,
-                spoilerRevealStore: spoilerRevealStore
+                spoilerRevealStore: spoilerRevealStore,
+                animatedReactionIDs: animatedReactionIDs(for: item.identifier)
             )
         }
         flippedGraphics.flushGraphics()

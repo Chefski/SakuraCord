@@ -30,6 +30,7 @@ struct NativeTimelineMessageDrawInput {
     let revealedTextSpoilerState: NativeTimelineTextSpoilerRevealState
     let spoilerRevealStore: NativeTimelineSpoilerRevealStore?
     let pollPresentation: NativeTimelinePollPresentation
+    let animatedReactionIDs: Set<String>
     let reactionCountTransitions: [String: NativeTimelineReactionCountTransition]
 }
 
@@ -708,7 +709,8 @@ extension NativeTimelineRowPainter {
                 isHovered: hoveredReactionID == region.reaction.id,
                 countTransition: reactionCountTransitions[
                     region.reaction.id
-                ]
+                ],
+                hasAnimatedEmojiOverlay: input.animatedReactionIDs.contains(region.reaction.id)
             )
         }
         if let frame = layout.addReactionFrame {

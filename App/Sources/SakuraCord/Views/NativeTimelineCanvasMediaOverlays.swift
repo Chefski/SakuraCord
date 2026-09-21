@@ -591,6 +591,8 @@ extension NativeTimelineCanvasView {
         _ desired: [DesiredAnimatedMediaOverlay]
     ) {
         let desiredKeys = Set(desired.map(\.key))
+        let changedKeys = Set(animatedMediaOverlays.keys).symmetricDifference(desiredKeys)
+        defer { invalidateReactionPosters(for: changedKeys) }
         for key in Array(animatedMediaOverlays.keys)
         where !desiredKeys.contains(key) {
             animatedMediaOverlays.removeValue(forKey: key)?
@@ -700,11 +702,33 @@ extension NativeTimelineCanvasView {
         reconcileAnimatedMediaOverlays(reduceMotion: reduceMotion)
     }
 
+    func animatedReactionIDs(for row: NativeMessageTimelineItem.Identifier) -> Set<String> {
+        Set(animatedMediaOverlays.keys.compactMap { key in
+            guard key.row == row, case let .reaction(id) = key.role else { return nil }
+            return id
+        })
+    }
+
+    private func invalidateReactionPosters(for keys: Set<AnimatedMediaOverlayKey>) {
+        let rows = Set(keys.compactMap { key -> NativeMessageTimelineItem.Identifier? in
+            guard case .reaction = key.role else { return nil }
+            return key.row
+        })
+        for row in rows {
+            invalidateBitmap(row)
+            if let index = items.firstIndex(where: { $0.identifier == row }) {
+                setNeedsDisplay(rowFrame(at: index))
+            }
+        }
+    }
+
     func removeAnimatedMediaOverlays() {
+        let removedKeys = Set(animatedMediaOverlays.keys)
         for overlay in animatedMediaOverlays.values {
             overlay.removeFromSuperview()
         }
         animatedMediaOverlays.removeAll()
+        invalidateReactionPosters(for: removedKeys)
     }
 
     static let maximumLoadingIndicatorCount = 32

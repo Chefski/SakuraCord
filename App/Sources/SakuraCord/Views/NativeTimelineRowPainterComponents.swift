@@ -948,11 +948,12 @@ extension NativeTimelineRowPainter {
         _ region: NativeTimelineRowLayout.ReactionRegion,
         model: AppModel?,
         isHovered: Bool,
-        countTransition: NativeTimelineReactionCountTransition?
+        countTransition: NativeTimelineReactionCountTransition?,
+        hasAnimatedEmojiOverlay: Bool
     ) {
         let selected = region.reaction.didCurrentUserReact
         drawReactionBackground(region.frame, selected: selected, isHovered: isHovered)
-        drawReactionEmoji(region, model: model)
+        if !hasAnimatedEmojiOverlay { drawReactionEmoji(region, model: model) }
         drawReactionMetadata(region, selected: selected, countTransition: countTransition)
     }
 
@@ -993,18 +994,6 @@ extension NativeTimelineRowPainter {
     ) {
         let reference = region.reaction.emojiReference
         if let id = reference.id {
-            NSColor.secondaryLabelColor.withAlphaComponent(0.12).setFill()
-            NSBezierPath(
-                concentricRoundedRect: region.emojiFrame,
-                cornerRadius: 5
-            ).fill()
-            systemSymbol(
-                SakuraCordSystemSymbol.emojiFaceGrinning,
-                in: region.emojiFrame,
-                color: .secondaryLabelColor,
-                inset: 4,
-                weight: .medium
-            )
             if let url = model?.customEmojiURLsByID[id]
                     ?? reference.imageURL(size: 64),
                let image = mediaImage(
@@ -1016,6 +1005,19 @@ extension NativeTimelineRowPainter {
                     in: region.emojiFrame,
                     cornerRadius: 0,
                     fillsFrame: false
+                )
+            } else {
+                NSColor.secondaryLabelColor.withAlphaComponent(0.12).setFill()
+                NSBezierPath(
+                    concentricRoundedRect: region.emojiFrame,
+                    cornerRadius: 5
+                ).fill()
+                systemSymbol(
+                    SakuraCordSystemSymbol.emojiFaceGrinning,
+                    in: region.emojiFrame,
+                    color: .secondaryLabelColor,
+                    inset: 4,
+                    weight: .medium
                 )
             }
         } else {
