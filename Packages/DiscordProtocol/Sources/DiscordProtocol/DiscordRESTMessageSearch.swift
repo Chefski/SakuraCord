@@ -221,13 +221,18 @@ extension DiscordRESTProvider {
 
     private func cacheSearchPrivateChannels(_ channels: [Channel]) {
         guard !channels.isEmpty else { return }
-        var merged = Dictionary(
-            uniqueKeysWithValues: (cachedChannels[nil] ?? []).map { ($0.id, $0) }
-        )
-        for channel in channels {
-            merged[channel.id] = channel
+        var merged = cachedChannels[nil] ?? []
+        var known = Set(merged.map(\.id))
+        var nextPosition = (merged.lazy.map(\.position).max() ?? -1) + 1
+        // Search metadata must not replace live Gateway state or the sidebar's
+        // activity order. Append discoveries in response order, retaining the
+        // independent insertion rank used by forwarding search.
+        for var channel in channels where known.insert(channel.id).inserted {
+            channel.position = nextPosition
+            nextPosition += 1
+            merged.append(channel)
         }
-        cachedChannels[nil] = Array(merged.values)
+        cachedChannels[nil] = merged
     }
 
     private static func guildSearchQuery(

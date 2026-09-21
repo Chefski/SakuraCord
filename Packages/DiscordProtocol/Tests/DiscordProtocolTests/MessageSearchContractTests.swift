@@ -85,6 +85,37 @@ extension ProviderRequestContractTests {
         #expect(page.serverElapsedMilliseconds == 12)
     }
 
+    @Test(arguments: [false, true])
+    func `indexed DM search preserves channel order and live state`(includesResultChannel: Bool) async throws {
+        let provider = messageSearchProvider()
+        RateLimitURLProtocol.messageSearchStatuses = [202, 202, 200]
+        let channelIDs: [UInt64] = includesResultChannel ? [300, 200, 100] : [300, 100]
+        let existing = channelIDs.enumerated().map { index, id in
+            Channel(
+                id: ChannelID(rawValue: id), guildID: nil, name: "Existing DM",
+                kind: .directMessage, position: index + 5,
+                unreadCount: 2, lastMessageID: MessageID(rawValue: 900 - id)
+            )
+        }
+        await provider.seedPrivateChannelsForTesting(existing)
+        let query = MessageSearchQuery(scope: .directMessages, content: "sakura")
+
+        let page = try await provider.searchMessages(query)
+        #expect(RateLimitURLProtocol.messageSearchRequestCount == 3)
+        var expected = existing
+        if !includesResultChannel {
+            var discovered = try #require(page.channels.first)
+            discovered.position = try #require(existing.map(\.position).max()) + 1
+            expected.append(discovered)
+        }
+        #expect(try await provider.channels(in: nil) == expected)
+
+        // Repeated searches must neither duplicate discoveries nor erase the
+        // Gateway's activity, read state, or independent store insertion rank.
+        _ = try await provider.searchMessages(query)
+        #expect(try await provider.channels(in: nil) == expected)
+    }
+
     @Test func `filter only message search is valid`() async throws {
         let provider = messageSearchProvider()
         _ = try await provider.searchMessages(
