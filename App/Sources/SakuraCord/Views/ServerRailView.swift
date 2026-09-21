@@ -76,7 +76,8 @@ struct ServerRailView: View {
             .padding(.bottom, 12)
             .animation(ServerRailAnimations.folderExpansion, value: folderLayoutRevision)
         }
-        .scrollIndicators(.hidden)
+        // Unlike .hidden, .never overrides macOS's always-visible scrollbar preference.
+        .scrollIndicators(.never)
         .background {
             ScrollInputPerformanceProbeAttachment(surface: .serverList)
                 .allowsHitTesting(false)
