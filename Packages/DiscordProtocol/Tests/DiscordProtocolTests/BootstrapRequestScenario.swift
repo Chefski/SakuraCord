@@ -26,6 +26,7 @@ func readyWorkspaceReplayEvents(
 }
 
 struct BootstrapRequestScenario {
+    var anonymisesFileNames = false
     var run: Void {
         get async throws {
         RateLimitURLProtocol.reset()
@@ -82,7 +83,8 @@ struct BootstrapRequestScenario {
             handle: CredentialHandle(accountID: "1"),
             session: URLSession(configuration: configuration),
             gatewayTransport: ReadyGatewayTransport(socket: socket),
-            usesEmojiDiskCache: false
+            usesEmojiDiskCache: false,
+            anonymisesUploadFilenames: { [anonymisesFileNames] in anonymisesFileNames }
         )
         let events = await provider.eventStream()
         let connected = Task { () -> Bool in
@@ -373,13 +375,32 @@ struct BootstrapRequestScenario {
         let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent("sakuracord-upload-test.txt")
         try Data("attachment".utf8).write(to: fileURL)
         defer { try? FileManager.default.removeItem(at: fileURL) }
+        var previewAttachment = ForumPostAttachment(url: fileURL).applyingFilenamePrivacy(anonymisesFileNames)
         _ = try await provider.send(SendMessageDraft(
             channelID: ChannelID(rawValue: 200),
             content: "with file",
-            attachmentURLs: [fileURL]
+            attachments: [previewAttachment]
         ))
         #expect(RateLimitURLProtocol.uploadHadAuthorization == false)
         #expect(RateLimitURLProtocol.sentUploadedFilename == "discord-upload-token")
+        let attachments = try #require(RateLimitURLProtocol.sentMessageBody?["attachments"] as? [[String: Any]])
+        let uploadedName = try #require(attachments.first?["filename"] as? String)
+        #expect(uploadedName == previewAttachment.filename)
+        if anonymisesFileNames {
+            #expect(uploadedName != fileURL.lastPathComponent)
+            #expect((uploadedName as NSString).pathExtension == "txt")
+            #expect(UUID(uuidString: (uploadedName as NSString).deletingPathExtension) != nil)
+        } else {
+            #expect(uploadedName == fileURL.lastPathComponent)
+        }
+        if anonymisesFileNames {
+            previewAttachment.setFilenameAnonymised(false)
+            _ = try await provider.send(SendMessageDraft(
+                channelID: ChannelID(rawValue: 200), content: "original name", attachments: [previewAttachment]
+            ))
+            let restoredAttachments = try #require(RateLimitURLProtocol.sentMessageBody?["attachments"] as? [[String: Any]])
+            #expect(restoredAttachments.first?["filename"] as? String == fileURL.lastPathComponent)
+        }
         #expect(await credentials.credentialReadCount == 1)
         await provider.disconnect()
         }

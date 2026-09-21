@@ -1697,7 +1697,7 @@ private struct ForumPostComposer: View {
             securityScopedAttachmentURLs.insert(url)
         }
         attachments.append(
-            contentsOf: addedURLs.map { ForumPostAttachment(url: $0) }
+            contentsOf: addedURLs.map { ForumPostAttachment(url: $0).applyingFilenamePrivacy(model.privacySafetySettings.anonymisesFileNames) }
         )
     }
 

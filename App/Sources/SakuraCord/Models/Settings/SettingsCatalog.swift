@@ -336,6 +336,7 @@ nonisolated extension SettingsControlID {
     static let accessibilityAnnounceNewMessages = Self(rawValue: "accessibility.announce-new-messages")
     static let accessibilityReset = Self(rawValue: "accessibility.reset")
     static let shortcutReset = Self(rawValue: "keyboard-shortcuts.reset")
+    static let anonymiseFileNames = Self(rawValue: "privacy.anonymise-file-names")
     static let privacyTypingIndicators = Self(rawValue: "privacy.typing-indicators")
     static let externalLinkProtection = Self(rawValue: "privacy.external-link-protection")
     static let trustedDomains = Self(rawValue: "privacy.trusted-domains")

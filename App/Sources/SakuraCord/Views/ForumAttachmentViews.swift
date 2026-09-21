@@ -16,6 +16,7 @@ private struct ForumAttachmentFramePreferenceKey: PreferenceKey {
 }
 
 struct ForumComposerAttachmentControl: View {
+    @AppStorage(PrivacySafetySettingsStore.anonymiseFileNamesKey) private var anonymisesFileNames = false
     @Binding var attachments: [ForumPostAttachment]
     let addAttachments: () -> Void
     @State private var editingTarget: ForumAttachmentEditorTarget?
@@ -31,7 +32,7 @@ struct ForumComposerAttachmentControl: View {
     private let traySpacing: CGFloat = 8
     private let trayInset: CGFloat = 8
     private let maximumExpandedWidth: CGFloat = 440
-    private let hoverPillWidth: CGFloat = 68
+    private var hoverPillWidth: CGFloat { anonymisesFileNames ? 89 : 68 }
 
     var body: some View {
         Color.clear
@@ -65,6 +66,13 @@ struct ForumComposerAttachmentControl: View {
                             editingTarget = nil
                         }
                     )
+                }
+            }
+            .onChange(of: anonymisesFileNames) { _, enabled in
+                attachments = attachments.map {
+                    var attachment = $0
+                    attachment.setFilenameAnonymised(enabled)
+                    return attachment
                 }
             }
             .onDisappear {
@@ -234,6 +242,17 @@ struct ForumComposerAttachmentControl: View {
                 iconFont: .caption2.weight(.semibold),
                 action: { toggleSpoiler(for: attachment.url) }
             )
+            if anonymisesFileNames {
+                HoverActionButton(
+                    systemImage: "shuffle",
+                    help: attachment.isFilenameAnonymised ? "Restore file name" : "Randomise file name",
+                    isSelected: attachment.isFilenameAnonymised,
+                    diameter: 20,
+                    iconFont: .caption2.weight(.semibold)
+                ) {
+                    toggleFilenamePrivacy(for: attachment.url)
+                }
+            }
             HoverActionButton(
                 systemImage: "pencil",
                 help: "Edit attachment",
@@ -295,6 +314,11 @@ struct ForumComposerAttachmentControl: View {
                 }
             }
         )
+    }
+
+    private func toggleFilenamePrivacy(for url: URL) {
+        guard let index = attachments.firstIndex(where: { $0.url == url }) else { return }
+        attachments[index].setFilenameAnonymised(!attachments[index].isFilenameAnonymised)
     }
 
     private func toggleSpoiler(for url: URL) {
@@ -479,7 +503,8 @@ struct ForumAttachmentEditor: View {
                     .keyboardShortcut(.cancelAction)
                 Button("Save") {
                     var updated = attachment
-                    updated.filename = filename.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let name = filename.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if name != attachment.filename { updated.rename(name) }
                     updated.description = description
                     updated.isSpoiler = isSpoiler
                     save(updated)

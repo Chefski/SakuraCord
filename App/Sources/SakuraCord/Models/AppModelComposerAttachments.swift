@@ -189,6 +189,9 @@ extension AppModel {
         _ attachments: [ForumPostAttachment],
         for destination: MessageComposerDestination
     ) {
+        let attachments = attachments.map {
+            $0.applyingFilenamePrivacy(privacySafetySettings.anonymisesFileNames)
+        }
         switch destination {
         case .channel:
             channelComposerAttachments = attachments

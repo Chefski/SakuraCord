@@ -1243,8 +1243,10 @@ final class AppModel {
         self.localTypingTiming = localTypingTiming
         self.reactionMutationTiming = reactionMutationTiming
         self.readAcknowledgementTiming = readAcknowledgementTiming
-        self.externalAttachmentUploader = externalAttachmentUploader ?? CatboxAttachmentUploader()
-        self.privacySafetySettingsStore = privacySafetySettingsStore ?? .shared
+        let resolvedPrivacyStore = privacySafetySettingsStore ?? .shared
+        let anonymisesUploadFilenames: @Sendable () async -> Bool = { await resolvedPrivacyStore.load().anonymisesFileNames }
+        self.externalAttachmentUploader = externalAttachmentUploader ?? CatboxAttachmentUploader(anonymisesUploadFilenames: anonymisesUploadFilenames)
+        self.privacySafetySettingsStore = resolvedPrivacyStore
         runsChatPerformanceBenchmark =
             runsChatPerformanceBenchmarkOverride
                 ?? AppLaunchConfiguration(
@@ -1277,16 +1279,14 @@ final class AppModel {
         self.authenticatedProviderFactory =
             authenticatedProviderFactory ?? { handle, installationID in
                 DiscordRESTProvider(
-                    credentials: resolvedCredentialStore,
-                    handle: handle,
-                    installationID: installationID
+                    credentials: resolvedCredentialStore, handle: handle,
+                    installationID: installationID, anonymisesUploadFilenames: anonymisesUploadFilenames
                 )
             }
         self.pendingAuthenticatedProviderFactory =
             pendingAuthenticatedProviderFactory ?? { credential, installationID in
                 DiscordRESTProvider(
-                    pendingCredential: credential,
-                    installationID: installationID
+                    pendingCredential: credential, installationID: installationID, anonymisesUploadFilenames: anonymisesUploadFilenames
                 )
             }
         self.accountDatabaseFactory = accountDatabaseFactory ?? { accountID in

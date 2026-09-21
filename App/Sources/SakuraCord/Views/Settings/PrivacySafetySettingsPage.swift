@@ -291,6 +291,9 @@ private struct PrivacyDiscordActivitySection: View {
 
     var body: some View {
         Section {
+            Toggle("Anonymise file names", isOn: $value.anonymisesFileNames)
+                .tint(SakuraCordAccentColor.color)
+                .settingsControlAnchor(.anonymiseFileNames, state: state)
             Toggle("Send typing indicators", isOn: $value.sendsTypingIndicators)
                 .tint(SakuraCordAccentColor.color)
                 .settingsControlAnchor(.privacyTypingIndicators, state: state)

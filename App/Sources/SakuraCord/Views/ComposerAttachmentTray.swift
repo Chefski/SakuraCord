@@ -2,6 +2,7 @@ import SakuraCordModels
 import SwiftUI
 
 struct ComposerAttachmentTray: View {
+    @AppStorage(PrivacySafetySettingsStore.anonymiseFileNamesKey) private var anonymisesFileNames = false
     let attachments: [ForumPostAttachment]
     let open: (UUID) -> Void
     let toggleSpoiler: (UUID) -> Void
@@ -27,6 +28,12 @@ struct ComposerAttachmentTray: View {
         .scrollIndicators(.hidden)
         .frame(height: tileSize + 28)
         .accessibilityLabel("Message attachments")
+        .onChange(of: anonymisesFileNames) { _, enabled in
+            for var attachment in attachments {
+                attachment.setFilenameAnonymised(enabled)
+                update(attachment)
+            }
+        }
         .sheet(item: $editingTarget) { target in
             if let attachment = attachments.first(where: { $0.id == target.id }) {
                 ForumAttachmentEditor(
@@ -80,6 +87,13 @@ struct ComposerAttachmentTray: View {
                 named: attachment.isSpoiler ? "Remove spoiler" : "Mark as spoiler"
             ) {
                 toggleSpoiler(attachment.id)
+            }
+            .accessibilityActions {
+                if anonymisesFileNames {
+                    Button(attachment.isFilenameAnonymised ? "Restore file name" : "Randomise file name") {
+                        toggleFilenamePrivacy(attachment)
+                    }
+                }
             }
             .accessibilityAction(named: "Edit attachment") {
                 editingTarget = ComposerAttachmentEditorTarget(id: attachment.id)
@@ -144,6 +158,17 @@ struct ComposerAttachmentTray: View {
             ) {
                 toggleSpoiler(attachment.id)
             }
+            if anonymisesFileNames {
+                HoverActionButton(
+                    systemImage: "shuffle",
+                    help: attachment.isFilenameAnonymised ? "Restore file name" : "Randomise file name",
+                    isSelected: attachment.isFilenameAnonymised,
+                    diameter: 22,
+                    iconFont: .caption2.weight(.semibold)
+                ) {
+                    toggleFilenamePrivacy(attachment)
+                }
+            }
             HoverActionButton(
                 systemImage: "pencil",
                 help: "Edit attachment",
@@ -162,6 +187,12 @@ struct ComposerAttachmentTray: View {
                 remove(attachment.id)
             }
         }
+    }
+
+    private func toggleFilenamePrivacy(_ attachment: ForumPostAttachment) {
+        var updated = attachment
+        updated.setFilenameAnonymised(!attachment.isFilenameAnonymised)
+        update(updated)
     }
 
     private func attachmentMediaKind(

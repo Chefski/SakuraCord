@@ -9,6 +9,7 @@ struct ProfileGameAutocompleteCacheEntry: Sendable {
 
 public extension DiscordRESTProvider {
     func uploadProfileWidgetImage(fileURL: URL, filename: String, contentType: String) async throws -> ProfileWidgetImage {
+        let anonymisesNames = await anonymisesUploadFilenames()
         guard let user = currentUser else { throw ChatProviderError.unauthenticated }
         guard profileApexAssignments?.widgetEligibility(for: user).canEditPersonalWidget == true else {
             throw ChatProviderError.invalidRequest("Personal widgets require Nitro and early access.")
@@ -16,6 +17,7 @@ public extension DiscordRESTProvider {
         guard fileURL.isFileURL, !filename.isEmpty,
               ["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"].contains(contentType)
         else { throw ChatProviderError.invalidRequest("Choose a supported widget image.") }
+        let filename = anonymisesNames ? UploadFilename.anonymised(filename) : filename
         let generation = profileEditingGeneration
         let accessed = fileURL.startAccessingSecurityScopedResource()
         defer { if accessed { fileURL.stopAccessingSecurityScopedResource() } }

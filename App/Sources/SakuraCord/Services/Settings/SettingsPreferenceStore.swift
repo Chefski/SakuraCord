@@ -249,6 +249,12 @@ nonisolated struct SettingsPreferenceRegistry: Sendable {
             defaultValue: .bool(false)
         ),
         SettingsPreferenceRegistration(
+            id: .anonymiseFileNames,
+            page: .privacySafety,
+            storage: .appWide(key: PrivacySafetySettingsStore.anonymiseFileNamesKey),
+            defaultValue: .bool(false)
+        ),
+        SettingsPreferenceRegistration(
             id: .privacyTypingIndicators,
             page: .privacySafety,
             storage: .appWide(key: "settings.chat.typingIndicators"),

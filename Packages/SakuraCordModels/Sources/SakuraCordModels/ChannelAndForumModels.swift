@@ -408,6 +408,34 @@ public struct ForumPostAttachment: Equatable, Identifiable, Sendable {
     public var filename: String
     public var description: String
     public var isSpoiler: Bool
+    private var filenameBeforeAnonymising: String?
+    private var hasChosenFilenamePrivacy = false
+
+    public var isFilenameAnonymised: Bool { filenameBeforeAnonymising != nil }
+
+    public mutating func setFilenameAnonymised(_ enabled: Bool) {
+        hasChosenFilenamePrivacy = true
+        if enabled {
+            guard filenameBeforeAnonymising == nil else { return }
+            filenameBeforeAnonymising = filename
+            filename = UploadFilename.anonymised(filename)
+        } else if let original = filenameBeforeAnonymising {
+            filename = original
+            filenameBeforeAnonymising = nil
+        }
+    }
+
+    public func applyingFilenamePrivacy(_ enabled: Bool) -> Self {
+        guard enabled, !hasChosenFilenamePrivacy else { return self }
+        var attachment = self
+        attachment.setFilenameAnonymised(true)
+        return attachment
+    }
+
+    public mutating func rename(_ name: String) {
+        setFilenameAnonymised(false)
+        filename = name
+    }
 
     public init(
         id: UUID = UUID(),
@@ -428,6 +456,8 @@ public struct ForumPostAttachment: Equatable, Identifiable, Sendable {
             && lhs.filename == rhs.filename
             && lhs.description == rhs.description
             && lhs.isSpoiler == rhs.isSpoiler
+            && lhs.filenameBeforeAnonymising == rhs.filenameBeforeAnonymising
+            && lhs.hasChosenFilenamePrivacy == rhs.hasChosenFilenamePrivacy
     }
 }
 

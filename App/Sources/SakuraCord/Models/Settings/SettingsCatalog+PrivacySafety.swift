@@ -9,6 +9,13 @@ nonisolated extension SettingsCatalog {
 
     static let privacySafetyControls: [SettingsControlMetadata] = [
         control(
+            .anonymiseFileNames, page: .privacySafety,
+            section: .privacyDiscordActivity, label: "Anonymise file names",
+            help: "Replace uploaded file names with random names, keeping file extensions and spoiler markers.",
+            keywords: ["anonymous", "anonymize", "randomise", "randomize", "filename", "attachments", "uploads"],
+            scope: .appWideLocal, persistence: .appPreferences, reset: .registeredLocalValue
+        ),
+        control(
             .privacyTypingIndicators, page: .privacySafety,
             section: .privacyDiscordActivity, label: "Send Typing Indicators",
             help: "Send Discord typing events while composing.",

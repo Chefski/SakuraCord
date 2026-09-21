@@ -21,6 +21,7 @@ nonisolated struct AttachmentUploadFile: Equatable, Sendable {
 }
 
 public actor DiscordRESTProvider: PendingCredentialChatProvider {
+    let anonymisesUploadFilenames: @Sendable () async -> Bool
     struct RESTRateLimitBucketKey: Hashable, Sendable {
         let identifier: String
         let majorParameter: String
@@ -340,7 +341,8 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
         installationID: String? = nil,
         apiDiagnostics: DiscordAPIDiagnosticStore = .shared,
         usesEmojiDiskCache: Bool = true,
-        usesForwardSearchPeopleDiskCache: Bool? = nil
+        usesForwardSearchPeopleDiskCache: Bool? = nil,
+        anonymisesUploadFilenames: @escaping @Sendable () async -> Bool = { false }
     ) {
         let defaultRESTConfiguration = URLSessionConfiguration.default
         let resolvedSession = session ?? URLSession(
@@ -360,6 +362,7 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
             installationID: installationID ?? DiscordClientMetadata.persistedInstallationID()
         )
         self.apiDiagnostics = apiDiagnostics
+        self.anonymisesUploadFilenames = anonymisesUploadFilenames
         self.usesEmojiDiskCache = usesEmojiDiskCache
         self.usesForwardSearchPeopleDiskCache =
             usesForwardSearchPeopleDiskCache ?? (session == nil)
@@ -372,7 +375,8 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
         installationID: String? = nil,
         apiDiagnostics: DiscordAPIDiagnosticStore = .shared,
         usesEmojiDiskCache: Bool = true,
-        usesForwardSearchPeopleDiskCache: Bool? = nil
+        usesForwardSearchPeopleDiskCache: Bool? = nil,
+        anonymisesUploadFilenames: @escaping @Sendable () async -> Bool = { false }
     ) {
         let defaultRESTConfiguration = URLSessionConfiguration.default
         let resolvedSession = session ?? URLSession(
@@ -392,6 +396,7 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
             installationID: installationID ?? DiscordClientMetadata.persistedInstallationID()
         )
         self.apiDiagnostics = apiDiagnostics
+        self.anonymisesUploadFilenames = anonymisesUploadFilenames
         self.usesEmojiDiskCache = usesEmojiDiskCache
         self.usesForwardSearchPeopleDiskCache =
             usesForwardSearchPeopleDiskCache ?? (session == nil)
@@ -410,7 +415,8 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
         installationID: String? = nil,
         apiDiagnostics: DiscordAPIDiagnosticStore = .shared,
         usesEmojiDiskCache: Bool = true,
-        ownsRESTSession: Bool = false
+        ownsRESTSession: Bool = false,
+        anonymisesUploadFilenames: @escaping @Sendable () async -> Bool = { false }
     ) {
         credentialSource = .stored(credentials, handle)
         accountID = handle.accountID
@@ -423,6 +429,7 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
         self.usesDesktopHeartbeat = usesDesktopHeartbeat
         clientMetadata = DiscordClientMetadata(installationID: installationID)
         self.apiDiagnostics = apiDiagnostics
+        self.anonymisesUploadFilenames = anonymisesUploadFilenames
         self.usesEmojiDiskCache = usesEmojiDiskCache
         usesForwardSearchPeopleDiskCache = false
         persistsResolvedInstallationID = false
@@ -439,7 +446,8 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
         installationID: String? = nil,
         apiDiagnostics: DiscordAPIDiagnosticStore = .shared,
         usesEmojiDiskCache: Bool = true,
-        ownsRESTSession: Bool = false
+        ownsRESTSession: Bool = false,
+        anonymisesUploadFilenames: @escaping @Sendable () async -> Bool = { false }
     ) {
         credentialSource = .pending(pendingCredential)
         accountID = nil
@@ -452,6 +460,7 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
         self.usesDesktopHeartbeat = usesDesktopHeartbeat
         clientMetadata = DiscordClientMetadata(installationID: installationID)
         self.apiDiagnostics = apiDiagnostics
+        self.anonymisesUploadFilenames = anonymisesUploadFilenames
         self.usesEmojiDiskCache = usesEmojiDiskCache
         usesForwardSearchPeopleDiskCache = false
         persistsResolvedInstallationID = false

@@ -16,3 +16,26 @@ import Testing
 
     #expect(CatboxAttachmentUploader(session: session).session === session)
 }
+
+@Test(arguments: ["private-report.txt", "SPOILER_private-photo.PNG", "private-notes"])
+func `anonymised multipart uploads omit original names and preserve source files`(filename: String) throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let source = directory.appendingPathComponent(filename)
+    let bytes = Data("attachment contents".utf8)
+    try bytes.write(to: source)
+    let body = try CatboxAttachmentUploader.makeMultipartFile(
+        sourceURL: source, service: .catbox, boundary: "test-boundary", anonymisesFileNames: true
+    )
+    defer { try? FileManager.default.removeItem(at: body.deletingLastPathComponent()) }
+    let multipart = try String(contentsOf: body, encoding: .utf8)
+    #expect(!multipart.contains(filename))
+    let uploadedName = try #require(multipart.components(separatedBy: "filename=\"").last?.components(separatedBy: "\"").first)
+    #expect((uploadedName as NSString).pathExtension == source.pathExtension)
+    #expect(uploadedName.hasPrefix("SPOILER_") == filename.hasPrefix("SPOILER_"))
+    let stem = (uploadedName as NSString).deletingPathExtension.replacingOccurrences(of: "SPOILER_", with: "")
+    #expect(UUID(uuidString: stem) != nil)
+    #expect(multipart.contains("attachment contents"))
+    #expect(try Data(contentsOf: source) == bytes)
+}

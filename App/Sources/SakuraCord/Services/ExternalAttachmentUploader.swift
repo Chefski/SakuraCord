@@ -1,4 +1,5 @@
 import Foundation
+import SakuraCordModels
 
 nonisolated enum ExternalAttachmentHostingService: String, CaseIterable, Sendable {
     case catbox
@@ -51,13 +52,16 @@ nonisolated protocol ExternalAttachmentUploading: Sendable {
 
 nonisolated struct CatboxAttachmentUploader: ExternalAttachmentUploading {
     let session: URLSession
+    let anonymisesUploadFilenames: @Sendable () async -> Bool
 
-    init() {
+    init(anonymisesUploadFilenames: @escaping @Sendable () async -> Bool = { false }) {
+        self.anonymisesUploadFilenames = anonymisesUploadFilenames
         session = URLSession(configuration: Self.sessionConfiguration())
     }
 
     init(session: URLSession) {
         self.session = session
+        anonymisesUploadFilenames = { false }
     }
 
     static func sessionConfiguration() -> URLSessionConfiguration {
@@ -78,7 +82,8 @@ nonisolated struct CatboxAttachmentUploader: ExternalAttachmentUploading {
         let multipartURL = try Self.makeMultipartFile(
             sourceURL: fileURL,
             service: service,
-            boundary: boundary
+            boundary: boundary,
+            anonymisesFileNames: await anonymisesUploadFilenames()
         )
         defer { try? FileManager.default.removeItem(at: multipartURL.deletingLastPathComponent()) }
 
@@ -114,7 +119,8 @@ nonisolated struct CatboxAttachmentUploader: ExternalAttachmentUploading {
     static func makeMultipartFile(
         sourceURL: URL,
         service: ExternalAttachmentHostingService,
-        boundary: String
+        boundary: String,
+        anonymisesFileNames: Bool = false
     ) throws -> URL {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
             "SakuraCord-External-Upload-\(UUID().uuidString)",
@@ -147,7 +153,10 @@ nonisolated struct CatboxAttachmentUploader: ExternalAttachmentUploading {
                 )
             }
 
-            let filename = sanitizedFilename(fileURL: sourceURL)
+            let originalName = sourceURL.lastPathComponent
+            let filename = sanitizedFilename(
+                anonymisesFileNames ? UploadFilename.anonymised(originalName) : originalName
+            )
             try destination.write(contentsOf: Data(
                 "--\(boundary)\r\nContent-Disposition: form-data; name=\"fileToUpload\"; filename=\"\(filename)\"\r\nContent-Type: application/octet-stream\r\n\r\n".utf8
             ))
@@ -176,8 +185,8 @@ nonisolated struct CatboxAttachmentUploader: ExternalAttachmentUploading {
         ))
     }
 
-    private static func sanitizedFilename(fileURL: URL) -> String {
-        let value = fileURL.lastPathComponent
+    private static func sanitizedFilename(_ filename: String) -> String {
+        let value = filename
             .replacingOccurrences(of: "\"", with: "_")
             .replacingOccurrences(of: "\r", with: "_")
             .replacingOccurrences(of: "\n", with: "_")

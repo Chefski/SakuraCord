@@ -32,8 +32,9 @@ extension ProviderRequestContractTests {
         await pending.discard()
     }
 
-    @Test func `bootstrap uses gateway ready and does not burst guild channel requests`() async throws {
-        try await BootstrapRequestScenario().run
+    @Test(arguments: [false, true])
+    func `bootstrap uses gateway ready and does not burst guild channel requests`(anonymisesFileNames: Bool) async throws {
+        try await BootstrapRequestScenario(anonymisesFileNames: anonymisesFileNames).run
     }
 
     @Test func `bootstrap falls back when Ready only partially hydrates guilds`() async throws {

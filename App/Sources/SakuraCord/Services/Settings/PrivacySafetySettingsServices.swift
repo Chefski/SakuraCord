@@ -91,6 +91,7 @@ nonisolated struct PrivacySafetySettingsSnapshot: Equatable, Sendable {
         trustedDomains: []
     )
 
+    var anonymisesFileNames = false
     var sendsTypingIndicators: Bool
     var externalLinkConfirmationPolicy: ExternalLinkConfirmationPolicy
     var trustedDomains: [String]
@@ -99,6 +100,7 @@ nonisolated struct PrivacySafetySettingsSnapshot: Equatable, Sendable {
 @MainActor
 final class PrivacySafetySettingsStore {
     static let shared = PrivacySafetySettingsStore()
+    nonisolated static let anonymiseFileNamesKey = "settings.privacy.anonymiseFileNames"
 
     private let preferences: SettingsPreferenceStore
 
@@ -108,6 +110,9 @@ final class PrivacySafetySettingsStore {
 
     func load() -> PrivacySafetySettingsSnapshot {
         var value = PrivacySafetySettingsSnapshot.defaults
+        if case let .bool(saved) = preferences.value(for: .anonymiseFileNames) {
+            value.anonymisesFileNames = saved
+        }
         if case let .bool(saved) = preferences.value(for: .privacyTypingIndicators) {
             value.sendsTypingIndicators = saved
         }
@@ -123,6 +128,7 @@ final class PrivacySafetySettingsStore {
     }
 
     func save(_ value: PrivacySafetySettingsSnapshot) {
+        preferences.set(.bool(value.anonymisesFileNames), for: .anonymiseFileNames)
         preferences.set(.bool(value.sendsTypingIndicators), for: .privacyTypingIndicators)
         preferences.set(
             .string(value.externalLinkConfirmationPolicy.rawValue),

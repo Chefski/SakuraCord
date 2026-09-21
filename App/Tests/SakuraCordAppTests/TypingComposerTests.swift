@@ -684,17 +684,36 @@ import Testing
 }
 
 @MainActor
-@Test func `composer attachment controls preserve edits and spoiler state`() async throws {
-    let model = AppModel(launchMode: .offlineTesting, provider: TypingTestProvider())
+@Test(arguments: [false, true])
+func `composer attachment controls preserve edits and spoiler state`(anonymisesFileNames: Bool) async throws {
+    let store = PrivacySafetySettingsStore(preferences: SettingsPreferenceStore(defaults: InMemoryPreferences()))
+    var privacy = store.load()
+    privacy.anonymisesFileNames = anonymisesFileNames
+    store.save(privacy)
+    let model = AppModel(launchMode: .offlineTesting, provider: TypingTestProvider(), privacySafetySettingsStore: store)
     await model.start()
     let url = URL(fileURLWithPath: "/tmp/sakuracord-editable-attachment.png")
     model.addComposerAttachments([url], to: .channel)
     var attachment = try #require(model.channelComposerAttachments.first)
+    #expect(attachment.isFilenameAnonymised == anonymisesFileNames)
+    if anonymisesFileNames {
+        #expect(attachment.filename != url.lastPathComponent)
+        #expect((attachment.filename as NSString).pathExtension == "png")
+        model.updateComposerAttachment(attachment, in: .channel)
+        #expect(model.channelComposerAttachments.first?.filename == attachment.filename)
+        attachment.setFilenameAnonymised(false)
+        model.updateComposerAttachment(attachment, in: .channel)
+        #expect(model.channelComposerAttachments.first?.filename == url.lastPathComponent)
+        #expect(model.channelComposerAttachments.first?.isFilenameAnonymised == false)
+        attachment.setFilenameAnonymised(true)
+        model.updateComposerAttachment(attachment, in: .channel)
+        #expect(model.channelComposerAttachments.first?.filename == attachment.filename)
+    }
 
     model.toggleComposerAttachmentSpoiler(attachment.id, in: .channel)
     #expect(model.channelComposerAttachments.first?.isSpoiler == true)
 
-    attachment.filename = "renamed.png"
+    attachment.rename("renamed.png")
     attachment.description = "A useful description"
     attachment.isSpoiler = true
     model.updateComposerAttachment(attachment, in: .channel)

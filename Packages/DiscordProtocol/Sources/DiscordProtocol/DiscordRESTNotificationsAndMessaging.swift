@@ -552,8 +552,9 @@ extension DiscordRESTProvider {
         _ urls: [URL], channelID: ChannelID,
         progress: @escaping @Sendable (MessageSendProgress) -> Void
     ) async throws -> [JSONValue] {
-        try await uploadAttachmentFiles(
-            urls.map { AttachmentUploadFile(url: $0, name: $0.lastPathComponent) },
+        let anonymisesNames = await anonymisesUploadFilenames()
+        return try await uploadAttachmentFiles(
+            urls.map { AttachmentUploadFile(url: $0, name: anonymisesNames ? UploadFilename.anonymised($0.lastPathComponent) : $0.lastPathComponent) },
             channelID: channelID,
             progress: progress
         )
@@ -564,8 +565,9 @@ extension DiscordRESTProvider {
         channelID: ChannelID,
         progress: @escaping @Sendable (MessageSendProgress) -> Void
     ) async throws -> [JSONValue] {
-        try await uploadAttachmentFiles(
-            attachments.map(Self.forumUploadFile),
+        let anonymisesNames = await anonymisesUploadFilenames()
+        return try await uploadAttachmentFiles(
+            attachments.map { Self.forumUploadFile($0.applyingFilenamePrivacy(anonymisesNames)) },
             channelID: channelID,
             progress: progress
         )
