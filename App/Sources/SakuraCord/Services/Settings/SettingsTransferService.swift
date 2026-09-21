@@ -3,7 +3,7 @@ import Foundation
 @MainActor
 final class SettingsTransferService {
     nonisolated static let pages: [SettingsPageID] = [
-        .general, .interface, .appearance, .notifications, .voiceVideo, .accessibility,
+        .general, .features, .interface, .appearance, .notifications, .voiceVideo, .accessibility,
         .keyboardShortcuts, .privacySafety, .storageDownloads, .diagnostics, .softwareUpdates,
     ]
 

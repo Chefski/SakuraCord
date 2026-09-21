@@ -7,6 +7,9 @@ extension AppModel {
         })
         if pages.contains(.general) {
             applyGeneralInputSettings(GeneralInputSettingsStore.shared.load())
+        }
+        if pages.contains(.features) {
+            applyFeaturesSettings(FeaturesSettingsStore.shared.load())
             applyAttachmentSettings(attachmentSettingsStore.load())
         }
         if pages.contains(.appearance) || pages.contains(.interface) {

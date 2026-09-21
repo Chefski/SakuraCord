@@ -65,7 +65,8 @@ nonisolated enum SoundboardPlaybackPolicy {
         activeGuildID: GuildID?,
         premiumType: Int,
         effectivePermissions: UInt64?,
-        voiceState: VoiceParticipantState?
+        voiceState: VoiceParticipantState?,
+        fakeNitroEnabled: Bool = true
     ) -> SoundboardPlaybackRoute? {
         guard sound.isAvailable,
               let effectivePermissions,
@@ -83,7 +84,7 @@ nonisolated enum SoundboardPlaybackPolicy {
         guard effectivePermissions & DiscordPermissionBits.useExternalSounds != 0 else {
             return nil
         }
-        return premiumType == 2 ? .native : .outgoingMixer
+        return premiumType == 2 ? .native : (fakeNitroEnabled ? .outgoingMixer : nil)
     }
 }
 
@@ -592,7 +593,8 @@ extension AppModel {
             activeGuildID: channel.guildID,
             premiumType: snapshot?.currentUser.premiumType ?? 0,
             effectivePermissions: permissions,
-            voiceState: currentUserID.flatMap { voiceStates[$0] }
+            voiceState: currentUserID.flatMap { voiceStates[$0] },
+            fakeNitroEnabled: featuresSettings.fakeNitroSoundboard
         )
     }
 }

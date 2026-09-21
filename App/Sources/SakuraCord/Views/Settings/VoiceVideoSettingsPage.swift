@@ -25,7 +25,7 @@ struct VoiceVideoSettingsPage: View {
             )
             VoiceCameraSettingsSection(model: model, tests: tests, state: state)
             ScreenShareDefaultsSettingsSection(
-                preferences: model.voiceVideoPreferences,
+                model: model,
                 state: state
             )
             VoicePermissionsSettingsSection(
@@ -249,21 +249,27 @@ private struct VoiceCameraPreviewSurface: View {
 }
 
 private struct ScreenShareDefaultsSettingsSection: View {
-    let preferences: VoiceVideoPreferences
+    let model: AppModel
     let state: SettingsViewState
 
     var body: some View {
-        @Bindable var preferences = preferences
+        @Bindable var preferences = model.voiceVideoPreferences
         Section {
-            Picker("Default quality", selection: $preferences.screenShareQuality) {
-                ForEach(ScreenShareQuality.allCases, id: \.self) { quality in
+            Picker("Default quality", selection: Binding(
+                get: { model.allowedScreenShareSettings(preferences.screenShareDefaults).quality },
+                set: { preferences.screenShareQuality = $0 }
+            )) {
+                ForEach(model.availableScreenShareQualities, id: \.self) { quality in
                     Text(quality.title).tag(quality)
                 }
             }
             .settingsControlAnchor(.voiceScreenShareQuality, state: state)
 
-            Picker("Default frame rate", selection: $preferences.screenShareFrameRate) {
-                ForEach(ScreenShareFrameRate.allCases, id: \.self) { rate in
+            Picker("Default frame rate", selection: Binding(
+                get: { model.allowedScreenShareSettings(preferences.screenShareDefaults).frameRate },
+                set: { preferences.screenShareFrameRate = $0 }
+            )) {
+                ForEach(model.availableScreenShareFrameRates, id: \.self) { rate in
                     Text(rate.title).tag(rate)
                 }
             }

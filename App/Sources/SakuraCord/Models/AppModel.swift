@@ -173,16 +173,14 @@ final class AppModel {
     }
     var visibleChannels: [Channel] = [] {
         didSet {
-            visibleChannelGroups = AppPerformanceSignposts.measureSync(
-                "ChannelSidebarGrouping"
-            ) {
-                ChannelGroup.make(from: visibleChannels)
-            }
+            refreshVisibleChannelGroups()
         }
     }
     var visibleChannelGroups: [ChannelGroup] = []
     var unreadCategoryIDsByGuild: [GuildID: Set<ChannelID>] = [:]
-    var hiddenChannelIDs: Set<ChannelID> = []
+    var hiddenChannelIDs: Set<ChannelID> = [] {
+        didSet { refreshVisibleChannelGroups() }
+    }
     var checkingChannelIDs: Set<ChannelID> = []
     var selectedChannel: Channel?
     var workspaceNavigationOverlay: WorkspaceNavigationOverlay?
@@ -197,6 +195,7 @@ final class AppModel {
     var appearanceSettings: AppearanceSettingsSnapshot
     var interfaceSettings: InterfaceSettingsSnapshot
     var generalInputSettings: GeneralInputSettingsSnapshot
+    var featuresSettings: FeaturesSettingsSnapshot
     var attachmentSettings: AttachmentSettingsSnapshot
     var accessibilitySettings: AccessibilitySettingsSnapshot
     @ObservationIgnored var messageRowsUpdateHint: MessageRowsUpdateHint?
@@ -1231,6 +1230,7 @@ final class AppModel {
         appearanceSettings = AppearanceSettingsStore.shared.load()
         interfaceSettings = InterfaceSettingsStore.shared.load()
         generalInputSettings = GeneralInputSettingsStore.shared.load()
+        featuresSettings = FeaturesSettingsStore.shared.load()
         let resolvedAttachmentStore = attachmentSettingsStore ?? .shared
         self.attachmentSettingsStore = resolvedAttachmentStore
         attachmentSettings = resolvedAttachmentStore.load()

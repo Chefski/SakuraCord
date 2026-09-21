@@ -4,6 +4,7 @@ nonisolated enum SettingsPageID: String, CaseIterable, Codable, Identifiable, Se
     case profiles
     case myAccount
     case general
+    case features
     case interface
     case appearance
     case notifications
@@ -185,7 +186,9 @@ nonisolated extension SettingsSectionID {
     static let interfaceTime = Self(rawValue: "interface-time")
     static let generalTextInput = Self(rawValue: "general-text-input")
     static let generalEmoji = Self(rawValue: "general-emoji")
-    static let generalAttachments = Self(rawValue: "general-attachments")
+    static let featuresChannels = Self(rawValue: "features-channels")
+    static let featuresFakeNitro = Self(rawValue: "features-fake-nitro")
+    static let featuresAttachments = Self(rawValue: "features-attachments")
     static let softwareUpdates = Self(rawValue: "software-updates")
     static let notificationDelivery = Self(rawValue: "notification-delivery")
     static let notificationEvents = Self(rawValue: "notification-events")
@@ -258,6 +261,11 @@ nonisolated extension SettingsControlID {
     static let smartQuotes = Self(rawValue: "chat.smart-quotes")
     static let smartDashes = Self(rawValue: "chat.smart-dashes")
     static let emojiSkinTone = Self(rawValue: "chat.emoji-skin-tone")
+    static let showHiddenChannels = Self(rawValue: "features.show-hidden-channels")
+    static let fakeNitroEmojis = Self(rawValue: "features.fake-nitro-emojis")
+    static let fakeNitroStickers = Self(rawValue: "features.fake-nitro-stickers")
+    static let fakeNitroSoundboard = Self(rawValue: "features.fake-nitro-soundboard")
+    static let fakeNitroStreamQuality = Self(rawValue: "features.fake-nitro-stream-quality")
     static let attachmentCompactionPrompt = Self(rawValue: "attachments.compaction-prompt")
     static let attachmentExternalUploadPrompt = Self(rawValue: "attachments.external-upload-prompt")
     static let attachmentExternalProvider = Self(rawValue: "attachments.external-provider")
@@ -367,6 +375,7 @@ nonisolated extension SettingsCatalog {
         profilesPage,
         myAccountPage,
         generalPage,
+        featuresPage,
         interfacePage,
         appearancePage,
         notificationsPage,
@@ -388,6 +397,7 @@ nonisolated extension SettingsCatalog {
         + themeDetailControls
         + transferControls
         + generalControls
+        + featuresControls
         + appearanceControls
         + interfaceControls
         + softwareUpdatesControls

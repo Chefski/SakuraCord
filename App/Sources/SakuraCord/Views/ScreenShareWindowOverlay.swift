@@ -356,7 +356,7 @@ struct ScreenShareFrameRatePopover: View {
                 .font(.headline)
                 .padding(.horizontal, 4)
                 .padding(.bottom, 4)
-            ForEach(ScreenShareFrameRate.allCases, id: \.self) { frameRate in
+            ForEach(model.availableScreenShareFrameRates, id: \.self) { frameRate in
                 Button {
                     Task {
                         var settings = model.screenShareSettings

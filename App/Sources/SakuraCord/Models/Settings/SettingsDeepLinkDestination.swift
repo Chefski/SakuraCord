@@ -31,6 +31,12 @@ nonisolated struct SettingsDeepLinkDestination: Hashable, Sendable {
               let page = SettingsPageID.allCases.first(where: { $0.deepLinkPath == path[1] })
         else { return nil }
         if path.count == 2 { return Self(page: page) }
+        if path.count == 3, page == .general,
+           let control = SettingsCatalog.featuresControls.first(where: {
+               $0.destination.section == .featuresAttachments && $0.deepLinkPath == path[2]
+           }) {
+            return Self(page: .features, controlID: control.id)
+        }
         guard path.count == 3,
               let control = SettingsCatalog.foundation.controls.first(where: {
                   $0.destination.page == page && $0.deepLinkPath == path[2]
@@ -54,6 +60,7 @@ nonisolated extension SettingsPageID {
         case .profiles: "profiles"
         case .myAccount: "my-account"
         case .general: "general"
+        case .features: "features"
         case .interface: "appearance"
         case .appearance: "theme"
         case .notifications: "notifications"

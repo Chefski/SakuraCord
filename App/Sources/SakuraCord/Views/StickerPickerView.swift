@@ -117,13 +117,16 @@ private final class StickerPickerDocumentStore {
             fallbackGuilds: model.snapshot?.guilds ?? [],
             currentGuildID: model.selectedGuildID
         )
+        let stickersByGuild = model.stickersByGuild.mapValues { stickers in
+            stickers.filter { model.stickerSendRoute(for: $0) != nil }
+        }
         guard self.guilds != guilds
-            || stickersByGuild != model.stickersByGuild
+            || self.stickersByGuild != stickersByGuild
             || packs != model.standardStickerPacks
             || settings != model.stickerUserSettings
         else { return }
         self.guilds = guilds
-        stickersByGuild = model.stickersByGuild
+        self.stickersByGuild = stickersByGuild
         packs = model.standardStickerPacks
         settings = model.stickerUserSettings
         favoriteIDs = Set(settings.favoriteIDs)
@@ -380,6 +383,10 @@ struct StickerPickerView: View {
                 }
                 searchIsFocused = true
             }
+            .onChange(of: model.featuresSettings.fakeNitroStickers) { _, _ in
+                document.synchronize(with: model)
+                interaction.synchronize(with: document.selectableCells)
+            }
             .onChange(of: model.stickerUserSettings) { _, _ in
                 document.synchronize(with: model)
                 interaction.synchronize(with: document.selectableCells)
@@ -500,7 +507,8 @@ struct StickerPickerView: View {
     }
 
     private func activate(_ cell: StickerPickerCell) {
-        guard let channelID = model.composerSendChannelID(in: destination),
+        guard model.stickerSendRoute(for: cell.item.sticker) != nil,
+              let channelID = model.composerSendChannelID(in: destination),
               model.allowSlowmodeSubmission(in: channelID)
         else { return }
         interaction.select(cell)

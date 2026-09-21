@@ -131,7 +131,7 @@ struct SettingsView: View {
             idealWidth: 1060,
             maxWidth: 1060,
             minHeight: 520,
-            idealHeight: 740,
+            idealHeight: 760,
             maxHeight: .infinity
         )
     }
@@ -252,6 +252,8 @@ private struct SettingsDetailRouter: View {
                 state: state,
                 launchAtLogin: launchAtLogin
             )
+        case .features:
+            FeaturesSettingsPage(model: model, state: state)
         case .appearance:
             AppearanceSettingsPage(model: model, state: state)
         case .interface:

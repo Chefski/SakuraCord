@@ -214,7 +214,7 @@ struct SakuraCordApp: App {
             )
             .windowModalInputScope()
         }
-        .defaultSize(width: 1060, height: 740)
+        .defaultSize(width: 1060, height: 760)
         .windowResizability(.contentSize)
         .windowManagerRole(.associated)
         .restorationBehavior(.disabled)

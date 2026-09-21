@@ -21,16 +21,9 @@ struct AttachmentSettingsSection: View {
                 }
                 .settingsControlAnchor(.attachmentCompactionQuality, state: state)
             }
-            Picker(selection: $value.externalUploadPolicy) {
+            Picker("Upload files that still exceed Discord’s limit", selection: $value.externalUploadPolicy) {
                 ForEach(AttachmentHandlingPolicy.allCases) { policy in
                     Text(policy.title).tag(policy)
-                }
-            } label: {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Upload files that still exceed Discord’s limit")
-                    Text("Uploads to a third-party host and adds a link to your draft.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
             }
             .settingsControlAnchor(.attachmentExternalUploadPrompt, state: state)

@@ -70,6 +70,22 @@ private let allSoundboardPermissions = DiscordPermissionBits.speak
         effectivePermissions: allSoundboardPermissions,
         voiceState: nil
     ) == .outgoingMixer)
+    #expect(SoundboardPlaybackPolicy.route(
+        for: sound,
+        activeGuildID: active,
+        premiumType: 0,
+        effectivePermissions: allSoundboardPermissions,
+        voiceState: nil,
+        fakeNitroEnabled: false
+    ) == nil)
+    #expect(SoundboardPlaybackPolicy.route(
+        for: sound,
+        activeGuildID: active,
+        premiumType: 2,
+        effectivePermissions: allSoundboardPermissions,
+        voiceState: nil,
+        fakeNitroEnabled: false
+    ) == .native)
 }
 
 @Test func `soundboard permissions and server voice restrictions fail closed without blocking self mute`() {

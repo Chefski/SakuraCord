@@ -779,7 +779,7 @@ struct ScreenShareQualityPopover: View {
                 .font(.headline)
                 .padding(.horizontal, 4)
                 .padding(.bottom, 4)
-            ForEach(ScreenShareQuality.allCases, id: \.self) { quality in
+            ForEach(model.availableScreenShareQualities, id: \.self) { quality in
                 Button {
                     Task {
                         var settings = model.screenShareSettings

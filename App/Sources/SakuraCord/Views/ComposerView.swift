@@ -815,7 +815,7 @@ struct ComposerView: View {
     private func emojiSuggestions(query: String) -> [ColonAutocompleteSuggestion] {
         ColonAutocompleteSuggestionFactory.suggestions(
             query: query,
-            customEmojis: model.orderedCustomEmojis,
+            customEmojis: model.composerCustomEmojis,
             customValue: model.composerText(for:),
             customSource: { model.serverRailGuildsByID[$0.guildID]?.name },
             discordFavoriteKeys: Set(model.discordFavoriteEmojiKeys),

@@ -741,7 +741,7 @@ private struct InlineMessageEditor: View {
         guard let context else { return [] }
         return ColonAutocompleteSuggestionFactory.suggestions(
             query: context.query,
-            customEmojis: model.orderedCustomEmojis,
+            customEmojis: model.composerCustomEmojis,
             customValue: model.composerText(for:),
             customSource: { model.serverRailGuildsByID[$0.guildID]?.name },
             discordFavoriteKeys: Set(model.discordFavoriteEmojiKeys),

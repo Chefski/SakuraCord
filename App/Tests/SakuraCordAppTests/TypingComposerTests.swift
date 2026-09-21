@@ -921,6 +921,12 @@ func `composer attachment controls preserve edits and spoiler state`(anonymisesF
     #expect(DiscordEmojiPermissionPolicy.composerText(
         for: remoteAnimated, currentGuildID: currentGuild, premiumType: 0
     ) == remoteAnimated.linkedImageMarkdown)
+    #expect(DiscordEmojiPermissionPolicy.composerText(
+        for: remoteStatic, currentGuildID: currentGuild, premiumType: 0, fakeNitroEnabled: false
+    ) == ":remote:")
+    #expect(DiscordEmojiPermissionPolicy.composerText(
+        for: localStatic, currentGuildID: currentGuild, premiumType: 0, fakeNitroEnabled: false
+    ) == localStatic.messageToken)
     #expect(localAnimated.linkedImageMarkdown.contains(".gif?"))
     for useCase in [DiscordEmojiUseCase.profile, .customStatus] {
         #expect(DiscordEmojiPermissionPolicy.canShow(remoteStatic, for: useCase, premiumType: 0))
@@ -963,6 +969,15 @@ func `composer attachment controls preserve edits and spoiler state`(anonymisesF
     ) == .fakeNitroUpload)
     #expect(StickerSendPolicy.route(
         for: remote, currentGuildID: currentGuild, premiumType: 2
+    ) == .native)
+    #expect(StickerSendPolicy.route(
+        for: remote, currentGuildID: currentGuild, premiumType: 0, fakeNitroEnabled: false
+    ) == nil)
+    #expect(StickerSendPolicy.route(
+        for: local, currentGuildID: currentGuild, premiumType: 0, fakeNitroEnabled: false
+    ) == .native)
+    #expect(StickerSendPolicy.route(
+        for: remote, currentGuildID: currentGuild, premiumType: 2, fakeNitroEnabled: false
     ) == .native)
 }
 

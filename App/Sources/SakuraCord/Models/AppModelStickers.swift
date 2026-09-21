@@ -20,12 +20,13 @@ nonisolated enum StickerSendPolicy {
     static func route(
         for sticker: MessageSticker,
         currentGuildID: GuildID?,
-        premiumType: Int
-    ) -> StickerSendRoute {
+        premiumType: Int,
+        fakeNitroEnabled: Bool = true
+    ) -> StickerSendRoute? {
         if sticker.guildID == nil || sticker.guildID == currentGuildID || premiumType > 0 {
             return .native
         }
-        return .fakeNitroUpload
+        return fakeNitroEnabled ? .fakeNitroUpload : nil
     }
 }
 
@@ -137,15 +138,20 @@ extension AppModel {
         }
     }
 
+    func stickerSendRoute(for sticker: MessageSticker) -> StickerSendRoute? {
+        StickerSendPolicy.route(
+            for: sticker,
+            currentGuildID: selectedGuildID,
+            premiumType: snapshot?.currentUser.premiumType ?? 0,
+            fakeNitroEnabled: featuresSettings.fakeNitroStickers
+        )
+    }
+
     @discardableResult
     func sendStickerFromPicker(
         _ sticker: MessageSticker, in destination: MessageComposerDestination = .channel
     ) async -> Bool {
-        let route = StickerSendPolicy.route(
-            for: sticker,
-            currentGuildID: selectedGuildID,
-            premiumType: snapshot?.currentUser.premiumType ?? 0
-        )
+        guard let route = stickerSendRoute(for: sticker) else { return false }
         let sent: Bool
         switch route {
         case .native:

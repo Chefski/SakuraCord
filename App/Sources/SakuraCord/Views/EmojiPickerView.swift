@@ -543,6 +543,9 @@ struct EmojiPickerView: View {
 
     private func lockReason(_ item: EmojiPickerItem) -> String? {
         guard case let .custom(emoji) = item else { return nil }
+        if useCase == .message, !model.canComposeEmoji(emoji) {
+            return String(localized: "Enable FakeNitro emojis in Features to send this emoji as an image link.", bundle: #bundle)
+        }
         guard DiscordEmojiPermissionPolicy.isPremiumLocked(emoji, for: useCase, premiumType: model.snapshot?.currentUser.premiumType ?? 0) else { return nil }
         return String(localized: "Using this emoji in your profile requires Nitro.", bundle: #bundle)
     }

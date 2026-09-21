@@ -16,7 +16,7 @@ extension AppModel {
             return
         }
 
-        screenShareSettings = voiceVideoPreferences.screenShareDefaults
+        screenShareSettings = allowedScreenShareSettings(voiceVideoPreferences.screenShareDefaults)
         let capture = ScreenShareCaptureEngine(settings: screenShareSettings)
         screenShareCaptureEngine = capture
         isScreenShareCaptureAvailable = false
@@ -78,6 +78,7 @@ extension AppModel {
     }
 
     func updateScreenShareSettings(_ settings: ScreenShareSettings) async {
+        let settings = allowedScreenShareSettings(settings)
         do {
             try await screenShareCaptureEngine?.updateSettings(settings)
         } catch {

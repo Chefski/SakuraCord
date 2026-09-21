@@ -39,13 +39,6 @@ struct GeneralSettingsPage: View {
                 ),
                 state: state
             )
-            AttachmentSettingsSection(
-                value: Binding(
-                    get: { model.attachmentSettings },
-                    set: { model.applyAttachmentSettings($0) }
-                ),
-                state: state
-            )
             Section {
                 Toggle("Confirm quitting during calls or uploads", isOn: $confirmsQuitActiveWork)
                     .tint(SakuraCordAccentColor.color)

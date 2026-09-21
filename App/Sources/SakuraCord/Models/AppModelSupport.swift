@@ -601,11 +601,12 @@ nonisolated enum DiscordEmojiPermissionPolicy {
     static func composerText(
         for emoji: DiscordEmoji,
         currentGuildID: GuildID?,
-        premiumType: Int
+        premiumType: Int,
+        fakeNitroEnabled: Bool = true
     ) -> String {
         let requiresNitro = emoji.isAnimated || emoji.guildID != currentGuildID
         return !hasNitro(premiumType: premiumType) && requiresNitro
-            ? emoji.linkedImageMarkdown
+            ? (fakeNitroEnabled ? emoji.linkedImageMarkdown : ":\(emoji.name):")
             : emoji.messageToken
     }
 

@@ -273,19 +273,39 @@ nonisolated struct SettingsPreferenceRegistry: Sendable {
             defaultValue: .string(NativeEmojiSkinTone.standard.rawValue)
         ),
         SettingsPreferenceRegistration(
-            id: .attachmentCompactionPrompt, page: .general,
+            id: .showHiddenChannels, page: .features,
+            storage: .appWide(key: "settings.features.showHiddenChannels"), defaultValue: .bool(true)
+        ),
+        SettingsPreferenceRegistration(
+            id: .fakeNitroEmojis, page: .features,
+            storage: .appWide(key: "settings.features.fakeNitroEmojis"), defaultValue: .bool(true)
+        ),
+        SettingsPreferenceRegistration(
+            id: .fakeNitroStickers, page: .features,
+            storage: .appWide(key: "settings.features.fakeNitroStickers"), defaultValue: .bool(true)
+        ),
+        SettingsPreferenceRegistration(
+            id: .fakeNitroSoundboard, page: .features,
+            storage: .appWide(key: "settings.features.fakeNitroSoundboard"), defaultValue: .bool(true)
+        ),
+        SettingsPreferenceRegistration(
+            id: .fakeNitroStreamQuality, page: .features,
+            storage: .appWide(key: "settings.features.fakeNitroStreamQuality"), defaultValue: .bool(true)
+        ),
+        SettingsPreferenceRegistration(
+            id: .attachmentCompactionPrompt, page: .features,
             storage: .appWide(key: "settings.attachments.attachmentCompactionPrompt"), defaultValue: .string(AttachmentHandlingPolicy.ask.rawValue)
         ),
         SettingsPreferenceRegistration(
-            id: .attachmentExternalUploadPrompt, page: .general,
+            id: .attachmentExternalUploadPrompt, page: .features,
             storage: .appWide(key: "settings.attachments.attachmentExternalUploadPrompt"), defaultValue: .string(AttachmentHandlingPolicy.ask.rawValue)
         ),
         SettingsPreferenceRegistration(
-            id: .attachmentExternalProvider, page: .general,
+            id: .attachmentExternalProvider, page: .features,
             storage: .appWide(key: "settings.attachments.externalProvider"), defaultValue: .string(ExternalAttachmentHostingService.litterbox.rawValue)
         ),
         SettingsPreferenceRegistration(
-            id: .attachmentCompactionQuality, page: .general,
+            id: .attachmentCompactionQuality, page: .features,
             storage: .appWide(key: "settings.attachments.attachmentCompactionQuality"), defaultValue: .string(AttachmentCompactionOptions.Quality.balanced.rawValue)
         ),
         SettingsPreferenceRegistration(

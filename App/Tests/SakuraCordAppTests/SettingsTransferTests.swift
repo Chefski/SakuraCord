@@ -6,6 +6,8 @@ import Testing
 @Test func `settings file round trip preserves registered values and export selection`() throws {
     let source = SettingsPreferenceStore(defaults: InMemoryPreferences())
     source.set(.bool(false), for: .sendWithReturn)
+    source.set(.bool(false), for: .fakeNitroEmojis)
+    source.set(.string(AttachmentHandlingPolicy.never.rawValue), for: .attachmentExternalUploadPrompt)
     source.set(.double(0.73), for: .windowOpacity)
     source.set(.strings(["example.com"]), for: .trustedDomains)
     let transfer = SettingsTransferService(preferences: source)
@@ -21,6 +23,10 @@ import Testing
     let selected = transfer.export(pages: [.appearance])
     #expect(selected.values[SettingsControlID.windowOpacity.rawValue] == .double(0.73))
     #expect(selected.values[SettingsControlID.sendWithReturn.rawValue] == nil)
+    let features = transfer.export(pages: [.features])
+    #expect(features.values[SettingsControlID.fakeNitroEmojis.rawValue] == .bool(false))
+    #expect(features.values[SettingsControlID.attachmentExternalUploadPrompt.rawValue] == .string(AttachmentHandlingPolicy.never.rawValue))
+    #expect(transfer.export(pages: [.general]).values[SettingsControlID.attachmentExternalUploadPrompt.rawValue] == nil)
     #expect(transfer.export(pages: []).values.isEmpty)
 }
 

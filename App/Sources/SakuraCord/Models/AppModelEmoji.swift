@@ -142,11 +142,22 @@ extension AppModel {
         }
     }
 
+    func canComposeEmoji(_ emoji: DiscordEmoji) -> Bool {
+        featuresSettings.fakeNitroEmojis
+            || DiscordEmojiPermissionPolicy.hasNitro(premiumType: snapshot?.currentUser.premiumType ?? 0)
+            || (!emoji.isAnimated && emoji.guildID == selectedGuildID)
+    }
+
+    var composerCustomEmojis: [DiscordEmoji] {
+        featuresSettings.fakeNitroEmojis ? orderedCustomEmojis : orderedCustomEmojis.filter(canComposeEmoji)
+    }
+
     func composerText(for emoji: DiscordEmoji) -> String {
         DiscordEmojiPermissionPolicy.composerText(
             for: emoji,
             currentGuildID: selectedGuildID,
-            premiumType: snapshot?.currentUser.premiumType ?? 0
+            premiumType: snapshot?.currentUser.premiumType ?? 0,
+            fakeNitroEnabled: featuresSettings.fakeNitroEmojis
         )
     }
 
