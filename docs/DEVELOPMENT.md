@@ -92,6 +92,7 @@ Every path below uses `https://sakuracord.app/settings/` as its prefix.
 | Voice & Video | `voice-video` |
 | Accessibility | `accessibility` |
 | Keyboard Shortcuts | `keyboard-shortcuts` |
+| Features | `features` |
 | Privacy | `privacy-safety` |
 | Storage & Downloads | `storage-downloads` |
 | Diagnostics | `diagnostics` |
@@ -110,10 +111,20 @@ individual controls. `appearance/composer` and `appearance/messages` retain
 their existing paths. The catalog is the source of truth; new controls receive
 links automatically.
 
+Features options use `features/<control>`, including `show-hidden-channels`,
+`fake-nitro-emojis`, `fake-nitro-stickers`, `fake-nitro-soundboard`,
+`fake-nitro-stream-quality`, `compaction-prompt`, `compaction-quality`,
+`external-upload-prompt`, and `external-provider`. Older `general/<control>`
+attachment links still open their current Features destination. Upload privacy
+options use `privacy-safety/remove-media-metadata` and
+`privacy-safety/anonymise-file-names`.
+
 Individual cards show the setting's title and use the same reveal and highlight
 as Settings search, including fields that load asynchronously. Opening a card
 only navigates; actions such as resetting, importing, or changing a profile still
 require using the setting itself. Account and Nitro availability still apply.
+Attachment options stay visible and are disabled when their parent policy
+makes them unavailable; following a link does not enable compression or external uploads.
 
 The diagnostics action asks for confirmation naming the source conversation,
 checks message and attachment permissions, and sends the existing sanitised API

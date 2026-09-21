@@ -4,13 +4,13 @@ nonisolated enum SettingsPageID: String, CaseIterable, Codable, Identifiable, Se
     case profiles
     case myAccount
     case general
-    case features
     case interface
     case appearance
     case notifications
     case voiceVideo
     case accessibility
     case keyboardShortcuts
+    case features
     case privacySafety
     case storageDownloads
     case diagnostics
@@ -375,13 +375,13 @@ nonisolated extension SettingsCatalog {
         profilesPage,
         myAccountPage,
         generalPage,
-        featuresPage,
         interfacePage,
         appearancePage,
         notificationsPage,
         voiceVideoPage,
         accessibilityPage,
         keyboardShortcutsPage,
+        featuresPage,
         privacySafetyPage,
         storageDownloadsPage,
         diagnosticsPage,
