@@ -1,9 +1,65 @@
 @testable import SakuraCord
+import AppKit
 import DiscordProtocol
 import Foundation
 import SakuraCordModels
 import SakuraCordPersistence
+import SwiftUI
 import Testing
+
+@MainActor
+@Test(arguments: ["", "destination draft", "source 日本"])
+func composerCompositionStaysWithinConversation(destinationDraft: String) throws {
+    _ = NSApplication.shared
+    let sourceID = ChannelID(rawValue: 200)
+    let destinationID = ChannelID(rawValue: 201)
+    var writes: [ChannelID: [String]] = [:]
+    var selection: NSRange?
+    func input(_ text: String, in channelID: ChannelID) -> ComposerTextView {
+        ComposerTextView(
+            text: text, conversationID: channelID, placeholder: "Message", sendWithReturn: true,
+            onTextChange: { writes[channelID, default: []].append($0) }, onSubmit: {},
+            selection: Binding(get: { selection }, set: { selection = $0 }),
+            isFocused: .constant(false)
+        )
+    }
+    let host = NSHostingView(rootView: input("source ", in: sourceID))
+    host.frame = NSRect(x: 0, y: 0, width: 500, height: 100)
+    let window = NSWindow(contentRect: host.frame, styleMask: [.titled], backing: .buffered, defer: false)
+    window.contentView = host
+    defer { window.contentView = nil }
+    host.layoutSubtreeIfNeeded()
+    func editor(in view: NSView) -> ComposerNSTextView? {
+        if let editor = view as? ComposerNSTextView { return editor }
+        return view.subviews.lazy.compactMap { editor(in: $0) }.first
+    }
+    let view = try #require(editor(in: host))
+    let currentSelection = NSRange(location: NSNotFound, length: 0)
+    view.setSelectedRange(NSRange(location: 7, length: 0))
+    view.setMarkedText("に", selectedRange: NSRange(location: 1, length: 0), replacementRange: currentSelection)
+    host.rootView = input("source ", in: sourceID)
+    host.layoutSubtreeIfNeeded()
+    #expect(view.string == "source に")
+    #expect(view.hasMarkedText(), "Ordinary redraws must preserve composition")
+    view.insertText("日本", replacementRange: currentSelection)
+    #expect(writes[sourceID] == ["source 日本"])
+
+    host.rootView = input("source 日本", in: sourceID)
+    host.layoutSubtreeIfNeeded()
+    view.setMarkedText("あ", selectedRange: NSRange(location: 1, length: 0), replacementRange: currentSelection)
+    selection = nil
+    host.rootView = input(destinationDraft, in: destinationID)
+    host.layoutSubtreeIfNeeded()
+    #expect(view.string == destinationDraft)
+    #expect(!view.hasMarkedText())
+    #expect(writes[sourceID] == ["source 日本"], "Discarding composition must not publish the old draft")
+    #expect(writes[destinationID] == nil, "Switching conversations must not write into the new draft")
+
+    view.setSelectedRange(NSRange(location: destinationDraft.utf16.count, length: 0))
+    view.setMarkedText("い", selectedRange: NSRange(location: 1, length: 0), replacementRange: currentSelection)
+    view.insertText("異", replacementRange: currentSelection)
+    #expect(writes[destinationID] == [destinationDraft + "異"])
+}
 
 @MainActor
 @Test(arguments: ["", "destination draft"], [false, true])

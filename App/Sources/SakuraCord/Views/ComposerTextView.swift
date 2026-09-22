@@ -278,6 +278,7 @@ enum ComposerEmojiAttributedText {
 
 struct ComposerTextView: NSViewRepresentable {
     let text: String
+    var conversationID: ChannelID?
     let placeholder: String
     let sendWithReturn: Bool
     var generalInputSettings: GeneralInputSettingsSnapshot = .defaults
@@ -291,6 +292,7 @@ struct ComposerTextView: NSViewRepresentable {
     var onPasteAttachments: (([URL]) -> Void)?
     var onDropTargetChanged: ((_ isTargeted: Bool, _ isInstant: Bool) -> Void)?
     var onDropAttachments: ((_ urls: [URL], _ isInstant: Bool) -> Bool)?
+    var onCompositionStateChange: ((Bool) -> Void)?
     var capturesUnfocusedTyping = false
     var verticalContentInset: CGFloat = 0
     var maximumHeight: CGFloat = 150
@@ -382,9 +384,16 @@ struct ComposerTextView: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? ComposerNSTextView else { return }
+        if context.coordinator.parent.conversationID != conversationID {
+            // Discard the old input session before rebinding its callbacks to
+            // another conversation. unmarkText can otherwise publish the old draft.
+            textView.delegate = nil
+            textView.inputContext?.discardMarkedText()
+            textView.unmarkText()
+            textView.delegate = context.coordinator
+        }
         context.coordinator.parent = self
-        textView.applySakuraCordTextSelectionAppearance()
-        textView.textContainerInset = NSSize(width: 0, height: verticalContentInset)
+        context.coordinator.updateCompositionState(from: textView, deferringNotification: true)
 
         textView.onReturn = { [weak coordinator = context.coordinator] event in
             coordinator?.handleReturn(event) ?? false
@@ -404,6 +413,17 @@ struct ComposerTextView: NSViewRepresentable {
         textView.onPasteAttachments = onPasteAttachments
         textView.onDropTargetChanged = onDropTargetChanged
         textView.onDropAttachments = onDropAttachments
+
+        // During IME composition, NSTextView owns the marked range. Applying
+        // the SwiftUI snapshot, selection, or typing attributes here can
+        // replace the uncommitted Japanese text and make it disappear.
+        guard !textView.hasMarkedText() else {
+            context.coordinator.applyFocus(to: textView)
+            return
+        }
+
+        textView.applySakuraCordTextSelectionAppearance()
+        textView.textContainerInset = NSSize(width: 0, height: verticalContentInset)
         textView.capturesUnfocusedTyping = capturesUnfocusedTyping
         ComposerTextCheckingConfiguration.apply(generalInputSettings, to: textView)
         textView.setAccessibilityLabel(placeholder)
@@ -482,6 +502,7 @@ struct ComposerTextView: NSViewRepresentable {
         var parent: ComposerTextView
         private var appliedFocus = false
         private var isNormalizing = false
+        private var isMarkedTextActive = false
         private let attachmentImageLoader = InlineAttachmentImageLoader()
 
         init(parent: ComposerTextView) {
@@ -497,6 +518,11 @@ struct ComposerTextView: NSViewRepresentable {
 
         func textDidEndEditing(_ notification: Notification) {
             appliedFocus = false
+            if let textView = notification.object as? NSTextView {
+                updateCompositionState(from: textView)
+            } else {
+                updateCompositionState(isComposing: false)
+            }
             if parent.isFocused {
                 parent.isFocused = false
             }
@@ -504,6 +530,7 @@ struct ComposerTextView: NSViewRepresentable {
 
         func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView, !isNormalizing else { return }
+            updateCompositionState(from: textView)
             var raw = ComposerEmojiAttributedText.serialize(textView.attributedString())
             if !textView.hasMarkedText(),
                ComposerEmojiAttributedText.expression.firstMatch(
@@ -545,10 +572,32 @@ struct ComposerTextView: NSViewRepresentable {
 
         func textViewDidChangeSelection(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
+            updateCompositionState(from: textView)
             updateSelection(from: textView)
-            if let composerTextView = textView as? ComposerNSTextView {
+            if let composerTextView = textView as? ComposerNSTextView,
+               !composerTextView.hasMarkedText()
+            {
                 composerTextView.restorePlainTypingAttributes()
                 composerTextView.needsDisplay = true
+            }
+        }
+
+        func updateCompositionState(from textView: NSTextView, deferringNotification: Bool = false) {
+            updateCompositionState(isComposing: textView.hasMarkedText(), deferringNotification: deferringNotification)
+        }
+
+        private func updateCompositionState(isComposing: Bool, deferringNotification: Bool = false) {
+            guard isMarkedTextActive != isComposing else { return }
+            isMarkedTextActive = isComposing
+            if deferringNotification {
+                // A representable update must not synchronously mutate SwiftUI
+                // state. Read the latest state in case composition starts again.
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    parent.onCompositionStateChange?(isMarkedTextActive)
+                }
+            } else {
+                parent.onCompositionStateChange?(isComposing)
             }
         }
 
