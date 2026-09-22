@@ -1000,6 +1000,7 @@ struct NativeTimelineRowLayout {
         }
 
         var embedRegions: [EmbedRegion] = []
+        var componentLayouts: [NativeTimelineComponentLayout] = []
         var sakuraCordDeepLinkRegions: [SakuraCordDeepLinkRegion] = []
         if !usesComponentsV2 {
             for (index, deepLink) in row.sakuraCordDeepLinks.enumerated() {
@@ -1023,6 +1024,22 @@ struct NativeTimelineRowLayout {
             embedRegions.reserveCapacity(visibleEmbeds.count)
             for embed in visibleEmbeds {
                 let embedY = verticalOffset + (hasRichContent ? 8 : 0)
+                if embed.type == "components" {
+                    if let region = NativeTimelineComponentLayout.make(
+                        message: message,
+                        components: embed.components ?? [],
+                        model: model,
+                        origin: CGPoint(x: contentX, y: embedY),
+                        maximumWidth: inlineMediaMaximumWidth,
+                        integratesWithBubble: usesBubbles,
+                        drawsTopSeparator: usesBubbles && hasRichContent
+                    ) {
+                        componentLayouts.append(region)
+                        verticalOffset = region.frame.maxY
+                        hasRichContent = true
+                    }
+                    continue
+                }
                 guard let region = NativeTimelineEmbedLayout.make(
                     embed: embed,
                     message: message,
@@ -1040,7 +1057,6 @@ struct NativeTimelineRowLayout {
         }
         let embedFrames = embedRegions.map(\.frame)
 
-        var componentLayouts: [NativeTimelineComponentLayout] = []
         let componentY = verticalOffset + (hasRichContent ? 8 : 0)
         if let componentLayout = NativeTimelineComponentLayout.make(
             message: message,
@@ -1332,6 +1348,9 @@ struct NativeTimelineRowLayout {
         }
     }
 
+}
+
+extension NativeTimelineRowLayout {
     private static func message(
         _ row: MessageRowPresentation,
         isUnreadBoundary: Bool,
