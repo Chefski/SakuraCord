@@ -98,6 +98,7 @@ struct ComposerView: View {
                         ZStack(alignment: .bottomTrailing) {
                             ComposerTextView(
                                 text: draft,
+                                conversationID: activeConversationID,
                                 placeholder: composerPlaceholder,
                                 sendWithReturn: model.generalInputSettings.sendsWithReturn,
                                 generalInputSettings: model.generalInputSettings,

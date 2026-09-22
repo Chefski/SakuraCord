@@ -278,6 +278,7 @@ enum ComposerEmojiAttributedText {
 
 struct ComposerTextView: NSViewRepresentable {
     let text: String
+    var conversationID: ChannelID?
     let placeholder: String
     let sendWithReturn: Bool
     var generalInputSettings: GeneralInputSettingsSnapshot = .defaults
@@ -383,8 +384,16 @@ struct ComposerTextView: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? ComposerNSTextView else { return }
+        if context.coordinator.parent.conversationID != conversationID {
+            // Discard the old input session before rebinding its callbacks to
+            // another conversation. unmarkText can otherwise publish the old draft.
+            textView.delegate = nil
+            textView.inputContext?.discardMarkedText()
+            textView.unmarkText()
+            textView.delegate = context.coordinator
+        }
         context.coordinator.parent = self
-        context.coordinator.updateCompositionState(from: textView)
+        context.coordinator.updateCompositionState(from: textView, deferringNotification: true)
 
         textView.onReturn = { [weak coordinator = context.coordinator] event in
             coordinator?.handleReturn(event) ?? false
@@ -573,14 +582,23 @@ struct ComposerTextView: NSViewRepresentable {
             }
         }
 
-        func updateCompositionState(from textView: NSTextView) {
-            updateCompositionState(isComposing: textView.hasMarkedText())
+        func updateCompositionState(from textView: NSTextView, deferringNotification: Bool = false) {
+            updateCompositionState(isComposing: textView.hasMarkedText(), deferringNotification: deferringNotification)
         }
 
-        private func updateCompositionState(isComposing: Bool) {
+        private func updateCompositionState(isComposing: Bool, deferringNotification: Bool = false) {
             guard isMarkedTextActive != isComposing else { return }
             isMarkedTextActive = isComposing
-            parent.onCompositionStateChange?(isComposing)
+            if deferringNotification {
+                // A representable update must not synchronously mutate SwiftUI
+                // state. Read the latest state in case composition starts again.
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    parent.onCompositionStateChange?(isMarkedTextActive)
+                }
+            } else {
+                parent.onCompositionStateChange?(isComposing)
+            }
         }
 
         func applyFocus(to textView: NSTextView) {
