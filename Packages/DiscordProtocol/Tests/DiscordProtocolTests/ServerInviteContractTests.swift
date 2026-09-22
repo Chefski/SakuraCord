@@ -70,6 +70,67 @@ struct ServerInviteContractTests {
         await provider.disconnect()
     }
 
+    @Test func `invite CAPTCHA resumes the original request once without stopping account traffic`() async throws {
+        let capture = InviteRequestCapture()
+        let provider = try await makeProvider(capture.id)
+        let reference = try #require(ServerInviteReference("captcha"))
+        let accepted = try await provider.acceptServerInvite(reference, messageID: .init(rawValue: 42)) { challenge in
+            #expect(challenge.siteKey == "site-key")
+            #expect(challenge.rqdata == "request-data")
+            #expect(challenge.rqtoken == "request-token")
+            #expect(challenge.sessionID == "captcha-session")
+            #expect(challenge.shouldServeInvisible)
+            #expect(await !provider.requestSafetyCircuitIsOpen)
+            _ = try await provider.serverInvite(try #require(ServerInviteReference("valid")))
+            return "human-solution"
+        }
+        #expect(accepted.invite.guildID == .init(rawValue: 900))
+        let requests = capture.requests
+        #expect(requests.map(\.httpMethod) == ["GET", "POST", "GET", "POST"])
+        let original = requests[1], replay = requests[3]
+        #expect(original.url == replay.url)
+        #expect(try JSONDecoder().decode([String: String].self, from: original.httpBody!)
+            == JSONDecoder().decode([String: String].self, from: replay.httpBody!))
+        #expect(original.value(forHTTPHeaderField: "X-Context-Properties") == replay.value(forHTTPHeaderField: "X-Context-Properties"))
+        #expect(original.value(forHTTPHeaderField: "X-Captcha-Key") == nil)
+        #expect(replay.value(forHTTPHeaderField: "X-Captcha-Key") == "human-solution")
+        #expect(replay.value(forHTTPHeaderField: "X-Captcha-Rqtoken") == "request-token")
+        #expect(replay.value(forHTTPHeaderField: "X-Captcha-Session-Id") == "captcha-session")
+        #expect(await !provider.requestSafetyCircuitIsOpen)
+        await provider.disconnect()
+    }
+
+    @Test(arguments: ["captchaCancel", "captchaEmpty", "captchaDisconnect", "captchaRepeated", "captchaLimited", "captchaTimeout", "captchaNoHandler"])
+    func `cancelled stale or rejected CAPTCHA cannot cause an automatic join loop`(code: String) async throws {
+        let capture = InviteRequestCapture()
+        let provider = try await makeProvider(capture.id)
+        let reference = try #require(ServerInviteReference(code))
+        let handler: DiscordCaptchaHandler = { _ in
+            if code == "captchaCancel" { throw CancellationError() }
+            if code == "captchaDisconnect" { await provider.disconnect() }
+            return code == "captchaEmpty" ? "  " : "human-solution"
+        }
+        await #expect(throws: (any Error).self) {
+            _ = try await provider.acceptServerInvite(reference, messageID: nil, captchaHandler: code == "captchaNoHandler" ? nil : handler)
+        }
+        let completed = ["captchaRepeated", "captchaLimited", "captchaTimeout"].contains(code)
+        #expect(capture.requests.filter { $0.httpMethod == "POST" }.count == (completed ? 2 : 1))
+        if code != "captchaDisconnect" {
+            #expect(await !provider.requestSafetyCircuitIsOpen)
+        }
+        await provider.disconnect()
+    }
+
+    @Test func `only supported invite challenges bypass the account safety circuit`() {
+        let data = Data(InviteURLProtocol.challenge.utf8)
+        #expect(!DiscordRESTProvider.isSafetyStop(status: 400, discordCode: nil, method: "POST", data: data, path: "/invites/code"))
+        #expect(DiscordRESTProvider.isSafetyStop(status: 400, discordCode: nil, method: "POST", data: data, path: "/channels/900/messages"))
+        #expect(DiscordRESTProvider.isSafetyStop(status: 400, discordCode: 40002, method: "POST", data: data, path: "/invites/code"))
+        for body in [#"{"captcha_key":["required"]}"#, InviteURLProtocol.challenge.replacingOccurrences(of: "hcaptcha", with: "unsupported")] {
+            #expect(DiscordRESTProvider.isSafetyStop(status: 400, discordCode: nil, method: "POST", data: Data(body.utf8), path: "/invites/code"))
+        }
+    }
+
     private func makeProvider(_ accountID: String) async throws -> DiscordRESTProvider {
         let socket = ReadyGatewaySocket()
         await socket.push(gatewayMessage(op: 10, data: .object(["heartbeat_interval": .number(60_000)])))
@@ -118,6 +179,10 @@ private final class InviteRequestCapture {
 
 private final class InviteURLProtocol: URLProtocol, @unchecked Sendable {
     static let captured = Notification.Name("ServerInviteContractRequest")
+    static let challenge = """
+    {"captcha_key":["captcha-required"],"captcha_service":"hcaptcha","captcha_sitekey":"site-key",
+     "captcha_rqdata":"request-data","captcha_rqtoken":"request-token","captcha_session_id":"captcha-session","should_serve_invisible":true}
+    """
     override static func canInit(with request: URLRequest) -> Bool { true }
     override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
@@ -137,12 +202,20 @@ private final class InviteURLProtocol: URLProtocol, @unchecked Sendable {
         NotificationCenter.default.post(name: Self.captured, object: capturedRequest)
         let code = request.url!.lastPathComponent
         let write = request.httpMethod == "POST"
-        let status = code == "invalid" ? 404 : write && code == "banned" ? 403
+        let hasSolution = request.value(forHTTPHeaderField: "X-Captcha-Key") != nil
+        if write && code == "captchaTimeout" && hasSolution {
+            client?.urlProtocol(self, didFailWithError: URLError(.timedOut))
+            return
+        }
+        let challenged = write && code.hasPrefix("captcha") && (!hasSolution || code == "captchaRepeated")
+        let status = challenged ? 400 : write && code == "captchaLimited" ? 429
+            : code == "invalid" ? 404 : write && code == "banned" ? 403
             : write && code == "limited" ? 429 : write && code == "revoked" ? 404
             : request.httpMethod == "DELETE" ? 204 : 200
         let features = code == "onboarding" ? #"["GUILD_ONBOARDING"]"# : "[]"
         let body: String
         switch status {
+        case 400: body = Self.challenge
         case 404: body = #"{"code":10006,"message":"Unknown Invite"}"#
         case 403: body = #"{"code":40007,"message":"The user is banned from this guild."}"#
         case 429: body = #"{"retry_after":0.01,"global":false}"#

@@ -41,7 +41,9 @@ struct ServerRailContainer: View {
                 leaveServer: { guild in invites.leaveConfirmation = guild }
             )
         )
-        .windowModal(isPresented: $invites.showsJoinDialog, cornerRadius: 32, cornerStyle: .circular) { JoinServerView(model: model) }
+        .windowModal(isPresented: $invites.showsJoinDialog, cornerRadius: 32, cornerStyle: .circular,
+                     isConcealed: { model.serverInvites.captcha.challenge != nil }, content: { JoinServerView(model: model) })
+        .modifier(ServerInviteCaptchaPresentation(store: invites.captcha))
         .alert("Leave \(invites.leaveConfirmation?.name ?? "Server")?",
                isPresented: Binding(get: { invites.leaveConfirmation != nil },
                                     set: { if !$0 { invites.leaveConfirmation = nil } }),

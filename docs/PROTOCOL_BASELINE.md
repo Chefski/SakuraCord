@@ -541,6 +541,28 @@ reference for completed joining.
   The response contains guild/channel and `new_member`, but need not contain
   profile or counts. Preserve the preview. The observed `GUILD_CREATE` was
   dispatched before acceptance completed; either order must work.
+- Join CAPTCHA (23 September follow-up): the same first-party asset's HTTP
+  interceptor recognizes HTTP 400 `captcha_key`, presents the challenge, and
+  resubmits with `X-Captcha-Key`, optional `X-Captcha-Rqtoken`, and optional
+  `X-Captcha-Session-Id`. Its extractor also supplies `captcha_sitekey`,
+  `captcha_service`, `captcha_rqdata`, and `should_serve_invisible` to the widget.
+  Pinned Paicord's `DefaultDiscordClient` corroborates these response fields and
+  headers; pinned Swiftcord v1 only embeds web authentication and has no native
+  join-challenge continuation. Public Invite documentation does not specify
+  this private-client challenge contract. The existing hCaptcha integration
+  uses the response site key and rqdata, the Discord origin, and the documented
+  [normal/invisible widget modes](https://docs.hcaptcha.com/configuration).
+  SakuraCord permits a supported hCaptcha response only on the invite acceptance
+  route without stopping account networking. One human completion resubmits the
+  original body/context once, on the same provider and Gateway session, with
+  no automatic retry. Cancellation, account invalidation, empty solutions,
+  another challenge, and ambiguous failures terminate that attempt. This
+  bounded replay is a deliberate difference from the generic first-party
+  interceptor. Malformed or unsupported challenges and account restrictions
+  retain the shared safety circuit. Controlled transport and presentation
+  tests exercise this path. The packaged app's normal and invisible widgets
+  returned hCaptcha's documented test token; cancellation restored the join
+  modal. No live join CAPTCHA has been observed.
 - Leave: one `DELETE /users/@me/guilds/{guild}` with `lurking:false`, returning
   204. `GUILD_DELETE` removes membership and navigation. `unavailable:true`
   remains an outage rather than a leave. Owners have no Leave Server menu item.
@@ -911,7 +933,7 @@ The default attempt budget is exact:
 | Pending-QR or stored-session missing-installation repair | Once per provider: 1 unauthenticated Apex GET, plus 1 unauthenticated `/experiments` GET only when Apex fails or omits the identity. Both are best-effort; no automatic retry or authentication replay, and Gateway proceeds without the optional identity when unavailable. |
 | Native password/MFA status retry | Original plus at most 2 current-official retries for `429`, `500`, `502`, or `504`, subject to the established delay ceiling. |
 | Remote-auth ticket status retry | Original plus at most 3 Paicord-policy retries for `429`, `500`, `502`, or `504`, subject to its delay ceiling. |
-| User-completed login CAPTCHA | At most 1 replay of the challenged request. |
+| User-completed login or server-join CAPTCHA | At most 1 replay of the challenged request, only after human completion; a second challenge ends the attempt. |
 
 Any `429` pauses authenticated traffic until the server-provided cooldown.
 Route and global bucket data come from response headers/body; SakuraCord does
@@ -933,7 +955,8 @@ waiting for confirmation and cannot be retried automatically.
 Authentication failures, account restrictions, verification/challenge
 responses, invalid client metadata, malformed mutation responses, and repeated
 unexpected not-found responses can open the session-wide safety circuit.
-Ordinary resource-scoped permission failures remain scoped when the decoded
+Supported invite hCaptcha responses use the bounded human-completion exception
+described above. Ordinary resource-scoped permission failures remain scoped when the decoded
 Discord error does not indicate an account/session condition. Expected
 resource-scoped not-found responses, including an unavailable user profile,
 remain scoped to the initiating presentation.

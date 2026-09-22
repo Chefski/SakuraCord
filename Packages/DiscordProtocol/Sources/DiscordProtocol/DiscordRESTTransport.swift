@@ -961,6 +961,8 @@ extension DiscordRESTProvider {
         if let discordCode, [40001, 40002, 40003, 40004, 40012, 40333].contains(discordCode) {
             return true
         }
+        // Only supported invite challenges reach the explicit human-completion path.
+        if DiscordCaptchaChallenge.inviteChallenge(data: data, status: status, method: method, path: path) != nil { return false }
         if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            object["captcha_key"] != nil || object["captcha_sitekey"] != nil
            || object["captcha_service"] != nil

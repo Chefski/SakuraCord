@@ -23,7 +23,7 @@ public struct PartialBulkReadAcknowledgementError: Error, Sendable {
 
 public protocol ChatProvider: Sendable {
     func serverInvite(_ reference: ServerInviteReference) async throws -> ServerInvite
-    func acceptServerInvite(_ reference: ServerInviteReference, messageID: MessageID?) async throws -> ServerInviteAcceptance
+    func acceptServerInvite(_ reference: ServerInviteReference, messageID: MessageID?, captchaHandler: DiscordCaptchaHandler?) async throws -> ServerInviteAcceptance
     func leaveGuild(_ guildID: GuildID) async throws
     func clearLocalSearchCache() async throws
     func prepareAuthentication() async throws
@@ -283,6 +283,10 @@ public extension ChatProvider {
     }
 
     func acceptServerInvite(_ reference: ServerInviteReference, messageID: MessageID?) async throws -> ServerInviteAcceptance {
+        try await acceptServerInvite(reference, messageID: messageID, captchaHandler: nil)
+    }
+
+    func acceptServerInvite(_ reference: ServerInviteReference, messageID: MessageID?, captchaHandler: DiscordCaptchaHandler?) async throws -> ServerInviteAcceptance {
         throw ServerInviteError.unsupported("Joining servers is unavailable for this session.")
     }
 
