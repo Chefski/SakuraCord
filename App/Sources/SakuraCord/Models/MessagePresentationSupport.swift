@@ -181,6 +181,7 @@ final class MessageRowPresentation: Identifiable, Equatable, Sendable {
     let isReplyAvailable: Bool
     let textPlan: NativeTimelineTextPlan
     let sakuraCordDeepLinks: [SakuraCordDeepLink]
+    let serverInvites: [ServerInviteReference]
     let searchContext: MessageSearchRowContext?
     let pinnedAt: Date?
 
@@ -218,6 +219,7 @@ final class MessageRowPresentation: Identifiable, Equatable, Sendable {
             self.isReplyAvailable = false
         }
         self.textPlan = textPlan ?? NativeTimelineTextPlan.make(for: message)
+        serverInvites = DiscordMarkdown.serverInviteReferences(in: message.content)
         sakuraCordDeepLinks = SakuraCordDeepLinkPresentation.all(
             in: message.content
         )

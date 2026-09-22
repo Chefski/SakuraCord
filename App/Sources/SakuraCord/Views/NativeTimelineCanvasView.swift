@@ -128,6 +128,7 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
         enum Kind {
             case component(NativeTimelineComponentLayout.ButtonRegion)
             case sakuraCordDeepLink(SakuraCordDeepLinkAction)
+            case invite(NativeTimelineInviteLayout, expands: Bool)
 
             var isDisabled: Bool {
                 switch self {
@@ -135,6 +136,8 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
                     region.isDisabled
                 case .sakuraCordDeepLink:
                     false
+                case let .invite(card, expands):
+                    !expands && card.isDisabled
                 }
             }
         }

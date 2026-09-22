@@ -22,6 +22,9 @@ public struct PartialBulkReadAcknowledgementError: Error, Sendable {
 }
 
 public protocol ChatProvider: Sendable {
+    func serverInvite(_ reference: ServerInviteReference) async throws -> ServerInvite
+    func acceptServerInvite(_ reference: ServerInviteReference, messageID: MessageID?) async throws -> ServerInviteAcceptance
+    func leaveGuild(_ guildID: GuildID) async throws
     func clearLocalSearchCache() async throws
     func prepareAuthentication() async throws
     func bootstrap() async throws -> BootstrapSnapshot
@@ -275,6 +278,18 @@ public protocol PendingCredentialChatProvider: ChatProvider {
 }
 
 public extension ChatProvider {
+    func serverInvite(_ reference: ServerInviteReference) async throws -> ServerInvite {
+        throw ServerInviteError.unsupported("Server invites are unavailable for this session.")
+    }
+
+    func acceptServerInvite(_ reference: ServerInviteReference, messageID: MessageID?) async throws -> ServerInviteAcceptance {
+        throw ServerInviteError.unsupported("Joining servers is unavailable for this session.")
+    }
+
+    func leaveGuild(_ guildID: GuildID) async throws {
+        throw ServerInviteError.unsupported("Leaving servers is unavailable for this session.")
+    }
+
     func updateProfileCustomStatus(_ status: ProfileCustomStatus?) async throws -> ProfileCustomStatus? {
         throw ChatProviderError.invalidRequest("Custom status editing is unavailable for this session.")
     }

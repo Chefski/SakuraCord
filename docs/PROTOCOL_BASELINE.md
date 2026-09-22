@@ -513,6 +513,65 @@ not copy unrelated store, billing, analytics, experiment, or lurker-join
 fan-out. No message, reaction, acknowledgement, call, or other user-content
 mutation was sent during the observation.
 
+### Server invites and membership (22 September 2026)
+
+Authenticated CDP experiments in Discord Official Fresh desktop `0.0.411`,
+using both saved accounts exclusively in the owner-designated testing server,
+confirmed invite resolution, acceptance, leaving, invite creation/expiry/revocation,
+and a banned-account rejection followed by unban and rejoin. The production asset
+was `web.9a6d63589ff469f3.js`, SHA-256
+`459b4591cde285a42759be68941b2096491c14f8654fca35bf72d9c45cbee737`.
+Relevant public contracts are [Invite](https://docs.discord.com/developers/resources/invite)
+and [Leave Guild](https://docs.discord.com/developers/resources/user#leave-guild).
+Pinned Paicord corroborates accept/leave routes and optional Gateway `session_id`,
+but lacks the current complete invite-card workflow. Pinned Swiftcord v1's join
+view resolves an invite without implementing acceptance; it is not a behavioral
+reference for completed joining.
+
+- Preview: `GET /invites/{code}` with `with_counts=true`,
+  `with_expiration=true`, and `with_permissions=true`. A banned account can still
+  resolve an otherwise valid preview. Invalid invites returned code `10006`;
+  expired and revoked invites both returned `50270`. These expected failures
+  must not trip the account-wide networking circuit.
+- Accept: one `POST /invites/{code}` with the current Gateway `session_id`;
+  message-card actions additionally supply `invite_instance_id` as
+  `{messageID}:{code}`. Context location is `Join Guild` or
+  `Invite Button Embed`, with destination guild/channel IDs and numeric channel
+  type. No fabricated installation or analytics identifiers are added.
+  The response contains guild/channel and `new_member`, but need not contain
+  profile or counts. Preserve the preview. The observed `GUILD_CREATE` was
+  dispatched before acceptance completed; either order must work.
+- Leave: one `DELETE /users/@me/guilds/{guild}` with `lurking:false`, returning
+  204. `GUILD_DELETE` removes membership and navigation. `unavailable:true`
+  remains an outage rather than a leave. Owners have no Leave Server menu item.
+  Already-member cards navigate without an invite acceptance request.
+- SakuraCord deliberately rejects `GUILD_ONBOARDING` before acceptance and
+  delegates member screening and special guest/target flows to Discord.
+  Historical `GUILD_ONBOARDING_EVER_ENABLED` alone is not active onboarding.
+  A late verification requirement or missing Gateway catalogue must not be
+  reported as completed joining. Mutations are never automatically retried.
+  Membership completion does not require a readable channel: the testing alt
+  successfully left and rejoined while its server-wide View Channel permission
+  was temporarily removed, then regained channel access when it was restored.
+
+Invite cards are derived from message content even when REST `embeds` is empty
+or `SUPPRESS_EMBEDS` is set. Bare `discord.gg/code`, `discord.com/invite/code`,
+and `discordapp.com/invite/code` resolve; equivalent codes are deduplicated.
+Inline/fenced code is excluded, while angle-bracket links still produce cards.
+The V2 profile supplies `icon_hash`, `brand_color_primary`, description and
+traits. Invite cards use this profile's preset gradient, or the first dominant
+icon-palette color when `brand_color_primary` is null (the adaptive option).
+They do not use the server banner. The gradient is radial, centered at
+`(50.1%,127.05%)`, with bright/base stops at 20.65%/85.16% and CIELAB brightness
+increased by 31.5 L*. The captured bundle contains a discovery-banner branch,
+but this was not confirmed in live invite cards; the subsequent user-supplied
+Discord captures establish the gradient header used for presentation here.
+The live profile experiments covered preset colors, descriptions, traits and
+missing icons; the original profile and both memberships were restored afterward.
+The invite's optional `inviter` supplies the name and avatar beneath the server
+name. The later Discord captures show “You sent an invite to join …” for the
+current account's invite, and “{inviter} invited you to …” otherwise.
+
 ### Evidence priority for protocol changes
 
 Every new or materially changed production communication with Discord must be

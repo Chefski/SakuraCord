@@ -520,6 +520,7 @@ struct NativeTimelineRowLayout {
     let pinnedAtFrame: CGRect?
     var pollLayout: NativeTimelinePollLayout?
     var pollResultFrame: CGRect?
+    var inviteRegions: [NativeTimelineInviteLayout] = []
 
     static func make(
         item: NativeMessageTimelineItem,
@@ -1001,6 +1002,18 @@ struct NativeTimelineRowLayout {
 
         var embedRegions: [EmbedRegion] = []
         var componentLayouts: [NativeTimelineComponentLayout] = []
+        var inviteRegions: [NativeTimelineInviteLayout] = []
+        if !usesComponentsV2 {
+            for (index, reference) in row.serverInvites.enumerated() {
+                let region = NativeTimelineInviteLayout(reference: reference, index: index,
+                    origin: CGPoint(x: contentX, y: verticalOffset + (hasRichContent ? 8 : 0)),
+                    maximumWidth: inlineMediaMaximumWidth, model: model,
+                    isOwnMessage: message.author.id == model?.snapshot?.currentUser.id)
+                inviteRegions.append(region)
+                verticalOffset = region.frame.maxY
+                hasRichContent = true
+            }
+        }
         var sakuraCordDeepLinkRegions: [SakuraCordDeepLinkRegion] = []
         if !usesComponentsV2 {
             for (index, deepLink) in row.sakuraCordDeepLinks.enumerated() {
@@ -1343,7 +1356,8 @@ struct NativeTimelineRowLayout {
             failedFrame: failedFrame,
             pinnedAtFrame: pinnedAtFrame,
             pollLayout: pollLayout,
-            pollResultFrame: pollResultFrame
+            pollResultFrame: pollResultFrame,
+            inviteRegions: inviteRegions
         )
         }
     }

@@ -9,11 +9,13 @@ struct ServerRailContainer: View {
     let model: AppModel
 
     var body: some View {
+        @Bindable var invites = model.serverInvites
         ServerRailView(
             items: model.serverRailPresentation.items,
             home: model.serverRailPresentation.home,
             selectHome: { model.selectGuild(nil) },
             selectGuild: model.selectGuild,
+            joinServer: { invites.showsJoinDialog = true },
             contextMenuActions: ServerRailContextMenuActions(
                 markRead: model.markGuildRead,
                 mute: { guild, duration in
@@ -35,9 +37,30 @@ struct ServerRailContainer: View {
                         isEnabled: isEnabled,
                         for: guild
                     )
-                }
+                },
+                leaveServer: { guild in invites.leaveConfirmation = guild }
             )
         )
+        .windowModal(isPresented: $invites.showsJoinDialog, cornerRadius: 32, cornerStyle: .circular) { JoinServerView(model: model) }
+        .alert("Leave \(invites.leaveConfirmation?.name ?? "Server")?",
+               isPresented: Binding(get: { invites.leaveConfirmation != nil },
+                                    set: { if !$0 { invites.leaveConfirmation = nil } }),
+               presenting: invites.leaveConfirmation) { guild in
+            Button("Leave Server", role: .destructive) {
+                model.startAccountChildTask(account: model.accountSession()) { model, _ in
+                    _ = await model.leaveServer(guild)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("You won’t be able to rejoin this server unless you have a new or existing invite.")
+        }
+        .alert("Unable to Leave Server",
+               isPresented: Binding(get: { invites.leaveError != nil }, set: { if !$0 { invites.leaveError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(invites.leaveError ?? "")
+        }
     }
 }
 
@@ -46,6 +69,7 @@ struct ServerRailView: View {
     let home: ServerRailHomeEntry
     let selectHome: () -> Void
     let selectGuild: (GuildID?) -> Void
+    var joinServer: () -> Void = {}
     let contextMenuActions: ServerRailContextMenuActions
     @State private var folderLayoutRevision = 0
 
@@ -72,6 +96,16 @@ struct ServerRailView: View {
                         }
                     )
                 }
+                Button(action: joinServer) {
+                    Image(systemName: "plus").font(.system(size: 22, weight: .medium))
+                        .frame(width: 44, height: 44)
+                        .foregroundStyle(.green)
+                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 16))
+                }
+                .buttonStyle(.plain)
+                .help("Add a Server")
+                .accessibilityLabel("Add a Server")
+                .accessibilityIdentifier("add-server")
             }
             .padding(.bottom, 12)
             .animation(ServerRailAnimations.folderExpansion, value: folderLayoutRevision)
@@ -106,6 +140,7 @@ struct ServerRailContextMenuActions {
     let unmute: (Guild) -> Void
     let setNotificationLevel: (Guild, MessageNotificationLevel) -> Void
     let setNotificationToggle: (Guild, GuildNotificationToggle, Bool) -> Void
+    var leaveServer: (Guild) -> Void = { _ in }
 }
 
 private struct ServerRailItemView: View {
@@ -216,7 +251,9 @@ struct GuildRailButton: View {
                     },
                     copyServerID: {
                         ChannelContextMenuValue.copy(guild.id.description)
-                    }
+                    },
+                    leaveServer: guild.isOwnedByCurrentUser == false && !guild.isUnavailable
+                        ? { contextMenuActions.leaveServer(guild) } : nil
                 )
             }
             .accessibilityLabel(displayName)

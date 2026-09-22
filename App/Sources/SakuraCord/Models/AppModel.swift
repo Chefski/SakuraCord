@@ -149,10 +149,11 @@ final class AppModel {
 
     @ObservationIgnored let serverRailPresentation =
         ServerRailPresentationStore()
+    @ObservationIgnored let serverInvites = ServerInvitePresentationStore()
     @ObservationIgnored let voiceSidebarPresentation =
         VoiceSidebarPresentationStore()
     var serverRailGuildsByID: [GuildID: Guild] = [:] {
-        didSet { serverRailPresentation.updateAvailableGuildIDs(serverRailGuildsByID.keys) }
+        didSet { updateServerRailMembership(replacing: oldValue) }
     }
     var serverRailHomeIsUnread = false {
         didSet {
