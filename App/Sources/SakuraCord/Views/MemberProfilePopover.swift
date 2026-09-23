@@ -190,6 +190,7 @@ struct MemberProfilePopover<Footer: View>: View {
                     topCornerRadius: layout == .inspector ? 0 : 16,
                     roundsTopTrailingCorner: layout != .expanded,
                     statusBubbleWidth: statusBubbleWidth,
+                    isExpandedProfile: layout == .expanded,
                     animatesRemoteMedia: animatesRemoteMedia,
                     editor: editor,
                     openEditorPicker: openEditorPicker
@@ -367,6 +368,7 @@ private struct ProfileHeroSection: View {
     let topCornerRadius: CGFloat
     let roundsTopTrailingCorner: Bool
     let statusBubbleWidth: CGFloat
+    let isExpandedProfile: Bool
     let animatesRemoteMedia: Bool
     var editor: ProfileEditorState?
     var openEditorPicker: ((ProfileEditorPicker) -> Void)?
@@ -441,12 +443,19 @@ private struct ProfileHeroSection: View {
             if editor != nil || (profile?.customStatus ?? member.customStatus)?.isEmpty == false {
                 Group {
                     if let editor, let profile {
-                        ProfileCustomStatusControl(editor: editor, profile: profile, surfaceColor: avatarCutoutColor, width: statusBubbleWidth)
+                        ProfileCustomStatusControl(
+                            editor: editor, profile: profile, surfaceColor: avatarCutoutColor,
+                            width: statusBubbleWidth, isExpandedProfile: isExpandedProfile
+                        )
                     } else {
-                        ProfileStatusBubble(text: profile?.customStatus ?? member.customStatus ?? "", surfaceColor: avatarCutoutColor, width: statusBubbleWidth)
+                        ProfileStatusBubble(
+                            text: profile?.customStatus ?? member.customStatus ?? "",
+                            surfaceColor: avatarCutoutColor, width: statusBubbleWidth,
+                            isExpandedProfile: isExpandedProfile
+                        )
                     }
                 }
-                    // The collapsed 36-point bubble ends at the avatar's bottom.
+                    // The status bubble sits by the avatar's lower edge.
                     .offset(x: ProfileStatusBubbleLayout.leadingAnchor, y: 99)
             }
         }
@@ -465,6 +474,7 @@ struct ProfileStatusBubble: View {
     let surfaceColor: Color
     let width: CGFloat
     var keepsExpanded = false
+    var isExpandedProfile = false
     @Environment(\.colorScheme) private var colorScheme
     @State private var isBubbleHovering = false
     @State private var isTextHovering = false
@@ -473,16 +483,7 @@ struct ProfileStatusBubble: View {
         let isExpanded = keepsExpanded || isBubbleHovering || isTextHovering
         let backgroundColor = surfaceColor.mix(with: .white, by: colorScheme == .dark ? 0.12 : 0)
 
-        ProfileStatusTextView(
-            source: text,
-            isExpanded: isExpanded,
-            onHoverChange: { isTextHovering = $0 }
-        )
-            .frame(width: width, alignment: .leading)
-            .frame(minHeight: 20, alignment: .topLeading)
-            .padding(.horizontal, ProfileStatusBubbleLayout.horizontalPadding)
-            .padding(.vertical, 8)
-            .fixedSize(horizontal: false, vertical: true)
+        bubbleContent(isExpanded: isExpanded)
             .background(backgroundColor, in: ProfileStatusBubbleLayout.shape)
             .overlay {
                 ProfileStatusBubbleLayout.shape
@@ -500,6 +501,51 @@ struct ProfileStatusBubble: View {
             .help(displayText)
             .accessibilityLabel("Custom status: \(displayText)")
             .zIndex(2)
+    }
+
+    @ViewBuilder
+    private func bubbleContent(isExpanded: Bool) -> some View {
+        if isEmojiOnly {
+            let fontSize: CGFloat = isExpandedProfile ? 24 : 18
+            ProfileStatusTextView(source: text, isExpanded: true, fontSize: fontSize)
+                .frame(width: contentWidth(fontSize: fontSize), height: ceil(fontSize * 1.3))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+        } else {
+            ProfileStatusTextView(
+                source: text,
+                isExpanded: isExpanded,
+                onHoverChange: { isTextHovering = $0 }
+            )
+            .frame(width: textContentWidth, alignment: .leading)
+            .frame(minHeight: 20, alignment: .topLeading)
+            .padding(.horizontal, ProfileStatusBubbleLayout.horizontalPadding)
+            .padding(.vertical, 8)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var textContentWidth: CGFloat {
+        min(width, max(20, contentWidth(fontSize: 14)))
+    }
+
+    private func contentWidth(fontSize: CGFloat) -> CGFloat {
+        let attributedText = ProfileInlineAttributedText.make(
+            source: text,
+            font: .systemFont(ofSize: fontSize),
+            color: .labelColor,
+            emojiImages: [:],
+            stylesLinks: false
+        )
+        return ceil(attributedText.size().width) + 2
+    }
+
+    private var isEmojiOnly: Bool {
+        let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if EmojiReference(rawToken: value).id != nil { return true }
+        return value.count == 1 && value.unicodeScalars.contains {
+            $0.properties.isEmojiPresentation || $0.value == 0xFE0F
+        }
     }
 
     private var displayText: String {
