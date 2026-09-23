@@ -102,6 +102,18 @@ import Testing
     #expect(member.user.nameplate?.palette == "forest")
 }
 
+@Test func `custom status activities preserve emoji without status text`() throws {
+    let activities = try JSONDecoder().decode([GuildActivityDTO].self, from: Data(#"""
+    [
+      {"type":4,"name":"Custom Status","state":"","emoji":{"name":"🤔"}},
+      {"type":4,"name":"Custom Status","emoji":{"id":"123456789","name":"thinking","animated":true}},
+      {"type":4,"name":"Custom Status","state":"Working","emoji":{"name":"🌸"}},
+      {"type":4,"name":"Custom Status"}
+    ]
+    """#.utf8))
+    #expect(activities.map(\.displayText) == ["🤔", "<a:thinking:123456789>", "🌸 Working", nil])
+}
+
 @Test func `draft projection restores inheritance without changing raw server values`() throws {
     let user = User(id: UserID(rawValue: 2), username: "maya", displayName: "Main name")
     let avatar = URL(string: "https://cdn.example/main.png")!

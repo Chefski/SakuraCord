@@ -57,18 +57,18 @@ struct GuildActivityDTO: Decodable {
     var emoji: GuildActivityEmojiDTO?
 
     var displayText: String? {
-        let emojiPrefix =
-            emoji.flatMap { emoji -> String? in
-                guard let name = emoji.name else { return nil }
+        let activityState = state.flatMap { $0.isEmpty ? nil : $0 }
+        if type == 4 {
+            let emojiText = emoji.flatMap { emoji -> String? in
                 if let id = emoji.id {
-                    return "<\(emoji.animated == true ? "a" : ""):\(name):\(id)> "
+                    return "<\(emoji.animated == true ? "a" : ""):\(emoji.name ?? "emoji"):\(id)>"
                 }
-                return "\(name) "
-            } ?? ""
-        if type == 4, let state, !state.isEmpty {
-            return emojiPrefix + state
+                return emoji.name
+            }
+            let parts = [emojiText, activityState].compactMap { $0 }
+            return parts.isEmpty ? nil : parts.joined(separator: " ")
         }
-        return state.flatMap { $0.isEmpty ? nil : $0 } ?? name
+        return activityState ?? name
     }
 }
 
