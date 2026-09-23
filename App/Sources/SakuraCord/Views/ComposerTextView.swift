@@ -326,6 +326,7 @@ struct ComposerTextView: NSViewRepresentable {
         textView.usesRuler = false
         textView.usesInspectorBar = false
         textView.allowsDocumentBackgroundColorChange = false
+        textView.writingToolsBehavior = .none
         textView.allowedWritingToolsResultOptions = .plainText
         // NSTextView is the AppKit drag destination inside the SwiftUI
         // workspace. Own file URLs here so AppKit cannot fall back to inserting
