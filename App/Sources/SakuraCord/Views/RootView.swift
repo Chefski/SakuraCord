@@ -860,9 +860,9 @@ private struct ChatRootView: View {
     private var inspectorToolbarLabel: some View {
         Label(
             isDirectMessageSelected ? "People" : "Members",
-            systemImage: model.showInspector
-                ? "person.2.fill"
-                : "person.2"
+            systemImage: model.selectedChannel?.kind == .directMessage
+                ? (model.showInspector ? "person.fill" : "person")
+                : (model.showInspector ? "person.2.fill" : "person.2")
         )
     }
 
