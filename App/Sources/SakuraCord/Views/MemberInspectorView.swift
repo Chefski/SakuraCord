@@ -443,13 +443,24 @@ struct MemberRow: View {
                                     PrimaryGuildTag(identity: identity, tag: tag)
                                 }
                             }
-                            if let activity = member.activityText, !activity.isEmpty {
-                                ProfileStatusTextView(
-                                    source: activity,
-                                    isExpanded: false,
-                                    fontSize: 12,
-                                    usesSecondaryColor: true
-                                )
+                            if let activity = member.memberListActivityText, !activity.isEmpty {
+                                HStack(spacing: 4) {
+                                    if member.isListeningToMusic {
+                                        Image(systemName: "music.note")
+                                            .foregroundStyle(Color(hex: 0x1DB954))
+                                        if member.memberListShowsMusicSeparator {
+                                            Text("·")
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
+                                    ProfileStatusTextView(
+                                        source: activity,
+                                        isExpanded: false,
+                                        fontSize: 12,
+                                        usesSecondaryColor: true
+                                    )
+                                }
+                                .font(.system(size: 12))
                                 .frame(maxWidth: .infinity, minHeight: 14, maxHeight: 16, alignment: .leading)
                                 .allowsHitTesting(false)
                             }

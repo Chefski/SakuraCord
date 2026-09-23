@@ -728,7 +728,9 @@ private struct MockFixtureAssembly {
                 rolePosition: 18,
                 isRoleCategory: true,
                 roles: [engineeringRole],
-                activityText: "Listening to a test mix"
+                activityText: "Listening to a test mix",
+                customStatus: "Making a playlist for the weekend",
+                isListeningToMusic: true
             ),
             Member(
                 user: juniper,

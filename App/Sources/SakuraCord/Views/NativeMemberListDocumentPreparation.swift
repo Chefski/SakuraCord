@@ -610,14 +610,16 @@ extension NativeMemberListCanvasView {
                 font: nameFont,
                 color: nameColor.withAlphaComponent(alpha)
             )
-            let activity = member.activityText.flatMap { text -> CTLine? in
+            let activity = member.memberListActivityText.flatMap { text -> CTLine? in
                 guard !text.isEmpty else { return nil }
                 return NativeMemberActivityPresentation.line(
                     text,
                     font: activityFont,
-                    color: Self.memberActivityColor.withAlphaComponent(alpha)
+                    color: Self.memberActivityColor.withAlphaComponent(alpha),
+                    showsMusicIcon: member.isListeningToMusic,
+                    showsMusicSeparator: member.memberListShowsMusicSeparator
                 )
-                }
+            }
             let activityTruncationToken = activity.map { _ in
                 Self.line(
                     "…",

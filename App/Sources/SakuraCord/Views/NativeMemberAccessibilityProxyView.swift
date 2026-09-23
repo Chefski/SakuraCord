@@ -11,10 +11,12 @@ final class NativeMemberAccessibilityProxyView: NSButton {
             guard let member else { return }
             setAccessibilityLabel(member.user.displayName)
             setAccessibilityHelp(member.user.username)
-            let activity = member.activityText.flatMap {
+            let activity = member.memberListActivityText.flatMap {
                 $0.isEmpty ? nil : NativeMemberActivityPresentation.accessibilityText($0)
             }
-            setAccessibilityValue(activity)
+            setAccessibilityValue(activity.map {
+                member.isListeningToMusic ? "Listening to music, \($0)" : $0
+            })
             toolTip = member.user.username
         }
     }

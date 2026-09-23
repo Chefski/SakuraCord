@@ -177,10 +177,12 @@ extension DiscordRESTProvider {
         member.user = user
         member.status = status
         if let activities = update.activities {
+            let primaryActivity = activities.memberListActivity
             member.customStatus = activities.first(where: { $0.type == 4 })?.displayText
             member.activityText =
-                activities.first(where: { $0.type != 4 })?.displayText
+                primaryActivity?.displayText
                     ?? member.customStatus
+            member.isListeningToMusic = primaryActivity?.type == 2
         }
         cachedPrivateMembersByID[userID] = member
     }

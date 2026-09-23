@@ -72,6 +72,12 @@ struct GuildActivityDTO: Decodable {
     }
 }
 
+extension [GuildActivityDTO] {
+    var memberListActivity: GuildActivityDTO? {
+        first(where: { $0.type == 2 }) ?? first(where: { $0.type != 4 })
+    }
+}
+
 struct GuildPresenceDTO: Decodable {
     var status: String?
     var activities: [GuildActivityDTO]?
@@ -154,6 +160,7 @@ struct GuildMemberDTO: Decodable {
         }
         let activities = (overridePresence ?? presence)?.activities ?? []
         let customStatus = activities.first(where: { $0.type == 4 })?.displayText
+        let primaryActivity = activities.memberListActivity
         return Member(
             user: domainUser,
             roleName: categoryRole?.name ?? "Member",
@@ -167,8 +174,9 @@ struct GuildMemberDTO: Decodable {
             globalDisplayName: globalDisplayName,
             guildNickname: nick,
             guildProfileCosmetics: cosmetics,
-            activityText: activities.first(where: { $0.type != 4 })?.displayText ?? customStatus,
+            activityText: primaryActivity?.displayText ?? customStatus,
             customStatus: customStatus,
+            isListeningToMusic: primaryActivity?.type == 2,
             isPending: pending,
             joinedAt: joinedAt.flatMap(DiscordDate.parse)
         )
