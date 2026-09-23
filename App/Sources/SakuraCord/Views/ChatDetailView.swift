@@ -75,6 +75,11 @@ private struct ChatDetailFooter: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if let guildID = channel.guildID, model.requiresOnboarding(in: guildID) {
+                OnboardingContinuationButton(model: model, guildID: guildID)
+                    .padding(.horizontal, ChatChromeMetrics.composerWindowInset)
+                    .padding(.bottom, ChatChromeMetrics.composerWindowInset)
+            } else {
             switch access {
             case .checking:
                 DisabledComposerView(
@@ -92,11 +97,14 @@ private struct ChatDetailFooter: View {
                 DisabledComposerView(
                     message: channel.isOfficialSystemDirectMessage
                         ? "This chat is reserved for official Discord notifications."
-                        : "You do not have permission to send messages in this channel.",
+                        : (channel.guildID.flatMap { model.onboardingMember(in: $0) }?.isPending == true
+                           ? "Complete this server’s member screening in Discord to send messages."
+                           : "You do not have permission to send messages in this channel."),
                     appearance: model.appearanceSettings.composerBarAppearance
                 )
             case .hidden:
                 EmptyView()
+            }
             }
         }
     }

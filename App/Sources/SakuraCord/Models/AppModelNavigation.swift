@@ -503,6 +503,7 @@ extension AppModel {
         let rememberedChannelID = guildID.flatMap { lastOpenedChannelIDsByGuild[$0] }
         dismissAllProfiles()
         selectedGuildID = guildID
+        refreshSelectedGuildOnboarding()
         beginCurrentUserProfilePrefetch(in: guildID, account: session)
         AppPerformanceSignposts.measureSync(
             "GuildActivationMemberPresentationRestore"

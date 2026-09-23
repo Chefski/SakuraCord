@@ -22,6 +22,12 @@ public struct PartialBulkReadAcknowledgementError: Error, Sendable {
 }
 
 public protocol ChatProvider: Sendable {
+    func guildOnboarding(in guildID: GuildID) async throws -> GuildOnboarding
+    func refreshCurrentMember(in guildID: GuildID) async throws -> Member
+    func saveGuildOnboarding(in guildID: GuildID, responses: Set<String>, initial: Bool) async throws -> GuildOnboarding
+    func setGuildChannelSelected(_ selected: Bool, channelID: ChannelID, guildID: GuildID) async throws
+    func setGuildChannelSelectionEnabled(_ enabled: Bool, guildID: GuildID) async throws
+
     func serverInvite(_ reference: ServerInviteReference) async throws -> ServerInvite
     func acceptServerInvite(_ reference: ServerInviteReference, messageID: MessageID?, captchaHandler: DiscordCaptchaHandler?) async throws -> ServerInviteAcceptance
     func leaveGuild(_ guildID: GuildID) async throws
@@ -278,6 +284,22 @@ public protocol PendingCredentialChatProvider: ChatProvider {
 }
 
 public extension ChatProvider {
+    func guildOnboarding(in guildID: GuildID) async throws -> GuildOnboarding {
+        throw ChatProviderError.invalidRequest("Channels & Roles is unavailable for this session.")
+    }
+    func refreshCurrentMember(in guildID: GuildID) async throws -> Member {
+        throw ChatProviderError.invalidRequest("Membership verification is unavailable for this session.")
+    }
+    func saveGuildOnboarding(in guildID: GuildID, responses: Set<String>, initial: Bool) async throws -> GuildOnboarding {
+        throw ChatProviderError.invalidRequest("Onboarding is unavailable for this session.")
+    }
+    func setGuildChannelSelected(_ selected: Bool, channelID: ChannelID, guildID: GuildID) async throws {
+        throw ChatProviderError.invalidRequest("Channel selection is unavailable for this session.")
+    }
+    func setGuildChannelSelectionEnabled(_ enabled: Bool, guildID: GuildID) async throws {
+        throw ChatProviderError.invalidRequest("Channel selection is unavailable for this session.")
+    }
+
     func serverInvite(_ reference: ServerInviteReference) async throws -> ServerInvite {
         throw ServerInviteError.unsupported("Server invites are unavailable for this session.")
     }

@@ -541,6 +541,7 @@ extension AppModel {
         failedReactionReactorLoads = [:]
         resetForumLoadAndPresentationState()
         await composer.reset()
+        await onboarding.draftWrite?.value
     }
 }
 

@@ -51,6 +51,11 @@ final class ServerInvitePresentationStore {
 extension AppModel {
     func updateServerRailMembership(replacing previous: [GuildID: Guild]) {
         serverRailPresentation.updateAvailableGuildIDs(serverRailGuildsByID.keys)
+        for guildID in previous.keys where serverRailGuildsByID[guildID] == nil {
+            onboarding.entries[guildID] = nil
+            onboarding.members[guildID] = nil
+            if onboarding.presentedGuildID == guildID { onboarding.presentedGuildID = nil }
+        }
         if previous.mapValues(\.isUnavailable) != serverRailGuildsByID.mapValues(\.isUnavailable) {
             serverInvites.changed()
         }
@@ -157,10 +162,11 @@ extension AppModel {
             guard isCurrentAccountSession(session), !Task.isCancelled else { return false }
             // A joined server can legitimately have no channels visible to this member.
             if let guild = serverRailGuildsByID[invite.guildID], !guild.isUnavailable {
-                if guild.features.contains("GUILD_ONBOARDING") || conversationPermissionBasis(for: guild.id)?.currentUserIsPending == true {
-                    throw ServerInviteError.unsupported("This server requires onboarding or member verification. Finish joining in Discord.")
+                if conversationPermissionBasis(for: guild.id)?.currentUserIsPending == true {
+                    throw ServerInviteError.unsupported("This server requires member verification. Finish verification in Discord.")
                 }
                 navigateToInvite(invite)
+                if guild.features.contains("GUILD_ONBOARDING") { openChannelsAndRoles(in: guild.id) }
                 loadServerInvite(invite.reference, refresh: true)
                 return true
             }
@@ -199,7 +205,10 @@ extension AppModel {
             try await session.provider.leaveGuild(guild.id)
             for _ in 0 ..< 80 {
                 guard isCurrentAccountSession(session), !Task.isCancelled else { return false }
-                if serverRailGuildsByID[guild.id] == nil { return true }
+                if serverRailGuildsByID[guild.id] == nil {
+                    onboarding.persist(nil, guildID: guild.id, database: session.database)
+                    return true
+                }
                 try await Task.sleep(for: .milliseconds(250))
             }
             throw ServerInviteError.failed("Discord accepted the leave request, but membership has not updated yet. Reconnect before trying again.")

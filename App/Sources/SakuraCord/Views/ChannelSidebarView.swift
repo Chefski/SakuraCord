@@ -154,10 +154,22 @@ struct ChannelSidebarView: View {
                     bottomContentInset: accountControlHeight
                 )
             } else {
+                VStack(spacing: 4) {
+                    if let guild {
+                        if voiceModel.requiresOnboarding(in: guild.id) {
+                            OnboardingContinuationButton(model: voiceModel, guildID: guild.id).padding(.horizontal, 8)
+                        } else {
+                            Button { voiceModel.openChannelsAndRoles(in: guild.id) } label: {
+                                Label("Channels & Roles", systemImage: "slider.horizontal.3")
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .buttonStyle(.borderless).padding(.horizontal, 14).padding(.vertical, 8)
+                        }
+                    }
                 GuildChannelList(
                     input: GuildChannelListInput(
                         modelIdentity: ObjectIdentifier(voiceModel),
-                        channelGroups: channelGroups,
+                        channelGroups: voiceModel.selectedChannelGroups(channelGroups, guildID: guild?.id),
                         rulesChannelID: guild?.rulesChannelID,
                         activeVoiceChannelID: activeVoiceChannelID,
                         hiddenChannelIDs: hiddenChannelIDs,
@@ -174,6 +186,7 @@ struct ChannelSidebarView: View {
                     selectionCommitter.selectedValueChanged(
                         to: newSelection
                     )
+                }
                 }
             }
 

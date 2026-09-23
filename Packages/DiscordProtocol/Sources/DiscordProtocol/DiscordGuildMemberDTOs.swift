@@ -86,13 +86,14 @@ struct GuildMemberDTO: Decodable {
     var banner: String?
     var bio: String?
     var pending: Bool?
+    var flags: UInt64?
     var joinedAt: String?
     var avatarDecorationData: UserDTO.AvatarDecorationDTO?
     var collectibles: UserCollectiblesDTO?
     var displayNameStyles: UserDTO.DisplayNameStyleDTO?
 
     enum CodingKeys: String, CodingKey {
-        case user, nick, roles, presence, avatar, banner, bio, pending, collectibles
+        case user, nick, roles, presence, avatar, banner, bio, pending, flags, collectibles
         case joinedAt = "joined_at"
         case avatarDecorationData = "avatar_decoration_data"
         case displayNameStyles = "display_name_styles"
@@ -170,6 +171,7 @@ struct GuildMemberDTO: Decodable {
             activityText: activities.first(where: { $0.type != 4 })?.displayText ?? customStatus,
             customStatus: customStatus,
             isPending: pending,
+            flags: flags,
             joinedAt: joinedAt.flatMap(DiscordDate.parse)
         )
     }

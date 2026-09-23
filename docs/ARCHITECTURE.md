@@ -65,6 +65,25 @@ load cancellation and presentation reset, including pins and composer state.
 `AppModel` remains the workspace coordinator; feature state should have an
 explicit owner rather than accumulating unrelated fields in extensions.
 
+`GuildOnboardingStore` owns account-scoped question presentation, unfinished
+answer drafts, and membership confirmation. `SakuraCordModels` defines the live
+configuration, selected IDs, validation rules, and member flags;
+`DiscordProtocol` refreshes configuration, submits one answer mutation, and
+confirms membership through the existing Gateway member query. The app restores
+its own drafts only when join time and confirmed server answers still match,
+prunes deleted options, and invalidates in-flight work on account changes.
+Onboarding and member screening independently gate message, thread, forum, and
+retry paths. An unfinished membership exposes a continuation in the sidebar and
+composer. `GuildOnboardingView` uses the shared window modal and input scope.
+Channel management is an account-scoped local preference, off by default;
+when enabled, the channel sidebar consumes authoritative guild/channel opt-in
+flags from the existing notification-settings store. Channel permissions remain
+independent. Draft writes join the clear/teardown barriers and storage accounting;
+server configuration, member records, roles, and channel catalogs are never persisted.
+An unfinished draft retains baseline option IDs and its membership join timestamp
+solely to detect conflicts against a fresh server read, never to restore confirmed
+Discord state.
+
 `AppUpdateController` owns Sparkle's `SPUStandardUpdaterController` for the
 application lifetime. It starts only when the canonical release bundle contains
 the complete production update configuration. Builds packaged without that
@@ -310,7 +329,7 @@ from Keychain into a mode-`0600` file within the app's sandbox Application
 Support container. It is excluded from release and update-enabled packages and
 is not the production credential contract.
 
-Only user-authored drafts are stored through `SakuraCordPersistence`.
+Only user-authored message and unfinished onboarding drafts are stored through `SakuraCordPersistence`.
 Credentials never enter GRDB, fixtures, logs, or plugin APIs. Discord
 authoritative workspace, message, read, member, and Gateway state is
 session-memory only. A database migration drops the obsolete tables from earlier

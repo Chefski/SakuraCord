@@ -408,6 +408,9 @@ enum DiscordMemberStoreOrdering {
         var indexByID = Dictionary(uniqueKeysWithValues: result.indices.map { (result[$0].id, $0) })
         for var member in updates {
             if let index = indexByID[member.id] {
+                if member.flags == nil { member.flags = result[index].flags }
+                if member.isPending == nil { member.isPending = result[index].isPending }
+                if member.joinedAt == nil { member.joinedAt = result[index].joinedAt }
                 if member.memberListIndex == nil {
                     member.memberListIndex = result[index].memberListIndex
                 }
@@ -1231,6 +1234,7 @@ struct ReadyMergedMemberDTO: Decodable {
     var banner: String?
     var bio: String?
     var pending: Bool?
+    var flags: UInt64?
     var joinedAt: String?
     var avatarDecorationData: UserDTO.AvatarDecorationDTO?
     var collectibles: UserCollectiblesDTO?
@@ -1238,7 +1242,7 @@ struct ReadyMergedMemberDTO: Decodable {
 
     enum CodingKeys: String, CodingKey {
         case userID = "user_id"
-        case nick, roles, presence, avatar, banner, bio, pending, collectibles
+        case nick, roles, presence, avatar, banner, bio, pending, flags, collectibles
         case joinedAt = "joined_at"
         case avatarDecorationData = "avatar_decoration_data"
         case displayNameStyles = "display_name_styles"
@@ -1255,6 +1259,7 @@ struct ReadyMergedMemberDTO: Decodable {
             banner: banner,
             bio: bio,
             pending: pending,
+            flags: flags,
             joinedAt: joinedAt,
             avatarDecorationData: avatarDecorationData,
             collectibles: collectibles,

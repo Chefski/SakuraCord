@@ -567,8 +567,8 @@ reference for completed joining.
   204. `GUILD_DELETE` removes membership and navigation. `unavailable:true`
   remains an outage rather than a leave. Owners have no Leave Server menu item.
   Already-member cards navigate without an invite acceptance request.
-- SakuraCord deliberately rejects `GUILD_ONBOARDING` before acceptance and
-  delegates member screening and special guest/target flows to Discord.
+- SakuraCord accepts onboarding invites and resumes the membership flow described
+  below. Member screening and special guest/target flows remain delegated to Discord.
   Historical `GUILD_ONBOARDING_EVER_ENABLED` alone is not active onboarding.
   A late verification requirement or missing Gateway catalogue must not be
   reported as completed joining. Mutations are never automatically retried.
@@ -593,6 +593,88 @@ missing icons; the original profile and both memberships were restored afterward
 The invite's optional `inviter` supplies the name and avatar beneath the server
 name. The later Discord captures show “You sent an invite to join …” for the
 current account's invite, and “{inviter} invited you to …” otherwise.
+
+### Guild onboarding and Channels & Roles (23 September 2026)
+
+Authenticated Computer Use and CDP captures in the unmodified Discord Official
+Fresh app, exclusively in SakuraCord Testing Server, establish this baseline.
+The stable desktop was `0.0.411`, client build `618874`, native build `90866`,
+Electron `42.11.1`, Chromium `148.0.7778.280`, with `has_client_mods:false`.
+The current asset was `web.161a57e2ae3675ed.js`, SHA-256
+`859e75d4181ad0ec44005772c0da71d150c078cf83dc1704fb6cf72b4a2cb487`.
+The local evidence session is `sakuracord-onboarding-20260923`; credentials,
+cookies, session IDs, tokens, and installation identifiers are redacted in the
+retained evidence. Both saved accounts exercised the configured questions.
+
+Observed REST contracts, using the shared authenticated API v9 headers:
+
+| Operation | Method and route | Body / confirmed response |
+| --- | --- | --- |
+| Read configuration and saved answers | `GET /guilds/{guild}/onboarding` | `guild_id`, `enabled`, `prompts`, `default_channel_ids`, **`responses`**, seen timestamp maps |
+| Configure server onboarding | `PUT /guilds/{guild}/onboarding` | Partial `prompts`, `default_channel_ids`, or `enabled`; response returns normalized configuration |
+| Complete initial onboarding | `POST /guilds/{guild}/onboarding-responses` | Selected IDs and seen maps; reply contains `guild_id`, `user_id`, **`onboarding_responses`** |
+| Edit member answers | `PUT /guilds/{guild}/onboarding-responses` | Same shape, covering all questions including post-join questions |
+| Select channels | `PATCH /users/@me/guilds/settings` | `{guilds:{guildID:{channel_overrides:{channelID:{flags:4096}}}}}`; deselection clears bit 12 |
+| Show all channels | Same bulk PATCH | Partial guild `flags`; observed opt-in mode `16384` became `0` when Show All Channels was enabled |
+
+The normal-user answer body is:
+
+```json
+{
+  "onboarding_responses": ["optionID"],
+  "onboarding_prompts_seen": {"promptID": 1780000000000},
+  "onboarding_responses_seen": {"optionID": 1780000000000}
+}
+```
+
+Timestamps are Unix milliseconds. Initial submission includes only
+`in_onboarding` questions; customization includes every question. The current
+asset filters removed option IDs and marks all options in the submitted question
+scope seen. Prompts retain stable IDs, `type`, `required`, `single_select`, and
+`in_onboarding`; options retain IDs, titles, optional descriptions and emoji
+objects, `role_ids`, and `channel_ids`. The configured test server exercised
+required/optional, single/multiple choice, emoji/no emoji, role/channel mappings,
+post-join questions, and default channels. The current basic setup accepted one
+chattable default channel; older seven-channel setup assumptions are not used.
+
+`GUILD_MEMBER_UPDATE` confirms role replacement and onboarding membership flags.
+The incomplete rejoined test member had `pending:false`, `flags:9` (rejoined +
+started). Initial completion changed flags to `11` (adds completed bit 1), assigned
+the selected role, and allowed a subsequently observed `MESSAGE_CREATE`.
+`pending` is member screening and is independent of onboarding. Existing members
+without started bit 3 are not assumed to need onboarding. `GUILD_CREATE`, READY
+merged members, member chunks, and sparse member updates retain these flags.
+SakuraCord uses an uncached existing Gateway member query for confirmation; a
+successful answer HTTP response alone never completes the flow.
+
+Advancing questions in Discord sent no answer mutation. Reloading before Finish
+returned to the first question and discarded unsubmitted edits. SakuraCord
+intentionally persists only its own unfinished choices and question position in
+account-scoped draft storage. It compares membership join time and confirmed
+server answers before restoring; remote changes supersede stale drafts. Question
+configuration remains live, is refreshed on entry/reconnect, and is revalidated
+before every write. Ambiguous writes require readback before another submission.
+
+`USER_GUILD_SETTINGS_UPDATE` supplies authoritative channel overrides and guild
+flags. A recorded Follow Category action used the same channel override PATCH with
+the category ID and bit 12; its child controls became unavailable until the
+category was unfollowed. Source inspection corroborates parent-category opt-in
+inheritance and the separate FAVORITED bit; these are distinct from channel
+permissions. SakuraCord ignores channel selection filtering and issues no
+channel-management mutation while its local opt-in control is off (the default).
+Server-applied default/answer channel selections are still part of Discord's
+onboarding response processing. Turning local management on honors confirmed
+settings; Show All Channels disables filtering without erasing individual picks.
+
+[PR #4](https://github.com/SakuraCordApp/SakuraCord/pull/4) corroborates the three
+onboarding read/response routes and bulk settings route. Its eight-hour cache,
+optimistic completion assumptions, and presentation were not adopted. Pinned
+Paicord corroborates guild onboarding configuration structures and member flags,
+but does not supply this observed normal-user response flow. Pinned Swiftcord v1
+has no guild-onboarding implementation. The public
+[Guild onboarding contract](https://docs.discord.com/developers/resources/guild#guild-onboarding-object)
+describes configuration; authenticated first-party traffic supplies the private
+normal-user completion contract above.
 
 ### Evidence priority for protocol changes
 

@@ -5,10 +5,11 @@ import SakuraCordModels
 @testable import DiscordProtocol
 
 struct ServerInviteContractTests {
-    @Test func `invite preview and acceptance retain profile and use current Gateway context`() async throws {
+    @Test(arguments: ["valid", "onboarding"])
+    func `invite preview and acceptance retain profile and use current Gateway context`(code: String) async throws {
         let capture = InviteRequestCapture()
         let provider = try await makeProvider(capture.id)
-        let reference = try #require(ServerInviteReference("valid"))
+        let reference = try #require(ServerInviteReference(code))
         let preview = try await provider.serverInvite(reference)
         #expect(preview.brandColor == 0xff1c90)
         #expect(preview.traits.first?.label == "Testing")
@@ -24,7 +25,7 @@ struct ServerInviteContractTests {
         #expect(Set(query.map(\.name)) == ["with_counts", "with_expiration", "with_permissions"])
         #expect(query.allSatisfy { $0.value == "true" })
         let body = try JSONDecoder().decode([String: String].self, from: requests[2].httpBody!)
-        #expect(body == ["session_id": "invite-session", "invite_instance_id": "42:valid"])
+        #expect(body == ["session_id": "invite-session", "invite_instance_id": "42:\(code)"])
         let context = try #require(Data(base64Encoded: requests[2].value(forHTTPHeaderField: "X-Context-Properties")!))
         let object = try #require(JSONSerialization.jsonObject(with: context) as? [String: Any])
         #expect(object["location"] as? String == "Invite Button Embed")
@@ -33,7 +34,7 @@ struct ServerInviteContractTests {
         await provider.disconnect()
     }
 
-    @Test(arguments: ["invalid", "onboarding", "banned", "limited", "revoked"])
+    @Test(arguments: ["invalid", "banned", "limited", "revoked"])
     func `invite restrictions and failures stay bounded and keep account networking alive`(code: String) async throws {
         let capture = InviteRequestCapture()
         let provider = try await makeProvider(capture.id)
@@ -41,7 +42,7 @@ struct ServerInviteContractTests {
         await #expect(throws: ServerInviteError.self) {
             _ = try await provider.acceptServerInvite(reference, messageID: nil)
         }
-        let expectedWrites = ["invalid", "onboarding"].contains(code) ? 0 : 1
+        let expectedWrites = code == "invalid" ? 0 : 1
         #expect(capture.requests.filter { $0.httpMethod == "POST" }.count == expectedWrites)
         #expect(!DiscordRESTProvider.isSafetyStop(status: 400, discordCode: 40007, method: "POST", data: Data(), path: "/invites/banned"))
         #expect(DiscordRESTProvider.isSafetyStop(status: 400, discordCode: 40007, method: "POST",

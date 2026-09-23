@@ -305,6 +305,7 @@ extension AppModel {
             refreshUnreadPresentation()
         case .notificationSettingsChanged(let settings):
             applyNotificationSettings(settings)
+            reconcileSelectedOnboardingChannel()
             refreshUnreadPresentation()
             reconcileInboxEligibility()
         case .emojiUserSettingsChanged(let settings):
@@ -473,6 +474,10 @@ extension AppModel {
         let previousState = connectionState
         connectionState = state
         handleApplicationStreamsForGatewayState(state)
+        if state == .ready, previousState != .ready, let guildID = selectedGuildID,
+           serverRailGuildsByID[guildID]?.features.contains("GUILD_ONBOARDING") == true {
+            refreshOnboarding(in: guildID)
+        }
         if state == .ready, previousState != .ready, inbox.isPresented { refreshInbox() }
         if state != .ready {
             if previousState == .ready {

@@ -43,6 +43,12 @@ struct ServerRailContainer: View {
         )
         .windowModal(isPresented: $invites.showsJoinDialog, cornerRadius: 32, cornerStyle: .circular,
                      isConcealed: { model.serverInvites.captcha.challenge != nil }, content: { JoinServerView(model: model) })
+        .windowModal(isPresented: Binding(
+            get: { model.onboarding.presentedGuildID != nil && !invites.showsJoinDialog },
+            set: { if !$0 { model.onboarding.presentedGuildID = nil } }
+        ), cornerRadius: 32, cornerStyle: .circular) {
+            if let guildID = model.onboarding.presentedGuildID { GuildOnboardingView(model: model, guildID: guildID) }
+        }
         .modifier(ServerInviteCaptchaPresentation(store: invites.captcha))
         .alert("Leave \(invites.leaveConfirmation?.name ?? "Server")?",
                isPresented: Binding(get: { invites.leaveConfirmation != nil },

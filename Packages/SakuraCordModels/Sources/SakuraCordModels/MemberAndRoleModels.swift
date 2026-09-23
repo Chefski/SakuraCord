@@ -77,6 +77,12 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
     /// Discord's membership-screening state. A pending member does not have
     /// normal guild channel access even when role IDs are already present.
     public var isPending: Bool?
+    public var flags: UInt64?
+
+    public var requiresOnboarding: Bool {
+        guard let flags else { return false }
+        return flags & 8 != 0 && flags & 2 == 0
+    }
     public var joinedAt: Date?
     /// Absolute row index in Discord's virtualized guild member list. This is
     /// absent for DMs, fallback stores, and member lookups that are not backed
@@ -103,6 +109,7 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
         activityText: String? = nil,
         customStatus: String? = nil,
         isPending: Bool? = nil,
+        flags: UInt64? = nil,
         joinedAt: Date? = nil,
         memberListIndex: Int? = nil
     ) {
@@ -121,6 +128,7 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
         self.activityText = activityText
         self.customStatus = customStatus
         self.isPending = isPending
+        self.flags = flags
         self.joinedAt = joinedAt
         self.memberListIndex = memberListIndex
     }
@@ -141,6 +149,7 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
         activityText: String? = nil,
         customStatus: String? = nil,
         isPending: Bool? = nil,
+        flags: UInt64? = nil,
         joinedAt: Date? = nil,
         memberListIndex: Int? = nil
     ) {
@@ -159,6 +168,7 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
         self.activityText = activityText
         self.customStatus = customStatus
         self.isPending = isPending
+        self.flags = flags
         self.joinedAt = joinedAt
         self.memberListIndex = memberListIndex
     }

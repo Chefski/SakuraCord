@@ -85,9 +85,6 @@ public struct ServerInvite: Equatable, Sendable {
     }
 
     public var unsupportedJoinReason: String? {
-        if features.contains("GUILD_ONBOARDING") {
-            return "This server uses onboarding. Join it in Discord, then return to SakuraCord."
-        }
         if features.contains("MEMBER_VERIFICATION_GATE_ENABLED") {
             return "This server requires member screening. Join it in Discord, then return to SakuraCord."
         }
