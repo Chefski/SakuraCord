@@ -1226,7 +1226,7 @@ private struct ChannelRow: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(.red, in: Capsule())
+                    .background(Color(hex: 0xF23F43), in: Capsule())
             }
         }
         .accessibilityElement(children: .combine)

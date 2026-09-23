@@ -2,6 +2,16 @@ import Foundation
 import SakuraCordModels
 
 extension AccountReadStateModel {
+    func unacknowledgedDirectMessageChannelIDs() -> Set<ChannelID> {
+        Set(entries.values.compactMap { entry in
+            guard entry.isAccessible,
+                  entry.isUnread,
+                  entry.kind == .directMessage || entry.kind == .groupDirectMessage
+            else { return nil }
+            return entry.channelID
+        })
+    }
+
     struct UnreadPresentationProjection: Equatable, Sendable {
         var unreadByChannelID: [ChannelID: Bool]
         var mentionsByChannelID: [ChannelID: Int]

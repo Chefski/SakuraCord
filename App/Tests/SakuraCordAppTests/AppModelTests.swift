@@ -74,6 +74,28 @@ import UserNotifications
 }
 
 @MainActor
+@Test func `server rail shows only unacknowledged direct messages with one selected item`() {
+    let channel = Channel(
+        id: ChannelID(rawValue: 10),
+        guildID: nil,
+        name: "DM",
+        kind: .directMessage
+    )
+    let store = ServerRailPresentationStore()
+
+    store.updateDirectMessages([channel], unacknowledgedChannelIDs: [channel.id])
+    #expect(store.directMessages.map(\.id) == [channel.id])
+
+    store.updateSelection(nil, channelID: channel.id)
+    #expect(store.directMessages[0].isSelected)
+    #expect(!store.home.isSelected)
+
+    store.updateDirectMessages([channel], unacknowledgedChannelIDs: [])
+    #expect(store.directMessages.isEmpty)
+    #expect(store.home.isSelected)
+}
+
+@MainActor
 @Test func `voice sidebar projection isolates unrelated channel updates`() {
     let firstChannelID = ChannelID(rawValue: 10)
     let secondChannelID = ChannelID(rawValue: 20)

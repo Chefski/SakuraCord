@@ -154,17 +154,6 @@ final class AppModel {
     var serverRailGuildsByID: [GuildID: Guild] = [:] {
         didSet { serverRailPresentation.updateAvailableGuildIDs(serverRailGuildsByID.keys) }
     }
-    var serverRailHomeIsUnread = false {
-        didSet {
-            serverRailPresentation.home.isUnread = serverRailHomeIsUnread
-        }
-    }
-    var serverRailHomeMentionCount = 0 {
-        didSet {
-            serverRailPresentation.home.mentionCount =
-                serverRailHomeMentionCount
-        }
-    }
     var serverRailItems: [GuildRailItem] = [] {
         didSet {
             serverRailPresentation.updateLayout(serverRailItems)
@@ -530,7 +519,7 @@ final class AppModel {
     }
     var selectedGuildID: GuildID? {
         didSet {
-            serverRailPresentation.updateSelection(selectedGuildID)
+            refreshServerRailSelection()
             refreshSelectedGuildPresentation()
         }
     }
@@ -915,6 +904,7 @@ final class AppModel {
     var selectedChannelID: ChannelID? {
         didSet {
             guard selectedChannelID != oldValue else { return }
+            refreshServerRailSelection()
             recordConversationNavigation()
             timelineSpoilerRevealStore.reset()
             if let previousChannel = selectedChannel,
@@ -1344,6 +1334,7 @@ extension AppModel {
     private func refreshSnapshotPresentation(replacing previous: BootstrapSnapshot?) {
         snapshotSourceRevision &+= 1
         currentUser = snapshot?.currentUser
+        refreshServerRailDirectMessages(replacing: previous)
         refreshSelectedGuildPresentation()
         if previous?.currentUser != snapshot?.currentUser {
             refreshVoiceSidebarPresentation()
