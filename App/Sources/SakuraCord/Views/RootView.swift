@@ -861,7 +861,7 @@ private struct ChatRootView: View {
         Label(
             isDirectMessageSelected ? "People" : "Members",
             systemImage: model.selectedChannel?.kind == .directMessage
-                ? "person"
+                ? (model.showInspector ? "person.fill" : "person")
                 : (model.showInspector ? "person.2.fill" : "person.2")
         )
     }
