@@ -22,9 +22,19 @@ nonisolated enum NativeMemberActivityPresentation {
     static func line(
         _ source: String,
         font: NSFont,
-        color: NSColor
+        color: NSColor,
+        showsMusicIcon: Bool = false,
+        showsMusicSeparator: Bool = false
     ) -> CTLine {
         let output = NSMutableAttributedString()
+        if showsMusicIcon {
+            output.append(text(
+                "♫",
+                font: font,
+                color: NSColor(red: 29.0 / 255, green: 185.0 / 255, blue: 84.0 / 255, alpha: 1)
+            ))
+            output.append(text(showsMusicSeparator ? " · " : " ", font: font, color: color))
+        }
         let sourceString = source as NSString
         let matches = emojiExpression.matches(
             in: source,

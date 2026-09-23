@@ -12,6 +12,17 @@ extension Member {
     nonisolated var memberListStatus: PresenceStatus? {
         user.usesHTTPInteractions ? nil : status
     }
+
+    nonisolated var memberListActivityText: String? {
+        if isListeningToMusic, let customStatus, !customStatus.isEmpty {
+            return customStatus
+        }
+        return activityText
+    }
+
+    nonisolated var memberListShowsMusicSeparator: Bool {
+        isListeningToMusic && customStatus?.isEmpty == false
+    }
 }
 
 nonisolated enum NativeMemberListMetrics {
