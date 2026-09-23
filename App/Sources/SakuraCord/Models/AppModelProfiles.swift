@@ -197,6 +197,7 @@ extension AppModel {
         let presentation = ProfilePresentationState(
             requestID: requestID,
             member: member,
+            isCurrentUser: member.id == snapshot?.currentUser.id,
             profile: cachedProfile,
             isLoading: cachedProfile == nil,
             errorMessage: nil
