@@ -477,6 +477,10 @@ struct EmojiPickerView: View {
             document.synchronize(with: model, useCase: useCase)
             interaction.synchronize(with: document.selectableCells)
         }
+        .onChange(of: model.emojisByGuild) { _, _ in
+            document.synchronize(with: model, useCase: useCase)
+            interaction.synchronize(with: document.selectableCells)
+        }
         .onDisappear {
             visibleGuildLoadTask?.cancel()
             visibleGuildLoadTask = nil
@@ -1003,7 +1007,7 @@ final class EmojiPickerDocumentStore {
 
     func synchronize(with model: AppModel, useCase: DiscordEmojiUseCase) {
         let premiumType = model.snapshot?.currentUser.premiumType ?? 0
-        let guilds = PickerSectionGuildOrdering.orderedGuilds(
+        let eligibleGuilds = PickerSectionGuildOrdering.orderedGuilds(
             railItems: model.serverRailItems,
             guildsByID: model.serverRailGuildsByID,
             fallbackGuilds: model.snapshot?.guilds ?? [],
@@ -1015,9 +1019,9 @@ final class EmojiPickerDocumentStore {
                 premiumType: premiumType
             )
         }
-        let visibleGuildIDs = Set(guilds.map(\.id))
+        let eligibleGuildIDs = Set(eligibleGuilds.map(\.id))
         let emojisByGuild = model.emojisByGuild.reduce(into: [GuildID: [DiscordEmoji]]()) { result, entry in
-            guard visibleGuildIDs.contains(entry.key) else { return }
+            guard eligibleGuildIDs.contains(entry.key) else { return }
             result[entry.key] = entry.value.filter {
                 DiscordEmojiPermissionPolicy.canShow(
                     $0,
@@ -1026,6 +1030,11 @@ final class EmojiPickerDocumentStore {
                 )
             }
         }
+        // Unresolved guilds stay visible so their sections can load or retry.
+        let guilds = eligibleGuilds.filter { guild in
+            emojisByGuild[guild.id]?.contains(where: \.isAvailable) ?? true
+        }
+        let visibleGuildIDs = Set(guilds.map(\.id))
         let loadingGuilds = model.loadingEmojiGuildIDs.intersection(visibleGuildIDs)
         let errorsByGuild = model.emojiLoadErrorsByGuild.filter {
             visibleGuildIDs.contains($0.key)
@@ -1147,7 +1156,9 @@ final class EmojiPickerDocumentStore {
         sections.append(
             contentsOf: guilds.map { guild in
                 let state: EmojiDocumentSectionData.State =
-                    if loadingGuilds.contains(guild.id) {
+                    if loadingGuilds.contains(guild.id)
+                        || emojisByGuild[guild.id] == nil && errorsByGuild[guild.id] == nil
+                    {
                 .loading
             } else if let error = errorsByGuild[guild.id] {
                 .failure(error)
