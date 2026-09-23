@@ -19,7 +19,7 @@ struct EmojiDocumentRowView: View {
         VStack(alignment: .leading, spacing: 0) {
             switch row.content {
             case let .header(title, count):
-                EmojiPickerHeader(title: title, count: count)
+                EmojiPickerHeader(title: title, count: count, horizontalInset: 6)
                     .padding(.top, 8)
                     .onAppear { becameVisible(row.section) }
             case let .emojis(cells):
@@ -34,17 +34,20 @@ struct EmojiDocumentRowView: View {
                             toggleFavorite: { toggleFavorite(cell.item) },
                             lockReason: lockReason(cell.item)
                         )
+                        .frame(maxWidth: .infinity)
                     }
                     if cells.count < EmojiPickerDocumentStore.itemsPerRow {
-                        Spacer(minLength: 0)
+                        ForEach(cells.count ..< EmojiPickerDocumentStore.itemsPerRow, id: \.self) { _ in
+                            Color.clear
+                                .frame(
+                                    width: EmojiPickerGridMetrics.cellSize,
+                                    height: EmojiPickerGridMetrics.cellSize
+                                )
+                                .frame(maxWidth: .infinity)
+                        }
                     }
                 }
-                .frame(
-                    width: CGFloat(EmojiPickerDocumentStore.itemsPerRow)
-                        * EmojiPickerGridMetrics.cellSize,
-                    alignment: .leading
-                )
-                .frame(maxWidth: .infinity, alignment: .center)
+                .frame(maxWidth: .infinity)
             case let .empty(message):
                 Text(message)
                     .font(.callout)
@@ -167,7 +170,7 @@ struct EmojiDocumentSidebar: View {
                                 PickerSectionBookmark(
                                     section: .guild(guild.id), visibleSection: visibleSection,
                                     help: guild.name, jump: jump
-                                ) { EmojiGuildBookmarkIcon(guild: guild) }
+                                ) { EmojiGuildBookmarkIcon(guild: guild, animates: false) }
                             }
                         }
 
@@ -197,7 +200,7 @@ struct EmojiDocumentSidebar: View {
                     .frame(maxWidth: .infinity, alignment: .center)
                 }
                 .scrollPosition($scrollPosition)
-                .scrollIndicators(.hidden)
+                .scrollIndicators(.never)
             }
 
             if showsNativeJumpButton {
@@ -217,11 +220,16 @@ struct EmojiDocumentSidebar: View {
 
 struct EmojiGuildBookmarkIcon: View {
     let guild: Guild
+    var animates = true
 
     var body: some View {
         Group {
             if let url = guild.iconURL {
-                AnimatedRemoteImage(url: url)
+                if animates {
+                    AnimatedRemoteImage(url: url)
+                } else {
+                    StaticRemoteImage(url: url, maximumPixelDimension: 64)
+                }
             } else {
                 Text(guild.name.prefix(2).uppercased())
                     .font(.caption.weight(.bold))

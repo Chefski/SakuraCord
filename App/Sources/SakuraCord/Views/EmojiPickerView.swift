@@ -33,6 +33,7 @@ enum EmojiPickerActivationPolicy {
 struct EmojiPickerHeader: View {
     let title: String
     let count: Int
+    var horizontalInset: CGFloat = 14
 
     var body: some View {
         HStack {
@@ -40,7 +41,7 @@ struct EmojiPickerHeader: View {
             Spacer()
             Text(count, format: .number).font(.caption).foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, horizontalInset)
         .padding(.bottom, 8)
     }
 }
@@ -196,8 +197,8 @@ enum EmojiPickerItem: Identifiable {
 
     @ViewBuilder func preview(
         skinTone: NativeEmojiSkinTone,
-        dimension: CGFloat = 36,
-        nativeFontSize: CGFloat = 31
+        dimension: CGFloat = 40,
+        nativeFontSize: CGFloat = 38
     ) -> some View {
         switch self {
         case let .native(emoji):
@@ -417,7 +418,7 @@ struct EmojiPickerView: View {
                         )
                         Divider()
                         VStack(spacing: 0) {
-                            EmojiPickerDocumentList(
+                            EmojiPickerDocumentScrollView(
                                 document: document,
                                 interaction: interaction,
                                 skinTone: selectedSkinTone,
@@ -668,7 +669,7 @@ struct EmojiPickerView: View {
     }
 }
 
-private struct EmojiPickerDocumentList: View {
+private struct EmojiPickerDocumentScrollView: View {
     let document: EmojiPickerDocumentStore
     let interaction: EmojiPickerInteractionModel
     let skinTone: NativeEmojiSkinTone
@@ -680,26 +681,27 @@ private struct EmojiPickerDocumentList: View {
     let lockReason: (EmojiPickerItem) -> String?
 
     var body: some View {
-        List(document.rows) { row in
-            EmojiDocumentRowView(
-                row: row,
-                skinTone: skinTone,
-                interaction: interaction,
-                isFavorite: document.isFavorite,
-                choose: choose,
-                toggleFavorite: toggleFavorite,
-                retry: retry,
-                becameVisible: becameVisible,
-                lockReason: lockReason
-            )
-            .id(row.id)
-            .listRowInsets(row.listInsets)
-            .listRowSeparator(.hidden)
-            .listRowBackground(Color.clear)
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(document.rows) { row in
+                    EmojiDocumentRowView(
+                        row: row,
+                        skinTone: skinTone,
+                        interaction: interaction,
+                        isFavorite: document.isFavorite,
+                        choose: choose,
+                        toggleFavorite: toggleFavorite,
+                        retry: retry,
+                        becameVisible: becameVisible,
+                        lockReason: lockReason
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .id(row.id)
+                }
+            }
+            .frame(maxWidth: .infinity)
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .environment(\.defaultMinListRowHeight, 0)
+        .contentMargins(.horizontal, 0)
         .onChange(of: document.query) { _, query in
             interaction.synchronize(with: document.selectableCells)
             guard !query.isEmpty else { return }
@@ -919,13 +921,6 @@ struct EmojiDocumentRow: Identifiable {
 
     static func headerID(for section: EmojiDocumentSection) -> String {
         "header:\(section.id)"
-    }
-
-    var listInsets: EdgeInsets {
-        if case .emojis = content {
-            return EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 10)
-        }
-        return EdgeInsets(top: 2, leading: 10, bottom: 2, trailing: 10)
     }
 }
 
