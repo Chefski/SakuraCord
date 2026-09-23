@@ -100,8 +100,18 @@ enum ServerRailPresentationItem: Identifiable {
 @Observable
 final class ServerRailHomeEntry {
     var isSelected = true
-    var isUnread = false
-    var mentionCount = 0
+}
+
+@Observable
+final class ServerRailDirectMessageEntry: Identifiable {
+    let id: ChannelID
+    var channel: Channel
+    var isSelected = false
+
+    init(channel: Channel) {
+        id = channel.id
+        self.channel = channel
+    }
 }
 
 /// Owns the rail's stable identity graph. Layout changes replace `items`, while
@@ -111,6 +121,7 @@ final class ServerRailHomeEntry {
 @Observable
 final class ServerRailPresentationStore {
     var items: [ServerRailPresentationItem] = []
+    var directMessages: [ServerRailDirectMessageEntry] = []
     let home = ServerRailHomeEntry()
     private(set) var orderedNavigationGuildIDs: [GuildID] = []
     private(set) var navigationGuildIDs: Set<GuildID> = []
@@ -125,6 +136,40 @@ final class ServerRailPresentationStore {
     @ObservationIgnored private var folderEntriesByGuildID:
         [GuildID: [ServerRailFolderEntry]] = [:]
     @ObservationIgnored private var selectedGuildID: GuildID?
+    @ObservationIgnored private var selectedChannelID: ChannelID?
+    @ObservationIgnored private var directMessageEntriesByID:
+        [ChannelID: ServerRailDirectMessageEntry] = [:]
+
+    func updateDirectMessages(
+        _ channels: [Channel],
+        unacknowledgedChannelIDs: Set<ChannelID>
+    ) {
+        let conversations = channels.filter {
+            ($0.kind == .directMessage || $0.kind == .groupDirectMessage)
+                && unacknowledgedChannelIDs.contains($0.id)
+        }
+        var nextEntries: [ServerRailDirectMessageEntry] = []
+        nextEntries.reserveCapacity(conversations.count)
+        var nextEntriesByID: [ChannelID: ServerRailDirectMessageEntry] = [:]
+        nextEntriesByID.reserveCapacity(conversations.count)
+
+        for channel in conversations {
+            let entry = directMessageEntriesByID[channel.id]
+                ?? ServerRailDirectMessageEntry(channel: channel)
+            if entry.channel != channel {
+                entry.channel = channel
+            }
+            entry.isSelected = selectedGuildID == nil && selectedChannelID == channel.id
+            nextEntries.append(entry)
+            nextEntriesByID[channel.id] = entry
+        }
+
+        directMessageEntriesByID = nextEntriesByID
+        refreshHomeSelection()
+        if directMessages.map(\.id) != nextEntries.map(\.id) {
+            directMessages = nextEntries
+        }
+    }
 
     func updateLayout(_ layout: [GuildRailItem]) {
         layoutGuildIDs = layout.flatMap { item -> [GuildID] in
@@ -251,11 +296,18 @@ final class ServerRailPresentationStore {
         }
     }
 
-    func updateSelection(_ guildID: GuildID?) {
-        guard selectedGuildID != guildID else { return }
+    func updateSelection(_ guildID: GuildID?, channelID: ChannelID?) {
+        guard selectedGuildID != guildID || selectedChannelID != channelID else { return }
         let previousGuildID = selectedGuildID
+        let previousChannelID = selectedChannelID
         selectedGuildID = guildID
-        home.isSelected = guildID == nil
+        selectedChannelID = channelID
+        refreshHomeSelection()
+
+        for id in [previousChannelID, channelID].compactMap({ $0 }) {
+            directMessageEntriesByID[id]?.isSelected =
+                guildID == nil && id == channelID
+        }
 
         var affectedFolderIDs: Set<GuildRailItem.RailIdentifier> = []
         for id in [previousGuildID, guildID].compactMap({ $0 }) {
@@ -267,6 +319,11 @@ final class ServerRailPresentationStore {
         for folderID in affectedFolderIDs {
             folderEntriesByID[folderID]?.refreshDerivedPresentation()
         }
+    }
+
+    private func refreshHomeSelection() {
+        home.isSelected = selectedGuildID == nil
+            && selectedChannelID.flatMap { directMessageEntriesByID[$0] } == nil
     }
 
     private func guildEntry(for guildID: GuildID) -> ServerRailGuildEntry {
@@ -281,6 +338,25 @@ final class ServerRailPresentationStore {
 }
 
 extension AppModel {
+    func refreshServerRailSelection() {
+        serverRailPresentation.updateSelection(
+            selectedGuildID,
+            channelID: selectedChannelID
+        )
+    }
+
+    func refreshServerRailDirectMessages(replacing previous: BootstrapSnapshot?) {
+        guard previous?.channels != snapshot?.channels else { return }
+        refreshServerRailDirectMessages()
+    }
+
+    func refreshServerRailDirectMessages() {
+        serverRailPresentation.updateDirectMessages(
+            snapshot?.channels ?? [],
+            unacknowledgedChannelIDs: readState.unacknowledgedDirectMessageChannelIDs()
+        )
+    }
+
     func replaceServerRailGuilds(_ guildsByID: [GuildID: Guild]) {
         if serverRailGuildsByID != guildsByID {
             serverRailGuildsByID = guildsByID

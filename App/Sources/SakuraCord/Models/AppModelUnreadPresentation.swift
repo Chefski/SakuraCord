@@ -389,18 +389,13 @@ extension AppModel {
         {
             unreadCategoryIDsByGuild = prepared.unread.unreadCategoryIDsByGuild
         }
-        if serverRailHomeIsUnread != prepared.unread.directMessageUnread {
-            serverRailHomeIsUnread = prepared.unread.directMessageUnread
-        }
-        if serverRailHomeMentionCount != prepared.unread.directMessageMentions {
-            serverRailHomeMentionCount = prepared.unread.directMessageMentions
-        }
         publishUnreadPresentation(
             snapshotValue: snapshotValue,
             channelProjection: prepared.channels,
             guildProjection: prepared.guilds,
             projectedGuildsByID: prepared.serverRailGuildsByID
         )
+        refreshServerRailDirectMessages()
     }
 
     private func publishUnreadPresentation(

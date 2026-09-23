@@ -149,7 +149,7 @@ private struct DirectMessageInboxRow: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(.red, in: Capsule())
+                    .background(Color(hex: 0xF23F43), in: Capsule())
             } else if channel.unreadCount > 0 {
                 Circle()
                     .fill(.primary)
@@ -245,6 +245,16 @@ struct DirectMessageAvatar: View {
                 size: size,
                 animates: animates
             )
+        } else if channel.kind == .groupDirectMessage,
+                  channel.recipients.count >= 2
+        {
+            GroupDirectMessageAvatar(
+                first: channel.recipients[0],
+                second: channel.recipients[1],
+                name: channel.name,
+                size: size,
+                animates: animates
+            )
         } else {
             Image(systemName: "person.2.fill")
                 .font(.system(size: size * 0.38, weight: .semibold))
@@ -253,5 +263,52 @@ struct DirectMessageAvatar: View {
                 .background(SakuraCordAccentColor.color.gradient, in: Circle())
                 .accessibilityLabel("\(channel.name) group avatar")
         }
+    }
+}
+
+private struct GroupDirectMessageAvatar: View {
+    let first: User
+    let second: User
+    let name: String
+    let size: CGFloat
+    let animates: Bool
+
+    private var backSize: CGFloat { size * 0.68 }
+    private var frontSize: CGFloat { size * 0.75 }
+    private var frontOrigin: CGFloat { size - frontSize }
+    private var clearance: CGFloat { size * 0.05 }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            AvatarView(
+                name: first.displayName,
+                url: first.avatarURL,
+                size: backSize,
+                animates: animates
+            )
+            .mask {
+                Path { path in
+                    path.addRect(CGRect(x: 0, y: 0, width: backSize, height: backSize))
+                    path.addEllipse(in: CGRect(
+                        x: frontOrigin - clearance,
+                        y: frontOrigin - clearance,
+                        width: frontSize + 2 * clearance,
+                        height: frontSize + 2 * clearance
+                    ))
+                }
+                .fill(.white, style: FillStyle(eoFill: true))
+            }
+
+            AvatarView(
+                name: second.displayName,
+                url: second.avatarURL,
+                size: frontSize,
+                animates: animates
+            )
+            .offset(x: frontOrigin, y: frontOrigin)
+        }
+        .frame(width: size, height: size, alignment: .topLeading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(name) group avatar")
     }
 }

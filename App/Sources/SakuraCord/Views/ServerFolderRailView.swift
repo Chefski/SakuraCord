@@ -63,28 +63,21 @@ struct ServerFolderRailView: View {
                     expansionChanged()
                 }
             } label: {
-                Group {
-                    if isExpanded {
-                        Image(systemName: "folder.fill")
-                            .font(.system(size: 21, weight: .semibold))
-                            .foregroundStyle(folderColor)
-                            .frame(width: 44, height: 44)
-                    } else {
-                        collapsedPreview
+                ServerRailBadgedIcon(
+                    mentionCount: showsUnreadIndicators ? entry.mentionCount : 0
+                ) {
+                    Group {
+                        if isExpanded {
+                            Image(systemName: "folder.fill")
+                                .font(.system(size: 21, weight: .semibold))
+                                .foregroundStyle(folderColor)
+                                .frame(width: 44, height: 44)
+                        } else {
+                            collapsedPreview
+                        }
                     }
-                }
-                .background(folderColor.opacity(isExpanded ? 0.18 : 0.12))
-                .clipShape(ConcentricRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(alignment: .bottomTrailing) {
-                    if showsUnreadIndicators, entry.mentionCount > 0 {
-                        Text(entry.mentionCount, format: .number)
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 5)
-                            .frame(minWidth: 18, minHeight: 18)
-                            .background(.red, in: Capsule())
-                            .offset(x: 4, y: 4)
-                    }
+                    .background(folderColor.opacity(isExpanded ? 0.18 : 0.12))
+                    .clipShape(ConcentricRectangle(cornerRadius: 14, style: .continuous))
                 }
             }
             .buttonStyle(.plain)
