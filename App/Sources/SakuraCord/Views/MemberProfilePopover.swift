@@ -35,6 +35,7 @@ struct ProfilePresentationContent<Footer: View>: View {
     var body: some View {
         MemberProfilePopover(
             member: presentation.member,
+            isCurrentUser: presentation.isCurrentUser,
             profile: presentation.profile,
             isLoading: presentation.isLoading,
             errorMessage: presentation.errorMessage,
@@ -72,6 +73,7 @@ struct MemberProfilePopover<Footer: View>: View {
     static var preferredWidth: CGFloat { 330 }
 
     let member: Member
+    let isCurrentUser: Bool
     let profile: UserProfile?
     let isLoading: Bool
     let errorMessage: String?
@@ -224,7 +226,7 @@ struct MemberProfilePopover<Footer: View>: View {
                 }
 
                 if let profile, showsDetails {
-                    if editor == nil {
+                    if editor == nil, !isCurrentUser {
                         ProfileMutualSummary(
                             guilds: profile.mutualGuilds,
                             friends: profile.mutualFriends,
