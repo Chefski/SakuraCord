@@ -687,6 +687,7 @@ struct GatewayReadyGuildsDTO: Decodable {
         var id: String
         var name: String?
         var icon: String?
+        var homeHeader: String?
         var owner: Bool?
         var ownerID: String?
         var permissions: String?
@@ -707,6 +708,7 @@ struct GatewayReadyGuildsDTO: Decodable {
             case id, name, icon, owner, permissions, properties, features, profile
             case joinedAt = "joined_at"
             case nsfwLevel = "nsfw_level"
+            case homeHeader = "home_header"
             case ownerID = "owner_id"
             case rulesChannelID = "rules_channel_id"
             case defaultMessageNotifications = "default_message_notifications"
@@ -727,6 +729,7 @@ struct GatewayReadyGuildsDTO: Decodable {
             id = try container.decode(String.self, forKey: .id)
             name = (try? container.decode(String.self, forKey: .name)) ?? nested?.name
             icon = (try? container.decode(String.self, forKey: .icon)) ?? nested?.icon
+            homeHeader = (try? container.decode(String.self, forKey: .homeHeader)) ?? nested?.homeHeader
             owner = (try? container.decode(Bool.self, forKey: .owner)) ?? nested?.owner
             ownerID = (try? container.decode(String.self, forKey: .ownerID))
                 ?? nested?.ownerID
@@ -800,6 +803,7 @@ struct GatewayReadyGuildsDTO: Decodable {
                 currentUserPermissions: permissions.flatMap(UInt64.init),
                 rulesChannelID: rulesChannelID.flatMap(ChannelID.init),
                 features: features,
+                guideHeaderURL: homeHeader.flatMap { URL(string: "https://cdn.discordapp.com/home-headers/\(id)/\($0).png?size=2048") },
                 profileTag: profile?.domain(guildID: id),
                 defaultMessageNotifications:
                     defaultMessageNotifications.flatMap(

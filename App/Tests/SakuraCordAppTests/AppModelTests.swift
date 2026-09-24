@@ -557,6 +557,89 @@ import UserNotifications
 }
 
 @MainActor
+@Test func `bootstrap membership gates onboarding without guessing and guide visibility follows resources or tasks`() async throws {
+    let model = AppModel(launchMode: .offlineTesting)
+    var snapshot = try await MockChatProvider().bootstrap()
+    let guildID = try #require(snapshot.guilds.first?.id)
+    snapshot.guilds[0].features.formUnion(["COMMUNITY", "GUILD_ONBOARDING", "GUILD_SERVER_GUIDE"])
+    var member = Member(user: snapshot.currentUser, roleName: "", isOnline: false)
+    member.flags = 98
+    member.joinedAt = .now.addingTimeInterval(-10 * 24 * 60 * 60)
+    snapshot.currentMembersByGuildID[guildID] = member
+    await model.applyBootstrap(snapshot, publishesSessionState: false)
+    model.selectedGuildID = guildID
+    #expect(model.onboardingMember(in: guildID)?.flags == 98)
+    #expect(model.onboardingEntryGuildID == nil)
+    #expect(!model.hasGuildGuide(in: guildID))
+
+    let resource = Channel(id: .init(rawValue: 77161), guildID: guildID, name: "handbook", kind: .text, flags: 128)
+    snapshot.channels.append(resource)
+    model.consumeSnapshotChanged(snapshot)
+    #expect(model.hasGuildGuide(in: guildID))
+    snapshot.channels.removeAll { $0.id == resource.id }
+    member.flags = 9
+    member.joinedAt = .now
+    snapshot.currentMembersByGuildID[guildID] = member
+    model.consumeSnapshotChanged(snapshot)
+    #expect(model.onboardingEntryGuildID == guildID)
+    #expect(model.hasGuildGuide(in: guildID))
+    member.flags = 107
+    snapshot.currentMembersByGuildID[guildID] = member
+    model.consumeSnapshotChanged(snapshot)
+    #expect(model.onboardingEntryGuildID == nil)
+    #expect(!model.hasGuildGuide(in: guildID))
+}
+
+@MainActor
+@Test func `flags-only self member updates unlock the sidebar and retry initial history`() async throws {
+    let provider = InaccessibleChannelRequestCountingProvider()
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    var snapshot = try #require(model.snapshot)
+    var guild = try #require(snapshot.guilds.first)
+    guild.features.insert("GUILD_ONBOARDING")
+    guild.currentUserPermissions = .max
+    let guildIndex = try #require(snapshot.guilds.firstIndex { $0.id == guild.id })
+    snapshot.guilds[guildIndex] = guild
+    let channel = Channel(id: .init(rawValue: 77160), guildID: guild.id, name: "first-channel", kind: .text)
+    snapshot.channels.append(channel)
+    model.snapshot = snapshot
+    model.serverRailGuildsByID[guild.id] = guild
+    model.selectedGuildID = guild.id
+    model.currentUserRoleIDsByGuild[guild.id] = []
+    let user = try #require(model.currentUser)
+    var member = Member(user: user, roleName: "", isOnline: false)
+    member.flags = nil
+    model.membersByGuildID[guild.id] = [user.id: member]
+    model.onboarding.members[guild.id] = member
+    model.refreshUnreadPresentation(appliesAccessImmediately: true)
+    model.selectedChannelID = channel.id
+    #expect(model.checkingChannelIDs.contains(channel.id))
+    #expect(model.onboardingEntryGuildID == nil)
+    #expect(await provider.messageRequestCount(for: channel.id) == 0)
+
+    member.flags = 11
+    member.isPending = false
+    member.joinedAt = .now
+    model.receiveOnboardingMember(member, guildID: guild.id)
+    #expect(model.hasPendingGuildGuideActions(in: guild.id))
+    #expect(model.onboardingEntryGuildID == nil)
+    #expect(!model.checkingChannelIDs.contains(channel.id))
+    #expect(await eventuallyOnMain { !model.isLoadingMessages })
+    #expect(await provider.messageRequestCount(for: channel.id) == 1)
+    #expect(model.selectedConversationAccess == .readable(canSend: true))
+    member.flags = 107
+    model.receiveOnboardingMember(member, guildID: guild.id)
+    #expect(!model.hasPendingGuildGuideActions(in: guild.id))
+    member.flags = nil
+    member.isPending = nil
+    model.receiveOnboardingMember(member, guildID: guild.id)
+    #expect(model.onboardingEntryGuildID == nil)
+    #expect(!model.checkingChannelIDs.contains(channel.id))
+    #expect(!model.hasPendingGuildGuideActions(in: guild.id))
+}
+
+@MainActor
 @Test func `selecting an inaccessible forum performs no forum read`() async throws {
     let provider = InaccessibleChannelRequestCountingProvider()
     let model = AppModel(launchMode: .offlineTesting, provider: provider)

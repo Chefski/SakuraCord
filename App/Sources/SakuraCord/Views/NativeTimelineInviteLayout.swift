@@ -2,6 +2,43 @@ import AppKit
 import CoreText
 import SakuraCordModels
 
+struct NativeServerCardContent {
+    let guildID: GuildID
+    let name: String
+    let iconURL: URL?
+    let inviter: User?
+    let brandColor: UInt32?
+    let description: String?
+    let traits: [ServerInvite.Trait]
+    let memberCount: Int?
+    let onlineCount: Int?
+
+    init(invite: ServerInvite) {
+        guildID = invite.guildID
+        name = invite.name
+        iconURL = invite.iconURL
+        inviter = invite.inviter
+        brandColor = invite.brandColor
+        description = invite.description
+        traits = invite.traits
+        memberCount = invite.memberCount
+        onlineCount = invite.onlineCount
+    }
+
+    init(profile: GuildGuideProfile, iconURL: URL?, adaptiveColor: UInt32? = nil) {
+        guildID = profile.id
+        name = profile.name
+        self.iconURL = iconURL
+        inviter = nil
+        brandColor = profile.brandColorPrimary.flatMap { UInt32($0.replacingOccurrences(of: "#", with: ""), radix: 16) } ?? adaptiveColor
+        description = profile.description
+        traits = profile.traits.map { .init(label: $0.label, emoji: $0.emojiName,
+            emojiURL: $0.emojiID.flatMap { URL(string: "https://cdn.discordapp.com/emojis/\($0).webp?size=32") }) }
+        memberCount = profile.memberCount
+        onlineCount = profile.onlineCount
+    }
+}
+
 struct NativeTimelineInviteLayout {
     static let cornerRadius: CGFloat = 28
 
@@ -33,7 +70,7 @@ struct NativeTimelineInviteLayout {
         var height: CGFloat
         var overflow: Bool
     }
-    let reference: ServerInviteReference
+    let reference: ServerInviteReference?
     let componentID: String
     let frame: CGRect
     let bannerFrame: CGRect
@@ -49,30 +86,32 @@ struct NativeTimelineInviteLayout {
     let hasCollapsedContent: Bool
     let contentBottom: CGFloat
     let invite: ServerInvite?
+    let content: NativeServerCardContent?
     let buttonTitle: String
     let isDisabled: Bool
     let isUnavailable: Bool
     let error: String?
 
     var accessibilityLabel: String {
-        (labels.map(\.text) + (invite?.traits.map(\.label) ?? [])).joined(separator: ". ")
+        (labels.map(\.text) + (content?.traits.map(\.label) ?? [])).joined(separator: ". ")
     }
 
-    init(reference: ServerInviteReference, index: Int, origin: CGPoint, maximumWidth: CGFloat,
-         model: AppModel?, isOwnMessage: Bool, fillsWidth: Bool = false) {
+    init(reference: ServerInviteReference? = nil, index: Int, origin: CGPoint, maximumWidth: CGFloat,
+         model: AppModel?, isOwnMessage: Bool, fillsWidth: Bool = false, preview: NativeServerCardContent? = nil) {
         self.reference = reference
-        componentID = "server-invite:\(index):\(reference.code)"
-        let entry = model?.serverInvites.entries[reference]
+        componentID = "server-invite:\(index):\(reference?.code ?? preview?.guildID.description ?? "")"
+        let entry = reference.flatMap { model?.serverInvites.entries[$0] }
         invite = entry?.isUnavailable == true ? nil : entry?.invite
-        gradientColor = invite?.brandColor ?? entry?.adaptiveColor
+        content = preview ?? invite.map(NativeServerCardContent.init)
+        gradientColor = content?.brandColor ?? entry?.adaptiveColor
         isUnavailable = entry?.isUnavailable == true
         error = entry?.error ?? invite.flatMap {
             model?.serverRailGuildsByID[$0.guildID] == nil ? $0.unsupportedJoinReason : nil
         }
-        isExpanded = model?.serverInvites.expanded.contains(reference) == true
+        isExpanded = preview != nil || reference.map { model?.serverInvites.expanded.contains($0) == true } == true
         let width = fillsWidth ? maximumWidth : min(isUnavailable ? 432 : 302, maximumWidth)
         let originX = origin.x, originY = origin.y, inner = max(1, width - 32)
-        bannerFrame = CGRect(x: originX, y: originY, width: width, height: invite == nil ? 0 : 72)
+        bannerFrame = CGRect(x: originX, y: originY, width: width, height: content == nil ? 0 : 72)
         iconFrame = isUnavailable ? CGRect(x: originX + 16, y: originY + 46, width: 48, height: 48)
             : CGRect(x: originX + 19, y: originY + 41, width: 64, height: 64)
         var labels: [Label] = []
@@ -81,7 +120,7 @@ struct NativeTimelineInviteLayout {
         var inviterAvatar: CGRect?
         var countDots: [CGRect] = []
         var cursor = originY + 16
-        if let invite {
+        if let invite = content {
             cursor = originY + 116
             inviterAvatar = Self.appendIdentity(invite, currentUserID: model?.currentUser?.id,
                                                 originX: originX + 16, width: inner, cursor: &cursor, labels: &labels)
@@ -121,7 +160,7 @@ struct NativeTimelineInviteLayout {
             labels.append(.init(text: error, frame: CGRect(x: originX + 16, y: cursor, width: inner, height: height), size: 13))
             cursor += height
         }
-        let canCollapse = invite != nil && cursor - originY > 292 && error == nil
+        let canCollapse = preview == nil && invite != nil && cursor - originY > 292 && error == nil
         let collapsed = canCollapse && !isExpanded
         hasCollapsedContent = collapsed
         if collapsed { cursor = originY + 230 }
@@ -133,7 +172,7 @@ struct NativeTimelineInviteLayout {
             detailsFrame = collapsed ? CGRect(x: originX, y: originY, width: width, height: cursor - originY + 8)
                 : hiddenTraits ? traits.last?.frame : nil
         }
-        let showsButton = !isUnavailable
+        let showsButton = preview == nil && !isUnavailable
         buttonFrame = CGRect(x: originX + 16, y: cursor + 16, width: inner, height: showsButton ? 32 : 0)
         frame = CGRect(x: originX, y: originY, width: width, height: cursor + (showsButton ? 64 : 16) - originY)
         inviterAvatarFrame = inviterAvatar
@@ -143,7 +182,7 @@ struct NativeTimelineInviteLayout {
         (buttonTitle, isDisabled) = Self.action(for: invite, entry: entry, model: model)
     }
 
-    private static func appendIdentity(_ invite: ServerInvite, currentUserID: UserID?, originX: CGFloat, width: CGFloat,
+    private static func appendIdentity(_ invite: NativeServerCardContent, currentUserID: UserID?, originX: CGFloat, width: CGFloat,
                                        cursor: inout CGFloat, labels: inout [Label]) -> CGRect? {
         let nameHeight = height(invite.name, width: width, size: 16, bold: true)
         labels.append(.init(text: invite.name, frame: CGRect(x: originX, y: cursor, width: width, height: nameHeight), size: 16, bold: true))
@@ -158,7 +197,7 @@ struct NativeTimelineInviteLayout {
         return avatar
     }
 
-    private static func appendCounts(_ invite: ServerInvite, originX: CGFloat, width: CGFloat, cursor: inout CGFloat,
+    private static func appendCounts(_ invite: NativeServerCardContent, originX: CGFloat, width: CGFloat, cursor: inout CGFloat,
                                      labels: inout [Label], dots: inout [CGRect]) {
         var countX = originX
         for count in [invite.onlineCount.map { "\($0.formatted()) Online" },

@@ -23,7 +23,7 @@ struct OnboardingContractTests {
         let saving = Task { try await provider.saveGuildOnboarding(in: .init(rawValue: 100), responses: ["11"], initial: initial) }
         #expect(await eventually { await socket.sentPayloadCount(opcode: 8) == 1 })
         await socket.push(Self.member(flags: initial ? 9 : 11, sequence: 2))
-        if scenario != "failed" {
+        if initial, scenario != "failed" {
             #expect(await eventually { await socket.sentPayloadCount(opcode: 8) == 2 })
             await socket.push(Self.member(flags: scenario == "unconfirmed" ? 9 : 11, sequence: 3))
         }
@@ -43,6 +43,18 @@ struct OnboardingContractTests {
         #expect(Set(seen.keys) == (initial ? ["10"] : ["10", "20"]))
         #expect(seen.values.allSatisfy { $0 > 1_000_000_000_000 })
         #expect(await provider.cachedMembers[.init(rawValue: 100)]?.first?.requiresOnboarding == ["failed", "unconfirmed"].contains(scenario))
+        let bootstrap = await provider.makeBootstrapSnapshot(
+            user: User(id: .init(rawValue: 1), username: "one", displayName: "One"),
+            ready: .init(readStates: [], notificationSettings: [], usesNewNotifications: true)
+        )
+        #expect(bootstrap.currentMembersByGuildID[.init(rawValue: 100)]?.flags == (initial && ["failed", "unconfirmed"].contains(scenario) ? 9 : 11))
+        if !initial {
+            let count = capture.requests.count
+            _ = try await provider.saveGuildOnboarding(in: .init(rawValue: 100), responses: ["11"], initial: false)
+            #expect(capture.requests.count == count + 1)
+            #expect(capture.requests.last?.httpMethod == "PUT")
+            #expect(await socket.sentPayloadCount(opcode: 8) == 1)
+        }
         await provider.disconnect()
     }
 
@@ -62,6 +74,64 @@ struct OnboardingContractTests {
         #expect(DiscordMemberStoreOrdering.merging(existing: [pending], updates: [sparse]).first?.requiresOnboarding == true)
     }
 
+    @Test(arguments: ["guide", "empty-progress", "wrong-user", "unconfirmed", "empty-confirmation"])
+    func `guide reads are nonmutating and task completion requires matching confirmed state`(scenario: String) async throws {
+        let capture = OnboardingRequestCapture()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [OnboardingURLProtocol.self]
+        configuration.httpAdditionalHeaders = ["X-Onboarding-Test": capture.id, "X-Onboarding-Scenario": scenario]
+        let provider = DiscordRESTProvider(credentials: TestCredentialStore(), handle: .init(accountID: "1"),
+            session: URLSession(configuration: configuration), installationID: "fixture")
+        await provider.seedOnboardingContract()
+        let guide = try await provider.guildGuide(in: .init(rawValue: 100))
+        #expect(guide.resourceChannels.first?.channelID == .init(rawValue: 200))
+        #expect(guide.newMemberActions.first?.actionType == 0)
+        let profile = try await provider.guildGuideProfile(in: .init(rawValue: 100))
+        #expect(profile.memberCount == 2)
+        #expect(capture.requests.contains { $0.url?.path == "/api/v9/guilds/100/profile" && $0.httpMethod == "GET" })
+        #expect(capture.requests.allSatisfy { $0.httpMethod == "GET" })
+        if scenario == "guide" || scenario == "empty-progress" {
+            let progress = try await provider.guildGuideProgress(in: .init(rawValue: 100))
+            #expect(!progress.isCompleted(.init(rawValue: 200)))
+            let confirmed = try await provider.completeGuildGuideAction(in: .init(rawValue: 100), channelID: .init(rawValue: 200))
+            #expect(confirmed.isCompleted(.init(rawValue: 200)))
+        } else {
+            await #expect(throws: (any Error).self) {
+                _ = try await provider.completeGuildGuideAction(in: .init(rawValue: 100), channelID: .init(rawValue: 200))
+            }
+        }
+        let writes = capture.requests.filter { $0.httpMethod != "GET" }
+        #expect(writes.count == 1)
+        #expect(writes.first?.url?.path == "/api/v9/guilds/100/new-member-action/200")
+        #expect(writes.first?.httpMethod == "POST")
+        #expect(writes.first?.httpBody?.isEmpty != false)
+    }
+
+    @Test func `channel selection batches preserve unrelated bits and require a confirmed guild`() async throws {
+        let capture = OnboardingRequestCapture()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [OnboardingURLProtocol.self]
+        configuration.httpAdditionalHeaders = ["X-Onboarding-Test": capture.id, "X-Onboarding-Scenario": "channels"]
+        let provider = DiscordRESTProvider(credentials: TestCredentialStore(), handle: .init(accountID: "1"),
+            session: URLSession(configuration: configuration), installationID: "fixture")
+        await provider.seedChannelSelectionContract()
+        let settings = try await provider.updateGuildChannelSelection(in: .init(rawValue: 100), enabled: false,
+            channels: [.init(rawValue: 200): true, .init(rawValue: 201): false])
+        #expect(settings.flags == 4)
+        #expect(GuildChannelSelection.isSelected(.init(rawValue: 200), settings: settings))
+        #expect(!GuildChannelSelection.isSelected(.init(rawValue: 201), settings: settings))
+        #expect(capture.requests.count == 1)
+        let request = try #require(capture.requests.first)
+        #expect(request.httpMethod == "PATCH")
+        #expect(request.url?.path == "/api/v9/users/@me/guilds/settings")
+        let body = try JSONDecoder().decode(JSONValue.self, from: #require(request.httpBody))
+        #expect(body == .object(["guilds": .object(["100": .object([
+            "flags": .number(4), "channel_overrides": .object([
+                "200": .object(["flags": .number(4100)]), "201": .object(["flags": .number(0)])
+            ])
+        ])])]))
+    }
+
     private static func member(flags: Int, sequence: Int) -> GatewaySocketMessage {
         gatewayMessage(op: 0, data: .object([
             "guild_id": .string("100"), "chunk_index": .number(0), "chunk_count": .number(1),
@@ -74,6 +144,14 @@ struct OnboardingContractTests {
 }
 
 private extension DiscordRESTProvider {
+    func seedChannelSelectionContract() {
+        seedOnboardingContract()
+        cachedGuildNotificationSettings[.init(rawValue: 100)] = GuildNotificationSettings(
+            guildID: .init(rawValue: 100), flags: GuildChannelSelection.enabledFlag | 4,
+            channelOverrides: [.init(channelID: .init(rawValue: 200), flags: 4),
+                               .init(channelID: .init(rawValue: 201), flags: GuildChannelSelection.selectedFlag)]
+        )
+    }
     func seedOnboardingContract() {
         currentUser = User(id: .init(rawValue: 1), username: "one", displayName: "One")
         cachedGuilds[.init(rawValue: 100)] = Guild(id: .init(rawValue: 100), name: "Test")
@@ -121,9 +199,40 @@ private final class OnboardingURLProtocol: URLProtocol, @unchecked Sendable {
         NotificationCenter.default.post(name: Self.captured, object: request)
         let write = request.httpMethod != "GET"
         let failed = write && request.value(forHTTPHeaderField: "X-Onboarding-Scenario") == "failed"
-        let body = failed ? #"{"message":"Try later"}"# : write
-            ? #"{"guild_id":"100","user_id":"1","onboarding_responses":["11"]}"# : Self.configuration
-        let response = HTTPURLResponse(url: request.url!, statusCode: failed ? 500 : 200, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"])!
+        let scenario = request.value(forHTTPHeaderField: "X-Onboarding-Scenario")
+        let route = request.url?.path ?? ""
+        let guideBody = #"""
+        {"guild_id":"100","enabled":true,"welcome_message":{"author_ids":["1"],"message":"Welcome"},
+        "new_member_actions":[{"channel_id":"200","action_type":0,"title":"Read"}],
+        "resource_channels":[{"channel_id":"200","title":"Handbook"}]}
+        """#
+        let userID = scenario == "wrong-user" ? "2" : "1"
+        let completed = write && scenario != "unconfirmed" ? "true" : "false"
+        let progressBody = "{\"guild_id\":\"100\",\"user_id\":\"\(userID)\",\"channel_actions\":{\"200\":{\"completed\":\(completed)}}}"
+
+        let empty = route.hasSuffix("new-member-actions") && scenario == "empty-progress"
+            || route.contains("new-member-action/") && scenario == "empty-confirmation"
+        let channelBody = #"[{"guild_id":"100","flags":4,"channel_overrides":[{"channel_id":"200","flags":4100},{"channel_id":"201","flags":0}]}]"#
+        let profileBody = #"{"id":"100","name":"Test","member_count":2,"online_count":0,"traits":[]}"#
+        let body: String
+        if route.hasSuffix("/profile") {
+            body = profileBody
+        } else if scenario == "channels" {
+            body = channelBody
+        } else if empty {
+            body = ""
+        } else if route.hasSuffix("new-member-welcome") {
+            body = guideBody
+        } else if route.contains("new-member-action") {
+            body = progressBody
+        } else if failed {
+            body = #"{"message":"Try later"}"#
+        } else if write {
+            body = #"{"guild_id":"100","user_id":"1","onboarding_responses":["11"]}"#
+        } else {
+            body = Self.configuration
+        }
+        let response = HTTPURLResponse(url: request.url!, statusCode: empty ? 204 : failed ? 500 : 200, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(body.utf8))
         client?.urlProtocolDidFinishLoading(self)

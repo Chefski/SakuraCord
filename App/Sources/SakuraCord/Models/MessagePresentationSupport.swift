@@ -184,6 +184,7 @@ final class MessageRowPresentation: Identifiable, Equatable, Sendable {
     let serverInvites: [ServerInviteReference]
     let searchContext: MessageSearchRowContext?
     let pinnedAt: Date?
+    let isResource: Bool
 
     nonisolated var identity: MessageRowIdentity {
         MessageRowIdentity(message)
@@ -205,9 +206,11 @@ final class MessageRowPresentation: Identifiable, Equatable, Sendable {
         isReplyAvailable: Bool,
         textPlan: NativeTimelineTextPlan? = nil,
         searchContext: MessageSearchRowContext? = nil,
-        pinnedAt: Date? = nil
+        pinnedAt: Date? = nil,
+        isResource: Bool = false
     ) {
         self.message = message
+        self.isResource = isResource
         self.startsGroup = startsGroup
         self.endsGroup = endsGroup
         self.startsDay = startsDay
@@ -244,6 +247,7 @@ final class MessageRowPresentation: Identifiable, Equatable, Sendable {
             && lhs.sakuraCordDeepLinks == rhs.sakuraCordDeepLinks
             && lhs.searchContext == rhs.searchContext
             && lhs.pinnedAt == rhs.pinnedAt
+            && lhs.isResource == rhs.isResource
     }
 }
 
@@ -878,7 +882,8 @@ nonisolated enum MessageGrouping {
             isReplyAvailable: row.isReplyAvailable,
             textPlan: row.textPlan,
             searchContext: row.searchContext,
-            pinnedAt: row.pinnedAt
+            pinnedAt: row.pinnedAt,
+            isResource: row.isResource
         )
     }
 

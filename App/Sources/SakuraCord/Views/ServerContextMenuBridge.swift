@@ -13,6 +13,8 @@ struct ServerContextMenuBridge: NSViewRepresentable {
     let setNotificationToggle: (GuildNotificationToggle, Bool) -> Void
     let copyServerID: () -> Void
     var leaveServer: (() -> Void)?
+    var showsAllChannels: () -> Bool? = { nil }
+    var setShowsAllChannels: (Bool) -> Void = { _ in }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(from: self)
@@ -45,6 +47,8 @@ struct ServerContextMenuBridge: NSViewRepresentable {
         private var setNotificationToggle: (GuildNotificationToggle, Bool) -> Void
         private var copyServerID: () -> Void
         private var leaveServer: (() -> Void)?
+        private var showsAllChannels: () -> Bool?
+        private var setShowsAllChannels: (Bool) -> Void
 
         init(from bridge: ServerContextMenuBridge) {
             isUnread = bridge.isUnread
@@ -57,6 +61,8 @@ struct ServerContextMenuBridge: NSViewRepresentable {
             setNotificationToggle = bridge.setNotificationToggle
             copyServerID = bridge.copyServerID
             leaveServer = bridge.leaveServer
+            showsAllChannels = bridge.showsAllChannels
+            setShowsAllChannels = bridge.setShowsAllChannels
         }
 
         func update(from bridge: ServerContextMenuBridge) {
@@ -70,6 +76,8 @@ struct ServerContextMenuBridge: NSViewRepresentable {
             setNotificationToggle = bridge.setNotificationToggle
             copyServerID = bridge.copyServerID
             leaveServer = bridge.leaveServer
+            showsAllChannels = bridge.showsAllChannels
+            setShowsAllChannels = bridge.setShowsAllChannels
         }
 
         func makeMenu() -> NSMenu {
@@ -120,6 +128,12 @@ struct ServerContextMenuBridge: NSViewRepresentable {
                 menu.addItem(item)
             }
 
+            if let all = showsAllChannels() {
+                let item = menuItem("Show All Channels", action: #selector(toggleAllChannels))
+                item.state = all ? .on : .off
+                menu.addItem(item)
+            }
+
             let notificationItem = menuItem(
                 "Notification Settings",
                 systemImage: "bell.badge.fill",
@@ -144,6 +158,11 @@ struct ServerContextMenuBridge: NSViewRepresentable {
                                       action: #selector(leaveServerFromMenu), isDestructive: true))
             }
             return menu
+        }
+
+        @objc private func toggleAllChannels() {
+            guard let all = showsAllChannels() else { return }
+            setShowsAllChannels(!all)
         }
 
         @objc private func leaveServerFromMenu() { leaveServer?() }

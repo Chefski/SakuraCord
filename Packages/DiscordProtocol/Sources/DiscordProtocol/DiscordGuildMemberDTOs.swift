@@ -5,6 +5,7 @@ struct GuildDTO: Decodable {
     var id: String
     var name: String
     var icon: String?
+    var homeHeader: String?
     var owner: Bool?
     var permissions: String?
     var rulesChannelID: String?
@@ -14,6 +15,7 @@ struct GuildDTO: Decodable {
 
     enum CodingKeys: String, CodingKey {
         case id, name, icon, owner, permissions, features, profile
+        case homeHeader = "home_header"
         case rulesChannelID = "rules_channel_id"
         case defaultMessageNotifications = "default_message_notifications"
     }
@@ -36,6 +38,7 @@ struct GuildDTO: Decodable {
             currentUserPermissions: permissions.flatMap(UInt64.init),
             rulesChannelID: rulesChannelID.flatMap(ChannelID.init),
             features: features ?? [],
+            guideHeaderURL: homeHeader.flatMap { URL(string: "https://cdn.discordapp.com/home-headers/\(id)/\($0).png?size=2048") },
             profileTag: profile?.domain(guildID: id),
             defaultMessageNotifications:
                 defaultMessageNotifications.flatMap(MessageNotificationLevel.init(rawValue:))

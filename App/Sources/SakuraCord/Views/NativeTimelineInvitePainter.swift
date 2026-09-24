@@ -13,7 +13,7 @@ extension NativeTimelineRowPainter {
         shape.fill()
         NSGraphicsContext.saveGraphicsState()
         shape.addClip()
-        if let invite = card.invite {
+        if let invite = card.content {
             inviteGradient(card.gradientColor ?? 0x242424, in: card.bannerFrame)
             background.setFill()
             NSBezierPath(roundedRect: card.iconFrame.insetBy(dx: -3, dy: -3), xRadius: 22, yRadius: 22).fill()
@@ -38,7 +38,7 @@ extension NativeTimelineRowPainter {
         NSGraphicsContext.saveGraphicsState()
         NSBezierPath(rect: CGRect(x: card.frame.minX, y: card.frame.minY, width: card.frame.width,
                                  height: card.contentBottom - card.frame.minY + (card.hasCollapsedContent ? 16 : 1))).addClip()
-        if let avatarFrame = card.inviterAvatarFrame, let url = card.invite?.inviter?.avatarURL,
+        if let avatarFrame = card.inviterAvatarFrame, let url = card.content?.inviter?.avatarURL,
            let image = mediaImage(for: .media(url, maximumPixelDimension: 32)) {
             drawImage(image, in: avatarFrame, cornerRadius: 8, fillsFrame: true)
         }
@@ -47,7 +47,7 @@ extension NativeTimelineRowPainter {
             attributedText(label.attributedText(color: color), in: label.frame, model: nil)
         }
         for (index, dot) in card.countDots.enumerated() {
-            (index == 0 && card.invite?.onlineCount != nil ? NSColor.systemGreen : .secondaryLabelColor).setFill()
+            (index == 0 && card.content?.onlineCount != nil ? NSColor.systemGreen : .secondaryLabelColor).setFill()
             NSBezierPath(ovalIn: dot).fill()
         }
         for trait in card.traits {

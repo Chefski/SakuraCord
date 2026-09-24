@@ -47,23 +47,24 @@ extension NativeTimelineCanvasView {
     }
 
     func activateInvite(_ card: NativeTimelineInviteLayout, message: Message, expands: Bool) {
+        guard let reference = card.reference else { return }
         guard let model else { return }
         if expands {
-            if !model.serverInvites.expanded.insert(card.reference).inserted {
-                model.serverInvites.expanded.remove(card.reference)
+            if !model.serverInvites.expanded.insert(reference).inserted {
+                model.serverInvites.expanded.remove(reference)
             }
-            model.serverInvites.changed(card.reference)
+            model.serverInvites.changed(reference)
             return
         }
         guard !card.isDisabled else { return }
         if card.invite?.unsupportedJoinReason != nil,
            card.invite.flatMap({ model.serverRailGuildsByID[$0.guildID] }) == nil {
-            NSWorkspace.shared.open(card.reference.url)
+            NSWorkspace.shared.open(reference.url)
             return
         }
         let session = model.accountSession()
         model.startAccountChildTask(account: session) { model, _ in
-            _ = await model.activateServerInvite(card.reference, messageID: message.id)
+            _ = await model.activateServerInvite(reference, messageID: message.id)
         }
     }
 

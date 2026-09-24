@@ -7,10 +7,13 @@ public struct GuildOnboarding: Decodable, Equatable, Sendable {
     public var defaultChannelIDs: [ChannelID]
     public var enabled: Bool
     public var responses: [String]
+    public var promptsSeen: [String: Double]
+    public var responsesSeen: [String: Double]
 
     enum CodingKeys: String, CodingKey {
         case guildID = "guild_id", defaultChannelIDs = "default_channel_ids"
         case prompts, enabled, responses
+        case promptsSeen = "onboarding_prompts_seen", responsesSeen = "onboarding_responses_seen"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -20,6 +23,16 @@ public struct GuildOnboarding: Decodable, Equatable, Sendable {
         defaultChannelIDs = try values.decode([ChannelID].self, forKey: .defaultChannelIDs)
         enabled = try values.decode(Bool.self, forKey: .enabled)
         responses = try values.decodeIfPresent([String].self, forKey: .responses) ?? []
+        promptsSeen = try values.decodeIfPresent([String: Double].self, forKey: .promptsSeen) ?? [:]
+        responsesSeen = try values.decodeIfPresent([String: Double].self, forKey: .responsesSeen) ?? [:]
+    }
+
+    public func hasNewOptions(_ prompt: GuildOnboardingPrompt) -> Bool {
+        promptsSeen[prompt.id] == nil || prompt.options.contains { responsesSeen[$0.id] == nil }
+    }
+
+    public var customizationQuestions: [GuildOnboardingPrompt] {
+        prompts.filter { !$0.inOnboarding } + prompts.filter(\.inOnboarding)
     }
 
     public func questions(initial: Bool) -> [GuildOnboardingPrompt] {

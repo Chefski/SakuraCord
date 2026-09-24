@@ -54,6 +54,8 @@ extension AppModel {
         for guildID in previous.keys where serverRailGuildsByID[guildID] == nil {
             onboarding.entries[guildID] = nil
             onboarding.members[guildID] = nil
+            onboarding.guides[guildID] = nil
+            onboarding.channelSelections[guildID] = nil
             if onboarding.presentedGuildID == guildID { onboarding.presentedGuildID = nil }
         }
         if previous.mapValues(\.isUnavailable) != serverRailGuildsByID.mapValues(\.isUnavailable) {
@@ -118,6 +120,7 @@ extension AppModel {
         }
         if let guild = serverRailGuildsByID[invite.guildID] {
             guard !guild.isUnavailable else { return false }
+            store.showsJoinDialog = false
             navigateToInvite(invite)
             return true
         }
@@ -165,6 +168,9 @@ extension AppModel {
                 if conversationPermissionBasis(for: guild.id)?.currentUserIsPending == true {
                     throw ServerInviteError.unsupported("This server requires member verification. Finish verification in Discord.")
                 }
+                // The onboarding workspace replaces the rail's presentation
+                // host. Close its shared state before that host is recreated.
+                serverInvites.showsJoinDialog = false
                 navigateToInvite(invite)
                 if guild.features.contains("GUILD_ONBOARDING") { openChannelsAndRoles(in: guild.id) }
                 loadServerInvite(invite.reference, refresh: true)

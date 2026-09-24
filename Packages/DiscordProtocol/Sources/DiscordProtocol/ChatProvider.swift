@@ -22,9 +22,14 @@ public struct PartialBulkReadAcknowledgementError: Error, Sendable {
 }
 
 public protocol ChatProvider: Sendable {
+    func guildGuide(in guildID: GuildID) async throws -> GuildGuide
+    func guildGuideProfile(in guildID: GuildID) async throws -> GuildGuideProfile
+    func guildGuideProgress(in guildID: GuildID) async throws -> GuildGuideProgress
+    func completeGuildGuideAction(in guildID: GuildID, channelID: ChannelID) async throws -> GuildGuideProgress
     func guildOnboarding(in guildID: GuildID) async throws -> GuildOnboarding
     func refreshCurrentMember(in guildID: GuildID) async throws -> Member
     func saveGuildOnboarding(in guildID: GuildID, responses: Set<String>, initial: Bool) async throws -> GuildOnboarding
+    func updateGuildChannelSelection(in guildID: GuildID, enabled: Bool?, channels: [ChannelID: Bool]) async throws -> GuildNotificationSettings
     func setGuildChannelSelected(_ selected: Bool, channelID: ChannelID, guildID: GuildID) async throws
     func setGuildChannelSelectionEnabled(_ enabled: Bool, guildID: GuildID) async throws
 
@@ -284,6 +289,10 @@ public protocol PendingCredentialChatProvider: ChatProvider {
 }
 
 public extension ChatProvider {
+    func guildGuide(in guildID: GuildID) async throws -> GuildGuide { throw ChatProviderError.invalidRequest("Server Guide is unavailable.") }
+    func guildGuideProfile(in guildID: GuildID) async throws -> GuildGuideProfile { throw ChatProviderError.invalidRequest("Server profile is unavailable.") }
+    func guildGuideProgress(in guildID: GuildID) async throws -> GuildGuideProgress { throw ChatProviderError.invalidRequest("Server Guide is unavailable.") }
+    func completeGuildGuideAction(in guildID: GuildID, channelID: ChannelID) async throws -> GuildGuideProgress { throw ChatProviderError.invalidRequest("Server Guide is unavailable.") }
     func guildOnboarding(in guildID: GuildID) async throws -> GuildOnboarding {
         throw ChatProviderError.invalidRequest("Channels & Roles is unavailable for this session.")
     }
@@ -292,6 +301,9 @@ public extension ChatProvider {
     }
     func saveGuildOnboarding(in guildID: GuildID, responses: Set<String>, initial: Bool) async throws -> GuildOnboarding {
         throw ChatProviderError.invalidRequest("Onboarding is unavailable for this session.")
+    }
+    func updateGuildChannelSelection(in guildID: GuildID, enabled: Bool?, channels: [ChannelID: Bool]) async throws -> GuildNotificationSettings {
+        throw ChatProviderError.invalidRequest("Channel selection is unavailable for this session.")
     }
     func setGuildChannelSelected(_ selected: Bool, channelID: ChannelID, guildID: GuildID) async throws {
         throw ChatProviderError.invalidRequest("Channel selection is unavailable for this session.")

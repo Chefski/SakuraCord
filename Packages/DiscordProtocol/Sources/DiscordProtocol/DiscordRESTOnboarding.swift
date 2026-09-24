@@ -5,6 +5,7 @@ public extension DiscordRESTProvider {
     func guildOnboarding(in guildID: GuildID) async throws -> GuildOnboarding {
         let value: GuildOnboarding = try await request("/guilds/\(guildID)/onboarding")
         guard value.guildID == guildID else { throw ChatProviderError.invalidRequest("Discord returned onboarding for a different server.") }
+        cachedGuildOnboarding[guildID] = value
         return value
     }
 
@@ -24,7 +25,10 @@ public extension DiscordRESTProvider {
     }
 
     func saveGuildOnboarding(in guildID: GuildID, responses: Set<String>, initial: Bool) async throws -> GuildOnboarding {
-        let configuration = try await guildOnboarding(in: guildID)
+        let configuration: GuildOnboarding
+        if !initial, let cached = cachedGuildOnboarding[guildID] { configuration = cached } else {
+            configuration = try await guildOnboarding(in: guildID)
+        }
         let valid = configuration.validResponses(responses, initial: initial)
         guard valid == responses else {
             throw ChatProviderError.invalidRequest("The server’s questions changed. Refresh and review your answers before saving.")
@@ -32,7 +36,12 @@ public extension DiscordRESTProvider {
         if let error = configuration.validationError(valid, initial: initial) {
             throw ChatProviderError.invalidRequest(error)
         }
-        let member = try await refreshCurrentMember(in: guildID)
+        let member: Member
+        if !initial, let cached = cachedMembers[guildID]?.first(where: { $0.id == currentUser?.id }), cached.flags != nil {
+            member = cached
+        } else {
+            member = try await refreshCurrentMember(in: guildID)
+        }
         guard !initial || member.requiresOnboarding else {
             throw ChatProviderError.invalidRequest("Your onboarding state changed. Refresh to continue.")
         }
@@ -45,12 +54,16 @@ public extension DiscordRESTProvider {
             var guildID: GuildID
             var userID: UserID
             var responses: [String]
+            var promptsSeen: [String: Double]?
+            var responsesSeen: [String: Double]?
             enum CodingKeys: String, CodingKey {
                 case guildID = "guild_id", userID = "user_id", responses = "onboarding_responses"
+                case promptsSeen = "onboarding_prompts_seen", responsesSeen = "onboarding_responses_seen"
             }
         }
-        // Central transport never retries these mutations. A failed/ambiguous
-        // response leaves the draft intact and requires fresh readback.
+        // Post-join edits use the loaded configuration and one PUT, matching
+        // Discord's editor. Initial completion still requires fresh membership
+        // and answer readback; ambiguous edits are reconciled by the caller.
         let confirmation: Confirmation = try await request(
             "/guilds/\(guildID)/onboarding-responses", method: initial ? "POST" : "PUT",
             body: [
@@ -63,6 +76,14 @@ public extension DiscordRESTProvider {
               Set(confirmation.responses) == valid else {
             throw ChatProviderError.invalidRequest("Discord did not confirm all of your answers. Refresh before trying again.")
         }
+        if !initial {
+            var result = configuration
+            result.responses = confirmation.responses
+            result.promptsSeen = confirmation.promptsSeen ?? configuration.promptsSeen
+            result.responsesSeen = confirmation.responsesSeen ?? configuration.responsesSeen
+            cachedGuildOnboarding[guildID] = result
+            return result
+        }
         let confirmed = try await refreshCurrentMember(in: guildID)
         guard !initial || confirmed.flags.map({ $0 & 2 != 0 }) == true else {
             throw ChatProviderError.invalidRequest("Your answers were received, but Discord has not confirmed completion. Refresh to check again.")
@@ -72,6 +93,38 @@ public extension DiscordRESTProvider {
             throw ChatProviderError.invalidRequest("Your answers changed in another client. Refresh to review the latest choices.")
         }
         return result
+    }
+
+    func updateGuildChannelSelection(in guildID: GuildID, enabled: Bool?, channels: [ChannelID: Bool]) async throws -> GuildNotificationSettings {
+        let cached = cachedGuildNotificationSettings[guildID]
+        var patch: [String: JSONValue] = [:]
+        if let enabled {
+            let flags = cached?.flags ?? 0
+            patch["flags"] = .number(Double(enabled ? flags | GuildChannelSelection.enabledFlag : flags & ~GuildChannelSelection.enabledFlag))
+        }
+        if !channels.isEmpty {
+            patch["channel_overrides"] = .object(Dictionary(uniqueKeysWithValues: channels.map { channelID, selected in
+                let flags = cached?.channelOverrides.first { $0.channelID == channelID }?.flags ?? 0
+                let updated = selected ? flags | GuildChannelSelection.selectedFlag : flags & ~GuildChannelSelection.selectedFlag
+                return (channelID.description, .object(["flags": .number(Double(updated))]))
+            }))
+        }
+        guard !patch.isEmpty else { return cached ?? GuildNotificationSettings(guildID: guildID) }
+        let response: [GatewayUserGuildSettingsDTO] = try await request(
+            "/users/@me/guilds/settings", method: "PATCH",
+            body: ["guilds": .object([guildID.description: .object(patch)])]
+        )
+        guard let accepted = response.first(where: { $0.guildID == guildID.description }) else {
+            throw ChatProviderError.invalidRequest("Discord did not confirm the channel selection.")
+        }
+        let settings = accepted.domain(merging: cachedGuildNotificationSettings[guildID])
+        guard enabled.map({ (settings.flags & GuildChannelSelection.enabledFlag != 0) == $0 }) ?? true,
+              channels.allSatisfy({ GuildChannelSelection.isSelected($0.key, settings: settings) == $0.value }) else {
+            throw ChatProviderError.invalidRequest("Discord did not confirm all channel choices.")
+        }
+        cachedGuildNotificationSettings[guildID] = settings
+        continuation?.yield(.notificationSettingsChanged(settings))
+        return settings
     }
 
     func setGuildChannelSelected(_ selected: Bool, channelID: ChannelID, guildID: GuildID) async throws {

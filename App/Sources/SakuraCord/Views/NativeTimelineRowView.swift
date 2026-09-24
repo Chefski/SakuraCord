@@ -628,8 +628,8 @@ struct NativeTimelineRowLayout {
             for: message,
             model: model
         )
-        let usesBubbles = bubbleContext.isEnabled
-        let isOutgoingBubble = bubbleContext.isOutgoing
+        let usesBubbles = bubbleContext.isEnabled && !row.isResource
+        let isOutgoingBubble = bubbleContext.isOutgoing && !row.isResource
         let messageSpacing = CGFloat(model?.appearanceSettings.messageSpacing ?? AppearanceSettingsSnapshot.defaultMessageSpacing)
         let horizontalInset: CGFloat = searchContext == nil
             ? MessageRowLayoutMetrics.horizontalInset
@@ -666,8 +666,8 @@ struct NativeTimelineRowLayout {
             context: bubbleContext,
             preferredContentWidth: preferredBubbleContentWidth
         )
-        let contentX = bubbleColumn.contentX
-        let contentWidth = bubbleColumn.contentWidth
+        let contentX = row.isResource ? horizontalInset : bubbleColumn.contentX
+        let contentWidth = row.isResource ? width - horizontalInset * 2 : bubbleColumn.contentWidth
         let ordinaryContentWidth = max(
             80,
             width - contentX - horizontalInset
@@ -753,7 +753,7 @@ struct NativeTimelineRowLayout {
         var timestampFrame: CGRect?
         var editedFrame: CGRect?
         var loadingIndicatorFrame: CGRect?
-        let showsIncomingIdentity = !usesBubbles || bubbleContext.showsAvatar
+        let showsIncomingIdentity = !row.isResource && (!usesBubbles || bubbleContext.showsAvatar)
         let showsIncomingAvatar = !isGenerated
             && !isOutgoingBubble
             && showsIncomingIdentity
@@ -764,7 +764,7 @@ struct NativeTimelineRowLayout {
                 size: CGSize(width: avatarWidth, height: avatarWidth)
             )
         }
-        if row.startsGroup, !isGenerated, !isOutgoingBubble,
+        if row.startsGroup, !row.isResource, !isGenerated, !isOutgoingBubble,
            showsIncomingIdentity
         {
             let author = model.map {

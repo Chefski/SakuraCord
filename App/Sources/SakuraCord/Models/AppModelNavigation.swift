@@ -22,8 +22,9 @@ extension AppModel {
 
     // Sidebar choices supersede asynchronous navigation immediately.
     var channelSidebarSelection: ChannelID? {
-        get { selectedChannelID }
+        get { guildWorkspacePage == nil ? selectedChannelID : nil }
         set {
+            onboarding.presentedGuildID = nil
             cancelConversationNavigation()
             selectedChannelID = newValue
             recordConversationNavigation()
@@ -212,6 +213,7 @@ extension AppModel {
         to channelID: ChannelID,
         historyDestination: ConversationNavigationHistory.Destination? = nil
     ) {
+        onboarding.presentedGuildID = nil
         guard
             let channel = snapshot?.channels.first(where: { $0.id == channelID })
             ?? visibleChannels.first(where: { $0.id == channelID })

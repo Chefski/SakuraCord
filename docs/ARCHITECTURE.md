@@ -20,8 +20,9 @@ workspace is a convenience entry point.
 Dependencies point inward toward models and explicit protocols. Views do not
 construct Discord requests or own network transports.
 
-The app resource catalog vendors only SocialSymbols' GitHub and Discord symbol
-sets for the About settings page. No SocialSymbols package dependency is used.
+The app resource catalog vendors SocialSymbols' GitHub and Discord symbol sets
+for About and Discord’s default Server Guide header artwork. Attribution lives
+in `THIRD_PARTY_NOTICES.md`. No SocialSymbols package dependency is used.
 
 ## Application state
 
@@ -73,9 +74,30 @@ confirms membership through the existing Gateway member query. The app restores
 its own drafts only when join time and confirmed server answers still match,
 prunes deleted options, and invalidates in-flight work on account changes.
 Onboarding and member screening independently gate message, thread, forum, and
-retry paths. An unfinished membership exposes a continuation in the sidebar and
-composer. `GuildOnboardingView` uses the shared window modal and input scope.
-Channel management is an account-scoped local preference, off by default;
+retry paths. Bootstrap carries READY’s self-member records for every guild,
+so an unknown membership never implies unfinished onboarding. Confirmed unfinished
+memberships cover the guild content inside the existing navigation/window chrome
+with `GuildOnboardingView`, reusing the sign-in gradient and native glass controls.
+Question transitions animate only when the step changes; cached entries remain
+visible across navigation and background refreshes.
+Completed memberships navigate to customization or Server Guide through scrolling
+channel-list entries with the same native hover and toolbar as channels. Guide
+visibility follows Discord’s resource-channel flag or unfinished first-week tasks,
+not the guild feature flag alone.
+The same account-scoped feature store owns live guide configuration, confirmed
+member task progress, and resource history. `DiscordProtocol` owns guide REST
+contracts; resource side panels reuse the native timeline renderer with identity chrome
+and the composer omitted. Viewing the guide is read-only; visits require successful
+history access after an explicit task selection, and send tasks require a confirmed
+self-authored message event. Resource previews do not complete visit tasks.
+Onboarding dropdowns use the shared `SelectionField` control, including its native
+search, tokens, keyboard navigation, and single/multiple selection modes.
+Post-join edits are optimistic in the feature store, coalesced for one second,
+and serialized per membership. Confirmations update the baseline without
+replacing newer edits; failures roll back only the failed version. Optimistic
+role previews never grant messaging permissions. Channel edits overlay only
+selection bits on the notification store so unrelated settings remain live.
+Channel management is a global Settings feature preference, off by default;
 when enabled, the channel sidebar consumes authoritative guild/channel opt-in
 flags from the existing notification-settings store. Channel permissions remain
 independent. Draft writes join the clear/teardown barriers and storage accounting;

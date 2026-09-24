@@ -75,11 +75,6 @@ private struct ChatDetailFooter: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if let guildID = channel.guildID, model.requiresOnboarding(in: guildID) {
-                OnboardingContinuationButton(model: model, guildID: guildID)
-                    .padding(.horizontal, ChatChromeMetrics.composerWindowInset)
-                    .padding(.bottom, ChatChromeMetrics.composerWindowInset)
-            } else {
             switch access {
             case .checking:
                 DisabledComposerView(
@@ -104,7 +99,6 @@ private struct ChatDetailFooter: View {
                 )
             case .hidden:
                 EmptyView()
-            }
             }
         }
     }

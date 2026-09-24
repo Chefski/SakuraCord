@@ -652,8 +652,9 @@ returned to the first question and discarded unsubmitted edits. SakuraCord
 intentionally persists only its own unfinished choices and question position in
 account-scoped draft storage. It compares membership join time and confirmed
 server answers before restoring; remote changes supersede stale drafts. Question
-configuration remains live, is refreshed on entry/reconnect, and is revalidated
-before every write. Ambiguous writes require readback before another submission.
+configuration remains live and is refreshed on entry/reconnect. Initial completion
+re-fetches configuration and membership; post-join writes validate against the
+latest fetched configuration. Ambiguous writes use readback before rollback.
 
 `USER_GUILD_SETTINGS_UPDATE` supplies authoritative channel overrides and guild
 flags. A recorded Follow Category action used the same channel override PATCH with
@@ -661,7 +662,7 @@ the category ID and bit 12; its child controls became unavailable until the
 category was unfollowed. Source inspection corroborates parent-category opt-in
 inheritance and the separate FAVORITED bit; these are distinct from channel
 permissions. SakuraCord ignores channel selection filtering and issues no
-channel-management mutation while its local opt-in control is off (the default).
+channel-management mutation while the global **Settings → Features → Channels → Channel customization** control is off (the default).
 Server-applied default/answer channel selections are still part of Discord's
 onboarding response processing. Turning local management on honors confirmed
 settings; Show All Channels disables filtering without erasing individual picks.
@@ -675,6 +676,101 @@ has no guild-onboarding implementation. The public
 [Guild onboarding contract](https://docs.discord.com/developers/resources/guild#guild-onboarding-object)
 describes configuration; authenticated first-party traffic supplies the private
 normal-user completion contract above.
+
+Post-join customization updates immediately in the official UI. A captured burst
+of five option toggles produced one final-state PUT; the pinned web source uses a
+one-second debounce. SakuraCord uses that delay, serializes writes per membership,
+and retains newer input when an older response arrives. A failure reads back and
+rolls back only the failed version. Required questions cannot lose their final
+selected answer. Selected options in dropdowns have removable chips; post-join
+questions precede pre-join questions, with unseen options grouped first.
+
+Role changes and channel settings reconcile through Gateway events. No dedicated
+answer-only Gateway event was established. SakuraCord refreshes the visible editor
+on foreground activation and relevant events, with a 30-second active-window
+fallback. This is not instantaneous push synchronization for answer-only edits.
+A three-second experimental poll hit a user-scoped 429 (`retry_after: 5.614`);
+that polling interval was removed. A normal cached post-join edit now sends one
+PUT without surrounding configuration/member reads.
+
+The server menu's **Show All Channels** sends the bulk settings PATCH with guild
+flags bit 14 cleared/set and preserves channel overrides. This is distinct from
+the sidebar's **Show All / Hide Voice Channels**, which locally expands voice
+channels and produced no settings request in the recorded interaction. The bulk
+channel-selection response is an array of full guild notification settings;
+SakuraCord accepts the matching confirmed entry and verifies requested bits.
+
+### Server Guide and onboarding presentation (23–24 September 2026)
+
+The follow-up authenticated session `sakuracord-onboarding-revision-20260923`
+used the same clean stable client (web 618874, desktop 0.0.411, native 90866).
+Computer Use configured and enabled a real guide in SakuraCord Testing Server;
+CDP recorded redacted requests, responses, headers and Gateway frames.
+
+| Action | Observed route | Contract |
+| --- | --- | --- |
+| Server profile | `GET /guilds/{guild}/profile` | Identity, member/online counts, description, brand color, traits; optional enrichment of the guide |
+| Load guide | `GET /guilds/{guild}/new-member-welcome` | `guild_id`, `enabled`, `welcome_message` (`author_ids`, `message`), `new_member_actions`, `resource_channels` |
+| Configure guide | `PUT /guilds/{guild}/new-member-welcome` | Full configuration; normalized response omits empty emoji objects |
+| Read member progress | `GET /guilds/{guild}/new-member-actions` | `guild_id`, `user_id`, `channel_actions` keyed by channel ID with `completed` |
+| Record task | `POST /guilds/{guild}/new-member-action/{channel}` | No request body; response has matching guild/member and confirmed channel actions |
+
+The 24 September follow-up captured stable web **619060**, desktop **0.0.411**,
+native **90866**, Electron **42.11.1**, with `has_client_mods: false`. READY’s
+parallel `merged_members` array included the signed-in member’s `flags`,
+`pending`, `joined_at`, and roles for both Testing Server and SakuraCord before
+navigation. The native bootstrap now preserves those records for all guilds.
+Unknown flags remain a permission-loading state and never display onboarding.
+
+Official SakuraCord navigation had no Guide despite `GUILD_SERVER_GUIDE` being
+present. Source modules 473529/978165 and the scoped READY channel/member data
+establish the regular-client rule: Community + onboarding + guide capabilities,
+and either unfinished home actions within seven days of joining or at least
+one resource channel (`IS_GUILD_RESOURCE_CHANNEL = 128`). Testing Server had a
+resource channel; SakuraCord had none and the member’s flags included 64.
+
+The observed Guide uses welcome/tasks on the left with profile and compact
+resources on the right for new members, then full resource cards beside the
+profile after completion. Configured resource descriptions render on those cards
+without additional history reads; opening the resource still loads its history.
+The 24 September owner task POST returned confirmed completion and the member
+update retired introductory tasks. Native page titles use the existing channel
+toolbar; onboarding keeps the same root navigation and window chrome.
+
+The tested task types were 0 (visit) and 1 (send a message). Task progress is
+separate from onboarding completion, roles, and member screening. The app reads
+progress on entry/reconnect and accepts completion only from identity-checked
+server responses. Merely opening the guide does not record task completion.
+Individual task progress has no established dedicated Gateway event. Completing
+the last task emitted `GUILD_MEMBER_UPDATE` with flags 43 → 107, setting
+`COMPLETED_HOME_ACTIONS` (64). The native guide uses that confirmed membership
+flag to retire the welcome/tasks section, as the official client does. The pinned
+official source also limits these introductory tasks to the first seven days
+after joining. An empty progress response must not override confirmed completion.
+Opening a resource card displays a side panel and does not record a task. Clicking
+its corresponding visit task navigates to the channel and sends the task POST.
+Resource previews requested `messages?after={channelID}&limit=5`; the opened panel
+requested `messages?limit=30&around={channelID}`. Both target the oldest history.
+The native resource reader pages forward from the same beginning using the
+existing history provider. Unstarted native memberships returned an empty success
+response; only HTTP 204 is treated as empty progress, never empty task confirmation.
+
+Discord's question editor explicitly confirmed that **13 or more answers**
+become a dropdown without descriptions. Both `type: 1` and the count boundary
+are represented in the native presentation. Required onboarding replaces the
+guild workspace; completed-member customization and Server Guide are scrolling
+channel-list destinations. Resource pages use the existing rich message renderer
+without chat identity headers or a composer.
+
+The pinned first-party source resolves guide headers to
+`/home-headers/{guild}/{hash}.png` and resource/task icons to
+`/resource-channels/{channel}/{hash}` and `/new-member-actions/{channel}/{hash}`
+on the CDN. Its resource navigation requests the beginning of channel history.
+These source observations supplement the authenticated configuration/progress
+captures; custom uploaded guide artwork was not established by the test server.
+Pinned Paicord and Swiftcord contain no comparable guide progress implementation.
+The official [Server Guide FAQ](https://support.discord.com/hc/en-us/articles/13497665141655-Server-Guide-FAQ)
+corroborates welcome signs, tasks, and resource-channel pages.
 
 ### Evidence priority for protocol changes
 

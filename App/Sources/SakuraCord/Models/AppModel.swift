@@ -659,7 +659,7 @@ final class AppModel {
                 roleIDs: roleIDs
             ),
             hasCurrentRoleIdentity: storedRoleIDs != nil || member != nil,
-            currentUserIsPending: member?.isPending == true,
+            currentUserIsPending: onboardingMember(in: guildID)?.isPending == true,
             currentUserRequiresOnboarding: requiresOnboarding(in: guildID),
             currentUserOnboardingIsKnown: !guild.features.contains("GUILD_ONBOARDING") || onboardingMember(in: guildID)?.flags != nil
         )
@@ -902,6 +902,7 @@ final class AppModel {
     var selectedChannelID: ChannelID? {
         didSet {
             guard selectedChannelID != oldValue else { return }
+            onboarding.presentedGuildID = nil
             recordConversationNavigation()
             timelineSpoilerRevealStore.reset()
             if let previousChannel = selectedChannel,

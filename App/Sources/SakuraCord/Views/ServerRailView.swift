@@ -38,17 +38,16 @@ struct ServerRailContainer: View {
                         for: guild
                     )
                 },
-                leaveServer: { guild in invites.leaveConfirmation = guild }
+                leaveServer: { guild in invites.leaveConfirmation = guild },
+                showsAllChannels: { guild in
+                    guard model.featuresSettings.channelManagement, model.hasChannelsAndRoles(in: guild.id) else { return nil }
+                    return model.presentedGuildChannelSettings(in: guild.id).flags & GuildChannelSelection.enabledFlag == 0
+                },
+                setShowsAllChannels: { guild, all in model.setChannelSelectionEnabled(!all, guildID: guild.id) }
             )
         )
         .windowModal(isPresented: $invites.showsJoinDialog, cornerRadius: 32, cornerStyle: .circular,
                      isConcealed: { model.serverInvites.captcha.challenge != nil }, content: { JoinServerView(model: model) })
-        .windowModal(isPresented: Binding(
-            get: { model.onboarding.presentedGuildID != nil && !invites.showsJoinDialog },
-            set: { if !$0 { model.onboarding.presentedGuildID = nil } }
-        ), cornerRadius: 32, cornerStyle: .circular) {
-            if let guildID = model.onboarding.presentedGuildID { GuildOnboardingView(model: model, guildID: guildID) }
-        }
         .modifier(ServerInviteCaptchaPresentation(store: invites.captcha))
         .alert("Leave \(invites.leaveConfirmation?.name ?? "Server")?",
                isPresented: Binding(get: { invites.leaveConfirmation != nil },
@@ -149,6 +148,8 @@ struct ServerRailContextMenuActions {
     let setNotificationLevel: (Guild, MessageNotificationLevel) -> Void
     let setNotificationToggle: (Guild, GuildNotificationToggle, Bool) -> Void
     var leaveServer: (Guild) -> Void = { _ in }
+    var showsAllChannels: (Guild) -> Bool? = { _ in nil }
+    var setShowsAllChannels: (Guild, Bool) -> Void = { _, _ in }
 }
 
 private struct ServerRailItemView: View {
@@ -261,7 +262,9 @@ struct GuildRailButton: View {
                         ChannelContextMenuValue.copy(guild.id.description)
                     },
                     leaveServer: guild.isOwnedByCurrentUser == false && !guild.isUnavailable
-                        ? { contextMenuActions.leaveServer(guild) } : nil
+                        ? { contextMenuActions.leaveServer(guild) } : nil,
+                    showsAllChannels: { contextMenuActions.showsAllChannels(guild) },
+                    setShowsAllChannels: { contextMenuActions.setShowsAllChannels(guild, $0) }
                 )
             }
             .accessibilityLabel(displayName)

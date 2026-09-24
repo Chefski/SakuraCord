@@ -83,6 +83,7 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
         guard let flags else { return false }
         return flags & 8 != 0 && flags & 2 == 0
     }
+    public var hasCompletedGuildGuide: Bool { (flags ?? 0) & 64 != 0 }
     public var joinedAt: Date?
     /// Absolute row index in Discord's virtualized guild member list. This is
     /// absent for DMs, fallback stores, and member lookups that are not backed

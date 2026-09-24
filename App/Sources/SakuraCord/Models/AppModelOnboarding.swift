@@ -11,20 +11,24 @@ final class GuildOnboardingStore {
         var responses: Set<String> = []
         var promptID: String?
         var initial = false
+        var refreshedAt: Date?
         var isLoading = false
         var isSaving = false
+        var isSynchronizing = false
         var needsRefresh = false
         var error: String?
         var notice: String?
         var revision = UUID()
+        var editRevision = UUID()
     }
 
     var entries: [GuildID: Entry] = [:]
     var members: [GuildID: Member] = [:]
     var presentedGuildID: GuildID?
-    var channelManagementEnabled = false
-    var changingChannels: Set<ChannelID> = []
-    var changingChannelMode = false
+    var page: GuildWorkspacePage = .channelsAndRoles
+    var guides: [GuildID: GuildGuideEntry] = [:]
+    var channelSelections: [GuildID: GuildChannelSelectionMutation] = [:]
+    @ObservationIgnored var customizationDebounce: @Sendable () async throws -> Void = { try await Task.sleep(for: .seconds(1)) }
     @ObservationIgnored var generation = 0
     @ObservationIgnored var draftWrite: Task<Void, Never>?
 
@@ -32,10 +36,9 @@ final class GuildOnboardingStore {
         generation += 1
         entries = [:]
         members = [:]
+        guides = [:]
         presentedGuildID = nil
-        channelManagementEnabled = false
-        changingChannels = []
-        changingChannelMode = false
+        channelSelections = [:]
     }
 
     func persist(_ draft: GuildOnboardingDraft?, guildID: GuildID, database: SakuraCordDatabase?) {
@@ -90,14 +93,20 @@ extension AppModel {
     }
 
     func openChannelsAndRoles(in guildID: GuildID) {
+        onboarding.page = .channelsAndRoles
         onboarding.presentedGuildID = guildID
         refreshOnboarding(in: guildID)
     }
 
-    func refreshSelectedGuildOnboarding() {
-        guard let guildID = selectedGuildID,
-              serverRailGuildsByID[guildID]?.features.contains("GUILD_ONBOARDING") == true else { return }
-        refreshOnboarding(in: guildID)
+    func refreshSelectedGuildOnboarding(force: Bool = false) {
+        guard let guildID = selectedGuildID, let guild = serverRailGuildsByID[guildID] else { return }
+        if guild.features.contains("GUILD_ONBOARDING") || guild.features.contains("GUILD_ONBOARDING_HAS_PROMPTS") {
+            let entry = onboarding.entries[guildID]
+            if force || entry?.needsRefresh == true || entry?.refreshedAt.map({ Date.now.timeIntervalSince($0) >= 30 }) != false {
+                refreshOnboarding(in: guildID)
+            }
+        }
+        refreshGuildGuide(in: guildID)
     }
 
     func refreshOnboarding(in guildID: GuildID) {
@@ -111,9 +120,6 @@ extension AppModel {
         entry.error = nil
         let revision = entry.revision
         store.entries[guildID] = entry
-        if let userID = currentUser?.id {
-            store.channelManagementEnabled = UserDefaults.standard.bool(forKey: channelManagementKey(userID))
-        }
         startAccountChildTask(account: accountSession()) { model, account in
             do {
                 async let configuration = account.provider.guildOnboarding(in: guildID)
@@ -124,11 +130,25 @@ extension AppModel {
                 guard model.isCurrentAccountSession(account), !Task.isCancelled,
                       store.entries[guildID]?.revision == revision else { return }
                 let initial = confirmedMember.requiresOnboarding && guild.features.contains("GUILD_ONBOARDING")
+                if !initial, let current = store.entries[guildID],
+                   current.editRevision != entry.editRevision || current.isSaving {
+                    store.entries[guildID]?.isLoading = false
+                    store.entries[guildID]?.refreshedAt = .now
+                    model.receiveOnboardingMember(confirmedMember, guildID: guildID)
+                    return
+                }
                 var next = GuildOnboardingStore.Entry()
                 next.configuration = value
+                next.refreshedAt = .now
                 next.initial = initial
                 next.responses = value.validResponses(Set(value.responses), initial: initial)
-                if let saved, saved.initial == initial, saved.joinedAt == confirmedMember.joinedAt,
+                if initial, let current = store.entries[guildID], current.initial,
+                   model.onboardingMember(in: guildID)?.joinedAt == confirmedMember.joinedAt,
+                   Set(current.configuration?.responses ?? []) == Set(value.responses) {
+                    next.responses = value.validResponses(current.responses, initial: true)
+                    next.promptID = current.promptID
+                    if next.responses != current.responses { next.notice = "Some options were removed. Review your answers before continuing." }
+                } else if initial, let saved, saved.initial == initial, saved.joinedAt == confirmedMember.joinedAt,
                    saved.baselineResponses == Set(value.responses) {
                     next.responses = value.validResponses(saved.responses, initial: initial)
                     next.promptID = saved.promptID
@@ -138,8 +158,10 @@ extension AppModel {
                     store.persist(nil, guildID: guildID, database: account.database)
                 }
                 let questions = value.questions(initial: initial)
-                if !questions.contains(where: { $0.id == next.promptID }) { next.promptID = questions.first?.id }
-                store.members[guildID] = confirmedMember
+                if next.promptID != nil, !questions.contains(where: { $0.id == next.promptID }) {
+                    next.promptID = questions.first?.id
+                }
+                model.receiveOnboardingMember(confirmedMember, guildID: guildID)
                 store.entries[guildID] = next
             } catch {
                 guard model.isCurrentAccountSession(account), store.entries[guildID]?.revision == revision else { return }
@@ -153,7 +175,22 @@ extension AppModel {
     func receiveOnboardingMember(_ member: Member, guildID: GuildID) {
         guard member.id == currentUser?.id else { return }
         let old = onboarding.members[guildID]
+        var member = member
+        member.flags = member.flags ?? old?.flags
+        member.isPending = member.isPending ?? old?.isPending
+        member.joinedAt = member.joinedAt ?? old?.joinedAt
         onboarding.members[guildID] = member
+        // Flags can arrive without a role change. Rebuild the same projection
+        // that owns sidebar locks and resumes an initial history load waiting
+        // for access; publishing the member alone leaves both stale.
+        if old?.flags != member.flags || old?.isPending != member.isPending {
+            refreshUnreadPresentation(appliesAccessImmediately: true, accessAffectedGuildIDs: [guildID])
+        }
+        if let old, old.roles != member.roles, onboarding.presentedGuildID == guildID {
+            startAccountChildTask(account: accountSession()) { model, _ in
+                await model.synchronizeGuildCustomization(in: guildID)
+            }
+        }
         if let old, old.requiresOnboarding != member.requiresOnboarding,
            onboarding.entries[guildID]?.isSaving != true,
            onboarding.entries[guildID]?.isLoading != true,
@@ -163,21 +200,36 @@ extension AppModel {
     }
 
     func selectOnboardingOption(_ option: GuildOnboardingOption, prompt: GuildOnboardingPrompt, guildID: GuildID) {
-        guard var entry = onboarding.entries[guildID], !entry.isLoading, !entry.isSaving, !entry.needsRefresh else { return }
-        if entry.responses.contains(option.id) {
-            entry.responses.remove(option.id)
-        } else {
-            if prompt.singleSelect { entry.responses.subtract(prompt.options.map(\.id)) }
-            entry.responses.insert(option.id)
+        let responses = onboarding.entries[guildID]?.responses ?? []
+        var selected = responses.intersection(prompt.options.map(\.id))
+        if selected.contains(option.id) { selected.remove(option.id) } else {
+            if prompt.singleSelect { selected.removeAll() }
+            selected.insert(option.id)
         }
+        setOnboardingOptions(selected, prompt: prompt, guildID: guildID)
+    }
+
+    func setOnboardingOptions(_ selected: Set<String>, prompt: GuildOnboardingPrompt, guildID: GuildID) {
+        guard var entry = onboarding.entries[guildID], entry.configuration != nil, !(entry.initial && entry.isSaving), !entry.needsRefresh,
+              let currentPrompt = entry.configuration?.prompts.first(where: { $0.id == prompt.id }) else { return }
+        let optionIDs = Set(currentPrompt.options.map(\.id))
+        let selected = selected.intersection(optionIDs)
+        guard !currentPrompt.singleSelect || selected.count <= 1,
+              entry.initial || !currentPrompt.required || !selected.isEmpty else { return }
+        let responses = entry.responses.subtracting(optionIDs).union(selected)
+        guard responses != entry.responses else { return }
+        entry.responses = responses
         entry.error = nil
-        entry.revision = UUID()
+        entry.editRevision = UUID()
         onboarding.entries[guildID] = entry
-        persistOnboardingDraft(in: guildID)
+        if entry.initial {
+            persistOnboardingDraft(in: guildID)
+        } else {
+            scheduleOnboardingAnswers(in: guildID)
+        }
     }
 
     func setOnboardingPrompt(_ promptID: String, guildID: GuildID) {
-        onboarding.entries[guildID]?.revision = UUID()
         onboarding.entries[guildID]?.promptID = promptID
         persistOnboardingDraft(in: guildID)
     }
@@ -203,16 +255,26 @@ extension AppModel {
         startAccountChildTask(account: accountSession()) { model, account in
             do {
                 let saved = try await account.provider.saveGuildOnboarding(in: guildID, responses: entry.responses, initial: entry.initial)
-                guard model.isCurrentAccountSession(account), !Task.isCancelled else { return }
+                guard model.isCurrentAccountSession(account), !Task.isCancelled, store.entries[guildID]?.revision == entry.revision else { return }
+                if entry.initial {
+                    // Reconcile the provider's confirmed membership into the app
+                    // even if its member event has not reached the UI yet.
+                    let member = try await account.provider.refreshCurrentMember(in: guildID)
+                    guard model.isCurrentAccountSession(account), store.entries[guildID]?.revision == entry.revision else { return }
+                    guard member.flags.map({ $0 & 2 != 0 }) == true else {
+                        throw ChatProviderError.invalidRequest("Discord has not confirmed onboarding completion. Refresh to continue.")
+                    }
+                    model.receiveOnboardingMember(member, guildID: guildID)
+                }
                 store.entries[guildID]?.configuration = saved
                 store.entries[guildID]?.responses = Set(saved.responses)
                 store.entries[guildID]?.isSaving = false
                 store.entries[guildID]?.initial = false
                 store.entries[guildID]?.notice = "Answers saved."
                 store.persist(nil, guildID: guildID, database: account.database)
-                if entry.initial { store.presentedGuildID = nil }
+                if entry.initial { model.openGuildGuide(in: guildID) }
             } catch {
-                guard model.isCurrentAccountSession(account) else { return }
+                guard model.isCurrentAccountSession(account), store.entries[guildID]?.revision == entry.revision else { return }
                 store.entries[guildID]?.isSaving = false
                 store.entries[guildID]?.needsRefresh = true
                 if case ChatProviderError.invalidRequest = error {
@@ -221,42 +283,6 @@ extension AppModel {
                     store.entries[guildID]?.error = "\(error.localizedDescription) Refresh to check what Discord saved before trying again."
                 }
             }
-        }
-    }
-
-    private func channelManagementKey(_ userID: UserID) -> String { "dev.sakuracord.channel-management.\(userID)" }
-
-    func setChannelManagementEnabled(_ enabled: Bool) {
-        guard let userID = currentUser?.id else { return }
-        onboarding.channelManagementEnabled = enabled
-        UserDefaults.standard.set(enabled, forKey: channelManagementKey(userID))
-        reconcileSelectedOnboardingChannel()
-    }
-
-    func setChannelSelectionEnabled(_ enabled: Bool, guildID: GuildID) {
-        guard onboarding.channelManagementEnabled, !onboarding.changingChannelMode else { return }
-        onboarding.changingChannelMode = true
-        startAccountChildTask(account: accountSession()) { model, account in
-            do {
-                try await account.provider.setGuildChannelSelectionEnabled(enabled, guildID: guildID)
-            } catch {
-                if model.isCurrentAccountSession(account) { model.onboarding.entries[guildID]?.error = error.localizedDescription }
-            }
-            guard model.isCurrentAccountSession(account) else { return }
-            model.onboarding.changingChannelMode = false
-        }
-    }
-
-    func setChannelSelected(_ selected: Bool, channelID: ChannelID, guildID: GuildID) {
-        guard onboarding.channelManagementEnabled, onboarding.changingChannels.insert(channelID).inserted else { return }
-        startAccountChildTask(account: accountSession()) { model, account in
-            do {
-                try await account.provider.setGuildChannelSelected(selected, channelID: channelID, guildID: guildID)
-            } catch {
-                if model.isCurrentAccountSession(account) { model.onboarding.entries[guildID]?.error = error.localizedDescription }
-            }
-            guard model.isCurrentAccountSession(account) else { return }
-            model.onboarding.changingChannels.remove(channelID)
         }
     }
 
@@ -276,7 +302,7 @@ extension AppModel {
     }
 
     func reconcileSelectedOnboardingChannel() {
-        guard onboarding.channelManagementEnabled, let guildID = selectedGuildID,
+        guard featuresSettings.channelManagement, guildWorkspacePage == nil, let guildID = selectedGuildID,
               let channelID = selectedChannelID else { return }
         let groups = ChannelGroup.make(from: visibleChannels)
         let channels = selectedChannelGroups(groups, guildID: guildID).flatMap(\.channels)
@@ -285,15 +311,19 @@ extension AppModel {
     }
 
     func selectedChannelGroups(_ groups: [ChannelGroup], guildID: GuildID?) -> [ChannelGroup] {
-        guard onboarding.channelManagementEnabled, let guildID else { return groups }
-        let settings = readState.notificationSettings(guildID: guildID) ?? GuildNotificationSettings(guildID: guildID)
-        guard settings.flags & GuildChannelSelection.enabledFlag != 0 else { return groups }
+        guard let guildID else { return groups }
+        let guide = onboarding.guides[guildID]?.configuration
+        let resources = guide?.enabled == true ? Set(guide?.resourceChannels.map(\.channelID) ?? []) : []
+        let settings = presentedGuildChannelSettings(in: guildID)
+        let filtersSelection = featuresSettings.channelManagement && settings.flags & GuildChannelSelection.enabledFlag != 0
+        let activeChannelID = guildWorkspacePage == nil ? selectedChannelID : nil
         return groups.compactMap { group in
             var group = group
             group.channels.removeAll {
-                !GuildChannelSelection.isSelected($0.id, settings: settings)
+                (resources.contains($0.id) && $0.id != activeChannelID) || (filtersSelection
+                    && !GuildChannelSelection.isSelected($0.id, settings: settings)
                     && !(group.categoryID.map { GuildChannelSelection.isSelected($0, settings: settings) } ?? false)
-                    && $0.id != activeVoiceChannel?.id
+                    && $0.id != activeVoiceChannel?.id)
             }
             return group.channels.isEmpty ? nil : group
         }
