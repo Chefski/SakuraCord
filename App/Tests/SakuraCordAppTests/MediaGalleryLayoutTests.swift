@@ -238,3 +238,23 @@ func `Discord attachment GIF still displays when its embed has no renderable med
     #expect(presentation.images.map(\.url) == [url])
     #expect(NativeTimelineTextPlan.make(for: message).linkedImages == presentation.images)
 }
+
+@Test func `bare attachment links inside spoilers and code stay in the message text`() throws {
+    let url = try #require(URL(string:
+        "https://cdn.discordapp.com/attachments/1/2/private.gif"
+    ))
+    for content in [
+        "||\(url.absoluteString)||",
+        "`\(url.absoluteString)`",
+        "```\n\(url.absoluteString)\n```",
+    ] {
+        let presentation = LinkedImagePresentation(content: content)
+        #expect(presentation.images.isEmpty)
+        #expect(presentation.visibleText == content)
+    }
+    let mixed = LinkedImagePresentation(
+        content: "||\(url.absoluteString)|| \(url.absoluteString)"
+    )
+    #expect(mixed.images.map(\.url) == [url])
+    #expect(mixed.visibleText == "||\(url.absoluteString)||")
+}

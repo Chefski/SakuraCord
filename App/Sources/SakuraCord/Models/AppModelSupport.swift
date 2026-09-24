@@ -94,12 +94,30 @@ extension AppModel {
         self.database = database
         installedAccountSessionRevision &+= 1
         let revision = installedAccountSessionRevision
-        Task {
+        let generation = accountSessionGeneration
+        Task { [weak self] in
             await SharedMediaDataLoader.shared.setAttachmentURLRefresh(
                 revision: revision,
-                refresh: { try await provider.refreshedAttachmentURL($0) }
+                refresh: { [weak self] url in
+                    guard let self,
+                          await self.permitsAttachmentURLRefresh(
+                              generation: generation,
+                              revision: revision
+                          )
+                    else { return nil }
+                    return try await provider.refreshedAttachmentURL(url)
+                }
             )
         }
+    }
+
+    private func permitsAttachmentURLRefresh(
+        generation: UInt64,
+        revision: UInt64
+    ) -> Bool {
+        accountSessionGeneration == generation
+            && installedAccountSessionRevision == revision
+            && !accountTransitionIsActive
     }
 
     @discardableResult

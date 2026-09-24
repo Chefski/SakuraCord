@@ -391,6 +391,7 @@ nonisolated struct LinkedImagePresentation: Sendable {
                 guard !markdownMatches.contains(where: {
                     NSIntersectionRange($0.range, match.range).length > 0
                 }), let matchedRange = Range(match.range, in: content),
+                    !Self.isConcealedBareURL(at: matchedRange.lowerBound, in: content),
                     matchedRange.lowerBound == content.startIndex
                         || content[content.index(before: matchedRange.lowerBound)] != "<"
                 else { continue }
@@ -449,6 +450,51 @@ nonisolated struct LinkedImagePresentation: Sendable {
         }
         visibleText = String(presentedText)
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func isConcealedBareURL(
+        at urlStart: String.Index,
+        in content: String
+    ) -> Bool {
+        let lineStart = content[..<urlStart].lastIndex(of: "\n")
+            .map { content.index(after: $0) } ?? content.startIndex
+        let lineEnd = content[urlStart...].firstIndex(of: "\n")
+            ?? content.endIndex
+        let line = content[lineStart ..< lineEnd]
+        if line.hasPrefix("```") { return true }
+        var isInCodeFence = false
+        for previousLine in content[..<lineStart].split(
+            separator: "\n",
+            omittingEmptySubsequences: false
+        ) where previousLine.hasPrefix("```") {
+            isInCodeFence.toggle()
+        }
+        if isInCodeFence { return true }
+
+        var cursor = line.startIndex
+        while cursor < urlStart {
+            if line[cursor] == "\\" {
+                cursor = line.index(cursor, offsetBy: 2, limitedBy: line.endIndex)
+                    ?? line.endIndex
+                continue
+            }
+            if line[cursor] == "`",
+               let closing = line[line.index(after: cursor)...].firstIndex(of: "`") {
+                if urlStart < closing { return true }
+                cursor = line.index(after: closing)
+                continue
+            }
+            if line[cursor...].hasPrefix("||") {
+                let openingEnd = line.index(cursor, offsetBy: 2)
+                if let closing = line[openingEnd...].range(of: "||") {
+                    if urlStart < closing.lowerBound { return true }
+                    cursor = closing.upperBound
+                    continue
+                }
+            }
+            cursor = line.index(after: cursor)
+        }
+        return false
     }
 
     private static func remainingText(

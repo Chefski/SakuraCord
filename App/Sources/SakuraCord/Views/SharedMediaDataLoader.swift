@@ -243,6 +243,18 @@ actor SharedMediaDataLoader {
         attachmentURLRefresh = refresh
     }
 
+    private func refreshedAttachmentURL(
+        for url: URL,
+        revision: UInt64
+    ) async throws -> URL? {
+        guard revision == attachmentURLRefreshRevision,
+              let attachmentURLRefresh
+        else { return nil }
+        let refreshed = try await attachmentURLRefresh(url)
+        guard revision == attachmentURLRefreshRevision else { return nil }
+        return refreshed
+    }
+
     func diskCacheStatus() async throws -> MediaCache.Status? {
         try await remoteDiskCache?.status()
     }
@@ -415,7 +427,7 @@ actor SharedMediaDataLoader {
             pending.priority == .visible ? .userInitiated : .utility
         let remoteFetch = remoteFetch
         let remoteDownload = remoteDownload
-        let attachmentURLRefresh = attachmentURLRefresh
+        let attachmentURLRefreshRevision = attachmentURLRefreshRevision
         let requiresFileDownload = pending.waiters.values.contains {
             $0.requiresFileDownload
         }
@@ -434,7 +446,10 @@ actor SharedMediaDataLoader {
                     where (error.statusCode == 403 || error.statusCode == 404)
                         && LinkedImageReference.isBareAttachmentURL(url)
                 {
-                    guard let refreshed = try await attachmentURLRefresh?(url),
+                    guard let refreshed = try await self.refreshedAttachmentURL(
+                        for: url,
+                        revision: attachmentURLRefreshRevision
+                    ),
                           LinkedImageReference.isBareAttachmentURL(refreshed),
                           refreshed.path == url.path,
                           refreshed != url
