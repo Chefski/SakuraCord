@@ -584,6 +584,20 @@ nonisolated struct LinkedImageReference: Identifiable, Hashable, Sendable {
         return CGSize(width: 360, height: 220)
     }
 
+    @MainActor
+    var resolvedDisplaySize: CGSize {
+        guard !isEmoji, !isSticker,
+              let source = NativeTimelineMediaStore.shared.imageSize(
+                  for: .media(displayURL, maximumPixelDimension: 720)
+              )
+        else { return displaySize }
+        let scale = min(1, 360 / source.width, 350 / source.height)
+        return CGSize(
+            width: source.width * scale,
+            height: source.height * scale
+        )
+    }
+
     static func isSupported(_ url: URL) -> Bool {
         let imageExtensions = Set(["png", "jpg", "jpeg", "gif", "webp", "avif"])
         guard url.scheme?.lowercased() == "https",
@@ -670,9 +684,11 @@ nonisolated enum InlineWrappingLayoutPlan {
         var usedWidth: CGFloat = 0
 
         for proposedSize in sizes {
+            let scale = proposedSize.width > widthLimit
+                ? widthLimit / proposedSize.width : 1
             let size = CGSize(
-                width: min(widthLimit, max(0, proposedSize.width)),
-                height: max(0, proposedSize.height)
+                width: max(0, proposedSize.width * scale),
+                height: max(0, proposedSize.height * scale)
             )
             if horizontalOffset > 0, horizontalOffset + size.width > widthLimit {
                 horizontalOffset = 0

@@ -239,6 +239,8 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
     var messageInteractionContext: NativeTimelineMessageInteractionContext = .conversation
     var actions: NativeTimelineRowActions?
     var onWidthChange: ((CGFloat) -> Void)?
+    var onMediaDimensionsChange:
+        ((Set<NativeMessageTimelineItem.Identifier>) -> Void)?
     var usesViewportSizedBacking = false
     var onDocumentSizeChange: ((NSSize) -> Void)?
 

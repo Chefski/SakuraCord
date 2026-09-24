@@ -374,8 +374,7 @@ extension NativeTimelineCanvasView {
                 frame: region.frame,
                 cornerRadius: region.reference.isEmoji ? 7 : 10,
                 isLooping: true,
-                fillsFrame: !region.reference.isEmoji
-                    && !region.reference.isSticker
+                fillsFrame: false
             )
         }
         let fillsFrame = MediaGalleryImagePresentation.fillsFrame(
