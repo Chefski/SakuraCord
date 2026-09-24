@@ -70,6 +70,64 @@ import Testing
     )
 }
 
+@Test func `pinned direct messages stay above recent unpinned conversations and follow message activity`() {
+    let channels = [
+        Channel(id: ChannelID(rawValue: 1), guildID: nil, name: "First", kind: .directMessage,
+                lastMessageID: MessageID(rawValue: 120)),
+        Channel(id: ChannelID(rawValue: 2), guildID: nil, name: "Group", kind: .groupDirectMessage,
+                lastMessageID: MessageID(rawValue: 90)),
+        Channel(id: ChannelID(rawValue: 3), guildID: nil, name: "Recent", kind: .directMessage,
+                lastMessageID: MessageID(rawValue: 150)),
+        Channel(id: ChannelID(rawValue: 4), guildID: nil, name: "Older", kind: .directMessage,
+                lastMessageID: MessageID(rawValue: 80)),
+    ]
+    let pinned: Set<ChannelID> = [channels[1].id, channels[3].id]
+
+    #expect(DirectMessageInboxPolicy.conversations(in: channels, pinnedChannelIDs: pinned)
+        .map(\.id) == [channels[1].id, channels[3].id, channels[0].id, channels[2].id])
+
+    var active = channels
+    active[3].lastMessageID = MessageID(rawValue: 160)
+    #expect(DirectMessageInboxPolicy.conversations(in: active, pinnedChannelIDs: pinned)
+        .map(\.id) == [channels[3].id, channels[1].id, channels[0].id, channels[2].id])
+    #expect(DirectMessageInboxPolicy.conversations(in: active)
+        .map(\.id) == active.map(\.id))
+
+    let unmessaged = Channel(
+        id: ChannelID(rawValue: 9_007_199_254_740_993),
+        guildID: nil,
+        name: "New DM",
+        kind: .directMessage
+    )
+    let mixed = [unmessaged, active[3]]
+    #expect(DirectMessageInboxPolicy.conversations(
+        in: mixed,
+        pinnedChannelIDs: Set(mixed.map(\.id))
+    ).map(\.id) == [active[3].id, unmessaged.id])
+}
+
+@MainActor
+@Test func `direct message pins follow account notification overrides`() async throws {
+    let model = AppModel(launchMode: .offlineTesting, provider: MockChatProvider())
+    await model.start()
+    let channel = try #require(model.snapshot?.channels.first { $0.kind == .directMessage })
+    let originalFlags: UInt64 = 1 << 5
+    var settings = GuildNotificationSettings(guildID: nil, messageNotifications: .inherit)
+    settings.channelOverrides = [ChannelNotificationOverride(
+        channelID: channel.id,
+        flags: originalFlags | ChannelNotificationOverride.pinnedDirectMessageFlag
+    )]
+    model.applyNotificationSettings(settings)
+    #expect(model.pinnedDirectMessageIDs.contains(channel.id))
+
+    model.toggleDirectMessagePin(channel.id)
+    #expect(await waitForDirectMessageCondition {
+        !model.pinnedDirectMessageIDs.contains(channel.id)
+            && !model.isChannelNotificationMutationPending(channel.id)
+    })
+    #expect(model.channelNotificationOverride(for: channel)?.flags == originalFlags)
+}
+
 @Test func `direct message inbox only surfaces actively ringing calls`() {
     let channelID = ChannelID(rawValue: 40)
     let ongoing = PrivateCall(

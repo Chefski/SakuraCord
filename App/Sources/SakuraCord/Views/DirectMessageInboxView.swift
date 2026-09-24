@@ -11,12 +11,19 @@ struct DirectMessageInboxView: View {
     let bottomContentInset: CGFloat
 
     var body: some View {
+        let pinnedChannelIDs = model.pinnedDirectMessageIDs
+        let directMessages = DirectMessageInboxPolicy.conversations(
+            in: channels,
+            pinnedChannelIDs: pinnedChannelIDs
+        )
+
         List(selection: $selection) {
             Section {
                 ForEach(directMessages) { channel in
                     DirectMessageInboxRow(
                         model: model,
                         channel: channel,
+                        isPinned: pinnedChannelIDs.contains(channel.id),
                         member: DirectMessageInboxPolicy.recipientMember(
                             for: channel,
                             membersByID: membersByID
@@ -48,17 +55,27 @@ struct DirectMessageInboxView: View {
             }
         }
     }
-
-    private var directMessages: [Channel] {
-        DirectMessageInboxPolicy.conversations(in: channels)
-    }
 }
 
 nonisolated enum DirectMessageInboxPolicy {
-    static func conversations(in channels: [Channel]) -> [Channel] {
-        channels.filter {
+    static func conversations(
+        in channels: [Channel],
+        pinnedChannelIDs: Set<ChannelID> = []
+    ) -> [Channel] {
+        let conversations = channels.filter {
             $0.kind == .directMessage || $0.kind == .groupDirectMessage
         }
+        let pinned = conversations.filter { pinnedChannelIDs.contains($0.id) }
+            .sorted { lhs, rhs in
+                switch (lhs.lastMessageID, rhs.lastMessageID) {
+                case let (left?, right?):
+                    return left == right ? lhs.id > rhs.id : left > right
+                case (_?, nil): return true
+                case (nil, _?): return false
+                case (nil, nil): return lhs.id > rhs.id
+                }
+            }
+        return pinned + conversations.filter { !pinnedChannelIDs.contains($0.id) }
     }
 
     static func recipientMember(
@@ -92,6 +109,7 @@ nonisolated enum DirectMessageInboxPolicy {
 private struct DirectMessageInboxRow: View {
     let model: AppModel
     let channel: Channel
+    let isPinned: Bool
     let member: Member?
     let call: PrivateCall?
     let animatesAvatar: Bool
@@ -142,6 +160,13 @@ private struct DirectMessageInboxRow: View {
             }
 
             Spacer(minLength: 0)
+
+            if isPinned {
+                Image(systemName: "pin.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Pinned direct message")
+            }
 
             if channel.mentionCount > 0 {
                 Text(channel.mentionCount, format: .number)
@@ -195,7 +220,10 @@ private struct DirectMessageInboxRow: View {
                             channelID: channel.id
                         )
                     )
-                }
+                },
+                pinAction: .available(isPinned: isPinned, toggle: {
+                    model.toggleDirectMessagePin(channel.id)
+                })
             )
         }
     }
