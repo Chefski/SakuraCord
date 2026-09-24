@@ -1,3 +1,4 @@
+import AppKit
 import CoreGraphics
 import Foundation
 import SakuraCordModels
@@ -257,4 +258,78 @@ func `Discord attachment GIF still displays when its embed has no renderable med
     )
     #expect(mixed.images.map(\.url) == [url])
     #expect(mixed.visibleText == "||\(url.absoluteString)||")
+}
+
+@MainActor @Test
+func `spoilered Discord attachment link keeps a clickable filename after reveal`() throws {
+    let url = try #require(URL(string:
+        "https://media.discordapp.net/attachments/1/2/example.gif"
+    ))
+    let author = User(
+        id: UserID(rawValue: 103),
+        username: "fixture",
+        displayName: "Fixture"
+    )
+    let embedURL = try #require(URL(string: url.absoluteString + "?width=400"))
+    let embed = MessageEmbed(
+        type: "image",
+        url: embedURL,
+        image: MessageEmbedMedia(url: embedURL)
+    )
+    let angleBracketed = Message(
+        id: MessageID(rawValue: 107),
+        channelID: ChannelID(rawValue: 102),
+        author: author,
+        content: "<\(url.absoluteString)>",
+        embeds: [embed]
+    )
+    #expect(
+        MessageEmbedPresentation.visibleMessageContent(for: angleBracketed)
+            == angleBracketed.content
+    )
+    #expect(MessageEmbedPresentation.visibleEmbeds(for: angleBracketed).isEmpty)
+
+    for content in [
+        "||<\(url.absoluteString)>||",
+        "||\(url.absoluteString)||",
+    ] {
+        let spoilered = Message(
+            id: MessageID(rawValue: 108),
+            channelID: ChannelID(rawValue: 102),
+            author: author,
+            content: content,
+            embeds: [embed]
+        )
+        let plan = NativeTimelineTextPlan.make(for: spoilered)
+        #expect(MessageEmbedPresentation.visibleEmbeds(for: spoilered).isEmpty)
+        let prepared = try #require(plan.preparedText)
+        let value = NativeTimelineCoreText.make(
+            prepared: prepared,
+            emojiSize: 22,
+            mentionPresentations: [:]
+        )
+        #expect(value.string == "📎 example.gif")
+        #expect(value.attribute(.link, at: 0, effectiveRange: nil) as? URL == url)
+        #expect(value.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor == .clear)
+        #expect(value.attribute(.discordMarkdownAttachmentLink, at: 0, effectiveRange: nil) != nil)
+
+        let framesetter = CTFramesetterCreateWithAttributedString(value)
+        let hidden = NativeTimelineRowPainter.preparedDrawingText(
+            value,
+            framesetter: framesetter,
+            hoveredLinkCharacterIndex: nil,
+            underlinesLinks: false,
+            revealedSpoilerLocations: []
+        ).0
+        let revealed = NativeTimelineRowPainter.preparedDrawingText(
+            value,
+            framesetter: framesetter,
+            hoveredLinkCharacterIndex: nil,
+            underlinesLinks: false,
+            revealedSpoilerLocations: [0]
+        ).0
+        #expect(hidden.attribute(.discordMarkdownSpoiler, at: 0, effectiveRange: nil) != nil)
+        #expect(revealed.attribute(.discordMarkdownSpoiler, at: 0, effectiveRange: nil) == nil)
+        #expect(revealed.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor == .linkColor)
+    }
 }
