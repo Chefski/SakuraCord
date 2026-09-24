@@ -12,8 +12,10 @@ struct ServerRailContainer: View {
         @Bindable var invites = model.serverInvites
         ServerRailView(
             items: model.serverRailPresentation.items,
+            directMessages: model.serverRailPresentation.directMessages,
             home: model.serverRailPresentation.home,
             selectHome: { model.selectGuild(nil) },
+            selectDirectMessage: { model.navigate(to: $0) },
             selectGuild: model.selectGuild,
             joinServer: { invites.showsJoinDialog = true },
             contextMenuActions: ServerRailContextMenuActions(
@@ -73,8 +75,10 @@ struct ServerRailContainer: View {
 
 struct ServerRailView: View {
     let items: [ServerRailPresentationItem]
+    let directMessages: [ServerRailDirectMessageEntry]
     let home: ServerRailHomeEntry
     let selectHome: () -> Void
+    let selectDirectMessage: (ChannelID) -> Void
     let selectGuild: (GuildID?) -> Void
     var joinServer: () -> Void = {}
     let contextMenuActions: ServerRailContextMenuActions
@@ -90,6 +94,12 @@ struct ServerRailView: View {
                     home: home,
                     action: selectHome
                 )
+
+                ForEach(directMessages) { entry in
+                    DirectMessageRailButton(entry: entry) {
+                        selectDirectMessage(entry.id)
+                    }
+                }
 
                 Divider().padding(.horizontal, 12)
 
@@ -138,6 +148,89 @@ struct ServerRailView: View {
             .allowsHitTesting(false)
         }
         .zIndex(200)
+    }
+}
+
+private struct DirectMessageRailButton: View {
+    let entry: ServerRailDirectMessageEntry
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        let channel = entry.channel
+        let displayName = channel.name.isEmpty ? "Group Direct Message" : channel.name
+
+        HStack(spacing: 5) {
+            ServerRailSelectionIndicator(
+                isSelected: entry.isSelected,
+                isHovering: isHovering,
+                hasNotification: true
+            )
+            Button(action: action) {
+                ServerRailBadgedIcon(mentionCount: channel.mentionCount) {
+                    DirectMessageAvatar(
+                        channel: channel,
+                        size: 44,
+                        status: nil,
+                        animates: isHovering
+                    )
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(displayName)
+            .accessibilityValue(
+                channel.mentionCount > 0
+                    ? "\(channel.mentionCount) unread mentions"
+                    : "Unread"
+            )
+            .help(displayName)
+        }
+        .frame(width: ChatChromeMetrics.serverRailWidth, height: 46, alignment: .topLeading)
+        .contentShape(Rectangle())
+        .anchorPreference(key: ServerRailHoverPreferenceKey.self, value: .bounds) { bounds in
+            isHovering ? ServerRailHoverItem(name: displayName, bounds: bounds) : nil
+        }
+        .onModalHover { isHovering = $0 }
+        .animation(.snappy(duration: 0.18), value: isHovering)
+    }
+}
+
+struct ServerRailBadgedIcon<Icon: View>: View {
+    let mentionCount: Int
+    let icon: Icon
+
+    init(mentionCount: Int, @ViewBuilder icon: () -> Icon) {
+        self.mentionCount = mentionCount
+        self.icon = icon()
+    }
+
+    var body: some View {
+        if mentionCount > 0 {
+            icon
+                .overlay(alignment: .bottomTrailing) {
+                    badge
+                        .padding(2)
+                        .background(.black, in: Capsule())
+                        .offset(x: 6, y: 6)
+                        .blendMode(.destinationOut)
+                        .accessibilityHidden(true)
+                }
+                .compositingGroup()
+                .overlay(alignment: .bottomTrailing) {
+                    badge.offset(x: 4, y: 4)
+                }
+        } else {
+            icon
+        }
+    }
+
+    private var badge: some View {
+        Text(mentionCount, format: .number)
+            .font(.system(size: 10, weight: .bold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 5)
+            .frame(minWidth: 18, minHeight: 18)
+            .background(Color(hex: 0xF23F43), in: Capsule())
     }
 }
 
@@ -219,24 +312,15 @@ struct GuildRailButton: View {
                 hasNotification: guild.unreadCount > 0
             )
             Button(action: action) {
-                GuildIconView(
-                    name: displayName,
-                    iconURL: guild.iconURL,
-                    size: 44,
-                    cornerRadius: 14,
-                    animates: isHovering
-                )
-                    .overlay(alignment: .bottomTrailing) {
-                        if guild.mentionCount > 0 {
-                            Text(guild.mentionCount, format: .number)
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 5)
-                                .frame(minWidth: 18, minHeight: 18)
-                                .background(.red, in: Capsule())
-                                .offset(x: 4, y: 4)
-                        }
-                    }
+                ServerRailBadgedIcon(mentionCount: guild.mentionCount) {
+                    GuildIconView(
+                        name: displayName,
+                        iconURL: guild.iconURL,
+                        size: 44,
+                        cornerRadius: 14,
+                        animates: isHovering
+                    )
+                }
             }
             .buttonStyle(.plain)
             .overlay {
@@ -325,7 +409,7 @@ private struct HomeRailButton: View {
             ServerRailSelectionIndicator(
                 isSelected: home.isSelected,
                 isHovering: isHovering,
-                hasNotification: home.isUnread
+                hasNotification: false
             )
             Button(action: action) {
                 Image(systemName: "message.fill")
@@ -337,25 +421,9 @@ private struct HomeRailButton: View {
                             : Color.secondary.opacity(0.16),
                         in: ConcentricRectangle(cornerRadius: 14, style: .continuous)
                     )
-                    .overlay(alignment: .bottomTrailing) {
-                        if home.mentionCount > 0 {
-                            Text(home.mentionCount, format: .number)
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 5)
-                                .frame(minWidth: 18, minHeight: 18)
-                                .background(.red, in: Capsule())
-                                .offset(x: 4, y: 4)
-                        }
-                    }
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Direct Messages")
-            .accessibilityValue(
-                home.mentionCount > 0
-                    ? "\(home.mentionCount) unread mentions"
-                    : (home.isUnread ? "Unread" : "")
-            )
         }
         .frame(width: ChatChromeMetrics.serverRailWidth, height: 46, alignment: .leading)
         .contentShape(Rectangle())

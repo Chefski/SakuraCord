@@ -269,8 +269,6 @@ extension AppModel {
         quickSwitcherDraftChannelIDs = []
         snapshot = nil
         replaceServerRailGuilds([:])
-        serverRailHomeIsUnread = false
-        serverRailHomeMentionCount = 0
         serverRailItems = []
         emojisByGuild = [:]
         loadingEmojiGuildIDs = []

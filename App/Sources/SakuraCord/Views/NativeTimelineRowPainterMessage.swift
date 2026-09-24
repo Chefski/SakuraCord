@@ -180,7 +180,7 @@ extension NativeTimelineRowPainter {
         }
         if let frame = input.layout.timestampFrame {
             text(
-                NativeTimelineTimestamp.text(
+                NativeTimelineTimestamp.headerText(
                     for: input.row.message.timestamp,
                     settings: input.model?.interfaceSettings ?? .defaults
                 ),

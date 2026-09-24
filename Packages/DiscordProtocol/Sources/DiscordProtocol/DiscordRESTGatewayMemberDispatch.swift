@@ -253,10 +253,12 @@ extension DiscordRESTProvider {
         else { return }
         members[index].status = status
         if let activities = update.activities {
+            let primaryActivity = activities.memberListActivity
             members[index].customStatus = activities.first(where: { $0.type == 4 })?.displayText
             members[index].activityText =
-                activities.first(where: { $0.type != 4 })?.displayText
+                primaryActivity?.displayText
                     ?? members[index].customStatus
+            members[index].isListeningToMusic = primaryActivity?.type == 2
         }
         cachedMembers[guildID] = members
         if guildID == pendingMemberGuildID {

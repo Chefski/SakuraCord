@@ -74,6 +74,28 @@ import UserNotifications
 }
 
 @MainActor
+@Test func `server rail shows only unacknowledged direct messages with one selected item`() {
+    let channel = Channel(
+        id: ChannelID(rawValue: 10),
+        guildID: nil,
+        name: "DM",
+        kind: .directMessage
+    )
+    let store = ServerRailPresentationStore()
+
+    store.updateDirectMessages([channel], unacknowledgedChannelIDs: [channel.id])
+    #expect(store.directMessages.map(\.id) == [channel.id])
+
+    store.updateSelection(nil, channelID: channel.id)
+    #expect(store.directMessages[0].isSelected)
+    #expect(!store.home.isSelected)
+
+    store.updateDirectMessages([channel], unacknowledgedChannelIDs: [])
+    #expect(store.directMessages.isEmpty)
+    #expect(store.home.isSelected)
+}
+
+@MainActor
 @Test func `voice sidebar projection isolates unrelated channel updates`() {
     let firstChannelID = ChannelID(rawValue: 10)
     let secondChannelID = ChannelID(rawValue: 20)
@@ -1552,7 +1574,7 @@ import UserNotifications
 }
 
 @MainActor
-@Test func `thread send commits optimistic insertion and confirmation revisions`() async throws {
+@Test func `thread send preserves history and confirmation revisions across navigation`() async throws {
     let provider = MockChatProvider()
     let model = AppModel(launchMode: .offlineTesting, provider: provider)
     await model.start()
@@ -1569,6 +1591,12 @@ import UserNotifications
     let post = try #require(
         model.forumPosts.first(where: { !$0.thread.isLocked })
     )
+    for index in 0 ..< 3 {
+        _ = try await provider.send(SendMessageDraft(
+            channelID: post.id,
+            content: "Existing reply \(index)"
+        ))
+    }
     model.open(post)
     #expect(
         await eventuallyOnMain {
@@ -1622,6 +1650,21 @@ import UserNotifications
             == .replace(IndexSet(integer: previousCount))
     )
     #expect(!confirmation.invalidatesAllRows)
+
+    let expectedIDs = model.threadMessages.map(\.id)
+    #expect(expectedIDs.count == 5)
+    let otherPost = try #require(model.forumPosts.first { $0.id != post.id })
+    for _ in 0 ..< 2 {
+        model.open(otherPost)
+        await model.threadLoadTask?.value
+        model.open(post)
+        await model.threadLoadTask?.value
+
+        #expect(model.threadMessages.map(\.id) == expectedIDs)
+        #expect(model.threadMessageRows.map(\.id) == expectedIDs)
+        #expect(!model.isLoadingThread)
+        #expect(model.hasCompletedInitialThreadLoad)
+    }
 }
 
 @MainActor
@@ -4077,6 +4120,88 @@ func `gateway mutations keep exact indexes after repeated history prepends`(
 }
 
 @MainActor
+@Test(arguments: [false, true])
+func `interrupted thread history reloads after navigation`(switchesDirectly: Bool) async throws {
+    let thread = MessageThreadSummary(
+        id: ChannelID(rawValue: 91_099),
+        parentID: ChannelID(rawValue: 91_001),
+        name: "Interrupted history"
+    )
+    let provider = ChannelLoadTestProvider(blockFirstMessageRequestIn: thread.id)
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    let preview = Message(
+        id: MessageID(rawValue: thread.id.rawValue - 1),
+        channelID: thread.id,
+        author: User(id: UserID(rawValue: 91_000), username: "tester", displayName: "Tester"),
+        content: "Forum preview"
+    )
+    let post = ForumPost(thread: thread, firstMessage: preview)
+    model.open(post)
+    let interruptedLoad = model.threadLoadTask
+    await provider.waitForBlockedMessageRequest()
+    if switchesDirectly {
+        model.open(MessageThreadSummary(
+            id: ChannelID(rawValue: thread.id.rawValue + 1),
+            parentID: thread.parentID,
+            name: "Other thread"
+        ))
+    } else {
+        model.closeThread()
+    }
+    model.open(post)
+    await provider.releaseBlockedMessageRequest()
+    await interruptedLoad?.value
+    await model.threadLoadTask?.value
+
+    #expect(model.threadMessages.map(\.id) == [MessageID(rawValue: thread.id.rawValue)])
+    #expect(model.hasCompletedInitialThreadLoad)
+    #expect(!model.isLoadingThread)
+    #expect(await provider.requestCount(for: thread.id) == 2)
+}
+
+@MainActor
+@Test func `forum starter preview does not bridge paginated history`() async {
+    let threadID = ChannelID(rawValue: 92_099)
+    let provider = ChannelLoadTestProvider(paginatedThreadID: threadID)
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    let starter = Message(
+        id: MessageID(rawValue: threadID.rawValue),
+        channelID: threadID,
+        author: User(id: UserID(rawValue: 91_000), username: "tester", displayName: "Tester"),
+        content: "Forum starter"
+    )
+    let post = ForumPost(
+        thread: MessageThreadSummary(
+            id: threadID,
+            parentID: ChannelID(rawValue: 91_001),
+            name: "Long thread",
+            messageCount: 106
+        ),
+        firstMessage: starter
+    )
+    model.open(post)
+    #expect(model.threadMessages.map(\.id) == [starter.id])
+    await model.threadLoadTask?.value
+
+    #expect(model.threadMessages.count == 100)
+    #expect(model.threadMessages.first?.id == MessageID(rawValue: threadID.rawValue + 6))
+    #expect(model.hasMoreThreadMessages)
+
+    model.closeThread()
+    model.open(post)
+    #expect(!model.isLoadingThread)
+    #expect(model.threadMessages.count == 100)
+    #expect(model.threadMessages.first?.id == MessageID(rawValue: threadID.rawValue + 6))
+    #expect(await provider.requestCount(for: threadID) == 1)
+
+    await model.loadEarlierThread()
+
+    #expect(model.threadMessages.count == 106)
+    #expect(model.threadMessages.first?.id == starter.id)
+    #expect(!model.hasMoreThreadMessages)
+}
+
+@MainActor
 @Test func `failed earlier thread page retries inside the shared conversation`() async throws {
     let provider = ChannelLoadTestProvider(failsFirstEarlierPage: true)
     let model = AppModel(launchMode: .offlineTesting, provider: provider)
@@ -5176,10 +5301,21 @@ private actor ChannelLoadTestProvider: ChatProvider {
     private var activeReactorRequests = 0
     private var maximumActiveReactorRequests = 0
     private let failsFirstEarlierPage: Bool
+    private let blockedFirstMessageRequestChannelID: ChannelID?
+    private let paginatedThreadID: ChannelID?
+    private var blockedMessageRequest: CheckedContinuation<Void, Never>?
+    private var blockedMessageRequestStarted: CheckedContinuation<Void, Never>?
+    private var hasStartedBlockedMessageRequest = false
     private var earlierRequests = 0
 
-    init(failsFirstEarlierPage: Bool = false) {
+    init(
+        failsFirstEarlierPage: Bool = false,
+        blockFirstMessageRequestIn channelID: ChannelID? = nil,
+        paginatedThreadID: ChannelID? = nil
+    ) {
         self.failsFirstEarlierPage = failsFirstEarlierPage
+        blockedFirstMessageRequestChannelID = channelID
+        self.paginatedThreadID = paginatedThreadID
     }
 
     func bootstrap() async throws -> BootstrapSnapshot {
@@ -5211,6 +5347,32 @@ private actor ChannelLoadTestProvider: ChatProvider {
         messageRequestParameters[channelID, default: []].append(
             ChannelLoadMessageRequest(before: before, limit: limit)
         )
+        if channelID == paginatedThreadID {
+            let all = (0 ..< 106).map { offset in
+                Message(
+                    id: MessageID(rawValue: channelID.rawValue + UInt64(offset)),
+                    channelID: channelID,
+                    author: user,
+                    content: "message \(offset)"
+                )
+            }
+            let eligible = before.map { boundary in
+                all.filter { $0.id < boundary }
+            } ?? all
+            let page = Array(eligible.suffix(limit))
+            return MessagePage(
+                messages: page,
+                hasMoreBefore: eligible.count > page.count
+            )
+        }
+        if channelID == blockedFirstMessageRequestChannelID,
+           messageRequests[channelID] == 1
+        {
+            hasStartedBlockedMessageRequest = true
+            blockedMessageRequestStarted?.resume()
+            blockedMessageRequestStarted = nil
+            await withCheckedContinuation { blockedMessageRequest = $0 }
+        }
         if failsFirstEarlierPage, before != nil {
             earlierRequests += 1
             if earlierRequests == 1 {
@@ -5289,6 +5451,16 @@ private actor ChannelLoadTestProvider: ChatProvider {
 
     func requestCount(for channelID: ChannelID) -> Int {
         messageRequests[channelID, default: 0]
+    }
+
+    func waitForBlockedMessageRequest() async {
+        if hasStartedBlockedMessageRequest { return }
+        await withCheckedContinuation { blockedMessageRequestStarted = $0 }
+    }
+
+    func releaseBlockedMessageRequest() {
+        blockedMessageRequest?.resume()
+        blockedMessageRequest = nil
     }
 
     func requests(

@@ -199,7 +199,8 @@ public actor MockChatProvider: ChatProvider {
                     roleName: $0.id == currentUser.id ? "You" : "Direct Message",
                     status: $0.id == currentUser.id ? .online : reference?.status ?? .offline,
                     activityText: reference?.activityText,
-                    customStatus: reference?.customStatus
+                    customStatus: reference?.customStatus,
+                    isListeningToMusic: reference?.isListeningToMusic ?? false
                 )
             }
         }

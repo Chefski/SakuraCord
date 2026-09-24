@@ -46,6 +46,17 @@ nonisolated enum NativeTimelineMarkdownChromeMetrics {
 }
 
 enum NativeTimelineTimestamp {
+    static func headerText(
+        for date: Date,
+        settings: InterfaceSettingsSnapshot = .defaults
+    ) -> String {
+        InterfaceTimestampFormatter.messageText(
+            for: date,
+            format: settings.timestampFormat,
+            includesSeconds: settings.includesTimestampSeconds
+        )
+    }
+
     static func text(
         for date: Date,
         settings: InterfaceSettingsSnapshot = .defaults,
@@ -811,7 +822,7 @@ struct NativeTimelineRowLayout {
             }
             headerX += 7
             let timestampFont = NSFont.preferredFont(forTextStyle: .caption1)
-            let timestamp = NativeTimelineTimestamp.text(
+            let timestamp = NativeTimelineTimestamp.headerText(
                 for: message.timestamp,
                 settings: model?.interfaceSettings ?? .defaults
             )

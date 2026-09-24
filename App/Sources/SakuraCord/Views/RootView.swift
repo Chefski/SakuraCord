@@ -860,9 +860,9 @@ private struct ChatRootView: View {
     private var inspectorToolbarLabel: some View {
         Label(
             isDirectMessageSelected ? "People" : "Members",
-            systemImage: model.showInspector
-                ? "person.2.fill"
-                : "person.2"
+            systemImage: model.selectedChannel?.kind == .directMessage
+                ? (model.showInspector ? "person.fill" : "person")
+                : (model.showInspector ? "person.2.fill" : "person.2")
         )
     }
 
@@ -886,6 +886,14 @@ private struct ChatRootView: View {
         default:
             return nil
         }
+    }
+
+    private func directMessageToolbarStatus(for channel: Channel) -> PresenceStatus? {
+        guard channel.kind == .directMessage else { return nil }
+        return DirectMessageInboxPolicy.recipientMember(
+            for: channel,
+            membersByID: model.membersByID
+        )?.status ?? .offline
     }
 
     private func channelTopic(for channel: Channel) -> String? {
@@ -930,7 +938,9 @@ private struct ChatRootView: View {
         guard let channel = model.selectedChannel else { return nil }
         return .init(title: channel.name, systemImage: channelToolbarSymbol(channel),
                      subtitle: isDirectMessageSelected ? directMessageToolbarSubtitle(for: channel) : nil,
-                     topic: isDirectMessageSelected ? nil : channelTopic(for: channel))
+                     topic: isDirectMessageSelected ? nil : channelTopic(for: channel),
+                     avatarChannel: isDirectMessageSelected ? channel : nil,
+                     avatarStatus: isDirectMessageSelected ? directMessageToolbarStatus(for: channel) : nil)
     }
 
     private var supplementaryToolbarPresentation: SupplementaryToolbarPresentation? {
@@ -1264,6 +1274,8 @@ private struct ConversationToolbarPresentation {
     let systemImage: String
     var subtitle: String?
     var topic: String?
+    var avatarChannel: Channel?
+    var avatarStatus: PresenceStatus?
 }
 
 private struct ConversationToolbarLabel: View {
@@ -1271,10 +1283,38 @@ private struct ConversationToolbarLabel: View {
     let systemImage: String
     var subtitle: String?
     let textSize: CGFloat
+    let avatarChannel: Channel?
+    let avatarStatus: PresenceStatus?
+
+    init(
+        title: String,
+        systemImage: String,
+        subtitle: String?,
+        textSize: CGFloat,
+        avatarChannel: Channel? = nil,
+        avatarStatus: PresenceStatus? = nil
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        self.subtitle = subtitle
+        self.textSize = textSize
+        self.avatarChannel = avatarChannel
+        self.avatarStatus = avatarStatus
+    }
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: systemImage)
+            if let avatarChannel {
+                DirectMessageAvatar(
+                    channel: avatarChannel,
+                    size: 24,
+                    status: avatarStatus,
+                    animates: true
+                )
+                .accessibilityHidden(true)
+            } else {
+                Image(systemName: systemImage)
+            }
             VStack(alignment: .leading, spacing: 0) {
                 Text(title)
                     .font(.system(
@@ -1308,7 +1348,9 @@ private struct ConversationToolbarTitle: View {
                 title: presentation.title,
                 systemImage: presentation.systemImage,
                 subtitle: presentation.subtitle,
-                textSize: InterfaceTypographyMetrics.interfaceTextSize
+                textSize: InterfaceTypographyMetrics.interfaceTextSize,
+                avatarChannel: presentation.avatarChannel,
+                avatarStatus: presentation.avatarStatus
             )
             .padding(.horizontal, 8)
             .padding(.vertical, 5)

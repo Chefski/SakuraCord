@@ -1103,6 +1103,13 @@ extension NativeMessageTimelineCoordinator {
                     }
                 },
             ]
+            observations += [.NSCalendarDayChanged, NSApplication.didBecomeActiveNotification].map { name in
+                center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated {
+                        self?.scheduleModelRowsUpdate()
+                    }
+                }
+            }
         }
 
         func noteScrollActivity() {

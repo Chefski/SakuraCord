@@ -414,7 +414,7 @@ extension NativeMemberListCanvasView {
                 requests.append((url, 32))
             }
             requests.append(contentsOf: NativeMemberActivityPresentation.references(
-                in: member.activityText
+                in: member.memberListActivityText
             ).compactMap(activityEmojiURL).map {
                 (url: $0, maximumPixelDimension: 64)
             })
