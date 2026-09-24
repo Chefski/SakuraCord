@@ -408,6 +408,10 @@ final class AppModel {
     var isLoadingGIFPicker = false
     var gifErrorMessage: String?
     var gifFavoriteMutationURL: URL?
+    @ObservationIgnored var gameMentionsByID: [String: ProfileGame] = [:]
+    @ObservationIgnored var hydratedGameMentionIDs: Set<String> = []
+    @ObservationIgnored var pendingGameMentionIDs: Set<String> = []
+    @ObservationIgnored var failedGameMentionIDs: [String: Date] = [:]
     var stickerPickerState = StickerPickerPresentationState()
     var soundboardState = SoundboardPresentationState()
     var supportedCapabilities: Set<ChatCapability> = []
@@ -1060,6 +1064,7 @@ final class AppModel {
     @ObservationIgnored var gifSearchTask: Task<Void, Never>?
     @ObservationIgnored var gifPickerLoadTask: Task<Void, Never>?
     @ObservationIgnored var gifPickerLoadGeneration: UInt64 = 0
+    @ObservationIgnored var gameMentionLoadTask: Task<Void, Never>?
     @ObservationIgnored var soundboardLoadTask: Task<Void, Never>?
     @ObservationIgnored var soundboardLoadGeneration: UInt64 = 0
     @ObservationIgnored var commandLoadTask: Task<Void, Never>?
