@@ -518,7 +518,9 @@ private struct ChatRootView: View {
                         title: channel.name,
                         systemImage: channelToolbarSymbol(channel),
                         subtitle: directMessageToolbarSubtitle(for: channel),
-                        textSize: InterfaceTypographyMetrics.interfaceTextSize
+                        textSize: InterfaceTypographyMetrics.interfaceTextSize,
+                        avatarChannel: channel,
+                        avatarStatus: directMessageToolbarStatus(for: channel)
                     )
                     .padding(.horizontal, 8)
                     .padding(.vertical, 5)
@@ -888,6 +890,14 @@ private struct ChatRootView: View {
         }
     }
 
+    private func directMessageToolbarStatus(for channel: Channel) -> PresenceStatus? {
+        guard channel.kind == .directMessage else { return nil }
+        return DirectMessageInboxPolicy.recipientMember(
+            for: channel,
+            membersByID: model.membersByID
+        )?.status ?? .offline
+    }
+
     private func channelTopic(for channel: Channel) -> String? {
         guard let topic = channel.topic?.trimmingCharacters(in: .whitespacesAndNewlines),
               !topic.isEmpty
@@ -1251,10 +1261,38 @@ private struct ConversationToolbarLabel: View {
     let systemImage: String
     var subtitle: String?
     let textSize: CGFloat
+    let avatarChannel: Channel?
+    let avatarStatus: PresenceStatus?
+
+    init(
+        title: String,
+        systemImage: String,
+        subtitle: String?,
+        textSize: CGFloat,
+        avatarChannel: Channel? = nil,
+        avatarStatus: PresenceStatus? = nil
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        self.subtitle = subtitle
+        self.textSize = textSize
+        self.avatarChannel = avatarChannel
+        self.avatarStatus = avatarStatus
+    }
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: systemImage)
+            if let avatarChannel {
+                DirectMessageAvatar(
+                    channel: avatarChannel,
+                    size: 24,
+                    status: avatarStatus,
+                    animates: true
+                )
+                .accessibilityHidden(true)
+            } else {
+                Image(systemName: systemImage)
+            }
             VStack(alignment: .leading, spacing: 0) {
                 Text(title)
                     .font(.system(
