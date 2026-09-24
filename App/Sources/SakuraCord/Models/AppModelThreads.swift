@@ -129,7 +129,8 @@ extension AppModel {
             } catch is CancellationError {
                 return
             } catch {
-                guard model.isCurrentAccountSession(account),
+                guard !Task.isCancelled,
+                      model.isCurrentAccountSession(account),
                       model.openThread?.id == thread.id
                 else { return }
                 DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
