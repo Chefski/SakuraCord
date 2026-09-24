@@ -10,6 +10,7 @@ extension AppModel {
             thread,
             starter: starter?.author,
             startedAt: starter?.timestamp,
+            starterMessageID: nil,
             initialMessages: []
         )
     }
@@ -21,6 +22,7 @@ extension AppModel {
             post.thread,
             starter: post.owner ?? post.firstMessage?.author,
             startedAt: post.firstMessage?.timestamp ?? post.createdAt,
+            starterMessageID: post.firstMessage?.id,
             initialMessages: post.firstMessage.map { [$0] } ?? []
         )
     }
@@ -29,9 +31,10 @@ extension AppModel {
         _ thread: MessageThreadSummary,
         starter: User?,
         startedAt: Date?,
+        starterMessageID: MessageID? = nil,
         initialMessages: [Message]
     ) {
-        threadLoadTask?.cancel()
+        closeThread()
         AppPerformanceSignposts.beginConversationNavigation(to: thread.id)
         readState.merge(thread: thread)
         openThread = thread
@@ -47,10 +50,22 @@ extension AppModel {
         )
         openThreadStarter = starter
         openThreadStartedAt = startedAt
+        openThreadStarterMessageID = starterMessageID
         let cachedMessages = takeCachedMessages(for: thread.id)
         let cachedBoundary = hasMoreCache[thread.id]
+        let previewMessages: [Message]
+        if cachedBoundary == true,
+           let starterMessageID,
+           !cachedMessages.contains(where: { $0.id == starterMessageID })
+        {
+            // The cached newest page starts after the starter. Its older edge,
+            // not the forum preview, must drive earlier pagination.
+            previewMessages = initialMessages.filter { $0.id != starterMessageID }
+        } else {
+            previewMessages = initialMessages
+        }
         threadMessages = Self.merging(
-            current: initialMessages,
+            current: previewMessages,
             fresh: cachedMessages
         )
         threadDraft = ""
@@ -114,7 +129,8 @@ extension AppModel {
             } catch is CancellationError {
                 return
             } catch {
-                guard model.isCurrentAccountSession(account),
+                guard !Task.isCancelled,
+                      model.isCurrentAccountSession(account),
                       model.openThread?.id == thread.id
                 else { return }
                 DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
@@ -141,8 +157,19 @@ extension AppModel {
             mutations,
             to: page.messages
         )
+        let currentMessages: [Message]
+        if page.hasMoreBefore,
+           let starterMessageID = openThreadStarterMessageID,
+           !page.messages.contains(where: { $0.id == starterMessageID })
+        {
+            // The preview is outside the newest page. Keeping it would hide a
+            // gap and make earlier pagination request messages before the starter.
+            currentMessages = threadMessages.filter { $0.id != starterMessageID }
+        } else {
+            currentMessages = threadMessages
+        }
         threadMessages = Self.reconcilingNewestPage(
-            current: threadMessages,
+            current: currentMessages,
             fresh: refreshedMessages,
             hasMoreBefore: page.hasMoreBefore,
             authoritativeOldestMessageID: page.messages.map(\.id).min()
@@ -164,8 +191,14 @@ extension AppModel {
     func closeThread() {
         if let threadID = openThread?.id {
             cancelConversationRefresh(in: threadID)
-            storeCachedMessages(threadMessages, for: threadID)
+            let hasLoadedHistory = hasMoreCache[threadID] != nil
+            // Store the boundary before trimming so omitted older messages remain loadable.
             hasMoreCache[threadID] = hasMoreThreadMessages
+            storeCachedMessages(threadMessages, for: threadID)
+            // A preview or interrupted initial load is not reusable history.
+            if !hasLoadedHistory {
+                hasMoreCache[threadID] = nil
+            }
             unreadDividerMessageIDs[threadID] = nil
             if conversationNewestRequest?.channelID == threadID {
                 conversationNewestRequest = nil
@@ -177,6 +210,7 @@ extension AppModel {
         openThread = nil
         openThreadStarter = nil
         openThreadStartedAt = nil
+        openThreadStarterMessageID = nil
         threadMessages = []
         threadDraft = ""
         threadReplyingTo = nil

@@ -328,6 +328,7 @@ extension AppModel {
                 post.thread,
                 starter: post.owner ?? post.firstMessage?.author,
                 startedAt: post.firstMessage?.timestamp ?? post.createdAt,
+                starterMessageID: post.firstMessage?.id,
                 initialMessages: initialMessages
             )
         }
