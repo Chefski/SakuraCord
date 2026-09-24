@@ -356,14 +356,22 @@ nonisolated struct LinkedImagePresentation: Sendable {
     private static let expression = RegularExpressionFactory.make(
         #"\[([^\]]+)\]\((https://[^\s)]+)\)"#
     )
+    private static let bareURLExpression = RegularExpressionFactory.make(
+        #"https://[^\s<>]+"#
+    )
 
     let visibleText: String
     let images: [LinkedImageReference]
     let matchedEmojiURLs: Set<URL>
 
-    init(content: String) {
+    init(
+        content: String,
+        includeBareMediaURLs: Bool = true,
+        excludedURLs: Set<URL> = []
+    ) {
         let sourceRange = NSRange(content.startIndex ..< content.endIndex, in: content)
-        let references = Self.expression.matches(in: content, range: sourceRange).compactMap { match -> (NSRange, LinkedImageReference)? in
+        let markdownMatches = Self.expression.matches(in: content, range: sourceRange)
+        var references = markdownMatches.compactMap { match -> (NSRange, LinkedImageReference)? in
             guard let labelRange = Range(match.range(at: 1), in: content),
                   let urlRange = Range(match.range(at: 2), in: content),
                   let url = URL(string: String(content[urlRange])),
@@ -378,6 +386,38 @@ nonisolated struct LinkedImagePresentation: Sendable {
                 )
             )
         }
+        if includeBareMediaURLs {
+            for match in Self.bareURLExpression.matches(in: content, range: sourceRange) {
+                guard !markdownMatches.contains(where: {
+                    NSIntersectionRange($0.range, match.range).length > 0
+                }), let matchedRange = Range(match.range, in: content),
+                    matchedRange.lowerBound == content.startIndex
+                        || content[content.index(before: matchedRange.lowerBound)] != "<"
+                else { continue }
+
+                let raw = String(content[matchedRange])
+                let candidate = raw.trimmingCharacters(in: CharacterSet(charactersIn: ".,!?;:)]}"))
+                guard let url = URL(string: candidate),
+                      LinkedImageReference.isBareAttachmentURL(url),
+                      !excludedURLs.contains(url)
+                else { continue }
+                let removesLeadingSpace = matchedRange.lowerBound != content.startIndex
+                    && content[content.index(before: matchedRange.lowerBound)] == " "
+                let range = NSRange(
+                    location: match.range.location - (removesLeadingSpace ? 1 : 0),
+                    length: (candidate as NSString).length + (removesLeadingSpace ? 1 : 0)
+                )
+                references.append((
+                    range,
+                    LinkedImageReference(
+                        id: "\(range.location):\(url.absoluteString)",
+                        label: url.lastPathComponent,
+                        url: url
+                    )
+                ))
+            }
+        }
+        references.sort { $0.0.location < $1.0.location }
         matchedEmojiURLs = Set(
             references.compactMap { reference in
                 reference.1.linkedEmoji == nil ? nil : reference.1.url
@@ -508,6 +548,12 @@ nonisolated struct LinkedImageReference: Identifiable, Hashable, Sendable {
         else { return false }
         return imageExtensions.contains(url.pathExtension.lowercased())
             || (isCanonicalEmojiURL(url))
+    }
+
+    static func isBareAttachmentURL(_ url: URL) -> Bool {
+        isSupported(url)
+            && (url.path.hasPrefix("/attachments/")
+                || url.path.hasPrefix("/ephemeral-attachments/"))
     }
 
     private static func isCanonicalEmojiURL(_ url: URL) -> Bool {

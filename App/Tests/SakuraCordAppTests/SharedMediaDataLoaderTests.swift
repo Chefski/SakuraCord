@@ -12,6 +12,28 @@ import Testing
     #expect(configuration.requestCachePolicy == .returnCacheDataElseLoad)
 }
 
+@Test func `expired Discord image URL loads from a refreshed attachment URL`() async throws {
+    let original = try #require(URL(string:
+        "https://media.discordapp.net/attachments/708718994214879262/1142397887863590920/576D3811-DF63-4D10-8488-42BE96B7270F.gif"
+    ))
+    let refreshed = try #require(URL(string:
+        "https://media.discordapp.net/attachments/708718994214879262/1142397887863590920/576D3811-DF63-4D10-8488-42BE96B7270F.gif?ex=valid"
+    ))
+    let expected = Data("gif data".utf8)
+    let loader = SharedMediaDataLoader { url in
+        if url == original { throw RemoteMediaHTTPError(statusCode: 404) }
+        #expect(url == refreshed)
+        return expected
+    }
+    await loader.setAttachmentURLRefresh(revision: 1) { url in
+        #expect(url == original)
+        return refreshed
+    }
+
+    #expect(try await loader.data(for: original) == expected)
+    #expect(try await loader.data(for: original) == expected)
+}
+
 @Test func `cancelling the final media waiter cancels its fetch`() async throws {
     let probe = SuspendedRemoteMediaFetch()
     let loader = SharedMediaDataLoader(remoteFetch: probe.fetch)

@@ -86,6 +86,7 @@ public protocol ChatProvider: Sendable {
         anchoredAt anchor: MessageHistoryAnchor,
         limit: Int
     ) async throws -> MessagePage
+    func refreshedAttachmentURL(_ url: URL) async throws -> URL?
     func searchMessages(_ query: MessageSearchQuery) async throws -> MessageSearchPage
     func inboxMentions(_ query: InboxMentionQuery, before: MessageID?) async throws -> InboxMentionPage
     func dismissInboxMention(_ messageID: MessageID) async throws
@@ -275,6 +276,8 @@ public protocol PendingCredentialChatProvider: ChatProvider {
 }
 
 public extension ChatProvider {
+    func refreshedAttachmentURL(_: URL) async throws -> URL? { nil }
+
     func updateProfileCustomStatus(_ status: ProfileCustomStatus?) async throws -> ProfileCustomStatus? {
         throw ChatProviderError.invalidRequest("Custom status editing is unavailable for this session.")
     }

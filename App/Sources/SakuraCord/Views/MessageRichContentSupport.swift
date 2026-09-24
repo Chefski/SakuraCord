@@ -24,7 +24,7 @@ nonisolated enum MessageEmbedPresentation {
     ) -> [MessageEmbed] {
         guard !message.flags.contains(.suppressEmbeds), message.type != .pollResult else { return [] }
         let linkedEmojiURLs =
-            LinkedImagePresentation(content: message.content)
+            LinkedImagePresentation(content: message.content, includeBareMediaURLs: false)
                 .matchedEmojiURLs
         let sakuraCordDeepLinkActions = Set(
             SakuraCordDeepLinkPresentation.all(in: message.content)
@@ -50,6 +50,22 @@ nonisolated enum MessageEmbedPresentation {
             embeds: visibleEmbeds(
                 for: message
             )
+        )
+    }
+
+    static func linkedImagePresentation(for message: Message) -> LinkedImagePresentation {
+        let embeds = visibleEmbeds(for: message)
+        let representedURLs = Set(
+            embeds.filter { kind(for: $0) != .hidden }.flatMap { embed in
+                [embed.url, embed.image?.url, embed.video?.url].compactMap(\.self)
+            } + message.attachments.flatMap { attachment in
+                [attachment.url, attachment.proxyURL].compactMap(\.self)
+            }
+        )
+        return LinkedImagePresentation(
+            content: visibleMessageContent(message.content, embeds: embeds),
+            includeBareMediaURLs: !message.flags.contains(.suppressEmbeds),
+            excludedURLs: representedURLs
         )
     }
 

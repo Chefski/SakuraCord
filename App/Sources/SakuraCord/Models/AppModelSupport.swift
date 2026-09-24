@@ -93,6 +93,13 @@ extension AppModel {
         self.provider = provider
         self.database = database
         installedAccountSessionRevision &+= 1
+        let revision = installedAccountSessionRevision
+        Task {
+            await SharedMediaDataLoader.shared.setAttachmentURLRefresh(
+                revision: revision,
+                refresh: { try await provider.refreshedAttachmentURL($0) }
+            )
+        }
     }
 
     @discardableResult

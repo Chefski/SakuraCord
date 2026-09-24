@@ -145,3 +145,96 @@ func `suppressed embeds retain their source link and expose no preview`() throws
             == sourceURL.absoluteString
     )
 }
+
+@MainActor @Test
+func `plain Discord attachment GIF plays inline without a server embed`() throws {
+    let url = try #require(URL(
+        string: "https://media.discordapp.net/attachments/1/2/example.gif?width=640"
+    ))
+    let message = Message(
+        id: MessageID(rawValue: 101),
+        channelID: ChannelID(rawValue: 102),
+        author: User(
+            id: UserID(rawValue: 103),
+            username: "fixture",
+            displayName: "Fixture"
+        ),
+        content: "Look \(url.absoluteString)!"
+    )
+
+    let presentation = MessageEmbedPresentation.linkedImagePresentation(for: message)
+    #expect(presentation.visibleText == "Look!")
+    #expect(presentation.images.map(\.url) == [url])
+    #expect(presentation.images[0].displayURL.pathExtension == "gif")
+
+    let textPlan = NativeTimelineTextPlan.make(for: message)
+    #expect(textPlan.linkedImages == presentation.images)
+    let viewer = try #require(NativeTimelineMediaViewerPlan.linkedImages(
+        in: message,
+        selectedReferenceID: presentation.images[0].id
+    ))
+    #expect(viewer.items.map(\.url) == [url])
+}
+
+@MainActor @Test
+func `plain attachment media respects suppressed and already rendered embeds`() throws {
+    let url = try #require(URL(string: "https://cdn.discordapp.com/attachments/1/2/example.gif"))
+    let author = User(
+        id: UserID(rawValue: 103),
+        username: "fixture",
+        displayName: "Fixture"
+    )
+    let suppressed = Message(
+        id: MessageID(rawValue: 104),
+        channelID: ChannelID(rawValue: 102),
+        author: author,
+        content: url.absoluteString,
+        flags: [.suppressEmbeds]
+    )
+    #expect(MessageEmbedPresentation.linkedImagePresentation(for: suppressed).images.isEmpty)
+    #expect(
+        MessageEmbedPresentation.linkedImagePresentation(for: suppressed).visibleText
+            == url.absoluteString
+    )
+
+    let embedded = Message(
+        id: MessageID(rawValue: 105),
+        channelID: ChannelID(rawValue: 102),
+        author: author,
+        content: "Look \(url.absoluteString)",
+        embeds: [MessageEmbed(
+            type: "image",
+            url: url,
+            image: MessageEmbedMedia(url: url)
+        )]
+    )
+    #expect(MessageEmbedPresentation.linkedImagePresentation(for: embedded).images.isEmpty)
+    #expect(
+        MessageEmbedPresentation.linkedImagePresentation(for: embedded).visibleText
+            == embedded.content
+    )
+    #expect(LinkedImagePresentation(content: "<\(url.absoluteString)>").images.isEmpty)
+}
+
+@MainActor @Test
+func `Discord attachment GIF still displays when its embed has no renderable media`() throws {
+    let url = try #require(URL(string:
+        "https://media.discordapp.net/attachments/708718994214879262/1142397887863590920/576D3811-DF63-4D10-8488-42BE96B7270F.gif"
+    ))
+    let message = Message(
+        id: MessageID(rawValue: 106),
+        channelID: ChannelID(rawValue: 102),
+        author: User(
+            id: UserID(rawValue: 103),
+            username: "fixture",
+            displayName: "Fixture"
+        ),
+        content: url.absoluteString,
+        embeds: [MessageEmbed(type: "image", url: url)]
+    )
+
+    let presentation = MessageEmbedPresentation.linkedImagePresentation(for: message)
+    #expect(presentation.visibleText.isEmpty)
+    #expect(presentation.images.map(\.url) == [url])
+    #expect(NativeTimelineTextPlan.make(for: message).linkedImages == presentation.images)
+}
