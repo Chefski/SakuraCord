@@ -88,6 +88,17 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
         case reaction(String)
         case pollAnswer(Int)
 
+        // Keep message media playing while its row moves through the viewport.
+        // Small decorative animations still pause during scroll work.
+        var playsDuringScroll: Bool {
+            switch self {
+            case .linkedImage, .attachment:
+                true
+            default:
+                false
+            }
+        }
+
     }
 
     struct AnimatedMediaOverlayKey: Hashable {

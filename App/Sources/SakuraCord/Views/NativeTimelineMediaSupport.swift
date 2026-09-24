@@ -525,7 +525,7 @@ final class NativeTimelineMediaStore {
         animatedCache.setObject(
             media,
             forKey: key.cacheKey,
-            cost: decoded.estimatedByteCount
+            cost: decoded.storedByteCount
         )
         if let firstFrame = media.firstFrame {
             cacheImage(firstFrame, for: key)
@@ -581,7 +581,7 @@ final class NativeTimelineMediaStore {
                 animatedCache.setObject(
                     media,
                     forKey: key.cacheKey,
-                    cost: decoded.estimatedByteCount
+                    cost: decoded.storedByteCount
                 )
             }
             for completion in completions {

@@ -373,7 +373,9 @@ extension NativeTimelineCanvasView {
                 ),
                 frame: region.frame,
                 cornerRadius: region.reference.isEmoji ? 7 : 10,
-                isLooping: true
+                isLooping: true,
+                fillsFrame: !region.reference.isEmoji
+                    && !region.reference.isSticker
             )
         }
         let fillsFrame = MediaGalleryImagePresentation.fillsFrame(
@@ -644,7 +646,9 @@ extension NativeTimelineCanvasView {
             overlay.setHoverPlaybackEnabled(
                 item.key.role != .authorAvatarDecoration || hoveredRow == rowIndex
             )
-            overlay.setPlaybackSuppressed(suppressesHoverPresentation)
+            overlay.setPlaybackSuppressed(
+                suppressesHoverPresentation && !item.key.role.playsDuringScroll
+            )
             overlay.display(
                 item.image,
                 mediaFrame: localMediaFrame,
