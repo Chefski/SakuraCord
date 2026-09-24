@@ -1006,6 +1006,22 @@ extension NativeMessageTimelineCoordinator {
             let center = NotificationCenter.default
             observations = [
                 center.addObserver(
+                    forName: .NSCalendarDayChanged,
+                    object: nil, queue: .main
+                ) { [weak self] _ in
+                    MainActor.assumeIsolated {
+                        self?.scheduleModelRowsUpdate()
+                    }
+                },
+                center.addObserver(
+                    forName: NSApplication.didBecomeActiveNotification,
+                    object: nil, queue: .main
+                ) { [weak self] _ in
+                    MainActor.assumeIsolated {
+                        self?.scheduleModelRowsUpdate()
+                    }
+                },
+                center.addObserver(
                     forName: ProfileNameFontLoader.didLoadFonts,
                     object: nil, queue: .main
                 ) { [weak self] notification in
