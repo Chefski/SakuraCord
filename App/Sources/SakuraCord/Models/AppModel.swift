@@ -353,6 +353,7 @@ final class AppModel {
     var openThread: MessageThreadSummary?
     var openThreadStarter: User?
     var openThreadStartedAt: Date?
+    @ObservationIgnored var openThreadStarterMessageID: MessageID?
     var threadMessages: [Message] = [] {
         didSet {
             let oldRows = threadMessageRows
