@@ -88,6 +88,14 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
         case reaction(String)
         case pollAnswer(Int)
 
+        var playsOnHover: Bool {
+            switch self {
+            case .authorAvatar, .authorAvatarDecoration, .replyAvatar, .invocationAvatar, .reactionAvatar:
+                true
+            default:
+                false
+            }
+        }
     }
 
     struct AnimatedMediaOverlayKey: Hashable {

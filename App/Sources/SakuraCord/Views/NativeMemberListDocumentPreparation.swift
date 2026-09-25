@@ -52,6 +52,7 @@ extension NativeMemberListCanvasView {
         }
         updateTrackingAreas()
         window?.invalidateCursorRects(for: self)
+        updateVisibleOverlaysAndPrewarming()
     }
 
     @discardableResult

@@ -172,7 +172,8 @@ private struct DirectMessageRailButton: View {
                         channel: channel,
                         size: 44,
                         status: nil,
-                        animates: isHovering
+                        animates: true,
+                        isHovered: isHovering
                     )
                 }
             }
