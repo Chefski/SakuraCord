@@ -629,6 +629,21 @@ release previous uploads; frame timing and shared playback clocks remain with
 the presentation owner. In-memory cache budgets still account for the full
 decoded raster size.
 
+Emoji, sticker, and soundboard pickers share `NativePickerDocument`: an AppKit
+scroll document with exact row origins and binary viewport lookup, following
+the timeline's bounded presentation model. Only visible rows and one adjacent
+row on either side retain native views or SwiftUI hosts, recycled as they leave
+the viewport. Large scrollbar jumps do not
+instantiate intervening cells or depend on lazy height estimates. The existing
+sticker and soundboard cell views retain their controls. Emoji rows use native
+buttons, cached Core Text glyphs matching the existing emoji preview metrics, and
+the shared decoded-image loader and animation canvas. Selection, menus, media
+playback, accessibility, and activation policy remain with the cell owner;
+picker models retain catalog filtering, search, and account actions.
+Catalog updates preserve the visible row and its offset when that row survives.
+`PickerSectionRail` owns shared sidebar chrome, guild icons, and ordering/filter
+helpers; unknown catalogs remain reachable for loading and retry.
+
 The app's shared animation loader also stores prepared public-media frames in
 `MediaPipeline`'s existing bounded disk cache. Versioned keys include the source
 content hash and pixel budget; mapped files retain compressed frame bytes

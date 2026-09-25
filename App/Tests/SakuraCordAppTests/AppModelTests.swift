@@ -2156,7 +2156,8 @@ import UserNotifications
     let pending = try PendingDiscordCredential(
         Data("pending-session-credential-value".utf8)
     )
-    let provider = SuspendedBootstrapTestProvider(pendingCredential: pending)
+    let capabilities: Set<ChatCapability> = [.gifs, .stickers, .stickerSending, .forums]
+    let provider = SuspendedBootstrapTestProvider(pendingCredential: pending, capabilities: capabilities)
     let credentials = PendingCredentialRecordingStore()
     var openedAccountIDs: [String] = []
     let model = AppModel(
@@ -2192,6 +2193,7 @@ import UserNotifications
     #expect(openedAccountIDs == ["93000"])
     #expect(model.credentialHandle == CredentialHandle(accountID: "93000"))
     #expect(model.sessionState == .workspace)
+    #expect(model.supportedCapabilities == capabilities)
 }
 
 @MainActor
@@ -6673,6 +6675,7 @@ private actor LinkedChannelNavigationTestProvider: ChatProvider {
 }
 
 private actor SuspendedBootstrapTestProvider: PendingCredentialChatProvider {
+    private let capabilities: Set<ChatCapability>
     private let user: User
     private let channel = Channel(id: ChannelID(rawValue: 93001), guildID: nil, name: "general")
     private var bootstrapStarted = false
@@ -6698,6 +6701,7 @@ private actor SuspendedBootstrapTestProvider: PendingCredentialChatProvider {
     init(
         bootstrapError: String? = nil,
         pendingCredential: PendingDiscordCredential? = nil,
+        capabilities: Set<ChatCapability> = [],
         suspendsAuthentication: Bool = false,
         suspendsMessages: Bool = false,
         messagePage: MessagePage = MessagePage(messages: [], hasMoreBefore: false),
@@ -6710,9 +6714,14 @@ private actor SuspendedBootstrapTestProvider: PendingCredentialChatProvider {
         self.user = user
         self.bootstrapError = bootstrapError
         self.pendingCredential = pendingCredential
+        self.capabilities = capabilities
         self.suspendsAuthentication = suspendsAuthentication
         self.suspendsMessages = suspendsMessages
         self.messagePage = messagePage
+    }
+
+    func supports(_ capability: ChatCapability) async -> Bool {
+        capabilities.contains(capability)
     }
 
     func prepareAuthentication() async {
