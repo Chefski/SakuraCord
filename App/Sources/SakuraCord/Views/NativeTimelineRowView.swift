@@ -46,6 +46,17 @@ nonisolated enum NativeTimelineMarkdownChromeMetrics {
 }
 
 enum NativeTimelineTimestamp {
+    static func headerText(
+        for date: Date,
+        settings: InterfaceSettingsSnapshot = .defaults
+    ) -> String {
+        InterfaceTimestampFormatter.messageText(
+            for: date,
+            format: settings.timestampFormat,
+            includesSeconds: settings.includesTimestampSeconds
+        )
+    }
+
     static func text(
         for date: Date,
         settings: InterfaceSettingsSnapshot = .defaults,
@@ -520,6 +531,7 @@ struct NativeTimelineRowLayout {
     let pinnedAtFrame: CGRect?
     var pollLayout: NativeTimelinePollLayout?
     var pollResultFrame: CGRect?
+    var inviteRegions: [NativeTimelineInviteLayout] = []
 
     static func make(
         item: NativeMessageTimelineItem,
@@ -627,8 +639,8 @@ struct NativeTimelineRowLayout {
             for: message,
             model: model
         )
-        let usesBubbles = bubbleContext.isEnabled
-        let isOutgoingBubble = bubbleContext.isOutgoing
+        let usesBubbles = bubbleContext.isEnabled && !row.isResource
+        let isOutgoingBubble = bubbleContext.isOutgoing && !row.isResource
         let messageSpacing = CGFloat(model?.appearanceSettings.messageSpacing ?? AppearanceSettingsSnapshot.defaultMessageSpacing)
         let horizontalInset: CGFloat = searchContext == nil
             ? MessageRowLayoutMetrics.horizontalInset
@@ -665,8 +677,8 @@ struct NativeTimelineRowLayout {
             context: bubbleContext,
             preferredContentWidth: preferredBubbleContentWidth
         )
-        let contentX = bubbleColumn.contentX
-        let contentWidth = bubbleColumn.contentWidth
+        let contentX = row.isResource ? horizontalInset : bubbleColumn.contentX
+        let contentWidth = row.isResource ? width - horizontalInset * 2 : bubbleColumn.contentWidth
         let ordinaryContentWidth = max(
             80,
             width - contentX - horizontalInset
@@ -752,7 +764,7 @@ struct NativeTimelineRowLayout {
         var timestampFrame: CGRect?
         var editedFrame: CGRect?
         var loadingIndicatorFrame: CGRect?
-        let showsIncomingIdentity = !usesBubbles || bubbleContext.showsAvatar
+        let showsIncomingIdentity = !row.isResource && (!usesBubbles || bubbleContext.showsAvatar)
         let showsIncomingAvatar = !isGenerated
             && !isOutgoingBubble
             && showsIncomingIdentity
@@ -763,7 +775,7 @@ struct NativeTimelineRowLayout {
                 size: CGSize(width: avatarWidth, height: avatarWidth)
             )
         }
-        if row.startsGroup, !isGenerated, !isOutgoingBubble,
+        if row.startsGroup, !row.isResource, !isGenerated, !isOutgoingBubble,
            showsIncomingIdentity
         {
             let author = model.map {
@@ -810,7 +822,7 @@ struct NativeTimelineRowLayout {
             }
             headerX += 7
             let timestampFont = NSFont.preferredFont(forTextStyle: .caption1)
-            let timestamp = NativeTimelineTimestamp.text(
+            let timestamp = NativeTimelineTimestamp.headerText(
                 for: message.timestamp,
                 settings: model?.interfaceSettings ?? .defaults
             )
@@ -1000,6 +1012,19 @@ struct NativeTimelineRowLayout {
         }
 
         var embedRegions: [EmbedRegion] = []
+        var componentLayouts: [NativeTimelineComponentLayout] = []
+        var inviteRegions: [NativeTimelineInviteLayout] = []
+        if !usesComponentsV2 {
+            for (index, reference) in row.serverInvites.enumerated() {
+                let region = NativeTimelineInviteLayout(reference: reference, index: index,
+                    origin: CGPoint(x: contentX, y: verticalOffset + (hasRichContent ? 8 : 0)),
+                    maximumWidth: inlineMediaMaximumWidth, model: model,
+                    isOwnMessage: message.author.id == model?.snapshot?.currentUser.id)
+                inviteRegions.append(region)
+                verticalOffset = region.frame.maxY
+                hasRichContent = true
+            }
+        }
         var sakuraCordDeepLinkRegions: [SakuraCordDeepLinkRegion] = []
         if !usesComponentsV2 {
             for (index, deepLink) in row.sakuraCordDeepLinks.enumerated() {
@@ -1023,6 +1048,22 @@ struct NativeTimelineRowLayout {
             embedRegions.reserveCapacity(visibleEmbeds.count)
             for embed in visibleEmbeds {
                 let embedY = verticalOffset + (hasRichContent ? 8 : 0)
+                if embed.type == "components" {
+                    if let region = NativeTimelineComponentLayout.make(
+                        message: message,
+                        components: embed.components ?? [],
+                        model: model,
+                        origin: CGPoint(x: contentX, y: embedY),
+                        maximumWidth: inlineMediaMaximumWidth,
+                        integratesWithBubble: usesBubbles,
+                        drawsTopSeparator: usesBubbles && hasRichContent
+                    ) {
+                        componentLayouts.append(region)
+                        verticalOffset = region.frame.maxY
+                        hasRichContent = true
+                    }
+                    continue
+                }
                 guard let region = NativeTimelineEmbedLayout.make(
                     embed: embed,
                     message: message,
@@ -1040,7 +1081,6 @@ struct NativeTimelineRowLayout {
         }
         let embedFrames = embedRegions.map(\.frame)
 
-        var componentLayouts: [NativeTimelineComponentLayout] = []
         let componentY = verticalOffset + (hasRichContent ? 8 : 0)
         if let componentLayout = NativeTimelineComponentLayout.make(
             message: message,
@@ -1327,11 +1367,15 @@ struct NativeTimelineRowLayout {
             failedFrame: failedFrame,
             pinnedAtFrame: pinnedAtFrame,
             pollLayout: pollLayout,
-            pollResultFrame: pollResultFrame
+            pollResultFrame: pollResultFrame,
+            inviteRegions: inviteRegions
         )
         }
     }
 
+}
+
+extension NativeTimelineRowLayout {
     private static func message(
         _ row: MessageRowPresentation,
         isUnreadBoundary: Bool,

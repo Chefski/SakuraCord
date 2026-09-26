@@ -37,6 +37,8 @@ nonisolated struct ConversationPermissionBasis: Sendable {
     let overwritePrincipals: PermissionOverwritePrincipals
     let hasCurrentRoleIdentity: Bool
     let currentUserIsPending: Bool
+    var currentUserRequiresOnboarding: Bool = false
+    var currentUserOnboardingIsKnown: Bool = true
 }
 
 struct CommandMemberQuery: Hashable {
@@ -149,10 +151,12 @@ final class AppModel {
 
     @ObservationIgnored let serverRailPresentation =
         ServerRailPresentationStore()
+    @ObservationIgnored let onboarding = GuildOnboardingStore()
+    @ObservationIgnored let serverInvites = ServerInvitePresentationStore()
     @ObservationIgnored let voiceSidebarPresentation =
         VoiceSidebarPresentationStore()
     var serverRailGuildsByID: [GuildID: Guild] = [:] {
-        didSet { serverRailPresentation.updateAvailableGuildIDs(serverRailGuildsByID.keys) }
+        didSet { updateServerRailMembership(replacing: oldValue) }
     }
     var serverRailItems: [GuildRailItem] = [] {
         didSet {
@@ -353,6 +357,7 @@ final class AppModel {
     var openThread: MessageThreadSummary?
     var openThreadStarter: User?
     var openThreadStartedAt: Date?
+    @ObservationIgnored var openThreadStarterMessageID: MessageID?
     var threadMessages: [Message] = [] {
         didSet {
             let oldRows = threadMessageRows
@@ -644,7 +649,9 @@ final class AppModel {
                 roleIDs: roleIDs
             ),
             hasCurrentRoleIdentity: storedRoleIDs != nil || member != nil,
-            currentUserIsPending: member?.isPending == true
+            currentUserIsPending: onboardingMember(in: guildID)?.isPending == true,
+            currentUserRequiresOnboarding: requiresOnboarding(in: guildID),
+            currentUserOnboardingIsKnown: !guild.features.contains("GUILD_ONBOARDING") || onboardingMember(in: guildID)?.flags != nil
         )
     }
 
@@ -656,29 +663,6 @@ final class AppModel {
             for: channel,
             permissionBasis: permissionBasis
         )
-    }
-
-    nonisolated static func resolveConversationAccess(
-        for channel: Channel,
-        permissionBasis: ConversationPermissionBasis?
-    ) -> ConversationAccess {
-        guard channel.guildID != nil else {
-            return .readable(canSend: !channel.isOfficialSystemDirectMessage)
-        }
-        guard let permissionBasis else { return .checking }
-        let permissions = ConversationPermissionResolver.effectivePermissions(
-            guild: permissionBasis.guild,
-            channel: channel,
-            resolvedBasePermissions: permissionBasis.resolvedBasePermissions,
-            overwritePrincipals: permissionBasis.overwritePrincipals,
-            hasCurrentRoleIdentity: permissionBasis.hasCurrentRoleIdentity
-        )
-        if channel.kind == .voice {
-            return ConversationPermissionResolver.voiceChannelAccess(
-                effectivePermissions: permissions
-            )
-        }
-        return ConversationPermissionResolver.channelAccess(effectivePermissions: permissions)
     }
 
     /// Mirrors Discord desktop's source-side forwarding guard for the state
@@ -895,15 +879,20 @@ final class AppModel {
             roles: guildRoles,
             currentRoleIDs: currentUserRoleIDsByGuild[guildID]
         )
-        return ConversationPermissionResolver.threadAccess(
+        let access = ConversationPermissionResolver.threadAccess(
             effectivePermissions: permissions,
             isLocked: thread.isLocked
         )
+        if requiresOnboarding(in: guildID) || onboardingMember(in: guildID)?.isPending == true {
+            return access.isReadable ? .readable(canSend: false) : access
+        }
+        return access
     }
     var conversationNavigationHistory = ConversationNavigationHistory()
     var selectedChannelID: ChannelID? {
         didSet {
             guard selectedChannelID != oldValue else { return }
+            onboarding.presentedGuildID = nil
             refreshServerRailSelection()
             recordConversationNavigation()
             timelineSpoilerRevealStore.reset()

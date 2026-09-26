@@ -891,6 +891,7 @@ private struct MockFixtureAssembly {
             auroraID: auroraID,
             nativeLabID: nativeLabID,
             base: base,
+            now: now,
             nova: nova,
             maya: maya,
             theo: theo,

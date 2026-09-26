@@ -643,7 +643,7 @@ extension NativeTimelineCanvasView {
             }
             overlay.frame = hostFrame
             overlay.setHoverPlaybackEnabled(
-                item.key.role != .authorAvatarDecoration || hoveredRow == rowIndex
+                !item.key.role.playsOnHover || hoveredRow == rowIndex
             )
             overlay.setPlaybackSuppressed(
                 suppressesHoverPresentation && !item.key.role.playsDuringScroll
@@ -689,11 +689,11 @@ extension NativeTimelineCanvasView {
 
     }
 
-    func updateAvatarDecorationPlayback() {
+    func updateAvatarPlayback() {
         let hoveredIdentifier = hoveredRow.flatMap {
             items.indices.contains($0) ? items[$0].identifier : nil
         }
-        for (key, overlay) in animatedMediaOverlays where key.role == .authorAvatarDecoration {
+        for (key, overlay) in animatedMediaOverlays where key.role.playsOnHover {
             overlay.setHoverPlaybackEnabled(key.row == hoveredIdentifier && !suppressesHoverPresentation)
         }
     }

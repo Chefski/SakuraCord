@@ -452,7 +452,7 @@ extension NativeTimelineCanvasView {
     ) -> MessageAccessibilityHeader {
         let message = row.message
         let author = model?.authorPresentation(for: message).user ?? message.author
-        let timestamp = NativeTimelineTimestamp.text(
+        let timestamp = NativeTimelineTimestamp.headerText(
             for: message.timestamp,
             settings: model?.interfaceSettings ?? .defaults
         )
@@ -1185,6 +1185,7 @@ extension NativeTimelineCanvasView {
             group.setAccessibilityChildren([button])
             children.append(group)
         }
+        appendInviteAccessibility(message: message, to: &children, layout: layout, rowIndex: rowIndex, parent: parent)
     }
 
     func appendComponentAccessibility(

@@ -183,8 +183,10 @@ final class MessageRowPresentation: Identifiable, Equatable, Sendable {
     let isReplyAvailable: Bool
     let textPlan: NativeTimelineTextPlan
     let sakuraCordDeepLinks: [SakuraCordDeepLink]
+    let serverInvites: [ServerInviteReference]
     let searchContext: MessageSearchRowContext?
     let pinnedAt: Date?
+    let isResource: Bool
 
     nonisolated var identity: MessageRowIdentity {
         MessageRowIdentity(message)
@@ -206,9 +208,11 @@ final class MessageRowPresentation: Identifiable, Equatable, Sendable {
         isReplyAvailable: Bool,
         textPlan: NativeTimelineTextPlan? = nil,
         searchContext: MessageSearchRowContext? = nil,
-        pinnedAt: Date? = nil
+        pinnedAt: Date? = nil,
+        isResource: Bool = false
     ) {
         self.message = message
+        self.isResource = isResource
         self.startsGroup = startsGroup
         self.endsGroup = endsGroup
         self.startsDay = startsDay
@@ -220,6 +224,7 @@ final class MessageRowPresentation: Identifiable, Equatable, Sendable {
             self.isReplyAvailable = false
         }
         self.textPlan = textPlan ?? NativeTimelineTextPlan.make(for: message)
+        serverInvites = DiscordMarkdown.serverInviteReferences(in: message.content)
         sakuraCordDeepLinks = SakuraCordDeepLinkPresentation.all(
             in: message.content
         )
@@ -244,6 +249,7 @@ final class MessageRowPresentation: Identifiable, Equatable, Sendable {
             && lhs.sakuraCordDeepLinks == rhs.sakuraCordDeepLinks
             && lhs.searchContext == rhs.searchContext
             && lhs.pinnedAt == rhs.pinnedAt
+            && lhs.isResource == rhs.isResource
     }
 }
 
@@ -878,7 +884,8 @@ nonisolated enum MessageGrouping {
             isReplyAvailable: row.isReplyAvailable,
             textPlan: row.textPlan,
             searchContext: row.searchContext,
-            pinnedAt: row.pinnedAt
+            pinnedAt: row.pinnedAt,
+            isResource: row.isResource
         )
     }
 
