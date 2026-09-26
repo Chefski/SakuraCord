@@ -269,8 +269,6 @@ extension AppModel {
         quickSwitcherDraftChannelIDs = []
         snapshot = nil
         replaceServerRailGuilds([:])
-        serverRailHomeIsUnread = false
-        serverRailHomeMentionCount = 0
         serverRailItems = []
         emojisByGuild = [:]
         loadingEmojiGuildIDs = []
@@ -541,6 +539,7 @@ extension AppModel {
         failedReactionReactorLoads = [:]
         resetForumLoadAndPresentationState()
         await composer.reset()
+        await onboarding.draftWrite?.value
     }
 }
 

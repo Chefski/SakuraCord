@@ -2050,6 +2050,48 @@ struct AccountReadStateModelTests {
         #expect(model.mentions(channelID: dmID) == 2)
     }
 
+    @Test func `muted DM remains unacknowledged for the server rail`() {
+        let dmID = ChannelID(rawValue: 301)
+        let model = AccountReadStateModel()
+        model.reset(accountID: "account")
+        model.configure(
+            accountID: "account",
+            guilds: [],
+            channels: [
+                Channel(
+                    id: dmID,
+                    guildID: nil,
+                    name: "Muted DM",
+                    kind: .directMessage,
+                    lastMessageID: MessageID(rawValue: 20)
+                )
+            ],
+            readStates: [
+                ChannelReadState(
+                    channelID: dmID,
+                    lastAcknowledgedMessageID: MessageID(rawValue: 10)
+                )
+            ],
+            notificationSettings: [
+                GuildNotificationSettings(
+                    guildID: nil,
+                    channelOverrides: [
+                        ChannelNotificationOverride(channelID: dmID, isMuted: true)
+                    ]
+                )
+            ]
+        )
+
+        #expect(!model.unread(channelID: dmID))
+        #expect(model.unacknowledgedDirectMessageChannelIDs() == [dmID])
+
+        model.applyRemote(ChannelReadState(
+            channelID: dmID,
+            lastAcknowledgedMessageID: MessageID(rawValue: 20)
+        ))
+        #expect(model.unacknowledgedDirectMessageChannelIDs().isEmpty)
+    }
+
     @Test func `account reset fully isolates state token settings and presentations`() {
         let model = makeModel(latest: 12, acknowledged: 10, mentions: 2)
         _ = model.updatePresentation(

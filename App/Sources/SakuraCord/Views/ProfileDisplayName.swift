@@ -50,7 +50,6 @@ struct ProfileDisplayName: View {
                     .textSelection(.enabled)
             }
         }
-        .accessibilityLabel(name)
         .help(fontError ?? name)
         .task(id: FontRequest(definition: definition, size: size)) {
             loadedFont = nil

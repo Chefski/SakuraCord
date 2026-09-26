@@ -95,6 +95,7 @@ private struct DirectMessageInboxRow: View {
     let member: Member?
     let call: PrivateCall?
     let animatesAvatar: Bool
+    @State private var isHovered = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -102,7 +103,8 @@ private struct DirectMessageInboxRow: View {
                 channel: channel,
                 size: 32,
                 status: channel.kind == .directMessage ? member?.status ?? .offline : nil,
-                animates: animatesAvatar
+                animates: animatesAvatar,
+                isHovered: isHovered
             )
 
             VStack(alignment: .leading, spacing: 2) {
@@ -149,7 +151,7 @@ private struct DirectMessageInboxRow: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(.red, in: Capsule())
+                    .background(Color(hex: 0xF23F43), in: Capsule())
             } else if channel.unreadCount > 0 {
                 Circle()
                     .fill(.primary)
@@ -159,6 +161,7 @@ private struct DirectMessageInboxRow: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityValue(accessibilityValue)
+        .onModalHover { isHovered = $0 }
         .overlay {
             ChannelContextMenuBridge(
                 isSelected: model.selectedChannelID == channel.id,
@@ -219,8 +222,16 @@ struct DirectMessageAvatar: View {
     let size: CGFloat
     let status: PresenceStatus?
     let animates: Bool
+    var isHovered: Bool?
+    @State private var isPointerInside = false
 
     var body: some View {
+        content
+            .onModalHover { isPointerInside = $0 }
+    }
+
+    @ViewBuilder
+    private var content: some View {
         if let status {
             AvatarPresenceView(
                 status: status,
@@ -237,13 +248,25 @@ struct DirectMessageAvatar: View {
     @ViewBuilder
     private var avatar: some View {
         if let iconURL = channel.iconURL {
-            AvatarView(name: channel.name, url: iconURL, size: size, animates: animates)
+            AvatarView(name: channel.name, url: iconURL, size: size, animates: animates, isHovered: isHovered ?? isPointerInside)
         } else if channel.kind == .directMessage, let recipient = channel.recipients.first {
             AvatarView(
                 name: recipient.displayName,
                 url: recipient.avatarURL,
                 size: size,
-                animates: animates
+                animates: animates,
+                isHovered: isHovered ?? isPointerInside
+            )
+        } else if channel.kind == .groupDirectMessage,
+                  channel.recipients.count >= 2
+        {
+            GroupDirectMessageAvatar(
+                first: channel.recipients[0],
+                second: channel.recipients[1],
+                name: channel.name,
+                size: size,
+                animates: animates,
+                isHovered: isHovered ?? isPointerInside
             )
         } else {
             Image(systemName: "person.2.fill")
@@ -253,5 +276,55 @@ struct DirectMessageAvatar: View {
                 .background(SakuraCordAccentColor.color.gradient, in: Circle())
                 .accessibilityLabel("\(channel.name) group avatar")
         }
+    }
+}
+
+private struct GroupDirectMessageAvatar: View {
+    let first: User
+    let second: User
+    let name: String
+    let size: CGFloat
+    let animates: Bool
+    let isHovered: Bool
+
+    private var backSize: CGFloat { size * 0.68 }
+    private var frontSize: CGFloat { size * 0.75 }
+    private var frontOrigin: CGFloat { size - frontSize }
+    private var clearance: CGFloat { size * 0.05 }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            AvatarView(
+                name: first.displayName,
+                url: first.avatarURL,
+                size: backSize,
+                animates: animates,
+                isHovered: isHovered
+            )
+            .mask {
+                Path { path in
+                    path.addRect(CGRect(x: 0, y: 0, width: backSize, height: backSize))
+                    path.addEllipse(in: CGRect(
+                        x: frontOrigin - clearance,
+                        y: frontOrigin - clearance,
+                        width: frontSize + 2 * clearance,
+                        height: frontSize + 2 * clearance
+                    ))
+                }
+                .fill(.white, style: FillStyle(eoFill: true))
+            }
+
+            AvatarView(
+                name: second.displayName,
+                url: second.avatarURL,
+                size: frontSize,
+                animates: animates,
+                isHovered: isHovered
+            )
+            .offset(x: frontOrigin, y: frontOrigin)
+        }
+        .frame(width: size, height: size, alignment: .topLeading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(name) group avatar")
     }
 }

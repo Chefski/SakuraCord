@@ -46,55 +46,6 @@ struct EmojiPickerHeader: View {
     }
 }
 
-struct EmojiPickerButton: View {
-    let cell: EmojiPickerCell
-    let isFavorite: Bool
-    let skinTone: NativeEmojiSkinTone
-    let interaction: EmojiPickerInteractionModel
-    let select: (Bool) -> Void
-    let toggleFavorite: () -> Void
-    var lockReason: String?
-
-    var body: some View {
-        Button {
-            select(NSEvent.modifierFlags.contains(.shift))
-        } label: {
-            cell.item.preview(skinTone: skinTone)
-                .frame(width: EmojiPickerGridMetrics.cellSize, height: EmojiPickerGridMetrics.cellSize)
-                .opacity(lockReason == nil ? 1 : 0.4)
-                .overlay(alignment: .bottomTrailing) {
-                    if lockReason != nil {
-                        Image(systemName: "lock.fill").font(.caption2).padding(3)
-                    }
-                }
-        }
-        .buttonStyle(.plain)
-        .focusable(false)
-        .background {
-            ConcentricRectangle(cornerRadius: 9, style: .continuous)
-                .fill(
-                    interaction.selectedCellID == cell.id
-                        ? Color.primary.opacity(0.13)
-                        : .clear
-                )
-        }
-        .contentShape(Rectangle())
-        .onModalHover { hovering in
-            guard hovering else { return }
-            interaction.select(cell)
-        }
-        .help(lockReason.map { "\(cell.item.shortcode): \($0)" } ?? cell.item.shortcode)
-        .overlay {
-            EmojiPickerContextMenuBridge(
-                item: cell.item,
-                skinTone: skinTone,
-                isFavorite: isFavorite,
-                toggleFavorite: toggleFavorite
-            )
-        }
-    }
-}
-
 @MainActor
 @Observable
 final class EmojiPickerInteractionModel {
@@ -389,7 +340,7 @@ struct EmojiPickerView: View {
 
     var body: some View {
         GeometryReader { _ in
-            ScrollViewReader { proxy in
+            NativePickerScrollReader { proxy in
                 VStack(alignment: .leading, spacing: 0) {
                     EmojiPickerSearchField(
                         text: searchQuery,
@@ -418,7 +369,7 @@ struct EmojiPickerView: View {
                         )
                         Divider()
                         VStack(spacing: 0) {
-                            EmojiPickerDocumentScrollView(
+                            EmojiPickerDocumentView(
                                 document: document,
                                 interaction: interaction,
                                 skinTone: selectedSkinTone,
@@ -576,7 +527,6 @@ struct EmojiPickerView: View {
     }
 
     private func sectionBecameVisible(_ section: EmojiDocumentSection) {
-        document.markVisible(section)
         guard case let .guild(guildID) = section,
               model.emojisByGuild[guildID] == nil,
               !model.loadingEmojiGuildIDs.contains(guildID),
@@ -600,7 +550,7 @@ struct EmojiPickerView: View {
         }
     }
 
-    private func jump(to section: EmojiDocumentSection, proxy: ScrollViewProxy) {
+    private func jump(to section: EmojiDocumentSection, proxy: NativePickerScrollPosition) {
         document.setQuery("")
         interaction.synchronize(with: document.selectableCells)
         document.visibleSection = section
@@ -616,7 +566,7 @@ struct EmojiPickerView: View {
         }
     }
 
-    private func jumpToNative(proxy: ScrollViewProxy) {
+    private func jumpToNative(proxy: NativePickerScrollPosition) {
         let section = EmojiDocumentSection.native(.smileys)
         document.setQuery("")
         interaction.synchronize(with: document.selectableCells)
@@ -629,7 +579,7 @@ struct EmojiPickerView: View {
 
     private func handleKeyPress(
         _ press: KeyPress,
-        proxy: ScrollViewProxy
+        proxy: NativePickerScrollPosition
     ) -> KeyPress.Result {
         switch press.key {
         case .leftArrow:
@@ -653,7 +603,7 @@ struct EmojiPickerView: View {
 
     private func navigate(
         _ direction: EmojiPickerGridDirection,
-        proxy: ScrollViewProxy
+        proxy: NativePickerScrollPosition
     ) -> KeyPress.Result {
         guard
             let cell = document.destinationCell(
@@ -673,39 +623,49 @@ struct EmojiPickerView: View {
     }
 }
 
-private struct EmojiPickerDocumentScrollView: View {
+private struct EmojiPickerDocumentView: View {
     let document: EmojiPickerDocumentStore
     let interaction: EmojiPickerInteractionModel
     let skinTone: NativeEmojiSkinTone
-    let proxy: ScrollViewProxy
+    let proxy: NativePickerScrollPosition
     let choose: (EmojiPickerCell, Bool) -> Void
     let toggleFavorite: (EmojiPickerItem) -> Void
     let retry: (GuildID) -> Void
     let becameVisible: (EmojiDocumentSection) -> Void
     let lockReason: (EmojiPickerItem) -> String?
 
+    @State private var measurement = NativePickerRowMeasurement()
+
+    private func rowView(_ row: EmojiDocumentRow) -> EmojiDocumentRowView {
+        EmojiDocumentRowView(
+            row: row, skinTone: skinTone, interaction: interaction,
+            isFavorite: document.isFavorite, choose: choose,
+            toggleFavorite: toggleFavorite, retry: retry,
+            lockReason: lockReason
+        )
+    }
+
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                ForEach(document.rows) { row in
-                    EmojiDocumentRowView(
-                        row: row,
-                        skinTone: skinTone,
-                        interaction: interaction,
-                        isFavorite: document.isFavorite,
-                        choose: choose,
-                        toggleFavorite: toggleFavorite,
-                        retry: retry,
-                        becameVisible: becameVisible,
-                        lockReason: lockReason
-                    )
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .id(row.id)
-                }
-            }
-            .frame(maxWidth: .infinity)
-        }
-        .contentMargins(.horizontal, 0)
+        // Native rows participate in the same observable keyboard/hover selection.
+        _ = interaction.selectedCellID
+        return NativePickerDocument(
+            rows: document.rows,
+            revision: document.revision,
+            position: proxy,
+            rowHeight: { row, width in
+                if case .emojis = row.content { return EmojiPickerGridMetrics.cellSize }
+                return measurement.height(key: "\(row.id):\(row.content)", width: width) { rowView(row) }
+            },
+            becameVisible: { row in
+                if case .header = row.content { document.markVisible(row.section) }
+                becameVisible(row.section)
+            },
+            didScrollTo: { document.markVisible($0.section) },
+            nativeContent: { row, reused, environment in
+                rowView(row).makeNativeView(reusing: reused, environment: environment)
+            },
+            content: rowView
+        )
         .onChange(of: document.query) { _, query in
             interaction.synchronize(with: document.selectableCells)
             guard !query.isEmpty else { return }
@@ -974,6 +934,7 @@ final class EmojiPickerDocumentStore {
         }
     }
 
+    private(set) var revision = 0
     private(set) var rows: [EmojiDocumentRow] = []
     private(set) var selectableCells: [EmojiPickerCell] = []
     private(set) var guilds: [Guild] = []
@@ -1031,9 +992,9 @@ final class EmojiPickerDocumentStore {
             }
         }
         // Unresolved guilds stay visible so their sections can load or retry.
-        let guilds = eligibleGuilds.filter { guild in
-            emojisByGuild[guild.id]?.contains(where: \.isAvailable) ?? true
-        }
+        let guilds = PickerSectionGuildOrdering.retainingNonemptyCatalogs(
+            eligibleGuilds, catalogs: emojisByGuild, isAvailable: \.isAvailable
+        )
         let visibleGuildIDs = Set(guilds.map(\.id))
         let loadingGuilds = model.loadingEmojiGuildIDs.intersection(visibleGuildIDs)
         let errorsByGuild = model.emojiLoadErrorsByGuild.filter {
@@ -1096,6 +1057,7 @@ final class EmojiPickerDocumentStore {
     }
 
     private func rebuild() {
+        revision &+= 1
         rows = sections().flatMap(rows(for:))
         if !rows.contains(where: { $0.section == visibleSection }), let first = rows.first {
             visibleSection = first.section

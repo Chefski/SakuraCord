@@ -12,7 +12,6 @@ struct EmojiDocumentRowView: View {
     let choose: (EmojiPickerCell, Bool) -> Void
     let toggleFavorite: (EmojiPickerItem) -> Void
     let retry: (GuildID) -> Void
-    let becameVisible: (EmojiDocumentSection) -> Void
     var lockReason: (EmojiPickerItem) -> String? = { _ in nil }
 
     var body: some View {
@@ -21,32 +20,9 @@ struct EmojiDocumentRowView: View {
             case let .header(title, count):
                 EmojiPickerHeader(title: title, count: count, horizontalInset: 6)
                     .padding(.top, 8)
-                    .onAppear { becameVisible(row.section) }
             case let .emojis(cells):
-                HStack(spacing: 0) {
-                    ForEach(cells) { cell in
-                        EmojiPickerButton(
-                            cell: cell,
-                            isFavorite: isFavorite(cell.item),
-                            skinTone: skinTone,
-                            interaction: interaction,
-                            select: { choose(cell, $0) },
-                            toggleFavorite: { toggleFavorite(cell.item) },
-                            lockReason: lockReason(cell.item)
-                        )
-                        .frame(maxWidth: .infinity)
-                    }
-                    if cells.count < EmojiPickerDocumentStore.itemsPerRow {
-                        ForEach(cells.count ..< EmojiPickerDocumentStore.itemsPerRow, id: \.self) { _ in
-                            Color.clear
-                                .frame(
-                                    width: EmojiPickerGridMetrics.cellSize,
-                                    height: EmojiPickerGridMetrics.cellSize
-                                )
-                                .frame(maxWidth: .infinity)
-                        }
-                    }
-                }
+                nativeRow(cells)
+                .frame(height: EmojiPickerGridMetrics.cellSize)
                 .frame(maxWidth: .infinity)
             case let .empty(message):
                 Text(message)
@@ -73,6 +49,25 @@ struct EmojiDocumentRowView: View {
                 .frame(maxWidth: .infinity, minHeight: 42)
             }
         }
+    }
+
+    func makeNativeView(reusing reused: NSView?, environment: EnvironmentValues) -> NSView? {
+        guard case .emojis(let cells) = row.content else { return nil }
+        let view = reused as? NativeEmojiPickerRowView ?? NativeEmojiPickerRowView()
+        view.configure(nativeRow(cells), colorScheme: environment.colorScheme,
+            animates: !environment.accessibilityReduceMotion && environment.accessibilityPlayAnimatedImages,
+            isEnabled: environment.isEnabled)
+        return view
+    }
+
+    private func nativeRow(_ cells: [EmojiPickerCell]) -> NativeEmojiPickerRow {
+        NativeEmojiPickerRow(
+            cells: cells, skinTone: skinTone,
+            selectedCellID: interaction.selectedCellID,
+            isFavorite: isFavorite, choose: choose,
+            hover: interaction.select, toggleFavorite: toggleFavorite,
+            lockReason: lockReason
+        )
     }
 }
 
@@ -143,64 +138,55 @@ struct EmojiDocumentSidebar: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            GeometryReader { _ in
-                ScrollView {
-                    LazyVStack(spacing: 2) {
-                        if showsFavorites {
-                            PickerSectionBookmark(
-                                section: .favorites, visibleSection: visibleSection,
-                                help: "Favorites", jump: jump
-                            ) { Image(systemName: "star.fill") }
-                        }
-                        if showsFrequentlyUsed {
-                            PickerSectionBookmark(
-                                section: .frequent, visibleSection: visibleSection,
-                                help: "Frequently Used", jump: jump
-                            ) { Image(systemName: "clock.fill") }
-                        }
-
-                        if !guilds.isEmpty {
-                            if showsFavorites || showsFrequentlyUsed {
-                                Divider()
-                                    .frame(width: 28)
-                                    .padding(.vertical, 2)
-                            }
-
-                            ForEach(guilds) { guild in
-                                PickerSectionBookmark(
-                                    section: .guild(guild.id), visibleSection: visibleSection,
-                                    help: guild.name, jump: jump
-                                ) { EmojiGuildBookmarkIcon(guild: guild, animates: false) }
-                            }
-                        }
-
-                        VStack(spacing: 2) {
-                            if showsFavorites || showsFrequentlyUsed || !guilds.isEmpty {
-                                Divider()
-                                    .frame(width: 28)
-                                    .padding(.vertical, 2)
-                            }
-
-                            ForEach(NativeEmojiCategory.allCases) { category in
-                                PickerSectionBookmark(
-                                    section: .native(category), visibleSection: visibleSection,
-                                    help: category.title, jump: jump
-                                ) {
-                                    Text(category.symbol)
-                                        .font(.system(size: 18))
-                                        .frame(width: 28, height: 28, alignment: .center)
-                                }
-                            }
-                        }
-                        .onAppear { nativeCategoriesAreVisible = true }
-                        .onDisappear { nativeCategoriesAreVisible = false }
-                    }
-                    .scrollTargetLayout()
-                    .padding(.vertical, 4)
-                    .frame(maxWidth: .infinity, alignment: .center)
+            PickerSectionRail(scrollPosition: $scrollPosition) {
+                if showsFavorites {
+                    PickerSectionBookmark(
+                        section: .favorites, visibleSection: visibleSection,
+                        help: "Favorites", jump: jump
+                    ) { Image(systemName: "star.fill") }
                 }
-                .scrollPosition($scrollPosition)
-                .scrollIndicators(.never)
+                if showsFrequentlyUsed {
+                    PickerSectionBookmark(
+                        section: .frequent, visibleSection: visibleSection,
+                        help: "Frequently Used", jump: jump
+                    ) { Image(systemName: "clock.fill") }
+                }
+
+                if !guilds.isEmpty {
+                    if showsFavorites || showsFrequentlyUsed {
+                        Divider()
+                            .frame(width: 28)
+                            .padding(.vertical, 2)
+                    }
+
+                    ForEach(guilds) { guild in
+                        PickerSectionBookmark(
+                            section: .guild(guild.id), visibleSection: visibleSection,
+                            help: guild.name, jump: jump
+                        ) { PickerGuildBookmarkIcon(guild: guild) }
+                    }
+                }
+
+                VStack(spacing: 2) {
+                    if showsFavorites || showsFrequentlyUsed || !guilds.isEmpty {
+                        Divider()
+                            .frame(width: 28)
+                            .padding(.vertical, 2)
+                    }
+
+                    ForEach(NativeEmojiCategory.allCases) { category in
+                        PickerSectionBookmark(
+                            section: .native(category), visibleSection: visibleSection,
+                            help: category.title, jump: jump
+                        ) {
+                            Text(category.symbol)
+                                .font(.system(size: 18))
+                                .frame(width: 28, height: 28, alignment: .center)
+                        }
+                    }
+                }
+                .onAppear { nativeCategoriesAreVisible = true }
+                .onDisappear { nativeCategoriesAreVisible = false }
             }
 
             if showsNativeJumpButton {
@@ -215,29 +201,6 @@ struct EmojiDocumentSidebar: View {
             }
         }
         .frame(width: EmojiSidebarLayout.railWidth)
-    }
-}
-
-struct EmojiGuildBookmarkIcon: View {
-    let guild: Guild
-    var animates = true
-
-    var body: some View {
-        Group {
-            if let url = guild.iconURL {
-                if animates {
-                    AnimatedRemoteImage(url: url)
-                } else {
-                    StaticRemoteImage(url: url, maximumPixelDimension: 64)
-                }
-            } else {
-                Text(guild.name.prefix(2).uppercased())
-                    .font(.caption.weight(.bold))
-            }
-        }
-        .frame(width: 28, height: 28, alignment: .center)
-        .background(Color.secondary.opacity(0.12))
-        .clipShape(ConcentricRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 

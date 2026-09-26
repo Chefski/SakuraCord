@@ -6,6 +6,7 @@ struct ProfileCustomStatusControl: View {
     let profile: UserProfile
     let surfaceColor: Color
     let width: CGFloat
+    var isExpandedProfile = false
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.locale) private var locale
     @Environment(\.isEnabled) private var isEnabled
@@ -16,7 +17,12 @@ struct ProfileCustomStatusControl: View {
         let showsEditAffordance = isHovered && isEnabled && editor.canEditWidgets
 
         Button { isPresented = true } label: {
-            ProfileStatusBubble(text: profile.customStatus ?? String(localized: "Add Status", bundle: #bundle), surfaceColor: surfaceColor, width: width, keepsExpanded: isHovered || isPresented)
+            ProfileStatusBubble(
+                text: profile.customStatus ?? String(localized: "Add Status", bundle: #bundle),
+                surfaceColor: surfaceColor, width: width,
+                keepsExpanded: isHovered || isPresented,
+                isExpandedProfile: isExpandedProfile
+            )
                 .brightness(showsEditAffordance ? -0.45 : 0)
                 .animation(.easeOut(duration: 0.12), value: showsEditAffordance)
                 .allowsHitTesting(false)

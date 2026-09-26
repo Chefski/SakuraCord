@@ -84,6 +84,8 @@ extension AppModel {
 
     func invalidateAccountSession() {
         accountSessionGeneration &+= 1
+        serverInvites.reset()
+        onboarding.reset()
     }
 
     func installAccountSession(
@@ -256,6 +258,7 @@ struct ProfilePresentationState: Identifiable {
     var id: UUID { requestID }
     let requestID: UUID
     var member: Member
+    let isCurrentUser: Bool
     var profile: UserProfile?
     var isLoading: Bool
     var errorMessage: String?

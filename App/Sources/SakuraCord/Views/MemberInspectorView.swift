@@ -417,7 +417,7 @@ struct MemberRow: View {
 
                 if showsContents {
                     HStack(spacing: 8) {
-                        MemberAvatar(member: member)
+                        MemberAvatar(member: member, isHovered: isHovered)
                         VStack(alignment: .leading, spacing: 2) {
                             HStack(spacing: 5) {
                                 NameRoleColorIndicator(colorHex: MessageAuthorPresentation.topRoleColor(in: member.roles))
@@ -443,13 +443,24 @@ struct MemberRow: View {
                                     PrimaryGuildTag(identity: identity, tag: tag)
                                 }
                             }
-                            if let activity = member.activityText, !activity.isEmpty {
-                                ProfileStatusTextView(
-                                    source: activity,
-                                    isExpanded: false,
-                                    fontSize: 12,
-                                    usesSecondaryColor: true
-                                )
+                            if let activity = member.memberListActivityText, !activity.isEmpty {
+                                HStack(spacing: 4) {
+                                    if member.isListeningToMusic {
+                                        Image(systemName: "music.note")
+                                            .foregroundStyle(Color(hex: 0x1DB954))
+                                        if member.memberListShowsMusicSeparator {
+                                            Text("·")
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
+                                    ProfileStatusTextView(
+                                        source: activity,
+                                        isExpanded: false,
+                                        fontSize: 12,
+                                        usesSecondaryColor: true
+                                    )
+                                }
+                                .font(.system(size: 12))
                                 .frame(maxWidth: .infinity, minHeight: 14, maxHeight: 16, alignment: .leading)
                                 .allowsHitTesting(false)
                             }
@@ -477,6 +488,7 @@ struct MemberRow: View {
 
 struct MemberAvatar: View {
     let member: Member
+    var isHovered = false
 
     var body: some View {
         AvatarPresenceView(
@@ -488,7 +500,8 @@ struct MemberAvatar: View {
                 name: member.user.displayName,
                 avatarURL: member.guildAvatarURL ?? member.user.avatarURL,
                 decorationURL: member.user.avatarDecorationURL,
-                size: 34
+                size: 34,
+                playback: .hover(isHovered)
             )
         }
     }
@@ -522,7 +535,13 @@ struct DecoratedAvatarView: View {
 
     var body: some View {
         ZStack {
-            AvatarView(name: name, url: avatarURL, size: size)
+            AvatarView(
+                name: name,
+                url: avatarURL,
+                size: size,
+                animates: avatarAnimationEnabled,
+                isHovered: avatarHover
+            )
             if let decorationURL {
                 AnimatedRemoteImage(
                     url: decorationURL,
@@ -545,6 +564,16 @@ struct DecoratedAvatarView: View {
         var bucket = 64
         while bucket < requested { bucket *= 2 }
         return bucket
+    }
+
+    private var avatarAnimationEnabled: Bool {
+        if case .paused = playback { return false }
+        return true
+    }
+
+    private var avatarHover: Bool? {
+        if case let .hover(isHovered) = playback { return isHovered }
+        return nil
     }
 }
 

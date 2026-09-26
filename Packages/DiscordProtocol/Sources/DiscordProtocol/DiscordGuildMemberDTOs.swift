@@ -5,6 +5,7 @@ struct GuildDTO: Decodable {
     var id: String
     var name: String
     var icon: String?
+    var homeHeader: String?
     var owner: Bool?
     var permissions: String?
     var rulesChannelID: String?
@@ -14,6 +15,7 @@ struct GuildDTO: Decodable {
 
     enum CodingKeys: String, CodingKey {
         case id, name, icon, owner, permissions, features, profile
+        case homeHeader = "home_header"
         case rulesChannelID = "rules_channel_id"
         case defaultMessageNotifications = "default_message_notifications"
     }
@@ -36,6 +38,7 @@ struct GuildDTO: Decodable {
             currentUserPermissions: permissions.flatMap(UInt64.init),
             rulesChannelID: rulesChannelID.flatMap(ChannelID.init),
             features: features ?? [],
+            guideHeaderURL: homeHeader.flatMap { URL(string: "https://cdn.discordapp.com/home-headers/\(id)/\($0).png?size=2048") },
             profileTag: profile?.domain(guildID: id),
             defaultMessageNotifications:
                 defaultMessageNotifications.flatMap(MessageNotificationLevel.init(rawValue:))
@@ -57,18 +60,24 @@ struct GuildActivityDTO: Decodable {
     var emoji: GuildActivityEmojiDTO?
 
     var displayText: String? {
-        let emojiPrefix =
-            emoji.flatMap { emoji -> String? in
-                guard let name = emoji.name else { return nil }
+        let activityState = state.flatMap { $0.isEmpty ? nil : $0 }
+        if type == 4 {
+            let emojiText = emoji.flatMap { emoji -> String? in
                 if let id = emoji.id {
-                    return "<\(emoji.animated == true ? "a" : ""):\(name):\(id)> "
+                    return "<\(emoji.animated == true ? "a" : ""):\(emoji.name ?? "emoji"):\(id)>"
                 }
-                return "\(name) "
-            } ?? ""
-        if type == 4, let state, !state.isEmpty {
-            return emojiPrefix + state
+                return emoji.name
+            }
+            let parts = [emojiText, activityState].compactMap { $0 }
+            return parts.isEmpty ? nil : parts.joined(separator: " ")
         }
-        return state.flatMap { $0.isEmpty ? nil : $0 } ?? name
+        return activityState ?? name
+    }
+}
+
+extension [GuildActivityDTO] {
+    var memberListActivity: GuildActivityDTO? {
+        first(where: { $0.type == 2 }) ?? first(where: { $0.type != 4 })
     }
 }
 
@@ -86,13 +95,14 @@ struct GuildMemberDTO: Decodable {
     var banner: String?
     var bio: String?
     var pending: Bool?
+    var flags: UInt64?
     var joinedAt: String?
     var avatarDecorationData: UserDTO.AvatarDecorationDTO?
     var collectibles: UserCollectiblesDTO?
     var displayNameStyles: UserDTO.DisplayNameStyleDTO?
 
     enum CodingKeys: String, CodingKey {
-        case user, nick, roles, presence, avatar, banner, bio, pending, collectibles
+        case user, nick, roles, presence, avatar, banner, bio, pending, flags, collectibles
         case joinedAt = "joined_at"
         case avatarDecorationData = "avatar_decoration_data"
         case displayNameStyles = "display_name_styles"
@@ -154,6 +164,7 @@ struct GuildMemberDTO: Decodable {
         }
         let activities = (overridePresence ?? presence)?.activities ?? []
         let customStatus = activities.first(where: { $0.type == 4 })?.displayText
+        let primaryActivity = activities.memberListActivity
         return Member(
             user: domainUser,
             roleName: categoryRole?.name ?? "Member",
@@ -167,9 +178,11 @@ struct GuildMemberDTO: Decodable {
             globalDisplayName: globalDisplayName,
             guildNickname: nick,
             guildProfileCosmetics: cosmetics,
-            activityText: activities.first(where: { $0.type != 4 })?.displayText ?? customStatus,
+            activityText: primaryActivity?.displayText ?? customStatus,
             customStatus: customStatus,
+            isListeningToMusic: primaryActivity?.type == 2,
             isPending: pending,
+            flags: flags,
             joinedAt: joinedAt.flatMap(DiscordDate.parse)
         )
     }

@@ -52,6 +52,7 @@ extension NativeMemberListCanvasView {
         }
         updateTrackingAreas()
         window?.invalidateCursorRects(for: self)
+        updateVisibleOverlaysAndPrewarming()
     }
 
     @discardableResult
@@ -574,6 +575,12 @@ extension NativeMemberListCanvasView {
         let activityFont = NSFont.systemFont(
             ofSize: max(10, InterfaceTypographyMetrics.interfaceTextSize - 1)
         )
+        let appearance = NSAppearance(named: presentation.isDark ? .darkAqua : .aqua)
+            ?? NSAppearance.currentDrawing()
+        var labelColor = NSColor.labelColor
+        appearance.performAsCurrentDrawingAppearance {
+            labelColor = NSColor.labelColor.usingColorSpace(.sRGB) ?? .labelColor
+        }
         var preparedText: [ItemID: PreparedText] = [:]
         preparedText.reserveCapacity(min(
             items.count,
@@ -602,22 +609,24 @@ extension NativeMemberListCanvasView {
             }
             let nameColor = presentation.roleColorDisplay == .inNames
                 ? MessageAuthorPresentation.topRoleColor(in: member.roles)
-                    .map(Self.color(hex:)) ?? .labelColor
-                : .labelColor
+                    .map(Self.color(hex:)) ?? labelColor
+                : labelColor
             let alpha: CGFloat = !member.isListedOnline ? 0.55 : 1
             let name = Self.line(
                 member.user.displayName,
                 font: nameFont,
                 color: nameColor.withAlphaComponent(alpha)
             )
-            let activity = member.activityText.flatMap { text -> CTLine? in
+            let activity = member.memberListActivityText.flatMap { text -> CTLine? in
                 guard !text.isEmpty else { return nil }
                 return NativeMemberActivityPresentation.line(
                     text,
                     font: activityFont,
-                    color: Self.memberActivityColor.withAlphaComponent(alpha)
+                    color: Self.memberActivityColor.withAlphaComponent(alpha),
+                    showsMusicIcon: member.isListeningToMusic,
+                    showsMusicSeparator: member.memberListShowsMusicSeparator
                 )
-                }
+            }
             let activityTruncationToken = activity.map { _ in
                 Self.line(
                     "…",

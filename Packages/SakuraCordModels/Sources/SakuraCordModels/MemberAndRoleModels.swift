@@ -74,9 +74,17 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
     public var guildProfileCosmetics: GuildProfileCosmetics?
     public var activityText: String?
     public var customStatus: String?
+    public var isListeningToMusic: Bool
     /// Discord's membership-screening state. A pending member does not have
     /// normal guild channel access even when role IDs are already present.
     public var isPending: Bool?
+    public var flags: UInt64?
+
+    public var requiresOnboarding: Bool {
+        guard let flags else { return false }
+        return flags & 8 != 0 && flags & 2 == 0
+    }
+    public var hasCompletedGuildGuide: Bool { (flags ?? 0) & 64 != 0 }
     public var joinedAt: Date?
     /// Absolute row index in Discord's virtualized guild member list. This is
     /// absent for DMs, fallback stores, and member lookups that are not backed
@@ -102,7 +110,9 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
         guildProfileCosmetics: GuildProfileCosmetics? = nil,
         activityText: String? = nil,
         customStatus: String? = nil,
+        isListeningToMusic: Bool = false,
         isPending: Bool? = nil,
+        flags: UInt64? = nil,
         joinedAt: Date? = nil,
         memberListIndex: Int? = nil
     ) {
@@ -120,7 +130,9 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
         self.guildProfileCosmetics = guildProfileCosmetics
         self.activityText = activityText
         self.customStatus = customStatus
+        self.isListeningToMusic = isListeningToMusic
         self.isPending = isPending
+        self.flags = flags
         self.joinedAt = joinedAt
         self.memberListIndex = memberListIndex
     }
@@ -140,7 +152,9 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
         guildProfileCosmetics: GuildProfileCosmetics? = nil,
         activityText: String? = nil,
         customStatus: String? = nil,
+        isListeningToMusic: Bool = false,
         isPending: Bool? = nil,
+        flags: UInt64? = nil,
         joinedAt: Date? = nil,
         memberListIndex: Int? = nil
     ) {
@@ -158,7 +172,9 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
         self.guildProfileCosmetics = guildProfileCosmetics
         self.activityText = activityText
         self.customStatus = customStatus
+        self.isListeningToMusic = isListeningToMusic
         self.isPending = isPending
+        self.flags = flags
         self.joinedAt = joinedAt
         self.memberListIndex = memberListIndex
     }
@@ -166,7 +182,8 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case user, roleName, roleID, rolePosition, isRoleCategory, status, roleIDs, roles,
              guildAvatarURL,
-             globalDisplayName, guildNickname, guildProfileCosmetics, activityText, customStatus, memberListIndex, joinedAt
+             globalDisplayName, guildNickname, guildProfileCosmetics, activityText, customStatus, isListeningToMusic,
+             memberListIndex, joinedAt
     }
 
     public init(from decoder: Decoder) throws {
@@ -185,6 +202,7 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
         guildProfileCosmetics = try container.decodeIfPresent(GuildProfileCosmetics.self, forKey: .guildProfileCosmetics)
         activityText = try container.decodeIfPresent(String.self, forKey: .activityText)
         customStatus = try container.decodeIfPresent(String.self, forKey: .customStatus)
+        isListeningToMusic = try container.decodeIfPresent(Bool.self, forKey: .isListeningToMusic) ?? false
         memberListIndex = try container.decodeIfPresent(Int.self, forKey: .memberListIndex)
         joinedAt = try container.decodeIfPresent(Date.self, forKey: .joinedAt)
     }
