@@ -1,0 +1,39 @@
+name: Retarget Pull Requests to Nightly
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, reopened, edited, synchronize]
+
+permissions:
+  pull-requests: write
+
+concurrency:
+  group: retarget-pull-request-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  retarget:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      # Only inspect PR metadata; never check out or execute contributor code.
+      - name: Retarget development pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          pr="$(gh api "repos/$GH_REPO/pulls/$PR_NUMBER")"
+          # Re-read the current state in case this event waited in the queue.
+          if ! jq -e --arg repo "$GH_REPO" '
+            .state == "open" and .base.ref == "main" and
+            (.head.ref != "nightly" or .head.repo.full_name != $repo)
+          ' <<< "$pr" > /dev/null; then
+            echo "No retargeting needed."
+            exit 0
+          fi
+
+          gh api --method PATCH "repos/$GH_REPO/pulls/$PR_NUMBER" \
+            -f base=nightly > /dev/null
+          echo "Retargeted PR #$PR_NUMBER to nightly." >> "$GITHUB_STEP_SUMMARY"
