@@ -2667,6 +2667,9 @@ struct AccountReadStateModelTests {
     #expect(model.isChannelUnread(channelID))
     model.markConversationRead(channelID: channelID)
     #expect(model.readState.entries[channelID]?.pendingAcknowledgementID == target)
+    // Deliver the stale snapshot in the same main-actor turn, before the
+    // queued transport task can run. A debounce cannot guarantee that order
+    // when the parallel suite delays event-stream consumption.
     model.consumeImmediately(.readStateSnapshot([
         ChannelReadState(
             channelID: channelID,
