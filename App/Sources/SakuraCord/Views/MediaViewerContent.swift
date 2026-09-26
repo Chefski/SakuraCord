@@ -97,6 +97,17 @@ private struct MediaViewerZoomableImage: View {
 
         GeometryReader { proxy in
             let availableSize = proxy.size
+            // Linked images can omit dimensions; keep the hit target aligned
+            // with the fitted image already cached by the timeline.
+            let imageSize: CGSize? = if let mediaWidth,
+                                        let mediaHeight,
+                                        mediaWidth > 0,
+                                        mediaHeight > 0
+            {
+                CGSize(width: mediaWidth, height: mediaHeight)
+            } else {
+                previewImage?.size ?? transitionSource?.image.size
+            }
             let restingFrame = MediaViewerLayoutPolicy.restingFrame(
                 availableSize: availableSize,
                 horizontalInset: horizontalInset,
@@ -104,8 +115,8 @@ private struct MediaViewerZoomableImage: View {
                 bottomInset: bottomInset
             )
             let fittedSize = MediaViewerLayoutPolicy.fittedSize(
-                mediaWidth: mediaWidth,
-                mediaHeight: mediaHeight,
+                mediaWidth: imageSize.map { Int($0.width) },
+                mediaHeight: imageSize.map { Int($0.height) },
                 availableSize: restingFrame.size
             )
             let effectiveScale = min(
@@ -239,10 +250,6 @@ private struct MediaViewerZoomableImage: View {
                                     )
                                 )
                             }
-                    )
-                    .onTapGesture(
-                        count: 2,
-                        perform: interaction.toggleZoom
                     )
                     .accessibilityLabel("Media image")
                     .accessibilityValue(
