@@ -14,11 +14,16 @@ struct MediaViewerStage: View {
     let bottomInset: CGFloat
     let interaction: MediaViewerInteractionModel
     let finishPinchDismissal: (CGFloat) -> Bool
+    let close: () -> Void
     let open: () -> Void
     let imageContextMenuActions: MediaImageContextMenuActions?
 
     var body: some View {
         ZStack {
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture(perform: close)
+
             switch item.kind {
             case let .image(animated):
                 MediaViewerZoomableImage(
