@@ -98,7 +98,7 @@ struct EmojiHoverPreviewBar: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             if let guild {
-                EmojiGuildBookmarkIcon(guild: guild)
+                PickerGuildBookmarkIcon(guild: guild)
                     .help(guild.name)
                     .accessibilityHidden(true)
             }
