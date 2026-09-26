@@ -73,13 +73,13 @@ import Testing
 @Test func `pinned direct messages stay above recent unpinned conversations and follow message activity`() {
     let channels = [
         Channel(id: ChannelID(rawValue: 1), guildID: nil, name: "First", kind: .directMessage,
-                lastMessageID: MessageID(rawValue: 120)),
+                lastMessageID: MessageID(rawValue: 120 << 22)),
         Channel(id: ChannelID(rawValue: 2), guildID: nil, name: "Group", kind: .groupDirectMessage,
-                lastMessageID: MessageID(rawValue: 90)),
+                lastMessageID: MessageID(rawValue: 90 << 22)),
         Channel(id: ChannelID(rawValue: 3), guildID: nil, name: "Recent", kind: .directMessage,
-                lastMessageID: MessageID(rawValue: 150)),
+                lastMessageID: MessageID(rawValue: 150 << 22)),
         Channel(id: ChannelID(rawValue: 4), guildID: nil, name: "Older", kind: .directMessage,
-                lastMessageID: MessageID(rawValue: 80)),
+                lastMessageID: MessageID(rawValue: 80 << 22)),
     ]
     let pinned: Set<ChannelID> = [channels[1].id, channels[3].id]
 
@@ -87,7 +87,7 @@ import Testing
         .map(\.id) == [channels[1].id, channels[3].id, channels[0].id, channels[2].id])
 
     var active = channels
-    active[3].lastMessageID = MessageID(rawValue: 160)
+    active[3].lastMessageID = MessageID(rawValue: 160 << 22)
     #expect(DirectMessageInboxPolicy.conversations(in: active, pinnedChannelIDs: pinned)
         .map(\.id) == [channels[3].id, channels[1].id, channels[0].id, channels[2].id])
     #expect(DirectMessageInboxPolicy.conversations(in: active)
@@ -99,11 +99,17 @@ import Testing
         name: "New DM",
         kind: .directMessage
     )
-    let mixed = [unmessaged, active[3]]
+    let olderUnmessaged = Channel(
+        id: ChannelID(rawValue: 70 << 22),
+        guildID: nil,
+        name: "Empty group",
+        kind: .groupDirectMessage
+    )
+    let mixed = [olderUnmessaged, active[3], unmessaged]
     #expect(DirectMessageInboxPolicy.conversations(
         in: mixed,
         pinnedChannelIDs: Set(mixed.map(\.id))
-    ).map(\.id) == [active[3].id, unmessaged.id])
+    ).map(\.id) == [unmessaged.id, active[3].id, olderUnmessaged.id])
 }
 
 @MainActor

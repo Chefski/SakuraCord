@@ -66,8 +66,8 @@ load cancellation and presentation reset, including pins and composer state.
 explicit owner rather than accumulating unrelated fields in extensions.
 DM and group DM sidebar pins come from the current account's `@me` channel
 notification overrides. The inbox orders pinned conversations by their latest
-message, without changing provider channel order or persisting Discord workspace
-snapshots.
+message timestamp, falling back to channel creation for empty conversations,
+without changing provider channel order or persisting Discord workspace snapshots.
 
 `AppUpdateController` owns Sparkle's `SPUStandardUpdaterController` for the
 application lifetime. It starts only when the canonical release bundle contains
