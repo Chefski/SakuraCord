@@ -408,6 +408,9 @@ enum DiscordMemberStoreOrdering {
         var indexByID = Dictionary(uniqueKeysWithValues: result.indices.map { (result[$0].id, $0) })
         for var member in updates {
             if let index = indexByID[member.id] {
+                if member.flags == nil { member.flags = result[index].flags }
+                if member.isPending == nil { member.isPending = result[index].isPending }
+                if member.joinedAt == nil { member.joinedAt = result[index].joinedAt }
                 if member.memberListIndex == nil {
                     member.memberListIndex = result[index].memberListIndex
                 }
@@ -684,6 +687,7 @@ struct GatewayReadyGuildsDTO: Decodable {
         var id: String
         var name: String?
         var icon: String?
+        var homeHeader: String?
         var owner: Bool?
         var ownerID: String?
         var permissions: String?
@@ -704,6 +708,7 @@ struct GatewayReadyGuildsDTO: Decodable {
             case id, name, icon, owner, permissions, properties, features, profile
             case joinedAt = "joined_at"
             case nsfwLevel = "nsfw_level"
+            case homeHeader = "home_header"
             case ownerID = "owner_id"
             case rulesChannelID = "rules_channel_id"
             case defaultMessageNotifications = "default_message_notifications"
@@ -724,6 +729,7 @@ struct GatewayReadyGuildsDTO: Decodable {
             id = try container.decode(String.self, forKey: .id)
             name = (try? container.decode(String.self, forKey: .name)) ?? nested?.name
             icon = (try? container.decode(String.self, forKey: .icon)) ?? nested?.icon
+            homeHeader = (try? container.decode(String.self, forKey: .homeHeader)) ?? nested?.homeHeader
             owner = (try? container.decode(Bool.self, forKey: .owner)) ?? nested?.owner
             ownerID = (try? container.decode(String.self, forKey: .ownerID))
                 ?? nested?.ownerID
@@ -797,6 +803,7 @@ struct GatewayReadyGuildsDTO: Decodable {
                 currentUserPermissions: permissions.flatMap(UInt64.init),
                 rulesChannelID: rulesChannelID.flatMap(ChannelID.init),
                 features: features,
+                guideHeaderURL: homeHeader.flatMap { URL(string: "https://cdn.discordapp.com/home-headers/\(id)/\($0).png?size=2048") },
                 profileTag: profile?.domain(guildID: id),
                 defaultMessageNotifications:
                     defaultMessageNotifications.flatMap(
@@ -1033,12 +1040,9 @@ struct GatewayUserGuildSettingsDTO: Decodable {
             collapsed = try? values.decode(Bool.self, forKey: .collapsed)
         }
 
-        func domain(
-            merging existing: ChannelNotificationOverride? = nil
-        ) -> ChannelNotificationOverride? {
+        var domain: ChannelNotificationOverride? {
             guard let channelID = ChannelID(channelID) else { return nil }
-            var value = existing ?? ChannelNotificationOverride(channelID: channelID)
-            value.channelID = channelID
+            var value = ChannelNotificationOverride(channelID: channelID)
             if let messageNotifications = messageNotifications.flatMap(
                 MessageNotificationLevel.init(rawValue:)
             ) {
@@ -1057,10 +1061,6 @@ struct GatewayUserGuildSettingsDTO: Decodable {
                 value.isCollapsed = collapsed
             }
             return value
-        }
-
-        var domain: ChannelNotificationOverride? {
-            domain(merging: nil)
         }
     }
 
@@ -1154,13 +1154,9 @@ struct GatewayUserGuildSettingsDTO: Decodable {
             value.flags = flags
         }
         if hasChannelOverrides {
-            let existingByID = Dictionary(
-                uniqueKeysWithValues: value.channelOverrides.map { ($0.channelID, $0) }
-            )
-            value.channelOverrides = channelOverrides.compactMap { override in
-                let channelID = ChannelID(override.channelID)
-                return override.domain(merging: channelID.flatMap { existingByID[$0] })
-            }
+            // Supplied overrides are authoritative: Discord omits cleared flags
+            // even when an override remains for another setting, such as mute.
+            value.channelOverrides = channelOverrides.compactMap(\.domain)
         }
         return value
     }
@@ -1231,6 +1227,7 @@ struct ReadyMergedMemberDTO: Decodable {
     var banner: String?
     var bio: String?
     var pending: Bool?
+    var flags: UInt64?
     var joinedAt: String?
     var avatarDecorationData: UserDTO.AvatarDecorationDTO?
     var collectibles: UserCollectiblesDTO?
@@ -1238,7 +1235,7 @@ struct ReadyMergedMemberDTO: Decodable {
 
     enum CodingKeys: String, CodingKey {
         case userID = "user_id"
-        case nick, roles, presence, avatar, banner, bio, pending, collectibles
+        case nick, roles, presence, avatar, banner, bio, pending, flags, collectibles
         case joinedAt = "joined_at"
         case avatarDecorationData = "avatar_decoration_data"
         case displayNameStyles = "display_name_styles"
@@ -1255,6 +1252,7 @@ struct ReadyMergedMemberDTO: Decodable {
             banner: banner,
             bio: bio,
             pending: pending,
+            flags: flags,
             joinedAt: joinedAt,
             avatarDecorationData: avatarDecorationData,
             collectibles: collectibles,

@@ -5,6 +5,7 @@ struct MockMessageFixtureBuilder {
     let auroraID: GuildID
     let nativeLabID: GuildID
     let base: Date
+    let now: Date
     let nova: User
     let maya: User
     let theo: User
@@ -173,17 +174,17 @@ struct MockMessageFixtureBuilder {
                 message(
                     2101, 211, maya,
                     "Design note: toolbar identity should answer “where am I?” without competing with the channel title.",
-                    base.addingTimeInterval(520)
+                    Calendar.current.date(byAdding: .day, value: -3, to: now)!
                 ),
                 message(
                     2102, 211, nova,
                     "I’m using the server mark first, then the channel control. Both stay readable when the window narrows.",
-                    base.addingTimeInterval(590)
+                    Calendar.current.date(byAdding: .day, value: -1, to: now)!
                 ),
                 message(
                     2103, 211, rowan,
                     "The placeholder also needs a proper accessibility label for unnamed servers.",
-                    base.addingTimeInterval(690)
+                    now
                 )
             ],
             ChannelID(rawValue: 212): [

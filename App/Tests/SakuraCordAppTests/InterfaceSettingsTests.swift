@@ -68,6 +68,30 @@ import Testing
         calendar: calendar
     )
     #expect(systemUS != systemFrance)
+
+    let sameDay = try #require(calendar.date(from: DateComponents(
+        year: 2026, month: 8, day: 24, hour: 23, minute: 59
+    )))
+    let nextDay = try #require(calendar.date(from: DateComponents(
+        year: 2026, month: 8, day: 25, hour: 0, minute: 1
+    )))
+    let followingDay = try #require(calendar.date(from: DateComponents(
+        year: 2026, month: 8, day: 26, hour: 0, minute: 1
+    )))
+    func messageText(now: Date) -> String {
+        InterfaceTimestampFormatter.messageText(
+            for: date,
+            now: now,
+            format: .twelveHour,
+            includesSeconds: false,
+            locale: locale,
+            timeZone: timeZone,
+            calendar: calendar
+        )
+    }
+    #expect(messageText(now: sameDay) == "1:05 PM")
+    #expect(messageText(now: nextDay) == "Yesterday at 1:05 PM")
+    #expect(messageText(now: followingDay) == "08/24/2026, 1:05 PM")
 }
 
 @MainActor

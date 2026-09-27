@@ -30,6 +30,43 @@ nonisolated struct InterfaceSettingsSnapshot: Equatable, Sendable {
 }
 
 nonisolated enum InterfaceTimestampFormatter {
+    static func messageText(
+        for date: Date,
+        now: Date = .now,
+        format: InterfaceTimestampFormat,
+        includesSeconds: Bool,
+        locale: Locale = .autoupdatingCurrent,
+        timeZone: TimeZone = .autoupdatingCurrent,
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> String {
+        let time = text(
+            for: date,
+            format: format,
+            includesSeconds: includesSeconds,
+            locale: locale,
+            timeZone: timeZone,
+            calendar: calendar
+        )
+        var calendar = calendar
+        calendar.timeZone = timeZone
+        if calendar.isDate(date, inSameDayAs: now) {
+            return time
+        }
+        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
+           calendar.isDate(date, inSameDayAs: yesterday)
+        {
+            return String(localized: "Yesterday at \(time)", bundle: #bundle, locale: locale)
+        }
+        let fullDate = Date.FormatStyle(
+            date: .omitted,
+            time: .omitted,
+            locale: locale,
+            calendar: calendar,
+            timeZone: timeZone
+        ).day(.twoDigits).month(.twoDigits).year().format(date)
+        return "\(fullDate), \(time)"
+    }
+
     static func text(
         for date: Date,
         format: InterfaceTimestampFormat,

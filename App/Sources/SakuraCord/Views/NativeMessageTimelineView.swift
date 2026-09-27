@@ -271,6 +271,7 @@ final class NativeMessageTimelineCoordinator: NSObject {
         var cachedItemLayoutOrder:
             [CachedItemLayoutKey] = []
         var cachedItemLayoutEvictionIndex = 0
+        var timestampDay = Calendar.autoupdatingCurrent.startOfDay(for: .now)
 
         weak var canvas: NativeTimelineCanvasView?
         weak var documentView: NativeTimelineDocumentView?
@@ -469,7 +470,10 @@ extension NativeMessageTimelineCoordinator {
         ) -> (TimelineUpdatePreparation, TimelineReloadMeasurement) {
             let oldParent = self.parent
             let conversationChanged = parent.conversation != oldParent.conversation
+            let currentTimestampDay = Calendar.autoupdatingCurrent.startOfDay(for: .now)
+            let timestampDayChanged = currentTimestampDay != timestampDay
             let presentationChanged = parent.presentationRevision != presentationRevision
+                || timestampDayChanged
             if parent.rowsRevision != rowsRevision || conversationChanged {
                 canvas.captureReactionCountsBeforeStorageMutation()
             }
@@ -479,6 +483,12 @@ extension NativeMessageTimelineCoordinator {
             if conversationChanged {
                 cacheBoundedCurrentItemLayouts()
                 resetConversationUpdateState()
+            }
+            if timestampDayChanged {
+                timestampDay = currentTimestampDay
+                cachedItemLayouts.removeAll(keepingCapacity: true)
+                cachedItemLayoutOrder.removeAll(keepingCapacity: true)
+                cachedItemLayoutEvictionIndex = 0
             }
             let wasNearBottom = scrollState().isNearBottom
             let bottomInsetChanged = abs(
@@ -1038,7 +1048,7 @@ extension NativeMessageTimelineCoordinator {
                             model.navigateToPinnedResult(message)
                         case .inbox:
                             model.navigateToInboxResult(message)
-                        case .channel, .thread:
+                        case .channel, .thread, .resource:
                             break
                         }
                     }

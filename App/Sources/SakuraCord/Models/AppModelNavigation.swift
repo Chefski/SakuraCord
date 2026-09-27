@@ -22,8 +22,9 @@ extension AppModel {
 
     // Sidebar choices supersede asynchronous navigation immediately.
     var channelSidebarSelection: ChannelID? {
-        get { selectedChannelID }
+        get { guildWorkspacePage == nil ? selectedChannelID : nil }
         set {
+            onboarding.presentedGuildID = nil
             cancelConversationNavigation()
             selectedChannelID = newValue
             recordConversationNavigation()
@@ -212,6 +213,7 @@ extension AppModel {
         to channelID: ChannelID,
         historyDestination: ConversationNavigationHistory.Destination? = nil
     ) {
+        onboarding.presentedGuildID = nil
         guard
             let channel = snapshot?.channels.first(where: { $0.id == channelID })
             ?? visibleChannels.first(where: { $0.id == channelID })
@@ -328,6 +330,7 @@ extension AppModel {
                 post.thread,
                 starter: post.owner ?? post.firstMessage?.author,
                 startedAt: post.firstMessage?.timestamp ?? post.createdAt,
+                starterMessageID: post.firstMessage?.id,
                 initialMessages: initialMessages
             )
         }
@@ -503,6 +506,7 @@ extension AppModel {
         let rememberedChannelID = guildID.flatMap { lastOpenedChannelIDsByGuild[$0] }
         dismissAllProfiles()
         selectedGuildID = guildID
+        refreshSelectedGuildOnboarding()
         beginCurrentUserProfilePrefetch(in: guildID, account: session)
         AppPerformanceSignposts.measureSync(
             "GuildActivationMemberPresentationRestore"

@@ -579,6 +579,89 @@ import UserNotifications
 }
 
 @MainActor
+@Test func `bootstrap membership gates onboarding without guessing and guide visibility follows resources or tasks`() async throws {
+    let model = AppModel(launchMode: .offlineTesting)
+    var snapshot = try await MockChatProvider().bootstrap()
+    let guildID = try #require(snapshot.guilds.first?.id)
+    snapshot.guilds[0].features.formUnion(["COMMUNITY", "GUILD_ONBOARDING", "GUILD_SERVER_GUIDE"])
+    var member = Member(user: snapshot.currentUser, roleName: "", isOnline: false)
+    member.flags = 98
+    member.joinedAt = .now.addingTimeInterval(-10 * 24 * 60 * 60)
+    snapshot.currentMembersByGuildID[guildID] = member
+    await model.applyBootstrap(snapshot, publishesSessionState: false)
+    model.selectedGuildID = guildID
+    #expect(model.onboardingMember(in: guildID)?.flags == 98)
+    #expect(model.onboardingEntryGuildID == nil)
+    #expect(!model.hasGuildGuide(in: guildID))
+
+    let resource = Channel(id: .init(rawValue: 77161), guildID: guildID, name: "handbook", kind: .text, flags: 128)
+    snapshot.channels.append(resource)
+    model.consumeSnapshotChanged(snapshot)
+    #expect(model.hasGuildGuide(in: guildID))
+    snapshot.channels.removeAll { $0.id == resource.id }
+    member.flags = 9
+    member.joinedAt = .now
+    snapshot.currentMembersByGuildID[guildID] = member
+    model.consumeSnapshotChanged(snapshot)
+    #expect(model.onboardingEntryGuildID == guildID)
+    #expect(model.hasGuildGuide(in: guildID))
+    member.flags = 107
+    snapshot.currentMembersByGuildID[guildID] = member
+    model.consumeSnapshotChanged(snapshot)
+    #expect(model.onboardingEntryGuildID == nil)
+    #expect(!model.hasGuildGuide(in: guildID))
+}
+
+@MainActor
+@Test func `flags-only self member updates unlock the sidebar and retry initial history`() async throws {
+    let provider = InaccessibleChannelRequestCountingProvider()
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    var snapshot = try #require(model.snapshot)
+    var guild = try #require(snapshot.guilds.first)
+    guild.features.insert("GUILD_ONBOARDING")
+    guild.currentUserPermissions = .max
+    let guildIndex = try #require(snapshot.guilds.firstIndex { $0.id == guild.id })
+    snapshot.guilds[guildIndex] = guild
+    let channel = Channel(id: .init(rawValue: 77160), guildID: guild.id, name: "first-channel", kind: .text)
+    snapshot.channels.append(channel)
+    model.snapshot = snapshot
+    model.serverRailGuildsByID[guild.id] = guild
+    model.selectedGuildID = guild.id
+    model.currentUserRoleIDsByGuild[guild.id] = []
+    let user = try #require(model.currentUser)
+    var member = Member(user: user, roleName: "", isOnline: false)
+    member.flags = nil
+    model.membersByGuildID[guild.id] = [user.id: member]
+    model.onboarding.members[guild.id] = member
+    model.refreshUnreadPresentation(appliesAccessImmediately: true)
+    model.selectedChannelID = channel.id
+    #expect(model.checkingChannelIDs.contains(channel.id))
+    #expect(model.onboardingEntryGuildID == nil)
+    #expect(await provider.messageRequestCount(for: channel.id) == 0)
+
+    member.flags = 11
+    member.isPending = false
+    member.joinedAt = .now
+    model.receiveOnboardingMember(member, guildID: guild.id)
+    #expect(model.hasPendingGuildGuideActions(in: guild.id))
+    #expect(model.onboardingEntryGuildID == nil)
+    #expect(!model.checkingChannelIDs.contains(channel.id))
+    #expect(await eventuallyOnMain { !model.isLoadingMessages })
+    #expect(await provider.messageRequestCount(for: channel.id) == 1)
+    #expect(model.selectedConversationAccess == .readable(canSend: true))
+    member.flags = 107
+    model.receiveOnboardingMember(member, guildID: guild.id)
+    #expect(!model.hasPendingGuildGuideActions(in: guild.id))
+    member.flags = nil
+    member.isPending = nil
+    model.receiveOnboardingMember(member, guildID: guild.id)
+    #expect(model.onboardingEntryGuildID == nil)
+    #expect(!model.checkingChannelIDs.contains(channel.id))
+    #expect(!model.hasPendingGuildGuideActions(in: guild.id))
+}
+
+@MainActor
 @Test func `selecting an inaccessible forum performs no forum read`() async throws {
     let provider = InaccessibleChannelRequestCountingProvider()
     let model = AppModel(launchMode: .offlineTesting, provider: provider)
@@ -1491,7 +1574,7 @@ import UserNotifications
 }
 
 @MainActor
-@Test func `thread send commits optimistic insertion and confirmation revisions`() async throws {
+@Test func `thread send preserves history and confirmation revisions across navigation`() async throws {
     let provider = MockChatProvider()
     let model = AppModel(launchMode: .offlineTesting, provider: provider)
     await model.start()
@@ -1508,6 +1591,12 @@ import UserNotifications
     let post = try #require(
         model.forumPosts.first(where: { !$0.thread.isLocked })
     )
+    for index in 0 ..< 3 {
+        _ = try await provider.send(SendMessageDraft(
+            channelID: post.id,
+            content: "Existing reply \(index)"
+        ))
+    }
     model.open(post)
     #expect(
         await eventuallyOnMain {
@@ -1561,6 +1650,21 @@ import UserNotifications
             == .replace(IndexSet(integer: previousCount))
     )
     #expect(!confirmation.invalidatesAllRows)
+
+    let expectedIDs = model.threadMessages.map(\.id)
+    #expect(expectedIDs.count == 5)
+    let otherPost = try #require(model.forumPosts.first { $0.id != post.id })
+    for _ in 0 ..< 2 {
+        model.open(otherPost)
+        await model.threadLoadTask?.value
+        model.open(post)
+        await model.threadLoadTask?.value
+
+        #expect(model.threadMessages.map(\.id) == expectedIDs)
+        #expect(model.threadMessageRows.map(\.id) == expectedIDs)
+        #expect(!model.isLoadingThread)
+        #expect(model.hasCompletedInitialThreadLoad)
+    }
 }
 
 @MainActor
@@ -2052,7 +2156,8 @@ import UserNotifications
     let pending = try PendingDiscordCredential(
         Data("pending-session-credential-value".utf8)
     )
-    let provider = SuspendedBootstrapTestProvider(pendingCredential: pending)
+    let capabilities: Set<ChatCapability> = [.gifs, .stickers, .stickerSending, .forums]
+    let provider = SuspendedBootstrapTestProvider(pendingCredential: pending, capabilities: capabilities)
     let credentials = PendingCredentialRecordingStore()
     var openedAccountIDs: [String] = []
     let model = AppModel(
@@ -2088,6 +2193,7 @@ import UserNotifications
     #expect(openedAccountIDs == ["93000"])
     #expect(model.credentialHandle == CredentialHandle(accountID: "93000"))
     #expect(model.sessionState == .workspace)
+    #expect(model.supportedCapabilities == capabilities)
 }
 
 @MainActor
@@ -4016,6 +4122,88 @@ func `gateway mutations keep exact indexes after repeated history prepends`(
 }
 
 @MainActor
+@Test(arguments: [false, true])
+func `interrupted thread history reloads after navigation`(switchesDirectly: Bool) async throws {
+    let thread = MessageThreadSummary(
+        id: ChannelID(rawValue: 91_099),
+        parentID: ChannelID(rawValue: 91_001),
+        name: "Interrupted history"
+    )
+    let provider = ChannelLoadTestProvider(blockFirstMessageRequestIn: thread.id)
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    let preview = Message(
+        id: MessageID(rawValue: thread.id.rawValue - 1),
+        channelID: thread.id,
+        author: User(id: UserID(rawValue: 91_000), username: "tester", displayName: "Tester"),
+        content: "Forum preview"
+    )
+    let post = ForumPost(thread: thread, firstMessage: preview)
+    model.open(post)
+    let interruptedLoad = model.threadLoadTask
+    await provider.waitForBlockedMessageRequest()
+    if switchesDirectly {
+        model.open(MessageThreadSummary(
+            id: ChannelID(rawValue: thread.id.rawValue + 1),
+            parentID: thread.parentID,
+            name: "Other thread"
+        ))
+    } else {
+        model.closeThread()
+    }
+    model.open(post)
+    await provider.releaseBlockedMessageRequest()
+    await interruptedLoad?.value
+    await model.threadLoadTask?.value
+
+    #expect(model.threadMessages.map(\.id) == [MessageID(rawValue: thread.id.rawValue)])
+    #expect(model.hasCompletedInitialThreadLoad)
+    #expect(!model.isLoadingThread)
+    #expect(await provider.requestCount(for: thread.id) == 2)
+}
+
+@MainActor
+@Test func `forum starter preview does not bridge paginated history`() async {
+    let threadID = ChannelID(rawValue: 92_099)
+    let provider = ChannelLoadTestProvider(paginatedThreadID: threadID)
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    let starter = Message(
+        id: MessageID(rawValue: threadID.rawValue),
+        channelID: threadID,
+        author: User(id: UserID(rawValue: 91_000), username: "tester", displayName: "Tester"),
+        content: "Forum starter"
+    )
+    let post = ForumPost(
+        thread: MessageThreadSummary(
+            id: threadID,
+            parentID: ChannelID(rawValue: 91_001),
+            name: "Long thread",
+            messageCount: 106
+        ),
+        firstMessage: starter
+    )
+    model.open(post)
+    #expect(model.threadMessages.map(\.id) == [starter.id])
+    await model.threadLoadTask?.value
+
+    #expect(model.threadMessages.count == 100)
+    #expect(model.threadMessages.first?.id == MessageID(rawValue: threadID.rawValue + 6))
+    #expect(model.hasMoreThreadMessages)
+
+    model.closeThread()
+    model.open(post)
+    #expect(!model.isLoadingThread)
+    #expect(model.threadMessages.count == 100)
+    #expect(model.threadMessages.first?.id == MessageID(rawValue: threadID.rawValue + 6))
+    #expect(await provider.requestCount(for: threadID) == 1)
+
+    await model.loadEarlierThread()
+
+    #expect(model.threadMessages.count == 106)
+    #expect(model.threadMessages.first?.id == starter.id)
+    #expect(!model.hasMoreThreadMessages)
+}
+
+@MainActor
 @Test func `failed earlier thread page retries inside the shared conversation`() async throws {
     let provider = ChannelLoadTestProvider(failsFirstEarlierPage: true)
     let model = AppModel(launchMode: .offlineTesting, provider: provider)
@@ -5115,10 +5303,21 @@ private actor ChannelLoadTestProvider: ChatProvider {
     private var activeReactorRequests = 0
     private var maximumActiveReactorRequests = 0
     private let failsFirstEarlierPage: Bool
+    private let blockedFirstMessageRequestChannelID: ChannelID?
+    private let paginatedThreadID: ChannelID?
+    private var blockedMessageRequest: CheckedContinuation<Void, Never>?
+    private var blockedMessageRequestStarted: CheckedContinuation<Void, Never>?
+    private var hasStartedBlockedMessageRequest = false
     private var earlierRequests = 0
 
-    init(failsFirstEarlierPage: Bool = false) {
+    init(
+        failsFirstEarlierPage: Bool = false,
+        blockFirstMessageRequestIn channelID: ChannelID? = nil,
+        paginatedThreadID: ChannelID? = nil
+    ) {
         self.failsFirstEarlierPage = failsFirstEarlierPage
+        blockedFirstMessageRequestChannelID = channelID
+        self.paginatedThreadID = paginatedThreadID
     }
 
     func bootstrap() async throws -> BootstrapSnapshot {
@@ -5150,6 +5349,32 @@ private actor ChannelLoadTestProvider: ChatProvider {
         messageRequestParameters[channelID, default: []].append(
             ChannelLoadMessageRequest(before: before, limit: limit)
         )
+        if channelID == paginatedThreadID {
+            let all = (0 ..< 106).map { offset in
+                Message(
+                    id: MessageID(rawValue: channelID.rawValue + UInt64(offset)),
+                    channelID: channelID,
+                    author: user,
+                    content: "message \(offset)"
+                )
+            }
+            let eligible = before.map { boundary in
+                all.filter { $0.id < boundary }
+            } ?? all
+            let page = Array(eligible.suffix(limit))
+            return MessagePage(
+                messages: page,
+                hasMoreBefore: eligible.count > page.count
+            )
+        }
+        if channelID == blockedFirstMessageRequestChannelID,
+           messageRequests[channelID] == 1
+        {
+            hasStartedBlockedMessageRequest = true
+            blockedMessageRequestStarted?.resume()
+            blockedMessageRequestStarted = nil
+            await withCheckedContinuation { blockedMessageRequest = $0 }
+        }
         if failsFirstEarlierPage, before != nil {
             earlierRequests += 1
             if earlierRequests == 1 {
@@ -5228,6 +5453,16 @@ private actor ChannelLoadTestProvider: ChatProvider {
 
     func requestCount(for channelID: ChannelID) -> Int {
         messageRequests[channelID, default: 0]
+    }
+
+    func waitForBlockedMessageRequest() async {
+        if hasStartedBlockedMessageRequest { return }
+        await withCheckedContinuation { blockedMessageRequestStarted = $0 }
+    }
+
+    func releaseBlockedMessageRequest() {
+        blockedMessageRequest?.resume()
+        blockedMessageRequest = nil
     }
 
     func requests(
@@ -6440,6 +6675,7 @@ private actor LinkedChannelNavigationTestProvider: ChatProvider {
 }
 
 private actor SuspendedBootstrapTestProvider: PendingCredentialChatProvider {
+    private let capabilities: Set<ChatCapability>
     private let user: User
     private let channel = Channel(id: ChannelID(rawValue: 93001), guildID: nil, name: "general")
     private var bootstrapStarted = false
@@ -6465,6 +6701,7 @@ private actor SuspendedBootstrapTestProvider: PendingCredentialChatProvider {
     init(
         bootstrapError: String? = nil,
         pendingCredential: PendingDiscordCredential? = nil,
+        capabilities: Set<ChatCapability> = [],
         suspendsAuthentication: Bool = false,
         suspendsMessages: Bool = false,
         messagePage: MessagePage = MessagePage(messages: [], hasMoreBefore: false),
@@ -6477,9 +6714,14 @@ private actor SuspendedBootstrapTestProvider: PendingCredentialChatProvider {
         self.user = user
         self.bootstrapError = bootstrapError
         self.pendingCredential = pendingCredential
+        self.capabilities = capabilities
         self.suspendsAuthentication = suspendsAuthentication
         self.suspendsMessages = suspendsMessages
         self.messagePage = messagePage
+    }
+
+    func supports(_ capability: ChatCapability) async -> Bool {
+        capabilities.contains(capability)
     }
 
     func prepareAuthentication() async {

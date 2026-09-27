@@ -11,12 +11,19 @@ struct DirectMessageInboxView: View {
     let bottomContentInset: CGFloat
 
     var body: some View {
+        let pinnedChannelIDs = model.pinnedDirectMessageIDs
+        let directMessages = DirectMessageInboxPolicy.conversations(
+            in: channels,
+            pinnedChannelIDs: pinnedChannelIDs
+        )
+
         List(selection: $selection) {
             Section {
                 ForEach(directMessages) { channel in
                     DirectMessageInboxRow(
                         model: model,
                         channel: channel,
+                        isPinned: pinnedChannelIDs.contains(channel.id),
                         member: DirectMessageInboxPolicy.recipientMember(
                             for: channel,
                             membersByID: membersByID
@@ -48,17 +55,23 @@ struct DirectMessageInboxView: View {
             }
         }
     }
-
-    private var directMessages: [Channel] {
-        DirectMessageInboxPolicy.conversations(in: channels)
-    }
 }
 
 nonisolated enum DirectMessageInboxPolicy {
-    static func conversations(in channels: [Channel]) -> [Channel] {
-        channels.filter {
+    static func conversations(
+        in channels: [Channel],
+        pinnedChannelIDs: Set<ChannelID> = []
+    ) -> [Channel] {
+        let conversations = channels.filter {
             $0.kind == .directMessage || $0.kind == .groupDirectMessage
         }
+        let pinned = conversations.filter { pinnedChannelIDs.contains($0.id) }
+            .sorted { lhs, rhs in
+                let leftActivity = lhs.lastMessageID?.createdAt ?? lhs.id.createdAt
+                let rightActivity = rhs.lastMessageID?.createdAt ?? rhs.id.createdAt
+                return leftActivity > rightActivity
+            }
+        return pinned + conversations.filter { !pinnedChannelIDs.contains($0.id) }
     }
 
     static func recipientMember(
@@ -92,9 +105,11 @@ nonisolated enum DirectMessageInboxPolicy {
 private struct DirectMessageInboxRow: View {
     let model: AppModel
     let channel: Channel
+    let isPinned: Bool
     let member: Member?
     let call: PrivateCall?
     let animatesAvatar: Bool
+    @State private var isHovered = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -102,7 +117,8 @@ private struct DirectMessageInboxRow: View {
                 channel: channel,
                 size: 32,
                 status: channel.kind == .directMessage ? member?.status ?? .offline : nil,
-                animates: animatesAvatar
+                animates: animatesAvatar,
+                isHovered: isHovered
             )
 
             VStack(alignment: .leading, spacing: 2) {
@@ -143,6 +159,13 @@ private struct DirectMessageInboxRow: View {
 
             Spacer(minLength: 0)
 
+            if isPinned {
+                Image(systemName: "pin.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Pinned direct message")
+            }
+
             if channel.mentionCount > 0 {
                 Text(channel.mentionCount, format: .number)
                     .font(.caption2.bold())
@@ -159,6 +182,7 @@ private struct DirectMessageInboxRow: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityValue(accessibilityValue)
+        .onModalHover { isHovered = $0 }
         .overlay {
             ChannelContextMenuBridge(
                 isSelected: model.selectedChannelID == channel.id,
@@ -195,7 +219,10 @@ private struct DirectMessageInboxRow: View {
                             channelID: channel.id
                         )
                     )
-                }
+                },
+                pinAction: .available(isPinned: isPinned, toggle: {
+                    model.toggleDirectMessagePin(channel.id)
+                })
             )
         }
     }
@@ -219,8 +246,16 @@ struct DirectMessageAvatar: View {
     let size: CGFloat
     let status: PresenceStatus?
     let animates: Bool
+    var isHovered: Bool?
+    @State private var isPointerInside = false
 
     var body: some View {
+        content
+            .onModalHover { isPointerInside = $0 }
+    }
+
+    @ViewBuilder
+    private var content: some View {
         if let status {
             AvatarPresenceView(
                 status: status,
@@ -237,13 +272,14 @@ struct DirectMessageAvatar: View {
     @ViewBuilder
     private var avatar: some View {
         if let iconURL = channel.iconURL {
-            AvatarView(name: channel.name, url: iconURL, size: size, animates: animates)
+            AvatarView(name: channel.name, url: iconURL, size: size, animates: animates, isHovered: isHovered ?? isPointerInside)
         } else if channel.kind == .directMessage, let recipient = channel.recipients.first {
             AvatarView(
                 name: recipient.displayName,
                 url: recipient.avatarURL,
                 size: size,
-                animates: animates
+                animates: animates,
+                isHovered: isHovered ?? isPointerInside
             )
         } else if channel.kind == .groupDirectMessage,
                   channel.recipients.count >= 2
@@ -253,7 +289,8 @@ struct DirectMessageAvatar: View {
                 second: channel.recipients[1],
                 name: channel.name,
                 size: size,
-                animates: animates
+                animates: animates,
+                isHovered: isHovered ?? isPointerInside
             )
         } else {
             Image(systemName: "person.2.fill")
@@ -272,6 +309,7 @@ private struct GroupDirectMessageAvatar: View {
     let name: String
     let size: CGFloat
     let animates: Bool
+    let isHovered: Bool
 
     private var backSize: CGFloat { size * 0.68 }
     private var frontSize: CGFloat { size * 0.75 }
@@ -284,7 +322,8 @@ private struct GroupDirectMessageAvatar: View {
                 name: first.displayName,
                 url: first.avatarURL,
                 size: backSize,
-                animates: animates
+                animates: animates,
+                isHovered: isHovered
             )
             .mask {
                 Path { path in
@@ -303,7 +342,8 @@ private struct GroupDirectMessageAvatar: View {
                 name: second.displayName,
                 url: second.avatarURL,
                 size: frontSize,
-                animates: animates
+                animates: animates,
+                isHovered: isHovered
             )
             .offset(x: frontOrigin, y: frontOrigin)
         }
