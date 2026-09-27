@@ -480,7 +480,12 @@ private struct ChatRootView: View {
                 for: .sakuracordToggleChannelSidebar
             )
         ) { _ in
-            columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly
+            withAnimation(
+                NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+                    ? nil : .smooth(duration: 0.24)
+            ) {
+                columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .sakuracordNotificationDeepLink)) { notification in
             guard let link = notification.object as? NotificationDeepLink else { return }

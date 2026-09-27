@@ -709,26 +709,17 @@ extension NativeTimelineCanvasView {
     }
 
     func firstVisibleMessage(
-        in rect: CGRect,
-        preferringVisibleOrigin: Bool = false
+        in rect: CGRect
     ) -> (MessageID, CGFloat)? {
         guard var index = rowIndex(at: rect.minY) else { return nil }
-        var intersectingMessage: (MessageID, CGFloat)?
         while items.indices.contains(index) {
             if let id = items[index].messageID {
                 let offset = displayedRowOrigin(at: index) - rect.minY
-                if intersectingMessage == nil {
-                    intersectingMessage = (id, offset)
-                }
-                if !preferringVisibleOrigin
-                    || (offset >= 0 && offset < rect.height)
-                {
-                    return (id, offset)
-                }
+                return (id, offset)
             }
             index += 1
         }
-        return intersectingMessage
+        return nil
     }
 
     func drawTimeline(in dirtyRect: NSRect) {
@@ -831,7 +822,8 @@ extension NativeTimelineCanvasView {
         index: Int,
         revealState: NativeTimelineTextSpoilerRevealState
     ) -> Bool {
-        layouts[index].pollLayout != nil
+        isPreviewingWidth
+            || layouts[index].pollLayout != nil
             || hoveredPollTarget?.messageID == item.messageID
             || hoveredRow == index
             || mediaViewerHighlightedMessageID == item.messageID

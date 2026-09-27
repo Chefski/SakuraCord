@@ -157,17 +157,6 @@ final class NativeMessageTimelineCoordinator: NSObject {
         struct VisibleAnchor {
             let messageID: MessageID
             let offsetFromViewportTop: CGFloat
-
-            var topPinnedForWidthChange: Self {
-                Self(
-                    messageID: messageID,
-                    offsetFromViewportTop:
-                        NativeMessageTimelineLayoutPolicy
-                        .widthChangeAnchorOffset(
-                            from: offsetFromViewportTop
-                        )
-                )
-            }
         }
 
         struct TimelineUpdatePreparation {
@@ -520,13 +509,7 @@ extension NativeMessageTimelineCoordinator {
             if layoutWidth > 0 { scheduleRelayoutForWidthChange(measuredWidth) }
             let width = pendingLayoutWidth == nil ? measuredWidth : max(220, layoutWidth)
             let widthChanged = abs(width - layoutWidth) >= 1
-            let anchor = visibleAnchor(
-                preferringVisibleMessageBeginning: widthChanged
-                    && NativeMessageTimelineLayoutPolicy.prefersVisibleMessageBeginning(
-                        from: layoutWidth,
-                        to: width
-                    )
-            )
+            let anchor = visibleAnchor()
             resetTimelineMutationState(
                 widthChanged: widthChanged,
                 presentationChanged: presentationChanged
@@ -545,7 +528,7 @@ extension NativeMessageTimelineCoordinator {
                 acceptsNewRows: acceptsNewRows,
                 width: width,
                 widthChanged: widthChanged,
-                restoreAnchor: widthChanged ? anchor?.topPinnedForWidthChange : anchor
+                restoreAnchor: anchor
             )
             return (preparation, measurement)
         }

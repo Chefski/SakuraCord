@@ -68,8 +68,7 @@ nonisolated enum NativeTimelineViewportWindowPolicy {
 }
 
 nonisolated enum NativeTimelineWidthRelayoutPolicy {
-    static let asynchronousRowThreshold = 1_000
-    static let batchSize = 96
+    static let asynchronousRowThreshold = 32
 
     static func indexes(
         itemCount: Int,
@@ -276,7 +275,8 @@ extension NativeMessageTimelineCoordinator {
 
         func layout(
             for item: NativeMessageTimelineItem,
-            width: CGFloat
+            width: CGFloat,
+            metrics: NativeTimelineRowLayout.Metrics? = nil
         ) -> NativeTimelineRowLayout {
             if let preparation = layoutPreparation,
                preparation.isComplete,
@@ -291,7 +291,8 @@ extension NativeMessageTimelineCoordinator {
             return NativeTimelineRowLayout.make(
                 item: item,
                 width: width,
-                model: parent.model
+                model: parent.model,
+                metrics: metrics
             )
         }
 
@@ -332,6 +333,7 @@ extension NativeMessageTimelineCoordinator {
                     height: effectiveContentHeight
                 )
             )
+            canvas.isPreviewingWidth = previewLayoutWidth != nil
             canvas.presentedConversationID = parent.conversation.id
             canvas.messageInteractionContext =
                 parent.conversation.messageInteractionContext
@@ -715,22 +717,8 @@ extension NativeMessageTimelineCoordinator {
                     lastReportedState?.isNearBottom
                         ?? scrollState().isNearBottom
                 )
-            let visiblePosition =
-                preservesEstablishedPosition && !wasNearBottom
-                ? visibleAnchor(
-                    preferringVisibleMessageBeginning:
-                        reflowsWidth
-                        && NativeMessageTimelineLayoutPolicy
-                        .prefersVisibleMessageBeginning(
-                            from: layoutWidth,
-                            to: width
-                        )
-                )
-                : nil
-            let anchor =
-                reflowsWidth
-                ? visiblePosition?.topPinnedForWidthChange
-                : visiblePosition
+            let anchor = preservesEstablishedPosition && !wasNearBottom
+                ? visibleAnchor() : nil
 
             isApplyingUpdate = true
             if reflowsWidth {
@@ -798,7 +786,8 @@ extension NativeMessageTimelineCoordinator {
             previewLayoutWidth = nil
             previewedRowIdentifiers.removeAll()
             rowsPreviewedAtCurrentWidth.removeAll()
-            layouts = preparedLayouts ?? items.map { layout(for: $0, width: width) }
+            let metrics = NativeTimelineRowLayout.Metrics(settings: parent.model.interfaceSettings)
+            layouts = preparedLayouts ?? items.map { layout(for: $0, width: width, metrics: metrics) }
             layoutWidth = width
             rowHeights = layouts.map(\.height)
             rebuildOrigins()
@@ -833,13 +822,14 @@ extension NativeMessageTimelineCoordinator {
 
         func previewVisibleRows(at width: CGFloat) {
             guard let range = visiblePreviewRange() else { return }
+            let metrics = NativeTimelineRowLayout.Metrics(settings: parent.model.interfaceSettings)
             var didReflow = false
             for index in range {
                 let identifier = items[index].identifier
                 guard !rowsPreviewedAtCurrentWidth.contains(identifier) else {
                     continue
                 }
-                let rowLayout = layout(for: items[index], width: width)
+                let rowLayout = layout(for: items[index], width: width, metrics: metrics)
                 layouts[index] = rowLayout
                 rowHeights[index] = rowLayout.height
                 previewedRowIdentifiers.insert(identifier)
@@ -929,6 +919,7 @@ extension NativeMessageTimelineCoordinator {
 
         func beginBatchedWidthRelayout(_ width: CGFloat) {
             let sourceItems = items
+            let metrics = NativeTimelineRowLayout.Metrics(settings: parent.model.interfaceSettings)
             let sourceConversation = parent.conversation
             let sourcePresentationRevision = parent.presentationRevision
             let visibleRange = visibleItemRangeForWidthRelayout()
@@ -944,27 +935,23 @@ extension NativeMessageTimelineCoordinator {
                     repeating: nil,
                     count: sourceItems.count
                 )
-                var offset = 0
-                while offset < indexes.count {
+                var sliceStart = ProcessInfo.processInfo.systemUptime
+                for index in indexes {
                     guard !Task.isCancelled,
                           self.widthRelayoutGeneration == generation,
                           self.pendingLayoutWidth == width,
                           self.parent.conversation == sourceConversation
                     else { return }
-                    let upperBound = min(
-                        indexes.count,
-                        offset + NativeTimelineWidthRelayoutPolicy.batchSize
-                    )
-                    for orderedIndex in offset ..< upperBound {
-                        let index = indexes[orderedIndex]
-                        prepared[index] = self.layout(
-                            for: sourceItems[index],
-                            width: width
-                        )
-                    }
-                    offset = upperBound
-                    if offset < indexes.count {
-                        await Task.yield()
+                    prepared[index] = self.layout(for: sourceItems[index], width: width, metrics: metrics)
+                    if ProcessInfo.processInfo.systemUptime - sliceStart >= 0.0015 {
+                        // Give AppKit a run-loop turn to draw. Task.yield() can
+                        // immediately resume this main-actor job instead.
+                        do {
+                            try await Task.sleep(for: .milliseconds(1))
+                        } catch {
+                            return
+                        }
+                        sliceStart = ProcessInfo.processInfo.systemUptime
                     }
                 }
                 guard !Task.isCancelled,
@@ -1409,15 +1396,11 @@ extension NativeMessageTimelineCoordinator {
             }
         }
 
-        func visibleAnchor(
-            preferringVisibleMessageBeginning: Bool = false
-        ) -> VisibleAnchor? {
+        func visibleAnchor() -> VisibleAnchor? {
             guard let canvas, let scrollView,
                   let result =
                     canvas.firstVisibleMessage(
-                        in: scrollView.contentView.bounds,
-                        preferringVisibleOrigin:
-                            preferringVisibleMessageBeginning
+                        in: scrollView.contentView.bounds
                     )
             else { return nil }
             return VisibleAnchor(

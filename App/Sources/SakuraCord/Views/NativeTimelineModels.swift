@@ -967,29 +967,6 @@ nonisolated enum NativeMessageTimelineLayoutPolicy {
             <= max(0, tolerance)
     }
 
-    /// The previous LazyVStack renderer top-pinned the first intersecting
-    /// message when a width change reflowed a row that began above the
-    /// viewport. Preserve that behavior instead of keeping an arbitrary point
-    /// inside a tall media-heavy row.
-    static func widthChangeAnchorOffset(
-        from rawOffsetFromViewportTop: CGFloat
-    ) -> CGFloat {
-        max(
-            ChatDetailLayoutPolicy.timelineWidthReflowTopInset,
-            rawOffsetFromViewportTop
-        )
-    }
-
-    /// When the viewport grows, the former SwiftUI renderer retained the
-    /// first message whose beginning was actually visible. Anchoring a
-    /// partially clipped media row instead would reveal content that was
-    /// above the viewport before the expansion.
-    static func prefersVisibleMessageBeginning(
-        from oldWidth: CGFloat,
-        to newWidth: CGFloat
-    ) -> Bool {
-        newWidth > oldWidth
-    }
 }
 
 @MainActor
