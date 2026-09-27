@@ -6,6 +6,7 @@ struct OnboardingQuestion: View {
     let guildID: GuildID
     let prompt: GuildOnboardingPrompt
     var large = false
+    @State private var columnCount = 1
     private var entry: GuildOnboardingStore.Entry { model.onboarding.entries[guildID] ?? .init() }
     private var selected: [GuildOnboardingOption] { prompt.options.filter { entry.responses.contains($0.id) } }
     private var usesMenu: Bool { prompt.type == 1 || prompt.options.count >= 13 }
@@ -24,20 +25,18 @@ struct OnboardingQuestion: View {
             } else if usesMenu {
                 menu
             } else {
-                ViewThatFits(in: .horizontal) {
-                    optionGrid(columns: 2).frame(minWidth: large ? 520 : 430)
-                    optionGrid(columns: 1)
-                }
+                optionGrid
             }
-            if !prompt.singleSelect {
+            if !prompt.singleSelect, [0, 1].contains(prompt.type), !prompt.options.isEmpty {
                 Text("Choose all that apply.").font(.callout).foregroundStyle(.secondary)
             }
         }
+        .onGeometryChange(for: Int.self) { $0.size.width >= (large ? 520 : 430) ? 2 : 1 } action: { columnCount = $0 }
         .disabled((entry.initial && entry.isSaving) || entry.needsRefresh)
     }
 
-    private func optionGrid(columns: Int) -> some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: columns), spacing: 12) {
+    private var optionGrid: some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: columnCount), spacing: 12) {
             ForEach(prompt.options) { option in optionButton(option, descriptions: true) }
         }
     }
@@ -72,7 +71,7 @@ struct OnboardingQuestion: View {
     }
 
     private func optionButton(_ option: GuildOnboardingOption, descriptions: Bool) -> some View {
-        OnboardingOptionRow(option: option, selected: entry.responses.contains(option.id), descriptions: descriptions) {
+        OnboardingOptionRow(option: option, singleSelect: prompt.singleSelect, selected: entry.responses.contains(option.id), descriptions: descriptions) {
             model.selectOnboardingOption(option, prompt: prompt, guildID: guildID)
         }
     }
@@ -80,6 +79,7 @@ struct OnboardingQuestion: View {
 
 private struct OnboardingOptionRow: View {
     let option: GuildOnboardingOption
+    let singleSelect: Bool
     let selected: Bool
     let descriptions: Bool
     let action: () -> Void
@@ -97,16 +97,20 @@ private struct OnboardingOptionRow: View {
                 }
                 .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 4)
-                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                Image(systemName: singleSelect
+                    ? (selected ? "checkmark.circle.fill" : "circle")
+                    : (selected ? "checkmark.square.fill" : "square"))
                     .foregroundStyle(selected ? SakuraCordAccentColor.color : .secondary.opacity(0.5))
             }
             .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(ConcentricRectangle(cornerRadius: 16))
-            .background(selected ? SakuraCordAccentColor.color.opacity(0.13) : Color.primary.opacity(hovered ? 0.09 : 0.04), in: ConcentricRectangle(cornerRadius: 16))
-            .overlay { ConcentricRectangle(cornerRadius: 16).stroke(selected ? SakuraCordAccentColor.color.opacity(0.8) : Color.primary.opacity(0.08)) }
+            .contentShape(RoundedRectangle(cornerRadius: 16))
+            .background(selected ? SakuraCordAccentColor.color.opacity(0.13) : Color.primary.opacity(hovered ? 0.09 : 0.04), in: RoundedRectangle(cornerRadius: 16))
+            .overlay { RoundedRectangle(cornerRadius: 16).stroke(selected ? SakuraCordAccentColor.color.opacity(0.8) : Color.primary.opacity(0.08)) }
         }
-        .buttonStyle(.plain).onHover { hovered = $0 }
-        .accessibilityLabel(option.title).accessibilityValue(selected ? "Selected" : "Not selected")
+        .buttonStyle(.plain).onModalHover { hovered = $0 }
+        .accessibilityLabel(option.title)
+        .accessibilityHint(option.description ?? "")
+        .accessibilityValue(selected ? "Selected" : "Not selected")
         .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 }

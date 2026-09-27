@@ -10,7 +10,7 @@ nonisolated extension SettingsCatalog {
     static let featuresControls: [SettingsControlMetadata] = [
         control(
             .channelManagement, page: .features, section: .featuresChannels,
-            label: "Channel customization", help: "Choose which channels appear in each server through Channels & Roles.",
+            label: "Channel customization", help: "Use each server’s channel selections. Turn off to show all channels while keeping Channels & Roles available.",
             keywords: ["onboarding", "channels", "roles", "default channels"], scope: .appWideLocal
         ),
         control(

@@ -274,7 +274,7 @@ nonisolated struct SettingsPreferenceRegistry: Sendable {
         ),
         SettingsPreferenceRegistration(
             id: .channelManagement, page: .features,
-            storage: .appWide(key: "settings.features.channelManagement"), defaultValue: .bool(false)
+            storage: .appWide(key: "settings.features.channelManagement"), defaultValue: .bool(true)
         ),
         SettingsPreferenceRegistration(
             id: .showHiddenChannels, page: .features,

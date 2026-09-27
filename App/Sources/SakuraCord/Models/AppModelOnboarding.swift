@@ -2,7 +2,6 @@ import DiscordProtocol
 import Foundation
 import Observation
 import SakuraCordModels
-import SakuraCordPersistence
 
 @Observable
 final class GuildOnboardingStore {
@@ -25,33 +24,23 @@ final class GuildOnboardingStore {
     var entries: [GuildID: Entry] = [:]
     var members: [GuildID: Member] = [:]
     var presentedGuildID: GuildID?
+    var previewChannelID: ChannelID?
+    var previewReturnChannelID: ChannelID?
+    var profiles: [GuildID: UserProfile] = [:]
     var page: GuildWorkspacePage = .channelsAndRoles
     var guides: [GuildID: GuildGuideEntry] = [:]
     var channelSelections: [GuildID: GuildChannelSelectionMutation] = [:]
     @ObservationIgnored var customizationDebounce: @Sendable () async throws -> Void = { try await Task.sleep(for: .seconds(1)) }
-    @ObservationIgnored var generation = 0
-    @ObservationIgnored var draftWrite: Task<Void, Never>?
 
     func reset() {
-        generation += 1
         entries = [:]
         members = [:]
         guides = [:]
         presentedGuildID = nil
+        previewChannelID = nil
+        previewReturnChannelID = nil
+        profiles = [:]
         channelSelections = [:]
-    }
-
-    func persist(_ draft: GuildOnboardingDraft?, guildID: GuildID, database: SakuraCordDatabase?) {
-        let previous = draftWrite
-        let generation = generation
-        draftWrite = Task {
-            await previous?.value
-            do { try await database?.saveOnboardingDraft(draft, guildID: guildID) } catch {
-                if self.generation == generation {
-                    self.entries[guildID]?.notice = "Your draft could not be saved on this Mac. Keep this window open until you finish."
-                }
-            }
-        }
     }
 }
 
@@ -93,9 +82,14 @@ extension AppModel {
     }
 
     func openChannelsAndRoles(in guildID: GuildID) {
+        closeCustomizationPreview()
+        closeThread()
+        closeVoiceChat()
         onboarding.page = .channelsAndRoles
+        if onboarding.entries[guildID] == nil { onboarding.entries[guildID] = .init() }
         onboarding.presentedGuildID = guildID
-        refreshOnboarding(in: guildID)
+        onboarding.previewChannelID = nil
+        if hasCustomizationQuestions(in: guildID) || requiresOnboarding(in: guildID) { refreshOnboarding(in: guildID) }
     }
 
     func refreshSelectedGuildOnboarding(force: Bool = false) {
@@ -125,8 +119,6 @@ extension AppModel {
                 async let configuration = account.provider.guildOnboarding(in: guildID)
                 async let member = account.provider.refreshCurrentMember(in: guildID)
                 let (value, confirmedMember) = try await (configuration, member)
-                await store.draftWrite?.value
-                let saved = try await account.database?.onboardingDraft(guildID: guildID)
                 guard model.isCurrentAccountSession(account), !Task.isCancelled,
                       store.entries[guildID]?.revision == revision else { return }
                 let initial = confirmedMember.requiresOnboarding && guild.features.contains("GUILD_ONBOARDING")
@@ -148,14 +140,6 @@ extension AppModel {
                     next.responses = value.validResponses(current.responses, initial: true)
                     next.promptID = current.promptID
                     if next.responses != current.responses { next.notice = "Some options were removed. Review your answers before continuing." }
-                } else if initial, let saved, saved.initial == initial, saved.joinedAt == confirmedMember.joinedAt,
-                   saved.baselineResponses == Set(value.responses) {
-                    next.responses = value.validResponses(saved.responses, initial: initial)
-                    next.promptID = saved.promptID
-                    if next.responses != saved.responses { next.notice = "Some options were removed. Review your answers before continuing." }
-                } else if saved != nil {
-                    next.notice = "Your membership or answers changed in Discord. The latest answers are shown."
-                    store.persist(nil, guildID: guildID, database: account.database)
                 }
                 let questions = value.questions(initial: initial)
                 if next.promptID != nil, !questions.contains(where: { $0.id == next.promptID }) {
@@ -222,24 +206,13 @@ extension AppModel {
         entry.error = nil
         entry.editRevision = UUID()
         onboarding.entries[guildID] = entry
-        if entry.initial {
-            persistOnboardingDraft(in: guildID)
-        } else {
+        if !entry.initial {
             scheduleOnboardingAnswers(in: guildID)
         }
     }
 
     func setOnboardingPrompt(_ promptID: String, guildID: GuildID) {
         onboarding.entries[guildID]?.promptID = promptID
-        persistOnboardingDraft(in: guildID)
-    }
-
-    private func persistOnboardingDraft(in guildID: GuildID) {
-        guard let entry = onboarding.entries[guildID], let value = entry.configuration else { return }
-        onboarding.persist(GuildOnboardingDraft(
-            responses: entry.responses, baselineResponses: Set(value.responses), promptID: entry.promptID,
-            joinedAt: onboardingMember(in: guildID)?.joinedAt, initial: entry.initial
-        ), guildID: guildID, database: accountSession().database)
     }
 
     func saveOnboarding(in guildID: GuildID) {
@@ -270,8 +243,6 @@ extension AppModel {
                 store.entries[guildID]?.responses = Set(saved.responses)
                 store.entries[guildID]?.isSaving = false
                 store.entries[guildID]?.initial = false
-                store.entries[guildID]?.notice = "Answers saved."
-                store.persist(nil, guildID: guildID, database: account.database)
                 if entry.initial { model.openGuildGuide(in: guildID) }
             } catch {
                 guard model.isCurrentAccountSession(account), store.entries[guildID]?.revision == entry.revision else { return }
@@ -315,15 +286,19 @@ extension AppModel {
         let guide = onboarding.guides[guildID]?.configuration
         let resources = guide?.enabled == true ? Set(guide?.resourceChannels.map(\.channelID) ?? []) : []
         let settings = presentedGuildChannelSettings(in: guildID)
-        let filtersSelection = featuresSettings.channelManagement && settings.flags & GuildChannelSelection.enabledFlag != 0
+        let filtersSelection = !showsAllChannels(in: guildID)
         let activeChannelID = guildWorkspacePage == nil ? selectedChannelID : nil
-        return groups.compactMap { group in
+        return groups.compactMap { group -> ChannelGroup? in
             var group = group
-            group.channels.removeAll {
-                (resources.contains($0.id) && $0.id != activeChannelID) || (filtersSelection
-                    && !GuildChannelSelection.isSelected($0.id, settings: settings)
-                    && !(group.categoryID.map { GuildChannelSelection.isSelected($0, settings: settings) } ?? false)
-                    && $0.id != activeVoiceChannel?.id)
+            group.channels.removeAll { channel in
+                guard filtersSelection else { return false }
+                if hasGuildGuide(in: guildID), resources.contains(channel.id) || channel.flags & (1 << 7) != 0,
+                   channel.id != activeChannelID { return true }
+                guard !GuildChannelSelection.isSelected(channel.id, settings: settings),
+                      !(group.categoryID.map { GuildChannelSelection.isSelected($0, settings: settings) } ?? false),
+                      channel.id != activeVoiceChannel?.id, channel.id != activeChannelID,
+                      channel.mentionCount == 0 else { return false }
+                return true
             }
             return group.channels.isEmpty ? nil : group
         }

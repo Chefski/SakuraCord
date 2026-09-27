@@ -897,11 +897,15 @@ final class AppModel {
     var selectedChannelID: ChannelID? {
         didSet {
             guard selectedChannelID != oldValue else { return }
-            onboarding.presentedGuildID = nil
+            if onboarding.previewChannelID != selectedChannelID {
+                onboarding.presentedGuildID = nil
+                onboarding.previewChannelID = nil
+                onboarding.previewReturnChannelID = nil
+            }
             refreshServerRailSelection()
-            recordConversationNavigation()
+            if onboarding.previewChannelID == nil { recordConversationNavigation() }
             timelineSpoilerRevealStore.reset()
-            if let previousChannel = selectedChannel,
+            if onboarding.previewChannelID == nil, let previousChannel = selectedChannel,
                let guildID = previousChannel.guildID
             {
                 lastOpenedChannelIDsByGuild[guildID] = previousChannel.id

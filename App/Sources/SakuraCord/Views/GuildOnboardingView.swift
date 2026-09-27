@@ -1,12 +1,16 @@
 import SakuraCordModels
 import SwiftUI
 
-/// Replaces the entire guild workspace until Discord confirms completion.
+/// Gates the guild detail pane until Discord confirms completion.
 struct GuildOnboardingView: View {
     let model: AppModel
     let guildID: GuildID
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var revealed = true
+    @State private var movingForward = true
+    @State private var navigationHeight: CGFloat = 40
+
+    private let navigationInset: CGFloat = 16
+    private var cardRadius: CGFloat { navigationHeight / 2 + navigationInset }
 
     private var entry: GuildOnboardingStore.Entry { model.onboarding.entries[guildID] ?? .init() }
     private var guild: Guild? { model.serverRailGuildsByID[guildID] }
@@ -16,30 +20,16 @@ struct GuildOnboardingView: View {
 
     var body: some View {
         ZStack {
-            SakuraCordSignInBackdrop()
-            VStack(spacing: 0) {
-                Spacer(minLength: 0)
-                content
-                    .modifier(SakuraCordSignInReveal(isVisible: revealed, reduceMotion: reduceMotion))
-                    .frame(maxWidth: 820, maxHeight: 650)
-                    .padding(.horizontal, 32)
-                    .padding(.top, 32)
-                Spacer(minLength: 0)
-                Link("Discord Privacy Policy", destination: URL(string: "https://discord.com/privacy")!)
-                    .font(.caption).foregroundStyle(.secondary).padding(20)
-            }
+            content
+                .id(entry.configuration == nil ? "loading" : entry.promptID ?? "welcome")
+                .transition(reduceMotion ? .opacity : .push(from: movingForward ? .trailing : .leading))
         }
+        .frame(maxWidth: 820, maxHeight: 560)
+        .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
+        .background { SakuraCordSignInBackdrop().ignoresSafeArea(edges: .top) }
         .tint(SakuraCordAccentColor.color)
-        .onChange(of: entry.promptID) { old, new in
-            guard old != new else { return }
-            revealed = false
-            Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(40))
-                guard entry.promptID == new else { return }
-                withAnimation(SakuraCordSignInReveal.animation(reduceMotion: reduceMotion)) { revealed = true }
-            }
-        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Server Onboarding")
     }
@@ -62,30 +52,29 @@ struct GuildOnboardingView: View {
     }
 
     private var welcome: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                GuildWelcomeArtwork(guild: guild, size: 180)
-                Text("Welcome to \(guild?.name ?? "the server")")
-                    .font(.title2).multilineTextAlignment(.center)
-                Text("Let’s customize your experience")
-                    .font(.system(size: 38, weight: .semibold, design: .rounded))
-                    .multilineTextAlignment(.center)
-                OnboardingStatus(entry: entry)
-                if prompts.isEmpty {
-                    Button("Finish Joining", systemImage: "arrow.right") { model.saveOnboarding(in: guildID) }
-                        .buttonStyle(.glassProminent).controlSize(.extraLarge)
-                        .disabled(working || entry.needsRefresh)
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(spacing: 24) {
+                    GuildWelcomeArtwork(guild: guild, size: 120)
+                    Text("Welcome to \(guild?.name ?? "the server")")
+                        .font(.title2).multilineTextAlignment(.center)
+                    Text("Let’s customize your experience")
+                        .font(.largeTitle.weight(.semibold))
+                        .multilineTextAlignment(.center)
+                    OnboardingStatus(entry: entry)
+                    Button(prompts.isEmpty ? "Finish Joining" : "Get Started", systemImage: "arrow.right") {
+                        if let first = prompts.first { advance(to: first.id) } else { model.saveOnboarding(in: guildID) }
+                    }
+                    .buttonStyle(.glassProminent)
+                    .controlSize(.extraLarge)
+                    .buttonBorderShape(.capsule)
+                    .disabled(working || entry.needsRefresh || entry.isLoading)
+                    if entry.needsRefresh { refreshButton }
                 }
-                if entry.needsRefresh { refreshButton }
+                .padding(24)
+                .frame(maxWidth: .infinity, minHeight: geometry.size.height)
             }
-            .padding(32).frame(maxWidth: .infinity)
-        }
-        .scrollBounceBehavior(.basedOnSize)
-        .task(id: entry.isLoading) {
-            guard !working, !entry.needsRefresh, let first = prompts.first else { return }
-            do { try await Task.sleep(for: .seconds(reduceMotion ? 0 : 2)) } catch { return }
-            guard entry.promptID == nil else { return }
-            advance(to: first.id)
+            .scrollBounceBehavior(.basedOnSize)
         }
     }
 
@@ -100,6 +89,7 @@ struct GuildOnboardingView: View {
                     }
                     .font(.callout.weight(.medium))
                     OnboardingQuestion(model: model, guildID: guildID, prompt: prompt, large: true)
+                    consequence(prompt)
                     OnboardingStatus(entry: entry)
                 }
                 .padding(32).frame(maxWidth: .infinity, alignment: .leading)
@@ -107,15 +97,13 @@ struct GuildOnboardingView: View {
             .scrollBounceBehavior(.basedOnSize)
             .id(prompt.id)
             Divider().opacity(0.4)
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 20) { consequence(prompt); Spacer(minLength: 0); navigation(index: index) }
-                VStack(alignment: .leading, spacing: 16) { consequence(prompt); HStack { Spacer(); navigation(index: index) } }
-            }
-            .padding(24)
+            navigation(index: index)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { navigationHeight = $0 }
+                .padding(navigationInset)
         }
-        .background(.background.opacity(0.88), in: ConcentricRectangle(cornerRadius: 32))
-        .overlay { ConcentricRectangle(cornerRadius: 32).stroke(.primary.opacity(0.06)) }
-        .containerShape(RoundedRectangle(cornerRadius: 32))
+        .background(.background.opacity(0.88), in: RoundedRectangle(cornerRadius: cardRadius))
+        .overlay { RoundedRectangle(cornerRadius: cardRadius).stroke(.primary.opacity(0.06)) }
+        .containerShape(RoundedRectangle(cornerRadius: cardRadius))
     }
 
     private func consequence(_ prompt: GuildOnboardingPrompt) -> some View {
@@ -125,28 +113,29 @@ struct GuildOnboardingView: View {
         let names = (model.snapshot?.channels ?? []).filter { channels.contains($0.id) }.map { "#\($0.name)" }
         let roleNames = (model.guildRolesByGuildID[guildID] ?? model.guildRoles).filter { roles.contains($0.id) }.map { "@\($0.name)" }
         return VStack(alignment: .leading, spacing: 4) {
-            if !names.isEmpty { Text("Channels: " + names.joined(separator: ", ")) }
-            if !roleNames.isEmpty { Text("Roles: " + roleNames.joined(separator: ", ")) }
+            if !names.isEmpty { Text("Channels: \(names.formatted())") }
+            if !roleNames.isEmpty { Text("Roles: \(roleNames.formatted())") }
         }
         .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
     }
 
     private func navigation(index: Int) -> some View {
         HStack(spacing: 12) {
-            if entry.needsRefresh { refreshButton }
             if index > 0 {
                 Button("Back", systemImage: "arrow.left") { advance(to: prompts[index - 1].id) }
                     .buttonStyle(.glass).disabled(working)
             }
-            if entry.isSaving { ProgressView().controlSize(.small) }
+            Spacer(minLength: 0)
+            if entry.needsRefresh { refreshButton }
+            if entry.isSaving { ProgressView().controlSize(.small).accessibilityLabel("Saving answers") }
             Button(index + 1 < prompts.count ? "Next" : "Finish Joining", systemImage: "arrow.right") {
                 if index + 1 < prompts.count { advance(to: prompts[index + 1].id) } else { model.saveOnboarding(in: guildID) }
             }
             .buttonStyle(.glassProminent)
             .disabled(working || entry.needsRefresh || (entry.isLoading && index + 1 == prompts.count) || !canAdvance(prompts[index]))
         }
-        .controlSize(.large)
-        .buttonBorderShape(.roundedRectangle(radius: 8))
+        .controlSize(.extraLarge)
+        .buttonBorderShape(.capsule)
     }
 
     private var refreshButton: some View {
@@ -159,7 +148,8 @@ struct GuildOnboardingView: View {
     }
 
     private func advance(to promptID: String) {
-        withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) {
+        movingForward = (prompts.firstIndex { $0.id == promptID } ?? 0) >= (index ?? -1)
+        withAnimation(reduceMotion ? .easeInOut(duration: 0.2) : .smooth(duration: 0.3)) {
             model.setOnboardingPrompt(promptID, guildID: guildID)
         }
     }

@@ -209,9 +209,6 @@ private struct ChatRootView: View {
                     },
                     updateStatus: { await model.updateStatus($0) }
                 )
-                .opacity(model.onboardingEntryGuildID == nil ? 1 : 0)
-                .allowsHitTesting(model.onboardingEntryGuildID == nil)
-                .accessibilityHidden(model.onboardingEntryGuildID != nil)
             }
             .opacity(model.isSwitchingAccounts ? 0 : 1)
             .onGeometryChange(for: CGFloat.self) { proxy in
@@ -227,8 +224,11 @@ private struct ChatRootView: View {
             )
         } detail: {
             Group {
-                if model.isSwitchingAccounts || model.onboardingEntryGuildID != nil {
+                if model.isSwitchingAccounts {
                     Color.clear
+                } else if let guildID = model.onboardingEntryGuildID {
+                    GuildOnboardingView(model: model, guildID: guildID)
+                        .id(guildID)
                 } else {
                     ChatWorkspaceView(
                         model: model,
@@ -243,13 +243,12 @@ private struct ChatRootView: View {
             }
         }
         .toolbar {
-            if model.onboardingEntryGuildID == nil { conversationToolbar }
-        }
-        .overlay {
-            if let guildID = model.onboardingEntryGuildID, !model.isSwitchingAccounts {
-                GuildOnboardingView(model: model, guildID: guildID)
-                    .id(guildID)
-                    .padding(.leading, columnVisibility == .detailOnly ? 0 : ChatChromeMetrics.serverRailWidth)
+            if model.onboardingEntryGuildID != nil {
+                ToolbarItem(placement: .navigation) {
+                    ConversationToolbarTitle(presentation: .init(title: "Server Onboarding", systemImage: "sparkles"))
+                }
+            } else {
+                conversationToolbar
             }
         }
         .environment(\.composerDropInteraction, composerDropInteraction)
@@ -580,12 +579,24 @@ private struct ChatRootView: View {
 
                 ToolbarSpacer(.fixed)
 
+                if model.openThread == nil, let channel = model.customizationPreviewChannel,
+                   let guildID = channel.guildID, !model.isChannelSelected(channel) {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button("Add to Channel List", systemImage: "plus") {
+                            model.setChannelSelected(true, channelID: channel.id, guildID: guildID)
+                        }
+                        .labelStyle(.iconOnly)
+                        .help("Add to Channel List")
+                    }
+                }
+
                 ToolbarItem(placement: .primaryAction) {
                     Button(action: closeSupplementaryConversation) {
                         Label("Close conversation", systemImage: "xmark")
                             .labelStyle(.iconOnly)
                     }
                     .help(supplementaryCloseHelp)
+                    .keyboardShortcut(model.guildWorkspacePage == .guide ? .cancelAction : nil)
                 }
                 .visibilityPriority(.high)
             }
@@ -927,6 +938,7 @@ private struct ChatRootView: View {
     private var hasOpenSupplementaryToolbarConversation: Bool {
         model.openThread != nil
             || model.isVoiceChatOpen
+            || model.hasOpenGuildSupplementaryConversation
     }
 
     private var selectedVoiceChannel: Channel? {
@@ -948,7 +960,7 @@ private struct ChatRootView: View {
 
     private var conversationToolbarPresentation: ConversationToolbarPresentation? {
         if let page = model.guildWorkspacePage {
-            return .init(title: page == .guide ? "Server Guide" : "Channels & Roles",
+            return .init(title: page == .guide ? "Server Guide" : model.customizationTitle(in: model.selectedGuildID),
                          systemImage: page == .guide ? "signpost.right" : "slider.horizontal.3")
         }
         guard let channel = model.selectedChannel else { return nil }
@@ -966,6 +978,13 @@ private struct ChatRootView: View {
                 systemImage: "bubble.left.and.bubble.right"
             )
         }
+        if let channel = model.customizationPreviewChannel {
+            return .init(title: channel.name, systemImage: channelToolbarSymbol(channel))
+        }
+        if model.guildWorkspacePage == .guide, let guildID = model.selectedGuildID,
+           let entry = model.onboarding.guides[guildID], let resource = entry.resource {
+            return .init(title: entry.configuration?.resourceChannels.first { $0.channelID == resource.channelID }?.title ?? "Resource", systemImage: "doc.text")
+        }
         guard model.isVoiceChatOpen, let channel = model.selectedChannel else { return nil }
         return SupplementaryToolbarPresentation(
             title: channel.name,
@@ -974,7 +993,9 @@ private struct ChatRootView: View {
     }
 
     private var supplementaryCloseHelp: String {
-        model.openThread == nil ? "Close voice channel chat" : "Close thread"
+        if model.openThread != nil { return "Close thread" }
+        if model.hasOpenGuildSupplementaryConversation { return "Close preview" }
+        return "Close voice channel chat"
     }
 
     private func alignSupplementaryToolbarTitle(_ titleFrame: CGRect) {
@@ -996,7 +1017,7 @@ private struct ChatRootView: View {
     private func closeSupplementaryConversation() {
         if model.openThread != nil {
             model.closeThread()
-        } else {
+        } else if !model.closeGuildSupplementaryConversation() {
             model.closeVoiceChat()
         }
     }

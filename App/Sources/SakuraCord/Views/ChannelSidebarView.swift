@@ -158,6 +158,7 @@ struct ChannelSidebarView: View {
                     input: GuildChannelListInput(
                         modelIdentity: ObjectIdentifier(voiceModel),
                         guildID: guild?.id,
+                        customizationTitle: voiceModel.customizationTitle(in: guild?.id),
                         hasCustomization: guild.map { voiceModel.hasChannelsAndRoles(in: $0.id) } ?? false,
                         hasGuide: guild.map { voiceModel.hasGuildGuide(in: $0.id) } ?? false,
                         page: voiceModel.guildWorkspacePage,
@@ -295,6 +296,7 @@ struct ChannelSidebarView: View {
 nonisolated private struct GuildChannelListInput: Equatable, Sendable {
     let modelIdentity: ObjectIdentifier
     let guildID: GuildID?
+    var customizationTitle: String = "Channels & Roles"
     let hasCustomization: Bool
     let hasGuide: Bool
     let page: GuildWorkspacePage?
@@ -332,7 +334,7 @@ private struct GuildChannelList: View, Equatable {
                     guildPageRow("Server Guide", symbol: "signpost.right", page: .guide)
                 }
                 if input.hasCustomization {
-                    guildPageRow("Channels & Roles", symbol: "slider.horizontal.3", page: .channelsAndRoles)
+                    guildPageRow(input.customizationTitle, symbol: "slider.horizontal.3", page: .channelsAndRoles)
                 }
             }
             if input.hasGuide || input.hasCustomization {
@@ -361,6 +363,7 @@ private struct GuildChannelList: View, Equatable {
                     ) ?? false
                 )
             }
+
         }
         .listStyle(.sidebar)
         .font(.system(size: InterfaceTypographyMetrics.interfaceTextSize))

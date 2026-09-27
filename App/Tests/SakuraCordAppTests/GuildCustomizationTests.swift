@@ -34,6 +34,46 @@ struct GuildCustomizationTests {
         #expect(model.onboarding.entries[guildID]?.responses == ["required"])
     }
 
+    @Test
+    func `channel filtering respects community capabilities local override resources and mentions`() async throws {
+        let model = AppModel(launchMode: .offlineTesting, provider: MockChatProvider())
+        await model.start()
+        let guild = try #require(model.snapshot?.guilds.first)
+        let id = guild.id
+        let selected = Channel(id: .init(rawValue: 200), guildID: id, name: "selected")
+        let omitted = Channel(id: .init(rawValue: 201), guildID: id, name: "omitted")
+        let resource = Channel(id: .init(rawValue: 202), guildID: id, name: "resource", flags: 128)
+        let mention = Channel(id: .init(rawValue: 203), guildID: id, name: "mentioned", mentionCount: 1)
+        let channels = [selected, omitted, resource, mention]
+        model.snapshot?.channels = channels
+        model.snapshot?.guilds[0].features = ["COMMUNITY", "GUILD_ONBOARDING", "GUILD_SERVER_GUIDE"]
+        model.serverRailGuildsByID[id]?.features = ["COMMUNITY", "GUILD_ONBOARDING", "GUILD_SERVER_GUIDE"]
+        model.serverRailGuildsByID[id]?.currentUserPermissions = .max
+        var member = Member(user: try #require(model.currentUser), roleName: "", isOnline: false)
+        member.flags = 2
+        model.onboarding.members[id] = member
+        model.onboarding.presentedGuildID = model.selectedGuildID
+        model.featuresSettings.channelManagement = true
+        model.applyNotificationSettings(.init(guildID: id, flags: GuildChannelSelection.enabledFlag,
+            channelOverrides: [.init(channelID: selected.id, flags: GuildChannelSelection.selectedFlag)]))
+        let groups = ChannelGroup.make(from: channels)
+        #expect(model.selectedChannelGroups(groups, guildID: id).flatMap(\.channels).map(\.id) == [selected.id, mention.id])
+        let voice = Channel(id: .init(rawValue: 204), guildID: id, name: "voice", kind: .voice)
+        let mixedGroups = ChannelGroup.make(from: channels + [voice])
+        #expect(model.selectedChannelGroups(mixedGroups, guildID: id).flatMap(\.channels).map(\.id) == [selected.id, mention.id])
+        model.applyNotificationSettings(.init(guildID: id, flags: GuildChannelSelection.enabledFlag,
+            channelOverrides: [
+                .init(channelID: selected.id, flags: GuildChannelSelection.selectedFlag),
+                .init(channelID: voice.id, flags: GuildChannelSelection.selectedFlag),
+            ]))
+        #expect(model.selectedChannelGroups(mixedGroups, guildID: id).flatMap(\.channels).map(\.id) == [selected.id, mention.id, voice.id])
+        model.featuresSettings.channelManagement = false
+        #expect(model.selectedChannelGroups(groups, guildID: id).flatMap(\.channels).count == 4)
+        model.featuresSettings.channelManagement = true
+        model.serverRailGuildsByID[id]?.features = []
+        #expect(model.selectedChannelGroups(groups, guildID: id).flatMap(\.channels).count == 4)
+    }
+
     @Test(.timeLimit(.minutes(1)))
     func `answer bursts coalesce and old confirmations cannot replace newer input`() async throws {
         let provider = try CustomizationProvider()
@@ -95,9 +135,6 @@ struct GuildCustomizationTests {
         let guildID = GuildID(rawValue: 100)
         let a = ChannelID(rawValue: 200), b = ChannelID(rawValue: 201)
         model.featuresSettings.channelManagement = false
-        model.setChannelSelected(true, channelID: a, guildID: guildID)
-        #expect(model.onboarding.channelSelections.isEmpty)
-        model.featuresSettings.channelManagement = true
         model.onboarding.customizationDebounce = { await clock.wait() }
         var confirmed = GuildNotificationSettings(guildID: guildID, flags: GuildChannelSelection.enabledFlag | 4)
         model.applyNotificationSettings(confirmed)

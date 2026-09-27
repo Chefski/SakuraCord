@@ -15,7 +15,7 @@ struct GuildChannelSelectionMutation {
         }
         for (channelID, selected) in channels {
             var override = value.channelOverrides.first { $0.channelID == channelID } ?? ChannelNotificationOverride(channelID: channelID)
-            override.flags = selected ? override.flags | GuildChannelSelection.selectedFlag : override.flags & ~GuildChannelSelection.selectedFlag
+            override.flags = selected ? override.flags | GuildChannelSelection.selectedFlag : override.flags & ~(GuildChannelSelection.selectedFlag | GuildChannelSelection.favoriteFlag)
             value.channelOverrides.removeAll { $0.channelID == channelID }
             value.channelOverrides.append(override)
         }
@@ -24,15 +24,37 @@ struct GuildChannelSelectionMutation {
 }
 
 extension AppModel {
+    func isUncustomizedMember(in guildID: GuildID) -> Bool {
+        let settings = presentedGuildChannelSettings(in: guildID)
+        return settings.flags & GuildChannelSelection.enabledFlag == 0
+            && (onboardingMember(in: guildID)?.flags ?? 0) & 2 == 0
+            && !settings.channelOverrides.contains { $0.flags & GuildChannelSelection.selectedFlag != 0 }
+    }
+
+    func showsAllChannels(in guildID: GuildID) -> Bool {
+        !featuresSettings.channelManagement || !hasChannelsAndRoles(in: guildID)
+            || presentedGuildChannelSettings(in: guildID).flags & GuildChannelSelection.enabledFlag == 0
+    }
+
+    func isChannelSelected(_ channel: Channel) -> Bool {
+        guard let guildID = channel.guildID else { return true }
+        let settings = presentedGuildChannelSettings(in: guildID)
+        return GuildChannelSelection.isSelected(channel.id, settings: settings)
+            || channel.categoryID.map { GuildChannelSelection.isSelected($0, settings: settings) } == true
+    }
+
     func presentedGuildChannelSettings(in guildID: GuildID) -> GuildNotificationSettings {
         let confirmed = readState.notificationSettings(guildID: guildID) ?? GuildNotificationSettings(guildID: guildID)
-        guard featuresSettings.channelManagement else { return confirmed }
         return onboarding.channelSelections[guildID]?.applying(to: confirmed) ?? confirmed
     }
 
     func setChannelSelectionEnabled(_ enabled: Bool, guildID: GuildID) {
-        guard featuresSettings.channelManagement else { return }
+        onboarding.entries[guildID, default: .init()].error = nil
         var pending = onboarding.channelSelections[guildID] ?? .init()
+        if enabled, isUncustomizedMember(in: guildID) {
+            for channel in browsableChannels(in: guildID) { pending.channels[channel.id] = true }
+            for id in onboarding.entries[guildID]?.configuration?.defaultChannelIDs ?? [] { pending.channels[id] = true }
+        }
         pending.enabled = enabled
         pending.revision = UUID()
         onboarding.channelSelections[guildID] = pending
@@ -40,8 +62,12 @@ extension AppModel {
     }
 
     func setChannelSelected(_ selected: Bool, channelID: ChannelID, guildID: GuildID) {
-        guard featuresSettings.channelManagement else { return }
+        onboarding.entries[guildID, default: .init()].error = nil
         var pending = onboarding.channelSelections[guildID] ?? .init()
+        if isUncustomizedMember(in: guildID) {
+            for channel in browsableChannels(in: guildID) { pending.channels[channel.id] = true }
+            for id in onboarding.entries[guildID]?.configuration?.defaultChannelIDs ?? [] { pending.channels[id] = true }
+        }
         pending.channels[channelID] = selected
         if presentedGuildChannelSettings(in: guildID).flags & GuildChannelSelection.enabledFlag == 0 { pending.enabled = true }
         pending.revision = UUID()
@@ -59,10 +85,6 @@ extension AppModel {
                 do { try await store.customizationDebounce() } catch { return }
                 guard model.isCurrentAccountSession(account), !Task.isCancelled,
                       store.channelSelections[guildID]?.identity == entry.identity else { return }
-                guard model.featuresSettings.channelManagement else {
-                    store.channelSelections[guildID] = nil
-                    return
-                }
                 guard store.channelSelections[guildID]?.revision == pending.revision else { continue }
                 do {
                     let baseline = model.readState.notificationSettings(guildID: guildID) ?? GuildNotificationSettings(guildID: guildID)
@@ -77,7 +99,8 @@ extension AppModel {
                     model.applyNotificationSettings(accepted)
                 } catch {
                     guard model.isCurrentAccountSession(account), store.channelSelections[guildID]?.identity == entry.identity else { return }
-                    store.entries[guildID]?.error = error.localizedDescription
+                    store.entries[guildID, default: .init()].error = error.localizedDescription
+                    if model.guildWorkspacePage != .channelsAndRoles { model.errorMessage = error.localizedDescription }
                 }
                 guard var latest = store.channelSelections[guildID], latest.identity == entry.identity else { return }
                 // Clear only the submitted versions. Newer choices remain visible

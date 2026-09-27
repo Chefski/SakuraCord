@@ -6,21 +6,32 @@ struct GuildCustomizationView: View {
     let guildID: GuildID
     @Environment(\.scenePhase) private var scenePhase
     @State private var showsChannels = false
+    @State private var search = ""
     @State private var newPromptIDs: Set<String>?
     private var entry: GuildOnboardingStore.Entry { model.onboarding.entries[guildID] ?? .init() }
 
     var body: some View {
+        primaryContent
+            .onChange(of: showsChannels) { _, browsing in
+                if !browsing { model.closeCustomizationPreview() }
+            }
+            .onDisappear { model.closeCustomizationPreview() }
+    }
+
+    private var primaryContent: some View {
         VStack(spacing: 0) {
-            if model.featuresSettings.channelManagement {
-                HStack {
-                    Picker("Customize", selection: $showsChannels) {
-                        Text("Customize").tag(false)
-                        Text("Browse Channels").tag(true)
+            if model.hasCustomizationQuestions(in: guildID) {
+                HStack(spacing: 8) {
+                    GlassEffectContainer(spacing: 8) {
+                        HStack(spacing: 8) {
+                            tab("Customize", browsing: false)
+                            tab("Browse Channels", browsing: true)
+                        }
                     }
-                    .pickerStyle(.segmented).labelsHidden().frame(maxWidth: 320)
                     Spacer()
                 }
-                .padding(24)
+                .padding(.horizontal, 24).padding(.vertical, 12)
+                Divider()
             }
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
@@ -33,13 +44,13 @@ struct GuildCustomizationView: View {
                         }
                         .font(.callout)
                     }
-                    if let configuration = entry.configuration, configuration.enabled {
-                        if showsChannels, model.featuresSettings.channelManagement {
-                            GuildOnboardingChannelsView(model: model, guildID: guildID, configuration: configuration)
-                        } else {
+                    if showsChannels || !model.hasCustomizationQuestions(in: guildID) {
+                        GuildOnboardingChannelsView(model: model, guildID: guildID, search: $search)
+                    } else if let configuration = entry.configuration {
+                        Group {
                             ViewThatFits(in: .horizontal) {
                                 HStack(alignment: .top, spacing: 32) {
-                                    questions(configuration).frame(minWidth: 400, maxWidth: .infinity)
+                                    questions(configuration).frame(minWidth: 380, maxWidth: .infinity)
                                     profile.frame(width: 230)
                                 }
                                 VStack(alignment: .leading, spacing: 32) { questions(configuration); profile }
@@ -47,7 +58,7 @@ struct GuildCustomizationView: View {
                         }
                     } else if entry.isLoading {
                         ProgressView("Loading…").frame(maxWidth: .infinity)
-                    } else {
+                    } else if entry.error == nil {
                         ContentUnavailableView("Customization Unavailable", systemImage: "slider.horizontal.3", description: Text("This server hasn’t enabled onboarding customization."))
                     }
                 }
@@ -64,11 +75,22 @@ struct GuildCustomizationView: View {
         }
         .task(id: "\(guildID)-\(model.currentUser?.id.description ?? "")-\(scenePhase)") {
             guard scenePhase == .active else { return }
+            await model.loadCustomizationProfile(in: guildID)
             while !Task.isCancelled {
                 if model.mainWindowIsActive { await model.synchronizeGuildCustomization(in: guildID) }
                 do { try await Task.sleep(for: .seconds(30)) } catch { return }
             }
         }
+    }
+
+    private func tab(_ title: String, browsing: Bool) -> some View {
+        Button { showsChannels = browsing } label: {
+            Text(title).font(.callout.weight(.semibold)).padding(.horizontal, 4)
+        }
+        .buttonStyle(.glass(showsChannels == browsing ? .regular.tint(SakuraCordAccentColor.color.opacity(0.18)) : .regular))
+        .tint(showsChannels == browsing ? SakuraCordAccentColor.color : .secondary)
+        .buttonBorderShape(.capsule)
+        .accessibilityAddTraits(showsChannels == browsing ? .isSelected : [])
     }
 
     private func questions(_ configuration: GuildOnboarding) -> some View {
@@ -106,9 +128,13 @@ struct GuildCustomizationView: View {
         VStack(alignment: .leading, spacing: 20) {
             Text("My Profile").font(.headline)
             if let user = model.currentUser {
-                AsyncImage(url: user.avatarURL) { image in image.resizable().scaledToFill() } placeholder: { Color.secondary.opacity(0.2) }
+                let member = model.onboardingMember(in: guildID)
+                AsyncImage(url: member?.guildAvatarURL ?? user.avatarURL) { image in image.resizable().scaledToFill() } placeholder: { Color.secondary.opacity(0.2) }
                     .frame(width: 80, height: 80).clipShape(Circle())
-                Text(user.displayName).font(.title2.weight(.semibold))
+                Text(member?.guildNickname ?? user.displayName).font(.title2.weight(.semibold))
+            }
+            if let bio = model.onboarding.profiles[guildID]?.bio, !bio.isEmpty {
+                ProfileRichTextView(source: bio).frame(maxWidth: .infinity, alignment: .leading)
             }
             Divider()
             Text("Roles").font(.caption.weight(.semibold)).foregroundStyle(.secondary)

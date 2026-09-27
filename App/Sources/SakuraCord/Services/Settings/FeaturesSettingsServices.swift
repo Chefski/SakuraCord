@@ -4,7 +4,7 @@ nonisolated struct FeaturesSettingsSnapshot: Equatable, Sendable {
     static let defaults = Self()
 
     var showHiddenChannels = true
-    var channelManagement = false
+    var channelManagement = true
     var fakeNitroEmojis = true
     var fakeNitroStickers = true
     var fakeNitroSoundboard = true

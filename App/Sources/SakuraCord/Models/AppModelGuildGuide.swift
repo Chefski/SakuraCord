@@ -45,7 +45,16 @@ extension AppModel {
     }
 
     func hasChannelsAndRoles(in guildID: GuildID) -> Bool {
-        snapshot?.guilds.first { $0.id == guildID }?.features.contains("GUILD_ONBOARDING") == true
+        serverRailGuildsByID[guildID]?.features.contains("COMMUNITY") == true
+    }
+
+    func hasCustomizationQuestions(in guildID: GuildID) -> Bool {
+        hasChannelsAndRoles(in: guildID)
+            && serverRailGuildsByID[guildID]?.features.contains("GUILD_ONBOARDING_HAS_PROMPTS") == true
+    }
+
+    func customizationTitle(in guildID: GuildID?) -> String {
+        guildID.map { hasCustomizationQuestions(in: $0) } == true ? "Channels & Roles" : "Browse Channels"
     }
 
     func hasGuildGuide(in guildID: GuildID) -> Bool {
@@ -68,6 +77,9 @@ extension AppModel {
             onboarding.presentedGuildID = nil
             return
         }
+        closeCustomizationPreview()
+        closeThread()
+        closeVoiceChat()
         onboarding.page = .guide
         onboarding.presentedGuildID = guildID
         onboarding.guides[guildID]?.resource = nil

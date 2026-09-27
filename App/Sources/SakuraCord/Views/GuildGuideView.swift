@@ -46,11 +46,6 @@ struct GuildGuideView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .tint(SakuraCordAccentColor.color)
-        .inspector(isPresented: Binding(get: { entry.resource != nil }, set: { if !$0 { model.onboarding.guides[guildID]?.resource = nil } })) {
-            if let resource = entry.resource {
-                resourcePage(resource).inspectorColumnWidth(min: 320, ideal: 420, max: 600)
-            }
-        }
         .task(id: "\(guildID)-\(model.currentUser?.id.description ?? "")-\(scenePhase)") {
             guard scenePhase == .active else { return }
             while !Task.isCancelled {
@@ -170,37 +165,6 @@ struct GuildGuideView: View {
             }
     }
 
-    private func resourcePage(_ resource: GuildResourceState) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text(entry.configuration?.resourceChannels.first { $0.channelID == resource.channelID }?.title ?? "Resource")
-                    .font(.headline).lineLimit(1)
-                Spacer()
-                Button("Close", systemImage: "xmark") { model.onboarding.guides[guildID]?.resource = nil }
-                    .labelStyle(.iconOnly).buttonStyle(.glass).help("Close resource")
-            }
-            .padding(20)
-            Divider()
-            if let error = resource.error { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red).padding(.horizontal, 24) }
-            if resource.loading, resource.messages.isEmpty {
-                ProgressView("Loading resource…").frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if resource.messages.isEmpty {
-                ContentUnavailableView("No Resource Content", systemImage: "doc.text", description: Text("This resource channel has no messages yet."))
-            } else {
-                NativeMessageTimelineView(
-                    model: model, conversation: .resource(guildID, resource.channelID), beginning: nil,
-                    firstMessageStartsDayOverride: false, hasMoreMessages: false,
-                    hasMoreLaterMessages: resource.hasMore, isLoadingEarlier: false, isLoadingLater: resource.loading,
-                    laterHistoryLoadFailed: resource.error != nil, bottomContentInset: 24, unreadMessageID: nil,
-                    highlightedMessageID: nil, initialScrollTarget: resource.rows.first.map { .message($0.id, anchor: .top) },
-                    scrollRequest: nil, runsPerformanceAutoScroll: false, loadEarlier: {},
-                    loadLater: { model.loadGuideResource(guildID: guildID) }, openReply: { _ in },
-                    onScrollActivityChange: { _ in }, onScrollStateChange: { _ in }, onUserScrollBegan: {}, onUserScrollEnded: { _ in }
-                )
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
 }
 
 private struct GuideActionRow: View {
