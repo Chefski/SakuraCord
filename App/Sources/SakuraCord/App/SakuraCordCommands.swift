@@ -21,14 +21,23 @@ struct SakuraCordCommands: Commands {
         }
 
         CommandGroup(replacing: .sidebar) {
+            ShortcutCommandButton(action: .toggleChannelSidebar)
             ShortcutCommandButton(
-                action: .toggleChannelSidebar
+                action: .toggleMemberList,
+                title: LocalizedStringResource("Toggle Right Sidebar", bundle: #bundle)
             )
-        }
-
-        CommandMenu("Navigate") {
-            ShortcutCommandButton(action: .quickSwitch)
-            ShortcutCommandButton(action: .messageSearch)
+            Divider()
+            ShortcutCommandButton(action: .togglePins)
+            Divider()
+            ShortcutCommandButton(
+                action: .navigateBack,
+                title: LocalizedStringResource("Back", bundle: #bundle)
+            )
+            ShortcutCommandButton(
+                action: .navigateForward,
+                title: LocalizedStringResource("Forward", bundle: #bundle)
+            )
+            ShortcutCommandButton(action: .previousTextChannel)
 
             Divider()
 
@@ -36,15 +45,23 @@ struct SakuraCordCommands: Commands {
             ShortcutCommandButton(action: .nextConversation)
             ShortcutCommandButton(action: .previousUnread)
             ShortcutCommandButton(action: .nextUnread)
+
+            Divider()
+
             ShortcutCommandButton(action: .previousMention)
             ShortcutCommandButton(action: .nextMention)
+
+            Divider()
+
             ShortcutCommandButton(action: .previousServer)
             ShortcutCommandButton(action: .nextServer)
-            ShortcutCommandButton(action: .currentCall)
-            ShortcutCommandButton(action: .navigateBack)
-            ShortcutCommandButton(action: .navigateForward)
-            ShortcutCommandButton(action: .previousTextChannel)
             ShortcutCommandButton(action: .toggleDirectMessages)
+        }
+
+        CommandMenu("Navigate") {
+            ShortcutCommandButton(action: .quickSwitch)
+            ShortcutCommandButton(action: .messageSearch)
+            ShortcutCommandButton(action: .currentCall)
 
             Divider()
 
@@ -63,10 +80,6 @@ struct SakuraCordCommands: Commands {
                     KeyEquivalent(Character(String(shortcutNumber)))
                 )
             }
-
-            Divider()
-
-            ShortcutCommandButton(action: .toggleMemberList)
         }
 
         CommandMenu("Message") {
@@ -80,7 +93,6 @@ struct SakuraCordCommands: Commands {
             )
             ShortcutCommandButton(action: .markServerRead)
             Divider()
-            ShortcutCommandButton(action: .togglePins)
             ShortcutCommandButton(action: .toggleEmojiPicker)
             ShortcutCommandButton(action: .toggleGIFPicker)
             ShortcutCommandButton(action: .toggleStickerPicker)
@@ -105,11 +117,12 @@ struct SakuraCordCommands: Commands {
 
 private struct ShortcutCommandButton: View {
     let action: KeyboardShortcutAction
+    var title: LocalizedStringResource?
     @FocusedValue(\.shortcutCommandContext) private var commandContext
     private let shortcuts = KeyboardShortcutSettingsStore.shared
 
     var body: some View {
-        Button(action.title) {
+        Button(title ?? action.title) {
             commandContext?.perform(action)
         }
         .disabled(commandContext?.isEnabled(action) != true)
