@@ -1531,6 +1531,18 @@ extension NativeMessageTimelineCoordinator {
                 performanceFallbackReason = "invalid-two-ended-delta"
                 return false
             }
+            // The fast insertion path refreshes only the old edge rows. A newly
+            // loaded reply target can also change a row in the middle.
+            let refreshedBoundaryIDs: Set<MessageID> = [firstRowID, lastRowID]
+            if let records = newParent.rowsUpdateJournal.records(
+                after: rowsRevision,
+                through: newParent.rowsRevision
+            ), records.contains(where: {
+                !$0.changedMessageIDs.isSubset(of: refreshedBoundaryIDs)
+            }) {
+                performanceFallbackReason = "insertion-changed-interior-row"
+                return false
+            }
             if prefixCount > 0 {
                 prependRows(
                     newRows.prefix(prefixCount),

@@ -366,6 +366,7 @@ struct MessageDTO: Decodable {
         var author: UserDTO?
         var member: MemberDTO?
         var content: String?
+        var attachments: LossyList<AttachmentDTO>?
 
         func domain(guildID: GuildID?) -> MessageReplyPreview? {
             guard let messageID = MessageID(id), let author, var user = try? author.domain() else {
@@ -380,7 +381,8 @@ struct MessageDTO: Decodable {
                 messageID: messageID,
                 author: user,
                 guildMember: guildMember,
-                content: content ?? ""
+                content: content ?? "",
+                mediaKind: attachments?.elements.compactMap { try? $0.domain() }.first?.mediaKind
             )
         }
     }
