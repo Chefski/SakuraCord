@@ -1070,7 +1070,7 @@ enum ComposerPasteboardAttachments {
                   .representation(using: .png, properties: [:]),
               let directory = try? ComposerPromisedFileStorage.makeReceivingDirectory()
         else { return nil }
-        let url = directory.appendingPathComponent("pasted-image.png")
+        let url = directory.appendingPathComponent("image.png")
         do {
             try png.write(to: url, options: .atomic)
             return ComposerPromisedFileBatch(directory: directory, urls: [url])
