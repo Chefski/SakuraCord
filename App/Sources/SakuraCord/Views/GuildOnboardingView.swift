@@ -113,7 +113,7 @@ struct GuildOnboardingView: View {
         let names = (model.snapshot?.channels ?? []).filter { channels.contains($0.id) }.map { "#\($0.name)" }
         let roleNames = (model.guildRolesByGuildID[guildID] ?? model.guildRoles).filter { roles.contains($0.id) }.map { "@\($0.name)" }
         return VStack(alignment: .leading, spacing: 4) {
-            if !names.isEmpty { Text("Channels: \(names.formatted())") }
+            if model.featuresSettings.channelManagement, !names.isEmpty { Text("Channels: \(names.formatted())") }
             if !roleNames.isEmpty { Text("Roles: \(roleNames.formatted())") }
         }
         .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)

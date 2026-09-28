@@ -51,7 +51,7 @@ struct OnboardingQuestion: View {
             } else {
                 leading = .none
             }
-            return SelectionFieldOption(id: option.id, title: option.title, leading: leading)
+            return SelectionFieldOption(id: option.id, title: option.title, subtitle: option.description, leading: leading)
         }
     }
 
@@ -63,10 +63,9 @@ struct OnboardingQuestion: View {
             ),
             mode: prompt.singleSelect ? .single : .multiple(),
             source: .local(options: menuOptions),
-            configuration: .init(placeholder: "Select…", searchPlaceholder: "Search options"),
+            configuration: .init(minimumSelectionCount: prompt.required ? 1 : 0, placeholder: "Select…", searchPlaceholder: "Search options"),
             accessibilityIdentifier: "onboarding-selection-\(prompt.id)"
         )
-        .id(menuOptions)
         .accessibilityLabel(prompt.title)
     }
 
@@ -84,6 +83,7 @@ private struct OnboardingOptionRow: View {
     let descriptions: Bool
     let action: () -> Void
     @State private var hovered = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Button(action: action) {
@@ -104,10 +104,11 @@ private struct OnboardingOptionRow: View {
             }
             .padding(16).frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(RoundedRectangle(cornerRadius: 16))
-            .background(selected ? SakuraCordAccentColor.color.opacity(0.13) : Color.primary.opacity(hovered ? 0.09 : 0.04), in: RoundedRectangle(cornerRadius: 16))
+            .background(selected ? SakuraCordAccentColor.color.opacity(hovered ? 0.20 : 0.13) : Color.primary.opacity(hovered ? 0.09 : 0.04), in: RoundedRectangle(cornerRadius: 16))
             .overlay { RoundedRectangle(cornerRadius: 16).stroke(selected ? SakuraCordAccentColor.color.opacity(0.8) : Color.primary.opacity(0.08)) }
         }
         .buttonStyle(.plain).onModalHover { hovered = $0 }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovered)
         .accessibilityLabel(option.title)
         .accessibilityHint(option.description ?? "")
         .accessibilityValue(selected ? "Selected" : "Not selected")
@@ -119,7 +120,7 @@ struct OnboardingEmoji: View {
     let emoji: GuildOnboardingOption.Emoji?
     var body: some View {
         if let url = emoji?.url {
-            AsyncImage(url: url) { image in image.resizable().scaledToFit() } placeholder: { Color.clear }
+            AnimatedRemoteImage(url: url, maximumPixelDimension: 64, usesSwiftUIRendering: true)
                 .frame(width: 24, height: 24).accessibilityHidden(true)
         } else if let name = emoji?.name, !name.isEmpty {
             Text(name).font(.title3).accessibilityHidden(true)

@@ -27,6 +27,9 @@ final class GuildOnboardingStore {
     var previewChannelID: ChannelID?
     var previewReturnChannelID: ChannelID?
     var profiles: [GuildID: UserProfile] = [:]
+    var browsingChannels = false
+    var channelSearch = ""
+    var isChannelSearchFocused = false
     var page: GuildWorkspacePage = .channelsAndRoles
     var guides: [GuildID: GuildGuideEntry] = [:]
     var channelSelections: [GuildID: GuildChannelSelectionMutation] = [:]
@@ -40,6 +43,9 @@ final class GuildOnboardingStore {
         previewChannelID = nil
         previewReturnChannelID = nil
         profiles = [:]
+        browsingChannels = false
+        channelSearch = ""
+        isChannelSearchFocused = false
         channelSelections = [:]
     }
 }
@@ -85,6 +91,9 @@ extension AppModel {
         closeCustomizationPreview()
         closeThread()
         closeVoiceChat()
+        onboarding.browsingChannels = false
+        onboarding.channelSearch = ""
+        onboarding.isChannelSearchFocused = false
         onboarding.page = .channelsAndRoles
         if onboarding.entries[guildID] == nil { onboarding.entries[guildID] = .init() }
         onboarding.presentedGuildID = guildID

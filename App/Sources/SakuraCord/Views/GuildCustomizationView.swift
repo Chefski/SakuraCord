@@ -5,34 +5,16 @@ struct GuildCustomizationView: View {
     let model: AppModel
     let guildID: GuildID
     @Environment(\.scenePhase) private var scenePhase
-    @State private var showsChannels = false
-    @State private var search = ""
     @State private var newPromptIDs: Set<String>?
     private var entry: GuildOnboardingStore.Entry { model.onboarding.entries[guildID] ?? .init() }
 
     var body: some View {
         primaryContent
-            .onChange(of: showsChannels) { _, browsing in
-                if !browsing { model.closeCustomizationPreview() }
-            }
             .onDisappear { model.closeCustomizationPreview() }
     }
 
     private var primaryContent: some View {
         VStack(spacing: 0) {
-            if model.hasCustomizationQuestions(in: guildID) {
-                HStack(spacing: 8) {
-                    GlassEffectContainer(spacing: 8) {
-                        HStack(spacing: 8) {
-                            tab("Customize", browsing: false)
-                            tab("Browse Channels", browsing: true)
-                        }
-                    }
-                    Spacer()
-                }
-                .padding(.horizontal, 24).padding(.vertical, 12)
-                Divider()
-            }
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     if let error = entry.error {
@@ -44,8 +26,8 @@ struct GuildCustomizationView: View {
                         }
                         .font(.callout)
                     }
-                    if showsChannels || !model.hasCustomizationQuestions(in: guildID) {
-                        GuildOnboardingChannelsView(model: model, guildID: guildID, search: $search)
+                    if model.isBrowsingGuildChannels {
+                        GuildOnboardingChannelsView(model: model, guildID: guildID, search: model.onboarding.channelSearch)
                     } else if let configuration = entry.configuration {
                         Group {
                             ViewThatFits(in: .horizontal) {
@@ -64,7 +46,7 @@ struct GuildCustomizationView: View {
                 }
                 .padding(24).frame(maxWidth: 1200).frame(maxWidth: .infinity)
             }
-            .scrollBounceBehavior(.basedOnSize)
+            .scrollBounceBehavior(.always, axes: .vertical)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .tint(SakuraCordAccentColor.color)
@@ -81,16 +63,6 @@ struct GuildCustomizationView: View {
                 do { try await Task.sleep(for: .seconds(30)) } catch { return }
             }
         }
-    }
-
-    private func tab(_ title: String, browsing: Bool) -> some View {
-        Button { showsChannels = browsing } label: {
-            Text(title).font(.callout.weight(.semibold)).padding(.horizontal, 4)
-        }
-        .buttonStyle(.glass(showsChannels == browsing ? .regular.tint(SakuraCordAccentColor.color.opacity(0.18)) : .regular))
-        .tint(showsChannels == browsing ? SakuraCordAccentColor.color : .secondary)
-        .buttonBorderShape(.capsule)
-        .accessibilityAddTraits(showsChannels == browsing ? .isSelected : [])
     }
 
     private func questions(_ configuration: GuildOnboarding) -> some View {

@@ -43,6 +43,12 @@ final class FeaturesSettingsStore {
 
 extension AppModel {
     func applyFeaturesSettings(_ value: FeaturesSettingsSnapshot) {
+        if featuresSettings.channelManagement, !value.channelManagement {
+            closeCustomizationPreview()
+            onboarding.browsingChannels = false
+            onboarding.channelSearch = ""
+            onboarding.isChannelSearchFocused = false
+        }
         featuresSettings = value
         FeaturesSettingsStore.shared.save(value)
         refreshVisibleChannelGroups()

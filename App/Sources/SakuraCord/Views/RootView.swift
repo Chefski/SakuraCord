@@ -80,7 +80,7 @@ struct RootView: View {
             ZStack {
                 MessageSearchToolbarBridge(
                     model: model,
-                    isVisible: showsMessageSearchToolbar,
+                    isVisible: showsMessageSearchToolbar || (model.isBrowsingGuildChannels && !model.hasOpenGuildSupplementaryConversation),
                     metrics: $toolbarSearchFieldMetrics
                 )
                 ToolbarSearchFieldLoadingStyler(isActive: showsSessionLoadingChrome)
@@ -147,7 +147,7 @@ struct RootView: View {
     }
 
     private var messageSearchPrompt: Text {
-        Text(showsSessionLoadingChrome ? "" : model.messageSearchPromptTitle)
+        Text(showsSessionLoadingChrome ? "" : (model.isBrowsingGuildChannels ? "Search Channels" : model.messageSearchPromptTitle))
     }
 
     private var showsSessionLoadingChrome: Bool {
@@ -549,6 +549,23 @@ private struct ChatRootView: View {
         ToolbarSpacer(.fixed, placement: .navigation)
 
         if !model.isSwitchingAccounts {
+            if model.guildWorkspacePage == .channelsAndRoles, model.featuresSettings.channelManagement,
+               let guildID = model.selectedGuildID, model.hasCustomizationQuestions(in: guildID) {
+                ToolbarItemGroup(placement: .principal) {
+                    Toggle("Customize", systemImage: "slider.horizontal.3", isOn: Binding(
+                        get: { !model.isBrowsingGuildChannels },
+                        set: { if $0 { model.showGuildCustomizationChannels(false) } }
+                    ))
+                    .labelStyle(.titleAndIcon)
+                    .tint(SakuraCordAccentColor.color)
+                    Toggle("Browse Channels", systemImage: "list.bullet", isOn: Binding(
+                        get: { model.isBrowsingGuildChannels },
+                        set: { if $0 { model.showGuildCustomizationChannels(true) } }
+                    ))
+                    .labelStyle(.titleAndIcon)
+                    .tint(SakuraCordAccentColor.color)
+                }
+            }
             if let presentation = supplementaryToolbarPresentation {
                 ToolbarItem {
                     ConversationToolbarLabel(
@@ -1135,15 +1152,22 @@ private struct MessageSearchToolbarBridge: View {
     var body: some View {
         @Bindable var model = model
         @Bindable var search = model.messageSearch
+        @Bindable var onboarding = model.onboarding
+        let local = model.isBrowsingGuildChannels
         ToolbarSearchFieldGeometryReader(
-            searchText: $model.messageSearchInputText,
-            searchTokens: $search.tokens,
-            isSearchFocused: $search.isInputFocused,
+            searchText: local ? $onboarding.channelSearch : $model.messageSearchInputText,
+            searchTokens: local ? .constant([]) : $search.tokens,
+            isSearchFocused: local ? $onboarding.isChannelSearchFocused : $search.isInputFocused,
             isToolbarItemVisible: isVisible,
-            didUseBuiltInClear: model.clearMessageSearchUsingBuiltInButton,
-            didEndEditing: model.messageSearchEditingDidEnd,
+            didUseBuiltInClear: {
+                if local { onboarding.channelSearch = "" } else { model.clearMessageSearchUsingBuiltInButton() }
+            },
+            didEndEditing: {
+                if local { onboarding.isChannelSearchFocused = false } else { model.messageSearchEditingDidEnd() }
+            },
             pasteCanonicalSyntax: { value in
-                MessageSearchTokenParser.parse(
+                if local { return .init(tokens: [], text: value) }
+                return MessageSearchTokenParser.parse(
                     value,
                     users: model.messageSearchUsers,
                     channels: model.messageSearchChannels
@@ -1162,18 +1186,20 @@ private struct MessageSearchToolbarModifier: ViewModifier {
     func body(content: Content) -> some View {
         @Bindable var model = model
         @Bindable var search = search
+        @Bindable var onboarding = model.onboarding
+        let local = model.isBrowsingGuildChannels
         content
             .searchable(
-                text: $model.messageSearchInputText,
-                tokens: $search.tokens,
-                isPresented: $search.isInputFocused,
+                text: local ? $onboarding.channelSearch : $model.messageSearchInputText,
+                tokens: local ? .constant([]) : $search.tokens,
+                isPresented: local ? $onboarding.isChannelSearchFocused : $search.isInputFocused,
                 placement: .toolbar,
                 prompt: prompt
             ) { token in
                 Text(token.title)
             }
             .onSubmit(of: .search) {
-                model.submitMessageSearchInput()
+                if !local { model.submitMessageSearchInput() }
             }
     }
 }

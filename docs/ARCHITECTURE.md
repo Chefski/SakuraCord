@@ -99,8 +99,15 @@ by threads, forum posts, and voice chat. Feature views must not create separate
 preview headers, split-view shells, or resource inspectors. Viewing the guide is read-only; visits require successful
 history access after an explicit task selection, and send tasks require a confirmed
 self-authored message event. Resource previews do not complete visit tasks.
-Onboarding dropdowns use the shared `SelectionField` control, including its native
-search, tokens, keyboard navigation, and single/multiple selection modes.
+Onboarding, search filters, and message components use the shared `SelectionField`:
+selected tokens stay in the field, with search in the anchored, same-window options overlay.
+The search header shares the emoji and sticker picker chrome; there is no confirmation footer.
+Tokens retain the same layout and rendering when the field opens. The list reveals from the field edge without moving
+surrounding content, choosing the side with room and tracking its scrolling anchor. Query text is edited independently of selected
+values, so replacing a query cannot remove selections. Message components host
+this field directly over their timeline anchor. Single choices submit immediately;
+valid changed multiple choices submit on outside click or closing the chevron.
+Escape, scroll-away, and window resizing cancel the pending component draft.
 Post-join edits are optimistic in the feature store, coalesced for one second,
 and serialized per membership. Confirmations update the baseline without
 replacing newer edits; failures roll back only the failed version. Optimistic
@@ -109,11 +116,14 @@ selection bits on the notification store so unrelated settings remain live.
 Channel management is a global Settings preference, on by default. Community
 server sidebars consume authoritative guild/channel opt-in flags from the existing
 notification-settings store; non-community servers always show all channels.
-Turning the local preference off bypasses filtering without hiding customization
-or writing remote flags. The server context menu independently changes Discord’s
+Turning the local preference off bypasses filtering and hides channel browsing,
+channel controls, and onboarding channel details without changing local or remote
+server selections. Role questions and required onboarding remain available. The server context menu independently changes Discord’s
 Show All Channels setting. Community servers with onboarding prompts expose
-Channels & Roles; those without prompts expose Browse Channels. The browser
-owns search and inline preview presentation, while the app model owns selection
+Channels & Roles; those without prompts expose Browse Channels. The browser uses the workspace toolbar’s native search field for immediate local
+filtering without message-search autocomplete or REST requests. Its tab, query,
+and focus state live in the session-only onboarding store. The browser
+owns inline preview presentation, while the app model owns selection
 mutations and restores the main conversation after a preview closes. Voice and
 Stage channels use the same selection filtering as other channels; there is no
 separate voice-channel expansion state. Channel permissions remain independent. Onboarding choices and question position live only in the feature

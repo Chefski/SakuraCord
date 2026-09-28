@@ -1316,7 +1316,7 @@ extension NativeTimelineCanvasView {
                 value: selectable.value,
                 framesetter: selectable.framesetter,
                 frame: selectable.frame
-            ).map { mention in
+            ).filter { $0.presentation.isInteractive }.map { mention in
                 MentionPointerRegion(
                     region: selectable.region,
                     characterIndex: mention.characterIndex,
@@ -1497,7 +1497,7 @@ extension NativeTimelineCanvasView {
                     )
                 }
             }
-            if let mention = text.hit.mention {
+            if let mention = text.hit.mention, mention.isInteractive {
                 return .textMention(
                     message.id,
                     text.region,

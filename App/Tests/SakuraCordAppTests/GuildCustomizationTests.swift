@@ -67,9 +67,19 @@ struct GuildCustomizationTests {
                 .init(channelID: voice.id, flags: GuildChannelSelection.selectedFlag),
             ]))
         #expect(model.selectedChannelGroups(mixedGroups, guildID: id).flatMap(\.channels).map(\.id) == [selected.id, mention.id, voice.id])
+        let savedSettings = model.presentedGuildChannelSettings(in: id)
         model.featuresSettings.channelManagement = false
         #expect(model.selectedChannelGroups(groups, guildID: id).flatMap(\.channels).count == 4)
+        #expect(!model.hasChannelsAndRoles(in: id))
+        model.setChannelSelectionEnabled(true, guildID: id)
+        model.setChannelSelected(false, channelID: selected.id, guildID: id)
+        #expect(model.onboarding.channelSelections.isEmpty)
+        #expect(model.presentedGuildChannelSettings(in: id) == savedSettings)
+        model.serverRailGuildsByID[id]?.features.insert("GUILD_ONBOARDING_HAS_PROMPTS")
+        #expect(model.hasChannelsAndRoles(in: id))
+        #expect(model.customizationTitle(in: id) == "Roles")
         model.featuresSettings.channelManagement = true
+        #expect(model.presentedGuildChannelSettings(in: id) == savedSettings)
         model.serverRailGuildsByID[id]?.features = []
         #expect(model.selectedChannelGroups(groups, guildID: id).flatMap(\.channels).count == 4)
     }
@@ -134,7 +144,7 @@ struct GuildCustomizationTests {
         let model = AppModel(launchMode: .offlineTesting, provider: provider)
         let guildID = GuildID(rawValue: 100)
         let a = ChannelID(rawValue: 200), b = ChannelID(rawValue: 201)
-        model.featuresSettings.channelManagement = false
+        model.featuresSettings.channelManagement = true
         model.onboarding.customizationDebounce = { await clock.wait() }
         var confirmed = GuildNotificationSettings(guildID: guildID, flags: GuildChannelSelection.enabledFlag | 4)
         model.applyNotificationSettings(confirmed)

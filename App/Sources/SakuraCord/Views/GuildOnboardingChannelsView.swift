@@ -4,7 +4,7 @@ import SwiftUI
 struct GuildOnboardingChannelsView: View {
     let model: AppModel
     let guildID: GuildID
-    @Binding var search: String
+    let search: String
 
     private var groups: [ChannelGroup] {
         ChannelGroup.make(from: model.browsableChannels(in: guildID).filter {
@@ -16,17 +16,6 @@ struct GuildOnboardingChannelsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField("Search Channels", text: $search).textFieldStyle(.plain)
-                if !search.isEmpty {
-                    Button("Clear Search", systemImage: "xmark.circle.fill") { search = "" }
-                        .labelStyle(.iconOnly).buttonStyle(.plain).foregroundStyle(.secondary)
-                }
-            }
-            .padding(12)
-            .background(.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
-            .accessibilityElement(children: .contain)
             ForEach(groups) { group in
                 let settings = model.presentedGuildChannelSettings(in: guildID)
                 let following = group.categoryID.map { GuildChannelSelection.isSelected($0, settings: settings) } ?? false

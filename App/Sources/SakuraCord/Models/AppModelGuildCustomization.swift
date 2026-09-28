@@ -3,6 +3,18 @@ import Foundation
 import SakuraCordModels
 
 extension AppModel {
+    var isBrowsingGuildChannels: Bool {
+        guard featuresSettings.channelManagement, guildWorkspacePage == .channelsAndRoles,
+              onboardingEntryGuildID == nil, let guildID = selectedGuildID else { return false }
+        return onboarding.browsingChannels || !hasCustomizationQuestions(in: guildID)
+    }
+
+    func showGuildCustomizationChannels(_ browsing: Bool) {
+        if !browsing { closeCustomizationPreview() }
+        onboarding.isChannelSearchFocused = false
+        onboarding.browsingChannels = browsing
+    }
+
     var customizationPreviewChannel: Channel? {
         guard guildWorkspacePage == .channelsAndRoles, let id = onboarding.previewChannelID else { return nil }
         return snapshot?.channels.first { $0.id == id && $0.guildID == selectedGuildID }
@@ -47,7 +59,7 @@ extension AppModel {
     }
 
     func openCustomizationPreview(_ channel: Channel) {
-        guard channel.guildID == selectedGuildID, conversationAccess(for: channel).isReadable,
+        guard featuresSettings.channelManagement, channel.guildID == selectedGuildID, conversationAccess(for: channel).isReadable,
               channel.kind == .text || channel.kind == .announcement else { return }
         if onboarding.previewChannelID == nil { onboarding.previewReturnChannelID = selectedChannelID }
         onboarding.previewChannelID = channel.id

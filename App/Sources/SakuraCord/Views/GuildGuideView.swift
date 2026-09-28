@@ -42,10 +42,17 @@ struct GuildGuideView: View {
                 }
                 .padding(24).frame(maxWidth: 1400).frame(maxWidth: .infinity)
             }
-            .scrollBounceBehavior(.basedOnSize)
+            .scrollBounceBehavior(.always, axes: .vertical)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .tint(SakuraCordAccentColor.color)
+        .task(id: guild?.iconURL) {
+            previewColor = nil
+            guard let url = guild?.iconURL else { return }
+            let color = try? await ProfileAvatarPaletteLoader.shared.colors(url).first
+            guard !Task.isCancelled else { return }
+            previewColor = color
+        }
         .task(id: "\(guildID)-\(model.currentUser?.id.description ?? "")-\(scenePhase)") {
             guard scenePhase == .active else { return }
             while !Task.isCancelled {
@@ -80,8 +87,15 @@ struct GuildGuideView: View {
                     if let url = guild?.guideHeaderURL {
                         AsyncImage(url: url) { image in image.resizable().scaledToFill() } placeholder: { Color.primary.opacity(0.04) }
                     } else {
-                        Image("GuildGuidePlaceholder", bundle: .module)
-                            .resizable().scaledToFill()
+                        LinearGradient(
+                            colors: ProfilePalette.banner(themeHexes: [], accentHex: bannerColor),
+                            startPoint: .topLeading, endPoint: .bottomTrailing
+                        )
+                        .overlay {
+                            RadialGradient(colors: [.white.opacity(0.18), .clear],
+                                           center: .topTrailing, startRadius: 0, endRadius: 600)
+                        }
+                        .accessibilityHidden(true)
                     }
                 }
                 .frame(height: 160).clipped().clipShape(.rect(cornerRadius: 16))
@@ -91,6 +105,12 @@ struct GuildGuideView: View {
                 .font(.system(size: 28, weight: .bold))
                 .padding(.top, 40).padding(.horizontal, 16)
         }
+    }
+
+    private var bannerColor: UInt32? {
+        entry.profile?.brandColorPrimary.flatMap {
+            UInt32($0.replacingOccurrences(of: "#", with: ""), radix: 16)
+        } ?? previewColor
     }
 
     private func serverIcon(size: CGFloat) -> some View {
@@ -156,13 +176,7 @@ struct GuildGuideView: View {
             preview: NativeServerCardContent(profile: profile, iconURL: guild?.iconURL, adaptiveColor: previewColor))
         return NativeInvitePreview(card: card, isModalPreview: false)
             .frame(width: card.frame.width, height: card.frame.height)
-            .task(id: guild?.iconURL) {
-                previewColor = nil
-                guard profile.brandColorPrimary == nil, let url = guild?.iconURL else { return }
-                let color = try? await ProfileAvatarPaletteLoader.shared.colors(url).first
-                guard !Task.isCancelled else { return }
-                previewColor = color
-            }
+
     }
 
 }

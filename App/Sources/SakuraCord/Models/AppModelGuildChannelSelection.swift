@@ -49,6 +49,7 @@ extension AppModel {
     }
 
     func setChannelSelectionEnabled(_ enabled: Bool, guildID: GuildID) {
+        guard featuresSettings.channelManagement else { return }
         onboarding.entries[guildID, default: .init()].error = nil
         var pending = onboarding.channelSelections[guildID] ?? .init()
         if enabled, isUncustomizedMember(in: guildID) {
@@ -62,6 +63,7 @@ extension AppModel {
     }
 
     func setChannelSelected(_ selected: Bool, channelID: ChannelID, guildID: GuildID) {
+        guard featuresSettings.channelManagement else { return }
         onboarding.entries[guildID, default: .init()].error = nil
         var pending = onboarding.channelSelections[guildID] ?? .init()
         if isUncustomizedMember(in: guildID) {

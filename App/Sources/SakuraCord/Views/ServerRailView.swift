@@ -42,15 +42,10 @@ struct ServerRailContainer: View {
                 },
                 leaveServer: { guild in invites.leaveConfirmation = guild },
                 showsAllChannels: { guild in
-                    guard model.hasChannelsAndRoles(in: guild.id) else { return nil }
+                    guard model.featuresSettings.channelManagement, model.hasChannelsAndRoles(in: guild.id) else { return nil }
                     return model.showsAllChannels(in: guild.id)
                 },
                 setShowsAllChannels: { guild, all in
-                    if !all, !model.featuresSettings.channelManagement {
-                        var settings = model.featuresSettings
-                        settings.channelManagement = true
-                        model.applyFeaturesSettings(settings)
-                    }
                     model.setChannelSelectionEnabled(!all, guildID: guild.id)
                 }
             )
