@@ -166,6 +166,7 @@ struct ComposerView: View {
                                     }
                                     return true
                                 },
+                                canReceiveAttachments: { model.isComposerDropEligible(conversation) },
                                 onCompositionStateChange: { isComposing = $0 },
                                 capturesUnfocusedTyping:
                                     !showEmojiPicker

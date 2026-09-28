@@ -683,7 +683,10 @@ private actor AttachmentCompactionTestWorker: AttachmentCompacting {
 }
 
 @MainActor
-@Test func `composer paste prefers arbitrary files over their compatibility path text`() throws {
+@Test(arguments: [true, false])
+func `composer paste prefers files over their path text only where files are accepted`(
+    acceptsAttachments: Bool
+) throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
         "sakuracord-paste-file-\(UUID().uuidString)",
         isDirectory: true
@@ -705,8 +708,14 @@ private actor AttachmentCompactionTestWorker: AttachmentCompacting {
         received.append(attachments)
         return true
     }
+    textView.canReceiveAttachments = { acceptsAttachments }
     #expect(textView.readSelection(from: pasteboard))
 
+    guard acceptsAttachments else {
+        #expect(received.isEmpty)
+        #expect(textView.string == file.path)
+        return
+    }
     guard case let .external(urls) = try #require(received.first) else {
         Issue.record("Expected the pasted file to stay in place")
         return

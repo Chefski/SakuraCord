@@ -287,6 +287,8 @@ struct ComposerTextView: NSViewRepresentable {
     var onAutocompleteCommand: (ComposerAutocompleteCommand) -> Bool = { _ in false }
     var onDropTargetChanged: ((_ isTargeted: Bool, _ isInstant: Bool) -> Void)?
     var onReceiveAttachments: ((_ attachments: ComposerIncomingAttachments, _ isInstant: Bool) -> Bool)?
+    /// Whether the destination currently accepts files; pastes fall back to text otherwise.
+    var canReceiveAttachments: () -> Bool = { true }
     var onCompositionStateChange: ((Bool) -> Void)?
     var capturesUnfocusedTyping = false
     var verticalContentInset: CGFloat = 0
@@ -362,6 +364,9 @@ struct ComposerTextView: NSViewRepresentable {
         }
         textView.onDropTargetChanged = onDropTargetChanged
         textView.onReceiveAttachments = onReceiveAttachments
+        textView.canReceiveAttachments = { [weak coordinator = context.coordinator] in
+            coordinator?.parent.canReceiveAttachments() ?? false
+        }
         textView.capturesUnfocusedTyping = capturesUnfocusedTyping
         ComposerTextCheckingConfiguration.apply(generalInputSettings, to: textView)
 
@@ -407,6 +412,9 @@ struct ComposerTextView: NSViewRepresentable {
         }
         textView.onDropTargetChanged = onDropTargetChanged
         textView.onReceiveAttachments = onReceiveAttachments
+        textView.canReceiveAttachments = { [weak coordinator = context.coordinator] in
+            coordinator?.parent.canReceiveAttachments() ?? false
+        }
 
         // During IME composition, NSTextView owns the marked range. Applying
         // the SwiftUI snapshot, selection, or typing attributes here can
@@ -758,6 +766,7 @@ final class ComposerNSTextView: NSTextView {
     var onAutocompleteCommand: ((ComposerAutocompleteCommand) -> Bool)?
     var onDropTargetChanged: ((_ isTargeted: Bool, _ isInstant: Bool) -> Void)?
     var onReceiveAttachments: ((_ attachments: ComposerIncomingAttachments, _ isInstant: Bool) -> Bool)?
+    var canReceiveAttachments: (() -> Bool)?
     var plainTypingAttributes: [NSAttributedString.Key: Any] = [:]
     var capturesUnfocusedTyping = false {
         didSet {
@@ -977,17 +986,24 @@ final class ComposerNSTextView: NSTextView {
 
     // AppKit validates Paste and Services against these types, then reads
     // the first available one through `readSelection(from:type:)`.
+    // Destinations that cannot take files omit the attachment types, so the
+    // clipboard's text representation is pasted instead.
     override var readablePasteboardTypes: [NSPasteboard.PasteboardType] {
-        onReceiveAttachments == nil
-            ? Self.textPasteboardTypes
-            : ComposerPasteboardAttachments.readableTypes + Self.textPasteboardTypes
+        receivesAttachments
+            ? ComposerPasteboardAttachments.readableTypes + Self.textPasteboardTypes
+            : Self.textPasteboardTypes
+    }
+
+    private var receivesAttachments: Bool {
+        onReceiveAttachments != nil && canReceiveAttachments?() != false
     }
 
     private static let textPasteboardTypes: [NSPasteboard.PasteboardType] = [.string, .rtfd, .rtf, .html]
 
     override func readSelection(from pasteboard: NSPasteboard, type: NSPasteboard.PasteboardType) -> Bool {
         if ComposerPasteboardAttachments.readableTypes.contains(type) {
-            guard let onReceiveAttachments,
+            // Declining lets AppKit read the next available type.
+            guard receivesAttachments, let onReceiveAttachments,
                   let attachments = ComposerPasteboardAttachments.attachments(from: pasteboard, type: type)
             else { return false }
             return onReceiveAttachments(attachments, false)
@@ -1014,7 +1030,7 @@ final class ComposerNSTextView: NSTextView {
 
     /// Reads only attachments, leaving text paste to the focused responder.
     private func readAttachments(from pasteboard: NSPasteboard) -> Bool {
-        guard onReceiveAttachments != nil,
+        guard receivesAttachments,
               let type = pasteboard.availableType(from: ComposerPasteboardAttachments.readableTypes)
         else { return false }
         return readSelection(from: pasteboard, type: type)
