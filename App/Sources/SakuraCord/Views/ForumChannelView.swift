@@ -1713,11 +1713,13 @@ private struct ForumPostComposer: View {
     }
 
     private func addCheckedAttachments(_ urls: [URL]) async {
-        let allowedURLs = await model.attachmentURLsWithinDiscordLimit(urls)
-        let count = max(0, 10 - attachments.count)
         let existingURLs = Set(attachments.map(\.url))
-        let uniqueURLs = allowedURLs.filter { !existingURLs.contains($0) }
-        let addedURLs = Array(uniqueURLs.prefix(count))
+        let urls = model.uploadableFileURLs(urls.filter { !existingURLs.contains($0) })
+        guard model.attachmentBatchFits(urls.count, besides: attachments.count) else { return }
+        let allowedURLs = await model.attachmentURLsWithinDiscordLimit(urls)
+        let currentURLs = Set(attachments.map(\.url))
+        let addedURLs = allowedURLs.filter { !currentURLs.contains($0) }
+        guard model.attachmentBatchFits(addedURLs.count, besides: attachments.count) else { return }
         for url in addedURLs
             where !securityScopedAttachmentURLs.contains(url)
             && url.startAccessingSecurityScopedResource()

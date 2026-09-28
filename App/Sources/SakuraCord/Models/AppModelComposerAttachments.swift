@@ -39,6 +39,8 @@ extension AppModel {
         case let (.owned(batch), false):
             await addPromisedComposerAttachments(batch, to: destination)
         case let (.external(urls), true):
+            let urls = uploadableFileURLs(urls)
+            guard attachmentBatchFits(urls.count) else { return }
             let acceptedURLs = await attachmentURLsWithinDiscordLimit(urls, offeringExternalUploadFor: destination)
             guard !acceptedURLs.isEmpty else { return }
             let scopedURLs = acceptedURLs.filter { $0.startAccessingSecurityScopedResource() }
@@ -95,21 +97,17 @@ extension AppModel {
             pruneOwnedPromisedAttachmentFiles()
             return []
         }
+        guard attachmentBatchFits(adoptedURLs.count) else {
+            pruneOwnedPromisedAttachmentFiles()
+            return []
+        }
         beginUsingOwnedPromisedFiles(adoptedURLs)
         let acceptedURLs = await attachmentURLsWithinDiscordLimit(
             adoptedURLs,
             offeringExternalUploadFor: destination
         )
-        let sentURLs = Array(
-            acceptedURLs.prefix(SendMessageDraft.maximumAttachmentCount)
-        )
-        if acceptedURLs.count > sentURLs.count {
-            errorMessage =
-                "You can attach up to \(SendMessageDraft.maximumAttachmentCount) files to one message."
-        }
-        endUsingOwnedPromisedFiles(adoptedURLs.filter { !sentURLs.contains($0) })
-        pruneOwnedPromisedAttachmentFiles()
-        return sentURLs
+        endUsingOwnedPromisedFiles(adoptedURLs.filter { !acceptedURLs.contains($0) })
+        return acceptedURLs
     }
 
     @discardableResult
@@ -118,6 +116,10 @@ extension AppModel {
         to destination: MessageComposerDestination
     ) async -> Bool {
         guard isComposerDropEligible(destination), !urls.isEmpty else { return false }
+        let urls = uploadableFileURLs(urls)
+        guard attachmentBatchFits(urls.count, besides: composerAttachments(for: destination).count) else {
+            return true
+        }
         let acceptedURLs = await attachmentURLsWithinDiscordLimit(
             urls,
             offeringExternalUploadFor: destination
@@ -129,14 +131,11 @@ extension AppModel {
     func appendCheckedComposerAttachments(_ urls: [URL], to destination: MessageComposerDestination) -> Bool {
         guard isComposerDropEligible(destination), !Task.isCancelled else { return false }
         var attachments = composerAttachments(for: destination)
-        let remaining = max(0, SendMessageDraft.maximumAttachmentCount - attachments.count)
-        attachments.append(
-            contentsOf: urls.prefix(remaining).map { ForumPostAttachment(url: $0) }
-        )
-        setComposerAttachments(attachments, for: destination)
-        if urls.count > remaining {
-            errorMessage =
-                "You can attach up to \(SendMessageDraft.maximumAttachmentCount) files to one message."
+        if attachmentBatchFits(urls.count, besides: attachments.count) {
+            attachments.append(contentsOf: urls.map { ForumPostAttachment(url: $0) })
+            setComposerAttachments(attachments, for: destination)
+        } else {
+            pruneOwnedPromisedAttachmentFiles()
         }
         // An eligible destination handled the files even when limits rejected
         // them; each limit reports its own error.
@@ -258,6 +257,16 @@ extension AppModel {
             threadComposerAttachments = attachments
         }
         pruneOwnedPromisedAttachmentFiles()
+    }
+
+    /// Like Discord, rejects the whole batch rather than keeping the files that fit.
+    func attachmentBatchFits(_ count: Int, besides existingCount: Int = 0) -> Bool {
+        guard existingCount + count <= SendMessageDraft.maximumAttachmentCount else {
+            errorMessage =
+                "You can attach up to \(SendMessageDraft.maximumAttachmentCount) files to one message."
+            return false
+        }
+        return true
     }
 
     func validateAttachmentCount(_ attachments: [ForumPostAttachment]) -> Bool {

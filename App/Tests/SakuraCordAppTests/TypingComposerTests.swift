@@ -351,12 +351,18 @@ import Testing
         URL(fileURLWithPath: "/tmp/sakuracord-composer-\($0)")
     }
 
-    #expect(await model.addComposerAttachments([urls[0], urls[0]] + urls.dropFirst(), to: .channel))
+    #expect(await model.addComposerAttachments([urls[0], urls[0]] + urls.prefix(9).dropFirst(), to: .channel))
     #expect(
         model.channelComposerAttachments.map(\.url)
-            == [urls[0], urls[0]] + Array(urls.dropFirst().prefix(8))
+            == [urls[0], urls[0]] + Array(urls.prefix(9).dropFirst())
     )
     #expect(Set(model.channelComposerAttachments.map(\.id)).count == 10)
+    #expect(model.errorMessage == nil)
+
+    // Like Discord, a batch that would exceed ten files is rejected whole.
+    model.removeComposerAttachment(try #require(model.channelComposerAttachments.last?.id), from: .channel)
+    #expect(await model.addComposerAttachments(Array(urls.suffix(3)), to: .channel))
+    #expect(model.channelComposerAttachments.count == 9)
     #expect(model.errorMessage?.contains("10") == true)
 
     let firstID = try #require(model.channelComposerAttachments.first?.id)
@@ -373,7 +379,7 @@ import Testing
 }
 
 @MainActor
-@Test func `composer attachment intake skips folders and reports a folder only batch`() async throws {
+@Test func `composer attachment intake skips folders and rejects batches with empty files`() async throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
         "sakuracord-attachment-folder-\(UUID().uuidString)",
         isDirectory: true
@@ -394,6 +400,13 @@ import Testing
     await model.addComposerAttachments([folder], to: .channel)
     #expect(model.channelComposerAttachments.isEmpty)
     #expect(model.errorMessage == "That file type is not supported.")
+
+    // Like Discord, one empty file rejects the whole batch.
+    let empty = directory.appendingPathComponent("empty.txt")
+    try Data().write(to: empty)
+    await model.addComposerAttachments([file, empty], to: .channel)
+    #expect(model.channelComposerAttachments.isEmpty)
+    #expect(model.errorMessage == "File cannot be empty.")
 }
 
 @MainActor
