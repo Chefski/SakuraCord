@@ -27,6 +27,35 @@ extension AppModel {
         }
     }
 
+    /// Stages dropped or pasted files, or sends them at once for an instant drop.
+    func receiveComposerAttachments(
+        _ incoming: ComposerIncomingAttachments,
+        to destination: MessageComposerDestination,
+        sendingImmediately: Bool
+    ) async {
+        switch (incoming, sendingImmediately) {
+        case let (.external(urls), false):
+            await addComposerAttachments(urls, to: destination)
+        case let (.owned(batch), false):
+            await addPromisedComposerAttachments(batch, to: destination)
+        case let (.external(urls), true):
+            let acceptedURLs = await attachmentURLsWithinDiscordLimit(urls, offeringExternalUploadFor: destination)
+            guard !acceptedURLs.isEmpty else { return }
+            let scopedURLs = acceptedURLs.filter { $0.startAccessingSecurityScopedResource() }
+            defer {
+                for url in scopedURLs {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+            await sendAttachmentsImmediately(acceptedURLs.map { ForumPostAttachment(url: $0) }, to: destination)
+        case let (.owned(batch), true):
+            let acceptedURLs = await preparePromisedAttachmentsForImmediateSend(batch, to: destination)
+            guard !acceptedURLs.isEmpty else { return }
+            defer { endUsingOwnedPromisedFiles(acceptedURLs) }
+            await sendAttachmentsImmediately(acceptedURLs.map { ForumPostAttachment(url: $0) }, to: destination)
+        }
+    }
+
     @discardableResult
     func addPromisedComposerAttachments(
         _ batch: ComposerPromisedFileBatch,
@@ -92,8 +121,8 @@ extension AppModel {
             errorMessage =
                 "You can attach up to \(SendMessageDraft.maximumAttachmentCount) files to one message."
         }
-        // Claim a valid drop even when every file was rejected, preventing its path
-        // from being inserted into the text field by the system fallback.
+        // An eligible destination handled the files even when limits rejected
+        // them; each limit reports its own error.
         return true
     }
 

@@ -391,11 +391,14 @@ private struct ChatRootView: View {
                       let destination = composerDestination(at: location)
                 else { return false }
                 hoveredFileDropDestination = destination
-                if NSEvent.modifierFlags.contains(.shift) {
-                    sendDroppedAttachmentsImmediately(urls, to: destination)
-                    return !urls.isEmpty
+                let isInstant = NSEvent.modifierFlags.contains(.shift)
+                Task {
+                    await model.receiveComposerAttachments(
+                        .external(urls),
+                        to: destination,
+                        sendingImmediately: isInstant
+                    )
                 }
-                Task { await model.addComposerAttachments(urls, to: destination) }
                 return !urls.isEmpty
             },
             isTargeted: { targeted in
@@ -791,13 +794,12 @@ private struct ChatRootView: View {
                         batch.discard()
                         return
                     }
-                    if instant {
-                        sendDroppedPromisedAttachmentsImmediately(
-                            batch,
-                            to: destination
+                    Task {
+                        await model.receiveComposerAttachments(
+                            .owned(batch),
+                            to: destination,
+                            sendingImmediately: instant
                         )
-                    } else {
-                        Task { await model.addPromisedComposerAttachments(batch, to: destination) }
                     }
                 }
             )
@@ -851,41 +853,6 @@ private struct ChatRootView: View {
         let windowPoint = window.convertPoint(fromScreen: NSEvent.mouseLocation)
         let proposed = proposedComposerDestination(atX: windowPoint.x - workspaceFrame.minX)
         return model.isComposerDropEligible(proposed) ? proposed : nil
-    }
-
-    private func sendDroppedAttachmentsImmediately(
-        _ urls: [URL],
-        to destination: MessageComposerDestination
-    ) {
-        Task {
-            let acceptedURLs = await model.attachmentURLsWithinDiscordLimit(urls, offeringExternalUploadFor: destination)
-            guard !acceptedURLs.isEmpty else { return }
-            let scopedURLs = acceptedURLs.filter { $0.startAccessingSecurityScopedResource() }
-            defer {
-                for url in scopedURLs {
-                    url.stopAccessingSecurityScopedResource()
-                }
-            }
-            await model.sendAttachmentsImmediately(
-                acceptedURLs.map { ForumPostAttachment(url: $0) },
-                to: destination
-            )
-        }
-    }
-
-    private func sendDroppedPromisedAttachmentsImmediately(
-        _ batch: ComposerPromisedFileBatch,
-        to destination: MessageComposerDestination
-    ) {
-        Task {
-            let acceptedURLs = await model.preparePromisedAttachmentsForImmediateSend(batch, to: destination)
-            guard !acceptedURLs.isEmpty else { return }
-            defer { model.endUsingOwnedPromisedFiles(acceptedURLs) }
-            await model.sendAttachmentsImmediately(
-                acceptedURLs.map { ForumPostAttachment(url: $0) },
-                to: destination
-            )
-        }
     }
 
     private func channelToolbarSymbol(_ channel: Channel) -> String {

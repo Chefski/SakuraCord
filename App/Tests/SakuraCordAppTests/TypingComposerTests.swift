@@ -700,32 +700,61 @@ private actor AttachmentCompactionTestWorker: AttachmentCompacting {
     #expect(pasteboard.setString(file.path, forType: .string))
 
     let textView = ComposerNSTextView()
-    textView.commandPasteboard = pasteboard
-    var pastedURLs: [URL] = []
-    textView.onPasteAttachments = { pastedURLs = $0 }
-    textView.paste(nil)
+    var received: [ComposerIncomingAttachments] = []
+    textView.onReceiveAttachments = { attachments, _ in
+        received.append(attachments)
+        return true
+    }
+    #expect(textView.readSelection(from: pasteboard))
 
-    #expect(pastedURLs == [file])
+    guard case let .external(urls) = try #require(received.first) else {
+        Issue.record("Expected the pasted file to stay in place")
+        return
+    }
+    #expect(received.count == 1)
+    #expect(urls == [file])
     #expect(textView.string.isEmpty)
 }
 
 @MainActor
-@Test func `composer paste materializes clipboard image data as a png attachment`() throws {
-    let pasteboard = NSPasteboard(name: .init("sakuracord-paste-image-\(UUID().uuidString)"))
-    defer { pasteboard.clearContents() }
+@Test(arguments: ["public.png", "public.tiff"])
+func `composer paste accepts image-only clipboards as owned png attachments`(type: String) throws {
+    let textView = ComposerNSTextView()
+    #expect(!textView.readablePasteboardTypes.contains(.png))
+    var received: [ComposerIncomingAttachments] = []
+    textView.onReceiveAttachments = { attachments, _ in
+        received.append(attachments)
+        return true
+    }
+    // AppKit enables Paste only when the clipboard offers a readable type.
+    #expect(textView.readablePasteboardTypes.contains(.png))
+
     let image = NSImage(size: NSSize(width: 2, height: 2), flipped: false) { bounds in
         NSColor.systemPink.setFill()
         bounds.fill()
         return true
     }
+    let tiff = try #require(image.tiffRepresentation)
+    let data = type == "public.png"
+        ? try #require(NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]))
+        : tiff
+    let pasteboard = NSPasteboard(name: .init("sakuracord-paste-image-\(UUID().uuidString)"))
+    defer { pasteboard.clearContents() }
     pasteboard.clearContents()
-    #expect(pasteboard.writeObjects([image]))
+    #expect(pasteboard.setData(data, forType: .init(type)))
 
-    let url = try #require(ComposerPasteboardAttachments.urls(from: pasteboard).first)
-    defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+    #expect(textView.readSelection(from: pasteboard))
+    guard case let .owned(batch) = try #require(received.first) else {
+        Issue.record("Expected pasted image data in app-owned storage")
+        return
+    }
+    defer { batch.discard() }
+    #expect(received.count == 1)
+    #expect(textView.string.isEmpty)
+    #expect(ComposerPromisedFileStorage.isManagedDirectory(batch.directory))
 
+    let url = try #require(batch.urls.first)
     #expect(url.pathExtension == "png")
-    #expect((try Data(contentsOf: url)).isEmpty == false)
     #expect(NSImage(contentsOf: url)?.isValid == true)
 }
 
@@ -1963,6 +1992,27 @@ func `composer attachment controls preserve edits and spoiler state`(anonymisesF
     #expect(!ComposerUnfocusedTypingMonitor.shouldOfferReturn(49))
     #expect(KeyboardShortcutPolicy.isPlainEscape(keyCode: 53, modifierFlags: []))
     #expect(!KeyboardShortcutPolicy.isPlainEscape(keyCode: 49, modifierFlags: []))
+}
+
+// Characters are what each layout produces for the key with Command held.
+@Test(arguments: [
+    ("v", .command, true), // QWERTY, AZERTY, Dvorak, Russian, Dvorak – QWERTY ⌘
+    ("V", [.command, .capsLock], true),
+    ("k", .command, false), // Dvorak's key in the QWERTY V position
+    ("м", .command, false),
+    ("V", [.command, .shift], false),
+    ("v", [.command, .option], false),
+    ("v", [], false)
+] as [(String, NSEvent.ModifierFlags, Bool)])
+func `unfocused paste matches the layout's command v`(
+    characters: String,
+    modifierFlags: NSEvent.ModifierFlags,
+    offersPaste: Bool
+) {
+    #expect(ComposerUnfocusedTypingMonitor.shouldOfferPaste(
+        characters: characters,
+        modifierFlags: modifierFlags
+    ) == offersPaste)
 }
 
 @MainActor

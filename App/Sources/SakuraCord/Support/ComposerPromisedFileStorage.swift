@@ -12,6 +12,14 @@ struct ComposerPromisedFileBatch {
     }
 }
 
+/// Files offered to a composer by drop or paste.
+enum ComposerIncomingAttachments {
+    /// User files that stay in place.
+    case external([URL])
+    /// App-owned copies that the model adopts and removes when unused.
+    case owned(ComposerPromisedFileBatch)
+}
+
 enum ComposerPromisedFileStorage {
     static func rootDirectory(fileManager: FileManager = .default) -> URL {
         let applicationIdentifier = Bundle.main.bundleIdentifier

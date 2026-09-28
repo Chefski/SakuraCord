@@ -75,10 +75,6 @@ nonisolated enum ComposerLatestMessageEditingPolicy {
 }
 
 extension ComposerView {
-    func addPastedAttachments(_ urls: [URL]) {
-        Task { await model.addComposerAttachments(urls, to: conversation) }
-    }
-
     func editLatestMessage() -> Bool {
         let messages = switch conversation {
         case .channel: model.messages
@@ -289,9 +285,8 @@ struct ComposerTextView: NSViewRepresentable {
     var onEditLatestMessage: () -> Bool = { false }
     var onNavigateReplySelection: (MessageReplyNavigationDirection) -> Bool = { _ in false }
     var onAutocompleteCommand: (ComposerAutocompleteCommand) -> Bool = { _ in false }
-    var onPasteAttachments: (([URL]) -> Void)?
     var onDropTargetChanged: ((_ isTargeted: Bool, _ isInstant: Bool) -> Void)?
-    var onDropAttachments: ((_ urls: [URL], _ isInstant: Bool) -> Bool)?
+    var onReceiveAttachments: ((_ attachments: ComposerIncomingAttachments, _ isInstant: Bool) -> Bool)?
     var onCompositionStateChange: ((Bool) -> Void)?
     var capturesUnfocusedTyping = false
     var verticalContentInset: CGFloat = 0
@@ -365,9 +360,8 @@ struct ComposerTextView: NSViewRepresentable {
         textView.onNavigateReplySelection = { [weak coordinator = context.coordinator] direction in
             coordinator?.parent.onNavigateReplySelection(direction) ?? false
         }
-        textView.onPasteAttachments = onPasteAttachments
         textView.onDropTargetChanged = onDropTargetChanged
-        textView.onDropAttachments = onDropAttachments
+        textView.onReceiveAttachments = onReceiveAttachments
         textView.capturesUnfocusedTyping = capturesUnfocusedTyping
         ComposerTextCheckingConfiguration.apply(generalInputSettings, to: textView)
 
@@ -411,9 +405,8 @@ struct ComposerTextView: NSViewRepresentable {
         textView.onNavigateReplySelection = { [weak coordinator = context.coordinator] direction in
             coordinator?.parent.onNavigateReplySelection(direction) ?? false
         }
-        textView.onPasteAttachments = onPasteAttachments
         textView.onDropTargetChanged = onDropTargetChanged
-        textView.onDropAttachments = onDropAttachments
+        textView.onReceiveAttachments = onReceiveAttachments
 
         // During IME composition, NSTextView owns the marked range. Applying
         // the SwiftUI snapshot, selection, or typing attributes here can
@@ -763,10 +756,8 @@ final class ComposerNSTextView: NSTextView {
     var onEditLatestMessage: (() -> Bool)?
     var onNavigateReplySelection: ((MessageReplyNavigationDirection) -> Bool)?
     var onAutocompleteCommand: ((ComposerAutocompleteCommand) -> Bool)?
-    var onPasteAttachments: (([URL]) -> Void)?
     var onDropTargetChanged: ((_ isTargeted: Bool, _ isInstant: Bool) -> Void)?
-    var onDropAttachments: ((_ urls: [URL], _ isInstant: Bool) -> Bool)?
-    var commandPasteboard = NSPasteboard.general
+    var onReceiveAttachments: ((_ attachments: ComposerIncomingAttachments, _ isInstant: Bool) -> Bool)?
     var plainTypingAttributes: [NSAttributedString.Key: Any] = [:]
     var capturesUnfocusedTyping = false {
         didSet {
@@ -811,7 +802,7 @@ final class ComposerNSTextView: NSTextView {
 
     private var pasteAttachmentsHandler: () -> Bool {
         { [weak self] in
-            self?.pasteAttachmentsIfAvailable() ?? false
+            self?.readAttachments(from: .general) ?? false
         }
     }
 
@@ -837,7 +828,7 @@ final class ComposerNSTextView: NSTextView {
         )
         let isInstant = NSEvent.modifierFlags.contains(.shift)
         let handled = !urls.isEmpty
-            && onDropAttachments?(urls, isInstant) == true
+            && onReceiveAttachments?(.external(urls), isInstant) == true
         onDropTargetChanged?(false, false)
         return handled
     }
@@ -849,7 +840,7 @@ final class ComposerNSTextView: NSTextView {
     private func updateAttachmentDropTarget(
         _ sender: any NSDraggingInfo
     ) -> NSDragOperation {
-        let acceptsDrop = onDropAttachments != nil
+        let acceptsDrop = onReceiveAttachments != nil
             && !ComposerPasteboardAttachments.fileURLs(
                 from: sender.draggingPasteboard
             ).isEmpty
@@ -984,55 +975,74 @@ final class ComposerNSTextView: NSTextView {
         NSPasteboard.general.setString(raw, forType: .string)
     }
 
-    override func paste(_ sender: Any?) {
-        if pasteAttachmentsIfAvailable() {
-            return
-        }
-        _ = readSelection(from: commandPasteboard)
+    // AppKit validates Paste and Services against these types, then reads
+    // the first available one through `readSelection(from:type:)`.
+    override var readablePasteboardTypes: [NSPasteboard.PasteboardType] {
+        onReceiveAttachments == nil
+            ? Self.textPasteboardTypes
+            : ComposerPasteboardAttachments.readableTypes + Self.textPasteboardTypes
     }
 
-    override func pasteAsRichText(_ sender: Any?) {
-        paste(sender)
-    }
-
-    override func readSelection(from pasteboard: NSPasteboard) -> Bool {
-        if let value = pasteboard.string(forType: .string) {
-            insertText(value, replacementRange: selectedRange())
-            return true
-        }
-        for (type, documentType) in [
-            (NSPasteboard.PasteboardType.rtf, NSAttributedString.DocumentType.rtf),
-            (.rtfd, .rtfd),
-            (.html, .html)
-        ] {
-            var options: [NSAttributedString.DocumentReadingOptionKey: Any] = [.documentType: documentType]
-            if type == .html { options[.characterEncoding] = String.Encoding.utf8.rawValue }
-            guard let data = pasteboard.data(forType: type),
-                  let attributed = try? NSAttributedString(
-                      data: data, options: options, documentAttributes: nil
-                  )
-            else { continue }
-            insertText(attributed.string, replacementRange: selectedRange())
-            return true
-        }
-        return false
-    }
+    private static let textPasteboardTypes: [NSPasteboard.PasteboardType] = [.string, .rtfd, .rtf, .html]
 
     override func readSelection(from pasteboard: NSPasteboard, type: NSPasteboard.PasteboardType) -> Bool {
-        readSelection(from: pasteboard)
+        if ComposerPasteboardAttachments.readableTypes.contains(type) {
+            guard let onReceiveAttachments,
+                  let attachments = ComposerPasteboardAttachments.attachments(from: pasteboard, type: type)
+            else { return false }
+            return onReceiveAttachments(attachments, false)
+        }
+        guard let text = Self.plainText(from: pasteboard, type: type) else { return false }
+        insertText(text, replacementRange: selectedRange())
+        return true
     }
 
-    private func pasteAttachmentsIfAvailable() -> Bool {
-        guard let onPasteAttachments else { return false }
-        let urls = ComposerPasteboardAttachments.urls(from: commandPasteboard)
-        guard !urls.isEmpty else { return false }
-        onPasteAttachments(urls)
-        return true
+    private static func plainText(from pasteboard: NSPasteboard, type: NSPasteboard.PasteboardType) -> String? {
+        let documentType: NSAttributedString.DocumentType
+        switch type {
+        case .string: return pasteboard.string(forType: .string)
+        case .rtfd: documentType = .rtfd
+        case .rtf: documentType = .rtf
+        case .html: documentType = .html
+        default: return nil
+        }
+        var options: [NSAttributedString.DocumentReadingOptionKey: Any] = [.documentType: documentType]
+        if type == .html { options[.characterEncoding] = String.Encoding.utf8.rawValue }
+        guard let data = pasteboard.data(forType: type) else { return nil }
+        return try? NSAttributedString(data: data, options: options, documentAttributes: nil).string
+    }
+
+    /// Reads only attachments, leaving text paste to the focused responder.
+    private func readAttachments(from pasteboard: NSPasteboard) -> Bool {
+        guard onReceiveAttachments != nil,
+              let type = pasteboard.availableType(from: ComposerPasteboardAttachments.readableTypes)
+        else { return false }
+        return readSelection(from: pasteboard, type: type)
     }
 }
 
 @MainActor
 enum ComposerPasteboardAttachments {
+    /// Files outrank image previews that accompany them, and images outrank
+    /// the URL or HTML text that browsers add when copying an image.
+    static let readableTypes: [NSPasteboard.PasteboardType] = {
+        let imageTypes: [NSPasteboard.PasteboardType] = [.png, .tiff]
+        return [.fileURL] + imageTypes + NSImage.imageTypes
+            .map { NSPasteboard.PasteboardType($0) }
+            .filter { !imageTypes.contains($0) }
+    }()
+
+    static func attachments(
+        from pasteboard: NSPasteboard,
+        type: NSPasteboard.PasteboardType
+    ) -> ComposerIncomingAttachments? {
+        guard type != .fileURL else {
+            let urls = fileURLs(from: pasteboard)
+            return urls.isEmpty ? nil : .external(urls)
+        }
+        return pastedImage(from: pasteboard, type: type).map { .owned($0) }
+    }
+
     static func fileURLs(from pasteboard: NSPasteboard) -> [URL] {
         let objects = pasteboard.readObjects(
             forClasses: [NSURL.self],
@@ -1048,36 +1058,25 @@ enum ComposerPasteboardAttachments {
         }
     }
 
-    static func urls(
+    /// Writes clipboard image data as a PNG in app-owned storage, which the
+    /// model adopts and removes once no composer or upload retains it.
+    private static func pastedImage(
         from pasteboard: NSPasteboard,
-        fileManager: FileManager = .default
-    ) -> [URL] {
-        let fileURLs = fileURLs(from: pasteboard)
-        if !fileURLs.isEmpty {
-            return fileURLs
-        }
-
-        guard let image = NSImage(pasteboard: pasteboard),
-              let tiff = image.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: tiff),
-              let data = bitmap.representation(using: .png, properties: [:])
-        else { return [] }
-
-        let directory = fileManager.temporaryDirectory
-            .appendingPathComponent("SakuraCord", isDirectory: true)
-            .appendingPathComponent("Pasted Attachments", isDirectory: true)
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        type: NSPasteboard.PasteboardType
+    ) -> ComposerPromisedFileBatch? {
+        guard let data = pasteboard.data(forType: type),
+              let png = type == .png ? data : NSImage(data: data)?.tiffRepresentation
+                  .flatMap(NSBitmapImageRep.init(data:))?
+                  .representation(using: .png, properties: [:]),
+              let directory = try? ComposerPromisedFileStorage.makeReceivingDirectory()
+        else { return nil }
         let url = directory.appendingPathComponent("pasted-image.png")
         do {
-            try fileManager.createDirectory(
-                at: directory,
-                withIntermediateDirectories: true
-            )
-            try data.write(to: url, options: .atomic)
-            return [url]
+            try png.write(to: url, options: .atomic)
+            return ComposerPromisedFileBatch(directory: directory, urls: [url])
         } catch {
-            try? fileManager.removeItem(at: directory)
-            return []
+            ComposerPromisedFileStorage.removeDirectory(directory)
+            return nil
         }
     }
 }
@@ -1147,7 +1146,7 @@ final class ComposerUnfocusedTypingMonitor {
             }
 
             if Self.handlePaste(
-                keyCode: event.keyCode,
+                characters: event.characters,
                 modifierFlags: event.modifierFlags,
                 onPasteAttachments: self.onPasteAttachments
             ) {
@@ -1237,20 +1236,28 @@ final class ComposerUnfocusedTypingMonitor {
         keyCode == 36 || keyCode == 76
     }
 
+    /// Matches Command-V as the Edit menu's Paste item does, using the
+    /// characters the layout produces with Command held. Layouts such as
+    /// Russian or "Dvorak – QWERTY ⌘" map Command combinations to Latin keys,
+    /// so `charactersIgnoringModifiers` would report "м" or "k" instead.
     nonisolated static func shouldOfferPaste(
-        keyCode: UInt16,
+        characters: String?,
         modifierFlags: NSEvent.ModifierFlags
     ) -> Bool {
         let relevant = modifierFlags.intersection([.command, .option, .control, .shift])
-        return keyCode == 9 && relevant == .command
+        // Caps Lock can uppercase the characters without Shift.
+        return characters?.lowercased() == "v" && relevant == .command
     }
 
     nonisolated static func handlePaste(
-        keyCode: UInt16,
+        characters: String?,
         modifierFlags: NSEvent.ModifierFlags,
         onPasteAttachments: (() -> Bool)?
     ) -> Bool {
-        guard shouldOfferPaste(keyCode: keyCode, modifierFlags: modifierFlags) else {
+        guard shouldOfferPaste(
+            characters: characters,
+            modifierFlags: modifierFlags
+        ) else {
             return false
         }
         return onPasteAttachments?() == true
