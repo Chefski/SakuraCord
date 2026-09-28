@@ -58,6 +58,11 @@ enum ComposerPromisedFileStorage {
     ) -> ComposerPromisedFileBatch? {
         guard let directory = try? makeReceivingDirectory(fileManager: fileManager) else { return nil }
         let url = directory.appendingPathComponent(filename)
+        // The file must stay a direct child of its batch directory.
+        guard url.standardizedFileURL.deletingLastPathComponent() == directory.standardizedFileURL else {
+            removeDirectory(directory, fileManager: fileManager)
+            return nil
+        }
         do {
             try data.write(to: url, options: .atomic)
             return ComposerPromisedFileBatch(directory: directory, urls: [url])

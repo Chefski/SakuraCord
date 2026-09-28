@@ -1091,7 +1091,39 @@ enum ComposerPasteboardAttachments {
                   .flatMap(NSBitmapImageRep.init(data:))?
                   .representation(using: .png, properties: [:])
         else { return nil }
-        return ComposerPromisedFileStorage.makeBatch(writing: png, named: "image.png")
+        let filename = pastedImageFilename(html: pasteboard.string(forType: .html))
+        return ComposerPromisedFileStorage.makeBatch(writing: png, named: filename)
+    }
+
+    /// Names a pasted image as Discord does: after the first `<img>` source in
+    /// accompanying HTML, which browsers include when copying an image.
+    nonisolated static func pastedImageFilename(html: String?) -> String {
+        let pattern = /<img\b[^>]*?\ssrc\s*=\s*["']([^"']+)["']/.ignoresCase()
+        guard let html,
+              let source = html.firstMatch(of: pattern).map({ String($0.1) }),
+              let url = URL(string: source),
+              url.scheme.map({ ["http", "https", "file"].contains($0.lowercased()) }) ?? true
+        else { return "image.png" }
+        // `lastPathComponent` percent-decodes, so the name can contain
+        // separators, control characters, or traversal components.
+        let stem = safeFilenameStem((url.lastPathComponent as NSString).deletingPathExtension)
+        return (stem ?? "image") + ".png"
+    }
+
+    /// Reduces untrusted text to one file name component of at most 200
+    /// UTF-8 bytes, or nil when nothing usable remains.
+    nonisolated static func safeFilenameStem(_ raw: String) -> String? {
+        var stem = ""
+        for character in raw {
+            let isUnsafe = character.unicodeScalars.contains {
+                $0 == "/" || $0 == ":" || $0.properties.generalCategory == .control
+            }
+            let safe = isUnsafe ? "_" : String(character)
+            guard stem.utf8.count + safe.utf8.count <= 200 else { break }
+            stem += safe
+        }
+        guard !stem.isEmpty, stem != ".", stem != "..", stem != "_" else { return nil }
+        return stem
     }
 
     /// Writes pasted text too long for a message as `message.txt`, as Discord does.

@@ -804,6 +804,30 @@ func `composer paste accepts image-only clipboards as owned png attachments`(typ
     #expect(NSImage(contentsOf: url)?.isValid == true)
 }
 
+@Test(arguments: [
+    (#"<meta charset="utf-8"><img src="https://cdn.example.com/a/cat.photo.jpg?w=2" alt="">"#, "cat.photo.png"),
+    (#"<img alt="" src='/images/sakura.webp'>"#, "sakura.png"),
+    (#"<img src="data:image/png;base64,AAAA">"#, "image.png"),
+    ("<p>No image</p>", "image.png"),
+    // Percent-decoded names stay a single safe component.
+    (#"<img src="https://e.com/..%2F..%2FDesktop%2Fphoto.png">"#, ".._.._Desktop_photo.png"),
+    (#"<img src="https://storage.example/o/images%2Fcat.jpg?alt=media">"#, "images_cat.png"),
+    (#"<img src="https://e.com/a%00b%3Ac.jpg">"#, "a_b_c.png"),
+    (#"<img src="https://e.com/a/..">"#, "image.png"),
+    ("<img src=\"https://e.com/\(String(repeating: "é", count: 150)).jpg\">", String(repeating: "é", count: 100) + ".png")
+])
+func `pasted images take their name from the copied html image source`(html: String, filename: String) {
+    #expect(ComposerPasteboardAttachments.pastedImageFilename(html: html) == filename)
+}
+
+@MainActor
+@Test func `managed pasted files cannot escape their batch directory`() throws {
+    #expect(ComposerPromisedFileStorage.makeBatch(writing: Data("x".utf8), named: "../escaped.png") == nil)
+    let batch = try #require(ComposerPromisedFileStorage.makeBatch(writing: Data("x".utf8), named: "safe.png"))
+    defer { batch.discard() }
+    #expect(batch.urls.map { $0.deletingLastPathComponent().standardizedFileURL } == [batch.directory.standardizedFileURL])
+}
+
 @MainActor
 @Test(arguments: [
     ("a", 4_000, true, false),
