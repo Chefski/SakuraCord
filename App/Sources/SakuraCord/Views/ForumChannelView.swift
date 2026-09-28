@@ -1467,6 +1467,7 @@ private struct ForumPostComposer: View {
     @State private var content = ""
     @State private var attachments: [ForumPostAttachment] = []
     @State private var securityScopedAttachmentURLs: Set<URL> = []
+    @State private var ownedAttachmentBatches: [ComposerPromisedFileBatch] = []
     @State private var selectedTags: Set<ForumTagID> = []
     @State private var showsFileImporter = false
     @State private var showsGuidelines = false
@@ -1550,6 +1551,10 @@ private struct ForumPostComposer: View {
                 url.stopAccessingSecurityScopedResource()
             }
             securityScopedAttachmentURLs.removeAll()
+            for batch in ownedAttachmentBatches {
+                batch.discard()
+            }
+            ownedAttachmentBatches.removeAll()
         }
     }
 
@@ -1579,7 +1584,8 @@ private struct ForumPostComposer: View {
                         text: $content,
                         selection: $contentSelection,
                         isFocused: $isContentFocused,
-                        placeholder: "Enter a message…"
+                        placeholder: "Enter a message…",
+                        receiveAttachments: receiveAttachments
                     )
                     .frame(maxWidth: .infinity, minHeight: 210, maxHeight: .infinity)
                 }
@@ -1686,6 +1692,24 @@ private struct ForumPostComposer: View {
 
     private func addAttachments(_ urls: [URL]) {
         Task { await addCheckedAttachments(urls) }
+    }
+
+    /// Adds pasted files; pasted data stays in app-owned storage until the
+    /// composer closes, since these attachments are not held by the model.
+    private func receiveAttachments(_ incoming: ComposerIncomingAttachments) {
+        switch incoming {
+        case let .external(urls):
+            addAttachments(urls)
+        case let .owned(batch):
+            ownedAttachmentBatches.append(batch)
+            Task {
+                await addCheckedAttachments(batch.urls)
+                let attachedURLs = Set(attachments.map(\.url))
+                guard !batch.urls.contains(where: attachedURLs.contains) else { return }
+                batch.discard()
+                ownedAttachmentBatches.removeAll { $0.directory == batch.directory }
+            }
+        }
     }
 
     private func addCheckedAttachments(_ urls: [URL]) async {
