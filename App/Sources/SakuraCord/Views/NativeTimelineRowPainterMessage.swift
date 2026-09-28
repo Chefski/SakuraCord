@@ -889,22 +889,40 @@ extension NativeTimelineRowPainter {
         } else {
             MessageReplySummary.text(content: preview.content)
         }
+        let mediaSymbol: String? = switch preview.mediaKind {
+        case .image, .animatedImage: "photo.fill"
+        case .video: "film.fill"
+        case .audio: "waveform"
+        case .file: "paperclip"
+        case nil: nil
+        }
+        let summaryX = authorFrame.maxX + NativeTimelineReplyMetrics.horizontalSpacing
+        let summaryWidth = max(
+            0,
+            min(
+                NativeTimelineReplyMetrics.textWidth(summary, font: NativeTimelineReplyMetrics.summaryFont),
+                frame.maxX - summaryX - (mediaSymbol == nil ? 48 : 24)
+            )
+        )
         text(
             summary,
             in: CGRect(
-                x: authorFrame.maxX
-                    + NativeTimelineReplyMetrics.horizontalSpacing,
+                x: summaryX,
                 y: frame.minY,
-                width: max(
-                    0,
-                    frame.maxX - 48 - authorFrame.maxX
-                        - NativeTimelineReplyMetrics.horizontalSpacing
-                ),
+                width: summaryWidth,
                 height: 20
             ),
             font: NativeTimelineReplyMetrics.summaryFont,
             color: .secondaryLabelColor
         )
+        if let mediaSymbol {
+            systemSymbol(
+                mediaSymbol,
+                in: CGRect(x: summaryX + summaryWidth + 4, y: frame.minY + 1, width: 18, height: 18),
+                color: .secondaryLabelColor,
+                inset: 2
+            )
+        }
     }
 
     static func unavailableReplyContext(
