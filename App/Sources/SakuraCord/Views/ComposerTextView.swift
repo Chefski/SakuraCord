@@ -1009,6 +1009,12 @@ final class ComposerNSTextView: NSTextView {
             return onReceiveAttachments(attachments, false)
         }
         guard let text = Self.plainText(from: pasteboard, type: type) else { return false }
+        if type == .string, receivesAttachments, let onReceiveAttachments,
+           let batch = ComposerPasteboardAttachments.longTextAttachment(text)
+        {
+            if onReceiveAttachments(.owned(batch), false) { return true }
+            batch.discard()
+        }
         insertText(text, replacementRange: selectedRange())
         return true
     }
@@ -1083,17 +1089,15 @@ enum ComposerPasteboardAttachments {
         guard let data = pasteboard.data(forType: type),
               let png = type == .png ? data : NSImage(data: data)?.tiffRepresentation
                   .flatMap(NSBitmapImageRep.init(data:))?
-                  .representation(using: .png, properties: [:]),
-              let directory = try? ComposerPromisedFileStorage.makeReceivingDirectory()
+                  .representation(using: .png, properties: [:])
         else { return nil }
-        let url = directory.appendingPathComponent("image.png")
-        do {
-            try png.write(to: url, options: .atomic)
-            return ComposerPromisedFileBatch(directory: directory, urls: [url])
-        } catch {
-            ComposerPromisedFileStorage.removeDirectory(directory)
-            return nil
-        }
+        return ComposerPromisedFileStorage.makeBatch(writing: png, named: "image.png")
+    }
+
+    /// Writes pasted text too long for a message as `message.txt`, as Discord does.
+    static func longTextAttachment(_ text: String) -> ComposerPromisedFileBatch? {
+        guard ChatCharacterLimitPolicy.pastedTextBecomesAttachment(text) else { return nil }
+        return ComposerPromisedFileStorage.makeBatch(writing: Data(text.utf8), named: "message.txt")
     }
 }
 

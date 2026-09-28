@@ -768,6 +768,50 @@ func `composer paste accepts image-only clipboards as owned png attachments`(typ
 }
 
 @MainActor
+@Test(arguments: [
+    ("a", 4_000, true, false),
+    // 2,001 characters measure 4,002 UTF-16 code units, as JavaScript counts them.
+    ("😀", 2_001, true, true),
+    ("😀", 2_001, false, false)
+])
+func `composer paste attaches long text as message txt only where files are accepted`(
+    character: String,
+    count: Int,
+    acceptsAttachments: Bool,
+    attaches: Bool
+) throws {
+    let text = String(repeating: character, count: count)
+    let pasteboard = NSPasteboard(name: .init("sakuracord-paste-text-\(UUID().uuidString)"))
+    defer { pasteboard.clearContents() }
+    pasteboard.clearContents()
+    #expect(pasteboard.setString(text, forType: .string))
+
+    let textView = ComposerNSTextView()
+    var received: [ComposerIncomingAttachments] = []
+    textView.onReceiveAttachments = { attachments, _ in
+        received.append(attachments)
+        return true
+    }
+    textView.canReceiveAttachments = { acceptsAttachments }
+    #expect(textView.readSelection(from: pasteboard))
+
+    guard attaches else {
+        #expect(received.isEmpty)
+        #expect(textView.string == text)
+        return
+    }
+    guard case let .owned(batch) = try #require(received.first) else {
+        Issue.record("Expected pasted text in app-owned storage")
+        return
+    }
+    defer { batch.discard() }
+    #expect(textView.string.isEmpty)
+    let url = try #require(batch.urls.first)
+    #expect(url.lastPathComponent == "message.txt")
+    #expect(try String(contentsOf: url, encoding: .utf8) == text)
+}
+
+@MainActor
 @Test func `promised attachment drops use isolated storage and publish successful files once`() throws {
     let firstDirectory = try ComposerPromisedFileDropView.makeReceivingDirectory()
     let secondDirectory = try ComposerPromisedFileDropView.makeReceivingDirectory()

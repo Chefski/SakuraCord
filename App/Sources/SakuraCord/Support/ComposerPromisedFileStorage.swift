@@ -50,6 +50,23 @@ enum ComposerPromisedFileStorage {
         return directory
     }
 
+    /// Writes app-created content, such as pasted data, as a one-file batch.
+    static func makeBatch(
+        writing data: Data,
+        named filename: String,
+        fileManager: FileManager = .default
+    ) -> ComposerPromisedFileBatch? {
+        guard let directory = try? makeReceivingDirectory(fileManager: fileManager) else { return nil }
+        let url = directory.appendingPathComponent(filename)
+        do {
+            try data.write(to: url, options: .atomic)
+            return ComposerPromisedFileBatch(directory: directory, urls: [url])
+        } catch {
+            removeDirectory(directory, fileManager: fileManager)
+            return nil
+        }
+    }
+
     static func isManagedDirectory(
         _ directory: URL,
         fileManager: FileManager = .default
