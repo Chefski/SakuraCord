@@ -233,11 +233,23 @@ public struct MessageReplyPreview: Codable, Hashable, Sendable {
             author: message.author,
             guildMember: message.guildMember,
             content: message.content,
-            mediaKind: message.attachments.first?.mediaKind
-                ?? (message.embeds.contains(where: { $0.video != nil }) ? .video : nil)
-                ?? (message.embeds.contains(where: { $0.image != nil || $0.thumbnail != nil }) ? .image : nil)
-                ?? (message.stickers.isEmpty ? nil : .image)
+            mediaKind: Self.mediaKind(
+                attachments: message.attachments,
+                embeds: message.embeds,
+                stickers: message.stickers
+            )
         )
+    }
+
+    public static func mediaKind(
+        attachments: [Attachment],
+        embeds: [MessageEmbed],
+        stickers: [MessageSticker]
+    ) -> AttachmentMediaKind? {
+        attachments.first?.mediaKind
+            ?? (embeds.contains(where: { $0.video != nil }) ? .video : nil)
+            ?? (embeds.contains(where: { $0.image != nil || $0.thumbnail != nil }) ? .image : nil)
+            ?? (stickers.isEmpty ? nil : .image)
     }
 }
 

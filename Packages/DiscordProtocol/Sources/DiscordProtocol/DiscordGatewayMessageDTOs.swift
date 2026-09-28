@@ -367,6 +367,14 @@ struct MessageDTO: Decodable {
         var member: MemberDTO?
         var content: String?
         var attachments: LossyList<AttachmentDTO>?
+        var embeds: LossyList<MessageEmbedDTO>?
+        var stickerItems: LossyList<MessageStickerDTO>?
+        var stickers: LossyList<MessageStickerDTO>?
+
+        enum CodingKeys: String, CodingKey {
+            case id, author, member, content, attachments, embeds, stickers
+            case stickerItems = "sticker_items"
+        }
 
         func domain(guildID: GuildID?) -> MessageReplyPreview? {
             guard let messageID = MessageID(id), let author, var user = try? author.domain() else {
@@ -382,7 +390,13 @@ struct MessageDTO: Decodable {
                 author: user,
                 guildMember: guildMember,
                 content: content ?? "",
-                mediaKind: attachments?.elements.compactMap { try? $0.domain() }.first?.mediaKind
+                mediaKind: MessageReplyPreview.mediaKind(
+                    attachments: attachments?.elements.compactMap { try? $0.domain() } ?? [],
+                    embeds: (embeds?.elements ?? []).enumerated().map {
+                        $0.element.domain(index: $0.offset)
+                    },
+                    stickers: (stickerItems ?? stickers)?.elements.map(\.domain) ?? []
+                )
             )
         }
     }
