@@ -60,7 +60,7 @@ extension AppModel {
     /// pasted file. Like Discord, the command takes no other files.
     func receiveCommandAttachment(_ incoming: ComposerIncomingAttachments) async {
         let url: URL? = switch incoming {
-        case let .external(urls): urls.first
+        case let .external(urls): uploadableFileURLs(urls).first
         case let .owned(batch): adoptPromisedFileBatch(batch).first
         }
         guard let url else { return }

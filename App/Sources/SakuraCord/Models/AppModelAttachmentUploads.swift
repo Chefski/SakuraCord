@@ -42,6 +42,7 @@ extension AppModel {
         _ urls: [URL],
         offeringExternalUploadFor destination: MessageComposerDestination? = nil
     ) async -> [URL] {
+        let urls = uploadableFileURLs(urls)
         guard !urls.isEmpty else { return [] }
         let generation = accountSessionGeneration
         let channelID = destination.flatMap { conversationChannelID(for: $0) } ?? selectedChannelID
@@ -102,6 +103,18 @@ extension AppModel {
             )
         }
         return accepted
+    }
+
+    /// Skips folders like Discord, which reports an error only when no
+    /// file remains.
+    func uploadableFileURLs(_ urls: [URL]) -> [URL] {
+        let files = urls.filter {
+            (try? $0.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory != true
+        }
+        if files.isEmpty, !urls.isEmpty {
+            errorMessage = "That file type is not supported."
+        }
+        return files
     }
 
     func dismissOversizedAttachmentPrompt(id expectedID: UUID? = nil) {

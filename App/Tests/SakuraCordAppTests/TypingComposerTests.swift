@@ -373,6 +373,30 @@ import Testing
 }
 
 @MainActor
+@Test func `composer attachment intake skips folders and reports a folder only batch`() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "sakuracord-attachment-folder-\(UUID().uuidString)",
+        isDirectory: true
+    )
+    let folder = directory.appendingPathComponent("Folder", isDirectory: true)
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let file = directory.appendingPathComponent("notes.txt")
+    try Data("notes".utf8).write(to: file)
+    let model = AppModel(launchMode: .offlineTesting, provider: TypingTestProvider())
+    await model.start()
+
+    await model.addComposerAttachments([folder, file], to: .channel)
+    #expect(model.channelComposerAttachments.map(\.url) == [file])
+    #expect(model.errorMessage == nil)
+
+    model.clearComposerAttachments(for: .channel)
+    await model.addComposerAttachments([folder], to: .channel)
+    #expect(model.channelComposerAttachments.isEmpty)
+    #expect(model.errorMessage == "That file type is not supported.")
+}
+
+@MainActor
 @Test func `oversized attachment is rejected at selection and external upload stays opt in`() async throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
         "sakuracord-attachment-limit-\(UUID().uuidString)",
