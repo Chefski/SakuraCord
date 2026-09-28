@@ -397,6 +397,27 @@ func optionalOnlyCommandStartsWithFieldChooser() {
 }
 
 @MainActor
+@Test("pasted files fill the focused attachment option or the first one without a file")
+func commandPastedAttachmentTarget() throws {
+    let model = ApplicationCommandComposerModel()
+    let text = ApplicationCommandOption(
+        id: "200/text", name: "text", type: .string, isRequired: true
+    )
+    let first = ApplicationCommandOption(id: "200/first", name: "first", type: .attachment)
+    let second = ApplicationCommandOption(id: "200/second", name: "second", type: .attachment)
+    model.activate(composerFixtureCommand(
+        id: "200", name: "upload", application: .init(id: "100", name: "Utility"),
+        options: [text, first, second]
+    ))
+
+    #expect(model.pastedAttachmentOption?.id == first.id)
+    model.setValue(.attachment(URL(filePath: "/tmp/a.png")), for: first)
+    #expect(model.pastedAttachmentOption?.id == second.id)
+    model.focus(first)
+    #expect(model.pastedAttachmentOption?.id == first.id)
+}
+
+@MainActor
 @Test("command suggestions never mix field values with optional fields")
 func commandSuggestionContextSeparation() throws {
     let active = ApplicationCommandOption(

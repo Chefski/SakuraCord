@@ -478,6 +478,7 @@ struct ApplicationCommandInlineInput: View {
     let onSubmit: () -> Void
     let onKeyboardCommand: (ComposerAutocompleteCommand) -> Bool
     let cancel: () -> Void
+    let receiveAttachment: (ComposerIncomingAttachments) -> Void
     @Binding var isFocused: Bool
 
     var body: some View {
@@ -513,6 +514,8 @@ struct ApplicationCommandInlineInput: View {
                     focusedOptionIDProvider: { composer.focusedOptionID },
                     onSubmit: onSubmit,
                     onKeyboardCommand: onKeyboardCommand,
+                    canReceiveAttachment: { composer.pastedAttachmentOption != nil },
+                    receiveAttachment: receiveAttachment,
                     isFocused: $isFocused
                 )
                 .frame(height: 34)
@@ -859,6 +862,8 @@ private struct ApplicationCommandStructuredTextView: NSViewRepresentable {
     let focusedOptionIDProvider: () -> String?
     let onSubmit: () -> Void
     let onKeyboardCommand: (ComposerAutocompleteCommand) -> Bool
+    let canReceiveAttachment: () -> Bool
+    let receiveAttachment: (ComposerIncomingAttachments) -> Void
     @Binding var isFocused: Bool
 
     func makeCoordinator() -> Coordinator {
@@ -894,6 +899,8 @@ private struct ApplicationCommandStructuredTextView: NSViewRepresentable {
         textView.onKeyboardCommand = onKeyboardCommand
         textView.focusedOptionIDProvider = focusedOptionIDProvider
         textView.onSubmit = onSubmit
+        textView.canReceiveAttachment = canReceiveAttachment
+        textView.onReceiveAttachment = receiveAttachment
         textView.sendWithReturn = generalInputSettings.sendsWithReturn
         ComposerTextCheckingConfiguration.apply(generalInputSettings, to: textView)
         textView.document = document
@@ -917,6 +924,8 @@ private struct ApplicationCommandStructuredTextView: NSViewRepresentable {
         textView.onKeyboardCommand = onKeyboardCommand
         textView.focusedOptionIDProvider = focusedOptionIDProvider
         textView.onSubmit = onSubmit
+        textView.canReceiveAttachment = canReceiveAttachment
+        textView.onReceiveAttachment = receiveAttachment
         textView.sendWithReturn = generalInputSettings.sendsWithReturn
         ComposerTextCheckingConfiguration.apply(generalInputSettings, to: textView)
         context.coordinator.apply(document: document, to: textView, viewportWidth: scrollView.bounds.width)
@@ -1359,6 +1368,8 @@ final class ApplicationCommandNSTextView: NSTextView {
     var onKeyboardCommand: (ComposerAutocompleteCommand) -> Bool = { _ in false }
     var focusedOptionIDProvider: () -> String? = { nil }
     var onSubmit: () -> Void = {}
+    var canReceiveAttachment: () -> Bool = { false }
+    var onReceiveAttachment: (ComposerIncomingAttachments) -> Void = { _ in }
     var sendWithReturn = true
     private lazy var unfocusedTypingMonitor = ComposerUnfocusedTypingMonitor()
 
@@ -1389,7 +1400,20 @@ final class ApplicationCommandNSTextView: NSTextView {
         commandPasteboard.setString(plainText, forType: .string)
     }
 
+    override var readablePasteboardTypes: [NSPasteboard.PasteboardType] {
+        canReceiveAttachment()
+            ? ComposerPasteboardAttachments.readableTypes + super.readablePasteboardTypes
+            : super.readablePasteboardTypes
+    }
+
     override func paste(_ sender: Any?) {
+        if canReceiveAttachment(),
+           let type = commandPasteboard.availableType(from: ComposerPasteboardAttachments.readableTypes),
+           let attachments = ComposerPasteboardAttachments.attachments(from: commandPasteboard, type: type)
+        {
+            onReceiveAttachment(attachments)
+            return
+        }
         guard let value = commandPasteboard.string(forType: .string) else {
             super.paste(sender)
             return

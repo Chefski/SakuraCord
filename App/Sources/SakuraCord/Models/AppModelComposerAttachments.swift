@@ -56,6 +56,23 @@ extension AppModel {
         }
     }
 
+    /// Fills the active slash command's attachment option with the first
+    /// pasted file. Like Discord, the command takes no other files.
+    func receiveCommandAttachment(_ incoming: ComposerIncomingAttachments) async {
+        let url: URL? = switch incoming {
+        case let .external(urls): urls.first
+        case let .owned(batch): adoptPromisedFileBatch(batch).first
+        }
+        guard let url else { return }
+        beginUsingOwnedPromisedFiles([url])
+        defer { endUsingOwnedPromisedFiles([url]) }
+        guard commandComposer.pastedAttachmentOption != nil,
+              !(await attachmentURLsWithinDiscordLimit([url])).isEmpty,
+              let option = commandComposer.pastedAttachmentOption
+        else { return }
+        commandComposer.setValue(.attachment(url), displayText: url.lastPathComponent, for: option)
+    }
+
     @discardableResult
     func addPromisedComposerAttachments(
         _ batch: ComposerPromisedFileBatch,

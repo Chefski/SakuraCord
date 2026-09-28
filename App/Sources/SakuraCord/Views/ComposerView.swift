@@ -127,6 +127,9 @@ struct ComposerView: View {
                             onSubmit: submitComposer,
                             onKeyboardCommand: handleAutocomplete,
                             cancel: cancelCommand,
+                            receiveAttachment: { attachments in
+                                Task { await model.receiveCommandAttachment(attachments) }
+                            },
                             isFocused: $isFocused
                         )
                     } else {

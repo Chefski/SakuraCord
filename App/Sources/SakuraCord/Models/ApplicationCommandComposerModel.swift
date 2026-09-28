@@ -121,6 +121,20 @@ final class ApplicationCommandComposerModel {
         return activeCommand?.options.first { $0.id == focusedOptionID }
     }
 
+    /// The option a pasted file fills, as in Discord: the focused attachment
+    /// option, otherwise the first attachment option without a file.
+    var pastedAttachmentOption: ApplicationCommandOption? {
+        if let focusedOption, focusedOption.type == .attachment { return focusedOption }
+        return activeCommand?.options.first { $0.type == .attachment && values[$0.id] == nil }
+    }
+
+    var attachmentURLs: [URL] {
+        values.values.compactMap {
+            guard case let .attachment(url) = $0 else { return nil }
+            return url
+        }
+    }
+
     var canSubmit: Bool {
         guard let command = activeCommand else { return false }
         return command.options.allSatisfy { validationError(for: $0) == nil }
