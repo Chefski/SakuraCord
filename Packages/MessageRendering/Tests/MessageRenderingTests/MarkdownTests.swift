@@ -355,7 +355,7 @@ import Testing
             .discordMarkdownSpoiler,
             at: spoiler.location,
             effectiveRange: nil
-        ) as? NSNumber == NSNumber(value: true)
+        ) != nil
     )
     // Spoilers keep their real colors; presentation conceals hidden ones.
     let spoilerLink = string.range(of: "hidden")
@@ -520,4 +520,57 @@ import Testing
         #expect(bold?.isBold == true)
         #expect(bold?.isItalic == false)
     }
+}
+
+/// Renders plain text with each spoiler in brackets, like `a [b] c`.
+private func spoilerOutline(_ source: String) -> String {
+    var output = ""
+    var openSpoiler: Int?
+    for run in DiscordMarkdown.plainTextRuns(source) {
+        if run.spoilerID != openSpoiler {
+            if openSpoiler != nil { output += "]" }
+            if run.spoilerID != nil { output += "[" }
+            openSpoiler = run.spoilerID
+        }
+        output += run.text
+    }
+    return output + (openSpoiler == nil ? "" : "]")
+}
+
+@Test func `spoilers follow discord's nearest non-empty delimiter rule and stay separate`() {
+    let cases: [(source: String, outline: String)] = [
+        ("||one||||two||", "[one][two]"),
+        ("||a||b||c||", "[a]b[c]"),
+        ("||||", "||||"),
+        ("||", "||"),
+        ("||a", "||a"),
+        ("|| ||", "[ ]"),
+        ("||||x||", "[||x]"),
+        ("`||x||`", "||x||"),
+        ("||`x`||", "[x]"),
+        ("**a ||b** c||", "a ||b c||"),
+        ("||a **b|| c**", "[a **b] c**"),
+        (#"\|\|x\|\|"#, "||x||"),
+        (#"\||x||"#, "||x||"),
+    ]
+    for (source, outline) in cases {
+        #expect(spoilerOutline(source) == outline, "\(source)")
+    }
+    // Spoilers on different lines have different identifiers too.
+    #expect(Set(DiscordMarkdown.plainTextRuns("||a||\n||b||").compactMap(\.spoilerID)).count == 2)
+
+    // Adjacent spoilers are separate attribute runs, and inline code keeps
+    // its own styling inside a spoiler.
+    let adjacent = DiscordMarkdown.appKitAttributed("||one||||two||")
+    var ranges: [NSRange] = []
+    adjacent.enumerateAttribute(
+        .discordMarkdownSpoiler,
+        in: NSRange(location: 0, length: adjacent.length)
+    ) { value, range, _ in
+        if value != nil { ranges.append(range) }
+    }
+    #expect(ranges == [NSRange(location: 0, length: 3), NSRange(location: 3, length: 3)])
+    let code = DiscordMarkdown.appKitAttributed("||`x`||")
+    #expect(code.attribute(.discordMarkdownInlineCode, at: 0, effectiveRange: nil) != nil)
+    #expect(code.attribute(.discordMarkdownSpoiler, at: 0, effectiveRange: nil) != nil)
 }

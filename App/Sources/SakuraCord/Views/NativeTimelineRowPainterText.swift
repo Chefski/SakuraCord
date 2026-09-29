@@ -771,11 +771,11 @@ extension NativeTimelineRowPainter {
             effectiveRange: nil
         ) as? String
         guard mention != nil || emojiToken != nil else { return nil }
-        let isHiddenSpoiler = (attributedText.attribute(
+        let isHiddenSpoiler = attributedText.attribute(
             .discordMarkdownSpoiler,
             at: range.location,
             effectiveRange: nil
-        ) as? NSNumber)?.boolValue == true
+        ) != nil
         guard !isHiddenSpoiler else { return nil }
         var ascent: CGFloat = 0
         var descent: CGFloat = 0

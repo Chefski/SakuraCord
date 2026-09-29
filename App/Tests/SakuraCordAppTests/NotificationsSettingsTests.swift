@@ -382,6 +382,7 @@ func `Desktop and sound delivery are independent and share message filters`(appI
         ).body
     }
     #expect(spoilerPreview("||only||") == "<spoiler>")
+    #expect(spoilerPreview("||a||||b||") == "<spoiler><spoiler>")
     #expect(
         spoilerPreview("<@2> said ||the **end** <@2> <:wave:7>|| then ||more||")
             == "@Friend said <spoiler> then <spoiler>"

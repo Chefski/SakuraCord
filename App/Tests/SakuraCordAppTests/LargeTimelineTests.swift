@@ -1132,6 +1132,46 @@ func `reply summaries keep spoilers concealed and their plain text unchanged`() 
     #expect(MessageReplySummary.accessibilityText(content: content) == "look Spoiler ok bye")
 }
 
+@Test
+@MainActor
+func `adjacent text spoilers hit test and reveal independently`() throws {
+    let source = "||one||||two||"
+    let value = NativeTimelineCoreText.make(
+        prepared: RichMessageAttributedText.prepare(source: source),
+        emojiSize: 22,
+        mentionPresentations: [:]
+    )
+    let spoilers = NativeTimelineTextSpoilers.ranges(in: value)
+    #expect(spoilers == [NSRange(location: 0, length: 3), NSRange(location: 3, length: 3)])
+
+    let frame = CGRect(x: 0, y: 0, width: 360, height: 40)
+    let framesetter = CTFramesetterCreateWithAttributedString(value)
+    for spoiler in spoilers {
+        let spoilerFrame = try #require(NativeTimelineTextHitTester.rangeFrame(
+            value: value,
+            framesetter: framesetter,
+            frame: frame,
+            range: spoiler
+        ))
+        let hit = NativeTimelineTextHitTester.hit(
+            value: value,
+            framesetter: framesetter,
+            frame: frame,
+            point: CGPoint(x: spoilerFrame.midX, y: spoilerFrame.midY)
+        )
+        #expect(hit?.spoilerRange == spoiler)
+    }
+    // Revealing the first spoiler, keyed by its location, leaves the second.
+    #expect(
+        NativeTimelineTextSpoilers.hiddenRanges(
+            in: value,
+            revealedLocations: [spoilers[0].location]
+        ) == [spoilers[1]]
+    )
+    #expect(TimelineTextAccessibility.text(value, revealedLocations: [0]) == "oneSpoiler")
+    #expect(MessageReplySummary.summary(content: source).spoilerRanges == spoilers)
+}
+
 @Test func `native scrolling caches bounded rows and directly paints oversized rows`() {
     let cacheCostLimit = 32 * 1_024 * 1_024
     #expect(

@@ -449,7 +449,7 @@ nonisolated enum RichMessageAttributedText {
             .discordMarkdownSpoiler,
             in: NSRange(location: 0, length: value.length)
         ) { rawValue, range, _ in
-            guard (rawValue as? NSNumber)?.boolValue == true else { return }
+            guard rawValue != nil else { return }
             NativeTimelineSpoilerAppearance.concealText(in: value, range: range)
             value.removeAttribute(.link, range: range)
             value.removeAttribute(.attachment, range: range)

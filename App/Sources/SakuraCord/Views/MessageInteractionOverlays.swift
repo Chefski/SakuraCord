@@ -663,21 +663,27 @@ enum MessageReplySummary {
     }
 
     /// Collapses the rendered text's whitespace to single spaces. A collapsed
-    /// space is a spoiler only between two spoiler characters.
+    /// space is a spoiler only inside one spoiler, and adjacent spoilers stay
+    /// separate ranges.
     nonisolated static func prepare(_ source: String) -> Prepared {
         var text = ""
         var spoilerRanges: [NSRange] = []
         var length = 0
         var pendingSpace = false
-        var previousIsSpoiler = false
+        var previousSpoilerID: Int?
+        var rangeSpoilerID: Int?
 
-        func append(_ value: String, isSpoiler: Bool) {
+        func append(_ value: String, spoilerID: Int?) {
             let valueLength = value.utf16.count
-            if isSpoiler {
-                if let last = spoilerRanges.last, NSMaxRange(last) == length {
+            if let spoilerID {
+                if let last = spoilerRanges.last,
+                   NSMaxRange(last) == length,
+                   rangeSpoilerID == spoilerID
+                {
                     spoilerRanges[spoilerRanges.count - 1].length += valueLength
                 } else {
                     spoilerRanges.append(NSRange(location: length, length: valueLength))
+                    rangeSpoilerID = spoilerID
                 }
             }
             text += value
@@ -691,11 +697,14 @@ enum MessageReplySummary {
                     continue
                 }
                 if pendingSpace {
-                    append(" ", isSpoiler: previousIsSpoiler && run.isSpoiler)
+                    append(
+                        " ",
+                        spoilerID: previousSpoilerID == run.spoilerID ? run.spoilerID : nil
+                    )
                     pendingSpace = false
                 }
-                append(String(character), isSpoiler: run.isSpoiler)
-                previousIsSpoiler = run.isSpoiler
+                append(String(character), spoilerID: run.spoilerID)
+                previousSpoilerID = run.spoilerID
             }
         }
         guard !text.isEmpty else {

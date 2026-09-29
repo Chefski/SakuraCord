@@ -9,7 +9,9 @@ public extension NSAttributedString.Key {
         "dev.sakuracord.markdown.block"
     )
 
-    /// Marks spoiler text. The value is an NSNumber boolean.
+    /// Marks spoiler text. The value is an NSNumber that identifies one
+    /// spoiler, so adjacent spoilers such as `||a||||b||` stay separate
+    /// attribute runs. Values are deterministic for the same source.
     static let discordMarkdownSpoiler = NSAttributedString.Key(
         "dev.sakuracord.markdown.spoiler"
     )
@@ -48,6 +50,10 @@ public enum DiscordMarkdown {
             fileprivate let traits: InlineTraits
             fileprivate let link: URL?
             fileprivate let color: SemanticColor?
+            /// Identifies the spoiler containing this run by the line and UTF-8
+            /// offset of its opening delimiter. Spoilers never nest, since each
+            /// one closes at the nearest delimiter.
+            fileprivate var spoilerID: Int?
         }
 
         fileprivate struct InlineTraits: OptionSet, Hashable, Sendable {
@@ -295,7 +301,7 @@ public enum DiscordMarkdown {
             lines.insert(fence, at: firstCodeIndex)
         }
 
-        return AppKitPlan(lines: lines)
+        return AppKitPlan(lines: qualifyingSpoilerIDs(lines))
     }
 
     public static func appKitAttributed(
@@ -423,7 +429,7 @@ public enum DiscordMarkdown {
             attributes[.foregroundColor] = NSColor.linkColor
         }
         if run.traits.contains(.spoiler) {
-            attributes[.discordMarkdownSpoiler] = NSNumber(value: true)
+            attributes[.discordMarkdownSpoiler] = NSNumber(value: run.spoilerID ?? 0)
         }
         return attributes
     }
@@ -778,9 +784,19 @@ public enum DiscordMarkdown {
                 offsetBy: delimiter.marker.count
             )
             // Only the composer source-range traversal uses nested matching.
-            // Message rendering retains its original delimiter matching exactly.
+            // Message rendering retains its original delimiter matching exactly,
+            // except that a spoiler, like Discord's `\|\|([\s\S]+?)\|\|`, holds at
+            // least one character before its nearest closing delimiter.
+            let isSpoiler = delimiter.traits.contains(.spoiler)
             let closingRange = if let sourceCollector {
                 composerClosingDelimiter(delimiter.marker, in: source, after: contentStart, collector: sourceCollector)
+            } else if isSpoiler {
+                contentStart < source.endIndex
+                    ? source.range(
+                        of: delimiter.marker,
+                        range: source.index(after: contentStart) ..< source.endIndex
+                    )
+                    : nil
             } else {
                 source.range(of: delimiter.marker, range: contentStart ..< source.endIndex)
             }
@@ -789,16 +805,20 @@ public enum DiscordMarkdown {
                   closingRange.lowerBound > contentStart
             else { continue }
             sourceCollector?.collect(contentStart ..< closingRange.lowerBound, inheritedTraits.union(delimiter.traits), delimiter.marker)
-            return (
-                inlineRuns(
-                    source[contentStart ..< closingRange.lowerBound],
-                    inheritedTraits: inheritedTraits.union(delimiter.traits),
-                    inheritedLink: inheritedLink,
-                    widgetRules: widgetRules,
-                    sourceCollector: sourceCollector
-                ),
-                closingRange.upperBound
+            var runs = inlineRuns(
+                source[contentStart ..< closingRange.lowerBound],
+                inheritedTraits: inheritedTraits.union(delimiter.traits),
+                inheritedLink: inheritedLink,
+                widgetRules: widgetRules,
+                sourceCollector: sourceCollector
             )
+            if isSpoiler {
+                let spoilerID = source.base.utf8.distance(from: source.base.startIndex, to: cursor)
+                for index in runs.indices {
+                    runs[index].spoilerID = spoilerID
+                }
+            }
+            return (runs, closingRange.upperBound)
         }
         return nil
     }
@@ -1447,10 +1467,31 @@ public extension DiscordMarkdown {
 }
 
 public extension DiscordMarkdown {
+    /// Spoiler identifiers start as offsets within a line. Qualify them by
+    /// line so every spoiler in the message has its own identifier.
+    fileprivate static func qualifyingSpoilerIDs(_ lines: [AppKitPlan.Line]) -> [AppKitPlan.Line] {
+        var lines = lines
+        for lineIndex in lines.indices
+        where lines[lineIndex].runs.contains(where: { $0.spoilerID != nil }) {
+            var runs = lines[lineIndex].runs
+            for runIndex in runs.indices {
+                runs[runIndex].spoilerID = runs[runIndex].spoilerID.map {
+                    lineIndex << 32 | $0
+                }
+            }
+            lines[lineIndex] = AppKitPlan.Line(runs: runs, block: lines[lineIndex].block)
+        }
+        return lines
+    }
+
     /// Rendered text and whether it is inside a spoiler.
     struct PlainTextRun: Hashable, Sendable {
         public let text: String
-        public let isSpoiler: Bool
+        /// Identifies the spoiler containing the run, as the spoiler
+        /// attribute does; adjacent spoilers have different identifiers.
+        public let spoilerID: Int?
+
+        public var isSpoiler: Bool { spoilerID != nil }
     }
 
     /// The rendered plain text, as ``attributed(_:)`` produces it, split into
@@ -1459,16 +1500,19 @@ public extension DiscordMarkdown {
         var result: [PlainTextRun] = []
         for (lineIndex, line) in appKitPlan(source).lines.enumerated() {
             if lineIndex > 0 {
-                result.append(PlainTextRun(text: "\n", isSpoiler: false))
+                result.append(PlainTextRun(text: "\n", spoilerID: nil))
             }
             for run in line.runs {
-                result.append(PlainTextRun(text: run.text, isSpoiler: run.traits.contains(.spoiler)))
+                result.append(PlainTextRun(
+                    text: run.text,
+                    spoilerID: run.traits.contains(.spoiler) ? run.spoilerID ?? 0 : nil
+                ))
             }
         }
         return result
     }
 
-    /// A rendered link and whether all of its text is inside a spoiler.
+    /// A rendered link and whether all of its text is inside one spoiler.
     struct LinkOccurrence: Hashable, Sendable {
         public let url: URL
         public let isSpoiler: Bool
@@ -1480,13 +1524,17 @@ public extension DiscordMarkdown {
     static func linkOccurrences(_ source: String) -> [LinkOccurrence] {
         var result: [LinkOccurrence] = []
         for line in appKitPlan(source).lines {
-            var previousLink: URL?
+            var previous: AppKitPlan.InlineRun?
             for run in line.runs {
-                defer { previousLink = run.link }
+                defer { previous = run }
                 guard let link = run.link else { continue }
                 let isSpoiler = run.traits.contains(.spoiler)
-                if link == previousLink, let last = result.popLast() {
-                    result.append(LinkOccurrence(url: link, isSpoiler: last.isSpoiler && isSpoiler))
+                if link == previous?.link, let last = result.popLast() {
+                    result.append(LinkOccurrence(
+                        url: link,
+                        isSpoiler: last.isSpoiler && isSpoiler
+                            && run.spoilerID == previous?.spoilerID
+                    ))
                 } else {
                     result.append(LinkOccurrence(url: link, isSpoiler: isSpoiler))
                 }

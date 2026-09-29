@@ -150,15 +150,15 @@ nonisolated struct NotificationContentPresentation: Equatable, Sendable {
         // Like Discord, each spoiler reads as a placeholder, never its text.
         var output = ""
         var labelIndex = 0
-        var isInSpoiler = false
+        var currentSpoilerID: Int?
         for run in DiscordMarkdown.plainTextRuns(source) {
-            if run.isSpoiler {
-                if !isInSpoiler { output += "<spoiler>" }
-                isInSpoiler = true
+            if let spoilerID = run.spoilerID {
+                if spoilerID != currentSpoilerID { output += "<spoiler>" }
+                currentSpoilerID = spoilerID
                 labelIndex += run.text.count { $0 == inlineTokenPlaceholder }
                 continue
             }
-            isInSpoiler = false
+            currentSpoilerID = nil
             for character in run.text {
                 guard character == inlineTokenPlaceholder else {
                     output.append(character)

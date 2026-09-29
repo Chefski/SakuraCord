@@ -32,8 +32,9 @@ nonisolated struct NativeTimelineTextSpoilerRevealState: Equatable {
 }
 
 /// Whole text spoiler ranges. A spoiler that spans several attribute runs,
-/// such as one containing a link or mention, is one range, so painting,
-/// hit-testing, reveal keys, and accessibility agree on its location.
+/// such as one containing a link or mention, is one range, and adjacent
+/// spoilers are separate ranges because each has its own attribute value. So
+/// painting, hit-testing, reveal keys, and accessibility agree on location.
 nonisolated enum NativeTimelineTextSpoilers {
     static func ranges(in value: NSAttributedString) -> [NSRange] {
         var result: [NSRange] = []
@@ -41,7 +42,7 @@ nonisolated enum NativeTimelineTextSpoilers {
             .discordMarkdownSpoiler,
             in: NSRange(location: 0, length: value.length)
         ) { rawValue, range, _ in
-            if (rawValue as? NSNumber)?.boolValue == true {
+            if rawValue != nil {
                 result.append(range)
             }
         }
@@ -64,12 +65,12 @@ nonisolated enum NativeTimelineTextSpoilers {
     ) -> NSRange? {
         guard index >= 0, index < value.length else { return nil }
         var range = NSRange(location: 0, length: 0)
-        guard (value.attribute(
+        guard value.attribute(
             .discordMarkdownSpoiler,
             at: index,
             longestEffectiveRange: &range,
             in: NSRange(location: 0, length: value.length)
-        ) as? NSNumber)?.boolValue == true,
+        ) != nil,
             range.length > 0
         else { return nil }
         return range
