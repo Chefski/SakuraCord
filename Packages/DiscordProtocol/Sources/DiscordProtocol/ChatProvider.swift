@@ -23,7 +23,7 @@ public struct PartialBulkReadAcknowledgementError: Error, Sendable {
 
 public protocol ChatProvider: Sendable {
     func guildGuide(in guildID: GuildID) async throws -> GuildGuide
-    func guildGuideProfile(in guildID: GuildID) async throws -> GuildGuideProfile
+    func guildProfile(in guildID: GuildID) async throws -> GuildProfile
     func guildGuideProgress(in guildID: GuildID) async throws -> GuildGuideProgress
     func completeGuildGuideAction(in guildID: GuildID, channelID: ChannelID) async throws -> GuildGuideProgress
     func guildOnboarding(in guildID: GuildID) async throws -> GuildOnboarding
@@ -35,6 +35,7 @@ public protocol ChatProvider: Sendable {
 
     func serverInvite(_ reference: ServerInviteReference) async throws -> ServerInvite
     func acceptServerInvite(_ reference: ServerInviteReference, messageID: MessageID?, captchaHandler: DiscordCaptchaHandler?) async throws -> ServerInviteAcceptance
+    func joinDiscoverableGuild(_ guildID: GuildID, captchaHandler: DiscordCaptchaHandler?) async throws -> Bool
     func leaveGuild(_ guildID: GuildID) async throws
     func clearLocalSearchCache() async throws
     func prepareAuthentication() async throws
@@ -291,7 +292,7 @@ public protocol PendingCredentialChatProvider: ChatProvider {
 
 public extension ChatProvider {
     func guildGuide(in guildID: GuildID) async throws -> GuildGuide { throw ChatProviderError.invalidRequest("Server Guide is unavailable.") }
-    func guildGuideProfile(in guildID: GuildID) async throws -> GuildGuideProfile { throw ChatProviderError.invalidRequest("Server profile is unavailable.") }
+    func guildProfile(in guildID: GuildID) async throws -> GuildProfile { throw ChatProviderError.invalidRequest("Server profile is unavailable.") }
     func guildGuideProgress(in guildID: GuildID) async throws -> GuildGuideProgress { throw ChatProviderError.invalidRequest("Server Guide is unavailable.") }
     func completeGuildGuideAction(in guildID: GuildID, channelID: ChannelID) async throws -> GuildGuideProgress { throw ChatProviderError.invalidRequest("Server Guide is unavailable.") }
     func guildOnboarding(in guildID: GuildID) async throws -> GuildOnboarding {
@@ -322,6 +323,10 @@ public extension ChatProvider {
     }
 
     func acceptServerInvite(_ reference: ServerInviteReference, messageID: MessageID?, captchaHandler: DiscordCaptchaHandler?) async throws -> ServerInviteAcceptance {
+        throw ServerInviteError.unsupported("Joining servers is unavailable for this session.")
+    }
+
+    func joinDiscoverableGuild(_ guildID: GuildID, captchaHandler: DiscordCaptchaHandler?) async throws -> Bool {
         throw ServerInviteError.unsupported("Joining servers is unavailable for this session.")
     }
 

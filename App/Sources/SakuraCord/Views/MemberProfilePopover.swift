@@ -709,7 +709,7 @@ private struct ProfileIdentitySection: View {
                     ProfileServerTagPicker(editor: editor, identity: primaryGuildIdentity)
                 }
                 if editor == nil, let primaryGuildIdentity, let tag = primaryGuildIdentity.tag, !tag.isEmpty {
-                    ProfileServerTag(identity: primaryGuildIdentity)
+                    InteractiveProfileServerTag(identity: primaryGuildIdentity)
                         .fixedSize(horizontal: true, vertical: false)
                 }
             }

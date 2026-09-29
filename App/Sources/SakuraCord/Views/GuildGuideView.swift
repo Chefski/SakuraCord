@@ -155,7 +155,7 @@ struct GuildGuideView: View {
         .background(compact ? AnyShapeStyle(.background) : AnyShapeStyle(.clear), in: .rect(cornerRadius: 12))
     }
 
-    private func serverProfile(_ profile: GuildGuideProfile) -> some View {
+    private func serverProfile(_ profile: GuildProfile) -> some View {
         let card = NativeTimelineInviteLayout(index: 0, origin: .zero, maximumWidth: 280,
             model: nil, isOwnMessage: false, fillsWidth: true,
             preview: NativeServerCardContent(profile: profile, iconURL: guild?.iconURL, adaptiveColor: previewColor))
@@ -163,7 +163,7 @@ struct GuildGuideView: View {
             .frame(width: card.frame.width, height: card.frame.height)
             .task(id: guild?.iconURL) {
                 previewColor = nil
-                guard profile.brandColorPrimary == nil, let url = guild?.iconURL else { return }
+                guard profile.brandColor == nil, let url = guild?.iconURL else { return }
                 let color = try? await ProfileAvatarPaletteLoader.shared.colors(url).first
                 guard !Task.isCancelled else { return }
                 previewColor = color
