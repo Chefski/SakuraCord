@@ -190,12 +190,20 @@ actor ReactionProjectionEventRecorder {
     }
 }
 
-func eventually(_ condition: @escaping @Sendable () async -> Bool) async -> Bool {
-    for _ in 0 ..< 500 {
+/// Polls `condition` in the caller's isolation until it holds. Sleeps between
+/// checks so work on other tasks and actors can run; fails after 10 seconds.
+func eventually(
+    isolation _: isolated (any Actor)? = #isolation,
+    _ condition: () async -> Bool
+) async -> Bool {
+    let deadline = ContinuousClock.now + .seconds(10)
+    while ContinuousClock.now < deadline {
         if await condition() {
             return true
         }
-        try? await Task.sleep(for: .milliseconds(1))
+        guard (try? await Task.sleep(for: .milliseconds(1))) != nil else {
+            break
+        }
     }
     return await condition()
 }
