@@ -173,13 +173,15 @@ extension NativeTimelineCanvasView {
             value: NSAttributedString,
             framesetter: CTFramesetter,
             frame: CGRect,
-            selectionRange: NSRange?
+            selectionRange: NSRange?,
+            revealedSpoilerLocations: Set<Int>
         ) {
             for (ordinal, region) in NativeTimelineInlineEmojiGeometry.regions(
                 in: value,
                 framesetter: framesetter,
                 frame: frame,
-                selectionRange: selectionRange
+                selectionRange: selectionRange,
+                revealedSpoilerLocations: revealedSpoilerLocations
             ).enumerated() {
                 let reference = EmojiReference(rawToken: region.rawToken)
                 guard reference.isAnimated,
@@ -252,6 +254,7 @@ extension NativeTimelineCanvasView {
             )
 
             appendAnimatedEmbedOverlays(
+                messageID: row.message.id,
                 identifier: identifier,
                 layout: layout,
                 accumulator: accumulator
@@ -269,7 +272,9 @@ extension NativeTimelineCanvasView {
                 appendAnimatedComponentContentOverlays(
                     component,
                     componentIndex: componentIndex,
+                    messageID: row.message.id,
                     identifier: identifier,
+                    layout: layout,
                     accumulator: accumulator
                 )
             }
@@ -405,12 +410,19 @@ extension NativeTimelineCanvasView {
                 framesetter: framesetter,
                 frame: NativeTimelineTextGeometry.messageContentDrawingFrame(contentFrame),
                 selectionRange: textSelection?.itemIdentifier == identifier
-                    && textSelection?.region == .content ? textSelection?.range : nil
+                    && textSelection?.region == .content ? textSelection?.range : nil,
+                revealedSpoilerLocations: revealedTextSpoilerLocations(
+                    messageID: row.message.id,
+                    region: .content,
+                    value: attributedContent,
+                    layout: layout
+                )
             )
         }
     }
 
     private func appendAnimatedEmbedOverlays(
+        messageID: MessageID,
         identifier: NativeMessageTimelineItem.Identifier,
         layout: NativeTimelineRowLayout,
         accumulator: AnimatedMediaOverlayAccumulator
@@ -459,7 +471,13 @@ extension NativeTimelineCanvasView {
                     framesetter: textRegion.text.framesetter,
                     frame: drawingFrame,
                     selectionRange: textSelection?.itemIdentifier == identifier
-                        && textSelection?.region == textRegionID ? textSelection?.range : nil
+                        && textSelection?.region == textRegionID ? textSelection?.range : nil,
+                    revealedSpoilerLocations: revealedTextSpoilerLocations(
+                        messageID: messageID,
+                        region: textRegionID,
+                        value: textRegion.text.value,
+                        layout: layout
+                    )
                 )
             }
         }
@@ -501,7 +519,9 @@ extension NativeTimelineCanvasView {
     private func appendAnimatedComponentContentOverlays(
         _ component: NativeTimelineComponentLayout,
         componentIndex: Int,
+        messageID: MessageID,
         identifier: NativeMessageTimelineItem.Identifier,
+        layout: NativeTimelineRowLayout,
         accumulator: AnimatedMediaOverlayAccumulator
     ) {
         for (textIndex, textRegion) in component.textRegions.enumerated() {
@@ -520,7 +540,13 @@ extension NativeTimelineCanvasView {
                 framesetter: textRegion.text.framesetter,
                 frame: drawingFrame,
                 selectionRange: textSelection?.itemIdentifier == identifier
-                    && textSelection?.region == textRegionID ? textSelection?.range : nil
+                    && textSelection?.region == textRegionID ? textSelection?.range : nil,
+                revealedSpoilerLocations: revealedTextSpoilerLocations(
+                    messageID: messageID,
+                    region: textRegionID,
+                    value: textRegion.text.value,
+                    layout: layout
+                )
             )
         }
         for button in component.buttons {

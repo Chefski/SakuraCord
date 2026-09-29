@@ -1027,14 +1027,11 @@ extension NativeTimelineCanvasView {
             for: items[rowIndex],
             layout: layouts[rowIndex]
         ) {
-            guard let contentID = textSpoilerContentID(
-                for: selectable.region,
-                layout: layouts[rowIndex]
-            ) else { continue }
-            for location in spoilerRevealStore.revealedTextLocations(
+            for location in revealedTextSpoilerLocations(
                 messageID: messageID,
-                contentID: contentID,
-                value: selectable.value
+                region: selectable.region,
+                value: selectable.value,
+                layout: layouts[rowIndex]
             ) {
                 result.reveal(
                     region: selectable.region,
@@ -1043,6 +1040,25 @@ extension NativeTimelineCanvasView {
             }
         }
         return result
+    }
+
+    func revealedTextSpoilerLocations(
+        messageID: MessageID,
+        region: NativeTimelineTextRegion,
+        value: NSAttributedString,
+        layout: NativeTimelineRowLayout
+    ) -> Set<Int> {
+        guard !spoilerRevealStore.revealedText.isEmpty,
+              let contentID = textSpoilerContentID(
+                  for: region,
+                  layout: layout
+              )
+        else { return [] }
+        return spoilerRevealStore.revealedTextLocations(
+            messageID: messageID,
+            contentID: contentID,
+            value: value
+        )
     }
 
     func textSpoilerRevealKey(

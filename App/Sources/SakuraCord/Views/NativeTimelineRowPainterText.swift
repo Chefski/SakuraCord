@@ -338,15 +338,7 @@ extension NativeTimelineRowPainter {
         revealedSpoilerLocations: Set<Int>
     ) -> (NSAttributedString, CTFramesetter) {
         let fullRange = NSRange(location: 0, length: value.length)
-        var spoilerRanges: [NSRange] = []
-        value.enumerateAttribute(
-            .discordMarkdownSpoiler,
-            in: fullRange
-        ) { rawValue, range, _ in
-            if (rawValue as? NSNumber)?.boolValue == true {
-                spoilerRanges.append(range)
-            }
-        }
+        let spoilerRanges = NativeTimelineTextSpoilers.ranges(in: value)
         var hasUnderlinedLinks = false
         if underlinesLinks {
             value.enumerateAttribute(.link, in: fullRange) { link, _, stop in
@@ -456,13 +448,7 @@ extension NativeTimelineRowPainter {
                 )
             )
         }
-        attributedText.enumerateAttribute(
-            .discordMarkdownSpoiler,
-            in: fullRange
-        ) { rawValue, range, _ in
-            guard (rawValue as? NSNumber)?.boolValue == true else {
-                return
-            }
+        for range in NativeTimelineTextSpoilers.ranges(in: attributedText) {
             result.spoilers.append(
                 contentsOf:
                     NativeTimelineTextSelectionGeometry.rects(

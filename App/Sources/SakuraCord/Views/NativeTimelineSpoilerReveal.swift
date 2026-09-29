@@ -31,6 +31,51 @@ nonisolated struct NativeTimelineTextSpoilerRevealState: Equatable {
     }
 }
 
+/// Whole text spoiler ranges. A spoiler that spans several attribute runs,
+/// such as one containing a link or mention, is one range, so painting,
+/// hit-testing, reveal keys, and accessibility agree on its location.
+nonisolated enum NativeTimelineTextSpoilers {
+    static func ranges(in value: NSAttributedString) -> [NSRange] {
+        var result: [NSRange] = []
+        value.enumerateAttribute(
+            .discordMarkdownSpoiler,
+            in: NSRange(location: 0, length: value.length)
+        ) { rawValue, range, _ in
+            if (rawValue as? NSNumber)?.boolValue == true {
+                result.append(range)
+            }
+        }
+        return result
+    }
+
+    static func hiddenRanges(
+        in value: NSAttributedString,
+        revealedLocations: Set<Int>
+    ) -> [NSRange] {
+        ranges(in: value).filter {
+            !revealedLocations.contains($0.location)
+        }
+    }
+
+    /// The whole spoiler containing `index`, matching ``ranges(in:)``.
+    static func range(
+        at index: Int,
+        in value: NSAttributedString
+    ) -> NSRange? {
+        guard index >= 0, index < value.length else { return nil }
+        var range = NSRange(location: 0, length: 0)
+        guard (value.attribute(
+            .discordMarkdownSpoiler,
+            at: index,
+            longestEffectiveRange: &range,
+            in: NSRange(location: 0, length: value.length)
+        ) as? NSNumber)?.boolValue == true,
+            range.length > 0
+        else { return nil }
+        return range
+    }
+}
+
 nonisolated struct NativeTimelineTextSpoilerRevealKey: Hashable {
     let messageID: MessageID
     let contentID: String

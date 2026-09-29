@@ -1104,14 +1104,20 @@ struct NativeTimelineInlineEmojiRegion {
 }
 
 enum NativeTimelineInlineEmojiGeometry {
+    /// Emoji inside a hidden spoiler are omitted, as the painter omits them.
     static func regions(
         in value: NSAttributedString,
         framesetter: CTFramesetter,
         frame: CGRect,
-        selectionRange: NSRange?
+        selectionRange: NSRange?,
+        revealedSpoilerLocations: Set<Int>
     ) -> [NativeTimelineInlineEmojiRegion] {
         guard value.length > 0, frame.width > 0, frame.height > 0
         else { return [] }
+        let hiddenSpoilerRanges = NativeTimelineTextSpoilers.hiddenRanges(
+            in: value,
+            revealedLocations: revealedSpoilerLocations
+        )
         let path = CGPath(
             rect: CGRect(origin: .zero, size: frame.size),
             transform: nil
@@ -1143,7 +1149,10 @@ enum NativeTimelineInlineEmojiGeometry {
                           .discordEmojiToken,
                           at: range.location,
                           effectiveRange: nil
-                      ) as? String
+                      ) as? String,
+                      !hiddenSpoilerRanges.contains(where: {
+                          NSLocationInRange(range.location, $0)
+                      })
                 else { continue }
 
                 var ascent: CGFloat = 0

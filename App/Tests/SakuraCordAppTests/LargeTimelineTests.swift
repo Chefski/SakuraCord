@@ -970,11 +970,10 @@ func `hidden text spoilers stay private to accessibility until revealed`() {
         ) == "before Spoiler after"
     )
     #expect(
-        TimelineTextAccessibility
-            .hiddenSpoilerRanges(
-                in: value,
-                revealedLocations: []
-            ) == [NSRange(location: 7, length: 6)]
+        NativeTimelineTextSpoilers.hiddenRanges(
+            in: value,
+            revealedLocations: []
+        ) == [NSRange(location: 7, length: 6)]
     )
     #expect(
         TimelineTextAccessibility.text(
@@ -995,24 +994,14 @@ func `hidden text spoilers stay private to accessibility until revealed`() {
 @Test
 @MainActor
 func `inline rich tokens inherit their enclosing spoiler`() throws {
-    let source = "before ||<@&10> and <:glow:123>|| after"
+    let source = "before ||<@&10> and [site](https://example.com) <:glow:123> now|| after"
     let prepared = RichMessageAttributedText.prepare(source: source)
     let value = NativeTimelineCoreText.make(
         prepared: prepared,
         emojiSize: 18,
         mentionPresentations: [:]
     )
-    let fullRange = NSRange(location: 0, length: value.length)
-    var spoilerRanges: [NSRange] = []
-    value.enumerateAttribute(
-        .discordMarkdownSpoiler,
-        in: fullRange
-    ) { rawValue, range, _ in
-        guard (rawValue as? NSNumber)?.boolValue == true else {
-            return
-        }
-        spoilerRanges.append(range)
-    }
+    let spoilerRanges = NativeTimelineTextSpoilers.ranges(in: value)
 
     #expect(spoilerRanges.count == 1)
     #expect(
@@ -1038,6 +1027,32 @@ func `inline rich tokens inherit their enclosing spoiler`() throws {
     )
     #expect(hit?.spoilerRange == spoilerRanges.first)
     #expect(hit?.mention?.target == .role(RoleID(rawValue: 10)))
+
+    // Later runs, including a link, resolve to the whole painted spoiler
+    // across the full line height, which the mention makes taller than their
+    // glyphs. The link keeps its URL everywhere so it opens after reveal.
+    let string = value.string as NSString
+    for text in ["site", "now"] {
+        let lineFrame = try #require(NativeTimelineTextHitTester.rangeFrame(
+            value: value,
+            framesetter: framesetter,
+            frame: frame,
+            range: string.range(of: text)
+        ))
+        for y in [lineFrame.minY + 1, lineFrame.midY, lineFrame.maxY - 1] {
+            let hit = NativeTimelineTextHitTester.hit(
+                value: value,
+                framesetter: framesetter,
+                frame: frame,
+                point: CGPoint(x: lineFrame.midX, y: y)
+            )
+            #expect(hit?.spoilerRange == spoilerRanges.first, "\(text) at \(y)")
+            #expect(
+                hit?.url == (text == "site" ? URL(string: "https://example.com") : nil),
+                "\(text) at \(y)"
+            )
+        }
+    }
 }
 
 @Test func `native scrolling caches bounded rows and directly paints oversized rows`() {

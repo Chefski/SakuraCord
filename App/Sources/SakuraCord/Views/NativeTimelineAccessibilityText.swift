@@ -2,30 +2,12 @@ import Foundation
 import SakuraCordModels
 
 nonisolated enum TimelineTextAccessibility {
-    static func hiddenSpoilerRanges(
-        in value: NSAttributedString,
-        revealedLocations: Set<Int>
-    ) -> [NSRange] {
-        guard value.length > 0 else { return [] }
-        var result: [NSRange] = []
-        value.enumerateAttribute(
-            .discordMarkdownSpoiler,
-            in: NSRange(location: 0, length: value.length)
-        ) { rawValue, range, _ in
-            guard (rawValue as? NSNumber)?.boolValue == true,
-                  !revealedLocations.contains(range.location)
-            else { return }
-            result.append(range)
-        }
-        return result
-    }
-
     static func text(
         _ value: NSAttributedString,
         revealedLocations: Set<Int>
     ) -> String {
         guard value.length > 0 else { return "" }
-        let hiddenRanges = hiddenSpoilerRanges(
+        let hiddenRanges = NativeTimelineTextSpoilers.hiddenRanges(
             in: value,
             revealedLocations: revealedLocations
         )
