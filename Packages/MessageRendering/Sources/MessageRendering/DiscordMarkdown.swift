@@ -1445,3 +1445,32 @@ public extension DiscordMarkdown {
     }
 
 }
+
+public extension DiscordMarkdown {
+    /// A rendered link and whether all of its text is inside a spoiler.
+    struct LinkOccurrence: Hashable, Sendable {
+        public let url: URL
+        public let isSpoiler: Bool
+    }
+
+    /// The links message rendering produces, in document order, with the
+    /// spoiler state it gives them. Consecutive runs of one link are one
+    /// occurrence, so adjacent links to the same URL merge.
+    static func linkOccurrences(_ source: String) -> [LinkOccurrence] {
+        var result: [LinkOccurrence] = []
+        for line in appKitPlan(source).lines {
+            var previousLink: URL?
+            for run in line.runs {
+                defer { previousLink = run.link }
+                guard let link = run.link else { continue }
+                let isSpoiler = run.traits.contains(.spoiler)
+                if link == previousLink, let last = result.popLast() {
+                    result.append(LinkOccurrence(url: link, isSpoiler: last.isSpoiler && isSpoiler))
+                } else {
+                    result.append(LinkOccurrence(url: link, isSpoiler: isSpoiler))
+                }
+            }
+        }
+        return result
+    }
+}

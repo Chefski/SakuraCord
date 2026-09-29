@@ -63,6 +63,27 @@ func `animated linked Discord emoji use the normal animated emoji presentation`(
 }
 
 @MainActor @Test
+func `linked emoji inside spoilers stay spoilered links`() throws {
+    let party = "https://cdn.discordapp.com/emojis/456.png"
+    let wave = "https://cdn.discordapp.com/emojis/789.png"
+    #expect(LinkedImagePresentation(content: "[party](\(party))").visibleText == "<:party:456>")
+
+    let hidden = "||[party](\(party))||"
+    let spoilered = LinkedImagePresentation(content: hidden)
+    #expect(spoilered.visibleText == hidden)
+    #expect(spoilered.images.isEmpty)
+    #expect(spoilered.matchedEmojiURLs.isEmpty)
+
+    // Only the unspoilered link, including one to the same emoji, converts.
+    let mixed = LinkedImagePresentation(
+        content: "[wave](\(wave)) [party](\(party)) ||[party](\(party))||"
+    )
+    #expect(mixed.images.map(\.id) == ["0:\(wave)", "50:\(party)"])
+    #expect(mixed.matchedEmojiURLs == Set([wave, party].compactMap(URL.init(string:))))
+    #expect(mixed.visibleText.hasSuffix("||[party](\(party))||"))
+}
+
+@MainActor @Test
 func `linked emoji previews replace duplicate Discord bare media embeds`() throws {
     let sourceURL = try #require(URL(
         string:

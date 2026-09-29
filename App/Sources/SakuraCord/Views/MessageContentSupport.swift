@@ -380,7 +380,8 @@ nonisolated struct LinkedImagePresentation: Sendable {
 
     init(content: String) {
         let sourceRange = NSRange(content.startIndex ..< content.endIndex, in: content)
-        let references = Self.expression.matches(in: content, range: sourceRange).compactMap { match -> (NSRange, LinkedImageReference)? in
+        let matches = Self.expression.matches(in: content, range: sourceRange)
+        var references = matches.compactMap { match -> (NSRange, LinkedImageReference)? in
             guard let labelRange = Range(match.range(at: 1), in: content),
                   let urlRange = Range(match.range(at: 2), in: content),
                   let url = URL(string: String(content[urlRange])),
@@ -394,6 +395,13 @@ nonisolated struct LinkedImagePresentation: Sendable {
                     url: url
                 )
             )
+        }
+        // Discord leaves an emoji link inside a spoiler as a spoilered link.
+        if references.contains(where: { $0.1.linkedEmoji != nil }) {
+            let spoilered = Self.spoileredMatchLocations(matches, in: content)
+            references.removeAll {
+                $0.1.linkedEmoji != nil && spoilered.contains($0.0.location)
+            }
         }
         matchedEmojiURLs = Set(
             references.compactMap { reference in
@@ -426,6 +434,34 @@ nonisolated struct LinkedImagePresentation: Sendable {
         }
         visibleText = String(presentedText)
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Source locations of the matched links that message rendering places
+    /// inside a spoiler. Matches pair with rendered links of the same URL in
+    /// document order, since rendering reports links rather than source ranges.
+    private static func spoileredMatchLocations(
+        _ matches: [NSTextCheckingResult],
+        in content: String
+    ) -> Set<Int> {
+        var occurrences: [URL: [Bool]] = [:]
+        for occurrence in DiscordMarkdown.linkOccurrences(content) {
+            occurrences[occurrence.url, default: []].append(occurrence.isSpoiler)
+        }
+        var consumed: [URL: Int] = [:]
+        var result = Set<Int>()
+        for match in matches {
+            guard let urlRange = Range(match.range(at: 2), in: content),
+                  let url = MessageLinkPolicy.allowedURL(from: String(content[urlRange])),
+                  let states = occurrences[url], !states.isEmpty
+            else { continue }
+            let index = consumed[url, default: 0]
+            consumed[url] = index + 1
+            // Adjacent links to one URL render as one link and share its state.
+            if states[min(index, states.count - 1)] {
+                result.insert(match.range(at: 0).location)
+            }
+        }
+        return result
     }
 
     private static func remainingText(
