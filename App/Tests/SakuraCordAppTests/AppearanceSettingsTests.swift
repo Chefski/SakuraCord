@@ -482,11 +482,12 @@ func `Public beta accents migrate into native-surface single-color themes`(
     let original = themeStore.activeTheme
 
     let task = Task { await themeStore.randomize(reduceMotion: false) }
-    try? await Task.sleep(for: .milliseconds(60))
-
-    #expect(themeStore.activeTheme != original)
-    #expect(themeStore.committedTheme == original)
-    #expect(themeStore.activeTheme.brightness == original.brightness)
+    // The frame is transient, so check it within the observation itself.
+    #expect(await until {
+        themeStore.activeTheme != original
+            && themeStore.committedTheme == original
+            && themeStore.activeTheme.brightness == original.brightness
+    })
 
     await task.value
     #expect(themeStore.activeTheme == themeStore.committedTheme)

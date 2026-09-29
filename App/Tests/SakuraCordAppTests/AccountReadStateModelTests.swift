@@ -1,6 +1,7 @@
 @testable import SakuraCord
 import Foundation
 import SakuraCordModels
+import Observation
 import Testing
 import DiscordProtocol
 import UserNotifications
@@ -2346,7 +2347,7 @@ struct AccountReadStateModelTests {
         mentionedUsers: [User(id: UserID(rawValue: 1), username: "nova", displayName: "Nova")]
     )
     await provider.emit(.messageCreated(message))
-    #expect(await eventually { service.deliveredMessageIDs == [message.id] })
+    #expect(await until { service.deliveredMessageIDs == [message.id] })
     #expect(service.deliveredSoundEnabled == [true])
     #expect(sounds.played.isEmpty)
     #expect(service.badgeCounts.last == baselineBadgeCount + 1)
@@ -2366,7 +2367,7 @@ struct AccountReadStateModelTests {
             )
         )
     )
-    #expect(await eventually { service.cancelledChannelIDs.contains(message.channelID) })
+    #expect(await until { service.cancelledChannelIDs.contains(message.channelID) })
     #expect(service.badgeCounts.last == baselineBadgeCount)
 
     await provider.disconnect()
@@ -2467,7 +2468,7 @@ struct AccountReadStateModelTests {
     await model.start()
     let channelID = ChannelID(rawValue: 210)
     model.selectedChannelID = channelID
-    #expect(await eventually { !model.isLoadingMessages && model.selectedChannelID == channelID })
+    #expect(await until { !model.isLoadingMessages && model.selectedChannelID == channelID })
     model.reportMainWindowActive(true)
 
     let author = User(id: UserID(rawValue: 2), username: "sender", displayName: "Sender")
@@ -2487,7 +2488,7 @@ struct AccountReadStateModelTests {
     )
     await provider.emit(.messageCreated(first))
     await provider.emit(.messageCreated(newest))
-    #expect(await eventually {
+    #expect(await until {
         model.readState.entries[channelID]?.latestKnownMessageID == newest.id
     })
     // Establish the viewport only after the synthetic arrivals have reached
@@ -2498,14 +2499,10 @@ struct AccountReadStateModelTests {
         channelID: channelID,
         hasReachedReadBoundary: true
     )
-    for _ in 0 ..< 500 {
-        if await provider.acknowledgementRequests.count == 1,
-           model.readState.acknowledgementToken == "mock-ack-token"
-        {
-            break
-        }
-        try? await Task.sleep(for: .milliseconds(1))
-    }
+    #expect(await eventually {
+        await provider.acknowledgementRequests.count == 1
+            && model.readState.acknowledgementToken == "mock-ack-token"
+    })
 
     let requests = await provider.acknowledgementRequests
     #expect(requests.count == 1)
@@ -2515,7 +2512,7 @@ struct AccountReadStateModelTests {
 
     let nextChannelID = ChannelID(rawValue: 211)
     model.selectedChannelID = nextChannelID
-    #expect(await eventually {
+    #expect(await until {
         !model.isLoadingMessages && model.selectedChannelID == nextChannelID
     })
     model.reportConversationHistoryLoaded(channelID: nextChannelID)
@@ -2523,10 +2520,7 @@ struct AccountReadStateModelTests {
         channelID: nextChannelID,
         hasReachedReadBoundary: true
     )
-    for _ in 0 ..< 500 {
-        if await provider.acknowledgementRequests.count == 2 { break }
-        try? await Task.sleep(for: .milliseconds(1))
-    }
+    #expect(await eventually { await provider.acknowledgementRequests.count == 2 })
     let chainedRequests = await provider.acknowledgementRequests
     #expect(chainedRequests.count == 2)
     guard chainedRequests.count == 2 else { return }
@@ -2547,7 +2541,7 @@ struct AccountReadStateModelTests {
     await model.start()
     let channelID = ChannelID(rawValue: 212)
     model.selectedChannelID = channelID
-    #expect(await eventually { !model.isLoadingMessages && model.selectedChannelID == channelID })
+    #expect(await until { !model.isLoadingMessages && model.selectedChannelID == channelID })
     let previousAcknowledgement = model.readState.entries[channelID]?.lastAcknowledgedMessageID
     model.reportMainWindowActive(true)
     model.reportTimelineInitialPosition(
@@ -2570,11 +2564,7 @@ struct AccountReadStateModelTests {
         )
     ]))
 
-    for _ in 0 ..< 500 {
-        if await provider.acknowledgementRequests.count == 1 { break }
-        try? await Task.sleep(for: .milliseconds(1))
-    }
-    #expect(await provider.acknowledgementRequests.count == 1)
+    #expect(await eventually { await provider.acknowledgementRequests.count == 1 })
     let request = try #require(await provider.acknowledgementRequests.first)
     #expect(request.channelID == channelID)
     #expect(request.messageID == newest.id)
@@ -2592,7 +2582,7 @@ struct AccountReadStateModelTests {
     await model.start()
     let channelID = ChannelID(rawValue: 210)
     model.selectedChannelID = channelID
-    #expect(await eventually { !model.isLoadingMessages && model.selectedChannelID == channelID })
+    #expect(await until { !model.isLoadingMessages && model.selectedChannelID == channelID })
     model.reportMainWindowActive(true)
     model.reportTimelineInitialPosition(
         channelID: channelID,
@@ -2602,11 +2592,7 @@ struct AccountReadStateModelTests {
     await provider.emit(.connectionChanged(.connecting))
     await provider.emit(.connectionChanged(.ready))
 
-    for _ in 0 ..< 500 {
-        if await provider.acknowledgementRequests.count == 1 { break }
-        try? await Task.sleep(for: .milliseconds(1))
-    }
-    #expect(await provider.acknowledgementRequests.count == 1)
+    #expect(await eventually { await provider.acknowledgementRequests.count == 1 })
     let request = try #require(await provider.acknowledgementRequests.first)
     #expect(request.channelID == channelID)
     #expect(request.messageID == model.readState.entries[channelID]?.latestKnownMessageID)
@@ -2625,7 +2611,7 @@ struct AccountReadStateModelTests {
 
     let firstChannelID = ChannelID(rawValue: 210)
     model.selectedChannelID = firstChannelID
-    #expect(await eventually {
+    #expect(await until {
         !model.isLoadingMessages && model.selectedChannelID == firstChannelID
     })
     model.reportTimelineInitialPosition(
@@ -2635,7 +2621,7 @@ struct AccountReadStateModelTests {
 
     let secondChannelID = ChannelID(rawValue: 211)
     model.selectedChannelID = secondChannelID
-    #expect(await eventually {
+    #expect(await until {
         !model.isLoadingMessages && model.selectedChannelID == secondChannelID
     })
     model.reportTimelineInitialPosition(
@@ -2643,10 +2629,7 @@ struct AccountReadStateModelTests {
         hasReachedReadBoundary: true
     )
 
-    for _ in 0 ..< 500 {
-        if await provider.acknowledgementRequests.count == 2 { break }
-        try? await Task.sleep(for: .milliseconds(1))
-    }
+    #expect(await eventually { await provider.acknowledgementRequests.count == 2 })
     let requests = await provider.acknowledgementRequests
     #expect(requests.count == 2)
     #expect(Set(requests.map(\.channelID)) == Set([firstChannelID, secondChannelID]))
@@ -2665,7 +2648,7 @@ struct AccountReadStateModelTests {
     await model.start()
     let channelID = ChannelID(rawValue: 210)
     model.selectedChannelID = channelID
-    #expect(await eventually { !model.isLoadingMessages && model.selectedChannelID == channelID })
+    #expect(await until { !model.isLoadingMessages && model.selectedChannelID == channelID })
     let oldBoundary = model.readState.entries[channelID]?.lastAcknowledgedMessageID
 
     model.markConversationRead(channelID: channelID)
@@ -2684,11 +2667,7 @@ struct AccountReadStateModelTests {
     #expect(model.readState.readStateVersion == 41)
     #expect(!model.isChannelUnread(channelID))
     #expect(model.channelMentionCount(channelID) == 0)
-    for _ in 0 ..< 500 {
-        if await provider.acknowledgementRequests.count == 1 { break }
-        try? await Task.sleep(for: .milliseconds(1))
-    }
-    #expect(await provider.acknowledgementRequests.count == 1)
+    #expect(await eventually { await provider.acknowledgementRequests.count == 1 })
 }
 
 @MainActor
@@ -2700,12 +2679,8 @@ struct AccountReadStateModelTests {
     let target = try #require(firstLaunch.readState.entries[channelID]?.latestKnownMessageID)
 
     firstLaunch.markConversationRead(channelID: channelID)
-    for _ in 0 ..< 500 {
-        if await provider.acknowledgementRequests.count == 1 { break }
-        try? await Task.sleep(for: .milliseconds(1))
-    }
-    #expect(await provider.acknowledgementRequests.count == 1)
-    #expect(await eventually {
+    #expect(await eventually { await provider.acknowledgementRequests.count == 1 })
+    #expect(await until {
         firstLaunch.readState.entries[channelID]?.pendingAcknowledgementID == nil
     })
     await provider.disconnect()
@@ -2732,7 +2707,7 @@ struct AccountReadStateModelTests {
     await model.start()
     let channelID = ChannelID(rawValue: 210)
     model.selectedChannelID = channelID
-    #expect(await eventually { !model.isLoadingMessages && model.selectedChannelID == channelID })
+    #expect(await until { !model.isLoadingMessages && model.selectedChannelID == channelID })
     model.reportTimelinePosition(
         channelID: channelID,
         hasReachedReadBoundary: false
@@ -2742,13 +2717,9 @@ struct AccountReadStateModelTests {
     model.markConversationRead(channelID: channelID)
     #expect(model.unreadDividerMessageID(channelID: channelID) == originalDivider)
     #expect(model.conversationNewestRequest == nil)
-    #expect(await eventually { !model.isChannelUnread(channelID) })
+    #expect(await until { !model.isChannelUnread(channelID) })
     #expect(model.unreadDividerMessageID(channelID: channelID) == originalDivider)
-    for _ in 0 ..< 500 {
-        if await provider.acknowledgementRequests.count == 1 { break }
-        try? await Task.sleep(for: .milliseconds(1))
-    }
-    #expect(await provider.acknowledgementRequests.count == 1)
+    #expect(await eventually { await provider.acknowledgementRequests.count == 1 })
 
     model.completeConversationReadingAndAdvance(channelID: channelID)
     #expect(model.unreadDividerMessageID(channelID: channelID) == nil)
@@ -2765,7 +2736,7 @@ struct AccountReadStateModelTests {
     await model.start()
     let channelID = ChannelID(rawValue: 210)
     model.selectedChannelID = channelID
-    #expect(await eventually { !model.isLoadingMessages && model.selectedChannelID == channelID })
+    #expect(await until { !model.isLoadingMessages && model.selectedChannelID == channelID })
     model.reportTimelinePosition(
         channelID: channelID,
         hasReachedReadBoundary: false
@@ -2775,11 +2746,11 @@ struct AccountReadStateModelTests {
 
     let otherChannelID = ChannelID(rawValue: 211)
     model.selectedChannelID = otherChannelID
-    #expect(await eventually {
+    #expect(await until {
         !model.isLoadingMessages && model.selectedChannelID == otherChannelID
     })
     model.selectedChannelID = channelID
-    #expect(await eventually {
+    #expect(await until {
         !model.isLoadingMessages && model.selectedChannelID == channelID
     })
     #expect(model.unreadDividerMessageID(channelID: channelID) == nil)
@@ -2792,7 +2763,7 @@ struct AccountReadStateModelTests {
     await model.start()
     let channelID = ChannelID(rawValue: 210)
     model.selectedChannelID = channelID
-    #expect(await eventually { !model.isLoadingMessages && model.selectedChannelID == channelID })
+    #expect(await until { !model.isLoadingMessages && model.selectedChannelID == channelID })
     model.reportTimelinePosition(
         channelID: channelID,
         hasReachedReadBoundary: false
@@ -2831,11 +2802,7 @@ struct AccountReadStateModelTests {
 
     model.markMessageAndFollowingUnread(selectedMessage)
     #expect(model.unreadDividerMessageID(channelID: channelID) == selectedMessage.id)
-    for _ in 0 ..< 500 {
-        if await provider.acknowledgementRequests.count == 1 { break }
-        try? await Task.sleep(for: .milliseconds(1))
-    }
-    #expect(await provider.acknowledgementRequests.count == 1)
+    #expect(await eventually { await provider.acknowledgementRequests.count == 1 })
     let request = try #require(await provider.acknowledgementRequests.first)
     #expect(request.channelID == channelID)
     #expect(request.messageID.rawValue == selectedMessage.id.rawValue - 1)
@@ -2861,6 +2828,7 @@ struct AccountReadStateModelTests {
 }
 
 @MainActor
+@Observable
 private final class RecordingNotificationService: NativeNotificationService {
     var deliveredMessageIDs: [MessageID] = []
     var deliveredSoundEnabled: [Bool] = []
@@ -2885,13 +2853,4 @@ private final class RecordingNotificationService: NativeNotificationService {
     func setDockBadge(_ count: Int, enabled: Bool) {
         badgeCounts.append(enabled ? count : 0)
     }
-}
-
-@MainActor
-private func eventually(_ condition: @escaping @MainActor () -> Bool) async -> Bool {
-    for _ in 0 ..< 200 {
-        if condition() { return true }
-        try? await Task.sleep(for: .milliseconds(1))
-    }
-    return condition()
 }
