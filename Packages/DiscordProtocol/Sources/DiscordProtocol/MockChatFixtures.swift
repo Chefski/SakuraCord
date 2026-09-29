@@ -380,7 +380,6 @@ struct MockChatFixture {
             ],
             premiumSince: Calendar.current.date(byAdding: .year, value: -1, to: .now),
             legacyUsername: "\(user.username)#0001",
-            status: member.status,
             customStatus: member.customStatus
         )
     }

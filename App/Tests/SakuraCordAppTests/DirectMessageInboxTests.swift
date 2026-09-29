@@ -181,6 +181,19 @@ import Testing
     #expect(model.selectedChannelID == existing.id)
     #expect(model.selectedChannel?.kind == .directMessage)
     #expect(model.inspectorProfilePresentation?.member.id == recipient.id)
+
+    #expect(await waitForDirectMessageCondition {
+        model.memberLoadTask == nil
+            && model.inspectorProfilePresentation?.isLoading == false
+    })
+    let status: PresenceStatus =
+        model.liveProfilePresentation(for: .inspector)?.member.status == .dnd ? .idle : .dnd
+    await model.consume(.privateMembersChanged(model.members.map { member in
+        var member = member
+        if member.id == recipient.id { member.status = status }
+        return member
+    }))
+    #expect(model.liveProfilePresentation(for: .inspector)?.member.status == status)
 }
 
 @MainActor
