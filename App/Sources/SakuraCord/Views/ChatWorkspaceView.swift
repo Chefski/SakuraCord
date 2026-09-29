@@ -275,7 +275,7 @@ private struct DirectMessageProfileInspector: View {
                 isUniform: true
             )
         )
-        .task(id: recipient.id) {
+        .task(id: [recipient.id, model.inspectorProfilePresentation?.member.id]) {
             if model.inspectorProfilePresentation?.member.id != recipient.id {
                 model.showInspectorProfile(for: recipient)
             }
