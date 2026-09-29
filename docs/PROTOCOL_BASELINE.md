@@ -993,7 +993,7 @@ and retained as evidence.
 | `PATCH /guilds/{guild}/members/@me` | Changed server identity fields use `nick`; a nameplate is `collectibles.nameplate.sku_id`, with `collectibles.nameplate:null` for inheritance. Other identity fields use the same names as main scope. | Clean September server identity, cosmetics, inheritance and image actions. |
 | `PATCH /users/%40me/profile` and `PATCH /guilds/{guild}/profile/%40me` | Changed `bio`, `pronouns`, `banner`, `accent_color`, ordered `theme_colors`, and `collectibles_sku_ids`. Preserve encoded `%40me` in these paths. | Clean September main/server metadata saves, clears and partial-save recovery. |
 | `PUT /users/@me/clan` | Account-wide `identity_guild_id` and `identity_enabled`, editable from either main or server profiles; clearing sends null/false. One save reconciles the shared user and every cached profile without follow-up reads. Eligible guilds come from joined, nonpending Gateway memberships with `GUILD_TAGS` and a tag. | Clean September tag selection/removal and first-party eligibility resolver; 10 September editor-scope correction and cache-reconciliation coverage. |
-| `PATCH /users/@me/settings-proto/1` | Custom-status update or status pick; JSON contains `settings`, plus `required_data_version` when the write carries a pending status edit with a recorded data version. Send root field 11 with the retained status settings, replacing or removing custom-status field 2, or setting status field 1 as described under dispatch reconciliation, while preserving siblings and unknown fields. Reconcile the authoritative returned settings, including an `out_of_date` response. `400` / `50105` does not open the safety circuit: the status writer reloads with `GET /users/@me/settings-proto/1`. | Clean September status saves, clears and expiry; first-party protobuf/settings implementation; web build `622805` status pick and settings engine. |
+| `PATCH /users/@me/settings-proto/1` | Custom-status update or status pick; JSON contains `settings`, plus `required_data_version` when the write carries a pending status edit with a recorded data version. Send root field 11 with the retained status settings, replacing or removing custom-status field 2, or setting status field 1 as described under dispatch reconciliation, while preserving siblings and unknown fields. Reconcile the authoritative returned settings, including an `out_of_date` response. `400` / `50105` does not open the safety circuit: the status and Inbox writers reload with `GET /users/@me/settings-proto/1`. | Clean September status saves, clears and expiry; first-party protobuf/settings implementation; web build `622805` status pick and settings engine. |
 | `GET /users/@me/settings-proto/1` | Only after `400` / `50105` from a settings-proto/1 PATCH; no body. The returned proto is applied as a full type-1 settings update. | Web build `622805` module `594061` `loadIfNecessary(true)`; Paicord, Swiftcord v1 and DiscordKit have no reload path. |
 | `GET /collectibles-categories/v2?include_bundles=true&variants_return_style=2&skip_num_categories=0` | First collectible-picker catalogue load; retain server categories, variants and asset descriptors. | Clean September picker and catalogue requests. |
 | `GET /users/@me/collectibles-purchases?variants_return_style=2` | Owned inventory, including purchase type and expiry used by selection/save gates. | Clean September inventory requests and first-party ownership resolver. |
@@ -1430,7 +1430,8 @@ exception dispatches.
     flushes it once per edit until the next READY or RESUMED. Status and custom-status saves share one save slot, and a
     custom-status write carries the pending edit and its recorded version.
     `400` / `50105` on settings-proto/1 is exempt from the safety circuit; the
-    status writer reloads the settings. Before READY the status is invisible. Every
+    status writer and the Inbox writer (also official `wc.updateAsync("inbox")`)
+    both reload the settings. Before READY the status is invisible. Every
     member list the provider publishes or returns, and every cached list the
     app shows again, takes the current user's status from the account status.
   - Migration: a device-only Invisible that earlier releases stored under
@@ -1493,7 +1494,7 @@ already carry sends one `PATCH /users/@me/settings-proto/1` 5 to 10 seconds
 later, and schedules no retry; RESUMED does the same for a pending edit.
 Outside dispatches, the same pending edit costs at most one further PATCH when
 the app loses focus before the next READY or RESUMED, and
-a `400` / `50105` response to a status settings write costs one
+a `400` / `50105` response to a status or Inbox settings write costs one
 `GET /users/@me/settings-proto/1`.
 
 ### Other Discord transports
@@ -2054,7 +2055,8 @@ first-party traffic determines the undocumented user-client contracts.
   the PUT body is `{"response":1}`. Event and RSVP Gateway dispatches update
   the same cached entries.
 - Tab and collapsed-group settings patch `/users/@me/settings-proto/1`,
-  preserving unknown protobuf fields. Event collapse uses Discord's reserved
+  preserving unknown protobuf fields. A `400` / `50105` response reloads the
+  settings, as the official settings engine does, and reports the failure. Event collapse uses Discord's reserved
   channel key within each guild's settings map; guild identity must remain
   part of that key. Mention filter choices persist locally across sessions
   and account switches; they are not server settings.

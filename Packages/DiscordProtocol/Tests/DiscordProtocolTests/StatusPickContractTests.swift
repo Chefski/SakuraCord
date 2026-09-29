@@ -209,6 +209,13 @@ extension DirectMessageProviderContractTests {
         #expect(await session.provider.currentStatus() == .idle)
         #expect(await presenceStatuses(session.socket) == ["online", "dnd", "idle"])
         #expect(await !session.provider.requestSafetyCircuitIsOpen)
+        // The Inbox writer handles 50105 the same way.
+        DirectMessageURLProtocol.settingsReplies = [
+            (400, #"{"code":50105}"#), (200, try settingsResponse(statusSettingsFixture("idle", dataVersion: 5))),
+        ]
+        await #expect(throws: ChatProviderError.self) { try await session.provider.updateInboxTab(.unread) }
+        #expect(DirectMessageURLProtocol.requests.suffix(2).map(\.method) == ["PATCH", "GET"])
+        #expect(await !session.provider.requestSafetyCircuitIsOpen)
         #expect(DiscordRESTProvider.isSafetyStop(
             status: 400, discordCode: 50105, method: "PATCH", data: Data(), path: "/users/@me/settings-proto/2"
         ))

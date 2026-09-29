@@ -95,10 +95,14 @@ extension DiscordRESTProvider {
         let generation = profileEditingGeneration
         inboxSettingsSaveID = saveID
         defer { if inboxSettingsSaveID == saveID { inboxSettingsSaveID = nil } }
-        let response: UserSettingsProtoDTO = try await request(
-            "/users/@me/settings-proto/1", method: "PATCH",
-            body: ["settings": .string(makePatch(current).base64EncodedString())]
-        )
+        let response: UserSettingsProtoDTO
+        do {
+            response = try await patchUserSettings(["settings": .string(makePatch(current).base64EncodedString())], retriesRateLimit: false)
+        } catch is UserSettingsRejection {
+            guard generation == profileEditingGeneration, inboxSettingsSaveID == saveID else { throw CancellationError() }
+            await reloadUserSettings()
+            throw ChatProviderError.invalidRequest("Discord rejected this Inbox settings change. Your saved settings are shown again.")
+        }
         guard generation == profileEditingGeneration, inboxSettingsSaveID == saveID else { throw CancellationError() }
         applyInboxSettingsProto(response.settings, isPartial: true)
     }
