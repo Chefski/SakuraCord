@@ -23,7 +23,7 @@ extension AppModel {
             else { return false }
             return Self.supportsTyping(kind)
         case .thread:
-            return openThread != nil && openThreadAccess.canSend
+            return threadCreation != nil || (openThread != nil && openThreadAccess.canSend)
         }
     }
 
@@ -143,7 +143,7 @@ extension AppModel {
 
     @discardableResult
     func consumeEscapeForSupplementaryConversation() -> Bool {
-        if openThread != nil {
+        if hasThreadPane {
             closeThread()
             return true
         }
@@ -188,7 +188,10 @@ extension AppModel {
                 clearsComposer: false
             )
         case .thread:
-            guard let thread = openThread else { return false }
+            guard let thread = openThread else {
+                // A thread still being created has no upload destination yet.
+                return await addComposerAttachments(attachments.map(\.url), to: .thread)
+            }
             return await sendThreadMessage(
                 content: "",
                 attachments: attachments,

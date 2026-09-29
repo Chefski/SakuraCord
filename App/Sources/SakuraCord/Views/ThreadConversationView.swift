@@ -85,8 +85,83 @@ struct ThreadConversationView: View {
                         )
                     }
                 }
+            } else if let creation = model.threadCreation {
+                ThreadCreationView(model: model, creation: creation)
             }
         }
+    }
+}
+
+private struct ThreadCreationView: View {
+    let model: AppModel
+    @Bindable var creation: ThreadCreationDraft
+    @FocusState private var isNameFocused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Image(systemName: "bubble.left.and.bubble.right.fill")
+                .font(.system(size: 26, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 64, height: 64)
+                .background(.quaternary, in: Circle())
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Thread Name")
+                    .font(.headline)
+                TextField("New Thread", text: $creation.name)
+                    .tint(SakuraCordAccentColor.color)
+                    .textFieldStyle(.plain)
+                    .focused($isNameFocused)
+                    .padding(.horizontal, 11)
+                    .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+                    .contentShape(ConcentricRectangle(cornerRadius: 12, style: .continuous))
+                    .onTapGesture { isNameFocused = true }
+                    .glassEffect(
+                        .regular.interactive(),
+                        in: ConcentricRectangle(cornerRadius: 12, style: .continuous)
+                    )
+                    .onSubmit { model.validateThreadCreation() }
+                if creation.hasAttemptedSubmit, creation.trimmedName.isEmpty {
+                    ThreadCreationError(message: "Thread Name is required")
+                }
+            }
+
+            if creation.permissions.canCreatePrivate {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Private Thread")
+                        .font(.headline)
+                    Toggle("Only people you invite and moderators can see", isOn: $creation.isPrivate)
+                        .toggleStyle(.checkbox)
+                        .disabled(!creation.permissions.canCreatePublic)
+                }
+            }
+
+            if creation.hasAttemptedSubmit, isMissingStarterMessage {
+                ThreadCreationError(message: "Starter Message is required")
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            ComposerView(model: model, channelName: "", conversation: .thread)
+        }
+    }
+
+    private var isMissingStarterMessage: Bool {
+        model.threadDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && model.threadComposerAttachments.isEmpty
+    }
+}
+
+private struct ThreadCreationError: View {
+    let message: String
+
+    var body: some View {
+        Label(message, systemImage: "exclamationmark.circle.fill")
+            .font(.callout)
+            .foregroundStyle(.red)
     }
 }
 

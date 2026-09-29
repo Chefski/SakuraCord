@@ -139,7 +139,7 @@ struct RootView: View {
                 && (model.isSwitchingAccounts
                 || MessageSearchSurfacePolicy.showsToolbar(
                     channelKind: model.selectedChannel?.kind,
-                    hasOpenThread: model.openThread != nil
+                    hasOpenThread: model.hasThreadPane
                 ))
         case .signedOut:
             model.launchMode != .normal && !model.includesOfflineSignIn
@@ -596,7 +596,7 @@ private struct ChatRootView: View {
 
                 ToolbarSpacer(.fixed)
 
-                if model.openThread == nil, let channel = model.customizationPreviewChannel,
+                if !model.hasThreadPane, let channel = model.customizationPreviewChannel,
                    let guildID = channel.guildID, !model.isChannelSelected(channel) {
                     ToolbarItem(placement: .primaryAction) {
                         Button("Add to Channel List", systemImage: "plus") {
@@ -835,7 +835,7 @@ private struct ChatRootView: View {
     }
 
     private func proposedComposerDestination(atX horizontalPosition: CGFloat) -> MessageComposerDestination {
-        if model.openThread != nil, supplementaryPaneFrame != .zero {
+        if model.hasThreadPane, supplementaryPaneFrame != .zero {
             let localThreadLeadingEdge = supplementaryPaneFrame.minX - workspaceFrame.minX
             return horizontalPosition >= localThreadLeadingEdge ? .thread : .channel
         }
@@ -953,7 +953,7 @@ private struct ChatRootView: View {
     }
 
     private var hasOpenSupplementaryToolbarConversation: Bool {
-        model.openThread != nil
+        model.hasThreadPane
             || model.isVoiceChatOpen
             || model.hasOpenGuildSupplementaryConversation
     }
@@ -970,7 +970,7 @@ private struct ChatRootView: View {
 
     private var toolbarPinsChannelID: ChannelID? {
         guard model.guildWorkspacePage == nil, model.onboardingEntryGuildID == nil,
-              selectedVoiceChannel == nil, model.openThread == nil
+              selectedVoiceChannel == nil, !model.hasThreadPane
         else { return nil }
         return model.activePinsChannelID
     }
@@ -989,10 +989,10 @@ private struct ChatRootView: View {
     }
 
     private var supplementaryToolbarPresentation: SupplementaryToolbarPresentation? {
-        if let thread = model.openThread {
+        if model.hasThreadPane {
             return SupplementaryToolbarPresentation(
-                title: thread.name,
-                systemImage: "bubble.left.and.bubble.right"
+                title: model.openThread?.name ?? "New Thread",
+                systemImage: "bubble.left.and.bubble.right.fill"
             )
         }
         if let channel = model.customizationPreviewChannel {
@@ -1010,7 +1010,7 @@ private struct ChatRootView: View {
     }
 
     private var supplementaryCloseHelp: String {
-        if model.openThread != nil { return "Close thread" }
+        if model.hasThreadPane { return "Close thread" }
         if model.hasOpenGuildSupplementaryConversation { return "Close preview" }
         return "Close voice channel chat"
     }
@@ -1032,7 +1032,7 @@ private struct ChatRootView: View {
     }
 
     private func closeSupplementaryConversation() {
-        if model.openThread != nil {
+        if model.hasThreadPane {
             model.closeThread()
         } else if !model.closeGuildSupplementaryConversation() {
             model.closeVoiceChat()
@@ -1214,7 +1214,7 @@ private struct ComposerFileDropOverlay: View {
     var body: some View {
         GeometryReader { proxy in
             Group {
-                if model.openThread != nil, supplementaryPaneFrame != .zero {
+                if model.hasThreadPane, supplementaryPaneFrame != .zero {
                     HStack(spacing: 0) {
                         destinationZone(
                             .channel,
@@ -1224,7 +1224,7 @@ private struct ComposerFileDropOverlay: View {
 
                         destinationZone(
                             .thread,
-                            title: model.openThread?.name ?? "Thread"
+                            title: model.openThread?.name ?? "New Thread"
                         )
                     }
                 } else {

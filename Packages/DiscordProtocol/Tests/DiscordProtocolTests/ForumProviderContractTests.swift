@@ -256,54 +256,103 @@ import Testing
     await provider.disconnect()
 }
 
-@Test func `forum creation sends one nested thread payload with stable tag order`() async throws {
-    ForumPostCreationURLProtocol.reset()
-    let configuration = URLSessionConfiguration.ephemeral
-    configuration.protocolClasses = [ForumPostCreationURLProtocol.self]
-    let provider = DiscordRESTProvider(
-        credentials: ForumPostDeletionCredentialStore(),
-        handle: CredentialHandle(accountID: "forum-create"),
-        session: URLSession(configuration: configuration)
-    )
-    let firstTag = ForumTag(id: ForumTagID(rawValue: 8_001), name: "First")
-    let secondTag = ForumTag(id: ForumTagID(rawValue: 8_002), name: "Second")
-    let channel = Channel(
-        id: ChannelID(rawValue: 7),
-        guildID: GuildID(rawValue: 1),
-        name: "forum",
-        kind: .forum,
-        flags: 1 << 4,
-        availableTags: [firstTag, secondTag],
-        defaultAutoArchiveDuration: 4_320
-    )
-    await provider.seedForumChannelForTesting(channel)
+/// Both thread-creation routes share `ForumPostCreationURLProtocol`'s captured request.
+@Suite(.serialized)
+struct ThreadCreationContractTests {
+    @Test func `forum creation sends one nested thread payload with stable tag order`() async throws {
+        ForumPostCreationURLProtocol.reset()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ForumPostCreationURLProtocol.self]
+        let provider = DiscordRESTProvider(
+            credentials: ForumPostDeletionCredentialStore(),
+            handle: CredentialHandle(accountID: "forum-create"),
+            session: URLSession(configuration: configuration)
+        )
+        let firstTag = ForumTag(id: ForumTagID(rawValue: 8_001), name: "First")
+        let secondTag = ForumTag(id: ForumTagID(rawValue: 8_002), name: "Second")
+        let channel = Channel(
+            id: ChannelID(rawValue: 7),
+            guildID: GuildID(rawValue: 1),
+            name: "forum",
+            kind: .forum,
+            flags: 1 << 4,
+            availableTags: [firstTag, secondTag],
+            defaultAutoArchiveDuration: 4_320
+        )
+        await provider.seedForumChannelForTesting(channel)
 
-    let created = try await provider.createForumPost(
-        CreateForumPostDraft(
-            channelID: channel.id,
-            title: "Contract post",
-            content: "Nested starter content",
-            appliedTagIDs: [secondTag.id, firstTag.id],
-            autoArchiveDuration: 4_320
-        ),
-        progress: { _ in }
-    )
+        let created = try await provider.createForumPost(
+            CreateForumPostDraft(
+                channelID: channel.id,
+                title: "Contract post",
+                content: "Nested starter content",
+                appliedTagIDs: [secondTag.id, firstTag.id],
+                autoArchiveDuration: 4_320
+            ),
+            progress: { _ in }
+        )
 
-    #expect(created.thread.name == "Contract post")
-    #expect(ForumPostCreationURLProtocol.requestCount == 1)
-    #expect(ForumPostCreationURLProtocol.method == "POST")
-    #expect(ForumPostCreationURLProtocol.path == "/api/v9/channels/7/threads")
-    #expect(ForumPostCreationURLProtocol.query["use_nested_fields"] == "true")
-    #expect(ForumPostCreationURLProtocol.hadAuthorization)
-    let body = try #require(ForumPostCreationURLProtocol.body)
-    #expect(body["name"] as? String == "Contract post")
-    #expect(body["auto_archive_duration"] as? Int == 4_320)
-    #expect(body["applied_tags"] as? [String] == ["8001", "8002"])
-    #expect(
-        (body["message"] as? [String: Any])?["content"] as? String
-            == "Nested starter content"
-    )
-    #expect((body["message"] as? [String: Any])?["sticker_ids"] as? [String] == [])
+        #expect(created.thread.name == "Contract post")
+        #expect(ForumPostCreationURLProtocol.requestCount == 1)
+        #expect(ForumPostCreationURLProtocol.method == "POST")
+        #expect(ForumPostCreationURLProtocol.path == "/api/v9/channels/7/threads")
+        #expect(ForumPostCreationURLProtocol.query["use_nested_fields"] == "true")
+        #expect(ForumPostCreationURLProtocol.hadAuthorization)
+        let body = try #require(ForumPostCreationURLProtocol.body)
+        #expect(body["name"] as? String == "Contract post")
+        #expect(body["auto_archive_duration"] as? Int == 4_320)
+        #expect(body["applied_tags"] as? [String] == ["8001", "8002"])
+        #expect(
+            (body["message"] as? [String: Any])?["content"] as? String
+                == "Nested starter content"
+        )
+        #expect((body["message"] as? [String: Any])?["sticker_ids"] as? [String] == [])
+    }
+
+    @Test(arguments: [
+        (ChannelKindValue.text, false, 11),
+        (ChannelKindValue.text, true, 12),
+        (ChannelKindValue.announcement, false, 10),
+    ])
+    func `plus button thread creation sends one first-party thread payload`(
+        kind: ChannelKindValue,
+        isPrivate: Bool,
+        expectedType: Int
+    ) async throws {
+        ForumPostCreationURLProtocol.reset()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ForumPostCreationURLProtocol.self]
+        let provider = DiscordRESTProvider(
+            credentials: ForumPostDeletionCredentialStore(),
+            handle: CredentialHandle(accountID: "thread-create"),
+            session: URLSession(configuration: configuration)
+        )
+        let channel = Channel(id: ChannelID(rawValue: 7), guildID: GuildID(rawValue: 1), name: "general", kind: kind)
+        await provider.seedForumChannelForTesting(channel)
+
+        let thread = try await provider.createThread(
+            CreateThreadDraft(
+                channelID: channel.id,
+                name: "  Contract thread ",
+                isPrivate: isPrivate,
+                autoArchiveDuration: 1_440
+            )
+        )
+
+        #expect(thread.id == ChannelID(rawValue: 42))
+        #expect(thread.parentID == channel.id)
+        #expect(ForumPostCreationURLProtocol.requestCount == 1)
+        #expect(ForumPostCreationURLProtocol.method == "POST")
+        #expect(ForumPostCreationURLProtocol.path == "/api/v9/channels/7/threads")
+        #expect(ForumPostCreationURLProtocol.query.isEmpty)
+        #expect(ForumPostCreationURLProtocol.hadAuthorization)
+        let body = try #require(ForumPostCreationURLProtocol.body)
+        #expect(Set(body.keys) == ["name", "type", "auto_archive_duration", "location"])
+        #expect(body["name"] as? String == "Contract thread")
+        #expect(body["type"] as? Int == expectedType)
+        #expect(body["auto_archive_duration"] as? Int == 1_440)
+        #expect(body["location"] as? String == "Plus Button")
+    }
 }
 
 @Test func `blank forum attachment edits fall back without extra metadata`() {
@@ -1137,4 +1186,44 @@ private final class ForumPostCreationURLProtocol: URLProtocol, @unchecked Sendab
         }
         return data
     }
+}
+
+@Test func `thread-created messages attach the known thread and its latest message`() async throws {
+    let record = try JSONDecoder().decode(ChannelDTO.self, from: Data(
+        #"{"id":"42","parent_id":"7","type":11,"name":"Notes","most_recent_message":{"id":"45","channel_id":"42","content":"Guild record","author":{"id":"3","username":"owner"}}}"#.utf8
+    ))
+    #expect(try record.forumPost(fallbackGuildID: nil).mostRecentMessage?.content == "Guild record")
+
+    let provider = DiscordRESTProvider(
+        credentials: ForumPostDeletionCredentialStore(),
+        handle: CredentialHandle(accountID: "thread-card"),
+        session: URLSession(configuration: .ephemeral)
+    )
+    await provider.seedForumChannelForTesting(
+        Channel(id: ChannelID(rawValue: 7), guildID: GuildID(rawValue: 1), name: "general", kind: .text)
+    )
+    await provider.receiveGatewayDispatchForTesting(
+        name: "THREAD_LIST_SYNC",
+        data: .object([
+            "guild_id": .string("1"),
+            "channel_ids": .array([.string("7")]),
+            "threads": .array([.object([
+                "id": .string("42"), "guild_id": .string("1"), "parent_id": .string("7"),
+                "name": .string("Release notes"), "type": .number(11), "message_count": .number(3),
+            ])]),
+            "most_recent_messages": .array([.object([
+                "id": .string("45"), "channel_id": .string("42"), "content": .string("Latest reply"),
+                "author": .object(["id": .string("3"), "username": .string("owner")]),
+            ])]),
+        ])
+    )
+    let post = try #require(await provider.cachedForumPostForTesting(threadID: ChannelID(rawValue: 42)))
+    #expect(post.mostRecentMessage?.content == "Latest reply")
+
+    var created = try JSONDecoder().decode(MessageDTO.self, from: Data(
+        #"{"id":"43","channel_id":"7","type":18,"content":"Release notes","author":{"id":"3","username":"owner"},"message_reference":{"channel_id":"42","guild_id":"1"}}"#.utf8
+    )).domain()
+    await provider.attachKnownThread(to: &created)
+
+    #expect(created.thread == post.thread)
 }

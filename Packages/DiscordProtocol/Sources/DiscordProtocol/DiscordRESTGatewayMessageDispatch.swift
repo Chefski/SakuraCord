@@ -89,6 +89,7 @@ extension DiscordRESTProvider {
         {
             // A newly created poll starts empty; historical omitted results remain unknown.
             if message.poll != nil, message.poll?.results == nil { message.poll?.results = PollResults() }
+            attachKnownThread(to: &message)
             cacheMessageSearchUsers(dto.searchIndexUsers)
             cacheForwardSearchMessageAliases([message])
             cachedMessages[message.id] = message

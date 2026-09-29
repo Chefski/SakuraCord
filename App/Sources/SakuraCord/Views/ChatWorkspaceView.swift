@@ -21,7 +21,7 @@ struct ChatWorkspaceView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 if model.customizationPreviewChannel != nil {
                     Divider()
-                    if model.openThread != nil {
+                    if model.hasThreadPane {
                         ThreadConversationView(model: model)
                     } else {
                         SupplementaryConversationPane {
@@ -43,13 +43,13 @@ struct ChatWorkspaceView: View {
         let presentation = ChatWorkspacePresentation(
             isVoiceChannel: model.selectedChannel?.kind == .voice,
             isForumChannel: model.selectedChannel?.kind == .forum,
-            hasOpenThread: model.openThread != nil,
+            hasOpenThread: model.hasThreadPane,
             hasOpenVoiceChat: model.isVoiceChatOpen,
             showsInspector: model.showInspector,
             showsMessageSearch: model.messageSearch.isPresented
                 && MessageSearchSurfacePolicy.showsToolbar(
                     channelKind: model.selectedChannel?.kind,
-                    hasOpenThread: model.openThread != nil
+                    hasOpenThread: model.hasThreadPane
                 )
         )
 

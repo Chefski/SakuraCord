@@ -75,7 +75,7 @@ struct ComposerView: View {
             },
             leading: {
                 Group {
-                    if !hasActiveCommand {
+                    if !hasActiveCommand, !isCreatingThread {
                         ComposerAttachmentButton(appearance: appearance) {
                             showComposerActions.toggle()
                         }
@@ -96,6 +96,15 @@ struct ComposerView: View {
                                         showPhotosPicker = true
                                     } label: {
                                         Label("Select from Photos", systemImage: "photo.on.rectangle")
+                                            .frame(maxWidth: .infinity, alignment: .leading).padding(8)
+                                    }
+                                }
+                                if canCreateThread {
+                                    Button {
+                                        showComposerActions = false
+                                        model.beginThreadCreation()
+                                    } label: {
+                                        Label("Create Thread", systemImage: "bubble.left.and.bubble.right.fill")
                                             .frame(maxWidth: .infinity, alignment: .leading).padding(8)
                                     }
                                 }
@@ -205,7 +214,7 @@ struct ComposerView: View {
                         ForEach(model.appearanceSettings.composerIcons.order) { icon in
                             switch icon {
                             case .gif:
-                                if model.supportedCapabilities.contains(.gifs) {
+                                if model.supportedCapabilities.contains(.gifs), !isCreatingThread {
                                     ComposerIconView(icon: .gif, appearance: appearance) {
                                         toggleGIFPicker()
                                     }
@@ -222,7 +231,7 @@ struct ComposerView: View {
                                     }
                                 }
                             case .sticker:
-                                if model.supportedCapabilities.contains(.stickers) {
+                                if model.supportedCapabilities.contains(.stickers), !isCreatingThread {
                                     ComposerIconView(icon: .sticker, appearance: appearance) {
                                         toggleStickerPicker()
                                     }
@@ -586,6 +595,7 @@ struct ComposerView: View {
             showGIFPicker = false
             return
         }
+        guard !isCreatingThread else { return }
 
         let now = ProcessInfo.processInfo.systemUptime
         guard now - gifPickerDismissedAt > 0.25 else { return }
@@ -600,6 +610,7 @@ struct ComposerView: View {
             showStickerPicker = false
             return
         }
+        guard !isCreatingThread else { return }
 
         let now = ProcessInfo.processInfo.systemUptime
         guard now - stickerPickerDismissedAt > 0.25 else { return }
@@ -610,7 +621,8 @@ struct ComposerView: View {
     }
 
     private func send() {
-        guard let activeConversationID, model.allowSlowmodeSubmission(in: activeConversationID) else { return }
+        guard allowsSubmission() else { return }
+        if isCreatingThread, !model.validateThreadCreation() { return }
         guard !isSubmitting,
               !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty
         else { return }
@@ -893,7 +905,7 @@ struct ComposerView: View {
     }
 
     private func submitComposer() {
-        guard let activeConversationID, model.allowSlowmodeSubmission(in: activeConversationID) else { return }
+        guard allowsSubmission() else { return }
         if hasActiveCommand {
             guard model.commandComposer.canSubmit else { return }
             model.executeApplicationCommand()
@@ -1120,15 +1132,32 @@ struct ComposerView: View {
         activeConversationID.map { model.canCreatePoll(in: $0) } ?? false
     }
 
+    private var canCreateThread: Bool {
+        conversation == .channel && model.canCreateThreadInSelectedChannel
+    }
+
     private var hasComposerActions: Bool {
-        canAddAttachments || canCreatePoll
+        canAddAttachments || canCreatePoll || canCreateThread
+    }
+
+    /// The thread pane composes a thread's first message before Discord has
+    /// created the thread, so it has no conversation ID, slowmode, or
+    /// destination for immediate GIF or sticker sends yet.
+    private var isCreatingThread: Bool {
+        conversation == .thread && model.threadCreation != nil
+    }
+
+    private func allowsSubmission() -> Bool {
+        guard let activeConversationID else { return isCreatingThread }
+        return model.allowSlowmodeSubmission(in: activeConversationID)
     }
 
     private var composerPlaceholder: String {
         ComposerPlaceholderPolicy.text(
             channelName: channelName,
             channelKind: model.selectedChannel?.kind,
-            destination: conversation
+            destination: conversation,
+            startsThread: isCreatingThread
         )
     }
 

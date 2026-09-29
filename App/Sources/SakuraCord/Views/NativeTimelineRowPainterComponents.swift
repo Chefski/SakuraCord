@@ -885,8 +885,13 @@ extension NativeTimelineRowPainter {
         ).fill()
     }
 
+    /// Discord's thread card: the name and message count, then the thread's
+    /// latest message or an empty state.
     static func threadSummary(
         _ thread: MessageThreadSummary,
+        preview: Message?,
+        message: Message,
+        model: AppModel?,
         in frame: CGRect
     ) {
         NSColor.secondaryLabelColor.withAlphaComponent(0.08).setFill()
@@ -894,49 +899,71 @@ extension NativeTimelineRowPainter {
             concentricRoundedRect: frame,
             cornerRadius: 8
         ).fill()
-        systemSymbol(
-            "bubble.left.and.bubble.right",
-            in: CGRect(
-                x: frame.minX + 9,
-                y: frame.midY - 9,
-                width: 18,
-                height: 18
-            ),
-            color: .labelColor,
-            inset: 1
+        let inset: CGFloat = 10
+        let nameFont = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        let nameWidth = min(
+            NativeTimelineReplyMetrics.textWidth(thread.name, font: nameFont),
+            frame.width * 0.6
         )
         text(
             thread.name,
-            in: CGRect(
-                x: frame.minX + 35,
-                y: frame.minY + 6,
-                width: max(1, frame.width - 70),
-                height: 18
-            ),
-            font: .systemFont(ofSize: 12, weight: .semibold),
+            in: CGRect(x: frame.minX + inset, y: frame.minY + 7, width: nameWidth, height: 18),
+            font: nameFont,
             color: .labelColor
         )
         text(
-            "\(thread.messageCount) replies · \(thread.memberCount) participants",
+            NativeTimelineThreadCard.countText(thread),
             in: CGRect(
-                x: frame.minX + 35,
-                y: frame.minY + 23,
-                width: max(1, frame.width - 70),
-                height: 16
+                x: frame.minX + inset + nameWidth + 8,
+                y: frame.minY + 7,
+                width: max(1, frame.width - nameWidth - inset * 2 - 8),
+                height: 18
             ),
-            font: .systemFont(ofSize: 11),
-            color: .secondaryLabelColor
+            font: .systemFont(ofSize: 13, weight: .semibold),
+            color: .sakuraCordAccentColor
         )
-        systemSymbol(
-            "chevron.right",
-            in: CGRect(
-                x: frame.maxX - 25,
-                y: frame.midY - 7,
-                width: 14,
-                height: 14
-            ),
-            color: .secondaryLabelColor,
-            inset: 2
+
+        let rowFrame = CGRect(
+            x: frame.minX + inset,
+            y: frame.minY + 28,
+            width: frame.width - inset * 2,
+            height: 20
+        )
+        let activity = NativeTimelineThreadCard.activityText(
+            thread.lastMessageID?.createdAt ?? thread.createdAt ?? thread.id.createdAt
+        )
+        let activityFont = NSFont.systemFont(ofSize: 11)
+        let activityWidth = NativeTimelineReplyMetrics.textWidth(activity, font: activityFont)
+        text(
+            activity,
+            in: CGRect(x: rowFrame.maxX - activityWidth, y: rowFrame.minY + 1, width: activityWidth, height: 18),
+            font: activityFont,
+            color: .tertiaryLabelColor
+        )
+        let bodyFrame = CGRect(
+            x: rowFrame.minX,
+            y: rowFrame.minY,
+            width: max(0, rowFrame.width - activityWidth - 8),
+            height: rowFrame.height
+        )
+        guard !thread.isArchived, thread.messageCount > 0, let preview else {
+            text(
+                thread.isArchived || thread.messageCount > 0
+                    ? "There are no recent messages in this thread."
+                    : "There are no messages in this thread yet.",
+                in: bodyFrame,
+                font: NativeTimelineReplyMetrics.summaryFont,
+                color: .secondaryLabelColor
+            )
+            return
+        }
+        replyPreviewLine(
+            MessageReplyPreview(message: preview),
+            frame: bodyFrame,
+            avatarFrame: CGRect(x: bodyFrame.minX, y: bodyFrame.minY + 3, width: 14, height: 14),
+            trailingInset: 0,
+            message: message,
+            model: model
         )
     }
 

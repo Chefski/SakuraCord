@@ -419,3 +419,16 @@ func `clearing drafts invalidates unpublished restorations`(clearsAll: Bool, edi
     #expect(model.snapshot?.forwardChannelStoreOrder.isEmpty == true)
     #expect(model.forwardSearchSourceRevision > revision)
 }
+
+@MainActor
+@Test func threadCreationNameNormalizesEdits() {
+    let creation = ThreadCreationDraft(
+        parentID: ChannelID(rawValue: 7),
+        permissions: ThreadCreationPermissions(canCreatePublic: true, canCreatePrivate: false)
+    )
+
+    creation.name = "Release\nnotes\r\n" + String(repeating: "x", count: 120)
+
+    #expect(creation.name.hasPrefix("Release notes "))
+    #expect(creation.name.count == ThreadCreationDraft.maximumNameLength)
+}

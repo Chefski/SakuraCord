@@ -132,10 +132,17 @@ extension DiscordRESTProvider {
             },
             uniquingKeysWith: { _, latest in latest }
         )
+        let recentByThreadID = Dictionary(
+            sync.mostRecentMessages.map { ($0.channelID, $0) },
+            uniquingKeysWith: { _, latest in latest }
+        )
         let hydratedThreads = sync.threads.map { thread in
             var thread = thread
             if thread.member == nil {
                 thread.member = membersByThreadID[thread.id]
+            }
+            if thread.mostRecentMessage == nil {
+                thread.mostRecentMessage = recentByThreadID[thread.id]
             }
             return thread
         }

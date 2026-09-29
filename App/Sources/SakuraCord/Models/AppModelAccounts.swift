@@ -318,6 +318,7 @@ extension AppModel {
         messageRowCache = [:]
         messageRowCacheOrder = []
         hasMoreCache = [:]
+        threadPreviewMessages = [:]
         membersByGuildID = [:]
         profileCustomStatus = nil
         profileCustomStatusUserID = nil

@@ -753,3 +753,11 @@ public enum MessageSendProgress: Equatable, Sendable {
     case awaitingReconciliation(nonce: String)
     case completed(messageID: MessageID)
 }
+
+public extension Message {
+    /// The thread this message shows a card for: the thread it started, or
+    /// the thread a thread-created system message announces.
+    var referencedThreadID: ChannelID? {
+        thread?.id ?? (type == .threadCreated ? messageReference?.channelID : nil)
+    }
+}

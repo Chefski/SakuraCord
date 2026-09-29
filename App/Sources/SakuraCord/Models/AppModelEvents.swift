@@ -742,6 +742,7 @@ extension AppModel {
         AppPerformanceSignposts.measureSync("ForumUnreadRefreshRequest") {
             requestCoalescedUnreadPresentationRefresh()
         }
+        refreshTimelineThreadCards(parentID: channelID, posts: posts)
         guard channelID == selectedChannelID, selectedChannel?.kind == .forum else { return }
         replaceForumCatalogue(with: posts)
         applyForumPresentation()
