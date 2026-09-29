@@ -316,11 +316,11 @@ import Testing
     #expect(String(value.characters).filter { $0 == "\n" }.count == 3)
 }
 
-@Test func `discord markdown reproduces discord nested traits and hides spoilers`() {
+@Test func `discord markdown reproduces discord nested traits and marks spoilers`() {
     let value = DiscordMarkdown.appKitAttributed(
-        "**bold** _italic_ __underline__ ~~strike~~ ||secret|| ___triple___ __***all***__"
+        "**bold** _italic_ __underline__ ~~strike~~ ||secret|| ___triple___ __***all***__ ||[hidden](https://example.com)||"
     )
-    #expect(value.string == "bold italic underline strike secret triple all")
+    #expect(value.string == "bold italic underline strike secret triple all hidden")
     let string = value.string as NSString
 
     let bold = string.range(of: "bold")
@@ -357,12 +357,21 @@ import Testing
             effectiveRange: nil
         ) as? NSNumber == NSNumber(value: true)
     )
+    // Spoilers keep their real colors; presentation conceals hidden ones.
+    let spoilerLink = string.range(of: "hidden")
     #expect(
         value.attribute(
             .foregroundColor,
             at: spoiler.location,
             effectiveRange: nil
-        ) as? NSColor == NSColor.clear
+        ) as? NSColor == NSColor.labelColor
+    )
+    #expect(
+        value.attribute(
+            .foregroundColor,
+            at: spoilerLink.location,
+            effectiveRange: nil
+        ) as? NSColor == NSColor.linkColor
     )
 
     let triple = string.range(of: "triple")

@@ -9,7 +9,7 @@ public extension NSAttributedString.Key {
         "dev.sakuracord.markdown.block"
     )
 
-    /// Marks hidden spoiler text. The value is an NSNumber boolean.
+    /// Marks spoiler text. The value is an NSNumber boolean.
     static let discordMarkdownSpoiler = NSAttributedString.Key(
         "dev.sakuracord.markdown.spoiler"
     )
@@ -423,11 +423,6 @@ public enum DiscordMarkdown {
             attributes[.foregroundColor] = NSColor.linkColor
         }
         if run.traits.contains(.spoiler) {
-            let spoilerColor = NSColor.secondaryLabelColor.withAlphaComponent(0.42)
-            attributes[.backgroundColor] = spoilerColor
-            attributes[.foregroundColor] = NSColor.clear
-            attributes[.underlineColor] = NSColor.clear
-            attributes[.strikethroughColor] = NSColor.clear
             attributes[.discordMarkdownSpoiler] = NSNumber(value: true)
         }
         return attributes

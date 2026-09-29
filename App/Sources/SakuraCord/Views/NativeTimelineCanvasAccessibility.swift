@@ -972,6 +972,11 @@ extension NativeTimelineCanvasView {
         input: NativeTimelineTextAccessibilityInput
     ) {
         guard let sourceMessage = input.sourceMessage else { return }
+        // A hidden spoiler exposes only its reveal button, not its links.
+        let hiddenSpoilerRanges = TimelineTextAccessibility.hiddenSpoilerRanges(
+            in: input.value,
+            revealedLocations: input.revealedLocations
+        )
         input.value.enumerateAttribute(
                 .link,
                 in: NSRange(location: 0, length: input.value.length)
@@ -979,6 +984,9 @@ extension NativeTimelineCanvasView {
                 let url = (rawLink as? URL)
                     ?? (rawLink as? String).flatMap(URL.init(string:))
                 guard let url,
+                      !hiddenSpoilerRanges.contains(where: {
+                          NSIntersectionRange($0, range).length > 0
+                      }),
                       let localFrame = NativeTimelineTextHitTester.rangeFrame(
                           value: input.value,
                           framesetter: input.framesetter,
