@@ -517,6 +517,7 @@ public actor MockChatProvider: ChatProvider {
             profilesByUser[currentUser.id] = profile
         }
         continuation?.yield(.snapshotChanged(snapshot))
+        continuation?.yield(.currentUserStatusChanged(status))
     }
 
     public func messages(in channelID: ChannelID, before: MessageID?, limit: Int) async throws

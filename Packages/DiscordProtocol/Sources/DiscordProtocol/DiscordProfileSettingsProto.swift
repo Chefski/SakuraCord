@@ -1,16 +1,58 @@
 import Foundation
 
 extension DiscordRESTProvider {
-    func applyProfileSettingsProto(_ encoded: String?, isPartial: Bool) {
-        guard let encoded, let data = Data(base64Encoded: encoded) else { return }
-        if let status = DiscordSettingsProto.statusSettings(in: data) {
-            profileStatusSettings = status
-            publishProfileCustomStatus()
-        } else if !isPartial {
-            profileStatusSettings = Data()
-            publishProfileCustomStatus()
-        }
+    /// Applies type-1 settings and returns whether StatusSettings were
+    /// applied. A full proto without them clears them; a partial one does not.
+    @discardableResult
+    func applyProfileSettingsProto(_ encoded: String?, isPartial: Bool) -> Bool {
+        guard let encoded, let data = Data(base64Encoded: encoded) else { return false }
+        if let version = DiscordSettingsProto.dataVersion(in: data) { settingsDataVersion = version }
+        let status = DiscordSettingsProto.statusSettings(in: data) ?? (isPartial ? nil : Data())
+        if let status { adoptStatusSettings(status) }
         if let value = DiscordSettingsProto.profileDeveloperMode(from: data) { profileDeveloperMode = value } else if !isPartial { profileDeveloperMode = false }
+        return status != nil
+    }
+}
+
+/// Discord rejected a type-1 settings write as invalid data (400 / 50105).
+struct UserSettingsRejection: Error {}
+
+extension DiscordRESTProvider {
+    // Official stable622805 module594061 `persistChanges`.
+    /// PATCHes type-1 settings. A 429 is retried once when requested and
+    /// Discord asks for at most 30 seconds; 400 / 50105 throws
+    /// `UserSettingsRejection`, after which the caller reloads.
+    func patchUserSettings(_ body: [String: JSONValue], retriesRateLimit: Bool) async throws -> UserSettingsProtoDTO {
+        let path = "/users/@me/settings-proto/1"
+        var retries = retriesRateLimit ? 1 : 0
+        while true {
+            let (data, response) = try await perform(path, method: "PATCH", query: [], body: body, maximumAttempts: 1)
+            if response.statusCode == 429, retries > 0,
+               Self.retryAfter(from: data, response: response, addsSafetyMargin: false) <= 30 {
+                retries -= 1
+                continue
+            }
+            if response.statusCode == 400, Self.discordErrorCode(from: data) == 50105 {
+                gatewayLogger.fault("Discord rejected a settings write as invalid data (50105); reloading settings.")
+                throw UserSettingsRejection()
+            }
+            let settings: UserSettingsProtoDTO = try decodedResponse(data, response, method: "PATCH", path: path)
+            if let root = Data(base64Encoded: settings.settings), let version = DiscordSettingsProto.dataVersion(in: root) {
+                settingsDataVersion = version
+            }
+            return settings
+        }
+    }
+
+    // Official stable622805 module594061 `loadIfNecessary(true)`.
+    /// Reloads type-1 settings after a rejected write, so the server wins.
+    func reloadUserSettings() async {
+        do {
+            let response: UserSettingsProtoDTO = try await request("/users/@me/settings-proto/1")
+            await applyUserSettingsProto(response.settings, isPartial: false)
+        } catch {
+            gatewayLogger.error("Settings reload failed: \(error.localizedDescription, privacy: .public)")
+        }
     }
 }
 

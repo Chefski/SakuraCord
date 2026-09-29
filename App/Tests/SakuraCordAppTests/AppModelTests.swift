@@ -2526,11 +2526,18 @@ func `removing a saved account without a credential still clears derived caches`
         .appending(path: "dev.sakuracord.SakuraCord")
     let cacheURLs = ["ForwardSearchPeople/\(accountID).json", "QuickSwitcherChannelStore/\(accountID).json", "EmojiCache/\(accountID)"]
         .map { root.appending(path: $0) }
-    defer { for url in cacheURLs { try? FileManager.default.removeItem(at: url) } }
+    // An unsaved status edit belongs to the account and leaves with it.
+    let statusKeys = ["dev.sakuracord.pending-status-edit.\(accountID)", "dev.sakuracord.presence.\(accountID)"]
+    defer {
+        for url in cacheURLs { try? FileManager.default.removeItem(at: url) }
+        for key in statusKeys { UserDefaults.standard.removeObject(forKey: key) }
+    }
     for url in cacheURLs {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data("fixture".utf8).write(to: url)
     }
+    UserDefaults.standard.set(["status": "invisible"], forKey: statusKeys[0])
+    UserDefaults.standard.set("invisible", forKey: statusKeys[1])
     let savedAccounts = SavedAccountStoreSpy()
     let model = AppModel(
         launchMode: .normal, restoresStoredSession: false,
@@ -2541,6 +2548,7 @@ func `removing a saved account without a credential still clears derived caches`
     if switchesAccount { #expect(await !model.switchAccount(to: accountID)) }
     else { await model.logout(accountID: accountID) }
     for url in cacheURLs { #expect(!FileManager.default.fileExists(atPath: url.path)) }
+    for key in statusKeys { #expect(UserDefaults.standard.object(forKey: key) == nil) }
     #expect(model.savedAccounts.map(\.accountID) == ["94000"])
     #expect(await savedAccounts.preferredAccountID() == "94000")
     #expect(model.activeAccountID == "94000")
@@ -3855,6 +3863,35 @@ func `GIF completion preserves newer text and channel drafts`(changesChannel: Bo
             guilds: snapshot.guilds
         )
     )
+}
+
+@MainActor
+@Test func `account status changes from other clients update the current user and self member`() async throws {
+    let model = AppModel(launchMode: .offlineTesting)
+    await model.start()
+    let currentUserID = try #require(model.snapshot?.currentUser.id)
+    let others = model.members.filter { $0.id != currentUserID }
+    #expect(model.members.contains { $0.id == currentUserID })
+    #expect(model.currentStatus != .dnd)
+
+    await model.consume(.currentUserStatusChanged(.dnd))
+
+    #expect(model.currentStatus == .dnd)
+    #expect(model.members.filter { $0.id == currentUserID }.allSatisfy { $0.status == .dnd })
+    #expect(model.members.filter { $0.id != currentUserID } == others)
+
+    // Cached member lists shown again, or republished, carry the current status.
+    let guildID = try #require(model.selectedGuildID)
+    var stale = try #require(model.members.first { $0.id == currentUserID })
+    stale.status = .online
+    model.memberListsByGuildID[guildID] = [stale]
+    model.membersByGuildID[guildID] = [currentUserID: stale]
+    model.restoreMemberPresentation(for: guildID)
+    #expect(model.members.map(\.status) == [.dnd])
+    #expect(model.membersByID[currentUserID]?.status == .dnd)
+    model.consumeMembersChanged(guildID: guildID, members: [stale], groups: [])
+    #expect(model.members.map(\.status) == [.dnd])
+    #expect(model.memberListsByGuildID[guildID]?.map(\.status) == [.dnd])
 }
 
 @MainActor

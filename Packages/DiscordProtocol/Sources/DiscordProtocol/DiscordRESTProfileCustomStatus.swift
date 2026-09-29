@@ -3,12 +3,9 @@ import SakuraCordModels
 
 extension DiscordRESTProvider {
     public func updateProfileCustomStatus(_ requested: ProfileCustomStatus?) async throws -> ProfileCustomStatus? {
-        guard let userID = currentUser?.id else { throw ChatProviderError.unauthenticated }
-        guard let current = profileStatusSettings else {
+        guard currentUser != nil else { throw ChatProviderError.unauthenticated }
+        guard profileStatusSettings != nil else {
             throw ChatProviderError.invalidRequest("Wait for your account settings to finish loading before editing your status.")
-        }
-        guard profileStatusSaveID == nil else {
-            throw ChatProviderError.invalidRequest("A status update is already in progress.")
         }
         var status = requested
         if var value = status {
@@ -22,24 +19,80 @@ extension DiscordRESTProvider {
             value.createdAt = .now
             status = value.text.isEmpty && value.emojiID == nil && (value.emojiName?.isEmpty ?? true) ? nil : value
         }
-        let patch = DiscordSettingsProto.updatingCustomStatus(status, in: current)
-        let saveID = UUID()
+        let saved = try await saveStatusSettings(userInitiated: true) { DiscordSettingsProto.updatingCustomStatus(status, in: $0) }
+        return saved.flatMap(DiscordSettingsProto.customStatus(in:))
+    }
+
+    // Official stable622805 module594061 `persistChanges`.
+    /// The single settings-proto/1 writer for StatusSettings, one save at a
+    /// time, carrying any pending status edit. With `pendingEdit` it writes
+    /// only while that edit is pending and returns nil otherwise.
+    func saveStatusSettings(
+        pendingEdit editID: UInt64? = nil,
+        userInitiated: Bool,
+        updating change: (Data) -> Data = { DiscordSettingsProto.protoLengthDelimitedField(11, $0) }
+    ) async throws -> Data? {
+        guard let userID = currentUser?.id else { throw ChatProviderError.unauthenticated }
         let generation = profileEditingGeneration
+        await waitForStatusSettingsSave()
+        guard currentUser?.id == userID, generation == profileEditingGeneration, var current = profileStatusSettings else {
+            throw CancellationError()
+        }
+        let edit = pendingStatusEdit
+        if let editID, edit?.id != editID { return nil }
+        if let edit {
+            let merged = DiscordSettingsProto.updatingPresenceStatus(edit.status, in: current, now: .now)
+            current = DiscordSettingsProto.statusSettings(in: merged) ?? current
+        }
+        var body: [String: JSONValue] = ["settings": .string(change(current).base64EncodedString())]
+        if let version = edit?.requiredDataVersion { body["required_data_version"] = .number(Double(version)) }
+        let saveID = UUID()
         profileStatusSaveID = saveID
-        defer { if profileStatusSaveID == saveID { profileStatusSaveID = nil } }
-        let response: UserSettingsProtoDTO = try await request(
-            "/users/@me/settings-proto/1", method: "PATCH",
-            body: ["settings": .string(patch.base64EncodedString())]
-        )
+        defer { if profileStatusSaveID == saveID { finishStatusSettingsSave() } }
+        let response: UserSettingsProtoDTO
+        do {
+            response = try await patchUserSettings(body, retriesRateLimit: userInitiated)
+        } catch {
+            guard currentUser?.id == userID, generation == profileEditingGeneration, profileStatusSaveID == saveID else {
+                throw CancellationError()
+            }
+            guard error is UserSettingsRejection else { throw error }
+            endPendingStatusEdit(edit?.id)
+            await reloadUserSettings()
+            throw ChatProviderError.invalidRequest("Discord rejected this status change. Your saved status is shown again.")
+        }
         guard currentUser?.id == userID, generation == profileEditingGeneration, profileStatusSaveID == saveID else { throw CancellationError() }
+        let outOfDate = response.outOfDate == true
         guard let responseData = Data(base64Encoded: response.settings),
-              let saved = DiscordSettingsProto.statusSettings(in: responseData) else {
+              let saved = DiscordSettingsProto.statusSettings(in: responseData) ?? (outOfDate ? Data() : nil) else {
             profileStatusSettings = nil
             throw ChatProviderError.invalidRequest("Discord saved your settings but returned an unreadable status. Reconnect before editing it again.")
         }
-        profileStatusSettings = saved
+        endPendingStatusEdit(edit?.id)
+        adoptStatusSettings(saved)
         publishProfileCustomStatus()
-        return DiscordSettingsProto.customStatus(in: saved)
+        await sendPresenceIfChanged()
+        if outOfDate {
+            gatewayLogger.info("Status settings were out of date; the server's settings were kept.")
+            if userInitiated {
+                throw ChatProviderError.invalidRequest("Your status changed on another device, so this change was not saved.")
+            }
+        }
+        return saved
+    }
+
+    /// One StatusSettings save is in flight at a time; later writers wait here.
+    func waitForStatusSettingsSave() async {
+        while profileStatusSaveID != nil {
+            await withCheckedContinuation { statusSettingsSaveWaiters.append($0) }
+        }
+    }
+
+    func finishStatusSettingsSave() {
+        profileStatusSaveID = nil
+        let waiters = statusSettingsSaveWaiters
+        statusSettingsSaveWaiters = []
+        for waiter in waiters { waiter.resume() }
     }
 
     func publishProfileCustomStatus() {
@@ -72,13 +125,11 @@ extension DiscordRESTProvider {
 
     private func expireCustomStatus(_ expected: ProfileCustomStatus, generation: UInt64) async {
         do {
-            while profileStatusSaveID != nil {
-                try await Task.sleep(for: .milliseconds(200))
-            }
+            await waitForStatusSettingsSave()
             try Task.checkCancellation()
             guard generation == profileEditingGeneration,
                   profileStatusSettings.flatMap(DiscordSettingsProto.customStatus(in:)) == expected else { return }
-            _ = try await updateProfileCustomStatus(nil)
+            _ = try await saveStatusSettings(userInitiated: false) { DiscordSettingsProto.updatingCustomStatus(nil, in: $0) }
         } catch {
             if !Task.isCancelled { gatewayLogger.error("Custom status expiration could not be saved.") }
         }

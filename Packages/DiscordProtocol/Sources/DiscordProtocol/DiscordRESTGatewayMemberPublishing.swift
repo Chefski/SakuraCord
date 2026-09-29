@@ -8,12 +8,10 @@ extension DiscordRESTProvider {
         )
         let members = cachedMembers[guildID] ?? []
         if previous != members.first(where: { $0.id == member.id }) {
-            continuation?.yield(
-                .membersChanged(
-                    guildID: guildID,
-                    members: members,
-                    groups: selectedMemberListGroups(guildID: guildID)
-                )
+            publishMembers(
+                guildID: guildID,
+                members: members,
+                groups: selectedMemberListGroups(guildID: guildID)
             )
         }
         if member.id == currentUser?.id,
@@ -38,12 +36,10 @@ extension DiscordRESTProvider {
             }
         }
         let members = cachedMembers[guildID] ?? []
-        continuation?.yield(
-            .membersChanged(
-                guildID: guildID,
-                members: members,
-                groups: selectedMemberListGroups(guildID: guildID)
-            )
+        publishMembers(
+            guildID: guildID,
+            members: members,
+            groups: selectedMemberListGroups(guildID: guildID)
         )
         if userID == currentUser?.id {
             continuation?.yield(.currentUserRolesChanged(guildID: guildID, roleIDs: []))

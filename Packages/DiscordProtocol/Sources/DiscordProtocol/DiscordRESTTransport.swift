@@ -257,12 +257,22 @@ extension DiscordRESTProvider {
         body: [String: JSONValue]? = nil,
         headers: [String: String] = [:]
     ) async throws -> Response {
-        let isMessageHistoryRequest = method == "GET"
-            && path.hasPrefix("/channels/")
-            && path.hasSuffix("/messages")
         let (data, response) = try await perform(
             path, method: method, query: query, body: body, headers: headers
         )
+        return try decodedResponse(data, response, method: method, path: path)
+    }
+
+    /// Maps a non-2xx response to its provider error, or decodes the body.
+    func decodedResponse<Response: Decodable>(
+        _ data: Data,
+        _ response: HTTPURLResponse,
+        method: String,
+        path: String
+    ) throws -> Response {
+        let isMessageHistoryRequest = method == "GET"
+            && path.hasPrefix("/channels/")
+            && path.hasSuffix("/messages")
         guard (200 ..< 300).contains(response.statusCode) else {
             if response.statusCode == 401 {
                 authorizationValue = nil
@@ -969,6 +979,8 @@ extension DiscordRESTProvider {
         {
             return true
         }
+        // Invalid type-1 settings data: the settings writer reloads, so the server wins.
+        if status == 400, discordCode == 50105, method == "PATCH", path == "/users/@me/settings-proto/1" { return false }
         // A structured error for user-entered profile text/media is editable.
         // Known poll failures can race local expiry and permission checks.
         if status == 400, profileValidationError(data: data, method: method, path: path) != nil { return false }

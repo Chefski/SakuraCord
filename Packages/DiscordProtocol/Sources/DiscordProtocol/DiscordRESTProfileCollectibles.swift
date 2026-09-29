@@ -110,7 +110,7 @@ public extension DiscordRESTProvider {
         inboxScheduledEvents = InboxScheduledEvents()
         inboxSettingsProto = nil
         inboxSettingsSaveID = nil
-        profileStatusSaveID = nil
+        finishStatusSettingsSave()
         profileCustomStatusExpiryTask?.cancel()
         profileCustomStatusExpiryTask = nil
         profileInventoryTask?.cancel()

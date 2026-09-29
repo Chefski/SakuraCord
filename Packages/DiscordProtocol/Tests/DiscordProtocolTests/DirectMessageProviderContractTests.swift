@@ -1702,7 +1702,7 @@ private func privateCallPayload(
     ])
 }
 
-private actor DirectMessageCredentialStore: CredentialStore {
+actor DirectMessageCredentialStore: CredentialStore {
     func store(
         _ credential: Data,
         accountID: String
@@ -1735,12 +1735,12 @@ private actor ProfileSaveReceipt {
     }
 }
 
-private struct CapturedQueryItem: Equatable, Sendable {
+struct CapturedQueryItem: Equatable, Sendable {
     var name: String
     var value: String?
 }
 
-private struct CapturedDirectMessageRequest: @unchecked Sendable {
+struct CapturedDirectMessageRequest: @unchecked Sendable {
     var method: String
     var path: String
     var encodedPath: String
@@ -1748,9 +1748,10 @@ private struct CapturedDirectMessageRequest: @unchecked Sendable {
     var hadAuthorization: Bool
     var contentType: String?
     var body: [String: Any]?
+    var receivedAt = ContinuousClock.now
 }
 
-private final class DirectMessageURLProtocol:
+final class DirectMessageURLProtocol:
     URLProtocol,
     @unchecked Sendable
 {
@@ -1758,11 +1759,15 @@ private final class DirectMessageURLProtocol:
         [CapturedDirectMessageRequest] = []
     nonisolated(unsafe) static var ringStatus = 204
     nonisolated(unsafe) static var profileHasEffect = false
+    /// Replies consumed in order by settings-proto/1 requests; when empty, a
+    /// PATCH echoes its settings.
+    nonisolated(unsafe) static var settingsReplies: [(status: Int, body: String)] = []
 
     static func reset() {
         requests = []
         ringStatus = 204
         profileHasEffect = false
+        settingsReplies = []
     }
 
     override static func canInit(with request: URLRequest) -> Bool {
@@ -1800,15 +1805,17 @@ private final class DirectMessageURLProtocol:
             )
         )
 
-        let body: String
+        var body: String
         do {
             body = try Self.responseBody(path: request.url?.path, query: query, requestBody: requestBody)
         } catch {
             client?.urlProtocol(self, didFailWithError: error)
             return
         }
-        let status: Int
-        if requestBody?["bio"] as? String == "rejected-bio" {
+        var status: Int
+        if request.url?.path == "/api/v9/users/@me/settings-proto/1", !Self.settingsReplies.isEmpty {
+            (status, body) = Self.settingsReplies.removeFirst()
+        } else if requestBody?["bio"] as? String == "rejected-bio" {
             status = 400
         } else if request.url?.path == "/api/v9/games/autocomplete", query.first?.value == "unavailable" {
             status = 503
