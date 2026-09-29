@@ -1055,6 +1055,66 @@ func `inline rich tokens inherit their enclosing spoiler`() throws {
     }
 }
 
+@Test
+@MainActor
+func `forum previews conceal hidden spoilers and share their reveal with the timeline`() throws {
+    let model = AppModel(launchMode: .offlineTesting)
+    let messageID = MessageID(rawValue: 8_600)
+    let source = "before ||secret [site](https://example.com) <:glow:123>|| after"
+    let preview = ForumPostPreviewTextView()
+    preview.configure(
+        ForumPostPreviewTextView.Configuration(
+            messageID: messageID,
+            source: source,
+            mentionPresentations: [:],
+            fontSize: 13,
+            emojiSize: 18,
+            maximumNumberOfLines: 2,
+            isEmphasized: true,
+            underlinesLinks: false,
+            prefix: ForumPostPreviewTextView.Prefix(
+                value: NSAttributedString(string: "Ada: "),
+                accessibilityText: "Ada: "
+            )
+        ),
+        revealStore: model.timelineSpoilerRevealStore
+    )
+    let card = NSView(frame: CGRect(x: 0, y: 0, width: 400, height: 100))
+    preview.frame = CGRect(origin: .zero, size: preview.measuredSize(proposedWidth: 400))
+    card.addSubview(preview)
+
+    #expect(preview.accessibilityValue() as? String == "Ada: before Spoiler after")
+    let spoiler = try #require(
+        NativeTimelineTextSpoilers.ranges(in: preview.content).first
+    )
+    let spoilerFrame = try #require(preview.hiddenSpoilerFrames(for: spoiler).first)
+    let spoilerPoint = CGPoint(x: spoilerFrame.midX, y: spoilerFrame.midY)
+    // Hidden spoilers take the click; the rest of the text opens the post.
+    #expect(preview.hitTest(spoilerPoint) === preview)
+    #expect(preview.hitTest(CGPoint(x: 1, y: spoilerFrame.midY)) == nil)
+
+    // Revealing the timeline's rendering of the same message reveals it here.
+    let timelineValue = NativeTimelineCoreText.make(
+        prepared: RichMessageAttributedText.prepare(source: source),
+        emojiSize: 22,
+        mentionPresentations: [:]
+    )
+    let timelineSpoiler = try #require(
+        NativeTimelineTextSpoilers.ranges(in: timelineValue).first
+    )
+    model.timelineSpoilerRevealStore.revealText(NativeTimelineTextSpoilerRevealKey(
+        messageID: messageID,
+        contentID: NativeTimelineTextSpoilerRevealKey.messageContentID,
+        contentHash: timelineValue.string.hashValue,
+        rangeLocation: timelineSpoiler.location
+    ))
+    #expect(
+        preview.accessibilityValue() as? String
+            == "Ada: before secret site :glow: after"
+    )
+    #expect(preview.hitTest(spoilerPoint) == nil)
+}
+
 @Test func `native scrolling caches bounded rows and directly paints oversized rows`() {
     let cacheCostLimit = 32 * 1_024 * 1_024
     #expect(

@@ -1096,7 +1096,7 @@ extension NativeTimelineCanvasView {
         case .beginningTitle, .beginningDescription:
             return nil
         case .content:
-            return "message-content"
+            return NativeTimelineTextSpoilerRevealKey.messageContentID
         case let .embed(embedID, textIndex):
             return "embed:\(embedID):\(textIndex)"
         case let .component(layoutIndex, textIndex):

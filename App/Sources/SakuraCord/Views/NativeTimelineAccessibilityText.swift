@@ -44,7 +44,9 @@ nonisolated enum TimelineTextAccessibility {
             if let mention = (
                 attributes[.nativeTimelineMention]
                     as? NativeTimelineMentionBox
-            )?.presentation {
+            )?.presentation
+                ?? (attributes[.attachment] as? MentionTextAttachment)?.presentation
+            {
                 result += mention.label
             } else if let rawToken =
                 attributes[.discordEmojiToken] as? String
