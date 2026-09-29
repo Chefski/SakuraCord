@@ -70,7 +70,8 @@ enum NativeTimelineLinkAppearance {
         guard value.attribute(
             .link,
             at: characterIndex,
-            effectiveRange: &linkRange
+            longestEffectiveRange: &linkRange,
+            in: NSRange(location: 0, length: value.length)
         ) != nil, linkRange.length > 0
         else { return }
         value.addAttribute(
