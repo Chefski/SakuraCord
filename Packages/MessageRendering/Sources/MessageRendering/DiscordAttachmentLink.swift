@@ -12,6 +12,8 @@ public struct DiscordAttachmentLink: Hashable, Sendable {
             + #"/(?:attachments|ephemeral-attachments)/\d+/\d+/([A-Za-z0-9._-]*[A-Za-z0-9_-])(?:\?[A-Za-z0-9?&=_-]*)?"#
     )
 
+    private static let refreshLeadTime: TimeInterval = 60 * 60
+
     /// Returns the attachment link beginning at the start of `source` and the index after it.
     public static func prefix(
         of source: Substring
@@ -24,5 +26,20 @@ public struct DiscordAttachmentLink: Hashable, Sendable {
               let url = URL(string: String(source.base[matchRange]))
         else { return nil }
         return (DiscordAttachmentLink(url: url, name: String(source.base[nameRange])), matchRange.upperBound)
+    }
+
+    /// Whether a URL is exactly a Discord attachment link.
+    public static func matches(_ url: URL) -> Bool {
+        let value = url.absoluteString
+        return prefix(of: value[...])?.endIndex == value.endIndex
+    }
+
+    /// Discord refreshes a link that is unsigned or whose hexadecimal `ex` expiry is within an hour.
+    public static func needsRefresh(_ url: URL, now: Date) -> Bool {
+        guard let expiry = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?.first(where: { $0.name == "ex" })?.value
+            .flatMap({ UInt64($0, radix: 16) })
+        else { return true }
+        return Date(timeIntervalSince1970: TimeInterval(expiry)) <= now.addingTimeInterval(refreshLeadTime)
     }
 }

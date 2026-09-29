@@ -537,3 +537,16 @@ import Testing
     }
     #expect(DiscordMarkdown.appKitAttributed("`\(angle)`").string == angle)
 }
+
+@Test func `attachment links refresh when unsigned or expiring within the hour`() throws {
+    let now = Date(timeIntervalSince1970: 0x6A00_0000)
+    func url(_ query: String) throws -> URL {
+        try #require(URL(string: "https://cdn.discordapp.com/attachments/1/2/a.png\(query)"))
+    }
+    #expect(DiscordAttachmentLink.needsRefresh(try url(""), now: now))
+    #expect(DiscordAttachmentLink.needsRefresh(try url("?ex=zz"), now: now))
+    #expect(DiscordAttachmentLink.needsRefresh(try url("?ex=6a000e10&is=1&hm=2&"), now: now))
+    #expect(!DiscordAttachmentLink.needsRefresh(try url("?ex=6a000e11&is=1&hm=2&"), now: now))
+    #expect(DiscordAttachmentLink.matches(try url("?ex=6a000e11&is=1&hm=2&")))
+    #expect(!DiscordAttachmentLink.matches(try #require(URL(string: "https://cdn.discordapp.com/attachments/1/2/a.png#x"))))
+}
