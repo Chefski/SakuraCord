@@ -75,6 +75,9 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
     public var activityText: String?
     public var customStatus: String?
     public var isListeningToMusic: Bool
+    /// Whether the member's latest presence is online on mobile and has no
+    /// desktop or web session.
+    public var isMobileOnly: Bool
     /// Discord's membership-screening state. A pending member does not have
     /// normal guild channel access even when role IDs are already present.
     public var isPending: Bool?
@@ -95,6 +98,12 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
         status.isVisibleOnline
     }
 
+    /// Discord shows a phone instead of the online dot when mobile is the
+    /// member's only active platform.
+    public var isOnlineViaMobile: Bool {
+        status == .online && isMobileOnly
+    }
+
     public init(
         user: User,
         roleName: String,
@@ -111,6 +120,7 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
         activityText: String? = nil,
         customStatus: String? = nil,
         isListeningToMusic: Bool = false,
+        isMobileOnly: Bool = false,
         isPending: Bool? = nil,
         flags: UInt64? = nil,
         joinedAt: Date? = nil,
@@ -131,6 +141,7 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
         self.activityText = activityText
         self.customStatus = customStatus
         self.isListeningToMusic = isListeningToMusic
+        self.isMobileOnly = isMobileOnly
         self.isPending = isPending
         self.flags = flags
         self.joinedAt = joinedAt
@@ -153,6 +164,7 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
         activityText: String? = nil,
         customStatus: String? = nil,
         isListeningToMusic: Bool = false,
+        isMobileOnly: Bool = false,
         isPending: Bool? = nil,
         flags: UInt64? = nil,
         joinedAt: Date? = nil,
@@ -173,6 +185,7 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
         self.activityText = activityText
         self.customStatus = customStatus
         self.isListeningToMusic = isListeningToMusic
+        self.isMobileOnly = isMobileOnly
         self.isPending = isPending
         self.flags = flags
         self.joinedAt = joinedAt
@@ -183,7 +196,7 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
         case user, roleName, roleID, rolePosition, isRoleCategory, status, roleIDs, roles,
              guildAvatarURL,
              globalDisplayName, guildNickname, guildProfileCosmetics, activityText, customStatus, isListeningToMusic,
-             memberListIndex, joinedAt
+             isMobileOnly, memberListIndex, joinedAt
     }
 
     public init(from decoder: Decoder) throws {
@@ -203,6 +216,7 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
         activityText = try container.decodeIfPresent(String.self, forKey: .activityText)
         customStatus = try container.decodeIfPresent(String.self, forKey: .customStatus)
         isListeningToMusic = try container.decodeIfPresent(Bool.self, forKey: .isListeningToMusic) ?? false
+        isMobileOnly = try container.decodeIfPresent(Bool.self, forKey: .isMobileOnly) ?? false
         memberListIndex = try container.decodeIfPresent(Int.self, forKey: .memberListIndex)
         joinedAt = try container.decodeIfPresent(Date.self, forKey: .joinedAt)
     }

@@ -1252,7 +1252,7 @@ extension DirectMessageProviderContractTests {
         await provider.disconnect()
     }
 
-    @Test func `DM presence and custom status follow prioritized Ready and guildless updates without REST`() async throws {
+    @Test func `DM presence, platform, and custom status follow prioritized Ready and guildless updates without REST`() async throws {
         DirectMessageURLProtocol.reset()
         let provider = makeProvider()
         await provider.receiveGatewayDispatchForTesting(
@@ -1277,6 +1277,7 @@ extension DirectMessageProviderContractTests {
                         .object([
                             "user_id": .string("2"),
                             "status": .string("idle"),
+                            "client_status": .object(["mobile": .string("idle")]),
                             "activities": .array([
                                 .object([
                                     "type": .number(4),
@@ -1292,6 +1293,7 @@ extension DirectMessageProviderContractTests {
         var member = try #require(await provider.members(in: nil).first)
         #expect(member.user.displayName == "Maya")
         #expect(member.status == .idle)
+        #expect(!member.isOnlineViaMobile)
         #expect(member.customStatus == "Shipping tiny details")
 
         await provider.receiveGatewayDispatchForTesting(
@@ -1299,12 +1301,28 @@ extension DirectMessageProviderContractTests {
             data: .object([
                 "user": .object(["id": .string("2")]),
                 "status": .string("online"),
+                "client_status": .object(["mobile": .string("online")]),
                 "activities": .array([]),
             ])
         )
         member = try #require(await provider.members(in: nil).first)
         #expect(member.status == .online)
+        #expect(member.isOnlineViaMobile)
         #expect(member.customStatus == nil)
+
+        await provider.receiveGatewayDispatchForTesting(
+            name: "PRESENCE_UPDATE",
+            data: .object([
+                "user": .object(["id": .string("2")]),
+                "status": .string("online"),
+                "client_status": .object([
+                    "mobile": .string("online"),
+                    "desktop": .string("idle"),
+                ]),
+            ])
+        )
+        member = try #require(await provider.members(in: nil).first)
+        #expect(!member.isOnlineViaMobile)
         #expect(DirectMessageURLProtocol.requests.isEmpty)
         await provider.disconnect()
     }

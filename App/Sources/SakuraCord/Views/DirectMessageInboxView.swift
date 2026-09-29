@@ -117,6 +117,7 @@ private struct DirectMessageInboxRow: View {
                 channel: channel,
                 size: 32,
                 status: channel.kind == .directMessage ? member?.status ?? .offline : nil,
+                isMobile: member?.isOnlineViaMobile ?? false,
                 animates: animatesAvatar,
                 isHovered: isHovered
             )
@@ -245,6 +246,7 @@ struct DirectMessageAvatar: View {
     let channel: Channel
     let size: CGFloat
     let status: PresenceStatus?
+    var isMobile = false
     let animates: Bool
     var isHovered: Bool?
     @State private var isPointerInside = false
@@ -260,7 +262,8 @@ struct DirectMessageAvatar: View {
             AvatarPresenceView(
                 status: status,
                 avatarSize: size,
-                indicatorSize: size * 0.3
+                indicatorSize: size * 0.3,
+                isMobile: isMobile
             ) {
                 avatar
             }

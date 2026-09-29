@@ -84,6 +84,26 @@ extension [GuildActivityDTO] {
 struct GuildPresenceDTO: Decodable {
     var status: String?
     var activities: [GuildActivityDTO]?
+    var clientStatus: ClientStatusDTO?
+
+    enum CodingKeys: String, CodingKey {
+        case status, activities
+        case clientStatus = "client_status"
+    }
+}
+
+/// Per-platform statuses from a Gateway presence. Discord omits a platform
+/// key when the user has no session on it.
+struct ClientStatusDTO: Decodable {
+    var desktop: String?
+    var mobile: String?
+    var web: String?
+
+    /// Discord shows the mobile indicator only for an online mobile session
+    /// with no desktop or web session alongside it.
+    var isMobileOnly: Bool {
+        mobile == "online" && desktop == nil && web == nil
+    }
 }
 
 struct GuildMemberDTO: Decodable {
@@ -181,6 +201,7 @@ struct GuildMemberDTO: Decodable {
             activityText: primaryActivity?.displayText ?? customStatus,
             customStatus: customStatus,
             isListeningToMusic: primaryActivity?.type == 2,
+            isMobileOnly: (overridePresence ?? presence)?.clientStatus?.isMobileOnly ?? false,
             isPending: pending,
             flags: flags,
             joinedAt: joinedAt.flatMap(DiscordDate.parse)

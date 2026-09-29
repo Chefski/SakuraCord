@@ -437,18 +437,21 @@ extension NativeMemberListCanvasView {
             height: NativeMemberListMetrics.avatarSize
         )
         let opacity: CGFloat = !member.isListedOnline ? 0.55 : 1
+        let isMobile = member.isOnlineViaMobile
         let presenceIndicatorRect = AvatarPresencePresentation.indicatorRect(
             avatarRect: avatar,
-            indicatorSize: NativeMemberListMetrics.presenceIndicatorSize
+            indicatorSize: NativeMemberListMetrics.presenceIndicatorSize,
+            isMobile: isMobile
         )
         context.saveGState()
         context.setAlpha(opacity)
         if member.memberListStatus != nil {
             context.addRect(context.boundingBoxOfClipPath)
-            context.addEllipse(in: AvatarPresencePresentation.cutoutRect(
+            context.addPath(AvatarPresencePresentation.cutoutPath(
                 avatarRect: avatar,
-                indicatorSize: NativeMemberListMetrics.presenceIndicatorSize
-            ))
+                indicatorSize: NativeMemberListMetrics.presenceIndicatorSize,
+                isMobile: isMobile
+            ).cgPath)
             context.clip(using: .evenOdd)
         }
 
@@ -505,6 +508,7 @@ extension NativeMemberListCanvasView {
         if let status = member.memberListStatus {
             drawPresenceIndicator(
                 status,
+                isMobile: isMobile,
                 in: presenceIndicatorRect,
                 context: context
             )
@@ -562,14 +566,17 @@ extension NativeMemberListCanvasView {
 
     func drawPresenceIndicator(
         _ status: PresenceStatus,
+        isMobile: Bool,
         in rect: CGRect,
         context: CGContext
     ) {
         context.saveGState()
-        context.addEllipse(in: rect)
+        context.addPath(
+            PresenceIndicatorPresentation.outline(isMobile: isMobile, in: rect).cgPath
+        )
         context.clip()
         context.addPath(
-            PresenceIndicatorPresentation.path(for: status, in: rect).cgPath
+            PresenceIndicatorPresentation.path(for: status, isMobile: isMobile, in: rect).cgPath
         )
         context.setFillColor(
             Self.color(
