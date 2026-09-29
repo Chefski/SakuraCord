@@ -684,33 +684,13 @@ struct EmojiPickerSearchField: View {
     let placeholder: String
 
     var body: some View {
-        HStack(spacing: ChatChromeMetrics.pickerSearchHeaderSpacing) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(
-                    size: ChatChromeMetrics.pickerSearchHeaderIconSize,
-                    weight: .medium
-                ))
-                .foregroundStyle(.secondary)
+        PickerSearchHeader(text: $text, focus: { isFocused = true }, input: {
             PickerSearchTextField(
                 text: $text,
                 isFocused: $isFocused,
                 placeholder: placeholder
             )
-                .frame(maxWidth: .infinity)
-            if !text.isEmpty {
-                Button { text = "" } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Clear search")
-            }
-        }
-        .padding(.horizontal, ChatChromeMetrics.pickerSearchHeaderInset)
-        .frame(height: ChatChromeMetrics.pickerSearchHeaderHeight)
-        .contentShape(Rectangle())
-        .onTapGesture { isFocused = true }
-        .accessibilityIdentifier("picker-search")
+        })
         .task {
             await Task.yield()
             isFocused = true

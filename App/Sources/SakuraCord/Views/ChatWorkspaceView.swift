@@ -9,12 +9,31 @@ struct ChatWorkspaceView: View {
 
     @ViewBuilder var body: some View {
         if let guildID = model.selectedGuildID, let page = model.guildWorkspacePage {
-            switch page {
-            case .channelsAndRoles: GuildCustomizationView(model: model, guildID: guildID)
-                .id("customization-\(guildID)-\(model.currentUser?.id.description ?? "")")
-            case .guide: GuildGuideView(model: model, guildID: guildID)
-                .id("guide-\(guildID)-\(model.currentUser?.id.description ?? "")")
+            HStack(spacing: 0) {
+                Group {
+                    switch page {
+                    case .channelsAndRoles: GuildCustomizationView(model: model, guildID: guildID)
+                        .id("customization-\(guildID)-\(model.currentUser?.id.description ?? "")")
+                    case .guide: GuildGuideView(model: model, guildID: guildID)
+                        .id("guide-\(guildID)-\(model.currentUser?.id.description ?? "")")
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                if model.customizationPreviewChannel != nil {
+                    Divider()
+                    if model.openThread != nil {
+                        ThreadConversationView(model: model)
+                    } else {
+                        SupplementaryConversationPane {
+                            ChatDetailView(model: model)
+                        }
+                    }
+                } else if page == .guide, let resource = model.onboarding.guides[guildID]?.resource {
+                    Divider()
+                    GuildResourceConversationView(model: model, guildID: guildID, resource: resource)
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             conversation
         }

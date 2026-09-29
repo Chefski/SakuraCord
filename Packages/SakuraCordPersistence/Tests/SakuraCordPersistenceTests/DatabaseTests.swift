@@ -70,7 +70,7 @@ import Testing
             """
         )
     }
-    #expect(tableNames == ["drafts", "grdb_migrations", "onboardingDrafts"])
+    #expect(tableNames == ["drafts", "grdb_migrations"])
 }
 
 private func createVersionFiveDatabase(
@@ -171,18 +171,24 @@ private func createVersionFiveDatabase(
     }
 }
 
-@Test func `unfinished onboarding survives reopening and remains account scoped`() async throws {
+@Test func `legacy onboarding choices are dropped without removing message drafts`() async throws {
     let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: directory) }
-    let guildID = GuildID(rawValue: 100)
-    let first = try SakuraCordDatabase(accountID: .init(rawValue: 1), directory: directory)
-    let second = try SakuraCordDatabase(accountID: .init(rawValue: 2), directory: directory)
-    let draft = GuildOnboardingDraft(responses: ["11"], baselineResponses: [], promptID: "20", joinedAt: .now, initial: true)
-    try await first.saveOnboardingDraft(draft, guildID: guildID)
-    let reopened = try SakuraCordDatabase(accountID: .init(rawValue: 1), directory: directory)
-    #expect(try await reopened.onboardingDraft(guildID: guildID) == draft)
-    #expect(try await second.onboardingDraft(guildID: guildID) == nil)
-    #expect(try await reopened.draftStorageSummary().draftCount == 1)
-    try await reopened.clearDrafts()
-    #expect(try await first.onboardingDraft(guildID: guildID) == nil)
+    let accountID = AccountID(rawValue: 1)
+    let channelID = ChannelID(rawValue: 12)
+    let database = try SakuraCordDatabase(accountID: accountID, directory: directory)
+    try await database.saveDraft("keep this message", channelID: channelID)
+
+    // Recreate the previous schema with an unfinished onboarding draft.
+    let queue = try DatabaseQueue(path: directory.appending(path: "account-\(accountID).sqlite").path)
+    try await queue.write { db in
+        try db.execute(sql: "DELETE FROM grdb_migrations WHERE identifier = 'v11-session-only-onboarding'")
+        try db.execute(sql: "CREATE TABLE onboardingDrafts (guildID TEXT PRIMARY KEY NOT NULL, payload BLOB NOT NULL)")
+        try db.execute(sql: "INSERT INTO onboardingDrafts VALUES ('100', X'00')")
+    }
+
+    let upgraded = try SakuraCordDatabase(accountID: accountID, directory: directory)
+    #expect(try await upgraded.draft(channelID: channelID) == "keep this message")
+    #expect(try await upgraded.draftStorageSummary().draftCount == 1)
+    #expect(try await queue.read { db in try !db.tableExists("onboardingDrafts") })
 }

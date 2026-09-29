@@ -584,6 +584,7 @@ enum MessageReplySummary {
         content: String,
         mentionLabel: (RenderedMention) -> String = { mention in
             switch mention.kind {
+            case .guildNavigation: GuildNavigationMention(rawValue: mention.id)?.title ?? mention.rawToken
             case .user: "@unknown-user"
             case .role: "@unknown-role"
             case .channel: "#unknown-channel"

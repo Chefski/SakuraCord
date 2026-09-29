@@ -34,6 +34,7 @@ extension MockMessageFixtureBuilder {
                                     label: "Native macOS app",
                                     value: "macos",
                                     description: "AppKit and SwiftUI",
+                                    emoji: EmojiReference(id: "900000000000000201", name: "native_mac"),
                                     imageURL: MockChatFixture.demoAsset(
                                         "guild-native-lab"
                                     ),
@@ -56,7 +57,9 @@ extension MockMessageFixtureBuilder {
                                     label: "Performance",
                                     value: "performance",
                                     description: "Profiling and optimization",
-                                    emoji: EmojiReference(name: "⚡️")
+                                    emoji: EmojiReference(id: "900000000000000203", name: "animated_fixture", isAnimated: true),
+                                    imageURL: MockChatFixture.animatedDemoAsset(),
+                                    imageShape: .roundedRectangle
                                 ),
                             ],
                             channelTypes: []

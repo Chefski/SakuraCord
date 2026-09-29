@@ -93,26 +93,10 @@ public struct GuildOnboardingOption: Decodable, Identifiable, Equatable, Sendabl
     }
 }
 
-/// Only unfinished, user-authored choices and their editing context go to the account database.
-public struct GuildOnboardingDraft: Codable, Equatable, Sendable {
-    public var responses: Set<String>
-    public var baselineResponses: Set<String>
-    public var promptID: String?
-    public var joinedAt: Date?
-    public var initial: Bool
-
-    public init(responses: Set<String>, baselineResponses: Set<String>, promptID: String?, joinedAt: Date?, initial: Bool) {
-        self.responses = responses
-        self.baselineResponses = baselineResponses
-        self.promptID = promptID
-        self.joinedAt = joinedAt
-        self.initial = initial
-    }
-}
-
 public enum GuildChannelSelection {
     public static let enabledFlag: UInt64 = 1 << 14
     public static let selectedFlag: UInt64 = 1 << 12
+    public static let favoriteFlag: UInt64 = 1 << 11
 
     public static func isSelected(_ channelID: ChannelID, settings: GuildNotificationSettings) -> Bool {
         settings.channelOverrides.first { $0.channelID == channelID }.map { $0.flags & selectedFlag != 0 } ?? false

@@ -1,5 +1,6 @@
 import DiscordProtocol
 import Foundation
+import MessageRendering
 import SakuraCordModels
 
 nonisolated enum GuildWorkspacePage: Hashable, Sendable {
@@ -32,6 +33,30 @@ struct GuildResourceState {
 }
 
 extension AppModel {
+    func hasGuildNavigationDestination(_ destination: GuildNavigationMention, in guildID: GuildID) -> Bool {
+        guard let guild = serverRailGuildsByID[guildID], !guild.isUnavailable else { return false }
+        switch destination {
+        case .guide: return hasGuildGuide(in: guildID)
+        case .browse: return featuresSettings.channelManagement && hasChannelsAndRoles(in: guildID)
+        case .customize: return hasChannelsAndRoles(in: guildID) && hasCustomizationQuestions(in: guildID)
+        }
+    }
+
+    func openGuildNavigationDestination(_ destination: GuildNavigationMention, in guildID: GuildID) {
+        guard hasGuildNavigationDestination(destination, in: guildID) else { return }
+        startConversationNavigation { model, account in
+            if model.selectedGuildID != guildID { await model.activateGuild(guildID, account: account) }
+            guard !Task.isCancelled, model.isCurrentAccountSession(account), model.selectedGuildID == guildID,
+                  model.hasGuildNavigationDestination(destination, in: guildID) else { return }
+            switch destination {
+            case .guide: model.openGuildGuide(in: guildID)
+            case .browse, .customize:
+                model.openChannelsAndRoles(in: guildID)
+                model.showGuildCustomizationChannels(destination == .browse)
+            }
+        }
+    }
+
     var onboardingEntryGuildID: GuildID? {
         guard let guildID = selectedGuildID,
               serverRailGuildsByID[guildID]?.features.contains("GUILD_ONBOARDING") == true else { return nil }
@@ -40,12 +65,23 @@ extension AppModel {
     }
 
     var guildWorkspacePage: GuildWorkspacePage? {
-        guard onboarding.presentedGuildID == selectedGuildID, selectedGuildID != nil else { return nil }
+        guard let guildID = selectedGuildID, onboarding.presentedGuildID == guildID else { return nil }
+        if onboarding.page == .channelsAndRoles, !hasChannelsAndRoles(in: guildID) { return nil }
         return onboarding.page
     }
 
     func hasChannelsAndRoles(in guildID: GuildID) -> Bool {
-        snapshot?.guilds.first { $0.id == guildID }?.features.contains("GUILD_ONBOARDING") == true
+        serverRailGuildsByID[guildID]?.features.contains("COMMUNITY") == true
+            && (featuresSettings.channelManagement || hasCustomizationQuestions(in: guildID))
+    }
+
+    func hasCustomizationQuestions(in guildID: GuildID) -> Bool {
+        serverRailGuildsByID[guildID]?.features.isSuperset(of: ["COMMUNITY", "GUILD_ONBOARDING_HAS_PROMPTS"]) == true
+    }
+
+    func customizationTitle(in guildID: GuildID?) -> String {
+        if !featuresSettings.channelManagement { return "Roles" }
+        return guildID.map { hasCustomizationQuestions(in: $0) } == true ? "Channels & Roles" : "Browse Channels"
     }
 
     func hasGuildGuide(in guildID: GuildID) -> Bool {
@@ -68,6 +104,9 @@ extension AppModel {
             onboarding.presentedGuildID = nil
             return
         }
+        closeCustomizationPreview()
+        closeThread()
+        closeVoiceChat()
         onboarding.page = .guide
         onboarding.presentedGuildID = guildID
         onboarding.guides[guildID]?.resource = nil
