@@ -373,6 +373,19 @@ func `Desktop and sound delivery are independent and share message filters`(appI
     )
     #expect(preview.subtitle.isEmpty)
     #expect(preview.body == "Hi @Friend @Designers #general :wave:")
+    let spoilerPreview = { (content: String) in
+        var spoilered = message
+        spoilered.content = content
+        return NotificationContentPresentation.make(
+            message: spoilered, channel: channel, guild: nil, style: .full,
+            mentionLabel: { _ in "@Friend" }
+        ).body
+    }
+    #expect(spoilerPreview("||only||") == "<spoiler>")
+    #expect(
+        spoilerPreview("<@2> said ||the **end** <@2> <:wave:7>|| then ||more||")
+            == "@Friend said <spoiler> then <spoiler>"
+    )
     #expect(NotificationContentPresentation.make(
         message: message, channel: channel, guild: nil, style: .senderOnly
     ).body == "New message")

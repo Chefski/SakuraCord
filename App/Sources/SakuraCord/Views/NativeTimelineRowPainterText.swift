@@ -17,6 +17,7 @@ extension NativeTimelineRowPainter {
         let color: NSColor
         let alignment: NSTextAlignment
         let lineBreakMode: NSLineBreakMode
+        let concealedSpoilerRanges: [NSRange]
         let context: CGContext
     }
 
@@ -51,11 +52,12 @@ extension NativeTimelineRowPainter {
         color: NSColor,
         alignment: NSTextAlignment = .left,
         lineBreakMode: NSLineBreakMode = .byTruncatingTail,
-        isInteractiveHovered: Bool = false
+        isInteractiveHovered: Bool = false,
+        concealedSpoilerRanges: [NSRange] = []
     ) {
         guard frame.width > 0, frame.height > 0 else { return }
         guard let context = NSGraphicsContext.current?.cgContext else { return }
-        let attributed = coreTextValue(
+        var attributed = coreTextValue(
             value,
             font: font,
             color: color,
@@ -63,6 +65,13 @@ extension NativeTimelineRowPainter {
             lineBreakMode: lineBreakMode,
             isInteractiveHovered: isInteractiveHovered
         )
+        if !concealedSpoilerRanges.isEmpty {
+            let concealed = NSMutableAttributedString(attributedString: attributed as NSAttributedString)
+            for range in concealedSpoilerRanges {
+                NativeTimelineSpoilerAppearance.concealText(in: concealed, range: range)
+            }
+            attributed = concealed as CFAttributedString
+        }
         let sourceLine = CTLineCreateWithAttributedString(attributed)
         let sourceWidth = CGFloat(CTLineGetTypographicBounds(sourceLine, nil, nil, nil))
         let usesSingleLine = !value.contains("\n")
@@ -76,6 +85,7 @@ extension NativeTimelineRowPainter {
                 color: color,
                 alignment: alignment,
                 lineBreakMode: lineBreakMode,
+                concealedSpoilerRanges: concealedSpoilerRanges,
                 context: context
             ))
         } else {
@@ -170,6 +180,26 @@ extension NativeTimelineRowPainter {
         default: 0
         }
         let baseline = max(descent, (frame.height - ascent - descent - leading) / 2 + descent)
+        for range in input.concealedSpoilerRanges {
+            let startX = CTLineGetOffsetForStringIndex(sourceLine, range.location, nil)
+            let endX = min(
+                CTLineGetOffsetForStringIndex(sourceLine, NSMaxRange(range), nil),
+                lineWidth
+            )
+            guard endX > startX else { continue }
+            let box = CGRect(
+                x: frame.minX + horizontalPosition + startX,
+                y: frame.maxY - baseline - ascent,
+                width: endX - startX,
+                height: ascent + descent
+            ).insetBy(dx: -2, dy: -1)
+            NativeTimelineSpoilerAppearance.textBackgroundColor(isHovered: false).setFill()
+            NSBezierPath(
+                roundedRect: box,
+                xRadius: NativeTimelineSpoilerAppearance.textCornerRadius,
+                yRadius: NativeTimelineSpoilerAppearance.textCornerRadius
+            ).fill()
+        }
         context.saveGState()
         context.translateBy(x: frame.minX, y: frame.maxY)
         context.scaleBy(x: 1, y: -1)

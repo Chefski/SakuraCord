@@ -1447,6 +1447,27 @@ public extension DiscordMarkdown {
 }
 
 public extension DiscordMarkdown {
+    /// Rendered text and whether it is inside a spoiler.
+    struct PlainTextRun: Hashable, Sendable {
+        public let text: String
+        public let isSpoiler: Bool
+    }
+
+    /// The rendered plain text, as ``attributed(_:)`` produces it, split into
+    /// runs that record the spoiler state message rendering gives them.
+    static func plainTextRuns(_ source: String) -> [PlainTextRun] {
+        var result: [PlainTextRun] = []
+        for (lineIndex, line) in appKitPlan(source).lines.enumerated() {
+            if lineIndex > 0 {
+                result.append(PlainTextRun(text: "\n", isSpoiler: false))
+            }
+            for run in line.runs {
+                result.append(PlainTextRun(text: run.text, isSpoiler: run.traits.contains(.spoiler)))
+            }
+        }
+        return result
+    }
+
     /// A rendered link and whether all of its text is inside a spoiler.
     struct LinkOccurrence: Hashable, Sendable {
         public let url: URL

@@ -131,17 +131,47 @@ nonisolated struct NotificationContentPresentation: Equatable, Sendable {
         guard !message.content.isEmpty else {
             return message.attachments.count == 1 ? "Sent an attachment" : "Sent attachments"
         }
-        return MessageDocument(source: message.content).segments.map { segment in
+        // Parse the whole message, with a placeholder for each inline token,
+        // so a spoiler around a mention or emoji is found like any other.
+        var source = ""
+        var labels: [String] = []
+        for segment in MessageDocument(source: message.content).segments {
             switch segment {
             case let .markdown(text):
-                String(DiscordMarkdown.attributed(text).characters)
+                source += text
             case let .customEmoji(emoji):
-                ":\(emoji.name):"
+                source.append(inlineTokenPlaceholder)
+                labels.append(":\(emoji.name):")
             case let .mention(mention):
-                mentionLabel?(mention) ?? fallbackMentionLabel(mention, message: message)
+                source.append(inlineTokenPlaceholder)
+                labels.append(mentionLabel?(mention) ?? fallbackMentionLabel(mention, message: message))
             }
-        }.joined()
+        }
+        // Like Discord, each spoiler reads as a placeholder, never its text.
+        var output = ""
+        var labelIndex = 0
+        var isInSpoiler = false
+        for run in DiscordMarkdown.plainTextRuns(source) {
+            if run.isSpoiler {
+                if !isInSpoiler { output += "<spoiler>" }
+                isInSpoiler = true
+                labelIndex += run.text.count { $0 == inlineTokenPlaceholder }
+                continue
+            }
+            isInSpoiler = false
+            for character in run.text {
+                guard character == inlineTokenPlaceholder else {
+                    output.append(character)
+                    continue
+                }
+                if labels.indices.contains(labelIndex) { output += labels[labelIndex] }
+                labelIndex += 1
+            }
+        }
+        return output
     }
+
+    private static let inlineTokenPlaceholder: Character = "\u{FFFC}"
 
     private static func fallbackMentionLabel(_ mention: RenderedMention, message: Message) -> String {
         switch mention.kind {

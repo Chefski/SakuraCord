@@ -1115,6 +1115,23 @@ func `forum previews conceal hidden spoilers and share their reveal with the tim
     #expect(preview.hitTest(spoilerPoint) == nil)
 }
 
+@Test
+@MainActor
+func `reply summaries keep spoilers concealed and their plain text unchanged`() {
+    let content = "look  ||the killer is **Bob** [here](https://example.com)||   ok\n> bye"
+    let summary = MessageReplySummary.summary(content: content)
+    // Surfaces that use the plain text keep their previous output.
+    let plain = String(DiscordMarkdown.attributed(content).characters)
+        .split(whereSeparator: \.isWhitespace)
+        .joined(separator: " ")
+    #expect(summary.text == plain)
+    #expect(
+        summary.spoilerRanges.map { (summary.text as NSString).substring(with: $0) }
+            == ["the killer is Bob here"]
+    )
+    #expect(MessageReplySummary.accessibilityText(content: content) == "look Spoiler ok bye")
+}
+
 @Test func `native scrolling caches bounded rows and directly paints oversized rows`() {
     let cacheCostLimit = 32 * 1_024 * 1_024
     #expect(
