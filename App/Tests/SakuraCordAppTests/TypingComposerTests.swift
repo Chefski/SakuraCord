@@ -41,9 +41,11 @@ import Testing
 }
 
 @MainActor
-@Test func `remote typing is channel scoped cleared by message and disconnect`() async throws {
+@Test(.timeLimit(.minutes(1)))
+func `remote typing is channel scoped cleared by message and disconnect`() async throws {
     let provider = TypingTestProvider()
-    let model = AppModel(launchMode: .offlineTesting, provider: provider, typingExpiry: .seconds(1))
+    // Expiry must outlive the test so it cannot satisfy the clearing assertions.
+    let model = AppModel(launchMode: .offlineTesting, provider: provider, typingExpiry: .seconds(300))
     await model.start()
     let text = try #require(model.selectedChannel)
     let other = provider.otherUser
@@ -64,6 +66,7 @@ import Testing
     )))
     #expect(await eventually { model.typingState.presentation(in: text.id) == nil })
 
+    try #require(model.typingState.presentation(in: ChannelID(rawValue: 12)) == "Third is typing…")
     await provider.emit(.connectionChanged(.disconnected))
     #expect(await eventually { model.typingState.presentation(in: ChannelID(rawValue: 12)) == nil })
 }
