@@ -1,5 +1,6 @@
 @testable import SakuraCord
 import SakuraCordModels
+import Observation
 import Testing
 
 @Test func `selection field single and multiple policies preserve ordered choices`() {
@@ -44,14 +45,12 @@ import Testing
     #expect(model.results.map(\.id) == [1, 2])
 
     model.updateQuery("feliz")
-    while model.state == .loading {
-        await Task.yield()
-    }
+    #expect(await until { model.state != .loading })
 
     #expect(model.results.map(\.id) == [1])
     #expect(model.option(for: 1)?.title == "Féliz")
     model.replaceSource(.local(options: [SelectionFieldOption(id: 4, title: "Feliz Updated")]))
-    while model.state == .loading { await Task.yield() }
+    #expect(await until { model.state != .loading })
     #expect(model.results.map(\.id) == [4])
 }
 
@@ -68,21 +67,15 @@ import Testing
     )
 
     model.updateQuery("old")
-    while !search.hasPendingQuery("old") {
-        await Task.yield()
-    }
+    #expect(await until { search.hasPendingQuery("old") })
 
     model.updateQuery("new")
-    while !search.hasPendingQuery("new") {
-        await Task.yield()
-    }
+    #expect(await until { search.hasPendingQuery("new") })
     search.resume(
         "new",
         with: [SelectionFieldOption(id: "new", title: "New Result")]
     )
-    while model.state == .loading {
-        await Task.yield()
-    }
+    #expect(await until { model.state != .loading })
 
     #expect(model.results.map(\.id) == ["new"])
 
@@ -160,6 +153,7 @@ import Testing
 }
 
 @MainActor
+@Observable
 private final class SelectionFieldSearchHarness {
     typealias Option = SelectionFieldOption<String>
 
@@ -216,13 +210,13 @@ private final class SelectionFieldSearchHarness {
         debounce: .zero, search: { try await search.load($0) }
     ))
     model.updateQuery("retry")
-    while !search.hasPendingQuery("retry") { await Task.yield() }
+    #expect(await until { search.hasPendingQuery("retry") })
     model.cancel()
     #expect(model.state == .idle)
     search.resume("retry", with: [])
     model.activate()
-    while !search.hasPendingQuery("retry") { await Task.yield() }
+    #expect(await until { search.hasPendingQuery("retry") })
     search.resume("retry", with: [SelectionFieldOption(id: "ok", title: "Recovered")])
-    while model.state == .loading { await Task.yield() }
+    #expect(await until { model.state != .loading })
     #expect(model.results.map(\.id) == ["ok"])
 }

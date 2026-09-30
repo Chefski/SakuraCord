@@ -41,9 +41,11 @@ import Testing
 }
 
 @MainActor
-@Test func `remote typing is channel scoped cleared by message and disconnect`() async throws {
+@Test(.timeLimit(.minutes(1)))
+func `remote typing is channel scoped cleared by message and disconnect`() async throws {
     let provider = TypingTestProvider()
-    let model = AppModel(launchMode: .offlineTesting, provider: provider, typingExpiry: .seconds(1))
+    // Expiry must outlive the test so it cannot satisfy the clearing assertions.
+    let model = AppModel(launchMode: .offlineTesting, provider: provider, typingExpiry: .seconds(300))
     await model.start()
     let text = try #require(model.selectedChannel)
     let other = provider.otherUser
@@ -51,8 +53,8 @@ import Testing
 
     await provider.emit(.typing(channelID: text.id, user: other))
     await provider.emit(.typing(channelID: ChannelID(rawValue: 12), user: third))
-    #expect(await eventuallyOnMain { model.typingState.presentation(in: text.id) == "Other is typing…" })
-    #expect(await eventuallyOnMain {
+    #expect(await eventually { model.typingState.presentation(in: text.id) == "Other is typing…" })
+    #expect(await eventually {
         model.typingState.presentation(in: ChannelID(rawValue: 12)) == "Third is typing…"
     })
 
@@ -62,10 +64,11 @@ import Testing
         author: other,
         content: "sent"
     )))
-    #expect(await eventuallyOnMain { model.typingState.presentation(in: text.id) == nil })
+    #expect(await eventually { model.typingState.presentation(in: text.id) == nil })
 
+    try #require(model.typingState.presentation(in: ChannelID(rawValue: 12)) == "Third is typing…")
     await provider.emit(.connectionChanged(.disconnected))
-    #expect(await eventuallyOnMain { model.typingState.presentation(in: ChannelID(rawValue: 12)) == nil })
+    #expect(await eventually { model.typingState.presentation(in: ChannelID(rawValue: 12)) == nil })
 }
 
 @MainActor
@@ -417,7 +420,7 @@ import Testing
     #expect(model.oversizedAttachmentPrompt?.id == externalPrompt.id)
     model.updateDraft("look")
     model.uploadOversizedAttachment(externalPrompt, using: .catbox)
-    #expect(await eventuallyOnMain { model.externalAttachmentUploadPresentation == nil })
+    #expect(await until { model.externalAttachmentUploadPresentation == nil })
     #expect(await uploader.callCount == 1)
     #expect(model.draft == "look https://files.catbox.moe/test.bin")
 }
@@ -488,17 +491,17 @@ import Testing
     model.queuedOversizedAttachmentPrompts = [second]
 
     model.uploadOversizedAttachment(first, using: .catbox)
-    #expect(await eventuallyUploadCallCount(1, from: uploader))
+    #expect(await eventually { await uploader.callCount == 1 })
     model.cancelExternalAttachmentUpload()
     #expect(model.oversizedAttachmentPrompt?.fileURL == second.fileURL)
 
     model.uploadOversizedAttachment(second, using: .catbox)
-    #expect(await eventuallyUploadCallCount(2, from: uploader))
+    #expect(await eventually { await uploader.callCount == 2 })
     await uploader.release(
         call: 1,
         with: URL(string: "https://files.catbox.moe/first.bin")!
     )
-    #expect(await eventuallyOnMain {
+    #expect(await until {
         model.externalAttachmentUploadPresentation?.fileName == "second.bin"
     })
     #expect(model.draft.isEmpty)
@@ -507,7 +510,7 @@ import Testing
         call: 2,
         with: URL(string: "https://files.catbox.moe/second.bin")!
     )
-    #expect(await eventuallyOnMain { model.externalAttachmentUploadPresentation == nil })
+    #expect(await until { model.externalAttachmentUploadPresentation == nil })
     #expect(model.draft == "https://files.catbox.moe/second.bin")
 }
 
@@ -532,14 +535,14 @@ import Testing
     )
     model.oversizedAttachmentPrompt = prompt
     model.uploadOversizedAttachment(prompt, using: .catbox)
-    #expect(await eventuallyUploadCallCount(1, from: uploader))
+    #expect(await eventually { await uploader.callCount == 1 })
 
     await model.resetAccountScopedLoadsAndForumState()
     await uploader.release(
         call: 1,
         with: URL(string: "https://files.catbox.moe/stale.bin")!
     )
-    #expect(await eventuallyOnMain { model.externalAttachmentUploadTask == nil })
+    #expect(await eventually { model.externalAttachmentUploadTask == nil })
     #expect(model.externalAttachmentUploadPresentation == nil)
     #expect(model.draft.isEmpty)
 }
@@ -1404,7 +1407,7 @@ func `composer attachment controls preserve edits and spoiler state`(anonymisesF
     let target = MessageID(rawValue: 1001)
     model.navigate(to: channel.guildID, channelID: channel.id, messageID: target)
 
-    #expect(await eventuallyOnMain {
+    #expect(await until {
         model.messageNavigationRequest?.channelID == channel.id
             && model.messageNavigationRequest?.messageID == target
     })
@@ -1428,7 +1431,7 @@ func `composer attachment controls preserve edits and spoiler state`(anonymisesF
         )
     )
 
-    #expect(await eventuallyOnMain {
+    #expect(await until {
         model.readState.accountID == "offline"
             && model.selectedGuildID == channel.guildID
             && model.selectedChannelID == channel.id
@@ -1474,7 +1477,7 @@ func `composer attachment controls preserve edits and spoiler state`(anonymisesF
         )
     )
 
-    let didNavigate = await eventuallyOnMain {
+    let didNavigate = await until {
         model.readState.accountID == "target-account"
             && model.selectedGuildID == expectedGuildID
             && model.selectedChannelID == expectedChannelID
@@ -2484,34 +2487,10 @@ func `Gateway confirmation wins before or after a send timeout`(confirmsBeforeTi
     #expect(model.messages.allSatisfy { $0.channelID == model.selectedChannelID })
 
     model.selectedChannelID = originalChannel
-    #expect(await eventuallyOnMain {
+    #expect(await eventually {
         model.messages.count { $0.content == "channel scoped" } == 1
             && model.messages.last(where: { $0.content == "channel scoped" })?.outboxState == .confirmed
     })
-}
-
-@MainActor
-private func eventuallyOnMain(_ condition: @escaping @MainActor () -> Bool) async -> Bool {
-    for _ in 0 ..< 200 {
-        if condition() {
-            return true
-        }
-        try? await Task.sleep(for: .milliseconds(1))
-    }
-    return condition()
-}
-
-private func eventuallyUploadCallCount(
-    _ expectedCount: Int,
-    from uploader: SequencedAttachmentUploadTestUploader
-) async -> Bool {
-    for _ in 0 ..< 200 {
-        if await uploader.callCount == expectedCount {
-            return true
-        }
-        try? await Task.sleep(for: .milliseconds(1))
-    }
-    return await uploader.callCount == expectedCount
 }
 
 private func createSparseFile(_ url: URL, size: Int64) throws {
