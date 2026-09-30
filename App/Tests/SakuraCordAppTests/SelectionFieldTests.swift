@@ -29,7 +29,7 @@ import Testing
 }
 
 @MainActor
-@Test func `local selection search is normalized and bounded`() async {
+@Test func `local selection search is normalized and bounded`() {
     let model = SelectionFieldModel(
         source: SelectionFieldSource.local(
             options: [
@@ -45,12 +45,12 @@ import Testing
     #expect(model.results.map(\.id) == [1, 2])
 
     model.updateQuery("feliz")
-    #expect(await until { model.state != .loading })
+    #expect(model.state == .loaded)
 
     #expect(model.results.map(\.id) == [1])
     #expect(model.option(for: 1)?.title == "Féliz")
     model.replaceSource(.local(options: [SelectionFieldOption(id: 4, title: "Feliz Updated")]))
-    #expect(await until { model.state != .loading })
+    #expect(model.state == .loaded)
     #expect(model.results.map(\.id) == [4])
 }
 

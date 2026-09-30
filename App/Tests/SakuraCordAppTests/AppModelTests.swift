@@ -2797,7 +2797,7 @@ private extension DiscordRESTProvider {
 }
 
 @MainActor
-@Test func `completed old account send and edit cannot enter replacement account state`()
+@Test(.timeLimit(.minutes(1))) func `completed old account send and edit cannot enter replacement account state`()
     async throws
 {
     let directory = FileManager.default.temporaryDirectory.appending(
@@ -2832,7 +2832,15 @@ private extension DiscordRESTProvider {
     let edit = Task { @MainActor in
         await model.edit(oldProvider.editTarget, content: "old account edit")
     }
-    #expect(await oldProvider.waitUntilMutationRequestsStart())
+    guard await oldProvider.waitUntilMutationRequestsStart() else {
+        send.cancel()
+        edit.cancel()
+        await oldProvider.releaseMutationRequests()
+        _ = await cancellableValue(of: send)
+        await cancellableValue(of: edit)
+        try #require(Bool(false), "Old account mutations did not start before cancellation")
+        return
+    }
 
     model.invalidateAccountSession()
     model.installAccountSession(provider: newProvider, database: newDatabase)
@@ -2841,8 +2849,8 @@ private extension DiscordRESTProvider {
     model.replaceSelectedMessages(with: [replacementMessage])
 
     await oldProvider.releaseMutationRequests()
-    #expect(await !send.value)
-    await edit.value
+    #expect(await !cancellableValue(of: send))
+    await cancellableValue(of: edit)
 
     #expect(model.messages.map(\.id) == [replacementMessage.id])
     #expect(model.messages.first?.content == "replacement account value")
@@ -5724,6 +5732,8 @@ private actor SuspendedAccountOperationTestProvider: ChatProvider {
     private let sendStarts = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
     private var sendReleased = false
     private var editStarted = false
+    private let editStarts = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+    private var editReleased = false
     private var earlierPageRequestCount = 0
     private let earlierPageStarts = AsyncStream<Int>.makeStream(bufferingPolicy: .bufferingNewest(1))
     private var earlierPagesReleased = false
@@ -5836,7 +5846,8 @@ private actor SuspendedAccountOperationTestProvider: ChatProvider {
         content: String
     ) async throws -> Message {
         editStarted = true
-        if suspendsOperations {
+        editStarts.continuation.yield(())
+        if suspendsOperations, !editReleased {
             await withCheckedContinuation { editContinuation = $0 }
         }
         var edited = editTarget
@@ -5880,11 +5891,16 @@ private actor SuspendedAccountOperationTestProvider: ChatProvider {
     func disconnect() async {}
 
     func waitUntilMutationRequestsStart() async -> Bool {
-        await eventually { sendStarted && editStarted }
+        guard await waitUntilSendRequestStarts() else { return false }
+        if editStarted { return true }
+        for await _ in editStarts.stream { return true }
+        return false
     }
 
     func releaseMutationRequests() {
         releaseSendRequest()
+        editReleased = true
+        editStarts.continuation.finish()
         editContinuation?.resume()
         editContinuation = nil
     }
