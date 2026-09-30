@@ -27,7 +27,7 @@ public struct ProfileImageSource: Hashable, Sendable {
         let swapsDimensions = (5 ... 8).contains(orientation)
         size = CGSize(width: swapsDimensions ? height : width, height: swapsDimensions ? width : height)
         frameCount = CGImageSourceGetCount(source)
-        originalMD5 = Insecure.MD5.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        originalMD5 = Insecure.MD5.hash(data: data).hexString
     }
 }
 

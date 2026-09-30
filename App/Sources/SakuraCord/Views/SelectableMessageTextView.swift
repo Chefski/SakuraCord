@@ -256,9 +256,9 @@ struct SelectableMessageTextView: NSViewRepresentable {
                 in: NSRange(location: 0, length: richTextView.attributedString().length)
             )
             let displayedText = linkRange.length > 0
-                ? richTextView.attributedString().attributedSubstring(
-                    from: linkRange
-                ).string
+                ? MessageLinkActivator.safetyDisplayedText(
+                    in: richTextView.attributedString().attributedSubstring(from: linkRange)
+                )
                 : nil
             return MessageLinkActivator.activate(
                 url,

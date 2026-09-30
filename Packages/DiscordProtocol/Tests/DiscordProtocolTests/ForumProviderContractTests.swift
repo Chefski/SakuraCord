@@ -731,14 +731,11 @@ import Testing
     _ = try await provider.forumPosts(in: channel.id, query: latestActivity)
     _ = try await provider.forumPosts(in: channel.id, query: creationDate)
     _ = try await provider.forumPosts(in: channel.id, query: latestActivity)
-    for _ in 0 ..< 10 {
-        await Task.yield()
-    }
 
-    #expect(
+    #expect(await eventually {
         await provider.activeForumCatalogueQueriesForTesting(channelID: channel.id)
             == [latestActivity]
-    )
+    })
     await provider.disconnect()
 }
 
@@ -783,15 +780,12 @@ import Testing
 
     _ = try await provider.forumPosts(in: firstChannel.id, query: query)
     _ = try await provider.forumPosts(in: secondChannel.id, query: query)
-    for _ in 0 ..< 10 {
-        await Task.yield()
-    }
 
-    #expect(await provider.activeForumCatalogueQueriesForTesting(channelID: firstChannel.id).isEmpty)
-    #expect(
-        await provider.activeForumCatalogueQueriesForTesting(channelID: secondChannel.id)
-            == [query]
-    )
+    #expect(await eventually {
+        let first = await provider.activeForumCatalogueQueriesForTesting(channelID: firstChannel.id)
+        let second = await provider.activeForumCatalogueQueriesForTesting(channelID: secondChannel.id)
+        return first.isEmpty && second == [query]
+    })
     await provider.disconnect()
 }
 

@@ -686,6 +686,7 @@ extension NativeTimelineCanvasView {
             url,
             model: model,
             sourceMessage: message,
+            displayedText: hit.displayedText,
             presentSystemProfile: presentSystemProfile
         )
     }

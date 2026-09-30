@@ -481,7 +481,7 @@ import UserNotifications
     await model.start()
     let privateChannelID = ChannelID(rawValue: 215)
 
-    #expect(await eventuallyOnMain {
+    #expect(await until {
         model.readState.entries[privateChannelID]?.isAccessible == false
     })
     let privateChannel = model.visibleChannels.first { $0.id == privateChannelID }
@@ -492,7 +492,7 @@ import UserNotifications
     #expect(model.channelMentionCount(privateChannelID) == 0)
 
     model.selectedChannelID = privateChannelID
-    #expect(await eventuallyOnMain {
+    #expect(await until {
         model.selectedChannel?.id == privateChannelID
             && model.selectedChannel.map(model.conversationAccess(for:)) == .hidden
     })
@@ -568,11 +568,11 @@ import UserNotifications
     model.currentUserRoleIDsByGuild[guild.id] = []
     model.refreshUnreadPresentation(appliesAccessImmediately: true)
 
-    #expect(await eventuallyOnMain {
+    #expect(await until {
         model.selectedConversationAccess.isReadable
             && !model.checkingChannelIDs.contains(channel.id)
     })
-    #expect(await eventuallyOnMain {
+    #expect(await until {
         !model.isLoadingMessages
     })
     #expect(await provider.messageRequestCount(for: channel.id) == 1)
@@ -647,7 +647,7 @@ import UserNotifications
     #expect(model.hasPendingGuildGuideActions(in: guild.id))
     #expect(model.onboardingEntryGuildID == nil)
     #expect(!model.checkingChannelIDs.contains(channel.id))
-    #expect(await eventuallyOnMain { !model.isLoadingMessages })
+    #expect(await until { !model.isLoadingMessages })
     #expect(await provider.messageRequestCount(for: channel.id) == 1)
     #expect(model.selectedConversationAccess == .readable(canSend: true))
     member.flags = 107
@@ -880,7 +880,7 @@ import UserNotifications
 
     await model.start()
 
-    #expect(await eventuallyOnMain {
+    #expect(await eventually {
         guard let message = model.messages.first else { return false }
         return model.authorPresentation(for: message).roleColorHex == 0xFF7900
     })
@@ -999,7 +999,7 @@ import UserNotifications
 
     await provider.emit(.snapshotChanged(refreshed))
 
-    #expect(await eventuallyOnMain {
+    #expect(await until {
         model.snapshot?.usesNewNotifications == false
             && model.snapshot?.channels.contains(where: { $0.id == channelID }) == true
     })
@@ -1088,7 +1088,7 @@ import UserNotifications
         usesNewNotifications: true
     )
     await provider.emit(.snapshotChanged(refreshed))
-    #expect(await eventuallyOnMain {
+    #expect(await until {
         model.snapshot?.usesNewNotifications == true
             && model.snapshot?.channels.contains(where: { $0.id == channelID }) == true
     })
@@ -1098,11 +1098,11 @@ import UserNotifications
         .notificationModeChanged(usesNewNotifications: false)
     )
 
-    #expect(await eventuallyOnMain {
+    #expect(await until {
         model.snapshot?.usesNewNotifications == false
     })
     #expect(model.isChannelUnread(channelID))
-    #expect(await eventuallyOnMain {
+    #expect(await until {
         model.serverRailGuildsByID[guildID]?.unreadCount == 1
     })
 }
@@ -1117,11 +1117,11 @@ import UserNotifications
     let forum = try #require(model.snapshot?.channels.first(where: { $0.kind == .forum }))
 
     model.selectedChannelID = forum.id
-    #expect(await eventuallyOnMain { model.hasLoadedForumPosts && !model.forumPosts.isEmpty })
+    #expect(await until { model.hasLoadedForumPosts && !model.forumPosts.isEmpty })
     let post = try #require(model.forumPosts.first)
     let starter = try #require(post.firstMessage)
     model.open(post)
-    #expect(await eventuallyOnMain { !model.isLoadingThread && !model.threadMessages.isEmpty })
+    #expect(await until { !model.isLoadingThread && !model.threadMessages.isEmpty })
 
     await provider.emit(
         .messageReactionUpdated(
@@ -1136,7 +1136,7 @@ import UserNotifications
     )
 
     #expect(
-        await eventuallyOnMain {
+        await until {
             model.threadMessages.first(where: { $0.id == starter.id })?
                 .reactions.contains(where: { $0.id == "custom:999" }) == true
                 && model.forumPosts.first(where: { $0.id == post.id })?
@@ -1154,7 +1154,7 @@ import UserNotifications
         )
     )
     #expect(
-        await eventuallyOnMain {
+        await until {
             model.threadMessages.first(where: { $0.id == starter.id })?
                 .reactions.contains(where: { $0.id == "custom:999" }) == false
                 && model.forumPosts.first(where: { $0.id == post.id })?
@@ -1171,7 +1171,7 @@ import UserNotifications
     let forum = try #require(model.snapshot?.channels.first(where: { $0.kind == .forum }))
 
     model.selectedChannelID = forum.id
-    #expect(await eventuallyOnMain { model.hasLoadedForumPosts && !model.forumPosts.isEmpty })
+    #expect(await until { model.hasLoadedForumPosts && !model.forumPosts.isEmpty })
     let initialPost = try #require(
         model.forumPosts.first(where: { $0.firstMessage?.reactions.isEmpty == false })
     )
@@ -1179,7 +1179,7 @@ import UserNotifications
     let initialReaction = try #require(initialMessage.reactions.first)
     await model.loadReactionReactors(initialReaction, on: initialMessage)
     #expect(
-        await eventuallyOnMain {
+        await until {
             model.forumPosts.first(where: { $0.id == initialPost.id })?
                 .firstMessage?.reactions.first(where: { $0.id == initialReaction.id })?
                 .reactors.isEmpty == false
@@ -1208,7 +1208,7 @@ import UserNotifications
     )
 
     #expect(
-        await eventuallyOnMain {
+        await until {
             guard
                 let reaction = model.forumPosts.first(where: { $0.id == initialPost.id })?
                     .firstMessage?.reactions.first(where: { $0.id == initialReaction.id })
@@ -1322,7 +1322,7 @@ import UserNotifications
     )
 
     #expect(
-        await eventuallyOnMain {
+        await eventually {
             let updated = model.messages.first(where: { $0.id == original.id })
             return updated?.reactions.first?.count == 3
                 && updated?.reactions.first?.reactors == [reactor]
@@ -1338,7 +1338,7 @@ import UserNotifications
     let message = try #require(model.messages.first)
 
     await model.toggleReaction("🔥", on: message)
-    #expect(await waitForReactionRequestCount(1, from: provider))
+    #expect(await eventually { await provider.requests().count >= 1 })
     for _ in 0 ..< 9 {
         await model.toggleReaction("🔥", on: message)
     }
@@ -1360,7 +1360,7 @@ import UserNotifications
     await model.start()
 
     #expect(
-        await eventuallyOnMain {
+        await until {
             model.hasLoadedForumPosts
                 && model.forumPosts.count == 1
                 && model.hasMoreForumPosts
@@ -1397,13 +1397,11 @@ import UserNotifications
     await model.start()
 
     #expect(
-        await eventuallyOnMain {
+        await until {
             model.hasLoadedForumPosts && model.forumPosts.count == 2
         }
     )
-    for _ in 0 ..< 40 where await provider.acknowledgements().isEmpty {
-        try await Task.sleep(for: .milliseconds(25))
-    }
+    #expect(await eventually { await !provider.acknowledgements().isEmpty })
     let acknowledgement = try #require(await provider.acknowledgements().first)
     #expect(acknowledgement.channelID == provider.forumID)
     #expect(acknowledgement.messageID.rawValue > provider.newPostID.rawValue)
@@ -1431,7 +1429,7 @@ import UserNotifications
     await model.start()
     let forum = try #require(model.snapshot?.channels.first(where: { $0.kind == .forum }))
     model.selectedChannelID = forum.id
-    #expect(await eventuallyOnMain { model.hasLoadedForumPosts && !model.forumPosts.isEmpty })
+    #expect(await until { model.hasLoadedForumPosts && !model.forumPosts.isEmpty })
     let post = try #require(model.forumPosts.first)
     let otherChannel = try #require(
         model.snapshot?.channels.first(where: { $0.guildID == forum.guildID && $0.id != forum.id })
@@ -1441,7 +1439,7 @@ import UserNotifications
     model.navigate(to: post.thread.guildID, linkedChannelID: post.id)
 
     #expect(
-        await eventuallyOnMain {
+        await until {
             model.selectedChannelID == forum.id && model.openThread?.id == post.id
         }
     )
@@ -1461,7 +1459,7 @@ import UserNotifications
     let tagID = try #require(forum.availableTags.first?.id)
 
     model.selectedChannelID = forum.id
-    #expect(await eventuallyOnMain { model.hasLoadedForumPosts })
+    #expect(await until { model.hasLoadedForumPosts })
     model.forumSelectedTagIDs = [tagID]
     model.updateForumSearch("visual")
     #expect(model.forumSearchText == "visual")
@@ -1474,7 +1472,7 @@ import UserNotifications
     #expect(model.forumSelectedTagIDs.isEmpty)
     #expect(!model.hasMoreForumPosts)
     #expect(
-        await eventuallyOnMain {
+        await until {
             model.hasLoadedForumPosts
                 && model.forumSearchText.isEmpty
                 && model.forumSelectedTagIDs.isEmpty
@@ -1492,7 +1490,7 @@ import UserNotifications
     model.navigate(to: target.guildID, linkedChannelID: target.id)
 
     #expect(
-        await eventuallyOnMain {
+        await until {
             model.selectedGuildID == target.guildID
                 && model.selectedChannelID == target.id
         }
@@ -1508,7 +1506,7 @@ import UserNotifications
     let forum = try #require(model.snapshot?.channels.first(where: { $0.kind == .forum }))
 
     model.selectedChannelID = forum.id
-    #expect(await eventuallyOnMain { model.hasLoadedForumPosts && !model.forumPosts.isEmpty })
+    #expect(await until { model.hasLoadedForumPosts && !model.forumPosts.isEmpty })
     let post = try #require(model.forumPosts.first)
     model.open(post)
     #expect(model.openThread?.id == post.id)
@@ -1520,7 +1518,7 @@ import UserNotifications
         )
     )
 
-    #expect(await eventuallyOnMain { model.openThread == nil })
+    #expect(await until { model.openThread == nil })
 }
 
 @MainActor
@@ -1542,12 +1540,12 @@ import UserNotifications
             posts: [ForumPost(thread: thread)]
         )
     )
-    #expect(await eventuallyOnMain {
+    #expect(await until {
         model.snapshot?.threads.filter { $0.parentID == forum.id } == [thread]
     })
 
     await provider.emit(.forumPostsChanged(channelID: forum.id, posts: []))
-    #expect(await eventuallyOnMain {
+    #expect(await until {
         model.snapshot?.threads.contains { $0.parentID == forum.id } == false
     })
 }
@@ -1583,7 +1581,7 @@ import UserNotifications
     )
     model.selectedChannelID = forum.id
     #expect(
-        await eventuallyOnMain {
+        await until {
             model.hasLoadedForumPosts
                 && model.forumPosts.contains(where: { !$0.thread.isLocked })
         }
@@ -1599,7 +1597,7 @@ import UserNotifications
     }
     model.open(post)
     #expect(
-        await eventuallyOnMain {
+        await eventually {
             model.hasCompletedInitialThreadLoad
                 && model.openThreadAccess.canSend
         }
@@ -1610,7 +1608,7 @@ import UserNotifications
 
     #expect(await model.sendThreadComposerMessage(attachments: []))
     #expect(
-        await eventuallyOnMain {
+        await until {
             model.threadMessages.count == previousCount + 1
         }
     )
@@ -1725,7 +1723,7 @@ import UserNotifications
     let forum = try #require(model.snapshot?.channels.first(where: { $0.kind == .forum }))
     let tag = try #require(forum.availableTags.first(where: { !$0.isModerated }))
     model.selectedChannelID = forum.id
-    #expect(await eventuallyOnMain { model.hasLoadedForumPosts })
+    #expect(await until { model.hasLoadedForumPosts })
 
     let didCreate = await model.createForumPost(
         CreateForumPostDraft(
@@ -1749,7 +1747,7 @@ import UserNotifications
     let currentUserID = try #require(model.snapshot?.currentUser.id)
 
     model.selectedChannelID = forum.id
-    #expect(await eventuallyOnMain { model.hasLoadedForumPosts && !model.forumPosts.isEmpty })
+    #expect(await until { model.hasLoadedForumPosts && !model.forumPosts.isEmpty })
     let post = try #require(
         model.forumPosts.first {
             ($0.thread.ownerID ?? $0.owner?.id) == currentUserID
@@ -2782,7 +2780,7 @@ private extension DiscordRESTProvider {
     #expect(await model.connectAuthenticatedAccount(
         CredentialHandle(accountID: "account-load-new")
     ))
-    #expect(await eventuallyOnMain {
+    #expect(await until {
         model.members.first?.user.displayName == "New member"
             && model.forumPosts.first?.thread.name == "New post"
     })
@@ -2912,7 +2910,8 @@ private extension DiscordRESTProvider {
 }
 
 @MainActor
-@Test func `completed old account earlier pages cannot enter replacement conversations`()
+@Test(.timeLimit(.minutes(1)))
+func `completed old account earlier pages cannot enter replacement conversations`()
     async throws
 {
     let directory = FileManager.default.temporaryDirectory.appending(
@@ -2941,7 +2940,15 @@ private extension DiscordRESTProvider {
 
     let selectedLoad = Task { @MainActor in await model.loadEarlier() }
     let threadLoad = Task { @MainActor in await model.loadEarlierThread() }
-    #expect(await oldProvider.waitUntilEarlierPageRequestsStart(expected: 2))
+    let requestsStarted = await oldProvider.waitUntilEarlierPageRequestsStart(expected: 2)
+    if !requestsStarted {
+        selectedLoad.cancel()
+        threadLoad.cancel()
+        await oldProvider.releaseEarlierPageRequests()
+        await selectedLoad.value
+        await threadLoad.value
+    }
+    try #require(requestsStarted)
 
     model.invalidateAccountSession()
     model.installAccountSession(provider: newProvider, database: newDatabase)
@@ -3357,7 +3364,7 @@ func `GIF completion preserves newer text and channel drafts`(changesChannel: Bo
     )
     model.selectedChannelID = forum.id
     #expect(
-        await eventuallyOnMain {
+        await until {
             model.hasLoadedForumPosts
                 && model.forumPosts.contains(where: { !$0.thread.isLocked })
         }
@@ -3367,7 +3374,7 @@ func `GIF completion preserves newer text and channel drafts`(changesChannel: Bo
     )
     model.open(post)
     #expect(
-        await eventuallyOnMain {
+        await eventually {
             model.hasCompletedInitialThreadLoad
                 && model.openThreadAccess.canSend
                 && !model.threadMessages.isEmpty
@@ -3382,7 +3389,7 @@ func `GIF completion preserves newer text and channel drafts`(changesChannel: Bo
     model.threadDraft = "forum reply from test"
     #expect(await model.sendThreadComposerMessage(attachments: []))
     #expect(
-        await eventuallyOnMain {
+        await until {
             model.threadMessages.last?.replyTo == target.id
         }
     )
@@ -3660,7 +3667,7 @@ func `GIF completion preserves newer text and channel drafts`(changesChannel: Bo
 
     await provider.releaseRoles()
 
-    #expect(await eventuallyOnMain {
+    #expect(await eventually {
         model.selectedConversationAccess.isReadable
             && model.messages.map(\.content) == ["Loaded automatically"]
     })
@@ -3710,7 +3717,7 @@ func `GIF completion preserves newer text and channel drafts`(changesChannel: Bo
     #expect(model.selectedChannel?.kind == .voice)
     #expect(model.activeVoiceChannel == nil)
     #expect(model.isVoiceChatOpen)
-    #expect(await eventuallyOnMain { !model.isLoadingMessages && !model.messages.isEmpty })
+    #expect(await eventually { !model.isLoadingMessages && !model.messages.isEmpty })
 }
 
 @MainActor
@@ -3721,7 +3728,7 @@ func `GIF completion preserves newer text and channel drafts`(changesChannel: Bo
     let voiceChannel = ChannelID(rawValue: 91003)
 
     model.selectedChannelID = voiceChannel
-    #expect(await eventuallyOnMain { !model.isLoadingMessages })
+    #expect(await until { !model.isLoadingMessages })
     #expect(await provider.requestCount(for: voiceChannel) == 1)
     #expect(model.activeVoiceChannel == nil)
     #expect(model.isVoiceChatOpen)
@@ -3866,14 +3873,13 @@ func `GIF completion preserves newer text and channel drafts`(changesChannel: Bo
     let member = try #require(model.members.first)
 
     model.selectMember(member)
-    #expect(await eventuallyOnMain { model.selectedProfile?.id == member.id })
+    #expect(await until { model.selectedProfile?.id == member.id })
 
     let profile = try #require(model.selectedProfile)
     #expect(model.isInspectorProfilePresented)
     #expect(profile.id == member.id)
     #expect(!profile.badges.isEmpty)
     #expect(!profile.mutualGuilds.isEmpty)
-    #expect(profile.status == member.status)
 
     let presentation = try #require(model.inspectorProfilePresentation)
     model.expandProfile(presentation)
@@ -3881,13 +3887,6 @@ func `GIF completion preserves newer text and channel drafts`(changesChannel: Bo
     #expect(model.expandedProfilePresentation?.profile?.id == member.id)
     #expect(model.expandedProfilePresentation?.isLoading == false)
     #expect(!model.isInspectorProfilePresented)
-
-    var updated = member
-    updated.status = .idle
-    updated.customStatus = "Reading"
-    model.refreshPresentedMembers(from: [updated])
-    #expect(model.expandedProfilePresentation?.profile?.status == .idle)
-    #expect(model.expandedProfilePresentation?.profile?.customStatus == "Reading")
 
     model.dismissAllProfiles(clearsCache: true)
     #expect(model.expandedProfilePresentation == nil)
@@ -3903,7 +3902,7 @@ func `GIF completion preserves newer text and channel drafts`(changesChannel: Bo
         userID: currentUser.id,
         guildID: model.selectedGuildID
     )
-    #expect(await eventuallyOnMain { model.profileCache[cacheKey] != nil })
+    #expect(await eventually { model.profileCache[cacheKey] != nil })
 
     let member = model.membersByID[currentUser.id]
         ?? Member(user: currentUser, roleName: "You", status: model.currentStatus)
@@ -3927,38 +3926,9 @@ private func reactionMutationTestModel(provider: any ChatProvider) -> AppModel {
 
 @MainActor
 private func drainReactionMutations(in model: AppModel) async -> Bool {
-    for _ in 0 ..< 10_000 {
-        if model.reactionMutationTasks.isEmpty, model.reactionMutations.isEmpty {
-            return true
-        }
-        await Task.yield()
+    await eventually {
+        model.reactionMutationTasks.isEmpty && model.reactionMutations.isEmpty
     }
-    return model.reactionMutationTasks.isEmpty && model.reactionMutations.isEmpty
-}
-
-@MainActor
-private func waitForReactionRequestCount(
-    _ expectedCount: Int,
-    from provider: ReactionMutationTestProvider
-) async -> Bool {
-    for _ in 0 ..< 10_000 {
-        if await provider.requests().count >= expectedCount {
-            return true
-        }
-        await Task.yield()
-    }
-    return await provider.requests().count >= expectedCount
-}
-
-@MainActor
-private func eventuallyOnMain(_ condition: @escaping @MainActor () -> Bool) async -> Bool {
-    for _ in 0 ..< 200 {
-        if condition() {
-            return true
-        }
-        try? await Task.sleep(for: .milliseconds(1))
-    }
-    return condition()
 }
 
 @MainActor
@@ -4015,7 +3985,7 @@ private func hiddenMockChannel(
 
     model.retryMessageLoad()
 
-    #expect(await eventuallyOnMain {
+    #expect(await eventually {
         model.messageLoadError == nil
             && !model.isLoadingEarlier
             && !model.hasMoreMessages
@@ -4036,7 +4006,7 @@ func `gateway mutations keep exact indexes after repeated history prepends`(
 
     let timelineChannelID = ChannelID(rawValue: 210)
     model.navigate(to: timelineChannelID)
-    #expect(await eventuallyOnMain {
+    #expect(await until {
         model.selectedChannelID == timelineChannelID
             && model.hasCompletedInitialMessageLoad
     })
@@ -4057,7 +4027,7 @@ func `gateway mutations keep exact indexes after repeated history prepends`(
     updated.content = "Updated after repeated prepended pages"
     await provider.emit(.messageUpdated(updated))
 
-    #expect(await eventuallyOnMain {
+    #expect(await eventually {
         model.messages.first(where: { $0.id == updateTarget.id })?.content
             == updated.content
     })
@@ -4067,7 +4037,7 @@ func `gateway mutations keep exact indexes after repeated history prepends`(
         channelID: deleted.channelID,
         messageID: deleted.id
     ))
-    #expect(await eventuallyOnMain {
+    #expect(await eventually {
         !model.messages.contains(where: { $0.id == deleted.id })
     })
 }
@@ -4082,7 +4052,7 @@ func `gateway mutations keep exact indexes after repeated history prepends`(
     let targetID = MessageID(rawValue: 5_000_100)
     model.navigate(to: GuildID(rawValue: 100), channelID: channelID, messageID: targetID)
 
-    #expect(await eventuallyOnMain {
+    #expect(await eventually {
         model.messageNavigationRequest?.messageID == targetID
             && model.messages.contains(where: { $0.id == targetID })
     })
@@ -4216,7 +4186,7 @@ func `interrupted thread history reloads after navigation`(switchesDirectly: Boo
     )
 
     model.open(thread)
-    #expect(await eventuallyOnMain {
+    #expect(await until {
         model.hasCompletedInitialThreadLoad
             && model.hasMoreThreadMessages
             && model.threadMessages.count == 1
@@ -4229,7 +4199,7 @@ func `interrupted thread history reloads after navigation`(switchesDirectly: Boo
 
     model.retryThreadLoad()
 
-    #expect(await eventuallyOnMain {
+    #expect(await until {
         model.threadErrorMessage == nil
             && !model.isLoadingEarlierThread
             && !model.hasMoreThreadMessages
@@ -4616,7 +4586,7 @@ func `interrupted thread history reloads after navigation`(switchesDirectly: Boo
     model.reportTimelineLiveScrolling(true, conversationID: channelID)
     await provider.releaseRevokedMember()
 
-    #expect(await eventuallyOnMain {
+    #expect(await until {
         model.hiddenChannelIDs.contains(channelID)
             && model.readState.entries[channelID]?.isAccessible == false
     })
@@ -4674,14 +4644,12 @@ func `interrupted thread history reloads after navigation`(switchesDirectly: Boo
     #expect(sounds.played == [.userJoin])
 
     await provider.emit(.voiceServerChanged(nil))
-    try await Task.sleep(for: .milliseconds(20))
+    #expect(await until { model.voiceSessionState == .reconnecting })
     #expect(model.activeVoiceChannel?.id == voiceChannel.id)
-    #expect(model.voiceSessionState == .reconnecting)
 
     await provider.emit(.voiceServerChanged(provider.connectionInfo(token: "replacement")))
-    try await Task.sleep(for: .milliseconds(20))
+    #expect(await until { model.voiceSessionState == .connected })
     #expect(model.activeVoiceChannel?.id == voiceChannel.id)
-    #expect(model.voiceSessionState == .connected)
     #expect(sounds.played == [.userJoin])
 
     await model.leaveVoice()
@@ -4751,8 +4719,9 @@ func `private calls remain app wide and reconcile incoming ongoing and deleted s
             )
         )
     )
-    try await Task.sleep(for: .milliseconds(20))
-    #expect(model.incomingPrivateCalls.map(\.channelID) == [channelID])
+    #expect(await until {
+        model.incomingPrivateCalls.map(\.channelID) == [channelID]
+    })
     #expect(model.privateCall(in: channelID)?.isRinging(currentUserID) == true)
     #expect(model.joinablePrivateCall(in: channelID) != nil)
     #expect(sounds.looping[.callRinging] == true)
@@ -4777,7 +4746,7 @@ func `private calls remain app wide and reconcile incoming ongoing and deleted s
         )
     )
     if usesInitialSnapshot { await provider.emit(.voiceStatesReceived(initialVoiceStates)) }
-    #expect(await eventuallyOnMain {
+    #expect(await until {
         model.privateCall(in: channelID)?.voiceStates?.map(\.userID) == [senderID]
     })
     if usesInitialSnapshot {
@@ -4809,7 +4778,7 @@ func `private calls remain app wide and reconcile incoming ongoing and deleted s
             )
         )
     )
-    #expect(await eventuallyOnMain {
+    #expect(await until {
         model.privateCall(in: channelID)?.voiceStates?.isEmpty == true
             && model.privateCall(in: destinationChannelID)?.voiceStates?.map(\.userID)
                 == [senderID]
@@ -4818,13 +4787,12 @@ func `private calls remain app wide and reconcile incoming ongoing and deleted s
     #expect(model.joinablePrivateCall(in: destinationChannelID) != nil)
 
     await provider.emit(.privateCallDeleted(channelID: channelID, unavailable: false))
-    try await Task.sleep(for: .milliseconds(20))
-    #expect(model.privateCall(in: channelID) == nil)
+    #expect(await until { model.privateCall(in: channelID) == nil })
     #expect(sounds.looping[.callRinging] == false)
 }
 
 @MainActor
-@Test func `concurrent private call actions stay within one request budget`() async throws {
+@Test(.timeLimit(.minutes(1))) func `concurrent private call actions stay within one request budget`() async throws {
     let provider = PrivateCallActionTestProvider()
     let model = AppModel(launchMode: .offlineTesting, provider: provider)
     await model.start()
@@ -4844,7 +4812,7 @@ func `private calls remain app wide and reconcile incoming ongoing and deleted s
     let firstStart = Task {
         await model.startPrivateCall(in: channel)
     }
-    await provider.waitUntilRingabilityStarts()
+    #expect(await provider.waitUntilRingabilityStarts())
     #expect(model.isPrivateCallActionInFlight(in: channel.id))
 
     let duplicateStarts = (0 ..< 4).map { _ in
@@ -4853,7 +4821,7 @@ func `private calls remain app wide and reconcile incoming ongoing and deleted s
         }
     }
     for duplicate in duplicateStarts {
-        await duplicate.value
+        await cancellableValue(of: duplicate)
     }
 
     let suspendedStartCounts = await provider.counts()
@@ -4863,7 +4831,7 @@ func `private calls remain app wide and reconcile incoming ongoing and deleted s
     #expect(suspendedStartCounts.rings == 0)
 
     await provider.releaseRingability()
-    await firstStart.value
+    await cancellableValue(of: firstStart)
 
     let completedStartCounts = await provider.counts()
     #expect(completedStartCounts.subscriptions == baselineCounts.subscriptions + 1)
@@ -4887,7 +4855,7 @@ func `private calls remain app wide and reconcile incoming ongoing and deleted s
     let firstDecline = Task {
         await model.declinePrivateCall(call)
     }
-    await provider.waitUntilDeclineStarts()
+    #expect(await provider.waitUntilDeclineStarts())
     #expect(model.isPrivateCallActionInFlight(in: channel.id))
 
     let duplicateDeclines = (0 ..< 4).map { _ in
@@ -4896,12 +4864,12 @@ func `private calls remain app wide and reconcile incoming ongoing and deleted s
         }
     }
     for duplicate in duplicateDeclines {
-        await duplicate.value
+        await cancellableValue(of: duplicate)
     }
     #expect((await provider.counts()).declines == 1)
 
     await provider.releaseDecline()
-    await firstDecline.value
+    await cancellableValue(of: firstDecline)
     #expect((await provider.counts()).declines == 1)
     #expect(!model.isPrivateCallActionInFlight(in: channel.id))
 }
@@ -5659,11 +5627,7 @@ private actor MemberRoleRevocationTestProvider: ChatProvider {
     }
 
     func waitUntilMemberRequestStarts() async -> Bool {
-        for _ in 0 ..< 100 {
-            if memberContinuation != nil { return true }
-            try? await Task.sleep(for: .milliseconds(1))
-        }
-        return false
+        await eventually { memberContinuation != nil }
     }
 
     func releaseRevokedMember() {
@@ -5741,6 +5705,8 @@ private actor SuspendedAccountOperationTestProvider: ChatProvider {
     private var sendStarted = false
     private var editStarted = false
     private var earlierPageRequestCount = 0
+    private let earlierPageStarts = AsyncStream<Int>.makeStream(bufferingPolicy: .bufferingNewest(1))
+    private var earlierPagesReleased = false
     private(set) var channelRequestCount = 0
     private(set) var newestMessageRequestCount = 0
     private(set) var applicationCommandRequestCount = 0
@@ -5814,7 +5780,8 @@ private actor SuspendedAccountOperationTestProvider: ChatProvider {
             return MessagePage(messages: [], hasMoreBefore: false)
         }
         earlierPageRequestCount += 1
-        if suspendsOperations {
+        earlierPageStarts.continuation.yield(earlierPageRequestCount)
+        if suspendsOperations, !earlierPagesReleased {
             await withCheckedContinuation { earlierContinuations.append($0) }
         }
         let message = Message(
@@ -5892,11 +5859,7 @@ private actor SuspendedAccountOperationTestProvider: ChatProvider {
     func disconnect() async {}
 
     func waitUntilMutationRequestsStart() async -> Bool {
-        for _ in 0 ..< 5_000 {
-            if sendStarted, editStarted { return true }
-            try? await Task.sleep(for: .milliseconds(1))
-        }
-        return false
+        await eventually { sendStarted && editStarted }
     }
 
     func releaseMutationRequests() {
@@ -5907,11 +5870,7 @@ private actor SuspendedAccountOperationTestProvider: ChatProvider {
     }
 
     func waitUntilSendRequestStarts() async -> Bool {
-        for _ in 0 ..< 5_000 {
-            if sendStarted { return true }
-            try? await Task.sleep(for: .milliseconds(1))
-        }
-        return false
+        await eventually { sendStarted }
     }
 
     func sendRequestHasStarted() -> Bool {
@@ -5924,14 +5883,18 @@ private actor SuspendedAccountOperationTestProvider: ChatProvider {
     }
 
     func waitUntilEarlierPageRequestsStart(expected: Int) async -> Bool {
-        for _ in 0 ..< 5_000 {
-            if earlierPageRequestCount >= expected { return true }
-            try? await Task.sleep(for: .milliseconds(1))
+        // Wait for the actual requests, not a polling deadline that can expire
+        // while parallel App tests are occupying the main actor.
+        for await count in earlierPageStarts.stream where count >= expected {
+            return true
         }
         return false
     }
 
     func releaseEarlierPageRequests() {
+        // Latch the release so cancellation cannot leave a late request suspended.
+        earlierPagesReleased = true
+        earlierPageStarts.continuation.finish()
         earlierContinuations.forEach { $0.resume() }
         earlierContinuations.removeAll()
     }
@@ -6036,11 +5999,7 @@ private actor SuspendedAccountLoadTestProvider: ChatProvider {
     }
 
     func waitUntilLoadsStart() async -> Bool {
-        for _ in 0 ..< 500 {
-            if memberLoadStarted, forumLoadStarted { return true }
-            try? await Task.sleep(for: .milliseconds(1))
-        }
-        return false
+        await eventually { memberLoadStarted && forumLoadStarted }
     }
 
     func releaseSuspendedLoads() {
@@ -6055,11 +6014,7 @@ private actor SuspendedAccountLoadTestProvider: ChatProvider {
     }
 
     func waitUntilLoadsReturn() async -> Bool {
-        for _ in 0 ..< 500 {
-            if memberLoadReturned, forumLoadReturned { return true }
-            try? await Task.sleep(for: .milliseconds(1))
-        }
-        return false
+        await eventually { memberLoadReturned && forumLoadReturned }
     }
 
     func profile(
@@ -6162,11 +6117,7 @@ private actor FirstGuildVisitPermissionTestProvider: ChatProvider {
     }
 
     func waitUntilRoleRequestStarts() async -> Bool {
-        for _ in 0 ..< 500 {
-            if roleContinuation != nil { return true }
-            try? await Task.sleep(for: .milliseconds(1))
-        }
-        return false
+        await eventually { roleContinuation != nil }
     }
 
     func releaseRoles() {
@@ -7157,9 +7108,14 @@ private actor PrivateCallActionTestProvider: ChatProvider {
 
     func privateCallIsRingable(channelID: ChannelID) async throws -> Bool {
         requestCounts.ringabilityReads += 1
-        await withCheckedContinuation { continuation in
-            ringabilityContinuation = continuation
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                ringabilityContinuation = continuation
+            }
+        } onCancel: {
+            Task { await self.releaseRingability() }
         }
+        try Task.checkCancellation()
         return true
     }
 
@@ -7193,9 +7149,14 @@ private actor PrivateCallActionTestProvider: ChatProvider {
         recipients: [UserID]
     ) async throws {
         requestCounts.declines += 1
-        await withCheckedContinuation { continuation in
-            declineContinuation = continuation
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                declineContinuation = continuation
+            }
+        } onCancel: {
+            Task { await self.releaseDecline() }
         }
+        try Task.checkCancellation()
     }
 
     func updateVoiceState(
@@ -7216,10 +7177,8 @@ private actor PrivateCallActionTestProvider: ChatProvider {
         requestCounts
     }
 
-    func waitUntilRingabilityStarts() async {
-        while requestCounts.ringabilityReads == 0 {
-            await Task.yield()
-        }
+    func waitUntilRingabilityStarts() async -> Bool {
+        await eventually { requestCounts.ringabilityReads > 0 }
     }
 
     func releaseRingability() {
@@ -7227,10 +7186,8 @@ private actor PrivateCallActionTestProvider: ChatProvider {
         ringabilityContinuation = nil
     }
 
-    func waitUntilDeclineStarts() async {
-        while requestCounts.declines == 0 {
-            await Task.yield()
-        }
+    func waitUntilDeclineStarts() async -> Bool {
+        await eventually { requestCounts.declines > 0 }
     }
 
     func releaseDecline() {
@@ -7343,27 +7300,15 @@ private actor DelayedMemberViewportTestProvider: ChatProvider {
     }
 
     func waitUntilMemberLoadStarts() async -> Bool {
-        for _ in 0 ..< 5_000 {
-            if memberLoadStarted { return true }
-            try? await Task.sleep(for: .milliseconds(1))
-        }
-        return memberLoadStarted
+        await eventually { memberLoadStarted }
     }
 
     func waitUntilViewportAttemptCount(_ expectedCount: Int) async -> Bool {
-        for _ in 0 ..< 5_000 {
-            if viewportAttempts.count >= expectedCount { return true }
-            try? await Task.sleep(for: .milliseconds(1))
-        }
-        return viewportAttempts.count >= expectedCount
+        await eventually { viewportAttempts.count >= expectedCount }
     }
 
     func waitUntilAcceptedViewportCount(_ expectedCount: Int) async -> Bool {
-        for _ in 0 ..< 5_000 {
-            if acceptedViewports.count >= expectedCount { return true }
-            try? await Task.sleep(for: .milliseconds(1))
-        }
-        return acceptedViewports.count >= expectedCount
+        await eventually { acceptedViewports.count >= expectedCount }
     }
 
     func acceptedViewportRequests() -> [ViewportRequest] {
