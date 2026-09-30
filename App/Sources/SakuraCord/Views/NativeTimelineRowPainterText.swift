@@ -187,12 +187,14 @@ extension NativeTimelineRowPainter {
                 lineWidth
             )
             guard endX > startX else { continue }
-            let box = CGRect(
+            let fragment = CGRect(
                 x: frame.minX + horizontalPosition + startX,
                 y: frame.maxY - baseline - ascent,
                 width: endX - startX,
                 height: ascent + descent
-            ).insetBy(dx: -2, dy: -1)
+            )
+            let box = NativeTimelineTextSpoilerGeometry.coverFrame(fragment, clippedTo: frame)
+            guard !box.isNull else { continue }
             NativeTimelineSpoilerAppearance.textBackgroundColor(isHovered: false).setFill()
             NSBezierPath(
                 roundedRect: box,
@@ -481,7 +483,7 @@ extension NativeTimelineRowPainter {
         for range in NativeTimelineTextSpoilers.ranges(in: attributedText) {
             result.spoilers.append(
                 contentsOf:
-                    NativeTimelineTextSelectionGeometry.rects(
+                    NativeTimelineTextSpoilerGeometry.rects(
                         in: textFrame,
                         outerFrame: outerFrame,
                         range: range
@@ -549,7 +551,7 @@ extension NativeTimelineRowPainter {
 
     private static func drawSpoilerDecorations(_ rects: [(CGRect, Bool)]) {
         for (spoilerRect, isHovered) in rects {
-            let backgroundFrame = spoilerRect.insetBy(dx: -2, dy: -1)
+            let backgroundFrame = spoilerRect
             NativeTimelineSpoilerAppearance.textBackgroundColor(
                 isHovered: isHovered
             ).setFill()

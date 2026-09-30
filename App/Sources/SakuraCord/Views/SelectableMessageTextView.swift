@@ -453,13 +453,7 @@ nonisolated enum RichMessageAttributedText {
             NativeTimelineSpoilerAppearance.concealText(in: value, range: range)
             value.removeAttribute(.link, range: range)
             value.removeAttribute(.attachment, range: range)
-            value.addAttribute(
-                .backgroundColor,
-                value: NativeTimelineSpoilerAppearance.textBackgroundColor(
-                    isHovered: false
-                ),
-                range: range
-            )
+            value.removeAttribute(.backgroundColor, range: range)
         }
     }
 
@@ -773,6 +767,7 @@ final class RichMessageNSTextView: NSTextView {
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
         drawSelectionOverAttachments(in: dirtyRect)
+        SelectableTextSpoilerGeometry.draw(in: self, dirtyRect: dirtyRect)
     }
 
     override func copy(_ sender: Any?) {

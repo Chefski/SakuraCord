@@ -1059,13 +1059,13 @@ extension NativeTimelineCanvasView {
             in: input.value,
             revealedLocations: input.revealedLocations
         )
+        let regions = NativeTimelineTextHitTester.spoilerRegions(
+            value: input.value, framesetter: input.framesetter, frame: input.drawingFrame
+        )
         for range in hiddenRanges {
-            let localFrame = NativeTimelineTextHitTester.rangeFrame(
-                value: input.value,
-                framesetter: input.framesetter,
-                frame: input.drawingFrame,
-                range: range
-            ) ?? input.accessibilityFrame
+            let localFrame = regions.filter { $0.range == range }
+                .map(\.frame).reduce(CGRect.null) { $0.union($1) }
+            guard !localFrame.isNull else { continue }
             children.append(accessibilityElement(
                 role: .button,
                 label: "Reveal spoiler",

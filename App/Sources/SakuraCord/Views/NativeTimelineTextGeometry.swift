@@ -444,14 +444,14 @@ enum NativeTimelineTextHitTester {
         frame: CGRect
     ) -> [NativeTimelineTextSpoilerHitRegion] {
         NativeTimelineTextSpoilers.ranges(in: value).flatMap { range in
-            NativeTimelineTextSelectionGeometry.rects(
+            NativeTimelineTextSpoilerGeometry.rects(
                 in: textFrame,
                 outerFrame: frame,
                 range: range
             ).map {
                 NativeTimelineTextSpoilerHitRegion(
                     range: range,
-                    frame: $0.insetBy(dx: -2, dy: -1)
+                    frame: $0
                 )
             }
         }
@@ -884,18 +884,34 @@ enum NativeTimelineTextHitTester {
             textFrame: layout.frame,
             frame: frame
         ).first(where: { $0.frame.contains(point) })
+        if let paintedSpoiler {
+            let textHit = textLineHit(
+                value: value, layout: layout, frame: frame, point: point,
+                targetsTextCharacters: true
+            )
+            let index = min(NSMaxRange(paintedSpoiler.range) - 1,
+                            max(paintedSpoiler.range.location, textHit?.characterIndex ?? paintedSpoiler.range.location))
+            return NativeTimelineTextHit(
+                characterIndex: index,
+                url: linkURL(from: value.attribute(.link, at: index, effectiveRange: nil)),
+                mention: (value.attribute(.nativeTimelineMention, at: index, effectiveRange: nil)
+                    as? NativeTimelineMentionBox)?.presentation,
+                spoilerRange: paintedSpoiler.range
+            )
+        }
         if let hit = inlineAttachmentHit(
             value: value,
             layout: layout,
             outerFrame: frame,
             point: point,
             paintedSpoiler: paintedSpoiler
-        ) { return hit }
+        ) { return hit.spoilerRange == nil ? hit : nil }
         if let link = linkRegions(
             value: value,
             textFrame: layout.frame,
             outerFrame: frame
         ).first(where: { $0.frame.contains(point) }) {
+            guard link.spoilerRange == nil else { return nil }
             return NativeTimelineTextHit(
                 characterIndex: link.characterIndex,
                 url: link.url,
@@ -903,15 +919,8 @@ enum NativeTimelineTextHitTester {
                 spoilerRange: link.spoilerRange
             )
         }
-        return textLineHit(value: value, layout: layout, frame: frame, point: point)
-            ?? paintedSpoiler.map {
-                NativeTimelineTextHit(
-                    characterIndex: $0.range.location,
-                    url: nil,
-                    mention: nil,
-                    spoilerRange: $0.range
-                )
-            }
+        let hit = textLineHit(value: value, layout: layout, frame: frame, point: point)
+        return hit?.spoilerRange == nil ? hit : nil
     }
 
     private static func coreTextFrameLayout(

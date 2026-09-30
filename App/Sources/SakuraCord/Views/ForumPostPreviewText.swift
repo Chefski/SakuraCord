@@ -294,15 +294,10 @@ final class ForumPostPreviewTextView: NSView {
             visibleGlyphs
         )
         guard glyphs.length > 0 else { return [] }
-        var frames: [CGRect] = []
-        layoutManager.enumerateEnclosingRects(
-            forGlyphRange: glyphs,
-            withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0),
-            in: textContainer
-        ) { rect, _ in
-            frames.append(rect.insetBy(dx: -2, dy: -1))
-        }
-        return frames
+        return SelectableTextSpoilerGeometry.rects(
+            forGlyphRange: glyphs, manager: layoutManager,
+            container: textContainer, bounds: bounds
+        )
     }
 
     func hiddenSpoilerLocation(at point: CGPoint) -> Int? {
