@@ -182,7 +182,7 @@ import Testing
     #expect(model.selectedChannel?.kind == .directMessage)
     #expect(model.inspectorProfilePresentation?.member.id == recipient.id)
 
-    #expect(await waitForDirectMessageCondition {
+    #expect(await eventually {
         model.memberLoadTask == nil
             && model.inspectorProfilePresentation?.isLoading == false
     })
