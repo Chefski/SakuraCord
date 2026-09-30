@@ -438,12 +438,14 @@ nonisolated enum RichMessageAttributedText {
                 )
             }
         }
+        NativeTimelineCoreText.normalizeParagraphMetrics(in: output, spoilersOnly: true)
         return output
     }
 
     /// Text views cannot reveal spoilers, so every spoiler stays concealed:
     /// its glyphs, link styling, and inline attachments are hidden behind a
     /// spoiler background.
+    @MainActor
     static func concealSpoilers(in value: NSMutableAttributedString) {
         value.enumerateAttribute(
             .discordMarkdownSpoiler,
@@ -452,7 +454,19 @@ nonisolated enum RichMessageAttributedText {
             guard rawValue != nil else { return }
             NativeTimelineSpoilerAppearance.concealText(in: value, range: range)
             value.removeAttribute(.link, range: range)
-            value.removeAttribute(.attachment, range: range)
+            value.enumerateAttribute(.attachment, in: range) { rawAttachment, attachmentRange, _ in
+                guard let original = rawAttachment as? NSTextAttachment else { return }
+                // Removing an attachment also removes its advance and baseline.
+                // Retain layout with an empty image that cannot expose its payload.
+                let concealed = NSTextAttachment()
+                concealed.image = NSImage(size: original.bounds.size, flipped: false) { rect in
+                    NSColor.clear.setFill()
+                    rect.fill(using: .copy)
+                    return true
+                }
+                concealed.bounds = original.bounds
+                value.addAttribute(.attachment, value: concealed, range: attachmentRange)
+            }
             value.removeAttribute(.backgroundColor, range: range)
         }
     }

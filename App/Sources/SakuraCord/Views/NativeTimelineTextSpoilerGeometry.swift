@@ -4,6 +4,14 @@ import CoreText
 /// Covers stay inside their typographic fragment. Insetting rather than
 /// expanding leaves a seam between adjacent identities and wrapped lines.
 nonisolated enum NativeTimelineTextSpoilerGeometry {
+    /// CoreText gives fractional typographic extents; TextKit rounds its line
+    /// allocation. Use the same point boundaries for covers, not glyph layout.
+    static func alignedVertically(_ fragment: CGRect) -> CGRect {
+        let top = fragment.minY.rounded()
+        let bottom = fragment.maxY.rounded()
+        return CGRect(x: fragment.minX, y: top, width: fragment.width, height: max(0, bottom - top))
+    }
+
     static func coverFrame(_ fragment: CGRect, clippedTo bounds: CGRect) -> CGRect {
         let clipped = fragment.intersection(bounds)
         guard !clipped.isNull, !clipped.isEmpty else { return .null }
@@ -11,6 +19,32 @@ nonisolated enum NativeTimelineTextSpoilerGeometry {
             dx: min(0.5, clipped.width / 4),
             dy: min(0.5, clipped.height / 4)
         )
+    }
+
+    private static func glyphBounds(in line: CTLine, range: NSRange) -> ClosedRange<CGFloat>? {
+        var lower = CGFloat.infinity
+        var upper = -CGFloat.infinity
+        for value in CTLineGetGlyphRuns(line) as NSArray {
+            let run = unsafeDowncast(value as AnyObject, to: CTRun.self)
+            let runRange = CTRunGetStringRange(run)
+            guard NSIntersectionRange(range, NSRange(location: runRange.location, length: runRange.length)).length > 0 else { continue }
+            let count = CTRunGetGlyphCount(run)
+            var positions = Array(repeating: CGPoint.zero, count: count)
+            var advances = Array(repeating: CGSize.zero, count: count)
+            var indices = Array(repeating: CFIndex(0), count: count)
+            CTRunGetPositions(run, CFRange(), &positions)
+            CTRunGetAdvances(run, CFRange(), &advances)
+            CTRunGetStringIndices(run, CFRange(), &indices)
+            for index in 0 ..< count where NSLocationInRange(indices[index], range) {
+                let start = positions[index].x
+                let end = start + advances[index].width
+                lower = min(lower, min(start, end))
+                upper = max(upper, max(start, end))
+            }
+        }
+        // Caret offsets split kerning adjustments at range boundaries. Glyph
+        // advances match TextKit's enclosed glyph range without changing text.
+        return lower.isFinite && upper > lower ? lower ... upper : nil
     }
 
     static func rects(in textFrame: CTFrame, outerFrame: CGRect, range: NSRange) -> [CGRect] {
@@ -22,8 +56,10 @@ nonisolated enum NativeTimelineTextSpoilerGeometry {
             var ascent: CGFloat = 0
             var descent: CGFloat = 0
             _ = CTLineGetTypographicBounds(coreTextLine(lines[index]), &ascent, &descent, nil)
-            return CGRect(x: outerFrame.minX, y: outerFrame.maxY - origins[index].y - ascent,
-                          width: outerFrame.width, height: ascent + descent)
+            return alignedVertically(CGRect(
+                x: 0, y: outerFrame.height - origins[index].y - ascent,
+                width: outerFrame.width, height: ascent + descent
+            )).offsetBy(dx: outerFrame.minX, dy: outerFrame.minY)
         }
         return (0 ..< lines.count).compactMap { index in
             let line = coreTextLine(lines[index])
@@ -31,11 +67,10 @@ nonisolated enum NativeTimelineTextSpoilerGeometry {
             let start = max(range.location, lineRange.location)
             let end = min(NSMaxRange(range), lineRange.location + lineRange.length)
             guard start < end else { return nil }
-            let startX = CTLineGetOffsetForStringIndex(line, start, nil)
-            let endX = CTLineGetOffsetForStringIndex(line, end, nil)
+            guard let horizontal = glyphBounds(in: line, range: NSRange(location: start, length: end - start)) else { return nil }
             var fragment = lineBounds[index]
-            fragment.origin.x += origins[index].x + min(startX, endX)
-            fragment.size.width = abs(endX - startX)
+            fragment.origin.x += origins[index].x + horizontal.lowerBound
+            fragment.size.width = horizontal.upperBound - horizontal.lowerBound
             // Explicit line-height settings can bring typographic bounds closer
             // than their natural spacing. Share that space without overlapping.
             var minY = max(outerFrame.minY, fragment.minY)
@@ -79,14 +114,16 @@ enum SelectableTextSpoilerGeometry {
         manager.enumerateLineFragments(forGlyphRange: glyphs) { lineRect, _, _, lineGlyphs, _ in
             let intersection = NSIntersectionRange(glyphs, lineGlyphs)
             guard intersection.length > 0 else { return }
-            let lineBounds = lineRect.offsetBy(dx: origin.x, dy: origin.y).intersection(bounds)
+            let lineBounds = NativeTimelineTextSpoilerGeometry.alignedVertically(lineRect)
+                .offsetBy(dx: origin.x, dy: origin.y).intersection(bounds)
             manager.enumerateEnclosingRects(
                 forGlyphRange: intersection,
                 withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0),
                 in: container
             ) { rect, _ in
                 let cover = NativeTimelineTextSpoilerGeometry.coverFrame(
-                    rect.offsetBy(dx: origin.x, dy: origin.y), clippedTo: lineBounds
+                    NativeTimelineTextSpoilerGeometry.alignedVertically(rect)
+                        .offsetBy(dx: origin.x, dy: origin.y), clippedTo: lineBounds
                 )
                 if !cover.isNull { result.append(cover) }
             }

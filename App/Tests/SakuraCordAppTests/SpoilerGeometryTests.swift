@@ -47,7 +47,10 @@ func `selectable spoiler fragments preserve separate masked identities`(width: C
     for range in ranges {
         value.enumerateAttributes(in: range) { attributes, _, _ in
             #expect(attributes[.link] == nil)
-            #expect(attributes[.attachment] == nil)
+            if let attachment = attributes[.attachment] as? NSTextAttachment {
+                #expect(!(attachment is MentionTextAttachment))
+                #expect(attachment.image?.accessibilityDescription == nil)
+            }
             #expect((attributes[.foregroundColor] as? NSColor)?.alphaComponent == 0)
         }
     }
