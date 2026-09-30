@@ -27,6 +27,54 @@ extension AppModel {
         }
     }
 
+    /// Stages dropped or pasted files, or sends them at once for an instant drop.
+    func receiveComposerAttachments(
+        _ incoming: ComposerIncomingAttachments,
+        to destination: MessageComposerDestination,
+        sendingImmediately: Bool
+    ) async {
+        switch (incoming, sendingImmediately) {
+        case let (.external(urls), false):
+            await addComposerAttachments(urls, to: destination)
+        case let (.owned(batch), false):
+            await addPromisedComposerAttachments(batch, to: destination)
+        case let (.external(urls), true):
+            let urls = uploadableFileURLs(urls)
+            guard attachmentBatchFits(urls.count) else { return }
+            let acceptedURLs = await attachmentURLsWithinDiscordLimit(urls, offeringExternalUploadFor: destination)
+            guard !acceptedURLs.isEmpty else { return }
+            let scopedURLs = acceptedURLs.filter { $0.startAccessingSecurityScopedResource() }
+            defer {
+                for url in scopedURLs {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+            await sendAttachmentsImmediately(acceptedURLs.map { ForumPostAttachment(url: $0) }, to: destination)
+        case let (.owned(batch), true):
+            let acceptedURLs = await preparePromisedAttachmentsForImmediateSend(batch, to: destination)
+            guard !acceptedURLs.isEmpty else { return }
+            defer { endUsingOwnedPromisedFiles(acceptedURLs) }
+            await sendAttachmentsImmediately(acceptedURLs.map { ForumPostAttachment(url: $0) }, to: destination)
+        }
+    }
+
+    /// Fills the active slash command's attachment option with the first
+    /// pasted file. Like Discord, the command takes no other files.
+    func receiveCommandAttachment(_ incoming: ComposerIncomingAttachments) async {
+        let url: URL? = switch incoming {
+        case let .external(urls): uploadableFileURLs(urls).first
+        case let .owned(batch): adoptPromisedFileBatch(batch).first
+        }
+        guard let url else { return }
+        beginUsingOwnedPromisedFiles([url])
+        defer { endUsingOwnedPromisedFiles([url]) }
+        guard let target = commandComposer.attachmentPasteTarget(),
+              !(await attachmentURLsWithinDiscordLimit([url])).isEmpty,
+              !Task.isCancelled
+        else { return }
+        commandComposer.finishAttachmentPaste(url, target: target)
+    }
+
     @discardableResult
     func addPromisedComposerAttachments(
         _ batch: ComposerPromisedFileBatch,
@@ -49,21 +97,17 @@ extension AppModel {
             pruneOwnedPromisedAttachmentFiles()
             return []
         }
+        guard attachmentBatchFits(adoptedURLs.count) else {
+            pruneOwnedPromisedAttachmentFiles()
+            return []
+        }
         beginUsingOwnedPromisedFiles(adoptedURLs)
         let acceptedURLs = await attachmentURLsWithinDiscordLimit(
             adoptedURLs,
             offeringExternalUploadFor: destination
         )
-        let sentURLs = Array(
-            acceptedURLs.prefix(SendMessageDraft.maximumAttachmentCount)
-        )
-        if acceptedURLs.count > sentURLs.count {
-            errorMessage =
-                "You can attach up to \(SendMessageDraft.maximumAttachmentCount) files to one message."
-        }
-        endUsingOwnedPromisedFiles(adoptedURLs.filter { !sentURLs.contains($0) })
-        pruneOwnedPromisedAttachmentFiles()
-        return sentURLs
+        endUsingOwnedPromisedFiles(adoptedURLs.filter { !acceptedURLs.contains($0) })
+        return acceptedURLs
     }
 
     @discardableResult
@@ -72,6 +116,10 @@ extension AppModel {
         to destination: MessageComposerDestination
     ) async -> Bool {
         guard isComposerDropEligible(destination), !urls.isEmpty else { return false }
+        let urls = uploadableFileURLs(urls)
+        guard attachmentBatchFits(urls.count, besides: composerAttachments(for: destination).count) else {
+            return true
+        }
         let acceptedURLs = await attachmentURLsWithinDiscordLimit(
             urls,
             offeringExternalUploadFor: destination
@@ -83,17 +131,14 @@ extension AppModel {
     func appendCheckedComposerAttachments(_ urls: [URL], to destination: MessageComposerDestination) -> Bool {
         guard isComposerDropEligible(destination), !Task.isCancelled else { return false }
         var attachments = composerAttachments(for: destination)
-        let remaining = max(0, SendMessageDraft.maximumAttachmentCount - attachments.count)
-        attachments.append(
-            contentsOf: urls.prefix(remaining).map { ForumPostAttachment(url: $0) }
-        )
-        setComposerAttachments(attachments, for: destination)
-        if urls.count > remaining {
-            errorMessage =
-                "You can attach up to \(SendMessageDraft.maximumAttachmentCount) files to one message."
+        if attachmentBatchFits(urls.count, besides: attachments.count) {
+            attachments.append(contentsOf: urls.map { ForumPostAttachment(url: $0) })
+            setComposerAttachments(attachments, for: destination)
+        } else {
+            pruneOwnedPromisedAttachmentFiles()
         }
-        // Claim a valid drop even when every file was rejected, preventing its path
-        // from being inserted into the text field by the system fallback.
+        // An eligible destination handled the files even when limits rejected
+        // them; each limit reports its own error.
         return true
     }
 
@@ -212,6 +257,16 @@ extension AppModel {
             threadComposerAttachments = attachments
         }
         pruneOwnedPromisedAttachmentFiles()
+    }
+
+    /// Like Discord, rejects the whole batch rather than keeping the files that fit.
+    func attachmentBatchFits(_ count: Int, besides existingCount: Int = 0) -> Bool {
+        guard existingCount + count <= SendMessageDraft.maximumAttachmentCount else {
+            errorMessage =
+                "You can attach up to \(SendMessageDraft.maximumAttachmentCount) files to one message."
+            return false
+        }
+        return true
     }
 
     func validateAttachmentCount(_ attachments: [ForumPostAttachment]) -> Bool {

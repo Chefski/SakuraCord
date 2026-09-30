@@ -73,13 +73,20 @@ final class ApplicationCommandComposerModel {
     private(set) var applications: [ApplicationCommandApplication] = []
     private(set) var isLoading = false
     private(set) var loadError: String?
-    private(set) var activeCommand: ApplicationCommand?
+    private(set) var activeCommand: ApplicationCommand? {
+        didSet { attachmentPasteRevision &+= 1 }
+    }
     private(set) var includedOptionIDs: Set<String> = []
     private(set) var displayedOptionIDs: [String] = []
-    private(set) var values: [String: ApplicationCommandArgument] = [:]
+    private(set) var values: [String: ApplicationCommandArgument] = [:] {
+        didSet { attachmentPasteRevision &+= 1 }
+    }
     private(set) var optionDrafts: [String: String] = [:]
 
-    private(set) var focusedOptionID: String?
+    private(set) var focusedOptionID: String? {
+        didSet { attachmentPasteRevision &+= 1 }
+    }
+    @ObservationIgnored private var attachmentPasteRevision = 0
     private(set) var autocompleteChoices: [ApplicationCommandChoice] = []
     private(set) var autocompleteNonce: String?
     private(set) var isAutocompleteLoading = false
@@ -119,6 +126,34 @@ final class ApplicationCommandComposerModel {
     var focusedOption: ApplicationCommandOption? {
         guard let focusedOptionID else { return nil }
         return activeCommand?.options.first { $0.id == focusedOptionID }
+    }
+
+    /// The option a pasted file fills, as in Discord: the focused attachment
+    /// option, otherwise the first attachment option without a file.
+    var pastedAttachmentOption: ApplicationCommandOption? {
+        if let focusedOption, focusedOption.type == .attachment { return focusedOption }
+        return activeCommand?.options.first { $0.type == .attachment && values[$0.id] == nil }
+    }
+
+    struct AttachmentPasteTarget {
+        fileprivate let revision: Int
+        fileprivate let option: ApplicationCommandOption
+    }
+
+    func attachmentPasteTarget() -> AttachmentPasteTarget? {
+        pastedAttachmentOption.map { AttachmentPasteTarget(revision: attachmentPasteRevision, option: $0) }
+    }
+
+    func finishAttachmentPaste(_ url: URL, target: AttachmentPasteTarget) {
+        guard target.revision == attachmentPasteRevision else { return }
+        setValue(.attachment(url), displayText: url.lastPathComponent, for: target.option)
+    }
+
+    var attachmentURLs: [URL] {
+        values.values.compactMap {
+            guard case let .attachment(url) = $0 else { return nil }
+            return url
+        }
     }
 
     var canSubmit: Bool {

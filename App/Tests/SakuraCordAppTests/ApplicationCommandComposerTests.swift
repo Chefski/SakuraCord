@@ -397,6 +397,27 @@ func optionalOnlyCommandStartsWithFieldChooser() {
 }
 
 @MainActor
+@Test("pasted files fill the focused attachment option or the first one without a file")
+func commandPastedAttachmentTarget() throws {
+    let model = ApplicationCommandComposerModel()
+    let text = ApplicationCommandOption(
+        id: "200/text", name: "text", type: .string, isRequired: true
+    )
+    let first = ApplicationCommandOption(id: "200/first", name: "first", type: .attachment)
+    let second = ApplicationCommandOption(id: "200/second", name: "second", type: .attachment)
+    model.activate(composerFixtureCommand(
+        id: "200", name: "upload", application: .init(id: "100", name: "Utility"),
+        options: [text, first, second]
+    ))
+
+    #expect(model.pastedAttachmentOption?.id == first.id)
+    model.setValue(.attachment(URL(filePath: "/tmp/a.png")), for: first)
+    #expect(model.pastedAttachmentOption?.id == second.id)
+    model.focus(first)
+    #expect(model.pastedAttachmentOption?.id == first.id)
+}
+
+@MainActor
 @Test("command suggestions never mix field values with optional fields")
 func commandSuggestionContextSeparation() throws {
     let active = ApplicationCommandOption(
@@ -595,4 +616,38 @@ func liveCommandTextMappingKeepsEditingFocus() throws {
         atCharacter: segment.labelRange.location,
         in: live
     ) == "label")
+}
+
+@MainActor
+@Test("attachment paste ignores changed command, focus, and newer values")
+func attachmentPasteTargetLifecycle() throws {
+    let model = ApplicationCommandComposerModel()
+    let application = ApplicationCommandApplication(id: "100", name: "Utility")
+    let first = ApplicationCommandOption(id: "200/first", name: "first", type: .attachment, isRequired: true)
+    let second = ApplicationCommandOption(id: "200/second", name: "second", type: .attachment, isRequired: true)
+    let command = composerFixtureCommand(id: "200", name: "files", application: application, options: [first, second])
+    let oldURL = URL(fileURLWithPath: "/old.txt")
+    let newURL = URL(fileURLWithPath: "/new.txt")
+    model.activate(command)
+    let changedFocus = try #require(model.attachmentPasteTarget())
+    model.focus(second)
+    model.focus(first)
+    model.finishAttachmentPaste(oldURL, target: changedFocus)
+    #expect(model.attachmentURLs.isEmpty)
+
+    let changedCommand = try #require(model.attachmentPasteTarget())
+    model.cancelActiveCommand()
+    model.activate(command)
+    model.finishAttachmentPaste(oldURL, target: changedCommand)
+    #expect(model.attachmentURLs.isEmpty)
+
+    let overwritten = try #require(model.attachmentPasteTarget())
+    model.setValue(.attachment(newURL), for: first)
+    model.finishAttachmentPaste(oldURL, target: overwritten)
+    #expect(model.value(for: first) == .attachment(newURL))
+
+    model.focus(second)
+    let current = try #require(model.attachmentPasteTarget())
+    model.finishAttachmentPaste(oldURL, target: current)
+    #expect(model.value(for: second) == .attachment(oldURL))
 }
