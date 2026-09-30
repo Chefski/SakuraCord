@@ -170,6 +170,11 @@ final class AppModel {
         }
     }
     var visibleChannelGroups: [ChannelGroup] = []
+    var pinnedDirectMessageIDs: Set<ChannelID> {
+        guard let settings = snapshot?.notificationSettings.first(where: { $0.guildID == nil })
+        else { return [] }
+        return Set(settings.channelOverrides.filter(\.isPinnedDirectMessage).map(\.channelID))
+    }
     var unreadCategoryIDsByGuild: [GuildID: Set<ChannelID>] = [:]
     var hiddenChannelIDs: Set<ChannelID> = [] {
         didSet { refreshVisibleChannelGroups() }
@@ -422,6 +427,7 @@ final class AppModel {
     var supportedCapabilities: Set<ChatCapability> = []
     var componentInteractionPresentation =
         ComponentInteractionPresentationState()
+    /// Views render profiles through `liveProfilePresentation(for:)`.
     var inspectorProfilePresentation:
         ProfilePresentationState?
     var contextualProfilePresentation:
@@ -896,11 +902,15 @@ final class AppModel {
     var selectedChannelID: ChannelID? {
         didSet {
             guard selectedChannelID != oldValue else { return }
-            onboarding.presentedGuildID = nil
+            if onboarding.previewChannelID != selectedChannelID {
+                onboarding.presentedGuildID = nil
+                onboarding.previewChannelID = nil
+                onboarding.previewReturnChannelID = nil
+            }
             refreshServerRailSelection()
-            recordConversationNavigation()
+            if onboarding.previewChannelID == nil { recordConversationNavigation() }
             timelineSpoilerRevealStore.reset()
-            if let previousChannel = selectedChannel,
+            if onboarding.previewChannelID == nil, let previousChannel = selectedChannel,
                let guildID = previousChannel.guildID
             {
                 lastOpenedChannelIDsByGuild[guildID] = previousChannel.id

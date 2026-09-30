@@ -41,16 +41,29 @@ public struct RenderedEmoji: Codable, Hashable, Sendable {
     }
 }
 
+public enum GuildNavigationMention: String, Codable, Hashable, Sendable {
+    case guide, browse, customize
+
+    public var title: String {
+        switch self {
+        case .guide: "Server Guide"
+        case .browse: "Browse Channels"
+        case .customize: "Channels & Roles"
+        }
+    }
+}
+
 public struct RenderedMention: Codable, Hashable, Sendable {
     private static let tokenExpression = MessageRegularExpression.make(
         #"^<(@!?|@&|#)([0-9]+)>$"#
     )
 
     public enum Kind: String, Codable, Hashable, Sendable {
-        case user, role, game, broadcast, timestamp, channel, channelLink, message
+        case user, role, game, broadcast, timestamp, channel, channelLink, message, guildNavigation
     }
 
     public static let tokenPattern = [
+        #"<id:(?:guide|browse|customize)>|"#,
         #"<@!?[0-9]+>|<@&[0-9]+>|<@\$[0-9]+>|<#[0-9]+>|"#,
         #"(?<![\w@\\])@(?:everyone|here)(?!\w)|"#,
         #"<t:-?[0-9]+(?::[tTdDfFsSR])?>|"#,
@@ -64,6 +77,15 @@ public struct RenderedMention: Codable, Hashable, Sendable {
     public var messageChannelID: String?
 
     public init?(rawToken: String) {
+        if rawToken.hasPrefix("<id:"), rawToken.hasSuffix(">"),
+           let destination = GuildNavigationMention(rawValue: String(rawToken.dropFirst(4).dropLast())) {
+            id = destination.rawValue
+            kind = .guildNavigation
+            self.rawToken = rawToken
+            messageGuildID = nil
+            messageChannelID = nil
+            return
+        }
         if rawToken.hasPrefix("<@$"), rawToken.hasSuffix(">"),
            let gameID = UInt64(rawToken.dropFirst(3).dropLast())
         {
@@ -90,6 +112,7 @@ public struct RenderedMention: Codable, Hashable, Sendable {
             messageChannelID = nil
             return
         }
+
         let range = NSRange(rawToken.startIndex ..< rawToken.endIndex, in: rawToken)
         if let match = Self.tokenExpression.firstMatch(in: rawToken, range: range),
            let prefixRange = Range(match.range(at: 1), in: rawToken),

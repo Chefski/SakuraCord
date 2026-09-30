@@ -70,6 +70,70 @@ import Testing
     )
 }
 
+@Test func `pinned direct messages stay above recent unpinned conversations and follow message activity`() {
+    let channels = [
+        Channel(id: ChannelID(rawValue: 1), guildID: nil, name: "First", kind: .directMessage,
+                lastMessageID: MessageID(rawValue: 120 << 22)),
+        Channel(id: ChannelID(rawValue: 2), guildID: nil, name: "Group", kind: .groupDirectMessage,
+                lastMessageID: MessageID(rawValue: 90 << 22)),
+        Channel(id: ChannelID(rawValue: 3), guildID: nil, name: "Recent", kind: .directMessage,
+                lastMessageID: MessageID(rawValue: 150 << 22)),
+        Channel(id: ChannelID(rawValue: 4), guildID: nil, name: "Older", kind: .directMessage,
+                lastMessageID: MessageID(rawValue: 80 << 22)),
+    ]
+    let pinned: Set<ChannelID> = [channels[1].id, channels[3].id]
+
+    #expect(DirectMessageInboxPolicy.conversations(in: channels, pinnedChannelIDs: pinned)
+        .map(\.id) == [channels[1].id, channels[3].id, channels[0].id, channels[2].id])
+
+    var active = channels
+    active[3].lastMessageID = MessageID(rawValue: 160 << 22)
+    #expect(DirectMessageInboxPolicy.conversations(in: active, pinnedChannelIDs: pinned)
+        .map(\.id) == [channels[3].id, channels[1].id, channels[0].id, channels[2].id])
+    #expect(DirectMessageInboxPolicy.conversations(in: active)
+        .map(\.id) == active.map(\.id))
+
+    let unmessaged = Channel(
+        id: ChannelID(rawValue: 9_007_199_254_740_993),
+        guildID: nil,
+        name: "New DM",
+        kind: .directMessage
+    )
+    let olderUnmessaged = Channel(
+        id: ChannelID(rawValue: 70 << 22),
+        guildID: nil,
+        name: "Empty group",
+        kind: .groupDirectMessage
+    )
+    let mixed = [olderUnmessaged, active[3], unmessaged]
+    #expect(DirectMessageInboxPolicy.conversations(
+        in: mixed,
+        pinnedChannelIDs: Set(mixed.map(\.id))
+    ).map(\.id) == [unmessaged.id, active[3].id, olderUnmessaged.id])
+}
+
+@MainActor
+@Test func `direct message pins follow account notification overrides`() async throws {
+    let model = AppModel(launchMode: .offlineTesting, provider: MockChatProvider())
+    await model.start()
+    let channel = try #require(model.snapshot?.channels.first { $0.kind == .directMessage })
+    let originalFlags: UInt64 = 1 << 5
+    var settings = GuildNotificationSettings(guildID: nil, messageNotifications: .inherit)
+    settings.channelOverrides = [ChannelNotificationOverride(
+        channelID: channel.id,
+        flags: originalFlags | ChannelNotificationOverride.pinnedDirectMessageFlag
+    )]
+    model.applyNotificationSettings(settings)
+    #expect(model.pinnedDirectMessageIDs.contains(channel.id))
+
+    model.toggleDirectMessagePin(channel.id)
+    #expect(await eventually {
+        !model.pinnedDirectMessageIDs.contains(channel.id)
+            && !model.isChannelNotificationMutationPending(channel.id)
+    })
+    #expect(model.channelNotificationOverride(for: channel)?.flags == originalFlags)
+}
+
 @Test func `direct message inbox only surfaces actively ringing calls`() {
     let channelID = ChannelID(rawValue: 40)
     let ongoing = PrivateCall(
@@ -104,10 +168,10 @@ import Testing
     let recipient = try #require(existing.recipients.first)
     let guildPresentationRevision = model.timelinePresentationRevision
     model.selectGuild(nil)
-    #expect(await waitForDirectMessageCondition { model.selectedGuildID == nil })
+    #expect(await until { model.selectedGuildID == nil })
     #expect(model.timelinePresentationRevision > guildPresentationRevision)
     model.selectedChannelID = existing.id
-    #expect(await waitForDirectMessageCondition {
+    #expect(await until {
         model.selectedChannelID == existing.id
             && model.selectedChannel?.kind == .directMessage
     })
@@ -117,6 +181,19 @@ import Testing
     #expect(model.selectedChannelID == existing.id)
     #expect(model.selectedChannel?.kind == .directMessage)
     #expect(model.inspectorProfilePresentation?.member.id == recipient.id)
+
+    #expect(await eventually {
+        model.memberLoadTask == nil
+            && model.inspectorProfilePresentation?.isLoading == false
+    })
+    let status: PresenceStatus =
+        model.liveProfilePresentation(for: .inspector)?.member.status == .dnd ? .idle : .dnd
+    await model.consume(.privateMembersChanged(model.members.map { member in
+        var member = member
+        if member.id == recipient.id { member.status = status }
+        return member
+    }))
+    #expect(model.liveProfilePresentation(for: .inspector)?.member.status == status)
 }
 
 @MainActor
@@ -129,9 +206,9 @@ import Testing
     )
 
     model.selectGuild(nil)
-    #expect(await waitForDirectMessageCondition { model.selectedGuildID == nil })
+    #expect(await until { model.selectedGuildID == nil })
     model.selectedChannelID = group.id
-    #expect(await waitForDirectMessageCondition {
+    #expect(await until {
         model.selectedChannelID == group.id
             && model.selectedChannel?.kind == .groupDirectMessage
     })
@@ -224,15 +301,4 @@ import Testing
         model.conversationAccess(for: ordinaryChannel)
             == .readable(canSend: true)
     )
-}
-
-@MainActor
-private func waitForDirectMessageCondition(
-    _ condition: @escaping @MainActor () -> Bool
-) async -> Bool {
-    for _ in 0 ..< 200 {
-        if condition() { return true }
-        try? await Task.sleep(for: .milliseconds(2))
-    }
-    return condition()
 }

@@ -657,7 +657,7 @@ extension NativeTimelineCanvasView {
             revealTextSpoiler(key)
             return true
         }
-        if let mention = hit.mention {
+        if let mention = hit.mention, mention.isInteractive {
             let anchor = StablePopoverAnchor(
                 sourceView: self
             ) { [weak self] in
@@ -731,6 +731,8 @@ extension NativeTimelineCanvasView {
             }
         case let .role(id):
             showMentionRole(id, anchor: anchor)
+        case let .guildNavigation(guildID, destination):
+            model.openGuildNavigationDestination(destination, in: guildID)
         case let .channel(id):
             model.navigate(to: id)
         case let .linkedChannel(guildID, channelID):
@@ -870,12 +872,15 @@ extension NativeTimelineCanvasView {
                 .prefix(max(1, region.maximumSelectionCount))
         )
         let initialOptions = initialComponentChoices(for: region, message: message, model: model)
+        var pendingOptions = selectedOptions ?? region.options.filter(\.isDefault)
         let overlay = ComponentChoiceOverlayController(
             initialSelection: initialSelection,
             minimumSelectionCount: region.minimumSelectionCount,
             maximumSelectionCount: region.maximumSelectionCount,
             submit: { [weak self] values in
                 guard let self else { return }
+                model.setComponentSelection(pendingOptions, messageID: message.id, customID: region.customID)
+                model.publishComponentSelectionPresentation()
                 self.actions?.submitComponent(
                     message,
                     region.customID,
@@ -916,12 +921,13 @@ extension NativeTimelineCanvasView {
         overlay.present(
             rootView: AnyView(ComponentChoicePicker(
                 placeholder: region.placeholder,
+                resultPlacement: placement,
                 selectKind: region.kind,
                 options: region.options,
                 initialOptions: initialOptions,
                 selectedOptions: selectedOptions,
+                minimumSelectionCount: region.minimumSelectionCount,
                 maximumSelectionCount: region.maximumSelectionCount,
-                resultPlacement: placement,
                 loader: { [weak model] query in
                     guard let model else {
                         throw CancellationError()
@@ -933,16 +939,12 @@ extension NativeTimelineCanvasView {
                         channelID: message.channelID
                     )
                 },
-                selectionChanged: { [weak model, weak overlay] options in
-                    model?.setComponentSelection(
-                        options,
-                        messageID: message.id,
-                        customID: region.customID
-                    )
+                selectionChanged: { [weak overlay] options in
+                    pendingOptions = options
                     overlay?.updateSelection(options.map(\.value))
                 },
-                submitSingleSelection: { [weak overlay] values in
-                    overlay?.submitSingleSelection(values)
+                submitSelection: { [weak overlay] values in
+                    overlay?.submitSelection(values)
                 },
                 dismiss: { [weak overlay] in
                     overlay?.close()

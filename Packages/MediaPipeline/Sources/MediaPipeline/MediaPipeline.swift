@@ -47,7 +47,7 @@ public actor MediaCache {
     public private(set) var maximumBytes: Int64
     private static let maximumEntryBytes = 32 * 1024 * 1024
     private let directory: URL
-    private let beforeIndexLoad: @Sendable () -> Void
+    private let beforeIndexLoad: @Sendable () async -> Void
     private let removeCachedFile: @Sendable (URL) throws -> Void
     private var cachedFileIndex: [URL: CachedFile]?
     private var cachedFileIndexTask: Task<[CachedFile], any Error>?
@@ -71,7 +71,7 @@ public actor MediaCache {
     init(
         maximumBytes: Int64,
         directory: URL,
-        beforeIndexLoad: @escaping @Sendable () -> Void,
+        beforeIndexLoad: @escaping @Sendable () async -> Void,
         removeCachedFile: @escaping @Sendable (URL) throws -> Void = {
             try FileManager.default.removeItem(at: $0)
         }
@@ -225,9 +225,7 @@ public actor MediaCache {
     }
 
     private func cachedFileURL(for url: URL) -> URL {
-        let digest = SHA256.hash(data: Data(url.absoluteString.utf8))
-            .map { String(format: "%02x", $0) }
-            .joined()
+        let digest = SHA256.hash(data: Data(url.absoluteString.utf8)).hexString
         return directory.appending(path: digest, directoryHint: .notDirectory)
     }
 
@@ -243,7 +241,7 @@ public actor MediaCache {
             let directory = directory
             let beforeIndexLoad = beforeIndexLoad
             task = Task.detached(priority: .utility) {
-                beforeIndexLoad()
+                await beforeIndexLoad()
                 return try Self.cachedFiles(in: directory)
             }
             cachedFileIndexTask = task

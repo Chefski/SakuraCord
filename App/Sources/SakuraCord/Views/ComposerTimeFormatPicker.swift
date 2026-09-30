@@ -6,6 +6,8 @@ struct ComposerTimeFormatPicker: View {
         .shortDateMediumTime, .longDateShortTime, .fullDateShortTime, .relative,
     ]
 
+    @State private var clock = RelativeTimestampDisplayClock()
+
     let seconds: Int64
     let selectedIndex: Int
     let select: (DiscordTimestampToken.Style) -> Void
@@ -17,7 +19,7 @@ struct ComposerTimeFormatPicker: View {
                 ForEach(Self.styles.indices, id: \.self) { index in
                     let style = Self.styles[index]
                     Button { select(style) } label: {
-                        Text(DiscordTimestampToken(seconds: seconds, style: style).formatted())
+                        Text(DiscordTimestampToken(seconds: seconds, style: style).formatted(relativeTo: clock.date))
                             .foregroundStyle(.primary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 9)
@@ -33,5 +35,7 @@ struct ComposerTimeFormatPicker: View {
                 }
             }
         }
+        .onAppear { clock.start() }
+        .onDisappear { clock.stop() }
     }
 }

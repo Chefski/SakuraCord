@@ -186,6 +186,9 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
     var pollPopover: NSPopover?
     var pollClockTask: Task<Void, Never>?
     let pollAnimationTicker = NativeTimelineDisplayLinkTicker()
+    // Intermediate resize widths are short-lived; paint them without replacing
+    // the stable row bitmap cache on every animation frame.
+    var isPreviewingWidth = false
     var storage = NativeTimelineCanvasStorage()
     var baseContentOriginY: CGFloat = 0
     var contentOriginY: CGFloat = 0

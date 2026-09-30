@@ -6,6 +6,16 @@ wording belongs in the [GitHub release notes](RELEASE_NOTES_STYLE.md) and
 
 ## Release model
 
+Development pull requests target `nightly`. The
+`retarget-pull-requests.yml` workflow redirects open PRs targeting `main` when
+they are opened, reopened, edited, or updated with new commits. Only PRs from
+this repository's own `nightly` branch may target `main` for release promotion.
+The workflow changes PR metadata only and never executes contributor code.
+It must be present on the repository's default branch (`main`) to take effect.
+Retargeting with `GITHUB_TOKEN` does not start a new CI run; push a new commit
+to the PR branch to validate against the updated base before merging. This
+automation does not block direct pushes or merges made before it runs.
+
 A tag matching `vMAJOR.MINOR.PATCH` publishes a regular release. A tag matching
 `vMAJOR.MINOR.PATCH-Beta-NUMBER` publishes a GitHub prerelease to the nightly
 track. Git refs cannot contain spaces, so `v0.1.5-Beta-1` is displayed as

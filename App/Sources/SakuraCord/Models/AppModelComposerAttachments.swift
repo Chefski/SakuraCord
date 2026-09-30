@@ -147,6 +147,7 @@ extension AppModel {
             closeThread()
             return true
         }
+        if closeGuildSupplementaryConversation() { return true }
         guard isVoiceChatOpen else { return false }
         closeVoiceChat()
         return true

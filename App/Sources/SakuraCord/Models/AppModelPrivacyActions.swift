@@ -38,20 +38,7 @@ extension AppModel {
         let previousDraftChannelIDs = quickSwitcherDraftChannelIDs
         quickSwitcherDraftChannelIDs = []
         do {
-            let previous = onboarding.draftWrite
-            let revisions = onboarding.entries.mapValues(\.revision)
-            let deletion = Task {
-                await previous?.value
-                try await composer.clearDrafts(in: database)
-            }
-            onboarding.draftWrite = Task { _ = try? await deletion.value }
-            try await deletion.value
-            if isCurrentAccountSession(session) {
-                for (guildID, revision) in revisions where onboarding.entries[guildID]?.revision == revision {
-                    onboarding.entries[guildID] = nil
-                }
-                onboarding.presentedGuildID = nil
-            }
+            try await composer.clearDrafts(in: database)
         } catch {
             if isCurrentAccountSession(session) {
                 let currentIDs = Set(quickSwitcherDraftChannelIDs)

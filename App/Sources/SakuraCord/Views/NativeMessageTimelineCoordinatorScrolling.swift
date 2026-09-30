@@ -68,8 +68,7 @@ nonisolated enum NativeTimelineViewportWindowPolicy {
 }
 
 nonisolated enum NativeTimelineWidthRelayoutPolicy {
-    static let asynchronousRowThreshold = 1_000
-    static let batchSize = 96
+    static let asynchronousRowThreshold = 32
 
     static func indexes(
         itemCount: Int,
@@ -276,7 +275,8 @@ extension NativeMessageTimelineCoordinator {
 
         func layout(
             for item: NativeMessageTimelineItem,
-            width: CGFloat
+            width: CGFloat,
+            metrics: NativeTimelineRowLayout.Metrics? = nil
         ) -> NativeTimelineRowLayout {
             if let preparation = layoutPreparation,
                preparation.isComplete,
@@ -292,7 +292,8 @@ extension NativeMessageTimelineCoordinator {
             return NativeTimelineRowLayout.make(
                 item: item,
                 width: width,
-                model: parent.model
+                model: parent.model,
+                metrics: metrics
             )
         }
 
@@ -322,15 +323,18 @@ extension NativeMessageTimelineCoordinator {
         func applySnapshot(
             to canvas: NativeTimelineCanvasView,
             in scrollView: NSScrollView,
+            viewportWidth: CGFloat? = nil,
             redrawsMovedShortContentSynchronously: Bool = true
         ) {
             let viewportHeight = max(1, scrollView.contentView.bounds.height)
+            let presentedWidth = viewportWidth ?? previewLayoutWidth ?? layoutWidth
             updateDocumentSize(
                 NSSize(
-                    width: layoutWidth,
+                    width: presentedWidth,
                     height: effectiveContentHeight
                 )
             )
+            canvas.isPreviewingWidth = previewLayoutWidth != nil
             canvas.presentedConversationID = parent.conversation.id
             canvas.messageInteractionContext =
                 parent.conversation.messageInteractionContext
@@ -338,7 +342,7 @@ extension NativeMessageTimelineCoordinator {
                 storage: storage,
                 model: parent.model,
                 actions: actions,
-                viewportWidth: layoutWidth,
+                viewportWidth: presentedWidth,
                 minimumHeight: viewportHeight,
                 bottomSpacerHeight:
                     bottomInset + trailingHistoryReserve,
@@ -412,7 +416,9 @@ extension NativeMessageTimelineCoordinator {
                 return
             }
             var viewport = scrollView.contentView.bounds
-            if pendingLayoutWidth != nil, layoutWidth > 0 {
+            if let previewLayoutWidth {
+                viewport.size.width = previewLayoutWidth
+            } else if pendingLayoutWidth != nil, layoutWidth > 0 {
                 // A settled width relayout is pending. Keep the backing view
                 // at the width its row layouts and cached bitmaps describe;
                 // resizing that layer early stretches the previous pixels
@@ -680,6 +686,12 @@ extension NativeMessageTimelineCoordinator {
             let widthChanged = abs(width - layoutWidth) >= 1
             let reflowsWidth = widthChanged
                 && (appliesWidthImmediately || layoutWidth <= 0)
+            let previewsWidth = widthChanged && !reflowsWidth
+            let previewChanged = previewsWidth
+                && abs(width - (previewLayoutWidth ?? layoutWidth)) >= 1
+            let previewNeedsRows = previewsWidth && !previewChanged
+                && previewLayoutWidth != nil && visibleRowsNeedPreview()
+            let restoresPreview = !widthChanged && previewLayoutWidth != nil
             if widthChanged, !reflowsWidth {
                 scheduleRelayoutForWidthChange(width)
             } else if !widthChanged, !appliesWidthImmediately {
@@ -691,7 +703,10 @@ extension NativeMessageTimelineCoordinator {
                 widthRelayoutTask = nil
                 pendingLayoutWidth = nil
             }
-            guard sizeChanged || widthChanged else { return false }
+            guard sizeChanged || reflowsWidth || previewChanged
+                || previewNeedsRows || restoresPreview else {
+                return false
+            }
             lastViewportSize = viewportSize
             guard !isApplyingUpdate else { return true }
 
@@ -703,31 +718,26 @@ extension NativeMessageTimelineCoordinator {
                     lastReportedState?.isNearBottom
                         ?? scrollState().isNearBottom
                 )
-            let visiblePosition =
-                preservesEstablishedPosition && !wasNearBottom
-                ? visibleAnchor(
-                    preferringVisibleMessageBeginning:
-                        reflowsWidth
-                        && NativeMessageTimelineLayoutPolicy
-                        .prefersVisibleMessageBeginning(
-                            from: layoutWidth,
-                            to: width
-                        )
-                )
-                : nil
-            let anchor =
-                reflowsWidth
-                ? visiblePosition?.topPinnedForWidthChange
-                : visiblePosition
+            let anchor = preservesEstablishedPosition && !wasNearBottom
+                ? visibleAnchor() : nil
 
             isApplyingUpdate = true
             if reflowsWidth {
-                let targetLayouts = preparedLayouts
-                    ?? items.map { layout(for: $0, width: width) }
-                layoutWidth = width
-                layouts = targetLayouts
-                rowHeights = layouts.map(\.height)
-                rebuildOrigins()
+                applyImmediateWidthRelayout(
+                    width, preparedLayouts: preparedLayouts,
+                    to: canvas, in: scrollView
+                )
+            } else if previewChanged || previewNeedsRows {
+                // Keep the visible AppKit rows and their backing canvas in
+                // step with SwiftUI's animated pane width. Reflow the rest of
+                // a large history once the width settles.
+                applyVisibleWidthPreview(
+                    width, resetsRows: previewChanged,
+                    to: canvas, in: scrollView
+                )
+            } else if restoresPreview {
+                previewLayoutWidth = nil
+                restorePreviewedRows()
                 applySnapshot(to: canvas, in: scrollView)
             }
             updateInsets()
@@ -741,18 +751,20 @@ extension NativeMessageTimelineCoordinator {
                 restore(anchor)
             }
             positionViewportCanvas()
-            if reflowsWidth {
+            if reflowsWidth || previewChanged || previewNeedsRows || restoresPreview {
                 // Restore the anchor before choosing the dirty rectangle.
                 // Invalidating the old visible rect leaves the newly restored
                 // viewport backed by stretched Core Animation contents until
                 // pointer movement happens to dirty an individual row.
-                // Redraw the complete bounded backing window synchronously:
-                // it is only the viewport plus overscan, not the full message
-                // document, and guarantees no stale-width layer tiles survive
-                // the transition.
+                // Let AppKit redraw animated width previews on the next
+                // display pass so row painting does not block SwiftUI's
+                // sidebar transition. Force the settled layout into the
+                // backing layer before leaving the width update.
                 canvas.needsDisplay = true
                 canvas.layer?.setNeedsDisplay()
-                canvas.display()
+                if reflowsWidth || restoresPreview {
+                    canvas.display()
+                }
             }
             let establishedInitialPosition =
                 applyInitialPositionIfNeeded()
@@ -764,6 +776,80 @@ extension NativeMessageTimelineCoordinator {
             isApplyingUpdate = false
             reportScrollState(force: true)
             return true
+        }
+
+        func applyImmediateWidthRelayout(
+            _ width: CGFloat,
+            preparedLayouts: [NativeTimelineRowLayout]?,
+            to canvas: NativeTimelineCanvasView,
+            in scrollView: NSScrollView
+        ) {
+            previewLayoutWidth = nil
+            previewedRowIdentifiers.removeAll()
+            rowsPreviewedAtCurrentWidth.removeAll()
+            let metrics = NativeTimelineRowLayout.Metrics(settings: parent.model.interfaceSettings)
+            layouts = preparedLayouts ?? items.map { layout(for: $0, width: width, metrics: metrics) }
+            layoutWidth = width
+            rowHeights = layouts.map(\.height)
+            rebuildOrigins()
+            applySnapshot(to: canvas, in: scrollView)
+        }
+
+        func applyVisibleWidthPreview(
+            _ width: CGFloat,
+            resetsRows: Bool,
+            to canvas: NativeTimelineCanvasView,
+            in scrollView: NSScrollView
+        ) {
+            previewLayoutWidth = width
+            if resetsRows { rowsPreviewedAtCurrentWidth.removeAll() }
+            previewVisibleRows(at: width)
+            applySnapshot(to: canvas, in: scrollView, viewportWidth: width)
+        }
+
+        func visiblePreviewRange() -> Range<Int>? {
+            guard let visibleRange = visibleItemRangeForWidthRelayout() else {
+                return nil
+            }
+            let lowerBound = max(0, visibleRange.lowerBound - 4)
+            let upperBound = min(items.count, visibleRange.upperBound + 4)
+            return lowerBound ..< upperBound
+        }
+
+        func visibleRowsNeedPreview() -> Bool {
+            guard let range = visiblePreviewRange() else { return false }
+            return range.contains { !rowsPreviewedAtCurrentWidth.contains(items[$0].identifier) }
+        }
+
+        func previewVisibleRows(at width: CGFloat) {
+            guard let range = visiblePreviewRange() else { return }
+            let metrics = NativeTimelineRowLayout.Metrics(settings: parent.model.interfaceSettings)
+            var didReflow = false
+            for index in range {
+                let identifier = items[index].identifier
+                guard !rowsPreviewedAtCurrentWidth.contains(identifier) else {
+                    continue
+                }
+                let rowLayout = layout(for: items[index], width: width, metrics: metrics)
+                layouts[index] = rowLayout
+                rowHeights[index] = rowLayout.height
+                previewedRowIdentifiers.insert(identifier)
+                rowsPreviewedAtCurrentWidth.insert(identifier)
+                didReflow = true
+            }
+            if didReflow { rebuildOrigins() }
+        }
+
+        func restorePreviewedRows() {
+            for index in items.indices
+            where previewedRowIdentifiers.contains(items[index].identifier) {
+                let rowLayout = layout(for: items[index], width: layoutWidth)
+                layouts[index] = rowLayout
+                rowHeights[index] = rowLayout.height
+            }
+            previewedRowIdentifiers.removeAll()
+            rowsPreviewedAtCurrentWidth.removeAll()
+            rebuildOrigins()
         }
 
         func relayoutForWidthChange(_ proposedWidth: CGFloat) {
@@ -834,6 +920,7 @@ extension NativeMessageTimelineCoordinator {
 
         func beginBatchedWidthRelayout(_ width: CGFloat) {
             let sourceItems = items
+            let metrics = NativeTimelineRowLayout.Metrics(settings: parent.model.interfaceSettings)
             let sourceConversation = parent.conversation
             let sourcePresentationRevision = parent.presentationRevision
             let sourceInviteRevision = parent.model.serverInvites.revision
@@ -850,27 +937,23 @@ extension NativeMessageTimelineCoordinator {
                     repeating: nil,
                     count: sourceItems.count
                 )
-                var offset = 0
-                while offset < indexes.count {
+                var sliceStart = ProcessInfo.processInfo.systemUptime
+                for index in indexes {
                     guard !Task.isCancelled,
                           self.widthRelayoutGeneration == generation,
                           self.pendingLayoutWidth == width,
                           self.parent.conversation == sourceConversation
                     else { return }
-                    let upperBound = min(
-                        indexes.count,
-                        offset + NativeTimelineWidthRelayoutPolicy.batchSize
-                    )
-                    for orderedIndex in offset ..< upperBound {
-                        let index = indexes[orderedIndex]
-                        prepared[index] = self.layout(
-                            for: sourceItems[index],
-                            width: width
-                        )
-                    }
-                    offset = upperBound
-                    if offset < indexes.count {
-                        await Task.yield()
+                    prepared[index] = self.layout(for: sourceItems[index], width: width, metrics: metrics)
+                    if ProcessInfo.processInfo.systemUptime - sliceStart >= 0.0015 {
+                        // Give AppKit a run-loop turn to draw. Task.yield() can
+                        // immediately resume this main-actor job instead.
+                        do {
+                            try await Task.sleep(for: .milliseconds(1))
+                        } catch {
+                            return
+                        }
+                        sliceStart = ProcessInfo.processInfo.systemUptime
                     }
                 }
                 guard !Task.isCancelled,
@@ -915,11 +998,11 @@ extension NativeMessageTimelineCoordinator {
         }
 
         func visibleItemRangeForWidthRelayout() -> Range<Int>? {
-            guard let canvas,
+            guard let canvas, let scrollView,
                   !items.isEmpty,
-                  let first = canvas.rowIndex(at: canvas.visibleRect.minY)
+                  let first = canvas.rowIndex(at: scrollView.contentView.bounds.minY)
             else { return nil }
-            let last = canvas.rowIndex(at: canvas.visibleRect.maxY)
+            let last = canvas.rowIndex(at: scrollView.contentView.bounds.maxY)
                 ?? (items.count - 1)
             return first ..< min(items.count, max(first + 1, last + 1))
         }
@@ -1035,7 +1118,10 @@ extension NativeMessageTimelineCoordinator {
                 ) { [weak self] _ in
                     MainActor.assumeIsolated {
                         guard let self else { return }
-                        if self.reconcileViewportGeometryIfNeeded() {
+                        let viewportSize = scrollView.contentView.bounds.size
+                        let resized = abs(viewportSize.width - self.lastViewportSize.width) >= 0.5
+                            || abs(viewportSize.height - self.lastViewportSize.height) >= 0.5
+                        if self.reconcileViewportGeometryIfNeeded(), resized {
                             return
                         }
                         let didClamp =
@@ -1331,15 +1417,11 @@ extension NativeMessageTimelineCoordinator {
             }
         }
 
-        func visibleAnchor(
-            preferringVisibleMessageBeginning: Bool = false
-        ) -> VisibleAnchor? {
+        func visibleAnchor() -> VisibleAnchor? {
             guard let canvas, let scrollView,
                   let result =
                     canvas.firstVisibleMessage(
-                        in: scrollView.contentView.bounds,
-                        preferringVisibleOrigin:
-                            preferringVisibleMessageBeginning
+                        in: scrollView.contentView.bounds
                     )
             else { return nil }
             return VisibleAnchor(

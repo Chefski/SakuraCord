@@ -408,7 +408,6 @@ func `profile editor uses a preloaded editable baseline without another read`(sc
     var member = Member(user: user, roleName: "You", status: .offline)
     var profile = UserProfile(user: user)
     profile.customStatus = "Saved profile status"
-    #expect(model.profile(profile, applyingPresenceFrom: member).customStatus == profile.customStatus)
     let key = SakuraCord.ProfileCacheKey(userID: user.id, guildID: model.selectedGuildID)
     model.profileCache[key] = profile
     model.presentProfile(for: member, destination: .contextual)
@@ -417,16 +416,16 @@ func `profile editor uses a preloaded editable baseline without another read`(sc
 
     let status = ProfileCustomStatus(text: "Updated elsewhere", emojiName: "🌸")
     model.consumeProfileCustomStatusChanged(userID: user.id, status: status)
-    model.refreshPresentedMembers(from: [member])
-    #expect(model.contextualProfilePresentation?.profile?.customStatus == status.displayText)
+    #expect(model.liveProfilePresentation(for: .contextual)?.member.customStatus == status.displayText)
     #expect(editor.customStatusDraft?.status == status)
     member.customStatus = "Stale member status"
     model.consumeProfileCustomStatusChanged(userID: user.id, status: nil)
-    model.refreshPresentedMembers(from: [member])
+    model.membersByID[user.id] = member
     model.presentProfile(for: member, destination: .expanded)
-    #expect(model.contextualProfilePresentation?.profile?.customStatus == nil)
-    #expect(model.expandedProfilePresentation?.profile?.customStatus == nil)
-    #expect(model.expandedProfilePresentation?.member.customStatus == nil)
+    #expect(model.liveProfilePresentation(for: .contextual)?.member.customStatus == nil)
+    #expect(model.liveProfilePresentation(for: .expanded)?.member.customStatus == nil)
+    model.currentStatus = .dnd
+    #expect(model.liveProfilePresentation(for: .expanded)?.member.status == .dnd)
     #expect(model.profileCache[key]?.customStatus == nil)
     #expect(editor.customStatusDraft == nil)
 }

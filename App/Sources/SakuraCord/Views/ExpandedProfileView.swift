@@ -8,7 +8,7 @@ struct ExpandedProfileView: View {
     @Environment(\.windowModalContext) private var modal
 
     private var presentation: ProfilePresentationState {
-        guard let current = model.expandedProfilePresentation,
+        guard let current = model.liveProfilePresentation(for: .expanded),
               current.id == initialPresentation.id else { return initialPresentation }
         return current
     }

@@ -536,7 +536,9 @@ struct NativeTimelineRowLayout {
     static func make(
         item: NativeMessageTimelineItem,
         width proposedWidth: CGFloat,
-        model: AppModel? = nil
+        model: AppModel? = nil,
+        metrics: Metrics? = nil,
+        relativeTo date: Date = .now
     ) -> Self {
         let width = max(220, proposedWidth)
         switch item {
@@ -571,7 +573,9 @@ struct NativeTimelineRowLayout {
                 row,
                 isUnreadBoundary: isUnreadBoundary,
                 width: width,
-                model: model
+                model: model,
+                metrics: metrics ?? Metrics(settings: model?.interfaceSettings ?? .defaults),
+                relativeTo: date
             )
         }
     }
@@ -631,6 +635,8 @@ struct NativeTimelineRowLayout {
         let isUnreadBoundary: Bool
         let width: CGFloat
         let model: AppModel?
+        let metrics: Metrics
+        let timestampReferenceDate: Date
 
         var layout: NativeTimelineRowLayout {
         let message = row.message
@@ -646,13 +652,13 @@ struct NativeTimelineRowLayout {
             ? MessageRowLayoutMetrics.horizontalInset
             : 22
         let avatarWidth = MessageRowLayoutMetrics.avatarDiameter
-        let timestampSettings = model?.interfaceSettings ?? .defaults
-        let timestampGutterWidth = max(avatarWidth, NativeTimelineCompactTimestampMetrics.width(settings: timestampSettings))
+        let timestampGutterWidth = max(avatarWidth, metrics.timestampGutterWidth)
         let columnGap = MessageRowLayoutMetrics.avatarColumnGap + timestampGutterWidth - avatarWidth
         let usesComponentsV2 = message.flags.contains(.isComponentsV2)
         let unstyledContentPresentation = NativeTimelineTextPresentation.make(
             row: row,
-            model: model
+            model: model,
+            relativeTo: timestampReferenceDate
         )
         let contentPresentation = isOutgoingBubble
             ? NativeTimelineTextPresentation.outgoingBubble(
@@ -781,10 +787,7 @@ struct NativeTimelineRowLayout {
             let author = model.map {
                 $0.authorPresentation(for: message).user
             } ?? message.author
-            let authorFont = ProfileNameFontLoader.shared.resolvedFont(for: author, fallback: .systemFont(
-                ofSize: NSFont.preferredFont(forTextStyle: .headline).pointSize,
-                weight: .semibold
-            ))
+            let authorFont = ProfileNameFontLoader.shared.resolvedFont(for: author, fallback: metrics.authorFont)
             let showsRoleIndicator = model?.accessibilitySettings.roleColorDisplay == .nextToNames
                 && model?.authorPresentation(for: message).roleColorHex != nil
             let indicatorWidth: CGFloat = showsRoleIndicator ? 14 : 0
@@ -801,10 +804,7 @@ struct NativeTimelineRowLayout {
             var headerX = contentX + authorWidth + indicatorWidth
             if author.isBot {
                 headerX += 7
-                let badgeFont = NSFont.systemFont(
-                    ofSize: NSFont.preferredFont(forTextStyle: .caption2).pointSize,
-                    weight: .bold
-                )
+                let badgeFont = metrics.badgeFont
                 let badgeWidth = NativeTimelineRowLayout.measuredTextWidth(
                     "APP",
                     font: badgeFont
@@ -821,7 +821,7 @@ struct NativeTimelineRowLayout {
                 headerX += badgeWidth
             }
             headerX += 7
-            let timestampFont = NSFont.preferredFont(forTextStyle: .caption1)
+            let timestampFont = metrics.timestampFont
             let timestamp = NativeTimelineTimestamp.headerText(
                 for: message.timestamp,
                 settings: model?.interfaceSettings ?? .defaults
@@ -839,7 +839,7 @@ struct NativeTimelineRowLayout {
             headerX = timestampFrame?.maxX ?? headerX
             if message.editedTimestamp != nil {
                 headerX += 7
-                let editedFont = NSFont.preferredFont(forTextStyle: .caption2)
+                let editedFont = metrics.editedFont
                 editedFrame = CGRect(
                     x: headerX,
                     y: verticalOffset + 4,
@@ -1380,13 +1380,17 @@ extension NativeTimelineRowLayout {
         _ row: MessageRowPresentation,
         isUnreadBoundary: Bool,
         width: CGFloat,
-        model: AppModel?
+        model: AppModel?,
+        metrics: Metrics,
+        relativeTo date: Date
     ) -> Self {
         MessageBuilder(
             row: row,
             isUnreadBoundary: isUnreadBoundary,
             width: width,
-            model: model
+            model: model,
+            metrics: metrics,
+            timestampReferenceDate: date
         ).layout
     }
 
@@ -1723,13 +1727,42 @@ extension NativeTimelineRowLayout {
                 .trailingVisualOverflow(in: value)
     }
 
+    /// A single layout pass shares its font resolution and timestamp gutter.
+    /// Recreate this snapshot for each pass so preference changes stay live.
+    struct Metrics {
+        let authorFont: NSFont
+        let timestampFont: NSFont
+        let editedFont: NSFont
+        let badgeFont: NSFont
+        let timestampGutterWidth: CGFloat
+
+        init(settings: InterfaceSettingsSnapshot) {
+            authorFont = .systemFont(ofSize: NSFont.preferredFont(forTextStyle: .headline).pointSize, weight: .semibold)
+            timestampFont = .preferredFont(forTextStyle: .caption1)
+            editedFont = .preferredFont(forTextStyle: .caption2)
+            badgeFont = .systemFont(ofSize: editedFont.pointSize, weight: .bold)
+            timestampGutterWidth = NativeTimelineCompactTimestampMetrics.width(settings: settings)
+        }
+    }
+
+    private struct TextWidthKey: Hashable {
+        let text: String
+        let font: NSFont
+    }
+    private static var measuredTextWidths: [TextWidthKey: CGFloat] = [:]
+
     private static func measuredTextWidth(_ text: String, font: NSFont) -> CGFloat {
+        let key = TextWidthKey(text: text, font: font)
+        if let width = measuredTextWidths[key] { return width }
         let attributed = NSAttributedString(
             string: text,
             attributes: [.font: font]
         )
         let line = CTLineCreateWithAttributedString(attributed)
-        return ceil(CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil)))
+        let width = ceil(CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil)))
+        if measuredTextWidths.count >= 4_096 { measuredTextWidths.removeAll(keepingCapacity: true) }
+        measuredTextWidths[key] = width
+        return width
     }
 
 }

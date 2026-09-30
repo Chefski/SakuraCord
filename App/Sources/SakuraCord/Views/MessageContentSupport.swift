@@ -26,6 +26,7 @@ struct MessageMentionResolver {
 
     func presentation(_ mention: RenderedMention) -> MentionPresentation {
         switch mention.kind {
+        case .guildNavigation: guildNavigationPresentation(mention)
         case .user: userPresentation(mention)
         case .role: rolePresentation(mention)
         case .game: gamePresentation(mention)
@@ -97,6 +98,20 @@ struct MessageMentionResolver {
             target: .role(roleID),
             colorHex: role?.colorHex
         )
+    }
+
+    private func guildNavigationPresentation(_ mention: RenderedMention) -> MentionPresentation {
+        var presentation = MentionPresentation.fallback(for: mention)
+        if let destination = GuildNavigationMention(rawValue: mention.id),
+           let guildID = sourceGuildID,
+           model.hasGuildNavigationDestination(destination, in: guildID) {
+            presentation = MentionPresentation(
+                rawToken: mention.rawToken, label: destination.title,
+                target: .guildNavigation(guildID: guildID, destination: destination),
+                systemImage: presentation.systemImage
+            )
+        }
+        return presentation
     }
 
     private func channelPresentation(_ mention: RenderedMention) -> MentionPresentation {
@@ -313,6 +328,8 @@ struct CustomEmojiRichText: View {
                 anchor: anchor,
                 profileRequestID: nil
             )
+        case let .guildNavigation(guildID, destination):
+            model.openGuildNavigationDestination(destination, in: guildID)
         case let .channel(id):
             model.navigate(to: id)
         case let .linkedChannel(guildID, channelID):
@@ -354,7 +371,7 @@ private struct AnchoredMentionPopoverLayer: View {
                     }
                 case let .role(id):
                     RoleMembersPopover(model: model, roleID: id)
-                case .unresolved, .game, .channel, .linkedChannel, .message:
+                case .unresolved, .game, .guildNavigation, .channel, .linkedChannel, .message:
                     EmptyView()
                 }
             }
@@ -368,7 +385,7 @@ private struct AnchoredMentionPopoverLayer: View {
         switch request.mention.target {
         case .user:
             .memberProfile
-        case .unresolved, .game, .role, .channel, .linkedChannel, .message:
+        case .unresolved, .game, .guildNavigation, .role, .channel, .linkedChannel, .message:
             .interactive
         }
     }

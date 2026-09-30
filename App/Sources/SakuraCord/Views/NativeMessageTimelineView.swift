@@ -5,6 +5,13 @@ import SwiftUI
 
 @MainActor
 private final class NativeTimelineInputShieldScrollView: NSScrollView {
+    var onWindowChange: (() -> Void)?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        onWindowChange?()
+    }
+
     let inputPerformanceProbe = ScrollInputPerformanceProbe(
         surface: .timeline
     )
@@ -157,17 +164,6 @@ final class NativeMessageTimelineCoordinator: NSObject {
         struct VisibleAnchor {
             let messageID: MessageID
             let offsetFromViewportTop: CGFloat
-
-            var topPinnedForWidthChange: Self {
-                Self(
-                    messageID: messageID,
-                    offsetFromViewportTop:
-                        NativeMessageTimelineLayoutPolicy
-                        .widthChangeAnchorOffset(
-                            from: offsetFromViewportTop
-                        )
-                )
-            }
         }
 
         struct TimelineUpdatePreparation {
@@ -309,10 +305,15 @@ final class NativeMessageTimelineCoordinator: NSObject {
         var pendingModelRowsUpdateTask: Task<Void, Never>?
         var layoutPreparationTask: Task<Void, Never>?
         var layoutPreparation: LayoutPreparation?
+        var timestampSources: [NativeMessageTimelineItem.Identifier: String] = [:]
+        var timestampLabels: [NativeMessageTimelineItem.Identifier: [String: String]] = [:]
         var scrollIdleTask: Task<Void, Never>?
         var lastScrollActivityUptime = 0.0
         var widthRelayoutTask: Task<Void, Never>?
         var pendingLayoutWidth: CGFloat?
+        var previewLayoutWidth: CGFloat?
+        var previewedRowIdentifiers: Set<NativeMessageTimelineItem.Identifier> = []
+        var rowsPreviewedAtCurrentWidth: Set<NativeMessageTimelineItem.Identifier> = []
         var widthRelayoutGeneration: UInt64 = 0
         var performanceAutoScrollTask: Task<Void, Never>?
         var performanceDisplayLinkTicker:
@@ -367,6 +368,7 @@ extension NativeMessageTimelineCoordinator {
             self.canvas = canvas
             self.documentView = documentView
             self.scrollView = scrollView
+            scrollView.onWindowChange = { [weak self] in self?.timestampWindowChanged() }
             positionViewportCanvas()
             beginObserving(scrollView)
             update(parent: parent, scrollView: scrollView)
@@ -406,6 +408,9 @@ extension NativeMessageTimelineCoordinator {
             presentationRevision = parent.presentationRevision
             let metadataEndUptime = ProcessInfo.processInfo.systemUptime
             if didMutateItems {
+                if previewLayoutWidth != nil {
+                    rowsPreviewedAtCurrentWidth.removeAll()
+                }
                 let didAppendItems = updateTimelineOriginsAndReserves(
                     parent: parent,
                     preparation: preparation
@@ -524,13 +529,7 @@ extension NativeMessageTimelineCoordinator {
             if layoutWidth > 0 { scheduleRelayoutForWidthChange(measuredWidth) }
             let width = pendingLayoutWidth == nil ? measuredWidth : max(220, layoutWidth)
             let widthChanged = abs(width - layoutWidth) >= 1
-            let anchor = visibleAnchor(
-                preferringVisibleMessageBeginning: widthChanged
-                    && NativeMessageTimelineLayoutPolicy.prefersVisibleMessageBeginning(
-                        from: layoutWidth,
-                        to: width
-                    )
-            )
+            let anchor = visibleAnchor()
             resetTimelineMutationState(
                 widthChanged: widthChanged,
                 presentationChanged: presentationChanged
@@ -549,7 +548,7 @@ extension NativeMessageTimelineCoordinator {
                 acceptsNewRows: acceptsNewRows,
                 width: width,
                 widthChanged: widthChanged,
-                restoreAnchor: widthChanged ? anchor?.topPinnedForWidthChange : anchor
+                restoreAnchor: anchor
             )
             return (preparation, measurement)
         }
@@ -559,6 +558,9 @@ extension NativeMessageTimelineCoordinator {
             widthRelayoutTask?.cancel()
             widthRelayoutTask = nil
             pendingLayoutWidth = nil
+            previewLayoutWidth = nil
+            previewedRowIdentifiers.removeAll()
+            rowsPreviewedAtCurrentWidth.removeAll()
             leadingHistoryReserve = 0
             trailingHistoryReserve = 0
             followsMaterializedHistoryBoundary = false
@@ -888,6 +890,7 @@ extension NativeMessageTimelineCoordinator {
             }
             updateTimeline(parent: parent, scrollView: scrollView)
             layoutPreparation = nil
+            updateTimestampObservation()
         }
 
         func scheduleModelRowsUpdate() {
@@ -917,6 +920,7 @@ extension NativeMessageTimelineCoordinator {
         }
 
         func stopObserving() {
+            RelativeTimestampClock.shared.remove(self)
             cancelLayoutPreparation()
             pendingModelRowsUpdateTask?.cancel()
             pendingModelRowsUpdateTask = nil
@@ -931,6 +935,9 @@ extension NativeMessageTimelineCoordinator {
             widthRelayoutTask?.cancel()
             widthRelayoutTask = nil
             pendingLayoutWidth = nil
+            previewLayoutWidth = nil
+            previewedRowIdentifiers.removeAll()
+            rowsPreviewedAtCurrentWidth.removeAll()
             widthRelayoutGeneration &+= 1
             performanceAutoScrollTask?.cancel()
             performanceAutoScrollTask = nil
@@ -1534,6 +1541,21 @@ extension NativeMessageTimelineCoordinator {
             let suffixCount = newRows.count - oldLastIndex - 1
             guard prefixCount + suffixCount == delta else {
                 performanceFallbackReason = "invalid-two-ended-delta"
+                return false
+            }
+            // Each insertion refreshes only its adjacent old edge row. A newly
+            // loaded reply target can change any other retained row.
+            var refreshedBoundaryIDs = Set<MessageID>()
+            if prefixCount > 0 { refreshedBoundaryIDs.insert(firstRowID) }
+            if suffixCount > 0 { refreshedBoundaryIDs.insert(lastRowID) }
+            guard let records = newParent.rowsUpdateJournal.records(
+                after: rowsRevision,
+                through: newParent.rowsRevision
+            ), records.allSatisfy({
+                !$0.invalidatesAllRows
+                    && $0.changedMessageIDs.isSubset(of: refreshedBoundaryIDs)
+            }) else {
+                performanceFallbackReason = "insertion-journal-requires-redraw"
                 return false
             }
             if prefixCount > 0 {

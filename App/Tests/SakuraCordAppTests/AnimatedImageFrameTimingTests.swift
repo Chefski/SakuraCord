@@ -80,11 +80,7 @@ import Testing
         )
     }
 
-    for _ in 0 ..< 100 {
-        let state = await scheduler.stateForTesting
-        if state.waitingCount == 1 { break }
-        try? await Task.sleep(for: .milliseconds(1))
-    }
+    #expect(await eventually { await scheduler.stateForTesting.waitingCount == 1 })
     var state = await scheduler.stateForTesting
     #expect(state.activeCount == 0)
     #expect(state.waitingCount == 1)
@@ -204,11 +200,7 @@ func `timeline animated expansion stops when its final viewport owner leaves`() 
             priority: .visible
         )
     }
-    for _ in 0 ..< 100 {
-        if await scheduler.snapshot().visibleWaiterCount == 1 { break }
-        try? await Task.sleep(for: .milliseconds(1))
-    }
-    #expect(await scheduler.snapshot().visibleWaiterCount == 1)
+    #expect(await eventually { await scheduler.snapshot().visibleWaiterCount == 1 })
 
     queued.cancel()
     _ = await queued.value
@@ -231,7 +223,7 @@ func `timeline animated expansion stops when its final viewport owner leaves`() 
             priority: .visible
         )
     }
-    await probe.waitUntilStarted()
+    #expect(await probe.waitUntilStarted())
 
     decode.cancel()
     #expect(await decode.value == nil)
@@ -264,13 +256,8 @@ private final class StaticDecodeCancellationProbe: @unchecked Sendable {
         return nil
     }
 
-    func waitUntilStarted() async {
-        for _ in 0 ..< 1_000 {
-            if condition.withLock({ started }) {
-                return
-            }
-            try? await Task.sleep(for: .milliseconds(1))
-        }
+    func waitUntilStarted() async -> Bool {
+        await eventually { condition.withLock { started } }
     }
 }
 

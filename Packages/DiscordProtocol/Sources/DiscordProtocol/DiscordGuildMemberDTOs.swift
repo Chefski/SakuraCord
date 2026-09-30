@@ -84,6 +84,27 @@ extension [GuildActivityDTO] {
 struct GuildPresenceDTO: Decodable {
     var status: String?
     var activities: [GuildActivityDTO]?
+    var clientStatus: ClientStatusDTO?
+
+    enum CodingKeys: String, CodingKey {
+        case status, activities
+        case clientStatus = "client_status"
+    }
+}
+
+/// Per-platform statuses from a Gateway presence. Discord omits a platform
+/// key when the user has no session on it.
+struct ClientStatusDTO: Decodable {
+    var desktop: String?
+    var mobile: String?
+    var web: String?
+
+    /// Retain all visible mobile states; presentation chooses the status color.
+    /// A desktop or web session continues to suppress the mobile-only flag.
+    var isMobileOnly: Bool {
+        guard let mobile, PresenceStatus(rawValue: mobile)?.isVisibleOnline == true else { return false }
+        return desktop == nil && web == nil
+    }
 }
 
 struct GuildMemberDTO: Decodable {
@@ -136,6 +157,12 @@ struct GuildMemberDTO: Decodable {
         if let guildAvatarURL {
             domainUser.avatarURL = guildAvatarURL
         }
+        if domainUser.avatarURL == nil {
+            domainUser.avatarURL = DiscordProfileImageAssets.defaultAvatarURL(
+                userID: user.id,
+                discriminator: user.discriminator
+            )
+        }
         let status =
             domainUser.id == currentUserID
                 ? currentStatus
@@ -181,6 +208,7 @@ struct GuildMemberDTO: Decodable {
             activityText: primaryActivity?.displayText ?? customStatus,
             customStatus: customStatus,
             isListeningToMusic: primaryActivity?.type == 2,
+            isMobileOnly: (overridePresence ?? presence)?.clientStatus?.isMobileOnly ?? false,
             isPending: pending,
             flags: flags,
             joinedAt: joinedAt.flatMap(DiscordDate.parse)
