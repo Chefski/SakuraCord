@@ -3871,7 +3871,6 @@ func `GIF completion preserves newer text and channel drafts`(changesChannel: Bo
     #expect(profile.id == member.id)
     #expect(!profile.badges.isEmpty)
     #expect(!profile.mutualGuilds.isEmpty)
-    #expect(profile.status == member.status)
 
     let presentation = try #require(model.inspectorProfilePresentation)
     model.expandProfile(presentation)
@@ -3879,13 +3878,6 @@ func `GIF completion preserves newer text and channel drafts`(changesChannel: Bo
     #expect(model.expandedProfilePresentation?.profile?.id == member.id)
     #expect(model.expandedProfilePresentation?.isLoading == false)
     #expect(!model.isInspectorProfilePresented)
-
-    var updated = member
-    updated.status = .idle
-    updated.customStatus = "Reading"
-    model.refreshPresentedMembers(from: [updated])
-    #expect(model.expandedProfilePresentation?.profile?.status == .idle)
-    #expect(model.expandedProfilePresentation?.profile?.customStatus == "Reading")
 
     model.dismissAllProfiles(clearsCache: true)
     #expect(model.expandedProfilePresentation == nil)

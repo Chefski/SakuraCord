@@ -423,6 +423,7 @@ final class AppModel {
     var supportedCapabilities: Set<ChatCapability> = []
     var componentInteractionPresentation =
         ComponentInteractionPresentationState()
+    /// Views render profiles through `liveProfilePresentation(for:)`.
     var inspectorProfilePresentation:
         ProfilePresentationState?
     var contextualProfilePresentation:
