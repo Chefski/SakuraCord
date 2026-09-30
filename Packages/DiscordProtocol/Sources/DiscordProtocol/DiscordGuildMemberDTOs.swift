@@ -136,6 +136,12 @@ struct GuildMemberDTO: Decodable {
         if let guildAvatarURL {
             domainUser.avatarURL = guildAvatarURL
         }
+        if domainUser.avatarURL == nil {
+            domainUser.avatarURL = DiscordProfileImageAssets.defaultAvatarURL(
+                userID: user.id,
+                discriminator: user.discriminator
+            )
+        }
         let status =
             domainUser.id == currentUserID
                 ? currentStatus
