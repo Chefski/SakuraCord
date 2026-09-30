@@ -255,12 +255,13 @@ extension DiscordRESTProvider {
         method: String = "GET",
         query: [URLQueryItem] = [],
         body: [String: JSONValue]? = nil,
-        headers: [String: String] = [:]
+        headers: [String: String] = [:],
+        mapFailure: (_ status: Int, _ discordCode: Int?) -> (any Error)? = { _, _ in nil }
     ) async throws -> Response {
         let (data, response) = try await perform(
             path, method: method, query: query, body: body, headers: headers
         )
-        return try decodedResponse(data, response, method: method, path: path)
+        return try decodedResponse(data, response, method: method, path: path, mapFailure: mapFailure)
     }
 
     /// Maps a non-2xx response to its provider error, or decodes the body.
@@ -268,12 +269,14 @@ extension DiscordRESTProvider {
         _ data: Data,
         _ response: HTTPURLResponse,
         method: String,
-        path: String
+        path: String,
+        mapFailure: (_ status: Int, _ discordCode: Int?) -> (any Error)? = { _, _ in nil }
     ) throws -> Response {
         let isMessageHistoryRequest = method == "GET"
             && path.hasPrefix("/channels/")
             && path.hasSuffix("/messages")
         guard (200 ..< 300).contains(response.statusCode) else {
+            if let error = mapFailure(response.statusCode, Self.discordErrorCode(from: data)) { throw error }
             if response.statusCode == 401 {
                 authorizationValue = nil
                 throw apiDiagnostics.coalescing(ChatProviderError.unauthenticated, with: response)

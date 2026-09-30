@@ -225,9 +225,7 @@ public actor MediaCache {
     }
 
     private func cachedFileURL(for url: URL) -> URL {
-        let digest = SHA256.hash(data: Data(url.absoluteString.utf8))
-            .map { String(format: "%02x", $0) }
-            .joined()
+        let digest = SHA256.hash(data: Data(url.absoluteString.utf8)).hexString
         return directory.appending(path: digest, directoryHint: .notDirectory)
     }
 

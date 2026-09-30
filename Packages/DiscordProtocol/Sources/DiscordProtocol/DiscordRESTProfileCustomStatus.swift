@@ -68,8 +68,7 @@ extension DiscordRESTProvider {
             profileStatusSettings = nil
             throw ChatProviderError.invalidRequest("Discord saved your settings but returned an unreadable status. Reconnect before editing it again.")
         }
-        endPendingStatusEdit(edit?.id)
-        adoptStatusSettings(saved)
+        let accepted = acceptSavedStatusSettings(saved, root: responseData, editID: edit?.id)
         publishProfileCustomStatus()
         await sendPresenceIfChanged()
         if outOfDate {
@@ -78,7 +77,22 @@ extension DiscordRESTProvider {
                 throw ChatProviderError.invalidRequest("Your status changed on another device, so this change was not saved.")
             }
         }
-        return saved
+        return accepted
+    }
+
+    /// A Gateway update can overtake an in-flight REST response. Complete only
+    /// the acknowledged edit, then expose the newest authoritative settings.
+    func acceptSavedStatusSettings(_ saved: Data, root: Data, editID: UInt64?) -> Data {
+        let version = DiscordSettingsProto.dataVersion(in: root)
+        let isStale = version.flatMap { incoming in profileStatusSettingsDataVersion.map { incoming < $0 } } ?? false
+        let accepted = isStale ? profileStatusSettings ?? saved : saved
+        endPendingStatusEdit(editID)
+        if !isStale, let version {
+            profileStatusSettingsDataVersion = version
+            settingsDataVersion = max(settingsDataVersion ?? version, version)
+        }
+        adoptStatusSettings(accepted)
+        return accepted
     }
 
     /// One StatusSettings save is in flight at a time; later writers wait here.

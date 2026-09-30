@@ -6,11 +6,16 @@ extension DiscordRESTProvider {
     @discardableResult
     func applyProfileSettingsProto(_ encoded: String?, isPartial: Bool) -> Bool {
         guard let encoded, let data = Data(base64Encoded: encoded) else { return false }
-        if let version = DiscordSettingsProto.dataVersion(in: data) { settingsDataVersion = version }
+        let version = DiscordSettingsProto.dataVersion(in: data)
+        if let version { settingsDataVersion = max(settingsDataVersion ?? version, version) }
         let status = DiscordSettingsProto.statusSettings(in: data) ?? (isPartial ? nil : Data())
-        if let status { adoptStatusSettings(status) }
+        let isStale = version.flatMap { incoming in profileStatusSettingsDataVersion.map { incoming < $0 } } ?? false
+        if let status, !isStale {
+            adoptStatusSettings(status)
+            if let version { profileStatusSettingsDataVersion = version }
+        }
         if let value = DiscordSettingsProto.profileDeveloperMode(from: data) { profileDeveloperMode = value } else if !isPartial { profileDeveloperMode = false }
-        return status != nil
+        return status != nil && !isStale
     }
 }
 
@@ -38,7 +43,7 @@ extension DiscordRESTProvider {
             }
             let settings: UserSettingsProtoDTO = try decodedResponse(data, response, method: "PATCH", path: path)
             if let root = Data(base64Encoded: settings.settings), let version = DiscordSettingsProto.dataVersion(in: root) {
-                settingsDataVersion = version
+                settingsDataVersion = max(settingsDataVersion ?? version, version)
             }
             return settings
         }

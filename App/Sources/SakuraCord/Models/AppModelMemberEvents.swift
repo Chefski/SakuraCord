@@ -55,7 +55,6 @@ extension AppModel {
                 to: membersByID
             )
             refreshMentionAutocompleteMembers(from: value)
-            refreshPresentedMembers(from: value)
         }
     }
 
@@ -90,18 +89,6 @@ extension AppModel {
             mentionAutocompleteMembers = mentionAutocompleteMembers.map {
                 updatesByID[$0.id] ?? $0
             }
-        }
-    }
-
-    func refreshPresentedMembers(from members: [Member]) {
-        for destination in [ProfilePresentationDestination.inspector, .contextual, .expanded] {
-            guard var presentation = profilePresentation(for: destination),
-                  var updated = members.first(where: { $0.id == presentation.member.id }) else { continue }
-            if updated.id == profileCustomStatusUserID { updated.customStatus = profileCustomStatus?.displayText }
-            presentation.member = updated
-            presentation.profile?.status = updated.status
-            presentation.profile?.customStatus = updated.customStatus
-            setProfilePresentation(presentation, for: destination)
         }
     }
 }

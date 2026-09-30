@@ -107,6 +107,7 @@ public extension DiscordRESTProvider {
         profileWidgetGameSearchTasks = [:]
         profileDeveloperMode = false
         profileStatusSettings = nil
+        profileStatusSettingsDataVersion = nil
         inboxScheduledEvents = InboxScheduledEvents()
         inboxSettingsProto = nil
         inboxSettingsSaveID = nil

@@ -380,6 +380,52 @@ extension DirectMessageProviderContractTests {
         #expect(await statusEvents(session.events).isEmpty)
     }
 
+    @Test(arguments: [false, true])
+    func `a late settings save preserves newer Gateway state and a newer pending pick`(replaced: Bool) async throws {
+        DirectMessageURLProtocol.reset()
+        let session = try await readyStatusPickProvider(settings: statusSettingsFixture("online", dataVersion: 10))
+        defer { DiscordRESTProvider.removePendingStatusEdit(accountID: session.accountID) }
+        let provider = session.provider
+        let savedEdit = await provider.beginStatusEdit(.idle)
+        let latest = statusSettingsFixture("dnd", dataVersion: 12)
+        await settingsUpdate(provider, latest)
+        if replaced { _ = await provider.beginStatusEdit(.invisible) }
+        let stale = statusSettingsFixture("idle", dataVersion: 11)
+        let accepted = await provider.acceptSavedStatusSettings(
+            try #require(DiscordSettingsProto.statusSettings(in: stale)), root: stale, editID: savedEdit.id
+        )
+        #expect(DiscordSettingsProto.presenceStatus(in: accepted) == .dnd)
+        #expect(await provider.currentStatus() == (replaced ? .invisible : .dnd))
+        #expect(await provider.pendingStatusEditForTesting()?.status == (replaced ? .invisible : nil))
+        // A late Gateway echo cannot roll the authoritative settings back either.
+        await settingsUpdate(provider, stale)
+        await provider.pendingStatusEditConnectionClosed()
+        if replaced { #expect(await provider.pendingStatusEditForTesting()?.requiredDataVersion == 12) }
+        #expect(await provider.currentStatus() == (replaced ? .invisible : .dnd))
+        await provider.disconnect()
+    }
+
+    @Test func `an unrelated newer partial update does not suppress a saved status`() async throws {
+        DirectMessageURLProtocol.reset()
+        let session = try await readyStatusPickProvider(settings: statusSettingsFixture("online", dataVersion: 10))
+        defer { DiscordRESTProvider.removePendingStatusEdit(accountID: session.accountID) }
+        let provider = session.provider
+        let edit = await provider.beginStatusEdit(.idle)
+        let unrelated = DiscordSettingsProto.protoLengthDelimitedField(1, DiscordSettingsProto.protoVarintField(3, 12))
+        await settingsUpdate(provider, unrelated)
+        let response = statusSettingsFixture("idle", dataVersion: 11)
+        _ = await provider.acceptSavedStatusSettings(
+            try #require(DiscordSettingsProto.statusSettings(in: response)), root: response, editID: edit.id
+        )
+        #expect(await provider.currentStatus() == .idle)
+        #expect(await provider.pendingStatusEditForTesting() == nil)
+        let next = await provider.beginStatusEdit(.dnd)
+        await provider.pendingStatusEditConnectionClosed()
+        #expect(await provider.pendingStatusEditForTesting()?.requiredDataVersion == 12)
+        await provider.endPendingStatusEdit(next.id)
+        await provider.disconnect()
+    }
+
     private func settingsResponse(_ settings: Data, outOfDate: Bool = false) throws -> String {
         var object: [String: Any] = ["settings": settings.base64EncodedString()]
         if outOfDate { object["out_of_date"] = true }

@@ -133,6 +133,8 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     var flushedStatusEditID: UInt64?
     /// PreloadedUserSettings `versions.data_version` last received.
     var settingsDataVersion: UInt32?
+    /// Revision carried by the cached StatusSettings, not unrelated partial updates.
+    var profileStatusSettingsDataVersion: UInt32?
     var lastSentPresenceStatus: PresenceStatus?
     var presenceSendWindowEnds: [Date] = []
     var deferredPresenceTask: Task<Void, Never>?

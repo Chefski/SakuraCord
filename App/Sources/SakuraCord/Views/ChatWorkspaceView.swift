@@ -220,7 +220,7 @@ private struct ChatWorkspaceSupplementaryContent: View {
                     sections: model.directMessageInspectorSections,
                     customEmojiURLsByID: model.customEmojiURLsByID,
                     profilePresentation:
-                        model.inspectorProfilePresentation,
+                        model.liveProfilePresentation(for: .inspector),
                     isProfilePresented: model.isInspectorProfilePresented,
                     selectMember: model.selectMember,
                     dismissProfile: model.dismissInspectorProfile,
@@ -250,7 +250,7 @@ private struct DirectMessageProfileInspector: View {
 
     var body: some View {
         Group {
-            if let presentation = model.inspectorProfilePresentation,
+            if let presentation = model.liveProfilePresentation(for: .inspector),
                presentation.member.id == recipient.id
             {
                 ProfilePresentationContent(
@@ -275,7 +275,7 @@ private struct DirectMessageProfileInspector: View {
                 isUniform: true
             )
         )
-        .task(id: recipient.id) {
+        .task(id: [recipient.id, model.inspectorProfilePresentation?.member.id]) {
             if model.inspectorProfilePresentation?.member.id != recipient.id {
                 model.showInspectorProfile(for: recipient)
             }
