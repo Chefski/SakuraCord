@@ -351,7 +351,8 @@ extension DiscordRESTProvider {
                                 )
                             )
                         }
-                        try await sendPresence()
+                        lastSentPresenceStatus = nil
+                        await sendPresenceIfChanged()
                         try await gatewaySession?.announceDesktopSession()
                     } catch {
                         gatewayLogger.error(

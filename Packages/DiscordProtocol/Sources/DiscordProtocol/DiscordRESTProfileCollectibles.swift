@@ -108,6 +108,9 @@ public extension DiscordRESTProvider {
         profileDeveloperMode = false
         profileStatusSettings = nil
         profileStatusSettingsDataVersion = nil
+        profileDeveloperSettingsDataVersion = nil
+        guildLayoutDataVersion = nil
+        inboxSettingsFieldVersions = [:]
         inboxScheduledEvents = InboxScheduledEvents()
         inboxSettingsProto = nil
         inboxSettingsSaveID = nil

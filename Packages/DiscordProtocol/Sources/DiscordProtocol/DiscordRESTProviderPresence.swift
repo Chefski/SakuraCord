@@ -67,7 +67,9 @@ extension DiscordRESTProvider {
         guard gatewayReady, presenceStatus != lastSentPresenceStatus else { return }
         let now = Date.now
         presenceSendWindowEnds.removeAll { $0 <= now }
-        if presenceSendWindowEnds.count >= 5, let reopens = presenceSendWindowEnds.first {
+        let budgetReopens = presenceSendWindowEnds.count >= 5 ? presenceSendWindowEnds.first ?? now : now
+        let reopens = max(budgetReopens, gatewayOpcodeRateLimitDates[3] ?? now)
+        if reopens > now {
             deferredPresenceTask = Task { [weak self] in
                 try? await Task.sleep(for: .seconds(reopens.timeIntervalSince(now)))
                 guard !Task.isCancelled else { return }
@@ -141,6 +143,7 @@ extension DiscordRESTProvider {
     // Official stable622805 module617617 CONNECTION_CLOSED.
     /// Records the data version on a pending edit and stops its scheduled save.
     func pendingStatusEditConnectionClosed() {
+        statusSettingsConnectionGeneration &+= 1
         cancelStatusEditSave()
         guard var edit = pendingStatusEdit, edit.requiredDataVersion == nil, let settingsDataVersion else { return }
         edit.requiredDataVersion = settingsDataVersion

@@ -14,7 +14,12 @@ extension DiscordRESTProvider {
             adoptStatusSettings(status)
             if let version { profileStatusSettingsDataVersion = version }
         }
-        if let value = DiscordSettingsProto.profileDeveloperMode(from: data) { profileDeveloperMode = value } else if !isPartial { profileDeveloperMode = false }
+        let developerMode = DiscordSettingsProto.profileDeveloperMode(from: data)
+        let developerIsStale = version.flatMap { incoming in profileDeveloperSettingsDataVersion.map { incoming < $0 } } ?? false
+        if !developerIsStale, developerMode != nil || !isPartial {
+            profileDeveloperMode = developerMode ?? false
+            if let version { profileDeveloperSettingsDataVersion = version }
+        }
         return status != nil && !isStale
     }
 }
@@ -27,11 +32,11 @@ extension DiscordRESTProvider {
     /// PATCHes type-1 settings. A 429 is retried once when requested and
     /// Discord asks for at most 30 seconds; 400 / 50105 throws
     /// `UserSettingsRejection`, after which the caller reloads.
-    func patchUserSettings(_ body: [String: JSONValue], retriesRateLimit: Bool) async throws -> UserSettingsProtoDTO {
+    func patchUserSettings(_ body: [String: JSONValue], retriesRateLimit: Bool, statusSave: StatusSettingsSaveContext? = nil) async throws -> UserSettingsProtoDTO {
         let path = "/users/@me/settings-proto/1"
         var retries = retriesRateLimit ? 1 : 0
         while true {
-            let (data, response) = try await perform(path, method: "PATCH", query: [], body: body, maximumAttempts: 1)
+            let (data, response) = try await perform(path, method: "PATCH", query: [], body: body, maximumAttempts: 1, statusSave: statusSave)
             if response.statusCode == 429, retries > 0,
                Self.retryAfter(from: data, response: response, addsSafetyMargin: false) <= 30 {
                 retries -= 1
@@ -51,12 +56,18 @@ extension DiscordRESTProvider {
 
     // Official stable622805 module594061 `loadIfNecessary(true)`.
     /// Reloads type-1 settings after a rejected write, so the server wins.
-    func reloadUserSettings() async {
+    @discardableResult
+    func reloadUserSettings() async -> Bool {
+        let generation = profileEditingGeneration
         do {
             let response: UserSettingsProtoDTO = try await request("/users/@me/settings-proto/1")
+            guard generation == profileEditingGeneration,
+                  Data(base64Encoded: response.settings) != nil else { return false }
             await applyUserSettingsProto(response.settings, isPartial: false)
+            return true
         } catch {
             gatewayLogger.error("Settings reload failed: \(error.localizedDescription, privacy: .public)")
+            return false
         }
     }
 }

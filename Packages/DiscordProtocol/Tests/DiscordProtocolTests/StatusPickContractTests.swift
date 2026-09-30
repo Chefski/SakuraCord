@@ -147,7 +147,7 @@ extension DirectMessageProviderContractTests {
         DirectMessageURLProtocol.reset()
         let first = try await readyStatusPickProvider(settings: statusSettingsFixture("online", dataVersion: 7))
         defer { DiscordRESTProvider.removePendingStatusEdit(accountID: first.accountID) }
-        DirectMessageURLProtocol.settingsReplies = [(500, "{}")]
+        DirectMessageURLProtocol.settingsReplies = [.init(500, "{}")]
         await #expect(throws: ChatProviderError.self) { try await first.provider.updateStatus(.dnd) }
         // The pick keeps its status without a retry, and a later settings
         // update neither replaces it nor saves it again.
@@ -166,7 +166,7 @@ extension DirectMessageProviderContractTests {
         #expect(DirectMessageURLProtocol.requests.count == 1)
 
         // Each READY schedules one silent attempt; a failure waits for the next.
-        DirectMessageURLProtocol.settingsReplies = [(500, "{}")]
+        DirectMessageURLProtocol.settingsReplies = [.init(500, "{}")]
         #expect(await provider.runScheduledStatusEditSaveForTesting())
         #expect(await provider.runScheduledStatusEditSaveForTesting() == false)
         #expect(DirectMessageURLProtocol.requests.count == 2)
@@ -176,7 +176,7 @@ extension DirectMessageProviderContractTests {
             "user_settings_proto": .string(statusSettingsFixture("idle", dataVersion: 8).base64EncodedString()),
         ]))
         if outOfDate {
-            DirectMessageURLProtocol.settingsReplies = [(200, try settingsResponse(statusSettingsFixture("online", dataVersion: 9), outOfDate: true))]
+            DirectMessageURLProtocol.settingsReplies = [.init(200, try settingsResponse(statusSettingsFixture("online", dataVersion: 9), outOfDate: true))]
         }
         #expect(await provider.runScheduledStatusEditSaveForTesting())
         #expect(DirectMessageURLProtocol.requests.count == 3)
@@ -198,8 +198,8 @@ extension DirectMessageProviderContractTests {
         let session = try await readyStatusPickProvider(settings: statusSettingsFixture("online", dataVersion: 3))
         defer { DiscordRESTProvider.removePendingStatusEdit(accountID: session.accountID) }
         DirectMessageURLProtocol.settingsReplies = [
-            (400, #"{"code":50105,"message":"Invalid user settings data"}"#),
-            (200, try settingsResponse(statusSettingsFixture("idle", dataVersion: 4))),
+            .init(400, #"{"code":50105,"message":"Invalid user settings data"}"#),
+            .init(200, try settingsResponse(statusSettingsFixture("idle", dataVersion: 4))),
         ]
         await #expect(throws: ChatProviderError.self) { try await session.provider.updateStatus(.dnd) }
         #expect(DirectMessageURLProtocol.requests.map { "\($0.method) \($0.path)" } == [
@@ -207,11 +207,11 @@ extension DirectMessageProviderContractTests {
         ])
         #expect(await session.provider.pendingStatusEditForTesting() == nil)
         #expect(await session.provider.currentStatus() == .idle)
-        #expect(await presenceStatuses(session.socket) == ["online", "dnd", "idle"])
+        #expect(await presenceStatuses(session.socket) == ["online", "dnd", "online", "idle"])
         #expect(await !session.provider.requestSafetyCircuitIsOpen)
         // The Inbox writer handles 50105 the same way.
         DirectMessageURLProtocol.settingsReplies = [
-            (400, #"{"code":50105}"#), (200, try settingsResponse(statusSettingsFixture("idle", dataVersion: 5))),
+            .init(400, #"{"code":50105}"#), .init(200, try settingsResponse(statusSettingsFixture("idle", dataVersion: 5))),
         ]
         await #expect(throws: ChatProviderError.self) { try await session.provider.updateInboxTab(.unread) }
         #expect(DirectMessageURLProtocol.requests.suffix(2).map(\.method) == ["PATCH", "GET"])
@@ -227,7 +227,7 @@ extension DirectMessageProviderContractTests {
         let session = try await readyStatusPickProvider(settings: statusSettingsFixture("online", dataVersion: 5))
         defer { DiscordRESTProvider.removePendingStatusEdit(accountID: session.accountID) }
         let provider = session.provider
-        DirectMessageURLProtocol.settingsReplies = [(500, "{}")]
+        DirectMessageURLProtocol.settingsReplies = [.init(500, "{}")]
         await #expect(throws: ChatProviderError.self) { try await provider.updateStatus(.idle) }
         try await provider.updateStatus(.dnd)
         #expect(DirectMessageURLProtocol.requests.count == 2)
@@ -259,7 +259,7 @@ extension DirectMessageProviderContractTests {
         #expect(await provider.pendingStatusEditForTesting()?.requiredDataVersion == 5)
 
         // A pick on an open connection replaces the offline edit and its version.
-        DirectMessageURLProtocol.settingsReplies = [(500, "{}")]
+        DirectMessageURLProtocol.settingsReplies = [.init(500, "{}")]
         await #expect(throws: ChatProviderError.self) { try await provider.updateStatus(.dnd) }
         #expect(DirectMessageURLProtocol.requests.last?.body?.keys.sorted() == ["settings"])
         #expect(await provider.pendingStatusEditForTesting()?.requiredDataVersion == nil)
@@ -269,7 +269,7 @@ extension DirectMessageProviderContractTests {
         UserDefaults.standard.set(["status": "invisible", "requiredDataVersion": 5], forKey: key)
         await provider.loadPendingStatusEdit()
         DirectMessageURLProtocol.settingsReplies = [
-            (200, try settingsResponse(statusSettingsFixture("online", dataVersion: 7), outOfDate: true)),
+            .init(200, try settingsResponse(statusSettingsFixture("online", dataVersion: 7), outOfDate: true)),
         ]
         await #expect(throws: ChatProviderError.self) {
             try await provider.updateProfileCustomStatus(ProfileCustomStatus(text: "Gardening"))
@@ -288,7 +288,7 @@ extension DirectMessageProviderContractTests {
         let session = try await readyStatusPickProvider(settings: statusSettingsFixture("online", dataVersion: 4))
         defer { DiscordRESTProvider.removePendingStatusEdit(accountID: session.accountID) }
         let provider = session.provider
-        DirectMessageURLProtocol.settingsReplies = [(500, "{}")]
+        DirectMessageURLProtocol.settingsReplies = [.init(500, "{}")]
         await #expect(throws: ChatProviderError.self) { try await provider.updateStatus(.dnd) }
         await provider.handleGatewaySessionEvent(.stateChanged(.resuming))
         await provider.receiveGatewayDispatchForTesting(name: "RESUMED", data: .object([:]))
@@ -327,7 +327,7 @@ extension DirectMessageProviderContractTests {
         let session = try await readyStatusPickProvider(settings: statusSettingsFixture("online", dataVersion: 1))
         defer { DiscordRESTProvider.removePendingStatusEdit(accountID: session.accountID) }
         let provider = session.provider
-        DirectMessageURLProtocol.settingsReplies = [(500, "{}"), (500, "{}")]
+        DirectMessageURLProtocol.settingsReplies = [.init(500, "{}"), .init(500, "{}")]
         await #expect(throws: ChatProviderError.self) { try await provider.updateStatus(.dnd) }
 
         await provider.holdStatusSettingsSaveForTesting()
@@ -426,6 +426,130 @@ extension DirectMessageProviderContractTests {
         await provider.disconnect()
     }
 
+    @Test(.timeLimit(.minutes(1)), arguments: [false, true], [false, true])
+    func `a rate limited status PATCH cannot dispatch its old body after Gateway reconnect`(resumed: Bool, cooldownAlreadyExists: Bool) async throws {
+        DirectMessageURLProtocol.reset()
+        let session = try await readyStatusPickProvider(settings: statusSettingsFixture("idle", dataVersion: 10))
+        defer { DiscordRESTProvider.removePendingStatusEdit(accountID: session.accountID) }
+        let provider = session.provider
+        DirectMessageURLProtocol.settingsReplies = [.init(429, #"{"retry_after":5.0,"global":false}"#)]
+        let generation = await provider.profileEditingGeneration
+        if cooldownAlreadyExists {
+            await #expect(throws: ChatProviderError.self) {
+                _ = try await provider.patchUserSettings(
+                    ["settings": .string(statusSettingsFixture("idle", dataVersion: 10).base64EncodedString())],
+                    retriesRateLimit: false
+                )
+            }
+        }
+        let save = Task { try await provider.updateStatus(.online) }
+        // Observe the actual transport's 429 backoff before reconnecting. This
+        // is not an assumed sleep before delivering READY.
+        let waiting = await eventually {
+            let limited = await provider.routeRateLimitDates.values.contains { $0 > .now }
+            let saving = await provider.profileStatusSaveID != nil
+            return limited && saving
+        }
+        guard waiting else {
+            save.cancel()
+            _ = await save.result
+            await provider.disconnect()
+            try #require(waiting, "The first actual PATCH must enter 429 backoff")
+            return
+        }
+        #expect(DirectMessageURLProtocol.requests.count == 1)
+        #expect(DirectMessageURLProtocol.requests.first?.body?["required_data_version"] == nil)
+        await provider.handleGatewaySessionEvent(.stateChanged(.backingOff))
+        #expect(await provider.pendingStatusEditForTesting()?.requiredDataVersion == 10)
+        if resumed {
+            await settingsUpdate(provider, statusSettingsFixture("dnd", dataVersion: 12))
+            await provider.receiveGatewayDispatchForTesting(name: "RESUMED", data: .object([:]))
+            #expect(await provider.profileEditingGeneration == generation)
+        } else {
+            await provider.receiveGatewayDispatchForTesting(name: "READY", data: .object([
+                "session_id": .string("replacement-status-session"),
+                "user": .object(["id": .string("2"), "username": .string("maya")]),
+                "guilds": .array([]),
+                "user_settings_proto": .string(statusSettingsFixture("dnd", dataVersion: 12).base64EncodedString()),
+            ]))
+            #expect(await provider.profileEditingGeneration > generation)
+        }
+        // Exclude the new generation's separately scheduled versioned save;
+        // only the old transport retry is under examination.
+        await provider.cancelStatusEditSave()
+        _ = await save.result
+        let writes = DirectMessageURLProtocol.requests.filter { $0.method == "PATCH" }
+        #expect(writes.count == 1, "A status body prepared before reconnect must not be transmitted afterward")
+        #expect(DiscordSettingsProto.presenceStatus(in: await provider.profileStatusSettings ?? Data()) == .dnd)
+        await provider.disconnect()
+    }
+
+    @Test(.timeLimit(.minutes(1)), arguments: [false, true])
+    func `a delayed rejected save recovery preserves newer fields and accepts untouched fields`(changesInbox: Bool) async throws {
+        DirectMessageURLProtocol.reset()
+        let old = statusSettingsFixture("online", dataVersion: 10)
+            + DiscordInboxSettingsProto.updatingTab(.mentions, in: Data())
+        let session = try await readyStatusPickProvider(settings: statusSettingsFixture("online", dataVersion: 9))
+        defer { DiscordRESTProvider.removePendingStatusEdit(accountID: session.accountID) }
+        let provider = session.provider
+        let gate = StatusRecoveryResponseGate()
+        defer { gate.release() }
+        DirectMessageURLProtocol.settingsReplies = [
+            .init(400, #"{"code":50105,"message":"Invalid user settings data"}"#),
+            .init(200, try settingsResponse(old), gate: gate),
+        ]
+        let save = Task { try await provider.updateStatus(.dnd) }
+        let started = await eventually { gate.didCapture }
+        guard started else {
+            gate.release(); save.cancel(); _ = await save.result; await provider.disconnect()
+            try #require(started, "Recovery GET must be held before delivering the newer update")
+            return
+        }
+        var newer = DiscordSettingsProto.protoLengthDelimitedField(1, DiscordSettingsProto.protoVarintField(3, 11))
+        newer += DiscordSettingsProto.protoLengthDelimitedField(13, DiscordSettingsProto.protoVarintField(2, 1))
+        // GuildFolders.guild_positions: fixed64 guild ID42.
+        newer += DiscordSettingsProto.protoLengthDelimitedField(14, Data([17, 42, 0, 0, 0, 0, 0, 0, 0]))
+        if changesInbox {
+            newer += DiscordInboxSettingsProto.updatingTab(.unread, in: Data())
+            newer += DiscordInboxSettingsProto.updatingCollapsed(true, channelID: ChannelID(rawValue: 42), guildID: GuildID(rawValue: 10), in: Data())
+        }
+        await settingsUpdate(provider, newer)
+        #expect(await provider.profileDeveloperMode)
+        #expect(await provider.cachedGuildLayout?.guildPositions == [GuildID(rawValue: 42)])
+        gate.release()
+        _ = await save.result
+        let tab = DiscordInboxSettingsProto.settings(in: await provider.inboxSettingsProto ?? Data()).tab
+        #expect(tab == (changesInbox ? .unread : .mentions), "Only fields actually changed by the newer partial update supersede the full snapshot")
+        #expect(await provider.profileDeveloperMode, "A stale full GET must not clear newer appearance settings")
+        #expect(await provider.cachedGuildLayout?.guildPositions == [GuildID(rawValue: 42)])
+        let inbox = DiscordInboxSettingsProto.settings(in: await provider.inboxSettingsProto ?? Data())
+        #expect(inbox.collapsedChannelIDs.contains(ChannelID(rawValue: 42)) == changesInbox)
+        // A genuinely newer full snapshot still clears omitted fields.
+        await settingsUpdate(provider, statusSettingsFixture("online", dataVersion: 12), partial: false)
+        #expect(await !provider.profileDeveloperMode)
+        #expect(await provider.cachedGuildLayout?.guildPositions.isEmpty == true)
+        #expect(DiscordInboxSettingsProto.settings(in: await provider.inboxSettingsProto ?? Data()).collapsedChannelIDs.isEmpty)
+        await provider.disconnect()
+    }
+
+    @Test(.timeLimit(.minutes(1)))
+    func `a rejected status with failed recovery does not keep broadcasting the rejected pick`() async throws {
+        DirectMessageURLProtocol.reset()
+        let session = try await readyStatusPickProvider(settings: statusSettingsFixture("online", dataVersion: 10))
+        defer { DiscordRESTProvider.removePendingStatusEdit(accountID: session.accountID) }
+        let provider = session.provider
+        DirectMessageURLProtocol.settingsReplies = [
+            .init(400, #"{"code":50105,"message":"Invalid user settings data"}"#),
+            .init(500, "{}"), .init(500, "{}"),
+        ]
+        await #expect(throws: ChatProviderError.self) { try await provider.updateStatus(.dnd) }
+        let status = await provider.currentStatus()
+        #expect(await provider.pendingStatusEditForTesting() == nil)
+        #expect(status == .online, "A rejected pick must not remain the active presence while claiming saved state was restored")
+        #expect(await presenceStatuses(session.socket).last == "online")
+        await provider.disconnect()
+    }
+
     private func settingsResponse(_ settings: Data, outOfDate: Bool = false) throws -> String {
         var object: [String: Any] = ["settings": settings.base64EncodedString()]
         if outOfDate { object["out_of_date"] = true }
@@ -500,4 +624,57 @@ struct StatusPickSession {
     let provider: DiscordRESTProvider
     let socket: ReadyGatewaySocket
     let events: AsyncStream<ClientEvent>
+}
+
+extension DirectMessageProviderContractTests {
+    @Test(.timeLimit(.minutes(1)))
+    func `rate limited presence is retried after its cooldown`() async throws {
+        DirectMessageURLProtocol.reset()
+        let session = try await readyStatusPickProvider(settings: statusSettingsFixture("online", dataVersion: 1))
+        defer { DiscordRESTProvider.removePendingStatusEdit(accountID: session.accountID) }
+        let provider = session.provider
+        await provider.receiveGatewayDispatchForTesting(name: "RATE_LIMITED", data: .object([
+            "opcode": .number(3), "retry_after": .number(0.05),
+        ]))
+        #expect(await eventually { await session.socket.sentPayloadCount(opcode: 3) == 2 })
+        #expect(await presenceStatuses(session.socket).last == "online")
+        await provider.disconnect()
+    }
+
+    @Test(.timeLimit(.minutes(1)))
+    func `resumed READY obeys the existing presence send budget`() async throws {
+        DirectMessageURLProtocol.reset()
+        let session = try await readyStatusPickProvider(settings: statusSettingsFixture("online", dataVersion: 1))
+        defer { DiscordRESTProvider.removePendingStatusEdit(accountID: session.accountID) }
+        let provider = session.provider
+        for status in ["idle", "dnd", "online", "idle"] {
+            await settingsUpdate(provider, statusSettingsFixture(status))
+        }
+        #expect(await session.socket.sentPayloadCount(opcode: 3) == 5)
+        await provider.handleGatewaySessionEvent(.stateChanged(.resuming))
+        await provider.handleGatewaySessionEvent(.stateChanged(.ready))
+        #expect(await session.socket.sentPayloadCount(opcode: 3) == 5)
+        #expect(await provider.hasDeferredPresenceForTesting())
+        await provider.reopenPresenceSendWindowForTesting()
+        #expect(await session.socket.sentPayloadCount(opcode: 3) == 6)
+        #expect(await presenceStatuses(session.socket).last == "idle")
+        await provider.disconnect()
+    }
+
+    @Test(.timeLimit(.minutes(1)))
+    func `cancelled queued status writer releases its waiter`() async throws {
+        DirectMessageURLProtocol.reset()
+        let session = try await readyStatusPickProvider(settings: statusSettingsFixture("online", dataVersion: 1))
+        defer { DiscordRESTProvider.removePendingStatusEdit(accountID: session.accountID) }
+        let provider = session.provider
+        await provider.holdStatusSettingsSaveForTesting()
+        let save = Task { try await provider.updateProfileCustomStatus(ProfileCustomStatus(text: "cancelled fixture")) }
+        #expect(await eventually { await provider.statusSettingsSaveWaiterCountForTesting() == 1 })
+        save.cancel()
+        #expect(await eventually { await provider.statusSettingsSaveWaiterCountForTesting() == 0 })
+        await provider.releaseStatusSettingsSaveForTesting()
+        _ = try? await save.value
+        #expect(DirectMessageURLProtocol.requests.isEmpty)
+        await provider.disconnect()
+    }
 }

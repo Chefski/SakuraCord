@@ -34,7 +34,7 @@ extension DiscordRESTProvider {
     ) async throws -> Data? {
         guard let userID = currentUser?.id else { throw ChatProviderError.unauthenticated }
         let generation = profileEditingGeneration
-        await waitForStatusSettingsSave()
+        try await waitForStatusSettingsSave()
         guard currentUser?.id == userID, generation == profileEditingGeneration, var current = profileStatusSettings else {
             throw CancellationError()
         }
@@ -48,20 +48,31 @@ extension DiscordRESTProvider {
         if let version = edit?.requiredDataVersion { body["required_data_version"] = .number(Double(version)) }
         let saveID = UUID()
         profileStatusSaveID = saveID
+        let saveContext = StatusSettingsSaveContext(
+            userID: userID, generation: generation, saveID: saveID,
+            connectionGeneration: statusSettingsConnectionGeneration
+        )
         defer { if profileStatusSaveID == saveID { finishStatusSettingsSave() } }
         let response: UserSettingsProtoDTO
         do {
-            response = try await patchUserSettings(body, retriesRateLimit: userInitiated)
+            response = try await patchUserSettings(body, retriesRateLimit: userInitiated, statusSave: saveContext)
         } catch {
-            guard currentUser?.id == userID, generation == profileEditingGeneration, profileStatusSaveID == saveID else {
-                throw CancellationError()
-            }
+            try validateStatusSettingsSave(saveContext)
             guard error is UserSettingsRejection else { throw error }
             endPendingStatusEdit(edit?.id)
-            await reloadUserSettings()
-            throw ChatProviderError.invalidRequest("Discord rejected this status change. Your saved status is shown again.")
+            if let authoritative = profileStatusSettings {
+                adoptStatusSettings(authoritative)
+                publishProfileCustomStatus()
+            }
+            await sendPresenceIfChanged()
+            try validateStatusSettingsSave(saveContext)
+            let reloaded = await reloadUserSettings()
+            try validateStatusSettingsSave(saveContext)
+            throw ChatProviderError.invalidRequest(reloaded
+                ? "Discord rejected this status change. Your account settings were reloaded."
+                : "Discord rejected this status change. Settings could not be refreshed; the last known saved status was restored.")
         }
-        guard currentUser?.id == userID, generation == profileEditingGeneration, profileStatusSaveID == saveID else { throw CancellationError() }
+        try validateStatusSettingsSave(saveContext)
         let outOfDate = response.outOfDate == true
         guard let responseData = Data(base64Encoded: response.settings),
               let saved = DiscordSettingsProto.statusSettings(in: responseData) ?? (outOfDate ? Data() : nil) else {
@@ -96,16 +107,33 @@ extension DiscordRESTProvider {
     }
 
     /// One StatusSettings save is in flight at a time; later writers wait here.
-    func waitForStatusSettingsSave() async {
+    func waitForStatusSettingsSave() async throws {
         while profileStatusSaveID != nil {
-            await withCheckedContinuation { statusSettingsSaveWaiters.append($0) }
+            try Task.checkCancellation()
+            let id = UUID()
+            try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { (waiter: CheckedContinuation<Void, any Error>) in
+                    if Task.isCancelled {
+                        waiter.resume(throwing: CancellationError())
+                    } else {
+                        statusSettingsSaveWaiters[id] = waiter
+                    }
+                }
+            } onCancel: {
+                Task { await self.cancelStatusSettingsSaveWaiter(id) }
+            }
         }
+        try Task.checkCancellation()
+    }
+
+    private func cancelStatusSettingsSaveWaiter(_ id: UUID) {
+        statusSettingsSaveWaiters.removeValue(forKey: id)?.resume(throwing: CancellationError())
     }
 
     func finishStatusSettingsSave() {
         profileStatusSaveID = nil
-        let waiters = statusSettingsSaveWaiters
-        statusSettingsSaveWaiters = []
+        let waiters = Array(statusSettingsSaveWaiters.values)
+        statusSettingsSaveWaiters = [:]
         for waiter in waiters { waiter.resume() }
     }
 
@@ -139,13 +167,33 @@ extension DiscordRESTProvider {
 
     private func expireCustomStatus(_ expected: ProfileCustomStatus, generation: UInt64) async {
         do {
-            await waitForStatusSettingsSave()
+            try await waitForStatusSettingsSave()
             try Task.checkCancellation()
             guard generation == profileEditingGeneration,
                   profileStatusSettings.flatMap(DiscordSettingsProto.customStatus(in:)) == expected else { return }
             _ = try await saveStatusSettings(userInitiated: false) { DiscordSettingsProto.updatingCustomStatus(nil, in: $0) }
         } catch {
             if !Task.isCancelled { gatewayLogger.error("Custom status expiration could not be saved.") }
+        }
+    }
+}
+
+/// Identity of one immutable StatusSettings payload across transport waits.
+struct StatusSettingsSaveContext: Sendable {
+    let userID: UserID
+    let generation: UInt64
+    let saveID: UUID
+    let connectionGeneration: UInt64
+}
+
+extension DiscordRESTProvider {
+    func validateStatusSettingsSave(_ context: StatusSettingsSaveContext) throws {
+        try Task.checkCancellation()
+        guard currentUser?.id == context.userID,
+              profileEditingGeneration == context.generation,
+              profileStatusSaveID == context.saveID,
+              statusSettingsConnectionGeneration == context.connectionGeneration else {
+            throw CancellationError()
         }
     }
 }

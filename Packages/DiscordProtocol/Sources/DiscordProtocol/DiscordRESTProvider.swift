@@ -128,6 +128,7 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     var presenceStatus: PresenceStatus = .invisible
     var pendingStatusEdit: PendingStatusEdit?
     var statusEditGeneration: UInt64 = 0
+    var statusSettingsConnectionGeneration: UInt64 = 0
     var statusEditSaveTask: Task<Void, Never>?
     var statusEditSaveToken: UInt64 = 0
     var flushedStatusEditID: UInt64?
@@ -135,6 +136,9 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     var settingsDataVersion: UInt32?
     /// Revision carried by the cached StatusSettings, not unrelated partial updates.
     var profileStatusSettingsDataVersion: UInt32?
+    var profileDeveloperSettingsDataVersion: UInt32?
+    var guildLayoutDataVersion: UInt32?
+    var inboxSettingsFieldVersions: [Int: UInt32] = [:]
     var lastSentPresenceStatus: PresenceStatus?
     var presenceSendWindowEnds: [Date] = []
     var deferredPresenceTask: Task<Void, Never>?
@@ -241,7 +245,7 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     var inboxSettingsProto: Data?
     var inboxSettingsSaveID: UUID?
     var profileStatusSaveID: UUID?
-    var statusSettingsSaveWaiters: [CheckedContinuation<Void, Never>] = []
+    var statusSettingsSaveWaiters: [UUID: CheckedContinuation<Void, any Error>] = [:]
     var profileCustomStatusExpiryTask: Task<Void, Never>?
     var frecencySettingsTask: Task<Data, Error>?
     var cachedStickersByGuild: [GuildID: [MessageSticker]] = [:]

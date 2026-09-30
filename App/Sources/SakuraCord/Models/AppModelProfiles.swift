@@ -77,6 +77,7 @@ extension AppModel {
     }
 
     func applyCurrentStatus(_ status: PresenceStatus) {
+        currentStatusRevision &+= 1
         currentStatus = status
         members = membersWithCurrentStatus(members)
     }

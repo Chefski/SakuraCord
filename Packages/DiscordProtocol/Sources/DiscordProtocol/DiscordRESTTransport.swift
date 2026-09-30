@@ -12,6 +12,7 @@ private struct DiscordRESTRequestContext {
     let isMessageHistoryRequest: Bool
     let canRetryAsRead: Bool
     let maximumAttempts: Int
+    let statusSave: StatusSettingsSaveContext?
 }
 
 private struct DiscordRESTPreparedRequest {
@@ -337,7 +338,8 @@ extension DiscordRESTProvider {
         _ query: [URLQueryItem],
         _ body: [String: JSONValue]?,
         _ headers: [String: String],
-        _ requestedMaximumAttempts: Int?
+        _ requestedMaximumAttempts: Int?,
+        statusSave: StatusSettingsSaveContext? = nil
     ) async throws -> (Data, HTTPURLResponse) {
         guard !requestSafetyCircuitIsOpen else {
             throw ChatProviderError.invalidRequest(
@@ -363,7 +365,8 @@ extension DiscordRESTProvider {
             rateLimitKey: requestRateLimitKey,
             isMessageHistoryRequest: isMessageHistoryRequest,
             canRetryAsRead: canRetryAsRead,
-            maximumAttempts: maximumAttempts
+            maximumAttempts: maximumAttempts,
+            statusSave: statusSave
         )
         for attempt in 0 ..< maximumAttempts {
             if let result = try await performRESTRequestAttempt(
@@ -490,6 +493,9 @@ extension DiscordRESTProvider {
             let data: Data
             let rawResponse: URLResponse
             do {
+                // Rate-limit reservation and authorization can suspend. Validate
+                // the immutable status payload immediately before transmission.
+                if let statusSave = context.statusSave { try validateStatusSettingsSave(statusSave) }
                 let networkName: StaticString = isMessageHistoryRequest
                     ? "MessageHistoryNetworkAttempt"
                     : "RESTNetworkAttempt"
@@ -677,10 +683,11 @@ extension DiscordRESTProvider {
         query: [URLQueryItem],
         body: [String: JSONValue]?,
         headers: [String: String] = [:],
-        maximumAttempts requestedMaximumAttempts: Int? = nil
+        maximumAttempts requestedMaximumAttempts: Int? = nil,
+        statusSave: StatusSettingsSaveContext? = nil
     ) async throws -> (Data, HTTPURLResponse) {
         try await requestPerformance(
-            path, method, query, body, headers, requestedMaximumAttempts
+            path, method, query, body, headers, requestedMaximumAttempts, statusSave: statusSave
         )
     }
     @discardableResult

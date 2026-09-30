@@ -1781,7 +1781,7 @@ final class DirectMessageURLProtocol:
     nonisolated(unsafe) static var profileHasEffect = false
     /// Replies consumed in order by settings-proto/1 requests; when empty, a
     /// PATCH echoes its settings.
-    nonisolated(unsafe) static var settingsReplies: [(status: Int, body: String)] = []
+    nonisolated(unsafe) static var settingsReplies: [SettingsProtocolReply] = []
 
     static func reset() {
         requests = []
@@ -1833,8 +1833,12 @@ final class DirectMessageURLProtocol:
             return
         }
         var status: Int
+        var responseGate: StatusRecoveryResponseGate?
         if request.url?.path == "/api/v9/users/@me/settings-proto/1", !Self.settingsReplies.isEmpty {
-            (status, body) = Self.settingsReplies.removeFirst()
+            let reply = Self.settingsReplies.removeFirst()
+            status = reply.status
+            body = reply.body
+            responseGate = reply.gate
         } else if requestBody?["bio"] as? String == "rejected-bio" {
             status = 400
         } else if request.url?.path == "/api/v9/games/autocomplete", query.first?.value == "unavailable" {
@@ -1842,19 +1846,12 @@ final class DirectMessageURLProtocol:
         } else {
             status = request.url?.path == "/api/v9/channels/41/call/ring" ? Self.ringStatus : 200
         }
-        let response = HTTPURLResponse(
-            url: request.url!,
-            statusCode: status,
-            httpVersion: "HTTP/1.1",
-            headerFields: nil
-        )!
-        client?.urlProtocol(
-            self,
-            didReceive: response,
-            cacheStoragePolicy: .notAllowed
-        )
-        client?.urlProtocol(self, didLoad: Data(body.utf8))
-        client?.urlProtocolDidFinishLoading(self)
+        if let gate = responseGate {
+            let responseStatus = status, responseBody = body
+            gate.capture { [self] in completeResponse(status: responseStatus, body: responseBody) }
+            return
+        }
+        completeResponse(status: status, body: body)
     }
 
     private static func responseBody(
