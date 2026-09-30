@@ -401,7 +401,8 @@ private struct ProfileHeroSection: View {
                 AvatarPresenceView(
                     status: member.status,
                     avatarSize: avatarSize,
-                    indicatorSize: 15
+                    indicatorSize: 15,
+                    isMobile: member.showsMobileIndicator
                 ) {
                     DecoratedAvatarView(
                         name: profile?.displayName ?? member.user.displayName,

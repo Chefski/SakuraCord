@@ -718,7 +718,8 @@ private struct MockFixtureAssembly {
                 roles: [designerRole],
                 globalDisplayName: maya.displayName,
                 activityText: "Reviewing interaction states",
-                customStatus: "Making the empty states less empty"
+                customStatus: "Making the empty states less empty",
+                isMobileOnly: true
             ),
             Member(
                 user: theo,
