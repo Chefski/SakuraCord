@@ -2797,7 +2797,7 @@ private extension DiscordRESTProvider {
 }
 
 @MainActor
-@Test func `completed old account send and edit cannot enter replacement account state`()
+@Test(.timeLimit(.minutes(1))) func `completed old account send and edit cannot enter replacement account state`()
     async throws
 {
     let directory = FileManager.default.temporaryDirectory.appending(
@@ -2832,7 +2832,15 @@ private extension DiscordRESTProvider {
     let edit = Task { @MainActor in
         await model.edit(oldProvider.editTarget, content: "old account edit")
     }
-    #expect(await oldProvider.waitUntilMutationRequestsStart())
+    guard await oldProvider.waitUntilMutationRequestsStart() else {
+        send.cancel()
+        edit.cancel()
+        await oldProvider.releaseMutationRequests()
+        _ = await cancellableValue(of: send)
+        await cancellableValue(of: edit)
+        try #require(Bool(false), "Old account mutations did not start before cancellation")
+        return
+    }
 
     model.invalidateAccountSession()
     model.installAccountSession(provider: newProvider, database: newDatabase)
@@ -2841,8 +2849,8 @@ private extension DiscordRESTProvider {
     model.replaceSelectedMessages(with: [replacementMessage])
 
     await oldProvider.releaseMutationRequests()
-    #expect(await !send.value)
-    await edit.value
+    #expect(await !cancellableValue(of: send))
+    await cancellableValue(of: edit)
 
     #expect(model.messages.map(\.id) == [replacementMessage.id])
     #expect(model.messages.first?.content == "replacement account value")
@@ -2977,8 +2985,8 @@ func `completed old account earlier pages cannot enter replacement conversations
 }
 
 @MainActor
-@Test(arguments: [false, true])
-func `quit warning tracks Discord attachment sends until success or failure`(fails: Bool) async {
+@Test(.timeLimit(.minutes(1)), arguments: [false, true])
+func `quit warning tracks Discord attachment sends until success or failure`(fails: Bool) async throws {
     let provider = SuspendedAccountOperationTestProvider(suspendsOperations: true, failsSend: fails)
     let model = AppModel(launchMode: .offlineTesting, provider: provider)
     let draft = SendMessageDraft(
@@ -2988,15 +2996,21 @@ func `quit warning tracks Discord attachment sends until success or failure`(fai
     )
     #expect(!model.generalQuitActivities.contains(.upload))
     let send = Task { await model.performOutgoingSend(draft, isRetry: false) }
-    #expect(await provider.waitUntilSendRequestStarts())
+    let sendStarted = await provider.waitUntilSendRequestStarts()
+    if !sendStarted {
+        send.cancel()
+        await provider.releaseSendRequest()
+        _ = await cancellableValue(of: send)
+    }
+    try #require(sendStarted)
     #expect(model.generalQuitActivities.contains(.upload))
     await provider.releaseSendRequest()
-    #expect(await send.value == !fails)
+    #expect(await cancellableValue(of: send) == !fails)
     #expect(!model.generalQuitActivities.contains(.upload))
 }
 
 @MainActor
-@Test(arguments: [false, true], [false, true])
+@Test(.timeLimit(.minutes(1)), arguments: [false, true], [false, true])
 func `GIF completion preserves newer text and channel drafts`(changesChannel: Bool, fails: Bool) async throws {
     let provider = SuspendedAccountOperationTestProvider(suspendsOperations: true, failsSend: fails)
     let model = AppModel(launchMode: .offlineTesting, provider: provider)
@@ -3009,13 +3023,19 @@ func `GIF completion preserves newer text and channel drafts`(changesChannel: Bo
     model.replyingTo = provider.editTarget
     let gif = GIFSearchResult(id: "race", title: "Race", url: URL(string: "https://example.com/race.gif")!, previewURL: URL(string: "https://example.com/preview.gif")!)
     let send = Task { @MainActor in await model.sendGIF(gif) }
-    #expect(await provider.waitUntilSendRequestStarts())
+    let sendStarted = await provider.waitUntilSendRequestStarts()
+    if !sendStarted {
+        send.cancel()
+        await provider.releaseSendRequest()
+        _ = await cancellableValue(of: send)
+    }
+    try #require(sendStarted)
     #expect(model.draft == "existing text")
     if changesChannel { model.selectedChannelID = ChannelID(rawValue: 96_099) }
     model.draft = "newer text"
     let currentReply = model.replyingTo
     await provider.releaseSendRequest()
-    #expect(await send.value == !fails)
+    #expect(await cancellableValue(of: send) == !fails)
     #expect(model.draft == "newer text")
     #expect(model.replyingTo == currentReply)
     let sent = try #require(await provider.sentDraft)
@@ -3025,7 +3045,7 @@ func `GIF completion preserves newer text and channel drafts`(changesChannel: Bo
 }
 
 @MainActor
-@Test func `stale GIF send cannot restore an old account draft`() async throws {
+@Test(.timeLimit(.minutes(1))) func `stale GIF send cannot restore an old account draft`() async throws {
     let oldProvider = SuspendedAccountOperationTestProvider(suspendsOperations: true)
     let newProvider = SuspendedAccountOperationTestProvider(suspendsOperations: false)
     let model = AppModel(launchMode: .offlineTesting, provider: oldProvider)
@@ -3048,13 +3068,19 @@ func `GIF completion preserves newer text and channel drafts`(changesChannel: Bo
     )
 
     let send = Task { @MainActor in await model.sendGIF(gif) }
-    #expect(await oldProvider.waitUntilSendRequestStarts())
+    let sendStarted = await oldProvider.waitUntilSendRequestStarts()
+    if !sendStarted {
+        send.cancel()
+        await oldProvider.releaseSendRequest()
+        _ = await cancellableValue(of: send)
+    }
+    try #require(sendStarted)
     model.invalidateAccountSession()
     model.installAccountSession(provider: newProvider, database: nil)
     model.draft = "replacement account draft"
 
     await oldProvider.releaseSendRequest()
-    #expect(await !send.value)
+    #expect(await !cancellableValue(of: send))
     #expect(model.draft == "replacement account draft")
 }
 
@@ -5703,7 +5729,11 @@ private actor SuspendedAccountOperationTestProvider: ChatProvider {
     private let failsSend: Bool
     private(set) var sentDraft: SendMessageDraft?
     private var sendStarted = false
+    private let sendStarts = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+    private var sendReleased = false
     private var editStarted = false
+    private let editStarts = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+    private var editReleased = false
     private var earlierPageRequestCount = 0
     private let earlierPageStarts = AsyncStream<Int>.makeStream(bufferingPolicy: .bufferingNewest(1))
     private var earlierPagesReleased = false
@@ -5796,7 +5826,8 @@ private actor SuspendedAccountOperationTestProvider: ChatProvider {
     func send(_ draft: SendMessageDraft) async throws -> Message {
         sentDraft = draft
         sendStarted = true
-        if suspendsOperations {
+        sendStarts.continuation.yield(())
+        if suspendsOperations, !sendReleased {
             await withCheckedContinuation { sendContinuation = $0 }
         }
         if failsSend { throw ChatProviderError.invalidRequest("Fixture send failure") }
@@ -5815,7 +5846,8 @@ private actor SuspendedAccountOperationTestProvider: ChatProvider {
         content: String
     ) async throws -> Message {
         editStarted = true
-        if suspendsOperations {
+        editStarts.continuation.yield(())
+        if suspendsOperations, !editReleased {
             await withCheckedContinuation { editContinuation = $0 }
         }
         var edited = editTarget
@@ -5859,18 +5891,24 @@ private actor SuspendedAccountOperationTestProvider: ChatProvider {
     func disconnect() async {}
 
     func waitUntilMutationRequestsStart() async -> Bool {
-        await eventually { sendStarted && editStarted }
+        guard await waitUntilSendRequestStarts() else { return false }
+        if editStarted { return true }
+        for await _ in editStarts.stream { return true }
+        return false
     }
 
     func releaseMutationRequests() {
-        sendContinuation?.resume()
-        sendContinuation = nil
+        releaseSendRequest()
+        editReleased = true
+        editStarts.continuation.finish()
         editContinuation?.resume()
         editContinuation = nil
     }
 
     func waitUntilSendRequestStarts() async -> Bool {
-        await eventually { sendStarted }
+        if sendStarted { return true }
+        for await _ in sendStarts.stream { return true }
+        return false
     }
 
     func sendRequestHasStarted() -> Bool {
@@ -5878,6 +5916,7 @@ private actor SuspendedAccountOperationTestProvider: ChatProvider {
     }
 
     func releaseSendRequest() {
+        sendReleased = true
         sendContinuation?.resume()
         sendContinuation = nil
     }
