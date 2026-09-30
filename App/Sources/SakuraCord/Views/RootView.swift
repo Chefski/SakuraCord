@@ -901,10 +901,14 @@ private struct ChatRootView: View {
 
     private func directMessageToolbarStatus(for channel: Channel) -> PresenceStatus? {
         guard channel.kind == .directMessage else { return nil }
-        return DirectMessageInboxPolicy.recipientMember(
+        return directMessageRecipient(for: channel)?.status ?? .offline
+    }
+
+    private func directMessageRecipient(for channel: Channel) -> Member? {
+        DirectMessageInboxPolicy.recipientMember(
             for: channel,
             membersByID: model.membersByID
-        )?.status ?? .offline
+        )
     }
 
     private func channelTopic(for channel: Channel) -> String? {
@@ -952,7 +956,8 @@ private struct ChatRootView: View {
                      subtitle: isDirectMessageSelected ? directMessageToolbarSubtitle(for: channel) : nil,
                      topic: isDirectMessageSelected ? nil : channelTopic(for: channel),
                      avatarChannel: isDirectMessageSelected ? channel : nil,
-                     avatarStatus: isDirectMessageSelected ? directMessageToolbarStatus(for: channel) : nil)
+                     avatarStatus: isDirectMessageSelected ? directMessageToolbarStatus(for: channel) : nil,
+                     avatarIsMobile: isDirectMessageSelected && directMessageRecipient(for: channel)?.showsMobileIndicator == true)
     }
 
     private var supplementaryToolbarPresentation: SupplementaryToolbarPresentation? {
@@ -1306,6 +1311,7 @@ private struct ConversationToolbarPresentation {
     var topic: String?
     var avatarChannel: Channel?
     var avatarStatus: PresenceStatus?
+    var avatarIsMobile = false
 }
 
 private struct ConversationToolbarLabel: View {
@@ -1315,6 +1321,7 @@ private struct ConversationToolbarLabel: View {
     let textSize: CGFloat
     let avatarChannel: Channel?
     let avatarStatus: PresenceStatus?
+    let avatarIsMobile: Bool
 
     init(
         title: String,
@@ -1322,7 +1329,8 @@ private struct ConversationToolbarLabel: View {
         subtitle: String?,
         textSize: CGFloat,
         avatarChannel: Channel? = nil,
-        avatarStatus: PresenceStatus? = nil
+        avatarStatus: PresenceStatus? = nil,
+        avatarIsMobile: Bool = false
     ) {
         self.title = title
         self.systemImage = systemImage
@@ -1330,6 +1338,7 @@ private struct ConversationToolbarLabel: View {
         self.textSize = textSize
         self.avatarChannel = avatarChannel
         self.avatarStatus = avatarStatus
+        self.avatarIsMobile = avatarIsMobile
     }
 
     var body: some View {
@@ -1339,6 +1348,7 @@ private struct ConversationToolbarLabel: View {
                     channel: avatarChannel,
                     size: 24,
                     status: avatarStatus,
+                    isMobile: avatarIsMobile,
                     animates: true
                 )
                 .accessibilityHidden(true)
@@ -1380,7 +1390,8 @@ private struct ConversationToolbarTitle: View {
                 subtitle: presentation.subtitle,
                 textSize: InterfaceTypographyMetrics.interfaceTextSize,
                 avatarChannel: presentation.avatarChannel,
-                avatarStatus: presentation.avatarStatus
+                avatarStatus: presentation.avatarStatus,
+                avatarIsMobile: presentation.avatarIsMobile
             )
             .padding(.horizontal, 8)
             .padding(.vertical, 5)

@@ -68,11 +68,11 @@ extension AppModel {
         guard let url else { return }
         beginUsingOwnedPromisedFiles([url])
         defer { endUsingOwnedPromisedFiles([url]) }
-        guard commandComposer.pastedAttachmentOption != nil,
+        guard let target = commandComposer.attachmentPasteTarget(),
               !(await attachmentURLsWithinDiscordLimit([url])).isEmpty,
-              let option = commandComposer.pastedAttachmentOption
+              !Task.isCancelled
         else { return }
-        commandComposer.setValue(.attachment(url), displayText: url.lastPathComponent, for: option)
+        commandComposer.finishAttachmentPaste(url, target: target)
     }
 
     @discardableResult

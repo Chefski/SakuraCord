@@ -617,3 +617,37 @@ func liveCommandTextMappingKeepsEditingFocus() throws {
         in: live
     ) == "label")
 }
+
+@MainActor
+@Test("attachment paste ignores changed command, focus, and newer values")
+func attachmentPasteTargetLifecycle() throws {
+    let model = ApplicationCommandComposerModel()
+    let application = ApplicationCommandApplication(id: "100", name: "Utility")
+    let first = ApplicationCommandOption(id: "200/first", name: "first", type: .attachment, isRequired: true)
+    let second = ApplicationCommandOption(id: "200/second", name: "second", type: .attachment, isRequired: true)
+    let command = composerFixtureCommand(id: "200", name: "files", application: application, options: [first, second])
+    let oldURL = URL(fileURLWithPath: "/old.txt")
+    let newURL = URL(fileURLWithPath: "/new.txt")
+    model.activate(command)
+    let changedFocus = try #require(model.attachmentPasteTarget())
+    model.focus(second)
+    model.focus(first)
+    model.finishAttachmentPaste(oldURL, target: changedFocus)
+    #expect(model.attachmentURLs.isEmpty)
+
+    let changedCommand = try #require(model.attachmentPasteTarget())
+    model.cancelActiveCommand()
+    model.activate(command)
+    model.finishAttachmentPaste(oldURL, target: changedCommand)
+    #expect(model.attachmentURLs.isEmpty)
+
+    let overwritten = try #require(model.attachmentPasteTarget())
+    model.setValue(.attachment(newURL), for: first)
+    model.finishAttachmentPaste(oldURL, target: overwritten)
+    #expect(model.value(for: first) == .attachment(newURL))
+
+    model.focus(second)
+    let current = try #require(model.attachmentPasteTarget())
+    model.finishAttachmentPaste(oldURL, target: current)
+    #expect(model.value(for: second) == .attachment(oldURL))
+}

@@ -321,7 +321,8 @@ struct GuildRailButton: View {
                         iconURL: guild.iconURL,
                         size: 44,
                         cornerRadius: 14,
-                        animates: isHovering
+                        animates: isHovering,
+                        isSelected: isSelected
                     )
                 }
             }
