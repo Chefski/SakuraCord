@@ -437,7 +437,7 @@ extension NativeMemberListCanvasView {
             height: NativeMemberListMetrics.avatarSize
         )
         let opacity: CGFloat = !member.isListedOnline ? 0.55 : 1
-        let isMobile = member.isOnlineViaMobile
+        let isMobile = member.showsMobileIndicator
         let presenceIndicatorRect = AvatarPresencePresentation.indicatorRect(
             avatarRect: avatar,
             indicatorSize: NativeMemberListMetrics.presenceIndicatorSize,

@@ -99,10 +99,11 @@ struct ClientStatusDTO: Decodable {
     var mobile: String?
     var web: String?
 
-    /// Discord shows the mobile indicator only for an online mobile session
-    /// with no desktop or web session alongside it.
+    /// Retain all visible mobile states; presentation chooses the status color.
+    /// A desktop or web session continues to suppress the mobile-only flag.
     var isMobileOnly: Bool {
-        mobile == "online" && desktop == nil && web == nil
+        guard let mobile, PresenceStatus(rawValue: mobile)?.isVisibleOnline == true else { return false }
+        return desktop == nil && web == nil
     }
 }
 

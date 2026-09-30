@@ -402,7 +402,7 @@ private struct ProfileHeroSection: View {
                     status: profile?.status ?? member.status,
                     avatarSize: avatarSize,
                     indicatorSize: 15,
-                    isMobile: member.isOnlineViaMobile
+                    isMobile: member.showsMobileIndicator
                 ) {
                     DecoratedAvatarView(
                         name: profile?.displayName ?? member.user.displayName,

@@ -11,11 +11,25 @@ nonisolated enum PresenceIndicatorPresentation {
         }
     }
 
+    static func showsMobileIndicator(for status: PresenceStatus, isMobile: Bool) -> Bool {
+        isMobile && status.isVisibleOnline
+    }
+
+    static func accessibilityLabel(for status: PresenceStatus, isMobile: Bool) -> String {
+        let label: String = switch status {
+        case .online: "Online"
+        case .idle: "Idle"
+        case .dnd: "Do Not Disturb"
+        case .invisible, .offline: "Offline"
+        }
+        return showsMobileIndicator(for: status, isMobile: isMobile) ? "\(label) on mobile" : label
+    }
+
     /// The mobile indicator is a phone taller than the status dot.
     static let mobileHeightRatio: CGFloat = 1.5
 
     static func path(for status: PresenceStatus, isMobile: Bool = false, in rect: CGRect) -> Path {
-        if isMobile { return mobilePath(in: rect) }
+        if showsMobileIndicator(for: status, isMobile: isMobile) { return mobilePath(in: rect) }
         var path = Path()
         path.addEllipse(in: rect)
 
@@ -150,17 +164,21 @@ struct PresenceIndicator: View {
     let size: CGFloat
     var isMobile = false
 
+    private var usesMobileShape: Bool {
+        PresenceIndicatorPresentation.showsMobileIndicator(for: status, isMobile: isMobile)
+    }
+
     var body: some View {
-        PresenceIndicatorShape(status: status, isMobile: isMobile)
+        PresenceIndicatorShape(status: status, isMobile: usesMobileShape)
             .fill(
                 Color(hex: PresenceIndicatorPresentation.colorHex(for: status)),
                 style: FillStyle(eoFill: true)
             )
             .frame(
                 width: size,
-                height: isMobile ? size * PresenceIndicatorPresentation.mobileHeightRatio : size
+                height: usesMobileShape ? size * PresenceIndicatorPresentation.mobileHeightRatio : size
             )
-            .clipShape(PresenceIndicatorOutline(isMobile: isMobile))
+            .clipShape(PresenceIndicatorOutline(isMobile: usesMobileShape))
             .accessibilityHidden(true)
     }
 }
@@ -186,6 +204,10 @@ struct AvatarPresenceView<Avatar: View>: View {
         self.avatar = avatar()
     }
 
+    private var usesMobileShape: Bool {
+        status.map { PresenceIndicatorPresentation.showsMobileIndicator(for: $0, isMobile: isMobile) } ?? false
+    }
+
     var body: some View {
         avatar
             .overlay {
@@ -195,6 +217,9 @@ struct AvatarPresenceView<Avatar: View>: View {
             .overlay {
                 if let status { indicator(status: status) }
             }
+            .accessibilityValue(status.map {
+                PresenceIndicatorPresentation.accessibilityLabel(for: $0, isMobile: usesMobileShape)
+            } ?? "")
     }
 
     private var avatarCutout: some View {
@@ -202,7 +227,7 @@ struct AvatarPresenceView<Avatar: View>: View {
             AvatarPresencePresentation.cutoutPath(
                 avatarRect: avatarRect(in: proxy.size),
                 indicatorSize: indicatorSize,
-                isMobile: isMobile
+                isMobile: usesMobileShape
             )
             .fill(.black)
             .blendMode(.destinationOut)
@@ -214,9 +239,9 @@ struct AvatarPresenceView<Avatar: View>: View {
             let indicatorRect = AvatarPresencePresentation.indicatorRect(
                 avatarRect: avatarRect(in: proxy.size),
                 indicatorSize: indicatorSize,
-                isMobile: isMobile
+                isMobile: usesMobileShape
             )
-            PresenceIndicator(status: status, size: indicatorSize, isMobile: isMobile)
+            PresenceIndicator(status: status, size: indicatorSize, isMobile: usesMobileShape)
                 .position(x: indicatorRect.midX, y: indicatorRect.midY)
         }
     }

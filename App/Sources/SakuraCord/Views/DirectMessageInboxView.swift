@@ -117,7 +117,7 @@ private struct DirectMessageInboxRow: View {
                 channel: channel,
                 size: 32,
                 status: channel.kind == .directMessage ? member?.status ?? .offline : nil,
-                isMobile: member?.isOnlineViaMobile ?? false,
+                isMobile: member?.showsMobileIndicator ?? false,
                 animates: animatesAvatar,
                 isHovered: isHovered
             )

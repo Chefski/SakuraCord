@@ -1293,7 +1293,7 @@ extension DirectMessageProviderContractTests {
         var member = try #require(await provider.members(in: nil).first)
         #expect(member.user.displayName == "Maya")
         #expect(member.status == .idle)
-        #expect(!member.isOnlineViaMobile)
+        #expect(member.showsMobileIndicator)
         #expect(member.customStatus == "Shipping tiny details")
 
         await provider.receiveGatewayDispatchForTesting(
@@ -1307,7 +1307,7 @@ extension DirectMessageProviderContractTests {
         )
         member = try #require(await provider.members(in: nil).first)
         #expect(member.status == .online)
-        #expect(member.isOnlineViaMobile)
+        #expect(member.showsMobileIndicator)
         #expect(member.customStatus == nil)
 
         await provider.receiveGatewayDispatchForTesting(
@@ -1322,7 +1322,9 @@ extension DirectMessageProviderContractTests {
             ])
         )
         member = try #require(await provider.members(in: nil).first)
-        #expect(!member.isOnlineViaMobile)
+        #expect(!member.showsMobileIndicator)
+
+        try await verifyMobilePresenceTransitions(provider: provider)
         #expect(DirectMessageURLProtocol.requests.isEmpty)
         await provider.disconnect()
     }

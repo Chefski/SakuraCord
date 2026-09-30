@@ -14,9 +14,13 @@ final class NativeMemberAccessibilityProxyView: NSButton {
             let activity = member.memberListActivityText.flatMap {
                 $0.isEmpty ? nil : NativeMemberActivityPresentation.accessibilityText($0)
             }
-            setAccessibilityValue(activity.map {
+            let presence = member.memberListStatus.map {
+                PresenceIndicatorPresentation.accessibilityLabel(for: $0, isMobile: member.showsMobileIndicator)
+            }
+            let activityLabel = activity.map {
                 member.isListeningToMusic ? "Listening to music, \($0)" : $0
-            })
+            }
+            setAccessibilityValue([presence, activityLabel].compactMap { $0 }.joined(separator: ", "))
             toolTip = member.user.username
         }
     }

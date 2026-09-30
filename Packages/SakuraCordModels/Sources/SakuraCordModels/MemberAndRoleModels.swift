@@ -75,7 +75,7 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
     public var activityText: String?
     public var customStatus: String?
     public var isListeningToMusic: Bool
-    /// Whether the member's latest presence is online on mobile and has no
+    /// Whether the member's latest presence is active on mobile and has no
     /// desktop or web session.
     public var isMobileOnly: Bool
     /// Discord's membership-screening state. A pending member does not have
@@ -98,10 +98,10 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
         status.isVisibleOnline
     }
 
-    /// Discord shows a phone instead of the online dot when mobile is the
-    /// member's only active platform.
-    public var isOnlineViaMobile: Bool {
-        status == .online && isMobileOnly
+    /// Keep the phone for mobile-only online, idle, and DND presence. Colored
+    /// idle/DND phones deliberately differ from stock Discord presentation.
+    public var showsMobileIndicator: Bool {
+        status.isVisibleOnline && isMobileOnly
     }
 
     public init(

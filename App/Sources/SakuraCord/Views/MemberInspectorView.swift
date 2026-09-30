@@ -495,7 +495,7 @@ struct MemberAvatar: View {
             status: member.memberListStatus,
             avatarSize: 34,
             indicatorSize: 11,
-            isMobile: member.isOnlineViaMobile
+            isMobile: member.showsMobileIndicator
         ) {
             DecoratedAvatarView(
                 name: member.user.displayName,

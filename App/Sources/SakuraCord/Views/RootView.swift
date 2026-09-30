@@ -990,7 +990,7 @@ private struct ChatRootView: View {
                      topic: isDirectMessageSelected ? nil : channelTopic(for: channel),
                      avatarChannel: isDirectMessageSelected ? channel : nil,
                      avatarStatus: isDirectMessageSelected ? directMessageToolbarStatus(for: channel) : nil,
-                     avatarIsMobile: isDirectMessageSelected && directMessageRecipient(for: channel)?.isOnlineViaMobile == true)
+                     avatarIsMobile: isDirectMessageSelected && directMessageRecipient(for: channel)?.showsMobileIndicator == true)
     }
 
     private var supplementaryToolbarPresentation: SupplementaryToolbarPresentation? {
