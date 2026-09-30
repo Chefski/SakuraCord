@@ -2910,7 +2910,8 @@ private extension DiscordRESTProvider {
 }
 
 @MainActor
-@Test func `completed old account earlier pages cannot enter replacement conversations`()
+@Test(.timeLimit(.minutes(1)))
+func `completed old account earlier pages cannot enter replacement conversations`()
     async throws
 {
     let directory = FileManager.default.temporaryDirectory.appending(
@@ -2939,7 +2940,15 @@ private extension DiscordRESTProvider {
 
     let selectedLoad = Task { @MainActor in await model.loadEarlier() }
     let threadLoad = Task { @MainActor in await model.loadEarlierThread() }
-    #expect(await oldProvider.waitUntilEarlierPageRequestsStart(expected: 2))
+    let requestsStarted = await oldProvider.waitUntilEarlierPageRequestsStart(expected: 2)
+    if !requestsStarted {
+        selectedLoad.cancel()
+        threadLoad.cancel()
+        await oldProvider.releaseEarlierPageRequests()
+        await selectedLoad.value
+        await threadLoad.value
+    }
+    try #require(requestsStarted)
 
     model.invalidateAccountSession()
     model.installAccountSession(provider: newProvider, database: newDatabase)
@@ -5696,6 +5705,8 @@ private actor SuspendedAccountOperationTestProvider: ChatProvider {
     private var sendStarted = false
     private var editStarted = false
     private var earlierPageRequestCount = 0
+    private let earlierPageStarts = AsyncStream<Int>.makeStream(bufferingPolicy: .bufferingNewest(1))
+    private var earlierPagesReleased = false
     private(set) var channelRequestCount = 0
     private(set) var newestMessageRequestCount = 0
     private(set) var applicationCommandRequestCount = 0
@@ -5769,7 +5780,8 @@ private actor SuspendedAccountOperationTestProvider: ChatProvider {
             return MessagePage(messages: [], hasMoreBefore: false)
         }
         earlierPageRequestCount += 1
-        if suspendsOperations {
+        earlierPageStarts.continuation.yield(earlierPageRequestCount)
+        if suspendsOperations, !earlierPagesReleased {
             await withCheckedContinuation { earlierContinuations.append($0) }
         }
         let message = Message(
@@ -5871,10 +5883,18 @@ private actor SuspendedAccountOperationTestProvider: ChatProvider {
     }
 
     func waitUntilEarlierPageRequestsStart(expected: Int) async -> Bool {
-        await eventually { earlierPageRequestCount >= expected }
+        // Wait for the actual requests, not a polling deadline that can expire
+        // while parallel App tests are occupying the main actor.
+        for await count in earlierPageStarts.stream where count >= expected {
+            return true
+        }
+        return false
     }
 
     func releaseEarlierPageRequests() {
+        // Latch the release so cancellation cannot leave a late request suspended.
+        earlierPagesReleased = true
+        earlierPageStarts.continuation.finish()
         earlierContinuations.forEach { $0.resume() }
         earlierContinuations.removeAll()
     }
