@@ -935,7 +935,7 @@ struct MessageProfilePopoverContent: View {
 
     var body: some View {
         Group {
-            if let presentation = model.contextualProfilePresentation,
+            if let presentation = model.liveProfilePresentation(for: .contextual),
                presentation.member.id == userID,
                presentation.requestID == requestID
             {

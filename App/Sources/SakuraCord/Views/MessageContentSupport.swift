@@ -436,32 +436,27 @@ nonisolated struct LinkedImagePresentation: Sendable {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Source locations of the matched links that message rendering places
-    /// inside a spoiler. Matches pair with rendered links of the same URL in
-    /// document order, since rendering reports links rather than source ranges.
+    /// Give each masked-link target a distinct, parse-only identity. Matching
+    /// by destination loses source identity when bare, angle-bracket, adjacent,
+    /// or code-contained links share the same URL. Keep all surrounding syntax
+    /// intact so the Markdown parser remains the authority on spoiler state.
     private static func spoileredMatchLocations(
         _ matches: [NSTextCheckingResult],
         in content: String
     ) -> Set<Int> {
-        var occurrences: [URL: [Bool]] = [:]
-        for occurrence in DiscordMarkdown.linkOccurrences(content) {
-            occurrences[occurrence.url, default: []].append(occurrence.isSpoiler)
+        var prefix = "https://sakuracord.invalid/spoiler-match/"
+        while content.contains(prefix) { prefix += "x/" }
+        let marked = NSMutableString(string: content)
+        var locations: [URL: Int] = [:]
+        for (index, match) in matches.enumerated().reversed() {
+            let marker = prefix + String(index)
+            guard let url = URL(string: marker) else { continue }
+            locations[url] = match.range.location
+            marked.replaceCharacters(in: match.range(at: 2), with: marker)
         }
-        var consumed: [URL: Int] = [:]
-        var result = Set<Int>()
-        for match in matches {
-            guard let urlRange = Range(match.range(at: 2), in: content),
-                  let url = MessageLinkPolicy.allowedURL(from: String(content[urlRange])),
-                  let states = occurrences[url], !states.isEmpty
-            else { continue }
-            let index = consumed[url, default: 0]
-            consumed[url] = index + 1
-            // Adjacent links to one URL render as one link and share its state.
-            if states[min(index, states.count - 1)] {
-                result.insert(match.range(at: 0).location)
-            }
-        }
-        return result
+        return Set(DiscordMarkdown.linkOccurrences(String(marked)).compactMap {
+            $0.isSpoiler ? locations[$0.url] : nil
+        })
     }
 
     private static func remainingText(

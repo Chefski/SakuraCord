@@ -1,6 +1,7 @@
 @testable import SakuraCord
 import Foundation
 import SakuraCordModels
+import Observation
 import Testing
 import UserNotifications
 
@@ -238,7 +239,7 @@ func `Incoming call notifications deduplicate and cancel at the ringing boundary
 
     let expectedNotifications = appIsActive ? [] : [channel.id]
     model.consumePrivateCallChanged(&call)
-    #expect(await eventuallyNotification { service.deliveredCallChannelIDs == expectedNotifications })
+    #expect(await until { service.deliveredCallChannelIDs == expectedNotifications })
     #expect(sounds.looping[.callRinging] == appIsActive)
     model.consumePrivateCallChanged(&call)
     await Task.yield()
@@ -246,7 +247,7 @@ func `Incoming call notifications deduplicate and cancel at the ringing boundary
 
     call.ongoingRings = []
     model.consumePrivateCallChanged(&call)
-    #expect(await eventuallyNotification { service.cancelledCallChannelIDs == [channel.id] })
+    #expect(await until { service.cancelledCallChannelIDs == [channel.id] })
     #expect(sounds.looping[.callRinging] == false)
 }
 
@@ -274,7 +275,7 @@ func `Incoming call notifications deduplicate and cancel at the ringing boundary
 
     preferences.clearsWhenRead = true
     model.cancelNativeNotifications(channelID: channelID)
-    #expect(await eventuallyNotification {
+    #expect(await until {
         service.cancelledMessageChannelIDs == [channelID]
     })
 }
@@ -333,7 +334,7 @@ func `Desktop and sound delivery are independent and share message filters`(appI
         let deliversDesktop = desktop && !appIsActive
         model.deliverNativeNotification(for: message)
         if deliversDesktop {
-            #expect(await eventuallyNotification { service.messageSounds == [sound] })
+            #expect(await until { service.messageSounds == [sound] })
             #expect(sounds.played.isEmpty)
         } else {
             #expect(service.messageSounds.isEmpty)
@@ -398,17 +399,7 @@ func `Desktop and sound delivery are independent and share message filters`(appI
 }
 
 @MainActor
-private func eventuallyNotification(
-    _ condition: @escaping @MainActor () -> Bool
-) async -> Bool {
-    for _ in 0 ..< 100 {
-        if condition() { return true }
-        await Task.yield()
-    }
-    return condition()
-}
-
-@MainActor
+@Observable
 private final class RecordingNotificationService: NativeNotificationService {
     enum AuthorizationError: Error { case unavailable }
     var requestError: AuthorizationError?

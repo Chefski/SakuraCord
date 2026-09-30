@@ -163,7 +163,6 @@ public struct UserProfile: Identifiable, Codable, Hashable, Sendable {
     public var premiumSince: Date?
     public var premiumGuildSince: Date?
     public var legacyUsername: String?
-    public var status: PresenceStatus
     public var customStatus: String?
 
     public init(
@@ -189,7 +188,6 @@ public struct UserProfile: Identifiable, Codable, Hashable, Sendable {
         premiumSince: Date? = nil,
         premiumGuildSince: Date? = nil,
         legacyUsername: String? = nil,
-        status: PresenceStatus = .offline,
         customStatus: String? = nil
     ) {
         self.user = user
@@ -214,7 +212,6 @@ public struct UserProfile: Identifiable, Codable, Hashable, Sendable {
         self.premiumSince = premiumSince
         self.premiumGuildSince = premiumGuildSince
         self.legacyUsername = legacyUsername
-        self.status = status
         self.customStatus = customStatus
     }
 }
