@@ -28,6 +28,7 @@ struct PresenceUpdateDTO: Decodable {
     var user: PartialUser
     var status: String
     var activities: [GuildActivityDTO]?
+    var clientStatus: ClientStatusDTO?
 
     enum CodingKeys: String, CodingKey {
         case guildID = "guild_id"
@@ -35,6 +36,7 @@ struct PresenceUpdateDTO: Decodable {
         case userID = "user_id"
         case status
         case activities
+        case clientStatus = "client_status"
     }
 
     init(from decoder: any Decoder) throws {
@@ -54,6 +56,10 @@ struct PresenceUpdateDTO: Decodable {
         activities = try container.decodeIfPresent(
             [GuildActivityDTO].self,
             forKey: .activities
+        )
+        clientStatus = try? container.decodeIfPresent(
+            ClientStatusDTO.self,
+            forKey: .clientStatus
         )
     }
 }

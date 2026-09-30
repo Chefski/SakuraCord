@@ -240,7 +240,7 @@ func `interactive system message families share actor tint and profile link`(
         $0.kind == .directMessage && !$0.isOfficialSystemDirectMessage
     })
     model.navigate(to: directMessage.id)
-    #expect(await eventuallyPinned { model.selectedChannelID == directMessage.id })
+    #expect(await until { model.selectedChannelID == directMessage.id })
     await model.channelLoadTask?.value
     let target = try #require(model.messages.first)
 
@@ -308,7 +308,7 @@ func `interactive system message families share actor tint and profile link`(
         model: model
     ))
     await model.guildActivationTask?.value
-    #expect(await eventuallyPinned {
+    #expect(await until {
         model.pinnedMessages.isPresented
             && model.pinnedMessages.channelID == guildChannel.id
     })
@@ -567,14 +567,14 @@ func `interactive system message families share actor tint and profile link`(
         $0.kind == .directMessage && !$0.isOfficialSystemDirectMessage
     })
     model.navigate(to: directMessage.id)
-    #expect(await eventuallyPinned { model.selectedChannelID == directMessage.id })
+    #expect(await until { model.selectedChannelID == directMessage.id })
     await model.channelLoadTask?.value
     let message = try #require(model.messages.first)
 
     model.togglePinnedState(for: message)
 
     #expect(model.messages.first(where: { $0.id == message.id })?.isPinned == true)
-    #expect(await eventuallyPinned {
+    #expect(await eventually {
         await provider.pinMutationRequests.count == 1
     })
     #expect(await provider.pinMutationRequests.first?.isPinned == true)
@@ -589,7 +589,7 @@ func `interactive system message families share actor tint and profile link`(
         $0.kind == .directMessage && !$0.isOfficialSystemDirectMessage
     })
     model.navigate(to: directMessage.id)
-    #expect(await eventuallyPinned { model.selectedChannelID == directMessage.id })
+    #expect(await until { model.selectedChannelID == directMessage.id })
     await model.channelLoadTask?.value
     let message = try #require(model.messages.first)
     model.pinnedMessages.isPresented = true
@@ -627,17 +627,6 @@ func `interactive system message families share actor tint and profile link`(
 }
 
 @MainActor
-private func eventuallyPinned(
-    _ condition: @escaping @MainActor () async -> Bool
-) async -> Bool {
-    for _ in 0 ..< 120 {
-        if await condition() { return true }
-        try? await Task.sleep(for: .milliseconds(20))
-    }
-    return false
-}
-
-@MainActor
 @Test func `message deletion removes only matching channel pin`() {
     let model = AppModel(launchMode: .offlineTesting, provider: MockChatProvider())
     let author = User(id: UserID(rawValue: 1), username: "a", displayName: "A")
@@ -672,12 +661,12 @@ private func eventuallyPinned(
         $0.kind == .directMessage && !$0.isOfficialSystemDirectMessage
     })
     model.navigate(to: directMessage.id)
-    #expect(await eventuallyPinned { model.selectedChannelID == directMessage.id })
+    #expect(await until { model.selectedChannelID == directMessage.id })
     await model.channelLoadTask?.value
     let message = try #require(model.messages.first)
 
     model.togglePinnedState(for: message)
-    #expect(await eventuallyPinned {
+    #expect(await eventually {
         model.messages.first(where: { $0.id == message.id })?.isPinned == false
     })
     #expect(await provider.pinMutationRequests.count == 1)
@@ -714,7 +703,7 @@ private func eventuallyPinned(
     await model.start()
     let channelID = ChannelID(rawValue: 210)
     model.navigate(to: channelID)
-    #expect(await eventuallyPinned { model.selectedChannelID == channelID })
+    #expect(await until { model.selectedChannelID == channelID })
     await model.channelLoadTask?.value
 
     model.presentPinnedMessages()
@@ -777,16 +766,16 @@ private func eventuallyPinned(
         $0.kind == .directMessage && !$0.isOfficialSystemDirectMessage
     })
     model.navigate(to: directMessage.id)
-    #expect(await eventuallyPinned { model.selectedChannelID == directMessage.id })
+    #expect(await until { model.selectedChannelID == directMessage.id })
     await model.channelLoadTask?.value
     let message = try #require(model.messages.first)
 
     model.togglePinnedState(for: message)
     model.togglePinnedState(for: message)
 
-    #expect(await eventuallyPinned { await provider.pinMutationRequests.count == 2 })
+    #expect(await eventually { await provider.pinMutationRequests.count == 2 })
     #expect(await provider.pinMutationRequests.map(\.isPinned) == [true, false])
-    #expect(await eventuallyPinned {
+    #expect(await eventually {
         model.messages.first(where: { $0.id == message.id })?.isPinned == false
     })
 }
@@ -800,7 +789,7 @@ private func eventuallyPinned(
         $0.kind == .directMessage && !$0.isOfficialSystemDirectMessage
     })
     model.navigate(to: directMessage.id)
-    #expect(await eventuallyPinned { model.selectedChannelID == directMessage.id })
+    #expect(await until { model.selectedChannelID == directMessage.id })
     await model.channelLoadTask?.value
     let target = try #require(model.messages.first)
     let pinnedReply = Message(

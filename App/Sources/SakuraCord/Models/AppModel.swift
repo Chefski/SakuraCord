@@ -427,6 +427,7 @@ final class AppModel {
     var supportedCapabilities: Set<ChatCapability> = []
     var componentInteractionPresentation =
         ComponentInteractionPresentationState()
+    /// Views render profiles through `liveProfilePresentation(for:)`.
     var inspectorProfilePresentation:
         ProfilePresentationState?
     var contextualProfilePresentation:
@@ -1130,6 +1131,7 @@ final class AppModel {
     @ObservationIgnored var hasMoreCache: [ChannelID: Bool] = [:]
     /// Latest known message per thread, drawn in timeline thread cards.
     @ObservationIgnored var threadPreviewMessages: [ChannelID: Message] = [:]
+    @ObservationIgnored var threadPreviewParentIDs: [ChannelID: ChannelID] = [:]
     @ObservationIgnored let discordNetworkDisabled: Bool
     @ObservationIgnored let usesInsecureDebugCredentials: Bool
     @ObservationIgnored let restoresStoredSession: Bool

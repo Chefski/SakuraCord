@@ -1,6 +1,7 @@
 import CoreGraphics
 import CryptoKit
 import Foundation
+import MediaPipeline
 
 /// Immutable prepared raster bytes in the existing bounded media disk cache.
 /// The small JSON header is decoded normally; frame payloads remain slices of
@@ -33,7 +34,7 @@ nonisolated enum PreparedAnimatedImage {
     }
 
     static func key(source: Data, maximumPixelDimension: Int?) -> URL? {
-        let digest = SHA256.hash(data: source).map { String(format: "%02x", $0) }.joined()
+        let digest = SHA256.hash(data: source).hexString
         return URL(string: "sakuracord-prepared://animation/v1/\(maximumPixelDimension ?? 0)/\(digest)")
     }
 

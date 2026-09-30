@@ -607,6 +607,7 @@ extension AppModel {
     }
 
     func consumeMessageDeleted(channelID: ChannelID, messageID: MessageID) {
+        invalidateTimelineThreadPreview(channelID: channelID, messageID: messageID)
         recordConversationRefreshMutation(
             .delete,
             messageID: messageID,
@@ -754,6 +755,7 @@ extension AppModel {
     }
 
     func consumeForumPostPreviewsChanged(channelID: ChannelID, posts: [ForumPost]) {
+        refreshTimelineThreadCards(parentID: channelID, posts: posts, replacesAll: false)
         reconcileInboxForumPosts(channelID: channelID, posts: posts, replacesAll: false)
         mergeForwardDestinationThreads(posts.map(\.thread))
         for post in posts { readState.merge(thread: post.thread) }

@@ -485,25 +485,37 @@ extension AppModel {
         return .enqueued(serverConfirmed: confirmed)
     }
 
+    func invalidateTimelineThreadPreview(channelID: ChannelID, messageID: MessageID) {
+        guard threadPreviewMessages[channelID]?.id == messageID else { return }
+        threadPreviewMessages[channelID] = nil
+        let changed = Set(messages.filter { $0.referencedThreadID == channelID }.map(\.id))
+        if !changed.isEmpty { publishMessageRowsUpdate(changedMessageIDs: changed) }
+    }
+
     /// Keeps timeline thread cards current. A card's summary lives on its
     /// message; its latest-message preview mirrors the provider's catalogue.
-    func refreshTimelineThreadCards(parentID: ChannelID, posts: [ForumPost]) {
+    func refreshTimelineThreadCards(parentID: ChannelID, posts: [ForumPost], replacesAll: Bool = true) {
         var changedPreviewThreadIDs = Set<ChannelID>()
+        if replacesAll {
+            let retained = Set(posts.map(\.id))
+            for (threadID, parent) in threadPreviewParentIDs where parent == parentID && !retained.contains(threadID) {
+                threadPreviewMessages[threadID] = nil
+                threadPreviewParentIDs[threadID] = nil
+                changedPreviewThreadIDs.insert(threadID)
+            }
+        }
         for post in posts {
-            guard let preview = post.mostRecentMessage,
-                  threadPreviewMessages[post.id] != preview
-            else { continue }
-            threadPreviewMessages[post.id] = preview
+            threadPreviewParentIDs[post.id] = parentID
+            guard threadPreviewMessages[post.id] != post.mostRecentMessage else { continue }
+            threadPreviewMessages[post.id] = post.mostRecentMessage
             changedPreviewThreadIDs.insert(post.id)
         }
         guard parentID == selectedChannelID else { return }
         let threadsByID = Dictionary(posts.map { ($0.id, $0.thread) }, uniquingKeysWith: { $1 })
         var redrawnMessageIDs = Set<MessageID>()
         for message in messages {
-            guard let threadID = message.referencedThreadID,
-                  let thread = threadsByID[threadID]
-            else { continue }
-            if message.thread != thread {
+            guard let threadID = message.referencedThreadID else { continue }
+            if let thread = threadsByID[threadID], message.thread != thread {
                 var updated = message
                 updated.thread = thread
                 reconcileSelectedMessageUpdate(updated)

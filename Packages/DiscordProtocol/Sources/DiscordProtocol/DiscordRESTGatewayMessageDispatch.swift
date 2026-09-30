@@ -212,6 +212,20 @@ extension DiscordRESTProvider {
         }
     }
 
+    /// Preview caches outlive the message working set. Remove deleted content
+    /// there too so a later catalogue publication cannot resurrect it.
+    func removeDeletedForumPreview(channelID: ChannelID, messageID: MessageID) {
+        for (parentID, posts) in cachedForumPosts {
+            guard var post = posts[channelID] else { continue }
+            var changed = false
+            if post.firstMessage?.id == messageID { post.firstMessage = nil; changed = true }
+            if post.mostRecentMessage?.id == messageID { post.mostRecentMessage = nil; changed = true }
+            guard changed else { continue }
+            cachedForumPosts[parentID]?[channelID] = post
+            publishForumPosts(parentID: parentID)
+        }
+    }
+
     func handleMessageDeleteDispatch(
         name: String,
         body: JSONValue
@@ -220,6 +234,7 @@ extension DiscordRESTProvider {
            let channelID = ChannelID(value.channelID), let messageID = MessageID(value.id)
         {
             cachedMessages[messageID] = nil
+            removeDeletedForumPreview(channelID: channelID, messageID: messageID)
             continuation?.yield(.messageDeleted(channelID: channelID, messageID: messageID))
         }
     }
@@ -235,6 +250,7 @@ extension DiscordRESTProvider {
         else { return }
         for messageID in deletion.ids.compactMap(MessageID.init) {
             cachedMessages[messageID] = nil
+            removeDeletedForumPreview(channelID: channelID, messageID: messageID)
             continuation?.yield(
                 .messageDeleted(channelID: channelID, messageID: messageID)
             )

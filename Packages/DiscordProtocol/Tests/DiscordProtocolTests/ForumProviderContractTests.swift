@@ -780,14 +780,11 @@ struct ThreadCreationContractTests {
     _ = try await provider.forumPosts(in: channel.id, query: latestActivity)
     _ = try await provider.forumPosts(in: channel.id, query: creationDate)
     _ = try await provider.forumPosts(in: channel.id, query: latestActivity)
-    for _ in 0 ..< 10 {
-        await Task.yield()
-    }
 
-    #expect(
+    #expect(await eventually {
         await provider.activeForumCatalogueQueriesForTesting(channelID: channel.id)
             == [latestActivity]
-    )
+    })
     await provider.disconnect()
 }
 
@@ -832,15 +829,12 @@ struct ThreadCreationContractTests {
 
     _ = try await provider.forumPosts(in: firstChannel.id, query: query)
     _ = try await provider.forumPosts(in: secondChannel.id, query: query)
-    for _ in 0 ..< 10 {
-        await Task.yield()
-    }
 
-    #expect(await provider.activeForumCatalogueQueriesForTesting(channelID: firstChannel.id).isEmpty)
-    #expect(
-        await provider.activeForumCatalogueQueriesForTesting(channelID: secondChannel.id)
-            == [query]
-    )
+    #expect(await eventually {
+        let first = await provider.activeForumCatalogueQueriesForTesting(channelID: firstChannel.id)
+        let second = await provider.activeForumCatalogueQueriesForTesting(channelID: secondChannel.id)
+        return first.isEmpty && second == [query]
+    })
     await provider.disconnect()
 }
 
@@ -1226,4 +1220,21 @@ private final class ForumPostCreationURLProtocol: URLProtocol, @unchecked Sendab
     await provider.attachKnownThread(to: &created)
 
     #expect(created.thread == post.thread)
+}
+
+@Test(arguments: [false, true])
+func `deleted messages cannot return through cached thread previews`(bulk: Bool) async throws {
+    let provider = DiscordRESTProvider(credentials: ForumPostDeletionCredentialStore(), handle: CredentialHandle(accountID: "deleted-thread-preview"))
+    let parent = Channel(id: ChannelID(rawValue: 7), guildID: GuildID(rawValue: 1), name: "parent", kind: .text)
+    let thread = MessageThreadSummary(id: ChannelID(rawValue: 200), parentID: parent.id, name: "thread")
+    let author = User(id: UserID(rawValue: 1), username: "author", displayName: "Author")
+    let message = Message(id: MessageID(rawValue: 201), channelID: thread.id, author: author, content: "Deleted")
+    await provider.seedForumChannelForTesting(parent, posts: [ForumPost(thread: thread, firstMessage: message, mostRecentMessage: message)])
+    var payload: [String: JSONValue] = ["channel_id": .string("200")]
+    if bulk { payload["ids"] = .array([.string("201")]) } else { payload["id"] = .string("201") }
+    await provider.receiveGatewayDispatchForTesting(name: bulk ? "MESSAGE_DELETE_BULK" : "MESSAGE_DELETE", data: .object(payload))
+    let cached = try #require(await provider.cachedForumPostForTesting(threadID: thread.id))
+    #expect(cached.firstMessage == nil)
+    #expect(cached.mostRecentMessage == nil)
+    await provider.disconnect()
 }
