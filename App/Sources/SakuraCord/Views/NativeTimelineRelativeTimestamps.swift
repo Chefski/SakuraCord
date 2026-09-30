@@ -3,11 +3,10 @@ import AppKit
 extension NativeMessageTimelineCoordinator {
     func updateTimestampObservation() {
         timestampSources = items.reduce(into: [:]) { sources, item in
-            guard let source = item.messageRow?.message.content,
-                  source.contains("<t:"),
-                  !TimestampMentionPresentation.tokens(in: source).isEmpty
-            else { return }
-            sources[item.identifier] = source
+            guard let row = item.messageRow else { return }
+            let content = TimestampMentionPresentation.sources(in: row.message, replyContent: row.replyPreview?.content)
+            guard !content.isEmpty else { return }
+            sources[item.identifier] = content
         }
         timestampLabels = timestampLabels.filter { timestampSources[$0.key] != nil }
         timestampWindowChanged()
@@ -36,7 +35,9 @@ extension NativeMessageTimelineCoordinator {
               let canvas, let scrollView, layoutWidth > 0
         else { return }
         let changedIdentifiers = Set(timestampSources.compactMap { identifier, source in
-            let labels = TimestampMentionPresentation.labels(in: source, at: date)
+            let labels = source.reduce(into: [String: String]()) { result, text in
+                result.merge(TimestampMentionPresentation.labels(in: text, at: date)) { _, latest in latest }
+            }
             guard timestampLabels[identifier] != labels else { return nil as NativeMessageTimelineItem.Identifier? }
             timestampLabels[identifier] = labels
             return identifier

@@ -1,6 +1,7 @@
 import AppKit
 import MessageRendering
 import Observation
+import SakuraCordModels
 
 /// A single clock services attached timestamp surfaces. Listeners own no timers,
 /// and weak ownership prevents a retained timer from keeping a view alive.
@@ -77,15 +78,47 @@ nonisolated enum TimestampMentionPresentation {
         }
     }
 
+    static func sources(in message: Message, replyContent: String?) -> [String] {
+        var sources = [message.content]
+        if let replyContent { sources.append(replyContent) }
+        var embeds = message.embeds
+        var components = message.components
+        if let forwarded = message.forwardedSnapshot {
+            sources.append(forwarded.content)
+            embeds += forwarded.embeds
+            components += forwarded.components
+        }
+        for embed in embeds {
+            if let description = embed.description { sources.append(description) }
+            sources += embed.fields.map(\.value)
+            components += embed.components ?? []
+        }
+        sources += componentSources(components)
+        return sources.filter { $0.contains("<t:") && !tokens(in: $0).isEmpty }
+    }
+
+    private static func componentSources(_ components: [MessageComponent]) -> [String] {
+        components.flatMap { component -> [String] in
+            switch component {
+            case let .textDisplay(_, content): [content]
+            case let .actionRow(_, children), let .container(_, _, _, children): componentSources(children)
+            case let .section(_, children, accessory): componentSources(children + (accessory.map { [$0] } ?? []))
+            default: []
+            }
+        }
+    }
+
     static func refreshed(
         _ presentations: [String: MentionPresentation],
         source: String,
         at date: Date
     ) -> [String: MentionPresentation] {
         var result = presentations
-        for token in tokens(in: source) {
-            result[token.rawToken] = MentionPresentation(
-                rawToken: token.rawToken,
+        for case let .mention(mention) in RichMessageAttributedText.prepare(source: source).tokens {
+            guard mention.kind == .timestamp,
+                  let token = DiscordTimestampToken(rawToken: mention.rawToken) else { continue }
+            result[mention.rawToken] = MentionPresentation(
+                rawToken: mention.rawToken,
                 label: token.formatted(relativeTo: date),
                 target: .unresolved,
                 isTimestamp: true

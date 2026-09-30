@@ -305,7 +305,7 @@ final class NativeMessageTimelineCoordinator: NSObject {
         var pendingModelRowsUpdateTask: Task<Void, Never>?
         var layoutPreparationTask: Task<Void, Never>?
         var layoutPreparation: LayoutPreparation?
-        var timestampSources: [NativeMessageTimelineItem.Identifier: String] = [:]
+        var timestampSources: [NativeMessageTimelineItem.Identifier: [String]] = [:]
         var timestampLabels: [NativeMessageTimelineItem.Identifier: [String: String]] = [:]
         var scrollIdleTask: Task<Void, Never>?
         var lastScrollActivityUptime = 0.0

@@ -131,3 +131,26 @@ private func nativeTimestampLabel(in text: NSAttributedString?) -> String? {
     }
     return label
 }
+
+@Test func `timestamp refresh preserves a token without an explicit format suffix`() {
+    let raw = "<t:1000000>"
+    let stale = MentionPresentation(rawToken: raw, label: "stale label", target: .unresolved, isTimestamp: true)
+    let refreshed = TimestampMentionPresentation.refreshed([raw: stale], source: raw, at: .distantPast)
+    #expect(refreshed[raw]?.label == DiscordTimestampToken(rawToken: raw)?.formatted())
+    #expect(refreshed[raw]?.rawToken == raw)
+    #expect(refreshed.count == 1)
+}
+
+@Test func `native timestamp observation includes reply embed and nested component content`() {
+    let author = User(id: UserID(rawValue: 9_501), username: "clock-fixture", displayName: "Clock fixture")
+    let embed = MessageEmbed(id: "fixture", description: "embed <t:1000000:R>", fields: [
+        MessageEmbedField(name: "plain heading", value: "field <t:1000001:R>"),
+    ])
+    let component = MessageComponent.container(id: "container", accentColor: nil, spoiler: false, children: [
+        .textDisplay(id: "text", content: "component <t:1000002:R>"),
+    ])
+    let message = Message(id: MessageID(rawValue: 9_502), channelID: ChannelID(rawValue: 9_500),
+                          author: author, content: "body <t:1000003:R>", embeds: [embed], components: [component])
+    let sources = TimestampMentionPresentation.sources(in: message, replyContent: "reply <t:1000004:R>")
+    #expect(Set(sources) == ["body <t:1000003:R>", "embed <t:1000000:R>", "field <t:1000001:R>", "component <t:1000002:R>", "reply <t:1000004:R>"])
+}
