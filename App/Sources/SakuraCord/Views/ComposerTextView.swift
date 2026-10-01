@@ -445,8 +445,10 @@ struct ComposerTextView: NSViewRepresentable {
                 text, font: font, mentionPresentations: mentionPresentations
             )
             if isTranslationEdit {
+                textView.breakUndoCoalescing()
                 textView.insertText(replacement, replacementRange: NSRange(location: 0, length: textView.attributedString().length))
                 textView.undoManager?.setActionName(String(localized: "Translate Draft"))
+                textView.breakUndoCoalescing()
             } else {
                 textView.textStorage?.setAttributedString(replacement)
             }

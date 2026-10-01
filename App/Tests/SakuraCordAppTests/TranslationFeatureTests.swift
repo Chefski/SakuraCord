@@ -1,4 +1,5 @@
 @testable import SakuraCord
+import AppKit
 import Foundation
 import SakuraCordModels
 import Testing
@@ -49,6 +50,40 @@ private func translationFixture(_ translator: ControlledTranslationTestService) 
 private func translationMessage(_ id: UInt64 = 300, content: String = "Hallo <@1>") -> Message {
     Message(id: MessageID(rawValue: id), channelID: ChannelID(rawValue: 200),
             author: User(id: UserID(rawValue: 1), username: "fixture", displayName: "Fixture"), content: content)
+}
+
+@MainActor
+@Test func `cached accessibility rows refresh translation actions without a message edit`() throws {
+    let model = translationFixture(ControlledTranslationTestService())
+    let message = translationMessage(content: "Hallo wereld")
+    let row = MessageRowPresentation(message: message, startsGroup: true, startsDay: false, replyPreview: nil, isReplyAvailable: false)
+    let item = NativeMessageTimelineItem.message(row, isUnreadBoundary: false, isHighlighted: false)
+    let canvas = NativeTimelineCanvasView(frame: CGRect(x: 0, y: 0, width: 560, height: 400))
+    canvas.model = model
+    canvas.storage.items = [item]
+    canvas.storage.rowOrigins = [0]
+    func refresh() throws -> NSView {
+        let layout = NativeTimelineRowLayout.make(item: item, width: 560, model: model)
+        canvas.storage.layouts = [layout]
+        canvas.storage.contentHeight = layout.height
+        canvas.reconcileAccessibilityProxies()
+        return try #require(canvas.accessibilityProxyRowsInTimelineOrder().first as? NSView)
+    }
+    let original = try refresh()
+    #expect(original.accessibilityCustomActions()?.contains { $0.name == "Translate Message" } == true)
+    let entry = MessageTranslationEntry(sourceContent: message.content, language: "en", status: .translated(.init(text: "Hello world", detectedSourceLanguage: "nl")))
+    model.translation.messages.set(entry, for: message.id)
+    let translated = try refresh()
+    #expect(translated !== original)
+    #expect(translated.accessibilityCustomActions()?.contains { $0.name == "Show Original" } == true)
+    #expect(translated.accessibilityCustomActions()?.contains { $0.name == "Copy Translation" } == true)
+    let unchanged = try refresh()
+    #expect(unchanged === translated)
+    model.performMessageTranslationCaptionAction(message)
+    let hidden = try refresh()
+    #expect(hidden !== translated)
+    #expect(hidden.accessibilityCustomActions()?.contains { $0.name == "Translate Message" } == true)
+    #expect(hidden.accessibilityCustomActions()?.contains { $0.name == "Copy Translation" } == false)
 }
 
 @MainActor
