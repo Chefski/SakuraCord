@@ -64,12 +64,10 @@ extension DiscordRESTProvider {
         if guildID == pendingMemberGuildID,
            update.id == selectedMemberListID[guildID]
         {
-            continuation?.yield(
-                .membersChanged(
-                    guildID: guildID,
-                    members: orderedMemberListMembers(guildID: guildID) ?? members,
-                    groups: cachedMemberListGroups[guildID]?[update.id] ?? []
-                )
+            publishMembers(
+                guildID: guildID,
+                members: orderedMemberListMembers(guildID: guildID) ?? members,
+                groups: cachedMemberListGroups[guildID]?[update.id] ?? []
             )
         }
     }
@@ -265,12 +263,10 @@ extension DiscordRESTProvider {
         }
         cachedMembers[guildID] = members
         if guildID == pendingMemberGuildID {
-            continuation?.yield(
-                .membersChanged(
-                    guildID: guildID,
-                    members: orderedMemberListMembers(guildID: guildID) ?? members,
-                    groups: selectedMemberListGroups(guildID: guildID)
-                )
+            publishMembers(
+                guildID: guildID,
+                members: orderedMemberListMembers(guildID: guildID) ?? members,
+                groups: selectedMemberListGroups(guildID: guildID)
             )
         }
     }

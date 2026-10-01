@@ -486,6 +486,27 @@ public struct CreateForumPostDraft: Equatable, Sendable {
     }
 }
 
+/// A thread started from a text or announcement channel without a starter
+/// message. Its first message is sent separately once Discord creates it.
+public struct CreateThreadDraft: Equatable, Sendable {
+    public var channelID: ChannelID
+    public var name: String
+    public var isPrivate: Bool
+    public var autoArchiveDuration: Int
+
+    public init(
+        channelID: ChannelID,
+        name: String,
+        isPrivate: Bool = false,
+        autoArchiveDuration: Int = 4_320
+    ) {
+        self.channelID = channelID
+        self.name = name
+        self.isPrivate = isPrivate
+        self.autoArchiveDuration = autoArchiveDuration
+    }
+}
+
 public enum ForumPostMutation: Equatable, Sendable {
     case tags([ForumTagID])
     case archived(Bool)

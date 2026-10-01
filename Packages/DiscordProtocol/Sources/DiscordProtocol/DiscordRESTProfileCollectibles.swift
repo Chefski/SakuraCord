@@ -107,10 +107,14 @@ public extension DiscordRESTProvider {
         profileWidgetGameSearchTasks = [:]
         profileDeveloperMode = false
         profileStatusSettings = nil
+        profileStatusSettingsDataVersion = nil
+        profileDeveloperSettingsDataVersion = nil
+        guildLayoutDataVersion = nil
+        inboxSettingsFieldVersions = [:]
         inboxScheduledEvents = InboxScheduledEvents()
         inboxSettingsProto = nil
         inboxSettingsSaveID = nil
-        profileStatusSaveID = nil
+        finishStatusSettingsSave()
         profileCustomStatusExpiryTask?.cancel()
         profileCustomStatusExpiryTask = nil
         profileInventoryTask?.cancel()

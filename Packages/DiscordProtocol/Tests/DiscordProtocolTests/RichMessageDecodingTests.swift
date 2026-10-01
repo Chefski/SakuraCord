@@ -273,18 +273,20 @@ import Testing
 
 @Test func `partial update changes present rich fields and preserves absent fields`() throws {
     let author = User(id: UserID(rawValue: 1), username: "fixture", displayName: "Fixture")
-    let original = Message(
+    var original = Message(
         id: MessageID(rawValue: 100), channelID: ChannelID(rawValue: 200), author: author,
         content: "before",
         embeds: [MessageEmbed(title: "Keep until explicitly replaced")],
         stickers: [MessageSticker(id: "1", name: "Keep")]
     )
+    original.thread = MessageThreadSummary(id: ChannelID(rawValue: 600), parentID: original.channelID, name: "Keep thread")
     let update = Data(
         #"{"id":"100","channel_id":"200","content":"after","components":[{"type":10,"content":"new"}]}"#
             .utf8
     )
     let merged = try RichMessageFixtureDecoder.mergeUpdate(from: update, into: original)
 
+    #expect(merged.thread == original.thread)
     #expect(merged.content == "after")
     #expect(merged.embeds == original.embeds)
     #expect(merged.stickers == original.stickers)

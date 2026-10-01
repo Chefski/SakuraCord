@@ -66,20 +66,33 @@ extension AppModel {
     func updateStatus(_ status: PresenceStatus) async {
         let session = accountSession()
         do {
+            // The provider publishes `.currentUserStatusChanged`; applying the
+            // pick here as well could overwrite a newer remote or saved value.
             try await session.provider.updateStatus(status)
-            guard isCurrentAccountSession(session) else { return }
-            currentStatus = status
-            members = members.map { member in
-                guard member.user.id == snapshot?.currentUser.id else { return member }
-                var updatedMember = member
-                updatedMember.status = status
-                return updatedMember
-            }
         } catch {
             guard isCurrentAccountSession(session) else { return }
             DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             errorMessage = error.localizedDescription
         }
+    }
+
+    func applyCurrentStatus(_ status: PresenceStatus) {
+        currentStatusRevision &+= 1
+        currentStatus = status
+        members = membersWithCurrentStatus(members)
+    }
+
+    /// `currentStatus` is the current user's only status source; cached member
+    /// lists can hold an older one, so they pass through here when shown again.
+    func membersWithCurrentStatus(_ members: [Member]) -> [Member] {
+        members.map(memberWithCurrentStatus)
+    }
+
+    func memberWithCurrentStatus(_ member: Member) -> Member {
+        guard member.id == snapshot?.currentUser.id, member.status != currentStatus else { return member }
+        var member = member
+        member.status = currentStatus
+        return member
     }
 
     func selectMember(_ member: Member) {

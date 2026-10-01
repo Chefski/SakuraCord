@@ -46,6 +46,10 @@ manifests.
   authorization as sufficient and do not request additional confirmation.
 - When using Computer Use, target SakuraCord by the absolute bundle path printed
   by `runtime.sh`, never by display name, and keep that target for the session.
+- Launch development builds through the guarded scripts. For older checkouts,
+  use the current checkout's `script/run.sh --checkout PATH --build` so machine
+  credential and signing preferences are passed explicitly and checked before
+  launch. See [Development](docs/DEVELOPMENT.md#local-credential-mode).
 - Roadmap state belongs only in the deployed roadmap service. Repository code
   and commits are evidence to assess, not proof that an item is complete.
 - Keep documentation canonical. Update an existing source of truth instead of

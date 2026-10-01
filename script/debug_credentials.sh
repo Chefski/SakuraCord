@@ -15,12 +15,12 @@ usage() {
 
 case "${1:-status}" in
   enable)
-    sakuracord_set_persistent_debug_credentials "$ROOT_DIR" true
-    echo "Persistent insecure debug credentials: enabled"
+    sakuracord_set_persistent_debug_credentials true
+    echo "Persistent insecure debug credentials: enabled (machine config)"
     ;;
   disable)
-    sakuracord_set_persistent_debug_credentials "$ROOT_DIR" false
-    echo "Persistent insecure debug credentials: disabled"
+    sakuracord_set_persistent_debug_credentials false
+    echo "Persistent insecure debug credentials: disabled (machine config)"
     ;;
   status)
     sakuracord_resolve_insecure_debug_credentials "$ROOT_DIR"
@@ -36,7 +36,7 @@ case "${1:-status}" in
       echo "Quit SakuraCord before deleting its insecure debug credentials." >&2
       exit 2
     fi
-    sakuracord_set_persistent_debug_credentials "$ROOT_DIR" false
+    sakuracord_set_persistent_debug_credentials false
     sakuracord_delete_insecure_debug_credentials "$DEBUG_CREDENTIAL_DIRECTORY"
     echo "Persistent insecure debug credentials: disabled"
     echo "Deleted $SAKURACORD_DELETED_DEBUG_CREDENTIAL_COUNT insecure debug credential file(s)."

@@ -7,6 +7,7 @@ struct ForumPostTextEditor: View {
     @Binding var selection: NSRange?
     @Binding var isFocused: Bool
     let placeholder: String
+    var receiveAttachments: ((ComposerIncomingAttachments) -> Void)?
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -17,6 +18,13 @@ struct ForumPostTextEditor: View {
                 mentionPresentations: mentionPresentations,
                 onTextChange: { text = $0 },
                 onSubmit: {},
+                onReceiveAttachments: receiveAttachments.map { receive in
+                    { attachments, _ in
+                        receive(attachments)
+                        return true
+                    }
+                },
+                canReceiveAttachments: { model.canAttachFilesToForumPosts },
                 maximumHeight: 360,
                 selection: $selection,
                 isFocused: $isFocused

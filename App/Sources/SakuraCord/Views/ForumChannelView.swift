@@ -1507,6 +1507,7 @@ private struct ForumPostComposer: View {
     @State private var content = ""
     @State private var attachments: [ForumPostAttachment] = []
     @State private var securityScopedAttachmentURLs: Set<URL> = []
+    @State private var ownedAttachmentBatches: [ComposerPromisedFileBatch] = []
     @State private var selectedTags: Set<ForumTagID> = []
     @State private var showsFileImporter = false
     @State private var showsGuidelines = false
@@ -1590,6 +1591,10 @@ private struct ForumPostComposer: View {
                 url.stopAccessingSecurityScopedResource()
             }
             securityScopedAttachmentURLs.removeAll()
+            for batch in ownedAttachmentBatches {
+                batch.discard()
+            }
+            ownedAttachmentBatches.removeAll()
         }
     }
 
@@ -1619,7 +1624,8 @@ private struct ForumPostComposer: View {
                         text: $content,
                         selection: $contentSelection,
                         isFocused: $isContentFocused,
-                        placeholder: "Enter a message…"
+                        placeholder: "Enter a message…",
+                        receiveAttachments: receiveAttachments
                     )
                     .frame(maxWidth: .infinity, minHeight: 210, maxHeight: .infinity)
                 }
@@ -1728,12 +1734,32 @@ private struct ForumPostComposer: View {
         Task { await addCheckedAttachments(urls) }
     }
 
+    /// Adds pasted files; pasted data stays in app-owned storage until the
+    /// composer closes, since these attachments are not held by the model.
+    private func receiveAttachments(_ incoming: ComposerIncomingAttachments) {
+        switch incoming {
+        case let .external(urls):
+            addAttachments(urls)
+        case let .owned(batch):
+            ownedAttachmentBatches.append(batch)
+            Task {
+                await addCheckedAttachments(batch.urls)
+                let attachedURLs = Set(attachments.map(\.url))
+                guard !batch.urls.contains(where: attachedURLs.contains) else { return }
+                batch.discard()
+                ownedAttachmentBatches.removeAll { $0.directory == batch.directory }
+            }
+        }
+    }
+
     private func addCheckedAttachments(_ urls: [URL]) async {
-        let allowedURLs = await model.attachmentURLsWithinDiscordLimit(urls)
-        let count = max(0, 10 - attachments.count)
         let existingURLs = Set(attachments.map(\.url))
-        let uniqueURLs = allowedURLs.filter { !existingURLs.contains($0) }
-        let addedURLs = Array(uniqueURLs.prefix(count))
+        let urls = model.uploadableFileURLs(urls.filter { !existingURLs.contains($0) })
+        guard model.attachmentBatchFits(urls.count, besides: attachments.count) else { return }
+        let allowedURLs = await model.attachmentURLsWithinDiscordLimit(urls)
+        let currentURLs = Set(attachments.map(\.url))
+        let addedURLs = allowedURLs.filter { !currentURLs.contains($0) }
+        guard model.attachmentBatchFits(addedURLs.count, besides: attachments.count) else { return }
         for url in addedURLs
             where !securityScopedAttachmentURLs.contains(url)
             && url.startAccessingSecurityScopedResource()
