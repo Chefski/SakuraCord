@@ -12,6 +12,9 @@ extension DiscordRESTProvider {
         else { return }
         let settings = DiscordSettingsProto.guildFoldersSettings(in: data)
         guard settings != nil || replacesAllSettings else { return }
+        let version = DiscordSettingsProto.dataVersion(in: data)
+        if let version, let current = guildLayoutDataVersion, version < current { return }
+        if let version { guildLayoutDataVersion = version }
         guildFoldersSettings = settings ?? Data()
         // A rearrangement that is still waiting to be saved stays on the rail;
         // its save replaces these settings and the response reconciles them.

@@ -10,8 +10,12 @@ nonisolated enum ComposerPlaceholderPolicy {
     static func text(
         channelName: String,
         channelKind: ChannelKindValue?,
-        destination: MessageComposerDestination
+        destination: MessageComposerDestination,
+        startsThread: Bool = false
     ) -> String {
+        if startsThread {
+            return "Enter a message to start the conversation!"
+        }
         if destination == .channel,
            channelKind == .directMessage
             || channelKind == .groupDirectMessage

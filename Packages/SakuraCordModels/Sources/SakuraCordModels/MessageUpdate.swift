@@ -12,7 +12,7 @@ public struct MessageUpdate: Equatable, Sendable {
     public var embeds: [MessageEmbed]?
     public var components: [MessageComponent]?
     public var stickers: [MessageSticker]?
-    public var thread: MessageThreadSummary?
+    public var thread: MessageThreadSummary??
     public var flags: MessageFlags?
     public var isPinned: Bool?
     public var type: DiscordMessageType?
@@ -37,7 +37,7 @@ public struct MessageUpdate: Equatable, Sendable {
         embeds = newer.embeds ?? embeds
         components = newer.components ?? components
         stickers = newer.stickers ?? stickers
-        thread = newer.thread ?? thread
+        if newer.thread != nil { thread = newer.thread }
         flags = newer.flags ?? flags
         isPinned = newer.isPinned ?? isPinned
         type = newer.type ?? type

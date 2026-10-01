@@ -85,8 +85,106 @@ struct ThreadConversationView: View {
                         )
                     }
                 }
+            } else if let creation = model.threadCreation {
+                ThreadCreationView(model: model, creation: creation)
             }
         }
+    }
+}
+
+private struct ThreadCreationView: View {
+    let model: AppModel
+    @Bindable var creation: ThreadCreationDraft
+    @FocusState private var isNameFocused: Bool
+
+    var body: some View {
+        let usesDefaultStyle = model.appearanceSettings.composerBarAppearance == .defaultStyle
+        let fieldShape = RoundedRectangle(
+            cornerRadius: usesDefaultStyle
+                ? ChatChromeMetrics.composerCornerRadius : ChatChromeMetrics.composerMinimumCornerRadius,
+            style: .continuous
+        )
+        VStack(alignment: .leading, spacing: 18) {
+            SakuraCordSystemSymbol.swiftUIImage(named: SakuraCordSystemSymbol.thread)
+                .font(.system(size: 26, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 64, height: 64)
+                .background(.quaternary, in: Circle())
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Thread Name")
+                    .font(.headline)
+                ZStack(alignment: .leading) {
+                    TextField("", text: $creation.name)
+                        .tint(SakuraCordAccentColor.color)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 15))
+                        .focused($isNameFocused)
+                        .accessibilityLabel("Thread Name")
+                        .onSubmit { model.validateThreadCreation() }
+                    if creation.name.isEmpty {
+                        Text("New Thread")
+                            .font(.system(size: 15))
+                            .foregroundStyle(.tertiary)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .padding(.horizontal, 11)
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: usesDefaultStyle
+                        ? ChatChromeMetrics.composerControlHeight : ChatChromeMetrics.controlHeight,
+                    alignment: .leading
+                )
+                .background {
+                    Color.clear.glassEffect(.regular.interactive(), in: fieldShape)
+                }
+                .contentShape(fieldShape)
+                .simultaneousGesture(TapGesture().onEnded { isNameFocused = true })
+                if creation.showsValidationErrors, creation.trimmedName.isEmpty {
+                    ThreadCreationError(message: "Thread Name is required")
+                }
+            }
+
+            if creation.permissions.canCreatePrivate {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Private Thread")
+                        .font(.headline)
+                    Toggle("Only people you invite and moderators can see", isOn: $creation.isPrivate)
+                        .toggleStyle(.checkbox)
+                        .tint(SakuraCordAccentColor.color)
+                        .disabled(!creation.permissions.canCreatePublic)
+                }
+            }
+
+            if creation.showsValidationErrors, isMissingStarterMessage {
+                ThreadCreationError(message: "Starter Message is required")
+            }
+        }
+        .padding(.horizontal, ChatChromeMetrics.composerWindowInset)
+        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            ComposerView(model: model, channelName: "", conversation: .thread)
+        }
+        .disabled(creation.isSubmitting)
+    }
+
+    private var isMissingStarterMessage: Bool {
+        model.threadDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && model.threadComposerAttachments.isEmpty
+    }
+}
+
+private struct ThreadCreationError: View {
+    let message: String
+
+    var body: some View {
+        Label(message, systemImage: "exclamationmark.circle.fill")
+            .font(.callout)
+            .foregroundStyle(.red)
     }
 }
 
@@ -434,7 +532,8 @@ private struct ThreadMessageTimelineView: View {
             id: thread.id,
             title: thread.name,
             starterName: threadStarterName,
-            startedAt: model.openThreadStartedAt
+            startedAt: model.openThreadStartedAt,
+            isForumPost: model.selectedChannel?.kind == .forum
         )
     }
 

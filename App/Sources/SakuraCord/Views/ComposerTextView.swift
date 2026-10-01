@@ -315,7 +315,7 @@ struct ComposerTextView: NSViewRepresentable {
 
         let textView = ComposerNSTextView(frame: .zero, textContainer: textContainer)
         textView.delegate = context.coordinator
-        textView.isEditable = true
+        textView.isEditable = context.environment.isEnabled
         textView.isSelectable = true
         textView.isRichText = true
         textView.importsGraphics = false
@@ -367,7 +367,7 @@ struct ComposerTextView: NSViewRepresentable {
         textView.canReceiveAttachments = { [weak coordinator = context.coordinator] in
             coordinator?.parent.canReceiveAttachments() ?? false
         }
-        textView.capturesUnfocusedTyping = capturesUnfocusedTyping
+        textView.capturesUnfocusedTyping = capturesUnfocusedTyping && context.environment.isEnabled
         ComposerTextCheckingConfiguration.apply(generalInputSettings, to: textView)
 
         let scrollView = NSScrollView()
@@ -393,6 +393,8 @@ struct ComposerTextView: NSViewRepresentable {
             textView.delegate = context.coordinator
         }
         context.coordinator.parent = self
+        textView.isEditable = context.environment.isEnabled
+        textView.capturesUnfocusedTyping = capturesUnfocusedTyping && context.environment.isEnabled
         context.coordinator.updateCompositionState(from: textView, deferringNotification: true)
 
         textView.onReturn = { [weak coordinator = context.coordinator] event in
@@ -426,7 +428,6 @@ struct ComposerTextView: NSViewRepresentable {
 
         textView.applySakuraCordTextSelectionAppearance()
         textView.textContainerInset = NSSize(width: 0, height: verticalContentInset)
-        textView.capturesUnfocusedTyping = capturesUnfocusedTyping
         ComposerTextCheckingConfiguration.apply(generalInputSettings, to: textView)
         textView.setAccessibilityLabel(placeholder)
 
@@ -832,6 +833,7 @@ final class ComposerNSTextView: NSTextView {
     }
 
     override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        guard isEditable else { return false }
         let urls = ComposerPasteboardAttachments.fileURLs(
             from: sender.draggingPasteboard
         )
@@ -849,7 +851,7 @@ final class ComposerNSTextView: NSTextView {
     private func updateAttachmentDropTarget(
         _ sender: any NSDraggingInfo
     ) -> NSDragOperation {
-        let acceptsDrop = onReceiveAttachments != nil
+        let acceptsDrop = isEditable && onReceiveAttachments != nil
             && !ComposerPasteboardAttachments.fileURLs(
                 from: sender.draggingPasteboard
             ).isEmpty
@@ -881,6 +883,7 @@ final class ComposerNSTextView: NSTextView {
     }
 
     override func insertText(_ insertString: Any, replacementRange: NSRange) {
+        guard isEditable else { return }
         restorePlainTypingAttributes()
         if let attributed = insertString as? NSAttributedString {
             let normalized = NSMutableAttributedString(attributedString: attributed)
@@ -894,6 +897,10 @@ final class ComposerNSTextView: NSTextView {
     }
 
     override func keyDown(with event: NSEvent) {
+        guard isEditable else {
+            super.keyDown(with: event)
+            return
+        }
         if hasMarkedText() {
             super.keyDown(with: event)
             return
@@ -995,12 +1002,13 @@ final class ComposerNSTextView: NSTextView {
     }
 
     private var receivesAttachments: Bool {
-        onReceiveAttachments != nil && canReceiveAttachments?() != false
+        isEditable && onReceiveAttachments != nil && canReceiveAttachments?() != false
     }
 
     private static let textPasteboardTypes: [NSPasteboard.PasteboardType] = [.string, .rtfd, .rtf, .html]
 
     override func readSelection(from pasteboard: NSPasteboard, type: NSPasteboard.PasteboardType) -> Bool {
+        guard isEditable else { return false }
         if ComposerPasteboardAttachments.readableTypes.contains(type) {
             // Declining lets AppKit read the next available type.
             guard receivesAttachments, let onReceiveAttachments,
