@@ -24,7 +24,8 @@ nonisolated struct InboxGroupHeaderPresentation: Equatable {
         let guild = model.snapshot?.guilds.first { $0.id == group.guildID }
         guildName = guild?.name ?? group.subtitle
         guildIconURL = guild?.iconURL
-        systemImage = group.isEvents ? "calendar" : thread != nil ? "bubble.left.and.bubble.right"
+        systemImage = group.isEvents ? "calendar" : parent?.kind == .forum ? "bubble.left.and.bubble.right"
+            : thread != nil ? SakuraCordSystemSymbol.thread
             : ChannelIconPresentation.systemImage(for: channel?.kind ?? .text, isHidden: false)
         channelID = group.channelID
         title = group.title
@@ -51,7 +52,7 @@ struct InboxGroupHeaderView: View {
                     }
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 5) {
-                            Image(systemName: header.systemImage)
+                            SakuraCordSystemSymbol.swiftUIImage(named: header.systemImage)
                                 .font(.subheadline).foregroundStyle(.secondary)
                             Text(header.title).font(.headline).lineLimit(1)
                         }

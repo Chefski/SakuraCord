@@ -23,6 +23,7 @@ extension AppModel {
             else { return false }
             return Self.supportsTyping(kind)
         case .thread:
+            if let threadCreation { return !threadCreation.isSubmitting }
             return openThread != nil && openThreadAccess.canSend
         }
     }
@@ -181,6 +182,7 @@ extension AppModel {
     func consumeEscapeForComposerAttachments(
         in destination: MessageComposerDestination
     ) -> Bool {
+        guard destination != .thread || threadCreation?.isSubmitting != true else { return false }
         guard !composerAttachments(for: destination).isEmpty else { return false }
         clearComposerAttachments(for: destination)
         return true
@@ -188,7 +190,7 @@ extension AppModel {
 
     @discardableResult
     func consumeEscapeForSupplementaryConversation() -> Bool {
-        if openThread != nil {
+        if hasThreadPane {
             closeThread()
             return true
         }
@@ -233,7 +235,10 @@ extension AppModel {
                 clearsComposer: false
             )
         case .thread:
-            guard let thread = openThread else { return false }
+            guard let thread = openThread else {
+                // A thread still being created has no upload destination yet.
+                return await addComposerAttachments(attachments.map(\.url), to: .thread)
+            }
             return await sendThreadMessage(
                 content: "",
                 attachments: attachments,

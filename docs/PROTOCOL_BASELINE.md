@@ -1025,6 +1025,7 @@ and retained as evidence.
 | `POST /users/@me/messages/search/tabs` | One explicit DM search with `tabs.messages`, `limit:25`, 25-step `offset`, exact sort/filter fields, and `track_exact_total_hits:true`. Optional top-level `channel_ids` scopes the same endpoint to one or more DMs; omitting it searches all DMs. Returned channel metadata is merged before exact-result navigation. | Sanitized authenticated clean-client CDP matrix on 14 August 2026; P−, S−. |
 | `GET /channels/{thread}` | One unknown-thread deep-link resolution; no body. | Public channel semantics and all three references. |
 | `POST /channels/{forum}/threads?use_nested_fields=true` | Explicit forum creation; `name`, `auto_archive_duration`, ordered `applied_tags`, nested `message` with `content`, `sticker_ids:[]`, and attachments only when uploaded. | Current first-party action; Paicord and Swiftcord have only partial/historical thread creation. |
+| `POST /channels/{text-or-announcement}/threads` | Explicit composer Create Thread send; exactly `name` (trimmed, 1–100), `type` (`12` private, otherwise `10` in announcement channels and `11` in text channels), `auto_archive_duration` (parent default, else 4,320), and `location:"Plus Button"`; no query, `invitable`, or nested message. One attempt. The first message is then the ordinary message send to the returned thread. | Current first-party action, build `622805`, 29 September 2026; public “Start Thread without Message” semantics. Paicord has an unused bot-shaped route without `location`; Swiftcord v1 has a stub. |
 | `GET /channels/{forum}/threads/search` | Forum catalogue: `archived=true`, `sort_by`, `sort_order=desc`, `limit`, `offset`, and optional `tag`/`tag_setting`; name search adds `name`. | Current first-party route; P−, S−. |
 | `POST /channels/{forum}/post-data` | Preview hydration with `thread_ids` batches of at most ten. | Current first-party route; P−, S−. |
 | `PATCH` or `DELETE /channels/{thread}` | One explicit forum metadata mutation or deletion; partial body for the selected action only. | Current first-party and public channel semantics; partial Paicord/Swiftcord coverage. |
@@ -1833,6 +1834,24 @@ string-ID desktop capture. No new networking dependency was added.
   siblings do not discard valid posts.
 - Creating a text-only post is one thread mutation. Attachments add one
   reservation plus one storage PUT per file before the final mutation.
+- Composer Create Thread matches the first-party Plus Button flow in build
+  `622805` (`web.d4c7976eccf337f1.js`, SHA-256
+  `7341aa3d5a2208664901f65bf776a48fb5cafe21a1a9e6ce504db79a4a636f7d`, and
+  its lazy New Thread and composer-menu chunks), inspected statically on
+  29 September 2026. The action is offered in guild text and announcement
+  channels with `READ_MESSAGE_HISTORY` plus `CREATE_PUBLIC_THREADS` (bit 35)
+  or, in text channels only, `CREATE_PRIVATE_THREADS` (bit 36). Private-only
+  permission forces a private thread. A name is required locally, and a
+  message or attachment must be present. Creation is one thread POST followed
+  by one ordinary message send to the new thread. SakuraCord opens the thread
+  from the REST response instead of waiting for `THREAD_CREATE`, which is a
+  local presentation difference with no extra request.
+- Thread-created system messages (type 18) resolve their thread through
+  `message_reference.channel_id`, like the first-party renderer. Their card
+  uses only cached thread records: `message_count`, `last_message_id`, and a
+  latest-message preview from a thread record's `most_recent_message`,
+  `THREAD_LIST_SYNC.most_recent_messages`, a loaded thread history page, or
+  later thread `MESSAGE_CREATE` events. Drawing a card sends no request.
 - Tag, archive, lock, pin, and delete actions are explicit, permission-gated,
   centrally scheduled mutations with no automatic retry.
 - Opening a known thread/post is local; an unknown thread URL uses one Get

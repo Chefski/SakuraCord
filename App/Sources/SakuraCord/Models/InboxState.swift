@@ -94,12 +94,14 @@ final class InboxState {
             }
             let channel = channelsByID[message.channelID]
             let thread = threads[message.channelID]
-            let isForumPost = groups.contains { $0.isForum && $0.channelID == thread?.parentID }
+            let isForumPost = thread?.parentID.flatMap { channelsByID[$0]?.kind } == .forum
+                || groups.contains { $0.isForum && $0.channelID == thread?.parentID }
             let context: MessageSearchRowContext? = tab == .mentions || isForumPost ? MessageSearchRowContext(
                 channelID: message.channelID,
                 sectionTitle: thread?.name ?? channel?.name ?? "Conversation",
                 sectionSubtitle: (message.guildID ?? channel?.guildID ?? thread?.guildID).flatMap { guildsByID[$0]?.name },
-                systemImage: thread != nil ? "bubble.left.and.bubble.right" : channel?.guildID == nil ? "bubble.left" : "number",
+                systemImage: isForumPost ? "bubble.left.and.bubble.right"
+                    : thread != nil ? SakuraCordSystemSymbol.thread : channel?.guildID == nil ? "bubble.left" : "number",
                 showsSectionHeader: true, isInbox: true
             ) : nil
             return InboxMessageRowInput(message: message, context: context)
