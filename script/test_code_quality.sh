@@ -14,13 +14,14 @@ trap cleanup EXIT
 expect_hook_failure() {
   local input="$1"
   local expected="${2:-Fixture.swift}"
+  local remote_url="${3:-}"
   local output
   local status
 
   set +e
   output="$(
     cd "$FIXTURE_ROOT"
-    printf '%s' "$input" | ./.githooks/pre-push 2>&1
+    printf '%s' "$input" | ./.githooks/pre-push origin "$remote_url" 2>&1
   )"
   status=$?
   set -e
@@ -277,6 +278,9 @@ printf 'preserve fetch head\n' > "$FIXTURE_ROOT/.git/FETCH_HEAD"
 expect_hook_failure \
   "refs/heads/feature-merge $FEATURE_SHA refs/heads/feature-merge $ZERO_SHA
 " "currently contains 22"
+expect_hook_failure \
+  "refs/heads/feature-merge $FEATURE_SHA refs/heads/main $ZERO_SHA
+" "currently contains 22" "https://github.com/contributor/SakuraCord.git"
 [[ "$INDEX_BEFORE" == "$(git -C "$FIXTURE_ROOT" write-tree)" ]]
 [[ "$DIRTY_BEFORE" == "$(shasum -a 256 "$FIXTURE_ROOT/Unrelated.txt")" ]]
 [[ "$(cat "$FIXTURE_ROOT/.git/FETCH_HEAD")" == "preserve fetch head" ]]
