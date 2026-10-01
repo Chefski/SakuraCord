@@ -7,26 +7,37 @@ struct InboxForumPostView: View {
     let model: AppModel
 
     var body: some View {
-        Button { model.openInboxForumPost(post) } label: {
-            VStack(alignment: .leading, spacing: 5) {
-                Text(post.thread.name).font(.headline).lineLimit(1)
-                if let message = post.firstMessage {
-                    Text(MessageReplySummary.text(
-                        content: message.content,
-                        mentionLabel: MessageMentionResolver(model: model, message: message).label
-                    )).font(.callout).foregroundStyle(.secondary).lineLimit(2)
-                } else {
-                    Text("\(post.thread.messageCount) messages")
-                        .font(.caption).foregroundStyle(.secondary)
-                        .accessibilityLabel("\(post.thread.messageCount) replies")
-                }
+        // The entry opens the post from a background button so the preview
+        // can take clicks on hidden spoilers, which reveal them in place.
+        VStack(alignment: .leading, spacing: 5) {
+            Text(post.thread.name).font(.headline).lineLimit(1)
+                .allowsHitTesting(false)
+            if let message = post.firstMessage {
+                ForumPostPreviewText(
+                    model: model,
+                    message: message,
+                    maximumNumberOfLines: 1,
+                    isEmphasized: false,
+                    textStyle: .callout
+                )
+            } else {
+                Text("\(post.thread.messageCount) messages")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .accessibilityLabel("\(post.thread.messageCount) replies")
+                    .allowsHitTesting(false)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 16)
-            .frame(height: 88)
-            .contentShape(Rectangle())
         }
-        .buttonStyle(PopoverRowButtonStyle())
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .frame(height: 88)
+        .background {
+            Button { model.openInboxForumPost(post) } label: {
+                Color.clear.contentShape(Rectangle())
+            }
+            .buttonStyle(PopoverRowButtonStyle())
+            .accessibilityLabel(post.thread.name)
+            .accessibilityHint("Opens this post")
+        }
         .overlay(alignment: .bottom) { Divider().padding(.horizontal, 12) }
         .help("Open post")
     }

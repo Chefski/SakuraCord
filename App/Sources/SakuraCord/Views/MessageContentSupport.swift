@@ -403,6 +403,13 @@ nonisolated struct LinkedImagePresentation: Sendable {
                 )
             )
         }
+        // Discord leaves an emoji link inside a spoiler as a spoilered link.
+        if references.contains(where: { $0.1.linkedEmoji != nil }) {
+            let spoilered = Self.spoileredMatchLocations(markdownMatches, in: content)
+            references.removeAll {
+                $0.1.linkedEmoji != nil && spoilered.contains($0.0.location)
+            }
+        }
         if includeBareMediaURLs {
             for match in Self.bareURLExpression.matches(in: content, range: sourceRange) {
                 guard !markdownMatches.contains(where: {
@@ -503,7 +510,10 @@ nonisolated struct LinkedImagePresentation: Sendable {
             }
             if line[cursor...].hasPrefix("||") {
                 let openingEnd = line.index(cursor, offsetBy: 2)
-                if let closing = line[openingEnd...].range(of: "||") {
+                // Match the Markdown parser: a spoiler contains at least one
+                // character, so four opening pipes do not form an empty spoiler.
+                if openingEnd < line.endIndex,
+                   let closing = line[line.index(after: openingEnd)...].range(of: "||") {
                     if urlStart < closing.lowerBound { return true }
                     cursor = closing.upperBound
                     continue
@@ -512,6 +522,29 @@ nonisolated struct LinkedImagePresentation: Sendable {
             cursor = line.index(after: cursor)
         }
         return false
+    }
+
+    /// Give each masked-link target a distinct, parse-only identity. Matching
+    /// by destination loses source identity when bare, angle-bracket, adjacent,
+    /// or code-contained links share the same URL. Keep all surrounding syntax
+    /// intact so the Markdown parser remains the authority on spoiler state.
+    private static func spoileredMatchLocations(
+        _ matches: [NSTextCheckingResult],
+        in content: String
+    ) -> Set<Int> {
+        var prefix = "https://sakuracord.invalid/spoiler-match/"
+        while content.contains(prefix) { prefix += "x/" }
+        let marked = NSMutableString(string: content)
+        var locations: [URL: Int] = [:]
+        for (index, match) in matches.enumerated().reversed() {
+            let marker = prefix + String(index)
+            guard let url = URL(string: marker) else { continue }
+            locations[url] = match.range.location
+            marked.replaceCharacters(in: match.range(at: 2), with: marker)
+        }
+        return Set(DiscordMarkdown.linkOccurrences(String(marked)).compactMap {
+            $0.isSpoiler ? locations[$0.url] : nil
+        })
     }
 
     private static func remainingText(

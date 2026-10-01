@@ -331,10 +331,8 @@ nonisolated enum NativeTimelineCoreText {
             }
             output.replaceCharacters(in: range, with: replacement)
         }
-        output.enumerateAttributes(in: fullRange) { attributes, range, _ in
-            guard attributes[.link] != nil,
-                  attributes[.discordMarkdownSpoiler] == nil
-            else { return }
+        output.enumerateAttribute(.link, in: fullRange) { value, range, _ in
+            guard value != nil else { return }
             output.addAttributes(
                 [
                     .foregroundColor: NSColor.linkColor,
@@ -347,8 +345,9 @@ nonisolated enum NativeTimelineCoreText {
         return output
     }
 
-    private static func normalizeParagraphMetrics(
-        in output: NSMutableAttributedString
+    static func normalizeParagraphMetrics(
+        in output: NSMutableAttributedString,
+        spoilersOnly: Bool = false
     ) {
         guard output.length > 0 else { return }
         let source = output.string as NSString
@@ -359,20 +358,40 @@ nonisolated enum NativeTimelineCoreText {
             )
             var lineHeight: CGFloat = 0
             var containsInlineRun = false
+            var containsSpoiler = false
+            var paragraphFont: NSFont?
             output.enumerateAttributes(
                 in: paragraphRange,
                 options: []
             ) { attributes, _, _ in
-                if attributes[runDelegateKey] != nil {
+                if attributes[runDelegateKey] != nil || attributes[.attachment] != nil {
                     containsInlineRun = true
+                }
+                if attributes[.discordMarkdownSpoiler] != nil {
+                    containsSpoiler = true
                 }
                 guard let font = attributes[.font] as? NSFont else {
                     return
                 }
+                paragraphFont = paragraphFont ?? font
                 lineHeight = max(
                     lineHeight,
                     ceil(font.ascender - font.descender + font.leading)
                 )
+            }
+            let lastLocation = NSMaxRange(paragraphRange) - 1
+            if containsSpoiler, source.character(at: lastLocation) == 10,
+               output.attribute(.font, at: lastLocation, effectiveRange: nil) == nil,
+               let font = (output.attribute(.font, at: max(paragraphRange.location, lastLocation - 1),
+                                            effectiveRange: nil) as? NSFont) ?? paragraphFont
+            {
+                // Markdown separators have no font. CoreText otherwise uses
+                // its default font for them, enlarging small-text line metrics.
+                output.addAttribute(.font, value: font, range: NSRange(location: lastLocation, length: 1))
+            }
+            if spoilersOnly, !containsSpoiler {
+                location = NSMaxRange(paragraphRange)
+                continue
             }
             let existing = output.attribute(
                 .paragraphStyle,
@@ -387,7 +406,13 @@ nonisolated enum NativeTimelineCoreText {
             // CoreText otherwise rounds up the font bounding box and counts
             // that point once per line.
             style.lineSpacing = 0
-            if !containsInlineRun, lineHeight > 0 {
+            if containsSpoiler {
+                // Natural line metrics agree between CoreText and TextKit.
+                // A fixed ceil(font height) changes TextKit's baseline at some
+                // sizes; the shared markdown line spacing adds another point.
+                style.minimumLineHeight = 0
+                style.maximumLineHeight = 0
+            } else if !containsInlineRun, lineHeight > 0 {
                 style.minimumLineHeight = lineHeight
                 style.maximumLineHeight = lineHeight
             }
