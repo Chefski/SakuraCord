@@ -1540,7 +1540,11 @@ is not the whole network surface. The remaining production connections are:
   routing-key headers and use a shared coalescing/cancellation queue. Inline
   linked images are accepted only on those exact HTTPS hosts, without
   credentials or a custom port; SakuraCord does not fetch arbitrary
-  third-party link previews.
+  third-party link previews. A visible video attachment's still preview is
+  one such derived GET: its server-returned `media.discordapp.net` proxy URL
+  with `format=webp` and a `width`/`height` bounded to 1,024 pixels, which the
+  proxy answers with the first frame. An attachment without that proxy URL
+  keeps the placeholder.
 - unauthenticated GIF-picker media GETs use the response-provided HTTPS
   origins, without credentials or a nonstandard port, matching the current
   first-party picker rather than Discord's separate asset-action host helper.
