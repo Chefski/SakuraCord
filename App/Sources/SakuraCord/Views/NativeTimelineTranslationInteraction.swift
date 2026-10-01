@@ -31,17 +31,28 @@ extension NativeTimelineCanvasView {
         parent: NSAccessibilityElement
     ) {
         guard let region = layout.translationRegion else { return }
-        var label = region.caption
-        if let attributed = region.attributedText {
-            let text = TimelineTextAccessibility.text(attributed, revealedLocations: textSpoilerRevealState(at: rowIndex).locations(in: region.regionID))
-            if !text.isEmpty { label += ": \(text)" }
-        }
         children.append(accessibilityElement(
             role: .staticText,
-            label: label,
-            frame: accessibilityChildFrame(region.frame, rowIndex: rowIndex),
+            label: region.caption,
+            frame: accessibilityChildFrame(region.captionFrame, rowIndex: rowIndex),
             parent: parent
         ))
+        if let value = region.attributedText,
+           let framesetter = region.framesetter,
+           let frame = region.textFrame {
+            appendTextAccessibility(to: &children, input: NativeTimelineTextAccessibilityInput(
+                value: value,
+                framesetter: framesetter,
+                drawingFrame: NativeTimelineTextGeometry.messageContentDrawingFrame(frame),
+                accessibilityFrame: frame,
+                sourceMessage: message,
+                itemIdentifier: items[rowIndex].identifier,
+                region: region.regionID,
+                revealedLocations: textSpoilerRevealState(at: rowIndex).locations(in: region.regionID),
+                rowIndex: rowIndex,
+                parent: parent
+            ))
+        }
         guard let actionTitle = region.actionTitle, let actionFrame = region.actionFrame else { return }
         children.append(accessibilityElement(
             role: .button,

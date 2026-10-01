@@ -55,7 +55,7 @@ private func translationMessage(_ id: UInt64 = 300, content: String = "Hallo <@1
 @MainActor
 @Test func `cached accessibility rows refresh translation actions without a message edit`() throws {
     let model = translationFixture(ControlledTranslationTestService())
-    let message = translationMessage(content: "Hallo wereld")
+    let message = translationMessage(content: "Hallo ||wereld||")
     let row = MessageRowPresentation(message: message, startsGroup: true, startsDay: false, replyPreview: nil, isReplyAvailable: false)
     let item = NativeMessageTimelineItem.message(row, isUnreadBoundary: false, isHighlighted: false)
     let canvas = NativeTimelineCanvasView(frame: CGRect(x: 0, y: 0, width: 560, height: 400))
@@ -71,12 +71,14 @@ private func translationMessage(_ id: UInt64 = 300, content: String = "Hallo <@1
     }
     let original = try refresh()
     #expect(original.accessibilityCustomActions()?.contains { $0.name == "Translate Message" } == true)
-    let entry = MessageTranslationEntry(sourceContent: message.content, language: "en", status: .translated(.init(text: "Hello world", detectedSourceLanguage: "nl")))
+    let entry = MessageTranslationEntry(sourceContent: message.content, language: "en", status: .translated(.init(text: "Hello ||world|| [example](https://example.com)", detectedSourceLanguage: "nl")))
     model.translation.messages.set(entry, for: message.id)
     let translated = try refresh()
     #expect(translated !== original)
     #expect(translated.accessibilityCustomActions()?.contains { $0.name == "Show Original" } == true)
     #expect(translated.accessibilityCustomActions()?.contains { $0.name == "Copy Translation" } == true)
+    #expect(translated.subviews.filter { $0.accessibilityLabel() == "Reveal spoiler" }.count == 2)
+    #expect(translated.subviews.contains { $0.accessibilityRole() == .link })
     let unchanged = try refresh()
     #expect(unchanged === translated)
     model.performMessageTranslationCaptionAction(message)
