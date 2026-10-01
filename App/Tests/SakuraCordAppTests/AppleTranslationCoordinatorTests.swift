@@ -104,6 +104,7 @@ private func activeOperation(_ coordinator: AppleTranslationCoordinator) async t
     #expect(AppleTranslationCoordinator.mappedError(TranslationError.notInstalled) as? LocalTranslationError == .downloadRequired)
     #expect(AppleTranslationCoordinator.mappedError(URLError(.notConnectedToInternet)) as? LocalTranslationError == .downloadFailed)
     #expect(AppleTranslationCoordinator.mappedError(TranslationError.alreadyCancelled) is CancellationError)
+    #expect(AppleTranslationCoordinator.mappedError(CocoaError(.userCancelled)) is CancellationError)
 }
 
 @MainActor
@@ -123,7 +124,7 @@ func `availability checks permit supported downloads and reject unsupported pair
         #expect(await session.calls == 0)
     } else {
         #expect(try await task.value.text == "Hello <@1> ||secret||")
-        #expect(await session.calls == 2)
+        #expect(await session.calls == 1)
     }
 }
 
@@ -141,9 +142,13 @@ private actor FixtureSession: TranslationSessionClient {
     private(set) var calls = 0
     var corrupt: Bool
     init(corrupt: Bool = false) { self.corrupt = corrupt }
-    func translate(_ text: String) async throws -> TranslationResult {
+    func translations(from slots: [TranslationTokenProtector.Slot]) async throws -> [AppleTranslationSessionRunner.Response] {
         calls += 1
-        return .init(text: corrupt ? "Hello <@99>" : (text == "Hallo" ? "Hello" : "secret"), detectedSourceLanguage: "nl")
+        // Reordering must preserve each response's protected insertion position.
+        return slots.reversed().map { slot in
+            .init(slot: .init(index: slot.index, text: corrupt ? "Hello <@99>" : (slot.text == "Hallo" ? "Hello" : "secret")),
+                  detectedSourceLanguage: "nl")
+        }
     }
 }
 

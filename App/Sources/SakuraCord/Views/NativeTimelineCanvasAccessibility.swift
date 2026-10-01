@@ -973,6 +973,11 @@ extension NativeTimelineCanvasView {
         input: NativeTimelineTextAccessibilityInput
     ) {
         guard let sourceMessage = input.sourceMessage else { return }
+        // A hidden spoiler exposes only its reveal button, not its links.
+        let hiddenSpoilerRanges = NativeTimelineTextSpoilers.hiddenRanges(
+            in: input.value,
+            revealedLocations: input.revealedLocations
+        )
         input.value.enumerateAttribute(
                 .link,
                 in: NSRange(location: 0, length: input.value.length)
@@ -980,6 +985,9 @@ extension NativeTimelineCanvasView {
                 let url = (rawLink as? URL)
                     ?? (rawLink as? String).flatMap(URL.init(string:))
                 guard let url,
+                      !hiddenSpoilerRanges.contains(where: {
+                          NSIntersectionRange($0, range).length > 0
+                      }),
                       let localFrame = NativeTimelineTextHitTester.rangeFrame(
                           value: input.value,
                           framesetter: input.framesetter,
@@ -1048,19 +1056,17 @@ extension NativeTimelineCanvasView {
         to children: inout [Any],
         input: NativeTimelineTextAccessibilityInput
     ) {
-        let hiddenRanges =
-            TimelineTextAccessibility
-                .hiddenSpoilerRanges(
-                    in: input.value,
-                    revealedLocations: input.revealedLocations
-                )
+        let hiddenRanges = NativeTimelineTextSpoilers.hiddenRanges(
+            in: input.value,
+            revealedLocations: input.revealedLocations
+        )
+        let regions = NativeTimelineTextHitTester.spoilerRegions(
+            value: input.value, framesetter: input.framesetter, frame: input.drawingFrame
+        )
         for range in hiddenRanges {
-            let localFrame = NativeTimelineTextHitTester.rangeFrame(
-                value: input.value,
-                framesetter: input.framesetter,
-                frame: input.drawingFrame,
-                range: range
-            ) ?? input.accessibilityFrame
+            let localFrame = regions.filter { $0.range == range }
+                .map(\.frame).reduce(CGRect.null) { $0.union($1) }
+            guard !localFrame.isNull else { continue }
             children.append(accessibilityElement(
                 role: .button,
                 label: "Reveal spoiler",

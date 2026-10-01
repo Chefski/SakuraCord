@@ -123,6 +123,7 @@ extension AppleTranslationCoordinator {
         case TranslationError.unableToIdentifyLanguage: LocalTranslationError.ambiguousSource
         case TranslationError.nothingToTranslate: LocalTranslationError.sameLanguage
         case TranslationError.notInstalled: LocalTranslationError.downloadRequired
+        case let cocoa as CocoaError where cocoa.code == .userCancelled: CancellationError()
         case let url as URLError where url.code == .cancelled: CancellationError()
         case is URLError: LocalTranslationError.downloadFailed
         default: LocalTranslationError.failed

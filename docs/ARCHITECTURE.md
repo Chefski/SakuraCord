@@ -192,7 +192,9 @@ or fixed HTTP-style timeout is used.
 `TranslationTokenProtector` builds a structural plan: mentions, custom emoji,
 FakeNitro links, timestamps, command mentions, URLs/link destinations, code,
 Markdown delimiters, private-use characters, and line breaks remain literal.
-Only prose slots reach the model. Every slot must return exactly once and cannot
+Only prose slots reach the model, submitted together through Apple’s same-language
+batch API so short fragments share one language-detection and consent flow.
+Every slot must return exactly once and cannot
 introduce protected syntax; otherwise the complete operation fails closed. There
 are no model-visible placeholders to collide with user input, lose, or duplicate.
 Splitting prose around syntax intentionally reduces sentence context and can

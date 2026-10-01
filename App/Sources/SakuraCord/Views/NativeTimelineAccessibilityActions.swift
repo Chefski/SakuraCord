@@ -265,9 +265,9 @@ extension NativeTimelineCanvasView {
         message: Message
     ) -> String {
         guard let model else {
-            return MessageReplySummary.text(content: content)
+            return MessageReplySummary.accessibilityText(content: content)
         }
-        return MessageReplySummary.text(
+        return MessageReplySummary.accessibilityText(
             content: content,
             mentionLabel: MessageMentionResolver(
                 model: model,

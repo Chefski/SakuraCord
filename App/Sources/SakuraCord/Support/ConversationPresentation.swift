@@ -18,6 +18,7 @@ nonisolated enum ConversationAccess: Equatable, Sendable {
 }
 
 nonisolated enum DiscordPermissionBits {
+    static let createInstantInvite: UInt64 = 1 << 0
     static let administrator: UInt64 = 1 << 3
     static let viewChannel: UInt64 = 1 << 10
     static let sendMessages: UInt64 = 1 << 11

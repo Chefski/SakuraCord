@@ -514,17 +514,13 @@ extension NativeTimelineCanvasView {
         var upperBound = text.value.length
         // AppKit may expand a lookup to surrounding words. Bound its input
         // at hidden spoilers so that expansion cannot reveal their contents.
-        text.value.enumerateAttribute(
-            .discordMarkdownSpoiler,
-            in: NSRange(location: 0, length: text.value.length)
-        ) { value, range, _ in
-            guard (value as? NSNumber)?.boolValue == true else { return }
+        for range in NativeTimelineTextSpoilers.ranges(in: text.value) {
             if let key = textSpoilerRevealKey(
                 itemIdentifier: itemIdentifier,
                 region: text.region,
                 rangeLocation: range.location
             ), spoilerRevealStore.isTextRevealed(key) {
-                return
+                continue
             }
             if NSMaxRange(range) <= characterIndex {
                 lowerBound = max(lowerBound, NSMaxRange(range))
