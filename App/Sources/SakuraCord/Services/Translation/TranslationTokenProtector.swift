@@ -77,6 +77,7 @@ nonisolated struct TranslationTokenProtector: Equatable, Sendable {
         #"(?:https?://|www\.)[^\s<>]+"#,
         #"\\[^\n]"#,
         #"[\p{Co}]+"#,
+        #"[0-9#*]\x{FE0F}?\x{20E3}|(?=[\p{Extended_Pictographic}\p{Regional_Indicator}\p{Emoji_Modifier}])\X"#,
         #"[\r\n]+|[*_~|`\[\]<>]+"#,
         #"(?m)^[ \t]*(?:#{1,3} |[-+] |\d+\. )"#,
         ].joined(separator: "|")

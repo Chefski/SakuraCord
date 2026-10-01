@@ -189,7 +189,7 @@ source detection and lets the SwiftUI session present Apple's source-selection o
 model-download consent UI. No preparation call, dummy text, bulk model download,
 or fixed HTTP-style timeout is used.
 
-`TranslationTokenProtector` builds a structural plan: mentions, custom emoji,
+`TranslationTokenProtector` builds a structural plan: mentions, custom and Unicode emoji,
 FakeNitro links, timestamps, command mentions, URLs/link destinations, code,
 Markdown delimiters, private-use characters, and line breaks remain literal.
 Only prose slots reach the model, submitted together through Apple’s same-language

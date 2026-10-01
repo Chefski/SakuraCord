@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @Test(arguments: [
+    "Hoi 👩🏽‍💻 🇳🇱 1️⃣ ©️ ™️ en 😀 tekst",
     "Hoi <@123> en <@!123> en <@&456> in <#789> @everyone @here",
     "Hoi <:sakura:123> <a:sakura:456> <t:123:R> </greet wave:456>",
     "Hoi [🌸](https://cdn.discordapp.com/emojis/123.png?size=48) https://example.com/a?q=hoi",
@@ -21,6 +22,9 @@ func `translation syntax and repeated tokens round trip without model placeholde
         #expect(!slot.text.contains("https://"))
         #expect(!slot.text.contains("`"))
         #expect(!slot.text.contains("||"))
+        for emoji in ["👩🏽‍💻", "🇳🇱", "1️⃣", "©️", "™️", "😀"] {
+            #expect(!slot.text.contains(emoji))
+        }
         #expect(!slot.text.unicodeScalars.contains(where: { $0.properties.generalCategory == .privateUse }))
     }
 }
@@ -36,7 +40,7 @@ func `translation syntax and repeated tokens round trip without model placeholde
     var unknown = plan.slots
     unknown[0] = .init(index: 999, text: "hello")
     #expect(throws: LocalTranslationError.protectedTokenChanged) { try plan.restore(unknown) }
-    for corrupted in ["<@999>", "||exposed||", "\u{E000}0\u{E001}", "https://evil.example", "`code`", "", "line\nbreak"] {
+    for corrupted in ["<@999>", "||exposed||", "\u{E000}0\u{E001}", "https://evil.example", "`code`", "Hello 😀", "", "line\nbreak"] {
         var changed = plan.slots
         changed[0] = .init(index: first.index, text: corrupted)
         #expect(throws: LocalTranslationError.protectedTokenChanged) { try plan.restore(changed) }
