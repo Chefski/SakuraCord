@@ -78,9 +78,10 @@ private struct InboxMentionDTO: Decodable {
 extension DiscordRESTProvider {
     func applyInboxSettingsProto(_ encoded: String?, isPartial: Bool) {
         guard let encoded, let data = Data(base64Encoded: encoded) else { return }
-        inboxSettingsProto = isPartial
-            ? DiscordSettingsProto.mergingPartialFrecencySettings(data, into: inboxSettingsProto ?? Data())
-            : data
+        inboxSettingsProto = DiscordSettingsProto.mergingRevisionedSettings(
+            data, into: inboxSettingsProto ?? Data(), isPartial: isPartial,
+            fieldVersions: &inboxSettingsFieldVersions
+        )
         continuation?.yield(.inboxSettingsChanged(DiscordInboxSettingsProto.settings(in: inboxSettingsProto ?? Data())))
     }
 
@@ -95,10 +96,17 @@ extension DiscordRESTProvider {
         let generation = profileEditingGeneration
         inboxSettingsSaveID = saveID
         defer { if inboxSettingsSaveID == saveID { inboxSettingsSaveID = nil } }
-        let response: UserSettingsProtoDTO = try await request(
-            "/users/@me/settings-proto/1", method: "PATCH",
-            body: ["settings": .string(makePatch(current).base64EncodedString())]
-        )
+        let response: UserSettingsProtoDTO
+        do {
+            response = try await patchUserSettings(["settings": .string(makePatch(current).base64EncodedString())], retriesRateLimit: false)
+        } catch is UserSettingsRejection {
+            guard generation == profileEditingGeneration, inboxSettingsSaveID == saveID else { throw CancellationError() }
+            let reloaded = await reloadUserSettings()
+            guard generation == profileEditingGeneration, inboxSettingsSaveID == saveID else { throw CancellationError() }
+            throw ChatProviderError.invalidRequest(reloaded
+                ? "Discord rejected this Inbox settings change. Your saved settings are shown again."
+                : "Discord rejected this Inbox settings change, and saved settings could not be refreshed.")
+        }
         guard generation == profileEditingGeneration, inboxSettingsSaveID == saveID else { throw CancellationError() }
         applyInboxSettingsProto(response.settings, isPartial: true)
     }

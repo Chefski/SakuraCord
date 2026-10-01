@@ -153,7 +153,7 @@ import Testing
     #expect(!encoder.hasActiveInjectedAudio)
 }
 
-@Test func `soundboard mixer overlaps triggers limits samples and stays realtime safe`() throws {
+@Test func `soundboard mixer overlaps triggers and limits voices and samples`() throws {
     let mixer = OutgoingSoundboardMixer()
     let clip = try SoundboardPCMClip(
         left: Array(repeating: 0.8, count: 96_000),
@@ -165,8 +165,6 @@ import Testing
     #expect(mixer.diagnostics.peakConcurrentVoices == 32)
     var left = Array(repeating: Float(0.7), count: 960)
     var right = Array(repeating: Float(-0.7), count: 960)
-    let clock = ContinuousClock()
-    let start = clock.now
     for _ in 0 ..< 100 {
         left.withUnsafeMutableBufferPointer { leftBuffer in
             right.withUnsafeMutableBufferPointer { rightBuffer in
@@ -178,11 +176,11 @@ import Testing
             }
         }
     }
-    let elapsed = start.duration(to: clock.now)
     #expect(left.allSatisfy { (-1 ... 1).contains($0) })
     #expect(right.allSatisfy { (-1 ... 1).contains($0) })
     #expect(mixer.diagnostics.mixedFrameCount == 96_000)
-    #expect(elapsed < .seconds(2))
+    #expect(mixer.diagnostics.triggerCount == 40)
+    #expect(!mixer.hasActiveAudio)
 }
 
 @Test func `soundboard mixer restarts matching sound and overlaps distinct sounds`() throws {

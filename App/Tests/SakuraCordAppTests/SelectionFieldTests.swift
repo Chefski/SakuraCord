@@ -1,5 +1,6 @@
 @testable import SakuraCord
 import SakuraCordModels
+import Observation
 import Testing
 
 @Test func `selection field single and multiple policies preserve ordered choices`() {
@@ -28,7 +29,7 @@ import Testing
 }
 
 @MainActor
-@Test func `local selection search is normalized and bounded`() async {
+@Test func `local selection search is normalized and bounded`() {
     let model = SelectionFieldModel(
         source: SelectionFieldSource.local(
             options: [
@@ -44,20 +45,20 @@ import Testing
     #expect(model.results.map(\.id) == [1, 2])
 
     model.updateQuery("feliz")
-    while model.state == .loading {
-        await Task.yield()
-    }
+    #expect(model.state == .loaded)
 
     #expect(model.results.map(\.id) == [1])
     #expect(model.option(for: 1)?.title == "Féliz")
     model.replaceSource(.local(options: [SelectionFieldOption(id: 4, title: "Feliz Updated")]))
-    while model.state == .loading { await Task.yield() }
+    #expect(model.state == .loaded)
     #expect(model.results.map(\.id) == [4])
 }
 
 @MainActor
-@Test func `dynamic selection search discards a cancelled stale response`() async {
+@Test(.timeLimit(.minutes(1)))
+func `dynamic selection search discards a cancelled stale response`() async throws {
     let search = SelectionFieldSearchHarness()
+    defer { search.finish() }
     let model = SelectionFieldModel(
         source: SelectionFieldSource<String>.dynamic(
             debounce: .zero,
@@ -68,21 +69,15 @@ import Testing
     )
 
     model.updateQuery("old")
-    while !search.hasPendingQuery("old") {
-        await Task.yield()
-    }
+    try #require(await search.waitForQuery("old"))
 
     model.updateQuery("new")
-    while !search.hasPendingQuery("new") {
-        await Task.yield()
-    }
+    try #require(await search.waitForQuery("new"))
     search.resume(
         "new",
         with: [SelectionFieldOption(id: "new", title: "New Result")]
     )
-    while model.state == .loading {
-        await Task.yield()
-    }
+    try #require(await selectionSearchSettled(model))
 
     #expect(model.results.map(\.id) == ["new"])
 
@@ -164,15 +159,28 @@ private final class SelectionFieldSearchHarness {
     typealias Option = SelectionFieldOption<String>
 
     private var continuations: [String: CheckedContinuation<[Option], any Error>] = [:]
+    private let starts = AsyncStream<String>.makeStream()
+    private var finished = false
 
     func load(_ query: String) async throws -> [Option] {
-        try await withCheckedThrowingContinuation { continuation in
+        guard !finished else { throw CancellationError() }
+        return try await withCheckedThrowingContinuation { continuation in
             continuations[query] = continuation
+            starts.continuation.yield(query)
         }
     }
 
-    func hasPendingQuery(_ query: String) -> Bool {
-        continuations[query] != nil
+    func waitForQuery(_ query: String) async -> Bool {
+        for await started in starts.stream where started == query { return true }
+        return false
+    }
+
+    func finish() {
+        finished = true
+        starts.continuation.finish()
+        let pending = Array(continuations.values)
+        continuations.removeAll()
+        for continuation in pending { continuation.resume(throwing: CancellationError()) }
     }
 
     func resume(_ query: String, with options: [Option]) {
@@ -210,19 +218,29 @@ private final class SelectionFieldSearchHarness {
 }
 
 @MainActor
-@Test func `cancelled selection searches can restart without changing the query`() async {
+@Test(.timeLimit(.minutes(1)))
+func `cancelled selection searches can restart without changing the query`() async throws {
     let search = SelectionFieldSearchHarness()
+    defer { search.finish() }
     let model = SelectionFieldModel(source: SelectionFieldSource<String>.dynamic(
         debounce: .zero, search: { try await search.load($0) }
     ))
     model.updateQuery("retry")
-    while !search.hasPendingQuery("retry") { await Task.yield() }
+    try #require(await search.waitForQuery("retry"))
     model.cancel()
     #expect(model.state == .idle)
     search.resume("retry", with: [])
     model.activate()
-    while !search.hasPendingQuery("retry") { await Task.yield() }
+    try #require(await search.waitForQuery("retry"))
     search.resume("retry", with: [SelectionFieldOption(id: "ok", title: "Recovered")])
-    while model.state == .loading { await Task.yield() }
+    try #require(await selectionSearchSettled(model))
     #expect(model.results.map(\.id) == ["ok"])
+}
+
+/// Observe stable completion without imposing a second, shorter timeout than
+/// the test's cancellation-aware time limit during parallel App load.
+@MainActor
+private func selectionSearchSettled(_ model: SelectionFieldModel<String>) async -> Bool {
+    for await settled in Observations({ model.state != .loading }) where settled { return true }
+    return false
 }

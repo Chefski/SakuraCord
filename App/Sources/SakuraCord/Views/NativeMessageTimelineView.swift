@@ -1531,6 +1531,21 @@ extension NativeMessageTimelineCoordinator {
                 performanceFallbackReason = "invalid-two-ended-delta"
                 return false
             }
+            // Each insertion refreshes only its adjacent old edge row. A newly
+            // loaded reply target can change any other retained row.
+            var refreshedBoundaryIDs = Set<MessageID>()
+            if prefixCount > 0 { refreshedBoundaryIDs.insert(firstRowID) }
+            if suffixCount > 0 { refreshedBoundaryIDs.insert(lastRowID) }
+            guard let records = newParent.rowsUpdateJournal.records(
+                after: rowsRevision,
+                through: newParent.rowsRevision
+            ), records.allSatisfy({
+                !$0.invalidatesAllRows
+                    && $0.changedMessageIDs.isSubset(of: refreshedBoundaryIDs)
+            }) else {
+                performanceFallbackReason = "insertion-journal-requires-redraw"
+                return false
+            }
             if prefixCount > 0 {
                 prependRows(
                     newRows.prefix(prefixCount),

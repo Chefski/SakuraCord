@@ -211,17 +211,20 @@ public struct MessageReplyPreview: Codable, Hashable, Sendable {
     public var author: User
     public var guildMember: MessageGuildMember?
     public var content: String
+    public var mediaKind: AttachmentMediaKind?
 
     public init(
         messageID: MessageID,
         author: User,
         guildMember: MessageGuildMember? = nil,
-        content: String
+        content: String,
+        mediaKind: AttachmentMediaKind? = nil
     ) {
         self.messageID = messageID
         self.author = author
         self.guildMember = guildMember
         self.content = content
+        self.mediaKind = mediaKind
     }
 
     public init(message: Message) {
@@ -229,8 +232,24 @@ public struct MessageReplyPreview: Codable, Hashable, Sendable {
             messageID: message.id,
             author: message.author,
             guildMember: message.guildMember,
-            content: message.content
+            content: message.content,
+            mediaKind: Self.mediaKind(
+                attachments: message.attachments,
+                embeds: message.embeds,
+                stickers: message.stickers
+            )
         )
+    }
+
+    public static func mediaKind(
+        attachments: [Attachment],
+        embeds: [MessageEmbed],
+        stickers: [MessageSticker]
+    ) -> AttachmentMediaKind? {
+        attachments.first?.mediaKind
+            ?? (embeds.contains(where: { $0.video != nil }) ? .video : nil)
+            ?? (embeds.contains(where: { $0.image != nil || $0.thumbnail != nil }) ? .image : nil)
+            ?? (stickers.isEmpty ? nil : .image)
     }
 }
 

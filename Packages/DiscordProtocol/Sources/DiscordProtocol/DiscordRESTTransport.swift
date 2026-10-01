@@ -12,6 +12,7 @@ private struct DiscordRESTRequestContext {
     let isMessageHistoryRequest: Bool
     let canRetryAsRead: Bool
     let maximumAttempts: Int
+    let statusSave: StatusSettingsSaveContext?
 }
 
 private struct DiscordRESTPreparedRequest {
@@ -255,15 +256,28 @@ extension DiscordRESTProvider {
         method: String = "GET",
         query: [URLQueryItem] = [],
         body: [String: JSONValue]? = nil,
-        headers: [String: String] = [:]
+        headers: [String: String] = [:],
+        mapFailure: (_ status: Int, _ discordCode: Int?) -> (any Error)? = { _, _ in nil }
     ) async throws -> Response {
-        let isMessageHistoryRequest = method == "GET"
-            && path.hasPrefix("/channels/")
-            && path.hasSuffix("/messages")
         let (data, response) = try await perform(
             path, method: method, query: query, body: body, headers: headers
         )
+        return try decodedResponse(data, response, method: method, path: path, mapFailure: mapFailure)
+    }
+
+    /// Maps a non-2xx response to its provider error, or decodes the body.
+    func decodedResponse<Response: Decodable>(
+        _ data: Data,
+        _ response: HTTPURLResponse,
+        method: String,
+        path: String,
+        mapFailure: (_ status: Int, _ discordCode: Int?) -> (any Error)? = { _, _ in nil }
+    ) throws -> Response {
+        let isMessageHistoryRequest = method == "GET"
+            && path.hasPrefix("/channels/")
+            && path.hasSuffix("/messages")
         guard (200 ..< 300).contains(response.statusCode) else {
+            if let error = mapFailure(response.statusCode, Self.discordErrorCode(from: data)) { throw error }
             if response.statusCode == 401 {
                 authorizationValue = nil
                 throw apiDiagnostics.coalescing(ChatProviderError.unauthenticated, with: response)
@@ -324,7 +338,8 @@ extension DiscordRESTProvider {
         _ query: [URLQueryItem],
         _ body: [String: JSONValue]?,
         _ headers: [String: String],
-        _ requestedMaximumAttempts: Int?
+        _ requestedMaximumAttempts: Int?,
+        statusSave: StatusSettingsSaveContext? = nil
     ) async throws -> (Data, HTTPURLResponse) {
         guard !requestSafetyCircuitIsOpen else {
             throw ChatProviderError.invalidRequest(
@@ -350,7 +365,8 @@ extension DiscordRESTProvider {
             rateLimitKey: requestRateLimitKey,
             isMessageHistoryRequest: isMessageHistoryRequest,
             canRetryAsRead: canRetryAsRead,
-            maximumAttempts: maximumAttempts
+            maximumAttempts: maximumAttempts,
+            statusSave: statusSave
         )
         for attempt in 0 ..< maximumAttempts {
             if let result = try await performRESTRequestAttempt(
@@ -477,6 +493,9 @@ extension DiscordRESTProvider {
             let data: Data
             let rawResponse: URLResponse
             do {
+                // Rate-limit reservation and authorization can suspend. Validate
+                // the immutable status payload immediately before transmission.
+                if let statusSave = context.statusSave { try validateStatusSettingsSave(statusSave) }
                 let networkName: StaticString = isMessageHistoryRequest
                     ? "MessageHistoryNetworkAttempt"
                     : "RESTNetworkAttempt"
@@ -664,10 +683,11 @@ extension DiscordRESTProvider {
         query: [URLQueryItem],
         body: [String: JSONValue]?,
         headers: [String: String] = [:],
-        maximumAttempts requestedMaximumAttempts: Int? = nil
+        maximumAttempts requestedMaximumAttempts: Int? = nil,
+        statusSave: StatusSettingsSaveContext? = nil
     ) async throws -> (Data, HTTPURLResponse) {
         try await requestPerformance(
-            path, method, query, body, headers, requestedMaximumAttempts
+            path, method, query, body, headers, requestedMaximumAttempts, statusSave: statusSave
         )
     }
     @discardableResult
@@ -969,6 +989,8 @@ extension DiscordRESTProvider {
         {
             return true
         }
+        // Invalid type-1 settings data: the settings writer reloads, so the server wins.
+        if status == 400, discordCode == 50105, method == "PATCH", path == "/users/@me/settings-proto/1" { return false }
         // A structured error for user-entered profile text/media is editable.
         // Known poll failures can race local expiry and permission checks.
         if status == 400, profileValidationError(data: data, method: method, path: path) != nil { return false }

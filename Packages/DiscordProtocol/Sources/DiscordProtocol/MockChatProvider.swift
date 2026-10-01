@@ -512,11 +512,8 @@ public actor MockChatProvider: ChatProvider {
         }
         snapshot.members =
             membersByGuild[snapshot.guilds.first?.id ?? GuildID(rawValue: 0)] ?? snapshot.members
-        if var profile = profilesByUser[currentUser.id] {
-            profile.status = status
-            profilesByUser[currentUser.id] = profile
-        }
         continuation?.yield(.snapshotChanged(snapshot))
+        continuation?.yield(.currentUserStatusChanged(status))
     }
 
     public func messages(in channelID: ChannelID, before: MessageID?, limit: Int) async throws
@@ -862,6 +859,21 @@ public actor MockChatProvider: ChatProvider {
             .forumPostsChanged(channelID: channel.id, posts: forumPostsByChannel[channel.id] ?? []))
         progress(.completed(messageID: message.id))
         return post
+    }
+
+    public func createThread(_ draft: CreateThreadDraft) async throws -> MessageThreadSummary {
+        let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let channel = snapshot.channels.first(where: { $0.id == draft.channelID }),
+              channel.kind == .text || (channel.kind == .announcement && !draft.isPrivate),
+              (1 ... 100).contains(name.count), DiscordRESTProvider.validForumAutoArchiveDurations.contains(draft.autoArchiveDuration)
+        else { throw ChatProviderError.invalidRequest("The thread does not meet this channel's requirements.") }
+        nextMessageID += 1
+        let thread = MessageThreadSummary(id: ChannelID(rawValue: nextMessageID), guildID: channel.guildID, parentID: channel.id, name: name,
+            memberCount: 1, ownerID: currentUser.id, createdAt: .now,
+            autoArchiveDuration: draft.autoArchiveDuration, notificationSettings: ThreadNotificationSettings()
+        )
+        messagesByChannel[thread.id] = []
+        return thread
     }
 
     public func updateForumPost(_ post: ForumPost, mutation: ForumPostMutation) async throws

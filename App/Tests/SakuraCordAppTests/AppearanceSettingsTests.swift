@@ -1,5 +1,6 @@
 @testable import SakuraCord
 import AppKit
+import Observation
 import Testing
 
 @Test func `App color schemes map to native appearances`() {
@@ -481,14 +482,10 @@ func `Public beta accents migrate into native-surface single-color themes`(
     themeStore.finishInteraction()
     let original = themeStore.activeTheme
 
-    let task = Task { await themeStore.randomize(reduceMotion: false) }
-    try? await Task.sleep(for: .milliseconds(60))
-
-    #expect(themeStore.activeTheme != original)
-    #expect(themeStore.committedTheme == original)
-    #expect(themeStore.activeTheme.brightness == original.brightness)
-
-    await task.value
+    let frames = ThemeIntermediateFrameProbe()
+    frames.observe(themeStore, original: original)
+    await themeStore.randomize(reduceMotion: false)
+    #expect(frames.observedIntermediateFrame)
     #expect(themeStore.activeTheme == themeStore.committedTheme)
     #expect(themeStore.activeTheme.brightness == original.brightness)
     #expect(themeStore.activeTheme.intensity >= 0.6)
@@ -841,4 +838,29 @@ func `Public beta accents migrate into native-surface single-color themes`(
     let removedLast = theme.removeColor(at: 0)
     #expect(!removedLast)
     #expect(theme.brightness == 0.4 && theme.intensity == 0.6)
+}
+
+/// Observe before each synchronous mutation. An asynchronous Observations
+/// consumer can coalesce the entire sub-second animation under parallel load.
+@MainActor
+private final class ThemeIntermediateFrameProbe {
+    private(set) var observedIntermediateFrame = false
+
+    func observe(_ store: SakuraCordThemeStore, original: SakuraCordGradientTheme) {
+        withObservationTracking {
+            _ = store.activeTheme
+        } onChange: { [weak self, weak store] in
+            // Theme mutations are isolated to the main actor. Capture the
+            // previous frame synchronously, before the next frame/commit.
+            MainActor.assumeIsolated {
+                guard let self, let store else { return }
+                if store.activeTheme != original,
+                   store.committedTheme == original,
+                   store.activeTheme.brightness == original.brightness {
+                    self.observedIntermediateFrame = true
+                }
+                self.observe(store, original: original)
+            }
+        }
+    }
 }

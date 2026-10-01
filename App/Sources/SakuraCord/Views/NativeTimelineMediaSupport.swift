@@ -338,6 +338,19 @@ actor SharedDecodedImageLoader {
         }
         return image
     }
+
+#if DEBUG
+    func waiterCountForTesting(
+        for url: URL,
+        maximumPixelDimension: Int
+    ) -> Int {
+        let key = RequestKey(
+            url: url,
+            maximumPixelDimension: max(1, maximumPixelDimension)
+        )
+        return inFlight[key]?.waiterIDs.count ?? 0
+    }
+#endif
 }
 
 enum NativeTimelineReplyMediaPolicy {

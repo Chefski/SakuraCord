@@ -3,6 +3,14 @@ import SakuraCordModels
 
 struct UserSettingsProtoDTO: Decodable {
     var settings: String
+    /// Set when `required_data_version` no longer matched and the server
+    /// discarded the write; `settings` is then the server's current proto.
+    var outOfDate: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case settings
+        case outOfDate = "out_of_date"
+    }
 }
 
 struct DiscordGuildLayout: Equatable {
@@ -352,7 +360,7 @@ enum DiscordSettingsProto {
         return data
     }
 
-    private static func protoVarintField(_ field: Int, _ value: UInt64) -> Data {
+    static func protoVarintField(_ field: Int, _ value: UInt64) -> Data {
         var data = protoVarint(UInt64(field << 3))
         data.append(protoVarint(value))
         return data

@@ -1185,10 +1185,10 @@ struct NativeTimelineRowLayout {
             threadFrame = CGRect(
                 x: contentX,
                 y: verticalOffset,
-                width: min(contentWidth, 500),
-                height: 48
+                width: min(contentWidth, 440),
+                height: NativeTimelineThreadCard.height
             )
-            verticalOffset += 48
+            verticalOffset += NativeTimelineThreadCard.height
             hasRichContent = true
         }
 
