@@ -51,9 +51,11 @@ current `nightly` from the canonical repository and checks the merged tree
 that PR CI will build. Merge conflicts, an unavailable base, or merged-tree
 quality failures block the push. This uses temporary snapshots and a temporary
 Git ref, leaving the checkout, index, branches, and `FETCH_HEAD` unchanged.
-Direct `main`/`nightly` pushes and tags validate their committed trees without
-a synthetic PR merge. Snapshot checks use the snapshot's own pinned tools and
-policy. A later base-branch change can still require fresh CI validation.
+Direct pushes to the canonical repository's `main`/`nightly`, and tag pushes,
+validate their committed trees without a synthetic PR merge. Fork branches
+named `main` or `nightly` still receive merge validation. Snapshot checks use
+the snapshot's own pinned tools and policy. A later base-branch change can
+still require fresh CI validation.
 
 ## Roadmap
 

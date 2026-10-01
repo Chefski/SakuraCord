@@ -11,6 +11,12 @@ CHECKED_REF_COUNT=0
 BASE_REF="refs/sakuracord/code-quality/$(basename "$TEMP_ROOT")"
 BASE_SHA=""
 SEEN_MERGES=""
+REMOTE_URL="$(printf '%s' "${2:-}" | tr '[:upper:]' '[:lower:]')"
+CANONICAL_DESTINATION=false
+case "${REMOTE_URL%.git}" in
+  ""|https://github.com/sakuracordapp/sakuracord|git@github.com:sakuracordapp/sakuracord|ssh://git@github.com/sakuracordapp/sakuracord)
+    CANONICAL_DESTINATION=true ;;
+esac
 
 cleanup() {
   git update-ref -d "$BASE_REF"
@@ -91,7 +97,11 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   fi
   check_commit "$local_sha"
   case "$remote_ref" in
-    refs/heads/main|refs/heads/nightly) ;;
+    refs/heads/main|refs/heads/nightly)
+      if [[ "$CANONICAL_DESTINATION" != true ]]; then
+        check_pull_request_merge "$local_sha"
+      fi
+      ;;
     refs/heads/*) check_pull_request_merge "$local_sha" ;;
   esac
   if [[ "$remote_ref" == refs/tags/v* ]]; then
