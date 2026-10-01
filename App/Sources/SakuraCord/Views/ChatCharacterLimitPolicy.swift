@@ -4,6 +4,14 @@ nonisolated enum ChatCharacterLimitPolicy {
     static let standardLimit = 2_000
     static let premiumLimit = 4_000
 
+    /// Discord attaches longer pasted plain text as `message.txt` for every
+    /// account, measuring it in UTF-16 code units as JavaScript does.
+    static let pastedTextAttachmentThreshold = premiumLimit
+
+    static func pastedTextBecomesAttachment(_ text: String) -> Bool {
+        text.utf16.count > pastedTextAttachmentThreshold
+    }
+
     static func limit(premiumType: Int?) -> Int {
         (premiumType ?? 0) > 0 ? premiumLimit : standardLimit
     }

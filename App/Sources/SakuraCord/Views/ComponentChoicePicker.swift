@@ -10,50 +10,53 @@ struct ComponentChoicePicker: View {
     @State private var knownOptionsByValue:
         [String: ComponentSelectOption] = [:]
 
+    private let resultPlacement: SelectionFieldResultPlacement
     private let placeholder: String
     private let selectKind: ComponentSelectKind
     private let options: [ComponentSelectOption]
     private let initialOptions: [ComponentSelectOption]
+    private let minimumSelectionCount: Int
     private let maximumSelectionCount: Int
     private let loader: Loader
-    private let resultPlacement: SelectionFieldResultPlacement
     private let selectionChanged: ([ComponentSelectOption]) -> Void
-    private let submitSingleSelection: ([String]) -> Void
+    private let submitSelection: ([String]) -> Void
     private let dismiss: () -> Void
 
     init(
         placeholder: String,
+        resultPlacement: SelectionFieldResultPlacement,
         selectKind: ComponentSelectKind,
         options: [ComponentSelectOption],
         initialOptions: [ComponentSelectOption],
         selectedOptions: [ComponentSelectOption]?,
+        minimumSelectionCount: Int,
         maximumSelectionCount: Int,
-        resultPlacement: SelectionFieldResultPlacement,
         loader: @escaping Loader,
         selectionChanged: @escaping ([ComponentSelectOption]) -> Void,
-        submitSingleSelection: @escaping ([String]) -> Void,
+        submitSelection: @escaping ([String]) -> Void,
         dismiss: @escaping () -> Void
     ) {
+        self.resultPlacement = resultPlacement
         self.placeholder = placeholder
         self.selectKind = selectKind
         self.options = options
         self.initialOptions = initialOptions
+        self.minimumSelectionCount = minimumSelectionCount
         self.maximumSelectionCount = max(1, maximumSelectionCount)
-        self.resultPlacement = resultPlacement
         self.loader = loader
         self.selectionChanged = selectionChanged
-        self.submitSingleSelection = submitSingleSelection
+        self.submitSelection = submitSelection
         self.dismiss = dismiss
-        let initialOptions = selectedOptions
+        let initiallySelected = selectedOptions
             ?? options.filter(\.isDefault)
         _selection = State(
-            initialValue: Array(initialOptions.map(\.value).prefix(
+            initialValue: Array(initiallySelected.map(\.value).prefix(
                 max(1, maximumSelectionCount)
             ))
         )
         _knownOptionsByValue = State(
             initialValue: Dictionary(
-                (options + (selectedOptions ?? []) + initialOptions).map {
+                (options + initialOptions + initiallySelected).map {
                     ($0.value, $0)
                 },
                 uniquingKeysWith: { _, newer in newer }
@@ -67,39 +70,30 @@ struct ComponentChoicePicker: View {
             mode: selectionMode,
             source: source,
             configuration: SelectionFieldConfiguration(
+                minimumSelectionCount: minimumSelectionCount,
                 placeholder: placeholder,
                 searchPlaceholder: "Search options",
                 maximumListHeight: 232,
                 initiallyExpanded: true,
-                clearsQueryAfterSelection: maximumSelectionCount > 1,
                 collapsesAfterSingleSelection: true,
-                selectionPresentation: .cards,
                 resultPlacement: resultPlacement
             ),
             accessibilityIdentifier: "component-selection-field",
-            onDismiss: dismiss
+            onDismiss: dismiss,
+            onConfirm: { submitSelection(selection) }
         )
         .frame(maxWidth: .infinity)
-        .frame(
-            maxHeight: .infinity,
-            alignment: resultPlacement == .below ? .top : .bottom
-        )
     }
 
     private var selectionBinding: Binding<[String]> {
         Binding(
             get: { selection },
             set: { newValue in
-                let oldValue = selection
                 selection = newValue
                 selectionChanged(
                     newValue.compactMap { knownOptionsByValue[$0] }
                 )
-                guard maximumSelectionCount == 1,
-                      newValue.count == 1,
-                      newValue != oldValue
-                else { return }
-                submitSingleSelection(newValue)
+
             }
         )
     }

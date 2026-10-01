@@ -65,20 +65,25 @@ invalidates earlier restoration results. Switching, logout, and failed startup s
 load cancellation and presentation reset, including pins and composer state.
 `AppModel` remains the workspace coordinator; feature state should have an
 explicit owner rather than accumulating unrelated fields in extensions.
+DM and group DM sidebar pins come from the current account's `@me` channel
+notification overrides. The inbox orders pinned conversations by their latest
+message timestamp, falling back to channel creation for empty conversations,
+without changing provider channel order or persisting Discord workspace snapshots.
 
-`GuildOnboardingStore` owns account-scoped question presentation, unfinished
-answer drafts, and membership confirmation. `SakuraCordModels` defines the live
+`GuildOnboardingStore` owns account-scoped question presentation, in-memory
+answer choices, and membership confirmation. `SakuraCordModels` defines the live
 configuration, selected IDs, validation rules, and member flags;
 `DiscordProtocol` refreshes configuration, submits one answer mutation, and
-confirms membership through the existing Gateway member query. The app restores
-its own drafts only when join time and confirmed server answers still match,
+confirms membership through the existing Gateway member query. The app retains
+its in-memory choices only when join time and confirmed server answers still match,
 prunes deleted options, and invalidates in-flight work on account changes.
 Onboarding and member screening independently gate message, thread, forum, and
 retry paths. Bootstrap carries READY’s self-member records for every guild,
 so an unknown membership never implies unfinished onboarding. Confirmed unfinished
-memberships cover the guild content inside the existing navigation/window chrome
-with `GuildOnboardingView`, reusing the sign-in gradient and native glass controls.
-Question transitions animate only when the step changes; cached entries remain
+memberships present `GuildOnboardingView` in the navigation detail pane, preserving
+the channel sidebar and window toolbar, with the sign-in gradient and native glass controls.
+The centered welcome waits for Get Started. Questions slide in the navigation
+direction, respecting Reduce Motion; cached entries remain
 visible across navigation and background refreshes.
 Completed memberships navigate to customization or Server Guide through scrolling
 channel-list entries with the same native hover and toolbar as channels. Guide
@@ -87,24 +92,44 @@ not the guild feature flag alone.
 The same account-scoped feature store owns live guide configuration, confirmed
 member task progress, and resource history. `DiscordProtocol` owns guide REST
 contracts; resource side panels reuse the native timeline renderer with identity chrome
-and the composer omitted. Viewing the guide is read-only; visits require successful
+and the composer omitted. Channel previews and guide resources use
+`SupplementaryConversationPane` in `ChatWorkspaceView`, with the existing
+`RootView` supplementary toolbar title, close action, and frame alignment used
+by threads, forum posts, and voice chat. Feature views must not create separate
+preview headers, split-view shells, or resource inspectors. Viewing the guide is read-only; visits require successful
 history access after an explicit task selection, and send tasks require a confirmed
 self-authored message event. Resource previews do not complete visit tasks.
-Onboarding dropdowns use the shared `SelectionField` control, including its native
-search, tokens, keyboard navigation, and single/multiple selection modes.
+Onboarding, search filters, and message components use the shared `SelectionField`:
+selected tokens stay in the field, with search in the anchored, same-window options overlay.
+The search header shares the emoji and sticker picker chrome; there is no confirmation footer.
+Tokens retain the same layout and rendering when the field opens. The list reveals from the field edge without moving
+surrounding content, choosing the side with room and tracking its scrolling anchor. Query text is edited independently of selected
+values, so replacing a query cannot remove selections. Message components host
+this field directly over their timeline anchor. Single choices submit immediately;
+valid changed multiple choices submit on outside click or closing the chevron.
+Escape, scroll-away, and window resizing cancel the pending component draft.
 Post-join edits are optimistic in the feature store, coalesced for one second,
 and serialized per membership. Confirmations update the baseline without
 replacing newer edits; failures roll back only the failed version. Optimistic
 role previews never grant messaging permissions. Channel edits overlay only
 selection bits on the notification store so unrelated settings remain live.
-Channel management is a global Settings feature preference, off by default;
-when enabled, the channel sidebar consumes authoritative guild/channel opt-in
-flags from the existing notification-settings store. Channel permissions remain
-independent. Draft writes join the clear/teardown barriers and storage accounting;
-server configuration, member records, roles, and channel catalogs are never persisted.
-An unfinished draft retains baseline option IDs and its membership join timestamp
-solely to detect conflicts against a fresh server read, never to restore confirmed
-Discord state.
+Channel management is a global Settings preference, on by default. Community
+server sidebars consume authoritative guild/channel opt-in flags from the existing
+notification-settings store; non-community servers always show all channels.
+Turning the local preference off bypasses filtering and hides channel browsing,
+channel controls, and onboarding channel details without changing local or remote
+server selections. Role questions and required onboarding remain available. The server context menu independently changes Discord’s
+Show All Channels setting. Community servers with onboarding prompts expose
+Channels & Roles; those without prompts expose Browse Channels. The browser uses the workspace toolbar’s native search field for immediate local
+filtering without message-search autocomplete or REST requests. Its tab, query,
+and focus state live in the session-only onboarding store. The browser
+owns inline preview presentation, while the app model owns selection
+mutations and restores the main conversation after a preview closes. Voice and
+Stage channels use the same selection filtering as other channels; there is no
+separate voice-channel expansion state. Channel permissions remain independent. Onboarding choices and question position live only in the feature
+store and reset with the account session. Server configuration, member records,
+roles, and channel catalogs are never persisted. A migration removes previously
+stored onboarding drafts while preserving message drafts.
 
 `AppUpdateController` owns Sparkle's `SPUStandardUpdaterController` for the
 application lifetime. It starts only when the canonical release bundle contains
@@ -351,12 +376,16 @@ from Keychain into a mode-`0600` file within the app's sandbox Application
 Support container. It is excluded from release and update-enabled packages and
 is not the production credential contract.
 
-Only user-authored message and unfinished onboarding drafts are stored through `SakuraCordPersistence`.
+Only user-authored message drafts are stored through `SakuraCordPersistence`.
 Credentials never enter GRDB, fixtures, logs, or plugin APIs. Discord
 authoritative workspace, message, read, member, and Gateway state is
 session-memory only. A database migration drops the obsolete tables from earlier
 builds while preserving drafts. Normal and offline runs use separate storage
-behavior.
+behavior. The one exception to session-memory Discord state is an account
+status pick that is not yet saved to the account: the provider keeps it, with
+its settings data version, in user defaults per account until it is saved,
+superseded, or rejected by the server, and removing the account (including
+logout) deletes it. The protocol baseline describes this pending edit.
 
 The provider deliberately persists disposable derived metadata under
 `Caches/dev.sakuracord.SakuraCord`, scoped by account ID:
@@ -715,7 +744,13 @@ work, not an implemented architecture claim.
 compiles the selected Icon Composer source with `actool`, embeds frameworks and
 resource bundles, copies the complete third-party notices into the app's
 resources, copies the canonical versioned release notes into
-`Contents/Resources/Releases`, and ad-hoc signs the result.
+`Contents/Resources/Releases`, and signs the result. Local builds resolve the
+credential mode and signing identity from the current user's global Git
+configuration. The shared runtime verifies the packaged mode and signature
+before development launches; release and update-enabled builds require Keychain.
+Packaging without launch also supports ad-hoc distribution signatures. The
+current `script/run.sh --checkout PATH --build` passes explicit preferences to
+older packagers and retains ownership of the guarded launch.
 
 The canonical icon sources are:
 

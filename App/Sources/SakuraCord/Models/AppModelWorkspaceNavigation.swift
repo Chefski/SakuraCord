@@ -146,11 +146,15 @@ extension AppModel {
     }
 
     func presentMessageSearch() {
+        if isBrowsingGuildChannels {
+            onboarding.isChannelSearchFocused = true
+            return
+        }
         guard sessionState == .workspace,
               selectedChannelID != nil,
               MessageSearchSurfacePolicy.showsToolbar(
                   channelKind: selectedChannel?.kind,
-                  hasOpenThread: openThread != nil
+                  hasOpenThread: hasThreadPane
               )
         else { return }
         let currentScope = selectedGuildID.map(MessageSearchScope.guild) ?? .directMessages
@@ -163,7 +167,7 @@ extension AppModel {
 
     func presentMessageSearchFromCommand() {
         presentMessageSearch()
-        guard messageSearch.isInputFocused,
+        guard !isBrowsingGuildChannels, messageSearch.isInputFocused,
               let selectedChannelID,
               let channel = messageSearchChannels.first(where: { $0.id == selectedChannelID })
         else { return }

@@ -318,14 +318,15 @@ enum NativeTimelineBeginning: Equatable {
         id: ChannelID,
         title: String,
         starterName: String?,
-        startedAt: Date?
+        startedAt: Date?,
+        isForumPost: Bool = false
     )
 
     var id: ChannelID {
         switch self {
         case let .channel(channel, _):
             channel.id
-        case let .thread(id, _, _, _):
+        case let .thread(id, _, _, _, _):
             id
         }
     }
@@ -341,7 +342,7 @@ enum NativeTimelineBeginning: Equatable {
             default:
                 "Welcome to #\(channel.name)!"
             }
-        case let .thread(_, title, _, _):
+        case let .thread(_, title, _, _, _):
             title
         }
     }
@@ -362,7 +363,7 @@ enum NativeTimelineBeginning: Equatable {
             default:
                 return "This is the start of the #\(channel.name) channel."
             }
-        case let .thread(_, _, starterName?, _):
+        case let .thread(_, _, starterName?, _, _):
             return "Started by \(starterName)"
         case .thread:
             return "This is the start of the thread."
@@ -373,7 +374,7 @@ enum NativeTimelineBeginning: Equatable {
         switch self {
         case .channel:
             true
-        case let .thread(_, _, starterName, _):
+        case let .thread(_, _, starterName, _, _):
             starterName != nil
         }
     }
@@ -398,13 +399,13 @@ enum NativeTimelineBeginning: Equatable {
             default:
                 return "number"
             }
-        case .thread:
-            return "bubble.left.and.bubble.right.fill"
+        case let .thread(_, _, _, _, isForumPost):
+            return isForumPost ? "bubble.left.and.bubble.right.fill" : SakuraCordSystemSymbol.thread
         }
     }
 
     var startedAt: Date? {
-        guard case let .thread(_, _, _, startedAt) = self else { return nil }
+        guard case let .thread(_, _, _, startedAt, _) = self else { return nil }
         return startedAt
     }
 
@@ -979,29 +980,6 @@ nonisolated enum NativeMessageTimelineLayoutPolicy {
             <= max(0, tolerance)
     }
 
-    /// The previous LazyVStack renderer top-pinned the first intersecting
-    /// message when a width change reflowed a row that began above the
-    /// viewport. Preserve that behavior instead of keeping an arbitrary point
-    /// inside a tall media-heavy row.
-    static func widthChangeAnchorOffset(
-        from rawOffsetFromViewportTop: CGFloat
-    ) -> CGFloat {
-        max(
-            ChatDetailLayoutPolicy.timelineWidthReflowTopInset,
-            rawOffsetFromViewportTop
-        )
-    }
-
-    /// When the viewport grows, the former SwiftUI renderer retained the
-    /// first message whose beginning was actually visible. Anchoring a
-    /// partially clipped media row instead would reveal content that was
-    /// above the viewport before the expansion.
-    static func prefersVisibleMessageBeginning(
-        from oldWidth: CGFloat,
-        to newWidth: CGFloat
-    ) -> Bool {
-        newWidth > oldWidth
-    }
 }
 
 @MainActor

@@ -7,6 +7,7 @@ import Synchronization
 
 nonisolated enum MentionTarget: Hashable, Sendable {
     case unresolved
+    case guildNavigation(guildID: GuildID, destination: GuildNavigationMention)
     case user(UserID)
     case role(RoleID)
     case channel(ChannelID)
@@ -23,9 +24,14 @@ nonisolated struct MentionPresentation: Hashable, Identifiable, Sendable {
     var systemImage: String?
 
     var id: String { rawToken }
+    var isInteractive: Bool { target != .unresolved }
 
     static func fallback(for mention: RenderedMention) -> MentionPresentation {
         switch mention.kind {
+        case .guildNavigation:
+            let destination = GuildNavigationMention(rawValue: mention.id)
+            return unresolved(mention, label: destination?.title ?? mention.rawToken,
+                              systemImage: destination == .guide ? "signpost.right.fill" : "list.bullet")
         case .user:
             guard let id = UserID(mention.id) else {
                 return unresolved(mention, label: "@unknown-user")
@@ -627,7 +633,7 @@ final class RichMessageNSTextView: NSTextView {
         let index = layoutManager.characterIndexForGlyph(at: glyph)
         guard index < attributedString().length,
               let attachment = attributedString().attribute(.attachment, at: index, effectiveRange: nil)
-              as? MentionTextAttachment
+              as? MentionTextAttachment, attachment.presentation.isInteractive
         else { return nil }
         return (index, attachment)
     }

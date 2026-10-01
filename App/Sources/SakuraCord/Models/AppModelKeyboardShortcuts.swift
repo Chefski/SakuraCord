@@ -1,5 +1,6 @@
 import AppKit
 import SakuraCordModels
+import SwiftUI
 
 extension AppModel {
     func performKeyboardShortcutAction(_ action: KeyboardShortcutAction) {
@@ -34,7 +35,13 @@ extension AppModel {
             if let channel = selectedChannel, channel.kind == .voice {
                 if isVoiceChatOpen { closeVoiceChat() } else { openVoiceChat(for: channel) }
             } else {
-                showInspector.toggle()
+                prepareInspectorProfileForPresentation()
+                withAnimation(
+                    NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+                        ? nil : .smooth(duration: 0.24)
+                ) {
+                    showInspector.toggle()
+                }
             }
         default:
             performConversationNavigationShortcut(action)
@@ -145,7 +152,7 @@ extension AppModel {
         case .messageSearch:
             MessageSearchSurfacePolicy.showsToolbar(
                 channelKind: selectedChannel?.kind,
-                hasOpenThread: openThread != nil
+                hasOpenThread: hasThreadPane
             )
         case .previousConversation, .nextConversation:
             hasKeyboardShortcutConversationDestination(unreadOnly: false)
@@ -174,7 +181,7 @@ extension AppModel {
         case .searchCurrentConversation:
             MessageSearchSurfacePolicy.showsToolbar(
                 channelKind: selectedChannel?.kind,
-                hasOpenThread: openThread != nil
+                hasOpenThread: hasThreadPane
             )
         case .copyChannelLink:
             openThread != nil || selectedChannelID != nil
@@ -214,7 +221,7 @@ extension AppModel {
     }
 
     private var activeComposerDestination: MessageComposerDestination {
-        openThread == nil ? .channel : .thread
+        hasThreadPane ? .thread : .channel
     }
 
 }

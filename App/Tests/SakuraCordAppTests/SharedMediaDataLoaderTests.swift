@@ -2,6 +2,7 @@
 import CoreGraphics
 import Foundation
 import SakuraCordModels
+import Synchronization
 import Testing
 
 @Test func `remote media transport cannot persist or attach cookies`() {
@@ -34,7 +35,7 @@ import Testing
     #expect(try await loader.data(for: original) == expected)
 }
 
-@Test func `an in-flight media load cannot refresh through a replaced account`() async throws {
+@Test(.timeLimit(.minutes(1))) func `an in-flight media load cannot refresh through a replaced account`() async throws {
     let original = try #require(URL(string:
         "https://cdn.discordapp.com/attachments/1/2/old.gif"
     ))
@@ -46,7 +47,7 @@ import Testing
         return original
     }
     let request = Task { try await loader.data(for: original) }
-    #expect(await waitUntil { await fetch.fetchCount == 1 })
+    #expect(await fetch.waitForFetches(1))
 
     await loader.setAttachmentURLRefresh(revision: 2) { _ in
         await refresh.record()
@@ -64,7 +65,7 @@ import Testing
     #expect(await refresh.callCount == 0)
 }
 
-@Test func `cancelling the final media waiter cancels its fetch`() async throws {
+@Test(.timeLimit(.minutes(1))) func `cancelling the final media waiter cancels its fetch`() async throws {
     let probe = SuspendedRemoteMediaFetch()
     let loader = SharedMediaDataLoader(remoteFetch: probe.fetch)
     let url = try #require(URL(string: "https://cdn.example/only.png"))
@@ -72,13 +73,11 @@ import Testing
         try await loader.data(for: url)
     }
 
-    #expect(await waitUntil {
-        await probe.fetchCount == 1
-    })
+    #expect(await probe.waitForFetches(1))
     request.cancel()
     await expectCancellation(of: request)
 
-    #expect(await waitUntil {
+    #expect(await eventually {
         await probe.cancellationCount == 1
     })
     #expect(
@@ -87,7 +86,7 @@ import Testing
     )
 }
 
-@Test func `cancelling one shared media waiter preserves the fetch`() async throws {
+@Test(.timeLimit(.minutes(1))) func `cancelling one shared media waiter preserves the fetch`() async throws {
     let probe = SuspendedRemoteMediaFetch()
     let loader = SharedMediaDataLoader(remoteFetch: probe.fetch)
     let url = try #require(URL(string: "https://cdn.example/shared.png"))
@@ -98,9 +97,10 @@ import Testing
         try await loader.data(for: url)
     }
 
-    #expect(await waitUntil {
+    #expect(await eventually {
         await loader.remoteLoadSnapshot().waiterCount == 2
     })
+    #expect(await probe.waitForFetches(1))
     first.cancel()
     await expectCancellation(of: first)
     #expect(await probe.cancellationCount == 0)
@@ -108,11 +108,11 @@ import Testing
 
     let expected = Data("fixture".utf8)
     await probe.finish(url, with: expected)
-    #expect(try await second.value == expected)
+    #expect(try await cancellableValue(of: second) == expected)
     #expect(await loader.remoteLoadSnapshot().waiterCount == 0)
 }
 
-@Test func `visible media queue and started requests stay bounded`() async throws {
+@Test(.timeLimit(.minutes(1))) func `visible media queue and started requests stay bounded`() async throws {
     let probe = SuspendedRemoteMediaFetch()
     let loader = SharedMediaDataLoader(remoteFetch: probe.fetch)
     let activeRequests = try makeMediaRequests(
@@ -120,7 +120,7 @@ import Testing
         offset: 0,
         loader: loader
     )
-    #expect(await waitUntil {
+    #expect(await eventually {
         await loader.remoteLoadSnapshot().activeCount
             == SharedMediaRequestSchedulingPolicy.maximumConcurrentRemoteLoads
     })
@@ -130,7 +130,7 @@ import Testing
         offset: activeRequests.count,
         loader: loader
     )
-    #expect(await waitUntil {
+    #expect(await eventually {
         await loader.remoteLoadSnapshot().pendingCount
             == SharedMediaRequestSchedulingPolicy.maximumPendingRemoteLoads
     })
@@ -141,21 +141,24 @@ import Testing
     )
 
     await cancelAndAwait(queuedRequests)
-    #expect(await waitUntil {
+    #expect(await eventually {
         await loader.remoteLoadSnapshot().pendingCount == 0
     })
+    #expect(await probe.waitForFetches(
+        SharedMediaRequestSchedulingPolicy.maximumConcurrentRemoteLoads
+    ))
     #expect(
         await probe.fetchCount
             == SharedMediaRequestSchedulingPolicy.maximumConcurrentRemoteLoads
     )
 
     await cancelAndAwait(activeRequests)
-    #expect(await waitUntil {
+    #expect(await eventually {
         await loader.remoteLoadSnapshot().activeCount == 0
     })
 }
 
-@Test func `visible media displaces saturated prefetch instead of staying blank`() async throws {
+@Test(.timeLimit(.minutes(1))) func `visible media displaces saturated prefetch instead of staying blank`() async throws {
     let probe = SuspendedRemoteMediaFetch()
     let loader = SharedMediaDataLoader(remoteFetch: probe.fetch)
     let activeRequests = try makeMediaRequests(
@@ -163,18 +166,29 @@ import Testing
         offset: 0,
         loader: loader
     )
-    #expect(await waitUntil {
+    #expect(await eventually {
         await loader.remoteLoadSnapshot().activeCount
             == SharedMediaRequestSchedulingPolicy.maximumConcurrentRemoteLoads
     })
 
-    let prefetchRequests = try makeMediaRequests(
-        count: SharedMediaRequestSchedulingPolicy.maximumPendingPrefetchLoads,
+    // Unstructured tasks may enqueue in any order, so queue the prefetch
+    // expected to be displaced first before filling the rest of the queue.
+    let oldestPrefetch = try makeMediaRequests(
+        count: 1,
         offset: 1_000,
         priority: .prefetch,
         loader: loader
     )
-    #expect(await waitUntil {
+    #expect(await eventually {
+        await loader.remoteLoadSnapshot().pendingCount == 1
+    })
+    let prefetchRequests = try oldestPrefetch + makeMediaRequests(
+        count: SharedMediaRequestSchedulingPolicy.maximumPendingPrefetchLoads - 1,
+        offset: 1_001,
+        priority: .prefetch,
+        loader: loader
+    )
+    #expect(await eventually {
         await loader.remoteLoadSnapshot().pendingCount
             == SharedMediaRequestSchedulingPolicy.maximumPendingPrefetchLoads
     })
@@ -186,7 +200,7 @@ import Testing
         offset: 2_000,
         loader: loader
     )
-    #expect(await waitUntil {
+    #expect(await eventually {
         await loader.remoteLoadSnapshot().pendingCount
             == SharedMediaRequestSchedulingPolicy.maximumPendingRemoteLoads
     })
@@ -197,7 +211,7 @@ import Testing
     let newestVisible = Task {
         try await loader.data(for: newestURL, priority: .visible)
     }
-    #expect(await waitUntil {
+    #expect(await eventually {
         await loader.remotePriorityForTesting(newestURL) == .visible
     })
     #expect(
@@ -211,16 +225,23 @@ import Testing
     await cancelAndAwait(prefetchRequests)
     await cancelAndAwait(queuedVisibleRequests)
     await cancelAndAwait(activeRequests)
-    #expect(await waitUntil {
+    #expect(await eventually {
         await loader.remoteLoadSnapshot()
             == .init(pendingCount: 0, activeCount: 0, waiterCount: 0)
     })
 }
 
-@Test func `simultaneous image waiters create one queued decode`() async throws {
+@Test(.timeLimit(.minutes(1))) func `simultaneous image waiters create one queued decode`() async throws {
     let probe = SuspendedRemoteMediaFetch()
     let dataLoader = SharedMediaDataLoader(remoteFetch: probe.fetch)
-    let decodeScheduler = NativeTimelineMediaDecodeScheduler()
+    let decodeCount = DecodeCounter()
+    let decodeScheduler = NativeTimelineMediaDecodeScheduler { data, dimension in
+        decodeCount.increment()
+        return NativeTimelineMediaDecoder.decode(
+            data,
+            maximumPixelDimension: dimension
+        )
+    }
     let decodedLoader = SharedDecodedImageLoader(
         dataLoader: dataLoader,
         decodeScheduler: decodeScheduler
@@ -245,19 +266,26 @@ import Testing
         )
     }
 
-    #expect(await waitUntil { await probe.fetchCount == 1 })
+    #expect(await eventually {
+        await decodedLoader.waiterCountForTesting(
+            for: url,
+            maximumPixelDimension: 32
+        ) == 2
+    })
+    #expect(await probe.waitForFetches(1))
     let encoded = try #require(Data(base64Encoded:
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+3vYjWQAAAABJRU5ErkJggg=="
     ))
     await probe.finish(url, with: encoded)
-    #expect(await waitUntil {
+    #expect(await eventually {
         await decodeScheduler.snapshot().prefetchWaiterCount == 1
     })
 
     await decodeScheduler.releasePermitForTesting(priority: .visible)
-    #expect(await first.value != nil)
-    #expect(await second.value != nil)
+    #expect(await cancellableValue(of: first) != nil)
+    #expect(await cancellableValue(of: second) != nil)
     #expect(await probe.fetchCount == 1)
+    #expect(decodeCount.value == 1)
     #expect(decodedLoader.cachedImage(
         for: url,
         maximumPixelDimension: 32
@@ -266,7 +294,7 @@ import Testing
 }
 
 @MainActor
-@Test func `visible timeline request promotes coalesced prefetch download and decode`() async throws {
+@Test(.timeLimit(.minutes(1))) func `visible timeline request promotes coalesced prefetch download and decode`() async throws {
     let probe = SuspendedRemoteMediaFetch()
     let dataLoader = SharedMediaDataLoader(remoteFetch: probe.fetch)
     let decodeScheduler = NativeTimelineMediaDecodeScheduler()
@@ -307,7 +335,7 @@ import Testing
     ) { outcome in
         outcomes.append(outcome)
     }
-    #expect(await waitUntilOnMainActor { await probe.fetchCount == 1 })
+    #expect(await probe.waitForFetches(1))
 
     store.request(
         key,
@@ -320,7 +348,7 @@ import Testing
     ) { outcome in
         outcomes.append(outcome)
     }
-    #expect(await waitUntilOnMainActor {
+    #expect(await eventually {
         await dataLoader.remotePriorityForTesting(url) == .visible
     })
 
@@ -328,19 +356,19 @@ import Testing
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+3vYjWQAAAABJRU5ErkJggg=="
     ))
     await probe.finish(url, with: encoded)
-    #expect(await waitUntilOnMainActor {
+    #expect(await eventually {
         await decodeScheduler.snapshot().visibleWaiterCount == 1
     })
 
     await decodeScheduler.releasePermitForTesting(priority: .visible)
-    #expect(await waitUntilOnMainActor { outcomes.count == 2 })
+    #expect(await eventually { outcomes.count == 2 })
     #expect(outcomes.allSatisfy { $0 == .ready })
     #expect(await probe.fetchCount == 1)
     await decodeScheduler.releasePermitForTesting(priority: .visible)
 }
 
 @MainActor
-@Test func `visible duplicate keeps a later fallback at visible priority`() async throws {
+@Test(.timeLimit(.minutes(1))) func `visible duplicate keeps a later fallback at visible priority`() async throws {
     let primaryURL = try #require(
         URL(string: "https://cdn.example/primary-static.png")
     )
@@ -365,7 +393,7 @@ import Testing
         )),
         priority: .prefetch
     ) { _ in }
-    await probe.waitForCall(to: primaryURL)
+    #expect(await probe.waitForCall(to: primaryURL))
 
     store.request(
         key,
@@ -377,18 +405,15 @@ import Testing
         priority: .visible
     ) { _ in }
     await probe.finish(primaryURL, image: nil)
-    await probe.waitForCall(to: fallbackURL)
+    #expect(await probe.waitForCall(to: fallbackURL))
     #expect(await probe.priority(for: fallbackURL) == .visible)
 
     await probe.finish(fallbackURL, image: nil)
-    for _ in 0 ..< 100 where store.loading.contains(key) {
-        await Task.yield()
-    }
-    #expect(!store.loading.contains(key))
+    #expect(await eventually { !store.loading.contains(key) })
 }
 
 @MainActor
-@Test func `cancelling an offscreen static request cancels its owned callback`()
+@Test(.timeLimit(.minutes(1))) func `cancelling an offscreen static request cancels its owned callback`()
     async throws
 {
     let url = try #require(
@@ -412,7 +437,7 @@ import Testing
     ) { outcome in
         outcomes.append(outcome)
     }
-    await probe.waitForCall(to: url)
+    #expect(await probe.waitForCall(to: url))
 
     store.cancelStaticRequestsOutsideVisibleSet(owner: owner)
 
@@ -421,7 +446,7 @@ import Testing
 }
 
 @MainActor
-@Test func `same row media subscribers remain isolated by canvas owner`() async throws {
+@Test(.timeLimit(.minutes(1))) func `same row media subscribers remain isolated by canvas owner`() async throws {
     let url = try #require(
         URL(string: "https://cdn.example/two-canvas-static.png")
     )
@@ -462,7 +487,7 @@ import Testing
         callbackOutcomes[secondOwner, default: []].append(outcome)
         invalidationOwners.append(secondOwner)
     }
-    await probe.waitForCall(to: url)
+    #expect(await probe.waitForCall(to: url))
 
     store.retainVisibleImages(for: [], owner: firstOwner)
     store.cancelStaticRequestsOutsideVisibleSet(owner: firstOwner)
@@ -481,9 +506,7 @@ import Testing
         maximumPixelDimension: 32
     ))
     await probe.finish(url, image: image)
-    for _ in 0 ..< 100 where store.loading.contains(key) {
-        await Task.yield()
-    }
+    #expect(await eventually { !store.loading.contains(key) })
 
     #expect(callbackOutcomes[secondOwner] == [.ready])
     #expect(Set(invalidationOwners) == [firstOwner, secondOwner])
@@ -493,7 +516,7 @@ import Testing
 private actor ControlledDecodedImageLoad {
     private var calls: [(url: URL, priority: MediaLoadPriority)] = []
     private var continuations: [URL: CheckedContinuation<CGImage?, Never>] = [:]
-    private var callWaiters: [URL: [CheckedContinuation<Void, Never>]] = [:]
+    private var callWaiters: [URL: [UUID: CheckedContinuation<Bool, Never>]] = [:]
 
     func load(
         url: URL,
@@ -501,19 +524,29 @@ private actor ControlledDecodedImageLoad {
         priority: MediaLoadPriority
     ) async -> CGImage? {
         calls.append((url, priority))
-        for waiter in callWaiters.removeValue(forKey: url) ?? [] {
-            waiter.resume()
+        for waiter in (callWaiters.removeValue(forKey: url) ?? [:]).values {
+            waiter.resume(returning: true)
         }
         return await withCheckedContinuation { continuation in
             continuations[url] = continuation
         }
     }
 
-    func waitForCall(to url: URL) async {
-        guard !calls.contains(where: { $0.url == url }) else { return }
-        await withCheckedContinuation { continuation in
-            callWaiters[url, default: []].append(continuation)
+    /// Returns `false` if the waiting task is cancelled first.
+    func waitForCall(to url: URL) async -> Bool {
+        guard !calls.contains(where: { $0.url == url }) else { return true }
+        let id = UUID()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                callWaiters[url, default: [:]][id] = continuation
+            }
+        } onCancel: {
+            Task { await self.cancelCallWaiter(id, for: url) }
         }
+    }
+
+    private func cancelCallWaiter(_ id: UUID, for url: URL) {
+        callWaiters[url]?.removeValue(forKey: id)?.resume(returning: false)
     }
 
     func priority(for url: URL) -> MediaLoadPriority? {
@@ -528,20 +561,45 @@ private actor ControlledDecodedImageLoad {
 private actor SuspendedRemoteMediaFetch {
     private var continuations:
         [URL: CheckedContinuation<Data, any Error>] = [:]
+    private var fetchWaiters:
+        [UUID: (count: Int, continuation: CheckedContinuation<Bool, Never>)] = [:]
     private(set) var fetchCount = 0
     private(set) var cancellationCount = 0
 
     func fetch(_ url: URL) async throws -> Data {
-        fetchCount += 1
-        return try await withTaskCancellationHandler {
+        try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
+                fetchCount += 1
                 continuations[url] = continuation
+                let satisfied = fetchWaiters.filter { $0.value.count <= fetchCount }
+                for (id, waiter) in satisfied {
+                    fetchWaiters[id] = nil
+                    waiter.continuation.resume(returning: true)
+                }
             }
         } onCancel: {
             Task {
                 await self.cancel(url)
             }
         }
+    }
+
+    /// Returns once `count` fetches are suspended and ready to `finish`, or
+    /// `false` if the waiting task is cancelled first.
+    func waitForFetches(_ count: Int) async -> Bool {
+        guard fetchCount < count else { return true }
+        let id = UUID()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                fetchWaiters[id] = (count, continuation)
+            }
+        } onCancel: {
+            Task { await self.cancelFetchWaiter(id) }
+        }
+    }
+
+    private func cancelFetchWaiter(_ id: UUID) {
+        fetchWaiters.removeValue(forKey: id)?.continuation.resume(returning: false)
     }
 
     func finish(_ url: URL, with data: Data) {
@@ -568,6 +626,18 @@ private actor RefreshCallRecorder {
     }
 }
 
+private final class DecodeCounter: Sendable {
+    private let count = Mutex(0)
+
+    var value: Int {
+        count.withLock { $0 }
+    }
+
+    func increment() {
+        count.withLock { $0 += 1 }
+    }
+}
+
 private func makeMediaRequests(
     count: Int,
     offset: Int,
@@ -591,7 +661,7 @@ private func cancelAndAwait(
         request.cancel()
     }
     for request in requests {
-        _ = try? await request.value
+        _ = try? await cancellableValue(of: request)
     }
 }
 
@@ -599,38 +669,11 @@ private func expectCancellation(
     of request: Task<Data, any Error>
 ) async {
     do {
-        _ = try await request.value
+        _ = try await cancellableValue(of: request)
         Issue.record("Expected the media request to be cancelled.")
     } catch is CancellationError {
         return
     } catch {
         Issue.record("Expected cancellation, received \(error).")
     }
-}
-
-private func waitUntil(
-    maximumYields: Int = 10_000,
-    _ condition: () async -> Bool
-) async -> Bool {
-    for _ in 0 ..< maximumYields {
-        if await condition() {
-            return true
-        }
-        await Task.yield()
-    }
-    return false
-}
-
-@MainActor
-private func waitUntilOnMainActor(
-    maximumYields: Int = 10_000,
-    _ condition: () async -> Bool
-) async -> Bool {
-    for _ in 0 ..< maximumYields {
-        if await condition() {
-            return true
-        }
-        await Task.yield()
-    }
-    return false
 }

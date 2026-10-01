@@ -1,5 +1,6 @@
 import AppKit
 import CoreText
+import SakuraCordModels
 
 nonisolated func coreTextLine(_ value: Any) -> CTLine {
     let object = value as AnyObject
@@ -67,6 +68,39 @@ enum NativeTimelineUnreadSeparatorMetrics {
     static let rowHeight: CGFloat = 29
     static let capsuleHeight: CGFloat = 19
     static let verticalPadding: CGFloat = 5
+}
+
+/// Text rules for the timeline thread card, matching Discord's client.
+nonisolated enum NativeTimelineThreadCard {
+    static let height: CGFloat = 54
+    /// Discord capped message counts at 50 for threads created before July 2022.
+    private static let cappedCountCutoff = Date(timeIntervalSince1970: 1_656_712_657)
+
+    static func countText(_ thread: MessageThreadSummary) -> String {
+        let count = thread.messageCount
+        guard count > 0 else { return "See Thread ›" }
+        guard count > 1 else { return "1 Message ›" }
+        let shown = if count >= 100_000 {
+            "100k+"
+        } else if count >= 50, thread.id.createdAt <= cappedCountCutoff {
+            "50+"
+        } else {
+            "\(count)"
+        }
+        return "\(shown) Messages ›"
+    }
+
+    static func activityText(_ date: Date, now: Date = .now) -> String {
+        let seconds = max(0, now.timeIntervalSince(date))
+        let day: TimeInterval = 86_400
+        return switch seconds {
+        case ..<3_600: "\(max(1, Int(seconds / 60)))m ago"
+        case ..<day: "\(Int(seconds / 3_600))h ago"
+        case ..<(30 * day): "\(Int(seconds / day))d ago"
+        case ..<(360 * day): ">30d ago"
+        default: date.formatted(date: .long, time: .omitted)
+        }
+    }
 }
 
 enum NativeTimelineReplyMetrics {

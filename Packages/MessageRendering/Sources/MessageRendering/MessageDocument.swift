@@ -41,16 +41,29 @@ public struct RenderedEmoji: Codable, Hashable, Sendable {
     }
 }
 
+public enum GuildNavigationMention: String, Codable, Hashable, Sendable {
+    case guide, browse, customize
+
+    public var title: String {
+        switch self {
+        case .guide: "Server Guide"
+        case .browse: "Browse Channels"
+        case .customize: "Channels & Roles"
+        }
+    }
+}
+
 public struct RenderedMention: Codable, Hashable, Sendable {
     private static let tokenExpression = MessageRegularExpression.make(
         #"^<(@!?|@&|#)([0-9]+)>$"#
     )
 
     public enum Kind: String, Codable, Hashable, Sendable {
-        case user, role, channel, channelLink, message
+        case user, role, channel, channelLink, message, guildNavigation
     }
 
-    public static let tokenPattern = #"<@!?[0-9]+>|<@&[0-9]+>|<#[0-9]+>|https?://(?:(?:canary|ptb|www)\.)?discord(?:app)?\.com/channels/(?:@me|[0-9]+)/[0-9]+(?:/[0-9]+)?"#
+    public static let tokenPattern = #"<id:(?:guide|browse|customize)>|"#
+        + #"<@!?[0-9]+>|<@&[0-9]+>|<#[0-9]+>|https?://(?:(?:canary|ptb|www)\.)?discord(?:app)?\.com/channels/(?:@me|[0-9]+)/[0-9]+(?:/[0-9]+)?"#
 
     public var id: String
     public var kind: Kind
@@ -59,6 +72,16 @@ public struct RenderedMention: Codable, Hashable, Sendable {
     public var messageChannelID: String?
 
     public init?(rawToken: String) {
+        if rawToken.hasPrefix("<id:"), rawToken.hasSuffix(">"),
+           let destination = GuildNavigationMention(rawValue: String(rawToken.dropFirst(4).dropLast())) {
+            id = destination.rawValue
+            kind = .guildNavigation
+            self.rawToken = rawToken
+            messageGuildID = nil
+            messageChannelID = nil
+            return
+        }
+
         let range = NSRange(rawToken.startIndex ..< rawToken.endIndex, in: rawToken)
         if let match = Self.tokenExpression.firstMatch(in: rawToken, range: range),
            let prefixRange = Range(match.range(at: 1), in: rawToken),

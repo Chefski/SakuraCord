@@ -126,6 +126,7 @@ public protocol ChatProvider: Sendable {
         _ draft: CreateForumPostDraft,
         progress: @escaping @Sendable (MessageSendProgress) -> Void
     ) async throws -> ForumPost
+    func createThread(_ draft: CreateThreadDraft) async throws -> MessageThreadSummary
     func updateForumPost(_ post: ForumPost, mutation: ForumPostMutation) async throws -> ForumPost
     func deleteForumPost(_ post: ForumPost) async throws
     func updateForumPostNotificationLevel(
@@ -215,6 +216,7 @@ public protocol ChatProvider: Sendable {
         isMuted: Bool,
         until: Date?
     ) async throws
+    func updateDirectMessagePin(channelID: ChannelID, flags: UInt64) async throws
     func updateCategoryNotificationLevel(
         guildID: GuildID,
         categoryID: ChannelID,
@@ -812,6 +814,8 @@ public extension ChatProvider {
         until: Date?
     ) async throws {}
 
+    func updateDirectMessagePin(channelID: ChannelID, flags: UInt64) async throws {}
+
     func updateCategoryNotificationLevel(
         guildID: GuildID,
         categoryID: ChannelID,
@@ -844,6 +848,10 @@ public extension ChatProvider {
         progress: @escaping @Sendable (MessageSendProgress) -> Void
     ) async throws -> ForumPost {
         throw ChatProviderError.capabilityDisabled(.forums)
+    }
+
+    func createThread(_ draft: CreateThreadDraft) async throws -> MessageThreadSummary {
+        throw ChatProviderError.invalidRequest("This account cannot create threads.")
     }
 
     func updateForumPost(_ post: ForumPost, mutation: ForumPostMutation) async throws -> ForumPost {

@@ -52,7 +52,7 @@ struct MessageUpdateDTO: Decodable {
         value.embeds = embeds.map { $0.elements.enumerated().map { $0.element.domain(index: $0.offset) } }
         value.components = components.map { $0.elements.enumerated().map { $0.element.domain(path: "\($0.offset)") } }
         value.stickers = (stickerItems ?? stickers).map { $0.elements.map(\.domain) }
-        value.thread = thread?.domain
+        if let thread = thread?.domain { value.thread = thread }
         value.flags = flags.map(MessageFlags.init(rawValue:))
         value.isPinned = pinned
         value.type = type.map(DiscordMessageType.init(rawValue:))
