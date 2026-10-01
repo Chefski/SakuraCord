@@ -98,6 +98,12 @@ private struct ThreadCreationView: View {
     @FocusState private var isNameFocused: Bool
 
     var body: some View {
+        let usesDefaultStyle = model.appearanceSettings.composerBarAppearance == .defaultStyle
+        let fieldShape = RoundedRectangle(
+            cornerRadius: usesDefaultStyle
+                ? ChatChromeMetrics.composerCornerRadius : ChatChromeMetrics.composerMinimumCornerRadius,
+            style: .continuous
+        )
         VStack(alignment: .leading, spacing: 18) {
             SakuraCordSystemSymbol.swiftUIImage(named: SakuraCordSystemSymbol.thread)
                 .font(.system(size: 26, weight: .medium))
@@ -109,20 +115,34 @@ private struct ThreadCreationView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Thread Name")
                     .font(.headline)
-                TextField("New Thread", text: $creation.name)
-                    .tint(SakuraCordAccentColor.color)
-                    .textFieldStyle(.plain)
-                    .focused($isNameFocused)
-                    .accessibilityLabel("Thread Name")
-                    .padding(.horizontal, 12)
-                    .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
-                    .contentShape(ConcentricRectangle(cornerRadius: 10, style: .continuous))
-                    .simultaneousGesture(TapGesture().onEnded { isNameFocused = true })
-                    .glassEffect(
-                        .regular.interactive(),
-                        in: ConcentricRectangle(cornerRadius: 10, style: .continuous)
-                    )
-                    .onSubmit { model.validateThreadCreation() }
+                ZStack(alignment: .leading) {
+                    TextField("", text: $creation.name)
+                        .tint(SakuraCordAccentColor.color)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 15))
+                        .focused($isNameFocused)
+                        .accessibilityLabel("Thread Name")
+                        .onSubmit { model.validateThreadCreation() }
+                    if creation.name.isEmpty {
+                        Text("New Thread")
+                            .font(.system(size: 15))
+                            .foregroundStyle(.tertiary)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .padding(.horizontal, 11)
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: usesDefaultStyle
+                        ? ChatChromeMetrics.composerControlHeight : ChatChromeMetrics.controlHeight,
+                    alignment: .leading
+                )
+                .background {
+                    Color.clear.glassEffect(.regular.interactive(), in: fieldShape)
+                }
+                .contentShape(fieldShape)
+                .simultaneousGesture(TapGesture().onEnded { isNameFocused = true })
                 if creation.hasAttemptedSubmit, creation.trimmedName.isEmpty {
                     ThreadCreationError(message: "Thread Name is required")
                 }
@@ -143,7 +163,7 @@ private struct ThreadCreationView: View {
                 ThreadCreationError(message: "Starter Message is required")
             }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, ChatChromeMetrics.composerWindowInset)
         .padding(.bottom, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
         .safeAreaInset(edge: .bottom, spacing: 0) {
