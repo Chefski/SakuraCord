@@ -1902,6 +1902,18 @@ string-ID desktop capture. No new networking dependency was added.
   Pinned Paicord and Swiftcord v1 only read guild folders; DiscordKit
   corroborates the route and `settings` body. Public documentation does not
   cover this route.
+- Live capture on 1 October 2026 with Discord Official Fresh host `0.0.411`,
+  stable web build `626571`, confirmed the `/api/v9` route and field-14-only
+  request for menu reordering, two-server folder creation, and folder name
+  and preset-color edits. Cancelling the settings form sent no settings
+  request. The server returned HTTP 200 with the full settings protobuf;
+  `USER_SETTINGS_PROTO_UPDATE` could arrive before the HTTP response.
+  Removing the last member through **Move to → Folder → No Folder** sent an
+  empty folder entry, which the server omitted from its response and Gateway
+  update. Thus this menu path relies on server normalization, unlike the
+  drag path's client-side empty-folder removal. Live synchronization with a
+  SakuraCord session also confirmed name edits and default-color omission
+  in both directions.
 - Deliberate differences: SakuraCord keeps a stored folder's bytes, including
   unknown fields, and rewrites only a changed name or color. It also keeps
   stored server IDs that the rail is not showing, appended to their folder or

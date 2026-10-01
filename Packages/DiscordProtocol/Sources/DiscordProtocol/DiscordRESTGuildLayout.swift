@@ -61,16 +61,28 @@ extension DiscordRESTProvider {
     }
 
     /// Saves the newest pending rearrangement. Overlapping saves are never
-    /// sent; a change made during a request is saved by the next flush.
+    /// sent; callers join the active save before checking for newer edits.
     func flushGuildFoldersIfNeeded() async {
-        // The scheduled task calls this itself, so it must not be cancelled
-        // here; that would cancel the save request it is about to send.
+        // The request has its own task, so cancelling the timer cannot cancel
+        // a save that disconnect must join before clearing the account state.
+        guildFoldersFlushTask?.cancel()
         guildFoldersFlushTask = nil
-        guard !isSavingGuildFolders, let settings = pendingGuildFoldersSettings else { return }
+        let generation = guildFoldersGeneration
+        while let save = guildFoldersSaveTask {
+            await save.value
+            guard generation == guildFoldersGeneration else { return }
+        }
+        guard let settings = pendingGuildFoldersSettings else { return }
         let revision = guildFoldersRevision
-        let generation = profileEditingGeneration
-        isSavingGuildFolders = true
-        defer { isSavingGuildFolders = false }
+        let save = Task {
+            await saveGuildFolders(settings, revision: revision, generation: generation)
+        }
+        guildFoldersSaveTask = save
+        await save.value
+    }
+
+    private func saveGuildFolders(_ settings: Data, revision: UInt64, generation: UInt64) async {
+        defer { guildFoldersSaveTask = nil }
         do {
             let response: UserSettingsProtoDTO = try await request(
                 "/users/@me/settings-proto/1",
@@ -79,16 +91,20 @@ extension DiscordRESTProvider {
                     DiscordSettingsProto.protoLengthDelimitedField(14, settings).base64EncodedString()
                 )]
             )
-            guard generation == profileEditingGeneration else { return }
-            guildFoldersSettings = settings
+            guard generation == guildFoldersGeneration else { return }
+            // Both transports update the same versioned authoritative cache.
+            // Keep presentation deferred until the latest local edit is saved.
+            applyGuildSettingsProto(response.settings)
             guard guildFoldersRevision == revision else {
                 scheduleGuildFoldersFlush()
                 return
             }
             pendingGuildFoldersSettings = nil
-            applyGuildSettingsProto(response.settings)
+            applyGuildLayout(
+                DiscordSettingsProto.layout(fromGuildFolders: guildFoldersSettings ?? Data())
+            )
         } catch {
-            guard generation == profileEditingGeneration else { return }
+            guard generation == guildFoldersGeneration else { return }
             guard guildFoldersRevision == revision else {
                 scheduleGuildFoldersFlush()
                 return
@@ -104,7 +120,19 @@ extension DiscordRESTProvider {
         }
     }
 
+    func finishGuildFoldersEdits() async {
+        // A newer edit can be queued while a request is suspended. Drain it
+        // before disconnect invalidates the generation or cancels REST tasks.
+        repeat {
+            await flushGuildFoldersIfNeeded()
+        } while pendingGuildFoldersSettings != nil || guildFoldersSaveTask != nil
+        resetGuildFoldersState()
+    }
+
     func resetGuildFoldersState() {
+        // A same-account READY resets profile editing, but active rail saves
+        // still belong to this account. Invalidate them only at teardown.
+        guildFoldersGeneration &+= 1
         guildFoldersFlushTask?.cancel()
         guildFoldersFlushTask = nil
         pendingGuildFoldersSettings = nil

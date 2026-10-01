@@ -55,7 +55,7 @@ struct ServerRailContainer: View {
                 openFolderSettings: { folderSettings = $0 }
             )
         )
-        .windowModal(item: $folderSettings, title: "Folder Settings") { folder in
+        .windowModal(item: $folderSettings, title: "Folder Settings", cornerRadius: 32, cornerStyle: .circular) { folder in
             ServerFolderSettingsView(folder: folder) { name, colorHex in
                 model.updateServerFolder(folder.id, name: name, colorHex: colorHex)
             }

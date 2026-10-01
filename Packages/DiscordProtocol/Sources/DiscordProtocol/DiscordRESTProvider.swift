@@ -227,7 +227,8 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     var pendingGuildFoldersSettings: Data?
     var guildFoldersFlushTask: Task<Void, Never>?
     var guildFoldersRevision: UInt64 = 0
-    var isSavingGuildFolders = false
+    var guildFoldersGeneration: UInt64 = 0
+    var guildFoldersSaveTask: Task<Void, Never>?
     var cachedProfiles: [ProfileCacheKey: UserProfile] = [:]
     var profileTasks: [ProfileCacheKey: Task<UserProfile, Error>] = [:]
     var collectibleProductTasks: [String: Task<ProfileCollectibleProductDTO, Error>] = [:]

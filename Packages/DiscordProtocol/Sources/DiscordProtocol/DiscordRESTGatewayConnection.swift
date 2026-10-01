@@ -189,6 +189,7 @@ extension DiscordRESTProvider {
     }
 
     public func disconnect() async {
+        await finishGuildFoldersEdits()
         currentAccountDetails = nil
         currentAuthSessionIDHash = nil
         accountInformationRevision = UUID()
@@ -200,9 +201,6 @@ extension DiscordRESTProvider {
         stickerFrecencyFlushTask?.cancel()
         stickerFrecencyFlushTask = nil
         await flushStickerFrecencyIfNeeded()
-        guildFoldersFlushTask?.cancel()
-        await flushGuildFoldersIfNeeded()
-        resetGuildFoldersState()
         requestSafetyCircuitIsOpen = true
         cancelStartupSearchCacheLoad()
         await flushForwardSearchPeopleCachePersistence()
