@@ -13,6 +13,7 @@ trap cleanup EXIT
 
 expect_hook_failure() {
   local input="$1"
+  local expected="${2:-Fixture.swift}"
   local output
   local status
 
@@ -29,8 +30,8 @@ expect_hook_failure() {
     echo "$output" >&2
     return 1
   fi
-  if [[ "$output" != *"Fixture.swift"* ]]; then
-    echo "Expected a file-level Fixture.swift diagnostic." >&2
+  if [[ "$output" != *"$expected"* ]]; then
+    echo "Expected diagnostic: $expected" >&2
     echo "$output" >&2
     return 1
   fi
@@ -221,5 +222,90 @@ if [[ "$SUPPRESSION_OUTPUT" != *"File-length suppressions and blanket disables a
   echo "$SUPPRESSION_OUTPUT" >&2
   exit 1
 fi
+
+# Both tips pass, but their clean merge exceeds the same file-length limit
+# that caught PR #46 in CI. Keep the remote local so this fixture is hermetic.
+git -C "$FIXTURE_ROOT" reset --hard "$GOOD_SHA" >/dev/null
+python3 - "$FIXTURE_ROOT" <<'PYFIXTURE'
+from pathlib import Path
+import sys
+root = Path(sys.argv[1])
+policy = root / '.swiftlint.yml'
+policy.write_text(policy.read_text().replace('warning: 2000', 'warning: 20'))
+(root / 'App/Sources/Fixture.swift').write_text(
+    'enum Fixture {\n' + ''.join(f'    static let value{index} = {index}\n' for index in range(14)) + '}\n')
+PYFIXTURE
+git -C "$FIXTURE_ROOT" add .swiftlint.yml App/Sources/Fixture.swift
+git -C "$FIXTURE_ROOT" commit -qm "Shared merge fixture"
+git -C "$FIXTURE_ROOT" branch nightly
+BASE_REMOTE="$FIXTURE_ROOT/.build/base.git"
+git clone --bare --quiet "$FIXTURE_ROOT" "$BASE_REMOTE"
+git -C "$FIXTURE_ROOT" config "url.$BASE_REMOTE.insteadOf" https://github.com/SakuraCordApp/SakuraCord.git
+git -C "$FIXTURE_ROOT" switch --quiet -c feature-merge
+python3 - "$FIXTURE_ROOT/App/Sources/Fixture.swift" <<'PYFIXTURE'
+from pathlib import Path
+import sys
+p = Path(sys.argv[1])
+p.write_text(p.read_text().replace('}\n', '    static let feature0 = 0\n    static let feature1 = 1\n    static let feature2 = 2\n}\n'))
+PYFIXTURE
+git -C "$FIXTURE_ROOT" add App/Sources/Fixture.swift
+git -C "$FIXTURE_ROOT" commit -qm "Feature under limit"
+FEATURE_SHA="$(git -C "$FIXTURE_ROOT" rev-parse HEAD)"
+(
+  cd "$FIXTURE_ROOT"
+  printf 'refs/heads/feature-merge %s refs/heads/feature-merge %s\n' "$FEATURE_SHA" "$ZERO_SHA" | ./.githooks/pre-push
+)
+
+# Advance the remote after the first check; the next push must fetch it again.
+git -C "$FIXTURE_ROOT" switch --quiet nightly
+python3 - "$FIXTURE_ROOT/App/Sources/Fixture.swift" <<'PYFIXTURE'
+from pathlib import Path
+import sys
+p = Path(sys.argv[1])
+p.write_text(p.read_text().replace('enum Fixture {\n', 'enum Fixture {\n    static let base0 = 0\n    static let base1 = 1\n    static let base2 = 2\n'))
+PYFIXTURE
+git -C "$FIXTURE_ROOT" add App/Sources/Fixture.swift
+git -C "$FIXTURE_ROOT" commit -qm "Base under limit"
+git -C "$FIXTURE_ROOT" push --quiet "$BASE_REMOTE" nightly
+git -C "$FIXTURE_ROOT" switch --quiet feature-merge
+printf 'staged fixture\n' > "$FIXTURE_ROOT/Unrelated.txt"
+git -C "$FIXTURE_ROOT" add Unrelated.txt
+printf 'unstaged fixture\n' >> "$FIXTURE_ROOT/Unrelated.txt"
+INDEX_BEFORE="$(git -C "$FIXTURE_ROOT" write-tree)"
+DIRTY_BEFORE="$(shasum -a 256 "$FIXTURE_ROOT/Unrelated.txt")"
+printf 'preserve fetch head\n' > "$FIXTURE_ROOT/.git/FETCH_HEAD"
+expect_hook_failure \
+  "refs/heads/feature-merge $FEATURE_SHA refs/heads/feature-merge $ZERO_SHA
+" "currently contains 22"
+[[ "$INDEX_BEFORE" == "$(git -C "$FIXTURE_ROOT" write-tree)" ]]
+[[ "$DIRTY_BEFORE" == "$(shasum -a 256 "$FIXTURE_ROOT/Unrelated.txt")" ]]
+[[ "$(cat "$FIXTURE_ROOT/.git/FETCH_HEAD")" == "preserve fetch head" ]]
+[[ -z "$(git -C "$FIXTURE_ROOT" for-each-ref refs/sakuracord/code-quality/)" ]]
+
+# Splitting out the added declarations makes the combined tree pass.
+git -C "$FIXTURE_ROOT" reset --hard "$FEATURE_SHA" >/dev/null
+python3 - "$FIXTURE_ROOT/App/Sources" <<'PYFIXTURE'
+from pathlib import Path
+import sys
+root = Path(sys.argv[1])
+p = root / 'Fixture.swift'
+lines = p.read_text().splitlines(keepends=True)
+added = [line for line in lines if 'static let feature' in line]
+p.write_text(''.join(line for line in lines if line not in added))
+(root / 'AddedFixture.swift').write_text('enum AddedFixture {\n' + ''.join(added) + '}\n')
+PYFIXTURE
+git -C "$FIXTURE_ROOT" add App/Sources
+git -C "$FIXTURE_ROOT" commit -qm "Split feature declarations"
+(
+  cd "$FIXTURE_ROOT"
+  printf 'refs/heads/feature-merge %s refs/heads/feature-merge %s\n' "$(git rev-parse HEAD)" "$FEATURE_SHA" | ./.githooks/pre-push
+)
+
+# An unavailable base must not silently degrade to checking only the head.
+git -C "$FIXTURE_ROOT" config --unset "url.$BASE_REMOTE.insteadOf"
+git -C "$FIXTURE_ROOT" config "url.$FIXTURE_ROOT/missing.git.insteadOf" https://github.com/SakuraCordApp/SakuraCord.git
+expect_hook_failure \
+  "refs/heads/feature-merge $(git -C "$FIXTURE_ROOT" rev-parse HEAD) refs/heads/feature-merge $FEATURE_SHA
+" "Could not fetch nightly"
 
 echo "Code-quality regression fixture passed."

@@ -23,6 +23,8 @@ struct ServerRailContainer: View {
             combineGuilds: model.combineServerRailGuild,
             contextMenuActions: ServerRailContextMenuActions(
                 markRead: model.markGuildRead,
+                canInvite: { model.serverInviteChannel(for: $0.id) != nil },
+                invite: model.presentServerInviteCreation,
                 mute: { guild, duration in
                     model.setGuildMute(
                         true,
@@ -62,6 +64,9 @@ struct ServerRailContainer: View {
         }
         .windowModal(isPresented: $invites.showsJoinDialog, cornerRadius: 32, cornerStyle: .circular,
                      isConcealed: { model.serverInvites.captcha.challenge != nil }, content: { JoinServerView(model: model) })
+        .windowModal(item: Bindable(invites.creation).presentation, cornerRadius: 32, cornerStyle: .circular) {
+            ServerInviteCreationView(model: model, presentation: $0)
+        }
         .modifier(ServerInviteCaptchaPresentation(store: invites.captcha))
         .alert("Leave \(invites.leaveConfirmation?.name ?? "Server")?",
                isPresented: Binding(get: { invites.leaveConfirmation != nil },
@@ -327,6 +332,8 @@ struct ServerRailBadgedIcon<Icon: View>: View {
 
 struct ServerRailContextMenuActions {
     let markRead: (GuildID) -> Void
+    var canInvite: (Guild) -> Bool = { _ in false }
+    var invite: (Guild) -> Void = { _ in }
     let mute: (Guild, ChannelMuteDuration) -> Void
     let unmute: (Guild) -> Void
     let setNotificationLevel: (Guild, MessageNotificationLevel) -> Void
@@ -426,6 +433,8 @@ struct GuildRailButton: View {
                         presentation.isNotificationMutationPending,
                     notificationSettings: presentation.notificationSettings,
                     markRead: { contextMenuActions.markRead(guild.id) },
+                    canInvite: { contextMenuActions.canInvite(guild) },
+                    invite: { contextMenuActions.invite(guild) },
                     mute: { contextMenuActions.mute(guild, $0) },
                     unmute: { contextMenuActions.unmute(guild) },
                     setNotificationLevel: {

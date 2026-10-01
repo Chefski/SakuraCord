@@ -533,6 +533,15 @@ reference for completed joining.
   resolve an otherwise valid preview. Invalid invites returned code `10006`;
   expired and revoked invites both returned `50270`. These expected failures
   must not trip the account-wide networking circuit.
+- Creation uses one `POST /channels/{channel}/invites` with `max_age`,
+  `max_uses`, `target_type:null`, `temporary:false`, `flags:0`, and context
+  location `Guild Context Menu`. Non-expiring links (`max_age:0`) require the
+  guild's `COMMUNITY` feature in both the picker and provider. This eligibility
+  follows Discord's [Invites 101](https://support.discord.com/hc/en-us/articles/208866998-Invites-101)
+  guidance, checked 1 October 2026; it is not a newly observed server rejection.
+  Saved links receive one validation pass per server per account session.
+  Copying writes the link to the clipboard immediately, then validates that
+  link and reports a failure. Reopening does not start another full pass.
 - Accept: one `POST /invites/{code}` with the current Gateway `session_id`;
   message-card actions additionally supply `invite_instance_id` as
   `{messageID}:{code}`. Context location is `Join Guild` or

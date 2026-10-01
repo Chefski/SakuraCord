@@ -908,14 +908,15 @@ extension NativeTimelineRowPainter {
             message: message,
             model: model
         )
-        let summary = if let model {
-            MessageReplySummary.text(
+        let replySummary = if let model {
+            MessageReplySummary.summary(
                 content: preview.content,
                 mentionLabel: MessageMentionResolver(model: model, message: message).label
             )
         } else {
-            MessageReplySummary.text(content: preview.content)
+            MessageReplySummary.summary(content: preview.content)
         }
+        let summary = replySummary.text
         let mediaSymbol: String? = switch preview.mediaKind {
         case .image, .animatedImage: "photo.fill"
         case .video: "film.fill"
@@ -941,7 +942,8 @@ extension NativeTimelineRowPainter {
                 height: 20
             ),
             font: NativeTimelineReplyMetrics.summaryFont,
-            color: .secondaryLabelColor
+            color: .secondaryLabelColor,
+            concealedSpoilerRanges: replySummary.spoilerRanges
         )
         if let mediaSymbol {
             systemSymbol(

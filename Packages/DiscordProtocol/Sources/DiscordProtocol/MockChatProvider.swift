@@ -1909,3 +1909,16 @@ public extension MockChatProvider {
         continuation?.yield(.inboxSettingsChanged(inboxSettingsValue))
     }
 }
+
+public extension MockChatProvider {
+    func createServerInvite(in channelID: ChannelID, guildID: GuildID, settings: ServerInviteSettings) async throws -> CreatedServerInvite {
+        let alphabet = Array("abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789")
+        let code = String((0 ..< 8).map { _ in alphabet.randomElement()! })
+        let now = Date.now
+        return CreatedServerInvite(
+            reference: ServerInviteReference(code)!, guildID: guildID, channelID: channelID, createdAt: now,
+            expiresAt: settings.maxAge == .never ? nil : now.addingTimeInterval(TimeInterval(settings.maxAge.rawValue)),
+            maxAge: settings.maxAge.rawValue, maxUses: settings.maxUses.rawValue
+        )
+    }
+}
