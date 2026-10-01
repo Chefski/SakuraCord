@@ -391,7 +391,7 @@ extension DiscordRESTProvider {
             gatewayLogger.info(
                 "Ready voice-state snapshot received; count=\(voiceStateCount)")
         }
-        applyGuildSettingsProto(ready.userSettingsProto)
+        applyGuildSettingsProto(ready.userSettingsProto, replacesAllSettings: true)
         publishProfileCustomStatus()
         applyInboxSettingsProto(ready.userSettingsProto, isPartial: false)
         finishInitialGatewaySnapshot(
