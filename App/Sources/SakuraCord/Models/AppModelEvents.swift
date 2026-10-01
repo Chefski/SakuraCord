@@ -294,6 +294,7 @@ extension AppModel {
         _ event: ClientEvent,
         preparedMemberListPresentation: PreparedMemberListPresentation? = nil
     ) {
+        if consumeThreadEvent(event) { return }
         switch event {
         case .notificationModeChanged(let usesNewNotifications):
             readState.updateNotificationMode(
@@ -330,19 +331,6 @@ extension AppModel {
         case .channelsChanged(let guildID, let channels):
             consumeChannelsChanged(guildID: guildID, channels: channels)
             reconcileInboxEligibility()
-        case .forumPostsChanged(let channelID, let posts):
-            consumeForumPostsChanged(channelID: channelID, posts: posts)
-        case .forumPostPreviewsChanged(let channelID, let posts):
-            consumeForumPostPreviewsChanged(channelID: channelID, posts: posts)
-        case .activeJoinedThreadsChanged(let threads):
-            if var value = snapshot {
-                value.activeJoinedThreads = threads
-                snapshot = value
-                forwardSearchSourceRevision &+= 1
-            }
-            reconcileInboxEligibility()
-        case .forumPageLoaded(let channelID, let query, let page):
-            consumeForumPageLoaded(channelID: channelID, query: query, page: page)
         case .membersChanged(let guildID, let value, let groups):
             consumeMembersChanged(
                 guildID: guildID,

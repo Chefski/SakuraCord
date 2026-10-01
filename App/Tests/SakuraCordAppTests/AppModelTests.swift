@@ -1572,6 +1572,40 @@ import UserNotifications
 }
 
 @MainActor
+@Test(arguments: [false, true])
+func `authoritative thread deletion removes open and cached conversations`(isOpen: Bool) {
+    let model = AppModel(launchMode: .offlineTesting)
+    let parent = ChannelID(rawValue: 200)
+    let thread = MessageThreadSummary(id: ChannelID(rawValue: 201), parentID: parent, name: "Deleted thread")
+    let author = User(id: UserID(rawValue: 1), username: "author", displayName: "Author")
+    var starter = Message(id: MessageID(rawValue: 201), channelID: parent, author: author, content: "Keep starter")
+    starter.thread = thread
+    let reply = Message(id: MessageID(rawValue: 202), channelID: thread.id, author: author, content: "Reply")
+    let other = Message(id: MessageID(rawValue: 302), channelID: ChannelID(rawValue: 301), author: author, content: "Keep other")
+    model.storeCachedMessages([starter], for: parent)
+    model.storeCachedMessages([reply], for: thread.id)
+    model.storeCachedMessages([other], for: other.channelID)
+    model.hasMoreCache[thread.id] = false
+    model.refreshTimelineThreadCards(parentID: parent, posts: [ForumPost(thread: thread, mostRecentMessage: reply)])
+    if isOpen {
+        model.openThread = thread
+        model.threadMessages = [reply]
+    }
+
+    model.consumeImmediately(.threadDeleted(channelID: thread.id))
+
+    #expect(model.openThread == nil)
+    #expect(model.threadMessages.isEmpty)
+    #expect(model.messageCache[thread.id] == nil)
+    #expect(model.hasMoreCache[thread.id] == nil)
+    #expect(model.threadPreviewMessages[thread.id] == nil)
+    let retained = model.messageCache[parent]?.first
+    #expect(retained?.thread == nil)
+    #expect(retained?.content == starter.content)
+    #expect(model.messageCache[other.channelID] == [other])
+}
+
+@MainActor
 @Test func `thread send preserves history and confirmation revisions across navigation`() async throws {
     let provider = MockChatProvider()
     let model = AppModel(launchMode: .offlineTesting, provider: provider)

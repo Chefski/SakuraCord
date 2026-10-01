@@ -22,6 +22,7 @@ public enum ClientEvent: Equatable, Sendable {
     case soundboardUserSettingsChanged(SoundboardUserSettings)
     case typing(channelID: ChannelID, user: User)
     case channelsChanged(guildID: GuildID?, channels: [Channel])
+    case threadDeleted(channelID: ChannelID)
     case forumPostsChanged(channelID: ChannelID, posts: [ForumPost])
     case forumPostPreviewsChanged(channelID: ChannelID, posts: [ForumPost])
     case activeJoinedThreadsChanged([MessageThreadSummary])

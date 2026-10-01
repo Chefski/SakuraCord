@@ -1220,6 +1220,21 @@ private final class ForumPostCreationURLProtocol: URLProtocol, @unchecked Sendab
     await provider.attachKnownThread(to: &created)
 
     #expect(created.thread == post.thread)
+
+    await provider.seedMessageForTesting(created)
+    let reply = try #require(post.mostRecentMessage)
+    await provider.seedMessageForTesting(reply)
+    let stream = await provider.eventStream()
+    await provider.receiveGatewayDispatchForTesting(name: "THREAD_DELETE", data: .object([
+        "id": .string("42"), "parent_id": .string("7"), "guild_id": .string("1"), "type": .number(11),
+    ]))
+    var events = stream.makeAsyncIterator()
+    #expect(await events.next() == .threadDeleted(channelID: post.id))
+    #expect(await provider.cachedForumPostForTesting(threadID: post.id) == nil)
+    #expect(await provider.cachedMessageForTesting(messageID: reply.id) == nil)
+    let retained = await provider.cachedMessageForTesting(messageID: created.id)
+    #expect(retained?.thread == nil)
+    #expect(retained?.content == created.content)
 }
 
 @Test(arguments: [false, true])

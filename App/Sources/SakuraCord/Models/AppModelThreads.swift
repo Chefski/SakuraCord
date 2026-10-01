@@ -188,6 +188,56 @@ extension AppModel {
         hasMoreCache[threadID] = page.hasMoreBefore
     }
 
+    func consumeThreadEvent(_ event: ClientEvent) -> Bool {
+        switch event {
+        case .threadDeleted(let channelID):
+            consumeThreadDeleted(channelID: channelID)
+        case .forumPostsChanged(let channelID, let posts):
+            consumeForumPostsChanged(channelID: channelID, posts: posts)
+        case .forumPostPreviewsChanged(let channelID, let posts):
+            consumeForumPostPreviewsChanged(channelID: channelID, posts: posts)
+        case .activeJoinedThreadsChanged(let threads):
+            if var value = snapshot {
+                value.activeJoinedThreads = threads
+                snapshot = value
+                forwardSearchSourceRevision &+= 1
+            }
+            reconcileInboxEligibility()
+        case .forumPageLoaded(let channelID, let query, let page):
+            consumeForumPageLoaded(channelID: channelID, query: query, page: page)
+        default:
+            return false
+        }
+        return true
+    }
+
+    func consumeThreadDeleted(channelID: ChannelID) {
+        // Closing saves the current conversation, so evict only after it closes.
+        if openThread?.id == channelID { closeThread() }
+        cancelConversationRefresh(in: channelID)
+        messageCache[channelID] = nil
+        messageCacheOrder.removeAll { $0 == channelID }
+        messageRowCache[channelID] = nil
+        messageRowCacheOrder.removeAll { $0 == channelID }
+        hasMoreCache[channelID] = nil
+        threadPreviewMessages[channelID] = nil
+        threadPreviewParentIDs[channelID] = nil
+        inbox.metadataTasks.removeValue(forKey: channelID)?.cancel()
+        inbox.threads[channelID] = nil
+
+        let retained = messages + threadMessages + messageCache.values.flatMap { $0 }
+            + pinnedMessages.items.map(\.message)
+            + inbox.mentions + inbox.groups.flatMap(\.messages)
+            + (messageSearch.page?.results.flatMap(\.messages) ?? [])
+            + forumCataloguePosts.flatMap { [$0.firstMessage, $0.mostRecentMessage].compactMap { $0 } }
+        var seen = Set<MessageID>()
+        for message in retained where message.thread?.id == channelID && seen.insert(message.id).inserted {
+            var update = MessageUpdate(messageID: message.id, channelID: message.channelID)
+            update.thread = .some(nil)
+            consumeImmediately(.messagePatched(update))
+        }
+    }
+
     func closeThread() {
         if let threadID = openThread?.id {
             cancelConversationRefresh(in: threadID)

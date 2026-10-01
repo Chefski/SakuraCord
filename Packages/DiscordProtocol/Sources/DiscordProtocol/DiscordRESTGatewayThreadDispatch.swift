@@ -57,6 +57,12 @@ extension DiscordRESTProvider {
         cachedForumThreadOrder.removeAll { $0 == threadID }
         cachedJoinedThreads[threadID] = nil
         cachedJoinedThreadOrder.removeAll { $0 == threadID }
+        cachedMessages.removeAll { $0.channelID == threadID }
+        for var message in cachedMessages.values where message.thread?.id == threadID {
+            message.thread = nil
+            cachedMessages[message.id] = message
+        }
+        continuation?.yield(.threadDeleted(channelID: threadID))
         publishForumPosts(parentID: parentID)
         publishActiveJoinedThreads()
     }
