@@ -52,6 +52,9 @@ extension DiscordRESTProvider {
             : nil
         discordPerformanceSignposter.endInterval("GatewayReadyDecode", readyDecode)
         guard let ready else {
+            // Deliberately unlike the official client, a resumed session also
+            // saves a pending status edit instead of waiting for a new READY.
+            if name == "RESUMED" { schedulePendingStatusEditSave() }
             if name == "READY" {
                 failInitialGatewaySnapshot(
                     ChatProviderError.invalidRequest(
@@ -79,6 +82,13 @@ extension DiscordRESTProvider {
         accountInformationRevision = UUID()
         currentAccountDetails = account?.user?.domain()
         currentAuthSessionIDHash = account?.authSessionIDHash
+        // Self members built below, the bootstrap snapshot, and the
+        // post-READY opcode 3 all read the account-wide status, or a pending
+        // edit that READY must not replace first.
+        reconcilePendingStatusEdit(readySettings: ready.userSettingsProto)
+        // Its custom status is published once the member projection exists.
+        applyProfileSettingsProto(ready.userSettingsProto, isPartial: false)
+        schedulePendingStatusEditSave()
         let metadata = applyReadyUserAndReadState(ready)
         applyReadyPrivateChannels(ready)
         let guildProjection = applyReadyGuildProjection(ready)
@@ -382,7 +392,7 @@ extension DiscordRESTProvider {
                 "Ready voice-state snapshot received; count=\(voiceStateCount)")
         }
         applyGuildSettingsProto(ready.userSettingsProto)
-        applyProfileSettingsProto(ready.userSettingsProto, isPartial: false)
+        publishProfileCustomStatus()
         applyInboxSettingsProto(ready.userSettingsProto, isPartial: false)
         finishInitialGatewaySnapshot(
             InitialGatewaySnapshot(
@@ -403,12 +413,7 @@ extension DiscordRESTProvider {
         ) else { return }
         switch update.settings.type {
         case 1:
-            applyInboxSettingsProto(update.settings.proto, isPartial: update.partial == true)
-            applyProfileSettingsProto(update.settings.proto, isPartial: update.partial == true)
-            applyGuildSettingsProto(
-                update.settings.proto,
-                replacesAllSettings: update.partial != true
-            )
+            await applyUserSettingsProto(update.settings.proto, isPartial: update.partial == true)
         case 2:
             await applyFrecencySettingsProtoUpdate(
                 update.settings.proto,
@@ -417,6 +422,15 @@ extension DiscordRESTProvider {
         default:
             return
         }
+    }
+
+    /// Applies type-1 PreloadedUserSettings from a Gateway update or a
+    /// settings reload. A changed account status sends one opcode 3.
+    func applyUserSettingsProto(_ encoded: String?, isPartial: Bool) async {
+        applyInboxSettingsProto(encoded, isPartial: isPartial)
+        if applyProfileSettingsProto(encoded, isPartial: isPartial) { publishProfileCustomStatus() }
+        applyGuildSettingsProto(encoded, replacesAllSettings: !isPartial)
+        await sendPresenceIfChanged()
     }
 
     func handleGuildStickersUpdateDispatch(

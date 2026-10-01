@@ -444,6 +444,7 @@ extension AppModel {
             activeAccountID != accountID ? activeAccountID ?? savedAccounts.first?.accountID : savedAccounts.first?.accountID
         )
         if launchMode == .normal {
+            DiscordRESTProvider.removePendingStatusEdit(accountID: accountID)
             do {
                 try await clearCaches(accountID)
             } catch {

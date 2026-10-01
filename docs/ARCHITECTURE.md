@@ -381,7 +381,11 @@ Credentials never enter GRDB, fixtures, logs, or plugin APIs. Discord
 authoritative workspace, message, read, member, and Gateway state is
 session-memory only. A database migration drops the obsolete tables from earlier
 builds while preserving drafts. Normal and offline runs use separate storage
-behavior.
+behavior. The one exception to session-memory Discord state is an account
+status pick that is not yet saved to the account: the provider keeps it, with
+its settings data version, in user defaults per account until it is saved,
+superseded, or rejected by the server, and removing the account (including
+logout) deletes it. The protocol baseline describes this pending edit.
 
 The provider deliberately persists disposable derived metadata under
 `Caches/dev.sakuracord.SakuraCord`, scoped by account ID:

@@ -513,6 +513,7 @@ public actor MockChatProvider: ChatProvider {
         snapshot.members =
             membersByGuild[snapshot.guilds.first?.id ?? GuildID(rawValue: 0)] ?? snapshot.members
         continuation?.yield(.snapshotChanged(snapshot))
+        continuation?.yield(.currentUserStatusChanged(status))
     }
 
     public func messages(in channelID: ChannelID, before: MessageID?, limit: Int) async throws

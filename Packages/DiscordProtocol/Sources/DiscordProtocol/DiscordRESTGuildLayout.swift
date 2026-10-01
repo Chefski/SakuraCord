@@ -12,6 +12,9 @@ extension DiscordRESTProvider {
         else { return }
         let decodedLayout = DiscordSettingsProto.guildLayout(from: data)
         guard decodedLayout != nil || replacesAllSettings else { return }
+        let version = DiscordSettingsProto.dataVersion(in: data)
+        if let version, let current = guildLayoutDataVersion, version < current { return }
+        if let version { guildLayoutDataVersion = version }
         let layout = decodedLayout ?? DiscordGuildLayout(folders: [], guildPositions: [])
         cachedGuildLayout = layout
         // A current desktop READY can provide every guild ID and its channels

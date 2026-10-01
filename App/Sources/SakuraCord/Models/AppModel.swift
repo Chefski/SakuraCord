@@ -300,6 +300,7 @@ final class AppModel {
     var roleMemberResult: RoleMemberResult?
     var isLoadingRoleMembers = false
     var roleMemberErrorMessage: String?
+    @ObservationIgnored var currentStatusRevision: UInt64 = 0
     var currentStatus: PresenceStatus = .offline
     var connectionState: ConnectionState = .disconnected
     var isAuthenticated = false
