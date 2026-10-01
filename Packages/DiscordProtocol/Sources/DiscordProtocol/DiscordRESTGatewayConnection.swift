@@ -199,6 +199,9 @@ extension DiscordRESTProvider {
         stickerFrecencyFlushTask?.cancel()
         stickerFrecencyFlushTask = nil
         await flushStickerFrecencyIfNeeded()
+        guildFoldersFlushTask?.cancel()
+        await flushGuildFoldersIfNeeded()
+        resetGuildFoldersState()
         requestSafetyCircuitIsOpen = true
         cancelStartupSearchCacheLoad()
         await flushForwardSearchPeopleCachePersistence()

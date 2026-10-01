@@ -205,6 +205,11 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     var cachedGuilds: [GuildID: Guild] = [:]
     var cachedGuildRailItems: [GuildRailItem] = []
     var cachedGuildLayout: DiscordGuildLayout?
+    var guildFoldersSettings: Data?
+    var pendingGuildFoldersSettings: Data?
+    var guildFoldersFlushTask: Task<Void, Never>?
+    var guildFoldersRevision: UInt64 = 0
+    var isSavingGuildFolders = false
     var cachedProfiles: [ProfileCacheKey: UserProfile] = [:]
     var profileTasks: [ProfileCacheKey: Task<UserProfile, Error>] = [:]
     var collectibleProductTasks: [String: Task<ProfileCollectibleProductDTO, Error>] = [:]

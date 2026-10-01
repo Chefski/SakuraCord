@@ -373,7 +373,7 @@ extension AppModel {
             scheduleVoiceServerMigration(to: info)
         case .snapshotChanged(let value):
             consumeSnapshotChanged(value)
-        case .guildChanged, .guildLayoutChanged, .guildRolesChanged,
+        case .guildChanged, .guildLayoutChanged, .guildLayoutSaveFailed, .guildRolesChanged,
              .currentUserChanged:
             consumeGatewayWorkspaceStateEvent(event)
         case .applicationCommandIndexInvalidated(let target):
@@ -415,6 +415,8 @@ extension AppModel {
             consumeGuildChanged(guild)
         case .guildLayoutChanged(let guilds, let railItems):
             consumeGuildLayoutChanged(guilds: guilds, railItems: railItems)
+        case .guildLayoutSaveFailed(let reason):
+            errorMessage = "Discord did not save your server list changes. \(reason)"
         case .guildRolesChanged(let guildID, let roles):
             applyGuildRoles(roles, to: guildID)
         case .currentUserChanged(let user):

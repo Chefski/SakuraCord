@@ -1955,6 +1955,12 @@ public extension MockChatProvider {
         continuation?.yield(.inboxMentionDismissed(messageID))
     }
 
+    func updateGuildRailLayout(_ items: [GuildRailItem]) async throws {
+        let guildsByID = Dictionary(snapshot.guilds.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        snapshot.guildRailItems = items
+        snapshot.guilds = items.flattenedGuildIDs.compactMap { guildsByID[$0] }
+    }
+
     func inboxSettings() async -> InboxSettings { inboxSettingsValue }
 
     func updateInboxTab(_ tab: InboxTab) async throws {
