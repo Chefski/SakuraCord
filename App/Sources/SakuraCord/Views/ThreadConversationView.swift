@@ -169,6 +169,7 @@ private struct ThreadCreationView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             ComposerView(model: model, channelName: "", conversation: .thread)
         }
+        .disabled(creation.isSubmitting)
     }
 
     private var isMissingStarterMessage: Bool {

@@ -318,7 +318,7 @@ struct ComposerTextView: NSViewRepresentable {
 
         let textView = ComposerNSTextView(frame: .zero, textContainer: textContainer)
         textView.delegate = context.coordinator
-        textView.isEditable = true
+        textView.isEditable = context.environment.isEnabled
         textView.isSelectable = true
         textView.isRichText = true
         textView.importsGraphics = false
@@ -368,7 +368,7 @@ struct ComposerTextView: NSViewRepresentable {
         textView.onPasteAttachments = onPasteAttachments
         textView.onDropTargetChanged = onDropTargetChanged
         textView.onDropAttachments = onDropAttachments
-        textView.capturesUnfocusedTyping = capturesUnfocusedTyping
+        textView.capturesUnfocusedTyping = capturesUnfocusedTyping && context.environment.isEnabled
         ComposerTextCheckingConfiguration.apply(generalInputSettings, to: textView)
 
         let scrollView = NSScrollView()
@@ -394,6 +394,8 @@ struct ComposerTextView: NSViewRepresentable {
             textView.delegate = context.coordinator
         }
         context.coordinator.parent = self
+        textView.isEditable = context.environment.isEnabled
+        textView.capturesUnfocusedTyping = capturesUnfocusedTyping && context.environment.isEnabled
         context.coordinator.updateCompositionState(from: textView, deferringNotification: true)
 
         textView.onReturn = { [weak coordinator = context.coordinator] event in
@@ -425,7 +427,6 @@ struct ComposerTextView: NSViewRepresentable {
 
         textView.applySakuraCordTextSelectionAppearance()
         textView.textContainerInset = NSSize(width: 0, height: verticalContentInset)
-        textView.capturesUnfocusedTyping = capturesUnfocusedTyping
         ComposerTextCheckingConfiguration.apply(generalInputSettings, to: textView)
         textView.setAccessibilityLabel(placeholder)
 
@@ -832,6 +833,7 @@ final class ComposerNSTextView: NSTextView {
     }
 
     override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        guard isEditable else { return false }
         let urls = ComposerPasteboardAttachments.fileURLs(
             from: sender.draggingPasteboard
         )
@@ -849,7 +851,7 @@ final class ComposerNSTextView: NSTextView {
     private func updateAttachmentDropTarget(
         _ sender: any NSDraggingInfo
     ) -> NSDragOperation {
-        let acceptsDrop = onDropAttachments != nil
+        let acceptsDrop = isEditable && onDropAttachments != nil
             && !ComposerPasteboardAttachments.fileURLs(
                 from: sender.draggingPasteboard
             ).isEmpty
@@ -881,6 +883,7 @@ final class ComposerNSTextView: NSTextView {
     }
 
     override func insertText(_ insertString: Any, replacementRange: NSRange) {
+        guard isEditable else { return }
         restorePlainTypingAttributes()
         if let attributed = insertString as? NSAttributedString {
             let normalized = NSMutableAttributedString(attributedString: attributed)
@@ -894,6 +897,10 @@ final class ComposerNSTextView: NSTextView {
     }
 
     override func keyDown(with event: NSEvent) {
+        guard isEditable else {
+            super.keyDown(with: event)
+            return
+        }
         if hasMarkedText() {
             super.keyDown(with: event)
             return
@@ -996,6 +1003,7 @@ final class ComposerNSTextView: NSTextView {
     }
 
     override func readSelection(from pasteboard: NSPasteboard) -> Bool {
+        guard isEditable else { return false }
         if let value = pasteboard.string(forType: .string) {
             insertText(value, replacementRange: selectedRange())
             return true
@@ -1023,7 +1031,7 @@ final class ComposerNSTextView: NSTextView {
     }
 
     private func pasteAttachmentsIfAvailable() -> Bool {
-        guard let onPasteAttachments else { return false }
+        guard isEditable, let onPasteAttachments else { return false }
         let urls = ComposerPasteboardAttachments.urls(from: commandPasteboard)
         guard !urls.isEmpty else { return false }
         onPasteAttachments(urls)

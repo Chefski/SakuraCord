@@ -261,6 +261,7 @@ final class ThreadCreationDraft {
     var isPrivate: Bool
     /// Required-field errors appear after an invalid submission, never while a valid draft is consumed.
     var showsValidationErrors = false
+    var isSubmitting = false
 
     var trimmedName: String { name.trimmingCharacters(in: .whitespaces) }
 

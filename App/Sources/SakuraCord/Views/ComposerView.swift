@@ -174,7 +174,8 @@ struct ComposerView: View {
                                 onDropAttachments: handleDroppedAttachments,
                                 onCompositionStateChange: { isComposing = $0 },
                                 capturesUnfocusedTyping:
-                                    !showEmojiPicker
+                                    model.threadCreation?.isSubmitting != true
+                                        && !showEmojiPicker
                                         && !showGIFPicker
                                         && !showStickerPicker,
                                 verticalContentInset: appearance == .defaultStyle
@@ -635,8 +636,11 @@ struct ComposerView: View {
         selectionBeforeEmojiPicker = nil
         let staged = attachments
         let conversationID = activeConversationID
+        let keepsCreationDraft = isCreatingThread
         model.beginUsingOwnedPromisedFiles(staged.map(\.url))
-        model.clearComposerAttachments(for: conversation)
+        if !keepsCreationDraft {
+            model.clearComposerAttachments(for: conversation)
+        }
         Task {
             defer {
                 model.endUsingOwnedPromisedFiles(staged.map(\.url))
@@ -655,7 +659,7 @@ struct ComposerView: View {
             case .thread:
                 await model.submitThreadComposerMessage(attachments: staged)
             }
-            if !result.consumedComposer, activeConversationID == conversationID {
+            if !keepsCreationDraft, !result.consumedComposer, activeConversationID == conversationID {
                 model.restoreComposerAttachments(staged, to: conversation)
             }
             isSubmitting = false

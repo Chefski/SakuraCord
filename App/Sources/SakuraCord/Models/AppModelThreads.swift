@@ -482,6 +482,7 @@ extension AppModel {
         _ creation: ThreadCreationDraft,
         attachments: [ForumPostAttachment]
     ) async -> ComposerSubmissionResult {
+        guard threadCreation === creation, !creation.isSubmitting else { return .rejected }
         let permissions = selectedChannelThreadCreationPermissions
         let content = threadDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard creation.isPrivate ? permissions.canCreatePrivate : permissions.canCreatePublic,
@@ -496,36 +497,25 @@ extension AppModel {
             isPrivate: creation.isPrivate,
             autoArchiveDuration: selectedChannel?.defaultAutoArchiveDuration ?? 4_320
         )
-        threadDraft = ""
+        creation.isSubmitting = true
+        defer { creation.isSubmitting = false }
         let thread: MessageThreadSummary
         do {
             thread = try await session.provider.createThread(draft)
         } catch {
             guard isCurrentAccountSession(session) else { return .rejected }
-            if threadCreation === creation, threadDraft.isEmpty {
-                threadDraft = content
-            }
             DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             errorMessage = error.localizedDescription
             return .rejected
         }
         guard isCurrentAccountSession(session) else { return .rejected }
         if threadCreation === creation {
-            // Text and files added while Discord created the thread belong to
-            // the thread; hold promised files so the transition cannot prune them.
-            let pendingDraft = threadDraft
-            let pendingAttachments = threadComposerAttachments
-            let pendingURLs = pendingAttachments.map(\.url)
-            beginUsingOwnedPromisedFiles(pendingURLs)
             openThreadConversation(
                 thread,
                 starter: currentUser,
                 startedAt: thread.createdAt ?? .now,
                 initialMessages: []
             )
-            threadDraft = pendingDraft
-            threadComposerAttachments = pendingAttachments
-            endUsingOwnedPromisedFiles(pendingURLs)
         }
         let confirmed = await sendThreadMessage(
             content: content,

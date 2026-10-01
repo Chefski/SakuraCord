@@ -23,7 +23,8 @@ extension AppModel {
             else { return false }
             return Self.supportsTyping(kind)
         case .thread:
-            return threadCreation != nil || (openThread != nil && openThreadAccess.canSend)
+            if let threadCreation { return !threadCreation.isSubmitting }
+            return openThread != nil && openThreadAccess.canSend
         }
     }
 
@@ -136,6 +137,7 @@ extension AppModel {
     func consumeEscapeForComposerAttachments(
         in destination: MessageComposerDestination
     ) -> Bool {
+        guard destination != .thread || threadCreation?.isSubmitting != true else { return false }
         guard !composerAttachments(for: destination).isEmpty else { return false }
         clearComposerAttachments(for: destination)
         return true
