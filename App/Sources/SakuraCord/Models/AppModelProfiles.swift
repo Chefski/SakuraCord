@@ -63,18 +63,23 @@ extension AppModel {
         }
     }
 
+    func applyCurrentStatus(_ status: PresenceStatus) {
+        currentStatus = status
+        if let index = members.firstIndex(where: { $0.user.id == snapshot?.currentUser.id }),
+           members[index].status != status
+        {
+            members[index].status = status
+        }
+    }
+
     func updateStatus(_ status: PresenceStatus) async {
         let session = accountSession()
         do {
             try await session.provider.updateStatus(status)
+            // The provider reconciles the save, so its status is authoritative.
+            let saved = await session.provider.currentStatus()
             guard isCurrentAccountSession(session) else { return }
-            currentStatus = status
-            members = members.map { member in
-                guard member.user.id == snapshot?.currentUser.id else { return member }
-                var updatedMember = member
-                updatedMember.status = status
-                return updatedMember
-            }
+            applyCurrentStatus(saved)
         } catch {
             guard isCurrentAccountSession(session) else { return }
             DiscordAPIDiagnosticStore.shared.recordClientFailure(error)

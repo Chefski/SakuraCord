@@ -103,6 +103,14 @@ enum DiscordGatewayPayloadFactory {
         ]
     }
 
+    static func presenceUpdate(status: PresenceStatus) -> [String: Any] {
+        [
+            "op": 3,
+            "d": ["since": 0, "activities": [], "status": status.rawValue, "afk": false]
+                as [String: Any],
+        ]
+    }
+
     static func privateCallConnect(channelID: ChannelID) -> [String: Any] {
         [
             "op": 13,

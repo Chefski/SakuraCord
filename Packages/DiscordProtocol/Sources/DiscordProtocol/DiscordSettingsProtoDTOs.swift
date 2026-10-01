@@ -352,7 +352,7 @@ enum DiscordSettingsProto {
         return data
     }
 
-    private static func protoVarintField(_ field: Int, _ value: UInt64) -> Data {
+    static func protoVarintField(_ field: Int, _ value: UInt64) -> Data {
         var data = protoVarint(UInt64(field << 3))
         data.append(protoVarint(value))
         return data

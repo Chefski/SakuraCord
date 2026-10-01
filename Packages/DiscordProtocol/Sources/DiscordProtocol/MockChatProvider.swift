@@ -498,7 +498,7 @@ public actor MockChatProvider: ChatProvider {
     }
 
     public func currentStatus() async -> PresenceStatus {
-        .online
+        snapshot.members.first { $0.user.id == snapshot.currentUser.id }?.status ?? .online
     }
 
     public func updateStatus(_ status: PresenceStatus) async throws {

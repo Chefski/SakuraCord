@@ -3,11 +3,8 @@ import Foundation
 extension DiscordRESTProvider {
     func applyProfileSettingsProto(_ encoded: String?, isPartial: Bool) {
         guard let encoded, let data = Data(base64Encoded: encoded) else { return }
-        if let status = DiscordSettingsProto.statusSettings(in: data) {
+        if let status = DiscordSettingsProto.statusSettings(in: data) ?? (isPartial ? nil : Data()) {
             profileStatusSettings = status
-            publishProfileCustomStatus()
-        } else if !isPartial {
-            profileStatusSettings = Data()
             publishProfileCustomStatus()
         }
         if let value = DiscordSettingsProto.profileDeveloperMode(from: data) { profileDeveloperMode = value } else if !isPartial { profileDeveloperMode = false }

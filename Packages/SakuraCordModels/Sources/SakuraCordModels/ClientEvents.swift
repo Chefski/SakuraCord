@@ -79,6 +79,7 @@ public enum ClientEvent: Equatable, Sendable {
     case profileInvalidated(userID: UserID)
     case profileChanged(userID: UserID, scope: ProfileEditingScope, profile: UserProfile?)
     case profileCustomStatusChanged(userID: UserID, status: ProfileCustomStatus?)
+    case currentStatusChanged(PresenceStatus)
     case profileWidgetConnectionsChanged(userID: UserID, connections: [String: ProfileWidgetConnection])
     case applicationCommandIndexInvalidated(ApplicationCommandIndexTarget)
     case applicationCommandAutocomplete(ApplicationCommandAutocompleteResult)

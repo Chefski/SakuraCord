@@ -80,6 +80,7 @@ extension DiscordRESTProvider {
         currentAccountDetails = account?.user?.domain()
         currentAuthSessionIDHash = account?.authSessionIDHash
         let metadata = applyReadyUserAndReadState(ready)
+        applyReadyPresenceStatus(ready.userSettingsProto)
         applyReadyPrivateChannels(ready)
         let guildProjection = applyReadyGuildProjection(ready)
         applyReadyInboxEvents(body)
@@ -405,6 +406,8 @@ extension DiscordRESTProvider {
         case 1:
             applyInboxSettingsProto(update.settings.proto, isPartial: update.partial == true)
             applyProfileSettingsProto(update.settings.proto, isPartial: update.partial == true)
+            // A status chosen on another device also applies to this session.
+            await syncAccountPresenceStatus()
             applyGuildSettingsProto(
                 update.settings.proto,
                 replacesAllSettings: update.partial != true

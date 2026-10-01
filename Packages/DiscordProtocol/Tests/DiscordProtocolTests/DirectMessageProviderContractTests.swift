@@ -92,6 +92,18 @@ struct DirectMessageProviderContractTests {
         let response = try await provider.updateProfileCustomStatus(nil)
         #expect(response == nil)
         #expect(DirectMessageURLProtocol.requests.last?.body?["settings"] as? String == initial)
+        // Ready adopts the account status; a change saves the same subtree once.
+        #expect(await provider.currentStatus() == .invisible)
+        try await provider.updateStatus(.dnd)
+        #expect(await provider.currentStatus() == .dnd && DirectMessageURLProtocol.requests.count == 3)
+        let statusRequest = try #require(DirectMessageURLProtocol.requests.last)
+        #expect(statusRequest.method == "PATCH" && statusRequest.encodedPath == request.encodedPath)
+        let savedStatus = (statusRequest.body?["settings"] as? String).flatMap { Data(base64Encoded: $0) }
+        #expect(savedStatus?.dropFirst(2).prefix(9) == Data([0x0A, 0x05, 0x0A, 0x03]) + Data("dnd".utf8) + Data([0x1A, 0x00]))
+        await provider.receiveGatewayDispatchForTesting(name: "USER_SETTINGS_PROTO_UPDATE", data: .object([
+            "settings": .object(["type": .number(1), "proto": .string(initial)]), "partial": .bool(true)
+        ]))
+        #expect(await provider.currentStatus() == .invisible)
         let events = await provider.eventStream()
         let external = ProfileCustomStatus(text: "Changed elsewhere", emojiName: "🌸")
         for status in [external, nil] {
@@ -110,7 +122,7 @@ struct DirectMessageProviderContractTests {
             }
         }
         #expect(received == [external, nil])
-        #expect(DirectMessageURLProtocol.requests.count == 2)
+        #expect(DirectMessageURLProtocol.requests.count == 3)
     }
 
     @Test func `widget image upload gates access before reservation and omits credentials from storage`() async throws {

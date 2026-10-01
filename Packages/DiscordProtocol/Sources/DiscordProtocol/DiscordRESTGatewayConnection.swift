@@ -348,15 +348,9 @@ extension DiscordRESTProvider {
                                 )
                             )
                         }
-                        try await sendGateway([
-                            "op": 3,
-                            "d": [
-                                "since": 0,
-                                "activities": [],
-                                "status": presenceStatus.rawValue,
-                                "afk": false,
-                            ] as [String: Any],
-                        ])
+                        try await sendGateway(
+                            DiscordGatewayPayloadFactory.presenceUpdate(status: presenceStatus)
+                        )
                         try await gatewaySession?.announceDesktopSession()
                     } catch {
                         gatewayLogger.error(

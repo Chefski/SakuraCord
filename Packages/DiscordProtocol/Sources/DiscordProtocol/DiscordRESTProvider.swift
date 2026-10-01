@@ -656,9 +656,6 @@ public extension DiscordRESTProvider {
         discordPerformanceSignposter.endInterval(
             "ProviderBootstrapAuthentication", authentication
         )
-        presenceStatus = statusDefaultsKey.flatMap {
-            UserDefaults.standard.string(forKey: $0)
-        }.flatMap(PresenceStatus.init(rawValue:)) ?? .invisible
         beginStartupSearchCacheLoad()
         let gatewayStartup = discordPerformanceSignposter.beginInterval(
             "ProviderGatewayStartup",

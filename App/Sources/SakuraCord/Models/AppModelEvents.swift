@@ -401,6 +401,8 @@ extension AppModel {
             consumeProfileChanged(userID: userID, scope: scope, value: profile)
         case let .profileCustomStatusChanged(userID, status):
             consumeProfileCustomStatusChanged(userID: userID, status: status)
+        case let .currentStatusChanged(status):
+            applyCurrentStatus(status)
         case let .profileWidgetConnectionsChanged(userID, connections):
             consumeProfileWidgetConnectionsChanged(userID: userID, connections: connections)
         default:

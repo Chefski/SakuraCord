@@ -266,6 +266,21 @@ import Testing
     // The three retained siblings are presence, show_current_game and
     // status_created_at_ms. Clearing must not turn Invisible into Online.
     #expect(cleared.base64EncodedString() == "CgsKCWludmlzaWJsZRoAKgcIxf7s0YU0")
+    #expect(DiscordSettingsProto.presenceStatus(in: cleared) == .invisible)
+    #expect(DiscordSettingsProto.presenceStatus(in: Data()) == .online)
+    // A timed status carries status_expires_at_ms (4); once passed it reads as Online.
+    let timed = cleared + Data([0x21, 0xE8, 0x03, 0, 0, 0, 0, 0, 0])
+    #expect(DiscordSettingsProto.presenceStatus(in: timed, now: Date(timeIntervalSince1970: 0.5)) == .invisible)
+    #expect(DiscordSettingsProto.presenceStatus(in: timed, now: Date(timeIntervalSince1970: 1)) == .online)
+    // Re-saving the stored status drops the expiry and keeps every sibling.
+    let resaved = DiscordSettingsProto.updatingPresenceStatus(.invisible, in: timed)
+    #expect(DiscordSettingsProto.statusSettings(in: resaved) == cleared)
+    let changed = try #require(DiscordSettingsProto.statusSettings(in: DiscordSettingsProto.updatingPresenceStatus(
+        .dnd, in: settings, now: Date(timeIntervalSince1970: 2)
+    )))
+    #expect(DiscordSettingsProto.presenceStatus(in: changed) == .dnd)
+    #expect(DiscordSettingsProto.customStatus(in: changed) == status)
+    #expect(changed.suffix(5) == Data([0x2A, 0x03, 0x08, 0xD0, 0x0F]))
     var emojiStatus = status
     emojiStatus.text = ""
     emojiStatus.emojiID = "123456789012345678"

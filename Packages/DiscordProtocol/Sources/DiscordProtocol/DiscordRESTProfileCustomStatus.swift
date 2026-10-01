@@ -3,13 +3,6 @@ import SakuraCordModels
 
 extension DiscordRESTProvider {
     public func updateProfileCustomStatus(_ requested: ProfileCustomStatus?) async throws -> ProfileCustomStatus? {
-        guard let userID = currentUser?.id else { throw ChatProviderError.unauthenticated }
-        guard let current = profileStatusSettings else {
-            throw ChatProviderError.invalidRequest("Wait for your account settings to finish loading before editing your status.")
-        }
-        guard profileStatusSaveID == nil else {
-            throw ChatProviderError.invalidRequest("A status update is already in progress.")
-        }
         var status = requested
         if var value = status {
             value.text = value.text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -22,14 +15,35 @@ extension DiscordRESTProvider {
             value.createdAt = .now
             status = value.text.isEmpty && value.emojiID == nil && (value.emojiName?.isEmpty ?? true) ? nil : value
         }
-        let patch = DiscordSettingsProto.updatingCustomStatus(status, in: current)
+        let saved = try await saveStatusSettings { DiscordSettingsProto.updatingCustomStatus(status, in: $0) }
+        publishProfileCustomStatus()
+        return DiscordSettingsProto.customStatus(in: saved)
+    }
+
+    /// Presence and custom status share one StatusSettings message, so both
+    /// saves take the same lock and reconcile the authoritative response.
+    func saveStatusSettings(
+        beforeRequest: () async -> Void = {},
+        _ patch: (Data) -> Data
+    ) async throws -> Data {
+        guard let userID = currentUser?.id else { throw ChatProviderError.unauthenticated }
+        guard let current = profileStatusSettings else {
+            throw ChatProviderError.invalidRequest("Wait for your account settings to finish loading before editing your status.")
+        }
+        guard profileStatusSaveID == nil else {
+            throw ChatProviderError.invalidRequest("A status update is already in progress.")
+        }
+        let settings = patch(current).base64EncodedString()
         let saveID = UUID()
         let generation = profileEditingGeneration
         profileStatusSaveID = saveID
         defer { if profileStatusSaveID == saveID { profileStatusSaveID = nil } }
+        await beforeRequest()
+        // Ready may have replaced the settings while the Gateway send suspended.
+        guard currentUser?.id == userID, generation == profileEditingGeneration, profileStatusSaveID == saveID else { throw CancellationError() }
         let response: UserSettingsProtoDTO = try await request(
             "/users/@me/settings-proto/1", method: "PATCH",
-            body: ["settings": .string(patch.base64EncodedString())]
+            body: ["settings": .string(settings)]
         )
         guard currentUser?.id == userID, generation == profileEditingGeneration, profileStatusSaveID == saveID else { throw CancellationError() }
         guard let responseData = Data(base64Encoded: response.settings),
@@ -38,8 +52,7 @@ extension DiscordRESTProvider {
             throw ChatProviderError.invalidRequest("Discord saved your settings but returned an unreadable status. Reconnect before editing it again.")
         }
         profileStatusSettings = saved
-        publishProfileCustomStatus()
-        return DiscordSettingsProto.customStatus(in: saved)
+        return saved
     }
 
     func publishProfileCustomStatus() {
