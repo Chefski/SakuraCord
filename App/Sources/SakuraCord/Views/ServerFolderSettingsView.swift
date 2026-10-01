@@ -49,7 +49,7 @@ private struct ServerFolderNameField: View {
                 .focused($isFocused)
                 .onSubmit(submit)
                 .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-                .modifier(PollInputSurface(isFocused: isFocused) { isFocused = true })
+                .modifier(ModalInputSurface(isFocused: isFocused) { isFocused = true })
                 .onChange(of: name) { _, value in
                     if value.count > ServerFolderSettingsView.maximumNameLength {
                         name = String(value.prefix(ServerFolderSettingsView.maximumNameLength))
