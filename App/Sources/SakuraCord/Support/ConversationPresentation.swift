@@ -29,6 +29,8 @@ nonisolated enum DiscordPermissionBits {
     static let speak: UInt64 = 1 << 21
     static let changeNickname: UInt64 = 1 << 26
     static let manageThreads: UInt64 = 1 << 34
+    static let createPublicThreads: UInt64 = 1 << 35
+    static let createPrivateThreads: UInt64 = 1 << 36
     static let useExternalStickers: UInt64 = 1 << 37
     static let sendMessagesInThreads: UInt64 = 1 << 38
     static let useSoundboard: UInt64 = 1 << 42

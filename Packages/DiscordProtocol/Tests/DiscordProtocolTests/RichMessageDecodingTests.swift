@@ -255,7 +255,8 @@ import Testing
             "id":"100",
             "author":{"id":"2","username":"original","global_name":"Original User"},
             "member":{"nick":"Guild Original","roles":["10","11"],"avatar":null},
-            "content":"Original"
+            "content":"Original",
+            "attachments":[{"id":"a","filename":"photo.png","url":"https://cdn.discordapp.com/attachments/photo.png","size":10,"content_type":"image/png"}]
           }
         }
         """#.utf8
@@ -263,6 +264,7 @@ import Testing
 
     let message = try RichMessageFixtureDecoder.decodeMessage(from: data)
     #expect(message.replyPreview?.author.displayName == "Guild Original")
+    #expect(message.replyPreview?.mediaKind == .image)
     #expect(
         message.replyPreview?.guildMember?.roleIDs
             == [RoleID(rawValue: 10), RoleID(rawValue: 11)]
@@ -271,18 +273,20 @@ import Testing
 
 @Test func `partial update changes present rich fields and preserves absent fields`() throws {
     let author = User(id: UserID(rawValue: 1), username: "fixture", displayName: "Fixture")
-    let original = Message(
+    var original = Message(
         id: MessageID(rawValue: 100), channelID: ChannelID(rawValue: 200), author: author,
         content: "before",
         embeds: [MessageEmbed(title: "Keep until explicitly replaced")],
         stickers: [MessageSticker(id: "1", name: "Keep")]
     )
+    original.thread = MessageThreadSummary(id: ChannelID(rawValue: 600), parentID: original.channelID, name: "Keep thread")
     let update = Data(
         #"{"id":"100","channel_id":"200","content":"after","components":[{"type":10,"content":"new"}]}"#
             .utf8
     )
     let merged = try RichMessageFixtureDecoder.mergeUpdate(from: update, into: original)
 
+    #expect(merged.thread == original.thread)
     #expect(merged.content == "after")
     #expect(merged.embeds == original.embeds)
     #expect(merged.stickers == original.stickers)

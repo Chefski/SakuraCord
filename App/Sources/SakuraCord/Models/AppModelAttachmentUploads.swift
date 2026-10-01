@@ -42,6 +42,7 @@ extension AppModel {
         _ urls: [URL],
         offeringExternalUploadFor destination: MessageComposerDestination? = nil
     ) async -> [URL] {
+        let urls = uploadableFileURLs(urls)
         guard !urls.isEmpty else { return [] }
         let generation = accountSessionGeneration
         let channelID = destination.flatMap { conversationChannelID(for: $0) } ?? selectedChannelID
@@ -102,6 +103,24 @@ extension AppModel {
             )
         }
         return accepted
+    }
+
+    /// Skips folders like Discord, which reports an error only when no file
+    /// remains, and rejects the whole batch when any file is empty.
+    func uploadableFileURLs(_ urls: [URL]) -> [URL] {
+        let keys: Set<URLResourceKey> = [.isDirectoryKey, .fileSizeKey]
+        let files = urls.compactMap { url -> (url: URL, size: Int?)? in
+            let values = try? url.resourceValues(forKeys: keys)
+            return values?.isDirectory == true ? nil : (url, values?.fileSize)
+        }
+        if files.isEmpty, !urls.isEmpty {
+            errorMessage = "That file type is not supported."
+        }
+        guard !files.contains(where: { $0.size == 0 }) else {
+            errorMessage = "File cannot be empty."
+            return []
+        }
+        return files.map(\.url)
     }
 
     func dismissOversizedAttachmentPrompt(id expectedID: UUID? = nil) {
@@ -247,6 +266,7 @@ extension AppModel {
                 .flatMap(\.attachmentURLs)
                 .map(\.standardizedFileURL)
         )
+        retainedFileURLs.formUnion(commandComposer.attachmentURLs.map(\.standardizedFileURL))
         retainedFileURLs.formUnion(promisedAttachmentFilesInFlight)
 
         let staleFileURLs = promisedAttachmentDirectoryByFileURL.keys.filter {

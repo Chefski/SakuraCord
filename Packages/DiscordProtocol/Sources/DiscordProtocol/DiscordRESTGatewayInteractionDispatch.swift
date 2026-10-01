@@ -55,6 +55,10 @@ extension DiscordRESTProvider {
             max(0, rateLimit.retryAfter)
         )
         failGatewayRequests(rateLimited: rateLimit)
+        if rateLimit.opcode == 3 {
+            lastSentPresenceStatus = nil
+            await sendPresenceIfChanged()
+        }
     }
 
     func handleUserApplicationUpdateDispatch(

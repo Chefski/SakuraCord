@@ -43,9 +43,11 @@ struct ServerRailContainer: View {
                 leaveServer: { guild in invites.leaveConfirmation = guild },
                 showsAllChannels: { guild in
                     guard model.featuresSettings.channelManagement, model.hasChannelsAndRoles(in: guild.id) else { return nil }
-                    return model.presentedGuildChannelSettings(in: guild.id).flags & GuildChannelSelection.enabledFlag == 0
+                    return model.showsAllChannels(in: guild.id)
                 },
-                setShowsAllChannels: { guild, all in model.setChannelSelectionEnabled(!all, guildID: guild.id) }
+                setShowsAllChannels: { guild, all in
+                    model.setChannelSelectionEnabled(!all, guildID: guild.id)
+                }
             )
         )
         .windowModal(isPresented: $invites.showsJoinDialog, cornerRadius: 32, cornerStyle: .circular,
@@ -319,7 +321,8 @@ struct GuildRailButton: View {
                         iconURL: guild.iconURL,
                         size: 44,
                         cornerRadius: 14,
-                        animates: isHovering
+                        animates: isHovering,
+                        isSelected: isSelected
                     )
                 }
             }

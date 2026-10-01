@@ -450,6 +450,7 @@ struct MessageSearchFiltersOverlay: View {
                 .padding(.horizontal, 18)
                 .padding(.bottom, 18)
             }
+            .clipped()
 
             Divider()
             HStack {
@@ -611,11 +612,11 @@ where Value.ID: Hashable & Sendable {
                 configuration: SelectionFieldConfiguration(
                     placeholder: "Any",
                     searchPlaceholder: "Search \(title.lowercased())",
-                    maximumListHeight: 220,
-                    selectionPresentation: .cards
+                    maximumListHeight: 220
                 ),
                 accessibilityIdentifier: "message-search-\(title.lowercased())-field"
             )
+            .accessibilityLabel(title)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -647,11 +648,11 @@ private struct MessageSearchOptionMenu<Value: Hashable & Sendable>: View {
                 configuration: SelectionFieldConfiguration(
                     placeholder: "Any",
                     searchPlaceholder: "Search \(title.lowercased())",
-                    maximumListHeight: 220,
-                    selectionPresentation: .cards
+                    maximumListHeight: 220
                 ),
                 accessibilityIdentifier: "message-search-\(title.lowercased())-field"
             )
+            .accessibilityLabel(title)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

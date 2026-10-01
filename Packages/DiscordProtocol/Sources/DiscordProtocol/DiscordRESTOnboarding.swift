@@ -105,7 +105,7 @@ public extension DiscordRESTProvider {
         if !channels.isEmpty {
             patch["channel_overrides"] = .object(Dictionary(uniqueKeysWithValues: channels.map { channelID, selected in
                 let flags = cached?.channelOverrides.first { $0.channelID == channelID }?.flags ?? 0
-                let updated = selected ? flags | GuildChannelSelection.selectedFlag : flags & ~GuildChannelSelection.selectedFlag
+                let updated = selected ? flags | GuildChannelSelection.selectedFlag : flags & ~(GuildChannelSelection.selectedFlag | GuildChannelSelection.favoriteFlag)
                 return (channelID.description, .object(["flags": .number(Double(updated))]))
             }))
         }
@@ -129,7 +129,7 @@ public extension DiscordRESTProvider {
 
     func setGuildChannelSelected(_ selected: Bool, channelID: ChannelID, guildID: GuildID) async throws {
         let flags = cachedGuildNotificationSettings[guildID]?.channelOverrides.first { $0.channelID == channelID }?.flags ?? 0
-        let updated = selected ? flags | GuildChannelSelection.selectedFlag : flags & ~GuildChannelSelection.selectedFlag
+        let updated = selected ? flags | GuildChannelSelection.selectedFlag : flags & ~(GuildChannelSelection.selectedFlag | GuildChannelSelection.favoriteFlag)
         try await updateGuildNotificationSettings(guildID: guildID, settings: [
             "channel_overrides": .object([channelID.description: .object(["flags": .number(Double(updated))])])
         ])

@@ -380,7 +380,6 @@ struct MockChatFixture {
             ],
             premiumSince: Calendar.current.date(byAdding: .year, value: -1, to: .now),
             legacyUsername: "\(user.username)#0001",
-            status: member.status,
             customStatus: member.customStatus
         )
     }
@@ -719,7 +718,8 @@ private struct MockFixtureAssembly {
                 roles: [designerRole],
                 globalDisplayName: maya.displayName,
                 activityText: "Reviewing interaction states",
-                customStatus: "Making the empty states less empty"
+                customStatus: "Making the empty states less empty",
+                isMobileOnly: true
             ),
             Member(
                 user: theo,

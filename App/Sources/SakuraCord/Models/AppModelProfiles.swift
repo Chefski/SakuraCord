@@ -37,12 +37,6 @@ extension AppModel {
         }
         for index in members.indices where members[index].id == userID { members[index].customStatus = text }
         for index in mentionAutocompleteMembers.indices where mentionAutocompleteMembers[index].id == userID { mentionAutocompleteMembers[index].customStatus = text }
-        for destination in [ProfilePresentationDestination.inspector, .contextual, .expanded] {
-            guard var presentation = profilePresentation(for: destination), presentation.member.id == userID else { continue }
-            presentation.member.customStatus = text
-            presentation.profile?.customStatus = text
-            setProfilePresentation(presentation, for: destination)
-        }
     }
 
     func consumeProfileChanged(userID: UserID, scope: ProfileEditingScope, value: UserProfile?) {
@@ -58,8 +52,7 @@ extension AppModel {
             case .expanded: expandedProfileTask?.cancel()
             }
             if let value {
-                presentation.member.user = value.user
-                presentation.profile = profile(value, applyingPresenceFrom: presentation.member)
+                presentation.profile = value
                 presentation.errorMessage = nil
             } else {
                 presentation.profile = nil
@@ -73,20 +66,33 @@ extension AppModel {
     func updateStatus(_ status: PresenceStatus) async {
         let session = accountSession()
         do {
+            // The provider publishes `.currentUserStatusChanged`; applying the
+            // pick here as well could overwrite a newer remote or saved value.
             try await session.provider.updateStatus(status)
-            guard isCurrentAccountSession(session) else { return }
-            currentStatus = status
-            members = members.map { member in
-                guard member.user.id == snapshot?.currentUser.id else { return member }
-                var updatedMember = member
-                updatedMember.status = status
-                return updatedMember
-            }
         } catch {
             guard isCurrentAccountSession(session) else { return }
             DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             errorMessage = error.localizedDescription
         }
+    }
+
+    func applyCurrentStatus(_ status: PresenceStatus) {
+        currentStatusRevision &+= 1
+        currentStatus = status
+        members = membersWithCurrentStatus(members)
+    }
+
+    /// `currentStatus` is the current user's only status source; cached member
+    /// lists can hold an older one, so they pass through here when shown again.
+    func membersWithCurrentStatus(_ members: [Member]) -> [Member] {
+        members.map(memberWithCurrentStatus)
+    }
+
+    func memberWithCurrentStatus(_ member: Member) -> Member {
+        guard member.id == snapshot?.currentUser.id, member.status != currentStatus else { return member }
+        var member = member
+        member.status = currentStatus
+        return member
     }
 
     func selectMember(_ member: Member) {
@@ -139,6 +145,18 @@ extension AppModel {
         }
     }
 
+    func prepareInspectorProfileForPresentation() {
+        guard !showInspector,
+              let channel = selectedChannel,
+              channel.kind == .directMessage,
+              let recipient = channel.recipients.first,
+              inspectorProfilePresentation?.member.id != recipient.id
+        else {
+            return
+        }
+        showInspectorProfile(for: recipient)
+    }
+
     func showInspectorProfile(for user: User) {
         isInspectorProfilePresented = true
         let member =
@@ -183,17 +201,13 @@ extension AppModel {
         for member: Member,
         destination: ProfilePresentationDestination
     ) -> UUID {
-        var member = member
-        if member.id == profileCustomStatusUserID { member.customStatus = profileCustomStatus?.displayText }
         let requestID = UUID()
         let guildID = selectedGuildID
         let cacheKey = ProfileCacheKey(
             userID: member.id,
             guildID: guildID
         )
-        let cachedProfile = profileCache[cacheKey].map {
-            profile($0, applyingPresenceFrom: member)
-        }
+        let cachedProfile = profileCache[cacheKey]
         let presentation = ProfilePresentationState(
             requestID: requestID,
             member: member,
@@ -234,11 +248,7 @@ extension AppModel {
                 }
                 profileCache[cacheKey] = loaded
                 var value = profilePresentation(for: destination)
-                value?.member = member
-                value?.profile = profile(
-                    loaded,
-                    applyingPresenceFrom: member
-                )
+                value?.profile = loaded
                 value?.isLoading = false
                 value?.errorMessage = nil
                 setProfilePresentation(value, for: destination)
@@ -345,20 +355,21 @@ extension AppModel {
         }
     }
 
-    func profile(
-        _ value: UserProfile,
-        applyingPresenceFrom member: Member
-    ) -> UserProfile {
-        var result = value
-        result.status = member.status
-        if member.id == profileCustomStatusUserID {
-            // Account settings also represent an explicit clear. Lazy member lists
-            // and the synthetic You member are not authoritative for our own status.
-            result.customStatus = profileCustomStatus?.displayText
-        } else if member.id != snapshot?.currentUser.id {
-            result.customStatus = member.customStatus
+    /// Resolves presence from the member store so presented profiles stay live.
+    func liveProfilePresentation(
+        for destination: ProfilePresentationDestination
+    ) -> ProfilePresentationState? {
+        guard var presentation = profilePresentation(for: destination) else { return nil }
+        presentation.member = membersByID[presentation.member.id] ?? presentation.member
+        if presentation.member.id == snapshot?.currentUser.id {
+            // Member stores do not track our own presence; the account does.
+            presentation.member.status = currentStatus
         }
-        return result
+        if presentation.member.id == profileCustomStatusUserID {
+            // Account settings are authoritative for our own status, including clears.
+            presentation.member.customStatus = profileCustomStatus?.displayText
+        }
+        return presentation
     }
 
     func beginCurrentUserProfilePrefetch(

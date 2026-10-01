@@ -297,6 +297,7 @@ extension AppModel {
         _ event: ClientEvent,
         preparedMemberListPresentation: PreparedMemberListPresentation? = nil
     ) {
+        if consumeThreadEvent(event) { return }
         switch event {
         case .notificationModeChanged(let usesNewNotifications):
             readState.updateNotificationMode(
@@ -333,19 +334,6 @@ extension AppModel {
         case .channelsChanged(let guildID, let channels):
             consumeChannelsChanged(guildID: guildID, channels: channels)
             reconcileInboxEligibility()
-        case .forumPostsChanged(let channelID, let posts):
-            consumeForumPostsChanged(channelID: channelID, posts: posts)
-        case .forumPostPreviewsChanged(let channelID, let posts):
-            consumeForumPostPreviewsChanged(channelID: channelID, posts: posts)
-        case .activeJoinedThreadsChanged(let threads):
-            if var value = snapshot {
-                value.activeJoinedThreads = threads
-                snapshot = value
-                forwardSearchSourceRevision &+= 1
-            }
-            reconcileInboxEligibility()
-        case .forumPageLoaded(let channelID, let query, let page):
-            consumeForumPageLoaded(channelID: channelID, query: query, page: page)
         case .membersChanged(let guildID, let value, let groups):
             consumeMembersChanged(
                 guildID: guildID,
@@ -377,7 +365,7 @@ extension AppModel {
         case .snapshotChanged(let value):
             consumeSnapshotChanged(value)
         case .guildChanged, .guildLayoutChanged, .guildRolesChanged,
-             .currentUserChanged:
+             .currentUserChanged, .currentUserStatusChanged:
             consumeGatewayWorkspaceStateEvent(event)
         case .applicationCommandIndexInvalidated(let target):
             if commandComposer.invalidated(target) {
@@ -422,6 +410,8 @@ extension AppModel {
             applyGuildRoles(roles, to: guildID)
         case .currentUserChanged(let user):
             consumeCurrentUserChanged(user)
+        case .currentUserStatusChanged(let status):
+            applyCurrentStatus(status)
         default:
             break
         }
@@ -610,6 +600,7 @@ extension AppModel {
     }
 
     func consumeMessageDeleted(channelID: ChannelID, messageID: MessageID) {
+        invalidateTimelineThreadPreview(channelID: channelID, messageID: messageID)
         recordConversationRefreshMutation(
             .delete,
             messageID: messageID,
@@ -745,6 +736,7 @@ extension AppModel {
         AppPerformanceSignposts.measureSync("ForumUnreadRefreshRequest") {
             requestCoalescedUnreadPresentationRefresh()
         }
+        refreshTimelineThreadCards(parentID: channelID, posts: posts)
         guard channelID == selectedChannelID, selectedChannel?.kind == .forum else { return }
         replaceForumCatalogue(with: posts)
         applyForumPresentation()
@@ -756,6 +748,7 @@ extension AppModel {
     }
 
     func consumeForumPostPreviewsChanged(channelID: ChannelID, posts: [ForumPost]) {
+        refreshTimelineThreadCards(parentID: channelID, posts: posts, replacesAll: false)
         reconcileInboxForumPosts(channelID: channelID, posts: posts, replacesAll: false)
         mergeForwardDestinationThreads(posts.map(\.thread))
         for post in posts { readState.merge(thread: post.thread) }

@@ -145,6 +145,7 @@ nonisolated struct NotificationContentPresentation: Equatable, Sendable {
 
     private static func fallbackMentionLabel(_ mention: RenderedMention, message: Message) -> String {
         switch mention.kind {
+        case .guildNavigation: GuildNavigationMention(rawValue: mention.id)?.title ?? mention.rawToken
         case .user:
             "@\(message.mentionedUsers.first { String($0.id.rawValue) == mention.id }?.displayName ?? "unknown-user")"
         case .role: "@unknown-role"

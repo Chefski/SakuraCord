@@ -3,11 +3,11 @@ import SwiftUI
 
 @MainActor
 final class ComponentChoiceOverlayController {
-    private static let width: CGFloat = 372
     private static let height: CGFloat = 360
 
     private var host: ComponentChoiceOverlayHost?
-    private var eventMonitor: Any?
+    private var escapeRegistration: PopoverEscapeKeyRegistration?
+    private var contentHeight: CGFloat = 320
     private var resizeObserver: NSObjectProtocol?
     private var scrollObserver: NSObjectProtocol?
     private weak var anchorView: NSView?
@@ -61,7 +61,16 @@ final class ComponentChoiceOverlayController {
             return
         }
 
-        let host = ComponentChoiceOverlayHost(rootView: rootView)
+        let host = ComponentChoiceOverlayHost(rootView: AnyView(
+            rootView
+                .fixedSize(horizontal: false, vertical: true)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { [weak self] height in
+                    guard let self, abs(contentHeight - height) > 0.5 else { return }
+                    contentHeight = height
+                    repositionWithAnchor()
+                }
+                .frame(maxHeight: .infinity, alignment: placement == .below ? .top : .bottom)
+        ))
         host.sizingOptions = []
         host.frame = overlayFrame(
             relativeTo: anchorRect,
@@ -69,7 +78,6 @@ final class ComponentChoiceOverlayController {
         )
         anchorView.addSubview(host, positioned: .above, relativeTo: nil)
         self.host = host
-        installEventMonitor()
 
         if let clipView = anchorView.enclosingScrollView?.contentView {
             clipView.postsBoundsChangedNotifications = true
@@ -84,6 +92,7 @@ final class ComponentChoiceOverlayController {
             }
         }
         if let window = anchorView.window {
+            escapeRegistration = PopoverEscapeKeyCoordinator.shared.register(popoverWindow: window, presentingWindow: nil) { [weak self] in self?.close() }
             resizeObserver = NotificationCenter.default.addObserver(
                 forName: NSWindow.didResizeNotification,
                 object: window,
@@ -100,18 +109,19 @@ final class ComponentChoiceOverlayController {
         selection = value
     }
 
-    func submitSingleSelection(_ value: [String]) {
+    func submitSelection(_ value: [String]) {
+        guard !closed else { return }
         selection = value
         guard selectionIsValid else {
             NSSound.beep()
             return
         }
         submitted = true
-        submit(value)
+        if value != initialSelection { submit(value) }
         close(commit: false)
     }
 
-    func close(commit: Bool = true) {
+    func close(commit: Bool = false) {
         guard !closed else { return }
         closed = true
         if commit,
@@ -122,10 +132,6 @@ final class ComponentChoiceOverlayController {
             submitted = true
             submit(selection)
         }
-        if let eventMonitor {
-            NSEvent.removeMonitor(eventMonitor)
-            self.eventMonitor = nil
-        }
         if let resizeObserver {
             NotificationCenter.default.removeObserver(resizeObserver)
             self.resizeObserver = nil
@@ -134,6 +140,7 @@ final class ComponentChoiceOverlayController {
             NotificationCenter.default.removeObserver(scrollObserver)
             self.scrollObserver = nil
         }
+        escapeRegistration = nil
         host?.removeFromSuperview()
         host = nil
         onClose()
@@ -170,38 +177,18 @@ final class ComponentChoiceOverlayController {
         placement: SelectionFieldResultPlacement
     ) -> CGRect {
         let size = CGSize(
-            width: max(Self.width, anchorRect.width),
-            height: Self.height
+            width: min(anchorRect.width, anchorView?.visibleRect.width ?? anchorRect.width),
+            height: contentHeight
         )
         let originY = placement == .below
             ? anchorRect.minY
             : anchorRect.maxY - size.height
         return CGRect(
-            origin: CGPoint(x: anchorRect.minX, y: originY),
+            origin: CGPoint(x: min(anchorRect.minX, (anchorView?.visibleRect.maxX ?? anchorRect.maxX) - size.width), y: originY),
             size: size
         )
     }
 
-    private func installEventMonitor() {
-        eventMonitor = NSEvent.addLocalMonitorForEvents(
-            matching: [.leftMouseDown, .rightMouseDown, .keyDown]
-        ) { [weak self] event in
-            guard let self, let anchorView, event.window === anchorView.window, WindowModalCoordinator.allowsInput(for: anchorView) else { return event }
-            if event.type == .keyDown {
-                guard KeyboardShortcutPolicy.isPlainEscape(keyCode: event.keyCode, modifierFlags: event.modifierFlags) else { return event }
-                close()
-                return nil
-            }
-            guard let host else {
-                close()
-                return event
-            }
-            let point = host.convert(event.locationInWindow, from: nil)
-            if host.bounds.contains(point) { return event }
-            close()
-            return event
-        }
-    }
 }
 
 @MainActor

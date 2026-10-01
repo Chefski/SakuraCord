@@ -57,6 +57,12 @@ extension DiscordRESTProvider {
         cachedForumThreadOrder.removeAll { $0 == threadID }
         cachedJoinedThreads[threadID] = nil
         cachedJoinedThreadOrder.removeAll { $0 == threadID }
+        cachedMessages.removeAll { $0.channelID == threadID }
+        for var message in cachedMessages.values where message.thread?.id == threadID {
+            message.thread = nil
+            cachedMessages[message.id] = message
+        }
+        continuation?.yield(.threadDeleted(channelID: threadID))
         publishForumPosts(parentID: parentID)
         publishActiveJoinedThreads()
     }
@@ -132,10 +138,17 @@ extension DiscordRESTProvider {
             },
             uniquingKeysWith: { _, latest in latest }
         )
+        let recentByThreadID = Dictionary(
+            sync.mostRecentMessages.map { ($0.channelID, $0) },
+            uniquingKeysWith: { _, latest in latest }
+        )
         let hydratedThreads = sync.threads.map { thread in
             var thread = thread
             if thread.member == nil {
                 thread.member = membersByThreadID[thread.id]
+            }
+            if thread.mostRecentMessage == nil {
+                thread.mostRecentMessage = recentByThreadID[thread.id]
             }
             return thread
         }

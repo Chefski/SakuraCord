@@ -149,7 +149,7 @@ extension DiscordRESTProvider {
 
     func privateMembersInChannelOrder() -> [Member] {
         var seen: Set<UserID> = []
-        return (cachedChannels[nil] ?? []).flatMap(\.recipients).compactMap { user in
+        return membersWithCurrentStatus((cachedChannels[nil] ?? []).flatMap(\.recipients).compactMap { user in
             guard seen.insert(user.id).inserted else { return nil }
             if var member = cachedPrivateMembersByID[user.id] {
                 // READY presence records only contain a partial user. Keep DM
@@ -158,7 +158,7 @@ extension DiscordRESTProvider {
                 return member
             }
             return Member(user: user, roleName: "Direct Message", status: .offline)
-        }
+        })
     }
 
     func cachePrivatePresence(_ update: PresenceUpdateDTO) {
@@ -176,6 +176,9 @@ extension DiscordRESTProvider {
                 ?? Member(user: user, roleName: "Direct Message", status: status)
         member.user = user
         member.status = status
+        if let clientStatus = update.clientStatus {
+            member.isMobileOnly = clientStatus.isMobileOnly
+        }
         if let activities = update.activities {
             let primaryActivity = activities.memberListActivity
             member.customStatus = activities.first(where: { $0.type == 4 })?.displayText

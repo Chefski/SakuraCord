@@ -55,7 +55,7 @@ struct MentionAutocompleteRow: View {
         case .role:
             RoleColorIndicator(colorHex: suggestion.colorHex, size: 16)
                 .frame(width: 28, height: 28)
-        case .channel:
+        case .channel, .guildNavigation:
             Image(systemName: suggestion.systemImage ?? "questionmark")
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(.secondary)

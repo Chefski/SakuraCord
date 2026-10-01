@@ -41,9 +41,11 @@ import Testing
 }
 
 @MainActor
-@Test func `remote typing is channel scoped cleared by message and disconnect`() async throws {
+@Test(.timeLimit(.minutes(1)))
+func `remote typing is channel scoped cleared by message and disconnect`() async throws {
     let provider = TypingTestProvider()
-    let model = AppModel(launchMode: .offlineTesting, provider: provider, typingExpiry: .seconds(1))
+    // Expiry must outlive the test so it cannot satisfy the clearing assertions.
+    let model = AppModel(launchMode: .offlineTesting, provider: provider, typingExpiry: .seconds(300))
     await model.start()
     let text = try #require(model.selectedChannel)
     let other = provider.otherUser
@@ -51,8 +53,8 @@ import Testing
 
     await provider.emit(.typing(channelID: text.id, user: other))
     await provider.emit(.typing(channelID: ChannelID(rawValue: 12), user: third))
-    #expect(await eventuallyOnMain { model.typingState.presentation(in: text.id) == "Other is typing…" })
-    #expect(await eventuallyOnMain {
+    #expect(await eventually { model.typingState.presentation(in: text.id) == "Other is typing…" })
+    #expect(await eventually {
         model.typingState.presentation(in: ChannelID(rawValue: 12)) == "Third is typing…"
     })
 
@@ -62,10 +64,11 @@ import Testing
         author: other,
         content: "sent"
     )))
-    #expect(await eventuallyOnMain { model.typingState.presentation(in: text.id) == nil })
+    #expect(await eventually { model.typingState.presentation(in: text.id) == nil })
 
+    try #require(model.typingState.presentation(in: ChannelID(rawValue: 12)) == "Third is typing…")
     await provider.emit(.connectionChanged(.disconnected))
-    #expect(await eventuallyOnMain { model.typingState.presentation(in: ChannelID(rawValue: 12)) == nil })
+    #expect(await eventually { model.typingState.presentation(in: ChannelID(rawValue: 12)) == nil })
 }
 
 @MainActor
@@ -351,12 +354,18 @@ import Testing
         URL(fileURLWithPath: "/tmp/sakuracord-composer-\($0)")
     }
 
-    #expect(await model.addComposerAttachments([urls[0], urls[0]] + urls.dropFirst(), to: .channel))
+    #expect(await model.addComposerAttachments([urls[0], urls[0]] + urls.prefix(9).dropFirst(), to: .channel))
     #expect(
         model.channelComposerAttachments.map(\.url)
-            == [urls[0], urls[0]] + Array(urls.dropFirst().prefix(8))
+            == [urls[0], urls[0]] + Array(urls.prefix(9).dropFirst())
     )
     #expect(Set(model.channelComposerAttachments.map(\.id)).count == 10)
+    #expect(model.errorMessage == nil)
+
+    // Like Discord, a batch that would exceed ten files is rejected whole.
+    model.removeComposerAttachment(try #require(model.channelComposerAttachments.last?.id), from: .channel)
+    #expect(await model.addComposerAttachments(Array(urls.suffix(3)), to: .channel))
+    #expect(model.channelComposerAttachments.count == 9)
     #expect(model.errorMessage?.contains("10") == true)
 
     let firstID = try #require(model.channelComposerAttachments.first?.id)
@@ -370,6 +379,37 @@ import Testing
     #expect(await model.addComposerAttachments([urls[0]], to: .channel))
     model.selectedChannelID = ChannelID(rawValue: 12)
     #expect(model.channelComposerAttachments.isEmpty)
+}
+
+@MainActor
+@Test func `composer attachment intake skips folders and rejects batches with empty files`() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "sakuracord-attachment-folder-\(UUID().uuidString)",
+        isDirectory: true
+    )
+    let folder = directory.appendingPathComponent("Folder", isDirectory: true)
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let file = directory.appendingPathComponent("notes.txt")
+    try Data("notes".utf8).write(to: file)
+    let model = AppModel(launchMode: .offlineTesting, provider: TypingTestProvider())
+    await model.start()
+
+    await model.addComposerAttachments([folder, file], to: .channel)
+    #expect(model.channelComposerAttachments.map(\.url) == [file])
+    #expect(model.errorMessage == nil)
+
+    model.clearComposerAttachments(for: .channel)
+    await model.addComposerAttachments([folder], to: .channel)
+    #expect(model.channelComposerAttachments.isEmpty)
+    #expect(model.errorMessage == "That file type is not supported.")
+
+    // Like Discord, one empty file rejects the whole batch.
+    let empty = directory.appendingPathComponent("empty.txt")
+    try Data().write(to: empty)
+    await model.addComposerAttachments([file, empty], to: .channel)
+    #expect(model.channelComposerAttachments.isEmpty)
+    #expect(model.errorMessage == "File cannot be empty.")
 }
 
 @MainActor
@@ -417,7 +457,7 @@ import Testing
     #expect(model.oversizedAttachmentPrompt?.id == externalPrompt.id)
     model.updateDraft("look")
     model.uploadOversizedAttachment(externalPrompt, using: .catbox)
-    #expect(await eventuallyOnMain { model.externalAttachmentUploadPresentation == nil })
+    #expect(await until { model.externalAttachmentUploadPresentation == nil })
     #expect(await uploader.callCount == 1)
     #expect(model.draft == "look https://files.catbox.moe/test.bin")
 }
@@ -488,17 +528,17 @@ import Testing
     model.queuedOversizedAttachmentPrompts = [second]
 
     model.uploadOversizedAttachment(first, using: .catbox)
-    #expect(await eventuallyUploadCallCount(1, from: uploader))
+    #expect(await eventually { await uploader.callCount == 1 })
     model.cancelExternalAttachmentUpload()
     #expect(model.oversizedAttachmentPrompt?.fileURL == second.fileURL)
 
     model.uploadOversizedAttachment(second, using: .catbox)
-    #expect(await eventuallyUploadCallCount(2, from: uploader))
+    #expect(await eventually { await uploader.callCount == 2 })
     await uploader.release(
         call: 1,
         with: URL(string: "https://files.catbox.moe/first.bin")!
     )
-    #expect(await eventuallyOnMain {
+    #expect(await until {
         model.externalAttachmentUploadPresentation?.fileName == "second.bin"
     })
     #expect(model.draft.isEmpty)
@@ -507,7 +547,7 @@ import Testing
         call: 2,
         with: URL(string: "https://files.catbox.moe/second.bin")!
     )
-    #expect(await eventuallyOnMain { model.externalAttachmentUploadPresentation == nil })
+    #expect(await until { model.externalAttachmentUploadPresentation == nil })
     #expect(model.draft == "https://files.catbox.moe/second.bin")
 }
 
@@ -532,14 +572,14 @@ import Testing
     )
     model.oversizedAttachmentPrompt = prompt
     model.uploadOversizedAttachment(prompt, using: .catbox)
-    #expect(await eventuallyUploadCallCount(1, from: uploader))
+    #expect(await eventually { await uploader.callCount == 1 })
 
     await model.resetAccountScopedLoadsAndForumState()
     await uploader.release(
         call: 1,
         with: URL(string: "https://files.catbox.moe/stale.bin")!
     )
-    #expect(await eventuallyOnMain { model.externalAttachmentUploadTask == nil })
+    #expect(await eventually { model.externalAttachmentUploadTask == nil })
     #expect(model.externalAttachmentUploadPresentation == nil)
     #expect(model.draft.isEmpty)
 }
@@ -683,7 +723,10 @@ private actor AttachmentCompactionTestWorker: AttachmentCompacting {
 }
 
 @MainActor
-@Test func `composer paste prefers arbitrary files over their compatibility path text`() throws {
+@Test(arguments: [true, false])
+func `composer paste prefers files over their path text only where files are accepted`(
+    acceptsAttachments: Bool
+) throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
         "sakuracord-paste-file-\(UUID().uuidString)",
         isDirectory: true
@@ -700,33 +743,136 @@ private actor AttachmentCompactionTestWorker: AttachmentCompacting {
     #expect(pasteboard.setString(file.path, forType: .string))
 
     let textView = ComposerNSTextView()
-    textView.commandPasteboard = pasteboard
-    var pastedURLs: [URL] = []
-    textView.onPasteAttachments = { pastedURLs = $0 }
-    textView.paste(nil)
+    var received: [ComposerIncomingAttachments] = []
+    textView.onReceiveAttachments = { attachments, _ in
+        received.append(attachments)
+        return true
+    }
+    textView.canReceiveAttachments = { acceptsAttachments }
+    #expect(textView.readSelection(from: pasteboard))
 
-    #expect(pastedURLs == [file])
+    guard acceptsAttachments else {
+        #expect(received.isEmpty)
+        #expect(textView.string == file.path)
+        return
+    }
+    guard case let .external(urls) = try #require(received.first) else {
+        Issue.record("Expected the pasted file to stay in place")
+        return
+    }
+    #expect(received.count == 1)
+    #expect(urls == [file])
     #expect(textView.string.isEmpty)
 }
 
 @MainActor
-@Test func `composer paste materializes clipboard image data as a png attachment`() throws {
-    let pasteboard = NSPasteboard(name: .init("sakuracord-paste-image-\(UUID().uuidString)"))
-    defer { pasteboard.clearContents() }
+@Test(arguments: ["public.png", "public.tiff"])
+func `composer paste accepts image-only clipboards as owned png attachments`(type: String) throws {
+    let textView = ComposerNSTextView()
+    #expect(!textView.readablePasteboardTypes.contains(.png))
+    var received: [ComposerIncomingAttachments] = []
+    textView.onReceiveAttachments = { attachments, _ in
+        received.append(attachments)
+        return true
+    }
+    // AppKit enables Paste only when the clipboard offers a readable type.
+    #expect(textView.readablePasteboardTypes.contains(.png))
+
     let image = NSImage(size: NSSize(width: 2, height: 2), flipped: false) { bounds in
         NSColor.systemPink.setFill()
         bounds.fill()
         return true
     }
+    let tiff = try #require(image.tiffRepresentation)
+    let data = type == "public.png"
+        ? try #require(NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]))
+        : tiff
+    let pasteboard = NSPasteboard(name: .init("sakuracord-paste-image-\(UUID().uuidString)"))
+    defer { pasteboard.clearContents() }
     pasteboard.clearContents()
-    #expect(pasteboard.writeObjects([image]))
+    #expect(pasteboard.setData(data, forType: .init(type)))
 
-    let url = try #require(ComposerPasteboardAttachments.urls(from: pasteboard).first)
-    defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+    #expect(textView.readSelection(from: pasteboard))
+    guard case let .owned(batch) = try #require(received.first) else {
+        Issue.record("Expected pasted image data in app-owned storage")
+        return
+    }
+    defer { batch.discard() }
+    #expect(received.count == 1)
+    #expect(textView.string.isEmpty)
+    #expect(ComposerPromisedFileStorage.isManagedDirectory(batch.directory))
 
+    let url = try #require(batch.urls.first)
     #expect(url.pathExtension == "png")
-    #expect((try Data(contentsOf: url)).isEmpty == false)
     #expect(NSImage(contentsOf: url)?.isValid == true)
+}
+
+@Test(arguments: [
+    (#"<meta charset="utf-8"><img src="https://cdn.example.com/a/cat.photo.jpg?w=2" alt="">"#, "cat.photo.png"),
+    (#"<img alt="" src='/images/sakura.webp'>"#, "sakura.png"),
+    (#"<img src="data:image/png;base64,AAAA">"#, "image.png"),
+    ("<p>No image</p>", "image.png"),
+    // Percent-decoded names stay a single safe component.
+    (#"<img src="https://e.com/..%2F..%2FDesktop%2Fphoto.png">"#, ".._.._Desktop_photo.png"),
+    (#"<img src="https://storage.example/o/images%2Fcat.jpg?alt=media">"#, "images_cat.png"),
+    (#"<img src="https://e.com/a%00b%3Ac.jpg">"#, "a_b_c.png"),
+    (#"<img src="https://e.com/a/..">"#, "image.png"),
+    ("<img src=\"https://e.com/\(String(repeating: "é", count: 150)).jpg\">", String(repeating: "é", count: 100) + ".png")
+])
+func `pasted images take their name from the copied html image source`(html: String, filename: String) {
+    #expect(ComposerPasteboardAttachments.pastedImageFilename(html: html) == filename)
+}
+
+@MainActor
+@Test func `managed pasted files cannot escape their batch directory`() throws {
+    #expect(ComposerPromisedFileStorage.makeBatch(writing: Data("x".utf8), named: "../escaped.png") == nil)
+    let batch = try #require(ComposerPromisedFileStorage.makeBatch(writing: Data("x".utf8), named: "safe.png"))
+    defer { batch.discard() }
+    #expect(batch.urls.map { $0.deletingLastPathComponent().standardizedFileURL } == [batch.directory.standardizedFileURL])
+}
+
+@MainActor
+@Test(arguments: [
+    ("a", 4_000, true, false),
+    // 2,001 characters measure 4,002 UTF-16 code units, as JavaScript counts them.
+    ("😀", 2_001, true, true),
+    ("😀", 2_001, false, false)
+])
+func `composer paste attaches long text as message txt only where files are accepted`(
+    character: String,
+    count: Int,
+    acceptsAttachments: Bool,
+    attaches: Bool
+) throws {
+    let text = String(repeating: character, count: count)
+    let pasteboard = NSPasteboard(name: .init("sakuracord-paste-text-\(UUID().uuidString)"))
+    defer { pasteboard.clearContents() }
+    pasteboard.clearContents()
+    #expect(pasteboard.setString(text, forType: .string))
+
+    let textView = ComposerNSTextView()
+    var received: [ComposerIncomingAttachments] = []
+    textView.onReceiveAttachments = { attachments, _ in
+        received.append(attachments)
+        return true
+    }
+    textView.canReceiveAttachments = { acceptsAttachments }
+    #expect(textView.readSelection(from: pasteboard))
+
+    guard attaches else {
+        #expect(received.isEmpty)
+        #expect(textView.string == text)
+        return
+    }
+    guard case let .owned(batch) = try #require(received.first) else {
+        Issue.record("Expected pasted text in app-owned storage")
+        return
+    }
+    defer { batch.discard() }
+    #expect(textView.string.isEmpty)
+    let url = try #require(batch.urls.first)
+    #expect(url.lastPathComponent == "message.txt")
+    #expect(try String(contentsOf: url, encoding: .utf8) == text)
 }
 
 @MainActor
@@ -1404,7 +1550,7 @@ func `composer attachment controls preserve edits and spoiler state`(anonymisesF
     let target = MessageID(rawValue: 1001)
     model.navigate(to: channel.guildID, channelID: channel.id, messageID: target)
 
-    #expect(await eventuallyOnMain {
+    #expect(await until {
         model.messageNavigationRequest?.channelID == channel.id
             && model.messageNavigationRequest?.messageID == target
     })
@@ -1428,7 +1574,7 @@ func `composer attachment controls preserve edits and spoiler state`(anonymisesF
         )
     )
 
-    #expect(await eventuallyOnMain {
+    #expect(await until {
         model.readState.accountID == "offline"
             && model.selectedGuildID == channel.guildID
             && model.selectedChannelID == channel.id
@@ -1474,7 +1620,7 @@ func `composer attachment controls preserve edits and spoiler state`(anonymisesF
         )
     )
 
-    let didNavigate = await eventuallyOnMain {
+    let didNavigate = await until {
         model.readState.accountID == "target-account"
             && model.selectedGuildID == expectedGuildID
             && model.selectedChannelID == expectedChannelID
@@ -1963,6 +2109,27 @@ func `composer attachment controls preserve edits and spoiler state`(anonymisesF
     #expect(!ComposerUnfocusedTypingMonitor.shouldOfferReturn(49))
     #expect(KeyboardShortcutPolicy.isPlainEscape(keyCode: 53, modifierFlags: []))
     #expect(!KeyboardShortcutPolicy.isPlainEscape(keyCode: 49, modifierFlags: []))
+}
+
+// Characters are what each layout produces for the key with Command held.
+@Test(arguments: [
+    ("v", .command, true), // QWERTY, AZERTY, Dvorak, Russian, Dvorak – QWERTY ⌘
+    ("V", [.command, .capsLock], true),
+    ("k", .command, false), // Dvorak's key in the QWERTY V position
+    ("м", .command, false),
+    ("V", [.command, .shift], false),
+    ("v", [.command, .option], false),
+    ("v", [], false)
+] as [(String, NSEvent.ModifierFlags, Bool)])
+func `unfocused paste matches the layout's command v`(
+    characters: String,
+    modifierFlags: NSEvent.ModifierFlags,
+    offersPaste: Bool
+) {
+    #expect(ComposerUnfocusedTypingMonitor.shouldOfferPaste(
+        characters: characters,
+        modifierFlags: modifierFlags
+    ) == offersPaste)
 }
 
 @MainActor
@@ -2484,34 +2651,10 @@ func `Gateway confirmation wins before or after a send timeout`(confirmsBeforeTi
     #expect(model.messages.allSatisfy { $0.channelID == model.selectedChannelID })
 
     model.selectedChannelID = originalChannel
-    #expect(await eventuallyOnMain {
+    #expect(await eventually {
         model.messages.count { $0.content == "channel scoped" } == 1
             && model.messages.last(where: { $0.content == "channel scoped" })?.outboxState == .confirmed
     })
-}
-
-@MainActor
-private func eventuallyOnMain(_ condition: @escaping @MainActor () -> Bool) async -> Bool {
-    for _ in 0 ..< 200 {
-        if condition() {
-            return true
-        }
-        try? await Task.sleep(for: .milliseconds(1))
-    }
-    return condition()
-}
-
-private func eventuallyUploadCallCount(
-    _ expectedCount: Int,
-    from uploader: SequencedAttachmentUploadTestUploader
-) async -> Bool {
-    for _ in 0 ..< 200 {
-        if await uploader.callCount == expectedCount {
-            return true
-        }
-        try? await Task.sleep(for: .milliseconds(1))
-    }
-    return await uploader.callCount == expectedCount
 }
 
 private func createSparseFile(_ url: URL, size: Int64) throws {

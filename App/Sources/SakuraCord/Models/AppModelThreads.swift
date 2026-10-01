@@ -189,6 +189,56 @@ extension AppModel {
         hasMoreCache[threadID] = page.hasMoreBefore
     }
 
+    func consumeThreadEvent(_ event: ClientEvent) -> Bool {
+        switch event {
+        case .threadDeleted(let channelID):
+            consumeThreadDeleted(channelID: channelID)
+        case .forumPostsChanged(let channelID, let posts):
+            consumeForumPostsChanged(channelID: channelID, posts: posts)
+        case .forumPostPreviewsChanged(let channelID, let posts):
+            consumeForumPostPreviewsChanged(channelID: channelID, posts: posts)
+        case .activeJoinedThreadsChanged(let threads):
+            if var value = snapshot {
+                value.activeJoinedThreads = threads
+                snapshot = value
+                forwardSearchSourceRevision &+= 1
+            }
+            reconcileInboxEligibility()
+        case .forumPageLoaded(let channelID, let query, let page):
+            consumeForumPageLoaded(channelID: channelID, query: query, page: page)
+        default:
+            return false
+        }
+        return true
+    }
+
+    func consumeThreadDeleted(channelID: ChannelID) {
+        // Closing saves the current conversation, so evict only after it closes.
+        if openThread?.id == channelID { closeThread() }
+        cancelConversationRefresh(in: channelID)
+        messageCache[channelID] = nil
+        messageCacheOrder.removeAll { $0 == channelID }
+        messageRowCache[channelID] = nil
+        messageRowCacheOrder.removeAll { $0 == channelID }
+        hasMoreCache[channelID] = nil
+        threadPreviewMessages[channelID] = nil
+        threadPreviewParentIDs[channelID] = nil
+        inbox.metadataTasks.removeValue(forKey: channelID)?.cancel()
+        inbox.threads[channelID] = nil
+
+        let retained = messages + threadMessages + messageCache.values.flatMap { $0 }
+            + pinnedMessages.items.map(\.message)
+            + inbox.mentions + inbox.groups.flatMap(\.messages)
+            + (messageSearch.page?.results.flatMap(\.messages) ?? [])
+            + forumCataloguePosts.flatMap { [$0.firstMessage, $0.mostRecentMessage].compactMap { $0 } }
+        var seen = Set<MessageID>()
+        for message in retained where message.thread?.id == channelID && seen.insert(message.id).inserted {
+            var update = MessageUpdate(messageID: message.id, channelID: message.channelID)
+            update.thread = .some(nil)
+            consumeImmediately(.messagePatched(update))
+        }
+    }
+
     func closeThread() {
         if let threadID = openThread?.id {
             cancelConversationRefresh(in: threadID)
@@ -209,6 +259,7 @@ extension AppModel {
         threadLoadTask?.cancel()
         threadLoadTask = nil
         openThread = nil
+        threadCreation = nil
         openThreadStarter = nil
         openThreadStartedAt = nil
         openThreadStarterMessageID = nil
@@ -323,6 +374,9 @@ extension AppModel {
     func submitThreadComposerMessage(
         attachments: [ForumPostAttachment]
     ) async -> ComposerSubmissionResult {
+        if let threadCreation {
+            return await submitThreadCreation(threadCreation, attachments: attachments)
+        }
         guard let thread = openThread, openThreadAccess.canSend else { return .rejected }
         guard allowSlowmodeSubmission(in: thread.id) else { return .rejected }
         let content = threadDraft.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -379,4 +433,143 @@ extension AppModel {
         return didSend
     }
 
+}
+
+extension AppModel {
+    /// Which thread types the selected channel allows. Announcement channels
+    /// only support public announcement threads.
+    var selectedChannelThreadCreationPermissions: ThreadCreationPermissions {
+        guard let channel = selectedChannel, channel.guildID != nil,
+              channel.kind == .text || channel.kind == .announcement,
+              let permissions = selectedEffectivePermissions,
+              permissions & DiscordPermissionBits.readMessageHistory != 0
+        else { return ThreadCreationPermissions(canCreatePublic: false, canCreatePrivate: false) }
+        return ThreadCreationPermissions(
+            canCreatePublic: permissions & DiscordPermissionBits.createPublicThreads != 0,
+            canCreatePrivate: channel.kind == .text
+                && permissions & DiscordPermissionBits.createPrivateThreads != 0
+        )
+    }
+
+    var canCreateThreadInSelectedChannel: Bool {
+        selectedChannelThreadCreationPermissions.canCreateAny
+    }
+
+    func beginThreadCreation() {
+        let permissions = selectedChannelThreadCreationPermissions
+        guard let channelID = selectedChannelID, permissions.canCreateAny else { return }
+        // Like Discord, the channel's unsent text becomes the thread's first message.
+        let channelDraft = draft
+        closeThread()
+        dismissPinnedMessages()
+        threadCreation = ThreadCreationDraft(parentID: channelID, permissions: permissions)
+        if !channelDraft.isEmpty {
+            updateDraft("")
+            threadDraft = channelDraft
+        }
+    }
+
+    /// Shows required-field errors only for invalid submissions. A valid send
+    /// consumes the draft while the creation pane is still visible.
+    @discardableResult
+    func validateThreadCreation() -> Bool {
+        guard let creation = threadCreation else { return false }
+        let isValid = !creation.trimmedName.isEmpty
+            && (!threadDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || !threadComposerAttachments.isEmpty)
+        creation.showsValidationErrors = !isValid
+        return isValid
+    }
+
+    /// Creates the thread, then sends the composed message as its first message.
+    func submitThreadCreation(
+        _ creation: ThreadCreationDraft,
+        attachments: [ForumPostAttachment]
+    ) async -> ComposerSubmissionResult {
+        guard threadCreation === creation, !creation.isSubmitting else { return .rejected }
+        let permissions = selectedChannelThreadCreationPermissions
+        let content = threadDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard creation.isPrivate ? permissions.canCreatePrivate : permissions.canCreatePublic,
+              !creation.trimmedName.isEmpty, !content.isEmpty || !attachments.isEmpty,
+              validateAttachmentCount(attachments),
+              allowOnboardingSubmission(in: creation.parentID)
+        else { return .rejected }
+        let session = accountSession()
+        let draft = CreateThreadDraft(
+            channelID: creation.parentID,
+            name: creation.trimmedName,
+            isPrivate: creation.isPrivate,
+            autoArchiveDuration: selectedChannel?.defaultAutoArchiveDuration ?? 4_320
+        )
+        creation.isSubmitting = true
+        defer { creation.isSubmitting = false }
+        let thread: MessageThreadSummary
+        do {
+            thread = try await session.provider.createThread(draft)
+        } catch {
+            guard isCurrentAccountSession(session) else { return .rejected }
+            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
+            errorMessage = error.localizedDescription
+            return .rejected
+        }
+        guard isCurrentAccountSession(session) else { return .rejected }
+        if threadCreation === creation {
+            openThreadConversation(
+                thread,
+                starter: currentUser,
+                startedAt: thread.createdAt ?? .now,
+                initialMessages: []
+            )
+        }
+        let confirmed = await sendThreadMessage(
+            content: content,
+            attachments: attachments,
+            thread: thread,
+            clearsComposer: false
+        )
+        return .enqueued(serverConfirmed: confirmed)
+    }
+
+    func invalidateTimelineThreadPreview(channelID: ChannelID, messageID: MessageID) {
+        guard threadPreviewMessages[channelID]?.id == messageID else { return }
+        threadPreviewMessages[channelID] = nil
+        let changed = Set(messages.filter { $0.referencedThreadID == channelID }.map(\.id))
+        if !changed.isEmpty { publishMessageRowsUpdate(changedMessageIDs: changed) }
+    }
+
+    /// Keeps timeline thread cards current. A card's summary lives on its
+    /// message; its latest-message preview mirrors the provider's catalogue.
+    func refreshTimelineThreadCards(parentID: ChannelID, posts: [ForumPost], replacesAll: Bool = true) {
+        var changedPreviewThreadIDs = Set<ChannelID>()
+        if replacesAll {
+            let retained = Set(posts.map(\.id))
+            for (threadID, parent) in threadPreviewParentIDs where parent == parentID && !retained.contains(threadID) {
+                threadPreviewMessages[threadID] = nil
+                threadPreviewParentIDs[threadID] = nil
+                changedPreviewThreadIDs.insert(threadID)
+            }
+        }
+        for post in posts {
+            threadPreviewParentIDs[post.id] = parentID
+            guard threadPreviewMessages[post.id] != post.mostRecentMessage else { continue }
+            threadPreviewMessages[post.id] = post.mostRecentMessage
+            changedPreviewThreadIDs.insert(post.id)
+        }
+        guard parentID == selectedChannelID else { return }
+        let threadsByID = Dictionary(posts.map { ($0.id, $0.thread) }, uniquingKeysWith: { $1 })
+        var redrawnMessageIDs = Set<MessageID>()
+        for message in messages {
+            guard let threadID = message.referencedThreadID else { continue }
+            if let thread = threadsByID[threadID], message.thread != thread {
+                var updated = message
+                updated.thread = thread
+                reconcileSelectedMessageUpdate(updated)
+            } else if changedPreviewThreadIDs.contains(threadID) {
+                redrawnMessageIDs.insert(message.id)
+            }
+        }
+        if !redrawnMessageIDs.isEmpty {
+            publishMessageRowsUpdate(changedMessageIDs: redrawnMessageIDs)
+        }
+    }
 }

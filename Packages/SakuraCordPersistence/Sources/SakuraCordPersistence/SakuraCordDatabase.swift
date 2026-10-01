@@ -50,23 +50,6 @@ public actor SakuraCordDatabase {
         }
     }
 
-    public func onboardingDraft(guildID: GuildID) throws -> GuildOnboardingDraft? {
-        try queue.read { db in
-            guard let record = try OnboardingDraftRecord.fetchOne(db, key: guildID.description) else { return nil }
-            return try JSONDecoder().decode(GuildOnboardingDraft.self, from: record.payload)
-        }
-    }
-
-    public func saveOnboardingDraft(_ draft: GuildOnboardingDraft?, guildID: GuildID) throws {
-        try queue.write { db in
-            if let draft {
-                try OnboardingDraftRecord(guildID: guildID.description, payload: JSONEncoder().encode(draft)).save(db)
-            } else {
-                _ = try OnboardingDraftRecord.deleteOne(db, key: guildID.description)
-            }
-        }
-    }
-
     public func recentDraftChannelIDs() throws -> [ChannelID] {
         try queue.read { db in
             try DraftRecord
@@ -80,8 +63,8 @@ public actor SakuraCordDatabase {
         try queue.read { db in
             let records = try DraftRecord.fetchAll(db)
             return DraftStorageSummary(
-                draftCount: records.count + (try OnboardingDraftRecord.fetchCount(db)),
-                approximateByteCount: try OnboardingDraftRecord.fetchAll(db).reduce(0) { $0 + Int64($1.payload.count) } + records.reduce(into: 0) { total, record in
+                draftCount: records.count,
+                approximateByteCount: records.reduce(into: 0) { total, record in
                     total += Int64(record.content.utf8.count)
                 }
             )
@@ -95,7 +78,6 @@ public actor SakuraCordDatabase {
     public func clearDrafts() throws {
         _ = try queue.write { db in
             _ = try DraftRecord.deleteAll(db)
-            _ = try OnboardingDraftRecord.deleteAll(db)
         }
     }
 
@@ -180,6 +162,9 @@ public actor SakuraCordDatabase {
                 table.column("payload", .blob).notNull()
             }
         }
+        migrator.registerMigration("v11-session-only-onboarding") { db in
+            try db.drop(table: "onboardingDrafts")
+        }
         return migrator
     }
 }
@@ -189,10 +174,4 @@ private struct DraftRecord: Codable, FetchableRecord, PersistableRecord {
     var channelID: String
     var content: String
     var updatedAt: Date
-}
-
-private struct OnboardingDraftRecord: Codable, FetchableRecord, PersistableRecord {
-    static let databaseTableName = "onboardingDrafts"
-    var guildID: String
-    var payload: Data
 }

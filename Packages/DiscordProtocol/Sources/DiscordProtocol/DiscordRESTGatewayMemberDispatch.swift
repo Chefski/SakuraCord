@@ -64,12 +64,10 @@ extension DiscordRESTProvider {
         if guildID == pendingMemberGuildID,
            update.id == selectedMemberListID[guildID]
         {
-            continuation?.yield(
-                .membersChanged(
-                    guildID: guildID,
-                    members: orderedMemberListMembers(guildID: guildID) ?? members,
-                    groups: cachedMemberListGroups[guildID]?[update.id] ?? []
-                )
+            publishMembers(
+                guildID: guildID,
+                members: orderedMemberListMembers(guildID: guildID) ?? members,
+                groups: cachedMemberListGroups[guildID]?[update.id] ?? []
             )
         }
     }
@@ -252,6 +250,9 @@ extension DiscordRESTProvider {
               let index = members.firstIndex(where: { $0.id == userID })
         else { return }
         members[index].status = status
+        if let clientStatus = update.clientStatus {
+            members[index].isMobileOnly = clientStatus.isMobileOnly
+        }
         if let activities = update.activities {
             let primaryActivity = activities.memberListActivity
             members[index].customStatus = activities.first(where: { $0.type == 4 })?.displayText
@@ -262,12 +263,10 @@ extension DiscordRESTProvider {
         }
         cachedMembers[guildID] = members
         if guildID == pendingMemberGuildID {
-            continuation?.yield(
-                .membersChanged(
-                    guildID: guildID,
-                    members: orderedMemberListMembers(guildID: guildID) ?? members,
-                    groups: selectedMemberListGroups(guildID: guildID)
-                )
+            publishMembers(
+                guildID: guildID,
+                members: orderedMemberListMembers(guildID: guildID) ?? members,
+                groups: selectedMemberListGroups(guildID: guildID)
             )
         }
     }

@@ -136,6 +136,7 @@ extension AppModel {
         let guildID = message.guildID
             ?? snapshot?.channels.first { $0.id == message.channelID }?.guildID
         switch mention.kind {
+        case .guildNavigation: return GuildNavigationMention(rawValue: mention.id)?.title ?? mention.rawToken
         case .user:
             let userID = UserID(mention.id)
             let member = userID.flatMap { id in guildID.flatMap { membersByGuildID[$0]?[id] } }

@@ -115,12 +115,10 @@ extension DiscordRESTProvider {
                     .formUnion(zip(catalogMembers, members).compactMap { dto, member in
                         dto.joinedAt != nil && dto.pending != true ? member.id : nil
                     })
-                continuation?.yield(
-                    .membersChanged(
-                        guildID: guildID,
-                        members: cachedMembers[guildID] ?? [],
-                        groups: selectedMemberListGroups(guildID: guildID)
-                    )
+                publishMembers(
+                    guildID: guildID,
+                    members: cachedMembers[guildID] ?? [],
+                    groups: selectedMemberListGroups(guildID: guildID)
                 )
                 // Discord's UserSearchContextManager handles GUILD_CREATE
                 // by indexing the accompanying members with their guild

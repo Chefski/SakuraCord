@@ -404,7 +404,7 @@ struct MessageActionCapsule: View {
                 HoverActionButton(systemImage: "link", help: "Copy message link", action: copyLink)
                 if let openThread {
                     HoverActionButton(
-                        systemImage: "bubble.left.and.bubble.right", help: "Open thread", action: openThread
+                        systemImage: SakuraCordSystemSymbol.thread, help: "Open thread", action: openThread
                     )
                 }
                 if canDelete {
@@ -584,6 +584,7 @@ enum MessageReplySummary {
         content: String,
         mentionLabel: (RenderedMention) -> String = { mention in
             switch mention.kind {
+            case .guildNavigation: GuildNavigationMention(rawValue: mention.id)?.title ?? mention.rawToken
             case .user: "@unknown-user"
             case .role: "@unknown-role"
             case .channel: "#unknown-channel"
@@ -854,7 +855,7 @@ struct MessageProfilePopoverContent: View {
 
     var body: some View {
         Group {
-            if let presentation = model.contextualProfilePresentation,
+            if let presentation = model.liveProfilePresentation(for: .contextual),
                presentation.member.id == userID,
                presentation.requestID == requestID
             {

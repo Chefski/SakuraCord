@@ -170,6 +170,11 @@ final class AppModel {
         }
     }
     var visibleChannelGroups: [ChannelGroup] = []
+    var pinnedDirectMessageIDs: Set<ChannelID> {
+        guard let settings = snapshot?.notificationSettings.first(where: { $0.guildID == nil })
+        else { return [] }
+        return Set(settings.channelOverrides.filter(\.isPinnedDirectMessage).map(\.channelID))
+    }
     var unreadCategoryIDsByGuild: [GuildID: Set<ChannelID>] = [:]
     var hiddenChannelIDs: Set<ChannelID> = [] {
         didSet { refreshVisibleChannelGroups() }
@@ -295,6 +300,7 @@ final class AppModel {
     var roleMemberResult: RoleMemberResult?
     var isLoadingRoleMembers = false
     var roleMemberErrorMessage: String?
+    @ObservationIgnored var currentStatusRevision: UInt64 = 0
     var currentStatus: PresenceStatus = .offline
     var connectionState: ConnectionState = .disconnected
     var isAuthenticated = false
@@ -356,6 +362,10 @@ final class AppModel {
     var interactionErrorMessage: String?
     var isVoiceChatOpen = false
     var openThread: MessageThreadSummary?
+    /// A thread being composed in the supplementary pane. It is mutually
+    /// exclusive with `openThread` and becomes it once Discord creates the thread.
+    var threadCreation: ThreadCreationDraft?
+    var hasThreadPane: Bool { openThread != nil || threadCreation != nil }
     var openThreadStarter: User?
     var openThreadStartedAt: Date?
     @ObservationIgnored var openThreadStarterMessageID: MessageID?
@@ -419,6 +429,7 @@ final class AppModel {
     var supportedCapabilities: Set<ChatCapability> = []
     var componentInteractionPresentation =
         ComponentInteractionPresentationState()
+    /// Views render profiles through `liveProfilePresentation(for:)`.
     var inspectorProfilePresentation:
         ProfilePresentationState?
     var contextualProfilePresentation:
@@ -542,6 +553,11 @@ final class AppModel {
     var canManageForumPosts: Bool {
         guard let permissions = selectedEffectivePermissions else { return false }
         return permissions & DiscordPermissionBits.manageThreads != 0
+    }
+
+    var canAttachFilesToForumPosts: Bool {
+        guard canCreateForumPosts, let permissions = selectedEffectivePermissions else { return false }
+        return permissions & DiscordPermissionBits.attachFiles != 0
     }
 
     func canDeleteForumPost(_ post: ForumPost) -> Bool {
@@ -893,11 +909,15 @@ final class AppModel {
     var selectedChannelID: ChannelID? {
         didSet {
             guard selectedChannelID != oldValue else { return }
-            onboarding.presentedGuildID = nil
+            if onboarding.previewChannelID != selectedChannelID {
+                onboarding.presentedGuildID = nil
+                onboarding.previewChannelID = nil
+                onboarding.previewReturnChannelID = nil
+            }
             refreshServerRailSelection()
-            recordConversationNavigation()
+            if onboarding.previewChannelID == nil { recordConversationNavigation() }
             timelineSpoilerRevealStore.reset()
-            if let previousChannel = selectedChannel,
+            if onboarding.previewChannelID == nil, let previousChannel = selectedChannel,
                let guildID = previousChannel.guildID
             {
                 lastOpenedChannelIDsByGuild[guildID] = previousChannel.id
@@ -1117,6 +1137,9 @@ final class AppModel {
         [ChannelID: [MessageRowPresentation]] = [:]
     @ObservationIgnored var messageRowCacheOrder: [ChannelID] = []
     @ObservationIgnored var hasMoreCache: [ChannelID: Bool] = [:]
+    /// Latest known message per thread, drawn in timeline thread cards.
+    @ObservationIgnored var threadPreviewMessages: [ChannelID: Message] = [:]
+    @ObservationIgnored var threadPreviewParentIDs: [ChannelID: ChannelID] = [:]
     @ObservationIgnored let discordNetworkDisabled: Bool
     @ObservationIgnored let usesInsecureDebugCredentials: Bool
     @ObservationIgnored let restoresStoredSession: Bool

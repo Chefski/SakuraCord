@@ -76,7 +76,7 @@ struct ComposerView: View {
             },
             leading: {
                 Group {
-                    if !hasActiveCommand {
+                    if !hasActiveCommand, !isCreatingThread {
                         ComposerAttachmentButton(appearance: appearance) {
                             showComposerActions.toggle()
                         }
@@ -100,6 +100,19 @@ struct ComposerView: View {
                                             .frame(maxWidth: .infinity, alignment: .leading).padding(8)
                                     }
                                 }
+                                if canCreateThread {
+                                    Button {
+                                        showComposerActions = false
+                                        model.beginThreadCreation()
+                                    } label: {
+                                        Label {
+                                            Text("Create Thread")
+                                        } icon: {
+                                            SakuraCordSystemSymbol.swiftUIImage(named: SakuraCordSystemSymbol.thread)
+                                        }
+                                            .frame(maxWidth: .infinity, alignment: .leading).padding(8)
+                                    }
+                                }
                                 if canCreatePoll {
                                     Button {
                                         showComposerActions = false
@@ -113,6 +126,7 @@ struct ComposerView: View {
                                     showComposerActions = false
                                 }
                             }
+                            .labelStyle(ComposerActionLabelStyle())
                             .buttonStyle(PopoverRowButtonStyle()).padding(6).frame(width: 200)
                         }
                     }
@@ -131,6 +145,9 @@ struct ComposerView: View {
                             onSubmit: submitComposer,
                             onKeyboardCommand: handleAutocomplete,
                             cancel: cancelCommand,
+                            receiveAttachment: { attachments in
+                                Task { await model.receiveCommandAttachment(attachments) }
+                            },
                             isFocused: $isFocused
                         )
                     } else {
@@ -154,7 +171,6 @@ struct ComposerView: View {
                                     )
                                 },
                                 onAutocompleteCommand: handleAutocomplete,
-                                onPasteAttachments: addPastedAttachments,
                                 onDropTargetChanged: { targeted, instant in
                                     composerDropInteraction?.update(
                                         isTargeted: targeted,
@@ -162,13 +178,24 @@ struct ComposerView: View {
                                         isInstant: instant
                                     )
                                 },
-                                onDropAttachments: handleDroppedAttachments,
+                                onReceiveAttachments: { attachments, isInstant in
+                                    Task {
+                                        await model.receiveComposerAttachments(
+                                            attachments,
+                                            to: conversation,
+                                            sendingImmediately: isInstant
+                                        )
+                                    }
+                                    return true
+                                },
+                                canReceiveAttachments: { model.isComposerDropEligible(conversation) },
                                 onCompositionStateChange: {
                                     isComposing = $0
                                     if $0 { model.dismissDraftTranslation(in: conversation) }
                                 },
                                 capturesUnfocusedTyping:
-                                    !showEmojiPicker
+                                    model.threadCreation?.isSubmitting != true
+                                        && !showEmojiPicker
                                         && !showGIFPicker
                                         && !showStickerPicker,
                                 verticalContentInset: appearance == .defaultStyle
@@ -213,7 +240,7 @@ struct ComposerView: View {
                         ForEach(model.appearanceSettings.composerIcons.order) { icon in
                             switch icon {
                             case .gif:
-                                if model.supportedCapabilities.contains(.gifs) {
+                                if model.supportedCapabilities.contains(.gifs), !isCreatingThread {
                                     ComposerIconView(icon: .gif, appearance: appearance) {
                                         toggleGIFPicker()
                                     }
@@ -230,7 +257,7 @@ struct ComposerView: View {
                                     }
                                 }
                             case .sticker:
-                                if model.supportedCapabilities.contains(.stickers) {
+                                if model.supportedCapabilities.contains(.stickers), !isCreatingThread {
                                     ComposerIconView(icon: .sticker, appearance: appearance) {
                                         toggleStickerPicker()
                                     }
@@ -594,6 +621,7 @@ struct ComposerView: View {
             showGIFPicker = false
             return
         }
+        guard !isCreatingThread else { return }
 
         let now = ProcessInfo.processInfo.systemUptime
         guard now - gifPickerDismissedAt > 0.25 else { return }
@@ -608,6 +636,7 @@ struct ComposerView: View {
             showStickerPicker = false
             return
         }
+        guard !isCreatingThread else { return }
 
         let now = ProcessInfo.processInfo.systemUptime
         guard now - stickerPickerDismissedAt > 0.25 else { return }
@@ -618,17 +647,20 @@ struct ComposerView: View {
     }
 
     private func send() {
-        guard let activeConversationID, model.allowSlowmodeSubmission(in: activeConversationID) else { return }
-        guard !isSubmitting,
-              !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty
+        guard !isSubmitting, allowsSubmission() else { return }
+        if isCreatingThread, !model.validateThreadCreation() { return }
+        guard !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty
         else { return }
         isSubmitting = true
         draftSelection = nil
         selectionBeforeEmojiPicker = nil
         let staged = attachments
         let conversationID = activeConversationID
+        let keepsCreationDraft = isCreatingThread
         model.beginUsingOwnedPromisedFiles(staged.map(\.url))
-        model.clearComposerAttachments(for: conversation)
+        if !keepsCreationDraft {
+            model.clearComposerAttachments(for: conversation)
+        }
         Task {
             defer {
                 model.endUsingOwnedPromisedFiles(staged.map(\.url))
@@ -647,40 +679,12 @@ struct ComposerView: View {
             case .thread:
                 await model.submitThreadComposerMessage(attachments: staged)
             }
-            if !result.consumedComposer, activeConversationID == conversationID {
+            if !keepsCreationDraft, !result.consumedComposer, activeConversationID == conversationID {
                 model.restoreComposerAttachments(staged, to: conversation)
             }
             isSubmitting = false
             isFocused = true
         }
-    }
-
-    private func handleDroppedAttachments(
-        _ urls: [URL],
-        isInstant: Bool
-    ) -> Bool {
-        guard !urls.isEmpty else { return false }
-        if !isInstant {
-            Task { await model.addComposerAttachments(urls, to: conversation) }
-            return true
-        }
-        Task {
-            let acceptedURLs = await model.attachmentURLsWithinDiscordLimit(urls, offeringExternalUploadFor: conversation)
-            guard !acceptedURLs.isEmpty else { return }
-            let scopedURLs = acceptedURLs.filter {
-                $0.startAccessingSecurityScopedResource()
-            }
-            defer {
-                for url in scopedURLs {
-                    url.stopAccessingSecurityScopedResource()
-                }
-            }
-            await model.sendAttachmentsImmediately(
-                acceptedURLs.map { ForumPostAttachment(url: $0) },
-                to: conversation
-            )
-        }
-        return true
     }
 
     private func openComposerAttachment(_ id: UUID) {
@@ -901,7 +905,7 @@ struct ComposerView: View {
     }
 
     private func submitComposer() {
-        guard let activeConversationID, model.allowSlowmodeSubmission(in: activeConversationID) else { return }
+        guard allowsSubmission() else { return }
         if hasActiveCommand {
             guard model.commandComposer.canSubmit else { return }
             model.executeApplicationCommand()
@@ -1128,15 +1132,32 @@ struct ComposerView: View {
         activeConversationID.map { model.canCreatePoll(in: $0) } ?? false
     }
 
+    private var canCreateThread: Bool {
+        conversation == .channel && model.canCreateThreadInSelectedChannel
+    }
+
     private var hasComposerActions: Bool {
-        canAddAttachments || canCreatePoll || model.translation.settings.isEnabled
+        canAddAttachments || canCreatePoll || canCreateThread || model.translation.settings.isEnabled
+    }
+
+    /// The thread pane composes a thread's first message before Discord has
+    /// created the thread, so it has no conversation ID, slowmode, or
+    /// destination for immediate GIF or sticker sends yet.
+    private var isCreatingThread: Bool {
+        conversation == .thread && model.threadCreation != nil
+    }
+
+    private func allowsSubmission() -> Bool {
+        guard let activeConversationID else { return isCreatingThread }
+        return model.allowSlowmodeSubmission(in: activeConversationID)
     }
 
     private var composerPlaceholder: String {
         ComposerPlaceholderPolicy.text(
             channelName: channelName,
             channelKind: model.selectedChannel?.kind,
-            destination: conversation
+            destination: conversation,
+            startsThread: isCreatingThread
         )
     }
 
@@ -1197,5 +1218,14 @@ struct ComposerView: View {
             !activeReplyMentionsAuthor,
             in: conversation
         )
+    }
+}
+
+private struct ComposerActionLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 8) {
+            configuration.icon.frame(width: 20, alignment: .center)
+            configuration.title
+        }
     }
 }

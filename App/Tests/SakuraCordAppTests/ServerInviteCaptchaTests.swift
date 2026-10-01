@@ -1,5 +1,6 @@
 import DiscordProtocol
 import Foundation
+import Observation
 @testable import SakuraCord
 import SakuraCordModels
 import Testing
@@ -50,11 +51,16 @@ struct ServerInviteCaptchaTests {
     }
 
     private func presented(_ store: ServerInviteCaptchaStore, id: UUID) async -> Bool {
-        let deadline = ContinuousClock.now + .seconds(2)
-        while ContinuousClock.now < deadline {
-            if store.challenge?.id == id { return true }
-            await Task.yield()
+        if store.challenge?.id == id { return true }
+        // Wait for publication rather than racing other main-actor tests
+        // against a wall-clock deadline on a busy CI runner.
+        await withCheckedContinuation { continuation in
+            withObservationTracking {
+                _ = store.challenge
+            } onChange: {
+                continuation.resume()
+            }
         }
-        return false
+        return store.challenge?.id == id
     }
 }

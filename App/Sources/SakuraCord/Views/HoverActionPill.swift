@@ -80,7 +80,7 @@ struct HoverActionButton: View {
                 diameter: diameter ?? HoverActionPillMetrics.controlDiameter,
                 onHoverChanged: onHoverChanged
             ) {
-                Image(systemName: systemImage)
+                SakuraCordSystemSymbol.swiftUIImage(named: systemImage)
                     .symbolVariant(.none)
                     .font(iconFont)
             }
