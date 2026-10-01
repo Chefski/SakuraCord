@@ -32,6 +32,28 @@ import Testing
     )
 }
 
+@Test func `created invites stay scoped, newest first, and drop once expired`() async throws {
+    let database = try SakuraCordDatabase(inMemory: true)
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    func invite(_ code: String, guild: UInt64, age: TimeInterval, expiresIn: TimeInterval?) throws -> CreatedServerInvite {
+        CreatedServerInvite(reference: try #require(ServerInviteReference(code)), guildID: .init(rawValue: guild),
+                            channelID: .init(rawValue: guild + 1), createdAt: now.addingTimeInterval(-age),
+                            expiresAt: expiresIn.map { now.addingTimeInterval($0) }, maxAge: 0, maxUses: 0)
+    }
+    try await database.saveCreatedInvite(invite("older", guild: 10, age: 60, expiresIn: nil))
+    try await database.saveCreatedInvite(invite("newer", guild: 10, age: 1, expiresIn: 3600))
+    try await database.saveCreatedInvite(invite("expired", guild: 10, age: 7200, expiresIn: -1))
+    try await database.saveCreatedInvite(invite("elsewhere", guild: 20, age: 1, expiresIn: nil))
+    // Discord can hand back an existing link; saving it again must not duplicate the row.
+    try await database.saveCreatedInvite(invite("older", guild: 10, age: 60, expiresIn: nil))
+
+    #expect(try await database.createdInvites(guildID: .init(rawValue: 10), now: now).map(\.reference.code) == ["newer", "older"])
+    try await database.deleteCreatedInvite(code: "newer")
+    #expect(try await database.createdInvites(guildID: .init(rawValue: 10), now: now).map(\.reference.code) == ["older"])
+    try await database.clearAccountData()
+    #expect(try await database.createdInvites(guildID: .init(rawValue: 20), now: now).isEmpty)
+}
+
 @Test func `legacy Discord caches are dropped while drafts survive migration`() async throws {
     let directory = FileManager.default.temporaryDirectory.appending(
         path: "sakuracord-session-cache-migration-\(UUID().uuidString)",
@@ -70,7 +92,7 @@ import Testing
             """
         )
     }
-    #expect(tableNames == ["drafts", "grdb_migrations"])
+    #expect(tableNames == ["createdInvites", "drafts", "grdb_migrations"])
 }
 
 private func createVersionFiveDatabase(

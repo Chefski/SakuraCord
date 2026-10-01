@@ -7,6 +7,8 @@ struct ServerContextMenuBridge: NSViewRepresentable {
     let isMutationPending: Bool
     let notificationSettings: GuildNotificationSettings
     let markRead: () -> Void
+    var canInvite: () -> Bool = { false }
+    var invite: () -> Void = {}
     let mute: (ChannelMuteDuration) -> Void
     let unmute: () -> Void
     let setNotificationLevel: (MessageNotificationLevel) -> Void
@@ -41,6 +43,8 @@ struct ServerContextMenuBridge: NSViewRepresentable {
         private var isMutationPending: Bool
         private var notificationSettings: GuildNotificationSettings
         private var markRead: () -> Void
+        private var canInvite: () -> Bool
+        private var invite: () -> Void
         private var mute: (ChannelMuteDuration) -> Void
         private var unmute: () -> Void
         private var setNotificationLevel: (MessageNotificationLevel) -> Void
@@ -55,6 +59,8 @@ struct ServerContextMenuBridge: NSViewRepresentable {
             isMutationPending = bridge.isMutationPending
             notificationSettings = bridge.notificationSettings
             markRead = bridge.markRead
+            canInvite = bridge.canInvite
+            invite = bridge.invite
             mute = bridge.mute
             unmute = bridge.unmute
             setNotificationLevel = bridge.setNotificationLevel
@@ -70,6 +76,8 @@ struct ServerContextMenuBridge: NSViewRepresentable {
             isMutationPending = bridge.isMutationPending
             notificationSettings = bridge.notificationSettings
             markRead = bridge.markRead
+            canInvite = bridge.canInvite
+            invite = bridge.invite
             mute = bridge.mute
             unmute = bridge.unmute
             setNotificationLevel = bridge.setNotificationLevel
@@ -91,6 +99,9 @@ struct ServerContextMenuBridge: NSViewRepresentable {
                     isEnabled: isUnread && !isMutationPending
                 )
             )
+            menu.addItem(.separator())
+            menu.addItem(menuItem("Invite to Server", systemImage: "person.badge.plus",
+                                  action: #selector(inviteFromMenu), isEnabled: canInvite()))
             menu.addItem(.separator())
 
             if isDirectlyMuted {
@@ -166,6 +177,8 @@ struct ServerContextMenuBridge: NSViewRepresentable {
         }
 
         @objc private func leaveServerFromMenu() { leaveServer?() }
+
+        @objc private func inviteFromMenu() { invite() }
 
         private var isDirectlyMuted: Bool {
             notificationSettings.isMuted
