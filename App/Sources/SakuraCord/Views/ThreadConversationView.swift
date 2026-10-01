@@ -99,7 +99,7 @@ private struct ThreadCreationView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Image(systemName: "bubble.left.and.bubble.right.fill")
+            SakuraCordSystemSymbol.swiftUIImage(named: SakuraCordSystemSymbol.thread)
                 .font(.system(size: 26, weight: .medium))
                 .foregroundStyle(.secondary)
                 .frame(width: 64, height: 64)
@@ -113,13 +113,14 @@ private struct ThreadCreationView: View {
                     .tint(SakuraCordAccentColor.color)
                     .textFieldStyle(.plain)
                     .focused($isNameFocused)
-                    .padding(.horizontal, 11)
-                    .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
-                    .contentShape(ConcentricRectangle(cornerRadius: 12, style: .continuous))
-                    .onTapGesture { isNameFocused = true }
+                    .accessibilityLabel("Thread Name")
+                    .padding(.horizontal, 12)
+                    .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+                    .contentShape(ConcentricRectangle(cornerRadius: 10, style: .continuous))
+                    .simultaneousGesture(TapGesture().onEnded { isNameFocused = true })
                     .glassEffect(
                         .regular.interactive(),
-                        in: ConcentricRectangle(cornerRadius: 12, style: .continuous)
+                        in: ConcentricRectangle(cornerRadius: 10, style: .continuous)
                     )
                     .onSubmit { model.validateThreadCreation() }
                 if creation.hasAttemptedSubmit, creation.trimmedName.isEmpty {
@@ -133,6 +134,7 @@ private struct ThreadCreationView: View {
                         .font(.headline)
                     Toggle("Only people you invite and moderators can see", isOn: $creation.isPrivate)
                         .toggleStyle(.checkbox)
+                        .tint(SakuraCordAccentColor.color)
                         .disabled(!creation.permissions.canCreatePublic)
                 }
             }
@@ -509,7 +511,8 @@ private struct ThreadMessageTimelineView: View {
             id: thread.id,
             title: thread.name,
             starterName: threadStarterName,
-            startedAt: model.openThreadStartedAt
+            startedAt: model.openThreadStartedAt,
+            isForumPost: model.selectedChannel?.kind == .forum
         )
     }
 

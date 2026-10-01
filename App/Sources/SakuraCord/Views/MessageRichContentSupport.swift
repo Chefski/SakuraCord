@@ -377,7 +377,7 @@ nonisolated enum SystemMessagePresentation {
         case .guildBoost, .guildBoostTier1, .guildBoostTier2, .guildBoostTier3:
             "sparkles"
         case .channelPinnedMessage: "pin.fill"
-        case .threadCreated: "bubble.left.and.bubble.right.fill"
+        case .threadCreated: SakuraCordSystemSymbol.thread
         case .call:
             isMissedCall(message, currentUserID: currentUserID)
                 ? "phone.down.fill" : "phone.fill"

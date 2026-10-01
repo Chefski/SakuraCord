@@ -997,7 +997,8 @@ private struct ChatRootView: View {
         if model.hasThreadPane {
             return SupplementaryToolbarPresentation(
                 title: model.openThread?.name ?? "New Thread",
-                systemImage: "bubble.left.and.bubble.right.fill"
+                systemImage: model.selectedChannel?.kind == .forum
+                    ? "bubble.left.and.bubble.right.fill" : SakuraCordSystemSymbol.thread
             )
         }
         if let channel = model.customizationPreviewChannel {
@@ -1270,11 +1271,15 @@ private struct ComposerFileDropOverlay: View {
                         Text(isInstantUpload ? "Upload directly to" : "Upload to")
                             .font(.title2.weight(.bold))
 
-                        Label(
-                            title,
-                            systemImage: destination == .thread
-                                ? "bubble.left.and.bubble.right.fill" : "number"
-                        )
+                        Label {
+                            Text(title)
+                        } icon: {
+                            SakuraCordSystemSymbol.swiftUIImage(
+                                named: destination == .thread
+                                    ? (model.selectedChannel?.kind == .forum
+                                        ? "bubble.left.and.bubble.right.fill" : SakuraCordSystemSymbol.thread) : "number"
+                            )
+                        }
                         .font(.headline.weight(.semibold))
                         .lineLimit(1)
                         .padding(.horizontal, 14)
@@ -1386,7 +1391,8 @@ private struct ConversationToolbarLabel: View {
                 )
                 .accessibilityHidden(true)
             } else {
-                Image(systemName: systemImage)
+                SakuraCordSystemSymbol.swiftUIImage(named: systemImage)
+                    .font(systemImage == SakuraCordSystemSymbol.thread ? .system(size: textSize) : nil)
             }
             VStack(alignment: .leading, spacing: 0) {
                 Text(title)

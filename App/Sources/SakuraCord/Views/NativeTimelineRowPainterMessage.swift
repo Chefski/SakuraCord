@@ -293,7 +293,7 @@ extension NativeTimelineRowPainter {
                     )
                         ? .systemGreen
                         : .secondaryLabelColor,
-                inset: 1
+                inset: input.row.message.type == .threadCreated ? 0 : 1
             )
         }
     }

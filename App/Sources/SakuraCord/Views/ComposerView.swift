@@ -104,7 +104,11 @@ struct ComposerView: View {
                                         showComposerActions = false
                                         model.beginThreadCreation()
                                     } label: {
-                                        Label("Create Thread", systemImage: "bubble.left.and.bubble.right.fill")
+                                        Label {
+                                            Text("Create Thread")
+                                        } icon: {
+                                            SakuraCordSystemSymbol.swiftUIImage(named: SakuraCordSystemSymbol.thread)
+                                        }
                                             .frame(maxWidth: .infinity, alignment: .leading).padding(8)
                                     }
                                 }
@@ -118,6 +122,7 @@ struct ComposerView: View {
                                     }
                                 }
                             }
+                            .labelStyle(ComposerActionLabelStyle())
                             .buttonStyle(PopoverRowButtonStyle()).padding(6).frame(width: 200)
                         }
                     }
@@ -1218,5 +1223,14 @@ struct ComposerView: View {
             !activeReplyMentionsAuthor,
             in: conversation
         )
+    }
+}
+
+private struct ComposerActionLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 8) {
+            configuration.icon.frame(width: 20, alignment: .center)
+            configuration.title
+        }
     }
 }

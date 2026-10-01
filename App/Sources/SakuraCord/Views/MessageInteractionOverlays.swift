@@ -404,7 +404,7 @@ struct MessageActionCapsule: View {
                 HoverActionButton(systemImage: "link", help: "Copy message link", action: copyLink)
                 if let openThread {
                     HoverActionButton(
-                        systemImage: "bubble.left.and.bubble.right", help: "Open thread", action: openThread
+                        systemImage: SakuraCordSystemSymbol.thread, help: "Open thread", action: openThread
                     )
                 }
                 if canDelete {
