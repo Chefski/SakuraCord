@@ -143,7 +143,7 @@ private struct ThreadCreationView: View {
                 }
                 .contentShape(fieldShape)
                 .simultaneousGesture(TapGesture().onEnded { isNameFocused = true })
-                if creation.hasAttemptedSubmit, creation.trimmedName.isEmpty {
+                if creation.showsValidationErrors, creation.trimmedName.isEmpty {
                     ThreadCreationError(message: "Thread Name is required")
                 }
             }
@@ -159,7 +159,7 @@ private struct ThreadCreationView: View {
                 }
             }
 
-            if creation.hasAttemptedSubmit, isMissingStarterMessage {
+            if creation.showsValidationErrors, isMissingStarterMessage {
                 ThreadCreationError(message: "Starter Message is required")
             }
         }

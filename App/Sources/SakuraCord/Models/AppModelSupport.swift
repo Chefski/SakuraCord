@@ -259,8 +259,8 @@ final class ThreadCreationDraft {
     }
     /// Without public-thread permission, every created thread is private.
     var isPrivate: Bool
-    /// Required-field errors appear only after the first submit attempt.
-    var hasAttemptedSubmit = false
+    /// Required-field errors appear after an invalid submission, never while a valid draft is consumed.
+    var showsValidationErrors = false
 
     var trimmedName: String { name.trimmingCharacters(in: .whitespaces) }
 

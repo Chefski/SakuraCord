@@ -626,10 +626,9 @@ struct ComposerView: View {
     }
 
     private func send() {
-        guard allowsSubmission() else { return }
+        guard !isSubmitting, allowsSubmission() else { return }
         if isCreatingThread, !model.validateThreadCreation() { return }
-        guard !isSubmitting,
-              !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty
+        guard !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty
         else { return }
         isSubmitting = true
         draftSelection = nil

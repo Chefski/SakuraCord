@@ -465,15 +465,16 @@ extension AppModel {
         }
     }
 
-    /// Marks the New Thread form as submitted so its required-field errors
-    /// show, and returns whether it can be sent.
+    /// Shows required-field errors only for invalid submissions. A valid send
+    /// consumes the draft while the creation pane is still visible.
     @discardableResult
     func validateThreadCreation() -> Bool {
         guard let creation = threadCreation else { return false }
-        creation.hasAttemptedSubmit = true
-        return !creation.trimmedName.isEmpty
+        let isValid = !creation.trimmedName.isEmpty
             && (!threadDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 || !threadComposerAttachments.isEmpty)
+        creation.showsValidationErrors = !isValid
+        return isValid
     }
 
     /// Creates the thread, then sends the composed message as its first message.
