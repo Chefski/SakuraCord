@@ -576,9 +576,9 @@ extension AppModel {
         recordsRefreshMutation: Bool = true,
         preparedTextPlanSource: Message? = nil
     ) {
-        let message = reactionPresentationPreserving(
+        let message = pollVotePresentationPreserving(reactionPresentationPreserving(
             outgoingMediaPresentationPreserving(incoming)
-        )
+        ))
         // Sparse updates are merged again after asynchronous preparation. A
         // history refresh or local reconciliation may have changed the source.
         let matchingTextPlan = recordsRefreshMutation || preparedTextPlanSource == message
@@ -605,6 +605,7 @@ extension AppModel {
         )
         clearReactionReactorLoadState(channelID: channelID, messageID: messageID)
         clearReactionMutationState(channelID: channelID, messageID: messageID)
+        pollVoteMutations[messageID] = nil
         if replyingTo?.id == messageID {
             replyingTo = nil
         }

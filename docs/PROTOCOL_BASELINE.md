@@ -1766,8 +1766,8 @@ and uses context location `poll_creation`. The poll contains `question.text`,
 `answers:[{poll_media:{text,emoji?}}]`, integer-hour `duration`,
 `allow_multiselect`, and `layout_type:1`. Answer IDs are assigned by Discord.
 Unicode emoji send `name`; custom emoji send string `id` and empty `name`.
-The current desktop UI requires question text up to 300 UTF-16 units and 2–10
-nonempty answer texts up to 55 units. It trims text, omits blank answer rows,
+The current desktop UI requires question text up to 300 UTF-16 units and 1–10
+nonempty answer texts up to 55 units; it starts with two answer rows. It trims text, omits blank answer rows,
 rejects emoji-only answers, and offers 1, 4, 8, 24, 72, 168, or 336 hours.
 Creation requires sending permission and `SEND_POLLS` (bit 49) in guild channels.
 The shared emoji eligibility/picker handles account and guild restrictions.
