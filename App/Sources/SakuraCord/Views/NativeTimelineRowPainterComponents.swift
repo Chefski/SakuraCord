@@ -263,7 +263,16 @@ enum NativeTimelineSystemSymbolCache {
                         named: "play.circle.fill",
                         pointSize: 36,
                         weight: .regular,
-                        color: .labelColor,
+                        color: .white,
+                        appearance: appearance
+                    )
+                },
+                {
+                    prewarmConfiguredImage(
+                        named: "play.fill",
+                        pointSize: 15,
+                        weight: .regular,
+                        color: NSColor.black.withAlphaComponent(0.75),
                         appearance: appearance
                     )
                 },

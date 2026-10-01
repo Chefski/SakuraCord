@@ -437,25 +437,19 @@ extension NativeTimelineRowPainter {
                 cornerRadius: 8
             ).fill()
             switch attachment.mediaKind {
-            case .image, .animatedImage:
-                if let key = NativeTimelineMediaKey.attachment(attachment),
-                   let image = mediaImage(for: key)
-                {
+            case .image, .animatedImage, .video:
+                let isVideo = attachment.mediaKind == .video
+                if let image = region.previewKey.flatMap(mediaImage(for:)) {
                     drawImage(
                         image,
                         in: region.frame,
                         cornerRadius: 8,
                         fillsFrame: attachmentFillsFrame
                     )
+                } else if isVideo {
+                    systemSymbol("film", in: region.frame, color: .secondaryLabelColor, inset: 30)
                 }
-            case .video:
-                systemSymbol(
-                    "film",
-                    in: region.frame,
-                    color: .secondaryLabelColor,
-                    inset: 30
-                )
-                mediaPlayGlyph(in: region.frame)
+                if isVideo { mediaPlayGlyph(in: region.frame) }
             case .audio:
                 attachmentAudio(
                     attachment,
