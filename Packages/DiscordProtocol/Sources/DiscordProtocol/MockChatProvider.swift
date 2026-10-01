@@ -512,10 +512,6 @@ public actor MockChatProvider: ChatProvider {
         }
         snapshot.members =
             membersByGuild[snapshot.guilds.first?.id ?? GuildID(rawValue: 0)] ?? snapshot.members
-        if var profile = profilesByUser[currentUser.id] {
-            profile.status = status
-            profilesByUser[currentUser.id] = profile
-        }
         continuation?.yield(.snapshotChanged(snapshot))
     }
 

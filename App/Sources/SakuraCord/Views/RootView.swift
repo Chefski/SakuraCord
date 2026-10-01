@@ -80,7 +80,7 @@ struct RootView: View {
             ZStack {
                 MessageSearchToolbarBridge(
                     model: model,
-                    isVisible: showsMessageSearchToolbar,
+                    isVisible: showsMessageSearchToolbar || (model.isBrowsingGuildChannels && !model.hasOpenGuildSupplementaryConversation),
                     metrics: $toolbarSearchFieldMetrics
                 )
                 ToolbarSearchFieldLoadingStyler(isActive: showsSessionLoadingChrome)
@@ -147,7 +147,7 @@ struct RootView: View {
     }
 
     private var messageSearchPrompt: Text {
-        Text(showsSessionLoadingChrome ? "" : model.messageSearchPromptTitle)
+        Text(showsSessionLoadingChrome ? "" : (model.isBrowsingGuildChannels ? "Search Channels" : model.messageSearchPromptTitle))
     }
 
     private var showsSessionLoadingChrome: Bool {
@@ -209,9 +209,6 @@ private struct ChatRootView: View {
                     },
                     updateStatus: { await model.updateStatus($0) }
                 )
-                .opacity(model.onboardingEntryGuildID == nil ? 1 : 0)
-                .allowsHitTesting(model.onboardingEntryGuildID == nil)
-                .accessibilityHidden(model.onboardingEntryGuildID != nil)
             }
             .opacity(model.isSwitchingAccounts ? 0 : 1)
             .onGeometryChange(for: CGFloat.self) { proxy in
@@ -227,8 +224,11 @@ private struct ChatRootView: View {
             )
         } detail: {
             Group {
-                if model.isSwitchingAccounts || model.onboardingEntryGuildID != nil {
+                if model.isSwitchingAccounts {
                     Color.clear
+                } else if let guildID = model.onboardingEntryGuildID {
+                    GuildOnboardingView(model: model, guildID: guildID)
+                        .id(guildID)
                 } else {
                     ChatWorkspaceView(
                         model: model,
@@ -243,13 +243,12 @@ private struct ChatRootView: View {
             }
         }
         .toolbar {
-            if model.onboardingEntryGuildID == nil { conversationToolbar }
-        }
-        .overlay {
-            if let guildID = model.onboardingEntryGuildID, !model.isSwitchingAccounts {
-                GuildOnboardingView(model: model, guildID: guildID)
-                    .id(guildID)
-                    .padding(.leading, columnVisibility == .detailOnly ? 0 : ChatChromeMetrics.serverRailWidth)
+            if model.onboardingEntryGuildID != nil {
+                ToolbarItem(placement: .navigation) {
+                    ConversationToolbarTitle(presentation: .init(title: "Server Onboarding", systemImage: "sparkles"))
+                }
+            } else {
+                conversationToolbar
             }
         }
         .environment(\.composerDropInteraction, composerDropInteraction)
@@ -392,11 +391,14 @@ private struct ChatRootView: View {
                       let destination = composerDestination(at: location)
                 else { return false }
                 hoveredFileDropDestination = destination
-                if NSEvent.modifierFlags.contains(.shift) {
-                    sendDroppedAttachmentsImmediately(urls, to: destination)
-                    return !urls.isEmpty
+                let isInstant = NSEvent.modifierFlags.contains(.shift)
+                Task {
+                    await model.receiveComposerAttachments(
+                        .external(urls),
+                        to: destination,
+                        sendingImmediately: isInstant
+                    )
                 }
-                Task { await model.addComposerAttachments(urls, to: destination) }
                 return !urls.isEmpty
             },
             isTargeted: { targeted in
@@ -550,6 +552,23 @@ private struct ChatRootView: View {
         ToolbarSpacer(.fixed, placement: .navigation)
 
         if !model.isSwitchingAccounts {
+            if model.guildWorkspacePage == .channelsAndRoles, model.featuresSettings.channelManagement,
+               let guildID = model.selectedGuildID, model.hasCustomizationQuestions(in: guildID) {
+                ToolbarItemGroup(placement: .principal) {
+                    Toggle("Customize", systemImage: "slider.horizontal.3", isOn: Binding(
+                        get: { !model.isBrowsingGuildChannels },
+                        set: { if $0 { model.showGuildCustomizationChannels(false) } }
+                    ))
+                    .labelStyle(.titleAndIcon)
+                    .tint(SakuraCordAccentColor.color)
+                    Toggle("Browse Channels", systemImage: "list.bullet", isOn: Binding(
+                        get: { model.isBrowsingGuildChannels },
+                        set: { if $0 { model.showGuildCustomizationChannels(true) } }
+                    ))
+                    .labelStyle(.titleAndIcon)
+                    .tint(SakuraCordAccentColor.color)
+                }
+            }
             if let presentation = supplementaryToolbarPresentation {
                 ToolbarItem {
                     ConversationToolbarLabel(
@@ -580,12 +599,24 @@ private struct ChatRootView: View {
 
                 ToolbarSpacer(.fixed)
 
+                if model.openThread == nil, let channel = model.customizationPreviewChannel,
+                   let guildID = channel.guildID, !model.isChannelSelected(channel) {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button("Add to Channel List", systemImage: "plus") {
+                            model.setChannelSelected(true, channelID: channel.id, guildID: guildID)
+                        }
+                        .labelStyle(.iconOnly)
+                        .help("Add to Channel List")
+                    }
+                }
+
                 ToolbarItem(placement: .primaryAction) {
                     Button(action: closeSupplementaryConversation) {
                         Label("Close conversation", systemImage: "xmark")
                             .labelStyle(.iconOnly)
                     }
                     .help(supplementaryCloseHelp)
+                    .keyboardShortcut(model.guildWorkspacePage == .guide ? .cancelAction : nil)
                 }
                 .visibilityPriority(.high)
             }
@@ -763,13 +794,12 @@ private struct ChatRootView: View {
                         batch.discard()
                         return
                     }
-                    if instant {
-                        sendDroppedPromisedAttachmentsImmediately(
-                            batch,
-                            to: destination
+                    Task {
+                        await model.receiveComposerAttachments(
+                            .owned(batch),
+                            to: destination,
+                            sendingImmediately: instant
                         )
-                    } else {
-                        Task { await model.addPromisedComposerAttachments(batch, to: destination) }
                     }
                 }
             )
@@ -825,41 +855,6 @@ private struct ChatRootView: View {
         return model.isComposerDropEligible(proposed) ? proposed : nil
     }
 
-    private func sendDroppedAttachmentsImmediately(
-        _ urls: [URL],
-        to destination: MessageComposerDestination
-    ) {
-        Task {
-            let acceptedURLs = await model.attachmentURLsWithinDiscordLimit(urls, offeringExternalUploadFor: destination)
-            guard !acceptedURLs.isEmpty else { return }
-            let scopedURLs = acceptedURLs.filter { $0.startAccessingSecurityScopedResource() }
-            defer {
-                for url in scopedURLs {
-                    url.stopAccessingSecurityScopedResource()
-                }
-            }
-            await model.sendAttachmentsImmediately(
-                acceptedURLs.map { ForumPostAttachment(url: $0) },
-                to: destination
-            )
-        }
-    }
-
-    private func sendDroppedPromisedAttachmentsImmediately(
-        _ batch: ComposerPromisedFileBatch,
-        to destination: MessageComposerDestination
-    ) {
-        Task {
-            let acceptedURLs = await model.preparePromisedAttachmentsForImmediateSend(batch, to: destination)
-            guard !acceptedURLs.isEmpty else { return }
-            defer { model.endUsingOwnedPromisedFiles(acceptedURLs) }
-            await model.sendAttachmentsImmediately(
-                acceptedURLs.map { ForumPostAttachment(url: $0) },
-                to: destination
-            )
-        }
-    }
-
     private func channelToolbarSymbol(_ channel: Channel) -> String {
         ChannelIconPresentation.systemImage(
             for: channel,
@@ -906,10 +901,14 @@ private struct ChatRootView: View {
 
     private func directMessageToolbarStatus(for channel: Channel) -> PresenceStatus? {
         guard channel.kind == .directMessage else { return nil }
-        return DirectMessageInboxPolicy.recipientMember(
+        return directMessageRecipient(for: channel)?.status ?? .offline
+    }
+
+    private func directMessageRecipient(for channel: Channel) -> Member? {
+        DirectMessageInboxPolicy.recipientMember(
             for: channel,
             membersByID: model.membersByID
-        )?.status ?? .offline
+        )
     }
 
     private func channelTopic(for channel: Channel) -> String? {
@@ -927,6 +926,7 @@ private struct ChatRootView: View {
     private var hasOpenSupplementaryToolbarConversation: Bool {
         model.openThread != nil
             || model.isVoiceChatOpen
+            || model.hasOpenGuildSupplementaryConversation
     }
 
     private var selectedVoiceChannel: Channel? {
@@ -948,7 +948,7 @@ private struct ChatRootView: View {
 
     private var conversationToolbarPresentation: ConversationToolbarPresentation? {
         if let page = model.guildWorkspacePage {
-            return .init(title: page == .guide ? "Server Guide" : "Channels & Roles",
+            return .init(title: page == .guide ? "Server Guide" : model.customizationTitle(in: model.selectedGuildID),
                          systemImage: page == .guide ? "signpost.right" : "slider.horizontal.3")
         }
         guard let channel = model.selectedChannel else { return nil }
@@ -956,7 +956,8 @@ private struct ChatRootView: View {
                      subtitle: isDirectMessageSelected ? directMessageToolbarSubtitle(for: channel) : nil,
                      topic: isDirectMessageSelected ? nil : channelTopic(for: channel),
                      avatarChannel: isDirectMessageSelected ? channel : nil,
-                     avatarStatus: isDirectMessageSelected ? directMessageToolbarStatus(for: channel) : nil)
+                     avatarStatus: isDirectMessageSelected ? directMessageToolbarStatus(for: channel) : nil,
+                     avatarIsMobile: isDirectMessageSelected && directMessageRecipient(for: channel)?.showsMobileIndicator == true)
     }
 
     private var supplementaryToolbarPresentation: SupplementaryToolbarPresentation? {
@@ -966,6 +967,13 @@ private struct ChatRootView: View {
                 systemImage: "bubble.left.and.bubble.right"
             )
         }
+        if let channel = model.customizationPreviewChannel {
+            return .init(title: channel.name, systemImage: channelToolbarSymbol(channel))
+        }
+        if model.guildWorkspacePage == .guide, let guildID = model.selectedGuildID,
+           let entry = model.onboarding.guides[guildID], let resource = entry.resource {
+            return .init(title: entry.configuration?.resourceChannels.first { $0.channelID == resource.channelID }?.title ?? "Resource", systemImage: "doc.text")
+        }
         guard model.isVoiceChatOpen, let channel = model.selectedChannel else { return nil }
         return SupplementaryToolbarPresentation(
             title: channel.name,
@@ -974,7 +982,9 @@ private struct ChatRootView: View {
     }
 
     private var supplementaryCloseHelp: String {
-        model.openThread == nil ? "Close voice channel chat" : "Close thread"
+        if model.openThread != nil { return "Close thread" }
+        if model.hasOpenGuildSupplementaryConversation { return "Close preview" }
+        return "Close voice channel chat"
     }
 
     private func alignSupplementaryToolbarTitle(_ titleFrame: CGRect) {
@@ -996,7 +1006,7 @@ private struct ChatRootView: View {
     private func closeSupplementaryConversation() {
         if model.openThread != nil {
             model.closeThread()
-        } else {
+        } else if !model.closeGuildSupplementaryConversation() {
             model.closeVoiceChat()
         }
     }
@@ -1114,15 +1124,22 @@ private struct MessageSearchToolbarBridge: View {
     var body: some View {
         @Bindable var model = model
         @Bindable var search = model.messageSearch
+        @Bindable var onboarding = model.onboarding
+        let local = model.isBrowsingGuildChannels
         ToolbarSearchFieldGeometryReader(
-            searchText: $model.messageSearchInputText,
-            searchTokens: $search.tokens,
-            isSearchFocused: $search.isInputFocused,
+            searchText: local ? $onboarding.channelSearch : $model.messageSearchInputText,
+            searchTokens: local ? .constant([]) : $search.tokens,
+            isSearchFocused: local ? $onboarding.isChannelSearchFocused : $search.isInputFocused,
             isToolbarItemVisible: isVisible,
-            didUseBuiltInClear: model.clearMessageSearchUsingBuiltInButton,
-            didEndEditing: model.messageSearchEditingDidEnd,
+            didUseBuiltInClear: {
+                if local { onboarding.channelSearch = "" } else { model.clearMessageSearchUsingBuiltInButton() }
+            },
+            didEndEditing: {
+                if local { onboarding.isChannelSearchFocused = false } else { model.messageSearchEditingDidEnd() }
+            },
             pasteCanonicalSyntax: { value in
-                MessageSearchTokenParser.parse(
+                if local { return .init(tokens: [], text: value) }
+                return MessageSearchTokenParser.parse(
                     value,
                     users: model.messageSearchUsers,
                     channels: model.messageSearchChannels
@@ -1141,18 +1158,20 @@ private struct MessageSearchToolbarModifier: ViewModifier {
     func body(content: Content) -> some View {
         @Bindable var model = model
         @Bindable var search = search
+        @Bindable var onboarding = model.onboarding
+        let local = model.isBrowsingGuildChannels
         content
             .searchable(
-                text: $model.messageSearchInputText,
-                tokens: $search.tokens,
-                isPresented: $search.isInputFocused,
+                text: local ? $onboarding.channelSearch : $model.messageSearchInputText,
+                tokens: local ? .constant([]) : $search.tokens,
+                isPresented: local ? $onboarding.isChannelSearchFocused : $search.isInputFocused,
                 placement: .toolbar,
                 prompt: prompt
             ) { token in
                 Text(token.title)
             }
             .onSubmit(of: .search) {
-                model.submitMessageSearchInput()
+                if !local { model.submitMessageSearchInput() }
             }
     }
 }
@@ -1292,6 +1311,7 @@ private struct ConversationToolbarPresentation {
     var topic: String?
     var avatarChannel: Channel?
     var avatarStatus: PresenceStatus?
+    var avatarIsMobile = false
 }
 
 private struct ConversationToolbarLabel: View {
@@ -1301,6 +1321,7 @@ private struct ConversationToolbarLabel: View {
     let textSize: CGFloat
     let avatarChannel: Channel?
     let avatarStatus: PresenceStatus?
+    let avatarIsMobile: Bool
 
     init(
         title: String,
@@ -1308,7 +1329,8 @@ private struct ConversationToolbarLabel: View {
         subtitle: String?,
         textSize: CGFloat,
         avatarChannel: Channel? = nil,
-        avatarStatus: PresenceStatus? = nil
+        avatarStatus: PresenceStatus? = nil,
+        avatarIsMobile: Bool = false
     ) {
         self.title = title
         self.systemImage = systemImage
@@ -1316,6 +1338,7 @@ private struct ConversationToolbarLabel: View {
         self.textSize = textSize
         self.avatarChannel = avatarChannel
         self.avatarStatus = avatarStatus
+        self.avatarIsMobile = avatarIsMobile
     }
 
     var body: some View {
@@ -1325,6 +1348,7 @@ private struct ConversationToolbarLabel: View {
                     channel: avatarChannel,
                     size: 24,
                     status: avatarStatus,
+                    isMobile: avatarIsMobile,
                     animates: true
                 )
                 .accessibilityHidden(true)
@@ -1366,7 +1390,8 @@ private struct ConversationToolbarTitle: View {
                 subtitle: presentation.subtitle,
                 textSize: InterfaceTypographyMetrics.interfaceTextSize,
                 avatarChannel: presentation.avatarChannel,
-                avatarStatus: presentation.avatarStatus
+                avatarStatus: presentation.avatarStatus,
+                avatarIsMobile: presentation.avatarIsMobile
             )
             .padding(.horizontal, 8)
             .padding(.vertical, 5)

@@ -649,9 +649,9 @@ successful answer HTTP response alone never completes the flow.
 
 Advancing questions in Discord sent no answer mutation. Reloading before Finish
 returned to the first question and discarded unsubmitted edits. SakuraCord
-intentionally persists only its own unfinished choices and question position in
-account-scoped draft storage. It compares membership join time and confirmed
-server answers before restoring; remote changes supersede stale drafts. Question
+keeps unfinished choices and question position only in account-scoped memory.
+It compares membership join time and confirmed server answers before reusing
+those choices; remote changes supersede stale choices. Question
 configuration remains live and is refreshed on entry/reconnect. Initial completion
 re-fetches configuration and membership; post-join writes validate against the
 latest fetched configuration. Ambiguous writes use readback before rollback.
@@ -661,15 +661,17 @@ flags. A recorded Follow Category action used the same channel override PATCH wi
 the category ID and bit 12; its child controls became unavailable until the
 category was unfollowed. Source inspection corroborates parent-category opt-in
 inheritance and the separate FAVORITED bit; these are distinct from channel
-permissions. SakuraCord ignores channel selection filtering and issues no
-channel-management mutation while the global **Settings → Features → Channels → Channel customization** control is off (the default).
-Server-applied default/answer channel selections are still part of Discord's
-onboarding response processing. Turning local management on honors confirmed
-settings; Show All Channels disables filtering without erasing individual picks.
+permissions. SakuraCord enables **Settings → Features → Channels → Channel customization**
+by default. Turning it off locally shows all channels without changing remote
+server flags or hiding customization. Explicit edits remain available. Turning
+it back on honors confirmed server settings; Show All Channels disables
+filtering without erasing individual picks.
 
 [PR #4](https://github.com/SakuraCordApp/SakuraCord/pull/4) corroborates the three
-onboarding read/response routes and bulk settings route. Its eight-hour cache,
-optimistic completion assumptions, and presentation were not adopted. Pinned
+onboarding read/response routes and bulk settings route. Its eight-hour cache
+and optimistic completion assumptions were not adopted. Its grouped browser,
+category controls, channel details, and inline preview informed the native
+presentation revision on 27 September. Pinned
 Paicord corroborates guild onboarding configuration structures and member flags,
 but does not supply this observed normal-user response flow. Pinned Swiftcord v1
 has no guild-onboarding implementation. The public
@@ -699,6 +701,69 @@ the sidebar's **Show All / Hide Voice Channels**, which locally expands voice
 channels and produced no settings request in the recorded interaction. The bulk
 channel-selection response is an array of full guild notification settings;
 SakuraCord accepts the matching confirmed entry and verifies requested bits.
+
+The 27 September re-audit used the same clean desktop **0.0.411**, web
+**621195**, native **91497**, Electron **42.11.1**, Chromium
+**148.0.7778.280**, with `has_client_mods:false`. The private evidence session is
+`sakuracord-channel-parity-20260927`. Real Computer Use actions in SakuraCord
+Testing Server were recorded with REST responses and decoded ETF/zstd Gateway
+frames. It re-confirmed the following:
+
+- Clicking a Browse row toggles selection. Its separate View action opens a
+  sidebar conversation without selecting the channel; an unselected preview
+  offers Add to Channel List.
+- Follow Category writes only the category override. Children inherit selection
+  and cannot be toggled individually until it is unfollowed.
+- Show All Channels clears guild bit 14 and restores resource channels to the
+  list. Selecting a channel while Show All is on sets bit 14 and bit 12 together;
+  the official client also emitted a redundant subsequent channel-only PATCH.
+- Required answers cannot be cleared. A post-join answer edit sends the complete
+  answer set and all prompt/option seen timestamps in one debounced PUT.
+- All exercised choices and server flags were restored. View acknowledgements
+  and seen timestamps naturally advanced during verification.
+
+Loaded first-party source supplements these captures: module 36942 makes the
+Show All menu available for `COMMUNITY` guilds (with an internal staff override).
+Module 202776 uses `GUILD_ONBOARDING_HAS_PROMPTS` to select Channels & Roles;
+community guilds without prompts instead expose Browse Channels. Neither menu
+eligibility nor community channel filtering requires `GUILD_ONBOARDING`.
+Unselected channels with mentions and the current conversation remain visible;
+channel selection never grants permission to read a channel. Module 234053
+initializes existing members without completed-onboarding or any saved picks by
+selecting their accessible channels before enabling filtering. Module 816662
+clears both selected and FAVORITED bits when removing a channel.
+
+Native verification repeated answer add/remove, category follow/unfollow,
+individual channel add/remove, inline preview, and Show All enable/disable on
+the same saved owner account. Sanitized native diagnostics confirmed successful
+answer PUTs and bulk settings PATCHes; the official Gateway received the matching
+settings revisions. Disabling the local feature restored all channels while
+leaving both tabs available and emitted no server-settings mutation.
+
+The follow-up `sakuracord-voice-expander-20260927` exercised the sidebar
+speaker button in both clients on the same account. In SakuraCord Testing
+Server, expansion/collapse leaves text-channel selections unchanged and survives
+text-channel navigation and leaving/returning to the guild. The official capture
+included decoded READY and successful history reads; native sanitized diagnostics
+also confirmed that these button actions send no settings mutation.
+Temporarily disabling the server-menu Show All Channels option in the main
+SakuraCord server and lunarazzi confirmed its wider text/forum/voice effect.
+On lunarazzi, the separate speaker button revealed five voice channels and one
+Stage channel, with identical text-channel links before and after. Unselected
+voice/Stage channels form a separate bottom section, ordered by their original
+category and channel positions. Its category names are static headings, not
+category-collapse controls. Selected or followed voice channels remain in the
+normal list. Loaded module 551851 identifies the local
+`VOICE_CATEGORY_EXPAND`/`VOICE_CATEGORY_COLLAPSE` actions; the menu option instead
+produced the bulk settings PATCH and `USER_GUILD_SETTINGS_UPDATE` confirmations.
+After correcting native ordering, real pointer expansion/collapse on lunarazzi
+confirmed the same six channels in the bottom section, with no settings PATCH.
+Both temporarily changed guild settings were restored and matched their saved
+baselines, including all channel overrides. Occupied-voice and restart behavior
+were not part of this live comparison. Following this comparison, the requested
+SakuraCord behavior intentionally omits the local voice expander and supplementary
+voice section: voice/Stage channels follow the regular saved channel selections.
+The server-menu Show All Channels setting remains supported.
 
 ### Server Guide and onboarding presentation (23–24 September 2026)
 

@@ -1,8 +1,10 @@
 @testable import SakuraCord
 import SakuraCordModels
+import Observation
 import Testing
 
 @Test func `selection field single and multiple policies preserve ordered choices`() {
+    #expect(SelectionFieldSelectionPolicy.toggled("first", in: ["first"], mode: .single) == ["first"])
     #expect(
         SelectionFieldSelectionPolicy.toggled(
             "second",
@@ -43,12 +45,13 @@ import Testing
     #expect(model.results.map(\.id) == [1, 2])
 
     model.updateQuery("feliz")
-    while model.state == .loading {
-        await Task.yield()
-    }
+    #expect(await until { model.state != .loading })
 
     #expect(model.results.map(\.id) == [1])
     #expect(model.option(for: 1)?.title == "Féliz")
+    model.replaceSource(.local(options: [SelectionFieldOption(id: 4, title: "Feliz Updated")]))
+    #expect(await until { model.state != .loading })
+    #expect(model.results.map(\.id) == [4])
 }
 
 @MainActor
@@ -64,21 +67,15 @@ import Testing
     )
 
     model.updateQuery("old")
-    while !search.hasPendingQuery("old") {
-        await Task.yield()
-    }
+    #expect(await until { search.hasPendingQuery("old") })
 
     model.updateQuery("new")
-    while !search.hasPendingQuery("new") {
-        await Task.yield()
-    }
+    #expect(await until { search.hasPendingQuery("new") })
     search.resume(
         "new",
         with: [SelectionFieldOption(id: "new", title: "New Result")]
     )
-    while model.state == .loading {
-        await Task.yield()
-    }
+    #expect(await until { model.state != .loading })
 
     #expect(model.results.map(\.id) == ["new"])
 
@@ -156,6 +153,7 @@ import Testing
 }
 
 @MainActor
+@Observable
 private final class SelectionFieldSearchHarness {
     typealias Option = SelectionFieldOption<String>
 
@@ -174,4 +172,51 @@ private final class SelectionFieldSearchHarness {
     func resume(_ query: String, with options: [Option]) {
         continuations.removeValue(forKey: query)?.resume(returning: options)
     }
+}
+
+@MainActor
+@Test func `component picker cancellation and invalid drafts never submit`() {
+    for (values, dismissal, expected) in [
+        (["new"], "cancel", [[String]]()),
+        ([], "confirm", []),
+        (["one", "two", "three"], "confirm", []),
+        (["new"], "confirm", [["new"]]),
+        (["initial"], "confirm", []),
+        (["new"], "outside", [["new"]]),
+        ([], "outside", []),
+        (["initial"], "outside", []),
+    ] {
+        var submissions: [[String]] = []
+        var closes = 0
+        let controller = ComponentChoiceOverlayController(
+            initialSelection: ["initial"], minimumSelectionCount: 1,
+            maximumSelectionCount: 2,
+            submit: { submissions.append($0) }, onClose: { closes += 1 }
+        )
+        controller.updateSelection(values)
+        if dismissal == "confirm" { controller.submitSelection(values) }
+        if dismissal == "outside" { controller.close(commit: true) }
+        controller.close()
+        controller.close()
+        #expect(submissions == expected)
+        #expect(closes == 1)
+    }
+}
+
+@MainActor
+@Test func `cancelled selection searches can restart without changing the query`() async {
+    let search = SelectionFieldSearchHarness()
+    let model = SelectionFieldModel(source: SelectionFieldSource<String>.dynamic(
+        debounce: .zero, search: { try await search.load($0) }
+    ))
+    model.updateQuery("retry")
+    #expect(await until { search.hasPendingQuery("retry") })
+    model.cancel()
+    #expect(model.state == .idle)
+    search.resume("retry", with: [])
+    model.activate()
+    #expect(await until { search.hasPendingQuery("retry") })
+    search.resume("retry", with: [SelectionFieldOption(id: "ok", title: "Recovered")])
+    #expect(await until { model.state != .loading })
+    #expect(model.results.map(\.id) == ["ok"])
 }

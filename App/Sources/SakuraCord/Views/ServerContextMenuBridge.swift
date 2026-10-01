@@ -129,7 +129,7 @@ struct ServerContextMenuBridge: NSViewRepresentable {
             }
 
             if let all = showsAllChannels() {
-                let item = menuItem("Show All Channels", action: #selector(toggleAllChannels))
+                let item = menuItem("Show All Channels", systemImage: "list.bullet", action: #selector(toggleAllChannels))
                 item.state = all ? .on : .off
                 menu.addItem(item)
             }

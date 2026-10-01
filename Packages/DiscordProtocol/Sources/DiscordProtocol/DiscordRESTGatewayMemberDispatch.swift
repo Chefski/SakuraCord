@@ -252,6 +252,9 @@ extension DiscordRESTProvider {
               let index = members.firstIndex(where: { $0.id == userID })
         else { return }
         members[index].status = status
+        if let clientStatus = update.clientStatus {
+            members[index].isMobileOnly = clientStatus.isMobileOnly
+        }
         if let activities = update.activities {
             let primaryActivity = activities.memberListActivity
             members[index].customStatus = activities.first(where: { $0.type == 4 })?.displayText

@@ -176,6 +176,9 @@ extension DiscordRESTProvider {
                 ?? Member(user: user, roleName: "Direct Message", status: status)
         member.user = user
         member.status = status
+        if let clientStatus = update.clientStatus {
+            member.isMobileOnly = clientStatus.isMobileOnly
+        }
         if let activities = update.activities {
             let primaryActivity = activities.memberListActivity
             member.customStatus = activities.first(where: { $0.type == 4 })?.displayText

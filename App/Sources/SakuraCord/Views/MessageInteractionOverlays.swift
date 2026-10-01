@@ -584,6 +584,7 @@ enum MessageReplySummary {
         content: String,
         mentionLabel: (RenderedMention) -> String = { mention in
             switch mention.kind {
+            case .guildNavigation: GuildNavigationMention(rawValue: mention.id)?.title ?? mention.rawToken
             case .user: "@unknown-user"
             case .role: "@unknown-role"
             case .channel: "#unknown-channel"
@@ -854,7 +855,7 @@ struct MessageProfilePopoverContent: View {
 
     var body: some View {
         Group {
-            if let presentation = model.contextualProfilePresentation,
+            if let presentation = model.liveProfilePresentation(for: .contextual),
                presentation.member.id == userID,
                presentation.requestID == requestID
             {

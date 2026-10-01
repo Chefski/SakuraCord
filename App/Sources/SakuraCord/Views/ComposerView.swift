@@ -127,6 +127,9 @@ struct ComposerView: View {
                             onSubmit: submitComposer,
                             onKeyboardCommand: handleAutocomplete,
                             cancel: cancelCommand,
+                            receiveAttachment: { attachments in
+                                Task { await model.receiveCommandAttachment(attachments) }
+                            },
                             isFocused: $isFocused
                         )
                     } else {
@@ -149,7 +152,6 @@ struct ComposerView: View {
                                     )
                                 },
                                 onAutocompleteCommand: handleAutocomplete,
-                                onPasteAttachments: addPastedAttachments,
                                 onDropTargetChanged: { targeted, instant in
                                     composerDropInteraction?.update(
                                         isTargeted: targeted,
@@ -157,7 +159,17 @@ struct ComposerView: View {
                                         isInstant: instant
                                     )
                                 },
-                                onDropAttachments: handleDroppedAttachments,
+                                onReceiveAttachments: { attachments, isInstant in
+                                    Task {
+                                        await model.receiveComposerAttachments(
+                                            attachments,
+                                            to: conversation,
+                                            sendingImmediately: isInstant
+                                        )
+                                    }
+                                    return true
+                                },
+                                canReceiveAttachments: { model.isComposerDropEligible(conversation) },
                                 onCompositionStateChange: { isComposing = $0 },
                                 capturesUnfocusedTyping:
                                     !showEmojiPicker
@@ -645,34 +657,6 @@ struct ComposerView: View {
             isSubmitting = false
             isFocused = true
         }
-    }
-
-    private func handleDroppedAttachments(
-        _ urls: [URL],
-        isInstant: Bool
-    ) -> Bool {
-        guard !urls.isEmpty else { return false }
-        if !isInstant {
-            Task { await model.addComposerAttachments(urls, to: conversation) }
-            return true
-        }
-        Task {
-            let acceptedURLs = await model.attachmentURLsWithinDiscordLimit(urls, offeringExternalUploadFor: conversation)
-            guard !acceptedURLs.isEmpty else { return }
-            let scopedURLs = acceptedURLs.filter {
-                $0.startAccessingSecurityScopedResource()
-            }
-            defer {
-                for url in scopedURLs {
-                    url.stopAccessingSecurityScopedResource()
-                }
-            }
-            await model.sendAttachmentsImmediately(
-                acceptedURLs.map { ForumPostAttachment(url: $0) },
-                to: conversation
-            )
-        }
-        return true
     }
 
     private func openComposerAttachment(_ id: UUID) {

@@ -1,0 +1,33 @@
+import SakuraCordModels
+import SwiftUI
+
+struct GuildResourceConversationView: View {
+    let model: AppModel
+    let guildID: GuildID
+    let resource: GuildResourceState
+
+    var body: some View {
+        SupplementaryConversationPane {
+            VStack(spacing: 0) {
+                if let error = resource.error { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red).padding(.horizontal, 24) }
+                if resource.loading, resource.messages.isEmpty {
+                    ProgressView("Loading resource…").frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if resource.messages.isEmpty {
+                    ContentUnavailableView("No Resource Content", systemImage: "doc.text", description: Text("This resource channel has no messages yet."))
+                } else {
+                    NativeMessageTimelineView(
+                        model: model, conversation: .resource(guildID, resource.channelID), beginning: nil,
+                        firstMessageStartsDayOverride: false, hasMoreMessages: false,
+                        hasMoreLaterMessages: resource.hasMore, isLoadingEarlier: false, isLoadingLater: resource.loading,
+                        laterHistoryLoadFailed: resource.error != nil, bottomContentInset: 24, unreadMessageID: nil,
+                        highlightedMessageID: nil, initialScrollTarget: resource.rows.first.map { .message($0.id, anchor: .top) },
+                        scrollRequest: nil, runsPerformanceAutoScroll: false, loadEarlier: {},
+                        loadLater: { model.loadGuideResource(guildID: guildID) }, openReply: { _ in },
+                        onScrollActivityChange: { _ in }, onScrollStateChange: { _ in }, onUserScrollBegan: {}, onUserScrollEnded: { _ in }
+                    )
+                }
+            }
+            .scrollEdgeEffectStyle(.soft, for: .top)
+        }
+    }
+}

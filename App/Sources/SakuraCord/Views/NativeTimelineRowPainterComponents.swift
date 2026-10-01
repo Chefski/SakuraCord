@@ -649,16 +649,12 @@ extension NativeTimelineRowPainter {
                 messageID: input.messageID,
                 componentID: region.componentID
             )
-            if target != input.activeComponentChoiceTarget {
-                componentSelect(
-                    region,
-                    cornerRadius: bubbleConcentricCornerRadius(
-                        for: region.frame,
-                        in: input.bubbleRegion,
-                        fallback: 11
-                    )
-                )
-            }
+            guard target != input.activeComponentChoiceTarget else { continue }
+            componentSelect(
+                region,
+                cornerRadius: bubbleConcentricCornerRadius(for: region.frame, in: input.bubbleRegion, fallback: 11),
+                isExpanded: target == input.activeComponentChoiceTarget
+            )
         }
     }
 
@@ -1273,7 +1269,8 @@ extension NativeTimelineRowPainter {
 
     static func componentSelect(
         _ region: NativeTimelineComponentLayout.SelectRegion,
-        cornerRadius: CGFloat = 11
+        cornerRadius: CGFloat = 11,
+        isExpanded: Bool = false
     ) {
         let opacity: CGFloat = region.isDisabled ? 0.65 : 1
         NSColor.labelColor.withAlphaComponent(0.075 * opacity).setFill()
@@ -1310,7 +1307,7 @@ extension NativeTimelineRowPainter {
             )
         }
         SelectionFieldChromeRenderer.drawChevron(
-            isExpanded: false,
+            isExpanded: isExpanded,
             in: region.frame,
             opacity: opacity
         )
@@ -1321,59 +1318,25 @@ extension NativeTimelineRowPainter {
         in frame: CGRect,
         opacity: CGFloat
     ) {
-        let maximumX = frame.maxX
-            - SelectionFieldLayoutMetrics.trailingAccessoryInset
-        let rendered = options.map { option in
-            SelectionFieldTokenRenderer.images(
-                option: option,
-                font: SelectionFieldLayoutMetrics.font,
-                usesCard: true,
-                leadingImage: componentSelectLeadingImage(option.leading)
-            )
-        }
-        var lineCount = 1
-        var lineWidth: CGFloat = 0
-        for images in rendered {
-            let width = images.normal.size.width
-            if lineWidth > 0,
-               frame.minX + SelectionFieldLayoutMetrics.leadingInset
-                   + lineWidth + width > maximumX
-            {
-                lineCount += 1
-                lineWidth = width
-            } else {
-                lineWidth += width
+        let available = max(40, frame.width - 50)
+        var origin = CGPoint(x: frame.minX + 11, y: frame.minY + 7)
+        for option in options {
+            let tokenWidth = SelectionFieldLayoutMetrics.tokenWidth(option, availableWidth: available)
+            if origin.x > frame.minX + 11, origin.x + tokenWidth > frame.minX + 11 + available {
+                origin.x = frame.minX + 11
+                origin.y += 34
             }
-        }
-        let contentHeight = CGFloat(lineCount)
-            * SelectionFieldLayoutMetrics.tokenHeight
-        var origin = CGPoint(
-            x: frame.minX + SelectionFieldLayoutMetrics.leadingInset,
-            y: frame.minY + max(
-                SelectionFieldLayoutMetrics.verticalInset,
-                floor((frame.height - contentHeight) / 2)
+            let image = SelectionFieldTokenRenderer.images(
+                option: option, font: SelectionFieldLayoutMetrics.font, usesCard: true,
+                leadingImage: componentSelectLeadingImage(option.leading), maximumWidth: tokenWidth
+            ).normal
+            image.draw(
+                in: CGRect(origin: origin, size: image.size),
+                from: .zero, operation: .sourceOver, fraction: opacity, respectFlipped: true, hints: nil
             )
-        )
-        for images in rendered {
-            let size = images.normal.size
-            if origin.x
-                > frame.minX + SelectionFieldLayoutMetrics.leadingInset,
-                origin.x + size.width > maximumX
-            {
-                origin.x = frame.minX
-                    + SelectionFieldLayoutMetrics.leadingInset
-                origin.y += SelectionFieldLayoutMetrics.tokenHeight
-            }
-            images.normal.draw(
-                in: CGRect(origin: origin, size: size),
-                from: .zero,
-                operation: .sourceOver,
-                fraction: opacity,
-                respectFlipped: true,
-                hints: [.interpolation: NSImageInterpolation.high]
-            )
-            origin.x += size.width
+            origin.x += tokenWidth + 6
         }
+
     }
 
     static func componentSelectLeadingImage(

@@ -212,7 +212,7 @@ extension AppModel {
             for _ in 0 ..< 80 {
                 guard isCurrentAccountSession(session), !Task.isCancelled else { return false }
                 if serverRailGuildsByID[guild.id] == nil {
-                    onboarding.persist(nil, guildID: guild.id, database: session.database)
+                    onboarding.entries[guild.id] = nil
                     return true
                 }
                 try await Task.sleep(for: .milliseconds(250))

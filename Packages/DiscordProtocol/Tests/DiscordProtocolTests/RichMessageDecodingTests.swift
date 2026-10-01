@@ -255,7 +255,8 @@ import Testing
             "id":"100",
             "author":{"id":"2","username":"original","global_name":"Original User"},
             "member":{"nick":"Guild Original","roles":["10","11"],"avatar":null},
-            "content":"Original"
+            "content":"Original",
+            "attachments":[{"id":"a","filename":"photo.png","url":"https://cdn.discordapp.com/attachments/photo.png","size":10,"content_type":"image/png"}]
           }
         }
         """#.utf8
@@ -263,6 +264,7 @@ import Testing
 
     let message = try RichMessageFixtureDecoder.decodeMessage(from: data)
     #expect(message.replyPreview?.author.displayName == "Guild Original")
+    #expect(message.replyPreview?.mediaKind == .image)
     #expect(
         message.replyPreview?.guildMember?.roleIDs
             == [RoleID(rawValue: 10), RoleID(rawValue: 11)]

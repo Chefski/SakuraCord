@@ -4,7 +4,7 @@ nonisolated struct FeaturesSettingsSnapshot: Equatable, Sendable {
     static let defaults = Self()
 
     var showHiddenChannels = true
-    var channelManagement = false
+    var channelManagement = true
     var fakeNitroEmojis = true
     var fakeNitroStickers = true
     var fakeNitroSoundboard = true
@@ -43,6 +43,12 @@ final class FeaturesSettingsStore {
 
 extension AppModel {
     func applyFeaturesSettings(_ value: FeaturesSettingsSnapshot) {
+        if featuresSettings.channelManagement, !value.channelManagement {
+            closeCustomizationPreview()
+            onboarding.browsingChannels = false
+            onboarding.channelSearch = ""
+            onboarding.isChannelSearchFocused = false
+        }
         featuresSettings = value
         FeaturesSettingsStore.shared.save(value)
         refreshVisibleChannelGroups()

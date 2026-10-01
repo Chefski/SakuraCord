@@ -11,7 +11,25 @@ nonisolated enum PresenceIndicatorPresentation {
         }
     }
 
-    static func path(for status: PresenceStatus, in rect: CGRect) -> Path {
+    static func showsMobileIndicator(for status: PresenceStatus, isMobile: Bool) -> Bool {
+        isMobile && status.isVisibleOnline
+    }
+
+    static func accessibilityLabel(for status: PresenceStatus, isMobile: Bool) -> String {
+        let label: String = switch status {
+        case .online: "Online"
+        case .idle: "Idle"
+        case .dnd: "Do Not Disturb"
+        case .invisible, .offline: "Offline"
+        }
+        return showsMobileIndicator(for: status, isMobile: isMobile) ? "\(label) on mobile" : label
+    }
+
+    /// The mobile indicator is a phone taller than the status dot.
+    static let mobileHeightRatio: CGFloat = 1.5
+
+    static func path(for status: PresenceStatus, isMobile: Bool = false, in rect: CGRect) -> Path {
+        if showsMobileIndicator(for: status, isMobile: isMobile) { return mobilePath(in: rect) }
         var path = Path()
         path.addEllipse(in: rect)
 
@@ -49,59 +67,118 @@ nonisolated enum PresenceIndicatorPresentation {
 
         return path
     }
+
+    static func outline(isMobile: Bool, in rect: CGRect) -> Path {
+        isMobile
+            ? Path(roundedRect: rect, cornerRadius: mobileCornerRadius(for: rect))
+            : Path(ellipseIn: rect)
+    }
+
+    /// A phone body with the screen and home button cut out, filled even-odd.
+    private static func mobilePath(in rect: CGRect) -> Path {
+        var path = outline(isMobile: true, in: rect)
+        let bezel = rect.width * 0.18
+        let screen = CGRect(
+            x: rect.minX + bezel,
+            y: rect.minY + bezel,
+            width: rect.width - bezel * 2,
+            height: rect.height * 0.58
+        )
+        path.addRoundedRect(
+            in: screen,
+            cornerSize: CGSize(width: bezel * 0.4, height: bezel * 0.4)
+        )
+        let button = rect.width * 0.2
+        path.addEllipse(in: CGRect(
+            x: rect.midX - button / 2,
+            y: (screen.maxY + rect.maxY) / 2 - button / 2,
+            width: button,
+            height: button
+        ))
+        return path
+    }
+
+    private static func mobileCornerRadius(for rect: CGRect) -> CGFloat {
+        rect.width * 0.28
+    }
 }
 
 nonisolated enum AvatarPresencePresentation {
     private static let indicatorCenterFraction: CGFloat = 0.86
 
+    /// The mobile indicator keeps the dot's bottom edge and grows upward.
     static func indicatorRect(
         avatarRect: CGRect,
-        indicatorSize: CGFloat
+        indicatorSize: CGFloat,
+        isMobile: Bool = false
     ) -> CGRect {
         let center = CGPoint(
             x: avatarRect.minX + avatarRect.width * indicatorCenterFraction,
             y: avatarRect.minY + avatarRect.height * indicatorCenterFraction
         )
+        let height = isMobile
+            ? indicatorSize * PresenceIndicatorPresentation.mobileHeightRatio
+            : indicatorSize
         return CGRect(
             x: center.x - indicatorSize / 2,
-            y: center.y - indicatorSize / 2,
+            y: center.y + indicatorSize / 2 - height,
             width: indicatorSize,
-            height: indicatorSize
+            height: height
         )
     }
 
-    static func cutoutRect(
+    static func cutoutPath(
         avatarRect: CGRect,
-        indicatorSize: CGFloat
-    ) -> CGRect {
+        indicatorSize: CGFloat,
+        isMobile: Bool = false
+    ) -> Path {
         let clearance = max(1.5, indicatorSize * 0.16)
-        return indicatorRect(
+        let rect = indicatorRect(
             avatarRect: avatarRect,
-            indicatorSize: indicatorSize
+            indicatorSize: indicatorSize,
+            isMobile: isMobile
         ).insetBy(dx: -clearance, dy: -clearance)
+        return PresenceIndicatorPresentation.outline(isMobile: isMobile, in: rect)
     }
 }
 
 private nonisolated struct PresenceIndicatorShape: Shape {
     let status: PresenceStatus
+    let isMobile: Bool
 
     func path(in rect: CGRect) -> Path {
-        PresenceIndicatorPresentation.path(for: status, in: rect)
+        PresenceIndicatorPresentation.path(for: status, isMobile: isMobile, in: rect)
+    }
+}
+
+private nonisolated struct PresenceIndicatorOutline: Shape {
+    let isMobile: Bool
+
+    func path(in rect: CGRect) -> Path {
+        PresenceIndicatorPresentation.outline(isMobile: isMobile, in: rect)
     }
 }
 
 struct PresenceIndicator: View {
     let status: PresenceStatus
     let size: CGFloat
+    var isMobile = false
+
+    private var usesMobileShape: Bool {
+        PresenceIndicatorPresentation.showsMobileIndicator(for: status, isMobile: isMobile)
+    }
 
     var body: some View {
-        PresenceIndicatorShape(status: status)
+        PresenceIndicatorShape(status: status, isMobile: usesMobileShape)
             .fill(
                 Color(hex: PresenceIndicatorPresentation.colorHex(for: status)),
                 style: FillStyle(eoFill: true)
             )
-            .frame(width: size, height: size)
-            .clipShape(Circle())
+            .frame(
+                width: size,
+                height: usesMobileShape ? size * PresenceIndicatorPresentation.mobileHeightRatio : size
+            )
+            .clipShape(PresenceIndicatorOutline(isMobile: usesMobileShape))
             .accessibilityHidden(true)
     }
 }
@@ -110,18 +187,25 @@ struct AvatarPresenceView<Avatar: View>: View {
     let status: PresenceStatus?
     let avatarSize: CGFloat
     let indicatorSize: CGFloat
+    let isMobile: Bool
     let avatar: Avatar
 
     init(
         status: PresenceStatus?,
         avatarSize: CGFloat,
         indicatorSize: CGFloat,
+        isMobile: Bool = false,
         @ViewBuilder avatar: () -> Avatar
     ) {
         self.status = status
         self.avatarSize = avatarSize
         self.indicatorSize = indicatorSize
+        self.isMobile = isMobile
         self.avatar = avatar()
+    }
+
+    private var usesMobileShape: Bool {
+        status.map { PresenceIndicatorPresentation.showsMobileIndicator(for: $0, isMobile: isMobile) } ?? false
     }
 
     var body: some View {
@@ -133,19 +217,20 @@ struct AvatarPresenceView<Avatar: View>: View {
             .overlay {
                 if let status { indicator(status: status) }
             }
+            .accessibilityValue(status.map {
+                PresenceIndicatorPresentation.accessibilityLabel(for: $0, isMobile: usesMobileShape)
+            } ?? "")
     }
 
     private var avatarCutout: some View {
         GeometryReader { proxy in
-            let cutoutRect = AvatarPresencePresentation.cutoutRect(
+            AvatarPresencePresentation.cutoutPath(
                 avatarRect: avatarRect(in: proxy.size),
-                indicatorSize: indicatorSize
+                indicatorSize: indicatorSize,
+                isMobile: usesMobileShape
             )
-            Circle()
-                .fill(.black)
-                .frame(width: cutoutRect.width, height: cutoutRect.height)
-                .position(x: cutoutRect.midX, y: cutoutRect.midY)
-                .blendMode(.destinationOut)
+            .fill(.black)
+            .blendMode(.destinationOut)
         }
     }
 
@@ -153,9 +238,10 @@ struct AvatarPresenceView<Avatar: View>: View {
         GeometryReader { proxy in
             let indicatorRect = AvatarPresencePresentation.indicatorRect(
                 avatarRect: avatarRect(in: proxy.size),
-                indicatorSize: indicatorSize
+                indicatorSize: indicatorSize,
+                isMobile: usesMobileShape
             )
-            PresenceIndicator(status: status, size: indicatorSize)
+            PresenceIndicator(status: status, size: indicatorSize, isMobile: usesMobileShape)
                 .position(x: indicatorRect.midX, y: indicatorRect.midY)
         }
     }

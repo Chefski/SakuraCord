@@ -14,6 +14,7 @@ struct FeaturesSettingsPage: View {
                 Toggle("Channel customization", isOn: value.channelManagement)
                     .tint(SakuraCordAccentColor.color)
                     .settingsControlAnchor(.channelManagement, state: state)
+                    .help("When off, all channels are shown and channel customization controls are hidden. Your server selections are preserved.")
                 Toggle("Show hidden channels", isOn: value.showHiddenChannels)
                     .tint(SakuraCordAccentColor.color)
                     .settingsControlAnchor(.showHiddenChannels, state: state)

@@ -9,12 +9,31 @@ struct ChatWorkspaceView: View {
 
     @ViewBuilder var body: some View {
         if let guildID = model.selectedGuildID, let page = model.guildWorkspacePage {
-            switch page {
-            case .channelsAndRoles: GuildCustomizationView(model: model, guildID: guildID)
-                .id("customization-\(guildID)-\(model.currentUser?.id.description ?? "")")
-            case .guide: GuildGuideView(model: model, guildID: guildID)
-                .id("guide-\(guildID)-\(model.currentUser?.id.description ?? "")")
+            HStack(spacing: 0) {
+                Group {
+                    switch page {
+                    case .channelsAndRoles: GuildCustomizationView(model: model, guildID: guildID)
+                        .id("customization-\(guildID)-\(model.currentUser?.id.description ?? "")")
+                    case .guide: GuildGuideView(model: model, guildID: guildID)
+                        .id("guide-\(guildID)-\(model.currentUser?.id.description ?? "")")
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                if model.customizationPreviewChannel != nil {
+                    Divider()
+                    if model.openThread != nil {
+                        ThreadConversationView(model: model)
+                    } else {
+                        SupplementaryConversationPane {
+                            ChatDetailView(model: model)
+                        }
+                    }
+                } else if page == .guide, let resource = model.onboarding.guides[guildID]?.resource {
+                    Divider()
+                    GuildResourceConversationView(model: model, guildID: guildID, resource: resource)
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             conversation
         }
@@ -201,7 +220,7 @@ private struct ChatWorkspaceSupplementaryContent: View {
                     sections: model.directMessageInspectorSections,
                     customEmojiURLsByID: model.customEmojiURLsByID,
                     profilePresentation:
-                        model.inspectorProfilePresentation,
+                        model.liveProfilePresentation(for: .inspector),
                     isProfilePresented: model.isInspectorProfilePresented,
                     selectMember: model.selectMember,
                     dismissProfile: model.dismissInspectorProfile,
@@ -231,7 +250,7 @@ private struct DirectMessageProfileInspector: View {
 
     var body: some View {
         Group {
-            if let presentation = model.inspectorProfilePresentation,
+            if let presentation = model.liveProfilePresentation(for: .inspector),
                presentation.member.id == recipient.id
             {
                 ProfilePresentationContent(
@@ -256,7 +275,7 @@ private struct DirectMessageProfileInspector: View {
                 isUniform: true
             )
         )
-        .task(id: recipient.id) {
+        .task(id: [recipient.id, model.inspectorProfilePresentation?.member.id]) {
             if model.inspectorProfilePresentation?.member.id != recipient.id {
                 model.showInspectorProfile(for: recipient)
             }
