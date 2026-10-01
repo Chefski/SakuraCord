@@ -164,6 +164,7 @@ final class AppModel {
             requestOrderedCustomEmojiUpdate()
         }
     }
+    @ObservationIgnored var serverRailLayoutTask: Task<Void, Never>?
     var visibleChannels: [Channel] = [] {
         didSet {
             refreshVisibleChannelGroups()

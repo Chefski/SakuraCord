@@ -1540,7 +1540,11 @@ is not the whole network surface. The remaining production connections are:
   routing-key headers and use a shared coalescing/cancellation queue. Inline
   linked images are accepted only on those exact HTTPS hosts, without
   credentials or a custom port; SakuraCord does not fetch arbitrary
-  third-party link previews.
+  third-party link previews. A visible video attachment's still preview is
+  one such derived GET: its server-returned `media.discordapp.net` proxy URL
+  with `format=webp` and a `width`/`height` bounded to 1,024 pixels, which the
+  proxy answers with the first frame. An attachment without that proxy URL
+  keeps the placeholder.
 - unauthenticated GIF-picker media GETs use the response-provided HTTPS
   origins, without credentials or a nonstandard port, matching the current
   first-party picker rather than Discord's separate asset-action host helper.
@@ -1887,8 +1891,52 @@ string-ID desktop capture. No new networking dependency was added.
 ### Server folders and voice-channel text
 
 - Server folders decode from Ready `user_settings_proto` and subsequent
-  settings updates. Folder rendering, ordering, and expansion add no REST
-  request.
+  settings updates. Folder rendering and expansion add no REST request.
+- Rearranging the rail, creating a folder by dropping one server onto another,
+  and editing a folder's name or color all save through one
+  `PATCH /users/@me/settings-proto/1` whose JSON contains only `settings`: root
+  field 14 (`GuildFolders`) and nothing else. Audited on 1 October 2026 against
+  web build `625378` (`ca2fcf2`), asset `web.91d9ed412e5a4f3b.js` (SHA-256
+  `b397937e21805d5b947ac48b1e4400f405a54d93d53e385bb14de265d9c71925`) and its
+  folder menu and settings chunks `00ae493a6c9956a3.js` and
+  `462533896c7040f2.js`. The first-party drag end, folder settings submit, and
+  `saveGuildFolders` helper replace `folders` with one entry per top-level rail
+  item: a folder carries packed fixed64 `guild_ids` plus wrapped `id`, optional
+  `name`, and optional `color`; a standalone server is an entry with one ID and
+  no folder ID. `guild_positions` is left as stored. A folder emptied of
+  servers is dropped. A new folder takes the drop target's place, holds the
+  target then the dragged server, and gets `floor(2^32 * random)` retried until
+  unused, with no name or color. The settings form limits the name to 32
+  characters, omits an empty name, offers the twenty role colors, and stores
+  the default color as an absent `color`. The update uses the settings
+  manager's `FREQUENT_USER_ACTION` delay: one request ten seconds after the
+  first unsaved change, carrying the layout as it is by then. The response's
+  `settings` and the resulting `USER_SETTINGS_PROTO_UPDATE` reconcile the rail.
+  Pinned Paicord and Swiftcord v1 only read guild folders; DiscordKit
+  corroborates the route and `settings` body. Public documentation does not
+  cover this route.
+- Live capture on 1 October 2026 with Discord Official Fresh host `0.0.411`,
+  stable web build `626571`, confirmed the `/api/v9` route and field-14-only
+  request for menu reordering, two-server folder creation, and folder name
+  and preset-color edits. Cancelling the settings form sent no settings
+  request. The server returned HTTP 200 with the full settings protobuf;
+  `USER_SETTINGS_PROTO_UPDATE` could arrive before the HTTP response.
+  Removing the last member through **Move to → Folder → No Folder** sent an
+  empty folder entry, which the server omitted from its response and Gateway
+  update. Thus this menu path relies on server normalization, unlike the
+  drag path's client-side empty-folder removal. Live synchronization with a
+  SakuraCord session also confirmed name edits and default-color omission
+  in both directions.
+- Deliberate differences: SakuraCord keeps a stored folder's bytes, including
+  unknown fields, and rewrites only a changed name or color. It also keeps
+  stored server IDs that the rail is not showing, appended to their folder or
+  after the visible entries, where the first-party client prunes them; an
+  incomplete guild catalogue therefore cannot erase folder contents. Saves
+  never overlap, a change made during a request is saved by the next one, a
+  pending save is flushed on disconnect, and a rejected save restores the last
+  confirmed layout. The rail does not create a folder with a chosen name and
+  has no collapse-all action. Mark Folder as Read sends the existing bulk
+  acknowledgement once per unread server in the folder.
 - Selecting accessible voice-channel text chat uses the ordinary one-page
   message-history read and does not join voice. Effective `VIEW_CHANNEL`,
   `READ_MESSAGE_HISTORY`, and `CONNECT` are required before that read;

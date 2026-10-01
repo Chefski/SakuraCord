@@ -189,6 +189,7 @@ extension DiscordRESTProvider {
     }
 
     public func disconnect() async {
+        await finishGuildFoldersEdits()
         currentAccountDetails = nil
         currentAuthSessionIDHash = nil
         accountInformationRevision = UUID()

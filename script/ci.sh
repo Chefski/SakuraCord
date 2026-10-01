@@ -15,6 +15,7 @@ case "$MODE" in
 esac
 
 "$ROOT_DIR/script/code_quality.sh" check
+"$ROOT_DIR/script/test_code_quality.sh"
 "$ROOT_DIR/script/test_release_metadata.sh"
 "$ROOT_DIR/script/test_sync_main_into_nightly.sh"
 "$ROOT_DIR/script/test_debug_credentials_config.sh"
