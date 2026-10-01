@@ -23,7 +23,8 @@ extension NativeTimelineCanvasView {
                 owner: requestOwner,
                 subscriber: identifier,
                 priority: priority
-            ) { [weak self] _ in
+            ) { [weak self] outcome in
+                guard outcome == .ready else { return }
                 self?.scheduleMediaInvalidation(identifier)
             }
         }

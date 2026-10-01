@@ -461,6 +461,9 @@ final class NativeTimelineMediaStore {
     var imageCacheCost = 0
     var visibleKeysByOwner:
         [UUID: Set<NativeTimelineMediaKey>] = [:]
+    // Keep failures only while visible, so redraws cannot repeatedly fetch a
+    // broken resource. Leaving and re-entering the viewport allows a retry.
+    private var failedKeys: Set<NativeTimelineMediaKey> = []
     var loading: Set<NativeTimelineMediaKey> = []
     var loadingPriorities: [NativeTimelineMediaKey: MediaLoadPriority] = [:]
     var loadingTaskIDs: [NativeTimelineMediaKey: UUID] = [:]
@@ -662,6 +665,10 @@ final class NativeTimelineMediaStore {
         completion: @escaping (NativeTimelineStaticMediaLoadOutcome) -> Void
     ) {
         guard image(for: key) == nil else { return }
+        guard !failedKeys.contains(key) else {
+            completion(.failed)
+            return
+        }
         let subscriberID = StaticSubscriberID(owner: owner, row: subscriber)
         subscribers[key, default: [:]][subscriberID] = completion
         guard loading.insert(key).inserted else {
@@ -715,6 +722,8 @@ final class NativeTimelineMediaStore {
             let completions = subscribers.removeValue(forKey: key)?.values ?? [:].values
             if let image {
                 cacheImage(image, for: key)
+            } else if visibleKeysByOwner.values.contains(where: { $0.contains(key) }) {
+                failedKeys.insert(key)
             }
             for completion in completions {
                 completion(image == nil ? .failed : .ready)
@@ -856,6 +865,7 @@ final class NativeTimelineMediaStore {
         _ image: NSImage,
         for key: NativeTimelineMediaKey
     ) {
+        failedKeys.remove(key)
         let cost = Self.estimatedCost(of: image)
         if let previous = cachedImages.updateValue(
             CachedImage(image: image, cost: cost),
@@ -877,6 +887,7 @@ final class NativeTimelineMediaStore {
         let visibleKeys = visibleKeysByOwner.values.reduce(
             into: Set<NativeTimelineMediaKey>()
         ) { $0.formUnion($1) }
+        failedKeys.formIntersection(visibleKeys)
         while imageCacheCost > Self.imageCacheCostLimit
             || cachedImages.count > Self.imageCacheCountLimit
         {
