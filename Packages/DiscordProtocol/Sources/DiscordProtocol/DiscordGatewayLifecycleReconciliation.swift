@@ -139,12 +139,10 @@ extension DiscordRESTProvider {
             else { continue }
             members[index].applyGlobalProfileUser(user)
             cachedMembers[guildID] = members
-            continuation?.yield(
-                .membersChanged(
-                    guildID: guildID,
-                    members: members,
-                    groups: selectedMemberListGroups(guildID: guildID)
-                )
+            publishMembers(
+                guildID: guildID,
+                members: members,
+                groups: selectedMemberListGroups(guildID: guildID)
             )
         }
 

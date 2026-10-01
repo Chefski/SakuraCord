@@ -154,7 +154,7 @@ extension AppModel {
               selectedChannelID != nil,
               MessageSearchSurfacePolicy.showsToolbar(
                   channelKind: selectedChannel?.kind,
-                  hasOpenThread: openThread != nil
+                  hasOpenThread: hasThreadPane
               )
         else { return }
         let currentScope = selectedGuildID.map(MessageSearchScope.guild) ?? .directMessages

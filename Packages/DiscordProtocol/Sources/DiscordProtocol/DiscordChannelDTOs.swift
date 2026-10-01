@@ -159,6 +159,13 @@ struct ChannelDTO: Decodable {
         set { embeddedMessage = newValue.map(EmbeddedMessage.init) }
     }
 
+    /// Guild thread records carry the latest message shown in a thread card.
+    private var embeddedMostRecentMessage: EmbeddedMessage?
+    var mostRecentMessage: MessageDTO? {
+        get { embeddedMostRecentMessage?.value }
+        set { embeddedMostRecentMessage = newValue.map(EmbeddedMessage.init) }
+    }
+
     var isThread: Bool {
         switch type {
         case 10, 11, 12: true
@@ -180,6 +187,7 @@ struct ChannelDTO: Decodable {
         case ownerID = "owner_id"
         case owner, flags, member
         case embeddedMessage = "message"
+        case embeddedMostRecentMessage = "most_recent_message"
         case messageCount = "message_count"
         case memberCount = "member_count"
         case totalMessageSent = "total_message_sent"
@@ -324,7 +332,7 @@ struct ChannelDTO: Decodable {
             ),
             owner: ownerUser ?? firstMessage?.author,
             firstMessage: firstMessage,
-            mostRecentMessage: nil,
+            mostRecentMessage: mostRecentMessage.flatMap { try? $0.domain() },
             isUnread: false
         )
     }

@@ -37,6 +37,7 @@ extension AppModel {
         let stream = await session.provider.eventStream()
         guard isCurrentAccountSession(session) else { return }
         installEventTask(stream, account: session)
+        let statusRevision = currentStatusRevision
         isLoading = true
         defer {
             if isCurrentAccountSession(session) {
@@ -56,7 +57,8 @@ extension AppModel {
             await applyLiveBootstrap(
                 value,
                 publishesSessionState: publishesSessionState,
-                account: session
+                account: session,
+                statusRevision: statusRevision
             )
             guard isCurrentAccountSession(session) else { return }
         } catch {
@@ -119,14 +121,16 @@ extension AppModel {
     func applyLiveBootstrap(
         _ value: BootstrapSnapshot,
         publishesSessionState: Bool,
-        account: AppModelAccountSession
+        account: AppModelAccountSession,
+        statusRevision: UInt64? = nil
     ) async {
         guard isCurrentAccountSession(account) else { return }
         await AppPerformanceSignposts.measure("BootstrapApplication") {
             await applyBootstrap(
                 value,
                 publishesSessionState: publishesSessionState,
-                account: account
+                account: account,
+                statusRevision: statusRevision
             )
         }
     }
@@ -247,9 +251,11 @@ extension AppModel {
     func applyBootstrap(
         _ value: BootstrapSnapshot,
         publishesSessionState: Bool,
-        account: AppModelAccountSession? = nil
+        account: AppModelAccountSession? = nil,
+        statusRevision: UInt64? = nil
     ) async {
         if let account, !isCurrentAccountSession(account) { return }
+        let statusRevision = statusRevision ?? currentStatusRevision
         AppPerformanceSignposts.measureSync("BootstrapSnapshotPublish") {
             snapshot = value
             onboarding.members = value.currentMembersByGuildID
@@ -314,7 +320,8 @@ extension AppModel {
         }
         guard await seedBootstrapMemberCacheAndRestorePresence(
             from: value,
-            account: account
+            account: account,
+            statusRevision: statusRevision
         ) else { return }
         guard canPublishBootstrap(for: account) else { return }
         await AppPerformanceSignposts.measure("BootstrapInitialGuildActivation") {
@@ -375,7 +382,8 @@ extension AppModel {
 
     private func seedBootstrapMemberCacheAndRestorePresence(
         from value: BootstrapSnapshot,
-        account: AppModelAccountSession?
+        account: AppModelAccountSession?,
+        statusRevision: UInt64
     ) async -> Bool {
         AppPerformanceSignposts.measureSync("BootstrapMemberCacheSeed") {
             guard let firstGuildID = value.guilds.first?.id else { return }
@@ -386,6 +394,8 @@ extension AppModel {
             membersByGuildID[firstGuildID] = indexed
             memberListsByGuildID[firstGuildID] = value.members
         }
+        // Events can arrive while bootstrap or its application is suspended.
+        guard currentStatusRevision == statusRevision else { return true }
         if let bootstrapStatus = value.members.first(where: {
             $0.id == value.currentUser.id
         })?.status {
@@ -401,7 +411,7 @@ extension AppModel {
             await statusProvider.currentStatus()
         }
         guard canPublishBootstrap(for: account) else { return false }
-        currentStatus = restoredStatus
+        if currentStatusRevision == statusRevision { currentStatus = restoredStatus }
         return true
     }
 

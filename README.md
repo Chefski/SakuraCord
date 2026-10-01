@@ -85,6 +85,7 @@ git clone https://github.com/SakuraCordApp/SakuraCord.git
 cd SakuraCord
 ./script/install_git_hooks.sh
 git config --local --get core.hooksPath
+./script/setup_local_signing_identity.sh
 ./script/build_and_run.sh --offline
 ```
 

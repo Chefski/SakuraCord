@@ -642,8 +642,8 @@ enum NativeTimelineRowPainter {
                 ]
             )
         )
-        if let image = NSImage(
-            systemSymbolName: beginning.symbolName,
+        if let image = SakuraCordSystemSymbol.image(
+            named: beginning.symbolName,
             accessibilityDescription: beginning.title
         )?.withSymbolConfiguration(symbolConfiguration) {
             let imageSize = image.size

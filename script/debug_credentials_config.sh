@@ -6,38 +6,41 @@ sakuracord_read_persistent_debug_credentials() {
   local root_dir="$1"
   local configured_value
   local status
+  local scope
 
   SAKURACORD_PERSISTENT_DEBUG_CREDENTIALS_IS_SET=0
   SAKURACORD_PERSISTENT_DEBUG_CREDENTIALS=0
 
-  if ! git -C "$root_dir" rev-parse --git-dir >/dev/null 2>&1; then
-    return 0
-  fi
-
-  if configured_value="$(
-    git -C "$root_dir" config --local --type=bool \
-      --get "$SAKURACORD_INSECURE_DEBUG_CREDENTIALS_CONFIG_KEY" 2>/dev/null
-  )"; then
-    SAKURACORD_PERSISTENT_DEBUG_CREDENTIALS_IS_SET=1
-    case "$configured_value" in
-      true) SAKURACORD_PERSISTENT_DEBUG_CREDENTIALS=1 ;;
-      false) SAKURACORD_PERSISTENT_DEBUG_CREDENTIALS=0 ;;
-      *)
-        echo "Unexpected Git boolean for $SAKURACORD_INSECURE_DEBUG_CREDENTIALS_CONFIG_KEY." >&2
-        return 2
-        ;;
-    esac
-    return 0
-  else
-    status=$?
-  fi
-
-  if [[ "$status" -eq 1 ]]; then
-    return 0
-  fi
-
-  echo "Git config $SAKURACORD_INSECURE_DEBUG_CREDENTIALS_CONFIG_KEY must be a boolean." >&2
-  return 2
+  # The machine preference wins over old checkout-local settings. Keep the
+  # latter as a migration path until enable/disable saves a machine preference.
+  for scope in global local; do
+    if [[ "$scope" == "local" ]] && ! git -C "$root_dir" rev-parse --git-dir >/dev/null 2>&1; then
+      continue
+    fi
+    if configured_value="$(
+      git -C "$root_dir" config --"$scope" --type=bool \
+        --get "$SAKURACORD_INSECURE_DEBUG_CREDENTIALS_CONFIG_KEY" 2>/dev/null
+    )"; then
+      SAKURACORD_PERSISTENT_DEBUG_CREDENTIALS_IS_SET=1
+      case "$configured_value" in
+        true) SAKURACORD_PERSISTENT_DEBUG_CREDENTIALS=1 ;;
+        false) SAKURACORD_PERSISTENT_DEBUG_CREDENTIALS=0 ;;
+        *) return 2 ;;
+      esac
+      if [[ "$scope" == "global" ]]; then
+        SAKURACORD_INSECURE_DEBUG_CREDENTIALS_SOURCE="machine config"
+      else
+        SAKURACORD_INSECURE_DEBUG_CREDENTIALS_SOURCE="legacy repository config"
+      fi
+      return 0
+    else
+      status=$?
+    fi
+    if [[ "$status" -ne 1 ]]; then
+      echo "Git $scope config $SAKURACORD_INSECURE_DEBUG_CREDENTIALS_CONFIG_KEY must be a boolean." >&2
+      return 2
+    fi
+  done
 }
 
 sakuracord_resolve_insecure_debug_credentials() {
@@ -63,7 +66,6 @@ sakuracord_resolve_insecure_debug_credentials() {
   sakuracord_read_persistent_debug_credentials "$root_dir" || return $?
   if [[ "$SAKURACORD_PERSISTENT_DEBUG_CREDENTIALS_IS_SET" == "1" ]]; then
     SAKURACORD_RESOLVED_INSECURE_DEBUG_CREDENTIALS="$SAKURACORD_PERSISTENT_DEBUG_CREDENTIALS"
-    SAKURACORD_INSECURE_DEBUG_CREDENTIALS_SOURCE="repository config"
   fi
 }
 
@@ -87,15 +89,8 @@ sakuracord_apply_secure_release_credential_policy() {
 }
 
 sakuracord_set_persistent_debug_credentials() {
-  local root_dir="$1"
-  local value="$2"
-
-  if ! git -C "$root_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    echo "Persistent debug credentials require a Git checkout: $root_dir" >&2
-    return 2
-  fi
-
-  git -C "$root_dir" config --local \
+  local value="$1"
+  git config --global \
     "$SAKURACORD_INSECURE_DEBUG_CREDENTIALS_CONFIG_KEY" "$value"
 }
 

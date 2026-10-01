@@ -300,6 +300,7 @@ final class AppModel {
     var roleMemberResult: RoleMemberResult?
     var isLoadingRoleMembers = false
     var roleMemberErrorMessage: String?
+    @ObservationIgnored var currentStatusRevision: UInt64 = 0
     var currentStatus: PresenceStatus = .offline
     var connectionState: ConnectionState = .disconnected
     var isAuthenticated = false
@@ -360,6 +361,10 @@ final class AppModel {
     var interactionErrorMessage: String?
     var isVoiceChatOpen = false
     var openThread: MessageThreadSummary?
+    /// A thread being composed in the supplementary pane. It is mutually
+    /// exclusive with `openThread` and becomes it once Discord creates the thread.
+    var threadCreation: ThreadCreationDraft?
+    var hasThreadPane: Bool { openThread != nil || threadCreation != nil }
     var openThreadStarter: User?
     var openThreadStartedAt: Date?
     @ObservationIgnored var openThreadStarterMessageID: MessageID?
@@ -551,6 +556,11 @@ final class AppModel {
     var canManageForumPosts: Bool {
         guard let permissions = selectedEffectivePermissions else { return false }
         return permissions & DiscordPermissionBits.manageThreads != 0
+    }
+
+    var canAttachFilesToForumPosts: Bool {
+        guard canCreateForumPosts, let permissions = selectedEffectivePermissions else { return false }
+        return permissions & DiscordPermissionBits.attachFiles != 0
     }
 
     func canDeleteForumPost(_ post: ForumPost) -> Bool {
@@ -1130,6 +1140,9 @@ final class AppModel {
         [ChannelID: [MessageRowPresentation]] = [:]
     @ObservationIgnored var messageRowCacheOrder: [ChannelID] = []
     @ObservationIgnored var hasMoreCache: [ChannelID: Bool] = [:]
+    /// Latest known message per thread, drawn in timeline thread cards.
+    @ObservationIgnored var threadPreviewMessages: [ChannelID: Message] = [:]
+    @ObservationIgnored var threadPreviewParentIDs: [ChannelID: ChannelID] = [:]
     @ObservationIgnored let discordNetworkDisabled: Bool
     @ObservationIgnored let usesInsecureDebugCredentials: Bool
     @ObservationIgnored let restoresStoredSession: Bool

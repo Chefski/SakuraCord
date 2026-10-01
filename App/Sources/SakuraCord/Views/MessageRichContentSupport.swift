@@ -329,7 +329,7 @@ nonisolated enum SystemMessagePresentation {
             return [
                 actorRun(message),
                 .secondary(" started a thread: "),
-                .emphasized(message.content.isEmpty ? "Thread" : message.content),
+                .emphasized(message.thread?.name ?? (message.content.isEmpty ? "Thread" : message.content)),
             ]
         case .guildInviteReminder:
             return [
@@ -377,6 +377,7 @@ nonisolated enum SystemMessagePresentation {
         case .guildBoost, .guildBoostTier1, .guildBoostTier2, .guildBoostTier3:
             "sparkles"
         case .channelPinnedMessage: "pin.fill"
+        case .threadCreated: SakuraCordSystemSymbol.thread
         case .call:
             isMissedCall(message, currentUserID: currentUserID)
                 ? "phone.down.fill" : "phone.fill"

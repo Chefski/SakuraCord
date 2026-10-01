@@ -52,6 +52,13 @@ import Testing
 
     await first.terminate(code: nil)
     #expect(await eventually { await session.snapshot().state == .backingOff(attempt: 1) })
+    // Backoff state precedes the asynchronous jitter lookup and clock registration.
+    let backoffReady = await eventually { await clock.activeDurations.contains(where: { seconds($0) == 1 }) }
+    if !backoffReady {
+        await session.stop()
+        await clock.advanceAll()
+    }
+    try #require(backoffReady)
     await clock.advance(durationMatching: 1)
     #expect(await eventually { await transport.connectionCount == 2 })
     let secondURL = await transport.connectedURLs.last
@@ -224,6 +231,13 @@ import Testing
     #expect(await eventually { await session.snapshot().state == .ready })
     await first.terminate(code: 4007)
     #expect(await eventually { await session.snapshot().state == .backingOff(attempt: 1) })
+    // Backoff state precedes the asynchronous jitter lookup and clock registration.
+    let backoffReady = await eventually { await clock.activeDurations.contains(where: { seconds($0) == 1 }) }
+    if !backoffReady {
+        await session.stop()
+        await clock.advanceAll()
+    }
+    try #require(backoffReady)
     await clock.advance(durationMatching: 1)
     #expect(await eventually { await transport.connectionCount == 2 })
     await second.push(envelope(op: 10, data: .object(["heartbeat_interval": .number(30000)])))

@@ -11,7 +11,7 @@ extension AppModel {
             value.forEach { receiveOnboardingMember($0, guildID: guildID) }
             let receivedMembers = value
             let value = value.map { member in
-                var member = member
+                var member = memberWithCurrentStatus(member)
                 if member.id == profileCustomStatusUserID { member.customStatus = profileCustomStatus?.displayText }
                 return member
             }

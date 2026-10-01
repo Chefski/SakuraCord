@@ -21,7 +21,7 @@ public extension DiscordRESTProvider {
         if gatewayReady {
             await attemptMemberSubscription(guildID: guildID)
         }
-        return orderedMemberListMembers(guildID: guildID) ?? cachedMembers[guildID] ?? []
+        return membersWithCurrentStatus(orderedMemberListMembers(guildID: guildID) ?? cachedMembers[guildID] ?? [])
     }
 
     func roles(in guildID: GuildID) async throws -> [GuildRole] {

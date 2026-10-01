@@ -252,6 +252,7 @@ struct ProviderRequestContractTests {
             data: .object([
                 "session_id": .string("desktop-session"),
                 "resume_gateway_url": .string("wss://gateway.discord.gg"),
+                "user_settings_proto": .string(statusSettingsFixture("dnd").base64EncodedString()),
             ]),
             sequence: 12,
             eventName: "READY"
@@ -268,6 +269,9 @@ struct ProviderRequestContractTests {
         try await provider.startGateway()
         #expect(await eventually { await socket.sentCount == 5 })
         #expect(await socket.sentOpcodes() == [2, 4, 3, 41, 40])
+        // The post-READY presence carries the account-wide status another
+        // client saved instead of a stale local value.
+        #expect(await presenceStatuses(socket) == ["dnd"])
         await provider.disconnect()
     }
 

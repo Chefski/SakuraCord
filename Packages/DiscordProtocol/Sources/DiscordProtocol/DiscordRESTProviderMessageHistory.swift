@@ -99,6 +99,7 @@ public extension DiscordRESTProvider {
         )
         cacheForwardSearchMessageAliases(values)
         for index in values.indices {
+            attachKnownThread(to: &values[index])
             if let existing = cachedMessages[values[index].id] {
                 values[index].guildMember = MessageGuildMember.merging(
                     incoming: values[index].guildMember,
@@ -106,6 +107,9 @@ public extension DiscordRESTProvider {
                 )
             }
             cachedMessages[values[index].id] = values[index]
+        }
+        if case .newest = anchor, let latest = values.last {
+            recordLoadedThreadLatestMessage(latest)
         }
         let firstID = values.first?.id
         let lastID = values.last?.id
