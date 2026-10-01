@@ -306,12 +306,15 @@ extension AppModel {
         let session = accountSession()
         commandExecutionTask = Task { [weak self] in
             guard let self else { return }
-            let uploadsAttachments = invocation.values.contains {
-                if case .attachment = $0.argument { return true }
-                return false
+            let attachmentURLs = invocation.values.compactMap { value -> URL? in
+                guard case let .attachment(url) = value.argument else { return nil }
+                return url
             }
+            let uploadsAttachments = !attachmentURLs.isEmpty
             if uploadsAttachments { activeAttachmentUploadCount += 1 }
             defer { if uploadsAttachments { activeAttachmentUploadCount -= 1 } }
+            beginUsingOwnedPromisedFiles(attachmentURLs)
+            defer { endUsingOwnedPromisedFiles(attachmentURLs) }
             defer {
                 if isCurrentAccountSession(session) {
                     commandExecutionTask = nil

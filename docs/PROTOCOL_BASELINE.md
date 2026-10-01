@@ -993,7 +993,8 @@ and retained as evidence.
 | `PATCH /guilds/{guild}/members/@me` | Changed server identity fields use `nick`; a nameplate is `collectibles.nameplate.sku_id`, with `collectibles.nameplate:null` for inheritance. Other identity fields use the same names as main scope. | Clean September server identity, cosmetics, inheritance and image actions. |
 | `PATCH /users/%40me/profile` and `PATCH /guilds/{guild}/profile/%40me` | Changed `bio`, `pronouns`, `banner`, `accent_color`, ordered `theme_colors`, and `collectibles_sku_ids`. Preserve encoded `%40me` in these paths. | Clean September main/server metadata saves, clears and partial-save recovery. |
 | `PUT /users/@me/clan` | Account-wide `identity_guild_id` and `identity_enabled`, editable from either main or server profiles; clearing sends null/false. One save reconciles the shared user and every cached profile without follow-up reads. Eligible guilds come from joined, nonpending Gateway memberships with `GUILD_TAGS` and a tag. | Clean September tag selection/removal and first-party eligibility resolver; 10 September editor-scope correction and cache-reconciliation coverage. |
-| `PATCH /users/@me/settings-proto/1` | Independent custom-status update; JSON contains `settings`. Send root field 11 with the retained status settings, replacing or removing its custom-status field 2 while preserving siblings and unknown fields. Reconcile the authoritative returned settings. | Clean September status saves, clears and expiry; first-party protobuf/settings implementation. |
+| `PATCH /users/@me/settings-proto/1` | Custom-status update or status pick; JSON contains `settings`, plus `required_data_version` when the write carries a pending status edit with a recorded data version. Send root field 11 with the retained status settings, replacing or removing custom-status field 2, or setting status field 1 as described under dispatch reconciliation, while preserving siblings and unknown fields. Reconcile the authoritative returned settings, including an `out_of_date` response. `400` / `50105` does not open the safety circuit: the status and Inbox writers reload with `GET /users/@me/settings-proto/1`. | Clean September status saves, clears and expiry; first-party protobuf/settings implementation; web build `622805` status pick and settings engine. |
+| `GET /users/@me/settings-proto/1` | Only after `400` / `50105` from a settings-proto/1 PATCH; no body. The returned proto is applied as a full type-1 settings update. | Web build `622805` module `594061` `loadIfNecessary(true)`; Paicord, Swiftcord v1 and DiscordKit have no reload path. |
 | `GET /collectibles-categories/v2?include_bundles=true&variants_return_style=2&skip_num_categories=0` | First collectible-picker catalogue load; retain server categories, variants and asset descriptors. | Clean September picker and catalogue requests. |
 | `GET /users/@me/collectibles-purchases?variants_return_style=2` | Owned inventory, including purchase type and expiry used by selection/save gates. | Clean September inventory requests and first-party ownership resolver. |
 | `GET /users/@me/avatars` | Image chooser's recent-avatar history; archived WebP thumbnails use size128 and crop sources size2048. Both append animated=true for an a_-prefixed storage hash; omitting it loses animation. | Clean September chooser and history actions. |
@@ -1390,6 +1391,90 @@ exception dispatches.
   expression settings. This matches the first-party store's `mergePartial` path in public
   web asset `web.e3526df05a0a7718.js`, rechecked on 29 August 2026, and creates
   no follow-up request once the settings cache is loaded.
+- The account-wide status is `StatusSettings` (root field 11) field 1, a
+  `StringValue`, in READY and type-1 `USER_SETTINGS_PROTO_UPDATE`. Evidence:
+  public web build `622805` (asset `web.d4c7976eccf337f1.js`, SHA-256
+  `7341aa3d5a2208664901f65bf776a48fb5cafe21a1a9e6ce504db79a4a636f7d`),
+  statically checked on 28 and 29 September 2026.
+  - Official presence: `SelfPresenceStore` derives the status on connection
+    open and every settings update; an absent or unknown value is online. The
+    presence updater sends opcode 3 only for a changed presence on an
+    established session, at most five per 20 seconds, deferring the latest.
+  - Official save: a pick (module `827827`) goes through the settings engine
+    (module `594061`, edit state in module `617617`) with a zero delay.
+    `markDirty` applies it locally at once and merges it into the unsaved
+    `protoToSave`, per root field with the last writer winning.
+    `persistChanges` sends `PATCH /users/@me/settings-proto/1` with root field
+    11 only, plus `required_data_version` when an offline-edit version is
+    recorded. The message keeps custom status, game visibility and unknown
+    fields, sets `status`, omits `status_expires_at_ms` for a status without a
+    duration, and keeps `status_created_at_ms` only for an unchanged status.
+  - Official outcomes: success and `out_of_date` clear the edit and adopt the
+    returned settings. `429` retries after min(30 s, `Retry-After`, or 60 s
+    when absent), without a bound. `400` / `50105` clears the edit and
+    reloads `GET /users/@me/settings-proto/1`. Any other failure keeps the
+    edit and schedules nothing. Nothing is rolled back or shown to the user.
+  - Official offline edits: `CONNECTION_CLOSED` and `CONNECTION_RESUMED`
+    record `versions.data_version` (root field 1, field 3) as
+    `offlineEditDataVersion` and cancel the save timer. `CONNECTION_OPEN`
+    shows READY's settings, then saves the kept edit 5 to 10 seconds later.
+    Offline edits persist in the store cache, an inactive or background app
+    state and `beforeunload` flush a scheduled save, and `LOGOUT` drops them.
+  - SakuraCord: the provider owns one pending status edit, persisted per
+    account as `dev.sakuracord.pending-status-edit.<account>` and removed with
+    the account. Only a save that wrote it, `out_of_date`, `400` / `50105` for
+    it, a newer pick, or a READY that already carries its status ends it.
+    Connection loss records the latest received data version on it. READY
+    applies it before self members are built and before the post-READY opcode
+    3, gives an edit without a version READY's, and schedules one silent save
+    5 to 10 seconds later; RESUMED schedules the same save. Losing app focus
+    flushes it once per edit until the next READY or RESUMED. Status and custom-status saves share one save slot, and a
+    custom-status write carries the pending edit and its recorded version.
+    `400` / `50105` on settings-proto/1 is exempt from the safety circuit; the
+    status writer and the Inbox writer (also official `wc.updateAsync("inbox")`)
+    both reload the settings. Before READY the status is invisible. Every
+    member list the provider publishes or returns, and every cached list the
+    app shows again, takes the current user's status from the account status.
+  - Migration: a device-only Invisible that earlier releases stored under
+    `dev.sakuracord.presence.<account>` becomes a pending edit that READY
+    completes or saves with its version; any other device value is dropped,
+    and the key is deleted at launch.
+  - Difference: only the first save of a user's pick or custom status reports
+    a failure, including `out_of_date`, so the user learns the change is only
+    local; automatic saves stay silent.
+  - Difference: while an edit is pending, received settings and older save
+    responses do not replace its status, so READY's or a stale echoed value
+    never shows first and no stale opcode 3 is sent.
+  - Difference: one save runs at a time, so an edit made during a PATCH is
+    not lost, as it is when the official `resetEditInfo` clears
+    `protoToSave`.
+  - Difference: a remote status change received while an edit is pending is
+    not shown; as in the official client, saving the edit then overwrites it.
+  - Difference: RESUMED also schedules the pending edit's save, with the
+    recorded version, where the official `CONNECTION_RESUMED` only records the
+    version and waits for the next `CONNECTION_OPEN`, so an edit could stay
+    unsaved across a brief interruption while shown as current.
+  - Difference: a pick on an open connection replaces a pending offline edit
+    with a live edit that sends no `required_data_version`, where the official
+    merge would keep the offline version and could discard the new pick. Any
+    other write carrying the offline edit keeps its version.
+  - Difference: a user's save retries a `429` once when `Retry-After` is at
+    most 30 seconds; an automatic save does not retry and stays pending,
+    instead of retrying without a bound and holding the save slot.
+  - Difference: an edit persisted before its connection closed stores the
+    data version in effect at its last change, where the official cache keeps
+    only edits whose version was recorded at close.
+  - Difference: nothing is flushed on termination; the persisted edit is saved
+    after the next READY. Timed statuses and their expiry reset are not
+    implemented.
+  - Cross-checks: pinned Paicord mirrors Ready or `SESSIONS_REPLACE` presence
+    through opcode 3 and never writes the setting. Swiftcord v1 sends opcode 3
+    and then a settings-proto write that drops sibling fields; its DiscordKit
+    reads the setting from Ready and full type-1 updates. Paicord and DiscordKit
+    only generate the `Versions` message; none of the three sends
+    `required_data_version`, reads `out_of_date`, keeps an unsaved edit, or
+    handles `50105`. Discord's public documentation does not describe the user
+    settings proto.
 - Soundboard, scheduled-event and exception, Stage,
   integration, webhook, AutoMod, entitlement, and subscription dispatches have
   no production state consumer. They are deliberately ignored after sanitized
@@ -1402,7 +1487,16 @@ exception dispatches.
 
 All of these paths use sanitized deterministic dispatch fixtures. Their
 request budget is zero: a received dispatch mutates local state and never
-creates a REST request or an additional outgoing Gateway payload.
+creates a REST request or an additional outgoing Gateway payload. There are
+three exceptions, all described above. A type-1 `USER_SETTINGS_PROTO_UPDATE`
+that changes the account status sends one opcode 3, within the shared limit of
+five per 20 seconds. A READY that finds a pending status edit it does not
+already carry sends one `PATCH /users/@me/settings-proto/1` 5 to 10 seconds
+later, and schedules no retry; RESUMED does the same for a pending edit.
+Outside dispatches, the same pending edit costs at most one further PATCH when
+the app loses focus before the next READY or RESUMED, and
+a `400` / `50105` response to a status or Inbox settings write costs one
+`GET /users/@me/settings-proto/1`.
 
 ### Other Discord transports
 
@@ -1980,7 +2074,8 @@ first-party traffic determines the undocumented user-client contracts.
   the PUT body is `{"response":1}`. Event and RSVP Gateway dispatches update
   the same cached entries.
 - Tab and collapsed-group settings patch `/users/@me/settings-proto/1`,
-  preserving unknown protobuf fields. Event collapse uses Discord's reserved
+  preserving unknown protobuf fields. A `400` / `50105` response reloads the
+  settings, as the official settings engine does, and reports the failure. Event collapse uses Discord's reserved
   channel key within each guild's settings map; guild identity must remain
   part of that key. Mention filter choices persist locally across sessions
   and account switches; they are not server settings.

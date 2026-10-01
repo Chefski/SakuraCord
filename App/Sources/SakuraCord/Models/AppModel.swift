@@ -300,6 +300,7 @@ final class AppModel {
     var roleMemberResult: RoleMemberResult?
     var isLoadingRoleMembers = false
     var roleMemberErrorMessage: String?
+    @ObservationIgnored var currentStatusRevision: UInt64 = 0
     var currentStatus: PresenceStatus = .offline
     var connectionState: ConnectionState = .disconnected
     var isAuthenticated = false
@@ -551,6 +552,11 @@ final class AppModel {
     var canManageForumPosts: Bool {
         guard let permissions = selectedEffectivePermissions else { return false }
         return permissions & DiscordPermissionBits.manageThreads != 0
+    }
+
+    var canAttachFilesToForumPosts: Bool {
+        guard canCreateForumPosts, let permissions = selectedEffectivePermissions else { return false }
+        return permissions & DiscordPermissionBits.attachFiles != 0
     }
 
     func canDeleteForumPost(_ post: ForumPost) -> Bool {

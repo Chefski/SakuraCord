@@ -362,7 +362,7 @@ extension AppModel {
         case .snapshotChanged(let value):
             consumeSnapshotChanged(value)
         case .guildChanged, .guildLayoutChanged, .guildRolesChanged,
-             .currentUserChanged:
+             .currentUserChanged, .currentUserStatusChanged:
             consumeGatewayWorkspaceStateEvent(event)
         case .applicationCommandIndexInvalidated(let target):
             if commandComposer.invalidated(target) {
@@ -407,6 +407,8 @@ extension AppModel {
             applyGuildRoles(roles, to: guildID)
         case .currentUserChanged(let user):
             consumeCurrentUserChanged(user)
+        case .currentUserStatusChanged(let status):
+            applyCurrentStatus(status)
         default:
             break
         }
