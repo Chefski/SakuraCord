@@ -72,7 +72,9 @@ if [[ "$UPDATES_ENABLED" == "1" ]]; then
   fi
 fi
 BUILD_FLAGS=()
+BUILD_CONFIGURATION=debug
 if [[ "$MODE" == "package-release" || "$MODE" == "run-release" ]]; then
+  BUILD_CONFIGURATION=release
   BUILD_FLAGS=(-c release --disable-index-store)
 fi
 APP_ICON_NAME="$SAKURACORD_PRODUCT_NAME"
@@ -82,26 +84,12 @@ if [[ "$APP_ICON_SOURCE" = /* ]]; then
 else
   APP_ICON="$ROOT_DIR/App/Packaging/$APP_ICON_SOURCE"
 fi
-CODE_SIGN_IDENTITY="${SAKURACORD_CODE_SIGN_IDENTITY:-}"
-if [[ -z "$CODE_SIGN_IDENTITY" ]]; then
-  CODE_SIGN_IDENTITY="$(
-    security find-identity -v -p codesigning 2>/dev/null \
-      | awk '/"Apple Development: / { print $2; exit }'
-  )"
+if [[ "$MODE" == "package" || "$MODE" == "package-release" ]]; then
+  sakuracord_resolve_code_sign_identity 0
+else
+  sakuracord_resolve_code_sign_identity 1
 fi
-if [[ -z "$CODE_SIGN_IDENTITY" ]]; then
-  CODE_SIGN_IDENTITY="$(
-    security find-identity -v -p codesigning 2>/dev/null \
-      | awk '/"SakuraCord Local Development"/ { print $2; exit }'
-  )"
-fi
-CODE_SIGN_IDENTITY="${CODE_SIGN_IDENTITY:--}"
-if [[ "$CODE_SIGN_IDENTITY" != "-" ]] \
-  && ! security find-identity -v -p codesigning 2>/dev/null \
-    | grep -Fq -- "$CODE_SIGN_IDENTITY"; then
-  echo "SAKURACORD_CODE_SIGN_IDENTITY is not a valid code-signing identity." >&2
-  exit 2
-fi
+CODE_SIGN_IDENTITY="$SAKURACORD_RESOLVED_CODE_SIGN_IDENTITY"
 
 sakuracord_acquire_operation_lock
 ICON_STAGING_DIR=""
@@ -201,6 +189,7 @@ cat >"$CONTENTS/Info.plist" <<PLIST
 <dict>
   <key>CFBundleExecutable</key><string>$APP_NAME</string>
   <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
+  <key>SakuraCordBuildConfiguration</key><string>$BUILD_CONFIGURATION</string>
   <key>CFBundleName</key><string>$DISPLAY_NAME</string>
   <key>CFBundleDisplayName</key><string>$DISPLAY_NAME</string>
   <key>CFBundleIconFile</key><string>$APP_ICON_NAME</string>
@@ -314,6 +303,7 @@ case "$MODE" in
   run) open_app ;;
   run-release) open_app ;;
   --debug)
+    sakuracord_verify_development_launch
     sakuracord_stop_scoped_app
     lldb -- "$MACOS/$APP_NAME"
     ;;

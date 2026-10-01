@@ -14,6 +14,7 @@ existing_identity="$(
 )"
 
 if [[ -n "$existing_identity" ]]; then
+  git config --global sakuracord.codeSignIdentity "$existing_identity"
   echo "SakuraCord local signing identity is already installed: $existing_identity"
   exit 0
 fi
@@ -80,3 +81,4 @@ if [[ -z "$identity_hash" ]]; then
 fi
 
 echo "Installed SakuraCord local signing identity: $identity_hash"
+git config --global sakuracord.codeSignIdentity "$identity_hash"

@@ -138,16 +138,16 @@ supported.
 
 ## Local credential mode
 
-For repeated ad-hoc debug builds that cannot conveniently use Keychain, a
-checkout can opt into the explicitly insecure local credential store:
+For repeated debug builds that cannot conveniently use Keychain, this machine
+can opt into the explicitly insecure local credential store:
 
 ```sh
 ./script/debug_credentials.sh enable
 ./script/build_and_run.sh run
 ```
 
-The setting is stored only in the checkout's local Git configuration. Inspect
-or disable it with:
+The setting is stored in the current user's global Git configuration, so fresh
+clones and worktrees use the same mode. Inspect or disable it with:
 
 ```sh
 ./script/debug_credentials.sh status
@@ -155,8 +155,21 @@ or disable it with:
 ```
 
 An explicit `SAKURACORD_INSECURE_DEBUG_CREDENTIALS=0` or `1` overrides the
-checkout setting for one build. Release and update-enabled packages ignore the
-checkout preference and reject an explicit insecure override.
+machine setting for one invocation. Existing checkout-local settings are read
+only when no machine preference exists. Release and update-enabled packages
+always use Keychain and reject an explicit insecure override.
+
+Both Run and Build & Run verify the packaged credential mode and signature
+before launch. A stale bundle with a different credential mode is refused.
+When working in an older checkout, use the current checkout's launcher:
+
+```sh
+/path/to/current/SakuraCord/script/run.sh --checkout /path/to/older/SakuraCord --build
+```
+
+It passes the machine preferences explicitly to the older packager and checks
+the resulting app before launching it. Omit `--build` to check and launch an
+existing bundle. Direct Finder or `open` launches bypass these checks.
 
 Local credentials are unencrypted files, readable by other processes running
 as the same macOS user, under:
@@ -178,7 +191,7 @@ proportion to its risk:
 | Command | Purpose |
 | --- | --- |
 | `./script/build_and_run.sh --verify` | Build, launch offline, and verify the scoped app process |
-| `./script/build_and_run.sh package` | Stage an ad-hoc signed debug app without launching it |
+| `./script/build_and_run.sh package` | Stage a signed debug app without launching it |
 | `./script/build_and_run.sh run-release` | Build, stage, and launch an optimized release app |
 | `./script/test.sh protocol` | Run protocol package tests |
 | `./script/test.sh media` | Run media package tests |
@@ -218,10 +231,11 @@ output before claiming custom playback works.
 
 ### Persistent local code-signing identity
 
-The build script uses an installed Apple Development identity, or the SakuraCord
-local development identity, automatically so macOS sees rebuilt development
-apps as the same signed application. If more than one identity is installed,
-select one explicitly by its name or SHA-1 hash:
+The build script saves the selected signing certificate's fingerprint in the
+current user's global Git configuration (`sakuracord.codeSignIdentity`). On
+first use it prefers the SakuraCord local development identity, then an Apple
+Development identity. Subsequent builds require that saved identity. Select a
+different identity explicitly for one invocation by its name or SHA-1 hash:
 
 ```sh
 SAKURACORD_CODE_SIGN_IDENTITY='Apple Development: Developer Name (TEAMID)' \
@@ -238,8 +252,11 @@ repository's machine-local development identity:
 ```
 
 The local identity is stored only in the login keychain, is trusted only for
-code signing, and is not suitable for distributing the app. The build script
-falls back to ad-hoc signing when no identity is installed.
+code signing, and is not suitable for distributing the app. The setup script
+also saves its fingerprint as the machine preference. Local launch commands
+refuse missing certificates, ad-hoc signatures, and signatures from a different
+identity. Packaging without launch still supports ad-hoc signing, which can be
+selected explicitly with `SAKURACORD_CODE_SIGN_IDENTITY=-`.
 
 Screen sharing uses ScreenCaptureKit's system content picker. A source selected
 there is authorized for that capture session and does not require a separate

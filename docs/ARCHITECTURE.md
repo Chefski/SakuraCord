@@ -740,7 +740,13 @@ work, not an implemented architecture claim.
 compiles the selected Icon Composer source with `actool`, embeds frameworks and
 resource bundles, copies the complete third-party notices into the app's
 resources, copies the canonical versioned release notes into
-`Contents/Resources/Releases`, and ad-hoc signs the result.
+`Contents/Resources/Releases`, and signs the result. Local builds resolve the
+credential mode and signing identity from the current user's global Git
+configuration. The shared runtime verifies the packaged mode and signature
+before development launches; release and update-enabled builds require Keychain.
+Packaging without launch also supports ad-hoc distribution signatures. The
+current `script/run.sh --checkout PATH --build` passes explicit preferences to
+older packagers and retains ownership of the guarded launch.
 
 The canonical icon sources are:
 
