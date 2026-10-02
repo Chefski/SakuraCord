@@ -208,6 +208,10 @@ struct PollContractTests {
         #expect(draft.validationError == nil)
         draft.answers[1].text += "b"
         #expect(draft.validationError != nil)
+        draft.answers = [.init(id: 1, text: "Only")]
+        #expect(draft.validationError == nil)
+        draft.answers[0].text = " "
+        #expect(draft.validationError != nil)
     }
 
     private func makeProvider(accountID: String = UUID().uuidString) -> DiscordRESTProvider {

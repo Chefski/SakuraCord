@@ -334,7 +334,7 @@ struct ComposerView: View {
                     LinearKeyframe(0, duration: 0.04)
                 }
         }
-        .windowModal(isPresented: $showPollCreator, title: "Create a Poll") {
+        .windowModal(isPresented: $showPollCreator, cornerRadius: 32, cornerStyle: .circular) {
             if let channelID = activeConversationID {
                 PollCreationView(model: model, channelID: channelID)
             }

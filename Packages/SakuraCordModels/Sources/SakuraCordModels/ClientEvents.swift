@@ -75,6 +75,7 @@ public enum ClientEvent: Equatable, Sendable {
     case snapshotChanged(BootstrapSnapshot)
     case guildChanged(Guild)
     case guildLayoutChanged(guilds: [Guild], railItems: [GuildRailItem])
+    case guildLayoutSaveFailed(reason: String)
     case guildRolesChanged(guildID: GuildID, roles: [GuildRole])
     case currentUserChanged(User)
     case currentUserStatusChanged(PresenceStatus)

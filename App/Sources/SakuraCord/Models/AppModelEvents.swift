@@ -361,7 +361,7 @@ extension AppModel {
             scheduleVoiceServerMigration(to: info)
         case .snapshotChanged(let value):
             consumeSnapshotChanged(value)
-        case .guildChanged, .guildLayoutChanged, .guildRolesChanged,
+        case .guildChanged, .guildLayoutChanged, .guildLayoutSaveFailed, .guildRolesChanged,
              .currentUserChanged, .currentUserStatusChanged:
             consumeGatewayWorkspaceStateEvent(event)
         case .applicationCommandIndexInvalidated(let target):
@@ -403,6 +403,8 @@ extension AppModel {
             consumeGuildChanged(guild)
         case .guildLayoutChanged(let guilds, let railItems):
             consumeGuildLayoutChanged(guilds: guilds, railItems: railItems)
+        case .guildLayoutSaveFailed(let reason):
+            errorMessage = "Discord did not save your server list changes. \(reason)"
         case .guildRolesChanged(let guildID, let roles):
             applyGuildRoles(roles, to: guildID)
         case .currentUserChanged(let user):
@@ -576,9 +578,9 @@ extension AppModel {
         recordsRefreshMutation: Bool = true,
         preparedTextPlanSource: Message? = nil
     ) {
-        let message = reactionPresentationPreserving(
+        let message = pollVotePresentationPreserving(reactionPresentationPreserving(
             outgoingMediaPresentationPreserving(incoming)
-        )
+        ))
         // Sparse updates are merged again after asynchronous preparation. A
         // history refresh or local reconciliation may have changed the source.
         let matchingTextPlan = recordsRefreshMutation || preparedTextPlanSource == message
@@ -605,6 +607,7 @@ extension AppModel {
         )
         clearReactionReactorLoadState(channelID: channelID, messageID: messageID)
         clearReactionMutationState(channelID: channelID, messageID: messageID)
+        pollVoteMutations[messageID] = nil
         if replyingTo?.id == messageID {
             replyingTo = nil
         }

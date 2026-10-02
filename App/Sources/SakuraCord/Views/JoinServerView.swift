@@ -111,36 +111,15 @@ private struct JoinServerFooter: View {
 
     var body: some View {
         HStack {
-            JoinServerGlassButton(symbol: hasPreview ? "chevron.left" : "xmark",
+            ModalGlassButton(symbol: hasPreview ? "chevron.left" : "xmark",
                                   label: hasPreview ? "Edit Invite" : "Cancel", action: back)
             Spacer(minLength: 16)
-            JoinServerGlassButton(symbol: hasPreview ? "arrow.clockwise" : "arrow.right",
+            ModalGlassButton(symbol: hasPreview ? "arrow.clockwise" : "arrow.right",
                                   label: hasPreview ? "Refresh Invite" : "Continue", primary: !hasPreview, action: proceed)
                 .disabled(!canContinue)
         }
         .padding(12)
         .disabled(isWorking)
-    }
-}
-
-private struct JoinServerGlassButton: View {
-    let symbol: String
-    let label: String
-    var primary = false
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Label(label, systemImage: symbol)
-                .font(.body.weight(.semibold))
-                .padding(.horizontal, 16)
-                .frame(height: 40)
-                .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .glassEffect(primary ? .regular.tint(SakuraCordAccentColor.color).interactive() : .regular.interactive(), in: Capsule())
-        .help(label)
-        .accessibilityLabel(label)
     }
 }
 

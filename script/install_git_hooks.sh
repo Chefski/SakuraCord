@@ -13,4 +13,4 @@ fi
 
 git -C "$ROOT_DIR" config --local core.hooksPath "$EXPECTED_HOOKS_PATH"
 echo "Installed SakuraCord Git hooks from $EXPECTED_HOOKS_PATH."
-echo "Every commit validates its staged snapshot; every push validates committed tips and staged Swift changes."
+echo "Commits validate staged snapshots; pushes also validate committed tips and feature branches merged with current nightly."

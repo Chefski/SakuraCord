@@ -460,6 +460,7 @@ extension AppModel {
         resetPendingCreatedMessages()
         resetTimelineLiveScrolling()
         clearReactionMutationState()
+        pollVoteMutations.removeAll()
         stopLocalTyping(clearThrottle: true)
         typingState.clearAll()
         clientAppStateUpdateTask?.cancel()
@@ -492,9 +493,7 @@ extension AppModel {
         gameMentionLoadTask?.cancel()
         gameMentionLoadTask = nil
         gameMentionsByID = [:]
-        hydratedGameMentionIDs = []
-        pendingGameMentionIDs = []
-        failedGameMentionIDs = [:]
+        gameMentionHydration = .init()
         attachmentCompactionGeneration &+= 1
         attachmentCompactionTask?.cancel()
         attachmentCompactionTask = nil

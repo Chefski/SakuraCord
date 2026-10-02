@@ -998,6 +998,8 @@ extension DiscordRESTProvider {
         if status == 400, method == "POST", path.split(separator: "/").count == 2,
            path.hasPrefix("/invites/"), let discordCode,
            [10006, 50270, 40007, 30001].contains(discordCode) { return false }
+        // Discord's per-server invite cap is an expected creation failure.
+        if status == 400, method == "POST", discordCode == 30016, path.hasPrefix("/channels/"), path.hasSuffix("/invites") { return false }
         return status == 400 && method != "GET"
     }
 

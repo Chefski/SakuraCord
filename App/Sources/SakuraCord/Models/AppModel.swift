@@ -164,6 +164,7 @@ final class AppModel {
             requestOrderedCustomEmojiUpdate()
         }
     }
+    @ObservationIgnored var serverRailLayoutTask: Task<Void, Never>?
     var visibleChannels: [Channel] = [] {
         didSet {
             refreshVisibleChannelGroups()
@@ -424,9 +425,7 @@ final class AppModel {
     var gifErrorMessage: String?
     var gifFavoriteMutationURL: URL?
     @ObservationIgnored var gameMentionsByID: [String: ProfileGame] = [:]
-    @ObservationIgnored var hydratedGameMentionIDs: Set<String> = []
-    @ObservationIgnored var pendingGameMentionIDs: Set<String> = []
-    @ObservationIgnored var failedGameMentionIDs: [String: Date] = [:]
+    @ObservationIgnored var gameMentionHydration = GameMentionHydrationState()
     var stickerPickerState = StickerPickerPresentationState()
     var soundboardState = SoundboardPresentationState()
     var supportedCapabilities: Set<ChatCapability> = []
@@ -1103,6 +1102,7 @@ final class AppModel {
     @ObservationIgnored var reactionMutationTasks:
         [ReactionMutationKey: Task<Void, Never>] = [:]
     @ObservationIgnored let reactionMutationTiming: ReactionMutationTiming
+    @ObservationIgnored var pollVoteMutations: [MessageID: PollVoteMutationState] = [:]
     @ObservationIgnored var guildActivationTask: Task<Void, Never>?
     @ObservationIgnored var memberLoadTask: Task<Void, Never>?
     @ObservationIgnored var memberLoadGeneration: UInt64 = 0

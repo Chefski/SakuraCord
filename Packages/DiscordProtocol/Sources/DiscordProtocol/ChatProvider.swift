@@ -35,6 +35,7 @@ public protocol ChatProvider: Sendable {
 
     func serverInvite(_ reference: ServerInviteReference) async throws -> ServerInvite
     func acceptServerInvite(_ reference: ServerInviteReference, messageID: MessageID?, captchaHandler: DiscordCaptchaHandler?) async throws -> ServerInviteAcceptance
+    func createServerInvite(in channelID: ChannelID, guildID: GuildID, settings: ServerInviteSettings) async throws -> CreatedServerInvite
     func leaveGuild(_ guildID: GuildID) async throws
     func clearLocalSearchCache() async throws
     func prepareAuthentication() async throws
@@ -109,6 +110,7 @@ public protocol ChatProvider: Sendable {
     func setInboxEventInterested(_ interested: Bool, event: InboxScheduledEvent) async throws
     func updateInboxTab(_ tab: InboxTab) async throws
     func updateInboxCollapsed(_ collapsed: Bool, channelID: ChannelID, guildID: GuildID?) async throws
+    func updateGuildRailLayout(_ items: [GuildRailItem]) async throws
     func pinnedMessages(
         in channelID: ChannelID,
         before: Date?,
@@ -291,6 +293,9 @@ public protocol PendingCredentialChatProvider: ChatProvider {
 }
 
 public extension ChatProvider {
+    func updateGuildRailLayout(_ items: [GuildRailItem]) async throws {
+        throw ChatProviderError.invalidRequest("Rearranging servers is unavailable for this session.")
+    }
     func guildGuide(in guildID: GuildID) async throws -> GuildGuide { throw ChatProviderError.invalidRequest("Server Guide is unavailable.") }
     func guildGuideProfile(in guildID: GuildID) async throws -> GuildGuideProfile { throw ChatProviderError.invalidRequest("Server profile is unavailable.") }
     func guildGuideProgress(in guildID: GuildID) async throws -> GuildGuideProgress { throw ChatProviderError.invalidRequest("Server Guide is unavailable.") }
@@ -324,6 +329,10 @@ public extension ChatProvider {
 
     func acceptServerInvite(_ reference: ServerInviteReference, messageID: MessageID?, captchaHandler: DiscordCaptchaHandler?) async throws -> ServerInviteAcceptance {
         throw ServerInviteError.unsupported("Joining servers is unavailable for this session.")
+    }
+
+    func createServerInvite(in channelID: ChannelID, guildID: GuildID, settings: ServerInviteSettings) async throws -> CreatedServerInvite {
+        throw ServerInviteError.unsupported("Creating invites is unavailable for this session.")
     }
 
     func leaveGuild(_ guildID: GuildID) async throws {

@@ -103,17 +103,17 @@ extension NativeTimelineCanvasView {
                 }
             }
         }
-        if let model {
-            for token in row.textPlan.preparedText?.tokens ?? [] {
-                guard case let .customEmoji(emoji) = token else { continue }
-                let reference = EmojiReference(rawToken: emoji.rawToken)
-                guard reference.isAnimated,
-                      let url =
-                        reference.id.flatMap({ model.customEmojiURLsByID[$0] })
-                        ?? reference.imageURL(size: 64)
-                else { continue }
-                keys.insert(.media(url, maximumPixelDimension: 64))
-            }
+        if let value = layout.attributedContent {
+            appendAnimatedInlineKeys(
+                from: value,
+                revealedSpoilerLocations: revealedTextSpoilerLocations(
+                    messageID: message.id,
+                    region: .content,
+                    value: value,
+                    layout: layout
+                ),
+                into: &keys
+            )
         }
         for region in layout.embedRegions {
             for image in region.imageRegions
@@ -129,9 +129,18 @@ extension NativeTimelineCanvasView {
             {
                 keys.insert(.media(url))
             }
-            for textRegion in region.textRegions {
+            for (textIndex, textRegion) in region.textRegions.enumerated() {
                 appendAnimatedInlineKeys(
                     from: textRegion.text.value,
+                    revealedSpoilerLocations: revealedTextSpoilerLocations(
+                        messageID: message.id,
+                        region: .embed(
+                            embedID: region.embedID,
+                            textIndex: textIndex
+                        ),
+                        value: textRegion.text.value,
+                        layout: layout
+                    ),
                     into: &keys
                 )
             }
@@ -144,7 +153,7 @@ extension NativeTimelineCanvasView {
         into keys: inout Set<NativeTimelineMediaKey>
     ) {
         let message = row.message
-        for component in layout.componentLayouts {
+        for (componentIndex, component) in layout.componentLayouts.enumerated() {
             let hiddenContainerFrames =
                 NativeTimelineSpoilerConcealmentPolicy
                     .hiddenContainerFrames(
@@ -198,7 +207,7 @@ extension NativeTimelineCanvasView {
                 else { continue }
                 keys.insert(.media(url, maximumPixelDimension: 64))
             }
-            for textRegion in component.textRegions {
+            for (textIndex, textRegion) in component.textRegions.enumerated() {
                 guard !NativeTimelineSpoilerConcealmentPolicy
                     .isInsideHiddenContainer(
                         textRegion.frame,
@@ -207,6 +216,15 @@ extension NativeTimelineCanvasView {
                 else { continue }
                 appendAnimatedInlineKeys(
                     from: textRegion.text.value,
+                    revealedSpoilerLocations: revealedTextSpoilerLocations(
+                        messageID: message.id,
+                        region: .component(
+                            layoutIndex: componentIndex,
+                            textIndex: textIndex
+                        ),
+                        value: textRegion.text.value,
+                        layout: layout
+                    ),
                     into: &keys
                 )
             }
@@ -236,16 +254,26 @@ extension NativeTimelineCanvasView {
         }
     }
 
+    /// Emoji inside a hidden spoiler are omitted, as the painter omits them.
     func appendAnimatedInlineKeys(
         from value: NSAttributedString,
+        revealedSpoilerLocations: Set<Int>,
         into keys: inout Set<NativeTimelineMediaKey>
     ) {
         let range = NSRange(location: 0, length: value.length)
+        let hiddenSpoilerRanges = NativeTimelineTextSpoilers.hiddenRanges(
+            in: value,
+            revealedLocations: revealedSpoilerLocations
+        )
         value.enumerateAttribute(
             .discordEmojiToken,
             in: range
-        ) { rawValue, _, _ in
-            guard let rawToken = rawValue as? String else { return }
+        ) { rawValue, tokenRange, _ in
+            guard let rawToken = rawValue as? String,
+                  !hiddenSpoilerRanges.contains(where: {
+                      NSLocationInRange(tokenRange.location, $0)
+                  })
+            else { return }
             let reference = EmojiReference(rawToken: rawToken)
             guard reference.isAnimated,
                   let url = reference.id.flatMap({
