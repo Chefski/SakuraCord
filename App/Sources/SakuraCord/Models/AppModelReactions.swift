@@ -317,6 +317,10 @@ extension AppModel {
            let message = resource.messages.first(where: { $0.id == key.messageID }) {
             receiveGuideResourceEvent(.messageUpdated(updating(message)))
         }
+        if let message = inbox.mentions.first(where: { $0.id == key.messageID })
+            ?? inbox.groups.lazy.flatMap(\.messages).first(where: { $0.id == key.messageID }) {
+            reconcileInboxMessage(updating(message))
+        }
 
         guard let forumIndex = forumCatalogueIndexByID[key.channelID] else { return }
         var forumPost = forumCataloguePosts[forumIndex]

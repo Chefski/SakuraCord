@@ -100,10 +100,14 @@ import Testing
     #expect(try resourceMessage().reactions.first?.count == 1)
     #expect(try resourceMessage().reactions.first?.didCurrentUserReact == false)
     let reactor = ReactionReactor(id: UserID(rawValue: 99_004), displayName: "Resource reader", avatarURL: nil)
+    model.inbox.isPresented = true
+    model.inbox.tab = .mentions
+    model.inbox.mentions = [try resourceMessage()]
     model.applyReactionReactors([reactor], for: .init(
         channelID: message.channelID, messageID: message.id, reactionID: Reaction(emoji: "👍", count: 0).id
     ))
     #expect(try resourceMessage().reactions.first?.reactors == [reactor])
+    #expect(model.inbox.mentions.first?.reactions.first?.reactors == [reactor])
 
     #expect(model.vote(on: message, answerIDs: [2]))
     #expect(try resourceMessage().poll?.selectedAnswerIDs == [2])
