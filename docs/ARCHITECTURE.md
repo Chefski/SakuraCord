@@ -376,10 +376,12 @@ from Keychain into a mode-`0600` file within the app's sandbox Application
 Support container. It is excluded from release and update-enabled packages and
 is not the production credential contract.
 
-Only user-authored message drafts are stored through `SakuraCordPersistence`.
-Credentials never enter GRDB, fixtures, logs, or plugin APIs. Discord
-authoritative workspace, message, read, member, and Gateway state is
-session-memory only. A database migration drops the obsolete tables from earlier
+`SakuraCordPersistence` stores user-authored message drafts and server invite
+links explicitly created by the user. Created links are scoped to the account,
+pruned when expired, and checked on demand before reuse; they do not restore
+server membership or authorization. Credentials never enter GRDB, fixtures,
+logs, or plugin APIs. Discord authoritative workspace, message, read, member,
+and Gateway state is session-memory only. A database migration drops the obsolete tables from earlier
 builds while preserving drafts. Normal and offline runs use separate storage
 behavior. The one exception to session-memory Discord state is an account
 status pick that is not yet saved to the account: the provider keeps it, with
