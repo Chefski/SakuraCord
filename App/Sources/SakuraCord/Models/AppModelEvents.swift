@@ -241,7 +241,6 @@ extension AppModel {
         preparedMemberListPresentation: PreparedMemberListPresentation? = nil
     ) {
         if consumeInboxEvent(event) { return }
-        receiveGuideResourceEvent(event)
         switch event {
         case .connectionChanged(let state):
             consumeConnectionChange(state)
@@ -538,6 +537,7 @@ extension AppModel {
             cache(message)
         }
         reconcileForumMessage(message)
+        receiveGuideResourceEvent(.messageCreated(message))
         guard let currentUserID = snapshot?.currentUser.id else { return }
         let disposition = readState.receive(message, currentUserID: currentUserID)
         guard disposition.accepted else { return }
@@ -595,9 +595,11 @@ extension AppModel {
         reconcilePollSearchMessage(message)
         if updatesPinnedMessages { reconcilePinnedMessage(message) }
         reconcileInboxMessage(message)
+        receiveGuideResourceEvent(.messageUpdated(message))
     }
 
     func consumeMessageDeleted(channelID: ChannelID, messageID: MessageID) {
+        receiveGuideResourceEvent(.messageDeleted(channelID: channelID, messageID: messageID))
         invalidateTimelineThreadPreview(channelID: channelID, messageID: messageID)
         recordConversationRefreshMutation(
             .delete,

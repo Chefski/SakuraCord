@@ -212,6 +212,11 @@ extension AppModel {
         }
     }
 
+    var presentedGuideResource: GuildResourceState? {
+        guard guildWorkspacePage == .guide, let guildID = selectedGuildID else { return nil }
+        return onboarding.guides[guildID]?.resource
+    }
+
     func receiveGuideResourceEvent(_ event: ClientEvent) {
         guard guildWorkspacePage == .guide, let guildID = selectedGuildID,
               var resource = onboarding.guides[guildID]?.resource else { return }
@@ -222,13 +227,10 @@ extension AppModel {
             resource.messages.append(message)
             resource.changedMessageIDs.insert(message.id)
         case .messageUpdated(let message) where message.channelID == resource.channelID:
-            guard let index = resource.messages.firstIndex(where: { $0.id == message.id }) else { return }
+            guard let index = resource.messages.firstIndex(where: { $0.id == message.id }),
+                  resource.messages[index] != message else { return }
             resource.messages[index] = message
             resource.changedMessageIDs.insert(message.id)
-        case .messagePatched(let update) where update.channelID == resource.channelID:
-            guard let index = resource.messages.firstIndex(where: { $0.id == update.messageID }) else { return }
-            update.apply(to: &resource.messages[index])
-            resource.changedMessageIDs.insert(update.messageID)
         case .messageDeleted(let channelID, let messageID) where channelID == resource.channelID:
             resource.messages.removeAll { $0.id == messageID }
             resource.changedMessageIDs.insert(messageID)
@@ -276,7 +278,12 @@ extension AppModel {
                       current.requestID == requestID else { return }
                 let oldRows = current.rows
                 let retainedIDs = Set(current.messages.map(\.id)).union(current.changedMessageIDs)
-                let additions = preparedRows.filter { !retainedIDs.contains($0.id) }
+                let additions = preparedRows.filter { !retainedIDs.contains($0.id) }.map { row in
+                    let message = model.pollVotePresentationPreserving(model.reactionPresentationPreserving(row.message))
+                    guard message != row.message else { return row }
+                    return MessageRowPresentation(message: message, startsGroup: false, startsDay: false,
+                                                  replyPreview: nil, isReplyAvailable: false, isResource: true)
+                }
                 current.messages += additions.map(\.message)
                 current.rows += additions
                 current.revision &+= 1

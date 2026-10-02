@@ -7,9 +7,11 @@ extension AppModel {
         return message
     }
 
-    /// The workspace copy, or one retained by pins, search, or the Inbox.
+    /// The workspace copy, or one retained by a supplementary message surface.
     func retainedMessage(channelID: ChannelID, messageID: MessageID) -> Message? {
         if let message = messageInWorkspace(channelID: channelID, messageID: messageID) { return message }
+        if let resource = presentedGuideResource, resource.channelID == channelID,
+           let message = resource.messages.first(where: { $0.id == messageID }) { return message }
         if let pinned = pinnedMessages.items.first(where: { $0.id == messageID })?.message { return pinned }
         if let search = messageSearch.page?.results.lazy.flatMap(\.messages).first(where: { $0.id == messageID && $0.channelID == channelID }) {
             return search
@@ -25,6 +27,7 @@ extension AppModel {
         }
         let retained = messages + threadMessages + messageCache.values.flatMap { $0 }
             + pinnedMessages.items.map(\.message)
+            + (presentedGuideResource?.messages ?? [])
             + inbox.mentions + inbox.groups.flatMap(\.messages)
             + forumCataloguePosts.flatMap { [$0.firstMessage, $0.mostRecentMessage].compactMap { $0 } }
         var seen = Set<MessageID>()

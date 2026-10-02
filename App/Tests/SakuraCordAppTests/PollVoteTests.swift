@@ -64,10 +64,71 @@ import Testing
     #expect(await provider.requests() == [[2], [1]])
 }
 
+@MainActor
+@Test func `guide resource messages reconcile reactions and pending poll votes`() async throws {
+    let provider = PollVoteTestProvider()
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    let message = try #require(model.messages.first { $0.poll != nil })
+    let guildID = GuildID(rawValue: 99_003)
+    model.replaceSelectedMessages(with: [])
+    model.messageCache.removeAll()
+    model.selectedGuildID = guildID
+    model.onboarding.presentedGuildID = guildID
+    model.onboarding.page = .guide
+    model.onboarding.guides[guildID] = GuildGuideEntry(resource: GuildResourceState(
+        channelID: message.channelID, messages: [message], rows: [MessageRowPresentation(
+            message: message, startsGroup: false, startsDay: false,
+            replyPreview: nil, isReplyAvailable: false, isResource: true
+        )]
+    ))
+    func resourceMessage() throws -> Message {
+        try #require(model.onboarding.guides[guildID]?.resource?.rows.first?.message)
+    }
+    // The resource pane is the only retained copy; account actions must use it.
+    _ = try #require(model.retainedMessage(channelID: message.channelID, messageID: message.id))
+    await model.toggleReaction("👍", on: message)
+    #expect(try resourceMessage().reactions.first?.didCurrentUserReact == true)
+    #expect(await eventually { model.reactionMutations.isEmpty })
+    await model.toggleReaction("👍", on: message)
+    #expect(await eventually { model.reactionMutations.isEmpty })
+    #expect(await provider.reactionRequests() == [true, false])
+    model.consumeImmediately(.messageReactionUpdated(.add(
+        channelID: message.channelID, messageID: message.id,
+        userID: UserID(rawValue: 99_004), emoji: "👍", kind: .normal
+    )))
+    #expect(try resourceMessage().reactions.first?.count == 1)
+    #expect(try resourceMessage().reactions.first?.didCurrentUserReact == false)
+    let reactor = ReactionReactor(id: UserID(rawValue: 99_004), displayName: "Resource reader", avatarURL: nil)
+    model.applyReactionReactors([reactor], for: .init(
+        channelID: message.channelID, messageID: message.id, reactionID: Reaction(emoji: "👍", count: 0).id
+    ))
+    #expect(try resourceMessage().reactions.first?.reactors == [reactor])
+
+    #expect(model.vote(on: message, answerIDs: [2]))
+    #expect(try resourceMessage().poll?.selectedAnswerIDs == [2])
+    model.consumeImmediately(.messageUpdated(message))
+    #expect(try resourceMessage().poll?.selectedAnswerIDs == [2])
+    var echo = MessageUpdate(messageID: message.id, channelID: message.channelID)
+    echo.pollUpdates = [.vote(answerID: 2, isAddition: true, isCurrentUser: true)]
+    model.consumeImmediately(.messagePatched(echo))
+    #expect(try resourceMessage().poll?.count(for: 2) == 2)
+    await provider.resumeRequest()
+    #expect(await eventually { model.pollVoteMutations.isEmpty })
+    await provider.failNextRequest()
+    #expect(model.vote(on: message, answerIDs: [1]))
+    #expect(try resourceMessage().poll?.selectedAnswerIDs == [1])
+    await provider.resumeRequest()
+    #expect(await eventually { model.pollVoteMutations.isEmpty })
+    #expect(try resourceMessage().poll?.selectedAnswerIDs == [2])
+    #expect(try resourceMessage().poll?.count(for: 2) == 2)
+}
+
 private actor PollVoteTestProvider: ChatProvider {
     private let user = User(id: UserID(rawValue: 99_001), username: "poll-tester", displayName: "Poll Tester")
     private let channel = Channel(id: ChannelID(rawValue: 99_002), guildID: nil, name: "poll-tests")
     private var recordedRequests: [[Int]] = []
+    private var recordedReactions: [Bool] = []
     private var failsNextRequest = false
     private var continuation: AsyncStream<ClientEvent>.Continuation?
     private var requestContinuation: CheckedContinuation<Void, Never>?
@@ -109,6 +170,12 @@ private actor PollVoteTestProvider: ChatProvider {
 
     func delete(messageID: MessageID, channelID: ChannelID) async throws {}
     func toggleReaction(_ emoji: String, messageID: MessageID, channelID: ChannelID) async throws {}
+
+    func setReaction(_ emoji: String, reacted: Bool, messageID: MessageID, channelID: ChannelID) async throws {
+        recordedReactions.append(reacted)
+    }
+
+    func reactionRequests() -> [Bool] { recordedReactions }
 
     func setPollAnswers(_ answerIDs: [Int], messageID: MessageID, channelID: ChannelID) async throws {
         recordedRequests.append(answerIDs)

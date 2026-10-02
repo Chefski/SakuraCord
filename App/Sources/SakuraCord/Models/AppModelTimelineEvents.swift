@@ -730,6 +730,7 @@ extension AppModel {
             outgoingMediaPresentationPreserving(incoming)
         ))
         reconcileInboxMessage(message)
+        receiveGuideResourceEvent(.messageUpdated(message))
         if message.channelID == openThread?.id {
             reconcileThread(message)
         }
