@@ -2,7 +2,7 @@
 
 Choose the task first. Current contracts live in the linked guide; implementation
 and tests provide the exact fields and algorithms. Planned scope and progress
-belong in the deployed roadmap, not these documents.
+belong in GitHub Issues and milestones, not these documents.
 
 | I need to… | Start here |
 | --- | --- |
@@ -61,7 +61,7 @@ requires fresh CI. See Development for broader verification.
 | Feature-family wire contracts and deliberate deviations | Relevant `protocol/` topic |
 | Which tests deserve maintenance and how to run them | Testing |
 | Protocol rationale and source references | Beside the relevant contract; keep working research notes out of the repository |
-| Scope, acceptance criteria, status and progress | Deployed roadmap |
+| Scope, acceptance criteria, status and progress | GitHub Issues and milestones |
 
 When updating documentation:
 
@@ -81,10 +81,51 @@ When updating documentation:
 - Keep personal timezones/locations, machine paths, test-account or server names,
   usage history and capture-session details out of documentation.
 
-## Roadmap
+## Issues and roadmap
 
-Use the [Roadmap Management plugin](plugin://roadmap-management@personal) for the
-canonical deployed roadmap. It owns planned work, lifecycle state, acceptance
-criteria, research gaps, verification and linked Discord discussions. Its revisions
-are independent of Git: a code match or commit is evidence to assess, not proof
-that an item is complete. Do not add a repository `ROADMAP.md`.
+GitHub Issues in this repository are the source of truth for bugs, suggestions,
+and planned work; versions are GitHub milestones. The
+[SakuraCord hub](https://github.com/SakuraCordApp/Roadmap) mirrors reports and
+conversation between GitHub, Discord forum posts, and the
+[tracker](https://sakuracord.app/tracker). Updates are queued, so mirrors can lag.
+The hub database holds projections, links, subscriptions, and sync state; do not
+maintain a second backlog there or in a repository `ROADMAP.md`.
+
+- File reports through the app's **Help** menu, the website, Discord's report
+  forms, or GitHub's issue forms. Continue discussion on the existing report.
+- Issue types are Bug or Feature; area and priority use `area: …` and
+  `priority: …` labels. The hub normalizes status from one `status: …` label
+  and the issue's open/closed state and close reason. Closing as completed alone
+  means Done, not Shipped; duplicate and not-planned closures retain their own
+  outcomes.
+- Milestone descriptions supply the [roadmap](https://sakuracord.app/roadmap):
+  a headline line, optional summary, then `- highlight (#N)` bullets. Assigning
+  a milestone moves New or Confirmed issues to Planned; removing it moves
+  Planned back to Confirmed. It does not override Needs Info or work already
+  in progress.
+- Put `Fixes #N` in a PR title/body or a commit message. An open linked PR moves
+  an issue awaiting work to In Progress; a merged PR or a commit pushed to
+  `nightly` moves it to In Nightly. Target implementation PRs at `nightly`.
+  The first published release whose tag contains a recorded fix marks it
+  Shipped and closes it, including beta releases. A later regular release is
+  tracked separately. The hub posts release updates and notifies Discord
+  followers. See [Releasing](RELEASING.md#release-model) for the checklist.
+- New reports trigger one read-only triage and investigation agent in GitHub
+  Actions against the nightly checkout (GPT-6 Luna by default). It reads the
+  report, recent comments, screenshots, and similar reports, then posts one
+  assessment with classification, questions, duplicate suggestions, and code
+  findings. The hub validates the result before applying metadata; later
+  maintainer status decisions take precedence over automated triage.
+- Maintainers can rerun with `agent: investigate` or Discord's Manage menu.
+  The label stays until the hub applies the result; retry a failed run in
+  Actions. A report body edited during assessment triggers a fresh run.
+- `agent: fix` explicitly starts the separate macOS implementation agent. When
+  it produces changes, it opens or updates a draft PR against `nightly`.
+  Neither agent merges changes; review their output like any contribution.
+
+Use `gh issue list`, `gh issue view`, and `gh api` to read and update issues.
+A code match or commit is evidence to review, not proof that an issue is complete.
+The hub's [lifecycle rules](https://github.com/SakuraCordApp/Roadmap/blob/main/src/lifecycle.ts)
+and [fix/release synchronization](https://github.com/SakuraCordApp/Roadmap/blob/main/src/sync/activity.ts)
+implement these transitions; this repository's [agent workflows](../.github/workflows)
+run the assessments and fixes.

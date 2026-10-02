@@ -271,6 +271,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model?.reportApplicationActive(false)
     }
 
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        // Keep the account session and calls alive when the workspace closes.
+        // Explicit Quit still follows applicationShouldTerminate(_:).
+        false
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         let confirmsActiveWork = SettingsPreferenceStore.shared.value(
             for: .confirmQuitActiveWork

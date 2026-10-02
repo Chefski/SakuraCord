@@ -60,6 +60,22 @@ headline instead of the regular sakura headline:
 }
 ```
 
+Start from the issues the release ships. The helper lists all open issues
+labelled `status: in nightly`; `--milestone` also includes closed issues labelled
+`status: shipped` in that milestone, including fixes already shipped in betas:
+
+```sh
+node script/release_issues.mjs --milestone 0.1.3
+```
+
+Verify that the listed fixes are contained in the intended tag, then rewrite
+the checklist into user-facing copy per the style guides. The helper does not
+check commit ancestry. After publication, the hub checks recorded fix SHAs
+against the tag and closes eligible issues as Shipped, including for beta
+releases. It records a later regular release separately and posts release
+updates with Discord follower notifications. See
+[Issues and roadmap](README.md#issues-and-roadmap) for the full issue lifecycle.
+
 ## Promote and tag
 
 These examples assume `origin` is the canonical repository and a clean checkout

@@ -254,6 +254,13 @@ databases, personal Discord data, or unsanitized protocol captures.
 
 ## Report a problem
 
+Use **Help → Report a Bug…** to open the website form with the app version,
+macOS version, and Mac model prefilled. **Help → Suggest a Feature…** prefills
+only the app version. Review and submit the form yourself; diagnostics files
+are attached separately. Search **Help → SakuraCord Tracker** for an existing
+report first. Reports and discussion follow the shared
+[issue-management flow](README.md#issues-and-roadmap).
+
 1. Record the steps, expected result, actual result, and approximate failure time.
    Include whether it occurs in a DM, server, thread, call or offline fixture;
    avoid posting private message content or account identifiers unnecessarily.

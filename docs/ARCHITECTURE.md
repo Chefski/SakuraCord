@@ -50,6 +50,11 @@ to mock data. Live workspace state comes from Gateway bootstrap, with a data-fre
 skeleton until that state is ready. Offline modes select fixture providers and
 an in-memory database explicitly; their launch recipes live in Development.
 
+Closing the workspace window with Command-W or the close button keeps the app
+and account session running. Reopening the app restores its single workspace.
+Command-Q and the Quit menu item terminate the app through the existing active-work
+confirmation policy.
+
 Account/session identity guards asynchronous publication. Switching accounts,
 logout and failed startup cancel old work and clear its presentation. Draft
 writes capture their original database and drain on teardown; clearing and
