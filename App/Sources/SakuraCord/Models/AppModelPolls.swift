@@ -159,14 +159,14 @@ extension AppModel {
 
 extension AppModel {
     func messageSearchPagePreservingPollVotes(_ incoming: MessageSearchPage) -> MessageSearchPage {
-        guard !pollVoteMutations.isEmpty || !messageSearch.pollUpdatesDuringLoad.isEmpty else { return incoming }
+        let mutations = messageSearch.pollRefreshJournal?.mutationsByMessageID ?? [:]
+        guard !pollVoteMutations.isEmpty || !mutations.isEmpty else { return incoming }
         var page = incoming
         for resultIndex in page.results.indices {
             for index in page.results[resultIndex].messages.indices {
                 var message = page.results[resultIndex].messages[index]
-                if let poll = messageSearch.pollUpdatesDuringLoad[message.id] {
-                    message.poll = poll
-                    message.hasPoll = true
+                if case .patch(let update) = mutations[message.id] {
+                    update.apply(to: &message)
                 }
                 page.results[resultIndex].messages[index] = pollVotePresentationPreserving(message)
             }
@@ -175,9 +175,6 @@ extension AppModel {
     }
 
     func reconcilePollSearchMessage(_ message: Message) {
-        if messageSearch.isSearching, let poll = pollVoteConfirmedSnapshot(message).poll {
-            messageSearch.pollUpdatesDuringLoad[message.id] = poll
-        }
         guard message.poll != nil, var page = messageSearch.page else { return }
         var changed = false
         for resultIndex in page.results.indices {
@@ -198,8 +195,8 @@ extension AppModel {
         messageSearch.rowsRevision = revision
     }
 
-    func recordPollResultRefreshMutation(_ mutation: ConversationRefreshMutation, messageID: MessageID, channelID: ChannelID) {
-        guard pollResultRefreshJournals[messageID] != nil else { return }
+    func recordPollRefreshMutation(_ mutation: ConversationRefreshMutation, messageID: MessageID, channelID: ChannelID) {
+        guard pollResultRefreshJournals[messageID] != nil || messageSearch.pollRefreshJournal != nil else { return }
         let updates: [MessagePollUpdate]
         switch mutation {
         case .upsert(let message):
@@ -217,6 +214,7 @@ extension AppModel {
         var patch = MessageUpdate(messageID: messageID, channelID: channelID)
         patch.pollUpdates = updates
         pollResultRefreshJournals[messageID]?.record(.patch(patch), messageID: messageID)
+        messageSearch.pollRefreshJournal?.record(.patch(patch), messageID: messageID)
     }
 
     func loadUnknownPollResults(_ message: Message) async {

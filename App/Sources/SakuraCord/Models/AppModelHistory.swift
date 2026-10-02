@@ -635,7 +635,7 @@ extension AppModel {
     ) {
         conversationRefreshJournals[channelID]?.record(mutation, messageID: messageID)
         inbox.refreshJournal?.record(mutation, messageID: messageID)
-        recordPollResultRefreshMutation(mutation, messageID: messageID, channelID: channelID)
+        recordPollRefreshMutation(mutation, messageID: messageID, channelID: channelID)
         for guildID in onboarding.guides.keys where onboarding.guides[guildID]?.resource?.channelID == channelID
             && onboarding.guides[guildID]?.resource?.refreshJournal != nil {
             onboarding.guides[guildID]?.resource?.refreshJournal?.record(mutation, messageID: messageID)

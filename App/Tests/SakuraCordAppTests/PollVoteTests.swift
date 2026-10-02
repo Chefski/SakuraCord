@@ -212,6 +212,37 @@ func `Inbox loads preserve poll patches for messages not yet retained`(tab: Inbo
 
 @MainActor
 @Test(arguments: [false, true])
+func `search results preserve poll events before their messages are retained`(finalizes: Bool) async throws {
+    let provider = PollVoteTestProvider()
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    let message = try #require(model.messages.first)
+    model.replaceSelectedMessages(with: [])
+    model.messageCache.removeAll()
+    model.messageSearch.queryText = "Lunch"
+    model.submitMessageSearch()
+    await provider.waitForSearch()
+    #expect(model.retainedMessage(channelID: message.channelID, messageID: message.id) == nil)
+    var update = MessageUpdate(messageID: message.id, channelID: message.channelID)
+    if finalizes {
+        var poll = try #require(message.poll)
+        poll.results = PollResults(isFinalized: true, answerCounts: [.init(id: 2, count: 7)])
+        update.pollUpdates = [.snapshot(poll, preservingSelection: true)]
+    } else {
+        update.pollUpdates = [.vote(answerID: 2, isAddition: true, isCurrentUser: false)]
+        model.consumeImmediately(.messagePatched(update))
+    }
+    model.consumeImmediately(.messagePatched(update))
+    await provider.resumeSearch()
+    await model.messageSearch.requestTask?.value
+    let poll = model.messageSearch.page?.messages.first?.poll
+    #expect(poll?.count(for: 2) == (finalizes ? 7 : 3))
+    #expect(poll?.results?.isFinalized == finalizes)
+    #expect(model.messageSearch.rows.first?.message.poll == poll)
+}
+
+@MainActor
+@Test(arguments: [false, true])
 func `poll result fetch preserves updates received while awaiting history`(finalizes: Bool) async throws {
     let provider = PollVoteTestProvider()
     let model = AppModel(launchMode: .offlineTesting, provider: provider)
