@@ -67,6 +67,14 @@ Mac app.
 Download the [latest SakuraCord DMG](https://github.com/SakuraCordApp/SakuraCord/releases/latest)
 for macOS 27 or newer, open it, and move SakuraCord into Applications.
 
+On Apple Silicon, install with [Homebrew](https://brew.sh):
+
+```sh
+brew install --cask SakuraCordApp/tap/sakuracord
+```
+
+Run `brew update` followed by `brew upgrade --cask sakuracord` to update.
+
 Current releases are ad-hoc signed rather than notarized, so macOS may require
 approval from **System Settings → Privacy & Security** on first launch.
 
