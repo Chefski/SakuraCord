@@ -11,15 +11,19 @@ import Testing
     await model.start()
     let message = try #require(model.messages.first { $0.poll != nil })
     model.pinnedMessages.items = [PinnedMessage(pinnedAt: .now, message: message)]
-    model.inbox.isPresented = true
     model.inbox.tab = .mentions
-    model.inbox.mentions = [message]
     let refresh = model.beginConversationRefresh(in: message.channelID)
 
     #expect(model.vote(on: message, answerIDs: [2]))
     var poll = try #require(model.messages.first?.poll)
     #expect(poll.selectedAnswerIDs == [2])
     #expect(poll.count(for: 2) == 2)
+    model.presentInbox()
+    await model.inbox.loadTask?.value
+    #expect(model.inbox.mentions.first?.poll?.selectedAnswerIDs == [2])
+    model.messageSearch.queryText = "Lunch"
+    model.submitMessageSearch()
+    await provider.waitForSearch()
     // An optimistic selection is presentation, not an authoritative history edit.
     let mutations = model.conversationRefreshMutations(in: message.channelID, revision: refresh)
     #expect(AppModel.applyingConversationRefreshMutations(mutations, to: [message]).first?.poll == message.poll)
@@ -47,6 +51,10 @@ import Testing
     poll = try #require(model.messages.first?.poll)
     #expect(poll.selectedAnswerIDs == [2])
     #expect(poll.count(for: 2) == 2)
+    await provider.resumeSearch()
+    await model.messageSearch.requestTask?.value
+    #expect(model.messageSearch.page?.messages.first?.poll?.selectedAnswerIDs == [2])
+    #expect(model.messageSearch.rows.first?.message.poll?.count(for: 1) == 2)
 
     await provider.failNextRequest()
     #expect(model.vote(on: message, answerIDs: [1]))
@@ -136,6 +144,7 @@ private actor PollVoteTestProvider: ChatProvider {
     private var failsNextRequest = false
     private var continuation: AsyncStream<ClientEvent>.Continuation?
     private var requestContinuation: CheckedContinuation<Void, Never>?
+    private var searchContinuation: CheckedContinuation<Void, Never>?
 
     func bootstrap() async throws -> BootstrapSnapshot {
         BootstrapSnapshot(currentUser: user, guilds: [], channels: [channel], members: [])
@@ -161,6 +170,26 @@ private actor PollVoteTestProvider: ChatProvider {
 
     func send(_ draft: SendMessageDraft) async throws -> Message {
         throw ChatProviderError.invalidRequest("Sending is not part of this test.")
+    }
+
+    func inboxMentions(_ query: InboxMentionQuery, before: MessageID?) async throws -> InboxMentionPage {
+        let page = try await messages(in: channel.id, before: nil, limit: 25)
+        return InboxMentionPage(messages: page.messages, nextBefore: nil, hasMore: false)
+    }
+
+    func searchMessages(_ query: MessageSearchQuery) async throws -> MessageSearchPage {
+        let page = try await messages(in: channel.id, before: nil, limit: 25)
+        await withCheckedContinuation { searchContinuation = $0 }
+        return MessageSearchPage(messages: page.messages, totalResults: page.messages.count)
+    }
+
+    func waitForSearch() async {
+        while searchContinuation == nil { await Task.yield() }
+    }
+
+    func resumeSearch() {
+        searchContinuation?.resume()
+        searchContinuation = nil
     }
 
     func pinnedMessages(in channelID: ChannelID, before: Date?, limit: Int) async throws -> PinnedMessagePage {
@@ -195,6 +224,8 @@ private actor PollVoteTestProvider: ChatProvider {
     }
 
     func disconnect() async {
+        searchContinuation?.resume()
+        searchContinuation = nil
         requestContinuation?.resume()
         requestContinuation = nil
         continuation?.finish()

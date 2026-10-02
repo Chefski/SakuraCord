@@ -8,7 +8,7 @@ extension AppModel {
         for thread in page.threads { inbox.threads[thread.id] = thread }
         var combined = Dictionary(uniqueKeysWithValues: inbox.mentions.map { ($0.id, $0) })
         for message in page.messages where !inbox.removedIDs.contains(message.id) {
-            combined[message.id] = inbox.replacements[message.id] ?? message
+            combined[message.id] = pollVotePresentationPreserving(inbox.replacements[message.id] ?? message)
         }
         inbox.mentions = combined.values.sorted { $0.id > $1.id }
         inbox.nextBefore = page.nextBefore
@@ -47,7 +47,7 @@ extension AppModel {
         guard let index = inbox.groups.firstIndex(where: { $0.id == group.id }) else { return }
         inbox.groups[index].messages = Array(collected.values.filter {
             !inbox.deletedIDs.contains($0.id)
-        }.sorted { $0.id < $1.id }.prefix(25)).map { inbox.replacements[$0.id] ?? $0 }
+        }.sorted { $0.id < $1.id }.prefix(25)).map { pollVotePresentationPreserving(inbox.replacements[$0.id] ?? $0) }
         inbox.groups[index].isLoaded = true
         inbox.groups[index].errorMessage = nil
         inbox.hasMore = inbox.groups.contains { !$0.isLoaded && !$0.isCollapsed }

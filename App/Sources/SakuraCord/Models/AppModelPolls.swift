@@ -100,6 +100,8 @@ extension AppModel {
             model.pollVoteMutations[messageID] = latest
             if let message = model.retainedMessage(channelID: channelID, messageID: messageID) {
                 model.recordAuthoritativeMessageUpsert(message)
+                model.reconcilePollSearchMessage(message)
+                model.reconcileInboxMessage(message)
             }
             model.sendPollVoteMutation(messageID: messageID)
             guard let message = model.retainedMessage(channelID: channelID, messageID: messageID) else { return }
@@ -139,7 +141,26 @@ extension AppModel {
 }
 
 extension AppModel {
+    func messageSearchPagePreservingPollVotes(_ incoming: MessageSearchPage) -> MessageSearchPage {
+        guard !pollVoteMutations.isEmpty || !messageSearch.pollUpdatesDuringLoad.isEmpty else { return incoming }
+        var page = incoming
+        for resultIndex in page.results.indices {
+            for index in page.results[resultIndex].messages.indices {
+                var message = page.results[resultIndex].messages[index]
+                if let poll = messageSearch.pollUpdatesDuringLoad[message.id] {
+                    message.poll = poll
+                    message.hasPoll = true
+                }
+                page.results[resultIndex].messages[index] = pollVotePresentationPreserving(message)
+            }
+        }
+        return page
+    }
+
     func reconcilePollSearchMessage(_ message: Message) {
+        if messageSearch.isSearching, let poll = pollVoteConfirmedSnapshot(message).poll {
+            messageSearch.pollUpdatesDuringLoad[message.id] = poll
+        }
         guard message.poll != nil, var page = messageSearch.page else { return }
         var changed = false
         for resultIndex in page.results.indices {

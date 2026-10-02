@@ -50,6 +50,7 @@ final class MessageSearchState {
     @ObservationIgnored var rowsRevision: UInt64 = 0
     @ObservationIgnored let rowsUpdateJournal = MessageRowsUpdateJournal()
     @ObservationIgnored var requestTask: Task<Void, Never>?
+    @ObservationIgnored var pollUpdatesDuringLoad: [MessageID: MessagePoll] = [:]
 
     var currentPage: Int {
         guard let submittedQuery else { return 1 }
@@ -80,6 +81,7 @@ final class MessageSearchState {
         AppPerformanceSignposts.cancelMessageSearchPagination()
         AppPerformanceSignposts.endMessageSearchScroll()
         requestTask = nil
+        pollUpdatesDuringLoad = [:]
         queryText = ""
         tokens = []
         parsedInputText = nil
@@ -308,6 +310,7 @@ extension AppModel {
             messageSearch.requestTask?.cancel()
             messageSearch.requestTask = nil
             messageSearch.isSearching = false
+            messageSearch.pollUpdatesDuringLoad = [:]
             AppPerformanceSignposts.endResourceWindow(named: "MessageSearchBenchmark")
             AppPerformanceSignposts.endResourceWindow(
                 named: "MessageSearchPaginationBenchmark"
@@ -324,7 +327,10 @@ extension AppModel {
         }
 
         presentMessageSearchResultsIfNeeded()
+        startMessageSearchRequest(query, measuresPagination: measuresPagination)
+    }
 
+    private func startMessageSearchRequest(_ query: MessageSearchQuery, measuresPagination: Bool) {
         messageSearch.requestTask?.cancel()
         AppPerformanceSignposts.endResourceWindow(named: "MessageSearchBenchmark")
         AppPerformanceSignposts.endResourceWindow(
@@ -333,6 +339,7 @@ extension AppModel {
         AppPerformanceSignposts.cancelMessageSearchRequest()
         AppPerformanceSignposts.cancelMessageSearchPagination()
         messageSearch.isSearching = true
+        messageSearch.pollUpdatesDuringLoad = [:]
         messageSearch.errorMessage = nil
         let resourceWindowName = beginMessageSearchMeasurement(
             measuresPagination: measuresPagination
@@ -342,8 +349,9 @@ extension AppModel {
         messageSearch.requestTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let page = try await session.provider.searchMessages(query)
+                let fetchedPage = try await session.provider.searchMessages(query)
                 try Task.checkCancellation()
+                let page = self.messageSearchPagePreservingPollVotes(fetchedPage)
                 let channelsByID = self.messageSearchChannelsByID(
                     additionalChannels: page.channels
                 )
@@ -358,12 +366,16 @@ extension AppModel {
                     throw CancellationError()
                 }
                 self.mergeMessageSearchPrivateChannels(page.channels)
-                self.messageSearch.page = page
+                let latestPage = self.messageSearchPagePreservingPollVotes(page)
+                self.messageSearch.page = latestPage
                 self.messageSearch.submittedQuery = query
-                self.messageSearch.rows = rows
+                self.messageSearch.rows = latestPage == page ? rows : MessageSearchPresentation.rows(
+                    for: latestPage, channelsByID: channelsByID
+                )
                 self.messageSearch.rowsRevision &+= 1
                 self.messageSearch.errorMessage = nil
                 self.messageSearch.isSearching = false
+                self.messageSearch.pollUpdatesDuringLoad = [:]
                 self.messageSearch.lastCompletedLatencyMilliseconds = Int(
                     (ProcessInfo.processInfo.systemUptime - startedAt) * 1_000
                 )
@@ -382,6 +394,7 @@ extension AppModel {
                 DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
                 self.messageSearch.errorMessage = error.localizedDescription
                 self.messageSearch.isSearching = false
+                self.messageSearch.pollUpdatesDuringLoad = [:]
                 self.messageSearch.requestTask = nil
                 self.cancelMessageSearchMeasurement(
                     resourceWindowName,
