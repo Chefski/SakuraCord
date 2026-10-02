@@ -215,7 +215,7 @@ extension AppModel {
 
     private func canReadPins(in channelID: ChannelID) -> Bool {
         if channelID == openThread?.id {
-            guard openThreadAccess.isReadable else { return false }
+            return openThreadAccess.isReadable
         } else if channelID != selectedChannelID {
             return false
         }

@@ -12,7 +12,11 @@ extension AppModel {
     }
 
     func isComposerDropEligible(_ destination: MessageComposerDestination) -> Bool {
-        guard let permissions = selectedEffectivePermissions,
+        let channel = switch destination {
+        case .channel: selectedChannel
+        case .thread: threadCreation == nil ? openThreadParentChannel : selectedChannel
+        }
+        guard let channel, let permissions = effectiveMessagePermissions(in: channel),
               permissions & DiscordPermissionBits.attachFiles != 0
         else { return false }
         switch destination {

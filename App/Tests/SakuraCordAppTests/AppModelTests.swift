@@ -7509,14 +7509,15 @@ private actor DelayedMemberViewportTestProvider: ChatProvider {
 func `resource thread permissions belong to its parent rather than the selected channel`(parentAllows: Bool) {
     let user = User(id: UserID(rawValue: 1), username: "reader", displayName: "Reader")
     let guildID = GuildID(rawValue: 100)
-    let mutationPermissions = DiscordPermissionBits.sendMessagesInThreads | DiscordPermissionBits.pinMessages
-        | DiscordPermissionBits.manageMessages | (UInt64(1) << 49)
+    let permissions = DiscordPermissionBits.sendMessagesInThreads | DiscordPermissionBits.pinMessages
+        | DiscordPermissionBits.manageMessages | DiscordPermissionBits.attachFiles | (UInt64(1) << 49)
+        | DiscordPermissionBits.viewChannel | DiscordPermissionBits.readMessageHistory
     let guild = Guild(id: guildID, name: "Community", isOwnedByCurrentUser: false,
-        currentUserPermissions: mutationPermissions | DiscordPermissionBits.viewChannel | DiscordPermissionBits.readMessageHistory)
+        currentUserPermissions: permissions)
     let selected = Channel(id: ChannelID(rawValue: 200), guildID: guildID, name: "Previous",
-        permissionOverwrites: [.init(id: guildID.description, type: 0, deny: parentAllows ? mutationPermissions : 0)])
+        permissionOverwrites: [.init(id: guildID.description, type: 0, deny: parentAllows ? permissions : 0)])
     let resource = Channel(id: ChannelID(rawValue: 201), guildID: guildID, name: "Resource",
-        permissionOverwrites: [.init(id: guildID.description, type: 0, deny: parentAllows ? 0 : mutationPermissions)])
+        permissionOverwrites: [.init(id: guildID.description, type: 0, deny: parentAllows ? 0 : permissions)])
     let model = AppModel(launchMode: .offlineTesting, provider: MockChatProvider())
     model.snapshot = BootstrapSnapshot(currentUser: user, guilds: [guild], channels: [selected, resource], members: [])
     model.serverRailGuildsByID[guildID] = guild
@@ -7530,4 +7531,9 @@ func `resource thread permissions belong to its parent rather than the selected 
     #expect(model.canCreatePoll(in: thread.id) == parentAllows)
     #expect(model.canManagePins(for: message) == parentAllows)
     #expect(model.canDeleteMessage(message) == parentAllows)
+    #expect(model.isComposerDropEligible(.thread) == parentAllows)
+    model.sessionState = .workspace
+    model.presentPinnedMessages()
+    #expect(model.pinnedMessages.hasReadPermission == parentAllows)
+    model.dismissPinnedMessages()
 }
