@@ -6,12 +6,14 @@ import Testing
 @Test func `server invite recognition excludes code and lookalike hosts while deduplicating bare URLs`() {
     let source = """
     discord.gg/Valid https://discord.com/invite/Valid discordapp.com/invite/Other
+    ||https://discord.gg/Third|| ||discord.gg/BareSpoiler|| ||[hidden](https://discord.gg/Masked)||
     <https://discord.gg/Third> https://notdiscord.gg/Hidden
     `discord.gg/Inline`
     ```
     discord.gg/Fenced
     ```
     discord.gg/ie3urhej
+    ||https://discord.gg/HiddenInvite||
     """
     #expect(DiscordMarkdown.serverInviteReferences(in: source).map(\.code) == ["Valid", "Other", "Third", "ie3urhej"])
     #expect(ServerInviteReference("https://discord.gg@evil.example/test") == nil)
