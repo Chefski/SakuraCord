@@ -964,7 +964,7 @@ private struct ChatRootView: View {
         if model.hasThreadPane {
             return SupplementaryToolbarPresentation(
                 title: model.openThread?.name ?? "New Thread",
-                systemImage: model.selectedChannel?.kind == .forum
+                systemImage: model.openThreadParentChannel?.kind == .forum
                     ? "bubble.left.and.bubble.right.fill" : SakuraCordSystemSymbol.thread
             )
         }

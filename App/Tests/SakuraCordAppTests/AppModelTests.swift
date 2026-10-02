@@ -7490,3 +7490,31 @@ private actor DelayedMemberViewportTestProvider: ChatProvider {
     #expect(model.threadPreviewMessages[thread.id] == nil)
     #expect(model.threadPreviewMessages[other.id] == otherPreview)
 }
+
+@MainActor
+@Test(arguments: [false, true])
+func `resource thread permissions belong to its parent rather than the selected channel`(parentAllows: Bool) {
+    let user = User(id: UserID(rawValue: 1), username: "reader", displayName: "Reader")
+    let guildID = GuildID(rawValue: 100)
+    let mutationPermissions = DiscordPermissionBits.sendMessagesInThreads | DiscordPermissionBits.pinMessages
+        | DiscordPermissionBits.manageMessages | (UInt64(1) << 49)
+    let guild = Guild(id: guildID, name: "Community", isOwnedByCurrentUser: false,
+        currentUserPermissions: mutationPermissions | DiscordPermissionBits.viewChannel | DiscordPermissionBits.readMessageHistory)
+    let selected = Channel(id: ChannelID(rawValue: 200), guildID: guildID, name: "Previous",
+        permissionOverwrites: [.init(id: guildID.description, type: 0, deny: parentAllows ? mutationPermissions : 0)])
+    let resource = Channel(id: ChannelID(rawValue: 201), guildID: guildID, name: "Resource",
+        permissionOverwrites: [.init(id: guildID.description, type: 0, deny: parentAllows ? 0 : mutationPermissions)])
+    let model = AppModel(launchMode: .offlineTesting, provider: MockChatProvider())
+    model.snapshot = BootstrapSnapshot(currentUser: user, guilds: [guild], channels: [selected, resource], members: [])
+    model.serverRailGuildsByID[guildID] = guild
+    model.currentUserRoleIDsByGuild[guildID] = []
+    model.selectedChannel = selected
+    let thread = MessageThreadSummary(id: ChannelID(rawValue: 202), parentID: resource.id, name: "Resource thread")
+    model.openThread = thread
+    let message = Message(id: MessageID(rawValue: 203), channelID: thread.id,
+        author: User(id: UserID(rawValue: 2), username: "author", displayName: "Author"), content: "Thread message")
+    #expect(model.openThreadAccess.canSend == parentAllows)
+    #expect(model.canCreatePoll(in: thread.id) == parentAllows)
+    #expect(model.canManagePins(for: message) == parentAllows)
+    #expect(model.canDeleteMessage(message) == parentAllows)
+}

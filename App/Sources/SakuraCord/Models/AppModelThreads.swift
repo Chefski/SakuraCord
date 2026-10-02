@@ -3,6 +3,26 @@ import Foundation
 import SakuraCordModels
 
 extension AppModel {
+    var openThreadParentChannel: Channel? {
+        guard let parentID = openThread?.parentID else { return nil }
+        return snapshot?.channels.first { $0.id == parentID }
+            ?? visibleChannels.first { $0.id == parentID }
+            ?? (selectedChannel?.id == parentID ? selectedChannel : nil)
+    }
+
+    var openThreadAccess: ConversationAccess {
+        guard let thread = openThread, let channel = openThreadParentChannel else { return .checking }
+        guard let guildID = channel.guildID else { return .readable(canSend: true) }
+        let access = ConversationPermissionResolver.threadAccess(
+            effectivePermissions: effectiveMessagePermissions(in: channel),
+            isLocked: thread.isLocked
+        )
+        if requiresOnboarding(in: guildID) || onboardingMember(in: guildID)?.isPending == true {
+            return access.isReadable ? .readable(canSend: false) : access
+        }
+        return access
+    }
+
     func open(_ thread: MessageThreadSummary) {
         guard openThread?.id != thread.id else { return }
         let starter = messages.first { $0.thread?.id == thread.id }

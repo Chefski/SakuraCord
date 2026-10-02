@@ -33,16 +33,10 @@ private extension Message {
 extension AppModel {
     func canCreatePoll(in channelID: ChannelID) -> Bool {
         let isThread = openThread?.id == channelID
-        guard let channel = isThread ? selectedChannel : snapshot?.channels.first(where: { $0.id == channelID }),
+        guard let channel = isThread ? openThreadParentChannel : snapshot?.channels.first(where: { $0.id == channelID }),
               (isThread ? openThreadAccess : conversationAccess(for: channel)).canSend else { return false }
-        guard let guildID = channel.guildID else { return true }
-        guard let basis = conversationPermissionBasis(for: guildID),
-              let permissions = ConversationPermissionResolver.effectivePermissions(
-                guild: basis.guild, channel: channel,
-                resolvedBasePermissions: basis.resolvedBasePermissions,
-                overwritePrincipals: basis.overwritePrincipals,
-                hasCurrentRoleIdentity: basis.hasCurrentRoleIdentity
-              ) else { return false }
+        guard channel.guildID != nil else { return true }
+        guard let permissions = effectiveMessagePermissions(in: channel) else { return false }
         return permissions & ((1 << 49) | DiscordPermissionBits.administrator) != 0
     }
 

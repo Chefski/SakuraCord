@@ -144,8 +144,8 @@ extension AppModel {
         if let channel = rootMessageChannel(channelID) {
             return (channel, false)
         }
-        if openThread?.id == channelID, let selectedChannel {
-            return (selectedChannel, true)
+        if openThread?.id == channelID, let parent = openThreadParentChannel {
+            return (parent, true)
         }
         let parentID = snapshot?.threads.first(where: { $0.id == channelID })?.parentID
             ?? snapshot?.activeJoinedThreads.first(where: { $0.id == channelID })?.parentID
@@ -166,19 +166,6 @@ extension AppModel {
         case .forum, .unknown:
             false
         }
-    }
-
-    func effectiveMessagePermissions(in channel: Channel) -> UInt64? {
-        guard let guildID = channel.guildID,
-              let basis = conversationPermissionBasis(for: guildID)
-        else { return channel.guildID == nil ? .max : nil }
-        return ConversationPermissionResolver.effectivePermissions(
-            guild: basis.guild,
-            channel: channel,
-            resolvedBasePermissions: basis.resolvedBasePermissions,
-            overwritePrincipals: basis.overwritePrincipals,
-            hasCurrentRoleIdentity: basis.hasCurrentRoleIdentity
-        )
     }
 
     func presentPinnedMessages(channelID: ChannelID? = nil) {
