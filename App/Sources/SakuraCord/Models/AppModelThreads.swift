@@ -248,13 +248,8 @@ extension AppModel {
         inbox.metadataTasks.removeValue(forKey: channelID)?.cancel()
         inbox.threads[channelID] = nil
 
-        let retained = messages + threadMessages + messageCache.values.flatMap { $0 }
-            + pinnedMessages.items.map(\.message)
-            + inbox.mentions + inbox.groups.flatMap(\.messages)
-            + (messageSearch.page?.results.flatMap(\.messages) ?? [])
-            + forumCataloguePosts.flatMap { [$0.firstMessage, $0.mostRecentMessage].compactMap { $0 } }
         var seen = Set<MessageID>()
-        for message in retained where message.thread?.id == channelID && seen.insert(message.id).inserted {
+        for message in retainedMessages where message.thread?.id == channelID && seen.insert(message.id).inserted {
             var update = MessageUpdate(messageID: message.id, channelID: message.channelID)
             update.thread = .some(nil)
             consumeImmediately(.messagePatched(update))

@@ -1588,8 +1588,8 @@ import UserNotifications
 }
 
 @MainActor
-@Test(arguments: [false, true])
-func `authoritative thread deletion removes open and cached conversations`(isOpen: Bool) {
+@Test(arguments: [(false, false), (true, false), (true, true)])
+func `authoritative thread deletion removes open cached and resource conversations`(location: (isOpen: Bool, resourceOnly: Bool)) {
     let model = AppModel(launchMode: .offlineTesting)
     let parent = ChannelID(rawValue: 200)
     let thread = MessageThreadSummary(id: ChannelID(rawValue: 201), parentID: parent, name: "Deleted thread")
@@ -1598,12 +1598,25 @@ func `authoritative thread deletion removes open and cached conversations`(isOpe
     starter.thread = thread
     let reply = Message(id: MessageID(rawValue: 202), channelID: thread.id, author: author, content: "Reply")
     let other = Message(id: MessageID(rawValue: 302), channelID: ChannelID(rawValue: 301), author: author, content: "Keep other")
-    model.storeCachedMessages([starter], for: parent)
+    if location.resourceOnly {
+        let guildID = GuildID(rawValue: 100)
+        model.selectedGuildID = guildID
+        model.onboarding.presentedGuildID = guildID
+        model.onboarding.page = .guide
+        model.onboarding.guides[guildID] = GuildGuideEntry(resource: GuildResourceState(
+            channelID: parent, messages: [starter], rows: [MessageRowPresentation(
+                message: starter, startsGroup: false, startsDay: false,
+                replyPreview: nil, isReplyAvailable: false, isResource: true
+            )]
+        ))
+    } else {
+        model.storeCachedMessages([starter], for: parent)
+    }
     model.storeCachedMessages([reply], for: thread.id)
     model.storeCachedMessages([other], for: other.channelID)
     model.hasMoreCache[thread.id] = false
     model.refreshTimelineThreadCards(parentID: parent, posts: [ForumPost(thread: thread, mostRecentMessage: reply)])
-    if isOpen {
+    if location.isOpen {
         model.openThread = thread
         model.threadMessages = [reply]
     }
@@ -1615,7 +1628,7 @@ func `authoritative thread deletion removes open and cached conversations`(isOpe
     #expect(model.messageCache[thread.id] == nil)
     #expect(model.hasMoreCache[thread.id] == nil)
     #expect(model.threadPreviewMessages[thread.id] == nil)
-    let retained = model.messageCache[parent]?.first
+    let retained = location.resourceOnly ? model.presentedGuideResource?.rows.first?.message : model.messageCache[parent]?.first
     #expect(retained?.thread == nil)
     #expect(retained?.content == starter.content)
     #expect(model.messageCache[other.channelID] == [other])

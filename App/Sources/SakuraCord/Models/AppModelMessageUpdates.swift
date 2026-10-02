@@ -19,6 +19,16 @@ extension AppModel {
         return inbox.mentions.first { $0.id == messageID } ?? inbox.groups.lazy.flatMap(\.messages).first { $0.id == messageID }
     }
 
+    /// Snapshot the retained surfaces for events that must find affected messages.
+    var retainedMessages: [Message] {
+        messages + threadMessages + messageCache.values.flatMap { $0 }
+            + pinnedMessages.items.map(\.message)
+            + (presentedGuideResource?.messages ?? [])
+            + inbox.mentions + inbox.groups.flatMap(\.messages)
+            + (messageSearch.page?.results.flatMap(\.messages) ?? [])
+            + forumCataloguePosts.flatMap { [$0.firstMessage, $0.mostRecentMessage].compactMap { $0 } }
+    }
+
     func reconcileRetainedMessageIdentities(_ user: User) {
         // Pages still being prepared have no retained message IDs yet. Keep
         // identity changes at conversation scope until their refresh commits.
@@ -29,13 +39,8 @@ extension AppModel {
         for guildID in onboarding.guides.keys where onboarding.guides[guildID]?.resource?.refreshJournal != nil {
             onboarding.guides[guildID]?.resource?.refreshJournal?.recordIdentityUpdate(user)
         }
-        let retained = messages + threadMessages + messageCache.values.flatMap { $0 }
-            + pinnedMessages.items.map(\.message)
-            + (presentedGuideResource?.messages ?? [])
-            + inbox.mentions + inbox.groups.flatMap(\.messages)
-            + forumCataloguePosts.flatMap { [$0.firstMessage, $0.mostRecentMessage].compactMap { $0 } }
         var seen = Set<MessageID>()
-        for message in retained where seen.insert(message.id).inserted {
+        for message in retainedMessages where seen.insert(message.id).inserted {
             guard message.author.id == user.id || message.mentionedUsers.contains(where: { $0.id == user.id }) else { continue }
             var update = MessageUpdate(messageID: message.id, channelID: message.channelID)
             update.updatedUsers[user.id] = user
