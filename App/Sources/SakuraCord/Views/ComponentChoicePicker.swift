@@ -273,8 +273,7 @@ enum ComponentChoiceOptionPresentation {
             options: options.map {
                 fieldOption($0, selectKind: selectKind)
             },
-            width: fieldWidth,
-            usesCards: true
+            width: fieldWidth
         )
     }
 }
