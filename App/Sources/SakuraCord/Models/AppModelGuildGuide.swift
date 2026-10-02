@@ -30,6 +30,9 @@ struct GuildResourceState {
     var hasMore = true
     var error: String?
     var requestID = UUID()
+    var refreshJournal: ConversationRefreshJournal?
+    // Live events and deletions must not move the REST pagination boundary.
+    var nextAfter: MessageID?
 }
 
 extension AppModel {
@@ -259,10 +262,12 @@ extension AppModel {
         resource.loading = true
         resource.error = nil
         resource.requestID = UUID()
+        conversationRefreshJournalRevision &+= 1
+        resource.refreshJournal = ConversationRefreshJournal(revision: conversationRefreshJournalRevision)
         let requestID = resource.requestID
         let channelID = resource.channelID
         let existingIDs = Set(resource.messages.map(\.id))
-        let anchor = resource.messages.last?.id ?? MessageID(rawValue: channelID.rawValue)
+        let anchor = resource.nextAfter ?? resource.messages.last?.id ?? MessageID(rawValue: channelID.rawValue)
         onboarding.guides[guildID]?.resource = resource
         startAccountChildTask(account: accountSession()) { model, account in
             do {
@@ -278,9 +283,20 @@ extension AppModel {
                       current.requestID == requestID else { return }
                 let oldRows = current.rows
                 let retainedIDs = Set(current.messages.map(\.id)).union(current.changedMessageIDs)
-                let additions = preparedRows.filter { !retainedIDs.contains($0.id) }.map { row in
-                    let message = model.pollVotePresentationPreserving(model.reactionPresentationPreserving(row.message))
-                    guard message != row.message else { return row }
+                let cursor = page.messages.map(\.id).max() ?? anchor
+                let hasMore = page.hasMoreAfter && cursor > anchor
+                let mutations = ConversationRefreshMutations(
+                    messages: current.refreshJournal?.mutationsByMessageID ?? [:],
+                    updatedUsers: current.refreshJournal?.updatedUsers ?? [:]
+                )
+                let refreshed = Self.applyingConversationRefreshMutations(mutations, to: preparedRows.map(\.message))
+                let preparedByID = Dictionary(uniqueKeysWithValues: preparedRows.map { ($0.id, $0) })
+                // Keep the loaded prefix contiguous until REST reaches the live tail.
+                let additions = refreshed.filter {
+                    !retainedIDs.contains($0.id) && $0.id > anchor && (!hasMore || $0.id <= cursor)
+                }.sorted { $0.id < $1.id }.map { incoming in
+                    let message = model.pollVotePresentationPreserving(model.reactionPresentationPreserving(incoming))
+                    if let row = preparedByID[message.id], row.message == message { return row }
                     return MessageRowPresentation(message: message, startsGroup: false, startsDay: false,
                                                   replyPreview: nil, isReplyAvailable: false, isResource: true)
                 }
@@ -288,13 +304,16 @@ extension AppModel {
                 current.rows += additions
                 current.revision &+= 1
                 current.journal.append(MessageRowsUpdateRecordBuilder.make(oldRows: oldRows, newRows: current.rows, revision: current.revision))
-                current.hasMore = page.hasMoreAfter && !preparedRows.isEmpty
+                current.hasMore = hasMore
+                current.nextAfter = cursor
+                current.refreshJournal = nil
                 current.loading = false
                 model.onboarding.guides[guildID]?.resource = current
                 NotificationCenter.default.post(name: .sakuracordMessageRowsDidChange, object: model)
             } catch {
                 guard model.isCurrentAccountSession(account), model.onboarding.guides[guildID]?.resource?.requestID == requestID else { return }
                 model.onboarding.guides[guildID]?.resource?.loading = false
+                model.onboarding.guides[guildID]?.resource?.refreshJournal = nil
                 model.onboarding.guides[guildID]?.resource?.error = error.localizedDescription
             }
         }

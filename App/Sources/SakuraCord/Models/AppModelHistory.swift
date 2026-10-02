@@ -19,6 +19,25 @@ struct ConversationRefreshJournal {
     var mutationsByMessageID: [MessageID: ConversationRefreshMutation] = [:]
     var updatedUsers: [UserID: User] = [:]
 
+    mutating func record(_ mutation: ConversationRefreshMutation, messageID: MessageID) {
+        if case .patch(let update) = mutation {
+            switch mutationsByMessageID[messageID] {
+            case .upsert(var message):
+                update.apply(to: &message)
+                mutationsByMessageID[messageID] = .upsert(message)
+            case .patch(var previous):
+                previous.merge(update)
+                mutationsByMessageID[messageID] = .patch(previous)
+            case .delete:
+                break
+            case nil:
+                mutationsByMessageID[messageID] = mutation
+            }
+        } else {
+            mutationsByMessageID[messageID] = mutation
+        }
+    }
+
     mutating func recordIdentityUpdate(_ user: User) {
         updatedUsers[user.id] = user
         // Fold the event into earlier mutations, including messages whose
@@ -614,24 +633,11 @@ extension AppModel {
         messageID: MessageID,
         channelID: ChannelID
     ) {
-        guard var journal = conversationRefreshJournals[channelID] else { return }
-        if case .patch(let update) = mutation {
-            switch journal.mutationsByMessageID[messageID] {
-            case .upsert(var message):
-                update.apply(to: &message)
-                journal.mutationsByMessageID[messageID] = .upsert(message)
-            case .patch(var previous):
-                previous.merge(update)
-                journal.mutationsByMessageID[messageID] = .patch(previous)
-            case .delete:
-                break
-            case nil:
-                journal.mutationsByMessageID[messageID] = mutation
-            }
-        } else {
-            journal.mutationsByMessageID[messageID] = mutation
+        conversationRefreshJournals[channelID]?.record(mutation, messageID: messageID)
+        for guildID in onboarding.guides.keys where onboarding.guides[guildID]?.resource?.channelID == channelID
+            && onboarding.guides[guildID]?.resource?.refreshJournal != nil {
+            onboarding.guides[guildID]?.resource?.refreshJournal?.record(mutation, messageID: messageID)
         }
-        conversationRefreshJournals[channelID] = journal
     }
 
     func conversationRefreshMutations(

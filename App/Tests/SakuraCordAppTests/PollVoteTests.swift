@@ -134,6 +134,29 @@ import Testing
     #expect(await eventually { model.pollVoteMutations.isEmpty })
     #expect(try resourceMessage().poll?.selectedAnswerIDs == [2])
     #expect(try resourceMessage().poll?.count(for: 2) == 2)
+    let historyMessage = Message(id: MessageID(rawValue: 99_101), channelID: message.channelID,
+                                 author: message.author, content: "Page snapshot")
+    let liveMessage = Message(id: MessageID(rawValue: 99_102), channelID: message.channelID,
+                              author: message.author, content: "Arrived after snapshot")
+    model.loadGuideResource(guildID: guildID)
+    await provider.waitForHistory()
+    var edit = MessageUpdate(messageID: historyMessage.id, channelID: message.channelID)
+    edit.content = "Edited during load"
+    model.consumeImmediately(.messagePatched(edit))
+    model.consumeImmediately(.messageCreated(liveMessage))
+    await provider.resumeHistory(MessagePage(messages: [historyMessage], hasMoreBefore: false, hasMoreAfter: true))
+    #expect(await eventually { model.onboarding.guides[guildID]?.resource?.loading == false })
+    #expect(model.onboarding.guides[guildID]?.resource?.messages.map(\.id) == [message.id, historyMessage.id])
+    model.loadGuideResource(guildID: guildID)
+    await provider.waitForHistory()
+    let newest = Message(id: MessageID(rawValue: 99_103), channelID: message.channelID,
+                         author: message.author, content: "Arrived during final page")
+    model.consumeImmediately(.messageCreated(newest))
+    await provider.resumeHistory(MessagePage(messages: [liveMessage], hasMoreBefore: false, hasMoreAfter: false))
+    #expect(await eventually { model.onboarding.guides[guildID]?.resource?.loading == false })
+    let loaded = try #require(model.onboarding.guides[guildID]?.resource)
+    #expect(loaded.messages.map(\.id) == [message.id, historyMessage.id, liveMessage.id, newest.id])
+    #expect(loaded.rows.first(where: { $0.id == historyMessage.id })?.message.content == "Edited during load")
 }
 
 private actor PollVoteTestProvider: ChatProvider {
@@ -145,6 +168,7 @@ private actor PollVoteTestProvider: ChatProvider {
     private var continuation: AsyncStream<ClientEvent>.Continuation?
     private var requestContinuation: CheckedContinuation<Void, Never>?
     private var searchContinuation: CheckedContinuation<Void, Never>?
+    private var historyContinuation: CheckedContinuation<MessagePage, Never>?
 
     func bootstrap() async throws -> BootstrapSnapshot {
         BootstrapSnapshot(currentUser: user, guilds: [], channels: [channel], members: [])
@@ -166,6 +190,20 @@ private actor PollVoteTestProvider: ChatProvider {
                                results: PollResults(answerCounts: [.init(id: 1, count: 1), .init(id: 2, count: 1)]))
         return MessagePage(messages: [Message(id: MessageID(rawValue: 99_100), channelID: channel.id, author: user,
                                               content: "", isPinned: true, poll: poll)], hasMoreBefore: false)
+    }
+
+    func messages(in channelID: ChannelID, anchoredAt anchor: MessageHistoryAnchor, limit: Int) async throws -> MessagePage {
+        if case .after = anchor { return await withCheckedContinuation { historyContinuation = $0 } }
+        return try await messages(in: channelID, before: nil, limit: limit)
+    }
+
+    func waitForHistory() async {
+        while historyContinuation == nil { await Task.yield() }
+    }
+
+    func resumeHistory(_ page: MessagePage) {
+        historyContinuation?.resume(returning: page)
+        historyContinuation = nil
     }
 
     func send(_ draft: SendMessageDraft) async throws -> Message {
@@ -224,6 +262,8 @@ private actor PollVoteTestProvider: ChatProvider {
     }
 
     func disconnect() async {
+        historyContinuation?.resume(returning: MessagePage(messages: [], hasMoreBefore: false))
+        historyContinuation = nil
         searchContinuation?.resume()
         searchContinuation = nil
         requestContinuation?.resume()

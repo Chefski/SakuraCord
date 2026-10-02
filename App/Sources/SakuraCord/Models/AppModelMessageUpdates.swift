@@ -25,6 +25,9 @@ extension AppModel {
         for channelID in conversationRefreshJournals.keys {
             conversationRefreshJournals[channelID]?.recordIdentityUpdate(user)
         }
+        for guildID in onboarding.guides.keys where onboarding.guides[guildID]?.resource?.refreshJournal != nil {
+            onboarding.guides[guildID]?.resource?.refreshJournal?.recordIdentityUpdate(user)
+        }
         let retained = messages + threadMessages + messageCache.values.flatMap { $0 }
             + pinnedMessages.items.map(\.message)
             + (presentedGuideResource?.messages ?? [])
