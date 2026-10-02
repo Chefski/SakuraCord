@@ -50,6 +50,9 @@ extension AppModel {
         do {
             checkedFiles = try await uploadPrivacyPreparation.checkSelection(urls)
         } catch {
+            guard generation == accountSessionGeneration,
+                  (destination.flatMap { conversationChannelID(for: $0) } ?? selectedChannelID) == channelID,
+                  !Task.isCancelled, !(error is CancellationError) else { return [] }
             errorMessage = error.localizedDescription
             return []
         }
