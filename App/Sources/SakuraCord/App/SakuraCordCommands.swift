@@ -20,6 +20,21 @@ struct SakuraCordCommands: Commands {
             CheckForUpdatesCommand(updateController: updateController)
         }
 
+        CommandGroup(replacing: .help) {
+            Button("Report a Bug…") {
+                NSWorkspace.shared.open(IssueReportLink.current(.bug).url)
+            }
+            Button("Suggest a Feature…") {
+                NSWorkspace.shared.open(IssueReportLink.current(.feature).url)
+            }
+
+            Divider()
+
+            Button("SakuraCord Tracker") {
+                NSWorkspace.shared.open(IssueReportLink.trackerURL)
+            }
+        }
+
         CommandGroup(replacing: .sidebar) {
             ShortcutCommandButton(action: .toggleChannelSidebar)
             ShortcutCommandButton(

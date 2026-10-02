@@ -2,7 +2,7 @@
 
 This directory contains durable repository documentation. It is intentionally
 small: implementation details should be discoverable from code and tests, while
-planned work and progress belong in the canonical roadmap service.
+planned work and progress belong in GitHub Issues and milestones.
 
 ## Canonical documents
 
@@ -57,23 +57,40 @@ named `main` or `nightly` still receive merge validation. Snapshot checks use
 the snapshot's own pinned tools and policy. A later base-branch change can
 still require fresh CI validation.
 
-## Roadmap
+## Issues and roadmap
 
-The deployed roadmap service is the only source of truth for planned work,
-lifecycle state, acceptance criteria, verification, research gaps, and linked
-Discord discussions. Use the
-[Roadmap Management plugin](plugin://roadmap-management@personal) instead of
-adding or updating a repository `ROADMAP.md`.
+GitHub Issues in this repository are the single source of truth for bugs,
+suggestions, and planned work. The
+[SakuraCord hub](https://github.com/SakuraCordApp/Roadmap) keeps every issue in
+sync with its Discord forum post and
+[sakuracord.app/tracker](https://sakuracord.app/tracker), including comments,
+so discuss and update an issue in whichever place is convenient.
 
-Roadmap state is revisioned independently of Git. A code match or commit is
-evidence to review, not proof that a roadmap item is complete.
+- Status is one `status: …` label (New, Needs Info, Confirmed, Planned,
+  In Progress, In Nightly, Shipped, Declined, Can't Reproduce) or the close
+  reason. Area and priority are `area: …` and `priority: …` labels; the issue
+  type is Bug or Feature.
+- Versions are milestones. A milestone's description is its roadmap entry: a
+  headline line, an optional summary, then `- highlight (#N)` bullets. Assigning
+  a milestone makes an issue Planned.
+- Write `Fixes #N` in pull requests and nightly commits. An open PR moves the
+  issue to In Progress, landing on `nightly` moves it to In Nightly, and the
+  first release whose tag contains the fix closes it as Shipped and pings
+  everyone following it.
+- `agent: investigate` asks an agent to locate the cause and post findings;
+  `agent: fix` asks an agent to open a draft pull request against `nightly`.
+  Review agent output like any contribution.
+
+Use `gh issue list`, `gh issue view`, and `gh api` to read and update issues.
+Do not add a repository `ROADMAP.md`. A code match or commit is evidence to
+review, not proof that an issue is complete.
 
 ## Documentation policy
 
 - Update an existing canonical document when a change alters a durable
   repository-wide contract.
 - Put feature status, acceptance criteria, research, and verification on the
-  canonical roadmap item.
+  GitHub issue.
 - Put narrow, time-bound implementation evidence in the pull request or commit
   description. Update `PROTOCOL_BASELINE.md` only when it establishes or
   supersedes a repository-wide network baseline.

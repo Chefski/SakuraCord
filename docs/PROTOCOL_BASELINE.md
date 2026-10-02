@@ -9,8 +9,8 @@ normal-account protocol is stable, supported, or safe from account action.
 
 Detailed feature-by-feature journals that existed before the documentation
 consolidation remain available in Git history through commit `32a6b8e`. New
-narrow implementation evidence belongs in the canonical roadmap item, pull
-request, or commit description rather than a new Markdown file.
+narrow implementation evidence belongs in the GitHub issue, pull request, or
+commit description rather than a new Markdown file.
 
 ## Evidence snapshot
 
@@ -2773,6 +2773,6 @@ When a production network contract changes:
 2. record route, headers, body, sequencing, request count, response/error
    behavior, rate limits, retries, cache effects, and reconciliation;
 3. state reference revisions/builds and observation dates;
-4. record narrow evidence on the roadmap item, pull request, or commit; and
+4. record narrow evidence on the GitHub issue, pull request, or commit; and
 5. update this file only when the new evidence changes a durable
    repository-wide baseline.
