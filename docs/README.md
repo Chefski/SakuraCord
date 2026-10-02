@@ -86,6 +86,12 @@ agent on GitHub Actions, using GPT-6 Luna against the nightly checkout. It
 reads the report, recent discussion, screenshot evidence, and similar reports,
 then posts one assessment with classification, questions, duplicate suggestions,
 and code findings. The hub validates that result before changing issue metadata.
+Both bugs and suggestions require the latest published nightly or regular release.
+The agent can correct either category and considers closed reports as duplicates.
+It compares the reported release with source and verifies fix-commit ancestry:
+fixed in code, published in nightly, and published in regular are distinct states.
+A build already containing a claimed fix is investigated as a possible regression.
+Verified existing fixes join the hub's release tracking; unreleased fixes stay open.
 
 Maintainers can rerun it with `agent: investigate` or Discord's Manage menu.
 The label stays until the hub applies the result; retry a failed run in Actions.
