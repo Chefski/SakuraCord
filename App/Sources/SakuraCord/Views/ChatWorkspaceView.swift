@@ -20,14 +20,13 @@ struct ChatWorkspaceView: View {
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    if model.customizationPreviewChannel != nil {
+                    if model.hasThreadPane {
                         Divider()
-                        if model.hasThreadPane {
-                            ThreadConversationView(model: model)
-                        } else {
-                            SupplementaryConversationPane {
-                                ChatDetailView(model: model)
-                            }
+                        ThreadConversationView(model: model)
+                    } else if model.customizationPreviewChannel != nil {
+                        Divider()
+                        SupplementaryConversationPane {
+                            ChatDetailView(model: model)
                         }
                     } else if page == .guide, let resource = model.onboarding.guides[guildID]?.resource {
                         Divider()

@@ -253,6 +253,7 @@ extension AppModel {
 
     func openGuideResource(_ channelID: ChannelID, guildID: GuildID) {
         guard onboarding.guides[guildID]?.configuration?.resourceChannels.contains(where: { $0.channelID == channelID }) == true else { return }
+        closeThread()
         onboarding.guides[guildID]?.resource = GuildResourceState(channelID: channelID)
         loadGuideResource(guildID: guildID)
     }
