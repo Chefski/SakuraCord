@@ -340,15 +340,11 @@ struct ComposerView: View {
         ) { result in
             guard case let .success(urls) = result else { return }
             Task {
-                if hasActiveCommand,
-                   let option = model.commandComposer.focusedOption, option.type == .attachment,
-                   let url = urls.first, !(await model.attachmentURLsWithinDiscordLimit([url])).isEmpty
-                {
-                    model.commandComposer.setValue(
-                        .attachment(url), displayText: url.lastPathComponent, for: option
-                    )
-                    focusNextCommandField()
-                } else if !hasActiveCommand {
+                if hasActiveCommand {
+                    if await model.receiveCommandAttachment(.external(urls)) {
+                        focusNextCommandField()
+                    }
+                } else {
                     await model.addComposerAttachments(urls, to: conversation)
                 }
             }

@@ -81,6 +81,8 @@ Vote events patch retained projections in order. Missing historical results are
 unknown, not zero. Final counts cannot be replaced by stale REST results or
 omitted fields; non-personalized final `me_voted:false` values must not erase a
 known personal selection. Natural expiry and rendering send no expiry request.
+An explicit results read can repeat once if overlapping votes make its unversioned
+tally ambiguous; a second overlap reports failure rather than starting polling.
 Expected route-scoped poll errors stay local, while account restrictions retain
 the shared safety circuit.
 

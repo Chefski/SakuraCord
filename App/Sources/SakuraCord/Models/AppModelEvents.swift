@@ -241,7 +241,6 @@ extension AppModel {
         preparedMemberListPresentation: PreparedMemberListPresentation? = nil
     ) {
         if consumeInboxEvent(event) { return }
-        receiveGuideResourceEvent(event)
         switch event {
         case .connectionChanged(let state):
             consumeConnectionChange(state)
@@ -255,9 +254,8 @@ extension AppModel {
         case .messageUpdated(let incoming):
             let reconciled = applyingPendingPinIntent(to: incoming)
             consumeMessageUpdated(reconciled, preparedTextPlan: preparedTextPlan)
-            reconcilePinnedMessage(reconciled)
-            reconcileInboxMessage(reconciled)
         case .messagePatched(let update):
+            reconcilePollVoteConfirmation(update)
             recordConversationRefreshMutation(.patch(update), messageID: update.messageID, channelID: update.channelID)
             if let message = applyingMessageUpdate(update) {
                 let reconciled = applyingPendingPinIntent(to: message)
@@ -265,8 +263,6 @@ extension AppModel {
                     reconciled, preparedTextPlan: preparedTextPlan,
                     recordsRefreshMutation: false, preparedTextPlanSource: preparedTextPlanSource
                 )
-                reconcilePinnedMessage(reconciled)
-                reconcileInboxMessage(reconciled)
             }
         case .messageReactionUpdated(let update):
             applyReactionUpdate(update)
@@ -542,6 +538,7 @@ extension AppModel {
             cache(message)
         }
         reconcileForumMessage(message)
+        receiveGuideResourceEvent(.messageCreated(message))
         guard let currentUserID = snapshot?.currentUser.id else { return }
         let disposition = readState.receive(message, currentUserID: currentUserID)
         guard disposition.accepted else { return }
@@ -576,7 +573,8 @@ extension AppModel {
         _ incoming: Message,
         preparedTextPlan: NativeTimelineTextPlan?,
         recordsRefreshMutation: Bool = true,
-        preparedTextPlanSource: Message? = nil
+        preparedTextPlanSource: Message? = nil,
+        updatesPinnedMessages: Bool = true
     ) {
         let message = pollVotePresentationPreserving(reactionPresentationPreserving(
             outgoingMediaPresentationPreserving(incoming)
@@ -596,9 +594,13 @@ extension AppModel {
         }
         reconcileForumMessage(message)
         reconcilePollSearchMessage(message)
+        if updatesPinnedMessages { reconcilePinnedMessage(message) }
+        reconcileInboxMessage(message)
+        receiveGuideResourceEvent(.messageUpdated(message))
     }
 
     func consumeMessageDeleted(channelID: ChannelID, messageID: MessageID) {
+        receiveGuideResourceEvent(.messageDeleted(channelID: channelID, messageID: messageID))
         invalidateTimelineThreadPreview(channelID: channelID, messageID: messageID)
         recordConversationRefreshMutation(
             .delete,
@@ -637,7 +639,7 @@ extension AppModel {
         if let selectedChannelID {
             _ = readState.updatePresentation(
                 channelID: selectedChannelID,
-                isPresented: true,
+                isPresented: isConversationPresented(selectedChannelID),
                 initialHistoryLoaded: !isLoadingMessages && messageLoadError == nil,
                 windowIsActive: mainWindowIsActive
             )
@@ -645,7 +647,7 @@ extension AppModel {
         if let threadID = openThread?.id {
             _ = readState.updatePresentation(
                 channelID: threadID,
-                isPresented: true,
+                isPresented: isConversationPresented(threadID),
                 initialHistoryLoaded: !isLoadingThread && threadErrorMessage == nil,
                 windowIsActive: mainWindowIsActive
             )

@@ -257,11 +257,12 @@ extension AppModel {
         }
     }
 
-    func showMembers(withRole roleID: RoleID) {
+    func showMembers(withRole roleID: RoleID, in guildID: GuildID?) {
         roleMemberTask?.cancel()
         roleMemberResult = nil
         roleMemberErrorMessage = nil
-        guard let guildID = selectedGuildID else {
+        isLoadingRoleMembers = false
+        guard let guildID else {
             roleMemberErrorMessage = "Role members are only available inside a server."
             return
         }
@@ -272,11 +273,13 @@ extension AppModel {
             do {
                 let result = try await session.provider.members(withRole: roleID, in: guildID)
                 guard !Task.isCancelled,
-                      isCurrentAccountSession(session),
-                      selectedGuildID == guildID
+                      isCurrentAccountSession(session)
                 else { return }
                 roleMemberResult = result
-                for member in result.members { knownMentionMembers[member.id] = member }
+                for member in result.members {
+                    membersByGuildID[guildID, default: [:]][member.id] = member
+                    if selectedGuildID == guildID { knownMentionMembers[member.id] = member }
+                }
             } catch is CancellationError {
                 return
             } catch {

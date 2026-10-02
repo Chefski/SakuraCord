@@ -584,6 +584,7 @@ extension NativeTimelineCanvasView {
                 else { return false }
                 self.showMessageProfile(
                     for: user,
+                    sourceMessage: message,
                     anchor: self.accessibilityChildFrame(
                         region.profileFrame,
                         rowIndex: rowIndex
@@ -617,6 +618,7 @@ extension NativeTimelineCanvasView {
                     guard let self else { return false }
                     self.showMessageProfile(
                         for: author,
+                        sourceMessage: message,
                         anchor: self.accessibilityChildFrame(
                             authorFrame,
                             rowIndex: rowIndex
@@ -1018,6 +1020,7 @@ extension NativeTimelineCanvasView {
                         presentSystemProfile: { [weak self] user in
                             self?.showMessageProfile(
                                 for: user,
+                                sourceMessage: sourceMessage,
                                 anchor: anchor
                             )
                         }

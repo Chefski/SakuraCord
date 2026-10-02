@@ -461,6 +461,7 @@ extension AppModel {
         resetTimelineLiveScrolling()
         clearReactionMutationState()
         pollVoteMutations.removeAll()
+        pollResultRefreshJournals.removeAll()
         stopLocalTyping(clearThrottle: true)
         typingState.clearAll()
         clientAppStateUpdateTask?.cancel()

@@ -632,22 +632,22 @@ func attachmentPasteTargetLifecycle() throws {
     let changedFocus = try #require(model.attachmentPasteTarget())
     model.focus(second)
     model.focus(first)
-    model.finishAttachmentPaste(oldURL, target: changedFocus)
+    #expect(!model.finishAttachmentPaste(oldURL, target: changedFocus))
     #expect(model.attachmentURLs.isEmpty)
 
     let changedCommand = try #require(model.attachmentPasteTarget())
     model.cancelActiveCommand()
     model.activate(command)
-    model.finishAttachmentPaste(oldURL, target: changedCommand)
+    #expect(!model.finishAttachmentPaste(oldURL, target: changedCommand))
     #expect(model.attachmentURLs.isEmpty)
 
     let overwritten = try #require(model.attachmentPasteTarget())
     model.setValue(.attachment(newURL), for: first)
-    model.finishAttachmentPaste(oldURL, target: overwritten)
+    #expect(!model.finishAttachmentPaste(oldURL, target: overwritten))
     #expect(model.value(for: first) == .attachment(newURL))
 
     model.focus(second)
     let current = try #require(model.attachmentPasteTarget())
-    model.finishAttachmentPaste(oldURL, target: current)
+    #expect(model.finishAttachmentPaste(oldURL, target: current))
     #expect(model.value(for: second) == .attachment(oldURL))
 }

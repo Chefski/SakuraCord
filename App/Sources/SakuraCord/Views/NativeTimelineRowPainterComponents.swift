@@ -661,8 +661,7 @@ extension NativeTimelineRowPainter {
             guard target != input.activeComponentChoiceTarget else { continue }
             componentSelect(
                 region,
-                cornerRadius: bubbleConcentricCornerRadius(for: region.frame, in: input.bubbleRegion, fallback: 11),
-                isExpanded: target == input.activeComponentChoiceTarget
+                cornerRadius: bubbleConcentricCornerRadius(for: region.frame, in: input.bubbleRegion, fallback: 11)
             )
         }
     }
@@ -1305,8 +1304,7 @@ extension NativeTimelineRowPainter {
 
     static func componentSelect(
         _ region: NativeTimelineComponentLayout.SelectRegion,
-        cornerRadius: CGFloat = 11,
-        isExpanded: Bool = false
+        cornerRadius: CGFloat = 11
     ) {
         let opacity: CGFloat = region.isDisabled ? 0.65 : 1
         NSColor.labelColor.withAlphaComponent(0.075 * opacity).setFill()
@@ -1329,7 +1327,7 @@ extension NativeTimelineRowPainter {
             )
         }
         if options.isEmpty {
-            SelectionFieldChromeRenderer.drawText(
+            SelectionFieldRenderer.drawText(
                 region.placeholder,
                 in: region.frame,
                 color: .placeholderTextColor,
@@ -1342,8 +1340,7 @@ extension NativeTimelineRowPainter {
                 opacity: opacity
             )
         }
-        SelectionFieldChromeRenderer.drawChevron(
-            isExpanded: isExpanded,
+        SelectionFieldRenderer.drawChevron(
             in: region.frame,
             opacity: opacity
         )
@@ -1362,10 +1359,10 @@ extension NativeTimelineRowPainter {
                 origin.x = frame.minX + 11
                 origin.y += 34
             }
-            let image = SelectionFieldTokenRenderer.images(
-                option: option, font: SelectionFieldLayoutMetrics.font, usesCard: true,
+            let image = SelectionFieldRenderer.tokenImage(
+                option: option, font: SelectionFieldLayoutMetrics.font,
                 leadingImage: componentSelectLeadingImage(option.leading), maximumWidth: tokenWidth
-            ).normal
+            )
             image.draw(
                 in: CGRect(origin: origin, size: image.size),
                 from: .zero, operation: .sourceOver, fraction: opacity, respectFlipped: true, hints: nil

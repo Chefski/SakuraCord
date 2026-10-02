@@ -3,7 +3,7 @@ import SakuraCordModels
 
 extension AppModel {
     func loadInboxForum(_ group: InboxUnreadGroup, session: AppModelAccountSession, generation: UInt64) async throws {
-        var query = ForumPostQuery(sortOrder: .creationDate, limit: 100)
+        var query = ForumPostQuery(sortOrder: .creationDate, limit: 100, requiresFreshPage: true)
         var posts: [ChannelID: ForumPost] = [:]
         while true {
             let page = try await session.provider.forumPosts(in: group.channelID, query: query)

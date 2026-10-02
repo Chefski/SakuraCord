@@ -672,6 +672,19 @@ final class AppModel {
         )
     }
 
+    func effectiveMessagePermissions(in channel: Channel) -> UInt64? {
+        guard let guildID = channel.guildID,
+              let basis = conversationPermissionBasis(for: guildID)
+        else { return channel.guildID == nil ? .max : nil }
+        return ConversationPermissionResolver.effectivePermissions(
+            guild: basis.guild,
+            channel: channel,
+            resolvedBasePermissions: basis.resolvedBasePermissions,
+            overwritePrincipals: basis.overwritePrincipals,
+            hasCurrentRoleIdentity: basis.hasCurrentRoleIdentity
+        )
+    }
+
     func conversationAccess(
         for channel: Channel,
         permissionBasis: ConversationPermissionBasis?
@@ -879,32 +892,6 @@ final class AppModel {
         return conversationAccess(for: channel).isReadable
     }
 
-    var openThreadAccess: ConversationAccess {
-        guard let thread = openThread, let channel = selectedChannel else { return .checking }
-        guard let guildID = channel.guildID else { return .readable(canSend: true) }
-        guard let guild = serverRailGuildsByID[guildID],
-              let currentUserID = currentUser?.id
-        else {
-            return .checking
-        }
-        let member = membersByID[currentUserID]
-        let permissions = ConversationPermissionResolver.effectivePermissions(
-            guild: guild,
-            channel: channel,
-            currentUserID: currentUserID,
-            currentMember: member,
-            roles: guildRoles,
-            currentRoleIDs: currentUserRoleIDsByGuild[guildID]
-        )
-        let access = ConversationPermissionResolver.threadAccess(
-            effectivePermissions: permissions,
-            isLocked: thread.isLocked
-        )
-        if requiresOnboarding(in: guildID) || onboardingMember(in: guildID)?.isPending == true {
-            return access.isReadable ? .readable(canSend: false) : access
-        }
-        return access
-    }
     var conversationNavigationHistory = ConversationNavigationHistory()
     var selectedChannelID: ChannelID? {
         didSet {
@@ -976,7 +963,7 @@ final class AppModel {
             if let selectedChannelID {
                 _ = readState.updatePresentation(
                     channelID: selectedChannelID,
-                    isPresented: true,
+                    isPresented: isConversationPresented(selectedChannelID),
                     initialHistoryLoaded: false,
                     initialPositionEstablished: false,
                     windowIsActive: mainWindowIsActive,
@@ -1100,6 +1087,7 @@ final class AppModel {
         [ReactionMutationKey: Task<Void, Never>] = [:]
     @ObservationIgnored let reactionMutationTiming: ReactionMutationTiming
     @ObservationIgnored var pollVoteMutations: [MessageID: PollVoteMutationState] = [:]
+    @ObservationIgnored var pollResultRefreshJournals: [MessageID: ConversationRefreshJournal] = [:]
     @ObservationIgnored var guildActivationTask: Task<Void, Never>?
     @ObservationIgnored var memberLoadTask: Task<Void, Never>?
     @ObservationIgnored var memberLoadGeneration: UInt64 = 0

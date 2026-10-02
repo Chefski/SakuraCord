@@ -706,7 +706,7 @@ extension NativeTimelineCanvasView {
         guard let url = hit.url else { return false }
         let presentSystemProfile: ((User) -> Void)? = profileAnchor.map { anchor in
             { [weak self] user in
-                self?.showMessageProfile(for: user, anchor: anchor)
+                self?.showMessageProfile(for: user, sourceMessage: message, anchor: anchor)
             }
         }
         return MessageLinkActivator.activate(
@@ -752,11 +752,12 @@ extension NativeTimelineCanvasView {
             if let user = resolver.user(id) {
                 showMentionProfile(
                     for: user,
+                    sourceMessage: message,
                     anchor: anchor
                 )
             }
         case let .role(id):
-            showMentionRole(id, anchor: anchor)
+            showMentionRole(id, sourceMessage: message, anchor: anchor)
         case let .guildNavigation(guildID, destination):
             model.openGuildNavigationDestination(destination, in: guildID)
         case let .channel(id):
@@ -952,7 +953,6 @@ extension NativeTimelineCanvasView {
                 options: region.options,
                 initialOptions: initialOptions,
                 selectedOptions: selectedOptions,
-                minimumSelectionCount: region.minimumSelectionCount,
                 maximumSelectionCount: region.maximumSelectionCount,
                 loader: { [weak model] query in
                     guard let model else {
@@ -969,11 +969,8 @@ extension NativeTimelineCanvasView {
                     pendingOptions = options
                     overlay?.updateSelection(options.map(\.value))
                 },
-                submitSelection: { [weak overlay] values in
-                    overlay?.submitSelection(values)
-                },
-                dismiss: { [weak overlay] in
-                    overlay?.close()
+                complete: { [weak overlay] values, reason in
+                    overlay?.completeSelection(values, reason: reason)
                 }
             )),
             in: self,

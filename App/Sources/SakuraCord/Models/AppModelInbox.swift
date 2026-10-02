@@ -56,7 +56,6 @@ extension AppModel {
         inbox.nextBefore = nil
         inbox.removedIDs = []
         inbox.deletedIDs = []
-        inbox.replacements = [:]
         if inbox.tab == .unread {
             inbox.groups = makeInboxUnreadGroups()
             inbox.unreadOrder = inbox.groups.map(\.id)
@@ -85,12 +84,14 @@ extension AppModel {
         let group = inbox.groups.first { !$0.isLoaded && !$0.isCollapsed }
         if tab == .unread, group == nil { inbox.hasMore = false; return }
         inbox.isLoading = true
+        inbox.refreshJournal = ConversationRefreshJournal(revision: generation)
         inbox.loadTask = Task { [weak self] in
             guard let self else { return }
             var continuesAfterEmptyGroup = false
             defer {
                 if isCurrentAccountSession(session), inbox.generation == generation {
                     inbox.isLoading = false
+                    inbox.refreshJournal = nil
                     inbox.loadTask = nil
                     if continuesAfterEmptyGroup { loadMoreInbox() }
                 }
@@ -263,26 +264,25 @@ extension AppModel {
     }
 
     func removeInboxMessage(_ id: MessageID, mentionsOnly: Bool = true) {
-        guard inbox.isPresented || inbox.loadTask != nil || !inbox.mentions.isEmpty else { return }
+        guard inbox.isPresented || inbox.loadTask != nil || inbox.retainedMessages.contains(where: { $0.id == id }) else { return }
         inbox.removedIDs.insert(id)
-        inbox.replacements[id] = nil
-        inbox.mentions.removeAll { $0.id == id }
-        if !mentionsOnly {
+        if mentionsOnly {
+            inbox.mentions.removeAll { $0.id == id }
+        } else {
             inbox.deletedIDs.insert(id)
-            for index in inbox.groups.indices { inbox.groups[index].messages.removeAll { $0.id == id } }
+            inbox.replaceRetainedMessage(id, with: nil)
         }
         publishInbox()
         if !mentionsOnly { dismissEmptyInboxGroups() }
     }
 
     func reconcileInboxMessage(_ message: Message, isNew: Bool = false) {
+        var changed = inbox.replaceRetainedMessage(message.id, with: message)
         guard inbox.isPresented else { return }
-        let retained = inbox.mentions.contains { $0.id == message.id }
-            || inbox.groups.contains { $0.messages.contains { $0.id == message.id } }
-        let awaitingPage = inbox.isLoading && (inbox.tab == .mentions
-            || inbox.groups.contains { $0.channelID == message.channelID && !$0.isLoaded })
-        if retained || awaitingPage { inbox.replacements[message.id] = message }
-        var changed = replaceInboxMessage(message)
+        if inbox.refreshJournal != nil {
+            let confirmed = pollVoteConfirmedSnapshot(reactionConfirmedSnapshot(message))
+            inbox.refreshJournal?.record(.upsert(confirmed), messageID: message.id)
+        }
         if isNew, !inbox.mentions.contains(where: { $0.id == message.id }), acceptsLiveInboxMention(message) {
             inbox.mentions.append(message)
             inbox.mentions.sort { $0.id > $1.id }
@@ -297,22 +297,6 @@ extension AppModel {
             && snapshot?.blockedOrIgnoredUserIDs.contains(message.author.id) != true
             && readState.isInboxMention(message, query: inbox.query)
             && (inbox.query.guildID == nil || inbox.query.guildID == (message.guildID ?? readState.entries[message.channelID]?.guildID))
-    }
-
-    private func replaceInboxMessage(_ message: Message) -> Bool {
-        var changed = false
-        if let index = inbox.mentions.firstIndex(where: { $0.id == message.id }), inbox.mentions[index] != message {
-            inbox.mentions[index] = message
-            changed = true
-        }
-        for groupIndex in inbox.groups.indices {
-            if let index = inbox.groups[groupIndex].messages.firstIndex(where: { $0.id == message.id }),
-               inbox.groups[groupIndex].messages[index] != message {
-                inbox.groups[groupIndex].messages[index] = message
-                changed = true
-            }
-        }
-        return changed
     }
 
     func reconcileInboxEligibility() {

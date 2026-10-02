@@ -83,41 +83,55 @@ When updating documentation:
 
 ## Issues and roadmap
 
-GitHub Issues in this repository are the single source of truth for bugs,
-suggestions, and planned work. The
-[SakuraCord hub](https://github.com/SakuraCordApp/Roadmap) keeps every issue in
-sync with its Discord forum post and
-[sakuracord.app/tracker](https://sakuracord.app/tracker), including comments,
-so discuss and update an issue in whichever place is convenient.
+GitHub Issues in this repository are the source of truth for bugs, suggestions,
+and planned work; versions are GitHub milestones. The
+[SakuraCord hub](https://github.com/SakuraCordApp/Roadmap) mirrors reports and
+conversation between GitHub, Discord forum posts, and the
+[tracker](https://sakuracord.app/tracker). Updates are queued, so mirrors can lag.
+The hub database holds projections, links, subscriptions, and sync state; do not
+maintain a second backlog there or in a repository `ROADMAP.md`.
 
-- Status is one `status: …` label (New, Needs Info, Confirmed, Planned,
-  In Progress, In Nightly, Shipped, Declined, Can't Reproduce) or the close
-  reason. Area and priority are `area: …` and `priority: …` labels; the issue
-  type is Bug or Feature.
-- Versions are milestones. A milestone's description is its roadmap entry: a
-  headline line, an optional summary, then `- highlight (#N)` bullets. Assigning
-  a milestone makes an issue Planned.
-- Write `Fixes #N` in pull requests and nightly commits. An open PR moves the
-  issue to In Progress, landing on `nightly` moves it to In Nightly, and the
-  first release whose tag contains the fix closes it as Shipped and pings
-  everyone following it.
-- Each new report starts one read-only triage and investigation agent on
-  GitHub Actions, using GPT-6 Luna and the nightly checkout. It reads the report,
-  recent comments, screenshots, and similar reports, then posts one assessment
-  with classification, questions, duplicate suggestions, and code findings.
-  The hub validates the result before changing issue metadata.
+- File reports through the app's **Help** menu, the website, Discord's report
+  forms, or GitHub's issue forms. Continue discussion on the existing report.
+- Issue types are Bug or Feature; area and priority use `area: …` and
+  `priority: …` labels. The hub normalizes status from one `status: …` label
+  and the issue's open/closed state and close reason. Closing as completed alone
+  means Done, not Shipped; duplicate and not-planned closures retain their own
+  outcomes.
+- Milestone descriptions supply the [roadmap](https://sakuracord.app/roadmap):
+  a headline line, optional summary, then `- highlight (#N)` bullets. Assigning
+  a milestone moves New or Confirmed issues to Planned; removing it moves
+  Planned back to Confirmed. It does not override Needs Info or work already
+  in progress.
+- Put `Fixes #N` in a PR title/body or a commit message. An open linked PR moves
+  an issue awaiting work to In Progress; a merged PR or a commit pushed to
+  `nightly` moves it to In Nightly. Target implementation PRs at `nightly`.
+  The first published release whose tag contains a recorded fix marks it
+  Shipped and closes it, including beta releases. A later regular release is
+  tracked separately. The hub posts release updates and notifies Discord
+  followers. See [Releasing](RELEASING.md#release-model) for the checklist.
+- New reports trigger one read-only triage and investigation agent in GitHub
+  Actions against the nightly checkout (GPT-6 Luna by default). It reads the
+  report, recent comments, screenshots, and similar reports, then posts one
+  assessment with classification, questions, duplicate suggestions, and code
+  findings. The hub validates the result before applying metadata; later
+  maintainer status decisions take precedence over automated triage.
 - Both bugs and suggestions require the latest published nightly or regular
   release. The agent can correct either category and considers closed reports
   as duplicates. It verifies fix-commit ancestry against the reported release:
   fixed in code, published in nightly, and published in regular are distinct.
   A build already containing a claimed fix needs regression investigation.
   Verified existing fixes join release tracking; unreleased fixes stay open.
-- Rerun with `agent: investigate` or Discord's Manage menu. The label stays
-  until the hub applies the result; retry a failed run in Actions.
-- `agent: fix` explicitly starts the separate macOS agent, which opens a draft
-  pull request against `nightly`. Neither agent merges changes; review their
-  output like any contribution.
+- Maintainers can rerun with `agent: investigate` or Discord's Manage menu.
+  The label stays until the hub applies the result; retry a failed run in
+  Actions. A report body edited during assessment triggers a fresh run.
+- `agent: fix` explicitly starts the separate macOS implementation agent. When
+  it produces changes, it opens or updates a draft PR against `nightly`.
+  Neither agent merges changes; review their output like any contribution.
 
 Use `gh issue list`, `gh issue view`, and `gh api` to read and update issues.
-Do not add a repository `ROADMAP.md`. A code match or commit is evidence to
-review, not proof that an issue is complete.
+A code match or commit is evidence to review, not proof that an issue is complete.
+The hub's [lifecycle rules](https://github.com/SakuraCordApp/Roadmap/blob/main/src/lifecycle.ts)
+and [fix/release synchronization](https://github.com/SakuraCordApp/Roadmap/blob/main/src/sync/activity.ts)
+implement these transitions; this repository's [agent workflows](../.github/workflows)
+run the assessments and fixes.

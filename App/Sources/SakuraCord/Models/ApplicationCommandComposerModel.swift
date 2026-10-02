@@ -144,9 +144,11 @@ final class ApplicationCommandComposerModel {
         pastedAttachmentOption.map { AttachmentPasteTarget(revision: attachmentPasteRevision, option: $0) }
     }
 
-    func finishAttachmentPaste(_ url: URL, target: AttachmentPasteTarget) {
-        guard target.revision == attachmentPasteRevision else { return }
+    @discardableResult
+    func finishAttachmentPaste(_ url: URL, target: AttachmentPasteTarget) -> Bool {
+        guard target.revision == attachmentPasteRevision else { return false }
         setValue(.attachment(url), displayText: url.lastPathComponent, for: target.option)
+        return true
     }
 
     var attachmentURLs: [URL] {

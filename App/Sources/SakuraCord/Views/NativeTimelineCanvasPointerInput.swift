@@ -752,6 +752,7 @@ extension NativeTimelineCanvasView {
                 ?? row.message.author
             showMessageProfile(
                 for: author,
+                sourceMessage: row.message,
                 anchor: authorFrame.offsetBy(
                     dx: 0,
                     dy: displayedRowOrigin(at: rowIndex)
@@ -765,6 +766,7 @@ extension NativeTimelineCanvasView {
         {
             showMessageProfile(
                 for: user,
+                sourceMessage: row.message,
                 anchor: invocation.profileFrame.offsetBy(
                     dx: 0,
                     dy: displayedRowOrigin(at: rowIndex)
@@ -927,11 +929,14 @@ extension NativeTimelineCanvasView {
 
     func showMessageProfile(
         for user: User,
+        sourceMessage: Message,
         anchor: CGRect
     ) {
         guard let model else { return }
         closeMentionPopover()
-        let presentationIdentity = AnyHashable(user.id)
+        let presentationIdentity = AnyHashable(ProfileCacheKey(
+            userID: user.id, guildID: model.messagePresentationGuildID(for: sourceMessage)
+        ))
         if messageProfilePopoverCoordinator.isPresenting(
             identity: presentationIdentity
         ) {
@@ -939,7 +944,7 @@ extension NativeTimelineCanvasView {
             return
         }
         closeMessageProfilePopover()
-        let requestID = model.showProfile(for: user)
+        let requestID = model.showProfile(for: user, sourceMessage: sourceMessage)
         let popoverAnchor = StablePopoverAnchor(
             sourceView: self,
             sourceRect: { anchor }
@@ -971,11 +976,12 @@ extension NativeTimelineCanvasView {
 
     func showMentionProfile(
         for user: User,
+        sourceMessage: Message,
         anchor: StablePopoverAnchor
     ) {
         guard let model else { return }
         closeMessageProfilePopover()
-        let requestID = model.showProfile(for: user)
+        let requestID = model.showProfile(for: user, sourceMessage: sourceMessage)
         showMentionPopover(
             AnyView(
                 MessageProfilePopoverContent(
@@ -991,16 +997,19 @@ extension NativeTimelineCanvasView {
 
     func showMentionRole(
         _ roleID: RoleID,
+        sourceMessage: Message,
         anchor: StablePopoverAnchor
     ) {
         guard let model else { return }
         closeMessageProfilePopover()
-        model.showMembers(withRole: roleID)
+        let guildID = model.messagePresentationGuildID(for: sourceMessage)
+        model.showMembers(withRole: roleID, in: guildID)
         showMentionPopover(
             AnyView(
                 RoleMembersPopover(
                     model: model,
-                    roleID: roleID
+                    roleID: roleID,
+                    guildID: guildID
                 )
             ),
             anchor: anchor
