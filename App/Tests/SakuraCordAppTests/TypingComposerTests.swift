@@ -413,7 +413,7 @@ func `remote typing is channel scoped cleared by message and disconnect`() async
 }
 
 @MainActor
-@Test func `oversized attachment is rejected at selection and external upload stays opt in`() async throws {
+@Test func `new thread attachments respect limits and keep external upload opt in`() async throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
         "sakuracord-attachment-limit-\(UUID().uuidString)",
         isDirectory: true
@@ -440,9 +440,11 @@ func `remote typing is channel scoped cleared by message and disconnect`() async
     )
     await model.start()
     model.snapshot?.currentUser.premiumType = 0
+    model.threadCreation = ThreadCreationDraft(parentID: try #require(model.selectedChannelID),
+                                              permissions: .init(canCreatePublic: true, canCreatePrivate: false))
 
-    #expect(await model.addComposerAttachments([exact, oversized], to: .channel))
-    #expect(model.channelComposerAttachments.map(\.url) == [exact])
+    #expect(await model.addComposerAttachments([exact, oversized], to: .thread))
+    #expect(model.threadComposerAttachments.map(\.url) == [exact])
     let prompt = try #require(model.oversizedAttachmentPrompt)
     #expect(prompt.fileURL == oversized)
     #expect(prompt.discordLimit == DiscordAttachmentUploadPolicy.baseLimit)
@@ -455,11 +457,11 @@ func `remote typing is channel scoped cleared by message and disconnect`() async
     #expect(externalPrompt.stage == .externalUpload)
     model.dismissOversizedAttachmentPrompt(id: prompt.id)
     #expect(model.oversizedAttachmentPrompt?.id == externalPrompt.id)
-    model.updateDraft("look")
+    model.threadDraft = "look"
     model.uploadOversizedAttachment(externalPrompt, using: .catbox)
     #expect(await until { model.externalAttachmentUploadPresentation == nil })
     #expect(await uploader.callCount == 1)
-    #expect(model.draft == "look https://files.catbox.moe/test.bin")
+    #expect(model.threadDraft == "look https://files.catbox.moe/test.bin")
 }
 
 @MainActor
@@ -477,7 +479,7 @@ func `remote typing is channel scoped cleared by message and disconnect`() async
         discordLimit: DiscordAttachmentUploadPolicy.baseLimit,
         premiumType: 0,
         destination: .channel,
-        channelID: channelID
+        context: .conversation(channelID)
     )
     let second = OversizedAttachmentPrompt(
         fileURL: URL(fileURLWithPath: "/tmp/second-oversized.bin"),
@@ -485,7 +487,7 @@ func `remote typing is channel scoped cleared by message and disconnect`() async
         discordLimit: DiscordAttachmentUploadPolicy.baseLimit,
         premiumType: 0,
         destination: .channel,
-        channelID: channelID
+        context: .conversation(channelID)
     )
     model.oversizedAttachmentPrompt = first
     model.queuedOversizedAttachmentPrompts = [second]
@@ -514,7 +516,7 @@ func `remote typing is channel scoped cleared by message and disconnect`() async
         discordLimit: DiscordAttachmentUploadPolicy.baseLimit,
         premiumType: 0,
         destination: .channel,
-        channelID: channelID
+        context: .conversation(channelID)
     )
     let second = OversizedAttachmentPrompt(
         fileURL: URL(fileURLWithPath: "/tmp/second.bin"),
@@ -522,7 +524,7 @@ func `remote typing is channel scoped cleared by message and disconnect`() async
         discordLimit: DiscordAttachmentUploadPolicy.baseLimit,
         premiumType: 0,
         destination: .channel,
-        channelID: channelID
+        context: .conversation(channelID)
     )
     model.oversizedAttachmentPrompt = first
     model.queuedOversizedAttachmentPrompts = [second]
@@ -552,7 +554,8 @@ func `remote typing is channel scoped cleared by message and disconnect`() async
 }
 
 @MainActor
-@Test func `account reset invalidates an external upload result`() async throws {
+@Test(arguments: [true, false])
+func `account or thread draft replacement invalidates an external upload result`(resetsAccount: Bool) async throws {
     let uploader = SequencedAttachmentUploadTestUploader()
     let model = AppModel(
         launchMode: .offlineTesting,
@@ -562,19 +565,30 @@ func `remote typing is channel scoped cleared by message and disconnect`() async
     )
     await model.start()
     let channelID = try #require(model.selectedChannelID)
+    let destination: MessageComposerDestination = resetsAccount ? .channel : .thread
+    if !resetsAccount {
+        model.threadCreation = ThreadCreationDraft(parentID: channelID,
+                                                  permissions: .init(canCreatePublic: true, canCreatePrivate: false))
+    }
     let prompt = OversizedAttachmentPrompt(
         fileURL: URL(fileURLWithPath: "/tmp/account-reset.bin"),
         fileSize: DiscordAttachmentUploadPolicy.baseLimit + 1,
         discordLimit: DiscordAttachmentUploadPolicy.baseLimit,
         premiumType: 0,
-        destination: .channel,
-        channelID: channelID
+        destination: destination,
+        context: try #require(model.attachmentComposerContext(for: destination))
     )
     model.oversizedAttachmentPrompt = prompt
     model.uploadOversizedAttachment(prompt, using: .catbox)
     #expect(await eventually { await uploader.callCount == 1 })
 
-    await model.resetAccountScopedLoadsAndForumState()
+    if resetsAccount {
+        await model.resetAccountScopedLoadsAndForumState()
+    } else {
+        model.closeThread()
+        model.threadCreation = ThreadCreationDraft(parentID: channelID,
+                                                  permissions: .init(canCreatePublic: true, canCreatePrivate: false))
+    }
     await uploader.release(
         call: 1,
         with: URL(string: "https://files.catbox.moe/stale.bin")!
@@ -582,6 +596,7 @@ func `remote typing is channel scoped cleared by message and disconnect`() async
     #expect(await eventually { model.externalAttachmentUploadTask == nil })
     #expect(model.externalAttachmentUploadPresentation == nil)
     #expect(model.draft.isEmpty)
+    #expect(model.threadDraft.isEmpty)
 }
 
 @MainActor
@@ -629,7 +644,8 @@ func oversizedAttachmentPolicies(compaction: AttachmentHandlingPolicy, external:
 }
 
 @MainActor
-@Test func compactionFitsPreservesOriginalAndSkipsFilesWithinAccountLimit() async throws {
+@Test(arguments: [MessageComposerDestination.channel, .thread])
+func compactionFitsPreservesOriginalAndSkipsFilesWithinAccountLimit(destination: MessageComposerDestination) async throws {
     let directory = try ComposerPromisedFileStorage.makeReceivingDirectory()
     defer { ComposerPromisedFileStorage.removeDirectory(directory) }
     let exact = directory.appendingPathComponent("exact.bin")
@@ -645,17 +661,21 @@ func oversizedAttachmentPolicies(compaction: AttachmentHandlingPolicy, external:
     model.snapshot?.currentUser.premiumType = 0
     model.attachmentSettings.compactionPolicy = .always
     model.attachmentSettings.externalUploadPolicy = .always
-    #expect(await model.addPromisedComposerAttachments(.init(directory: directory, urls: [exact, oversized]), to: .channel))
+    if destination == .thread {
+        model.threadCreation = ThreadCreationDraft(parentID: try #require(model.selectedChannelID),
+                                                  permissions: .init(canCreatePublic: true, canCreatePrivate: false))
+    }
+    #expect(await model.addPromisedComposerAttachments(.init(directory: directory, urls: [exact, oversized]), to: destination))
     await model.attachmentCompactionTask?.value
     #expect(await worker.calls == 1)
     #expect(await uploader.callCount == 0)
-    #expect(model.channelComposerAttachments.count == 2)
-    #expect(model.channelComposerAttachments.first?.url == exact)
-    let compacted = try #require(model.channelComposerAttachments.last?.url)
+    #expect(model.composerAttachments(for: destination).count == 2)
+    #expect(model.composerAttachments(for: destination).first?.url == exact)
+    let compacted = try #require(model.composerAttachments(for: destination).last?.url)
     #expect(compacted != oversized)
     #expect(model.attachmentFileSize(at: compacted) == DiscordAttachmentUploadPolicy.baseLimit)
     #expect(model.attachmentFileSize(at: oversized) == DiscordAttachmentUploadPolicy.baseLimit + 1)
-    model.clearComposerAttachments(for: .channel)
+    model.clearComposerAttachments(for: destination)
     #expect(!FileManager.default.fileExists(atPath: compacted.path))
     #expect(!FileManager.default.fileExists(atPath: directory.path))
 }

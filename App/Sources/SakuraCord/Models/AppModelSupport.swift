@@ -246,6 +246,7 @@ nonisolated struct ThreadCreationPermissions: Equatable, Sendable {
 final class ThreadCreationDraft {
     static let maximumNameLength = 100
 
+    let identity = UUID()
     let parentID: ChannelID
     /// Resolved when the pane opens; submission rechecks the live permissions.
     let permissions: ThreadCreationPermissions
