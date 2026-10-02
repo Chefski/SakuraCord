@@ -22,6 +22,7 @@ extension AppModel {
     func reconcileRetainedMessageIdentities(_ user: User) {
         // Pages still being prepared have no retained message IDs yet. Keep
         // identity changes at conversation scope until their refresh commits.
+        inbox.refreshJournal?.recordIdentityUpdate(user)
         for channelID in conversationRefreshJournals.keys {
             conversationRefreshJournals[channelID]?.recordIdentityUpdate(user)
         }

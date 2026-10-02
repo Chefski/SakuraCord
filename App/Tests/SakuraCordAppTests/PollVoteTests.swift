@@ -161,6 +161,46 @@ func `poll votes apply before confirmation ignore their echo and roll back on fa
     #expect(loaded.rows.first(where: { $0.id == historyMessage.id })?.message.content == "Edited during load")
 }
 
+@MainActor
+@Test(arguments: [InboxTab.mentions, .unread])
+func `Inbox loads preserve poll patches for messages not yet retained`(tab: InboxTab) async throws {
+    let provider = PollVoteTestProvider()
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    let message = try #require(model.messages.first)
+    model.replaceSelectedMessages(with: [])
+    model.messageCache.removeAll()
+    model.inbox.isPresented = true
+    model.inbox.tab = tab
+    model.inbox.groups = [InboxUnreadGroup(
+        channelID: message.channelID, guildID: nil, title: "Pending page", subtitle: nil,
+        oldestReadMessageID: MessageID(rawValue: message.id.rawValue - 1),
+        newestUnreadMessageID: message.id, mentionCount: 1
+    )]
+    model.inbox.hasMore = true
+    await provider.holdInboxPages()
+    model.loadMoreInbox()
+    await provider.waitForInboxPage()
+    #expect(model.retainedMessage(channelID: message.channelID, messageID: message.id) == nil)
+    var update = MessageUpdate(messageID: message.id, channelID: message.channelID)
+    update.content = "Edited while Inbox was loading"
+    update.pollUpdates = [.vote(answerID: 2, isAddition: true, isCurrentUser: false)]
+    model.consumeImmediately(.messagePatched(update))
+    update.content = nil
+    model.consumeImmediately(.messagePatched(update))
+    model.consumeImmediately(.messageCreated(Message(
+        id: MessageID(rawValue: message.id.rawValue + 1), channelID: message.channelID,
+        author: message.author, content: "Not in the captured Inbox page"
+    )))
+    await provider.resumeInboxPage()
+    await model.inbox.loadTask?.value
+    let loaded = tab == .mentions ? model.inbox.mentions : model.inbox.groups.flatMap(\.messages)
+    #expect(loaded.map(\.id) == [message.id])
+    #expect(loaded.first?.content == "Edited while Inbox was loading")
+    #expect(loaded.first?.poll?.count(for: 2) == 3)
+    #expect(model.inbox.rows.first?.message == loaded.first)
+}
+
 private actor PollVoteTestProvider: ChatProvider {
     private let user = User(id: UserID(rawValue: 99_001), username: "poll-tester", displayName: "Poll Tester")
     private let channel = Channel(id: ChannelID(rawValue: 99_002), guildID: nil, name: "poll-tests")
@@ -171,6 +211,8 @@ private actor PollVoteTestProvider: ChatProvider {
     private var requestContinuation: CheckedContinuation<Void, Never>?
     private var searchContinuation: CheckedContinuation<Void, Never>?
     private var historyContinuation: CheckedContinuation<MessagePage, Never>?
+    private var holdsInboxPages = false
+    private var inboxContinuation: CheckedContinuation<Void, Never>?
 
     func bootstrap() async throws -> BootstrapSnapshot {
         BootstrapSnapshot(currentUser: user, guilds: [], channels: [channel], members: [])
@@ -214,7 +256,30 @@ private actor PollVoteTestProvider: ChatProvider {
 
     func inboxMentions(_ query: InboxMentionQuery, before: MessageID?) async throws -> InboxMentionPage {
         let page = try await messages(in: channel.id, before: nil, limit: 25)
+        await holdInboxPageIfRequested()
         return InboxMentionPage(messages: page.messages, nextBefore: nil, hasMore: false)
+    }
+
+    func messagesForImmediatePresentation(in channelID: ChannelID, anchoredAt anchor: MessageHistoryAnchor, limit: Int) async throws -> MessagePage {
+        let page = try await messages(in: channelID, anchoredAt: anchor, limit: limit)
+        await holdInboxPageIfRequested()
+        return page
+    }
+
+    func holdInboxPages() { holdsInboxPages = true }
+
+    private func holdInboxPageIfRequested() async {
+        if holdsInboxPages { await withCheckedContinuation { inboxContinuation = $0 } }
+    }
+
+    func waitForInboxPage() async {
+        while inboxContinuation == nil { await Task.yield() }
+    }
+
+    func resumeInboxPage() {
+        holdsInboxPages = false
+        inboxContinuation?.resume()
+        inboxContinuation = nil
     }
 
     func searchMessages(_ query: MessageSearchQuery) async throws -> MessageSearchPage {
@@ -264,6 +329,7 @@ private actor PollVoteTestProvider: ChatProvider {
     }
 
     func disconnect() async {
+        resumeInboxPage()
         historyContinuation?.resume(returning: MessagePage(messages: [], hasMoreBefore: false))
         historyContinuation = nil
         searchContinuation?.resume()

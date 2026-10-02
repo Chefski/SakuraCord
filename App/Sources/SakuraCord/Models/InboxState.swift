@@ -60,10 +60,10 @@ final class InboxState {
     @ObservationIgnored var loadTask: Task<Void, Never>?
     @ObservationIgnored var generation: UInt64 = 0
     @ObservationIgnored var nextBefore: MessageID?
-    // Tombstones and Gateway replacements win over an older in-flight page.
+    // Tombstones and the shared journal win over an older in-flight page.
     @ObservationIgnored var removedIDs: Set<MessageID> = []
     @ObservationIgnored var deletedIDs: Set<MessageID> = []
-    @ObservationIgnored var replacements: [MessageID: Message] = [:]
+    @ObservationIgnored var refreshJournal: ConversationRefreshJournal?
     @ObservationIgnored var metadataTasks: [ChannelID: Task<Void, Never>] = [:]
     @ObservationIgnored var mutationTasks: [MessageID: Task<Void, Never>] = [:]
     @ObservationIgnored var settingsSaveID = UUID()
@@ -121,6 +121,7 @@ final class InboxState {
         loadTask = nil
         generation &+= 1
         isLoading = false
+        refreshJournal = nil
     }
 
     func clear(notifying model: AnyObject) {
@@ -163,7 +164,6 @@ final class InboxState {
         dismissingIDs = []
         removedIDs = []
         deletedIDs = []
-        replacements = [:]
         publish(channels: [], guilds: [], notifying: model)
     }
 }

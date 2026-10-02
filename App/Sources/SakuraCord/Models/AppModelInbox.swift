@@ -56,7 +56,6 @@ extension AppModel {
         inbox.nextBefore = nil
         inbox.removedIDs = []
         inbox.deletedIDs = []
-        inbox.replacements = [:]
         if inbox.tab == .unread {
             inbox.groups = makeInboxUnreadGroups()
             inbox.unreadOrder = inbox.groups.map(\.id)
@@ -85,12 +84,14 @@ extension AppModel {
         let group = inbox.groups.first { !$0.isLoaded && !$0.isCollapsed }
         if tab == .unread, group == nil { inbox.hasMore = false; return }
         inbox.isLoading = true
+        inbox.refreshJournal = ConversationRefreshJournal(revision: generation)
         inbox.loadTask = Task { [weak self] in
             guard let self else { return }
             var continuesAfterEmptyGroup = false
             defer {
                 if isCurrentAccountSession(session), inbox.generation == generation {
                     inbox.isLoading = false
+                    inbox.refreshJournal = nil
                     inbox.loadTask = nil
                     if continuesAfterEmptyGroup { loadMoreInbox() }
                 }
@@ -265,7 +266,6 @@ extension AppModel {
     func removeInboxMessage(_ id: MessageID, mentionsOnly: Bool = true) {
         guard inbox.isPresented || inbox.loadTask != nil || !inbox.mentions.isEmpty else { return }
         inbox.removedIDs.insert(id)
-        inbox.replacements[id] = nil
         inbox.mentions.removeAll { $0.id == id }
         if !mentionsOnly {
             inbox.deletedIDs.insert(id)
@@ -277,11 +277,10 @@ extension AppModel {
 
     func reconcileInboxMessage(_ message: Message, isNew: Bool = false) {
         guard inbox.isPresented else { return }
-        let retained = inbox.mentions.contains { $0.id == message.id }
-            || inbox.groups.contains { $0.messages.contains { $0.id == message.id } }
-        let awaitingPage = inbox.isLoading && (inbox.tab == .mentions
-            || inbox.groups.contains { $0.channelID == message.channelID && !$0.isLoaded })
-        if retained || awaitingPage { inbox.replacements[message.id] = message }
+        if inbox.refreshJournal != nil {
+            let confirmed = pollVoteConfirmedSnapshot(reactionConfirmedSnapshot(message))
+            inbox.refreshJournal?.record(.upsert(confirmed), messageID: message.id)
+        }
         var changed = replaceInboxMessage(message)
         if isNew, !inbox.mentions.contains(where: { $0.id == message.id }), acceptsLiveInboxMention(message) {
             inbox.mentions.append(message)
