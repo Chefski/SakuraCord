@@ -639,7 +639,7 @@ extension AppModel {
         if let selectedChannelID {
             _ = readState.updatePresentation(
                 channelID: selectedChannelID,
-                isPresented: true,
+                isPresented: isConversationPresented(selectedChannelID),
                 initialHistoryLoaded: !isLoadingMessages && messageLoadError == nil,
                 windowIsActive: mainWindowIsActive
             )
@@ -647,7 +647,7 @@ extension AppModel {
         if let threadID = openThread?.id {
             _ = readState.updatePresentation(
                 channelID: threadID,
-                isPresented: true,
+                isPresented: isConversationPresented(threadID),
                 initialHistoryLoaded: !isLoadingThread && threadErrorMessage == nil,
                 windowIsActive: mainWindowIsActive
             )

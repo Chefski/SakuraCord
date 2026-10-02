@@ -38,10 +38,13 @@ extension AppModel {
         AppPerformanceSignposts.beginConversationNavigation(to: thread.id)
         readState.merge(thread: thread)
         openThread = thread
+        if let selectedChannelID, !isConversationPresented(selectedChannelID) {
+            suspendSelectedConversationPresentation()
+        }
         recordForwardDestinationVisit(thread.id)
         _ = readState.updatePresentation(
             channelID: thread.id,
-            isPresented: true,
+            isPresented: isConversationPresented(thread.id),
             initialHistoryLoaded: false,
             initialPositionEstablished: false,
             windowIsActive: mainWindowIsActive,
@@ -459,6 +462,7 @@ extension AppModel {
         closeThread()
         dismissPinnedMessages()
         threadCreation = ThreadCreationDraft(parentID: channelID, permissions: permissions)
+        if !isConversationPresented(channelID) { suspendSelectedConversationPresentation() }
         if !channelDraft.isEmpty {
             updateDraft("")
             threadDraft = channelDraft

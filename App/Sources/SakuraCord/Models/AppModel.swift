@@ -976,7 +976,7 @@ final class AppModel {
             if let selectedChannelID {
                 _ = readState.updatePresentation(
                     channelID: selectedChannelID,
-                    isPresented: true,
+                    isPresented: isConversationPresented(selectedChannelID),
                     initialHistoryLoaded: false,
                     initialPositionEstablished: false,
                     windowIsActive: mainWindowIsActive,

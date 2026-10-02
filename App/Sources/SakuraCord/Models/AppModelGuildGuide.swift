@@ -113,6 +113,7 @@ extension AppModel {
         onboarding.page = .guide
         onboarding.presentedGuildID = guildID
         onboarding.guides[guildID]?.resource = nil
+        suspendSelectedConversationPresentation()
         refreshGuildGuide(in: guildID)
     }
 
