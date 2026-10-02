@@ -83,10 +83,11 @@ struct PollVotersView: View {
         let answerID = selectedAnswerID
         let page = pages[answerID]
         let voters = displayedUsers(page?.users ?? [])
+        let guildID = model.messagePresentationGuildID(for: message)
         return ScrollView(.vertical) {
             LazyVStack(alignment: .leading, spacing: 2) {
                 ForEach(voters) { user in
-                    PollVoterRow(model: model, user: user)
+                    PollVoterRow(model: model, user: user, guildID: guildID)
                 }
                 if let page, let error = errors[answerID] {
                     VStack(spacing: 6) {
@@ -235,9 +236,13 @@ private struct PollVotersAnswerRow: View {
 private struct PollVoterRow: View {
     let model: AppModel
     let user: User
+    let guildID: GuildID?
 
     var body: some View {
-        let member = model.membersByID[user.id]
+        let member = guildID.flatMap { guildID in
+            model.membersByGuildID[guildID]?[user.id]
+                ?? (guildID == model.selectedGuildID ? model.membersByID[user.id] : nil)
+        }
         let isCurrentUser = model.snapshot?.currentUser.id == user.id
         HStack(spacing: 10) {
             AvatarView(name: user.displayName, url: member?.guildAvatarURL ?? user.avatarURL, size: 32)

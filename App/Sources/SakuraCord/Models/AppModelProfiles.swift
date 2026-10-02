@@ -170,7 +170,7 @@ extension AppModel {
     }
 
     func authorPresentation(for message: Message) -> MessageAuthorPresentation {
-        let guildID = authorGuildID(for: message)
+        let guildID = messagePresentationGuildID(for: message)
         let member = guildID.flatMap { membersByGuildID[$0]?[message.author.id] }
             ?? (guildID == selectedGuildID ? membersByID[message.author.id] : nil)
         let roles = guildID.flatMap { guildRolesByGuildID[$0] }
@@ -184,7 +184,7 @@ extension AppModel {
     func authorPresentation(
         for replyPreview: MessageReplyPreview, in message: Message? = nil
     ) -> MessageAuthorPresentation {
-        let guildID = message.map { authorGuildID(for: $0) } ?? selectedGuildID
+        let guildID = message.map { messagePresentationGuildID(for: $0) } ?? selectedGuildID
         let member = guildID.flatMap { membersByGuildID[$0]?[replyPreview.author.id] }
             ?? (guildID == selectedGuildID ? membersByID[replyPreview.author.id] : nil)
         let roles = guildID.flatMap { guildRolesByGuildID[$0] } ?? (guildID == selectedGuildID ? guildRoles : [])
@@ -196,7 +196,7 @@ extension AppModel {
         return MessageAuthorPresentation(user: cosmeticPolicy.user(presentation.user), roleColorHex: presentation.roleColorHex)
     }
 
-    private func authorGuildID(for message: Message) -> GuildID? {
+    func messagePresentationGuildID(for message: Message) -> GuildID? {
         if let guildID = message.guildID { return guildID }
         if let channel = messagePresentationChannel(message.channelID) {
             return channel.guildID
