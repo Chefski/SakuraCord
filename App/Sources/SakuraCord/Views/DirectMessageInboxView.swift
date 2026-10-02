@@ -17,21 +17,31 @@ struct DirectMessageInboxView: View {
             pinnedChannelIDs: pinnedChannelIDs
         )
 
-        List(selection: $selection) {
+        List {
             Section {
                 ForEach(directMessages) { channel in
-                    DirectMessageInboxRow(
-                        model: model,
-                        channel: channel,
-                        isPinned: pinnedChannelIDs.contains(channel.id),
-                        member: DirectMessageInboxPolicy.recipientMember(
-                            for: channel,
-                            membersByID: membersByID
-                        ),
-                        call: privateCallsByChannel[channel.id],
-                        animatesAvatar: animatesAvatars
+                    Button {
+                        selection = channel.id
+                    } label: {
+                        DirectMessageInboxRow(
+                            model: model,
+                            channel: channel,
+                            isPinned: pinnedChannelIDs.contains(channel.id),
+                            member: DirectMessageInboxPolicy.recipientMember(
+                                for: channel,
+                                membersByID: membersByID
+                            ),
+                            call: privateCallsByChannel[channel.id],
+                            animatesAvatar: animatesAvatars
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .pointerStyle(.link)
+                    .listRowBackground(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(selection == channel.id ? Color.primary.opacity(0.08) : .clear)
                     )
-                        .tag(channel.id)
+                    .accessibilityAddTraits(selection == channel.id ? [.isSelected] : [])
                 }
 
                 SidebarBottomScrollSpacer(height: bottomContentInset)
@@ -140,6 +150,12 @@ private struct DirectMessageInboxRow: View {
                     .fontWeight(.semibold)
                     .foregroundStyle(Color(hex: 0x23A55A))
                     .lineLimit(1)
+                } else if channel.kind == .groupDirectMessage {
+                    Text("\(channel.recipients.count + 1) members")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .opacity(dimsMutedConversation ? 0.65 : 1)
+                        .lineLimit(1)
                 } else if let secondaryText =
                     DirectMessageInboxPolicy.secondaryText(for: channel, member: member)
                 {
@@ -179,6 +195,7 @@ private struct DirectMessageInboxRow: View {
                     .accessibilityLabel("Unread")
             }
         }
+        .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityValue(accessibilityValue)
         .onModalHover { isHovered = $0 }
