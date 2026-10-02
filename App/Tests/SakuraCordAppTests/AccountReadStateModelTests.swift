@@ -2378,6 +2378,37 @@ struct AccountReadStateModelTests {
 }
 
 @MainActor
+@Test(arguments: [false, true])
+func `bulk Inbox acknowledgement preserves notifications beyond its captured boundary`(receivesNewerMessage: Bool) async throws {
+    let provider = MockChatProvider()
+    let service = RecordingNotificationService()
+    let model = AppModel(launchMode: .offlineTesting, provider: provider, notificationService: service,
+        notificationPreferences: NotificationPreferences(defaults: InMemoryPreferences()))
+    await model.start()
+    let channelID = ChannelID(rawValue: 211)
+    let guildID = GuildID(rawValue: 100)
+    let boundary = MessageID(rawValue: UInt64.max - 20)
+    let sender = User(id: UserID(rawValue: 2), username: "sender", displayName: "Sender")
+    let user = try #require(model.currentUser)
+    model.consumeImmediately(.messageCreated(Message(id: boundary, channelID: channelID,
+        author: sender, content: "Captured mention", guildID: guildID, mentionedUsers: [user])))
+    model.inbox.isPresented = true
+    model.inbox.groups = [InboxUnreadGroup(channelID: channelID, guildID: guildID,
+        title: "Captured", subtitle: nil, oldestReadMessageID: MessageID(rawValue: 2100),
+        newestUnreadMessageID: boundary, mentionCount: 1, isLoaded: true)]
+    model.markAllInboxRead()
+    if receivesNewerMessage {
+        model.consumeImmediately(.messageCreated(Message(id: MessageID(rawValue: boundary.rawValue + 1), channelID: channelID,
+            author: sender, content: "Newer mention", guildID: guildID, mentionedUsers: [user])))
+    }
+    await model.inbox.bulkTask?.value
+    for task in Array(model.accountChildTasks.values) { await task.value }
+    #expect(model.readState.entries[channelID]?.isUnread == receivesNewerMessage)
+    #expect(service.cancelledChannelIDs.contains(channelID) == !receivesNewerMessage)
+    #expect(await provider.bulkAcknowledgementRequests.last?.first?.messageID == boundary)
+}
+
+@MainActor
 @Test func `notification privacy and deep links are deterministic`() throws {
     let message = Message(
         id: MessageID(rawValue: 9),
