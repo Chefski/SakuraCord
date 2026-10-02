@@ -297,6 +297,7 @@ nonisolated struct ConversationNewestRequest: Equatable, Sendable {
 struct ProfilePresentationState: Identifiable {
     var id: UUID { requestID }
     let requestID: UUID
+    let guildID: GuildID?
     var member: Member
     let isCurrentUser: Bool
     var profile: UserProfile?

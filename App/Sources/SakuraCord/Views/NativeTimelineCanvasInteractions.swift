@@ -706,7 +706,7 @@ extension NativeTimelineCanvasView {
         guard let url = hit.url else { return false }
         let presentSystemProfile: ((User) -> Void)? = profileAnchor.map { anchor in
             { [weak self] user in
-                self?.showMessageProfile(for: user, anchor: anchor)
+                self?.showMessageProfile(for: user, sourceMessage: message, anchor: anchor)
             }
         }
         return MessageLinkActivator.activate(
@@ -752,6 +752,7 @@ extension NativeTimelineCanvasView {
             if let user = resolver.user(id) {
                 showMentionProfile(
                     for: user,
+                    sourceMessage: message,
                     anchor: anchor
                 )
             }

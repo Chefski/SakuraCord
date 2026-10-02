@@ -3980,25 +3980,40 @@ func `GIF completion preserves newer text and channel drafts`(changesChannel: Bo
 }
 
 @MainActor
-@Test func `selecting member loads full profile and expands independently`() async throws {
+@Test(arguments: [false, true])
+func `selecting member loads full profile and expands independently`(fromInbox: Bool) async throws {
     let model = AppModel(launchMode: .offlineTesting)
     await model.start()
-    let member = try #require(model.members.first)
+    var member = try #require(model.members.first)
+    let destination: ProfilePresentationDestination = fromInbox ? .contextual : .inspector
+    let guildID = fromInbox ? GuildID(rawValue: 99_999) : model.selectedGuildID
+    if fromInbox {
+        member.user.displayName = "Inbox server nickname"
+        member.roleName = "Inbox server role"
+        model.membersByGuildID[try #require(guildID)] = [member.id: member]
+        let message = Message(id: MessageID(rawValue: 99_998), channelID: ChannelID(rawValue: 99_997),
+                              author: member.user, content: "Inbox mention", guildID: guildID)
+        model.showProfile(for: member.user, sourceMessage: message)
+    } else {
+        model.selectMember(member)
+    }
+    #expect(await until { model.profilePresentation(for: destination)?.profile?.id == member.id })
 
-    model.selectMember(member)
-    #expect(await until { model.selectedProfile?.id == member.id })
-
-    let profile = try #require(model.selectedProfile)
-    #expect(model.isInspectorProfilePresented)
+    let profile = try #require(model.profilePresentation(for: destination)?.profile)
+    #expect(model.isInspectorProfilePresented == !fromInbox)
     #expect(profile.id == member.id)
     #expect(!profile.badges.isEmpty)
     #expect(!profile.mutualGuilds.isEmpty)
+    #expect(model.profileCache[SakuraCord.ProfileCacheKey(userID: member.id, guildID: guildID)] != nil)
 
-    let presentation = try #require(model.inspectorProfilePresentation)
+    let presentation = try #require(model.liveProfilePresentation(for: destination))
+    #expect(presentation.member.user.displayName == member.user.displayName)
+    #expect(presentation.member.roleName == member.roleName)
     model.expandProfile(presentation)
     model.dismissInspectorProfile()
     #expect(model.expandedProfilePresentation?.profile?.id == member.id)
     #expect(model.expandedProfilePresentation?.isLoading == false)
+    #expect(model.liveProfilePresentation(for: .expanded)?.member.user.displayName == member.user.displayName)
     #expect(!model.isInspectorProfilePresented)
 
     model.dismissAllProfiles(clearsCache: true)
@@ -4021,6 +4036,7 @@ func `GIF completion preserves newer text and channel drafts`(changesChannel: Bo
         ?? Member(user: currentUser, roleName: "You", status: model.currentStatus)
     let requestID = model.presentProfile(
         for: member,
+        in: model.selectedGuildID,
         destination: .contextual
     )
     #expect(model.contextualProfilePresentation?.requestID == requestID)
