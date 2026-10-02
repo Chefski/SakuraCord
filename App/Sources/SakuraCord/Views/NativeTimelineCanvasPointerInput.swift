@@ -997,16 +997,19 @@ extension NativeTimelineCanvasView {
 
     func showMentionRole(
         _ roleID: RoleID,
+        sourceMessage: Message,
         anchor: StablePopoverAnchor
     ) {
         guard let model else { return }
         closeMessageProfilePopover()
-        model.showMembers(withRole: roleID)
+        let guildID = model.messagePresentationGuildID(for: sourceMessage)
+        model.showMembers(withRole: roleID, in: guildID)
         showMentionPopover(
             AnyView(
                 RoleMembersPopover(
                     model: model,
-                    roleID: roleID
+                    roleID: roleID,
+                    guildID: guildID
                 )
             ),
             anchor: anchor

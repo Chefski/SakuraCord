@@ -757,7 +757,7 @@ extension NativeTimelineCanvasView {
                 )
             }
         case let .role(id):
-            showMentionRole(id, anchor: anchor)
+            showMentionRole(id, sourceMessage: message, anchor: anchor)
         case let .guildNavigation(guildID, destination):
             model.openGuildNavigationDestination(destination, in: guildID)
         case let .channel(id):
