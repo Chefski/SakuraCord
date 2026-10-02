@@ -18,8 +18,7 @@ struct ComponentChoicePicker: View {
     private let maximumSelectionCount: Int
     private let loader: Loader
     private let selectionChanged: ([ComponentSelectOption]) -> Void
-    private let submitSelection: ([String]) -> Void
-    private let dismiss: () -> Void
+    private let complete: ([String], SelectionFieldCompletion) -> Void
 
     init(
         placeholder: String,
@@ -31,8 +30,7 @@ struct ComponentChoicePicker: View {
         maximumSelectionCount: Int,
         loader: @escaping Loader,
         selectionChanged: @escaping ([ComponentSelectOption]) -> Void,
-        submitSelection: @escaping ([String]) -> Void,
-        dismiss: @escaping () -> Void
+        complete: @escaping ([String], SelectionFieldCompletion) -> Void
     ) {
         self.resultPlacement = resultPlacement
         self.placeholder = placeholder
@@ -42,8 +40,7 @@ struct ComponentChoicePicker: View {
         self.maximumSelectionCount = max(1, maximumSelectionCount)
         self.loader = loader
         self.selectionChanged = selectionChanged
-        self.submitSelection = submitSelection
-        self.dismiss = dismiss
+        self.complete = complete
         let initiallySelected = selectedOptions
             ?? options.filter(\.isDefault)
         _selection = State(
@@ -75,8 +72,7 @@ struct ComponentChoicePicker: View {
                 resultPlacement: resultPlacement
             ),
             accessibilityIdentifier: "component-selection-field",
-            onDismiss: dismiss,
-            onConfirm: { submitSelection(selection) }
+            onComplete: { complete(selection, $0) }
         )
         .frame(maxWidth: .infinity)
     }

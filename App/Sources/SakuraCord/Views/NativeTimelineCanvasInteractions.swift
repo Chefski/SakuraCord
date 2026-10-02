@@ -968,11 +968,8 @@ extension NativeTimelineCanvasView {
                     pendingOptions = options
                     overlay?.updateSelection(options.map(\.value))
                 },
-                submitSelection: { [weak overlay] values in
-                    overlay?.submitSelection(values)
-                },
-                dismiss: { [weak overlay] in
-                    overlay?.close()
+                complete: { [weak overlay] values, reason in
+                    overlay?.completeSelection(values, reason: reason)
                 }
             )),
             in: self,

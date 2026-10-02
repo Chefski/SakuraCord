@@ -97,6 +97,12 @@ nonisolated enum SelectionFieldSelectionMode: Equatable, Sendable {
     }
 }
 
+nonisolated enum SelectionFieldCompletion: Sendable {
+    case selected
+    case dismissed
+    case cancelled
+}
+
 nonisolated enum SelectionFieldResultPlacement: Equatable, Sendable {
     case below
     case above
@@ -176,8 +182,7 @@ struct SelectionField<ID: Hashable & Sendable>: View {
     private let mode: SelectionFieldSelectionMode
     private let configuration: SelectionFieldConfiguration
     private let accessibilityIdentifier: String
-    private let onDismiss: (() -> Void)?
-    private let onConfirm: (() -> Void)?
+    private let onComplete: ((SelectionFieldCompletion) -> Void)?
 
     init(
         selection: Binding<[ID]>,
@@ -185,8 +190,7 @@ struct SelectionField<ID: Hashable & Sendable>: View {
         source: SelectionFieldSource<ID>,
         configuration: SelectionFieldConfiguration = .init(),
         accessibilityIdentifier: String = "selection-field",
-        onDismiss: (() -> Void)? = nil,
-        onConfirm: (() -> Void)? = nil
+        onComplete: ((SelectionFieldCompletion) -> Void)? = nil
     ) {
         _selection = selection
         _model = State(initialValue: SelectionFieldModel(source: source))
@@ -195,8 +199,7 @@ struct SelectionField<ID: Hashable & Sendable>: View {
         self.mode = mode
         self.configuration = configuration
         self.accessibilityIdentifier = accessibilityIdentifier
-        self.onDismiss = onDismiss
-        self.onConfirm = onConfirm
+        self.onComplete = onComplete
     }
 
     init(
@@ -204,7 +207,7 @@ struct SelectionField<ID: Hashable & Sendable>: View {
         source: SelectionFieldSource<ID>,
         configuration: SelectionFieldConfiguration = .init(),
         accessibilityIdentifier: String = "selection-field",
-        onDismiss: (() -> Void)? = nil
+        onComplete: ((SelectionFieldCompletion) -> Void)? = nil
     ) {
         self.init(
             selection: Binding(
@@ -212,7 +215,7 @@ struct SelectionField<ID: Hashable & Sendable>: View {
                 set: { selection.wrappedValue = $0.first }
             ),
             mode: .single, source: source, configuration: configuration,
-            accessibilityIdentifier: accessibilityIdentifier, onDismiss: onDismiss
+            accessibilityIdentifier: accessibilityIdentifier, onComplete: onComplete
         )
     }
 
@@ -222,8 +225,9 @@ struct SelectionField<ID: Hashable & Sendable>: View {
             SelectionFieldDropdown(
                 isPresented: isExpanded, height: resultHeight,
                 preferredPlacement: configuration.resultPlacement, reduceMotion: reduceMotion,
-                dismiss: finish, cancel: close
-            ) { height in menu(height: height) }
+                dismiss: { close(.dismissed) }, cancel: { close(.cancelled) },
+                content: { height in menu(height: height) }
+            )
         }
         .onAppear {
             model.retainSelectedOptions(selection)
@@ -269,7 +273,7 @@ struct SelectionField<ID: Hashable & Sendable>: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Button {
-                if isExpanded { finish() } else { open() }
+                if isExpanded { close(.dismissed) } else { open() }
             } label: {
                 Image(systemName: "chevron.down")
                     .font(.system(size: 11, weight: .semibold))
@@ -341,7 +345,7 @@ struct SelectionField<ID: Hashable & Sendable>: View {
                         activate: { searchIsFocused = true },
                         move: moveHighlight,
                         accept: acceptHighlight,
-                        dismiss: close
+                        dismiss: { close(.cancelled) }
                     )
                 })
                 Divider().overlay(.primary.opacity(0.04))
@@ -380,22 +384,18 @@ struct SelectionField<ID: Hashable & Sendable>: View {
         }
     }
 
-    private func close() {
+    private func close(_ completion: SelectionFieldCompletion) {
         searchIsFocused = false
-        if let onDismiss { onDismiss(); return }
+        if let onComplete { onComplete(completion); return }
         isExpanded = false
         model.cancel()
-    }
-
-    private func finish() {
-        if let onConfirm { onConfirm() } else { close() }
     }
 
     private func activate(_ id: ID) {
         guard model.state == .loaded,
               let updated = SelectionFieldSelectionPolicy.toggled(id, in: selection, mode: mode) else { return }
         withAnimation(motion) { selection = updated }
-        if mode == .single, configuration.collapsesAfterSingleSelection { finish() }
+        if mode == .single, configuration.collapsesAfterSingleSelection { close(.selected) }
     }
 
     private func moveHighlight(_ delta: Int) {
