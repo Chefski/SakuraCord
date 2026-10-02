@@ -1830,6 +1830,13 @@ hidden results never animate into view. The expiry clock is local and sends no
 request. Only an explicit reveal/vote on an unknown historical tally may load
 that one message through the existing history route.
 
+Refresh reconciliation applies vote deltas to an established local tally;
+current-user votes can also merge idempotently through `me_voted`. Other
+overlapping votes leave an unversioned REST tally unknown. An explicit results
+read may repeat that single-message read once if votes overlap it. A second
+overlap keeps the tally unknown and reports a retryable failure, without
+starting background polling.
+
 Discord's public poll resource and pinned Paicord
 `694761c1938b73bb60bd58942674dfe73aab1135` corroborate the model and permission
 boundaries. Pinned Swiftcord v1 has no comparable poll implementation. Recent

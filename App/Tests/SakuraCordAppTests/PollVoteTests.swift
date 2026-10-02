@@ -206,13 +206,13 @@ func `Inbox loads preserve poll patches for messages not yet retained`(tab: Inbo
     let loaded = tab == .mentions ? model.inbox.mentions : model.inbox.groups.flatMap(\.messages)
     #expect(loaded.map(\.id) == [message.id])
     #expect(loaded.first?.content == "Edited while Inbox was loading")
-    #expect(loaded.first?.poll?.count(for: 2) == 3)
+    #expect(loaded.first?.poll?.results == nil)
     #expect(model.inbox.rows.first?.message == loaded.first)
 }
 
 @MainActor
-@Test(arguments: [false, true])
-func `search results preserve poll events before their messages are retained`(finalizes: Bool) async throws {
+@Test(arguments: [(false, false), (false, true), (true, false)])
+func `search results preserve poll events before their messages are retained`(scenario: (finalizes: Bool, responseIncludesVotes: Bool)) async throws {
     let provider = PollVoteTestProvider()
     let model = AppModel(launchMode: .offlineTesting, provider: provider)
     await model.start()
@@ -224,7 +224,9 @@ func `search results preserve poll events before their messages are retained`(fi
     await provider.waitForSearch()
     #expect(model.retainedMessage(channelID: message.channelID, messageID: message.id) == nil)
     var update = MessageUpdate(messageID: message.id, channelID: message.channelID)
-    if finalizes {
+    if scenario.finalizes {
+        update.pollUpdates = [.vote(answerID: 2, isAddition: true, isCurrentUser: true)]
+        model.consumeImmediately(.messagePatched(update))
         var poll = try #require(message.poll)
         poll.results = PollResults(isFinalized: true, answerCounts: [.init(id: 2, count: 7)])
         update.pollUpdates = [.snapshot(poll, preservingSelection: true)]
@@ -233,17 +235,43 @@ func `search results preserve poll events before their messages are retained`(fi
         model.consumeImmediately(.messagePatched(update))
     }
     model.consumeImmediately(.messagePatched(update))
-    await provider.resumeSearch()
+    var response = message
+    if scenario.responseIncludesVotes {
+        response.poll?.applyVote(answerID: 2, isAddition: true, isCurrentUser: false)
+        response.poll?.applyVote(answerID: 2, isAddition: true, isCurrentUser: false)
+    }
+    await provider.resumeSearch(messages: [response])
     await model.messageSearch.requestTask?.value
+    if !scenario.finalizes {
+        let unresolved = try #require(model.messageSearch.page?.messages.first)
+        #expect(unresolved.poll?.results == nil)
+        var current = message
+        current.poll?.applyVote(answerID: 2, isAddition: true, isCurrentUser: false)
+        current.poll?.applyVote(answerID: 2, isAddition: true, isCurrentUser: false)
+        if scenario.responseIncludesVotes {
+            // Another retained surface may establish the tally before reveal.
+            model.replaceSelectedMessages(with: [current])
+            await model.loadUnknownPollResults(unresolved)
+            #expect(await provider.pollResultRequests == 0)
+        } else {
+            await provider.holdPollResults()
+            let load = Task { await model.loadUnknownPollResults(unresolved) }
+            await provider.waitForHistory()
+            await provider.resumeHistory(MessagePage(messages: [current], hasMoreBefore: false))
+            await load.value
+            #expect(await provider.pollResultRequests == 1)
+        }
+    }
     let poll = model.messageSearch.page?.messages.first?.poll
-    #expect(poll?.count(for: 2) == (finalizes ? 7 : 3))
-    #expect(poll?.results?.isFinalized == finalizes)
+    #expect(poll?.count(for: 2) == (scenario.finalizes ? 7 : 3))
+    #expect(poll?.results?.isFinalized == scenario.finalizes)
+    #expect(poll?.selectedAnswerIDs == (scenario.finalizes ? [2] : []))
     #expect(model.messageSearch.rows.first?.message.poll == poll)
 }
 
 @MainActor
-@Test(arguments: [false, true])
-func `poll result fetch preserves updates received while awaiting history`(finalizes: Bool) async throws {
+@Test(arguments: [(false, false, false), (false, true, false), (false, true, true), (true, false, false)])
+func `poll result fetch preserves updates received while awaiting history`(scenario: (finalizes: Bool, responseIncludesVote: Bool, keepsChanging: Bool)) async throws {
     let provider = PollVoteTestProvider()
     let model = AppModel(launchMode: .offlineTesting, provider: provider)
     await model.start()
@@ -258,18 +286,31 @@ func `poll result fetch preserves updates received while awaiting history`(final
     finalized.results = PollResults(isFinalized: true, answerCounts: [.init(id: 1, count: 4)])
     var update = MessageUpdate(messageID: stale.id, channelID: stale.channelID)
     update.content = "Edited during the poll fetch"
-    update.pollUpdates = finalizes ? [.snapshot(finalized, preservingSelection: true)]
+    update.pollUpdates = scenario.finalizes ? [.snapshot(finalized, preservingSelection: true)]
         : [.vote(answerID: 1, isAddition: true, isCurrentUser: false)]
     model.consumeImmediately(.messagePatched(update))
     model.consumeImmediately(.messageReactionUpdated(.add(
         channelID: stale.channelID, messageID: stale.id, userID: UserID(rawValue: 99_004), emoji: "👍", kind: .normal
     )))
-    await provider.resumeHistory(MessagePage(messages: [stale], hasMoreBefore: false))
+    var current = stale
+    current.poll?.applyVote(answerID: 1, isAddition: true, isCurrentUser: false)
+    await provider.resumeHistory(MessagePage(messages: [scenario.responseIncludesVote ? current : stale], hasMoreBefore: false))
+    if !scenario.finalizes {
+        await provider.waitForHistory()
+        if scenario.keepsChanging { model.consumeImmediately(.messagePatched(update)) }
+        await provider.resumeHistory(MessagePage(messages: [current], hasMoreBefore: false))
+    }
     await load.value
     #expect(model.messages.first?.content == update.content)
-    #expect(model.messages.first?.poll?.results?.isFinalized == finalizes)
-    #expect(model.messages.first?.poll?.count(for: 1) == (finalizes ? 4 : 2))
+    if scenario.keepsChanging {
+        #expect(model.messages.first?.poll?.results == nil)
+        #expect(model.errorMessage != nil)
+    } else {
+        #expect(model.messages.first?.poll?.results?.isFinalized == scenario.finalizes)
+        #expect(model.messages.first?.poll?.count(for: 1) == (scenario.finalizes ? 4 : 2))
+    }
     #expect(model.messages.first?.reactions.first?.count == 1)
+    #expect(await provider.pollResultRequests == (scenario.finalizes ? 1 : 2))
 }
 
 private actor PollVoteTestProvider: ChatProvider {
@@ -281,8 +322,10 @@ private actor PollVoteTestProvider: ChatProvider {
     private var continuation: AsyncStream<ClientEvent>.Continuation?
     private var requestContinuation: CheckedContinuation<Void, Never>?
     private var searchContinuation: CheckedContinuation<Void, Never>?
+    private var searchResponseMessages: [Message]?
     private var historyContinuation: CheckedContinuation<MessagePage, Never>?
     private var holdsPollResults = false
+    private(set) var pollResultRequests = 0
     private var holdsInboxPages = false
     private var inboxContinuation: CheckedContinuation<Void, Never>?
 
@@ -310,7 +353,10 @@ private actor PollVoteTestProvider: ChatProvider {
 
     func messages(in channelID: ChannelID, anchoredAt anchor: MessageHistoryAnchor, limit: Int) async throws -> MessagePage {
         if case .after = anchor { return await withCheckedContinuation { historyContinuation = $0 } }
-        if case .around = anchor, holdsPollResults { return await withCheckedContinuation { historyContinuation = $0 } }
+        if case .around = anchor, holdsPollResults {
+            pollResultRequests += 1
+            return await withCheckedContinuation { historyContinuation = $0 }
+        }
         return try await messages(in: channelID, before: nil, limit: limit)
     }
 
@@ -360,14 +406,17 @@ private actor PollVoteTestProvider: ChatProvider {
     func searchMessages(_ query: MessageSearchQuery) async throws -> MessageSearchPage {
         let page = try await messages(in: channel.id, before: nil, limit: 25)
         await withCheckedContinuation { searchContinuation = $0 }
-        return MessageSearchPage(messages: page.messages, totalResults: page.messages.count)
+        let messages = searchResponseMessages ?? page.messages
+        searchResponseMessages = nil
+        return MessageSearchPage(messages: messages, totalResults: messages.count)
     }
 
     func waitForSearch() async {
         while searchContinuation == nil { await Task.yield() }
     }
 
-    func resumeSearch() {
+    func resumeSearch(messages: [Message]? = nil) {
+        searchResponseMessages = messages
         searchContinuation?.resume()
         searchContinuation = nil
     }

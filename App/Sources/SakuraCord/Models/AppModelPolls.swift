@@ -10,6 +10,33 @@ struct PollVoteMutationState {
     var isSending: Bool
 }
 
+extension MessageUpdate {
+    /// A fetched tally has no ordering token relative to Gateway vote deltas.
+    /// Only a snapshot recorded in the journal establishes a replay baseline.
+    func applyForRefresh(to message: inout Message) {
+        var fields = self
+        fields.pollUpdates = []
+        fields.apply(to: &message)
+        var hasPollBaseline = message.poll?.results?.isFinalized == true
+        var needsPollRefresh = false
+        for update in pollUpdates {
+            switch update {
+            case .snapshot(let poll, _):
+                update.apply(to: &message)
+                hasPollBaseline = hasPollBaseline || poll.results != nil
+                if poll.results != nil { needsPollRefresh = false }
+            case .vote(_, _, let isCurrentUser):
+                if hasPollBaseline || isCurrentUser {
+                    update.apply(to: &message)
+                } else {
+                    needsPollRefresh = true
+                }
+            }
+        }
+        if needsPollRefresh { message.poll?.results = nil }
+    }
+}
+
 private extension Message {
     func selectingCurrentUserPollAnswers(_ answerIDs: Set<Int>) -> Message {
         guard let poll, var results = poll.results, poll.selectedAnswerIDs != answerIDs else { return self }
@@ -160,7 +187,7 @@ extension AppModel {
             for index in page.results[resultIndex].messages.indices {
                 var message = page.results[resultIndex].messages[index]
                 if case .patch(let update) = mutations[message.id] {
-                    update.apply(to: &message)
+                    update.applyForRefresh(to: &message)
                 }
                 page.results[resultIndex].messages[index] = pollVotePresentationPreserving(message)
             }
@@ -213,7 +240,13 @@ extension AppModel {
 
     func loadUnknownPollResults(_ message: Message) async {
         let current = retainedMessage(channelID: message.channelID, messageID: message.id) ?? message
-        guard current.poll?.results == nil, pollResultRefreshJournals[message.id] == nil else { return }
+        guard pollResultRefreshJournals[message.id] == nil else { return }
+        if let poll = current.poll, poll.results != nil {
+            var update = MessageUpdate(messageID: message.id, channelID: message.channelID)
+            update.pollUpdates = [.snapshot(poll, preservingSelection: false)]
+            consumeImmediately(.messagePatched(update))
+            return
+        }
         let session = accountSession()
         conversationRefreshJournalRevision &+= 1
         let revision = conversationRefreshJournalRevision
@@ -224,15 +257,25 @@ extension AppModel {
             }
         }
         do {
-            let page = try await session.provider.messages(in: message.channelID, anchoredAt: .around(message.id), limit: 1)
-            guard !Task.isCancelled, isCurrentAccountSession(session),
-                  let journal = pollResultRefreshJournals[message.id], journal.revision == revision,
-                  let fetched = page.messages.first(where: { $0.id == message.id }) else { return }
-            let mutations = ConversationRefreshMutations(messages: journal.mutationsByMessageID, updatedUsers: journal.updatedUsers)
-            if let poll = Self.applyingConversationRefreshMutations(mutations, to: [fetched]).first?.poll {
+            for attempt in 0 ..< 2 {
+                let page = try await session.provider.messages(in: message.channelID, anchoredAt: .around(message.id), limit: 1)
+                guard !Task.isCancelled, isCurrentAccountSession(session),
+                      let journal = pollResultRefreshJournals[message.id], journal.revision == revision,
+                      let fetched = page.messages.first(where: { $0.id == message.id }) else { return }
+                let mutations = ConversationRefreshMutations(messages: journal.mutationsByMessageID, updatedUsers: journal.updatedUsers)
+                guard let poll = Self.applyingConversationRefreshMutations(mutations, to: [fetched]).first?.poll else { return }
+                if poll.results == nil, fetched.poll?.results != nil {
+                    guard attempt == 0 else {
+                        errorMessage = "Poll results changed while loading. Try again."
+                        return
+                    }
+                    pollResultRefreshJournals[message.id] = ConversationRefreshJournal(revision: revision)
+                    continue
+                }
                 var update = MessageUpdate(messageID: message.id, channelID: message.channelID)
                 update.pollUpdates = [.snapshot(poll, preservingSelection: false)]
                 consumeImmediately(.messagePatched(update))
+                return
             }
         } catch {
             guard !Task.isCancelled, isCurrentAccountSession(session) else { return }

@@ -633,6 +633,17 @@ extension AppModel {
         messageID: MessageID,
         channelID: ChannelID
     ) {
+        var mutation = mutation
+        if case .patch(var update) = mutation, !update.pollUpdates.isEmpty,
+           var message = retainedMessage(channelID: channelID, messageID: messageID), message.poll?.results != nil {
+            // Preserve an established local tally instead of adding the same
+            // vote again if a fetched page already includes it.
+            update.apply(to: &message)
+            if let poll = pollVoteConfirmedSnapshot(message).poll {
+                update.pollUpdates = [.snapshot(poll, preservingSelection: false)]
+                mutation = .patch(update)
+            }
+        }
         conversationRefreshJournals[channelID]?.record(mutation, messageID: messageID)
         inbox.refreshJournal?.record(mutation, messageID: messageID)
         recordPollRefreshMutation(mutation, messageID: messageID, channelID: channelID)
@@ -765,7 +776,7 @@ extension AppModel {
                 byID[messageID] = message
             case .patch(let update):
                 if var message = byID[messageID] {
-                    update.apply(to: &message)
+                    update.applyForRefresh(to: &message)
                     byID[messageID] = message
                 }
             case .delete:
