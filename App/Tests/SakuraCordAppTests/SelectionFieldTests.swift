@@ -195,7 +195,7 @@ private final class SelectionFieldSearchHarness {
         ([], "confirm", []),
         (["one", "two", "three"], "confirm", []),
         (["new"], "confirm", [["new"]]),
-        (["initial"], "confirm", []),
+        (["initial"], "confirm", [["initial"]]),
         (["new"], "outside", [["new"]]),
         ([], "outside", []),
         (["initial"], "outside", []),

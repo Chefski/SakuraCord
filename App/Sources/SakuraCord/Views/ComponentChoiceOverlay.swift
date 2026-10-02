@@ -117,7 +117,7 @@ final class ComponentChoiceOverlayController {
             return
         }
         submitted = true
-        if value != initialSelection { submit(value) }
+        submit(value)
         close(commit: false)
     }
 
