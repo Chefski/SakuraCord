@@ -255,6 +255,7 @@ extension AppModel {
             let reconciled = applyingPendingPinIntent(to: incoming)
             consumeMessageUpdated(reconciled, preparedTextPlan: preparedTextPlan)
         case .messagePatched(let update):
+            reconcilePollVoteConfirmation(update)
             recordConversationRefreshMutation(.patch(update), messageID: update.messageID, channelID: update.channelID)
             if let message = applyingMessageUpdate(update) {
                 let reconciled = applyingPendingPinIntent(to: message)

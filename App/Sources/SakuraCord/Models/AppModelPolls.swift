@@ -109,6 +109,14 @@ extension AppModel {
         }
     }
 
+    func reconcilePollVoteConfirmation(_ update: MessageUpdate) {
+        guard var state = pollVoteMutations[update.messageID], state.channelID == update.channelID else { return }
+        for case let .vote(answerID, isAddition, true) in update.pollUpdates {
+            if isAddition { state.confirmed.insert(answerID) } else { state.confirmed.remove(answerID) }
+        }
+        pollVoteMutations[update.messageID] = state
+    }
+
     private func applyCurrentUserPollSelection(_ answerIDs: Set<Int>, messageID: MessageID, channelID: ChannelID) {
         guard let message = retainedMessage(channelID: channelID, messageID: messageID) else { return }
         let updated = message.selectingCurrentUserPollAnswers(answerIDs)

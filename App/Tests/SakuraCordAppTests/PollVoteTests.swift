@@ -5,7 +5,8 @@ import SakuraCordModels
 import Testing
 
 @MainActor
-@Test func `poll votes apply before confirmation ignore their echo and roll back on failure`() async throws {
+@Test(arguments: [false, true])
+func `poll votes apply before confirmation ignore their echo and roll back on failure`(losesConfirmedResponse: Bool) async throws {
     let provider = PollVoteTestProvider()
     let model = AppModel(launchMode: .offlineTesting, provider: provider)
     await model.start()
@@ -14,6 +15,7 @@ import Testing
     model.inbox.tab = .mentions
     let refresh = model.beginConversationRefresh(in: message.channelID)
 
+    if losesConfirmedResponse { await provider.failNextRequest() }
     #expect(model.vote(on: message, answerIDs: [2]))
     var poll = try #require(model.messages.first?.poll)
     #expect(poll.selectedAnswerIDs == [2])
