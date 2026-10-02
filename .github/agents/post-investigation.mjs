@@ -1,12 +1,21 @@
-// Post (or update) the investigation comment on the issue.
+// Publish one combined assessment. The hub applies its hidden, validated result.
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 const number = process.env.ISSUE_NUMBER;
 const repo = process.env.GITHUB_REPOSITORY;
 const sha = process.env.SOURCE_SHA;
 const run = `${process.env.GITHUB_SERVER_URL}/${repo}/actions/runs/${process.env.GITHUB_RUN_ID}`;
 const result = JSON.parse(readFileSync(process.env.RESULT_PATH, "utf8"));
+const context = JSON.parse(readFileSync(join(process.env.RUNNER_TEMP, "assessment-context.json"), "utf8"));
+const triage = result.triage;
+if (context.number !== Number(number) || !context.areas.includes(triage?.area) ||
+    (triage.duplicateOf !== null && (!context.candidates.includes(triage.duplicateOf) || triage.duplicateOf === Number(number))) ||
+    (triage.needsInformation && !triage.questions.length)) throw new Error("Invalid assessment result");
+const envelope = JSON.stringify({ version: 1, number: Number(number), sourceTitle: context.sourceTitle,
+  bodyHash: context.bodyHash, candidates: context.candidates, model: process.env.AGENT_MODEL, triage,
+}).replaceAll("<", "\\u003c").replaceAll(">", "\\u003e");
 const clean = (text) => String(text ?? "").replace(/@(?=[A-Za-z0-9-])/g, "@​").trim();
 const locations = result.locations
   .filter((location) => /^[\w./ -]+$/.test(location.path))
@@ -19,6 +28,17 @@ const body = `<!-- sakuracord:investigation -->
 ### Summary
 ${clean(result.summary)}
 
+### Triage
+**${triage.kind === "bug" ? "Bug" : "Feature"}** · ${clean(triage.area)} · ${clean(triage.priority)} priority
+${clean(triage.summary)}
+${triage.duplicateOf && triage.duplicateConfidence >= 0.75 ? `
+### Possible duplicate
+This may match #${triage.duplicateOf}. ${clean(triage.duplicateReason)} A maintainer will decide whether to merge them.
+` : ""}
+${triage.needsInformation ? `
+### Questions
+${triage.questions.map((question) => `- ${clean(question)}`).join("\n")}
+` : ""}
 ### Likely locations
 ${locations || "_No specific location identified._"}
 
@@ -31,7 +51,9 @@ ${clean(result.suggestedFix)}
 ### Suggested test
 ${clean(result.suggestedTest)}
 
-<sub>🔎 Investigation agent · confidence **${result.confidence}** · ${result.fixable ? "looks fixable — a maintainer can add the `agent: fix` label to open a draft PR" : "probably needs a maintainer"} · [run](${run}) · based on \`${sha.slice(0, 7)}\` (nightly)</sub>`;
+<sub>🔎 Triage & investigation agent · confidence **${result.confidence}** · ${result.fixable ? "looks fixable — a maintainer can add the `agent: fix` label to open a draft PR" : "probably needs a maintainer"} · [run](${run}) · based on \`${sha.slice(0, 7)}\` (nightly)</sub>
+
+<!-- sakuracord:triage-result ${envelope} -->`;
 writeFileSync("comment.md", body);
 const existing = execFileSync(
   "gh",
@@ -40,7 +62,7 @@ const existing = execFileSync(
     `repos/${repo}/issues/${number}/comments`,
     "--paginate",
     "--jq",
-    '.[] | select(.body | startswith("<!-- sakuracord:investigation -->")) | .id',
+    '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- sakuracord:investigation -->"))) | .id',
   ],
   { encoding: "utf8" },
 )

@@ -1,6 +1,6 @@
 name: Agent · Fix
 
-# Tier 3 of the SakuraCord issue pipeline. Only people with write access (or the
+# The separate implementation stage of the SakuraCord issue pipeline. Only people with write access (or the
 # hub, on a maintainer's request from Discord) can add `agent: fix`. Codex works
 # offline in the checkout, and a draft pull request is opened for human review.
 # Nothing is ever merged automatically.

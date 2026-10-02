@@ -77,3 +77,17 @@ evidence to review, not proof that a roadmap item is complete.
 Adjacent asset inventories under `Brand/`, packaging attribution under
 `App/Packaging/`, and vendored dependency READMEs under `Packages/DaveKit/` are
 scoped to their own directories and are not SakuraCord planning documents.
+
+## Community reports and agents
+
+The issue hub syncs reports and comments between GitHub, Discord, and the
+website. Each new report starts one read-only **triage and investigation**
+agent on GitHub Actions, using GPT-6 Luna against the nightly checkout. It
+reads the report, recent discussion, screenshot evidence, and similar reports,
+then posts one assessment with classification, questions, duplicate suggestions,
+and code findings. The hub validates that result before changing issue metadata.
+
+Maintainers can rerun it with `agent: investigate` or Discord's Manage menu.
+The label stays until the hub applies the result; retry a failed run in Actions.
+`agent: fix` remains a separate, explicitly triggered agent on the macOS runner
+that opens a draft PR against nightly. Neither agent merges changes.
