@@ -1,8 +1,8 @@
-name: Agent · Investigate
+name: Agent · Triage and investigate
 
-# Tier 2 of the SakuraCord issue pipeline. The hub adds the `agent: investigate`
-# label after triage (maintainers can too). Codex reads the code read-only and
-# the findings are posted on the issue, then mirrored to Discord by the hub.
+# One read-only agent assesses every new report using the nightly codebase.
+# The hub applies the result and removes the trigger label after success.
+# A failed run keeps the label so it can be retried from Actions.
 
 on:
   issues:
@@ -39,7 +39,7 @@ jobs:
           sparse-checkout: .github/agents
           persist-credentials: false
       - name: Build prompt
-        run: node .agent-control/.github/agents/issue-context.mjs .agent-control/.github/agents/investigate.md "$RUNNER_TEMP/prompt.md"
+        run: node .agent-control/.github/agents/issue-context.mjs .agent-control/.github/agents/investigate.md "$RUNNER_TEMP/prompt.md" --triage
       - name: Investigate with Codex
         env:
           GH_TOKEN: ""
@@ -56,8 +56,5 @@ jobs:
       - name: Post findings
         env:
           RESULT_PATH: ${{ runner.temp }}/investigation.json
+          AGENT_MODEL: ${{ vars.AGENT_INVESTIGATE_MODEL || 'gpt-6-luna' }}
         run: node .agent-control/.github/agents/post-investigation.mjs
-      - name: Clear trigger label
-        if: always()
-        run: |
-          gh issue edit "$ISSUE_NUMBER" --remove-label "agent: investigate" || true

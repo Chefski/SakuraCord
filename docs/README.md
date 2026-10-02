@@ -101,9 +101,16 @@ so discuss and update an issue in whichever place is convenient.
   issue to In Progress, landing on `nightly` moves it to In Nightly, and the
   first release whose tag contains the fix closes it as Shipped and pings
   everyone following it.
-- `agent: investigate` asks an agent to locate the cause and post findings;
-  `agent: fix` asks an agent to open a draft pull request against `nightly`.
-  Review agent output like any contribution.
+- Each new report starts one read-only triage and investigation agent on
+  GitHub Actions, using GPT-6 Luna and the nightly checkout. It reads the report,
+  recent comments, screenshots, and similar reports, then posts one assessment
+  with classification, questions, duplicate suggestions, and code findings.
+  The hub validates the result before changing issue metadata.
+- Rerun with `agent: investigate` or Discord's Manage menu. The label stays
+  until the hub applies the result; retry a failed run in Actions.
+- `agent: fix` explicitly starts the separate macOS agent, which opens a draft
+  pull request against `nightly`. Neither agent merges changes; review their
+  output like any contribution.
 
 Use `gh issue list`, `gh issue view`, and `gh api` to read and update issues.
 Do not add a repository `ROADMAP.md`. A code match or commit is evidence to
