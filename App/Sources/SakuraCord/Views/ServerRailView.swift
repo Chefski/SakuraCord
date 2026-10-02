@@ -7,6 +7,7 @@ import SwiftUI
 /// rebuilding or comparing every server row.
 struct ServerRailContainer: View {
     let model: AppModel
+    @State private var folderSettings: GuildFolder?
 
     var body: some View {
         @Bindable var invites = model.serverInvites
@@ -18,8 +19,12 @@ struct ServerRailContainer: View {
             selectDirectMessage: { model.navigate(to: $0) },
             selectGuild: model.selectGuild,
             joinServer: { invites.showsJoinDialog = true },
+            moveItems: model.moveServerRailItems,
+            combineGuilds: model.combineServerRailGuild,
             contextMenuActions: ServerRailContextMenuActions(
                 markRead: model.markGuildRead,
+                canInvite: { model.serverInviteChannel(for: $0.id) != nil },
+                invite: model.presentServerInviteCreation,
                 mute: { guild, duration in
                     model.setGuildMute(
                         true,
@@ -47,11 +52,21 @@ struct ServerRailContainer: View {
                 },
                 setShowsAllChannels: { guild, all in
                     model.setChannelSelectionEnabled(!all, guildID: guild.id)
-                }
+                },
+                markFolderRead: model.markServerFolderRead,
+                openFolderSettings: { folderSettings = $0 }
             )
         )
+        .windowModal(item: $folderSettings, title: "Folder Settings", cornerRadius: 32, cornerStyle: .circular) { folder in
+            ServerFolderSettingsView(folder: folder) { name, colorHex in
+                model.updateServerFolder(folder.id, name: name, colorHex: colorHex)
+            }
+        }
         .windowModal(isPresented: $invites.showsJoinDialog, cornerRadius: 32, cornerStyle: .circular,
                      isConcealed: { model.serverInvites.captcha.challenge != nil }, content: { JoinServerView(model: model) })
+        .windowModal(item: Bindable(invites.creation).presentation, cornerRadius: 32, cornerStyle: .circular) {
+            ServerInviteCreationView(model: model, presentation: $0)
+        }
         .modifier(ServerInviteCaptchaPresentation(store: invites.captcha))
         .alert("Leave \(invites.leaveConfirmation?.name ?? "Server")?",
                isPresented: Binding(get: { invites.leaveConfirmation != nil },
@@ -83,8 +98,11 @@ struct ServerRailView: View {
     let selectDirectMessage: (ChannelID) -> Void
     let selectGuild: (GuildID?) -> Void
     var joinServer: () -> Void = {}
+    var moveItems: ([GuildRailItem.RailIdentifier], GuildRailDestination) -> Void = { _, _ in }
+    var combineGuilds: (GuildID, GuildID) -> Void = { _, _ in }
     let contextMenuActions: ServerRailContextMenuActions
     @State private var folderLayoutRevision = 0
+    @State private var drag = ServerRailDragController()
 
     var body: some View {
         ScrollView {
@@ -108,7 +126,7 @@ struct ServerRailView: View {
                 ForEach(items) { item in
                     ServerRailItemView(
                         item: item,
-                        selectGuild: selectGuild,
+                        selectGuild: selectDraggableGuild,
                         contextMenuActions: contextMenuActions,
                         folderExpansionChanged: {
                             folderLayoutRevision &+= 1
@@ -139,7 +157,7 @@ struct ServerRailView: View {
         .frame(width: ChatChromeMetrics.serverRailWidth)
         .overlayPreferenceValue(ServerRailHoverPreferenceKey.self) { hoverItem in
             GeometryReader { proxy in
-                if let hoverItem {
+                if let hoverItem, drag.draggedID == nil {
                     ServerRailHoverLabel(name: hoverItem.name)
                         .offset(
                             x: ChatChromeMetrics.serverRailWidth + 7,
@@ -149,7 +167,82 @@ struct ServerRailView: View {
             }
             .allowsHitTesting(false)
         }
+        // Like the hover label, the dragged row is drawn outside the scroll
+        // view so neither it nor the neighbouring panes can clip it.
+        .overlayPreferenceValue(ServerRailRowsPreferenceKey.self) { anchors in
+            GeometryReader { proxy in
+                ServerRailDragOverlay(
+                    rows: anchors.map {
+                        ServerRailRow(
+                            id: $0.id,
+                            folderID: $0.folderID,
+                            isExpandedFolder: $0.isExpandedFolder,
+                            frame: proxy[$0.bounds]
+                        )
+                    },
+                    viewport: proxy.frame(in: .global),
+                    rootIDs: items.map(\.id),
+                    enclosingFolder: enclosingFolder,
+                    drag: drag,
+                    preview: dragPreview
+                )
+            }
+            .allowsHitTesting(false)
+        }
         .zIndex(200)
+        .environment(drag)
+        .onAppear {
+            drag.perform = { id, target in
+                switch target {
+                case .insert(let destination, _):
+                    moveItems([id], destination)
+                case .addToFolder(let folderID, _):
+                    moveItems([id], GuildRailDestination(container: .folder(folderID)))
+                case .combine(let target, _):
+                    if case .guild(let source) = id { combineGuilds(source, target) }
+                }
+            }
+        }
+    }
+
+    private func selectDraggableGuild(_ id: GuildID?) {
+        guard !drag.swallowsClick else { return }
+        selectGuild(id)
+    }
+
+    private func enclosingFolder(_ id: GuildRailItem.RailIdentifier) -> GuildRailItem.RailIdentifier? {
+        guard case .guild(let guildID) = id else { return nil }
+        for case .folder(let entry) in items where entry.guildEntries.contains(where: { $0.id == guildID }) {
+            return entry.id
+        }
+        return nil
+    }
+
+    @ViewBuilder
+    private func dragPreview(_ id: GuildRailItem.RailIdentifier) -> some View {
+        switch id {
+        case .guild(let guildID):
+            let entry = items.lazy.compactMap { item -> ServerRailGuildEntry? in
+                switch item {
+                case .guild(let entry): entry.id == guildID ? entry : nil
+                case .folder(let folder): folder.guildEntries.first { $0.id == guildID }
+                }
+            }.first
+            if let entry {
+                ServerRailGuildItemView(entry: entry, selectGuild: { _ in }, contextMenuActions: contextMenuActions)
+            }
+        case .folder:
+            if let entry = items.lazy.compactMap({ item -> ServerRailFolderEntry? in
+                if case .folder(let entry) = item, entry.id == id { entry } else { nil }
+            }).first {
+                ServerFolderRailHeader(
+                    entry: entry,
+                    isExpanded: UserDefaults.standard.bool(forKey: ServerFolderRailView.expansionKey(entry.folder.id)),
+                    contextMenuActions: contextMenuActions,
+                    toggle: {}
+                )
+            }
+        }
     }
 }
 
@@ -239,6 +332,8 @@ struct ServerRailBadgedIcon<Icon: View>: View {
 
 struct ServerRailContextMenuActions {
     let markRead: (GuildID) -> Void
+    var canInvite: (Guild) -> Bool = { _ in false }
+    var invite: (Guild) -> Void = { _ in }
     let mute: (Guild, ChannelMuteDuration) -> Void
     let unmute: (Guild) -> Void
     let setNotificationLevel: (Guild, MessageNotificationLevel) -> Void
@@ -246,6 +341,8 @@ struct ServerRailContextMenuActions {
     var leaveServer: (Guild) -> Void = { _ in }
     var showsAllChannels: (Guild) -> Bool? = { _ in nil }
     var setShowsAllChannels: (Guild, Bool) -> Void = { _, _ in }
+    var markFolderRead: ([GuildID]) -> Void = { _ in }
+    var openFolderSettings: (GuildFolder) -> Void = { _ in }
 }
 
 private struct ServerRailItemView: View {
@@ -263,6 +360,7 @@ private struct ServerRailItemView: View {
                     selectGuild: selectGuild,
                     contextMenuActions: contextMenuActions
                 )
+                .modifier(ServerRailDraggableRow(id: item.id))
             case .folder(let entry):
                 ServerFolderRailView(
                     entry: entry,
@@ -295,6 +393,7 @@ struct ServerRailGuildItemView: View {
 
 enum ServerRailAnimations {
     static let folderExpansion = Animation.spring(duration: 0.38, bounce: 0.08)
+    static let reorder = Animation.snappy(duration: 0.28)
 }
 
 struct GuildRailButton: View {
@@ -321,7 +420,8 @@ struct GuildRailButton: View {
                         iconURL: guild.iconURL,
                         size: 44,
                         cornerRadius: 14,
-                        animates: isHovering
+                        animates: isHovering,
+                        isSelected: isSelected
                     )
                 }
             }
@@ -333,6 +433,8 @@ struct GuildRailButton: View {
                         presentation.isNotificationMutationPending,
                     notificationSettings: presentation.notificationSettings,
                     markRead: { contextMenuActions.markRead(guild.id) },
+                    canInvite: { contextMenuActions.canInvite(guild) },
+                    invite: { contextMenuActions.invite(guild) },
                     mute: { contextMenuActions.mute(guild, $0) },
                     unmute: { contextMenuActions.unmute(guild) },
                     setNotificationLevel: {

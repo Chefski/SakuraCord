@@ -318,14 +318,15 @@ enum NativeTimelineBeginning: Equatable {
         id: ChannelID,
         title: String,
         starterName: String?,
-        startedAt: Date?
+        startedAt: Date?,
+        isForumPost: Bool = false
     )
 
     var id: ChannelID {
         switch self {
         case let .channel(channel, _):
             channel.id
-        case let .thread(id, _, _, _):
+        case let .thread(id, _, _, _, _):
             id
         }
     }
@@ -341,7 +342,7 @@ enum NativeTimelineBeginning: Equatable {
             default:
                 "Welcome to #\(channel.name)!"
             }
-        case let .thread(_, title, _, _):
+        case let .thread(_, title, _, _, _):
             title
         }
     }
@@ -362,7 +363,7 @@ enum NativeTimelineBeginning: Equatable {
             default:
                 return "This is the start of the #\(channel.name) channel."
             }
-        case let .thread(_, _, starterName?, _):
+        case let .thread(_, _, starterName?, _, _):
             return "Started by \(starterName)"
         case .thread:
             return "This is the start of the thread."
@@ -373,7 +374,7 @@ enum NativeTimelineBeginning: Equatable {
         switch self {
         case .channel:
             true
-        case let .thread(_, _, starterName, _):
+        case let .thread(_, _, starterName, _, _):
             starterName != nil
         }
     }
@@ -398,13 +399,13 @@ enum NativeTimelineBeginning: Equatable {
             default:
                 return "number"
             }
-        case .thread:
-            return "bubble.left.and.bubble.right.fill"
+        case let .thread(_, _, _, _, isForumPost):
+            return isForumPost ? "bubble.left.and.bubble.right.fill" : SakuraCordSystemSymbol.thread
         }
     }
 
     var startedAt: Date? {
-        guard case let .thread(_, _, _, startedAt) = self else { return nil }
+        guard case let .thread(_, _, _, startedAt, _) = self else { return nil }
         return startedAt
     }
 

@@ -189,10 +189,12 @@ extension DiscordRESTProvider {
     }
 
     public func disconnect() async {
+        await finishGuildFoldersEdits()
         currentAccountDetails = nil
         currentAuthSessionIDHash = nil
         accountInformationRevision = UUID()
         profileApexAssignments = nil
+        pendingStatusEditConnectionClosed()
         resetProfileEditingState()
         derivedCacheGeneration &+= 1
         stickerFrecencyFlushGeneration &+= 1
@@ -319,7 +321,9 @@ extension DiscordRESTProvider {
             // would replace it with a generic bootstrap failure.
             failInitialGatewaySnapshot(ChatProviderError.invalidRequest(message))
         case .stateChanged(let connectionState):
+            let wasReady = gatewayReady
             gatewayReady = connectionState == .ready
+            if wasReady, !gatewayReady { pendingStatusEditConnectionClosed() }
             if connectionState == .authenticationFailed {
                 failInitialGatewaySnapshot(ChatProviderError.unauthenticated)
                 await openSafetyCircuit(
@@ -348,15 +352,8 @@ extension DiscordRESTProvider {
                                 )
                             )
                         }
-                        try await sendGateway([
-                            "op": 3,
-                            "d": [
-                                "since": 0,
-                                "activities": [],
-                                "status": presenceStatus.rawValue,
-                                "afk": false,
-                            ] as [String: Any],
-                        ])
+                        lastSentPresenceStatus = nil
+                        await sendPresenceIfChanged()
                         try await gatewaySession?.announceDesktopSession()
                     } catch {
                         gatewayLogger.error(
@@ -438,14 +435,12 @@ extension DiscordRESTProvider {
         let changedSelection = selectedMemberListID[guildID] != memberListID
         selectedMemberListID[guildID] = memberListID
         if changedSelection {
-            continuation?.yield(
-                .membersChanged(
-                    guildID: guildID,
-                    members: orderedMemberListMembers(
-                        guildID: guildID, memberListID: memberListID
-                    ) ?? [],
-                    groups: cachedMemberListGroups[guildID]?[memberListID] ?? []
-                )
+            publishMembers(
+                guildID: guildID,
+                members: orderedMemberListMembers(
+                    guildID: guildID, memberListID: memberListID
+                ) ?? [],
+                groups: cachedMemberListGroups[guildID]?[memberListID] ?? []
             )
         }
         if !DiscordMemberListRangePolicy.requiresSubscriptionUpdate(
@@ -787,12 +782,10 @@ extension DiscordRESTProvider {
             members[index].isRoleCategory = category != nil
         }
         cachedMembers[guildID] = members
-        continuation?.yield(
-            .membersChanged(
-                guildID: guildID,
-                members: members,
-                groups: selectedMemberListGroups(guildID: guildID)
-            )
+        publishMembers(
+            guildID: guildID,
+            members: members,
+            groups: selectedMemberListGroups(guildID: guildID)
         )
     }
 

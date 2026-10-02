@@ -964,7 +964,7 @@ private struct CurrentUserCapsule: View {
     @ViewBuilder
     private var youPopover: some View {
         if let profileRequestID,
-           let presentation = model.contextualProfilePresentation,
+           let presentation = model.liveProfilePresentation(for: .contextual),
            presentation.requestID == profileRequestID
         {
             ProfilePresentationContent(
@@ -1010,9 +1010,8 @@ private struct CurrentUserCapsule: View {
             connectAccount()
             return
         }
-        var member = model.membersByID[user.id]
+        let member = model.membersByID[user.id]
             ?? Member(user: user, roleName: "You", status: currentStatus)
-        member.status = currentStatus
         profileRequestID = model.presentProfile(
             for: member,
             destination: .contextual

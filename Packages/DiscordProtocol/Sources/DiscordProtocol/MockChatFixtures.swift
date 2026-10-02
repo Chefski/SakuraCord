@@ -380,7 +380,6 @@ struct MockChatFixture {
             ],
             premiumSince: Calendar.current.date(byAdding: .year, value: -1, to: .now),
             legacyUsername: "\(user.username)#0001",
-            status: member.status,
             customStatus: member.customStatus
         )
     }
@@ -401,7 +400,7 @@ private struct MockFixtureAssembly {
         let auroraVoiceCategoryID = ChannelID(rawValue: 193)
         let labCategoryID = ChannelID(rawValue: 290)
         let labVoiceCategoryID = ChannelID(rawValue: 291)
-        let textPermissions: UInt64 = (1 << 10) | (1 << 11) | (1 << 15) | (1 << 16) | (1 << 20)
+        let textPermissions: UInt64 = (1 << 0) | (1 << 10) | (1 << 11) | (1 << 15) | (1 << 16) | (1 << 20)
             | (1 << 34) | (1 << 38) | (1 << 51)
         let auroraIcon = demoAsset("guild-aurora")
         let nativeLabIcon = demoAsset("guild-native-lab")
@@ -719,7 +718,8 @@ private struct MockFixtureAssembly {
                 roles: [designerRole],
                 globalDisplayName: maya.displayName,
                 activityText: "Reviewing interaction states",
-                customStatus: "Making the empty states less empty"
+                customStatus: "Making the empty states less empty",
+                isMobileOnly: true
             ),
             Member(
                 user: theo,

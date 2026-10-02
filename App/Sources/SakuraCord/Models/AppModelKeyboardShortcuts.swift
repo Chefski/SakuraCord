@@ -152,7 +152,7 @@ extension AppModel {
         case .messageSearch:
             MessageSearchSurfacePolicy.showsToolbar(
                 channelKind: selectedChannel?.kind,
-                hasOpenThread: openThread != nil
+                hasOpenThread: hasThreadPane
             )
         case .previousConversation, .nextConversation:
             hasKeyboardShortcutConversationDestination(unreadOnly: false)
@@ -181,7 +181,7 @@ extension AppModel {
         case .searchCurrentConversation:
             MessageSearchSurfacePolicy.showsToolbar(
                 channelKind: selectedChannel?.kind,
-                hasOpenThread: openThread != nil
+                hasOpenThread: hasThreadPane
             )
         case .copyChannelLink:
             openThread != nil || selectedChannelID != nil
@@ -221,7 +221,7 @@ extension AppModel {
     }
 
     private var activeComposerDestination: MessageComposerDestination {
-        openThread == nil ? .channel : .thread
+        hasThreadPane ? .thread : .channel
     }
 
 }

@@ -140,7 +140,7 @@ struct RootView: View {
                 && (model.isSwitchingAccounts
                 || MessageSearchSurfacePolicy.showsToolbar(
                     channelKind: model.selectedChannel?.kind,
-                    hasOpenThread: model.openThread != nil
+                    hasOpenThread: model.hasThreadPane
                 ))
         case .signedOut:
             model.launchMode != .normal && !model.includesOfflineSignIn
@@ -392,11 +392,14 @@ private struct ChatRootView: View {
                       let destination = composerDestination(at: location)
                 else { return false }
                 hoveredFileDropDestination = destination
-                if NSEvent.modifierFlags.contains(.shift) {
-                    sendDroppedAttachmentsImmediately(urls, to: destination)
-                    return !urls.isEmpty
+                let isInstant = NSEvent.modifierFlags.contains(.shift)
+                Task {
+                    await model.receiveComposerAttachments(
+                        .external(urls),
+                        to: destination,
+                        sendingImmediately: isInstant
+                    )
                 }
-                Task { await model.addComposerAttachments(urls, to: destination) }
                 return !urls.isEmpty
             },
             isTargeted: { targeted in
@@ -597,7 +600,7 @@ private struct ChatRootView: View {
 
                 ToolbarSpacer(.fixed)
 
-                if model.openThread == nil, let channel = model.customizationPreviewChannel,
+                if !model.hasThreadPane, let channel = model.customizationPreviewChannel,
                    let guildID = channel.guildID, !model.isChannelSelected(channel) {
                     ToolbarItem(placement: .primaryAction) {
                         Button("Add to Channel List", systemImage: "plus") {
@@ -792,13 +795,12 @@ private struct ChatRootView: View {
                         batch.discard()
                         return
                     }
-                    if instant {
-                        sendDroppedPromisedAttachmentsImmediately(
-                            batch,
-                            to: destination
+                    Task {
+                        await model.receiveComposerAttachments(
+                            .owned(batch),
+                            to: destination,
+                            sendingImmediately: instant
                         )
-                    } else {
-                        Task { await model.addPromisedComposerAttachments(batch, to: destination) }
                     }
                 }
             )
@@ -836,7 +838,7 @@ private struct ChatRootView: View {
     }
 
     private func proposedComposerDestination(atX horizontalPosition: CGFloat) -> MessageComposerDestination {
-        if model.openThread != nil, supplementaryPaneFrame != .zero {
+        if model.hasThreadPane, supplementaryPaneFrame != .zero {
             let localThreadLeadingEdge = supplementaryPaneFrame.minX - workspaceFrame.minX
             return horizontalPosition >= localThreadLeadingEdge ? .thread : .channel
         }
@@ -852,41 +854,6 @@ private struct ChatRootView: View {
         let windowPoint = window.convertPoint(fromScreen: NSEvent.mouseLocation)
         let proposed = proposedComposerDestination(atX: windowPoint.x - workspaceFrame.minX)
         return model.isComposerDropEligible(proposed) ? proposed : nil
-    }
-
-    private func sendDroppedAttachmentsImmediately(
-        _ urls: [URL],
-        to destination: MessageComposerDestination
-    ) {
-        Task {
-            let acceptedURLs = await model.attachmentURLsWithinDiscordLimit(urls, offeringExternalUploadFor: destination)
-            guard !acceptedURLs.isEmpty else { return }
-            let scopedURLs = acceptedURLs.filter { $0.startAccessingSecurityScopedResource() }
-            defer {
-                for url in scopedURLs {
-                    url.stopAccessingSecurityScopedResource()
-                }
-            }
-            await model.sendAttachmentsImmediately(
-                acceptedURLs.map { ForumPostAttachment(url: $0) },
-                to: destination
-            )
-        }
-    }
-
-    private func sendDroppedPromisedAttachmentsImmediately(
-        _ batch: ComposerPromisedFileBatch,
-        to destination: MessageComposerDestination
-    ) {
-        Task {
-            let acceptedURLs = await model.preparePromisedAttachmentsForImmediateSend(batch, to: destination)
-            guard !acceptedURLs.isEmpty else { return }
-            defer { model.endUsingOwnedPromisedFiles(acceptedURLs) }
-            await model.sendAttachmentsImmediately(
-                acceptedURLs.map { ForumPostAttachment(url: $0) },
-                to: destination
-            )
-        }
     }
 
     private func channelToolbarSymbol(_ channel: Channel) -> String {
@@ -935,10 +902,14 @@ private struct ChatRootView: View {
 
     private func directMessageToolbarStatus(for channel: Channel) -> PresenceStatus? {
         guard channel.kind == .directMessage else { return nil }
-        return DirectMessageInboxPolicy.recipientMember(
+        return directMessageRecipient(for: channel)?.status ?? .offline
+    }
+
+    private func directMessageRecipient(for channel: Channel) -> Member? {
+        DirectMessageInboxPolicy.recipientMember(
             for: channel,
             membersByID: model.membersByID
-        )?.status ?? .offline
+        )
     }
 
     private func channelTopic(for channel: Channel) -> String? {
@@ -954,7 +925,7 @@ private struct ChatRootView: View {
     }
 
     private var hasOpenSupplementaryToolbarConversation: Bool {
-        model.openThread != nil
+        model.hasThreadPane
             || model.isVoiceChatOpen
             || model.hasOpenGuildSupplementaryConversation
     }
@@ -971,7 +942,7 @@ private struct ChatRootView: View {
 
     private var toolbarPinsChannelID: ChannelID? {
         guard model.guildWorkspacePage == nil, model.onboardingEntryGuildID == nil,
-              selectedVoiceChannel == nil, model.openThread == nil
+              selectedVoiceChannel == nil, !model.hasThreadPane
         else { return nil }
         return model.activePinsChannelID
     }
@@ -986,14 +957,16 @@ private struct ChatRootView: View {
                      subtitle: isDirectMessageSelected ? directMessageToolbarSubtitle(for: channel) : nil,
                      topic: isDirectMessageSelected ? nil : channelTopic(for: channel),
                      avatarChannel: isDirectMessageSelected ? channel : nil,
-                     avatarStatus: isDirectMessageSelected ? directMessageToolbarStatus(for: channel) : nil)
+                     avatarStatus: isDirectMessageSelected ? directMessageToolbarStatus(for: channel) : nil,
+                     avatarIsMobile: isDirectMessageSelected && directMessageRecipient(for: channel)?.showsMobileIndicator == true)
     }
 
     private var supplementaryToolbarPresentation: SupplementaryToolbarPresentation? {
-        if let thread = model.openThread {
+        if model.hasThreadPane {
             return SupplementaryToolbarPresentation(
-                title: thread.name,
-                systemImage: "bubble.left.and.bubble.right"
+                title: model.openThread?.name ?? "New Thread",
+                systemImage: model.selectedChannel?.kind == .forum
+                    ? "bubble.left.and.bubble.right.fill" : SakuraCordSystemSymbol.thread
             )
         }
         if let channel = model.customizationPreviewChannel {
@@ -1011,7 +984,7 @@ private struct ChatRootView: View {
     }
 
     private var supplementaryCloseHelp: String {
-        if model.openThread != nil { return "Close thread" }
+        if model.hasThreadPane { return "Close thread" }
         if model.hasOpenGuildSupplementaryConversation { return "Close preview" }
         return "Close voice channel chat"
     }
@@ -1033,7 +1006,7 @@ private struct ChatRootView: View {
     }
 
     private func closeSupplementaryConversation() {
-        if model.openThread != nil {
+        if model.hasThreadPane {
             model.closeThread()
         } else if !model.closeGuildSupplementaryConversation() {
             model.closeVoiceChat()
@@ -1215,7 +1188,7 @@ private struct ComposerFileDropOverlay: View {
     var body: some View {
         GeometryReader { proxy in
             Group {
-                if model.openThread != nil, supplementaryPaneFrame != .zero {
+                if model.hasThreadPane, supplementaryPaneFrame != .zero {
                     HStack(spacing: 0) {
                         destinationZone(
                             .channel,
@@ -1225,7 +1198,7 @@ private struct ComposerFileDropOverlay: View {
 
                         destinationZone(
                             .thread,
-                            title: model.openThread?.name ?? "Thread"
+                            title: model.openThread?.name ?? "New Thread"
                         )
                     }
                 } else {
@@ -1266,11 +1239,15 @@ private struct ComposerFileDropOverlay: View {
                         Text(isInstantUpload ? "Upload directly to" : "Upload to")
                             .font(.title2.weight(.bold))
 
-                        Label(
-                            title,
-                            systemImage: destination == .thread
-                                ? "bubble.left.and.bubble.right.fill" : "number"
-                        )
+                        Label {
+                            Text(title)
+                        } icon: {
+                            SakuraCordSystemSymbol.swiftUIImage(
+                                named: destination == .thread
+                                    ? (model.selectedChannel?.kind == .forum
+                                        ? "bubble.left.and.bubble.right.fill" : SakuraCordSystemSymbol.thread) : "number"
+                            )
+                        }
                         .font(.headline.weight(.semibold))
                         .lineLimit(1)
                         .padding(.horizontal, 14)
@@ -1340,6 +1317,7 @@ private struct ConversationToolbarPresentation {
     var topic: String?
     var avatarChannel: Channel?
     var avatarStatus: PresenceStatus?
+    var avatarIsMobile = false
 }
 
 private struct ConversationToolbarLabel: View {
@@ -1349,6 +1327,7 @@ private struct ConversationToolbarLabel: View {
     let textSize: CGFloat
     let avatarChannel: Channel?
     let avatarStatus: PresenceStatus?
+    let avatarIsMobile: Bool
 
     init(
         title: String,
@@ -1356,7 +1335,8 @@ private struct ConversationToolbarLabel: View {
         subtitle: String?,
         textSize: CGFloat,
         avatarChannel: Channel? = nil,
-        avatarStatus: PresenceStatus? = nil
+        avatarStatus: PresenceStatus? = nil,
+        avatarIsMobile: Bool = false
     ) {
         self.title = title
         self.systemImage = systemImage
@@ -1364,6 +1344,7 @@ private struct ConversationToolbarLabel: View {
         self.textSize = textSize
         self.avatarChannel = avatarChannel
         self.avatarStatus = avatarStatus
+        self.avatarIsMobile = avatarIsMobile
     }
 
     var body: some View {
@@ -1373,11 +1354,13 @@ private struct ConversationToolbarLabel: View {
                     channel: avatarChannel,
                     size: 24,
                     status: avatarStatus,
+                    isMobile: avatarIsMobile,
                     animates: true
                 )
                 .accessibilityHidden(true)
             } else {
-                Image(systemName: systemImage)
+                SakuraCordSystemSymbol.swiftUIImage(named: systemImage)
+                    .font(systemImage == SakuraCordSystemSymbol.thread ? .system(size: textSize) : nil)
             }
             VStack(alignment: .leading, spacing: 0) {
                 Text(title)
@@ -1414,7 +1397,8 @@ private struct ConversationToolbarTitle: View {
                 subtitle: presentation.subtitle,
                 textSize: InterfaceTypographyMetrics.interfaceTextSize,
                 avatarChannel: presentation.avatarChannel,
-                avatarStatus: presentation.avatarStatus
+                avatarStatus: presentation.avatarStatus,
+                avatarIsMobile: presentation.avatarIsMobile
             )
             .padding(.horizontal, 8)
             .padding(.vertical, 5)

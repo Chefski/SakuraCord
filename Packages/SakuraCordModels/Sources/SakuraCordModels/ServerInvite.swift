@@ -121,3 +121,85 @@ public struct ServerInviteAcceptance: Sendable {
         self.requiresVerification = requiresVerification
     }
 }
+
+/// Discord's base server-invite expiry choices. Guild experiments can add longer
+/// presets in the official client; SakuraCord offers only the stable base set.
+public enum ServerInviteMaxAge: Int, CaseIterable, Codable, Hashable, Sendable {
+    case thirtyMinutes = 1800
+    case oneHour = 3600
+    case sixHours = 21600
+    case twelveHours = 43200
+    case oneDay = 86400
+    case sevenDays = 604_800
+    case never = 0
+
+    public var title: String {
+        switch self {
+        case .thirtyMinutes: "30 minutes"
+        case .oneHour: "1 hour"
+        case .sixHours: "6 hours"
+        case .twelveHours: "12 hours"
+        case .oneDay: "1 day"
+        case .sevenDays: "7 days"
+        case .never: "Never"
+        }
+    }
+}
+
+public enum ServerInviteMaxUses: Int, CaseIterable, Codable, Hashable, Sendable {
+    case unlimited = 0
+    case one = 1
+    case five = 5
+    case ten = 10
+    case twentyFive = 25
+    case fifty = 50
+    case oneHundred = 100
+
+    public var title: String {
+        switch self {
+        case .unlimited: "No limit"
+        case .one: "1 use"
+        default: "\(rawValue) uses"
+        }
+    }
+}
+
+public struct ServerInviteSettings: Hashable, Sendable {
+    public var maxAge: ServerInviteMaxAge
+    public var maxUses: ServerInviteMaxUses
+
+    public init(maxAge: ServerInviteMaxAge = .sevenDays, maxUses: ServerInviteMaxUses = .unlimited) {
+        self.maxAge = maxAge
+        self.maxUses = maxUses
+    }
+}
+
+/// An invite link the current account created. Discord does not list a member's
+/// own invites, so SakuraCord keeps this user-authored record per account.
+public struct CreatedServerInvite: Hashable, Sendable, Identifiable {
+    public var reference: ServerInviteReference
+    public var guildID: GuildID
+    public var channelID: ChannelID
+    public var createdAt: Date
+    public var expiresAt: Date?
+    /// Raw Discord values; Discord can return an older invite with these settings.
+    public var maxAge: Int
+    public var maxUses: Int
+
+    public var id: String { reference.code }
+
+    public init(reference: ServerInviteReference, guildID: GuildID, channelID: ChannelID, createdAt: Date,
+                expiresAt: Date?, maxAge: Int, maxUses: Int) {
+        self.reference = reference
+        self.guildID = guildID
+        self.channelID = channelID
+        self.createdAt = createdAt
+        self.expiresAt = expiresAt
+        self.maxAge = maxAge
+        self.maxUses = maxUses
+    }
+
+    public func isExpired(at date: Date = .now) -> Bool {
+        expiresAt.map { $0 <= date } ?? false
+    }
+}

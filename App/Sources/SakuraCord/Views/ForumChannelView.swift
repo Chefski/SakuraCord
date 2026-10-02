@@ -759,17 +759,18 @@ private struct ForumListPostCard: View {
                                 ForumPostNewBadge()
                             }
                         }
+                        .allowsHitTesting(false)
+                        // The excerpt takes clicks only on hidden spoilers.
                         if let starterMessage, !starterMessage.content.isEmpty {
                             ForumPostStarterExcerpt(
-                                presentation: model.authorPresentation(for: starterMessage),
-                                content: starterMessage.content,
+                                model: model,
+                                message: starterMessage,
                                 isEmphasized: model.shouldEmphasizeForumPost(post)
                             )
                         }
                     }
                     .padding(.trailing, attachmentTrailingInset)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .allowsHitTesting(false)
 
                     ForumPostListFooter(model: model, channel: channel, post: post)
                 }
@@ -847,7 +848,6 @@ private struct ForumGalleryPostCard: View {
                 .allowsHitTesting(false)
 
                 ForumPostGalleryHero(model: model, channel: channel, post: post)
-                    .allowsHitTesting(false)
 
                 ForumPostGalleryFooter(model: model, channel: channel, post: post)
             }
@@ -913,27 +913,32 @@ private struct ForumPostGalleryHero: View {
     let post: ForumPost
 
     var body: some View {
+        // Only the preview text takes clicks, and only on hidden spoilers;
+        // everything else belongs to the card, which opens the post.
         ZStack(alignment: .bottomLeading) {
             ConcentricRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Color.primary.opacity(0.07))
+                .allowsHitTesting(false)
 
             if let attachment = post.firstMessage?.attachments.first {
                 ForumPostAttachmentPreview(attachment: attachment, maximumPixelDimension: 1_280)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .allowsHitTesting(false)
             } else if let previewMessage, !previewMessage.content.isEmpty {
-                Text(.init(previewMessage.content))
-                    .font(.body)
-                    .foregroundStyle(
-                        model.shouldEmphasizeForumPost(post) ? .primary : .secondary
-                    )
-                    .lineLimit(8)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .padding(16)
+                ForumPostPreviewText(
+                    model: model,
+                    message: previewMessage,
+                    maximumNumberOfLines: 8,
+                    isEmphasized: model.shouldEmphasizeForumPost(post)
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(16)
             } else {
                 Image(systemName: "bubble.left.and.text.bubble.right")
                     .font(.system(size: 32, weight: .medium))
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .allowsHitTesting(false)
             }
 
             ForumPostAppliedTags(
@@ -943,6 +948,7 @@ private struct ForumPostGalleryHero: View {
                 maximumVisibleTags: 3
             )
             .padding(10)
+            .allowsHitTesting(false)
         }
         .frame(height: ForumPostCardMetrics.galleryHeroHeight)
         .clipShape(ConcentricRectangle(cornerRadius: 12, style: .continuous))
@@ -1004,18 +1010,26 @@ private struct ForumPostAuthorName: View {
 
 private struct ForumPostStarterExcerpt: View {
     @Environment(\.roleColorDisplay) private var roleColorDisplay
-    let presentation: MessageAuthorPresentation
-    let content: String
+    let model: AppModel
+    let message: Message
     let isEmphasized: Bool
     @State private var authorFont: NSFont?
 
+    private var presentation: MessageAuthorPresentation {
+        model.authorPresentation(for: message)
+    }
+
     var body: some View {
-        let messageColor: Color = isEmphasized ? .primary : .secondary
-        Text(
-            "\(roleIndicator)\(authorText)\(Text(": ").foregroundColor(messageColor))\(Text(.init(content)).foregroundColor(messageColor))"
+        ForumPostPreviewText(
+            model: model,
+            message: message,
+            maximumNumberOfLines: 2,
+            isEmphasized: isEmphasized,
+            prefix: ForumPostPreviewTextView.Prefix(
+                value: authorPrefix,
+                accessibilityText: "\(presentation.user.displayName): "
+            )
         )
-        .lineLimit(2)
-        .accessibilityLabel("\(presentation.user.displayName): \(content)")
         .task(id: presentation.user.displayNameStyle?.fontID) {
             authorFont = nil
             guard let definition = ProfileNameFontCache.customDefinition(for: presentation.user.displayNameStyle?.fontID) else { return }
@@ -1023,14 +1037,40 @@ private struct ForumPostStarterExcerpt: View {
         }
     }
 
-    private var authorText: Text {
-        Text(presentation.user.displayName)
-            .font(authorFont.map(Font.init) ?? .body.weight(.semibold)).foregroundColor(nameColor)
-    }
-
-    private var roleIndicator: Text {
-        guard roleColorDisplay == .nextToNames, let hex = presentation.roleColorHex, hex != 0 else { return Text("") }
-        return Text("\(Text(Image(systemName: "circle.fill")).font(.system(size: 8)).foregroundColor(Color(hex: hex))) ")
+    /// The author's name, preceded by a role color dot when names show roles
+    /// that way, and followed by the separator before the message.
+    private var authorPrefix: NSAttributedString {
+        let bodySize = NSFont.preferredFont(forTextStyle: .body).pointSize
+        let value = NSMutableAttributedString()
+        if roleColorDisplay == .nextToNames,
+           let hex = presentation.roleColorHex, hex != 0,
+           let dot = NSImage(systemSymbolName: "circle.fill", accessibilityDescription: nil)?
+               .withSymbolConfiguration(
+                   NSImage.SymbolConfiguration(pointSize: 8, weight: .regular)
+                       .applying(.init(paletteColors: [NSColor(Color(hex: hex))]))
+               )
+        {
+            let attachment = NSTextAttachment()
+            attachment.image = dot
+            attachment.bounds = CGRect(origin: CGPoint(x: 0, y: 1), size: dot.size)
+            value.append(NSAttributedString(attachment: attachment))
+            value.append(NSAttributedString(string: " "))
+        }
+        value.append(NSAttributedString(
+            string: presentation.user.displayName,
+            attributes: [
+                .font: authorFont ?? NSFont.systemFont(ofSize: bodySize, weight: .semibold),
+                .foregroundColor: NSColor(nameColor),
+            ]
+        ))
+        value.append(NSAttributedString(
+            string: ": ",
+            attributes: [
+                .font: NSFont.systemFont(ofSize: bodySize),
+                .foregroundColor: isEmphasized ? NSColor.labelColor : NSColor.secondaryLabelColor,
+            ]
+        ))
+        return value
     }
 
     private var nameColor: Color {
@@ -1467,6 +1507,7 @@ private struct ForumPostComposer: View {
     @State private var content = ""
     @State private var attachments: [ForumPostAttachment] = []
     @State private var securityScopedAttachmentURLs: Set<URL> = []
+    @State private var ownedAttachmentBatches: [ComposerPromisedFileBatch] = []
     @State private var selectedTags: Set<ForumTagID> = []
     @State private var showsFileImporter = false
     @State private var showsGuidelines = false
@@ -1550,6 +1591,10 @@ private struct ForumPostComposer: View {
                 url.stopAccessingSecurityScopedResource()
             }
             securityScopedAttachmentURLs.removeAll()
+            for batch in ownedAttachmentBatches {
+                batch.discard()
+            }
+            ownedAttachmentBatches.removeAll()
         }
     }
 
@@ -1579,7 +1624,8 @@ private struct ForumPostComposer: View {
                         text: $content,
                         selection: $contentSelection,
                         isFocused: $isContentFocused,
-                        placeholder: "Enter a message…"
+                        placeholder: "Enter a message…",
+                        receiveAttachments: receiveAttachments
                     )
                     .frame(maxWidth: .infinity, minHeight: 210, maxHeight: .infinity)
                 }
@@ -1688,12 +1734,32 @@ private struct ForumPostComposer: View {
         Task { await addCheckedAttachments(urls) }
     }
 
+    /// Adds pasted files; pasted data stays in app-owned storage until the
+    /// composer closes, since these attachments are not held by the model.
+    private func receiveAttachments(_ incoming: ComposerIncomingAttachments) {
+        switch incoming {
+        case let .external(urls):
+            addAttachments(urls)
+        case let .owned(batch):
+            ownedAttachmentBatches.append(batch)
+            Task {
+                await addCheckedAttachments(batch.urls)
+                let attachedURLs = Set(attachments.map(\.url))
+                guard !batch.urls.contains(where: attachedURLs.contains) else { return }
+                batch.discard()
+                ownedAttachmentBatches.removeAll { $0.directory == batch.directory }
+            }
+        }
+    }
+
     private func addCheckedAttachments(_ urls: [URL]) async {
-        let allowedURLs = await model.attachmentURLsWithinDiscordLimit(urls)
-        let count = max(0, 10 - attachments.count)
         let existingURLs = Set(attachments.map(\.url))
-        let uniqueURLs = allowedURLs.filter { !existingURLs.contains($0) }
-        let addedURLs = Array(uniqueURLs.prefix(count))
+        let urls = model.uploadableFileURLs(urls.filter { !existingURLs.contains($0) })
+        guard model.attachmentBatchFits(urls.count, besides: attachments.count) else { return }
+        let allowedURLs = await model.attachmentURLsWithinDiscordLimit(urls)
+        let currentURLs = Set(attachments.map(\.url))
+        let addedURLs = allowedURLs.filter { !currentURLs.contains($0) }
+        guard model.attachmentBatchFits(addedURLs.count, besides: attachments.count) else { return }
         for url in addedURLs
             where !securityScopedAttachmentURLs.contains(url)
             && url.startAccessingSecurityScopedResource()

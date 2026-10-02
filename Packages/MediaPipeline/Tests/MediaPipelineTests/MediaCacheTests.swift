@@ -23,9 +23,8 @@ func `media cache persists bytes without storing the source URL`() async throws 
     let filenames = try FileManager.default.contentsOfDirectory(
         atPath: cacheDirectory.path
     )
-    #expect(filenames.count == 1)
-    #expect(!filenames[0].contains("cdn.example"))
-    #expect(!filenames[0].contains("signature"))
+    // Lowercase SHA-256 hex of the URL; existing caches depend on this spelling.
+    #expect(filenames == ["b05bc1595a5c4661a3003e69a51ba9bd4b0836f0675e07c38be78c620123f32b"])
 }
 
 @Test

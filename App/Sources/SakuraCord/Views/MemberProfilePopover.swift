@@ -399,9 +399,10 @@ private struct ProfileHeroSection: View {
 
             HStack(alignment: .bottom, spacing: 6) {
                 AvatarPresenceView(
-                    status: profile?.status ?? member.status,
+                    status: member.status,
                     avatarSize: avatarSize,
-                    indicatorSize: 15
+                    indicatorSize: 15,
+                    isMobile: member.showsMobileIndicator
                 ) {
                     DecoratedAvatarView(
                         name: profile?.displayName ?? member.user.displayName,
@@ -440,7 +441,7 @@ private struct ProfileHeroSection: View {
             .padding(.horizontal, horizontalInset)
         }
         .overlay(alignment: .topLeading) {
-            if editor != nil || (profile?.customStatus ?? member.customStatus)?.isEmpty == false {
+            if editor != nil || member.customStatus?.isEmpty == false {
                 Group {
                     if let editor, let profile {
                         ProfileCustomStatusControl(
@@ -449,7 +450,7 @@ private struct ProfileHeroSection: View {
                         )
                     } else {
                         ProfileStatusBubble(
-                            text: profile?.customStatus ?? member.customStatus ?? "",
+                            text: member.customStatus ?? "",
                             surfaceColor: avatarCutoutColor, width: statusBubbleWidth,
                             isExpandedProfile: isExpandedProfile
                         )

@@ -533,6 +533,15 @@ reference for completed joining.
   resolve an otherwise valid preview. Invalid invites returned code `10006`;
   expired and revoked invites both returned `50270`. These expected failures
   must not trip the account-wide networking circuit.
+- Creation uses one `POST /channels/{channel}/invites` with `max_age`,
+  `max_uses`, `target_type:null`, `temporary:false`, `flags:0`, and context
+  location `Guild Context Menu`. Non-expiring links (`max_age:0`) require the
+  guild's `COMMUNITY` feature in both the picker and provider. This eligibility
+  follows Discord's [Invites 101](https://support.discord.com/hc/en-us/articles/208866998-Invites-101)
+  guidance, checked 1 October 2026; it is not a newly observed server rejection.
+  Saved links receive one validation pass per server per account session.
+  Copying writes the link to the clipboard immediately, then validates that
+  link and reports a failure. Reopening does not start another full pass.
 - Accept: one `POST /invites/{code}` with the current Gateway `session_id`;
   message-card actions additionally supply `invite_instance_id` as
   `{messageID}:{code}`. Context location is `Join Guild` or
@@ -1011,7 +1020,8 @@ and retained as evidence.
 | `GET /guilds/{guild}/profile` | Server Guide enrichment and explicit server tag card; no query or body. The response `id` must match. `403`/`50001` is a private profile and `404` is expected; neither stops account networking. | Current first-party guide and tag-card sources; P−, S−. |
 | `PUT /guilds/{guild}/members/@me?lurker=false` | Explicit **Join** on a discoverable server's tag card; body `{}` and `X-Context-Properties: e30=` (first-party `context:{}`), one attempt, at most one user-completed CAPTCHA replay. Existing members and screening-gated servers send nothing; `30001`/`40007` do not stop account networking. | First-party lurker-mode full join (see Server tag cards); Paicord has only the PATCH member route; S−. No live join was performed. |
 | `PUT /users/@me/clan` | Account-wide `identity_guild_id` and `identity_enabled`, editable from either main or server profiles; clearing sends null/false. One save reconciles the shared user and every cached profile without follow-up reads. Eligible guilds come from joined, nonpending Gateway memberships with `GUILD_TAGS` and a tag. | Clean September tag selection/removal and first-party eligibility resolver; 10 September editor-scope correction and cache-reconciliation coverage. |
-| `PATCH /users/@me/settings-proto/1` | Independent custom-status update; JSON contains `settings`. Send root field 11 with the retained status settings, replacing or removing its custom-status field 2 while preserving siblings and unknown fields. Reconcile the authoritative returned settings. | Clean September status saves, clears and expiry; first-party protobuf/settings implementation. |
+| `PATCH /users/@me/settings-proto/1` | Custom-status update or status pick; JSON contains `settings`, plus `required_data_version` when the write carries a pending status edit with a recorded data version. Send root field 11 with the retained status settings, replacing or removing custom-status field 2, or setting status field 1 as described under dispatch reconciliation, while preserving siblings and unknown fields. Reconcile the authoritative returned settings, including an `out_of_date` response. `400` / `50105` does not open the safety circuit: the status and Inbox writers reload with `GET /users/@me/settings-proto/1`. | Clean September status saves, clears and expiry; first-party protobuf/settings implementation; web build `622805` status pick and settings engine. |
+| `GET /users/@me/settings-proto/1` | Only after `400` / `50105` from a settings-proto/1 PATCH; no body. The returned proto is applied as a full type-1 settings update. | Web build `622805` module `594061` `loadIfNecessary(true)`; Paicord, Swiftcord v1 and DiscordKit have no reload path. |
 | `GET /collectibles-categories/v2?include_bundles=true&variants_return_style=2&skip_num_categories=0` | First collectible-picker catalogue load; retain server categories, variants and asset descriptors. | Clean September picker and catalogue requests. |
 | `GET /users/@me/collectibles-purchases?variants_return_style=2` | Owned inventory, including purchase type and expiry used by selection/save gates. | Clean September inventory requests and first-party ownership resolver. |
 | `GET /users/@me/avatars` | Image chooser's recent-avatar history; archived WebP thumbnails use size128 and crop sources size2048. Both append animated=true for an a_-prefixed storage hash; omitting it loses animation. | Clean September chooser and history actions. |
@@ -1042,6 +1052,7 @@ and retained as evidence.
 | `POST /users/@me/messages/search/tabs` | One explicit DM search with `tabs.messages`, `limit:25`, 25-step `offset`, exact sort/filter fields, and `track_exact_total_hits:true`. Optional top-level `channel_ids` scopes the same endpoint to one or more DMs; omitting it searches all DMs. Returned channel metadata is merged before exact-result navigation. | Sanitized authenticated clean-client CDP matrix on 14 August 2026; P−, S−. |
 | `GET /channels/{thread}` | One unknown-thread deep-link resolution; no body. | Public channel semantics and all three references. |
 | `POST /channels/{forum}/threads?use_nested_fields=true` | Explicit forum creation; `name`, `auto_archive_duration`, ordered `applied_tags`, nested `message` with `content`, `sticker_ids:[]`, and attachments only when uploaded. | Current first-party action; Paicord and Swiftcord have only partial/historical thread creation. |
+| `POST /channels/{text-or-announcement}/threads` | Explicit composer Create Thread send; exactly `name` (trimmed, 1–100), `type` (`12` private, otherwise `10` in announcement channels and `11` in text channels), `auto_archive_duration` (parent default, else 4,320), and `location:"Plus Button"`; no query, `invitable`, or nested message. One attempt. The first message is then the ordinary message send to the returned thread. | Current first-party action, build `622805`, 29 September 2026; public “Start Thread without Message” semantics. Paicord has an unused bot-shaped route without `location`; Swiftcord v1 has a stub. |
 | `GET /channels/{forum}/threads/search` | Forum catalogue: `archived=true`, `sort_by`, `sort_order=desc`, `limit`, `offset`, and optional `tag`/`tag_setting`; name search adds `name`. | Current first-party route; P−, S−. |
 | `POST /channels/{forum}/post-data` | Preview hydration with `thread_ids` batches of at most ten. | Current first-party route; P−, S−. |
 | `PATCH` or `DELETE /channels/{thread}` | One explicit forum metadata mutation or deletion; partial body for the selected action only. | Current first-party and public channel semantics; partial Paicord/Swiftcord coverage. |
@@ -1407,6 +1418,90 @@ exception dispatches.
   expression settings. This matches the first-party store's `mergePartial` path in public
   web asset `web.e3526df05a0a7718.js`, rechecked on 29 August 2026, and creates
   no follow-up request once the settings cache is loaded.
+- The account-wide status is `StatusSettings` (root field 11) field 1, a
+  `StringValue`, in READY and type-1 `USER_SETTINGS_PROTO_UPDATE`. Evidence:
+  public web build `622805` (asset `web.d4c7976eccf337f1.js`, SHA-256
+  `7341aa3d5a2208664901f65bf776a48fb5cafe21a1a9e6ce504db79a4a636f7d`),
+  statically checked on 28 and 29 September 2026.
+  - Official presence: `SelfPresenceStore` derives the status on connection
+    open and every settings update; an absent or unknown value is online. The
+    presence updater sends opcode 3 only for a changed presence on an
+    established session, at most five per 20 seconds, deferring the latest.
+  - Official save: a pick (module `827827`) goes through the settings engine
+    (module `594061`, edit state in module `617617`) with a zero delay.
+    `markDirty` applies it locally at once and merges it into the unsaved
+    `protoToSave`, per root field with the last writer winning.
+    `persistChanges` sends `PATCH /users/@me/settings-proto/1` with root field
+    11 only, plus `required_data_version` when an offline-edit version is
+    recorded. The message keeps custom status, game visibility and unknown
+    fields, sets `status`, omits `status_expires_at_ms` for a status without a
+    duration, and keeps `status_created_at_ms` only for an unchanged status.
+  - Official outcomes: success and `out_of_date` clear the edit and adopt the
+    returned settings. `429` retries after min(30 s, `Retry-After`, or 60 s
+    when absent), without a bound. `400` / `50105` clears the edit and
+    reloads `GET /users/@me/settings-proto/1`. Any other failure keeps the
+    edit and schedules nothing. Nothing is rolled back or shown to the user.
+  - Official offline edits: `CONNECTION_CLOSED` and `CONNECTION_RESUMED`
+    record `versions.data_version` (root field 1, field 3) as
+    `offlineEditDataVersion` and cancel the save timer. `CONNECTION_OPEN`
+    shows READY's settings, then saves the kept edit 5 to 10 seconds later.
+    Offline edits persist in the store cache, an inactive or background app
+    state and `beforeunload` flush a scheduled save, and `LOGOUT` drops them.
+  - SakuraCord: the provider owns one pending status edit, persisted per
+    account as `dev.sakuracord.pending-status-edit.<account>` and removed with
+    the account. Only a save that wrote it, `out_of_date`, `400` / `50105` for
+    it, a newer pick, or a READY that already carries its status ends it.
+    Connection loss records the latest received data version on it. READY
+    applies it before self members are built and before the post-READY opcode
+    3, gives an edit without a version READY's, and schedules one silent save
+    5 to 10 seconds later; RESUMED schedules the same save. Losing app focus
+    flushes it once per edit until the next READY or RESUMED. Status and custom-status saves share one save slot, and a
+    custom-status write carries the pending edit and its recorded version.
+    `400` / `50105` on settings-proto/1 is exempt from the safety circuit; the
+    status writer and the Inbox writer (also official `wc.updateAsync("inbox")`)
+    both reload the settings. Before READY the status is invisible. Every
+    member list the provider publishes or returns, and every cached list the
+    app shows again, takes the current user's status from the account status.
+  - Migration: a device-only Invisible that earlier releases stored under
+    `dev.sakuracord.presence.<account>` becomes a pending edit that READY
+    completes or saves with its version; any other device value is dropped,
+    and the key is deleted at launch.
+  - Difference: only the first save of a user's pick or custom status reports
+    a failure, including `out_of_date`, so the user learns the change is only
+    local; automatic saves stay silent.
+  - Difference: while an edit is pending, received settings and older save
+    responses do not replace its status, so READY's or a stale echoed value
+    never shows first and no stale opcode 3 is sent.
+  - Difference: one save runs at a time, so an edit made during a PATCH is
+    not lost, as it is when the official `resetEditInfo` clears
+    `protoToSave`.
+  - Difference: a remote status change received while an edit is pending is
+    not shown; as in the official client, saving the edit then overwrites it.
+  - Difference: RESUMED also schedules the pending edit's save, with the
+    recorded version, where the official `CONNECTION_RESUMED` only records the
+    version and waits for the next `CONNECTION_OPEN`, so an edit could stay
+    unsaved across a brief interruption while shown as current.
+  - Difference: a pick on an open connection replaces a pending offline edit
+    with a live edit that sends no `required_data_version`, where the official
+    merge would keep the offline version and could discard the new pick. Any
+    other write carrying the offline edit keeps its version.
+  - Difference: a user's save retries a `429` once when `Retry-After` is at
+    most 30 seconds; an automatic save does not retry and stays pending,
+    instead of retrying without a bound and holding the save slot.
+  - Difference: an edit persisted before its connection closed stores the
+    data version in effect at its last change, where the official cache keeps
+    only edits whose version was recorded at close.
+  - Difference: nothing is flushed on termination; the persisted edit is saved
+    after the next READY. Timed statuses and their expiry reset are not
+    implemented.
+  - Cross-checks: pinned Paicord mirrors Ready or `SESSIONS_REPLACE` presence
+    through opcode 3 and never writes the setting. Swiftcord v1 sends opcode 3
+    and then a settings-proto write that drops sibling fields; its DiscordKit
+    reads the setting from Ready and full type-1 updates. Paicord and DiscordKit
+    only generate the `Versions` message; none of the three sends
+    `required_data_version`, reads `out_of_date`, keeps an unsaved edit, or
+    handles `50105`. Discord's public documentation does not describe the user
+    settings proto.
 - Soundboard, scheduled-event and exception, Stage,
   integration, webhook, AutoMod, entitlement, and subscription dispatches have
   no production state consumer. They are deliberately ignored after sanitized
@@ -1419,7 +1514,16 @@ exception dispatches.
 
 All of these paths use sanitized deterministic dispatch fixtures. Their
 request budget is zero: a received dispatch mutates local state and never
-creates a REST request or an additional outgoing Gateway payload.
+creates a REST request or an additional outgoing Gateway payload. There are
+three exceptions, all described above. A type-1 `USER_SETTINGS_PROTO_UPDATE`
+that changes the account status sends one opcode 3, within the shared limit of
+five per 20 seconds. A READY that finds a pending status edit it does not
+already carry sends one `PATCH /users/@me/settings-proto/1` 5 to 10 seconds
+later, and schedules no retry; RESUMED does the same for a pending edit.
+Outside dispatches, the same pending edit costs at most one further PATCH when
+the app loses focus before the next READY or RESUMED, and
+a `400` / `50105` response to a status or Inbox settings write costs one
+`GET /users/@me/settings-proto/1`.
 
 ### Other Discord transports
 
@@ -1454,7 +1558,11 @@ is not the whole network surface. The remaining production connections are:
   routing-key headers and use a shared coalescing/cancellation queue. Inline
   linked images are accepted only on those exact HTTPS hosts, without
   credentials or a custom port; SakuraCord does not fetch arbitrary
-  third-party link previews.
+  third-party link previews. A visible video attachment's still preview is
+  one such derived GET: its server-returned `media.discordapp.net` proxy URL
+  with `format=webp` and a `width`/`height` bounded to 1,024 pixels, which the
+  proxy answers with the first frame. An attachment without that proxy URL
+  keeps the placeholder.
 - unauthenticated GIF-picker media GETs use the response-provided HTTPS
   origins, without credentials or a nonstandard port, matching the current
   first-party picker rather than Discord's separate asset-action host helper.
@@ -1680,8 +1788,8 @@ and uses context location `poll_creation`. The poll contains `question.text`,
 `answers:[{poll_media:{text,emoji?}}]`, integer-hour `duration`,
 `allow_multiselect`, and `layout_type:1`. Answer IDs are assigned by Discord.
 Unicode emoji send `name`; custom emoji send string `id` and empty `name`.
-The current desktop UI requires question text up to 300 UTF-16 units and 2–10
-nonempty answer texts up to 55 units. It trims text, omits blank answer rows,
+The current desktop UI requires question text up to 300 UTF-16 units and 1–10
+nonempty answer texts up to 55 units; it starts with two answer rows. It trims text, omits blank answer rows,
 rejects emoji-only answers, and offers 1, 4, 8, 24, 72, 168, or 336 hours.
 Creation requires sending permission and `SEND_POLLS` (bit 49) in guild channels.
 The shared emoji eligibility/picker handles account and guild restrictions.
@@ -1757,6 +1865,24 @@ string-ID desktop capture. No new networking dependency was added.
   siblings do not discard valid posts.
 - Creating a text-only post is one thread mutation. Attachments add one
   reservation plus one storage PUT per file before the final mutation.
+- Composer Create Thread matches the first-party Plus Button flow in build
+  `622805` (`web.d4c7976eccf337f1.js`, SHA-256
+  `7341aa3d5a2208664901f65bf776a48fb5cafe21a1a9e6ce504db79a4a636f7d`, and
+  its lazy New Thread and composer-menu chunks), inspected statically on
+  29 September 2026. The action is offered in guild text and announcement
+  channels with `READ_MESSAGE_HISTORY` plus `CREATE_PUBLIC_THREADS` (bit 35)
+  or, in text channels only, `CREATE_PRIVATE_THREADS` (bit 36). Private-only
+  permission forces a private thread. A name is required locally, and a
+  message or attachment must be present. Creation is one thread POST followed
+  by one ordinary message send to the new thread. SakuraCord opens the thread
+  from the REST response instead of waiting for `THREAD_CREATE`, which is a
+  local presentation difference with no extra request.
+- Thread-created system messages (type 18) resolve their thread through
+  `message_reference.channel_id`, like the first-party renderer. Their card
+  uses only cached thread records: `message_count`, `last_message_id`, and a
+  latest-message preview from a thread record's `most_recent_message`,
+  `THREAD_LIST_SYNC.most_recent_messages`, a loaded thread history page, or
+  later thread `MESSAGE_CREATE` events. Drawing a card sends no request.
 - Tag, archive, lock, pin, and delete actions are explicit, permission-gated,
   centrally scheduled mutations with no automatic retry.
 - Opening a known thread/post is local; an unknown thread URL uses one Get
@@ -1783,8 +1909,52 @@ string-ID desktop capture. No new networking dependency was added.
 ### Server folders and voice-channel text
 
 - Server folders decode from Ready `user_settings_proto` and subsequent
-  settings updates. Folder rendering, ordering, and expansion add no REST
-  request.
+  settings updates. Folder rendering and expansion add no REST request.
+- Rearranging the rail, creating a folder by dropping one server onto another,
+  and editing a folder's name or color all save through one
+  `PATCH /users/@me/settings-proto/1` whose JSON contains only `settings`: root
+  field 14 (`GuildFolders`) and nothing else. Audited on 1 October 2026 against
+  web build `625378` (`ca2fcf2`), asset `web.91d9ed412e5a4f3b.js` (SHA-256
+  `b397937e21805d5b947ac48b1e4400f405a54d93d53e385bb14de265d9c71925`) and its
+  folder menu and settings chunks `00ae493a6c9956a3.js` and
+  `462533896c7040f2.js`. The first-party drag end, folder settings submit, and
+  `saveGuildFolders` helper replace `folders` with one entry per top-level rail
+  item: a folder carries packed fixed64 `guild_ids` plus wrapped `id`, optional
+  `name`, and optional `color`; a standalone server is an entry with one ID and
+  no folder ID. `guild_positions` is left as stored. A folder emptied of
+  servers is dropped. A new folder takes the drop target's place, holds the
+  target then the dragged server, and gets `floor(2^32 * random)` retried until
+  unused, with no name or color. The settings form limits the name to 32
+  characters, omits an empty name, offers the twenty role colors, and stores
+  the default color as an absent `color`. The update uses the settings
+  manager's `FREQUENT_USER_ACTION` delay: one request ten seconds after the
+  first unsaved change, carrying the layout as it is by then. The response's
+  `settings` and the resulting `USER_SETTINGS_PROTO_UPDATE` reconcile the rail.
+  Pinned Paicord and Swiftcord v1 only read guild folders; DiscordKit
+  corroborates the route and `settings` body. Public documentation does not
+  cover this route.
+- Live capture on 1 October 2026 with Discord Official Fresh host `0.0.411`,
+  stable web build `626571`, confirmed the `/api/v9` route and field-14-only
+  request for menu reordering, two-server folder creation, and folder name
+  and preset-color edits. Cancelling the settings form sent no settings
+  request. The server returned HTTP 200 with the full settings protobuf;
+  `USER_SETTINGS_PROTO_UPDATE` could arrive before the HTTP response.
+  Removing the last member through **Move to → Folder → No Folder** sent an
+  empty folder entry, which the server omitted from its response and Gateway
+  update. Thus this menu path relies on server normalization, unlike the
+  drag path's client-side empty-folder removal. Live synchronization with a
+  SakuraCord session also confirmed name edits and default-color omission
+  in both directions.
+- Deliberate differences: SakuraCord keeps a stored folder's bytes, including
+  unknown fields, and rewrites only a changed name or color. It also keeps
+  stored server IDs that the rail is not showing, appended to their folder or
+  after the visible entries, where the first-party client prunes them; an
+  incomplete guild catalogue therefore cannot erase folder contents. Saves
+  never overlap, a change made during a request is saved by the next one, a
+  pending save is flushed on disconnect, and a rejected save restores the last
+  confirmed layout. The rail does not create a folder with a chosen name and
+  has no collapse-all action. Mark Folder as Read sends the existing bulk
+  acknowledgement once per unread server in the folder.
 - Selecting accessible voice-channel text chat uses the ordinary one-page
   message-history read and does not join voice. Effective `VIEW_CHANNEL`,
   `READ_MESSAGE_HISTORY`, and `CONNECT` are required before that read;
@@ -1979,7 +2149,8 @@ first-party traffic determines the undocumented user-client contracts.
   the PUT body is `{"response":1}`. Event and RSVP Gateway dispatches update
   the same cached entries.
 - Tab and collapsed-group settings patch `/users/@me/settings-proto/1`,
-  preserving unknown protobuf fields. Event collapse uses Discord's reserved
+  preserving unknown protobuf fields. A `400` / `50105` response reloads the
+  settings, as the official settings engine does, and reports the failure. Event collapse uses Discord's reserved
   channel key within each guild's settings map; guild identity must remain
   part of that key. Mention filter choices persist locally across sessions
   and account switches; they are not server settings.

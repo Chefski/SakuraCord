@@ -318,6 +318,8 @@ extension AppModel {
         messageRowCache = [:]
         messageRowCacheOrder = []
         hasMoreCache = [:]
+        threadPreviewMessages = [:]
+        threadPreviewParentIDs = [:]
         membersByGuildID = [:]
         profileCustomStatus = nil
         profileCustomStatusUserID = nil
@@ -444,6 +446,7 @@ extension AppModel {
             activeAccountID != accountID ? activeAccountID ?? savedAccounts.first?.accountID : savedAccounts.first?.accountID
         )
         if launchMode == .normal {
+            DiscordRESTProvider.removePendingStatusEdit(accountID: accountID)
             do {
                 try await clearCaches(accountID)
             } catch {
@@ -457,6 +460,7 @@ extension AppModel {
         resetPendingCreatedMessages()
         resetTimelineLiveScrolling()
         clearReactionMutationState()
+        pollVoteMutations.removeAll()
         stopLocalTyping(clearThrottle: true)
         typingState.clearAll()
         clientAppStateUpdateTask?.cancel()

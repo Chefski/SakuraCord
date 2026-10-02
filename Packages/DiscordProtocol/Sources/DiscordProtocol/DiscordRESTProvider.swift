@@ -123,7 +123,25 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     var forumPreviewHydrationTaskIDs: [ChannelID: UUID] = [:]
     var forumPreviewHydrationQueues: [ChannelID: ForumPreviewHydrationQueue] = [:]
     var forumReadStates: [ChannelID: ForumReadState] = [:]
+    /// Invisible until READY supplies the account status, so a READY without
+    /// usable settings never exposes the account.
     var presenceStatus: PresenceStatus = .invisible
+    var pendingStatusEdit: PendingStatusEdit?
+    var statusEditGeneration: UInt64 = 0
+    var statusSettingsConnectionGeneration: UInt64 = 0
+    var statusEditSaveTask: Task<Void, Never>?
+    var statusEditSaveToken: UInt64 = 0
+    var flushedStatusEditID: UInt64?
+    /// PreloadedUserSettings `versions.data_version` last received.
+    var settingsDataVersion: UInt32?
+    /// Revision carried by the cached StatusSettings, not unrelated partial updates.
+    var profileStatusSettingsDataVersion: UInt32?
+    var profileDeveloperSettingsDataVersion: UInt32?
+    var guildLayoutDataVersion: UInt32?
+    var inboxSettingsFieldVersions: [Int: UInt32] = [:]
+    var lastSentPresenceStatus: PresenceStatus?
+    var presenceSendWindowEnds: [Date] = []
+    var deferredPresenceTask: Task<Void, Never>?
     var globalRateLimitDate: Date = .distantPast
     var routeRateLimitDates: [String: Date] = [:]
     var rateLimitBucketKeyByRoute:
@@ -205,6 +223,12 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     var cachedGuilds: [GuildID: Guild] = [:]
     var cachedGuildRailItems: [GuildRailItem] = []
     var cachedGuildLayout: DiscordGuildLayout?
+    var guildFoldersSettings: Data?
+    var pendingGuildFoldersSettings: Data?
+    var guildFoldersFlushTask: Task<Void, Never>?
+    var guildFoldersRevision: UInt64 = 0
+    var guildFoldersGeneration: UInt64 = 0
+    var guildFoldersSaveTask: Task<Void, Never>?
     var cachedProfiles: [ProfileCacheKey: UserProfile] = [:]
     var profileTasks: [ProfileCacheKey: Task<UserProfile, Error>] = [:]
     var collectibleProductTasks: [String: Task<ProfileCollectibleProductDTO, Error>] = [:]
@@ -227,6 +251,7 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     var inboxSettingsProto: Data?
     var inboxSettingsSaveID: UUID?
     var profileStatusSaveID: UUID?
+    var statusSettingsSaveWaiters: [UUID: CheckedContinuation<Void, any Error>] = [:]
     var profileCustomStatusExpiryTask: Task<Void, Never>?
     var frecencySettingsTask: Task<Data, Error>?
     var cachedStickersByGuild: [GuildID: [MessageSticker]] = [:]
@@ -323,6 +348,7 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
 
     public func updateClientAppState(isFocused: Bool) async {
         clientAppState = isFocused ? "focused" : "unfocused"
+        if !isFocused { flushPendingStatusEdit() }
         let heartbeat = clientMetadata.updateHeartbeatActivity(isActive: isFocused)
         await gatewaySession?.updateQOS(
             active: isFocused,
@@ -656,9 +682,7 @@ public extension DiscordRESTProvider {
         discordPerformanceSignposter.endInterval(
             "ProviderBootstrapAuthentication", authentication
         )
-        presenceStatus = statusDefaultsKey.flatMap {
-            UserDefaults.standard.string(forKey: $0)
-        }.flatMap(PresenceStatus.init(rawValue:)) ?? .invisible
+        loadPendingStatusEdit()
         beginStartupSearchCacheLoad()
         let gatewayStartup = discordPerformanceSignposter.beginInterval(
             "ProviderGatewayStartup",

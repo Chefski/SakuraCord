@@ -422,6 +422,9 @@ struct NativeTimelineRowLayout {
     struct AttachmentRegion {
         let frame: CGRect
         let attachment: Attachment
+        /// The still image drawn in the region: the image itself, or a
+        /// video's poster frame.
+        let previewKey: NativeTimelineMediaKey?
     }
 
     struct ReactionRegion {
@@ -1000,7 +1003,10 @@ struct NativeTimelineRowLayout {
             ).map { attachment, frame in
                 AttachmentRegion(
                     frame: frame.offsetBy(dx: contentX, dy: verticalOffset),
-                    attachment: attachment
+                    attachment: attachment,
+                    previewKey: attachment.mediaKind == .video
+                        ? .videoPoster(attachment)
+                        : .attachment(attachment)
                 )
             }
             verticalOffset += galleryFrames.map(\.maxY).max() ?? 0
@@ -1185,10 +1191,10 @@ struct NativeTimelineRowLayout {
             threadFrame = CGRect(
                 x: contentX,
                 y: verticalOffset,
-                width: min(contentWidth, 500),
-                height: 48
+                width: min(contentWidth, 440),
+                height: NativeTimelineThreadCard.height
             )
-            verticalOffset += 48
+            verticalOffset += NativeTimelineThreadCard.height
             hasRichContent = true
         }
 

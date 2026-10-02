@@ -293,7 +293,7 @@ extension NativeTimelineRowPainter {
                     )
                         ? .systemGreen
                         : .secondaryLabelColor,
-                inset: 1
+                inset: input.row.message.type == .threadCreated ? 0 : 1
             )
         }
     }
@@ -437,25 +437,19 @@ extension NativeTimelineRowPainter {
                 cornerRadius: 8
             ).fill()
             switch attachment.mediaKind {
-            case .image, .animatedImage:
-                if let key = NativeTimelineMediaKey.attachment(attachment),
-                   let image = mediaImage(for: key)
-                {
+            case .image, .animatedImage, .video:
+                let isVideo = attachment.mediaKind == .video
+                if let image = region.previewKey.flatMap(mediaImage(for:)) {
                     drawImage(
                         image,
                         in: region.frame,
                         cornerRadius: 8,
                         fillsFrame: attachmentFillsFrame
                     )
+                } else if isVideo {
+                    systemSymbol("film", in: region.frame, color: .secondaryLabelColor, inset: 30)
                 }
-            case .video:
-                systemSymbol(
-                    "film",
-                    in: region.frame,
-                    color: .secondaryLabelColor,
-                    inset: 30
-                )
-                mediaPlayGlyph(in: region.frame)
+                if isVideo { mediaPlayGlyph(in: region.frame) }
             case .audio:
                 attachmentAudio(
                     attachment,
@@ -696,10 +690,22 @@ extension NativeTimelineRowPainter {
         let isAddReactionHovered = input.isAddReactionHovered
         let reactionCountTransitions = input.reactionCountTransitions
         drawForwardedSource(input)
-        if let frame = layout.threadFrame {
-            if let thread = message.thread {
-                threadSummary(thread, in: frame)
+        if let frame = layout.threadFrame, let thread = message.thread {
+            if message.type == .threadCreated, let iconFrame = layout.systemIconFrame {
+                elbowConnector(
+                    stemX: iconFrame.midX,
+                    fromY: iconFrame.maxY + 3,
+                    cornerY: frame.midY,
+                    toX: frame.minX - 4
+                )
             }
+            threadSummary(
+                thread,
+                preview: model?.threadPreviewMessages[thread.id],
+                message: message,
+                model: model,
+                in: frame
+            )
         }
         ComponentUnicodeEmojiRenderer.prepareImages(
             for: layout.reactionRegions.compactMap { region in
@@ -870,9 +876,25 @@ extension NativeTimelineRowPainter {
         )
         replyConnector(in: connectorFrame)
 
-        let avatarFrame =
-            NativeTimelineAvatarPresentation
-                .replyAvatarFrame(in: contentFrame)
+        replyPreviewLine(
+            preview,
+            frame: frame,
+            avatarFrame: NativeTimelineAvatarPresentation.replyAvatarFrame(in: contentFrame),
+            trailingInset: 48,
+            message: message,
+            model: model
+        )
+    }
+
+    /// One line of a referenced message: avatar, author, and a plain summary.
+    static func replyPreviewLine(
+        _ preview: MessageReplyPreview,
+        frame: CGRect,
+        avatarFrame: CGRect,
+        trailingInset: CGFloat,
+        message: Message,
+        model: AppModel?
+    ) {
         let authorFrame = replyAuthor(
             preview: preview,
             frame: frame,
@@ -880,15 +902,15 @@ extension NativeTimelineRowPainter {
             message: message,
             model: model
         )
-
-        let summary = if let model {
-            MessageReplySummary.text(
+        let replySummary = if let model {
+            MessageReplySummary.summary(
                 content: preview.content,
                 mentionLabel: MessageMentionResolver(model: model, message: message).label
             )
         } else {
-            MessageReplySummary.text(content: preview.content)
+            MessageReplySummary.summary(content: preview.content)
         }
+        let summary = replySummary.text
         let mediaSymbol: String? = switch preview.mediaKind {
         case .image, .animatedImage: "photo.fill"
         case .video: "film.fill"
@@ -901,7 +923,8 @@ extension NativeTimelineRowPainter {
             0,
             min(
                 NativeTimelineReplyMetrics.textWidth(summary, font: NativeTimelineReplyMetrics.summaryFont),
-                frame.maxX - summaryX - (mediaSymbol == nil ? 48 : 24)
+                // A media symbol takes 24 points, from the trailing inset when there is one.
+                frame.maxX - summaryX - (mediaSymbol == nil ? trailingInset : max(24, trailingInset - 24))
             )
         )
         text(
@@ -913,7 +936,8 @@ extension NativeTimelineRowPainter {
                 height: 20
             ),
             font: NativeTimelineReplyMetrics.summaryFont,
-            color: .secondaryLabelColor
+            color: .secondaryLabelColor,
+            concealedSpoilerRanges: replySummary.spoilerRanges
         )
         if let mediaSymbol {
             systemSymbol(
@@ -1009,19 +1033,29 @@ extension NativeTimelineRowPainter {
     }
 
     static func replyConnector(in connectorFrame: CGRect) {
-        let stemX = connectorFrame.minX + 19
-        let horizontalY = connectorFrame.minY + connectorFrame.height * 0.46
+        elbowConnector(
+            stemX: connectorFrame.minX + 19,
+            fromY: connectorFrame.maxY,
+            cornerY: connectorFrame.minY + connectorFrame.height * 0.46,
+            toX: connectorFrame.maxX
+        )
+    }
+
+    /// A rounded elbow: a vertical stem from `fromY` that turns right at
+    /// `cornerY` and runs to `toX`. The stem may run up or down.
+    static func elbowConnector(stemX: CGFloat, fromY: CGFloat, cornerY: CGFloat, toX: CGFloat) {
+        let direction: CGFloat = fromY > cornerY ? 1 : -1
         let connector = NSBezierPath()
         connector.lineWidth = 1.25
         connector.lineCapStyle = .round
-        connector.move(to: CGPoint(x: stemX, y: connectorFrame.maxY))
-        connector.line(to: CGPoint(x: stemX, y: horizontalY + 4))
+        connector.move(to: CGPoint(x: stemX, y: fromY))
+        connector.line(to: CGPoint(x: stemX, y: cornerY + 4 * direction))
         connector.curve(
-            to: CGPoint(x: stemX + 4, y: horizontalY),
-            controlPoint1: CGPoint(x: stemX, y: horizontalY + 1.8),
-            controlPoint2: CGPoint(x: stemX + 2.2, y: horizontalY)
+            to: CGPoint(x: stemX + 4, y: cornerY),
+            controlPoint1: CGPoint(x: stemX, y: cornerY + 1.8 * direction),
+            controlPoint2: CGPoint(x: stemX + 2.2, y: cornerY)
         )
-        connector.line(to: CGPoint(x: connectorFrame.maxX, y: horizontalY))
+        connector.line(to: CGPoint(x: toX, y: cornerY))
         NSColor.tertiaryLabelColor.setStroke()
         connector.stroke()
     }

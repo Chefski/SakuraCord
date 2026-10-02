@@ -20,6 +20,7 @@ final class ServerInvitePresentationStore {
     var leaving: Set<GuildID> = []
     var expanded: Set<ServerInviteReference> = []
     let captcha = ServerInviteCaptchaStore()
+    let creation = ServerInviteCreationStore()
     var showsJoinDialog = false
     var leaveConfirmation: Guild?
     var leaveError: String?
@@ -35,6 +36,7 @@ final class ServerInvitePresentationStore {
 
     func reset() {
         captcha.cancel()
+        creation.reset()
         entries = [:]
         joining = []
         leaving = []

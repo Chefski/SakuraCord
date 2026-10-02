@@ -512,11 +512,8 @@ public actor MockChatProvider: ChatProvider {
         }
         snapshot.members =
             membersByGuild[snapshot.guilds.first?.id ?? GuildID(rawValue: 0)] ?? snapshot.members
-        if var profile = profilesByUser[currentUser.id] {
-            profile.status = status
-            profilesByUser[currentUser.id] = profile
-        }
         continuation?.yield(.snapshotChanged(snapshot))
+        continuation?.yield(.currentUserStatusChanged(status))
     }
 
     public func messages(in channelID: ChannelID, before: MessageID?, limit: Int) async throws
@@ -864,6 +861,21 @@ public actor MockChatProvider: ChatProvider {
         return post
     }
 
+    public func createThread(_ draft: CreateThreadDraft) async throws -> MessageThreadSummary {
+        let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let channel = snapshot.channels.first(where: { $0.id == draft.channelID }),
+              channel.kind == .text || (channel.kind == .announcement && !draft.isPrivate),
+              (1 ... 100).contains(name.count), DiscordRESTProvider.validForumAutoArchiveDurations.contains(draft.autoArchiveDuration)
+        else { throw ChatProviderError.invalidRequest("The thread does not meet this channel's requirements.") }
+        nextMessageID += 1
+        let thread = MessageThreadSummary(id: ChannelID(rawValue: nextMessageID), guildID: channel.guildID, parentID: channel.id, name: name,
+            memberCount: 1, ownerID: currentUser.id, createdAt: .now,
+            autoArchiveDuration: draft.autoArchiveDuration, notificationSettings: ThreadNotificationSettings()
+        )
+        messagesByChannel[thread.id] = []
+        return thread
+    }
+
     public func updateForumPost(_ post: ForumPost, mutation: ForumPostMutation) async throws
         -> ForumPost
     {
@@ -1082,86 +1094,6 @@ public actor MockChatProvider: ChatProvider {
             || capability == .remoteComponentChoices
             || capability == .slashCommands || capability == .messageForwarding
             || capability == .soundboard
-    }
-
-    public func componentChoices(
-        kind: ComponentSelectKind,
-        query: String,
-        guildID: GuildID?,
-        channelID _: ChannelID
-    ) async throws -> [ComponentSelectOption] {
-        let members = try await members(in: guildID)
-        let roles = Dictionary(
-            members.flatMap(\.roles).map { ($0.id, $0) },
-            uniquingKeysWith: { existing, _ in existing }
-        ).values
-        let choices: [ComponentSelectOption]
-        switch kind {
-        case .string:
-            choices = []
-        case .user:
-            choices = members.map(Self.componentChoice)
-        case .role:
-            choices = roles.map(Self.componentChoice)
-        case .mentionable:
-            choices =
-                members.map(Self.componentChoice)
-                + roles.map(Self.componentChoice)
-        case .channel:
-            choices = try await channels(in: guildID).map {
-                ComponentSelectOption(
-                    label: "#\($0.name)",
-                    value: String($0.id.rawValue),
-                    imageURL: $0.iconURL,
-                    imageShape: .roundedRectangle
-                )
-            }
-        }
-        let normalizedQuery = query.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        )
-        return choices
-            .filter {
-                normalizedQuery.isEmpty
-                    || $0.label.localizedCaseInsensitiveContains(
-                        normalizedQuery
-                    )
-                    || $0.description?.localizedCaseInsensitiveContains(
-                        normalizedQuery
-                    ) == true
-            }
-            .sorted {
-                let comparison = $0.label.localizedCaseInsensitiveCompare(
-                    $1.label
-                )
-                return comparison == .orderedSame
-                    ? $0.value < $1.value
-                    : comparison == .orderedAscending
-            }
-            .prefix(25)
-            .map(\.self)
-    }
-
-    private static func componentChoice(
-        for member: Member
-    ) -> ComponentSelectOption {
-        ComponentSelectOption(
-            label: member.user.displayName,
-            value: String(member.id.rawValue),
-            description: "@\(member.user.username)",
-            imageURL: member.user.avatarURL
-        )
-    }
-
-    private static func componentChoice(
-        for role: GuildRole
-    ) -> ComponentSelectOption {
-        ComponentSelectOption(
-            label: "@\(role.name)",
-            value: String(role.id.rawValue),
-            imageURL: role.iconURL,
-            imageShape: .roundedRectangle
-        )
     }
 
     private static func makeForumPosts(
@@ -1955,6 +1887,12 @@ public extension MockChatProvider {
         continuation?.yield(.inboxMentionDismissed(messageID))
     }
 
+    func updateGuildRailLayout(_ items: [GuildRailItem]) async throws {
+        let guildsByID = Dictionary(snapshot.guilds.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        snapshot.guildRailItems = items
+        snapshot.guilds = items.flattenedGuildIDs.compactMap { guildsByID[$0] }
+    }
+
     func inboxSettings() async -> InboxSettings { inboxSettingsValue }
 
     func updateInboxTab(_ tab: InboxTab) async throws {
@@ -1969,5 +1907,18 @@ public extension MockChatProvider {
             inboxSettingsValue.collapsedChannelIDs.remove(channelID)
         }
         continuation?.yield(.inboxSettingsChanged(inboxSettingsValue))
+    }
+}
+
+public extension MockChatProvider {
+    func createServerInvite(in channelID: ChannelID, guildID: GuildID, settings: ServerInviteSettings) async throws -> CreatedServerInvite {
+        let alphabet = Array("abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789")
+        let code = String((0 ..< 8).map { _ in alphabet.randomElement()! })
+        let now = Date.now
+        return CreatedServerInvite(
+            reference: ServerInviteReference(code)!, guildID: guildID, channelID: channelID, createdAt: now,
+            expiresAt: settings.maxAge == .never ? nil : now.addingTimeInterval(TimeInterval(settings.maxAge.rawValue)),
+            maxAge: settings.maxAge.rawValue, maxUses: settings.maxUses.rawValue
+        )
     }
 }

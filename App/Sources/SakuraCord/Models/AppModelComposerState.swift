@@ -164,6 +164,7 @@ extension AppModel {
     }
 
     func updateThreadDraft(_ value: String) {
+        guard threadCreation?.isSubmitting != true else { return }
         threadDraft = value
         guard let thread = openThread else {
             stopLocalTyping(clearThrottle: value.isEmpty)

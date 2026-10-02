@@ -14,4 +14,4 @@ LABEL="$2"
 echo "$LABEL"
 SAKURACORD_CODE_QUALITY_ROOT="$SNAPSHOT_ROOT" \
   SAKURACORD_CODE_QUALITY_TOOLS_DIR="$TOOLS_DIR" \
-  "$ROOT_DIR/script/code_quality.sh" check
+  "$SNAPSHOT_ROOT/script/code_quality.sh" check

@@ -198,6 +198,47 @@ struct ServerInviteContractTests {
         #expect(profile.badgeHash == "hash")
     }
 
+    @Test func `invite creation sends the observed settings once and keeps limit failures local`() async throws {
+        let capture = InviteRequestCapture()
+        let provider = try await makeProvider(capture.id)
+        let settings = ServerInviteSettings(maxAge: .oneHour, maxUses: .five)
+        let created = try await provider.createServerInvite(in: .init(rawValue: 901), guildID: .init(rawValue: 900), settings: settings)
+        #expect(created.reference.code == "UJJtn3Y")
+        #expect(created.channelID == .init(rawValue: 901))
+        #expect(created.maxAge == 3600 && created.maxUses == 5)
+        #expect(created.expiresAt == Date(timeIntervalSince1970: 1_790_876_003))
+        let request = try #require(capture.requests.last)
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.path == "/api/v9/channels/901/invites")
+        let body = try #require(JSONSerialization.jsonObject(with: request.httpBody!) as? [String: Any])
+        #expect(Set(body.keys) == ["max_age", "max_uses", "target_type", "temporary", "flags"])
+        #expect(body["max_age"] as? Int == 3600 && body["max_uses"] as? Int == 5 && body["flags"] as? Int == 0)
+        #expect(body["target_type"] is NSNull && body["temporary"] as? Bool == false)
+        let context = try #require(Data(base64Encoded: request.value(forHTTPHeaderField: "X-Context-Properties")!))
+        #expect(try JSONSerialization.jsonObject(with: context) as? [String: String] == ["location": "Guild Context Menu"])
+
+        await #expect(throws: ServerInviteError.self) {
+            _ = try await provider.createServerInvite(in: .init(rawValue: 903), guildID: .init(rawValue: 900), settings: settings)
+        }
+        #expect(capture.requests.filter { $0.url?.path == "/api/v9/channels/903/invites" }.count == 1)
+        #expect(await !provider.requestSafetyCircuitIsOpen)
+
+        let permanent = ServerInviteSettings(maxAge: .never)
+        let countBeforePermanent = capture.requests.count
+        await provider.seedInviteGuild(owner: true)
+        await #expect(throws: ServerInviteError.self) {
+            _ = try await provider.createServerInvite(in: .init(rawValue: 901), guildID: .init(rawValue: 900), settings: permanent)
+        }
+        #expect(capture.requests.count == countBeforePermanent)
+        await provider.seedInviteGuild(owner: true, community: true)
+        _ = try await provider.createServerInvite(in: .init(rawValue: 901), guildID: .init(rawValue: 900), settings: permanent)
+        let permanentRequest = try #require(capture.requests.last)
+        let permanentBody = try #require(JSONSerialization.jsonObject(with: permanentRequest.httpBody!) as? [String: Any])
+        #expect(capture.requests.count == countBeforePermanent + 1)
+        #expect(permanentBody["max_age"] as? Int == 0)
+        await provider.disconnect()
+    }
+
     private func makeProvider(_ accountID: String) async throws -> DiscordRESTProvider {
         let socket = ReadyGatewaySocket()
         await socket.push(gatewayMessage(op: 10, data: .object(["heartbeat_interval": .number(60_000)])))
@@ -216,8 +257,9 @@ struct ServerInviteContractTests {
 }
 
 private extension DiscordRESTProvider {
-    func seedInviteGuild(owner: Bool) {
-        cachedGuilds[.init(rawValue: 900)] = Guild(id: .init(rawValue: 900), name: "Test", isOwnedByCurrentUser: owner)
+    func seedInviteGuild(owner: Bool, community: Bool = false) {
+        cachedGuilds[.init(rawValue: 900)] = Guild(id: .init(rawValue: 900), name: "Test", isOwnedByCurrentUser: owner,
+                                               features: community ? ["COMMUNITY"] : [])
     }
 }
 
@@ -268,6 +310,19 @@ private final class InviteURLProtocol: URLProtocol, @unchecked Sendable {
         capturedRequest.httpBody = data
         NotificationCenter.default.post(name: Self.captured, object: capturedRequest)
         if request.httpMethod == "PUT" || request.url!.lastPathComponent == "profile" { return joinGuild() }
+        if request.url!.path.hasPrefix("/api/v9/channels/") {
+            let limited = request.url!.path.contains("/903/")
+            let body = limited ? #"{"code":30016,"message":"Maximum number of invites reached"}"# : """
+            {"type":0,"code":"UJJtn3Y","guild_id":"900","channel":{"id":"901","type":0,"name":"general"},"max_age":3600,"max_uses":5,
+             "uses":0,"temporary":false,"created_at":"2026-10-01T16:33:23.374696+00:00","expires_at":"2026-10-01T17:33:23+00:00"}
+            """
+            let response = HTTPURLResponse(url: request.url!, statusCode: limited ? 400 : 200, httpVersion: "HTTP/1.1",
+                                           headerFields: ["Content-Type": "application/json"])!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: Data(body.utf8))
+            client?.urlProtocolDidFinishLoading(self)
+            return
+        }
         let code = request.url!.lastPathComponent
         let write = request.httpMethod == "POST"
         let hasSolution = request.value(forHTTPHeaderField: "X-Captcha-Key") != nil

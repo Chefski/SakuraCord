@@ -32,7 +32,7 @@ extension NativeTimelineCanvasView {
             control = .votes; frame = layout.votesFrame
         } else if !poll.isClosed(), layout.revealFrame.contains(local), poll.selectedAnswerIDs.isEmpty {
             control = .reveal; frame = layout.revealFrame
-        } else if !poll.isClosed(), layout.submitFrame.contains(local), !state.isSubmitting,
+        } else if !poll.isClosed(), layout.submitFrame.contains(local),
                   !poll.selectedAnswerIDs.isEmpty || (!state.showsResults(for: poll) && !state.selected.isEmpty) {
             control = .submit; frame = layout.submitFrame
         } else { return nil }
@@ -80,12 +80,15 @@ extension NativeTimelineCanvasView {
             guard case let .message(row, _, _) = item, let poll = row.message.poll else { continue }
             snapshots[row.id] = poll
             pollRowIndexes[row.id] = index
+            let state = pollStates[row.id] ?? .init()
             if rowFrame(at: index).intersects(visibleRect), let previous = pollSnapshots[row.id], previous.results != poll.results,
-               (pollStates[row.id] ?? .init()).showsResults(for: previous),
-               !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+               state.showsResults(for: poll), !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                // Bars grow from zero when a vote first reveals the results.
+                let wasShowingResults = state.showsResults(for: previous)
                 let current = pollPresentation(for: row.id)
                 let fractions = Dictionary(uniqueKeysWithValues: previous.answers.map { answer in
-                    (answer.id, current.fractions[answer.id] ?? (previous.totalVotes > 0 ? CGFloat(previous.count(for: answer.id)) / CGFloat(previous.totalVotes) : 0))
+                    (answer.id, !wasShowingResults ? 0 : current.fractions[answer.id]
+                        ?? (previous.totalVotes > 0 ? CGFloat(previous.count(for: answer.id)) / CGFloat(previous.totalVotes) : 0))
                 })
                 pollAnimations[row.id] = (fractions, CACurrentMediaTime())
             }
@@ -97,16 +100,7 @@ extension NativeTimelineCanvasView {
         pollSnapshots = snapshots
         pollStates = pollStates.filter { snapshots[$0.key] != nil }
         pollAnimations = pollAnimations.filter { snapshots[$0.key] != nil }
-        if !pollAnimations.isEmpty {
-            pollAnimationTicker.start(on: self) { [weak self] in
-                guard let self else { return }
-                for id in self.pollAnimations.keys {
-                    if let index = self.pollRowIndexes[id] { self.setNeedsDisplay(self.rowFrame(at: index)) }
-                }
-                self.pollAnimations = self.pollAnimations.filter { CACurrentMediaTime() - $0.value.start < NativeTimelinePollPresentation.voteAnimationDuration }
-                if self.pollAnimations.isEmpty { self.pollAnimationTicker.stop() }
-            }
-        }
+        startPollAnimationTicker()
         pollClockTask?.cancel()
         if let expiry = snapshots.values.compactMap(\.expiry).filter({ $0 > .now }).min() {
             let delay = min(30, max(0.05, expiry.timeIntervalSinceNow))
@@ -116,6 +110,18 @@ extension NativeTimelineCanvasView {
                 self.setNeedsDisplay(self.visibleRect)
                 self.reconcilePollPresentations()
             }
+        }
+    }
+
+    private func startPollAnimationTicker() {
+        guard !pollAnimations.isEmpty else { return }
+        pollAnimationTicker.start(on: self) { [weak self] in
+            guard let self else { return }
+            for id in self.pollAnimations.keys {
+                if let index = self.pollRowIndexes[id] { self.setNeedsDisplay(self.rowFrame(at: index)) }
+            }
+            self.pollAnimations = self.pollAnimations.filter { CACurrentMediaTime() - $0.value.start < NativeTimelinePollPresentation.voteAnimationDuration }
+            if self.pollAnimations.isEmpty { self.pollAnimationTicker.stop() }
         }
     }
 
@@ -130,7 +136,6 @@ extension NativeTimelineCanvasView {
         guard let poll = hit.message.poll else { return }
         let id = hit.message.id
         var state = pollStates[id] ?? .init()
-        guard !state.isSubmitting else { return }
         switch hit.target.control {
         case .original: break
         case .answer(let answerID):
@@ -146,6 +151,10 @@ extension NativeTimelineCanvasView {
             state.revealsResults.toggle()
             pollStates[id] = state
             if state.revealsResults, poll.results == nil { Task { await model.loadUnknownPollResults(hit.message) } }
+            if state.revealsResults, poll.results != nil, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                pollAnimations[id] = (Dictionary(uniqueKeysWithValues: poll.answers.map { ($0.id, 0) }), CACurrentMediaTime())
+                startPollAnimationTicker()
+            }
         case .submit:
             submitPollVote(hit.message, poll: poll, state: state, model: model)
         }
@@ -153,28 +162,14 @@ extension NativeTimelineCanvasView {
         setNeedsDisplay(visibleRect)
     }
 
-    private func submitPollVote(_ message: Message, poll: MessagePoll, state initialState: NativeTimelinePollPresentation, model: AppModel) {
-        let id = message.id
-        var state = initialState
-        guard !poll.isClosed(), poll.layoutType == 1 else { return }
+    private func submitPollVote(_ message: Message, poll: MessagePoll, state: NativeTimelinePollPresentation, model: AppModel) {
         let removing = !poll.selectedAnswerIDs.isEmpty
-        guard removing || (!state.showsResults(for: poll) && !state.selected.isEmpty) else { return }
-        state.isSubmitting = true
-        pollStates[id] = state
-        let selected = removing ? [] : state.selected
-        let session = model.accountSession()
-        Task { @MainActor [weak self] in
-            let success = await model.vote(on: message, answerIDs: selected)
-            if success, poll.results == nil { await model.loadUnknownPollResults(message) }
-            guard let self, model.isCurrentAccountSession(session) else { return }
-            self.pollStates[id]?.isSubmitting = false
-            if success {
-                self.pollStates[id]?.revealsResults = !removing
-                self.pollStates[id]?.selected = []
-            }
-            self.refreshPollAccessibility(messageID: id)
-            self.setNeedsDisplay(self.visibleRect)
-        }
+        guard !poll.isClosed(), poll.layoutType == 1,
+              removing || (!state.showsResults(for: poll) && !state.selected.isEmpty) else { return }
+        // The model applies the vote before the request; unknown tallies show
+        // results while they load.
+        pollStates[message.id] = .init(revealsResults: !removing && poll.results == nil)
+        if !model.vote(on: message, answerIDs: removing ? [] : state.selected) { pollStates[message.id] = state }
     }
 
     private func refreshPollAccessibility(messageID: MessageID) {
@@ -190,7 +185,7 @@ extension NativeTimelineCanvasView {
         let controller = StablePopoverHostingController(rootView:
             PollVotersView(model: model, message: hit.message, initialAnswerID: answerID), dismiss: { [weak popover] in popover?.close() })
         popover.contentViewController = controller
-        popover.contentSize = CGSize(width: 360, height: 410)
+        popover.contentSize = PollVotersView.size
         pollPopover = popover
         popover.show(relativeTo: hit.frame, of: self, preferredEdge: .maxX)
         controller.monitorEscapeKey(in: controller.view.window, presentingWindow: window)
@@ -213,7 +208,7 @@ extension NativeTimelineCanvasView {
         if !poll.isClosed() {
             if poll.selectedAnswerIDs.isEmpty { frames.append(layout.revealFrame) }
             let state = pollPresentation(for: row.id)
-            if !state.isSubmitting, !poll.selectedAnswerIDs.isEmpty || (!state.showsResults(for: poll) && !state.selected.isEmpty) {
+            if !poll.selectedAnswerIDs.isEmpty || (!state.showsResults(for: poll) && !state.selected.isEmpty) {
                 frames.append(layout.submitFrame)
             }
         }
@@ -274,7 +269,7 @@ extension NativeTimelineCanvasView {
             }
             if !results || !poll.selectedAnswerIDs.isEmpty {
                 append(.submit, label: poll.selectedAnswerIDs.isEmpty ? "Vote" : "Remove Vote", frame: layout.submitFrame,
-                       enabled: !state.isSubmitting && (!state.selected.isEmpty || !poll.selectedAnswerIDs.isEmpty))
+                       enabled: !state.selected.isEmpty || !poll.selectedAnswerIDs.isEmpty)
             }
         }
     }

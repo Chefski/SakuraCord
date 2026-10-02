@@ -381,7 +381,11 @@ Credentials never enter GRDB, fixtures, logs, or plugin APIs. Discord
 authoritative workspace, message, read, member, and Gateway state is
 session-memory only. A database migration drops the obsolete tables from earlier
 builds while preserving drafts. Normal and offline runs use separate storage
-behavior.
+behavior. The one exception to session-memory Discord state is an account
+status pick that is not yet saved to the account: the provider keeps it, with
+its settings data version, in user defaults per account until it is saved,
+superseded, or rejected by the server, and removing the account (including
+logout) deletes it. The protocol baseline describes this pending edit.
 
 The provider deliberately persists disposable derived metadata under
 `Caches/dev.sakuracord.SakuraCord`, scoped by account ID:
@@ -740,7 +744,13 @@ work, not an implemented architecture claim.
 compiles the selected Icon Composer source with `actool`, embeds frameworks and
 resource bundles, copies the complete third-party notices into the app's
 resources, copies the canonical versioned release notes into
-`Contents/Resources/Releases`, and ad-hoc signs the result.
+`Contents/Resources/Releases`, and signs the result. Local builds resolve the
+credential mode and signing identity from the current user's global Git
+configuration. The shared runtime verifies the packaged mode and signature
+before development launches; release and update-enabled builds require Keychain.
+Packaging without launch also supports ad-hoc distribution signatures. The
+current `script/run.sh --checkout PATH --build` passes explicit preferences to
+older packagers and retains ownership of the guarded launch.
 
 The canonical icon sources are:
 

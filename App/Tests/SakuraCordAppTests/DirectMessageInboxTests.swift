@@ -127,7 +127,7 @@ import Testing
     #expect(model.pinnedDirectMessageIDs.contains(channel.id))
 
     model.toggleDirectMessagePin(channel.id)
-    #expect(await waitForDirectMessageCondition {
+    #expect(await eventually {
         !model.pinnedDirectMessageIDs.contains(channel.id)
             && !model.isChannelNotificationMutationPending(channel.id)
     })
@@ -168,10 +168,10 @@ import Testing
     let recipient = try #require(existing.recipients.first)
     let guildPresentationRevision = model.timelinePresentationRevision
     model.selectGuild(nil)
-    #expect(await waitForDirectMessageCondition { model.selectedGuildID == nil })
+    #expect(await until { model.selectedGuildID == nil })
     #expect(model.timelinePresentationRevision > guildPresentationRevision)
     model.selectedChannelID = existing.id
-    #expect(await waitForDirectMessageCondition {
+    #expect(await until {
         model.selectedChannelID == existing.id
             && model.selectedChannel?.kind == .directMessage
     })
@@ -181,6 +181,19 @@ import Testing
     #expect(model.selectedChannelID == existing.id)
     #expect(model.selectedChannel?.kind == .directMessage)
     #expect(model.inspectorProfilePresentation?.member.id == recipient.id)
+
+    #expect(await eventually {
+        model.memberLoadTask == nil
+            && model.inspectorProfilePresentation?.isLoading == false
+    })
+    let status: PresenceStatus =
+        model.liveProfilePresentation(for: .inspector)?.member.status == .dnd ? .idle : .dnd
+    await model.consume(.privateMembersChanged(model.members.map { member in
+        var member = member
+        if member.id == recipient.id { member.status = status }
+        return member
+    }))
+    #expect(model.liveProfilePresentation(for: .inspector)?.member.status == status)
 }
 
 @MainActor
@@ -193,9 +206,9 @@ import Testing
     )
 
     model.selectGuild(nil)
-    #expect(await waitForDirectMessageCondition { model.selectedGuildID == nil })
+    #expect(await until { model.selectedGuildID == nil })
     model.selectedChannelID = group.id
-    #expect(await waitForDirectMessageCondition {
+    #expect(await until {
         model.selectedChannelID == group.id
             && model.selectedChannel?.kind == .groupDirectMessage
     })
@@ -288,15 +301,4 @@ import Testing
         model.conversationAccess(for: ordinaryChannel)
             == .readable(canSend: true)
     )
-}
-
-@MainActor
-private func waitForDirectMessageCondition(
-    _ condition: @escaping @MainActor () -> Bool
-) async -> Bool {
-    for _ in 0 ..< 200 {
-        if condition() { return true }
-        try? await Task.sleep(for: .milliseconds(2))
-    }
-    return condition()
 }

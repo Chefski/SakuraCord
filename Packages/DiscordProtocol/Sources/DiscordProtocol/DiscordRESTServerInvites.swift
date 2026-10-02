@@ -106,6 +106,59 @@ public extension DiscordRESTProvider {
         return completed
     }
 
+    func createServerInvite(in channelID: ChannelID, guildID: GuildID, settings: ServerInviteSettings) async throws -> CreatedServerInvite {
+        guard settings.maxAge != .never || cachedGuilds[guildID]?.features.contains("COMMUNITY") == true else {
+            throw ServerInviteError.failed("Non-expiring invites require a Community server.")
+        }
+        // Mirrors the official settings-page submission. The modal's on-open
+        // `validate` reuse is omitted because SakuraCord creates only on request.
+        let context = try JSONSerialization.data(withJSONObject: ["location": "Guild Context Menu"])
+        let (data, response) = try await perform(
+            "/channels/\(channelID)/invites", method: "POST", query: [],
+            body: [
+                "max_age": .number(Double(settings.maxAge.rawValue)),
+                "max_uses": .number(Double(settings.maxUses.rawValue)),
+                "target_type": .null, "temporary": .bool(false), "flags": .number(0)
+            ],
+            headers: ["X-Context-Properties": context.base64EncodedString()], maximumAttempts: 1
+        )
+        if !(200 ..< 300).contains(response.statusCode) {
+            switch Self.discordErrorCode(from: data) {
+            case 50013, 50001: throw ServerInviteError.failed("You don’t have permission to create invites for this server.")
+            case 30016: throw ServerInviteError.failed("This server has reached Discord’s invite limit. Ask a moderator to remove unused invites.")
+            default: break
+            }
+        }
+        try checkInviteResponse(data, response)
+        struct Created: Decodable {
+            var code: String
+            var guildId: String?
+            var channel: Channel?
+            var createdAt: String?
+            var expiresAt: String?
+            var maxAge: Int?
+            var maxUses: Int?
+            struct Channel: Decodable { var id: String }
+        }
+        let created = try Self.inviteDecoder().decode(Created.self, from: data)
+        guard let reference = ServerInviteReference(created.code),
+              created.guildId.map({ $0 == guildID.description }) ?? true else {
+            throw ServerInviteError.failed("Discord returned an unexpected invite. Try again.")
+        }
+        return CreatedServerInvite(
+            reference: reference, guildID: guildID,
+            channelID: created.channel.flatMap { ChannelID($0.id) } ?? channelID,
+            createdAt: created.createdAt.flatMap(Self.inviteDate) ?? .now,
+            expiresAt: created.expiresAt.flatMap(Self.inviteDate),
+            maxAge: created.maxAge ?? settings.maxAge.rawValue,
+            maxUses: created.maxUses ?? settings.maxUses.rawValue
+        )
+    }
+
+    fileprivate static func inviteDate(_ value: String) -> Date? {
+        ISO8601DateFormatter().date(from: value) ?? ISO8601DateFormatter.fractionalSeconds.date(from: value)
+    }
+
     func leaveGuild(_ guildID: GuildID) async throws {
         guard let guild = cachedGuilds[guildID], !guild.isUnavailable else {
             throw ServerInviteError.failed("This server is unavailable. Wait for SakuraCord to reconnect.")
@@ -217,8 +270,7 @@ private struct ServerInviteDTO: Decodable {
                     URL(string: "https://cdn.discordapp.com/emojis/\($0).webp?size=32")
                 })
             }, memberCount: approximateMemberCount, onlineCount: approximatePresenceCount,
-            expiresAt: expiresAt.flatMap { ISO8601DateFormatter().date(from: $0)
-                ?? ISO8601DateFormatter.fractionalSeconds.date(from: $0) },
+            expiresAt: expiresAt.flatMap(DiscordRESTProvider.inviteDate),
             features: features, requiresSpecialAcceptance: (flags ?? 0) & 1 != 0 || targetType != nil
         )
     }

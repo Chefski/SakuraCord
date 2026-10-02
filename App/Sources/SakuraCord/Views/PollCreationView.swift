@@ -1,93 +1,150 @@
 import SakuraCordModels
 import SwiftUI
 
+private enum PollCreationField: Hashable {
+    case question
+    case answer(Int)
+}
+
+/// Rows sit 8 points inside the 32-point panel, so their 24-point corners and
+/// 32-point controls stay concentric with it.
 struct PollCreationView: View {
     let model: AppModel
     let channelID: ChannelID
-    @Environment(\.windowModalContext) private var modal
+    @Environment(\.windowModalContext) private var dismiss
+    @Environment(\.windowModalAvailableSize) private var availableSize
     @State private var draft = PollDraft()
     @State private var nextAnswerID = 3
     @State private var isSending = false
     @State private var error: String?
-    @FocusState private var questionIsFocused: Bool
+    @FocusState private var focus: PollCreationField?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Question").font(.headline)
-                        TextField("Ask a question", text: $draft.question, axis: .vertical)
-                            .lineLimit(2 ... 4)
-                            .textFieldStyle(.plain).font(.body)
-                            .focused($questionIsFocused)
-                            .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
-                            .simultaneousGesture(TapGesture().onEnded { questionIsFocused = true })
-                            .pointerStyle(.horizontalText)
-                            .modifier(PollInputSurface(isFocused: questionIsFocused) { questionIsFocused = true })
-                        if draft.question.utf16.count > 260 {
-                            Text("\(draft.question.utf16.count)/300")
-                                .font(.caption).foregroundStyle(draft.question.utf16.count > 300 ? .red : .secondary)
-                                .frame(maxWidth: .infinity, alignment: .trailing)
-                        }
-                    }
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Answers").font(.headline)
-                        ForEach($draft.answers) { $answer in
-                            PollCreationAnswerRow(model: model, answer: $answer, canRemove: draft.answers.count > 2) {
-                                draft.answers.removeAll { $0.id == answer.id }
+        VStack(spacing: 0) {
+            questionField
+            Divider()
+            ScrollViewReader { proxy in
+                ScrollView(.vertical) {
+                    // A scoped container keeps scrolled glass clipped to the list.
+                    GlassEffectContainer(spacing: 0) {
+                        VStack(spacing: 8) {
+                            ForEach(Array($draft.answers.enumerated()), id: \.element.id) { index, $answer in
+                                PollCreationAnswerRow(model: model, answer: $answer, placeholder: "Answer \(index + 1)",
+                                                      canRemove: draft.answers.count > 1, focus: $focus,
+                                                      submit: { advance(from: answer.id, proxy: proxy) },
+                                                      remove: { remove(answer.id) })
+                            }
+                            if draft.answers.count < 10 {
+                                PollCreationAddAnswerRow { addAnswer(proxy: proxy) }
+                                    .transition(.opacity)
+                            }
+                            PollCreationSettingRow(symbol: "clock", title: "Duration") {
+                                Picker("Duration", selection: $draft.durationHours) {
+                                    ForEach(PollDraft.durations, id: \.self) { Text(durationLabel($0)).tag($0) }
+                                }
+                                .labelsHidden().pickerStyle(.menu).fixedSize()
+                            }
+                            .padding(.top, 8)
+                            PollCreationSettingRow(symbol: "checklist", title: "Allow Multiple Answers") {
+                                Toggle("Allow Multiple Answers", isOn: $draft.allowsMultipleAnswers)
+                                    .labelsHidden().toggleStyle(.switch).controlSize(.small)
+                                    .tint(SakuraCordAccentColor.color)
                             }
                         }
-                        if draft.answers.count < 10 {
-                            HStack {
-                                Spacer()
-                                Button {
-                                    draft.answers.append(.init(id: nextAnswerID, text: ""))
-                                    nextAnswerID += 1
-                                } label: {
-                                    Label("Add Answer", systemImage: "plus")
-                                }.buttonStyle(PollButtonStyle())
-                                Spacer()
-                            }.padding(.top, 4)
-                        }
-                        HStack {
-                            Text("Allow multiple answers")
-                            Spacer()
-                            Toggle("Allow multiple answers", isOn: $draft.allowsMultipleAnswers).labelsHidden()
-                                .toggleStyle(.switch).controlSize(.small).tint(SakuraCordAccentColor.color)
-                        }.padding(.top, 10)
+                        .padding(8)
                     }
-                    HStack {
-                        Text("Duration").font(.headline)
-                        Spacer()
-                        PollChoiceControl(title: "Duration", selection: $draft.durationHours,
-                                          options: PollDraft.durations.map { .init(id: $0, title: durationLabel($0)) })
-                    }
-                }.padding(2)
-            }.frame(maxHeight: 540)
-            if let error { Text(error).font(.callout).foregroundStyle(.red) }
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                .frame(maxHeight: min(560, max(160, availableSize.height - 140)))
+                .fixedSize(horizontal: false, vertical: true)
+                .clipped()
+            }
+            if let error {
+                Text(error).font(.callout).foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 20).padding(.vertical, 12)
+            }
+            Divider()
             HStack {
-                Spacer()
-                Button("Cancel") { modal?.dismiss() }.buttonStyle(PollButtonStyle())
-                Button(isSending ? "Creating…" : "Create Poll") {
-                    isSending = true
-                    Task {
-                        if await model.createPoll(draft, in: channelID).consumedComposer {
-                            modal?.callAsFunction(allowsDisabled: true)
-                        } else {
-                            error = model.errorMessage ?? "Could not create the poll. Try again."
-                        }
-                        isSending = false
-                    }
-                }.buttonStyle(PollButtonStyle(prominent: true))
+                ModalGlassButton(symbol: "xmark", label: "Cancel") { dismiss?() }
+                Spacer(minLength: 16)
+                ModalGlassButton(symbol: "chart.bar.xaxis", label: "Create Poll", primary: true, action: create)
                     .disabled(isSending || draft.validationError != nil)
+                    .keyboardShortcut(.return, modifiers: .command)
+            }
+            .padding(12)
+        }
+        .frame(width: min(440, availableSize.width))
+        .disabled(isSending)
+        .windowModalDismissDisabled(isSending)
+        .onChange(of: draft) { error = nil }
+        .task { await Task.yield(); focus = .question }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Create a Poll")
+    }
+
+    private var questionField: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 11) {
+            Image(systemName: "chart.bar.xaxis")
+                .font(.system(size: 17, weight: .medium))
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            TextField("Ask a question", text: $draft.question, axis: .vertical)
+                .textFieldStyle(.plain)
+                .font(.system(size: 19))
+                .lineLimit(1 ... 4)
+                .tint(SakuraCordAccentColor.color)
+                .focused($focus, equals: .question)
+                .onSubmit { focus = draft.answers.first.map { .answer($0.id) } }
+            if draft.question.utf16.count > 260 {
+                Text("\(draft.question.utf16.count)/300").font(.caption).monospacedDigit()
+                    .foregroundStyle(draft.question.utf16.count > 300 ? .red : .secondary)
             }
         }
-        .padding(22).frame(width: 480)
-        .disabled(isSending)
-        .windowModalSize(width: 524)
-        .windowModalDismissDisabled(isSending)
+        .padding(.horizontal, 18).padding(.vertical, 17)
+        .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
+        .contentShape(Rectangle())
+        .onTapGesture { focus = .question }
+    }
+
+    // Explicit transactions also animate the modal panel, which sizes to this content.
+    private func addAnswer(proxy: ScrollViewProxy) {
+        guard draft.answers.count < 10 else { return }
+        let id = nextAnswerID
+        nextAnswerID += 1
+        withAnimation(.snappy(duration: 0.25)) {
+            draft.answers.append(.init(id: id, text: ""))
+            proxy.scrollTo(id)
+        }
+        focus = .answer(id)
+    }
+
+    private func remove(_ id: Int) {
+        guard let index = draft.answers.firstIndex(where: { $0.id == id }), draft.answers.count > 1 else { return }
+        withAnimation(.snappy(duration: 0.25)) { _ = draft.answers.remove(at: index) }
+        if focus == .answer(id) { focus = .answer(draft.answers[min(index, draft.answers.count - 1)].id) }
+    }
+
+    private func advance(from id: Int, proxy: ScrollViewProxy) {
+        guard let index = draft.answers.firstIndex(where: { $0.id == id }) else { return }
+        if draft.answers.indices.contains(index + 1) {
+            focus = .answer(draft.answers[index + 1].id)
+        } else if !draft.answers[index].text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            addAnswer(proxy: proxy)
+        }
+    }
+
+    private func create() {
+        guard !isSending, draft.validationError == nil else { return }
+        isSending = true
+        Task {
+            if await model.createPoll(draft, in: channelID).consumedComposer {
+                dismiss?(allowsDisabled: true)
+            } else {
+                error = model.errorMessage ?? "Couldn't create the poll. Try again."
+            }
+            isSending = false
+        }
     }
 
     private func durationLabel(_ hours: Int) -> String {
@@ -102,64 +159,127 @@ struct PollCreationView: View {
     }
 }
 
+private struct PollCreationRowBackground: ViewModifier {
+    var isHighlighted = false
+
+    func body(content: Content) -> some View {
+        content
+            .padding(8)
+            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+            .background(.quaternary.opacity(isHighlighted ? 0.9 : 0.5), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+    }
+}
+
 private struct PollCreationAnswerRow: View {
     let model: AppModel
     @Binding var answer: PollAnswer
+    let placeholder: String
     let canRemove: Bool
+    var focus: FocusState<PollCreationField?>.Binding
+    let submit: () -> Void
     let remove: () -> Void
     @State private var showsEmojiPicker = false
-    @State private var emojiIsHovered = false
-    @FocusState private var isFocused: Bool
 
     var body: some View {
-        HStack(spacing: 10) {
-            Button { showsEmojiPicker.toggle() } label: {
-                Group {
-                    if let emoji = answer.emoji {
-                        if let url = emoji.imageURL(size: 64) {
-                            AnimatedRemoteImage(url: url, animates: false, contentMode: .fit, usesSwiftUIRendering: true)
-                        } else { Text(emoji.name).font(.system(size: 20)) }
-                    } else { Image(systemName: "face.smiling").font(.system(size: 20)).foregroundStyle(.secondary) }
-                }.frame(width: 22, height: 22).allowsHitTesting(false)
-                    .frame(width: 34, height: 34).contentShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .background(.primary.opacity(emojiIsHovered || showsEmojiPicker ? 0.14 : 0), in: Circle())
-            .onModalHover { emojiIsHovered = $0 }
-            .help("Choose answer emoji").accessibilityLabel("Choose answer emoji")
-            .background {
-                StableReactionPickerPresenter(isPresented: $showsEmojiPicker, preferredEdge: .maxX,
-                                              accessibilityIdentifier: "poll-answer-emoji-picker") {
-                    EmojiPickerView(model: model, useCase: .reaction(guildID: model.selectedGuildID),
-                                    dismiss: { showsEmojiPicker = false }, select: { activation in
-                        switch activation.selection {
-                        case .native(let value): answer.emoji = EmojiReference(rawToken: value)
-                        case .custom(let value): answer.emoji = EmojiReference(rawToken: value.messageToken)
-                        }
-                        showsEmojiPicker = false
-                    })
-                }
-            }
-            .contextMenu {
-                if answer.emoji != nil { Button("Remove Emoji") { answer.emoji = nil } }
-            }
-            TextField("Answer", text: $answer.text, axis: .vertical)
-                .textFieldStyle(.plain).font(.body).lineLimit(1 ... 3)
-                .focused($isFocused)
-                .padding(.vertical, 12).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .contentShape(Rectangle())
-                .simultaneousGesture(TapGesture().onEnded { isFocused = true })
-                .pointerStyle(.horizontalText)
+        HStack(spacing: 8) {
+            emojiButton
+            TextField(placeholder, text: $answer.text, axis: .vertical)
+                .textFieldStyle(.plain)
+                .lineLimit(1 ... 3)
+                .tint(SakuraCordAccentColor.color)
+                .focused(focus, equals: .answer(answer.id))
+                .onSubmit(submit)
+                .frame(maxWidth: .infinity, alignment: .leading)
             if answer.text.utf16.count > 45 {
-                Text("\(answer.text.utf16.count)/55").font(.caption2)
+                Text("\(answer.text.utf16.count)/55").font(.caption).monospacedDigit()
                     .foregroundStyle(answer.text.utf16.count > 55 ? .red : .secondary)
             }
             if canRemove {
-                HoverActionButton(systemImage: "xmark", help: "Remove answer", diameter: 28, action: remove)
+                HoverActionButton(systemImage: "xmark", help: "Remove Answer", diameter: 32, action: remove)
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(.horizontal, 6)
-        .modifier(PollInputSurface(isFocused: isFocused) { isFocused = true })
+        .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .onTapGesture { focus.wrappedValue = .answer(answer.id) }
+        .modifier(PollCreationRowBackground(isHighlighted: focus.wrappedValue == .answer(answer.id)))
+        .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
+    }
+
+    private var emojiButton: some View {
+        Button { showsEmojiPicker.toggle() } label: {
+            Group {
+                if let emoji = answer.emoji {
+                    PollAnswerEmoji(emoji: emoji, size: 20)
+                } else {
+                    Image(systemName: "face.smiling").font(.system(size: 17)).foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 32, height: 32)
+            .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .glassEffect(.regular.interactive(), in: Circle())
+        .help(answer.emoji == nil ? "Add Emoji" : "Change Emoji")
+        .accessibilityLabel(answer.emoji == nil ? "Add Emoji" : "Change Emoji")
+        .background {
+            StableReactionPickerPresenter(isPresented: $showsEmojiPicker, preferredEdge: .maxX,
+                                          accessibilityIdentifier: "poll-answer-emoji-picker") {
+                EmojiPickerView(model: model, useCase: .reaction(guildID: model.selectedGuildID),
+                                dismiss: { showsEmojiPicker = false }, select: { activation in
+                    switch activation.selection {
+                    case .native(let value): answer.emoji = EmojiReference(rawToken: value)
+                    case .custom(let value): answer.emoji = EmojiReference(rawToken: value.messageToken)
+                    }
+                    showsEmojiPicker = false
+                })
+            }
+        }
+        .contextMenu {
+            if answer.emoji != nil { Button("Remove Emoji") { answer.emoji = nil } }
+        }
+    }
+}
+
+private struct PollCreationAddAnswerRow: View {
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: "plus").font(.body.weight(.semibold)).frame(width: 32, height: 32)
+                Text("Add Answer")
+            }
+            .foregroundStyle(isHovered ? .primary : .secondary)
+            .padding(8)
+            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+            .background(.quaternary.opacity(isHovered ? 0.5 : 0), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .strokeBorder(.quaternary, style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                    .opacity(isHovered ? 0 : 1)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .onModalHover { isHovered = $0 }
+        .animation(.easeOut(duration: 0.12), value: isHovered)
+    }
+}
+
+private struct PollCreationSettingRow<Control: View>: View {
+    let symbol: String
+    let title: String
+    @ViewBuilder let control: () -> Control
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: symbol).foregroundStyle(.secondary).frame(width: 32, height: 32)
+                .accessibilityHidden(true)
+            Text(title)
+            Spacer(minLength: 8)
+            control().padding(.trailing, 6)
+        }
+        .modifier(PollCreationRowBackground())
     }
 }

@@ -42,6 +42,7 @@ actor ReadyGatewaySocket: GatewaySocket {
     private var receiver: CheckedContinuation<GatewaySocketMessage, any Error>?
     private(set) var sentCount = 0
     private(set) var sentPayloads: [Data] = []
+    private(set) var sentInstants: [ContinuousClock.Instant] = []
 
     func receive() async throws -> GatewaySocketMessage {
         if !queued.isEmpty { return queued.removeFirst() }
@@ -51,6 +52,7 @@ actor ReadyGatewaySocket: GatewaySocket {
     func send(_ data: Data) async throws {
         sentCount += 1
         sentPayloads.append(data)
+        sentInstants.append(.now)
     }
 
     func sentPayload(opcode: Int) -> Data? {
@@ -190,12 +192,51 @@ actor ReactionProjectionEventRecorder {
     }
 }
 
-func eventually(_ condition: @escaping @Sendable () async -> Bool) async -> Bool {
-    for _ in 0 ..< 500 {
+/// Polls `condition` in the caller's isolation until it holds. Sleeps between
+/// checks so work on other tasks and actors can run; fails after 10 seconds.
+func eventually(
+    isolation _: isolated (any Actor)? = #isolation,
+    _ condition: () async -> Bool
+) async -> Bool {
+    let deadline = ContinuousClock.now + .seconds(10)
+    while ContinuousClock.now < deadline {
         if await condition() {
             return true
         }
-        try? await Task.sleep(for: .milliseconds(1))
+        guard (try? await Task.sleep(for: .milliseconds(1))) != nil else {
+            break
+        }
     }
     return await condition()
+}
+
+/// PreloadedUserSettings carrying StatusSettings.status and, optionally,
+/// versions.data_version.
+func statusSettingsFixture(_ status: String, dataVersion: UInt32? = nil) -> Data {
+    var root = Data()
+    if let dataVersion {
+        root.append(DiscordSettingsProto.protoLengthDelimitedField(1, DiscordSettingsProto.protoVarintField(3, UInt64(dataVersion))))
+    }
+    root.append(DiscordSettingsProto.protoLengthDelimitedField(
+        11, DiscordSettingsProto.protoLengthDelimitedField(1, DiscordSettingsProto.protoLengthDelimitedField(1, Data(status.utf8)))
+    ))
+    return root
+}
+
+/// The status of every opcode 3 the socket sent, in order.
+func presenceStatuses(_ socket: ReadyGatewaySocket) async -> [String] {
+    await socket.sentPayloads.compactMap { data -> String? in
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              (object["op"] as? NSNumber)?.intValue == 3 else { return nil }
+        return (object["d"] as? [String: Any])?["status"] as? String
+    }
+}
+
+/// Account-status events received until the provider disconnected.
+func statusEvents(_ events: AsyncStream<ClientEvent>) async -> [PresenceStatus] {
+    var received: [PresenceStatus] = []
+    for await event in events {
+        if case let .currentUserStatusChanged(status) = event { received.append(status) }
+    }
+    return received
 }

@@ -200,7 +200,7 @@ func `visible sparse edits preserve unrelated fresh history fields`(usesAsyncCon
 }
 
 @MainActor
-@Test(arguments: [false, true], [false, true])
+@Test(.timeLimit(.minutes(1)), arguments: [false, true], [false, true])
 func `draft clearing orders earlier and later edits around deletion`(editsAfterClear: Bool, clearsAll: Bool) async throws {
     let database = try SakuraCordDatabase(inMemory: true)
     let inactiveDatabase = try SakuraCordDatabase(inMemory: true)
@@ -218,9 +218,9 @@ func `draft clearing orders earlier and later edits around deletion`(editsAfterC
         else { try await model.clearLocalDrafts() }
     }
     // The empty composer acknowledges that deletion has entered the queue.
-    while !model.draft.isEmpty { await Task.yield() }
+    while !model.draft.isEmpty, !Task.isCancelled { await Task.yield() }
     if editsAfterClear { model.updateDraft("new edit") }
-    try await clearing.value
+    try await cancellableValue(of: clearing)
     #expect(model.draft == (editsAfterClear ? "new edit" : ""))
     #expect(model.quickSwitcherDraftChannelIDs.contains(channelID) == editsAfterClear)
     await model.composer.reset()
@@ -266,10 +266,9 @@ func `draft clearing orders earlier and later edits around deletion`(editsAfterC
     let channelID = ChannelID(rawValue: 210)
     let targetID = MessageID(rawValue: 5_000_100)
     model.navigate(to: GuildID(rawValue: 100), channelID: channelID, messageID: targetID)
-    for _ in 0 ..< 10000 {
-        if model.messageNavigationRequest?.messageID == targetID, model.messages.contains(where: { $0.id == targetID }) { break }
-        await Task.yield()
-    }
+    #expect(await eventually {
+        model.messageNavigationRequest?.messageID == targetID && model.messages.contains(where: { $0.id == targetID })
+    })
     try #require(model.hasMoreLaterMessages)
     let gif = GIFSearchResult(id: "audit", title: "Audit", url: URL(string: "https://example.com/audit.gif")!, previewURL: URL(string: "https://example.com/preview.gif")!)
     try #require(await model.sendGIF(gif))
@@ -418,4 +417,17 @@ func `clearing drafts invalidates unpublished restorations`(clearsAll: Bool, edi
     try await model.clearLocalActivity()
     #expect(model.snapshot?.forwardChannelStoreOrder.isEmpty == true)
     #expect(model.forwardSearchSourceRevision > revision)
+}
+
+@MainActor
+@Test func threadCreationNameNormalizesEdits() {
+    let creation = ThreadCreationDraft(
+        parentID: ChannelID(rawValue: 7),
+        permissions: ThreadCreationPermissions(canCreatePublic: true, canCreatePrivate: false)
+    )
+
+    creation.name = "Release\nnotes\r\n" + String(repeating: "x", count: 120)
+
+    #expect(creation.name.hasPrefix("Release notes "))
+    #expect(creation.name.count == ThreadCreationDraft.maximumNameLength)
 }
