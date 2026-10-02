@@ -106,6 +106,12 @@ so discuss and update an issue in whichever place is convenient.
   recent comments, screenshots, and similar reports, then posts one assessment
   with classification, questions, duplicate suggestions, and code findings.
   The hub validates the result before changing issue metadata.
+- Both bugs and suggestions require the latest published nightly or regular
+  release. The agent can correct either category and considers closed reports
+  as duplicates. It verifies fix-commit ancestry against the reported release:
+  fixed in code, published in nightly, and published in regular are distinct.
+  A build already containing a claimed fix needs regression investigation.
+  Verified existing fixes join release tracking; unreleased fixes stay open.
 - Rerun with `agent: investigate` or Discord's Manage menu. The label stays
   until the hub applies the result; retry a failed run in Actions.
 - `agent: fix` explicitly starts the separate macOS agent, which opens a draft

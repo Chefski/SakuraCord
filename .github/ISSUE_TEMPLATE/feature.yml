@@ -35,6 +35,14 @@ body:
         - Nice to have
     validations:
       required: true
+  - type: input
+    id: version
+    attributes:
+      label: SakuraCord version
+      description: Only the latest nightly or regular release. Update and retest first.
+      placeholder: e.g. 0.1.6 Beta 3
+    validations:
+      required: true
   - type: dropdown
     id: area
     attributes:

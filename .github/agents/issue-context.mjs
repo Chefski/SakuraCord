@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { releaseRefs, fixEvidence } from "./release-evidence.mjs";
 
 const [instructionsPath, outputPath, mode] = process.argv.slice(2);
 const number = Number(process.env.ISSUE_NUMBER);
@@ -21,8 +22,14 @@ if (mode === "--triage") {
   });
   if (!response.ok) throw new Error(`Assessment context unavailable (${response.status})`);
   const context = await response.json();
-  if (!Array.isArray(context.areas) || !Array.isArray(context.candidates) || context.candidates.length > 8) throw new Error("Invalid assessment context");
+  if (!Array.isArray(context.areas) || !Array.isArray(context.candidates) || context.candidates.length > 12) throw new Error("Invalid assessment context");
+  const refs = releaseRefs(context, process.env.SOURCE_SHA ?? "HEAD");
+  context.releaseEvidence = refs;
+  for (const candidate of context.candidates) {
+    candidate.fixes = (candidate.fixes ?? []).map((fix) => ({ ...fix, evidence: fixEvidence(fix.sha, refs) }));
+  }
   writeFileSync(join(dirname(outputPath), "assessment-context.json"), JSON.stringify({
+    refs, reportedKind: context.reportedKind,
     number, sourceTitle: issue.title, bodyHash: createHash("sha256").update(issue.body ?? "").digest("hex"),
     areas: context.areas.map((area) => area.id), candidates: context.candidates.map((candidate) => candidate.number),
   }));

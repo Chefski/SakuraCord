@@ -2,6 +2,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { resolveFix } from "./release-evidence.mjs";
 
 const number = process.env.ISSUE_NUMBER;
 const repo = process.env.GITHUB_REPOSITORY;
@@ -13,8 +14,19 @@ const triage = result.triage;
 if (context.number !== Number(number) || !context.areas.includes(triage?.area) ||
     (triage.duplicateOf !== null && (!context.candidates.includes(triage.duplicateOf) || triage.duplicateOf === Number(number))) ||
     (triage.needsInformation && !triage.questions.length)) throw new Error("Invalid assessment result");
+const resolution = resolveFix(result.fixCommit, context.refs);
+const releaseLink = resolution.release ? `[${resolution.release.version} (${resolution.release.channel})](${resolution.release.url})` : "";
+const availability = {
+  unresolved: "No existing fix has been verified.",
+  possible_regression: `The reported release already contains this change. This may be a regression or incomplete fix and still needs investigation.`,
+  fixed_regular: `The fix is available in ${releaseLink}. Update and retest on that release.`,
+  fixed_nightly: `The fix is available in ${releaseLink}, but not in the latest regular release. You can try nightly or wait for the next regular release.`,
+  fixed_unreleased: "The fix is in the app's code, but is not in either latest published release yet. No released update contains it yet.",
+}[resolution.state];
+if (resolution.state === "possible_regression") triage.duplicateOf = null;
+triage.resolution = { state: resolution.state, commit: resolution.commit, releaseTag: resolution.release?.tag ?? null, explanation: availability };
 const envelope = JSON.stringify({ version: 1, number: Number(number), sourceTitle: context.sourceTitle,
-  bodyHash: context.bodyHash, candidates: context.candidates, model: process.env.AGENT_MODEL, triage,
+  bodyHash: context.bodyHash, confidence: result.confidence, candidates: context.candidates, model: process.env.AGENT_MODEL, triage,
 }).replaceAll("<", "\\u003c").replaceAll(">", "\\u003e");
 const clean = (text) => String(text ?? "").replace(/@(?=[A-Za-z0-9-])/g, "@​").trim();
 const locations = result.locations
@@ -31,6 +43,11 @@ ${clean(result.summary)}
 ### Triage
 **${triage.kind === "bug" ? "Bug" : "Feature"}** · ${clean(triage.area)} · ${clean(triage.priority)} priority
 ${clean(triage.summary)}
+
+${clean(result.classificationReason)}
+
+### Fix availability
+${availability}${resolution.commit ? ` [Change](https://github.com/${repo}/commit/${resolution.commit}).` : ""}
 ${triage.duplicateOf && triage.duplicateConfidence >= 0.75 ? `
 ### Possible duplicate
 This may match #${triage.duplicateOf}. ${clean(triage.duplicateReason)} A maintainer will decide whether to merge them.
