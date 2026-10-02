@@ -10,11 +10,26 @@ import Testing
     let model = AppModel(launchMode: .offlineTesting, provider: provider)
     await model.start()
     let message = try #require(model.messages.first { $0.poll != nil })
+    model.pinnedMessages.items = [PinnedMessage(pinnedAt: .now, message: message)]
+    model.inbox.isPresented = true
+    model.inbox.tab = .mentions
+    model.inbox.mentions = [message]
+    let refresh = model.beginConversationRefresh(in: message.channelID)
 
     #expect(model.vote(on: message, answerIDs: [2]))
     var poll = try #require(model.messages.first?.poll)
     #expect(poll.selectedAnswerIDs == [2])
     #expect(poll.count(for: 2) == 2)
+    // An optimistic selection is presentation, not an authoritative history edit.
+    let mutations = model.conversationRefreshMutations(in: message.channelID, revision: refresh)
+    #expect(AppModel.applyingConversationRefreshMutations(mutations, to: [message]).first?.poll == message.poll)
+    // A server snapshot arriving before the vote response must keep every
+    // retained surface on the same pending selection.
+    model.consumeImmediately(.messageUpdated(message))
+    #expect(model.pinnedMessages.items.first?.message.poll == model.messages.first?.poll)
+    #expect(model.inbox.mentions.first?.poll == model.messages.first?.poll)
+    model.replaceSelectedMessages(with: [message])
+    #expect(model.messages.first?.poll?.selectedAnswerIDs == [2])
 
     var echo = MessageUpdate(messageID: message.id, channelID: message.channelID)
     echo.pollUpdates = [.vote(answerID: 2, isAddition: true, isCurrentUser: true)]
@@ -39,6 +54,9 @@ import Testing
     poll = try #require(model.messages.first?.poll)
     #expect(poll.selectedAnswerIDs == [2])
     #expect(poll.count(for: 1) == 2 && poll.count(for: 2) == 2)
+    let confirmedMutations = model.conversationRefreshMutations(in: message.channelID, revision: refresh)
+    #expect(AppModel.applyingConversationRefreshMutations(confirmedMutations, to: [message]).first?.poll == poll)
+    model.endConversationRefresh(in: message.channelID, revision: refresh)
     #expect(await provider.requests() == [[2], [1]])
 }
 
@@ -69,7 +87,7 @@ private actor PollVoteTestProvider: ChatProvider {
                                expiry: .now.addingTimeInterval(3600),
                                results: PollResults(answerCounts: [.init(id: 1, count: 1), .init(id: 2, count: 1)]))
         return MessagePage(messages: [Message(id: MessageID(rawValue: 99_100), channelID: channel.id, author: user,
-                                              content: "", poll: poll)], hasMoreBefore: false)
+                                              content: "", isPinned: true, poll: poll)], hasMoreBefore: false)
     }
 
     func send(_ draft: SendMessageDraft) async throws -> Message {

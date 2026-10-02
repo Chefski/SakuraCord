@@ -173,7 +173,7 @@ extension AppModel {
             fresh: refreshedMessages,
             hasMoreBefore: page.hasMoreBefore,
             authoritativeOldestMessageID: page.messages.map(\.id).min()
-        )
+        ).map(pollVotePresentationPreserving)
         seedSlowmodeHistory(threadMessages)
         hasMoreThreadMessages = page.hasMoreBefore
         threadErrorMessage = nil

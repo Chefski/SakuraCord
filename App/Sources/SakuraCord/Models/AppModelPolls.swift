@@ -98,19 +98,20 @@ extension AppModel {
             latest.confirmed = answerIDs
             latest.isSending = false
             model.pollVoteMutations[messageID] = latest
+            if let message = model.retainedMessage(channelID: channelID, messageID: messageID) {
+                model.recordAuthoritativeMessageUpsert(message)
+            }
             model.sendPollVoteMutation(messageID: messageID)
             guard let message = model.retainedMessage(channelID: channelID, messageID: messageID) else { return }
-            if model.pollVoteMutations[messageID] == nil { model.recordAuthoritativeMessageUpsert(message) }
             if message.poll?.results == nil { await model.loadUnknownPollResults(message) }
         }
     }
 
     private func applyCurrentUserPollSelection(_ answerIDs: Set<Int>, messageID: MessageID, channelID: ChannelID) {
-        guard let poll = retainedMessage(channelID: channelID, messageID: messageID)?.poll else { return }
-        var update = MessageUpdate(messageID: messageID, channelID: channelID)
-        update.pollUpdates = MessagePollUpdate.currentUserSelection(from: poll.selectedAnswerIDs, to: answerIDs)
-        guard !update.pollUpdates.isEmpty else { return }
-        consumeImmediately(.messagePatched(update))
+        guard let message = retainedMessage(channelID: channelID, messageID: messageID) else { return }
+        let updated = message.selectingCurrentUserPollAnswers(answerIDs)
+        guard updated != message else { return }
+        consumeMessageUpdated(updated, preparedTextPlan: nil, recordsRefreshMutation: false)
     }
 
     func pollVotePresentationPreserving(_ incoming: Message) -> Message {

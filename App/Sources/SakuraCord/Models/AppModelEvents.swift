@@ -255,8 +255,6 @@ extension AppModel {
         case .messageUpdated(let incoming):
             let reconciled = applyingPendingPinIntent(to: incoming)
             consumeMessageUpdated(reconciled, preparedTextPlan: preparedTextPlan)
-            reconcilePinnedMessage(reconciled)
-            reconcileInboxMessage(reconciled)
         case .messagePatched(let update):
             recordConversationRefreshMutation(.patch(update), messageID: update.messageID, channelID: update.channelID)
             if let message = applyingMessageUpdate(update) {
@@ -265,8 +263,6 @@ extension AppModel {
                     reconciled, preparedTextPlan: preparedTextPlan,
                     recordsRefreshMutation: false, preparedTextPlanSource: preparedTextPlanSource
                 )
-                reconcilePinnedMessage(reconciled)
-                reconcileInboxMessage(reconciled)
             }
         case .messageReactionUpdated(let update):
             applyReactionUpdate(update)
@@ -596,6 +592,8 @@ extension AppModel {
         }
         reconcileForumMessage(message)
         reconcilePollSearchMessage(message)
+        reconcilePinnedMessage(message)
+        reconcileInboxMessage(message)
     }
 
     func consumeMessageDeleted(channelID: ChannelID, messageID: MessageID) {
