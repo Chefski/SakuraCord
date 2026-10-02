@@ -30,6 +30,10 @@ import Testing
     #expect(model.inbox.mentions.first?.poll == model.messages.first?.poll)
     model.replaceSelectedMessages(with: [message])
     #expect(model.messages.first?.poll?.selectedAnswerIDs == [2])
+    model.presentPinnedMessages()
+    await model.pinnedMessages.loadTask?.value
+    #expect(model.pinnedMessages.errorMessage == nil)
+    #expect(model.pinnedMessages.items.first?.message.poll?.selectedAnswerIDs == [2])
 
     var echo = MessageUpdate(messageID: message.id, channelID: message.channelID)
     echo.pollUpdates = [.vote(answerID: 2, isAddition: true, isCurrentUser: true)]
@@ -92,6 +96,11 @@ private actor PollVoteTestProvider: ChatProvider {
 
     func send(_ draft: SendMessageDraft) async throws -> Message {
         throw ChatProviderError.invalidRequest("Sending is not part of this test.")
+    }
+
+    func pinnedMessages(in channelID: ChannelID, before: Date?, limit: Int) async throws -> PinnedMessagePage {
+        let page = try await messages(in: channelID, before: nil, limit: limit)
+        return PinnedMessagePage(items: page.messages.map { PinnedMessage(pinnedAt: .now, message: $0) }, hasMore: false)
     }
 
     func edit(messageID: MessageID, channelID: ChannelID, content: String) async throws -> Message {

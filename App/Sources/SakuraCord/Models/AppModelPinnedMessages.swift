@@ -343,8 +343,8 @@ extension AppModel {
             previousItems,
             page.items
         )
-        let newItems = applyingPinIntents(
-            to: combined,
+        let newItems = reconciledPinnedItems(
+            combined,
             channelID: channelID,
             previousItems: previousItems
         )
@@ -366,8 +366,8 @@ extension AppModel {
             latestPreviousItems,
             page.items
         )
-        let latestItems = applyingPinIntents(
-            to: latestCombined,
+        let latestItems = reconciledPinnedItems(
+            latestCombined,
             channelID: channelID,
             previousItems: latestPreviousItems
         )
@@ -447,12 +447,17 @@ extension AppModel {
         }
     }
 
-    private func applyingPinIntents(
-        to items: [PinnedMessage],
+    private func reconciledPinnedItems(
+        _ items: [PinnedMessage],
         channelID: ChannelID,
         previousItems: [PinnedMessage]
     ) -> [PinnedMessage] {
         var result = items
+        if !pollVoteMutations.isEmpty {
+            for index in result.indices {
+                result[index].message = pollVotePresentationPreserving(result[index].message)
+            }
+        }
         for (messageID, intent) in pinnedMessages.mutationIntents
         where intent.channelID == channelID {
             if intent.desired {
@@ -474,7 +479,9 @@ extension AppModel {
         let isPinned = pinnedMessages.mutationIntents[source.id]?.desired ?? isPinned
         var message = source
         message.isPinned = isPinned
-        consumeMessageUpdated(message, preparedTextPlan: nil)
+        // This owner commits the pinned list in a batch. Publish its truth to
+        // other surfaces without reconciling every item back into that list.
+        consumeMessageUpdated(message, preparedTextPlan: nil, updatesPinnedMessages: false)
         guard var page = messageSearch.page else { return }
         var changed = false
         for resultIndex in page.results.indices {

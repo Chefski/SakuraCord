@@ -572,7 +572,8 @@ extension AppModel {
         _ incoming: Message,
         preparedTextPlan: NativeTimelineTextPlan?,
         recordsRefreshMutation: Bool = true,
-        preparedTextPlanSource: Message? = nil
+        preparedTextPlanSource: Message? = nil,
+        updatesPinnedMessages: Bool = true
     ) {
         let message = pollVotePresentationPreserving(reactionPresentationPreserving(
             outgoingMediaPresentationPreserving(incoming)
@@ -592,7 +593,7 @@ extension AppModel {
         }
         reconcileForumMessage(message)
         reconcilePollSearchMessage(message)
-        reconcilePinnedMessage(message)
+        if updatesPinnedMessages { reconcilePinnedMessage(message) }
         reconcileInboxMessage(message)
     }
 
