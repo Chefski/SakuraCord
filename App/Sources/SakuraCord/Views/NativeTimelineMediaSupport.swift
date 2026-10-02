@@ -75,6 +75,37 @@ struct NativeTimelineMediaKey: Hashable {
         }
     }
 
+    /// Discord's media proxy renders a video attachment's first frame when a
+    /// still format is requested. Only that proxy can do so; the origin URL
+    /// would deliver the whole video.
+    static func videoPoster(_ attachment: Attachment) -> Self? {
+        guard let proxyURL = attachment.proxyURL,
+              proxyURL.scheme == "https",
+              proxyURL.host() == "media.discordapp.net",
+              var components = URLComponents(
+                  url: proxyURL,
+                  resolvingAgainstBaseURL: false
+              )
+        else { return nil }
+        var query = (components.queryItems ?? []).filter {
+            !["format", "width", "height"].contains($0.name)
+        }
+        query.append(URLQueryItem(name: "format", value: "webp"))
+        if let width = attachment.width, let height = attachment.height,
+           width > 0, height > 0
+        {
+            let scale = min(1, 1_024 / Double(max(width, height)))
+            query += [("width", width), ("height", height)].map { name, value in
+                URLQueryItem(
+                    name: name,
+                    value: String(max(1, Int((Double(value) * scale).rounded())))
+                )
+            }
+        }
+        components.queryItems = query
+        return components.url.map { .media($0) }
+    }
+
     static func == (lhs: Self, rhs: Self) -> Bool {
         // A fallback changes how the same primary resource can be loaded, not
         // its decoded-image identity. Keeping it out of equality lets an
@@ -434,6 +465,9 @@ final class NativeTimelineMediaStore {
     var imageSizeOrder: [NativeTimelineMediaKey] = []
     var visibleKeysByOwner:
         [UUID: Set<NativeTimelineMediaKey>] = [:]
+    // Keep failures only while visible, so redraws cannot repeatedly fetch a
+    // broken resource. Leaving and re-entering the viewport allows a retry.
+    private var failedKeys: Set<NativeTimelineMediaKey> = []
     var loading: Set<NativeTimelineMediaKey> = []
     var loadingPriorities: [NativeTimelineMediaKey: MediaLoadPriority] = [:]
     var loadingTaskIDs: [NativeTimelineMediaKey: UUID] = [:]
@@ -642,6 +676,10 @@ final class NativeTimelineMediaStore {
         completion: @escaping (NativeTimelineStaticMediaLoadOutcome) -> Void
     ) {
         guard image(for: key) == nil else { return }
+        guard !failedKeys.contains(key) else {
+            completion(.failed)
+            return
+        }
         let subscriberID = StaticSubscriberID(owner: owner, row: subscriber)
         subscribers[key, default: [:]][subscriberID] = completion
         guard loading.insert(key).inserted else {
@@ -695,6 +733,8 @@ final class NativeTimelineMediaStore {
             let completions = subscribers.removeValue(forKey: key)?.values ?? [:].values
             if let image {
                 cacheImage(image, for: key)
+            } else if visibleKeysByOwner.values.contains(where: { $0.contains(key) }) {
+                failedKeys.insert(key)
             }
             for completion in completions {
                 completion(image == nil ? .failed : .ready)
@@ -837,6 +877,7 @@ final class NativeTimelineMediaStore {
         for key: NativeTimelineMediaKey
     ) {
         rememberImageSize(image.size, for: key)
+        failedKeys.remove(key)
         let cost = Self.estimatedCost(of: image)
         if let previous = cachedImages.updateValue(
             CachedImage(image: image, cost: cost),
@@ -872,6 +913,7 @@ final class NativeTimelineMediaStore {
         let visibleKeys = visibleKeysByOwner.values.reduce(
             into: Set<NativeTimelineMediaKey>()
         ) { $0.formUnion($1) }
+        failedKeys.formIntersection(visibleKeys)
         while imageCacheCost > Self.imageCacheCostLimit
             || cachedImages.count > Self.imageCacheCountLimit
         {

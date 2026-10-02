@@ -26,7 +26,7 @@ extension NativeTimelineRowPainter {
             named: "play.circle.fill",
             pointSize: 36,
             weight: .regular,
-            color: .labelColor
+            color: .white
         ) else { return }
         let imageSize = image.size
         let imageFrame = CGRect(
@@ -43,6 +43,21 @@ extension NativeTimelineRowPainter {
         shadow.set()
         image.draw(in: imageFrame)
         NSGraphicsContext.restoreGraphicsState()
+        // A single tint fills the symbol's knocked-out triangle, so it is
+        // drawn again in a contrasting color.
+        guard let triangle = NativeTimelineSystemSymbolCache.configuredImage(
+            named: "play.fill",
+            pointSize: 15,
+            weight: .regular,
+            color: NSColor.black.withAlphaComponent(0.75)
+        ) else { return }
+        triangle.draw(in: CGRect(
+            // The triangle's visual centre sits left of its bounding box.
+            x: frame.midX - triangle.size.width / 2 + 1.5,
+            y: frame.midY - triangle.size.height / 2,
+            width: triangle.size.width,
+            height: triangle.size.height
+        ))
     }
 
     static func text(

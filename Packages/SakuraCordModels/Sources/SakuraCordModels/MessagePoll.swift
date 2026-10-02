@@ -96,6 +96,12 @@ public enum MessagePollUpdate: Equatable, Sendable {
     case snapshot(MessagePoll, preservingSelection: Bool)
     case vote(answerID: Int, isAddition: Bool, isCurrentUser: Bool)
 
+    /// The current user's vote operations that replace `selected` with `target`.
+    public static func currentUserSelection(from selected: Set<Int>, to target: Set<Int>) -> [Self] {
+        selected.subtracting(target).sorted().map { .vote(answerID: $0, isAddition: false, isCurrentUser: true) }
+            + target.subtracting(selected).sorted().map { .vote(answerID: $0, isAddition: true, isCurrentUser: true) }
+    }
+
     public func apply(to message: inout Message) {
         switch self {
         case .snapshot(let incoming, let preservingSelection):
@@ -128,7 +134,7 @@ public struct PollDraft: Equatable, Sendable {
     public var validationError: String? {
         let question = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !question.isEmpty, question.utf16.count <= 300 else { return "Enter a question of up to 300 characters." }
-        guard (2 ... 10).contains(submittedAnswers.count), answers.count <= 10 else { return "Add between 2 and 10 answers." }
+        guard (1 ... 10).contains(submittedAnswers.count), answers.count <= 10 else { return "Add up to 10 answers." }
         guard answers.allSatisfy({
             let text = $0.text.trimmingCharacters(in: .whitespacesAndNewlines)
             return (!text.isEmpty || $0.emoji == nil) && text.utf16.count <= 55

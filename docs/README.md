@@ -46,6 +46,17 @@ development, both Git hooks, and CI. Pre-commit validates the exact staged
 index snapshot; pre-push independently validates the committed ref tips. See
 the [development guide](DEVELOPMENT.md) for launch modes and broader validation.
 
+For feature-branch pushes, including pushes to forks, pre-push also fetches
+current `nightly` from the canonical repository and checks the merged tree
+that PR CI will build. Merge conflicts, an unavailable base, or merged-tree
+quality failures block the push. This uses temporary snapshots and a temporary
+Git ref, leaving the checkout, index, branches, and `FETCH_HEAD` unchanged.
+Direct pushes to the canonical repository's `main`/`nightly`, and tag pushes,
+validate their committed trees without a synthetic PR merge. Fork branches
+named `main` or `nightly` still receive merge validation. Snapshot checks use
+the snapshot's own pinned tools and policy. A later base-branch change can
+still require fresh CI validation.
+
 ## Roadmap
 
 The deployed roadmap service is the only source of truth for planned work,

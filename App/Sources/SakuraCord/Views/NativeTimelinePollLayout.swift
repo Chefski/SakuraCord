@@ -18,6 +18,12 @@ struct NativeTimelinePollLayout {
     let revealFrame: CGRect
     let submitFrame: CGRect
 
+    /// Footer buttons sit 16 points from the card edges, and answers 16 points
+    /// inside it, so both radii stay concentric with the 32-point capsules.
+    static let inset: CGFloat = 16
+    static let cornerRadius = inset + NativeTimelineComponentButtonMetrics.height / 2
+    static let answerCornerRadius = cornerRadius - inset
+
     init(poll: MessagePoll, x originX: CGFloat, y originY: CGFloat, width availableWidth: CGFloat) {
         let width = min(456, availableWidth)
         let inner = max(1, width - 32)
@@ -29,7 +35,7 @@ struct NativeTimelinePollLayout {
         cursor += poll.isClosed() ? 7 : 29
         answers = poll.answers.map { answer in
             let emojiWidth: CGFloat = answer.emoji == nil ? 0 : 30
-            let reserved: CGFloat = poll.selectedAnswerIDs.contains(answer.id) ? 142 : 110
+            let reserved: CGFloat = poll.selectedAnswerIDs.contains(answer.id) ? 156 : 128
             let textWidth = max(1, inner - reserved - emojiWidth)
             let height = max(50, Self.height(answer.text, width: textWidth, font: .systemFont(ofSize: 13)) + 24)
             let rect = CGRect(x: originX + 16, y: cursor, width: inner, height: height)
@@ -48,12 +54,22 @@ struct NativeTimelinePollLayout {
         submitFrame = CGRect(x: originX + width - 16 - submitWidth, y: cursor, width: submitWidth, height: NativeTimelineComponentButtonMetrics.height)
         let revealWidth = min(120, max(0, inner - submitWidth - 6))
         revealFrame = CGRect(x: submitFrame.minX - 6 - revealWidth, y: cursor, width: revealWidth, height: NativeTimelineComponentButtonMetrics.height)
-        frame = CGRect(x: originX, y: originY, width: width, height: cursor + 44 - originY)
+        frame = CGRect(x: originX, y: originY, width: width,
+                       height: cursor + NativeTimelineComponentButtonMetrics.height + Self.inset - originY)
     }
 
     static func resultButtonFrame(in frame: CGRect) -> CGRect {
         let height = NativeTimelineComponentButtonMetrics.height
-        return CGRect(x: frame.maxX - 100, y: frame.midY - height / 2, width: 86, height: height)
+        return CGRect(x: frame.maxX - resultInset(in: frame) - 86, y: frame.midY - height / 2, width: 86, height: height)
+    }
+
+    /// The result card's radius keeps its vertically centered button concentric.
+    static func resultCornerRadius(in frame: CGRect) -> CGFloat {
+        resultInset(in: frame) + NativeTimelineComponentButtonMetrics.height / 2
+    }
+
+    private static func resultInset(in frame: CGRect) -> CGFloat {
+        max(0, (frame.height - NativeTimelineComponentButtonMetrics.height) / 2)
     }
 
     private static func height(_ text: String, width: CGFloat, font: NSFont) -> CGFloat {
@@ -68,7 +84,6 @@ struct NativeTimelinePollPresentation {
     static let voteAnimationDuration: TimeInterval = 0.48
     var selected: Set<Int> = []
     var revealsResults = false
-    var isSubmitting = false
     var hoveredControl: NativeTimelinePollTarget.Control?
     var pressedControl: NativeTimelinePollTarget.Control?
     var fractions: [Int: CGFloat] = [:]
@@ -85,8 +100,7 @@ struct NativeTimelinePollTarget: Equatable {
 }
 
 extension NativeTimelineRowPainter {
-    static func pollSurface(in frame: CGRect) {
-        let radius = ChatChromeMetrics.composerCornerRadius
+    static func pollSurface(in frame: CGRect, cornerRadius radius: CGFloat) {
         NativeTimelineSemanticColor.opacity(.controlBackgroundColor, 0.45).setFill()
         NSBezierPath(concentricRoundedRect: frame, cornerRadius: radius).fill()
         NativeTimelineSemanticColor.opacity(.labelColor, 0.10).setStroke()
@@ -106,7 +120,7 @@ extension NativeTimelineRowPainter {
     static func drawPoll(_ input: NativeTimelineMessageDrawInput) {
         guard let poll = input.row.message.poll, let layout = input.layout.pollLayout else { return }
         let state = input.pollPresentation
-        pollSurface(in: layout.frame)
+        pollSurface(in: layout.frame, cornerRadius: NativeTimelinePollLayout.cornerRadius)
         text(poll.question, in: layout.questionFrame, font: .systemFont(ofSize: 15, weight: .semibold), color: .labelColor, lineBreakMode: .byWordWrapping)
         text(poll.isClosed() ? "" : poll.allowsMultipleAnswers ? "Select one or more answers" : "Select one answer",
              in: layout.instructionFrame, font: .systemFont(ofSize: 12), color: .secondaryLabelColor)
@@ -125,7 +139,7 @@ extension NativeTimelineRowPainter {
         let winner = poll.isClosed() && highestCount > 0 && poll.count(for: answer.id) == highestCount
         let hovered = state.hoveredControl == .answer(answer.id)
         let accent = NSColor.sakuraCordAccentColor
-        let path = NSBezierPath(concentricRoundedRect: region.frame, cornerRadius: ChatChromeMetrics.composerCornerRadius - 4)
+        let path = NSBezierPath(concentricRoundedRect: region.frame, cornerRadius: NativeTimelinePollLayout.answerCornerRadius)
         NSColor.labelColor.withAlphaComponent(hovered ? 0.08 : 0.045).setFill()
         path.fill()
         if results {
@@ -182,7 +196,7 @@ extension NativeTimelineRowPainter {
         let percentage = poll.totalVotes > 0 ? Int((Double(count) / Double(poll.totalVotes) * 100).rounded()) : 0
         text(poll.results == nil ? "—" : "\(percentage)%", in: percentageFrame,
              font: .systemFont(ofSize: 14, weight: .semibold), color: .labelColor, alignment: .right)
-        let countFrame = CGRect(x: percentageFrame.minX - 50, y: region.frame.midY - 10, width: 46, height: 20)
+        let countFrame = CGRect(x: percentageFrame.minX - 68, y: region.frame.midY - 10, width: 64, height: 20)
         text(poll.results == nil ? "—" : "\(count) \(count == 1 ? "vote" : "votes")", in: countFrame,
              font: .systemFont(ofSize: 11, weight: .medium), color: .secondaryLabelColor, alignment: .right)
         if selected {
@@ -207,8 +221,8 @@ extension NativeTimelineRowPainter {
         }
         if !results || !poll.selectedAnswerIDs.isEmpty {
             let removing = !poll.selectedAnswerIDs.isEmpty
-            let enabled = !state.isSubmitting && (removing || !state.selected.isEmpty)
-            pollButton(state.isSubmitting ? "…" : removing ? "Remove Vote" : "Vote",
+            let enabled = removing || !state.selected.isEmpty
+            pollButton(removing ? "Remove Vote" : "Vote",
                        in: layout.submitFrame, control: .submit, state: state, isEnabled: enabled, isProminent: !removing)
         }
     }

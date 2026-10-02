@@ -724,9 +724,9 @@ extension AppModel {
 
     @discardableResult
     func reconcileVisibleOrCached(_ incoming: Message) -> Message {
-        let message = reactionPresentationPreserving(
+        let message = pollVotePresentationPreserving(reactionPresentationPreserving(
             outgoingMediaPresentationPreserving(incoming)
-        )
+        ))
         reconcileInboxMessage(message)
         if message.channelID == openThread?.id {
             reconcileThread(message)

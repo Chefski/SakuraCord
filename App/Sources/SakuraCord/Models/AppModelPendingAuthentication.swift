@@ -153,6 +153,7 @@ extension AppModel {
         resetPendingCreatedMessages()
         resetTimelineLiveScrolling()
         clearReactionMutationState()
+        pollVoteMutations.removeAll()
         stopLocalTyping(clearThrottle: true)
         typingState.clearAll()
         if !preservesInteractivePresentation {

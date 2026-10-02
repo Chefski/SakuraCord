@@ -513,6 +513,44 @@ import Testing
     #expect(store.subscribers[key] == nil)
 }
 
+@MainActor
+@Test func `failed visible media waits for viewport exit before retrying`() async throws {
+    let url = try #require(URL(string: "https://media.discordapp.net/attachments/1/2/clip.mp4?format=webp"))
+    let key = NativeTimelineMediaKey.media(url)
+    let encoded = try #require(Data(base64Encoded:
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+3vYjWQAAAABJRU5ErkJggg=="
+    ))
+    let image = try #require(NativeTimelineMediaDecoder.decode(encoded, maximumPixelDimension: 32))
+    var loadCount = 0
+    let store = NativeTimelineMediaStore { _, _, _ in
+        loadCount += 1
+        return loadCount == 1 ? nil : image
+    }
+    let firstOwner = UUID()
+    let secondOwner = UUID()
+    let row = NativeMessageTimelineItem.Identifier.message(.server(
+        channelID: ChannelID(rawValue: 1), messageID: MessageID(rawValue: 2)
+    ))
+    func request(_ owner: UUID) async -> NativeTimelineStaticMediaLoadOutcome {
+        await withCheckedContinuation { continuation in
+            store.request(key, owner: owner, subscriber: row) { continuation.resume(returning: $0) }
+        }
+    }
+    store.retainVisibleImages(for: [key], owner: firstOwner)
+    store.retainVisibleImages(for: [key], owner: secondOwner)
+    for _ in 0 ..< 3 { #expect(await request(firstOwner) == .failed) }
+    #expect(loadCount == 1)
+
+    store.releaseVisibleImages(owner: firstOwner)
+    #expect(await request(secondOwner) == .failed)
+    #expect(loadCount == 1)
+    store.retainVisibleImages(for: [], owner: secondOwner)
+    store.retainVisibleImages(for: [key], owner: firstOwner)
+    #expect(await request(firstOwner) == .ready)
+    #expect(loadCount == 2)
+    #expect(store.image(for: key) != nil)
+}
+
 private actor ControlledDecodedImageLoad {
     private var calls: [(url: URL, priority: MediaLoadPriority)] = []
     private var continuations: [URL: CheckedContinuation<CGImage?, Never>] = [:]

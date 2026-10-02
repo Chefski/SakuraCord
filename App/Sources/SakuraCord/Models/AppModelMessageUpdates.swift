@@ -2,12 +2,19 @@ import SakuraCordModels
 
 extension AppModel {
     func applyingMessageUpdate(_ update: MessageUpdate) -> Message? {
-        let pinned = pinnedMessages.items.first { $0.id == update.messageID }?.message
-        let search = messageSearch.page?.results.lazy.flatMap(\.messages).first { $0.id == update.messageID && $0.channelID == update.channelID }
-        let inboxMessage = inbox.mentions.first { $0.id == update.messageID } ?? inbox.groups.lazy.flatMap(\.messages).first { $0.id == update.messageID }
-        guard var message = messageInWorkspace(channelID: update.channelID, messageID: update.messageID) ?? pinned ?? search ?? inboxMessage else { return nil }
+        guard var message = retainedMessage(channelID: update.channelID, messageID: update.messageID) else { return nil }
         update.apply(to: &message)
         return message
+    }
+
+    /// The workspace copy, or one retained by pins, search, or the Inbox.
+    func retainedMessage(channelID: ChannelID, messageID: MessageID) -> Message? {
+        if let message = messageInWorkspace(channelID: channelID, messageID: messageID) { return message }
+        if let pinned = pinnedMessages.items.first(where: { $0.id == messageID })?.message { return pinned }
+        if let search = messageSearch.page?.results.lazy.flatMap(\.messages).first(where: { $0.id == messageID && $0.channelID == channelID }) {
+            return search
+        }
+        return inbox.mentions.first { $0.id == messageID } ?? inbox.groups.lazy.flatMap(\.messages).first { $0.id == messageID }
     }
 
     func reconcileRetainedMessageIdentities(_ user: User) {

@@ -2,6 +2,25 @@ import DiscordProtocol
 import Foundation
 import SakuraCordModels
 
+/// The current user's poll selection while a vote request is pending.
+struct PollVoteMutationState {
+    var channelID: ChannelID
+    var confirmed: Set<Int>
+    var desired: Set<Int>
+    var isSending: Bool
+}
+
+private extension Message {
+    func selectingCurrentUserPollAnswers(_ answerIDs: Set<Int>) -> Message {
+        guard let poll, poll.results != nil, poll.selectedAnswerIDs != answerIDs else { return self }
+        var result = self
+        for update in MessagePollUpdate.currentUserSelection(from: poll.selectedAnswerIDs, to: answerIDs) {
+            update.apply(to: &result)
+        }
+        return result
+    }
+}
+
 extension AppModel {
     func canCreatePoll(in channelID: ChannelID) -> Bool {
         let isThread = openThread?.id == channelID
@@ -29,21 +48,79 @@ extension AppModel {
             guard await prepareChannelMessageSubmission(channelID: channelID, account: session) else { return .rejected }
         }
         guard isCurrentAccountSession(session), canCreatePoll(in: channelID) else { return .rejected }
-        let confirmed = await sendChannelMessage(channelID: channelID, content: "", replyTo: nil,
-                                        replyPreview: nil, attachments: [], clearsComposer: false, poll: poll)
-        return .enqueued(serverConfirmed: confirmed)
+        // The poll appears as an outgoing message with retry, so the creator
+        // does not wait for the server.
+        startAccountChildTask(account: session) { model, _ in
+            _ = await model.sendChannelMessage(channelID: channelID, content: "", replyTo: nil,
+                                               replyPreview: nil, attachments: [], clearsComposer: false, poll: poll)
+        }
+        return .enqueued(serverConfirmed: false)
     }
 
-    func vote(on message: Message, answerIDs: Set<Int>) async -> Bool {
-        let session = accountSession()
-        do {
-            try await session.provider.setPollAnswers(answerIDs.sorted(), messageID: message.id, channelID: message.channelID)
-            return isCurrentAccountSession(session)
-        } catch {
-            guard isCurrentAccountSession(session) else { return false }
-            errorMessage = error.localizedDescription
-            return false
+    /// Shows the current user's selection immediately and coalesces requests.
+    /// Gateway echoes of the current user's vote are idempotent.
+    @discardableResult
+    func vote(on message: Message, answerIDs: Set<Int>) -> Bool {
+        guard let poll = (retainedMessage(channelID: message.channelID, messageID: message.id) ?? message).poll,
+              !poll.isClosed(), poll.layoutType == 1, poll.allowsMultipleAnswers || answerIDs.count <= 1,
+              answerIDs.allSatisfy({ id in poll.answers.contains { $0.id == id } }) else { return false }
+        var state = pollVoteMutations[message.id] ?? PollVoteMutationState(
+            channelID: message.channelID, confirmed: poll.selectedAnswerIDs, desired: poll.selectedAnswerIDs, isSending: false
+        )
+        state.desired = answerIDs
+        pollVoteMutations[message.id] = state
+        applyCurrentUserPollSelection(answerIDs, messageID: message.id, channelID: message.channelID)
+        sendPollVoteMutation(messageID: message.id)
+        return true
+    }
+
+    private func sendPollVoteMutation(messageID: MessageID) {
+        guard var state = pollVoteMutations[messageID], !state.isSending else { return }
+        guard state.desired != state.confirmed else {
+            pollVoteMutations[messageID] = nil
+            return
         }
+        let answerIDs = state.desired
+        let channelID = state.channelID
+        state.isSending = true
+        pollVoteMutations[messageID] = state
+        startAccountChildTask(account: accountSession()) { model, session in
+            do {
+                try await session.provider.setPollAnswers(answerIDs.sorted(), messageID: messageID, channelID: channelID)
+            } catch {
+                guard model.isCurrentAccountSession(session),
+                      let latest = model.pollVoteMutations.removeValue(forKey: messageID) else { return }
+                model.applyCurrentUserPollSelection(latest.confirmed, messageID: messageID, channelID: channelID)
+                model.errorMessage = error.localizedDescription
+                return
+            }
+            guard model.isCurrentAccountSession(session), var latest = model.pollVoteMutations[messageID] else { return }
+            latest.confirmed = answerIDs
+            latest.isSending = false
+            model.pollVoteMutations[messageID] = latest
+            model.sendPollVoteMutation(messageID: messageID)
+            guard let message = model.retainedMessage(channelID: channelID, messageID: messageID) else { return }
+            if model.pollVoteMutations[messageID] == nil { model.recordAuthoritativeMessageUpsert(message) }
+            if message.poll?.results == nil { await model.loadUnknownPollResults(message) }
+        }
+    }
+
+    private func applyCurrentUserPollSelection(_ answerIDs: Set<Int>, messageID: MessageID, channelID: ChannelID) {
+        guard let poll = retainedMessage(channelID: channelID, messageID: messageID)?.poll else { return }
+        var update = MessageUpdate(messageID: messageID, channelID: channelID)
+        update.pollUpdates = MessagePollUpdate.currentUserSelection(from: poll.selectedAnswerIDs, to: answerIDs)
+        guard !update.pollUpdates.isEmpty else { return }
+        consumeImmediately(.messagePatched(update))
+    }
+
+    func pollVotePresentationPreserving(_ incoming: Message) -> Message {
+        guard let mutation = pollVoteMutations[incoming.id], mutation.channelID == incoming.channelID else { return incoming }
+        return incoming.selectingCurrentUserPollAnswers(mutation.desired)
+    }
+
+    func pollVoteConfirmedSnapshot(_ message: Message) -> Message {
+        guard let mutation = pollVoteMutations[message.id], mutation.channelID == message.channelID else { return message }
+        return message.selectingCurrentUserPollAnswers(mutation.confirmed)
     }
 
     func endPoll(_ message: Message) async {

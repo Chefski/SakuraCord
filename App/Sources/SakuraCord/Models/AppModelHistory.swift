@@ -660,7 +660,7 @@ extension AppModel {
 
     @discardableResult
     func journalAuthoritativeMessageUpsert(_ message: Message) -> Message {
-        let persistedMessage = reactionConfirmedSnapshot(message)
+        let persistedMessage = pollVoteConfirmedSnapshot(reactionConfirmedSnapshot(message))
         recordConversationRefreshMutation(
             .upsert(persistedMessage),
             messageID: persistedMessage.id,
