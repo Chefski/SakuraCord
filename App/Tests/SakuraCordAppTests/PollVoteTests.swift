@@ -211,7 +211,8 @@ func `Inbox loads preserve poll patches for messages not yet retained`(tab: Inbo
 }
 
 @MainActor
-@Test func `poll result fetch preserves updates received while awaiting history`() async throws {
+@Test(arguments: [false, true])
+func `poll result fetch preserves updates received while awaiting history`(finalizes: Bool) async throws {
     let provider = PollVoteTestProvider()
     let model = AppModel(launchMode: .offlineTesting, provider: provider)
     await model.start()
@@ -226,13 +227,18 @@ func `Inbox loads preserve poll patches for messages not yet retained`(tab: Inbo
     finalized.results = PollResults(isFinalized: true, answerCounts: [.init(id: 1, count: 4)])
     var update = MessageUpdate(messageID: stale.id, channelID: stale.channelID)
     update.content = "Edited during the poll fetch"
-    update.pollUpdates = [.snapshot(finalized, preservingSelection: true)]
+    update.pollUpdates = finalizes ? [.snapshot(finalized, preservingSelection: true)]
+        : [.vote(answerID: 1, isAddition: true, isCurrentUser: false)]
     model.consumeImmediately(.messagePatched(update))
+    model.consumeImmediately(.messageReactionUpdated(.add(
+        channelID: stale.channelID, messageID: stale.id, userID: UserID(rawValue: 99_004), emoji: "👍", kind: .normal
+    )))
     await provider.resumeHistory(MessagePage(messages: [stale], hasMoreBefore: false))
     await load.value
     #expect(model.messages.first?.content == update.content)
-    #expect(model.messages.first?.poll?.results?.isFinalized == true)
-    #expect(model.messages.first?.poll?.count(for: 1) == 4)
+    #expect(model.messages.first?.poll?.results?.isFinalized == finalizes)
+    #expect(model.messages.first?.poll?.count(for: 1) == (finalizes ? 4 : 2))
+    #expect(model.messages.first?.reactions.first?.count == 1)
 }
 
 private actor PollVoteTestProvider: ChatProvider {
