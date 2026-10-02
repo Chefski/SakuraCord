@@ -30,8 +30,6 @@ public protocol ChatProvider: Sendable {
     func refreshCurrentMember(in guildID: GuildID) async throws -> Member
     func saveGuildOnboarding(in guildID: GuildID, responses: Set<String>, initial: Bool) async throws -> GuildOnboarding
     func updateGuildChannelSelection(in guildID: GuildID, enabled: Bool?, channels: [ChannelID: Bool]) async throws -> GuildNotificationSettings
-    func setGuildChannelSelected(_ selected: Bool, channelID: ChannelID, guildID: GuildID) async throws
-    func setGuildChannelSelectionEnabled(_ enabled: Bool, guildID: GuildID) async throws
 
     func serverInvite(_ reference: ServerInviteReference) async throws -> ServerInvite
     func acceptServerInvite(_ reference: ServerInviteReference, messageID: MessageID?, captchaHandler: DiscordCaptchaHandler?) async throws -> ServerInviteAcceptance
@@ -310,12 +308,6 @@ public extension ChatProvider {
         throw ChatProviderError.invalidRequest("Onboarding is unavailable for this session.")
     }
     func updateGuildChannelSelection(in guildID: GuildID, enabled: Bool?, channels: [ChannelID: Bool]) async throws -> GuildNotificationSettings {
-        throw ChatProviderError.invalidRequest("Channel selection is unavailable for this session.")
-    }
-    func setGuildChannelSelected(_ selected: Bool, channelID: ChannelID, guildID: GuildID) async throws {
-        throw ChatProviderError.invalidRequest("Channel selection is unavailable for this session.")
-    }
-    func setGuildChannelSelectionEnabled(_ enabled: Bool, guildID: GuildID) async throws {
         throw ChatProviderError.invalidRequest("Channel selection is unavailable for this session.")
     }
 
