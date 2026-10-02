@@ -1,0 +1,27 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "locations", "cause", "suggestedFix", "suggestedTest", "confidence", "fixable"],
+  "properties": {
+    "summary": { "type": "string", "description": "Two or three sentences for the reporter and maintainers." },
+    "locations": {
+      "type": "array",
+      "maxItems": 6,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "line", "reason"],
+        "properties": {
+          "path": { "type": "string" },
+          "line": { "type": "integer" },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "cause": { "type": "string" },
+    "suggestedFix": { "type": "string" },
+    "suggestedTest": { "type": "string" },
+    "confidence": { "type": "string", "enum": ["low", "medium", "high"] },
+    "fixable": { "type": "boolean" }
+  }
+}
