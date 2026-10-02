@@ -199,14 +199,28 @@ extension AppModel {
     }
 
     func loadUnknownPollResults(_ message: Message) async {
-        guard message.poll?.results == nil else { return }
+        let current = retainedMessage(channelID: message.channelID, messageID: message.id) ?? message
+        guard current.poll?.results == nil, pollResultRefreshJournals[message.id] == nil else { return }
         let session = accountSession()
+        conversationRefreshJournalRevision &+= 1
+        let revision = conversationRefreshJournalRevision
+        pollResultRefreshJournals[message.id] = ConversationRefreshJournal(revision: revision)
+        defer {
+            if isCurrentAccountSession(session), pollResultRefreshJournals[message.id]?.revision == revision {
+                pollResultRefreshJournals[message.id] = nil
+            }
+        }
         do {
             let page = try await session.provider.messages(in: message.channelID, anchoredAt: .around(message.id), limit: 1)
-            guard isCurrentAccountSession(session), let updated = page.messages.first(where: { $0.id == message.id }) else { return }
-            consumeImmediately(.messageUpdated(updated))
+            guard !Task.isCancelled, isCurrentAccountSession(session),
+                  let journal = pollResultRefreshJournals[message.id], journal.revision == revision,
+                  let fetched = page.messages.first(where: { $0.id == message.id }) else { return }
+            let mutations = ConversationRefreshMutations(messages: journal.mutationsByMessageID, updatedUsers: journal.updatedUsers)
+            if let updated = Self.applyingConversationRefreshMutations(mutations, to: [fetched]).first {
+                consumeImmediately(.messageUpdated(updated))
+            }
         } catch {
-            guard isCurrentAccountSession(session) else { return }
+            guard !Task.isCancelled, isCurrentAccountSession(session) else { return }
             errorMessage = error.localizedDescription
         }
     }

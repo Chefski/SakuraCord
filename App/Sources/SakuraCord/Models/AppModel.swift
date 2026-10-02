@@ -1100,6 +1100,7 @@ final class AppModel {
         [ReactionMutationKey: Task<Void, Never>] = [:]
     @ObservationIgnored let reactionMutationTiming: ReactionMutationTiming
     @ObservationIgnored var pollVoteMutations: [MessageID: PollVoteMutationState] = [:]
+    @ObservationIgnored var pollResultRefreshJournals: [MessageID: ConversationRefreshJournal] = [:]
     @ObservationIgnored var guildActivationTask: Task<Void, Never>?
     @ObservationIgnored var memberLoadTask: Task<Void, Never>?
     @ObservationIgnored var memberLoadGeneration: UInt64 = 0

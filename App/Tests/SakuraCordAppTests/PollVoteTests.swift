@@ -210,6 +210,31 @@ func `Inbox loads preserve poll patches for messages not yet retained`(tab: Inbo
     #expect(model.inbox.rows.first?.message == loaded.first)
 }
 
+@MainActor
+@Test func `poll result fetch preserves updates received while awaiting history`() async throws {
+    let provider = PollVoteTestProvider()
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    let stale = try #require(model.messages.first)
+    var unknown = stale
+    unknown.poll?.results = nil
+    model.replaceSelectedMessages(with: [unknown])
+    await provider.holdPollResults()
+    let load = Task { await model.loadUnknownPollResults(unknown) }
+    await provider.waitForHistory()
+    var finalized = try #require(stale.poll)
+    finalized.results = PollResults(isFinalized: true, answerCounts: [.init(id: 1, count: 4)])
+    var update = MessageUpdate(messageID: stale.id, channelID: stale.channelID)
+    update.content = "Edited during the poll fetch"
+    update.pollUpdates = [.snapshot(finalized, preservingSelection: true)]
+    model.consumeImmediately(.messagePatched(update))
+    await provider.resumeHistory(MessagePage(messages: [stale], hasMoreBefore: false))
+    await load.value
+    #expect(model.messages.first?.content == update.content)
+    #expect(model.messages.first?.poll?.results?.isFinalized == true)
+    #expect(model.messages.first?.poll?.count(for: 1) == 4)
+}
+
 private actor PollVoteTestProvider: ChatProvider {
     private let user = User(id: UserID(rawValue: 99_001), username: "poll-tester", displayName: "Poll Tester")
     private let channel = Channel(id: ChannelID(rawValue: 99_002), guildID: nil, name: "poll-tests")
@@ -220,6 +245,7 @@ private actor PollVoteTestProvider: ChatProvider {
     private var requestContinuation: CheckedContinuation<Void, Never>?
     private var searchContinuation: CheckedContinuation<Void, Never>?
     private var historyContinuation: CheckedContinuation<MessagePage, Never>?
+    private var holdsPollResults = false
     private var holdsInboxPages = false
     private var inboxContinuation: CheckedContinuation<Void, Never>?
 
@@ -247,8 +273,11 @@ private actor PollVoteTestProvider: ChatProvider {
 
     func messages(in channelID: ChannelID, anchoredAt anchor: MessageHistoryAnchor, limit: Int) async throws -> MessagePage {
         if case .after = anchor { return await withCheckedContinuation { historyContinuation = $0 } }
+        if case .around = anchor, holdsPollResults { return await withCheckedContinuation { historyContinuation = $0 } }
         return try await messages(in: channelID, before: nil, limit: limit)
     }
+
+    func holdPollResults() { holdsPollResults = true }
 
     func waitForHistory() async {
         while historyContinuation == nil { await Task.yield() }
