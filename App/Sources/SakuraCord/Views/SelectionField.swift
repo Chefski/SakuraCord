@@ -127,7 +127,6 @@ nonisolated enum SelectionFieldSelectionPolicy {
 }
 
 nonisolated struct SelectionFieldConfiguration: Sendable {
-    var minimumSelectionCount: Int
     var placeholder: String
     var searchPlaceholder: String
     var emptyTitle: String
@@ -138,7 +137,6 @@ nonisolated struct SelectionFieldConfiguration: Sendable {
     var resultPlacement: SelectionFieldResultPlacement
 
     init(
-        minimumSelectionCount: Int = 0,
         placeholder: String = "Select an option…",
         searchPlaceholder: String = "Search",
         emptyTitle: String = "No Matches",
@@ -148,7 +146,6 @@ nonisolated struct SelectionFieldConfiguration: Sendable {
         collapsesAfterSingleSelection: Bool = true,
         resultPlacement: SelectionFieldResultPlacement = .below
     ) {
-        self.minimumSelectionCount = max(0, minimumSelectionCount)
         self.placeholder = placeholder
         self.searchPlaceholder = searchPlaceholder
         self.emptyTitle = emptyTitle
@@ -319,7 +316,6 @@ struct SelectionField<ID: Hashable & Sendable>: View {
                     .contentShape(.rect)
             }
             .buttonStyle(.plain)
-            .disabled(selection.count <= configuration.minimumSelectionCount)
             .accessibilityLabel("Remove \(option.title)")
         }
         .padding(.leading, 9)
@@ -397,8 +393,7 @@ struct SelectionField<ID: Hashable & Sendable>: View {
 
     private func activate(_ id: ID) {
         guard model.state == .loaded,
-              let updated = SelectionFieldSelectionPolicy.toggled(id, in: selection, mode: mode),
-              updated.count >= configuration.minimumSelectionCount else { return }
+              let updated = SelectionFieldSelectionPolicy.toggled(id, in: selection, mode: mode) else { return }
         withAnimation(motion) { selection = updated }
         if mode == .single, configuration.collapsesAfterSingleSelection { finish() }
     }

@@ -952,7 +952,6 @@ extension NativeTimelineCanvasView {
                 options: region.options,
                 initialOptions: initialOptions,
                 selectedOptions: selectedOptions,
-                minimumSelectionCount: region.minimumSelectionCount,
                 maximumSelectionCount: region.maximumSelectionCount,
                 loader: { [weak model] query in
                     guard let model else {

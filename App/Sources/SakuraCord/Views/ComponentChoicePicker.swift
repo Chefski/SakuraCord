@@ -15,7 +15,6 @@ struct ComponentChoicePicker: View {
     private let selectKind: ComponentSelectKind
     private let options: [ComponentSelectOption]
     private let initialOptions: [ComponentSelectOption]
-    private let minimumSelectionCount: Int
     private let maximumSelectionCount: Int
     private let loader: Loader
     private let selectionChanged: ([ComponentSelectOption]) -> Void
@@ -29,7 +28,6 @@ struct ComponentChoicePicker: View {
         options: [ComponentSelectOption],
         initialOptions: [ComponentSelectOption],
         selectedOptions: [ComponentSelectOption]?,
-        minimumSelectionCount: Int,
         maximumSelectionCount: Int,
         loader: @escaping Loader,
         selectionChanged: @escaping ([ComponentSelectOption]) -> Void,
@@ -41,7 +39,6 @@ struct ComponentChoicePicker: View {
         self.selectKind = selectKind
         self.options = options
         self.initialOptions = initialOptions
-        self.minimumSelectionCount = minimumSelectionCount
         self.maximumSelectionCount = max(1, maximumSelectionCount)
         self.loader = loader
         self.selectionChanged = selectionChanged
@@ -70,7 +67,6 @@ struct ComponentChoicePicker: View {
             mode: selectionMode,
             source: source,
             configuration: SelectionFieldConfiguration(
-                minimumSelectionCount: minimumSelectionCount,
                 placeholder: placeholder,
                 searchPlaceholder: "Search options",
                 maximumListHeight: 232,
