@@ -609,6 +609,7 @@ extension AppModel {
     func reconcilePinnedMessage(_ message: Message) {
         guard let index = pinnedMessages.items.firstIndex(where: { $0.id == message.id })
         else { return }
+        guard !message.isPinned || pinnedMessages.items[index].message != message else { return }
         var items = pinnedMessages.items
         if message.isPinned {
             items[index].message = message
