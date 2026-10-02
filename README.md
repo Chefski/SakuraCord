@@ -43,9 +43,9 @@ Mac app.
       Liquid Glass presentation.
     </td>
     <td width="50%" valign="top">
-      <h3>⚡ Blazingly fast</h3>
-      Low-level APIs keep the app responsive and every timeline exceptionally
-      fluid, with scrolling no other native Discord client for macOS matches.
+      <h3>⚡ Responsive conversations</h3>
+      Native timeline rendering, bounded media work, and shared caches keep
+      conversations responsive.
     </td>
   </tr>
   <tr>
@@ -93,6 +93,18 @@ The hooks command must print `.githooks`. The offline demo does not contact
 Discord and is the safest way to explore the app from source. Developers can
 find authenticated launch modes, focused fixtures, validation commands, and
 local credential guidance in the [development guide](docs/DEVELOPMENT.md).
+
+## Contributing and support
+
+Start with the [documentation task index](docs/README.md) to find the owner and
+verification for a change. Development pull requests target `nightly`; install
+the repository hooks before committing or pushing.
+
+For a bug report, include reproduction steps, expected and actual behaviour, and
+the app version/release track. The [support recipe](docs/DEVELOPMENT.md#report-a-problem)
+explains how to collect a support summary and sanitized diagnostics. Use the
+[issue tracker](https://github.com/SakuraCordApp/SakuraCord/issues) or the
+[Discord community](https://discord.gg/hWNwFXkUTP).
 
 ## Repository guide
 
