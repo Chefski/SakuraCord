@@ -31,6 +31,11 @@ in `THIRD_PARTY_NOTICES.md`. No SocialSymbols package dependency is used.
 presentation, forum state, interactions, and voice state for the current app
 workspace. Views receive narrow values or the model reference.
 
+Closing the workspace window with Command-W or the close button keeps the app
+and account session running. Reopening the app restores its single workspace.
+Command-Q and the Quit menu item terminate the app through the existing active-work
+confirmation policy.
+
 Launch state is explicit:
 
 - `--offline`, `--offline-long-server-list`, and
