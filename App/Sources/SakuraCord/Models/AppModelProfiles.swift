@@ -170,7 +170,7 @@ extension AppModel {
     }
 
     func authorPresentation(for message: Message) -> MessageAuthorPresentation {
-        let guildID = message.guildID ?? messagePresentationChannel(message.channelID)?.guildID
+        let guildID = authorGuildID(for: message)
         let member = guildID.flatMap { membersByGuildID[$0]?[message.author.id] }
             ?? (guildID == selectedGuildID ? membersByID[message.author.id] : nil)
         let roles = guildID.flatMap { guildRolesByGuildID[$0] }
@@ -184,7 +184,7 @@ extension AppModel {
     func authorPresentation(
         for replyPreview: MessageReplyPreview, in message: Message? = nil
     ) -> MessageAuthorPresentation {
-        let guildID = message.map { $0.guildID ?? messagePresentationChannel($0.channelID)?.guildID } ?? selectedGuildID
+        let guildID = message.map { authorGuildID(for: $0) } ?? selectedGuildID
         let member = guildID.flatMap { membersByGuildID[$0]?[replyPreview.author.id] }
             ?? (guildID == selectedGuildID ? membersByID[replyPreview.author.id] : nil)
         let roles = guildID.flatMap { guildRolesByGuildID[$0] } ?? (guildID == selectedGuildID ? guildRoles : [])
@@ -194,6 +194,18 @@ extension AppModel {
             roles: roles
         )
         return MessageAuthorPresentation(user: cosmeticPolicy.user(presentation.user), roleColorHex: presentation.roleColorHex)
+    }
+
+    private func authorGuildID(for message: Message) -> GuildID? {
+        if let guildID = message.guildID { return guildID }
+        if let channel = messagePresentationChannel(message.channelID) {
+            return channel.guildID
+        }
+        let thread = (openThread?.id == message.channelID ? openThread : nil)
+            ?? inbox.threads[message.channelID]
+            ?? snapshot?.threads.first { $0.id == message.channelID }
+            ?? snapshot?.activeJoinedThreads.first { $0.id == message.channelID }
+        return thread?.guildID ?? thread?.parentID.flatMap { messagePresentationChannel($0)?.guildID }
     }
 
     @discardableResult

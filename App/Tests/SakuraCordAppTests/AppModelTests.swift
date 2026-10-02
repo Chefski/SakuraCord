@@ -885,6 +885,22 @@ import UserNotifications
         return model.authorPresentation(for: message).roleColorHex == 0xFF7900
     })
     #expect(await provider.resolutionRequests() == [[UserID(rawValue: 76_101)]])
+    var threadMessage = try #require(model.messages.first)
+    let parentID = threadMessage.channelID
+    threadMessage.channelID = ChannelID(rawValue: 76_003)
+    threadMessage.guildID = nil
+    threadMessage.guildMember = nil
+    model.openThread = MessageThreadSummary(id: threadMessage.channelID, parentID: parentID, name: "Thread")
+    let reply = MessageReplyPreview(message: threadMessage)
+    #expect(model.authorPresentation(for: threadMessage).roleColorHex == 0xFF7900)
+    #expect(model.authorPresentation(for: reply, in: threadMessage).roleColorHex == 0xFF7900)
+    model.inbox.threads[threadMessage.channelID] = model.openThread
+    model.openThread = nil
+    model.selectedGuildID = GuildID(rawValue: 76_999)
+    model.membersByID = [:]
+    model.guildRoles = []
+    #expect(model.authorPresentation(for: threadMessage).roleColorHex == 0xFF7900)
+    #expect(model.authorPresentation(for: reply, in: threadMessage).roleColorHex == 0xFF7900)
 }
 
 @MainActor
