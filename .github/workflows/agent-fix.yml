@@ -64,7 +64,7 @@ jobs:
           prompt-file: ${{ runner.temp }}/prompt.md
           output-schema-file: .agent-control/.github/agents/fix.schema.json
           output-file: ${{ runner.temp }}/fix.json
-          model: ${{ vars.AGENT_FIX_MODEL || 'gpt-6-sol' }}
+          model: ${{ vars.AGENT_FIX_MODEL || 'gpt-6-luna' }}
           effort: ${{ vars.AGENT_FIX_EFFORT || 'high' }}
           permission-profile: ":workspace"
           allow-bot-users: ${{ vars.SAKURACORD_BOT_SLUG }}
