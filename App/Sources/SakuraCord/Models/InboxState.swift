@@ -70,6 +70,47 @@ final class InboxState {
     @ObservationIgnored var settingsTask: Task<Void, Never>?
     @ObservationIgnored var bulkTask: Task<Void, Never>?
 
+    var retainedMessages: some Sequence<Message> {
+        ([mentions] + groups.map(\.messages) + undoGroups.map(\.messages)
+            + pendingReadGroups.values.map(\.messages)).joined()
+    }
+
+    /// Update every retained copy; report whether visible rows need publication.
+    @discardableResult
+    func replaceRetainedMessage(_ id: MessageID, with replacement: Message?) -> Bool {
+        func updatedMessages(_ messages: [Message]) -> [Message]? {
+            guard let index = messages.firstIndex(where: { $0.id == id }) else { return nil }
+            if let replacement, messages[index] == replacement { return nil }
+            var updated = messages
+            if let replacement {
+                updated[index] = replacement
+            } else { updated.remove(at: index) }
+            return updated
+        }
+        var visibleChanged = false
+        if let updated = updatedMessages(mentions) {
+            mentions = updated
+            visibleChanged = true
+        }
+        for index in groups.indices {
+            if let updated = updatedMessages(groups[index].messages) {
+                groups[index].messages = updated
+                visibleChanged = true
+            }
+        }
+        for index in undoGroups.indices {
+            if let updated = updatedMessages(undoGroups[index].messages) {
+                undoGroups[index].messages = updated
+            }
+        }
+        for id in pendingReadGroups.keys {
+            guard var group = pendingReadGroups[id], let updated = updatedMessages(group.messages) else { continue }
+            group.messages = updated
+            pendingReadGroups[id] = group
+        }
+        return visibleChanged
+    }
+
     func rowInputs(channels: [Channel], guilds: [Guild]) -> [InboxMessageRowInput] {
         var messages = visibleMentions
         if tab == .unread {

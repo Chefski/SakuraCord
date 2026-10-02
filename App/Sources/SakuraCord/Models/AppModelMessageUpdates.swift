@@ -16,7 +16,7 @@ extension AppModel {
         if let search = messageSearch.page?.results.lazy.flatMap(\.messages).first(where: { $0.id == messageID && $0.channelID == channelID }) {
             return search
         }
-        return inbox.mentions.first { $0.id == messageID } ?? inbox.groups.lazy.flatMap(\.messages).first { $0.id == messageID }
+        return inbox.retainedMessages.first { $0.id == messageID }
     }
 
     /// Snapshot the retained surfaces for events that must find affected messages.
@@ -24,7 +24,7 @@ extension AppModel {
         messages + threadMessages + messageCache.values.flatMap { $0 }
             + pinnedMessages.items.map(\.message)
             + (presentedGuideResource?.messages ?? [])
-            + inbox.mentions + inbox.groups.flatMap(\.messages)
+            + Array(inbox.retainedMessages)
             + (messageSearch.page?.results.flatMap(\.messages) ?? [])
             + forumCataloguePosts.flatMap { [$0.firstMessage, $0.mostRecentMessage].compactMap { $0 } }
     }

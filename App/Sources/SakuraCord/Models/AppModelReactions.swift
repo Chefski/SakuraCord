@@ -179,8 +179,7 @@ extension AppModel {
     func reactionMessage(for key: ReactionMutationKey) -> Message? {
         messageInWorkspace(channelID: key.channelID, messageID: key.messageID)
             ?? presentedGuideResource?.messages.first { $0.id == key.messageID && $0.channelID == key.channelID }
-            ?? inbox.mentions.first { $0.id == key.messageID }
-            ?? inbox.groups.lazy.flatMap(\.messages).first { $0.id == key.messageID }
+            ?? inbox.retainedMessages.first { $0.id == key.messageID }
     }
 
     func knownReactionReactor(for userID: UserID) -> ReactionReactor? {
@@ -317,8 +316,7 @@ extension AppModel {
            let message = resource.messages.first(where: { $0.id == key.messageID }) {
             receiveGuideResourceEvent(.messageUpdated(updating(message)))
         }
-        if let message = inbox.mentions.first(where: { $0.id == key.messageID })
-            ?? inbox.groups.lazy.flatMap(\.messages).first(where: { $0.id == key.messageID }) {
+        if let message = inbox.retainedMessages.first(where: { $0.id == key.messageID }) {
             reconcileInboxMessage(updating(message))
         }
 
@@ -364,8 +362,7 @@ extension AppModel {
     }
 
     private func applyInboxReactionUpdate(_ update: MessageReactionUpdate, currentUserID: UserID?, reactor: ReactionReactor?) {
-        if let message = inbox.mentions.first(where: { $0.id == update.messageID })
-            ?? inbox.groups.lazy.flatMap(\.messages).first(where: { $0.id == update.messageID }) {
+        if let message = inbox.retainedMessages.first(where: { $0.id == update.messageID }) {
             var updated = message
             if updated.applyReactionUpdate(update, currentUserID: currentUserID, reactor: reactor) {
                 reconcileInboxMessage(updated)
