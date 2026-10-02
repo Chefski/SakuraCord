@@ -5,8 +5,8 @@ import SakuraCordModels
 import Testing
 
 @MainActor
-@Test(arguments: [false, true])
-func `poll votes apply before confirmation ignore their echo and roll back on failure`(losesConfirmedResponse: Bool) async throws {
+@Test(arguments: [(false, false), (true, false), (false, true)])
+func `poll votes apply before confirmation ignore their echo and roll back on failure`(failure: (losesConfirmedResponse: Bool, finalizesOnRejection: Bool)) async throws {
     let provider = PollVoteTestProvider()
     let model = AppModel(launchMode: .offlineTesting, provider: provider)
     await model.start()
@@ -15,7 +15,7 @@ func `poll votes apply before confirmation ignore their echo and roll back on fa
     model.inbox.tab = .mentions
     let refresh = model.beginConversationRefresh(in: message.channelID)
 
-    if losesConfirmedResponse { await provider.failNextRequest() }
+    if failure.losesConfirmedResponse { await provider.failNextRequest() }
     #expect(model.vote(on: message, answerIDs: [2]))
     var poll = try #require(model.messages.first?.poll)
     #expect(poll.selectedAnswerIDs == [2])
@@ -63,6 +63,15 @@ func `poll votes apply before confirmation ignore their echo and roll back on fa
     poll = try #require(model.messages.first?.poll)
     #expect(poll.selectedAnswerIDs == [1])
     #expect(poll.count(for: 1) == 3 && poll.count(for: 2) == 1)
+    if failure.finalizesOnRejection {
+        var finalized = poll
+        finalized.results = PollResults(isFinalized: true, answerCounts: [
+            .init(id: 1, count: 2), .init(id: 2, count: 2)
+        ])
+        var update = MessageUpdate(messageID: message.id, channelID: message.channelID)
+        update.pollUpdates = [.snapshot(finalized, preservingSelection: true)]
+        model.consumeImmediately(.messagePatched(update))
+    }
     await provider.resumeRequest()
     #expect(await eventually { model.pollVoteMutations.isEmpty })
     poll = try #require(model.messages.first?.poll)

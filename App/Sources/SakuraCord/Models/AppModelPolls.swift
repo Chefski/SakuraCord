@@ -12,8 +12,17 @@ struct PollVoteMutationState {
 
 private extension Message {
     func selectingCurrentUserPollAnswers(_ answerIDs: Set<Int>) -> Message {
-        guard let poll, poll.results != nil, poll.selectedAnswerIDs != answerIDs else { return self }
+        guard let poll, var results = poll.results, poll.selectedAnswerIDs != answerIDs else { return self }
         var result = self
+        if results.isFinalized {
+            // Final counts are authoritative; only the personal selection may
+            // still need correction when a pending request completes.
+            for index in results.answerCounts.indices {
+                results.answerCounts[index].meVoted = answerIDs.contains(results.answerCounts[index].id)
+            }
+            result.poll?.results = results
+            return result
+        }
         for update in MessagePollUpdate.currentUserSelection(from: poll.selectedAnswerIDs, to: answerIDs) {
             update.apply(to: &result)
         }
