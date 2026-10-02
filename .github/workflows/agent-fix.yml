@@ -58,6 +58,8 @@ jobs:
         run: |
           node .agent-control/.github/agents/issue-context.mjs .agent-control/.github/agents/fix.md "$RUNNER_TEMP/prompt.md"
       - name: Fix with Codex
+        env:
+          GH_TOKEN: ""
         uses: openai/codex-action@86365089eb2b84e0a8fb0717b304f8bdcb13b20e # v1.12
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
@@ -74,7 +76,8 @@ jobs:
           rm -rf .agent-control
           git restore --staged . 2>/dev/null || true
           # Never ship agent edits to automation, release, or signing files.
-          git checkout -- .github script/release_automation.mjs Releases 2>/dev/null || true
+          git restore --source=HEAD --staged --worktree -- .github .githooks script Config Releases
+          git clean -fd -- .github .githooks script Config Releases
           if git status --porcelain | grep -q .; then echo "changed=true" >> "$GITHUB_OUTPUT"; else echo "changed=false" >> "$GITHUB_OUTPUT"; fi
       - name: Code quality
         if: steps.changes.outputs.changed == 'true'

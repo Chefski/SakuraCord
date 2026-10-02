@@ -41,6 +41,8 @@ jobs:
       - name: Build prompt
         run: node .agent-control/.github/agents/issue-context.mjs .agent-control/.github/agents/investigate.md "$RUNNER_TEMP/prompt.md"
       - name: Investigate with Codex
+        env:
+          GH_TOKEN: ""
         uses: openai/codex-action@86365089eb2b84e0a8fb0717b304f8bdcb13b20e # v1.12
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
