@@ -37,6 +37,7 @@ const locations = result.locations
   )
   .join("\n");
 const body = `<!-- sakuracord:investigation -->
+<!-- sakuracord:agent-run investigate ${process.env.GITHUB_RUN_ID} ${process.env.GITHUB_RUN_ATTEMPT} -->
 ### Summary
 ${clean(result.summary)}
 

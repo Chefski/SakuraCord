@@ -97,3 +97,7 @@ Maintainers can rerun it with `agent: investigate` or Discord's Manage menu.
 The label stays until the hub applies the result; retry a failed run in Actions.
 `agent: fix` remains a separate, explicitly triggered agent on the macOS runner
 that opens a draft PR against nightly. Neither agent merges changes.
+
+Each agent edits one Discord status card with its current workflow step
+(refreshed about once a minute) and final outcome. Triage puts the assessment
+in that same card.

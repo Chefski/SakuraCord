@@ -1,4 +1,6 @@
 name: Agent · Triage and investigate
+run-name: >-
+  ${{ github.event.label.name == 'agent: investigate' && format('Agent · Triage · #{0}', github.event.issue.number) || 'Agent · Skipped' }}
 
 # One read-only agent assesses every new report using the nightly codebase.
 # The hub applies the result and removes the trigger label after success.
