@@ -108,75 +108,28 @@ private struct InboxToolbar: View {
     }
 }
 
-/// Unread and Mentions as one concentric capsule, matching the app's glass chrome.
 private struct InboxTabPicker: View {
     let selection: InboxTab
     let unreadCount: Int
     let select: (InboxTab) -> Void
-    @Namespace private var namespace
 
     var body: some View {
-        HStack(spacing: 2) {
-            segment(.unread, title: "Unread", systemImage: "tray.full", count: unreadCount)
-            segment(.mentions, title: "Mentions", systemImage: "at", count: 0)
-        }
-        .padding(3)
-        .background(.primary.opacity(0.06), in: Capsule())
-        .animation(.snappy(duration: 0.3, extraBounce: 0.04), value: selection)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Inbox")
-    }
-
-    private func segment(_ tab: InboxTab, title: LocalizedStringResource, systemImage: String, count: Int) -> some View {
-        InboxTabSegment(
-            title: title, systemImage: systemImage, count: count, isSelected: selection == tab,
-            namespace: namespace
-        ) { select(tab) }
-    }
-}
-
-private struct InboxTabSegment: View {
-    let title: LocalizedStringResource
-    let systemImage: String
-    let count: Int
-    let isSelected: Bool
-    let namespace: Namespace.ID
-    let action: () -> Void
-    @State private var isHovered = false
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 5) {
-                Image(systemName: systemImage)
-                    .font(.callout.weight(.medium))
-                    .symbolVariant(isSelected ? .fill : .none)
-                Text(title)
-                    .font(.callout.weight(.medium))
-                if count > 0 {
-                    Text(count, format: .number)
-                        .font(.caption.weight(.semibold))
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
-                        .contentTransition(.numericText())
+        Picker("Inbox", selection: Binding(get: { selection }, set: { select($0) })) {
+            Group {
+                if unreadCount > 0 {
+                    Text("Unread (\(unreadCount))")
+                } else {
+                    Text("Unread")
                 }
             }
-            .foregroundStyle(isSelected ? .primary : .secondary)
-            .padding(.horizontal, 12)
-            .frame(height: 28)
-            .background {
-                if isSelected {
-                    Capsule()
-                        .fill(.primary.opacity(0.13))
-                        .matchedGeometryEffect(id: "selection", in: namespace)
-                } else if isHovered {
-                    Capsule().fill(.primary.opacity(0.06))
-                }
-            }
-            .contentShape(Capsule())
+            .tag(InboxTab.unread)
+            Text("Mentions")
+                .tag(InboxTab.mentions)
         }
-        .buttonStyle(.plain)
-        .onModalHover { isHovered = $0 }
-        .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
+        .pickerStyle(.tabs)
+        .controlSize(.large)
+        .labelsHidden()
+        .fixedSize()
     }
 }
 
