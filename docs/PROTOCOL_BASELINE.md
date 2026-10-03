@@ -55,6 +55,7 @@ and each topic's contract tests before changing them.
 | Cold installation/fingerprint preflight | Original plus at most three bounded status retries for `429`, `500`, `502`, `504`. |
 | Stored/QR credential installation repair | Once per provider: one unauthenticated Apex GET, then one experiments GET only if needed; no automatic retry or login replay. |
 | Password/MFA | Original plus at most two bounded retries for the documented transient status set above. |
+| Report-service OAuth2 authorization | One ordinary read of the consent details, then one authorizing POST that is never replayed. See [report-service sign-in](protocol/SESSION.md#report-service-sign-in). |
 | Remote-auth ticket exchange | Original plus at most three bounded transient-status retries. |
 | User-completed login or invite CAPTCHA | At most one challenged-request replay after human completion; a second challenge terminates the attempt. |
 

@@ -143,8 +143,7 @@ extension NativeMessageTimelineCoordinator {
                 model?.discardFailedOutgoingMessage(message)
             },
             checkForUpdates: {
-                (NSApp.delegate as? AppDelegate)?
-                    .updateController.checkForUpdates()
+                AppDelegate.current?.updateController.checkForUpdates()
             },
             openSettings: { destination in
                 SettingsNavigationRouter.shared.open(
