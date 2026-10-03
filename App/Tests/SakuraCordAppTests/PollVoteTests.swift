@@ -186,7 +186,7 @@ func `Inbox loads preserve poll patches for messages not yet retained`(tab: Inbo
         oldestReadMessageID: MessageID(rawValue: message.id.rawValue - 1),
         newestUnreadMessageID: message.id, mentionCount: 1
     )]
-    model.inbox.hasMore = true
+    model.inbox.hasMoreMentions = true
     await provider.holdInboxPages()
     model.loadMoreInbox()
     await provider.waitForInboxPage()

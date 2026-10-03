@@ -289,7 +289,7 @@ extension NativeTimelineCanvasView {
             let element = accessibilityElement(role: .row, label: header.title, identifier: "inbox-group-\(header.channelID)", frame: rowFrame, parent: self)
             element.setAccessibilityCustomActions([
                 NSAccessibilityCustomAction(name: header.isCollapsed ? "Expand" : "Collapse") { [weak self] in
-                    self?.model?.toggleInboxGroup(header.channelID)
+                    self?.toggleInboxGroup(header.channelID)
                     return self != nil
                 },
                 NSAccessibilityCustomAction(name: "Mark Read") { [weak self] in

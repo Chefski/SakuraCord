@@ -202,6 +202,36 @@ struct InboxTests {
         #expect(model.makeInboxUnreadGroups().map(\.id) == [laterCategory.id, thread.id, earlierCategory.id, ChannelID(rawValue: 200)])
     }
 
+    @Test func `tab and collapse changes stay local until saved and reuse retained content`() async throws {
+        let (model, provider) = await fixture()
+        model.presentInbox()
+        await model.inbox.loadTask?.value
+        let group = try #require(model.inbox.groups.first)
+        #expect(group.isLoaded && !group.messages.isEmpty)
+        model.selectInboxTab(.mentions)
+        await model.inbox.loadTask?.value
+        #expect(model.inbox.mentions.count == 25)
+        // Switching back shows retained content without another fetch.
+        model.selectInboxTab(.unread)
+        #expect(model.inbox.groups.first == group && !model.inbox.isLoading)
+        model.selectInboxTab(.mentions)
+        #expect(model.inbox.mentions.count == 25 && !model.inbox.isLoading)
+        model.toggleInboxGroup(group.id)
+        // Echoes of older saves never override what the open Inbox shows.
+        model.applyInboxSettings(InboxSettings(tab: .unread))
+        #expect(model.inbox.tab == .mentions)
+        #expect(model.inbox.groups.first?.isCollapsed == true)
+        await model.inbox.settingsSyncTask?.value
+        await model.inbox.settingsTask?.value
+        let saved = await provider.inboxSettings()
+        #expect(saved.tab == .mentions && saved.collapsedChannelIDs == [group.id])
+        #expect(model.inbox.pendingTab == nil && model.inbox.pendingCollapse.isEmpty)
+        // Reopening keeps unchanged unread ranges without refetching them.
+        model.dismissInbox()
+        model.presentInbox()
+        #expect(model.inbox.groups.first?.messages == group.messages)
+    }
+
     private func fixture() async -> (AppModel, MockChatProvider) {
         let user = User(id: UserID(rawValue: 1), username: "reader", displayName: "Reader")
         let sender = User(id: UserID(rawValue: 2), username: "sender", displayName: "Sender")

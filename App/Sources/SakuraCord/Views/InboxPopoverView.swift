@@ -7,17 +7,25 @@ struct InboxPopoverView: View {
     var body: some View {
         VStack(spacing: 0) {
             InboxToolbar(model: model)
-            Divider()
             InboxContent(model: model)
+                .animation(.easeOut(duration: 0.18), value: model.inbox.tab)
             if let error = model.inbox.errorMessage {
-                Divider()
-                HStack {
-                    Text(error).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                    Spacer()
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                    Text(error).font(.callout).foregroundStyle(.secondary).lineLimit(2)
+                    Spacer(minLength: 8)
                     Button("Retry", action: model.retryInboxLoad)
-                }.padding(10)
+                        .buttonStyle(.glass)
+                        .controlSize(.small)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(.primary.opacity(0.06), in: ConcentricRectangle(cornerRadius: 14, style: .continuous))
+                .padding(10)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        .animation(.snappy(duration: 0.25), value: model.inbox.errorMessage)
         .frame(width: 460, height: 580)
         .sheet(item: Binding(get: { model.inbox.selectedEvent }, set: { model.inbox.selectedEvent = $0 })) { event in
             InboxEventDetailsView(event: event, model: model)
@@ -46,17 +54,9 @@ private struct InboxToolbar: View {
 
     var body: some View {
         let inbox = model.inbox
-        HStack(spacing: 8) {
-            Picker("Inbox", selection: Binding(get: { inbox.tab }, set: model.selectInboxTab)) {
-                Text("Unread").tag(InboxTab.unread)
-                Text("Mentions").tag(InboxTab.mentions)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(width: 210)
+        HStack(spacing: 6) {
+            InboxTabPicker(selection: inbox.tab, unreadCount: inbox.groups.count, select: model.selectInboxTab)
             Spacer(minLength: 0)
-            if inbox.isLoading { ProgressView().controlSize(.mini) }
-            HoverActionButton(systemImage: "arrow.clockwise", help: "Refresh Inbox", action: model.refreshInbox)
             if inbox.tab == .mentions {
                 Menu {
                     Toggle("Include @everyone", isOn: Binding(
@@ -74,7 +74,7 @@ private struct InboxToolbar: View {
                         ))
                     }
                 } label: {
-                    HoverActionControlLabel {
+                    HoverActionControlLabel(isSelected: !inbox.query.includesEveryone || !inbox.query.includesRoles || inbox.query.guildID != nil) {
                         Image(systemName: "line.3.horizontal.decrease").font(.callout.weight(.medium))
                     }
                 }
@@ -82,20 +82,101 @@ private struct InboxToolbar: View {
                 .menuIndicator(.hidden)
                 .help("Filter Mentions")
                 .accessibilityLabel("Filter Mentions")
+                .transition(.opacity)
             } else {
                 if !inbox.undoGroups.isEmpty {
                     HoverActionButton(systemImage: "arrow.uturn.backward", help: "Undo Mark Read", action: model.undoInboxRead)
                         .keyboardShortcut("z", modifiers: .command)
+                        .transition(.scale(scale: 0.6).combined(with: .opacity))
                 }
                 HoverActionButton(systemImage: "envelope.open", help: "Mark All as Read") { confirmsMarkAll = true }
                     .disabled(inbox.groups.isEmpty)
                     .confirmationDialog("Mark all Inbox conversations as read?", isPresented: $confirmsMarkAll) {
                         Button("Mark All as Read", action: model.markAllInboxRead)
                     }
+                    .transition(.opacity)
             }
+            HoverActionButton(systemImage: "arrow.clockwise", help: "Refresh Inbox", action: model.reloadInbox)
+                .symbolEffect(.rotate, options: .repeat(.continuous), isActive: inbox.isRefreshing)
+                .disabled(inbox.isRefreshing)
         }
-        .padding(.horizontal, 12)
-        .frame(height: 46)
+        .animation(.snappy(duration: 0.22), value: inbox.tab)
+        .animation(.snappy(duration: 0.22), value: inbox.undoGroups.isEmpty)
+        .padding(.horizontal, 10)
+        .padding(.top, 10)
+        .padding(.bottom, 6)
+    }
+}
+
+/// Unread and Mentions as one concentric capsule, matching the app's glass chrome.
+private struct InboxTabPicker: View {
+    let selection: InboxTab
+    let unreadCount: Int
+    let select: (InboxTab) -> Void
+    @Namespace private var namespace
+
+    var body: some View {
+        HStack(spacing: 2) {
+            segment(.unread, title: "Unread", systemImage: "tray.full", count: unreadCount)
+            segment(.mentions, title: "Mentions", systemImage: "at", count: 0)
+        }
+        .padding(3)
+        .background(.primary.opacity(0.06), in: Capsule())
+        .animation(.snappy(duration: 0.3, extraBounce: 0.04), value: selection)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Inbox")
+    }
+
+    private func segment(_ tab: InboxTab, title: LocalizedStringResource, systemImage: String, count: Int) -> some View {
+        InboxTabSegment(
+            title: title, systemImage: systemImage, count: count, isSelected: selection == tab,
+            namespace: namespace
+        ) { select(tab) }
+    }
+}
+
+private struct InboxTabSegment: View {
+    let title: LocalizedStringResource
+    let systemImage: String
+    let count: Int
+    let isSelected: Bool
+    let namespace: Namespace.ID
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: systemImage)
+                    .font(.callout.weight(.medium))
+                    .symbolVariant(isSelected ? .fill : .none)
+                Text(title)
+                    .font(.callout.weight(.medium))
+                if count > 0 {
+                    Text(count, format: .number)
+                        .font(.caption.weight(.semibold))
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .contentTransition(.numericText())
+                }
+            }
+            .foregroundStyle(isSelected ? .primary : .secondary)
+            .padding(.horizontal, 12)
+            .frame(height: 28)
+            .background {
+                if isSelected {
+                    Capsule()
+                        .fill(.primary.opacity(0.13))
+                        .matchedGeometryEffect(id: "selection", in: namespace)
+                } else if isHovered {
+                    Capsule().fill(.primary.opacity(0.06))
+                }
+            }
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .onModalHover { isHovered = $0 }
+        .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
     }
 }
 
@@ -105,7 +186,10 @@ private struct InboxContent: View {
     var body: some View {
         let inbox = model.inbox
         let isEmpty = inbox.tab == .mentions ? inbox.visibleMentions.isEmpty : inbox.groups.isEmpty
-        if isEmpty, inbox.isLoading {
+        // Retained content and known-empty results render immediately; only a
+        // first fetch with nothing to show waits on the network.
+        let awaitsFirstPage = inbox.tab == .mentions ? inbox.hasMoreMentions : true
+        if isEmpty, inbox.isLoading, awaitsFirstPage {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if isEmpty {
             ContentUnavailableView(

@@ -19,7 +19,7 @@ extension AppModel {
         guard let index = inbox.groups.firstIndex(where: { $0.id == group.id }) else { return }
         inbox.groups[index].forumPosts = visiblePosts
         inbox.groups[index].isLoaded = true
-        inbox.hasMore = inbox.groups.contains { !$0.isLoaded && !$0.isCollapsed }
+        inbox.groups[index].needsRevalidation = false
     }
 }
 

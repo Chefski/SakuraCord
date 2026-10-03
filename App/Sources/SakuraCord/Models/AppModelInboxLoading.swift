@@ -26,7 +26,29 @@ extension AppModel {
         }
         inbox.mentions = combined.values.sorted { $0.id > $1.id }
         inbox.nextBefore = page.nextBefore
-        inbox.hasMore = page.hasMore && page.nextBefore != nil && page.nextBefore != before
+        inbox.hasMoreMentions = page.hasMore && page.nextBefore != nil && page.nextBefore != before
+    }
+
+    /// Replaces the retained head with Discord's newest page, keeping older pages already loaded.
+    func revalidateInboxMentions(query: InboxMentionQuery, session: AppModelAccountSession, generation: UInt64) async throws {
+        let page = try await session.provider.inboxMentions(query, before: nil)
+        guard !Task.isCancelled, isCurrentAccountSession(session), inbox.generation == generation else { return }
+        inbox.needsMentionRevalidation = false
+        for thread in page.threads { inbox.threads[thread.id] = thread }
+        let fresh = inboxMessagesPreservingRefreshMutations(page.messages).filter { !inbox.removedIDs.contains($0.id) }
+        // Retained mentions inside the fresh page's range that it omits were dismissed or deleted elsewhere.
+        let floor = page.hasMore ? page.nextBefore : nil
+        var combined = Dictionary(uniqueKeysWithValues: inbox.mentions.filter { message in
+            floor.map { message.id < $0 } ?? false
+        }.map { ($0.id, $0) })
+        for message in fresh { combined[message.id] = message }
+        let retainsOlderPages = combined.count > fresh.count
+        inbox.mentions = combined.values.sorted { $0.id > $1.id }
+        if !retainsOlderPages {
+            inbox.nextBefore = page.nextBefore
+            inbox.hasMoreMentions = page.hasMore && page.nextBefore != nil
+        }
+        for message in fresh { resolveInboxThreadContext(for: message) }
     }
 
     func loadInboxGroup(_ group: InboxUnreadGroup, session: AppModelAccountSession, generation: UInt64) async throws {
@@ -63,7 +85,7 @@ extension AppModel {
             !inbox.deletedIDs.contains($0.id)
         }.sorted { $0.id < $1.id }.prefix(25))
         inbox.groups[index].isLoaded = true
+        inbox.groups[index].needsRevalidation = false
         inbox.groups[index].errorMessage = nil
-        inbox.hasMore = inbox.groups.contains { !$0.isLoaded && !$0.isCollapsed }
     }
 }

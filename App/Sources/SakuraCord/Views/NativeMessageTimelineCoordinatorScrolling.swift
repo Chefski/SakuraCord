@@ -1020,6 +1020,8 @@ extension NativeMessageTimelineCoordinator {
                         result.append(contentsOf: group.forumPosts.map(NativeMessageTimelineItem.inboxForumPost))
                         result.append(contentsOf: group.messages.compactMap { rowsByID[$0.id] }.map { messageItem($0, from: parent) })
                         if !group.isLoaded { break }
+                    } else if let canvas {
+                        result.append(contentsOf: canvas.heldInboxItems(for: group.id))
                     }
                 }
                 return result

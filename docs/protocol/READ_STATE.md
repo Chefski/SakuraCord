@@ -78,7 +78,10 @@ update provider state; these are implemented consumers, not ignored families.
 Inbox tab/collapse settings use the shared type-1 protobuf writer and preserve
 unknown fields. A `400 / 50105` invalid-data rejection reloads settings and reports
 the failed write. Event collapse uses Discord's reserved channel key inside a
-**guild-scoped** map; that key must not merge unrelated guilds.
+**guild-scoped** map; that key must not merge unrelated guilds. Rapid tab and
+collapse changes are coalesced and only values that differ from saved settings
+are written, one request at a time. An open Inbox keeps its local choices over
+settings echoes; a failed collapse write restores the saved state.
 
 Notification decisions use decoded mention IDs, roles and reply metadata, not
 text parsing. Resolve channel/category/guild settings, mute expiry and account

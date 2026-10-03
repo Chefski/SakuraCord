@@ -1051,6 +1051,7 @@ extension NativeTimelineCanvasView {
 
     func displayedRowOrigin(at index: Int) -> CGFloat {
         contentOriginY
+            + (index >= inboxDisclosureRange.upperBound ? inboxDisclosureShift : 0)
             + NativeTimelineTransientRowGeometry.rowOrigin(
                 base: rowOrigins[index],
                 rowIndex: index,

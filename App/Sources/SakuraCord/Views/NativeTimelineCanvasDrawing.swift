@@ -38,6 +38,7 @@ extension NativeTimelineCanvasView {
         invalidateVisibleMediaProjection(keepingCapacity: true)
         self.storage = storage
         self.model = model
+        refreshInboxDisclosureGeometry()
         reconcilePollPresentations()
         installSpoilerRevealStore(model.timelineSpoilerRevealStore)
         self.actions = actions
@@ -743,22 +744,20 @@ extension NativeTimelineCanvasView {
         // composite newly positioned rows over their former positions.
         NSGraphicsContext.current?.cgContext.clear(dirtyRect)
         drawHistorySkeleton(in: dirtyRect)
-        guard !items.isEmpty,
-              var index = rowIndex(at: max(0, dirtyRect.minY))
-        else { return }
-        while items.indices.contains(index),
-              displayedRowOrigin(at: index) < dirtyRect.maxY
-        {
+        forEachDisplayedRow(in: dirtyRect) { index in
             let rowFrame = rowFrame(at: index)
-            if rowFrame.intersects(dirtyRect) {
-                drawTimelineRow(
-                    at: index,
-                    rowFrame: rowFrame,
-                    dirtyRect: dirtyRect,
-                    visibleMediaKeys: visibleMediaKeys
-                )
+            guard rowFrame.intersects(dirtyRect) else { return }
+            guard inboxDisclosureRange.contains(index) else {
+                drawTimelineRow(at: index, rowFrame: rowFrame, dirtyRect: dirtyRect, visibleMediaKeys: visibleMediaKeys)
+                return
             }
-            index += 1
+            // An animating Inbox group is clipped to its revealed height.
+            guard rowFrame.minY < inboxDisclosureClipMaxY, let context = NSGraphicsContext.current?.cgContext else { return }
+            context.saveGState()
+            context.clip(to: CGRect(x: rowFrame.minX, y: rowFrame.minY, width: rowFrame.width,
+                                    height: inboxDisclosureClipMaxY - rowFrame.minY))
+            drawTimelineRow(at: index, rowFrame: rowFrame, dirtyRect: dirtyRect, visibleMediaKeys: visibleMediaKeys)
+            context.restoreGState()
         }
     }
 

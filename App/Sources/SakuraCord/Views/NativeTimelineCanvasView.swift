@@ -234,6 +234,12 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
     var inboxEventHosts: [ScheduledEventID: NSHostingView<InboxScheduledEventView>] = [:]
     var inboxForumPostHosts: [ChannelID: NSHostingView<InboxForumPostView>] = [:]
     var inboxHeaderHosts: [ChannelID: NSHostingView<InboxGroupHeaderView>] = [:]
+    var inboxDisclosure: NativeTimelineInboxDisclosure?
+    var inboxDisclosureRange: Range<Int> = 0 ..< 0
+    var inboxDisclosureShift: CGFloat = 0
+    var inboxDisclosureClipMaxY = CGFloat.greatestFiniteMagnitude
+    var inboxDisclosureMaskedViews: [NSView] = []
+    let inboxDisclosureTicker = NativeTimelineDisplayLinkTicker()
     var model: AppModel?
     var accessibilitySettingsSnapshot = AccessibilitySettingsSnapshot.defaults
     var presentedConversationID: ChannelID?
@@ -390,6 +396,7 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
             NSWorkspace.shared.notificationCenter.removeObserver(self)
             pollClockTask?.cancel()
             pollAnimationTicker.stop()
+            inboxDisclosureTicker.stop()
             pollPopover?.close()
             mediaInvalidationTask?.cancel()
             visibleMediaRequestTask?.cancel()
