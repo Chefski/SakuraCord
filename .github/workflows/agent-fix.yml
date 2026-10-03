@@ -1,4 +1,6 @@
 name: Agent · Fix
+run-name: >-
+  ${{ github.event.label.name == 'agent: fix' && format('Agent · Fix · #{0}', github.event.issue.number) || 'Agent · Skipped' }}
 
 # The separate implementation stage of the SakuraCord issue pipeline. Only people with write access (or the
 # hub, on a maintainer's request from Discord) can add `agent: fix`. Codex works
@@ -138,6 +140,7 @@ jobs:
         run: |
           {
             echo "<!-- sakuracord:agent -->"
+            echo "<!-- sakuracord:agent-run fix ${GITHUB_RUN_ID} ${GITHUB_RUN_ATTEMPT} -->"
             echo "### Summary"
             echo "🤖 The fix agent didn't make a change for this issue."
             echo

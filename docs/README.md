@@ -115,7 +115,9 @@ maintain a second backlog there or in a repository `ROADMAP.md`.
   report, recent comments, screenshots, and similar reports, then posts one
   assessment with classification, questions, duplicate suggestions, and code
   findings. The hub validates the result before applying metadata; later
-  maintainer status decisions take precedence over automated triage.
+  maintainer status decisions take precedence over automated triage. Each agent
+  edits one Discord status card with its current workflow step (refreshed about
+  once a minute) and final outcome. Triage puts the assessment in that same card.
 - Both bugs and suggestions require the latest published nightly or regular
   release. The agent can correct either category and considers closed reports
   as duplicates. It verifies fix-commit ancestry against the reported release:
