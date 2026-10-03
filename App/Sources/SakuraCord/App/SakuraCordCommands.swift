@@ -3,7 +3,19 @@ import SwiftUI
 
 struct SakuraCordCommands: Commands {
     @FocusedValue(\.shortcutCommandContext) private var commandContext
+    @Environment(\.openWindow) private var openWindow
     let updateController: AppUpdateController
+    let model: AppModel
+
+    /// Files natively with the signed-in account; the website covers signed-out use.
+    private func startIssueReport(_ kind: IssueReportKind) {
+        guard model.canPresentIssueReport else {
+            NSWorkspace.shared.open(IssueReportLink.current(kind).url)
+            return
+        }
+        openWindow(id: "main")
+        model.presentIssueReport(kind)
+    }
 
     var body: some Commands {
         CommandGroup(replacing: .appInfo) {
@@ -21,12 +33,8 @@ struct SakuraCordCommands: Commands {
         }
 
         CommandGroup(replacing: .help) {
-            Button("Report a Bug…") {
-                NSWorkspace.shared.open(IssueReportLink.current(.bug).url)
-            }
-            Button("Suggest a Feature…") {
-                NSWorkspace.shared.open(IssueReportLink.current(.feature).url)
-            }
+            Button("Report a Bug…") { startIssueReport(.bug) }
+            Button("Suggest a Feature…") { startIssueReport(.feature) }
 
             Divider()
 

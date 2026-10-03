@@ -17,6 +17,16 @@ struct RootView: View {
                     model: model,
                     toolbarSearchFieldMetrics: toolbarSearchFieldMetrics
                 )
+                .windowModal(
+                    item: Binding(
+                        get: { model.issueReports.presentation },
+                        set: { if $0 == nil { model.issueReports.dismiss() } }
+                    ),
+                    cornerRadius: 32,
+                    cornerStyle: .circular
+                ) { _ in
+                    IssueReportView(model: model)
+                }
             case .signedOut:
                 if model.launchMode == .normal || model.includesOfflineSignIn {
                     if model.savedAccounts.isEmpty {

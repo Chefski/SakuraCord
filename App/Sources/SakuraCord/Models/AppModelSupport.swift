@@ -85,6 +85,7 @@ extension AppModel {
     func invalidateAccountSession() {
         accountSessionGeneration &+= 1
         serverInvites.reset()
+        issueReports.reset()
         onboarding.reset()
     }
 
