@@ -91,8 +91,9 @@ conversation between GitHub, Discord forum posts, and the
 The hub database holds projections, links, subscriptions, and sync state; do not
 maintain a second backlog there or in a repository `ROADMAP.md`.
 
-- File reports through the app's **Help** menu, the website, Discord's report
-  forms, or GitHub's issue forms. Continue discussion on the existing report.
+- File reports in the app (`/report`, `/suggest`, the **Help** menu, or a
+  `sakuracord.app/report` link card), the website, Discord's report forms, or
+  GitHub's issue forms. Continue discussion on the existing report.
 - Issue types are Bug or Feature; area and priority use `area: …` and
   `priority: …` labels. The hub normalizes status from one `status: …` label
   and the issue's open/closed state and close reason. Closing as completed alone

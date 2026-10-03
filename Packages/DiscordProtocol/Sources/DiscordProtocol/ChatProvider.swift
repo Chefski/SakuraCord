@@ -157,6 +157,8 @@ public protocol ChatProvider: Sendable {
     ) async throws
     func submitComponentInteraction(_ submission: ComponentInteractionSubmission) async throws
     func submitModal(_ submission: ModalSubmission, nonce: String) async throws
+    /// Grants an OAuth2 authorization code after the person explicitly asked to sign in.
+    func authorizeOAuth2(_ request: OAuth2AuthorizationRequest) async throws -> OAuth2AuthorizationGrant
     func componentChoices(
         kind: ComponentSelectKind, query: String, guildID: GuildID?, channelID: ChannelID
     ) async throws -> [ComponentSelectOption]
@@ -668,6 +670,10 @@ public extension ChatProvider {
 
     func submitModal(_ submission: ModalSubmission, nonce: String) async throws {
         throw ChatProviderError.capabilityDisabled(.modals)
+    }
+
+    func authorizeOAuth2(_ request: OAuth2AuthorizationRequest) async throws -> OAuth2AuthorizationGrant {
+        throw OAuth2AuthorizationError.unavailable
     }
 
     func componentChoices(

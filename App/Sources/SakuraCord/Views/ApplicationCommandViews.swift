@@ -202,6 +202,21 @@ private struct ApplicationCommandPickerResults: View {
                         )
                         .id(row.id)
                     }
+                    // Built-in commands keep the list populated while Discord's load.
+                    if isLoading {
+                        Label {
+                            Text("Loading commands…")
+                        } icon: {
+                            ProgressView().controlSize(.small)
+                        }
+                        .foregroundStyle(.secondary)
+                        .padding(10)
+                    } else if let error {
+                        Label(error, systemImage: "exclamationmark.triangle")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .padding(10)
+                    }
                 }
                 .padding(.horizontal, 5)
             }
@@ -1113,7 +1128,11 @@ struct CommandApplicationIcon: View {
 
     var body: some View {
         Group {
-            if let url = application?.iconURL {
+            if application?.id == SakuraCordBuiltInCommands.application.id {
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable()
+                    .scaledToFit()
+            } else if let url = application?.iconURL {
                 AnimatedRemoteImage(
                     url: url,
                 )

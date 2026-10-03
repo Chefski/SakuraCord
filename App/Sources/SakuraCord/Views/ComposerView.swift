@@ -156,7 +156,7 @@ struct ComposerView: View {
                                 generalInputSettings: model.generalInputSettings,
                                 mentionPresentations: composerMentionPresentations,
                                 onTextChange: updateDraft,
-                                onSubmit: send,
+                                onSubmit: submitComposer,
                                 onEscape: handleEscapeCommand,
                                 onEditLatestMessage: editLatestMessage,
                                 onNavigateReplySelection: { direction in
@@ -862,7 +862,7 @@ struct ComposerView: View {
             }
             return
         }
-        let shouldLoad = model.commandComposer.commands.isEmpty
+        let shouldLoad = !model.commandComposer.hasLoadedCatalogs
             && !model.commandComposer.isLoading
         if !model.commandComposer.isPickerPresented {
             model.commandComposer.presentPicker(query: context.query)
@@ -875,6 +875,13 @@ struct ComposerView: View {
     }
 
     private func activateCommand(_ command: ApplicationCommand) {
+        if let kind = SakuraCordBuiltInCommands.issueReportKind(for: command) {
+            model.commandComposer.dismissPicker()
+            model.updateDraft("")
+            draftSelection = nil
+            model.presentIssueReport(kind)
+            return
+        }
         model.commandComposer.activate(command)
         model.cancelReply()
         model.updateDraft("")
@@ -893,6 +900,17 @@ struct ComposerView: View {
     }
 
     private func submitComposer() {
+        if !hasActiveCommand, model.canPresentIssueReport,
+           let command = SakuraCordBuiltInCommands.commands.first(where: {
+               draft.trimmingCharacters(in: .whitespacesAndNewlines) == "/\($0.name)"
+           }), let kind = SakuraCordBuiltInCommands.issueReportKind(for: command)
+        {
+            model.commandComposer.dismissPicker()
+            updateDraft("")
+            draftSelection = nil
+            model.presentIssueReport(kind)
+            return
+        }
         guard allowsSubmission() else { return }
         if hasActiveCommand {
             guard model.commandComposer.canSubmit else { return }

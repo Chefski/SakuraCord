@@ -97,7 +97,8 @@ The explicit `settings/diagnostics/send` action is described in
 checks current permissions and account ownership, and shares the existing export
 without changing the draft. A URL cannot supply an arbitrary destination.
 The `https://sakuracord.app/update` action and `themes/<token>` links remain
-supported.
+supported. `https://sakuracord.app/report` opens the in-app report flow;
+`?type=bug` or `?type=feature` chooses the form.
 
 ## Local credential mode
 
@@ -254,11 +255,13 @@ databases, personal Discord data, or unsanitized protocol captures.
 
 ## Report a problem
 
-Use **Help → Report a Bug…** to open the website form with the app version,
-macOS version, and Mac model prefilled. **Help → Suggest a Feature…** prefills
-only the app version. Review and submit the form yourself; diagnostics files
-are attached separately. Search **Help → SakuraCord Tracker** for an existing
-report first. Reports and discussion follow the shared
+Type `/report` or `/suggest` in a conversation's composer, or use **Help →
+Report a Bug…** or **Suggest a Feature…**. SakuraCord files the report with the
+signed-in Discord account and fills in the version and system information. Bug
+reports can also attach the sanitized Discord API log and the latest panic save
+directly. Matching reports appear while you type so you can follow one instead.
+Without a signed-in account, the Help menu opens the website form with the same
+values prefilled. Reports and discussion follow the shared
 [issue-management flow](README.md#issues-and-roadmap).
 
 1. Record the steps, expected result, actual result, and approximate failure time.

@@ -21,6 +21,36 @@ struct ApplicationCommandSection: Identifiable, Equatable {
     }
 }
 
+/// Commands SakuraCord handles locally. They appear in every conversation's
+/// picker and never reach Discord.
+enum SakuraCordBuiltInCommands {
+    static let application = ApplicationCommandApplication(
+        id: "sakuracord", name: "SakuraCord", description: "Built into SakuraCord"
+    )
+
+    static let commands = [
+        command("report", description: "Report a bug in SakuraCord"),
+        command("suggest", description: "Suggest a feature for SakuraCord"),
+    ]
+
+    static func issueReportKind(for command: ApplicationCommand) -> IssueReportKind? {
+        guard command.applicationID == application.id else { return nil }
+        return switch command.name {
+        case "report": .bug
+        case "suggest": .feature
+        default: nil
+        }
+    }
+
+    private static func command(_ name: String, description: String) -> ApplicationCommand {
+        ApplicationCommand(
+            id: "sakuracord:\(name)", rootCommandID: "sakuracord:\(name)",
+            applicationID: application.id, version: "1", name: name,
+            description: description, application: application
+        )
+    }
+}
+
 enum ApplicationCommandAutocompleteStart: Equatable {
     case request
     case pending
@@ -59,7 +89,7 @@ final class ApplicationCommandComposerModel {
         let frecencyScore: Double
     }
 
-    private(set) var commands: [ApplicationCommand] = [] {
+    private(set) var commands: [ApplicationCommand] = SakuraCordBuiltInCommands.commands {
         didSet {
             commandSearchIndex = Dictionary(uniqueKeysWithValues: commands.map { command in
                 (command.id, CommandSearchMetadata(
@@ -70,7 +100,9 @@ final class ApplicationCommandComposerModel {
             })
         }
     }
-    private(set) var applications: [ApplicationCommandApplication] = []
+    private(set) var applications = [SakuraCordBuiltInCommands.application]
+    /// Discord's catalogues for this conversation, not counting built-ins.
+    private(set) var hasLoadedCatalogs = false
     private(set) var isLoading = false
     private(set) var loadError: String?
     private(set) var activeCommand: ApplicationCommand? {
@@ -277,10 +309,11 @@ final class ApplicationCommandComposerModel {
                 }
             }
         }
-        applications = applicationsByID.values.sorted {
+        applications = [SakuraCordBuiltInCommands.application] + applicationsByID.values.sorted {
             $0.name.localizedStandardCompare($1.name) == .orderedAscending
         }
-        commands = commandsByID.values.sorted(by: stableCommandOrder)
+        commands = commandsByID.values.sorted(by: stableCommandOrder) + SakuraCordBuiltInCommands.commands
+        hasLoadedCatalogs = true
         isLoading = false
         loadError = nil
         if selectedCommandID == nil || !commands.contains(where: { $0.id == selectedCommandID }) {
@@ -306,8 +339,7 @@ final class ApplicationCommandComposerModel {
             executionError = "This command changed in Discord. Choose it again before running it."
             cancelActiveCommand()
         }
-        commands = []
-        applications = []
+        clearCatalogs()
         loadError = nil
         return isPickerPresented || wasActive
     }
@@ -690,12 +722,17 @@ final class ApplicationCommandComposerModel {
         executionProgress = nil
         executionState = nil
         executionError = nil
-        commands = []
-        applications = []
+        clearCatalogs()
         currentTargets = []
         isLoading = false
         loadError = nil
         pendingInvocations = [:]
+    }
+
+    private func clearCatalogs() {
+        commands = SakuraCordBuiltInCommands.commands
+        applications = [SakuraCordBuiltInCommands.application]
+        hasLoadedCatalogs = false
     }
 
     func enrichInteractionResponse(_ message: inout Message, currentUser: User?) {
