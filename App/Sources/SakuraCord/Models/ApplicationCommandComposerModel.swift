@@ -289,11 +289,11 @@ final class ApplicationCommandComposerModel {
             ApplicationCommandPickerSource(application: replacements[$0.application.id] ?? $0.application,
                 commands: $0.commands.map(update))
         }
-        commands = commands.map(update)
         contextMenuCommands = contextMenuCommands.map(update)
         if let command = draft?.command, replacements[command.applicationID] != nil { draft?.command = update(command) }
         reusablePickerEngine = nil
-        refreshPickerSections()
+        // Publish once, after all catalog state is ready for commands.didSet.
+        commands = commands.map(update)
     }
 
     func contextMenuCommands(of type: ApplicationCommandType) -> [ApplicationCommand] {

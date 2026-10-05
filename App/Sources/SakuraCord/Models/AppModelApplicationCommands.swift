@@ -199,6 +199,9 @@ extension AppModel {
         if let cached = mentionMemberSearchCache[key],
            Date().timeIntervalSince(cached.storedAt) < 60
         {
+            mentionMemberSearchTask?.cancel()
+            mentionMemberSearchTask = nil
+            mentionMemberSearchQuery = nil
             mentionMemberResults = cached.members
             return
         }

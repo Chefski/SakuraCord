@@ -1753,6 +1753,32 @@ func `composer attachment controls preserve edits and spoiler state`(anonymisesF
 }
 
 @MainActor
+@Test(.timeLimit(.minutes(1)))
+func `cached mention results survive an older in flight search`() async throws {
+    let provider = TypingTestProvider()
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    let guildID = GuildID(rawValue: 100)
+    model.selectedGuildID = guildID
+    let cached = Member(user: provider.currentUser, roleName: "Member", status: .offline)
+    let stale = Member(user: provider.otherUser, roleName: "Member", status: .offline)
+    model.mentionMemberSearchCache[CommandMemberQuery(guildID: guildID, query: "me")] =
+        MentionMemberSearchCacheEntry(members: [cached], storedAt: Date())
+
+    model.requestMentionMemberSearch(query: "other")
+    let pending = try #require(model.mentionMemberSearchTask)
+    await provider.waitUntilMemberSearchStarts()
+    model.requestMentionMemberSearch(query: "me")
+    #expect(model.mentionMemberResults == [cached])
+
+    // Complete the old provider call even if its task was cancelled.
+    await provider.releaseMemberSearch([stale])
+    await pending.value
+    #expect(model.mentionMemberResults == [cached])
+    #expect(model.mentionMemberSearchQuery == nil)
+}
+
+@MainActor
 @Test func `empty member autocomplete uses recent authors up to the shared result limit before roles`() {
     let members = (1 ... 6).map { id in
         Member(
@@ -2867,6 +2893,8 @@ private actor TypingTestProvider: ChatProvider {
     private var sendStartedWaiter: CheckedContinuation<Void, Never>?
     private var sendReleaseWaiter: CheckedContinuation<Void, Never>?
     private var didStartSuspendedSend = false
+    private var memberSearchStartedWaiter: CheckedContinuation<Void, Never>?
+    private var memberSearchReleaseWaiter: CheckedContinuation<[Member], Never>?
 
     var typingCount: Int {
         typingChannels.count
@@ -2883,6 +2911,24 @@ private actor TypingTestProvider: ChatProvider {
 
     func members(in guildID: GuildID?) async throws -> [Member] {
         []
+    }
+
+    func searchMembers(in guildID: GuildID, query: String, limit: Int) async throws -> [Member] {
+        await withCheckedContinuation { continuation in
+            memberSearchReleaseWaiter = continuation
+            memberSearchStartedWaiter?.resume()
+            memberSearchStartedWaiter = nil
+        }
+    }
+
+    func waitUntilMemberSearchStarts() async {
+        if memberSearchReleaseWaiter != nil { return }
+        await withCheckedContinuation { memberSearchStartedWaiter = $0 }
+    }
+
+    func releaseMemberSearch(_ members: [Member]) {
+        memberSearchReleaseWaiter?.resume(returning: members)
+        memberSearchReleaseWaiter = nil
     }
 
     func profile(for userID: UserID, in guildID: GuildID?) async throws -> UserProfile {
