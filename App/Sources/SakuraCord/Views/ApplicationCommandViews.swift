@@ -89,7 +89,7 @@ struct ApplicationCommandPickerView: View {
 
     @ViewBuilder private var status: some View {
         if composer.isLoading {
-            HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Loading commands…") }
+            HStack(spacing: 8) { InteractionLoadingDotsView(); Text("Loading commands…") }
                 .foregroundStyle(.secondary)
         } else if let error = composer.loadError {
             Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.secondary)
@@ -125,7 +125,7 @@ struct ApplicationCommandComposerBadge: View {
                     .foregroundStyle(.secondary)
                     .opacity(isHovered ? 1 : 0)
             }
-            .frame(width: 26, height: 26)
+            .frame(width: ChatChromeMetrics.composerControlHeight, height: ChatChromeMetrics.composerControlHeight)
             .contentShape(Circle())
         }
         .buttonStyle(.plain)
@@ -152,21 +152,15 @@ struct CommandApplicationIcon: View {
             } else if application?.id == DiscordBuiltInCommands.application.id {
                 Image(nsImage: CommandGeneratedIcon.image(symbol: "slash.circle.fill", size: size, colorScheme: colorScheme, scale: displayScale))
                     .renderingMode(.original)
-            } else if let url = application?.iconURL {
+            } else if let url = application?.displayIconURL {
                 if isBookmark {
                     StaticRemoteImage(url: url, maximumPixelDimension: 64)
                 } else {
                     AnimatedRemoteImage(url: url)
                 }
-            } else if let bot = application?.bot, let url = bot.avatarURL {
-                if isBookmark {
-                    StaticRemoteImage(url: url, maximumPixelDimension: 64)
-                } else {
-                    AvatarView(name: bot.displayName, url: url, size: size)
-                }
             } else {
                 Image(nsImage: CommandGeneratedIcon.image(
-                    initials: application.map { String($0.name.prefix(isBookmark ? 2 : 1)).uppercased() } ?? "/",
+                    initials: application.map { String($0.name.prefix(2)).uppercased() } ?? "/",
                     size: size, colorScheme: colorScheme, scale: displayScale
                 ))
                 .renderingMode(.original)
@@ -202,7 +196,7 @@ struct CommandApplicationIcon: View {
         let content = ZStack {
             if let symbol {
                 Image(systemName: symbol)
-                    .font(.system(size: size * 0.48))
+                    .font(.system(size: size * (symbol == "slash.circle.fill" ? 0.65 : 0.48)))
                     .foregroundStyle(foreground.opacity(0.85))
             } else {
                 foreground.opacity(0.08)

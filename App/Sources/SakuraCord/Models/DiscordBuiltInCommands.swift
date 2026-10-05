@@ -8,6 +8,22 @@ enum DiscordBuiltInCommands {
     /// Discord's built-in section, which sorts after every application.
     static let application = ApplicationCommandApplication(id: "-1", name: "Built-in")
 
+    // Official client local identity (user 1), not a remotely fetchable account.
+    // Avatar: discord.com/assets/9380e4b5bd8d267c.png, verified 2026-10-05.
+    static let clyde = User(
+        id: UserID(rawValue: 1), username: "Clyde", discriminator: "0000",
+        displayName: "Clyde",
+        avatarURL: Bundle.module.url(forResource: "DiscordClyde", withExtension: "png"),
+        isBot: true
+    )
+    static let clydeAccent: UInt32 = 0x5C64F3
+
+    static func isClydeMessage(_ message: Message) -> Bool {
+        message.application?.id == application.id
+            && message.flags.contains(.ephemeral)
+            && message.author.id == clyde.id
+    }
+
     /// What a built-in's availability depends on in the current conversation.
     struct Context {
         var isPrivate: Bool
@@ -64,7 +80,7 @@ enum DiscordBuiltInCommands {
             option("-6", "message", .string, "Your message", required: true)
         ]),
         command("-7", "nick", "Change nickname on this server.", options: [
-            option("-7", "new_nick", .string, "New nickname", required: false)
+            option("-7", "new_nick", .string, "New nickname", required: false, maximumLength: 32)
         ]),
         command("-10", "thread", "Start new thread", options: [
             option("-10", "name", .string, "Type a name for your thread", required: true),
@@ -139,11 +155,11 @@ enum DiscordBuiltInCommands {
 
     private static func option(
         _ commandID: String, _ name: String, _ type: ApplicationCommandOptionType, _ description: String,
-        required: Bool, choices: [ApplicationCommandChoice] = []
+        required: Bool, choices: [ApplicationCommandChoice] = [], maximumLength: Int? = nil
     ) -> ApplicationCommandOption {
         ApplicationCommandOption(
             id: "\(commandID)/\(name)", name: name, description: description, type: type,
-            isRequired: required, choices: choices
+            isRequired: required, choices: choices, maximumLength: maximumLength
         )
     }
 

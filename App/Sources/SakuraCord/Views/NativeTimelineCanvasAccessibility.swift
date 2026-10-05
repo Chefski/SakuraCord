@@ -649,17 +649,7 @@ extension NativeTimelineCanvasView {
         rowIndex: Int,
         parent: NSAccessibilityElement
     ) {
-        if let frame = layout.loadingIndicatorFrame {
-            children.append(accessibilityElement(
-                role: .progressIndicator,
-                label: "Loading",
-                frame: accessibilityChildFrame(
-                    frame,
-                    rowIndex: rowIndex
-                ),
-                parent: parent
-            ))
-        }
+        // Loading dots are decorative; the status text beside them is read.
         if let frame = layout.contentFrame,
            let value = layout.attributedContent,
            let framesetter = layout.contentFramesetter

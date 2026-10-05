@@ -136,10 +136,12 @@ struct ApplicationCommandPickerEngine {
 
     // MARK: Search
 
-    /// Results for a typed query, at most 20, as the official autocomplete
-    /// lists them.
-    func search(_ rawQuery: String) -> [ApplicationCommand] {
-        let parsed = Self.parse(rawQuery)
+    enum SearchMode { case composer, contextMenu }
+
+    /// Composer completion is capped and parses option boundaries. The Apps
+    /// menu searches literal text and retains every result in its scrollable list.
+    func search(_ rawQuery: String, mode: SearchMode = .composer) -> [ApplicationCommand] {
+        let parsed = mode == .composer ? Self.parse(rawQuery) : (text: rawQuery, hasSpaceTerminator: false)
         let query = parsed.text.lowercased(with: locale)
         let words = query.components(separatedBy: " ")
         let firstWord = words.first ?? ""
@@ -176,6 +178,15 @@ struct ApplicationCommandPickerEngine {
             if lhs.score != rhs.score { return lhs.score < rhs.score }
             if lhs.frecency != rhs.frecency { return lhs.frecency > rhs.frecency }
             return lhs.nameRank < rhs.nameRank
+        }
+        if mode == .contextMenu {
+            return scored.enumerated().map { index, match in
+                (index, Match(command: match.command, score: match.score, frecency: frecencyScore(match.command), nameRank: commandSortRanks[match.command.id] ?? 0))
+            }.sorted { lhs, rhs in
+                if precedes(lhs.1, rhs.1) { return true }
+                if precedes(rhs.1, lhs.1) { return false }
+                return lhs.0 < rhs.0
+            }.map { $0.1.command }
         }
         for match in scored {
             if parsed.hasSpaceTerminator,

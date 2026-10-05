@@ -8,6 +8,7 @@ struct ComposerView: View {
 
     let model: AppModel
     @Environment(\.composerDropInteraction) private var composerDropInteraction
+    @Environment(\.appearsActive) private var appearsActive
     let channelName: String
     var conversation: Conversation = .channel
     var onEditMessage: (MessageID) -> Void = { _ in }
@@ -75,7 +76,9 @@ struct ComposerView: View {
             },
             leading: {
                 Group {
-                    if !isCreatingThread {
+                    if hasActiveCommand, let commandDraft = model.commandComposer.draft {
+                        ApplicationCommandComposerBadge(command: commandDraft.command, cancel: cancelCommand)
+                    } else if !isCreatingThread {
                         ComposerAttachmentButton(appearance: appearance) {
                             showComposerActions.toggle()
                         }
@@ -131,33 +134,28 @@ struct ComposerView: View {
             input: {
                 Group {
                     if hasActiveCommand, let commandDraft = model.commandComposer.draft {
-                        HStack(alignment: .center, spacing: 8) {
-                            ApplicationCommandComposerBadge(
-                                command: commandDraft.command, cancel: cancelCommand
+                        ApplicationCommandEditorView(
+                            composer: model.commandComposer,
+                            draft: commandDraft,
+                            caretRequestRevision: model.commandComposer.caretRequestRevision,
+                            fieldIssue: model.commandComposer.fieldIssue,
+                            roles: model.guildRoles,
+                            generalInputSettings: model.generalInputSettings,
+                            onKeyboardCommand: handleAutocomplete,
+                            onSubmit: submitComposer,
+                            onCancel: leaveCommand(restoring:),
+                            canReceiveAttachment: {
+                                model.commandComposer.pastedAttachmentOption != nil
+                            },
+                            receiveAttachment: { attachments in
+                                Task { await model.receiveCommandAttachment(attachments) }
+                            },
+                            // Ignore focus callbacks from the editor being replaced.
+                            isFocused: Binding(
+                                get: { hasActiveCommand && isFocused },
+                                set: { if hasActiveCommand { isFocused = $0 } }
                             )
-                            ApplicationCommandEditorView(
-                                composer: model.commandComposer,
-                                draft: commandDraft,
-                                caretRequestRevision: model.commandComposer.caretRequestRevision,
-                                fieldIssue: model.commandComposer.fieldIssue,
-                                roles: model.guildRoles,
-                                generalInputSettings: model.generalInputSettings,
-                                onKeyboardCommand: handleAutocomplete,
-                                onSubmit: submitComposer,
-                                onCancel: leaveCommand(restoring:),
-                                canReceiveAttachment: {
-                                    model.commandComposer.pastedAttachmentOption != nil
-                                },
-                                receiveAttachment: { attachments in
-                                    Task { await model.receiveCommandAttachment(attachments) }
-                                },
-                                // Ignore focus callbacks from the editor being replaced.
-                                isFocused: Binding(
-                                    get: { hasActiveCommand && isFocused },
-                                    set: { if hasActiveCommand { isFocused = $0 } }
-                                )
-                            )
-                        }
+                        )
                     } else {
                         ZStack(alignment: .bottomTrailing) {
                             ComposerTextView(
@@ -479,8 +477,22 @@ struct ComposerView: View {
             ? ChatChromeMetrics.composerMinimumCornerRadius : ChatChromeMetrics.composerCornerRadius
     }
 
+    /// Composer menus belong to the active input, like Discord's: they hide
+    /// when the editor loses focus or the window becomes inactive, and return
+    /// unchanged with focus.
+    private var isInputActive: Bool {
+        isFocused && appearsActive
+    }
+
     @ViewBuilder
     private var composerOverlay: some View {
+        if isInputActive {
+            composerMenus
+        }
+    }
+
+    @ViewBuilder
+    private var composerMenus: some View {
         if conversation == .channel, model.commandComposer.isPickerPresented,
            // Like Discord, nothing shows for a query that matches no command.
            !model.commandComposer.pickerSections.isEmpty
@@ -821,7 +833,7 @@ struct ComposerView: View {
     }
 
     private var visibleCommandSuggestionContent: ApplicationCommandSuggestionContent? {
-        guard isFocused, !model.commandComposer.areSuggestionsDismissed,
+        guard isInputActive, !model.commandComposer.areSuggestionsDismissed,
               let content = commandSuggestionContent, !content.isEmpty
         else { return nil }
         return content
@@ -986,7 +998,7 @@ struct ComposerView: View {
         case .chooseAttachment:
             showFileImporter = true
         case let .addOption(option):
-            composer.addOptionalOption(option)
+            composer.addOption(option)
         }
         composer.resetSuggestions()
         isFocused = true
@@ -1028,8 +1040,11 @@ struct ComposerView: View {
         case .advance:
             if let selected {
                 acceptCommandSuggestion(selected)
+            } else if !suggestions.isEmpty {
+                composer.suggestionIndex = 0
+                autocompleteKeyboardSelectionRevision &+= 1
             } else {
-                composer.moveFocus(by: 1)
+                composer.advanceField()
             }
         case .previousField:
             composer.moveFocus(by: -1)
@@ -1039,7 +1054,7 @@ struct ComposerView: View {
             // Discord's Escape only closes the list; the command stays.
             composer.areSuggestionsDismissed = true
         case .removeField:
-            guard let field = composer.draft?.focusedField, !field.option.isRequired else { return false }
+            guard let field = composer.draft?.focusedField else { return false }
             composer.removeField(field.id)
         }
         return true

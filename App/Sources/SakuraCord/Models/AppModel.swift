@@ -228,6 +228,7 @@ final class AppModel {
             let indexed = mergedMemberStore(with: members)
             if membersByID != indexed {
                 membersByID = indexed
+                commandComposer.refreshApplicationIdentities { indexed[$0]?.user }
             }
             refreshVoiceSidebarPresentation(using: indexed)
             var permissionsChanged = false

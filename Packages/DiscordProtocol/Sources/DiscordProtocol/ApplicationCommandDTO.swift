@@ -5,12 +5,13 @@ struct ApplicationCommandIndexDecoder {
     private struct ApplicationBotDTO: Decodable {
         var id: String
         var username: String
+        var discriminator: String?
         var globalName: String?
         var avatar: String?
         var bot: Bool?
 
         enum CodingKeys: String, CodingKey {
-            case id, username, avatar, bot
+            case id, username, discriminator, avatar, bot
             case globalName = "global_name"
         }
 
@@ -23,8 +24,8 @@ struct ApplicationCommandIndexDecoder {
                 )
             }
             return User(
-                id: id, username: username, displayName: globalName ?? username,
-                avatarURL: avatarURL, isBot: bot ?? true
+                id: id, username: username, discriminator: discriminator ?? "0", displayName: globalName ?? username,
+                avatarURL: avatarURL ?? DiscordProfileImageAssets.defaultAvatarURL(userID: id.description, discriminator: discriminator), isBot: bot ?? true
             )
         }
     }
@@ -91,6 +92,12 @@ struct ApplicationCommandIndexDecoder {
         var description: String?
         var icon: String?
         var bot: ApplicationBotDTO?
+        var botID: String?
+
+        enum CodingKeys: String, CodingKey {
+            case id, name, description, icon, bot
+            case botID = "bot_id"
+        }
 
         var domain: ApplicationCommandApplication {
             let iconURL = icon.flatMap { hash in
@@ -98,7 +105,7 @@ struct ApplicationCommandIndexDecoder {
             }
             return ApplicationCommandApplication(
                 id: id, name: name, description: description ?? "", iconURL: iconURL,
-                bot: bot?.domain
+                bot: bot?.domain, botID: botID.flatMap(UserID.init)
             )
         }
     }
@@ -221,6 +228,7 @@ struct ApplicationCommandIndexDecoder {
         var options: [OptionDTO]?
         var permissions: [PermissionDTO]?
         var contexts: [Int]?
+        var dmPermission: Bool?
         var integrationTypes: [Int]?
         var globalPopularityRank: Int?
 
@@ -234,6 +242,7 @@ struct ApplicationCommandIndexDecoder {
             case localizedDescription = "description_localized"
             case integrationTypes = "integration_types"
             case globalPopularityRank = "global_popularity_rank"
+            case dmPermission = "dm_permission"
         }
 
         func flattened(
@@ -270,7 +279,7 @@ struct ApplicationCommandIndexDecoder {
                     options: leafOptions,
                     subcommandPath: path,
                     permissions: (permissions ?? []).map(\.domain),
-                    contexts: contexts ?? [],
+                    contexts: contexts ?? (dmPermission == false ? [0] : [0, 1]),
                     integrationTypes: integrationTypes ?? [],
                     globalPopularityRank: globalPopularityRank,
                     rootCommandJSON: rawJSON

@@ -153,6 +153,7 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     var rateLimitDiscoveryWaitersByRoute:
         [String: [UUID: CheckedContinuation<Void, Never>]] = [:]
     var requestSafetyCircuitIsOpen = false
+    var requestSafetyStopReason = "Discord networking is stopped for this session."
     var unexpectedNotFoundCounts: [String: Int] = [:]
     var gatewaySession: GatewaySession?
     var gatewayEventTask: Task<Void, Never>?

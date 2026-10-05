@@ -18,6 +18,7 @@ struct MentionAutocompleteList: View {
                 keyboardSelectionRevision: keyboardSelectionRevision,
                 rowHeight: { hasDivider(before: $0) ? 50 : 42 },
                 highlight: highlightRow,
+                activate: select,
                 content: { suggestion in
                     VStack(spacing: 0) {
                         if hasDivider(before: suggestion) {

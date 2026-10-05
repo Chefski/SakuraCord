@@ -888,6 +888,13 @@ extension NativeTimelineCanvasView {
         message: Message
     ) {
         guard let model else { return }
+        let target = NativeTimelineComponentSelectTarget(messageID: message.id, componentID: region.componentID)
+        // The canvas can receive another click before the hosted field is ready.
+        // Treat it as the same toggle instead of replacing the opening overlay.
+        if activeComponentChoiceTarget == target, let componentChoiceOverlay {
+            componentChoiceOverlay.close(commit: true)
+            return
+        }
         closeComponentChoiceOverlay()
         let selectedOptions = model.componentSelection(
             messageID: message.id,
@@ -932,10 +939,7 @@ extension NativeTimelineCanvasView {
             }
         )
         componentChoiceOverlay = overlay
-        activeComponentChoiceTarget = NativeTimelineComponentSelectTarget(
-            messageID: message.id,
-            componentID: region.componentID
-        )
+        activeComponentChoiceTarget = target
         needsDisplay = true
         guard let anchorRect = componentSelectAnchorRect(
             messageID: message.id,
@@ -1047,7 +1051,7 @@ extension NativeTimelineCanvasView {
               case let .message(row, _, _) = items[index]
         else { return nil }
         let interactionMode = MessageOutboxPresentation.interactionMode(
-            for: row.message.outboxState
+            for: row.message
         )
         guard interactionMode.allowsMessageContextMenu else { return nil }
         let localPoint = CGPoint(
@@ -1105,7 +1109,8 @@ extension NativeTimelineCanvasView {
         actions: NativeTimelineRowActions,
         failedMediaActions: MediaImageContextMenuActions?
     ) -> NSMenu? {
-        guard TimelineContextMenuHitTesting.contains(
+        guard MessageOutboxPresentation.interactionMode(for: row.message).allowsMessageContextMenu,
+              TimelineContextMenuHitTesting.contains(
             point,
             rowOrigin: displayedRowOrigin(at: index),
             highlightFrame: layouts[index].highlightFrame
@@ -1203,57 +1208,15 @@ extension NativeTimelineCanvasView {
         submenu.autoenablesItems = false
         // Rebuilt whenever the submenu opens, so a catalog that finishes
         // loading while the menu is up replaces the loading row.
-        let populator = ApplicationCommandAppsMenuPopulator { [weak self, weak model] menu in
-            guard let self, let model else { return }
-            self.populateAppsMenu(menu, model: model, type: type, targetID: targetID, channelID: message.channelID)
-        }
+        let populator = ApplicationCommandAppsMenuPopulator(model: model, type: type, targetID: targetID, channelID: message.channelID)
         submenu.delegate = populator
         let apps = NSMenuItem(title: "Apps", action: nil, keyEquivalent: "")
-        ContextMenuItemSupport.configure(apps, title: "Apps", systemImage: "square.grid.2x2", isDestructive: false)
+        ContextMenuItemSupport.configure(apps, title: "Apps", systemImage: SakuraCordSystemSymbol.applicationCommands)
         apps.submenu = submenu
         apps.representedObject = populator
-        menu.addItem(.separator())
-        menu.addItem(apps)
-    }
-
-    private func populateAppsMenu(
-        _ submenu: NSMenu, model: AppModel, type: ApplicationCommandType,
-        targetID: String, channelID: ChannelID
-    ) {
-        submenu.removeAllItems()
-        let sections = model.commandComposer.contextMenuSections(of: type)
-        if sections.applications.isEmpty {
-            let loading = NSMenuItem(
-                title: model.commandComposer.isLoading ? "Loading Apps…" : "No Apps", action: nil, keyEquivalent: ""
-            )
-            loading.isEnabled = false
-            submenu.addItem(loading)
-            return
-        }
-        func commandItem(_ command: ApplicationCommand) -> NSMenuItem {
-            actionItem(command.displayName, systemImage: "paperplane") { [weak model] in
-                model?.runContextMenuCommand(command, targetID: targetID, in: channelID)
-            }
-        }
-        if !sections.frequent.isEmpty {
-            submenu.addItem(.sectionHeader(title: "Frequently Used"))
-            for command in sections.frequent {
-                let item = commandItem(command)
-                item.toolTip = command.application.name
-                submenu.addItem(item)
-            }
-            submenu.addItem(.separator())
-            submenu.addItem(.sectionHeader(title: "Apps"))
-        }
-        for (application, commands) in sections.applications {
-            let appMenu = NSMenu()
-            appMenu.autoenablesItems = false
-            commands.forEach { appMenu.addItem(commandItem($0)) }
-            let item = NSMenuItem(title: application.name, action: nil, keyEquivalent: "")
-            ContextMenuItemSupport.configure(item, title: application.name, systemImage: "app.dashed", isDestructive: false)
-            item.submenu = appMenu
-            submenu.addItem(item)
-        }
+        // Discord puts Apps at the end of the reply/pin group, before Mark Unread.
+        let insertion = menu.items.firstIndex { $0.title == "Mark Unread" } ?? 0
+        menu.insertItem(apps, at: insertion)
     }
 
     func messageMenuHandler(
@@ -1425,18 +1388,4 @@ extension NativeTimelineCanvasView {
         }
     }
 
-}
-
-/// Fills the Apps submenu from the current command catalog each time it opens.
-@MainActor
-final class ApplicationCommandAppsMenuPopulator: NSObject, NSMenuDelegate {
-    private let populate: (NSMenu) -> Void
-
-    init(populate: @escaping (NSMenu) -> Void) {
-        self.populate = populate
-    }
-
-    func menuNeedsUpdate(_ menu: NSMenu) {
-        populate(menu)
-    }
 }

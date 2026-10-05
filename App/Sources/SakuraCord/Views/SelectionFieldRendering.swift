@@ -33,15 +33,23 @@ enum SelectionFieldLayoutMetrics {
 }
 
 /// AppKit rendering for collapsed message-component fields; interactive fields use SwiftUI.
+/// Geometry, type and colours mirror `SelectionField` so opening a field does
+/// not move or restyle anything.
 @MainActor
 enum SelectionFieldRenderer {
-    private static func chevronRect(in frame: CGRect) -> CGRect {
+    /// The open field's 22×28 chevron button, inside its 11-point inset.
+    static func chevronRect(in frame: CGRect) -> CGRect {
         CGRect(
-            x: frame.maxX - 31,
-            y: frame.midY - 10,
-            width: 20,
-            height: 20
+            x: frame.maxX - SelectionFieldLayoutMetrics.leadingInset - 22,
+            y: frame.midY - 14,
+            width: 22,
+            height: 28
         )
+    }
+
+    /// SwiftUI centres a text line by its line box, not the font's glyph bounds.
+    static func lineHeight(of font: NSFont) -> CGFloat {
+        ceil(font.ascender - font.descender + font.leading)
     }
 
     static func drawText(
@@ -52,16 +60,19 @@ enum SelectionFieldRenderer {
     ) {
         guard !value.isEmpty else { return }
         let font = SelectionFieldLayoutMetrics.font
-        let lineHeight = ceil(font.boundingRectForFont.height)
+        let lineHeight = lineHeight(of: font)
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = .byTruncatingTail
         (value as NSString).draw(
             in: CGRect(
                 x: frame.minX + SelectionFieldLayoutMetrics.leadingInset,
-                y: floor(frame.midY - lineHeight / 2),
-                width: max(1, frame.width - 65),
-                height: lineHeight + 2
+                y: (frame.midY - lineHeight / 2).rounded(),
+                width: max(1, frame.width - 50),
+                height: lineHeight
             ),
             withAttributes: [
                 .font: font,
+                .paragraphStyle: paragraph,
                 .foregroundColor: color.withAlphaComponent(
                     color.alphaComponent * opacity
                 ),
@@ -73,43 +84,37 @@ enum SelectionFieldRenderer {
         in frame: CGRect,
         opacity: CGFloat = 1
     ) {
-        drawSystemImage(
+        drawSymbol(
             "chevron.down",
-            in: chevronRect(in: frame),
-            pointSize: 12,
-            weight: .semibold,
+            pointSize: 11,
+            centeredIn: chevronRect(in: frame),
+            color: .secondaryLabelColor,
             opacity: opacity
         )
     }
 
-    private static func drawSystemImage(
-        _ name: String,
-        in rect: CGRect,
-        pointSize: CGFloat,
-        weight: NSFont.Weight,
+    /// Draws a symbol at its natural point size, as SwiftUI's `Image` does,
+    /// rather than scaling it to fill a rectangle. The timeline's raster cache
+    /// resolves the dynamic colour for the current appearance.
+    private static func drawSymbol(
+        _ name: String, pointSize: CGFloat, weight: NSFont.Weight = .semibold, centeredIn rect: CGRect, color: NSColor,
         opacity: CGFloat = 1
     ) {
-        let color = NSColor.secondaryLabelColor.withAlphaComponent(opacity)
-        let configuration = NSImage.SymbolConfiguration(
-            pointSize: pointSize,
-            weight: weight
-        ).applying(NSImage.SymbolConfiguration(paletteColors: [color]))
-        guard let image = NSImage(
-            systemSymbolName: name,
-            accessibilityDescription: nil
-        )?.withSymbolConfiguration(configuration)
-        else { return }
-        let destination = NativeTimelineSymbolGeometry.opticallyFitted(
-            sourceSize: image.size,
-            alignmentRect: image.alignmentRect,
-            in: rect
-        )
+        let device = NSGraphicsContext.current?.cgContext.convertToDeviceSpace(CGSize(width: 1, height: 1))
+        // Symbol palettes ignore alpha, which turns dark-mode secondary label
+        // (translucent white) opaque. Draw the opaque colour at its alpha.
+        let resolved = color.usingColorSpace(.deviceRGB) ?? color
+        guard let image = NativeTimelineSystemSymbolCache.rasterizedConfiguredImage(
+            named: name, pointSize: pointSize, weight: weight, color: resolved.withAlphaComponent(1),
+            scale: device.map { max(abs($0.width), abs($0.height)) } ?? 2
+        ) else { return }
+        let size = image.size
         image.draw(
-            in: destination,
-            from: .zero,
-            operation: .sourceOver,
-            fraction: 1,
-            respectFlipped: true,
+            in: CGRect(
+                x: (rect.midX - size.width / 2).rounded(), y: (rect.midY - size.height / 2).rounded(),
+                width: size.width, height: size.height
+            ),
+            from: .zero, operation: .sourceOver, fraction: resolved.alphaComponent * opacity, respectFlipped: true,
             hints: [.interpolation: NSImageInterpolation.high]
         )
     }
@@ -123,9 +128,6 @@ enum SelectionFieldRenderer {
         let labelFont = NSFont.systemFont(
             ofSize: font.pointSize,
             weight: .medium
-        )
-        let labelSize = (option.title as NSString).size(
-            withAttributes: [.font: labelFont]
         )
         let height: CGFloat = 28
         let leadingSize: CGFloat = 20
@@ -143,7 +145,7 @@ enum SelectionFieldRenderer {
                 concentricRoundedRect: card,
                 cornerRadius: height / 2
             )
-            NSColor.labelColor.withAlphaComponent(0.085).setFill()
+            NSColor.labelColor.withAlphaComponent(0.08).setFill()
             shape.fill()
 
             var contentX: CGFloat = 9
@@ -161,11 +163,12 @@ enum SelectionFieldRenderer {
                 )
                 contentX = rect.maxX + 8
             }
-            let textY = floor((height - labelSize.height) / 2)
+            let textHeight = lineHeight(of: labelFont)
+            let textY = ((height - textHeight) / 2).rounded()
             let paragraph = NSMutableParagraphStyle()
             paragraph.lineBreakMode = .byTruncatingTail
             (option.title as NSString).draw(
-                in: CGRect(x: contentX, y: textY, width: max(0, contentWidth - contentX - closeWidth), height: labelSize.height),
+                in: CGRect(x: contentX, y: textY, width: max(0, contentWidth - contentX - closeWidth), height: textHeight),
                 withAttributes: [
                     .font: labelFont,
                     .paragraphStyle: paragraph,
@@ -174,7 +177,9 @@ enum SelectionFieldRenderer {
                     ),
                 ]
             )
-            drawTokenSymbol("xmark", in: CGRect(x: contentWidth - 18, y: 10, width: 8, height: 8), color: .secondaryLabelColor)
+            // The open token's 16×28 remove button, 5 points from its edge.
+            drawSymbol("xmark", pointSize: 9, centeredIn: CGRect(x: contentWidth - 21, y: 0, width: 16, height: height),
+                       color: .secondaryLabelColor)
             return true
         }
     }
@@ -188,7 +193,7 @@ enum SelectionFieldRenderer {
         case .none:
             return
         case .systemImage(let name):
-            drawTokenSymbol(name, in: rect, color: .secondaryLabelColor)
+            drawSymbol(name, pointSize: 13, weight: .regular, centeredIn: rect, color: .secondaryLabelColor)
         case .text(let value):
             let font = NSFont.systemFont(ofSize: rect.height * 0.75)
             let size = (value as NSString).size(withAttributes: [.font: font])
@@ -291,29 +296,5 @@ enum SelectionFieldRenderer {
         case .roleColor(let colorHex):
             SakuraCordAccentColor.nsColor(forRoleColorHex: colorHex)
         }
-    }
-
-    private static func drawTokenSymbol(
-        _ name: String,
-        in rect: CGRect,
-        color: NSColor
-    ) {
-        let configuration = NSImage.SymbolConfiguration(
-            pointSize: rect.height,
-            weight: .semibold
-        ).applying(NSImage.SymbolConfiguration(paletteColors: [color]))
-        guard let image = NSImage(
-            systemSymbolName: name,
-            accessibilityDescription: nil
-        )?.withSymbolConfiguration(configuration)
-        else { return }
-        image.draw(
-            in: rect,
-            from: .zero,
-            operation: .sourceOver,
-            fraction: 1,
-            respectFlipped: false,
-            hints: [.interpolation: NSImageInterpolation.high]
-        )
     }
 }

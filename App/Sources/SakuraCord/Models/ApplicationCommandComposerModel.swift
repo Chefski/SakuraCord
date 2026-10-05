@@ -266,38 +266,71 @@ final class ApplicationCommandComposerModel {
         loadError = message
     }
 
+    /// Catalogs can arrive before the member list and contain only bot_id.
+    /// Enrich every presentation from the same global user identity when it
+    /// becomes available, without fetching profiles or restarting the catalog.
+    func refreshApplicationIdentities(user: (UserID) -> User?) {
+        var replacements: [String: ApplicationCommandApplication] = [:]
+        for application in applications {
+            guard let id = application.botID ?? application.bot?.id ?? UserID(application.id),
+                  let bot = user(id), bot != application.bot else { continue }
+            var updated = application
+            updated.bot = bot
+            replacements[application.id] = updated
+        }
+        guard !replacements.isEmpty else { return }
+        func update(_ command: ApplicationCommand) -> ApplicationCommand {
+            var command = command
+            if let application = replacements[command.applicationID] { command.application = application }
+            return command
+        }
+        applications = applications.map { replacements[$0.id] ?? $0 }
+        pickerSources = pickerSources.map {
+            ApplicationCommandPickerSource(application: replacements[$0.application.id] ?? $0.application,
+                commands: $0.commands.map(update))
+        }
+        commands = commands.map(update)
+        contextMenuCommands = contextMenuCommands.map(update)
+        if let command = draft?.command, replacements[command.applicationID] != nil { draft?.command = update(command) }
+        reusablePickerEngine = nil
+        refreshPickerSections()
+    }
+
     func contextMenuCommands(of type: ApplicationCommandType) -> [ApplicationCommand] {
         contextMenuCommands.filter { $0.type == type }
     }
 
-    /// Discord's Apps menu: up to five frequently used commands, then one
-    /// group per application in name order.
     func contextMenuSections(
         of type: ApplicationCommandType
     ) -> (frequent: [ApplicationCommand], applications: [(ApplicationCommandApplication, [ApplicationCommand])]) {
-        let commands = contextMenuCommands(of: type)
-        let local = commands.filter { frecencyScore(for: $0) > 0 }.sorted {
-            let left = frecencyScore(for: $0), right = frecencyScore(for: $1)
-            return left == right ? stableCommandOrder($0, $1) : left > right
+        let browse = contextMenuEngine(of: type).browse()
+        return (browse.frequentlyUsed, browse.sections.map { ($0.application, $0.commands) })
+    }
+
+    func searchContextMenuCommands(of type: ApplicationCommandType, query: String) -> [ApplicationCommand] {
+        contextMenuEngine(of: type).search(query, mode: .contextMenu)
+    }
+
+    private func contextMenuEngine(of type: ApplicationCommandType) -> ApplicationCommandPickerEngine {
+        let grouped = Dictionary(grouping: contextMenuCommands(of: type), by: \.application.id)
+        let sources = grouped.values.compactMap { commands -> ApplicationCommandPickerSource? in
+            guard let application = commands.first?.application else { return nil }
+            return ApplicationCommandPickerSource(application: application, commands: commands)
         }
-        let popular = commands.filter { $0.globalPopularityRank != nil }.sorted {
-            ($0.globalPopularityRank ?? .max) < ($1.globalPopularityRank ?? .max)
-        }
-        var seen = Set<String>()
-        let frequent = Array((local + popular).filter { seen.insert($0.id).inserted }.prefix(5))
-        let grouped = Dictionary(grouping: commands, by: \.application.id)
-        let applications = grouped.values.compactMap { group -> (ApplicationCommandApplication, [ApplicationCommand])? in
-            guard let application = group.first?.application else { return nil }
-            return (application, group.sorted(by: stableCommandOrder))
-        }
-        .sorted { $0.0.name.localizedStandardCompare($1.0.name) == .orderedAscending }
-        return (frequent, applications)
+        return ApplicationCommandPickerEngine(
+            sources: sources, builtIns: [], locale: locale,
+            frecencyScore: { [weak self] in self?.frecencyScore(for: $0) ?? 0 },
+            frequentCommandIDs: ApplicationCommandPickerEngine.scopedCommandIDs(frecencyStore.frequently, guildID: contextGuildID)
+        )
     }
 
     func invalidated(_ target: ApplicationCommandIndexTarget) -> Bool {
         guard currentTargets.contains(target) else { return false }
         let wasActive = activeCommand.map { command in
-            switch target {
+            guard !DiscordBuiltInCommands.isBuiltIn(command),
+                  command.applicationID != SakuraCordBuiltInCommands.application.id
+            else { return false }
+            return switch target {
             case let .guild(guildID): command.guildID == guildID
             case .channel, .user: command.guildID == nil
             case let .application(applicationID): command.applicationID == applicationID
@@ -306,7 +339,10 @@ final class ApplicationCommandComposerModel {
         if wasActive { cancelActiveCommand() }
         clearCatalogs()
         loadError = nil
-        return isPickerPresented || wasActive
+        // Invalidation also cancels the provider's in-flight index fetch.
+        // Restart a preload even while the picker is closed, or its surviving
+        // catalog could be installed as though both indexes had loaded.
+        return isLoading || isPickerPresented || wasActive
     }
 
     // MARK: Picker
@@ -446,7 +482,13 @@ final class ApplicationCommandComposerModel {
     /// Native typing inside one value or gap.
     func setText(_ text: String, for focus: ApplicationCommandDraftFocus) {
         guard var updated = draft else { return }
+        var targetFocus = focus
+        // An empty first chip leaves a separator that Backspace can remove.
+        // It belongs to the command, not to the next implicitly entered value.
+        let hasRemovedFieldSeparator = updated.fields.isEmpty && updated.gapText == " "
         switch focus {
+        case .command:
+            return
         case let .field(id):
             guard updated.field(id)?.text != text else { return }
             updated.setText(text, for: id)
@@ -455,11 +497,21 @@ final class ApplicationCommandComposerModel {
             updated.focus = focus
             guard focusChanged || updated.gapText != text else { return }
             updated.gapText = text
+            if focus == .gap(0), text.isEmpty { targetFocus = .command }
         }
-        let focusChanged = draft?.focus != focus
-        updated.focus = focus
+        let focusChanged = draft?.focus != targetFocus
+        updated.focus = targetFocus
         draft = updated
-        if case .gap = focus, var accepted = draft, accepted.acceptTypedOptionName() {
+        if case .gap = targetFocus, var accepted = draft, accepted.acceptImplicitOptionValue() {
+            if hasRemovedFieldSeparator, text.hasPrefix(" "), let field = accepted.focusedField {
+                accepted.setText(String(text.dropFirst()), for: field.id)
+            }
+            draft = accepted
+            requestCaret(ApplicationCommandEditorDocument(draft: accepted).caret(endOf: accepted.focus))
+            afterEdit(focusChanged: true)
+            return
+        }
+        if case .gap = targetFocus, var accepted = draft, accepted.acceptTypedOptionName() {
             draft = accepted
             requestCaret(ApplicationCommandEditorDocument(draft: accepted).caret(endOf: accepted.focus))
             afterEdit(focusChanged: true)
@@ -481,8 +533,19 @@ final class ApplicationCommandComposerModel {
         updated.moveFocus(by: delta)
         guard updated.focus != draft?.focus else { return }
         draft = updated
-        requestCaret(ApplicationCommandEditorDocument(draft: updated).caret(endOf: updated.focus))
+        requestCaret(ApplicationCommandEditorDocument(draft: updated).selection(for: updated.focus))
         afterEdit(focusChanged: true)
+    }
+
+    /// Tab without suggestions advances, except an unrecognized fixed choice
+    /// must remain selected for correction (other validation waits for submission).
+    func advanceField() {
+        if let field = draft?.focusedField, !field.option.choices.isEmpty,
+           !field.isEmpty, draft?.argument(for: field) == nil {
+            _ = prepareSubmission()
+        } else {
+            moveFocus(by: 1)
+        }
     }
 
     func focusField(_ id: String) {
@@ -504,8 +567,8 @@ final class ApplicationCommandComposerModel {
         afterEdit(focusChanged: true)
     }
 
-    func addOptionalOption(_ option: ApplicationCommandOption) {
-        guard var updated = draft, updated.addOptionalOption(option) else { return }
+    func addOption(_ option: ApplicationCommandOption) {
+        guard var updated = draft, updated.addOption(option) else { return }
         draft = updated
         requestCaret(ApplicationCommandEditorDocument(draft: updated).caret(endOf: updated.focus))
         afterEdit(focusChanged: true)
@@ -566,7 +629,7 @@ final class ApplicationCommandComposerModel {
     @discardableResult
     func finishAttachmentPaste(_ url: URL, target: AttachmentPasteTarget) -> Bool {
         guard target.revision == attachmentPasteRevision, var updated = draft else { return false }
-        if updated.field(target.option.id) == nil { updated.addOptionalOption(target.option) }
+        if updated.field(target.option.id) == nil { updated.addOption(target.option) }
         updated.resolve(target.option.id, to: .attachment(url), display: url.lastPathComponent)
         updated.focus = updated.gap(after: target.option.id)
         draft = updated
@@ -595,9 +658,14 @@ final class ApplicationCommandComposerModel {
         }
         fieldIssue = ApplicationCommandFieldIssue(fieldID: invalid.field.id, message: invalid.message)
         var updated = draft
+        if updated.field(invalid.field.id) == nil {
+            updated.focus = .gap(0)
+            updated.addOption(invalid.field.option, preservingGapText: true)
+        }
         updated.focus = .field(invalid.field.id)
         self.draft = updated
-        requestCaret(ApplicationCommandEditorDocument(draft: updated).caret(endOf: updated.focus))
+        afterEdit(focusChanged: draft.focus != updated.focus)
+        requestCaret(ApplicationCommandEditorDocument(draft: updated).selection(for: updated.focus))
         return false
     }
 
@@ -626,8 +694,7 @@ final class ApplicationCommandComposerModel {
     /// already pending, or the field does not use remote autocomplete.
     func autocompleteRequest(channelID: ChannelID, guildID: GuildID?) -> ApplicationCommandAutocompleteRequest? {
         guard let draft, let field = draft.focusedField,
-              field.option.usesAutocomplete, field.option.type.supportsAutocomplete,
-              field.resolved == nil
+              field.option.usesAutocomplete, field.option.type.supportsAutocomplete
         else {
             currentAutocompleteKey = nil
             currentAutocompleteNonce = nil
@@ -854,6 +921,16 @@ final class ApplicationCommandComposerModel {
 }
 
 enum ApplicationCommandAvailability {
+    /// Ordinary and group DMs use only the user index. The channel endpoint
+    /// exposes the recipient bot's commands and rejects human DMs with 10003.
+    static func contextIndexTarget(for channel: Channel) -> ApplicationCommandIndexTarget? {
+        if let guildID = channel.guildID { return .guild(guildID) }
+        if channel.kind == .directMessage, channel.recipients.contains(where: \.isBot) {
+            return .channel(channel.id)
+        }
+        return nil
+    }
+
     static func isAvailable(
         _ command: ApplicationCommand,
         channel: Channel?,
@@ -879,16 +956,14 @@ enum ApplicationCommandAvailability {
         if channel.guildID != nil {
             requiredContext = 0
         } else if channel.kind == .directMessage,
-                  let applicationBotID = command.application.bot?.id,
+                  let applicationBotID = command.application.bot?.id ?? command.application.botID,
                   channel.recipients.contains(where: { $0.id == applicationBotID })
         {
             requiredContext = 1
         } else {
             requiredContext = 2
         }
-        if !command.contexts.isEmpty,
-           !command.contexts.contains(requiredContext)
-        {
+        if !command.contexts.contains(requiredContext) {
             return false
         }
         guard !command.permissions.isEmpty else { return true }

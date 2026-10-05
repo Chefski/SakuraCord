@@ -120,7 +120,7 @@ extension AppModel {
                     : failure.message ?? "This interaction failed."
             }
         case let .modalSubmission(channelID, application, _):
-            appendInteractionFailureRow(
+            appendInteractionNotice(
                 nonce: nonce, channelID: channelID, application: application,
                 commandName: nil, message: Self.commandFailureText(failure)
             )
@@ -170,7 +170,8 @@ extension AppModel {
 
     // MARK: Command placeholders
 
-    /// Discord shows a private "sending" row for a command until the app answers.
+    /// Discord shows a local "Sending command…" row, not marked private, until
+    /// the app answers.
     func appendInteractionPlaceholder(
         for invocation: ApplicationCommandInvocation
     ) {
@@ -182,7 +183,7 @@ extension AppModel {
             ),
             type: command.type == .chatInput ? .chatInputCommand : .contextMenuCommand,
             content: "Sending command…",
-            flags: [.ephemeral, .loading],
+            flags: .loading,
             outboxState: .sending
         )
         appendOutgoingMessage(message)
@@ -218,9 +219,9 @@ extension AppModel {
         removeOutgoingMessage(nonce: nonce, channelID: channelID)
     }
 
-    func appendInteractionFailureRow(
+    func appendInteractionNotice(
         nonce: String, channelID: ChannelID, application: ApplicationCommandApplication,
-        commandName: String?, message text: String
+        commandName: String?, message text: String, isFailure: Bool = true
     ) {
         let guildID = visibleChannels.first { $0.id == channelID }?.guildID
             ?? snapshot?.channels.first { $0.id == channelID }?.guildID
@@ -229,7 +230,7 @@ extension AppModel {
                 nonce: nonce, channelID: channelID, guildID: guildID,
                 application: application, commandName: commandName
             ),
-            type: .reply, content: text, flags: [.ephemeral, .localInteractionFailure], outboxState: .confirmed
+            type: .reply, content: text, flags: isFailure ? [.ephemeral, .localInteractionFailure] : [.ephemeral], outboxState: .confirmed
         ))
     }
 
@@ -262,8 +263,10 @@ extension AppModel {
         type: DiscordMessageType, content: String, flags: MessageFlags, outboxState: OutboxState
     ) -> Message {
         let application = origin.application
-        let author = application.bot ?? User(
-            id: UserID(application.id) ?? UserID(rawValue: 1),
+        let author = application.id == DiscordBuiltInCommands.application.id
+            ? DiscordBuiltInCommands.clyde
+            : application.bot ?? User(
+            id: application.botID ?? UserID(application.id) ?? UserID(rawValue: 1),
             username: application.name,
             displayName: application.name,
             avatarURL: application.iconURL,

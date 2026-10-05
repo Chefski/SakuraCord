@@ -110,15 +110,17 @@ extension AppModel {
     @discardableResult
     func showProfile(for user: User, sourceMessage: Message? = nil) -> UUID {
         let guildID = sourceMessage.map { messagePresentationGuildID(for: $0) } ?? selectedGuildID
-        if let sourceMessage, sourceMessage.webhookID != nil,
-           sourceMessage.author.id == user.id, user.isWebhookIdentity {
+        if let sourceMessage, sourceMessage.author.id == user.id,
+           DiscordBuiltInCommands.isClydeMessage(sourceMessage)
+            || (sourceMessage.webhookID != nil && user.isWebhookIdentity) {
+            let isClyde = DiscordBuiltInCommands.isClydeMessage(sourceMessage)
             contextualProfileTask?.cancel()
             let requestID = UUID()
             contextualProfilePresentation = ProfilePresentationState(
                 requestID: requestID, guildID: guildID,
                 member: Member(user: sourceMessage.author, roleName: "", status: .offline),
                 isCurrentUser: false, profile: UserProfile(user: sourceMessage.author),
-                isLoading: false, errorMessage: nil, isWebhook: true,
+                isLoading: false, errorMessage: nil, isWebhook: !isClyde, isClyde: isClyde,
                 sourceMessageID: sourceMessage.id
             )
             return requestID
@@ -305,7 +307,7 @@ extension AppModel {
     }
 
     func expandProfile(_ presentation: ProfilePresentationState) {
-        guard !presentation.isWebhook else { return }
+        guard !presentation.isLocalIdentity else { return }
         presentProfile(for: presentation.member, in: presentation.guildID, destination: .expanded)
         dismissContextualProfile()
         isInspectorProfilePresented = false
@@ -391,7 +393,7 @@ extension AppModel {
         for destination: ProfilePresentationDestination
     ) -> ProfilePresentationState? {
         guard var presentation = profilePresentation(for: destination) else { return nil }
-        guard !presentation.isWebhook else { return presentation }
+        guard !presentation.isLocalIdentity else { return presentation }
         presentation.member = profileMember(presentation.member.id, in: presentation.guildID) ?? presentation.member
         if presentation.member.id == snapshot?.currentUser.id {
             // Member stores do not track our own presence; the account does.

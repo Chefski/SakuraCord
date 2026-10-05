@@ -96,7 +96,7 @@ func commandIndexLocalization() throws {
         #"""
         {
           "version": 9,
-          "applications": [{"id":"100","name":"Utility"}],
+          "applications": [{"id":"100","name":"Utility","bot_id":"101"}],
           "application_commands": [
             {
               "id":"200",
@@ -127,6 +127,8 @@ func commandIndexLocalization() throws {
 
     let catalog = try ApplicationCommandIndexDecoder.decode(data, target: .user)
     let command = try #require(catalog.commands.first)
+    #expect(command.application.botID == UserID(rawValue: 101))
+    #expect(command.application.bot == nil)
     #expect(command.name == "hello")
     #expect(command.localizedName == "salut")
     #expect(command.displayName == "salut")
@@ -136,6 +138,29 @@ func commandIndexLocalization() throws {
     #expect(command.options.first?.localizedName == "texte")
     #expect(command.options.first?.minimumLength == 1)
     #expect(command.options.first?.maximumLength == 20)
+}
+
+@Test("command contexts distinguish legacy DM permissions from explicit contexts")
+func commandIndexLegacyContexts() throws {
+    let cases: [(fields: [String: Any], expected: [Int])] = [
+        ([:], [0, 1]),
+        (["dm_permission": true], [0, 1]),
+        (["dm_permission": false], [0]),
+        (["contexts": [2], "dm_permission": false], [2]),
+        (["contexts": [Int]()], [])
+    ]
+    for testCase in cases {
+        var command: [String: Any] = [
+            "id": "200", "application_id": "100", "version": "1", "name": "help"
+        ]
+        command.merge(testCase.fields) { _, value in value }
+        let data = try JSONSerialization.data(withJSONObject: [
+            "applications": [["id": "100", "name": "Utility"]],
+            "application_commands": [command]
+        ])
+        let catalog = try ApplicationCommandIndexDecoder.decode(data, target: .user)
+        #expect(catalog.commands.first?.contexts == testCase.expected)
+    }
 }
 
 @Test("malformed command entries do not discard a usable index")

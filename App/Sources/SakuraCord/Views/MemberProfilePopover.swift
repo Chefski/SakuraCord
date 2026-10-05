@@ -33,8 +33,8 @@ struct ProfilePresentationContent<Footer: View>: View {
     }
 
     var body: some View {
-        if presentation.isWebhook {
-            WebhookProfilePopover(user: presentation.member.user)
+        if presentation.isLocalIdentity {
+            CompactIdentityProfilePopover(user: presentation.member.user, isClyde: presentation.isClyde)
         } else {
         MemberProfilePopover(
             member: presentation.member,
@@ -72,10 +72,11 @@ extension ProfilePresentationContent where Footer == EmptyView {
     }
 }
 
-/// Webhooks have message-scoped identity, no remote user profile or presence.
+/// Webhooks and local Clyde notices have no remote user profile or presence.
 /// Keep this card compact instead of reserving space for full-profile sections.
-private struct WebhookProfilePopover: View {
+private struct CompactIdentityProfilePopover: View {
     let user: User
+    var isClyde = false
     @State private var accent: UInt32?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityPlayAnimatedImages) private var playsAnimatedImages
@@ -83,15 +84,17 @@ private struct WebhookProfilePopover: View {
     var body: some View {
         ProfileHeroSection(
             member: Member(user: user, roleName: "", status: .offline),
-            profile: UserProfile(user: user, accentHex: accent),
+            profile: UserProfile(user: user, accentHex: isClyde ? DiscordBuiltInCommands.clydeAccent : accent),
             themeHexes: [], avatarCutoutColor: Color(nsColor: .windowBackgroundColor),
             topCornerRadius: 16, roundsTopTrailingCorner: true,
             statusBubbleWidth: 200, isExpandedProfile: false,
-            animatesRemoteMedia: !reduceMotion && playsAnimatedImages, showsPresence: false
+            animatesRemoteMedia: !reduceMotion && playsAnimatedImages, showsPresence: false,
+            isVerifiedApp: isClyde, usesSolidBannerAccent: isClyde
         )
         .frame(width: MemberProfilePopover<EmptyView>.preferredWidth)
         .padding(.bottom, 16)
         .task(id: user.avatarURL) {
+            guard !isClyde else { return }
             accent = nil
             guard let url = user.avatarURL else { return }
             let palette = try? await ProfileAvatarPaletteLoader.shared.colors(url)
@@ -404,8 +407,24 @@ private struct ProfileHeroSection: View {
     let isExpandedProfile: Bool
     let animatesRemoteMedia: Bool
     var showsPresence = true
+    var isVerifiedApp = false
+    var usesSolidBannerAccent = false
     var editor: ProfileEditorState?
     var openEditorPicker: ((ProfileEditorPicker) -> Void)?
+
+    @State private var defaultAvatarPalette: (url: URL, color: UInt32)?
+
+    private var defaultAvatarAccent: UInt32? {
+        guard let url = defaultAvatarBannerSource else { return nil }
+        return defaultAvatarPalette?.url == url ? defaultAvatarPalette?.color : ProfileAvatarPaletteLoader.shared.cached(url)?.first
+    }
+
+    private var defaultAvatarBannerSource: URL? {
+        guard let profile, profile.bannerURL == nil, profile.accentHex == nil,
+              let url = profile.defaultAvatarURL,
+              (profile.avatarURL ?? profile.user.avatarURL ?? url) == url else { return nil }
+        return url
+    }
 
     private var avatarSize: CGFloat { 70 }
     private var horizontalInset: CGFloat { 16 }
@@ -414,13 +433,22 @@ private struct ProfileHeroSection: View {
         VStack(alignment: .leading, spacing: 0) {
             ProfileBanner(
                 url: profile?.bannerURL,
-                accentHex: profile?.accentHex,
+                accentHex: profile?.accentHex ?? defaultAvatarAccent,
                 themeHexes: themeHexes,
                 topCornerRadius: topCornerRadius,
                 roundsTopTrailingCorner: roundsTopTrailingCorner,
                 animates: animatesRemoteMedia,
-                height: ProfileBannerLayout.height
+                height: ProfileBannerLayout.height, usesSolidAccent: usesSolidBannerAccent || defaultAvatarAccent != nil
             )
+                .task(id: defaultAvatarBannerSource) {
+                    defaultAvatarPalette = nil
+                    guard let url = defaultAvatarBannerSource else { return }
+                    // The palette excludes the white glyph and selects the
+                    // default artwork's background, not an image average.
+                    let colors = try? await ProfileAvatarPaletteLoader.shared.colors(url)
+                    guard !Task.isCancelled else { return }
+                    if let color = colors?.first { defaultAvatarPalette = (url, color) }
+                }
                 .overlay(alignment: .topLeading) {
                     Circle()
                         .fill(.black)
@@ -464,6 +492,7 @@ private struct ProfileHeroSection: View {
                 nameStyle: cosmeticPolicy.disables(.nameStyle, for: member.id) ? nil : (profile?.user.displayNameStyle ?? member.user.displayNameStyle),
                 primaryGuildIdentity: profile?.user.primaryGuild ?? member.user.primaryGuild,
                 isBot: profile?.user.isBot ?? member.user.isBot,
+                isVerifiedApp: isVerifiedApp,
                 badges: profile.map(SakuraCordSponsors.badges) ?? [],
                 premiumSince: profile?.premiumSince,
                 premiumGuildSince: profile?.premiumGuildSince,
@@ -620,17 +649,22 @@ private struct ProfileBanner: View {
     let roundsTopTrailingCorner: Bool
     let animates: Bool
     var height: CGFloat = ProfileBannerLayout.height
+    var usesSolidAccent = false
 
     var body: some View {
         GeometryReader { proxy in
             let width = ProfileBannerLayout.constrainedWidth(proxy.size.width)
 
             ZStack {
-                LinearGradient(
-                    colors: ProfilePalette.banner(themeHexes: themeHexes, accentHex: accentHex),
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
+                if usesSolidAccent, let accentHex {
+                    Color(hex: accentHex)
+                } else {
+                    LinearGradient(
+                        colors: ProfilePalette.banner(themeHexes: themeHexes, accentHex: accentHex),
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                }
                 if let url {
                     AnimatedRemoteImage(
                         url: url,
@@ -679,6 +713,7 @@ private struct ProfileIdentitySection: View {
     let nameStyle: DisplayNameStyle?
     let primaryGuildIdentity: PrimaryGuildIdentity?
     let isBot: Bool
+    var isVerifiedApp = false
     let badges: [ProfileBadge]
     let premiumSince: Date?
     let premiumGuildSince: Date?
@@ -708,12 +743,21 @@ private struct ProfileIdentitySection: View {
                         .help("You don’t have permission to change your nickname in this server.")
                 } else { styledName }
                 if isBot {
-                    Text("APP")
+                    HStack(spacing: 3) {
+                        if isVerifiedApp {
+                            Image(systemName: "checkmark").accessibilityHidden(true)
+                        }
+                        Text("APP")
+                    }
+                        .accessibilityLabel(isVerifiedApp ? "Verified App" : "App")
                         .font(.caption.weight(.bold))
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3)
                         .foregroundStyle(.white)
-                        .background(.indigo, in: ConcentricRectangle(cornerRadius: 5))
+                        .background(
+                            isVerifiedApp ? Color(hex: DiscordBuiltInCommands.clydeAccent) : .indigo,
+                            in: ConcentricRectangle(cornerRadius: 5)
+                        )
                 }
             }
             ProfileRoleFlowLayout(spacing: 6, constrainsChildren: true, alignment: .firstTextBaseline) {

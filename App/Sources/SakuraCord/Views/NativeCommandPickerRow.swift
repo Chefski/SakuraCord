@@ -106,7 +106,7 @@ final class NativeCommandPickerRow: NSView, NativePickerReusableRow {
     }
 
     private func updateImage(_ row: ApplicationCommandDocumentRow, colorScheme: ColorScheme) {
-        let url = row.showsIcon ? row.application?.iconURL ?? row.application?.bot?.avatarURL : nil
+        let url = row.showsIcon ? row.application?.displayIconURL : nil
         let size: CGFloat = row.command == nil ? 16 : 28
         let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
         let identity = "\(row.isFrequent):\(row.application?.id ?? ""):\(row.application?.name ?? ""):\(url?.absoluteString ?? ""):\(size):\(scale):\(colorScheme)"

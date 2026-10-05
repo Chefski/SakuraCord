@@ -306,9 +306,12 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
         [LottieStickerOverlayKey: NativeTimelineLottieStickerOverlay] = [:]
     var animatedMediaOverlays:
         [AnimatedMediaOverlayKey: NativeTimelineAnimatedMediaOverlay] = [:]
-    var loadingIndicators:
-        [NativeMessageTimelineItem.Identifier:
-            NativeTimelineLoadingIndicator] = [:]
+    struct ActivityIndicatorKey: Hashable {
+        let row: NativeMessageTimelineItem.Identifier
+        let index: Int
+    }
+
+    var activityIndicators: [ActivityIndicatorKey: NSView] = [:]
     var spoilerOverlays:
         [NativeTimelineComponentRevealKey:
             NativeTimelineSpoilerOverlayHost] = [:]
@@ -461,6 +464,7 @@ enum NativeTimelineRowPainter {
             NativeTimelineComponentButtonTarget? = nil,
         componentButtonPressProgress: CGFloat = 0,
         isForwardedSourceHovered: Bool = false,
+        isEphemeralDismissHovered: Bool = false,
         hidesMessageContent: Bool = false,
         hoveredReactionID: String? = nil,
         isAddReactionHovered: Bool = false,
@@ -531,6 +535,7 @@ enum NativeTimelineRowPainter {
                 componentButtonPressProgress:
                     componentButtonPressProgress,
                 isForwardedSourceHovered: isForwardedSourceHovered,
+                isEphemeralDismissHovered: isEphemeralDismissHovered,
                 hidesMessageContent: hidesMessageContent,
                 hoveredReactionID: hoveredReactionID,
                 isAddReactionHovered: isAddReactionHovered,

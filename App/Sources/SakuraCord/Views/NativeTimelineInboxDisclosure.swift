@@ -164,7 +164,7 @@ extension NativeTimelineCanvasView {
         positionAnimatedMediaOverlays()
         positionInlineVideoOverlays()
         positionLottieStickerOverlays()
-        reconcileLoadingIndicators()
+        reconcileActivityIndicators()
         positionSpoilerOverlays()
         maskInboxDisclosureSubviews()
     }
@@ -188,7 +188,7 @@ extension NativeTimelineCanvasView {
         views += animatedMediaOverlays.filter { identifiers.contains($0.key.row) }.map(\.value)
         views += inlineVideoOverlays.filter { identifiers.contains($0.key.row) }.map(\.value)
         views += lottieStickerOverlays.filter { identifiers.contains($0.key.row) }.map(\.value)
-        views += loadingIndicators.filter { identifiers.contains($0.key) }.map(\.value)
+        views += activityIndicators.filter { identifiers.contains($0.key.row) }.map(\.value)
         views += spoilerOverlays.filter { messageIDs.contains($0.key.messageID) }.map(\.value)
         for view in views {
             view.wantsLayer = true

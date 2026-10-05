@@ -21,7 +21,6 @@ struct InteractionModalView: View {
                         ForEach(form.modal.nodes) { node in
                             nodeView(node)
                         }
-                        privacyNotice
                         if !form.isSubmittable {
                             Label(
                                 "This form uses a field SakuraCord can’t show yet, so it can’t be submitted here.",
@@ -58,10 +57,7 @@ struct InteractionModalView: View {
                 ModalGlassButton(symbol: "xmark", label: "Cancel") { dismiss?() }
                     .disabled(form.isSubmitting)
                 Spacer(minLength: 16)
-                if form.isSubmitting {
-                    ProgressView().controlSize(.small).padding(.trailing, 6)
-                }
-                ModalGlassButton(symbol: "paperplane.fill", label: "Submit", primary: true, action: submit)
+                ModalGlassButton(symbol: "paperplane.fill", label: "Submit", primary: true, isLoading: form.isSubmitting, action: submit)
                     .disabled(form.isSubmitting || !form.isSubmittable)
                     .keyboardShortcut(.return, modifiers: .command)
             }
@@ -95,17 +91,6 @@ struct InteractionModalView: View {
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 14)
-    }
-
-    private var privacyNotice: some View {
-        Label(
-            "This form will be submitted to \(form.modal.application.name). Don’t share passwords or other sensitive information.",
-            systemImage: "lock.shield"
-        )
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, 2)
     }
 
     private func submit() {

@@ -41,6 +41,7 @@ struct NativePickerDocument<Row: Identifiable, Content: View>: NSViewRepresentab
     var didScrollTo: (Row) -> Void = { _ in }
     var topVisibleRowChanged: (Row) -> Void = { _ in }
     var pointerRowChanged: ((Row) -> Void)?
+    var rowActivated: ((Row) -> Void)?
     var nativeContent: ((Row, NSView?, EnvironmentValues) -> NSView?)?
     @ViewBuilder let content: (Row) -> Content
     @Environment(\.self) private var environment
@@ -65,6 +66,7 @@ struct NativePickerDocument<Row: Identifiable, Content: View>: NSViewRepresentab
             rows: rows, revision: revision, width: scroll.contentSize.width,
             height: rowHeight, visible: becameVisible, pinnedHeader: pinnedHeader,
             didScrollTo: didScrollTo, topVisibleRowChanged: topVisibleRowChanged, pointerRowChanged: pointerRowChanged,
+            rowActivated: rowActivated,
             nativeContent: { row, reused in nativeContent?(row, reused, environment) },
             content: { row in AnyView(content(row).environment(\.self, environment).id(row.id)) }
         )
@@ -85,6 +87,9 @@ struct NativePickerDocument<Row: Identifiable, Content: View>: NSViewRepresentab
 @MainActor protocol NativePickerViewport: AnyObject {
     func viewportDidLayout()
     func synchronizePointerHighlight(at location: NSPoint?)
+    var activatesRowsOnClick: Bool { get }
+    func rowID(at locationInWindow: NSPoint) -> String?
+    func activateRow(id: String)
 }
 
 final class NativePickerScrollView: NSScrollView {
@@ -92,6 +97,7 @@ final class NativePickerScrollView: NSScrollView {
     var capturesOverlayPointer = false { didSet { updatePointerMonitor() } }
     private var pointerMonitor: Any?
     private weak var pressedView: NSView?
+    private var pressedRowID: String?
 
     override func layout() {
         super.layout()
@@ -103,6 +109,7 @@ final class NativePickerScrollView: NSScrollView {
         if let pointerMonitor { NSEvent.removeMonitor(pointerMonitor) }
         pointerMonitor = nil
         pressedView = nil
+        pressedRowID = nil
     }
 
     private func updatePointerMonitor() {
@@ -119,11 +126,8 @@ final class NativePickerScrollView: NSScrollView {
                 guard let self, event.window === self.window, !self.isHiddenOrHasHiddenAncestor,
                       WindowModalCoordinator.allowsInput(for: self) else { return false }
                 let inside = self.bounds.contains(self.convert(event.locationInWindow, from: nil))
-                if event.type == .leftMouseUp, let pressed = self.pressedView {
-                    self.pressedView = nil
-                    pressed.mouseUp(with: event)
-                    return true
-                }
+                let viewport = self.documentView as? any NativePickerViewport
+                if event.type == .leftMouseUp, self.releasePress(event, inside: inside) { return true }
                 if event.type == .mouseMoved {
                     (self.documentView as? any NativePickerViewport)?.synchronizePointerHighlight(at: event.locationInWindow)
                 }
@@ -139,6 +143,8 @@ final class NativePickerScrollView: NSScrollView {
                     // Let the covered timeline clear its old hover; its region
                     // guard prevents it from highlighting anything underneath.
                     return false
+                case .leftMouseDown where viewport?.activatesRowsOnClick == true:
+                    self.pressedRowID = viewport?.rowID(at: event.locationInWindow)
                 case .leftMouseDown:
                     self.pressedView = target
                     target?.mouseDown(with: event)
@@ -150,6 +156,22 @@ final class NativePickerScrollView: NSScrollView {
             }
             return consumed ? nil : event
         }
+    }
+
+    /// Completes a press that began in this list, even if released outside it.
+    private func releasePress(_ event: NSEvent, inside: Bool) -> Bool {
+        if let pressedRowID {
+            self.pressedRowID = nil
+            let viewport = documentView as? any NativePickerViewport
+            if inside, viewport?.rowID(at: event.locationInWindow) == pressedRowID {
+                viewport?.activateRow(id: pressedRowID)
+            }
+            return true
+        }
+        guard let pressedView else { return false }
+        self.pressedView = nil
+        pressedView.mouseUp(with: event)
+        return true
     }
 
     override func viewDidMoveToWindow() {

@@ -20,12 +20,12 @@ extension DiscordRESTProvider {
         -> ApplicationCommandCatalog
     {
         if let cached = cachedApplicationCommandCatalogs[target] {
-            return cached
+            return resolvingCommandApplicationIdentities(in: cached)
         }
         if let task = applicationCommandCatalogTasks[target] {
             let catalog = try await task.value
             guard !task.isCancelled else { throw CancellationError() }
-            return catalog
+            return resolvingCommandApplicationIdentities(in: catalog)
         }
         let task = Task { [weak self] in
             guard let self else { throw CancellationError() }
@@ -37,13 +37,34 @@ extension DiscordRESTProvider {
             guard !task.isCancelled else { throw CancellationError() }
             applicationCommandCatalogTasks[target] = nil
             cachedApplicationCommandCatalogs[target] = catalog
-            return catalog
+            return resolvingCommandApplicationIdentities(in: catalog)
         } catch {
             // Invalidation cancels and removes the old task. It may finish
             // after a replacement has started; never remove that replacement.
             if !task.isCancelled { applicationCommandCatalogTasks[target] = nil }
             throw error
         }
+    }
+
+    /// Index entries can carry only bot_id. Reuse the live user cache instead
+    /// of inventing a second identity (or making a profile request per app).
+    private func resolvingCommandApplicationIdentities(in catalog: ApplicationCommandCatalog) -> ApplicationCommandCatalog {
+        var result = catalog
+        result.applications = catalog.applications.map { application in
+            var application = application
+            let botID = application.botID?.description ?? application.bot?.id.description ?? application.id
+            if let dto = cachedGatewayUsersByID[botID], let user = try? dto.domain() {
+                application.bot = user
+            }
+            return application
+        }
+        let applications = Dictionary(result.applications.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        result.commands = catalog.commands.map { command in
+            var command = command
+            command.application = applications[command.applicationID] ?? command.application
+            return command
+        }
+        return result
     }
 
     func fetchApplicationCommandCatalog(for target: ApplicationCommandIndexTarget)

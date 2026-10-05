@@ -52,6 +52,53 @@ func commandSearchRanking() throws {
 }
 
 @MainActor
+@Test("command index invalidation restarts a preload before the picker is opened")
+func commandIndexInvalidationDuringPreload() {
+    let guild = ApplicationCommandIndexTarget.guild(GuildID(rawValue: 600))
+    for target in [guild, .user] {
+        let model = ApplicationCommandComposerModel()
+        model.beginLoading(targets: [guild, .user])
+        #expect(!model.isPickerPresented)
+        #expect(!model.invalidated(.channel(ChannelID(rawValue: 700))))
+        // AppModel uses this result to cancel the old aggregate load and start
+        // a replacement, rather than accepting the other index by itself.
+        #expect(model.invalidated(target))
+        #expect(!model.hasLoadedCatalogs)
+
+        model.replaceCatalogs([
+            ApplicationCommandCatalog(target: guild, applications: [], commands: []),
+            ApplicationCommandCatalog(target: .user, applications: [], commands: [])
+        ])
+        #expect(model.hasLoadedCatalogs)
+        #expect(!model.isLoading)
+        // An idle, closed picker still refreshes lazily on its next opening.
+        #expect(!model.invalidated(target))
+        #expect(!model.hasLoadedCatalogs)
+    }
+}
+
+@MainActor
+@Test("remote index updates preserve built-in command drafts")
+func commandIndexInvalidationPreservesBuiltInDraft() throws {
+    let model = ApplicationCommandComposerModel()
+    model.beginLoading(targets: [.user])
+    model.replaceCatalogs([ApplicationCommandCatalog(target: .user, applications: [], commands: [])])
+    let command = try #require(DiscordBuiltInCommands.all.first { $0.name == "nick" })
+    model.activate(command)
+    let option = try #require(command.options.first)
+    model.addOption(option)
+    model.setText("Unsaved nickname", for: .field(option.id))
+    let before = try #require(model.draft)
+    #expect(!model.invalidated(.user))
+    #expect(model.draft == before)
+
+    // A remote command from that index still follows the invalidation path.
+    model.activate(researchCommand())
+    #expect(model.invalidated(.user))
+    #expect(model.draft == nil)
+}
+
+@MainActor
 @Test("command availability respects context and explicit permission precedence")
 func commandAvailabilityFiltering() throws {
     let application = ApplicationCommandApplication(id: "100", name: "Utility")
@@ -138,6 +185,12 @@ func commandDirectMessageContextFiltering() {
         kind: .groupDirectMessage, recipients: [bot, person]
     )
 
+    #expect(ApplicationCommandAvailability.contextIndexTarget(for: botDM) == .channel(botDM.id))
+    #expect(ApplicationCommandAvailability.contextIndexTarget(for: privateDM) == nil)
+    #expect(ApplicationCommandAvailability.contextIndexTarget(for: groupDM) == nil)
+    let guild = Channel(id: ChannelID(rawValue: 703), guildID: GuildID(rawValue: 600), name: "general")
+    #expect(ApplicationCommandAvailability.contextIndexTarget(for: guild) == .guild(GuildID(rawValue: 600)))
+
     command.contexts = [1]
     #expect(ApplicationCommandAvailability.isAvailable(
         command, channel: botDM, currentUserID: nil, memberRoleIDs: []
@@ -158,6 +211,25 @@ func commandDirectMessageContextFiltering() {
     ))
     #expect(ApplicationCommandAvailability.isAvailable(
         command, channel: groupDM, currentUserID: nil, memberRoleIDs: []
+    ))
+
+    command.contexts = []
+    #expect(!ApplicationCommandAvailability.isAvailable(
+        command, channel: privateDM, currentUserID: nil, memberRoleIDs: []
+    ))
+    #expect(!ApplicationCommandAvailability.isAvailable(
+        command, channel: botDM, currentUserID: nil, memberRoleIDs: []
+    ))
+
+    // User-installed indexes supply bot_id without an expanded bot user.
+    command.application.bot = nil
+    command.application.botID = bot.id
+    command.contexts = [1]
+    #expect(ApplicationCommandAvailability.isAvailable(
+        command, channel: botDM, currentUserID: nil, memberRoleIDs: [], indexTarget: .user
+    ))
+    #expect(!ApplicationCommandAvailability.isAvailable(
+        command, channel: privateDM, currentUserID: nil, memberRoleIDs: [], indexTarget: .user
     ))
 }
 
@@ -190,7 +262,7 @@ func commandDraftFieldOrder() throws {
 
     draft.setText("hello", for: "200/text")
     draft.focus = draft.endGap
-    let added = draft.addOptionalOption(try #require(draft.availableOptionalOptions.last))
+    let added = draft.addOption(try #require(draft.availableOptions.last))
     #expect(added)
     draft.setText("later", for: "200/note")
     // A name typed in the gap before `note` lands there, as in Discord.
@@ -212,13 +284,13 @@ func commandDraftFieldOrder() throws {
 func commandDraftBackspaceSemantics() throws {
     var draft = ApplicationCommandDraft(command: researchCommand())
     draft.setText("ab", for: "200/text")
-    let who = try #require(draft.availableOptionalOptions.first { $0.name == "who" })
+    let who = try #require(draft.availableOptions.first { $0.name == "who" })
     draft.focus = draft.endGap
-    draft.addOptionalOption(who)
+    draft.addOption(who)
     draft.resolve("200/who", to: .user(UserID(rawValue: 123_456_789_012_345_678)), display: "@person")
-    let note = try #require(draft.availableOptionalOptions.first { $0.name == "note" })
+    let note = try #require(draft.availableOptions.first { $0.name == "note" })
     draft.focus = draft.endGap
-    draft.addOptionalOption(note)
+    draft.addOption(note)
 
     // An empty optional chip is removed and the caret stays in its gap.
     let removedEmpty = draft.deleteBackward(intoFieldBefore: 3)
@@ -236,7 +308,9 @@ func commandDraftBackspaceSemantics() throws {
     // Nothing precedes the first chip; that Backspace converts to plain text.
     let beforeFirst = draft.deleteBackward(intoFieldBefore: 0)
     #expect(beforeFirst == nil)
-    #expect(draft.plainTextAfterDeletingCommand == "/researc text:a who:")
+    let document = ApplicationCommandEditorDocument(draft: draft)
+    #expect(document.edit(replacing: NSRange(location: document.command.length - 1, length: 1), with: "", draft: draft)
+        == .cancel(restoringText: "/researc text:a who:"))
 }
 
 @MainActor
@@ -275,6 +349,13 @@ func commandDraftValidation() throws {
     #expect(model.prepareSubmission())
     let invocation = try #require(model.invocation(channelID: ChannelID(rawValue: 300), guildID: nil))
     #expect(invocation.values.map(\.argument) == [.string("ok"), .integer(-3)])
+    model.removeField("200/text")
+    #expect(model.draft?.field("200/text") == nil)
+    #expect(model.draft?.availableOptions.contains(where: { $0.id == "200/text" }) == true)
+    #expect(!model.canSubmit)
+    #expect(!model.prepareSubmission())
+    #expect(model.draft?.focusedField?.id == "200/text")
+    #expect(model.fieldIssue?.message == "This option is required.")
 }
 
 @MainActor
@@ -308,6 +389,12 @@ func commandAutocompleteNonceScoping() throws {
     model.setText("", for: .field("300/query"))
     #expect(model.autocompleteRequest(channelID: channelID, guildID: nil) == nil)
     #expect(model.autocompleteStatus == .loaded([choice("stale")]))
+
+    model.resolveFocusedField(.string("wire-value"), display: "Displayed choice")
+    model.setFocus(.field(query.id))
+    let refocused = try #require(model.autocompleteRequest(channelID: channelID, guildID: nil))
+    #expect(refocused.query == "Displayed choice")
+    #expect(model.draft?.field(query.id)?.resolved == .string("wire-value"))
 }
 
 @MainActor
@@ -413,4 +500,44 @@ func commandInteractionModalOrdering() throws {
     model.consumeInteraction(.succeeded(nonce: "submit", interactionID: "current"))
     #expect(model.interactionModalForm == nil)
     #expect(model.finishPendingInteraction("submit") == nil)
+}
+
+@MainActor
+@Test("typing implicitly enters only a sole optional non-attachment option")
+func commandImplicitOptionEntry() throws {
+    let application = ApplicationCommandApplication(id: "100", name: "Fixture")
+    let optional = ApplicationCommandOption(id: "value", name: "value", description: "", type: .string)
+    for text in ["x", " ", "value:", "🌸 café"] {
+        let model = ApplicationCommandComposerModel()
+        model.activate(composerFixtureCommand(id: "200", name: "single", application: application, options: [optional]))
+        model.setText(text, for: .gap(0))
+        #expect(model.draft?.focus == .field(optional.id))
+        #expect(model.draft?.field(optional.id)?.text == text)
+        #expect(model.draft?.gapTexts == ["", ""])
+    }
+    for type in [ApplicationCommandOptionType.string, .user, .attachment] {
+        for required in [false, true] {
+            var option = optional
+            option.type = type
+            option.isRequired = required
+            let model = ApplicationCommandComposerModel()
+            model.activate(composerFixtureCommand(id: "201", name: "single", application: application, options: [option]))
+            var draft = try #require(model.draft)
+            draft.removeField(option.id)
+            draft.focus = .gap(0)
+            model.applyEditorDraft(draft, caret: nil)
+            model.setText("ex", for: .gap(0))
+            #expect(model.draft?.fields.isEmpty == (required || type == .attachment))
+        }
+    }
+    var second = optional
+    second.id = "other"
+    second.name = "other"
+    let model = ApplicationCommandComposerModel()
+    model.activate(composerFixtureCommand(id: "202", name: "multiple", application: application, options: [optional, second]))
+    model.addOption(optional)
+    model.setText("filled", for: .field(optional.id))
+    model.setText("x", for: .gap(1))
+    #expect(model.draft?.fields.map(\.id) == [optional.id])
+    #expect(model.draft?.gapText == "x")
 }

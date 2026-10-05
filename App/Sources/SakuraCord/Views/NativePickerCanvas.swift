@@ -13,6 +13,7 @@ final class NativePickerCanvas<Row: Identifiable>: NSView, NativePickerViewport 
     private var didScrollTo: ((Row) -> Void)?
     private var topVisibleRowChanged: ((Row) -> Void)?
     private var pointerRowChanged: ((Row) -> Void)?
+    private var rowActivated: ((Row) -> Void)?
     private var pointerLocationInWindow: NSPoint?
     private var pointerFollowsScrolling = false
     private var pointerRefreshTask: Task<Void, Never>?
@@ -20,6 +21,10 @@ final class NativePickerCanvas<Row: Identifiable>: NSView, NativePickerViewport 
     private var nativeContent: ((Row, NSView?) -> NSView?)?
     private var visibleIDs: Set<String> = []
     private var deliveredRequest: UInt64?
+    /// A scroll request received before the viewport has a height. Revealing
+    /// against an empty viewport would bottom-align the row and leave the
+    /// list scrolled once it grows.
+    private var waitingRequest: NativePickerScrollPosition.Request?
     private var pendingDestinationID: String?
     private var notificationTask: Task<Void, Never>?
     private var isUpdating = false
@@ -49,7 +54,27 @@ final class NativePickerCanvas<Row: Identifiable>: NSView, NativePickerViewport 
     // AppKit's ancestor-clipped visibleRect is then empty despite a visible clip view.
     private var viewport: CGRect { enclosingScrollView?.documentVisibleRect ?? bounds }
 
-    func viewportDidLayout() { viewportChanged() }
+    func viewportDidLayout() {
+        viewportChanged()
+        apply(waitingRequest)
+    }
+
+    var activatesRowsOnClick: Bool { rowActivated != nil }
+
+    /// The pointer row for overlay clicks. Hosted SwiftUI rows cannot receive
+    /// clicks forwarded by an event monitor, so the list activates the row.
+    func rowID(at locationInWindow: NSPoint) -> String? {
+        let point = convert(locationInWindow, from: nil)
+        guard viewport.contains(point), currentPinnedHeader?.frame.contains(point) != true,
+              let index = geometry.rows(intersecting: CGRect(x: point.x, y: point.y, width: 1, height: 0.01)).first,
+              rows.indices.contains(index) else { return nil }
+        return rows[index].id
+    }
+
+    func activateRow(id: String) {
+        guard WindowModalCoordinator.allowsInput(for: self), let row = rows.first(where: { $0.id == id }) else { return }
+        rowActivated?(row)
+    }
 
     func synchronizePointerHighlight(at location: NSPoint?) {
         guard let pointerRowChanged, let window, window.isKeyWindow,
@@ -92,6 +117,7 @@ final class NativePickerCanvas<Row: Identifiable>: NSView, NativePickerViewport 
         didScrollTo: @escaping (Row) -> Void = { _ in },
         topVisibleRowChanged: @escaping (Row) -> Void = { _ in },
         pointerRowChanged: ((Row) -> Void)? = nil,
+        rowActivated: ((Row) -> Void)? = nil,
         nativeContent: ((Row, NSView?) -> NSView?)? = nil,
         content: @escaping (Row) -> AnyView
     ) {
@@ -102,6 +128,7 @@ final class NativePickerCanvas<Row: Identifiable>: NSView, NativePickerViewport 
         self.didScrollTo = didScrollTo
         self.topVisibleRowChanged = topVisibleRowChanged
         self.pointerRowChanged = pointerRowChanged
+        self.rowActivated = rowActivated
         self.nativeContent = nativeContent
         let changed = self.revision != revision || abs(layoutWidth - width) > 0.5
         let anchorIndex = geometry.rows(intersecting: viewport).first
@@ -134,7 +161,8 @@ final class NativePickerCanvas<Row: Identifiable>: NSView, NativePickerViewport 
         if abs(layoutWidth - scroll.contentSize.width) > 0.5 || frame.height != max(geometry.contentHeight, scroll.contentSize.height),
            let revision, let height, let visible, let content {
             update(rows: rows, revision: revision, width: scroll.contentSize.width, height: height, visible: visible, pinnedHeader: pinnedHeader,
-                didScrollTo: didScrollTo ?? { _ in }, topVisibleRowChanged: topVisibleRowChanged ?? { _ in }, pointerRowChanged: pointerRowChanged, nativeContent: nativeContent, content: content)
+                didScrollTo: didScrollTo ?? { _ in }, topVisibleRowChanged: topVisibleRowChanged ?? { _ in }, pointerRowChanged: pointerRowChanged,
+                rowActivated: rowActivated, nativeContent: nativeContent, content: content)
         } else {
             reconcile(refresh: false)
         }
@@ -151,6 +179,11 @@ final class NativePickerCanvas<Row: Identifiable>: NSView, NativePickerViewport 
     func apply(_ request: NativePickerScrollPosition.Request?) {
         guard let request, deliveredRequest != request.sequence,
               let index = geometry.indicesByID[request.id], let scroll = enclosingScrollView else { return }
+        guard scroll.contentSize.height > 0 else {
+            waitingRequest = request
+            return
+        }
+        waitingRequest = nil
         deliveredRequest = request.sequence
         pointerFollowsScrolling = false
         pointerRefreshTask?.cancel()

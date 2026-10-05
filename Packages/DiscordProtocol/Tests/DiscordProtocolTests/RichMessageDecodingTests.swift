@@ -353,6 +353,31 @@ import Testing
     #expect(message.interactionMetadata?.originalResponseMessageID == MessageID("700"))
 }
 
+@Test func `uploaded component media keeps its delivered URL alongside the attachment reference`() throws {
+    let data = Data(
+        #"""
+        {
+          "id":"700","channel_id":"200","type":23,"flags":32768,"content":"","attachments":[],
+          "author":{"id":"101","username":"greed","bot":true},
+          "components":[{"type":12,"id":1,"items":[{"media":{
+            "url":"https://cdn.discordapp.com/attachments/200/900/quote.png?ex=1",
+            "proxy_url":"https://media.discordapp.net/attachments/200/900/quote.png?ex=1",
+            "width":1200,"height":630,"content_type":"image/png","attachment_id":"900","flags":0
+          },"description":null,"spoiler":false}]}]
+        }
+        """#.utf8
+    )
+
+    let message = try RichMessageFixtureDecoder.decodeMessage(from: data)
+    guard case let .mediaGallery(_, items) = message.components.first, let media = items.first?.media else {
+        Issue.record("Expected a media gallery")
+        return
+    }
+    #expect(media.attachmentName == "900")
+    #expect(media.url?.host() == "cdn.discordapp.com")
+    #expect(media.proxyURL?.host() == "media.discordapp.net")
+}
+
 @Test func `webhook message identity survives decoding and sparse updates without indexing a user`() throws {
     let data = Data(#"""
     {"id":"100","channel_id":"200","webhook_id":"300",
@@ -368,7 +393,8 @@ import Testing
     #expect(dto.searchIndexUsers.isEmpty)
     #expect(message.replyPreview?.author.displayName == "Other persona")
     #expect(message.replyPreview?.webhookID == "300")
-    #expect(message.replyPreview?.author.avatarURL?.path == "/embed/avatars/0.png")
+    // Legacy "0000" selects the first default artwork, like Discord's client.
+    #expect(message.replyPreview?.author.avatarURL?.lastPathComponent == "18e336a74a159cfd.png")
     #expect(try JSONDecoder().decode(Message.self, from: JSONEncoder().encode(message)) == message)
     var updated = message
     let update = try JSONDecoder().decode(MessageUpdateDTO.self, from: Data(#"{"id":"100","channel_id":"200","content":"Edited"}"#.utf8))

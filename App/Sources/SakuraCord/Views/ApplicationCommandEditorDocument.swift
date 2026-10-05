@@ -1,10 +1,10 @@
 import Foundation
 import SakuraCordModels
 
-/// A caret position the command editor allows: inside a field's value or in
-/// a gap between chips.
+/// A command-editor selection, expressed independently of its rendered offsets.
 enum ApplicationCommandEditorCaret: Equatable {
-    case field(String, offset: Int)
+    case command(offset: Int)
+    case field(String, offset: Int, length: Int = 0)
     case gap(Int, offset: Int)
 }
 
@@ -51,7 +51,7 @@ struct ApplicationCommandEditorDocument: Equatable {
         func appendGap(_ index: Int) {
             text += " "
             let start = text.utf16.count
-            if index == draft.gapIndex { text += draft.gapText }
+            text += draft.gapTexts[index]
             gaps.append(NSRange(location: start, length: text.utf16.count - start))
         }
         for (index, field) in draft.fields.enumerated() {
@@ -82,11 +82,14 @@ struct ApplicationCommandEditorDocument: Equatable {
 
     func location(of caret: ApplicationCommandEditorCaret) -> Int {
         switch caret {
-        case let .field(id, offset):
+        case let .command(offset):
+            return min(max(0, offset), command.length)
+        case let .field(id, offset, _):
             guard let span = span(id) else { return NSMaxRange(gaps[gaps.count - 1]) }
             return span.value.location + min(max(0, offset), span.value.length)
         case let .gap(index, offset):
             let gap = gaps[min(max(0, index), gaps.count - 1)]
+            if index == 0, gap.length > 0, offset == 0 { return command.length }
             return gap.location + min(max(0, offset), gap.length)
         }
     }
@@ -94,6 +97,8 @@ struct ApplicationCommandEditorDocument: Equatable {
     /// The caret at the end of a focus target's current text.
     func caret(endOf focus: ApplicationCommandDraftFocus) -> ApplicationCommandEditorCaret {
         switch focus {
+        case .command:
+            .command(offset: command.length)
         case let .field(id):
             .field(id, offset: span(id)?.value.length ?? 0)
         case let .gap(index):
@@ -101,14 +106,30 @@ struct ApplicationCommandEditorDocument: Equatable {
         }
     }
 
+    func range(of caret: ApplicationCommandEditorCaret) -> NSRange {
+        let location = location(of: caret)
+        if case let .field(id, _, length) = caret, let span = span(id) {
+            return NSRange(location: location, length: min(max(0, length), NSMaxRange(span.value) - location))
+        }
+        return NSRange(location: location, length: 0)
+    }
+
+    func selection(for focus: ApplicationCommandDraftFocus) -> ApplicationCommandEditorCaret {
+        if case let .field(id) = focus, let span = span(id) {
+            return .field(id, offset: 0, length: span.value.length)
+        }
+        return caret(endOf: focus)
+    }
+
     func focus(at location: Int) -> ApplicationCommandDraftFocus? {
+        if contains(command, location) { return .command }
         if let span = fields.first(where: { contains($0.value, location) }) {
             return .field(span.id)
         }
         return gaps.firstIndex { contains($0, location) }.map(ApplicationCommandDraftFocus.gap)
     }
 
-    /// Moves a caret off the command name, labels and separators. Atomic
+    /// Moves a caret off labels and structural separators. Atomic
     /// values only accept a caret at either end.
     private struct CaretStop {
         let start: Int
@@ -117,7 +138,17 @@ struct ApplicationCommandEditorDocument: Equatable {
     }
 
     func snap(_ location: Int, direction: ApplicationCommandEditorDirection) -> Int {
-        var stops = gaps.map { CaretStop(start: $0.location, end: NSMaxRange($0), atomic: false) }
+        var stops = [CaretStop(start: command.location, end: NSMaxRange(command), atomic: false)]
+        stops += gaps.enumerated().compactMap { index, gap in
+            // A command with no chips owns the caret after its trailing space.
+            // AppKit revisits it during IME commitment; snapping back into the
+            // command name would turn a value insertion into a root edit.
+            if fields.isEmpty, index == 0, gap.length == 0 {
+                return CaretStop(start: gap.location, end: gap.location, atomic: false)
+            }
+            guard index != 0 || gap.length > 0 else { return nil }
+            return CaretStop(start: gap.location + (index == 0 ? 1 : 0), end: NSMaxRange(gap), atomic: false)
+        }
         stops += fields.map { CaretStop(start: $0.value.location, end: NSMaxRange($0.value), atomic: $0.isAtomic) }
         stops.sort { $0.start < $1.start }
         if let stop = stops.first(where: { location >= $0.start && location <= $0.end }) {
@@ -157,18 +188,21 @@ struct ApplicationCommandEditorDocument: Equatable {
     ) -> (ApplicationCommandDraft, Set<String>) {
         var updated = draft
         var removed = Set<String>()
+        for (index, gap) in gaps.enumerated() {
+            let cut = NSIntersectionRange(range, gap)
+            if cut.length > 0 {
+                let local = NSRange(location: cut.location - gap.location, length: cut.length)
+                updated.setGapText((draft.gapTexts[index] as NSString).replacingCharacters(in: local, with: ""), at: index)
+            }
+        }
         for span in fields {
             guard let field = draft.field(span.id) else { continue }
             let labelCut = NSIntersectionRange(range, span.label)
             let valueCut = NSIntersectionRange(range, span.value)
             let coversLabel = span.label.length > 0 && labelCut.length == span.label.length
             if coversLabel, valueCut.length == span.value.length {
-                if field.option.isRequired {
-                    updated.setText("", for: span.id)
-                } else {
-                    updated.removeField(span.id)
-                    removed.insert(span.id)
-                }
+                updated.removeField(span.id)
+                removed.insert(span.id)
             } else if span.isAtomic,
                       valueCut.length > 0 || (range.length == 0 && contains(span.value, range.location))
             {
@@ -178,31 +212,18 @@ struct ApplicationCommandEditorDocument: Equatable {
                 updated.setText((field.text as NSString).replacingCharacters(in: local, with: ""), for: span.id)
             }
         }
-        if draft.gapIndex < gaps.count {
-            let gap = gaps[draft.gapIndex]
-            let cut = NSIntersectionRange(range, gap)
-            if cut.length > 0 {
-                let local = NSRange(location: cut.location - gap.location, length: cut.length)
-                updated.gapText = (draft.gapText as NSString).replacingCharacters(in: local, with: "")
-            }
-        }
         return (updated, removed)
     }
 
     // MARK: Editing
 
-    /// Maps a text-view change onto the draft. Newlines become spaces because
-    /// option values are single-line.
+    /// Maps native edits, including multiline values, onto the structured draft.
     func edit(
         replacing range: NSRange,
         with replacement: String,
         draft: ApplicationCommandDraft
     ) -> ApplicationCommandEditorEdit {
         let text = replacement
-            .replacingOccurrences(of: "\r\n", with: " ")
-            .replacingOccurrences(of: "\n", with: " ")
-            .replacingOccurrences(of: "\r", with: " ")
-        let isSanitized = text != replacement
         if range.length > 0, range.location <= command.location, NSMaxRange(range) >= length {
             return .cancel(restoringText: text)
         }
@@ -213,13 +234,29 @@ struct ApplicationCommandEditorDocument: Equatable {
             return .ignore
         }
 
-        if !isSanitized, let focus = nativeFocus(for: range) {
+        if let focus = nativeFocus(for: range) {
+            if fields.isEmpty, case .gap = focus, range.length > 0,
+               (draft.gapText as NSString).length == range.length, text.isEmpty {
+                return .cancel(restoringText: "/\(draft.command.displayName)")
+            }
             return .native(focus)
         }
 
         let deletion = deleting(range, from: draft)
         var updated = deletion.0
         let removed = deletion.1
+
+        let rootCut = NSIntersectionRange(range, command)
+        if rootCut.length > 0 || (!text.isEmpty && range.location <= NSMaxRange(command)) {
+            let root = (string as NSString).substring(with: command) as NSString
+            let rootRange = NSRange(location: min(range.location, command.length), length: rootCut.length)
+            let name = root.replacingCharacters(in: rootRange, with: text)
+            return .cancel(restoringText: updated.plainText(commandName: name))
+        }
+        if range.location <= NSMaxRange(command) {
+            updated.focus = .command
+            return .replace(updated, caret: .command(offset: min(range.location, command.length)))
+        }
 
         // Insert at the first editable place at or after where the change began.
         let anchorLocation = snap(range.location, direction: .forward)
@@ -246,9 +283,8 @@ struct ApplicationCommandEditorDocument: Equatable {
         let gapIndex = gaps.firstIndex { contains($0, anchorLocation) } ?? (gaps.count - 1)
         let removedBefore = fields.prefix(gapIndex).filter { removed.contains($0.id) }.count
         let target = min(gapIndex - removedBefore, updated.fields.count)
-        let kept = target == updated.gapIndex ? updated.gapText : ""
-        let offset = target == draft.gapIndex
-            ? min(max(0, anchorLocation - gaps[gapIndex].location), kept.utf16.count) : 0
+        let kept = updated.gapTexts[target]
+        let offset = min(max(0, anchorLocation - gaps[gapIndex].location), kept.utf16.count)
         updated.focus = .gap(target)
         updated.gapText = (kept as NSString).replacingCharacters(
             in: NSRange(location: offset, length: 0), with: text

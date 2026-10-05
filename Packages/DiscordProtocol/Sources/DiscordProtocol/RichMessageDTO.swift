@@ -228,6 +228,20 @@ final class MessageComponentDTO: Decodable {
             case contentType = "content_type"
             case attachmentID = "attachment_id"
         }
+
+        /// A request may reference `attachment://name`; a delivered message
+        /// resolves that to a CDN URL and keeps `attachment_id`, while the
+        /// attachment itself is absent from `attachments`. Keep both.
+        func domain(description: String?, isSpoiler: Bool) -> ComponentMedia {
+            let reference = url.flatMap { $0.hasPrefix("attachment://") ? String($0.dropFirst("attachment://".count)) : nil }
+            return ComponentMedia(
+                url: reference == nil ? url.flatMap(URL.init) : nil,
+                proxyURL: proxyURL.flatMap(URL.init), attachmentName: reference ?? attachmentID,
+                width: width, height: height, contentType: contentType,
+                placeholder: placeholder, placeholderVersion: placeholderVersion,
+                flags: flags, description: description, isSpoiler: isSpoiler
+            )
+        }
     }
 
     struct MediaItem: Decodable {
@@ -305,20 +319,8 @@ final class MessageComponentDTO: Decodable {
         let children = (components?.elements ?? []).enumerated().map {
             $0.element.domain(path: "\(path).\($0.offset)", usesPathIdentity: usesPathIdentity)
         }
-        let mediaValue: ComponentMedia = {
-            let source = type == 13 ? file : media
-            let raw = source?.url
-            let attachment =
-                raw?.hasPrefix("attachment://") == true
-                    ? String(raw!.dropFirst("attachment://".count)) : source?.attachmentID
-            return ComponentMedia(
-                url: attachment == nil ? raw.flatMap(URL.init) : nil,
-                proxyURL: source?.proxyURL.flatMap(URL.init), attachmentName: attachment,
-                width: source?.width, height: source?.height, contentType: source?.contentType,
-                placeholder: source?.placeholder, placeholderVersion: source?.placeholderVersion,
-                flags: source?.flags, description: description, isSpoiler: spoiler ?? false
-            )
-        }()
+        let mediaValue = (type == 13 ? file : media)?.domain(description: description, isSpoiler: spoiler ?? false)
+            ?? ComponentMedia(description: description, isSpoiler: spoiler ?? false)
         switch type {
         case 1: return .actionRow(id: stableID, children: children)
         case 2:
@@ -350,20 +352,10 @@ final class MessageComponentDTO: Decodable {
         case 11: return .thumbnail(id: stableID, media: mediaValue)
         case 12:
             let values = (items?.elements ?? []).enumerated().map { index, item in
-                let raw = item.media?.url
-                let attachment =
-                    raw?.hasPrefix("attachment://") == true
-                        ? String(raw!.dropFirst("attachment://".count)) : item.media?.attachmentID
-                return ComponentGalleryItem(
+                ComponentGalleryItem(
                     id: "\(stableID).\(index)",
-                    media: ComponentMedia(
-                        url: attachment == nil ? raw.flatMap(URL.init) : nil,
-                        proxyURL: item.media?.proxyURL.flatMap(URL.init), attachmentName: attachment,
-                        width: item.media?.width, height: item.media?.height,
-                        contentType: item.media?.contentType, placeholder: item.media?.placeholder,
-                        placeholderVersion: item.media?.placeholderVersion, flags: item.media?.flags,
-                        description: item.description, isSpoiler: item.spoiler ?? false
-                    )
+                    media: item.media?.domain(description: item.description, isSpoiler: item.spoiler ?? false)
+                        ?? ComponentMedia(description: item.description, isSpoiler: item.spoiler ?? false)
                 )
             }
             return .mediaGallery(id: stableID, items: values)

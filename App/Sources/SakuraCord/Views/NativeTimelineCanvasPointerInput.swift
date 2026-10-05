@@ -169,7 +169,7 @@ extension NativeTimelineCanvasView {
 
     override func mouseEntered(with event: NSEvent) {
         guard !ComposerOverlayPointerRegion.containsPointer(in: window, at: event.locationInWindow) else {
-            clearComposerCoveredHover()
+            clearPointerHoverTargets()
             return
         }
         guard WindowModalCoordinator.allowsInput(for: self) else { return }
@@ -210,11 +210,12 @@ extension NativeTimelineCanvasView {
         setHoveredForwardedSourceMessageID(
             forwardedSourcePointerHit(at: point)
         )
+        setHoveredEphemeralDismissMessageID(ephemeralDismissPointerHit(at: point))
     }
 
     override func mouseMoved(with event: NSEvent) {
         guard !ComposerOverlayPointerRegion.containsPointer(in: window, at: event.locationInWindow) else {
-            clearComposerCoveredHover()
+            clearPointerHoverTargets()
             return
         }
         guard WindowModalCoordinator.allowsInput(for: self) else { return }
@@ -242,6 +243,7 @@ extension NativeTimelineCanvasView {
         setHoveredForwardedSourceMessageID(
             forwardedSourcePointerHit(at: point)
         )
+        setHoveredEphemeralDismissMessageID(ephemeralDismissPointerHit(at: point))
         setHoveredReaction(
             reactionPointerHit(at: point),
             mouseLocationInScreen: NSEvent.mouseLocation
@@ -330,20 +332,15 @@ extension NativeTimelineCanvasView {
             {
                 setHoveredForwardedSourceMessageID(nil)
             }
+            if let index = event.trackingArea?.userInfo?["nativeTimelineRowIndex"] as? Int,
+               items.indices.contains(index),
+               items[index].messageID == hoveredEphemeralDismissMessageID {
+                setHoveredEphemeralDismissMessageID(nil)
+            }
             return
         }
         if kind == "canvas" {
-            setHoveredPollTarget(nil)
-            setHoveredCompactTimestampRow(nil)
-            setHoveredAuthorMessageID(nil)
-            setHoveredMention(nil)
-            setHoveredTextLink(nil)
-            setHoveredTextSpoiler(nil)
-            setHoveredCodeBlock(nil)
-            setHoveredComponentButton(nil)
-            setHoveredForwardedSourceMessageID(nil)
-            setHoveredReaction(nil)
-            setHoveredRow(nil)
+            clearPointerHoverTargets()
         }
     }
 
@@ -544,6 +541,15 @@ extension NativeTimelineCanvasView {
               items.indices.contains(index),
               layouts.indices.contains(index),
               let frame = layouts[index].forwardedSourceRegion?.frame
+        else { return nil }
+        let local = CGPoint(x: point.x, y: point.y - displayedRowOrigin(at: index))
+        return frame.contains(local) ? items[index].messageID : nil
+    }
+    private func ephemeralDismissPointerHit(at point: CGPoint) -> MessageID? {
+        guard let index = rowIndex(at: point.y),
+              items.indices.contains(index),
+              layouts.indices.contains(index),
+              let frame = layouts[index].ephemeralRegion?.dismissFrame
         else { return nil }
         let local = CGPoint(x: point.x, y: point.y - displayedRowOrigin(at: index))
         return frame.contains(local) ? items[index].messageID : nil
@@ -1163,7 +1169,7 @@ extension NativeTimelineCanvasView {
         synchronizeHoverWithCurrentPointer()
     }
 
-    private func clearComposerCoveredHover() {
+    private func clearPointerHoverTargets() {
         setHoveredPollTarget(nil)
         setHoveredCompactTimestampRow(nil)
         setHoveredAuthorMessageID(nil)
@@ -1173,13 +1179,14 @@ extension NativeTimelineCanvasView {
         setHoveredCodeBlock(nil)
         setHoveredComponentButton(nil)
         setHoveredForwardedSourceMessageID(nil)
+        setHoveredEphemeralDismissMessageID(nil)
         setHoveredReaction(nil)
         setHoveredRow(nil)
     }
 
     func synchronizeHoverWithCurrentPointer() {
         guard !ComposerOverlayPointerRegion.containsPointer(in: window) else {
-            clearComposerCoveredHover()
+            clearPointerHoverTargets()
             return
         }
         guard WindowModalCoordinator.allowsInput(for: self), !overlayBlocksInteractions, !suppressesHoverPresentation,
@@ -1224,6 +1231,9 @@ extension NativeTimelineCanvasView {
             visibleRect.contains(point)
                 ? componentButtonPointerHit(at: point)?.target
                 : nil
+        )
+        setHoveredEphemeralDismissMessageID(
+            visibleRect.contains(point) ? ephemeralDismissPointerHit(at: point) : nil
         )
         setHoveredReaction(
             reactionPointerHit(at: point),

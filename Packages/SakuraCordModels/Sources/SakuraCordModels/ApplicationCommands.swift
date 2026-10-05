@@ -182,15 +182,23 @@ public struct ApplicationCommandApplication: Identifiable, Codable, Hashable, Se
     public var description: String
     public var iconURL: URL?
     public var bot: User?
+    /// User indexes can identify the bot without including its user object.
+    public var botID: UserID?
+
+    /// Shared artwork for picker rows, category rails, the active composer and
+    /// context menus. Providers resolve the bot's default avatar when needed.
+    public var displayIconURL: URL? { iconURL ?? bot?.avatarURL }
 
     public init(
-        id: String, name: String, description: String = "", iconURL: URL? = nil, bot: User? = nil
+        id: String, name: String, description: String = "", iconURL: URL? = nil, bot: User? = nil,
+        botID: UserID? = nil
     ) {
         self.id = id
         self.name = name
         self.description = description
         self.iconURL = iconURL
         self.bot = bot
+        self.botID = botID
     }
 }
 
@@ -244,7 +252,7 @@ public struct ApplicationCommand: Identifiable, Codable, Hashable, Sendable {
         options: [ApplicationCommandOption] = [],
         subcommandPath: [ApplicationCommandPathComponent] = [],
         permissions: [ApplicationCommandPermission] = [],
-        contexts: [Int] = [],
+        contexts: [Int] = [0, 1, 2],
         integrationTypes: [Int] = [],
         globalPopularityRank: Int? = nil,
         rootCommandJSON: Data = Data("{}".utf8)

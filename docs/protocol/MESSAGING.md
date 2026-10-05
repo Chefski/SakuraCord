@@ -116,8 +116,20 @@ Thread lifecycle events advance the parent forum boundary before unread
 projection. Metadata, archive, lock, pin and delete are explicit, permission-gated
 mutations. Message-created thread cards use cached thread/message data.
 
-The active conversation preloads one context command index and one user index,
-coalesced and cached per target. A picker opened before that preload finishes
+The active conversation preloads the user command index plus a context index
+only for a guild or a one-to-one DM whose recipient is a bot. Human and group
+DMs use `/users/@me/application-command-index`; bot DMs additionally use
+`/channels/{id}/application-command-index`, including a valid empty catalog.
+An unavailable channel index fails locally without stopping the session or
+discarding user-installed commands. These targets were verified in official
+web build `1c978ae014dc4bbaddcb5a9a5140ffd05d004bad` on 2026-10-05.
+Preserve an application's `bot_id` even when its expanded `bot` is absent;
+it identifies the recipient for Discord's [bot-DM interaction context](https://docs.discord.com/developers/interactions/application-commands#interaction-contexts).
+Explicit command contexts take precedence, including an empty list. Legacy
+definitions without `contexts` allow guilds and the application's bot DM unless
+`dm_permission` is false, in which case only guilds are allowed; they do not
+implicitly allow human or group DMs. This follows the same observed web build.
+Requests are coalesced and cached per target. A picker opened before preload finishes
 shows its loading state. Channel changes reapply availability and can reuse the
 prepared search index only when the full filtered catalog and locale match.
 The index decoder retains unknown root fields while decoding typed commands;
@@ -146,8 +158,25 @@ Command help sits above the
 composer so activation preserves the input bar geometry. Search retains only
 the best 20 candidates; keyboard rows are prepared once per result set.
 
+The active editor permits navigation into the command name; editing that name
+returns to ordinary text while preserving argument names and values. Tab and
+Shift-Tab select existing argument values. Accepting a suggestion advances to
+the following gap without submitting; an unselected option list takes one Tab
+to select and another to accept. Empty required chips can be removed, but
+submission restores the missing field instead of sending. Shift-Return retains
+newlines in string values. Refocusing a resolved remote choice requests its
+displayed text while preserving the selected wire value until edited. These
+keyboard and autocomplete rules were checked with official web build
+`1c978ae014dc4bbaddcb5a9a5140ffd05d004bad` on 2026-10-05.
+
 SakuraCord's own commands form an extra section that never enters
 synced usage.
+
+The message Apps menu uses the same command matching and synced frecency as
+the composer. Its frequent section contains up to five available commands
+from the synced top-100 history, without filling unused slots from global
+popularity. Menu search treats its input literally and retains all matches;
+composer option-boundary parsing and its 20-result limit do not apply.
 
 Command usage syncs through Frecency type 2 field 7 (see
 [Settings](SETTINGS.md#emoji-gifs-stickers-and-sounds)). Keys are the command
@@ -167,8 +196,33 @@ These timing and two-session rules were checked in Discord Official Fresh
 Built-ins run locally: text
 built-ins send an ordinary message (`/tts` sets `tts:true`), `/msg` and
 `/thread` use the ordinary DM and thread routes, and `/gif` and `/sticker` open
-the native pickers. Moderation, nickname, group-leave and schedule built-ins
-show a local notice.
+the native pickers. `/nick` makes one PATCH to
+`/guilds/{guild_id}/members/%40me/nick` with `{"nick":"value"}`; submitting
+without a value sends `{"nick":""}` and resets the server-specific nickname.
+The HTTP 200 member response returns `nick:null` for a reset, and
+`GUILD_MEMBER_UPDATE` synchronizes other sessions, potentially before HTTP
+completion. Confirmations stay local. The profile-save guard serializes this
+mutation with profile editing; it is never automatically replayed. Recognized
+nickname-field validation errors remain local, and an intervening Gateway
+profile update takes precedence over the REST snapshot. The official user
+client still uses this nickname-specific route despite the public API's
+recommendation to use Modify Current Member. Moderation, group-leave and
+schedule built-ins show a local notice. Built-in notices use Discord's local
+Clyde identity (user `1`, discriminator `0000`), never a remote user-profile
+request. Official Fresh 0.0.411 on 2026-10-05 showed a compact Clyde card with
+its bundled avatar, `#5C64F3` banner, verified APP badge, and Copy User ID only.
+Discord requested `/users/1/profile` and received 404 before displaying its
+local card; SakuraCord directly presents that card without the failing fetch.
+SakuraCord deliberately omits the local identity’s profile action menu.
+
+Official Fresh 0.0.411, web build `1c978ae014dc4bbaddcb5a9a5140ffd05d004bad`,
+was checked on 2026-10-05 in SakuraCord Testing Server. Typing into an active
+command's empty gap implicitly enters its option only when it has exactly one
+declared option, that option is optional and not an attachment, and no chip is
+present. A single remaining option of a multi-option command does not qualify;
+neither does a removed required option. Whitespace and a literal `name:` enter
+the value too. Pasted gap text is flattened to one line; option values retain
+pasted line breaks and Shift-Return editing.
 
 ### Interaction envelopes and lifecycle
 
@@ -204,6 +258,8 @@ Observed selects include both `component_type` and `type` (3, 5, 6, 7 or 8), plu
 selects can commit when the dropdown closes, including with Escape; closing an
 unchanged selection sends nothing. This differs from modal cancellation.
 Nested V2 controls retain their source application and message identity.
+Delivered V2 media uploaded with the message keeps a CDN `url` and adds
+`attachment_id`, while `attachments` can be empty; render from the URL.
 Ordinary bot-authored messages can omit the application and interaction
 metadata. SakuraCord resolves their application from the bot author, excluding
 incoming webhook identities; scoped fixture execution verifies this path.
@@ -221,9 +277,14 @@ is restored only if its original conversation still has an empty composer;
 SakuraCord never automatically repeats the interaction.
 Deferred acknowledgement can clear pending state before the eventual edit.
 Loading messages transition flags 128 to 0 publicly or 192 to 64 privately,
-retaining their message ID. Followups can omit the original nonce. Ephemeral
+retaining their message ID. The client renders flag 128 as its three-dot
+loading indicator with "{app} is thinking…" instead of the body; its local
+"Sending command…" row before acceptance is not private. An activated button
+shows the same dots in place of its label. Followups can omit the original nonce. Ephemeral
 updates can omit `guild_id`; retain originating channel/guild context. Local
 ephemeral dismissal sends no DELETE, unlike authoritative `MESSAGE_DELETE`.
+Ephemeral rows expose dismissal and their own component controls, but no message
+hover capsule, context menu or accessibility message actions.
 
 ### Returned modals and files
 

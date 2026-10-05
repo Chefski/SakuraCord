@@ -41,6 +41,9 @@ struct ApplicationCommandEditorView: NSViewRepresentable {
         let textView = ApplicationCommandTextView(frame: .zero, textContainer: textContainer)
         textView.delegate = context.coordinator
         textView.coordinator = context.coordinator
+        textView.onFirstResponderChange = { [weak coordinator = context.coordinator] in
+            coordinator?.firstResponderDidChange($0)
+        }
         textView.isEditable = true
         textView.isSelectable = true
         textView.isRichText = true
@@ -186,7 +189,7 @@ struct ApplicationCommandEditorView: NSViewRepresentable {
             let signature = hasher.finalize()
             let previousSelection = textView.selectedRange()
             if let previous = renderedDraft, previous.command.id == draft.command.id,
-               previous.fields != draft.fields || previous.gapText != draft.gapText {
+               previous.fields != draft.fields || previous.gapTexts != draft.gapTexts {
                 registerUndo(previous, selection: undoSelection ?? previousSelection, in: textView)
             }
             renderedDraft = draft
@@ -196,7 +199,7 @@ struct ApplicationCommandEditorView: NSViewRepresentable {
             textView.focus = draft.focus
             textView.issueFieldID = parent.fieldIssue?.fieldID
             textView.valueTints = ApplicationCommandEditorStyle.valueTints(for: draft, roles: parent.roles)
-            textView.remainingOptionCount = draft.availableOptionalOptions.count
+            textView.remainingOptionCount = draft.availableOptions.count
             if signature != renderedSignature {
                 renderedSignature = signature
                 isApplying = true
@@ -211,7 +214,7 @@ struct ApplicationCommandEditorView: NSViewRepresentable {
             }
             let target: NSRange
             if let caret {
-                target = NSRange(location: document.location(of: caret), length: 0)
+                target = document.range(of: caret)
             } else if previousSelection.location == NSNotFound || NSMaxRange(previousSelection) > document.length {
                 target = NSRange(location: document.location(of: document.caret(endOf: draft.focus)), length: 0)
             } else {
@@ -248,7 +251,8 @@ struct ApplicationCommandEditorView: NSViewRepresentable {
                   let caret = composer.caretRequest else { return }
             appliedCaretRevision = composer.caretRequestRevision
             switch caret {
-            case let .field(id, _): composer.setFocus(.field(id))
+            case .command: composer.setFocus(.command)
+            case let .field(id, _, _): composer.setFocus(.field(id))
             case let .gap(index, _): composer.setFocus(.gap(index))
             }
             render(in: textView, caret: caret)
@@ -265,14 +269,14 @@ struct ApplicationCommandEditorView: NSViewRepresentable {
             }
         }
 
-        func textDidBeginEditing(_: Notification) {
-            appliedFocus = true
-            if !parent.isFocused { parent.isFocused = true }
-        }
-
-        func textDidEndEditing(_: Notification) {
-            appliedFocus = false
-            if parent.isFocused { parent.isFocused = false }
+        func firstResponderDidChange(_ isFirstResponder: Bool) {
+            // Publish after AppKit finishes the responder change, never during
+            // a SwiftUI update that triggered it.
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                appliedFocus = isFirstResponder
+                if parent.isFocused != isFirstResponder { parent.isFocused = isFirstResponder }
+            }
         }
 
         // MARK: Editing
@@ -328,6 +332,7 @@ struct ApplicationCommandEditorView: NSViewRepresentable {
             pendingNativeFocus = nil
             let delta = (textView.string as NSString).length - pendingNativeLength
             let original: NSRange? = switch focus {
+            case .command: nil
             case let .field(id): document.span(id)?.value
             case let .gap(index): document.gaps.indices.contains(index) ? document.gaps[index] : nil
             }
@@ -369,13 +374,45 @@ struct ApplicationCommandEditorView: NSViewRepresentable {
             willChangeSelectionFromCharacterRange old: NSRange,
             toCharacterRange new: NSRange
         ) -> NSRange {
-            guard !isApplying, let document, new.length == 0,
+            guard !isApplying, let document,
                   (textView as? ApplicationCommandTextView)?.isComposing != true else { return new }
-            let direction: ApplicationCommandEditorDirection =
-                new.location > old.location ? .forward : (new.location < old.location ? .backward : .nearest)
+            // AppKit's line boundary includes neighbouring chips. Discord's
+            // Command-arrow stays within the current editable value/name.
+            var new = new
+            if let event = NSApp.currentEvent, event.type == .keyDown,
+               event.modifierFlags.contains(.command), [123, 124].contains(event.keyCode),
+               let focus = document.focus(at: old.location) {
+                let bounds: NSRange? = switch focus {
+                case .command: document.command
+                case let .field(id): document.span(id)?.value
+                case let .gap(index): document.gaps[index]
+                }
+                if let bounds, old.length == 0 || document.focus(at: NSMaxRange(old)) == focus {
+                    let lower = min(max(bounds.location, new.location), NSMaxRange(bounds))
+                    let upper = min(max(lower, NSMaxRange(new)), NSMaxRange(bounds))
+                    new = NSRange(location: lower, length: upper - lower)
+                }
+            }
             let isPointer = NSApp.currentEvent.map {
                 [.leftMouseDown, .leftMouseDragged, .leftMouseUp].contains($0.type)
             } ?? false
+            if isPointer { resetVerticalMovement() }
+            if new.length > 0 {
+                guard !isPointer else { return new }
+                // Shift-arrows cross a label in one step, while retaining the
+                // anchor so deleting a partial value does not remove its chip.
+                if NSMaxRange(new) == NSMaxRange(old), new.location != old.location {
+                    let lower = document.snap(new.location, direction: new.location < old.location ? .backward : .forward)
+                    return NSRange(location: lower, length: max(0, NSMaxRange(new) - lower))
+                }
+                if new.location == old.location, NSMaxRange(new) != NSMaxRange(old) {
+                    let upper = document.snap(NSMaxRange(new), direction: NSMaxRange(new) < NSMaxRange(old) ? .backward : .forward)
+                    return NSRange(location: new.location, length: max(0, upper - new.location))
+                }
+                return new
+            }
+            let direction: ApplicationCommandEditorDirection =
+                new.location > old.location ? .forward : (new.location < old.location ? .backward : .nearest)
             return NSRange(
                 location: document.snap(new.location, direction: isPointer ? .nearest : direction),
                 length: 0
@@ -401,59 +438,189 @@ struct ApplicationCommandEditorView: NSViewRepresentable {
 
         // MARK: Keyboard
 
-        /// Backspace at chip edges, matching Discord: from the gap after a chip
-        /// it enters that chip and deletes its last character (a chosen entity
-        /// as a whole); an empty optional chip is removed; at the command it
-        /// turns the whole command back into ordinary text.
+        /// Delete across editable values, skipping chip labels and structural spacing.
         func deleteBackward(in textView: ApplicationCommandTextView) -> Bool {
             guard let document, textView.selectedRange().length == 0 else { return false }
             let location = textView.selectedRange().location
-            let draft = draft
+            if let index = document.fields.firstIndex(where: { $0.value.location == location }) {
+                let span = document.fields[index]
+                if draft.field(span.id)?.isEmpty == true {
+                    removeEmptyField(at: index, in: textView)
+                } else {
+                    deleteBeforeGap(index, in: textView)
+                }
+                return true
+            }
             if let span = document.fields.first(where: {
-                location >= $0.value.location && location <= NSMaxRange($0.value)
-            }), let field = draft.field(span.id), let index = draft.index(of: span.id) {
-                if span.isAtomic, location == NSMaxRange(span.value), span.value.length > 0 {
-                    var updated = draft
-                    updated.setText("", for: span.id)
-                    apply(updated, caret: .field(span.id, offset: 0), in: textView)
-                    return true
-                }
-                guard location == span.value.location else { return false }
-                var updated = draft
-                if field.isEmpty, !field.option.isRequired {
-                    updated.removeField(span.id)
-                }
-                updated.focus = .gap(index)
-                apply(updated, caret: .gap(index, offset: 0), in: textView)
+                $0.isAtomic && NSMaxRange($0.value) == location && $0.value.length > 0
+            }) {
+                textView.insertText("", replacementRange: span.value)
                 return true
             }
             guard let gap = document.gaps.firstIndex(where: { $0.location == location }) else { return false }
-            guard gap > 0 else {
-                parent.onCancel(draft.plainTextAfterDeletingCommand)
-                return true
-            }
-            var updated = draft
-            guard let focus = updated.deleteBackward(intoFieldBefore: gap) else { return false }
-            apply(
-                updated,
-                caret: ApplicationCommandEditorDocument(draft: updated).caret(endOf: focus),
-                in: textView
-            )
+            deleteBeforeGap(gap, in: textView)
             return true
         }
 
-        /// Forward delete at a value's end steps into the following gap.
+        private func removeEmptyField(at index: Int, in textView: ApplicationCommandTextView) {
+            var updated = draft
+            updated.removeField(updated.fields[index].id)
+            updated.focus = .gap(index)
+            // The first chip shared the command's text node. Discord leaves a
+            // real separator when that chip is removed, even when no chips remain.
+            if index == 0, updated.gapText.isEmpty { updated.gapText = " " }
+            apply(updated, caret: .gap(index, offset: updated.gapText.utf16.count), in: textView)
+        }
+
+        private func deleteBeforeGap(_ index: Int, in textView: ApplicationCommandTextView) {
+            guard let document else { return }
+            let gap = document.gaps[index]
+            if gap.length > 0 {
+                let range = (document.string as NSString).rangeOfComposedCharacterSequence(at: NSMaxRange(gap) - 1)
+                textView.insertText("", replacementRange: range)
+            } else if index > 0 {
+                let previous = document.fields[index - 1]
+                if previous.value.length == 0 {
+                    removeEmptyField(at: index - 1, in: textView)
+                } else {
+                    var updated = draft
+                    guard let focus = updated.deleteBackward(intoFieldBefore: index) else { return }
+                    apply(updated, caret: ApplicationCommandEditorDocument(draft: updated).caret(endOf: focus), in: textView)
+                }
+            } else {
+                let range = (document.string as NSString).rangeOfComposedCharacterSequence(at: NSMaxRange(document.command) - 1)
+                textView.insertText("", replacementRange: range)
+            }
+        }
+
         func deleteForward(in textView: ApplicationCommandTextView) -> Bool {
             guard let document, textView.selectedRange().length == 0 else { return false }
             let location = textView.selectedRange().location
-            guard let index = document.fields.firstIndex(where: { NSMaxRange($0.value) == location })
-            else { return false }
-            let span = document.fields[index]
-            if span.isAtomic, span.value.length > 0, location == span.value.location {
-                return false
+            if let index = document.fields.firstIndex(where: { $0.value.location == location && $0.value.length == 0 }) {
+                removeEmptyField(at: index, in: textView)
+                return true
             }
-            moveCaret(to: .gap(index + 1, offset: 0), in: textView)
+            if let index = document.fields.firstIndex(where: { NSMaxRange($0.value) == location }) {
+                deleteAfterGap(index + 1, in: textView)
+                return true
+            }
+            if location == NSMaxRange(document.command) {
+                deleteAfterGap(0, in: textView)
+                return true
+            }
+            if let gap = document.gaps.firstIndex(where: { NSMaxRange($0) == location }) {
+                deleteAfterGap(gap, in: textView)
+                return true
+            }
+            return false
+        }
+
+        private func deleteAfterGap(_ index: Int, in textView: ApplicationCommandTextView) {
+            guard let document else { return }
+            let gap = document.gaps[index]
+            if gap.length > 0, textView.selectedRange().location < NSMaxRange(gap) {
+                textView.insertText("", replacementRange: (document.string as NSString).rangeOfComposedCharacterSequence(at: gap.location))
+            } else if document.fields.indices.contains(index) {
+                let next = document.fields[index]
+                if next.value.length == 0 {
+                    removeEmptyField(at: index, in: textView)
+                } else {
+                    let range = next.isAtomic ? next.value
+                        : (document.string as NSString).rangeOfComposedCharacterSequence(at: next.value.location)
+                    textView.insertText("", replacementRange: range)
+                }
+            }
+            // At the end of the final populated value there is nothing to delete.
+        }
+
+        private var verticalColumn: CGFloat?
+
+        func resetVerticalMovement(unless command: ComposerAutocompleteCommand? = nil) {
+            if command != .previous, command != .next { verticalColumn = nil }
+        }
+
+        /// When a single-line value has no suggestions, vertical arrows cross
+        /// its boundary. Within wrapped/multiline values retain the column relative
+        /// to the value, whose first line starts after the command and option label.
+        func moveVertically(forward: Bool, in textView: ApplicationCommandTextView) -> Bool {
+            guard let document, let focus = document.focus(at: textView.selectedRange().location) else { return false }
+            let target: ApplicationCommandEditorCaret
+            switch focus {
+            case let .field(id):
+                guard let index = draft.index(of: id), let span = document.span(id) else { return false }
+                if let layout = textView.layoutManager, let container = textView.textContainer {
+                    layout.ensureLayout(for: container)
+                    let position = min(textView.selectedRange().location, max(0, document.length - 1))
+                    let edge = min(forward ? NSMaxRange(span.value) : span.value.location, max(0, document.length - 1))
+                    let line = layout.lineFragmentRect(forGlyphAt: layout.glyphIndexForCharacter(at: position), effectiveRange: nil)
+                    let edgeLine = layout.lineFragmentRect(forGlyphAt: layout.glyphIndexForCharacter(at: edge), effectiveRange: nil)
+                    if abs(line.minY - edgeLine.minY) > 0.5 {
+                        moveWithinValue(span.value, forward: forward, in: textView, layout: layout)
+                        return true
+                    }
+                }
+                let gap = forward ? index + 1 : index
+                target = gap == 0 && document.gaps[0].length == 0
+                    ? .command(offset: document.command.length)
+                    : .gap(gap, offset: document.gaps[gap].length)
+            case let .gap(index):
+                let fieldIndex = forward ? index : index - 1
+                if document.fields.indices.contains(fieldIndex) {
+                    let span = document.fields[fieldIndex]
+                    target = .field(span.id, offset: span.value.length)
+                } else if !forward {
+                    target = .command(offset: document.command.length)
+                } else {
+                    return true
+                }
+            case .command:
+                guard forward else { return false }
+                if document.gaps[0].length > 0 {
+                    target = .gap(0, offset: document.gaps[0].length)
+                } else if let first = document.fields.first {
+                    target = .field(first.id, offset: first.value.length)
+                } else {
+                    target = .gap(0, offset: 0)
+                }
+            }
+            verticalColumn = nil
+            moveCaret(to: target, in: textView)
             return true
+        }
+
+        private func moveWithinValue(
+            _ value: NSRange, forward: Bool, in textView: ApplicationCommandTextView, layout: NSLayoutManager
+        ) {
+            let position = textView.selectedRange().location
+            let glyph = layout.glyphIndexForCharacter(at: position)
+            var lineGlyphs = NSRange()
+            let line = layout.lineFragmentRect(forGlyphAt: glyph, effectiveRange: &lineGlyphs)
+            let firstGlyph = layout.glyphIndexForCharacter(at: value.location)
+            let firstLine = layout.lineFragmentRect(forGlyphAt: firstGlyph, effectiveRange: nil)
+            let firstColumn = layout.location(forGlyphAt: firstGlyph).x
+            let column = verticalColumn ?? (layout.location(forGlyphAt: glyph).x
+                - (abs(line.minY - firstLine.minY) < 0.5 ? firstColumn : 0))
+            verticalColumn = column
+            let targetGlyph = forward ? NSMaxRange(lineGlyphs) : lineGlyphs.location - 1
+            var targetGlyphs = NSRange()
+            let targetLine = layout.lineFragmentRect(forGlyphAt: targetGlyph, effectiveRange: &targetGlyphs)
+            let targetColumn = max(0, column)
+                + (abs(targetLine.minY - firstLine.minY) < 0.5 ? firstColumn : 0)
+            guard let container = textView.textContainer else { return }
+            let location = layout.characterIndex(
+                for: NSPoint(x: targetLine.minX + targetColumn, y: targetLine.midY),
+                in: container, fractionOfDistanceBetweenInsertionPoints: nil
+            )
+            let targetCharacters = layout.characterRange(forGlyphRange: targetGlyphs, actualGlyphRange: nil)
+            var end = min(NSMaxRange(value), NSMaxRange(targetCharacters))
+            let string = textView.string as NSString
+            while end > max(value.location, targetCharacters.location),
+                  let scalar = UnicodeScalar(string.character(at: end - 1)), CharacterSet.newlines.contains(scalar) {
+                end -= 1
+            }
+            textView.setSelectedRange(NSRange(
+                location: min(max(max(value.location, targetCharacters.location), location), end), length: 0
+            ))
         }
 
         private func moveCaret(to caret: ApplicationCommandEditorCaret, in textView: ApplicationCommandTextView) {
@@ -502,8 +669,11 @@ enum ApplicationCommandEditorStyle {
     static let verticalInset: CGFloat = 6
     static let chipPadding: CGFloat = 6
     static let labelGap: CGFloat = 10
-    static let separatorKern: CGFloat = 6
-    static let chipLeadingKern: CGFloat = 4
+    static let spaceWidth = (" " as NSString).size(withAttributes: [.font: font]).width
+
+    static func trailingChipInset(_ span: ApplicationCommandEditorDocument.Span) -> CGFloat {
+        chipPadding + (span.value.length == 0 ? 3 : 0)
+    }
 
     static let partKey = NSAttributedString.Key("dev.sakuracord.command-part")
 
@@ -534,12 +704,17 @@ enum ApplicationCommandEditorStyle {
             [.font: NSFont.systemFont(ofSize: 15, weight: .semibold)],
             range: document.command
         )
-        // The space before each gap separates chips; the space after it is
-        // covered by the next chip's leading padding.
-        let separators = document.gaps.map { $0.location - 1 }
-        let paddings = document.fields.map { $0.label.location - 1 }
-        for location in paddings where location >= 0 && location < result.length {
-            result.addAttribute(.kern, value: chipLeadingKern, range: NSRange(location: location, length: 1))
+        // Structural spaces carry only the neighbouring pill's inset. The
+        // separator itself stays one ordinary text space, including the empty
+        // draft and its trailing optional-options hint. Typed gap text keeps
+        // its natural width and all document/caret offsets stay unchanged.
+        for (index, gap) in document.gaps.enumerated() {
+            result.addAttribute(.kern, value: index == 0 ? 0 : trailingChipInset(document.fields[index - 1]),
+                                range: NSRange(location: gap.location - 1, length: 1))
+        }
+        for span in document.fields {
+            result.addAttribute(.kern, value: chipPadding - spaceWidth,
+                                range: NSRange(location: span.label.location - 1, length: 1))
         }
         for span in document.fields {
             result.addAttributes([
@@ -556,9 +731,6 @@ enum ApplicationCommandEditorStyle {
             }
             guard let field = draft.field(span.id), span.value.length > 0 else { continue }
             result.addAttributes(valueAttributes(for: field, roles: roles), range: span.value)
-        }
-        for location in separators where location >= 0 && location < result.length {
-            result.addAttribute(.kern, value: separatorKern, range: NSRange(location: location, length: 1))
         }
         return result
     }
@@ -606,7 +778,7 @@ enum ApplicationCommandEditorStyle {
     }
 }
 
-final class ApplicationCommandTextView: NSTextView {
+final class ApplicationCommandTextView: ComposerFocusReportingTextView {
     weak var coordinator: ApplicationCommandEditorView.Coordinator?
     var document: ApplicationCommandEditorDocument?
     var focus: ApplicationCommandDraftFocus?
@@ -677,7 +849,14 @@ final class ApplicationCommandTextView: NSTextView {
     private func restoreComposition() -> NSRange? {
         guard let current = composition else { return nil }
         isUpdatingComposition = true
+        // Clear AppKit's provisional replacement before rebuilding the draft.
+        // Unmarking alone can replay that old text on the next insertText call.
+        let marked = markedRange()
+        if marked.location != NSNotFound {
+            super.setMarkedText("", selectedRange: NSRange(location: 0, length: 0), replacementRange: marked)
+        }
         super.unmarkText()
+        inputContext?.discardMarkedText()
         textStorage?.setAttributedString(current.original)
         setSelectedRange(current.range)
         composition = nil
@@ -723,9 +902,12 @@ final class ApplicationCommandTextView: NSTextView {
         case 53 where plain: .dismiss
         default: nil
         }
+        coordinator.resetVerticalMovement(unless: command)
         if let command {
             if coordinator.keyboardCommand(command, in: self) { return }
             switch command {
+            case .previous, .next:
+                if coordinator.moveVertically(forward: command == .next, in: self) { return }
             case .accept:
                 break
             case .advance, .previousField, .dismiss:
@@ -757,6 +939,12 @@ final class ApplicationCommandTextView: NSTextView {
     override func deleteForward(_ sender: Any?) {
         if coordinator?.deleteForward(in: self) == true { return }
         super.deleteForward(sender)
+    }
+
+    override func insertNewline(_ sender: Any?) {
+        if selectedRange().length == 0, let document,
+           case .gap? = document.focus(at: selectedRange().location) { return }
+        super.insertNewline(sender)
     }
 
     override func insertTab(_: Any?) {
@@ -808,7 +996,15 @@ final class ApplicationCommandTextView: NSTextView {
             coordinator?.receiveAttachment(attachments)
             return
         }
-        guard let value = commandPasteboard.string(forType: .string) else { return }
+        guard var value = commandPasteboard.string(forType: .string) else { return }
+        // Discord pastes into a command gap as one line, but preserves line
+        // breaks when pasting directly into an option value.
+        if let document, case .gap? = document.focus(at: selectedRange().location),
+           document.gaps.contains(where: { selectedRange().location >= $0.location && NSMaxRange(selectedRange()) <= NSMaxRange($0) }) {
+            value = value.replacingOccurrences(of: "\r\n", with: " ")
+                .replacingOccurrences(of: "\n", with: " ")
+                .replacingOccurrences(of: "\r", with: " ")
+        }
         insertText(value, replacementRange: selectedRange())
     }
 
@@ -846,7 +1042,7 @@ final class ApplicationCommandTextView: NSTextView {
             for (index, line) in chips.enumerated() {
                 var chip = line
                 let leading = index == 0 ? padding : 0
-                let trailing = index == chips.count - 1 ? padding + (span.value.length == 0 ? 3 : 0) : 0
+                let trailing = index == chips.count - 1 ? ApplicationCommandEditorStyle.trailingChipInset(span) : 0
                 chip.origin.x -= leading
                 chip.size.width += leading + trailing
                 chip = chip.insetBy(dx: 0, dy: 1)
@@ -895,7 +1091,7 @@ final class ApplicationCommandTextView: NSTextView {
             .foregroundColor: NSColor.tertiaryLabelColor,
         ])
         let size = label.size()
-        let origin = NSPoint(x: line.maxX + 8, y: line.midY - size.height / 2 + 0.5)
+        let origin = NSPoint(x: line.maxX, y: line.midY - size.height / 2 + 0.5)
         // Hidden when the line has no room rather than overlapping text.
         guard origin.x + size.width <= bounds.maxX - 4 else { return }
         label.draw(at: origin)

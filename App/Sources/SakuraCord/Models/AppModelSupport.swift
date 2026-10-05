@@ -305,6 +305,8 @@ struct ProfilePresentationState: Identifiable {
     var isLoading: Bool
     var errorMessage: String?
     var isWebhook = false
+    var isClyde = false
+    var isLocalIdentity: Bool { isWebhook || isClyde }
     var sourceMessageID: MessageID?
 }
 

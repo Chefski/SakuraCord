@@ -22,6 +22,7 @@ struct EmojiAutocompleteList: View {
                 highlight: { row in
                     if let index = suggestions.firstIndex(where: { $0.id == row.id }), index != selectedIndex { highlight(index) }
                 },
+                activate: select,
                 content: { suggestion in
                     EmojiAutocompleteRow(
                         suggestion: suggestion,

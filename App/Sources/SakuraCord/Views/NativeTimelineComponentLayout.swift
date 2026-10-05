@@ -82,6 +82,7 @@ struct NativeTimelineComponentLayout {
         let channelTypes: [Int]
         let selectedOptions: [ComponentSelectOption]
         let isDisabled: Bool
+        var isLoading = false
     }
 
     struct ImageRegion {
@@ -282,7 +283,8 @@ private struct Node {
                 emoji: $0.emoji,
                 customID: $0.customID,
                 url: $0.url,
-                isDisabled: $0.isDisabled
+                isDisabled: $0.isDisabled,
+                isLoading: $0.isLoading
             )
         }
         result.selects = selects.map {
@@ -297,7 +299,8 @@ private struct Node {
                 options: $0.options,
                 channelTypes: $0.channelTypes,
                 selectedOptions: $0.selectedOptions,
-                isDisabled: $0.isDisabled
+                isDisabled: $0.isDisabled,
+                isLoading: $0.isLoading
             )
         }
         result.images = images.map {
@@ -693,7 +696,9 @@ private enum NodeBuilder {
                         options: options,
                         channelTypes: channelTypes,
                         selectedOptions: selectedOptions,
-                        isDisabled: isDisabled
+                        isDisabled: isDisabled,
+                        // The committed select shows the dots in place of its chevron.
+                        isLoading: model?.isComponentPending(messageID: message.id, customID: customID) == true
                     )
                 ]
             )

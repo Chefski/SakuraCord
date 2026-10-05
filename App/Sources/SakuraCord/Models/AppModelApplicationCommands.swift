@@ -13,11 +13,8 @@ extension AppModel {
             )
             return
         }
-        let contextTarget: ApplicationCommandIndexTarget =
-            channel.guildID.map {
-                .guild($0)
-            } ?? .channel(channel.id)
-        let targets: Set<ApplicationCommandIndexTarget> = [contextTarget, .user]
+        let contextTarget = ApplicationCommandAvailability.contextIndexTarget(for: channel)
+        let targets = Set([contextTarget, .user].compactMap { $0 })
         commandComposer.beginLoading(targets: targets)
         commandComposer.locale = Locale(identifier: Locale.preferredLanguages.first ?? "en-US")
         loadCommandFrecencyIfNeeded()
@@ -29,10 +26,10 @@ extension AppModel {
                   isCurrentAccountSession(account)
             else { return }
             do {
-                async let context: ApplicationCommandCatalog? =
-                    try? account.provider.applicationCommandCatalog(
-                        for: contextTarget
-                    )
+                async let context: ApplicationCommandCatalog? = {
+                    guard let contextTarget else { return nil }
+                    return try? await account.provider.applicationCommandCatalog(for: contextTarget)
+                }()
                 async let user: ApplicationCommandCatalog? =
                     try? account.provider.applicationCommandCatalog(
                         for: .user
@@ -57,6 +54,7 @@ extension AppModel {
                     memberRoleIDs: roleIDs,
                     builtInContext: builtInCommandContext(for: channel)
                 )
+                commandComposer.refreshApplicationIdentities { membersByID[$0]?.user }
             } catch is CancellationError {
                 return
             } catch {
@@ -317,7 +315,8 @@ extension AppModel {
                   channelID: channelID, guildID: selectedGuildID
               )
         else { return }
-        guard allowSlowmodeSubmission(in: channelID) else { return }
+        let isNicknameChange = DiscordBuiltInCommands.isBuiltIn(invocation.command) && invocation.command.name == "nick"
+        guard isNicknameChange || allowSlowmodeSubmission(in: channelID) else { return }
         cancelApplicationCommandAutocompleteTask()
         let submittedDraft = commandComposer.draft
         stopLocalTyping(clearThrottle: true)
@@ -463,6 +462,8 @@ extension AppModel {
             return
         }
         switch invocation.command.name {
+        case "nick":
+            runNicknameCommand(string("new_nick"), invocation: invocation)
         case "msg":
             guard let recipient = user("user") else { return }
             startAccountChildTask(account: session) { [weak self] _, session in
@@ -496,6 +497,26 @@ extension AppModel {
         }
     }
 
+    private func runNicknameCommand(_ nickname: String, invocation: ApplicationCommandInvocation) {
+        guard let guildID = invocation.guildID else { return }
+        let session = accountSession()
+        let channelID = invocation.channelID
+        startAccountChildTask(account: session) { [weak self] _, session in
+            do {
+                let saved = try await session.provider.setNickname(nickname, in: guildID)
+                guard let self, !Task.isCancelled, isCurrentAccountSession(session) else { return }
+                appendBuiltInNotice(saved.map { "Your nickname has been changed to \($0)." }
+                    ?? "Your nickname has been reset.", in: channelID, isFailure: false)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard let self, isCurrentAccountSession(session) else { return }
+                DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
+                appendBuiltInNotice("Nickname change: \(error.localizedDescription)", in: channelID)
+            }
+        }
+    }
+
     /// The message Discord's text built-ins send, or nil for other built-ins.
     static func builtInMessageText(command: String, message: String) -> String? {
         switch command {
@@ -510,10 +531,10 @@ extension AppModel {
     }
 
     /// A private notice from a built-in, like Discord's local bot messages.
-    func appendBuiltInNotice(_ text: String, in channelID: ChannelID) {
-        appendInteractionFailureRow(
+    func appendBuiltInNotice(_ text: String, in channelID: ChannelID, isFailure: Bool = true) {
+        appendInteractionNotice(
             nonce: ClientNonce.make(), channelID: channelID, application: DiscordBuiltInCommands.application,
-            commandName: nil, message: text
+            commandName: nil, message: text, isFailure: isFailure
         )
     }
 }

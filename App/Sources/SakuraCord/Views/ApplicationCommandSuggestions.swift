@@ -60,9 +60,11 @@ enum ApplicationCommandSuggestionFactory {
         channels: [Channel]
     ) -> ApplicationCommandSuggestionContent? {
         switch draft.focus {
+        case .command:
+            return nil
         case .gap:
             let query = draft.gapText.trimmingCharacters(in: .whitespaces)
-            let options = draft.optionalOptions(matching: query)
+            let options = draft.matchingOptions(matching: query)
             guard !options.isEmpty else { return nil }
             return ApplicationCommandSuggestionContent(
                 title: matchingTitle("Options", query: query),
@@ -112,8 +114,8 @@ enum ApplicationCommandSuggestionFactory {
         channels: [Channel]
     ) -> ApplicationCommandSuggestionContent? {
         let option = field.option
-        // A chosen entity or choice shows the full list again.
-        let query = field.resolved == nil ? lookupQuery(field.text, type: option.type) : ""
+        // Chosen entities reopen the full list; editable choice labels remain queries.
+        let query = field.isAtomic ? "" : lookupQuery(field.text, type: option.type)
         var content = ApplicationCommandSuggestionContent(
             title: matchingTitle("Options", query: query), suggestions: []
         )
@@ -354,6 +356,7 @@ struct ApplicationCommandSuggestionPanel: View {
                     highlight: { suggestion in
                         if let index = content.suggestions.firstIndex(where: { $0.id == suggestion.id }), index != selectedIndex { highlight(index) }
                     },
+                    activate: select,
                     content: { suggestion in
                         let index = content.suggestions.firstIndex(where: { $0.id == suggestion.id })
                         ApplicationCommandSuggestionRow(
@@ -365,6 +368,7 @@ struct ApplicationCommandSuggestionPanel: View {
                         )
                     }
                 )
+                .padding(.bottom, 6)
             }
             statusView
         }
@@ -381,7 +385,7 @@ struct ApplicationCommandSuggestionPanel: View {
             EmptyView()
         case .loading:
             HStack(spacing: 8) {
-                ProgressView().controlSize(.small)
+                InteractionLoadingDotsView()
                 Text("Loading options…")
             }
             .font(.callout)

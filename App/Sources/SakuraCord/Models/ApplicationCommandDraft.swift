@@ -31,6 +31,7 @@ struct ApplicationCommandDraftField: Identifiable, Equatable {
 }
 
 enum ApplicationCommandDraftFocus: Hashable {
+    case command
     case field(String)
     /// Between chips: before `fields[index]`, or after the last one. Typing an
     /// option name here adds it at this position, as in Discord.
@@ -40,21 +41,27 @@ enum ApplicationCommandDraftFocus: Hashable {
 /// The structured command the person is composing. Pure value logic so the
 /// editor, suggestions and submission all agree on one state.
 struct ApplicationCommandDraft: Equatable {
-    let command: ApplicationCommand
+    var command: ApplicationCommand
     /// Required options first in definition order, then optional ones in the
     /// order the person added them.
     private(set) var fields: [ApplicationCommandDraftField]
-    /// Text typed in a gap, used to search optional options.
-    var gapText = ""
-    /// The gap `gapText` belongs to.
+    /// Keep text in each gap when the caret visits another field or gap.
+    private(set) var gapTexts: [String]
     private(set) var gapIndex: Int
+    var gapText: String {
+        get { gapTexts[gapIndex] }
+        set { gapTexts[gapIndex] = newValue }
+    }
+
     var focus: ApplicationCommandDraftFocus {
         didSet {
-            if case let .gap(index) = focus, index != gapIndex {
-                gapIndex = index
-                gapText = ""
-            }
+            if case let .gap(index) = focus { gapIndex = min(max(0, index), fields.count) }
         }
+    }
+
+    mutating func setGapText(_ text: String, at index: Int) {
+        guard gapTexts.indices.contains(index) else { return }
+        gapTexts[index] = text
     }
 
     init(command: ApplicationCommand) {
@@ -63,6 +70,7 @@ struct ApplicationCommandDraft: Equatable {
             ApplicationCommandDraftField(option: $0, text: "", resolved: nil)
         }
         fields = required
+        gapTexts = Array(repeating: "", count: required.count + 1)
         gapIndex = required.count
         focus = required.first.map { .field($0.id) } ?? .gap(required.count)
     }
@@ -82,10 +90,10 @@ struct ApplicationCommandDraft: Equatable {
         fields.firstIndex { $0.id == id }
     }
 
-    /// Optional options not yet added, in definition order.
-    var availableOptionalOptions: [ApplicationCommandOption] {
+    /// Options not currently present, including removed required fields, in definition order.
+    var availableOptions: [ApplicationCommandOption] {
         let present = Set(fields.map(\.id))
-        return command.options.filter { !$0.isRequired && !present.contains($0.id) }
+        return command.options.filter { !present.contains($0.id) }
     }
 
     /// The gap after a field, where Discord leaves the caret once a value is chosen.
@@ -93,11 +101,11 @@ struct ApplicationCommandDraft: Equatable {
         .gap((index(of: id) ?? fields.count - 1) + 1)
     }
 
-    func optionalOptions(matching query: String) -> [ApplicationCommandOption] {
+    func matchingOptions(matching query: String) -> [ApplicationCommandOption] {
         let normalized = query.trimmingCharacters(in: .whitespaces)
             .trimmingCharacters(in: CharacterSet(charactersIn: ":"))
-        guard !normalized.isEmpty else { return availableOptionalOptions }
-        return availableOptionalOptions.filter {
+        guard !normalized.isEmpty else { return availableOptions }
+        return availableOptions.filter {
             $0.displayName.localizedCaseInsensitiveContains(normalized)
                 || $0.name.localizedCaseInsensitiveContains(normalized)
         }.sorted {
@@ -122,34 +130,36 @@ struct ApplicationCommandDraft: Equatable {
     }
 
     @discardableResult
-    mutating func addOptionalOption(_ option: ApplicationCommandOption) -> Bool {
-        guard !option.isRequired,
-              command.options.contains(where: { $0.id == option.id }),
+    mutating func addOption(_ option: ApplicationCommandOption, preservingGapText: Bool = false) -> Bool {
+        guard command.options.contains(where: { $0.id == option.id }),
               index(of: option.id) == nil
         else { return false }
         // A name typed in a gap inserts the option at that gap.
         let position: Int = if case let .gap(index) = focus { min(index, fields.count) } else { fields.count }
         fields.insert(ApplicationCommandDraftField(option: option, text: "", resolved: nil), at: position)
-        gapText = ""
+        if preservingGapText {
+            gapTexts.insert("", at: position + 1)
+        } else {
+            // Choosing an option rebuilds Discord's command and consumes gap queries.
+            gapTexts = Array(repeating: "", count: fields.count + 1)
+        }
         gapIndex = fields.count
         focus = .field(option.id)
         return true
     }
 
-    /// Removes an optional field; a required field is only cleared.
+    /// Required fields can be removed while editing; submission still requires them.
     mutating func removeField(_ id: String) {
         guard let index = index(of: id) else { return }
-        if fields[index].option.isRequired {
-            fields[index].text = ""
-            fields[index].resolved = nil
-        } else {
-            fields.remove(at: index)
-            gapIndex = min(gapIndex, fields.count)
-            if focus == .field(id) {
-                focus = .gap(index)
-            } else if case let .gap(gap) = focus, gap > index {
-                focus = .gap(gap - 1)
-            }
+        fields.remove(at: index)
+        let trailingText = gapTexts.remove(at: index + 1)
+        gapTexts[index] += trailingText
+        if gapIndex > index { gapIndex -= 1 }
+        gapIndex = min(gapIndex, fields.count)
+        if focus == .field(id) {
+            focus = .gap(index)
+        } else if case let .gap(gap) = focus, gap > index {
+            focus = .gap(gap - 1)
         }
     }
 
@@ -158,7 +168,7 @@ struct ApplicationCommandDraft: Equatable {
     mutating func deleteBackward(intoFieldBefore gap: Int) -> ApplicationCommandDraftFocus? {
         guard gap > 0, fields.indices.contains(gap - 1) else { return nil }
         let field = fields[gap - 1]
-        if field.isEmpty, !field.option.isRequired {
+        if field.isEmpty {
             removeField(field.id)
             focus = .gap(gap - 1)
             return focus
@@ -172,14 +182,16 @@ struct ApplicationCommandDraft: Equatable {
         return focus
     }
 
-    /// The command as ordinary text, as Discord produces when the command
-    /// itself is deleted: the name loses its last character and each chip
-    /// becomes `name:value`.
-    var plainTextAfterDeletingCommand: String {
-        var name = "/\(command.displayName)"
-        name.removeLast()
-        let chips = fields.map { "\($0.option.displayName):\($0.text)" }
-        return ([name] + chips).joined(separator: " ")
+    /// Discord implicitly opens a sole optional value, including entity options.
+    /// One remaining option on a multi-option command does not qualify.
+    mutating func acceptImplicitOptionValue() -> Bool {
+        guard case .gap = focus, fields.isEmpty, command.options.count == 1,
+              let option = command.options.first, !option.isRequired,
+              option.type != .attachment, !gapText.isEmpty else { return false }
+        let value = gapText
+        guard addOption(option) else { return false }
+        setText(value, for: option.id)
+        return true
     }
 
     /// Accepts a typed `name:` in a gap as that optional field.
@@ -187,18 +199,19 @@ struct ApplicationCommandDraft: Equatable {
         let typed = gapText.trimmingCharacters(in: .whitespaces)
         guard typed.hasSuffix(":") else { return false }
         let name = String(typed.dropLast()).lowercased()
-        guard let option = availableOptionalOptions.first(where: {
+        guard let option = availableOptions.first(where: {
             $0.displayName.lowercased() == name || $0.name.lowercased() == name
         }) else { return false }
-        return addOptionalOption(option)
+        return addOption(option)
     }
 
-    /// Tab order: each field, then the gap after the last one.
+    /// Tab skips inter-field gaps; Shift-Tab can return to the command name.
     mutating func moveFocus(by delta: Int) {
-        let stops: [ApplicationCommandDraftFocus] = fields.map { .field($0.id) } + [endGap]
+        let stops: [ApplicationCommandDraftFocus] = [.command] + fields.map { .field($0.id) } + [endGap]
         let current: Int = switch focus {
-        case let .field(id): index(of: id) ?? 0
-        case let .gap(gap): delta > 0 ? gap - 1 : gap
+        case .command: 0
+        case let .field(id): (index(of: id) ?? 0) + 1
+        case let .gap(gap): delta > 0 ? gap : gap + 1
         }
         focus = stops[min(max(0, current + delta), stops.count - 1)]
     }
@@ -316,6 +329,9 @@ struct ApplicationCommandDraft: Equatable {
     }
 
     var firstInvalidField: (field: ApplicationCommandDraftField, message: String)? {
+        if let missing = command.options.first(where: { $0.isRequired && field($0.id) == nil }) {
+            return (ApplicationCommandDraftField(option: missing, text: "", resolved: nil), "This option is required.")
+        }
         for field in fields {
             if let message = validationError(for: field) { return (field, message) }
         }
@@ -346,9 +362,14 @@ struct ApplicationCommandDraft: Equatable {
     }
 
     /// Plain text Discord would show when copied: `/name option:value`.
-    var plainText: String {
-        (["/\(command.displayName)"] + fields.map { "\($0.option.displayName):\($0.text)" })
-            .joined(separator: " ")
+    var plainText: String { plainText(commandName: "/\(command.displayName)") }
+
+    func plainText(commandName: String) -> String {
+        var text = commandName + gapTexts[0]
+        for (index, field) in fields.enumerated() {
+            text += " \(field.option.displayName):\(field.text)" + gapTexts[index + 1]
+        }
+        return text
     }
 
     static func argument(for value: ApplicationCommandChoiceValue) -> ApplicationCommandArgument {

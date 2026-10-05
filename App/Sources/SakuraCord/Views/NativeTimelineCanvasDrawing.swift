@@ -112,7 +112,7 @@ extension NativeTimelineCanvasView {
         scheduleAnimatedMediaReconciliation()
         positionAnimatedMediaOverlays()
         reconcileBeginningSelectionOverlay()
-        reconcileLoadingIndicators()
+        reconcileActivityIndicators()
         reconcileSpoilerOverlays()
         if !suppressesHoverPresentation {
             updateTrackingAreas()
@@ -205,7 +205,7 @@ extension NativeTimelineCanvasView {
         reconcileBeginningSelectionOverlay()
         positionInlineVideoOverlays()
         positionLottieStickerOverlays()
-        reconcileLoadingIndicators()
+        reconcileActivityIndicators()
         positionSpoilerOverlays()
         componentChoiceOverlay?.repositionWithAnchor()
         needsDisplay = true
@@ -399,6 +399,11 @@ extension NativeTimelineCanvasView {
         {
             setNeedsDisplay(rowFrame(at: index))
         }
+        if let messageID = clearedTargets.ephemeralDismissMessageID,
+           let index = items.firstIndex(where: { $0.messageID == messageID })
+        {
+            setNeedsDisplay(rowFrame(at: index))
+        }
     }
 
     func allowHoverPresentationAfterScroll() {
@@ -420,7 +425,7 @@ extension NativeTimelineCanvasView {
         reconcileVisibleReactionPreviewLoads()
         restoreEditingRowAfterScroll()
         reconcileAnimatedMedia()
-        reconcileLoadingIndicators()
+        reconcileActivityIndicators()
         reconcileSpoilerOverlays()
         updateTrackingAreas()
         window?.invalidateCursorRects(for: self)
@@ -502,7 +507,7 @@ extension NativeTimelineCanvasView {
         positionAnimatedMediaOverlays()
         positionInlineVideoOverlays()
         positionLottieStickerOverlays()
-        reconcileLoadingIndicators()
+        reconcileActivityIndicators()
         positionSpoilerOverlays()
     }
 
@@ -549,7 +554,7 @@ extension NativeTimelineCanvasView {
             removeInlineVideoOverlays()
             removeLottieStickerOverlays()
             removeAnimatedMediaOverlays()
-            removeLoadingIndicators()
+            removeActivityIndicators()
             removeSpoilerOverlays()
             reactionPickerCoordinator.close(notifyBinding: false)
             reactionHoverCoordinator.close()
@@ -835,6 +840,7 @@ extension NativeTimelineCanvasView {
             || activeComponentChoiceTarget?.messageID == item.messageID
             || visualPressedComponentButton?.messageID == item.messageID
             || hoveredForwardedSourceMessageID == item.messageID
+            || hoveredEphemeralDismissMessageID == item.messageID
             || !reactionCountTransitions(inMessageAt: index).isEmpty
             || textSelection?.itemIdentifier == item.identifier
             || !revealState.isEmpty
@@ -865,6 +871,7 @@ extension NativeTimelineCanvasView {
             pressedComponentButton: visualPressedComponentButton?.messageID == item.messageID ? visualPressedComponentButton : nil,
             componentButtonPressProgress: visualPressedComponentButton?.messageID == item.messageID ? componentButtonPressProgress : 0,
             isForwardedSourceHovered: hoveredForwardedSourceMessageID == item.messageID,
+            isEphemeralDismissHovered: hoveredEphemeralDismissMessageID == item.messageID,
             hoveredReactionID: hoveredReactionID(inMessageAt: index),
             isAddReactionHovered: isAddReactionHovered(inMessageAt: index),
             textSelection: textSelection,

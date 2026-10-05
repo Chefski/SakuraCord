@@ -72,6 +72,8 @@ public protocol ChatProvider: Sendable {
     func profileWidgetApplication(id: String) async throws -> [ProfileApplicationWidget]
     func profileWidgetApplicationIdentities(for userID: UserID) async throws -> [ProfileWidgetApplicationIdentity]
     func profileWidgetConnections(applicationIDs: [String]) async throws -> [String: ProfileWidgetConnection]
+    /// Changes the current member's nickname; an empty string resets it.
+    func setNickname(_ nickname: String, in guildID: GuildID) async throws -> String?
     func saveProfileChanges(
         _ changes: ProfileEditChanges, in scope: ProfileEditingScope,
         didSave: @Sendable (ProfileSaveConfirmation) async -> Void
@@ -416,6 +418,10 @@ public extension ChatProvider {
 
     func deleteProfileAvatarHistoryEntry(id: String) async throws {
         throw ChatProviderError.invalidRequest("Avatar history is unavailable for this session.")
+    }
+
+    func setNickname(_ nickname: String, in guildID: GuildID) async throws -> String? {
+        throw ChatProviderError.invalidRequest("Nickname editing is unavailable for this session.")
     }
 
     func saveProfileChanges(
