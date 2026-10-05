@@ -17,6 +17,10 @@ struct RootView: View {
                     model: model,
                     toolbarSearchFieldMetrics: toolbarSearchFieldMetrics
                 )
+                // Discord saves pending command uses when the app stops being active.
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+                    model.flushCommandFrecencyNow()
+                }
                 .windowModal(
                     item: Binding(
                         get: { model.issueReports.presentation },
@@ -821,7 +825,7 @@ private struct ChatRootView: View {
             && model.guildWorkspacePage == nil
             && !presentsForumComposer
             && !showAccountSwitcher
-            && model.presentedInteractionModal == nil
+            && model.interactionModalForm == nil
             && (model.isComposerDropEligible(.channel)
                 || model.isComposerDropEligible(.thread))
     }

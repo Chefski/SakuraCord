@@ -352,3 +352,46 @@ import Testing
     #expect(message.interactionMetadata?.user?.displayName == "Tester")
     #expect(message.interactionMetadata?.originalResponseMessageID == MessageID("700"))
 }
+
+@Test func `webhook message identity survives decoding and sparse updates without indexing a user`() throws {
+    let data = Data(#"""
+    {"id":"100","channel_id":"200","webhook_id":"300",
+     "author":{"id":"300","username":"Test persona","discriminator":"0000","avatar":"custom_hash","bot":true},
+     "content":"Test","referenced_message":{"id":"99","webhook_id":"300",
+       "author":{"id":"300","username":"Other persona","discriminator":"0000","avatar":null,"bot":true},"content":"Earlier"}}
+    """#.utf8)
+    let dto = try JSONDecoder().decode(MessageDTO.self, from: data)
+    let message = try dto.domain()
+    #expect(message.webhookID == "300")
+    #expect(message.author.isWebhookIdentity)
+    #expect(message.author.avatarURL?.path == "/avatars/300/custom_hash.webp")
+    #expect(dto.searchIndexUsers.isEmpty)
+    #expect(message.replyPreview?.author.displayName == "Other persona")
+    #expect(message.replyPreview?.webhookID == "300")
+    #expect(message.replyPreview?.author.avatarURL?.path == "/embed/avatars/0.png")
+    #expect(try JSONDecoder().decode(Message.self, from: JSONEncoder().encode(message)) == message)
+    var updated = message
+    let update = try JSONDecoder().decode(MessageUpdateDTO.self, from: Data(#"{"id":"100","channel_id":"200","content":"Edited"}"#.utf8))
+    update.apply(to: &updated)
+    #expect(updated.webhookID == message.webhookID && updated.author == message.author)
+    #expect(updated.content == "Edited")
+    // New avatar URLs are materialized asynchronously: CREATE has avatar:null,
+    // then UPDATE carries the complete message-scoped webhook author.
+    let avatarUpdate = try JSONDecoder().decode(MessageUpdateDTO.self, from: Data(#"""
+    {"id":"100","channel_id":"200","webhook_id":"300",
+     "author":{"id":"300","username":"New persona","discriminator":"0000","avatar":"ready_hash","bot":true}}
+    """#.utf8))
+    var coalesced = try #require(avatarUpdate.domain(guildID: nil))
+    coalesced.merge(try #require(update.domain(guildID: nil)))
+    coalesced.apply(to: &updated)
+    #expect(updated.author.displayName == "New persona")
+    #expect(updated.author.avatarURL?.path == "/avatars/300/ready_hash.webp")
+    #expect(updated.replyPreview == message.replyPreview)
+    #expect(coalesced.updatedUsers.isEmpty)
+    #expect(updated.content == "Edited")
+    var otherDTO = dto
+    otherDTO.id = "101"
+    var otherMessage = try otherDTO.domain()
+    coalesced.apply(to: &otherMessage)
+    #expect(otherMessage.author == message.author)
+}

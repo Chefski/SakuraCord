@@ -893,13 +893,16 @@ extension NativeTimelineCanvasView {
             messageID: message.id,
             customID: region.customID
         )
+        let defaultOptions = region.kind == .string
+            ? region.options.filter(\.isDefault)
+            : model.resolvedDefaultComponentChoices(region.options, kind: region.kind, guildID: message.guildID)
         let initialSelection = Array(
-            (selectedOptions ?? region.options.filter(\.isDefault))
+            (selectedOptions ?? defaultOptions)
                 .map(\.value)
                 .prefix(max(1, region.maximumSelectionCount))
         )
         let initialOptions = initialComponentChoices(for: region, message: message, model: model)
-        var pendingOptions = selectedOptions ?? region.options.filter(\.isDefault)
+        var pendingOptions = selectedOptions ?? defaultOptions
         let overlay = ComponentChoiceOverlayController(
             initialSelection: initialSelection,
             minimumSelectionCount: region.minimumSelectionCount,
@@ -989,12 +992,16 @@ extension NativeTimelineCanvasView {
         message: Message,
         model: AppModel
     ) -> [ComponentSelectOption] {
-        guard region.options.isEmpty else { return region.options }
-        return model.cachedComponentChoices(
+        guard region.kind != .string else { return region.options }
+        // Entity selects carry only their defaults; the choices are entities.
+        let cached = model.cachedComponentChoices(
             kind: region.kind,
             guildID: message.guildID,
             channelTypes: region.channelTypes
         )
+        let cachedValues = Set(cached.map(\.value))
+        return model.resolvedDefaultComponentChoices(region.options, kind: region.kind, guildID: message.guildID)
+            .filter { !cachedValues.contains($0.value) } + cached
     }
 
     func componentSelectAnchorRect(
@@ -1163,7 +1170,90 @@ extension NativeTimelineCanvasView {
                 )
             )
         }
+        appendApplicationCommandMenu(to: menu, row: row, index: index, point: point)
         return menu
+    }
+
+    /// Discord's Apps submenu: message commands for the message, or user
+    /// commands when the author's avatar or name was right-clicked.
+    private func appendApplicationCommandMenu(
+        to menu: NSMenu,
+        row: MessageRowPresentation,
+        index: Int,
+        point: CGPoint
+    ) {
+        let message = row.message
+        guard let model, messageInteractionContext == .conversation,
+              message.outboxState == .confirmed, !message.flags.contains(.ephemeral),
+              model.supportsCapability(.slashCommands)
+        else { return }
+        let localPoint = CGPoint(x: point.x, y: point.y - displayedRowOrigin(at: index))
+        let targetsAuthor = NativeTimelineAuthorProfileGeometry.hitFrame(
+            at: localPoint,
+            avatarFrame: layouts[index].avatarFrame,
+            authorFrame: layouts[index].authorFrame
+        ) != nil
+        let type: ApplicationCommandType = targetsAuthor ? .user : .message
+        let targetID = targetsAuthor ? message.author.id.description : message.id.description
+        model.ensureApplicationCommandsLoaded()
+        guard !model.commandComposer.contextMenuCommands(of: type).isEmpty
+            || model.commandComposer.isLoading
+        else { return }
+        let submenu = NSMenu()
+        submenu.autoenablesItems = false
+        // Rebuilt whenever the submenu opens, so a catalog that finishes
+        // loading while the menu is up replaces the loading row.
+        let populator = ApplicationCommandAppsMenuPopulator { [weak self, weak model] menu in
+            guard let self, let model else { return }
+            self.populateAppsMenu(menu, model: model, type: type, targetID: targetID, channelID: message.channelID)
+        }
+        submenu.delegate = populator
+        let apps = NSMenuItem(title: "Apps", action: nil, keyEquivalent: "")
+        ContextMenuItemSupport.configure(apps, title: "Apps", systemImage: "square.grid.2x2", isDestructive: false)
+        apps.submenu = submenu
+        apps.representedObject = populator
+        menu.addItem(.separator())
+        menu.addItem(apps)
+    }
+
+    private func populateAppsMenu(
+        _ submenu: NSMenu, model: AppModel, type: ApplicationCommandType,
+        targetID: String, channelID: ChannelID
+    ) {
+        submenu.removeAllItems()
+        let sections = model.commandComposer.contextMenuSections(of: type)
+        if sections.applications.isEmpty {
+            let loading = NSMenuItem(
+                title: model.commandComposer.isLoading ? "Loading Apps…" : "No Apps", action: nil, keyEquivalent: ""
+            )
+            loading.isEnabled = false
+            submenu.addItem(loading)
+            return
+        }
+        func commandItem(_ command: ApplicationCommand) -> NSMenuItem {
+            actionItem(command.displayName, systemImage: "paperplane") { [weak model] in
+                model?.runContextMenuCommand(command, targetID: targetID, in: channelID)
+            }
+        }
+        if !sections.frequent.isEmpty {
+            submenu.addItem(.sectionHeader(title: "Frequently Used"))
+            for command in sections.frequent {
+                let item = commandItem(command)
+                item.toolTip = command.application.name
+                submenu.addItem(item)
+            }
+            submenu.addItem(.separator())
+            submenu.addItem(.sectionHeader(title: "Apps"))
+        }
+        for (application, commands) in sections.applications {
+            let appMenu = NSMenu()
+            appMenu.autoenablesItems = false
+            commands.forEach { appMenu.addItem(commandItem($0)) }
+            let item = NSMenuItem(title: application.name, action: nil, keyEquivalent: "")
+            ContextMenuItemSupport.configure(item, title: application.name, systemImage: "app.dashed", isDestructive: false)
+            item.submenu = appMenu
+            submenu.addItem(item)
+        }
     }
 
     func messageMenuHandler(
@@ -1335,4 +1425,18 @@ extension NativeTimelineCanvasView {
         }
     }
 
+}
+
+/// Fills the Apps submenu from the current command catalog each time it opens.
+@MainActor
+final class ApplicationCommandAppsMenuPopulator: NSObject, NSMenuDelegate {
+    private let populate: (NSMenu) -> Void
+
+    init(populate: @escaping (NSMenu) -> Void) {
+        self.populate = populate
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        populate(menu)
+    }
 }

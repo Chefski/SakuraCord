@@ -46,6 +46,20 @@ enum NativeTimelineTextPresentation {
         )
     }
 
+    /// Discord shows an unanswered interaction as red text behind an alert glyph.
+    static func interactionFailure(_ value: Value) -> Value {
+        guard let attributedContent = value.attributedContent, attributedContent.length > 0 else { return value }
+        let resolved = NSMutableAttributedString(attributedString: attributedContent)
+        let attributes = resolved.attributes(at: 0, effectiveRange: nil)
+        resolved.insert(NSAttributedString(string: "⚠\u{FE0E} ", attributes: attributes), at: 0)
+        resolved.addAttribute(.foregroundColor, value: NSColor.systemRed, range: NSRange(location: 0, length: resolved.length))
+        return Value(
+            attributedContent: resolved,
+            framesetter: CTFramesetterCreateWithAttributedString(resolved),
+            linkedImages: value.linkedImages
+        )
+    }
+
     static var empty: Value {
         Value(
             attributedContent: nil,

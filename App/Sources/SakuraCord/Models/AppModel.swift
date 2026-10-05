@@ -53,6 +53,7 @@ struct MentionMemberSearchCacheEntry {
 
 struct ComponentInteractionPresentationState {
     var pendingControls: Set<ComponentControlKey> = []
+    var pendingMessages: Set<MessageID> = []
     var errors: [ComponentControlKey: String] = [:]
     var selections: [ComponentControlKey: [ComponentSelectOption]] = [:]
 }
@@ -358,9 +359,7 @@ final class AppModel {
     var forumSortOrder: ForumSortOrder = .latestActivity
     var forumLayout: ForumLayout = .list
     var forumTagMatch: ForumTagMatch = .matchSome
-    var presentedInteractionModal: InteractionModal?
-    var interactionModalNonce: String?
-    var interactionErrorMessage: String?
+    var interactionModalForm: InteractionModalFormState?
     var isVoiceChatOpen = false
     var openThread: MessageThreadSummary?
     /// A thread being composed in the supplementary pane. It is mutually
@@ -426,6 +425,8 @@ final class AppModel {
     var gifErrorMessage: String?
     var gifFavoriteMutationURL: URL?
     var stickerPickerState = StickerPickerPresentationState()
+    /// `/gif` and `/sticker` open the composer's pickers.
+    var builtInExpressionPickerRequest: BuiltInExpressionPickerRequest?
     var soundboardState = SoundboardPresentationState()
     var supportedCapabilities: Set<ChatCapability> = []
     var componentInteractionPresentation =
@@ -956,7 +957,6 @@ final class AppModel {
             commandLoadTask?.cancel()
             commandAutocompleteTask?.cancel()
             cancelApplicationCommandMemberSearch()
-            commandExecutionTask?.cancel()
             commandComposer.resetForChannelChange()
             clearComposerAttachments(for: .channel)
             isVoiceChatOpen = selectedChannel?.kind == .voice
@@ -1061,6 +1061,8 @@ final class AppModel {
     @ObservationIgnored var soundboardLoadTask: Task<Void, Never>?
     @ObservationIgnored var soundboardLoadGeneration: UInt64 = 0
     @ObservationIgnored var commandLoadTask: Task<Void, Never>?
+    @ObservationIgnored var commandFrecencyLoadTask: Task<Void, Never>?
+    @ObservationIgnored var commandFrecencyFlushTask: Task<Void, Never>?
     @ObservationIgnored var commandAutocompleteTask: Task<Void, Never>?
     @ObservationIgnored var commandMemberSearchTask: Task<Void, Never>?
     @ObservationIgnored var commandMemberSearchQuery: CommandMemberQuery?
@@ -1070,10 +1072,10 @@ final class AppModel {
     @ObservationIgnored var mentionMemberSearchCache:
         [CommandMemberQuery: MentionMemberSearchCacheEntry] = [:]
     @ObservationIgnored var roleMemberTask: Task<Void, Never>?
-    @ObservationIgnored var commandExecutionTask: Task<Void, Never>?
     @ObservationIgnored var stickerLoadTasks: [GuildID: Task<Void, Never>] = [:]
     @ObservationIgnored var stickerLoadGeneration: UInt64 = 0
-    @ObservationIgnored var componentKeyByNonce: [String: ComponentControlKey] = [:]
+    @ObservationIgnored var pendingInteractions: [String: PendingInteractionRecord] = [:]
+    @ObservationIgnored var pendingInteractionOrder: [String] = []
     @ObservationIgnored var loadingReactionReactors: Set<ReactionReactorLoadKey> = []
     @ObservationIgnored var failedReactionReactorLoads: [ReactionReactorLoadKey: Date] = [:]
     @ObservationIgnored var liveScrollingConversationIDs:

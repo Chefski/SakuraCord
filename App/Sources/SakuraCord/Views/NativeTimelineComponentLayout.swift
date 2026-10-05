@@ -67,6 +67,7 @@ struct NativeTimelineComponentLayout {
         let customID: String?
         let url: URL?
         let isDisabled: Bool
+        var isLoading = false
     }
 
     struct SelectRegion {
@@ -166,7 +167,7 @@ struct NativeTimelineComponentLayout {
         if embedComponents == nil, let error = model?.componentError(for: message.id) {
             let errorBox = NodeBuilder.plainText(
                 "⚠ \(error)",
-                font: .systemFont(ofSize: 11),
+                font: .systemFont(ofSize: 13),
                 color: .systemRed
             )
             nodes.append(
@@ -628,7 +629,7 @@ private enum NodeBuilder {
             options,
             channelTypes
         ):
-            let placeholder = rawPlaceholder ?? "Select an option…"
+            let placeholder = rawPlaceholder ?? "Make a selection"
             let font = NSFont.systemFont(ofSize: 14)
             let labelWidth = ceil(
                 (placeholder as NSString).size(
@@ -644,7 +645,9 @@ private enum NodeBuilder {
             let selectedOptions = model?.componentSelection(
                 messageID: message.id,
                 customID: customID
-            ) ?? options.filter(\.isDefault)
+            ) ?? (kind == .string
+                ? options.filter(\.isDefault)
+                : model?.resolvedDefaultComponentChoices(options, kind: kind, guildID: message.guildID) ?? options)
             let height = ComponentChoiceOptionPresentation.fieldHeight(
                 options: selectedOptions,
                 selectKind: kind,
@@ -659,10 +662,7 @@ private enum NodeBuilder {
                     model?.supportsCapability(.remoteComponentChoices) == true,
                 interactionUnavailable:
                     disabled
-                    || model?.isComponentPending(
-                        messageID: message.id,
-                        customID: customID
-                    ) == true
+                    || model?.isComponentInteractionPending(messageID: message.id) == true
             )
             return Node(
                 size: CGSize(width: width, height: height),
@@ -795,18 +795,18 @@ private enum NodeBuilder {
                         + (showsExternalLink ? 18 : 0)
                 )
             )
+            // While one action on this message is pending, its siblings are
+            // disabled and the activated button shows progress.
+            let isLoading = url == nil && customID.map {
+                model?.isComponentPending(messageID: message.id, customID: $0) == true
+            } == true
             let isDisabled =
                 disabled
                 || style == .premium
                 || (url == nil && (
                     customID == nil
                         || model?.supportsCapability(.components) != true
-                        || customID.map {
-                            model?.isComponentPending(
-                                messageID: message.id,
-                                customID: $0
-                            ) == true
-                        } == true
+                        || model?.isComponentInteractionPending(messageID: message.id) == true
                 ))
             return Node(
                 size: CGSize(
@@ -829,7 +829,8 @@ private enum NodeBuilder {
                         emoji: emoji,
                         customID: customID,
                         url: url,
-                        isDisabled: isDisabled
+                        isDisabled: isDisabled,
+                        isLoading: isLoading
                     )
                 ]
             )

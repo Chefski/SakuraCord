@@ -304,6 +304,8 @@ struct ProfilePresentationState: Identifiable {
     var profile: UserProfile?
     var isLoading: Bool
     var errorMessage: String?
+    var isWebhook = false
+    var sourceMessageID: MessageID?
 }
 
 struct ProfileCacheKey: Hashable {

@@ -67,11 +67,10 @@ contract and linked from this table.
 
 [DiscordRESTProvider.supports](../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordRESTNotificationsAndMessaging.swift)
 is authoritative for the [provider capability interface](../Packages/DiscordProtocol/Sources/DiscordProtocol/ChatProvider.swift).
-It currently enables forums, slash commands, GIFs, forwarding, soundboard,
-sticker browsing and sticker sending. Production component actions, returned-modal
-submission and remote component choices remain disabled; offline fixtures can
-exercise them. Other features also have permission, membership or entitlement
-checks outside this capability enum.
+It currently enables forums, slash commands, message components, returned-modal
+submission, remote component choices, GIFs, forwarding, soundboard, sticker
+browsing and sticker sending. Other features also have permission, membership or
+entitlement checks outside this capability enum.
 
 Rendering a payload does not authorize its corresponding mutation. UI controls
 must ask the provider and check current account/channel eligibility.

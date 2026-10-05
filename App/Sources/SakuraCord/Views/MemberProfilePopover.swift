@@ -33,6 +33,9 @@ struct ProfilePresentationContent<Footer: View>: View {
     }
 
     var body: some View {
+        if presentation.isWebhook {
+            WebhookProfilePopover(user: presentation.member.user)
+        } else {
         MemberProfilePopover(
             member: presentation.member,
             isCurrentUser: presentation.isCurrentUser,
@@ -45,6 +48,7 @@ struct ProfilePresentationContent<Footer: View>: View {
             footer: footer,
             openProfile: openProfile.map { action in { action(presentation) } }
         )
+        }
     }
 }
 
@@ -64,6 +68,35 @@ extension ProfilePresentationContent where Footer == EmptyView {
             openProfile: openProfile
         ) {
             EmptyView()
+        }
+    }
+}
+
+/// Webhooks have message-scoped identity, no remote user profile or presence.
+/// Keep this card compact instead of reserving space for full-profile sections.
+private struct WebhookProfilePopover: View {
+    let user: User
+    @State private var accent: UInt32?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityPlayAnimatedImages) private var playsAnimatedImages
+
+    var body: some View {
+        ProfileHeroSection(
+            member: Member(user: user, roleName: "", status: .offline),
+            profile: UserProfile(user: user, accentHex: accent),
+            themeHexes: [], avatarCutoutColor: Color(nsColor: .windowBackgroundColor),
+            topCornerRadius: 16, roundsTopTrailingCorner: true,
+            statusBubbleWidth: 200, isExpandedProfile: false,
+            animatesRemoteMedia: !reduceMotion && playsAnimatedImages, showsPresence: false
+        )
+        .frame(width: MemberProfilePopover<EmptyView>.preferredWidth)
+        .padding(.bottom, 16)
+        .task(id: user.avatarURL) {
+            accent = nil
+            guard let url = user.avatarURL else { return }
+            let palette = try? await ProfileAvatarPaletteLoader.shared.colors(url)
+            guard !Task.isCancelled else { return }
+            accent = palette?.first
         }
     }
 }
@@ -370,6 +403,7 @@ private struct ProfileHeroSection: View {
     let statusBubbleWidth: CGFloat
     let isExpandedProfile: Bool
     let animatesRemoteMedia: Bool
+    var showsPresence = true
     var editor: ProfileEditorState?
     var openEditorPicker: ((ProfileEditorPicker) -> Void)?
 
@@ -399,7 +433,7 @@ private struct ProfileHeroSection: View {
 
             HStack(alignment: .bottom, spacing: 6) {
                 AvatarPresenceView(
-                    status: member.status,
+                    status: showsPresence ? member.status : nil,
                     avatarSize: avatarSize,
                     indicatorSize: 15,
                     isMobile: member.showsMobileIndicator

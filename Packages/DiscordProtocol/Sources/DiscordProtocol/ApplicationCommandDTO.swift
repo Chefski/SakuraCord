@@ -321,10 +321,13 @@ struct ApplicationCommandIndexDecoder {
     {
         let envelope = try JSONDecoder().decode(Envelope.self, from: data)
         var applications: [String: ApplicationCommandApplication] = [:]
+        // Index order breaks ties between equally named sections, as in Discord.
+        var applicationOrder: [String] = []
         for value in envelope.applications {
             guard let payload = try? JSONEncoder().encode(value),
                   let application = try? JSONDecoder().decode(ApplicationDTO.self, from: payload)
             else { continue }
+            if applications[application.id] == nil { applicationOrder.append(application.id) }
             applications[application.id] = application.domain
         }
 
@@ -339,7 +342,7 @@ struct ApplicationCommandIndexDecoder {
         return ApplicationCommandCatalog(
             target: target,
             version: envelope.version.value.isEmpty ? nil : envelope.version.value,
-            applications: applications.values.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending },
+            applications: applicationOrder.compactMap { applications[$0] },
             commands: commands
         )
     }

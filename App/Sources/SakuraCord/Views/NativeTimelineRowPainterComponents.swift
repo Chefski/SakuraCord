@@ -1165,7 +1165,7 @@ extension NativeTimelineRowPainter {
                 isHovered: isHovered,
                 pressProgress: pressProgress
             )
-        let opacity: CGFloat = region.isDisabled ? 0.65 : 1
+        let opacity: CGFloat = region.isDisabled && !region.isLoading ? 0.65 : 1
         let background = adjustedBrightness(
             roleColor(
                 DiscordComponentButtonAppearance.backgroundHex(
@@ -1223,6 +1223,15 @@ extension NativeTimelineRowPainter {
         brightness: CGFloat,
         opacity: CGFloat
     ) {
+        if region.isLoading {
+            systemSymbol(
+                "ellipsis",
+                in: CGRect(x: region.frame.midX - 9, y: region.frame.midY - 9, width: 18, height: 18),
+                color: adjustedBrightness(.white, amount: brightness),
+                inset: 1
+            )
+            return
+        }
         var horizontalPosition = region.frame.minX + 12
         if let emoji = region.emoji {
             componentEmoji(emoji, in: CGRect(

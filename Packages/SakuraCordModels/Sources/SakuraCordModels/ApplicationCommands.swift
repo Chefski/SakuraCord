@@ -270,7 +270,8 @@ public struct ApplicationCommand: Identifiable, Codable, Hashable, Sendable {
     }
 
     public var displayName: String {
-        ([localizedName ?? name] + subcommandPath.map(\.displayName)).joined(separator: " ")
+        guard !subcommandPath.isEmpty else { return localizedName ?? name }
+        return ([localizedName ?? name] + subcommandPath.map(\.displayName)).joined(separator: " ")
     }
 
     public var executionName: String {
@@ -352,6 +353,8 @@ public struct ApplicationCommandInvocation: Codable, Hashable, Sendable {
     public var channelID: ChannelID
     public var guildID: GuildID?
     public var values: [ApplicationCommandOptionValue]
+    /// The user or message a context-menu command acts on. Chat-input commands have none.
+    public var targetID: String?
     public var nonce: String
 
     public init(
@@ -359,12 +362,14 @@ public struct ApplicationCommandInvocation: Codable, Hashable, Sendable {
         channelID: ChannelID,
         guildID: GuildID?,
         values: [ApplicationCommandOptionValue],
+        targetID: String? = nil,
         nonce: String = ClientNonce.make()
     ) {
         self.command = command
         self.channelID = channelID
         self.guildID = guildID
         self.values = values
+        self.targetID = targetID
         self.nonce = nonce
     }
 }

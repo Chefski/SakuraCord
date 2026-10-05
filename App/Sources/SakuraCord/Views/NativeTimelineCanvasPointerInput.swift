@@ -11,7 +11,8 @@ import SwiftUI
 
 extension NativeTimelineCanvasView {
     override func updateTrackingAreas() {
-        guard !suppressesHoverPresentation,
+        guard model?.commandComposer.isPickerPresented != true,
+              !suppressesHoverPresentation,
               !overlayBlocksInteractions
         else {
             pointer.removeTrackingAreas(from: self)
@@ -37,7 +38,8 @@ extension NativeTimelineCanvasView {
 
     override func resetCursorRects() {
         guard WindowModalCoordinator.allowsInput(for: self) else { return }
-        guard !suppressesHoverPresentation,
+        guard model?.commandComposer.isPickerPresented != true,
+              !suppressesHoverPresentation,
               !overlayBlocksInteractions
         else { return }
         super.resetCursorRects()
@@ -169,7 +171,8 @@ extension NativeTimelineCanvasView {
 
     override func mouseEntered(with event: NSEvent) {
         guard WindowModalCoordinator.allowsInput(for: self) else { return }
-        guard !suppressesHoverPresentation,
+        guard model?.commandComposer.isPickerPresented != true,
+              !suppressesHoverPresentation,
               !overlayBlocksInteractions,
               editingMessageID == nil,
               event.trackingArea?.userInfo?["nativeTimelineTrackingKind"]
@@ -210,7 +213,8 @@ extension NativeTimelineCanvasView {
 
     override func mouseMoved(with event: NSEvent) {
         guard WindowModalCoordinator.allowsInput(for: self) else { return }
-        guard !suppressesHoverPresentation,
+        guard model?.commandComposer.isPickerPresented != true,
+              !suppressesHoverPresentation,
               !overlayBlocksInteractions,
               editingMessageID == nil
         else {
@@ -934,9 +938,10 @@ extension NativeTimelineCanvasView {
     ) {
         guard let model else { return }
         closeMentionPopover()
-        let presentationIdentity = AnyHashable(ProfileCacheKey(
-            userID: user.id, guildID: model.messagePresentationGuildID(for: sourceMessage)
-        ))
+        // One webhook can post with different names and avatars in adjacent messages.
+        let presentationIdentity = sourceMessage.webhookID != nil && user.isWebhookIdentity
+            ? AnyHashable(sourceMessage.id)
+            : AnyHashable(ProfileCacheKey(userID: user.id, guildID: model.messagePresentationGuildID(for: sourceMessage)))
         if messageProfilePopoverCoordinator.isPresenting(
             identity: presentationIdentity
         ) {
@@ -1150,7 +1155,8 @@ extension NativeTimelineCanvasView {
     }
 
     func synchronizeHoverWithCurrentPointer() {
-        guard WindowModalCoordinator.allowsInput(for: self), !overlayBlocksInteractions, !suppressesHoverPresentation,
+        guard model?.commandComposer.isPickerPresented != true,
+              WindowModalCoordinator.allowsInput(for: self), !overlayBlocksInteractions, !suppressesHoverPresentation,
               editingMessageID == nil,
               window?.isKeyWindow == true
         else { return }

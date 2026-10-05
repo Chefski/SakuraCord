@@ -242,7 +242,9 @@ extension AppModel {
         currentUserRoleIDsByGuild = [:]
         supportedCapabilities = []
         componentInteractionPresentation = .init()
-        componentKeyByNonce = [:]
+        pendingInteractions = [:]
+        pendingInteractionOrder = []
+        interactionModalForm = nil
         credentialHandle = handle
         activeAccountID = handle.accountID
         didAttemptSessionRestore = true
@@ -420,7 +422,9 @@ extension AppModel {
             launchMode == .offlineTesting ? MockChatProvider() : SignedOutChatProvider()
         supportedCapabilities = []
         componentInteractionPresentation = .init()
-        componentKeyByNonce = [:]
+        pendingInteractions = [:]
+        pendingInteractionOrder = []
+        interactionModalForm = nil
         let signedOutDatabase = launchMode == .offlineTesting
             ? try? SakuraCordDatabase(inMemory: true)
             : nil
@@ -524,8 +528,6 @@ extension AppModel {
         roleMemberResult = nil
         roleMemberErrorMessage = nil
         isLoadingRoleMembers = false
-        commandExecutionTask?.cancel()
-        commandExecutionTask = nil
         inspectorProfileTask?.cancel()
         inspectorProfileTask = nil
         contextualProfileTask?.cancel()

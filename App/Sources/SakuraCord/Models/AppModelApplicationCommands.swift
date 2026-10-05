@@ -19,6 +19,8 @@ extension AppModel {
             } ?? .channel(channel.id)
         let targets: Set<ApplicationCommandIndexTarget> = [contextTarget, .user]
         commandComposer.beginLoading(targets: targets)
+        commandComposer.locale = Locale(identifier: Locale.preferredLanguages.first ?? "en-US")
+        loadCommandFrecencyIfNeeded()
         commandLoadTask?.cancel()
         let account = accountSession()
         commandLoadTask = Task { [weak self] in
@@ -52,7 +54,8 @@ extension AppModel {
                     catalogs,
                     channel: channel,
                     currentUserID: snapshot?.currentUser.id,
-                    memberRoleIDs: roleIDs
+                    memberRoleIDs: roleIDs,
+                    builtInContext: builtInCommandContext(for: channel)
                 )
             } catch is CancellationError {
                 return
@@ -67,47 +70,33 @@ extension AppModel {
         }
     }
 
-    func requestApplicationCommandAutocomplete(
-        for option: ApplicationCommandOption,
-        query: String
-    ) {
-        guard option.usesAutocomplete, option.type.supportsAutocomplete,
-              let channelID = selectedChannelID,
-              let invocation = commandComposer.invocation(
+    /// Requests remote choices for the focused field when its query changed.
+    /// Discord answers through the Gateway; results correlate by nonce.
+    func refreshApplicationCommandAutocomplete() {
+        guard let channelID = selectedChannelID,
+              let request = commandComposer.autocompleteRequest(
                   channelID: channelID, guildID: selectedGuildID
               )
         else { return }
-        let request = ApplicationCommandAutocompleteRequest(
-            invocation: invocation, focusedOptionID: option.id, query: query
-        )
-        switch commandComposer.prepareAutocomplete(
-            option: option, query: query, nonce: request.nonce
-        ) {
-        case .cached:
-            commandAutocompleteTask?.cancel()
-            commandAutocompleteTask = nil
-            return
-        case .pending:
-            return
-        case .request:
-            commandAutocompleteTask?.cancel()
-        }
+        commandAutocompleteTask?.cancel()
         let session = accountSession()
         commandAutocompleteTask = Task { [weak self] in
             guard let self else { return }
             do {
-                try await Task.sleep(for: .milliseconds(200))
+                // Coalesce fast typing into one request per settled query.
+                try await Task.sleep(for: .milliseconds(250))
                 try Task.checkCancellation()
-                try await session.provider.requestApplicationCommandAutocomplete(request)
+                try await AppPerformanceSignposts.measure("CommandAutocompleteRequest") {
+                    try await session.provider.requestApplicationCommandAutocomplete(request)
+                }
             } catch is CancellationError {
+                commandComposer.abandonAutocomplete(nonce: request.nonce, message: "")
                 return
             } catch {
-                guard !Task.isCancelled,
-                      isCurrentAccountSession(session)
-                else { return }
+                guard isCurrentAccountSession(session) else { return }
                 DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
-                commandComposer.failAutocomplete(
-                    nonce: request.nonce, message: error.localizedDescription
+                commandComposer.abandonAutocomplete(
+                    nonce: request.nonce, message: "Loading options failed"
                 )
             }
         }
@@ -120,7 +109,7 @@ extension AppModel {
 
     func requestApplicationCommandMemberSearch(query: String) {
         let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let option = commandComposer.focusedOption,
+        guard let option = commandComposer.draft?.focusedField?.option,
               option.type == .user || option.type == .mentionable,
               let guildID = selectedGuildID,
               !normalized.isEmpty
@@ -295,9 +284,15 @@ extension AppModel {
         }
     }
 
+    /// Sends the composed command. Like Discord, the composer clears at once
+    /// and a private placeholder row tracks the app's answer.
     func executeApplicationCommand() {
-        guard commandExecutionTask == nil,
-              let channelID = selectedChannelID,
+        AppPerformanceSignposts.measureSync("CommandSubmit") { submitApplicationCommand() }
+    }
+
+    private func submitApplicationCommand() {
+        guard let channelID = selectedChannelID,
+              commandComposer.prepareSubmission(),
               let invocation = commandComposer.invocation(
                   channelID: channelID, guildID: selectedGuildID
               )
@@ -305,9 +300,41 @@ extension AppModel {
         guard allowSlowmodeSubmission(in: channelID) else { return }
         commandAutocompleteTask?.cancel()
         stopLocalTyping(clearThrottle: true)
+        commandComposer.recordUse(of: invocation.command, guildID: invocation.guildID)
+        commandComposer.cancelActiveCommand()
         updateDraft("")
+        if DiscordBuiltInCommands.isBuiltIn(invocation.command) {
+            runBuiltInCommand(invocation)
+        } else {
+            runApplicationCommand(invocation)
+        }
+    }
+
+    /// Runs a user or message context-menu command against its target.
+    func runContextMenuCommand(_ command: ApplicationCommand, targetID: String, in channelID: ChannelID) {
+        guard supportedCapabilities.contains(.slashCommands) else { return }
+        let guildID = visibleChannels.first { $0.id == channelID }?.guildID
+            ?? snapshot?.channels.first { $0.id == channelID }?.guildID
+        commandComposer.recordUse(of: command, guildID: guildID)
+        runApplicationCommand(ApplicationCommandInvocation(
+            command: command, channelID: channelID, guildID: guildID, values: [], targetID: targetID
+        ))
+    }
+
+    private func runApplicationCommand(_ invocation: ApplicationCommandInvocation) {
+        let nonce = invocation.nonce
+        let channelID = invocation.channelID
+        trackInteraction(
+            PendingInteractionRecord(kind: .command(
+                channelID: channelID,
+                commandName: invocation.command.displayName,
+                application: invocation.command.application
+            )),
+            nonce: nonce
+        )
+        appendInteractionPlaceholder(for: invocation)
         let session = accountSession()
-        commandExecutionTask = Task { [weak self] in
+        Task { [weak self] in
             guard let self else { return }
             let attachmentURLs = invocation.values.compactMap { value -> URL? in
                 guard case let .attachment(url) = value.argument else { return nil }
@@ -317,28 +344,148 @@ extension AppModel {
             if uploadsAttachments { activeAttachmentUploadCount += 1 }
             defer { if uploadsAttachments { activeAttachmentUploadCount -= 1 } }
             beginUsingOwnedPromisedFiles(attachmentURLs)
-            defer { endUsingOwnedPromisedFiles(attachmentURLs) }
+            let scoped = attachmentURLs.filter { $0.startAccessingSecurityScopedResource() }
             defer {
-                if isCurrentAccountSession(session) {
-                    commandExecutionTask = nil
-                }
+                scoped.forEach { $0.stopAccessingSecurityScopedResource() }
+                endUsingOwnedPromisedFiles(attachmentURLs)
             }
             do {
                 try await session.provider.executeApplicationCommand(invocation) { [weak self] progress in
                     Task { @MainActor in
-                        guard let self,
-                              self.isCurrentAccountSession(session)
-                        else { return }
-                        self.commandComposer.updateExecutionProgress(progress)
+                        guard let self, self.isCurrentAccountSession(session) else { return }
+                        self.updateInteractionPlaceholder(
+                            nonce: nonce, channelID: channelID, progress: progress
+                        )
                     }
                 }
             } catch is CancellationError {
                 return
             } catch {
                 guard isCurrentAccountSession(session) else { return }
-                commandComposer.failExecution(error.localizedDescription)
+                DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
+                // A definite request failure is final; it is never replayed.
+                pendingInteractions[nonce]?.isFinished = true
+                failInteractionPlaceholder(
+                    nonce: nonce, channelID: channelID, message: error.localizedDescription
+                )
             }
         }
     }
 
+    /// Context-menu commands need the same catalogues as the slash picker.
+    func ensureApplicationCommandsLoaded() {
+        guard !commandComposer.hasLoadedCatalogs, !commandComposer.isLoading else { return }
+        loadApplicationCommands()
+    }
+
+    /// What decides which Discord built-ins this conversation offers.
+    func builtInCommandContext(for channel: Channel) -> DiscordBuiltInCommands.Context {
+        let channelPermissions = effectiveMessagePermissions(in: channel)
+        let guildPermissions = channel.guildID.flatMap { guildID -> UInt64? in
+            guard let basis = conversationPermissionBasis(for: guildID) else { return nil }
+            return basis.guild.isOwnedByCurrentUser == true ? .max : basis.resolvedBasePermissions
+        }
+        let createPublicThreads: UInt64 = 1 << 35
+        let threadable = channel.kind == .text || channel.kind == .announcement
+        let canCreateThread = threadable && channel.guildID != nil
+            && (channelPermissions.map { $0 & (createPublicThreads | DiscordBuiltInCommands.Permission.administrator) != 0 } ?? false)
+        return DiscordBuiltInCommands.Context(
+            isPrivate: channel.guildID == nil,
+            isGroupDirectMessage: channel.kind == .groupDirectMessage,
+            channelPermissions: channelPermissions,
+            guildPermissions: guildPermissions,
+            canCreatePublicThread: canCreateThread,
+            allowsTTSCommand: true
+        )
+    }
+
+    // MARK: Discord built-ins
+
+    /// Runs one of Discord's client-side commands the way the official client
+    /// does: most become an ordinary message; none reach an application.
+    func runBuiltInCommand(_ invocation: ApplicationCommandInvocation) {
+        let channelID = invocation.channelID
+        func string(_ name: String) -> String {
+            for value in invocation.values where value.name == name {
+                if case let .string(text) = value.argument { return text }
+            }
+            return ""
+        }
+        func user(_ name: String) -> UserID? {
+            for value in invocation.values where value.name == name {
+                if case let .user(id) = value.argument { return id }
+            }
+            return nil
+        }
+        let message = string("message")
+        if let text = Self.builtInMessageText(command: invocation.command.name, message: message) {
+            let isTTS = invocation.command.name == "tts"
+            Task { [weak self] in
+                await self?.sendChannelMessage(
+                    channelID: channelID, content: text, replyTo: nil, replyPreview: nil,
+                    attachments: [], clearsComposer: false, isTTS: isTTS
+                )
+            }
+            return
+        }
+        let session = accountSession()
+        switch invocation.command.name {
+        case "msg":
+            guard let recipient = user("user") else { return }
+            Task { [weak self] in
+                do {
+                    let channel = try await session.provider.ensurePrivateChannel(for: recipient)
+                    _ = try await session.provider.send(SendMessageDraft(channelID: channel.id, content: message))
+                } catch {
+                    guard let self, isCurrentAccountSession(session) else { return }
+                    appendBuiltInNotice("Your message could not be delivered.", in: channelID)
+                }
+            }
+        case "thread":
+            let name = string("name")
+            Task { [weak self] in
+                do {
+                    let thread = try await session.provider.createThread(CreateThreadDraft(channelID: channelID, name: name))
+                    _ = try await session.provider.send(SendMessageDraft(channelID: thread.id, content: message))
+                } catch {
+                    guard let self, isCurrentAccountSession(session) else { return }
+                    appendBuiltInNotice("The thread could not be created.", in: channelID)
+                }
+            }
+        case "gif":
+            builtInExpressionPickerRequest = BuiltInExpressionPickerRequest(kind: .gif, query: string("query"))
+        case "sticker":
+            builtInExpressionPickerRequest = BuiltInExpressionPickerRequest(kind: .sticker, query: string("query"))
+        default:
+            appendBuiltInNotice("/\(invocation.command.name) isn’t available in SakuraCord yet.", in: channelID)
+        }
+    }
+
+    /// The message Discord's text built-ins send, or nil for other built-ins.
+    static func builtInMessageText(command: String, message: String) -> String? {
+        switch command {
+        case "shrug": "\(message) ¯\\_(ツ)_/¯".trimmingCharacters(in: .whitespacesAndNewlines)
+        case "tableflip": "\(message) (╯°□°)╯︵ ┻━┻".trimmingCharacters(in: .whitespacesAndNewlines)
+        case "unflip": "\(message) ┬─┬ノ( º _ ºノ)".trimmingCharacters(in: .whitespacesAndNewlines)
+        case "me": "_\(message)_"
+        case "spoiler": "||\(message)||"
+        case "tts": message
+        default: nil
+        }
+    }
+
+    /// A private notice from a built-in, like Discord's local bot messages.
+    func appendBuiltInNotice(_ text: String, in channelID: ChannelID) {
+        appendInteractionFailureRow(
+            nonce: ClientNonce.make(), channelID: channelID, application: DiscordBuiltInCommands.application,
+            commandName: nil, message: text
+        )
+    }
+}
+
+struct BuiltInExpressionPickerRequest: Equatable {
+    enum Kind { case gif, sticker }
+    var kind: Kind
+    var query: String
+    var id = UUID()
 }

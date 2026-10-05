@@ -177,6 +177,16 @@ failed or cancelled CI runs upload them as a seven-day artifact. A timeout fails
 validation without retrying or skipping tests. The CI build-and-test step also
 has a 30-minute outer limit covering compilation and framework staging.
 
+### Profiling command pickers
+
+In Instruments, use Time Profiler with the app's `PointsOfInterest` signposts.
+`CommandPickerQuery`, `CommandActivation`, `CommandSubmit`, and `PickerViewport`
+measure local preparation and native viewport work. `CommandAutocompleteRequest`
+measures the autocomplete HTTP request after its typing debounce; it does not
+include the later Gateway response. Compare cold catalog loading separately from
+warm typing, keyboard navigation, selection, and sending. Viewport timings exclude
+Core Animation presentation and must not be reported as complete frame times.
+
 ### Verifying native notification audio
 
 The packager converts the bundled Discord message clip to AIFF in the main

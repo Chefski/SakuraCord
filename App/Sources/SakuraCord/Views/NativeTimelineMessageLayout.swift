@@ -86,6 +86,9 @@ extension NativeTimelineRowLayout {
             if isOutgoingBubble {
                 contentPresentation = NativeTimelineTextPresentation.outgoingBubble(contentPresentation)
             }
+            if message.flags.contains(.localInteractionFailure) {
+                contentPresentation = NativeTimelineTextPresentation.interactionFailure(contentPresentation)
+            }
             let preferredBubbleContentWidth =
                 NativeTimelineBubbleLayout.preferredContentWidth(
                     for: message,

@@ -34,9 +34,12 @@ struct NativePickerDocument<Row: Identifiable, Content: View>: NSViewRepresentab
     let revision: Int
     let position: NativePickerScrollPosition
     var showsIndicators = true
+    var capturesOverlayPointer = false
     let rowHeight: (Row, CGFloat) -> CGFloat
+    var pinnedHeader: ((Row) -> Bool)?
     var becameVisible: (Row) -> Void = { _ in }
     var didScrollTo: (Row) -> Void = { _ in }
+    var topVisibleRowChanged: (Row) -> Void = { _ in }
     var nativeContent: ((Row, NSView?, EnvironmentValues) -> NSView?)?
     @ViewBuilder let content: (Row) -> Content
     @Environment(\.self) private var environment
@@ -55,11 +58,12 @@ struct NativePickerDocument<Row: Identifiable, Content: View>: NSViewRepresentab
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         guard let canvas = scroll.documentView as? NativePickerCanvas<Row> else { return }
+        (scroll as? NativePickerScrollView)?.capturesOverlayPointer = capturesOverlayPointer
         scroll.hasVerticalScroller = showsIndicators
         canvas.update(
             rows: rows, revision: revision, width: scroll.contentSize.width,
-            height: rowHeight, visible: becameVisible,
-            didScrollTo: didScrollTo,
+            height: rowHeight, visible: becameVisible, pinnedHeader: pinnedHeader,
+            didScrollTo: didScrollTo, topVisibleRowChanged: topVisibleRowChanged,
             nativeContent: { row, reused in nativeContent?(row, reused, environment) },
             content: { row in AnyView(content(row).environment(\.self, environment).id(row.id)) }
         )
@@ -67,7 +71,7 @@ struct NativePickerDocument<Row: Identifiable, Content: View>: NSViewRepresentab
     }
 
     static func dismantleNSView(_ scroll: NSScrollView, coordinator: Void) {
-        (scroll as? NativePickerScrollView)?.finishScroll()
+        (scroll as? NativePickerScrollView)?.stop()
         (scroll.documentView as? NativePickerCanvas<Row>)?.stop()
         scroll.documentView = nil
     }
@@ -77,11 +81,71 @@ struct NativePickerDocument<Row: Identifiable, Content: View>: NSViewRepresentab
     func clear()
 }
 
+@MainActor protocol NativePickerViewport: AnyObject {
+    func viewportDidLayout()
+}
+
 final class NativePickerScrollView: NSScrollView {
     private var ownsScrollActivity = false
+    var capturesOverlayPointer = false { didSet { updatePointerMonitor() } }
+    private var pointerMonitor: Any?
+    private weak var pressedView: NSView?
+
+    override func layout() {
+        super.layout()
+        (documentView as? any NativePickerViewport)?.viewportDidLayout()
+    }
+
+    func stop() {
+        finishScroll()
+        if let pointerMonitor { NSEvent.removeMonitor(pointerMonitor) }
+        pointerMonitor = nil
+        pressedView = nil
+    }
+
+    private func updatePointerMonitor() {
+        guard capturesOverlayPointer, window != nil else {
+            if let pointerMonitor { NSEvent.removeMonitor(pointerMonitor) }
+            pointerMonitor = nil
+            return
+        }
+        guard pointerMonitor == nil else { return }
+        // The composer overlay extends beyond its parent's AppKit hit-test bounds.
+        // Route only pointer events inside this scroll view; keyboard focus stays in the editor.
+        pointerMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .mouseEntered, .leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp, .scrollWheel]) { [weak self] event in
+            let consumed = MainActor.assumeIsolated {
+                guard let self, event.window === self.window, !self.isHiddenOrHasHiddenAncestor,
+                      WindowModalCoordinator.allowsInput(for: self) else { return false }
+                let inside = self.bounds.contains(self.convert(event.locationInWindow, from: nil))
+                if event.type == .leftMouseUp, let pressed = self.pressedView {
+                    self.pressedView = nil
+                    pressed.mouseUp(with: event)
+                    return true
+                }
+                guard inside else { return false }
+                if let scroller = self.verticalScroller, !scroller.isHidden,
+                   scroller.bounds.contains(scroller.convert(event.locationInWindow, from: nil)) {
+                    return false
+                }
+                let target = self.documentView.flatMap { $0.hitTest($0.convert(event.locationInWindow, from: nil)) }
+                switch event.type {
+                case .mouseMoved: target?.mouseMoved(with: event)
+                case .leftMouseDown:
+                    self.pressedView = target
+                    target?.mouseDown(with: event)
+                case .leftMouseUp: target?.mouseUp(with: event)
+                case .scrollWheel: self.scrollWheel(with: event)
+                default: break
+                }
+                return true
+            }
+            return consumed ? nil : event
+        }
+    }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        updatePointerMonitor()
         NotificationCenter.default.removeObserver(self, name: NSScrollView.willStartLiveScrollNotification, object: self)
         NotificationCenter.default.removeObserver(self, name: NSScrollView.didEndLiveScrollNotification, object: self)
         finishScroll()

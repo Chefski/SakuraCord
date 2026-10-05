@@ -357,6 +357,9 @@ struct SelectionField<ID: Hashable & Sendable>: View {
                 activate: activate
             )
         }
+        // The list floats over message text; a backing keeps rows legible
+        // while the glass still picks up the surrounding tint.
+        .background(Color(nsColor: .windowBackgroundColor).opacity(0.78), in: .rect(cornerRadius: 11))
         .glassEffect(.regular, in: .rect(cornerRadius: 11))
         .overlay {
             RoundedRectangle(cornerRadius: 11).strokeBorder(.primary.opacity(0.1), lineWidth: 0.75)

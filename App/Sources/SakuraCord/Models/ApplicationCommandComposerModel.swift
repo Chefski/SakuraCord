@@ -6,6 +6,8 @@ struct ApplicationCommandSection: Identifiable, Equatable {
     enum Kind: Hashable {
         case frequentlyUsed
         case application(String)
+        /// One ranked list while searching, as Discord shows it.
+        case searchResults
     }
 
     var kind: Kind
@@ -17,6 +19,7 @@ struct ApplicationCommandSection: Identifiable, Equatable {
         switch kind {
         case .frequentlyUsed: "frequently-used"
         case let .application(id): "application:\(id)"
+        case .searchResults: "search-results"
         }
     }
 }
@@ -51,10 +54,31 @@ enum SakuraCordBuiltInCommands {
     }
 }
 
-enum ApplicationCommandAutocompleteStart: Equatable {
-    case request
-    case pending
-    case cached
+enum ApplicationCommandAutocompleteStatus: Equatable {
+    case idle
+    /// Previous choices stay visible while the next query loads.
+    case loading(previous: [ApplicationCommandChoice])
+    case loaded([ApplicationCommandChoice])
+    case failed(String)
+
+    var choices: [ApplicationCommandChoice] {
+        switch self {
+        case let .loading(previous): previous
+        case let .loaded(choices): choices
+        case .idle, .failed: []
+        }
+    }
+
+    var isLoading: Bool {
+        if case .loading = self { return true }
+        return false
+    }
+}
+
+/// Feedback shown when a submission is attempted with an invalid field.
+struct ApplicationCommandFieldIssue: Equatable {
+    var fieldID: String
+    var message: String
 }
 
 @MainActor
@@ -64,107 +88,453 @@ final class ApplicationCommandComposerModel {
         var commandID: String
         var optionID: String
         var query: String
+        var siblings: String
     }
 
-    private struct PendingInvocation {
-        var commandName: String
-        var localizedName: String?
-        var applicationID: String
-    }
+    // MARK: Catalogue
 
-    private struct FrecencyRecord: Codable {
-        var count: Int
-        var lastUsed: Date
-    }
-
-    private struct CommandSearchMetadata {
-        let path: String
-        let application: String
-        let description: String
-    }
-
-    private struct RankedCommand {
-        let command: ApplicationCommand
-        let searchScore: Int
-        let frecencyScore: Double
-    }
-
+    /// Every slash command offered here: applications, Discord built-ins and
+    /// SakuraCord's own.
     private(set) var commands: [ApplicationCommand] = SakuraCordBuiltInCommands.commands {
-        didSet {
-            commandSearchIndex = Dictionary(uniqueKeysWithValues: commands.map { command in
-                (command.id, CommandSearchMetadata(
-                    path: normalize(command.displayName),
-                    application: normalize(command.application.name),
-                    description: normalize(command.displayDescription)
-                ))
-            })
-        }
+        didSet { refreshPickerSections() }
     }
+
+    /// User and message context-menu commands available in this conversation.
+    private(set) var contextMenuCommands: [ApplicationCommand] = []
     private(set) var applications = [SakuraCordBuiltInCommands.application]
     /// Discord's catalogues for this conversation, not counting built-ins.
     private(set) var hasLoadedCatalogs = false
     private(set) var isLoading = false
     private(set) var loadError: String?
-    private(set) var activeCommand: ApplicationCommand? {
-        didSet { attachmentPasteRevision &+= 1 }
-    }
-    private(set) var includedOptionIDs: Set<String> = []
-    private(set) var displayedOptionIDs: [String] = []
-    private(set) var values: [String: ApplicationCommandArgument] = [:] {
-        didSet { attachmentPasteRevision &+= 1 }
-    }
-    private(set) var optionDrafts: [String: String] = [:]
-
-    private(set) var focusedOptionID: String? {
-        didSet { attachmentPasteRevision &+= 1 }
-    }
-    @ObservationIgnored private var attachmentPasteRevision = 0
-    private(set) var autocompleteChoices: [ApplicationCommandChoice] = []
-    private(set) var autocompleteNonce: String?
-    private(set) var isAutocompleteLoading = false
-    private(set) var autocompleteError: String?
-    private(set) var executionProgress: ApplicationCommandProgress?
-    private(set) var executionState: ApplicationCommandExecutionState?
-    private(set) var executionError: String?
     private(set) var currentTargets: Set<ApplicationCommandIndexTarget> = []
 
-    var isPickerPresented = false
-    var searchText = ""
-    var selectedCommandID: String?
+    // MARK: Picker
+
+    private(set) var isPickerPresented = false
+    private(set) var searchText = ""
+    /// The highlighted picker row (`section/command`): Frequently Used rows
+    /// repeat under their application, as in Discord.
+    var selectedRowID: String?
+    /// Sections for `searchText`, computed once per query rather than per render.
+    private(set) var pickerSections: [ApplicationCommandSection] = []
     private(set) var pickerKeyboardSelectionRevision = 0
 
-    @ObservationIgnored private var frecency: [String: FrecencyRecord] = [:]
-    @ObservationIgnored private var commandSearchIndex: [String: CommandSearchMetadata] = [:]
-    @ObservationIgnored private var frecencyDefaultsKey = "dev.sakuracord.command-frecency.offline"
-    @ObservationIgnored private var pendingInvocations: [String: PendingInvocation] = [:]
+    // MARK: Draft
+
+    private(set) var draft: ApplicationCommandDraft? {
+        didSet { attachmentPasteRevision &+= 1 }
+    }
+
+    /// A caret the editor should adopt; set when the model, not typing, moved it.
+    private(set) var caretRequest: ApplicationCommandEditorCaret?
+    private(set) var caretRequestRevision = 0
+    private(set) var fieldIssue: ApplicationCommandFieldIssue?
+    private(set) var autocompleteStatus: ApplicationCommandAutocompleteStatus = .idle
+    /// The highlighted suggestion; nil follows the list's default highlight.
+    var suggestionIndex: Int?
+    var areSuggestionsDismissed = false
+
+    @ObservationIgnored private var attachmentPasteRevision = 0
+    /// Discord-synced command usage.
+    @ObservationIgnored let frecencyStore = ApplicationCommandFrecencyStore()
+    @ObservationIgnored private var pickerSources: [ApplicationCommandPickerSource] = [
+        ApplicationCommandPickerSource(
+            application: SakuraCordBuiltInCommands.application, commands: SakuraCordBuiltInCommands.commands
+        )
+    ]
+    @ObservationIgnored private var availableBuiltIns: [ApplicationCommand] = []
+    /// The guild the picker is scoped to; frecency keys depend on it.
+    @ObservationIgnored private var contextGuildID: GuildID?
+    /// Discord collates and lower-cases with the client locale.
+    @ObservationIgnored var locale = Locale(identifier: Locale.preferredLanguages.first ?? "en-US")
     @ObservationIgnored private var autocompleteCache: [AutocompleteKey: [ApplicationCommandChoice]] = [:]
     @ObservationIgnored private var autocompleteCacheOrder: [AutocompleteKey] = []
     @ObservationIgnored private var autocompleteKeyByNonce: [String: AutocompleteKey] = [:]
-    @ObservationIgnored private var pendingAutocompleteNonceByKey: [AutocompleteKey: String] = [:]
-    @ObservationIgnored private var recentAutocompleteNonces: Set<String> = []
-    @ObservationIgnored private var recentAutocompleteNonceOrder: [String] = []
+    @ObservationIgnored private var currentAutocompleteKey: AutocompleteKey?
 
-    var displayedOptions: [ApplicationCommandOption] {
-        guard let activeCommand else { return [] }
-        let optionsByID = Dictionary(uniqueKeysWithValues: activeCommand.options.map { ($0.id, $0) })
-        return displayedOptionIDs.compactMap { optionsByID[$0] }
+    var activeCommand: ApplicationCommand? { draft?.command }
+
+    init() {
+        refreshPickerSections()
     }
 
-    var availableOptionalOptions: [ApplicationCommandOption] {
-        guard let activeCommand else { return [] }
-        return activeCommand.options.filter { !$0.isRequired && !includedOptionIDs.contains($0.id) }
+    // MARK: Catalogue loading
+
+    func configureFrecencyScope(_ scope: String) {
+        frecencyStore.configure(scope: scope)
+        refreshPickerSections()
     }
 
-    var focusedOption: ApplicationCommandOption? {
-        guard let focusedOptionID else { return nil }
-        return activeCommand?.options.first { $0.id == focusedOptionID }
+    /// Discord's synced usage changed (initial load, another client, or a save).
+    func applyRemoteFrecency(_ history: ApplicationCommandFrecencyHistory) {
+        frecencyStore.overwrite(with: history)
+        refreshPickerSections()
     }
+
+    func beginLoading(targets: Set<ApplicationCommandIndexTarget>) {
+        currentTargets = targets
+        isLoading = true
+        loadError = nil
+    }
+
+    /// Builds the picker the way Discord's index store does: each application
+    /// once, user-installed commands before guild-only ones, and the
+    /// built-ins Discord offers in this conversation.
+    func replaceCatalogs(
+        _ catalogs: [ApplicationCommandCatalog],
+        channel: Channel? = nil,
+        currentUserID: UserID? = nil,
+        memberRoleIDs: Set<RoleID> = [],
+        builtInContext: DiscordBuiltInCommands.Context? = nil
+    ) {
+        var applicationOrder: [String] = []
+        var applicationsByID: [String: ApplicationCommandApplication] = [:]
+        var userCommands: [String: [ApplicationCommand]] = [:]
+        var contextCommands: [String: [ApplicationCommand]] = [:]
+        var contextByID: [String: ApplicationCommand] = [:]
+        for catalog in catalogs {
+            for application in catalog.applications where applicationsByID[application.id] == nil {
+                applicationsByID[application.id] = application
+                applicationOrder.append(application.id)
+            }
+            for command in catalog.commands
+                where channel == nil || ApplicationCommandAvailability.isAvailable(
+                    command,
+                    channel: channel,
+                    currentUserID: currentUserID,
+                    memberRoleIDs: memberRoleIDs,
+                    indexTarget: catalog.target
+                )
+            {
+                switch command.type {
+                case .chatInput:
+                    if catalog.target == .user {
+                        userCommands[command.applicationID, default: []].append(command)
+                    } else {
+                        contextCommands[command.applicationID, default: []].append(command)
+                    }
+                case .user, .message:
+                    if contextByID[command.id] == nil { contextByID[command.id] = command }
+                default:
+                    break
+                }
+            }
+        }
+        var sources: [ApplicationCommandPickerSource] = []
+        for id in applicationOrder {
+            guard let application = applicationsByID[id] else { continue }
+            let user = userCommands[id] ?? []
+            let userIDs = Set(user.map(ApplicationCommandPickerEngine.discordID(of:)))
+            let merged = user + (contextCommands[id] ?? []).filter {
+                !userIDs.contains(ApplicationCommandPickerEngine.discordID(of: $0))
+            }
+            sources.append(ApplicationCommandPickerSource(application: application, commands: merged))
+        }
+        sources.append(ApplicationCommandPickerSource(
+            application: SakuraCordBuiltInCommands.application, commands: SakuraCordBuiltInCommands.commands
+        ))
+        pickerSources = sources
+        availableBuiltIns = builtInContext.map(DiscordBuiltInCommands.available(in:)) ?? []
+        contextGuildID = channel?.guildID
+        applications = sources.map(\.application)
+        contextMenuCommands = contextByID.values.sorted(by: stableCommandOrder)
+        commands = sources.flatMap(\.commands) + availableBuiltIns
+        hasLoadedCatalogs = true
+        isLoading = false
+        loadError = nil
+        // Loading replaces the provisional built-in list; start from the top.
+        selectedRowID = pickerRows.first?.id
+    }
+
+    func failLoading(_ message: String) {
+        isLoading = false
+        loadError = message
+    }
+
+    func contextMenuCommands(of type: ApplicationCommandType) -> [ApplicationCommand] {
+        contextMenuCommands.filter { $0.type == type }
+    }
+
+    /// Discord's Apps menu: up to five frequently used commands, then one
+    /// group per application in name order.
+    func contextMenuSections(
+        of type: ApplicationCommandType
+    ) -> (frequent: [ApplicationCommand], applications: [(ApplicationCommandApplication, [ApplicationCommand])]) {
+        let commands = contextMenuCommands(of: type)
+        let local = commands.filter { frecencyScore(for: $0) > 0 }.sorted {
+            let left = frecencyScore(for: $0), right = frecencyScore(for: $1)
+            return left == right ? stableCommandOrder($0, $1) : left > right
+        }
+        let popular = commands.filter { $0.globalPopularityRank != nil }.sorted {
+            ($0.globalPopularityRank ?? .max) < ($1.globalPopularityRank ?? .max)
+        }
+        var seen = Set<String>()
+        let frequent = Array((local + popular).filter { seen.insert($0.id).inserted }.prefix(5))
+        let grouped = Dictionary(grouping: commands, by: \.application.id)
+        let applications = grouped.values.compactMap { group -> (ApplicationCommandApplication, [ApplicationCommand])? in
+            guard let application = group.first?.application else { return nil }
+            return (application, group.sorted(by: stableCommandOrder))
+        }
+        .sorted { $0.0.name.localizedStandardCompare($1.0.name) == .orderedAscending }
+        return (frequent, applications)
+    }
+
+    func invalidated(_ target: ApplicationCommandIndexTarget) -> Bool {
+        guard currentTargets.contains(target) else { return false }
+        let wasActive = activeCommand.map { command in
+            switch target {
+            case let .guild(guildID): command.guildID == guildID
+            case .channel, .user: command.guildID == nil
+            case let .application(applicationID): command.applicationID == applicationID
+            }
+        } ?? false
+        clearCatalogs()
+        loadError = nil
+        return isPickerPresented || wasActive
+    }
+
+    // MARK: Picker
+
+    func presentPicker(query: String = "") {
+        guard draft == nil else { return }
+        isPickerPresented = true
+        updatePickerQuery(query)
+    }
+
+    func updatePickerQuery(_ query: String) {
+        if searchText != query || pickerNeedsRefresh {
+            searchText = query
+            refreshPickerSections(invalidateBrowse: false)
+        }
+        let rows = pickerRows
+        if selectedRowID == nil || !rows.contains(where: { $0.id == selectedRowID }) {
+            selectedRowID = rows.first?.id
+        }
+    }
+
+    func dismissPicker() {
+        isPickerPresented = false
+        if !searchText.isEmpty {
+            searchText = ""
+            pickerNeedsRefresh = true
+        }
+        selectedRowID = nil
+    }
+
+    struct PickerRow: Identifiable {
+        var id: String
+        var command: ApplicationCommand
+    }
+
+    static func pickerRowID(section: ApplicationCommandSection, command: ApplicationCommand) -> String {
+        "\(section.id)/\(command.id)"
+    }
+
+    /// Picker rows in keyboard order, including Frequently Used repeats.
+    private(set) var pickerRows: [PickerRow] = []
+    private(set) var pickerDocumentRows: [ApplicationCommandDocumentRow] = []
+    private(set) var pickerDocumentRevision = 0
+    private(set) var pickerDocumentHeight: CGFloat = 0
+    @ObservationIgnored private var pickerIndicesByID: [String: Int] = [:]
+    @ObservationIgnored private var cachedPickerEngine: ApplicationCommandPickerEngine?
+    @ObservationIgnored private var pickerNeedsRefresh = false
+    private struct PickerSnapshot {
+        let sections: [ApplicationCommandSection]
+        let rows: [PickerRow]
+        let documentRows: [ApplicationCommandDocumentRow]
+        let indices: [String: Int]
+        let height: CGFloat
+    }
+    @ObservationIgnored private var browseSnapshot: PickerSnapshot?
+
+    func movePickerSelection(by delta: Int) {
+        let rows = pickerRows
+        guard !rows.isEmpty else {
+            selectedRowID = nil
+            return
+        }
+        let current = selectedRowID.flatMap { id in pickerIndicesByID[id] } ?? 0
+        selectedRowID = rows[(current + delta + rows.count) % rows.count].id
+        pickerKeyboardSelectionRevision &+= 1
+    }
+
+    var selectedPickerCommand: ApplicationCommand? {
+        selectedRowID.flatMap { id in pickerIndicesByID[id].map { pickerRows[$0].command } }
+    }
+
+    /// A command whose full name was typed followed by a space. Discord only
+    /// activates it when no other command shares or extends that name.
+    func exactCommand(named name: String) -> ApplicationCommand? {
+        let text = name.trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else { return nil }
+        let matches = commands.filter { $0.displayName == text || $0.displayName.hasPrefix(text + " ") }
+        return matches.count == 1 && matches[0].displayName == text ? matches[0] : nil
+    }
+
+    // MARK: Draft lifecycle
+
+    func activate(_ command: ApplicationCommand) {
+        AppPerformanceSignposts.measureSync("CommandActivation") { activateDraft(command) }
+    }
+
+    private func activateDraft(_ command: ApplicationCommand) {
+        let newDraft = ApplicationCommandDraft(command: command)
+        draft = newDraft
+        fieldIssue = nil
+        resetAutocomplete()
+        requestCaret(ApplicationCommandEditorDocument(draft: newDraft).caret(endOf: newDraft.focus))
+        dismissPicker()
+        resetSuggestions()
+    }
+
+    func cancelActiveCommand() {
+        draft = nil
+        fieldIssue = nil
+        caretRequest = nil
+        resetAutocomplete()
+        resetSuggestions()
+    }
+
+    func resetForChannelChange() {
+        dismissPicker()
+        cancelActiveCommand()
+        clearCatalogs()
+        currentTargets = []
+        isLoading = false
+        loadError = nil
+    }
+
+    private func clearCatalogs() {
+        pickerSources = [ApplicationCommandPickerSource(
+            application: SakuraCordBuiltInCommands.application, commands: SakuraCordBuiltInCommands.commands
+        )]
+        availableBuiltIns = []
+        contextGuildID = nil
+        commands = SakuraCordBuiltInCommands.commands
+        contextMenuCommands = []
+        applications = [SakuraCordBuiltInCommands.application]
+        hasLoadedCatalogs = false
+    }
+
+    // MARK: Editing
+
+    /// Applies a draft produced by the editor for a structural edit.
+    func applyEditorDraft(_ updated: ApplicationCommandDraft, caret: ApplicationCommandEditorCaret?) {
+        guard draft?.command.id == updated.command.id else { return }
+        let focusChanged = draft?.focus != updated.focus
+        draft = updated
+        if let caret { requestCaret(caret) }
+        afterEdit(focusChanged: focusChanged)
+    }
+
+    /// Native typing inside one value or gap.
+    func setText(_ text: String, for focus: ApplicationCommandDraftFocus) {
+        guard var updated = draft else { return }
+        switch focus {
+        case let .field(id):
+            guard updated.field(id)?.text != text else { return }
+            updated.setText(text, for: id)
+        case .gap:
+            let focusChanged = updated.focus != focus
+            updated.focus = focus
+            guard focusChanged || updated.gapText != text else { return }
+            updated.gapText = text
+        }
+        let focusChanged = draft?.focus != focus
+        updated.focus = focus
+        draft = updated
+        if case .gap = focus, var accepted = draft, accepted.acceptTypedOptionName() {
+            draft = accepted
+            requestCaret(ApplicationCommandEditorDocument(draft: accepted).caret(endOf: accepted.focus))
+            afterEdit(focusChanged: true)
+            return
+        }
+        afterEdit(focusChanged: focusChanged)
+    }
+
+    /// The caret moved without changing text.
+    func setFocus(_ focus: ApplicationCommandDraftFocus) {
+        guard var updated = draft, updated.focus != focus else { return }
+        updated.focus = focus
+        draft = updated
+        afterEdit(focusChanged: true)
+    }
+
+    func moveFocus(by delta: Int) {
+        guard var updated = draft else { return }
+        updated.moveFocus(by: delta)
+        guard updated.focus != draft?.focus else { return }
+        draft = updated
+        requestCaret(ApplicationCommandEditorDocument(draft: updated).caret(endOf: updated.focus))
+        afterEdit(focusChanged: true)
+    }
+
+    func focusField(_ id: String) {
+        guard var updated = draft, updated.field(id) != nil else { return }
+        updated.focus = .field(id)
+        draft = updated
+        requestCaret(ApplicationCommandEditorDocument(draft: updated).caret(endOf: .field(id)))
+        afterEdit(focusChanged: true)
+    }
+
+    /// Fills the focused field with a chosen value; like Discord, the caret
+    /// then rests in the gap after that chip.
+    func resolveFocusedField(_ value: ApplicationCommandArgument, display: String) {
+        guard var updated = draft, case let .field(id) = updated.focus else { return }
+        updated.resolve(id, to: value, display: display)
+        updated.focus = updated.gap(after: id)
+        draft = updated
+        requestCaret(ApplicationCommandEditorDocument(draft: updated).caret(endOf: updated.focus))
+        afterEdit(focusChanged: true)
+    }
+
+    func addOptionalOption(_ option: ApplicationCommandOption) {
+        guard var updated = draft, updated.addOptionalOption(option) else { return }
+        draft = updated
+        requestCaret(ApplicationCommandEditorDocument(draft: updated).caret(endOf: updated.focus))
+        afterEdit(focusChanged: true)
+    }
+
+    func removeField(_ id: String) {
+        guard var updated = draft else { return }
+        updated.removeField(id)
+        draft = updated
+        requestCaret(ApplicationCommandEditorDocument(draft: updated).caret(endOf: updated.focus))
+        afterEdit(focusChanged: true)
+    }
+
+    private func afterEdit(focusChanged: Bool) {
+        if let issue = fieldIssue, let draft,
+           draft.field(issue.fieldID).map({ draft.validationError(for: $0) == nil }) ?? true
+        {
+            fieldIssue = nil
+        }
+        suggestionIndex = nil
+        areSuggestionsDismissed = false
+        if focusChanged {
+            autocompleteStatus = .idle
+            currentAutocompleteKey = nil
+        }
+    }
+
+    private func requestCaret(_ caret: ApplicationCommandEditorCaret) {
+        caretRequest = caret
+        caretRequestRevision &+= 1
+    }
+
+    func resetSuggestions() {
+        suggestionIndex = nil
+        areSuggestionsDismissed = false
+    }
+
+    // MARK: Attachments
 
     /// The option a pasted file fills, as in Discord: the focused attachment
-    /// option, otherwise the first attachment option without a file.
+    /// option, otherwise the first attachment field without a file.
     var pastedAttachmentOption: ApplicationCommandOption? {
-        if let focusedOption, focusedOption.type == .attachment { return focusedOption }
-        return activeCommand?.options.first { $0.type == .attachment && values[$0.id] == nil }
+        guard let draft else { return nil }
+        if let field = draft.focusedField, field.option.type == .attachment { return field.option }
+        return draft.fields.first { $0.option.type == .attachment && $0.resolved == nil }?.option
     }
 
     struct AttachmentPasteTarget {
@@ -178,705 +548,234 @@ final class ApplicationCommandComposerModel {
 
     @discardableResult
     func finishAttachmentPaste(_ url: URL, target: AttachmentPasteTarget) -> Bool {
-        guard target.revision == attachmentPasteRevision else { return false }
-        setValue(.attachment(url), displayText: url.lastPathComponent, for: target.option)
+        guard target.revision == attachmentPasteRevision, var updated = draft else { return false }
+        updated.resolve(target.option.id, to: .attachment(url), display: url.lastPathComponent)
+        updated.focus = updated.gap(after: target.option.id)
+        draft = updated
+        requestCaret(ApplicationCommandEditorDocument(draft: updated).caret(endOf: updated.focus))
+        afterEdit(focusChanged: true)
         return true
     }
 
     var attachmentURLs: [URL] {
-        values.values.compactMap {
-            guard case let .attachment(url) = $0 else { return nil }
-            return url
-        }
+        draft?.attachmentURLs ?? []
     }
+
+    // MARK: Submission
 
     var canSubmit: Bool {
-        guard let command = activeCommand else { return false }
-        return command.options.allSatisfy { validationError(for: $0) == nil }
+        draft.map { $0.firstInvalidField == nil } ?? false
     }
 
-    func validationError(for option: ApplicationCommandOption) -> String? {
-        guard let value = values[option.id] else {
-            return option.isRequired ? "\(option.displayName) is required." : nil
+    /// Validates before sending. On failure the first invalid field gains
+    /// focus and shows Discord-style feedback; nothing is sent.
+    func prepareSubmission() -> Bool {
+        guard let draft else { return false }
+        guard let invalid = draft.firstInvalidField else {
+            fieldIssue = nil
+            return true
         }
-        switch (option.type, value) {
-        case (.string, let .string(text)):
-            return stringValidationError(text, option: option)
-        case (.integer, let .integer(number)):
-            return integerValidationError(number, option: option)
-        case (.number, let .number(number)):
-            return numberValidationError(number, option: option)
-        case (.attachment, let .attachment(url)):
-            if !FileManager.default.fileExists(atPath: url.path) {
-                return "The selected file is no longer available."
-            }
-        case (.boolean, .boolean), (.user, .user), (.channel, .channel), (.role, .role),
-             (.mentionable, .mentionable):
-            break
-        default:
-            return "This option has an unsupported value."
-        }
-        return nil
-    }
-
-    private func stringValidationError(
-        _ text: String,
-        option: ApplicationCommandOption
-    ) -> String? {
-        if let minimum = option.minimumLength, text.count < minimum {
-            return "Use at least \(minimum) characters."
-        }
-        if let maximum = option.maximumLength, text.count > maximum {
-            return "Use at most \(maximum) characters."
-        }
-        return nil
-    }
-
-    private func integerValidationError(
-        _ number: Int64,
-        option: ApplicationCommandOption
-    ) -> String? {
-        if number < -9_007_199_254_740_991 || number > 9_007_199_254_740_991 {
-            return "This number is outside Discord's safe integer range."
-        }
-        return numericBoundsValidationError(Double(number), option: option)
-    }
-
-    private func numberValidationError(
-        _ number: Double,
-        option: ApplicationCommandOption
-    ) -> String? {
-        guard number.isFinite else { return "Enter a finite number." }
-        return numericBoundsValidationError(number, option: option)
-    }
-
-    private func numericBoundsValidationError(
-        _ number: Double,
-        option: ApplicationCommandOption
-    ) -> String? {
-        if let minimum = option.minimumValue, number < minimum {
-            return "Enter \(minimum) or greater."
-        }
-        if let maximum = option.maximumValue, number > maximum {
-            return "Enter \(maximum) or less."
-        }
-        return nil
-    }
-
-    func configureFrecencyScope(_ scope: String) {
-        let safeScope = scope.replacingOccurrences(
-            of: #"[^A-Za-z0-9_.-]"#, with: "-", options: .regularExpression
-        )
-        frecencyDefaultsKey = "dev.sakuracord.command-frecency.\(safeScope)"
-        if let data = UserDefaults.standard.data(forKey: frecencyDefaultsKey),
-           let value = try? JSONDecoder().decode([String: FrecencyRecord].self, from: data)
-        {
-            frecency = value
-        } else {
-            frecency = [:]
-        }
-    }
-
-    func beginLoading(targets: Set<ApplicationCommandIndexTarget>) {
-        currentTargets = targets
-        isLoading = true
-        loadError = nil
-    }
-
-    func replaceCatalogs(
-        _ catalogs: [ApplicationCommandCatalog],
-        channel: Channel? = nil,
-        currentUserID: UserID? = nil,
-        memberRoleIDs: Set<RoleID> = []
-    ) {
-        var applicationsByID: [String: ApplicationCommandApplication] = [:]
-        var commandsByID: [String: ApplicationCommand] = [:]
-        for catalog in catalogs {
-            for application in catalog.applications where applicationsByID[application.id] == nil {
-                applicationsByID[application.id] = application
-            }
-            for command in catalog.commands where command.type == .chatInput
-                && (channel == nil || ApplicationCommandAvailability.isAvailable(
-                    command,
-                    channel: channel,
-                    currentUserID: currentUserID,
-                    memberRoleIDs: memberRoleIDs,
-                    indexTarget: catalog.target
-                ))
-            {
-                if commandsByID[command.id] == nil {
-                    commandsByID[command.id] = command
-                }
-            }
-        }
-        applications = [SakuraCordBuiltInCommands.application] + applicationsByID.values.sorted {
-            $0.name.localizedStandardCompare($1.name) == .orderedAscending
-        }
-        commands = commandsByID.values.sorted(by: stableCommandOrder) + SakuraCordBuiltInCommands.commands
-        hasLoadedCatalogs = true
-        isLoading = false
-        loadError = nil
-        if selectedCommandID == nil || !commands.contains(where: { $0.id == selectedCommandID }) {
-            selectedCommandID = rankedCommands(query: searchText).first?.id
-        }
-    }
-
-    func failLoading(_ message: String) {
-        isLoading = false
-        loadError = message
-    }
-
-    func invalidated(_ target: ApplicationCommandIndexTarget) -> Bool {
-        guard currentTargets.contains(target) else { return false }
-        let wasActive = activeCommand.map { command in
-            switch target {
-            case let .guild(guildID): command.guildID == guildID
-            case .channel, .user: command.guildID == nil
-            case let .application(applicationID): command.applicationID == applicationID
-            }
-        } ?? false
-        if wasActive {
-            executionError = "This command changed in Discord. Choose it again before running it."
-            cancelActiveCommand()
-        }
-        clearCatalogs()
-        loadError = nil
-        return isPickerPresented || wasActive
-    }
-
-    func presentPicker(query: String = "") {
-        guard activeCommand == nil else { return }
-        searchText = query
-        isPickerPresented = true
-        selectedCommandID = rankedCommands(query: query).first?.id
-    }
-
-    func updatePickerQuery(_ query: String) {
-        searchText = query
-        let ranked = rankedCommands(query: query)
-        if selectedCommandID == nil || !ranked.contains(where: { $0.id == selectedCommandID }) {
-            selectedCommandID = ranked.first?.id
-        }
-    }
-
-    func dismissPicker() {
-        isPickerPresented = false
-        searchText = ""
-        selectedCommandID = nil
-    }
-
-    func movePickerSelection(by delta: Int) {
-        let ordered = pickerCommandOrder(query: searchText)
-        guard !ordered.isEmpty else {
-            selectedCommandID = nil
-            return
-        }
-        let current = selectedCommandID.flatMap { id in ordered.firstIndex { $0.id == id } } ?? 0
-        selectedCommandID = ordered[(current + delta + ordered.count) % ordered.count].id
-        pickerKeyboardSelectionRevision &+= 1
-    }
-
-    func activateSelectedCommand() -> Bool {
-        guard let selectedCommandID,
-              let command = commands.first(where: { $0.id == selectedCommandID })
-        else { return false }
-        activate(command)
-        return true
-    }
-
-    func activate(_ command: ApplicationCommand) {
-        activeCommand = command
-        displayedOptionIDs = command.options.filter(\.isRequired).map(\.id)
-        includedOptionIDs = Set(displayedOptionIDs)
-        values = [:]
-        optionDrafts = [:]
-        focusedOptionID = command.options.first(where: \.isRequired)?.id
-        autocompleteChoices = []
-        autocompleteNonce = nil
-        autocompleteError = nil
-        isAutocompleteLoading = false
-        executionProgress = nil
-        executionState = nil
-        executionError = nil
-        resetAutocompleteSession()
-        dismissPicker()
-    }
-
-    func cancelActiveCommand() {
-        activeCommand = nil
-        includedOptionIDs = []
-        displayedOptionIDs = []
-        values = [:]
-        optionDrafts = [:]
-        focusedOptionID = nil
-        autocompleteChoices = []
-        autocompleteNonce = nil
-        isAutocompleteLoading = false
-        autocompleteError = nil
-        resetAutocompleteSession()
-    }
-
-    func addOptionalOption(_ option: ApplicationCommandOption) {
-        guard activeCommand?.options.contains(where: { $0.id == option.id }) == true,
-              !option.isRequired
-        else { return }
-        if includedOptionIDs.insert(option.id).inserted {
-            displayedOptionIDs.append(option.id)
-        }
-        focusedOptionID = option.id
-    }
-
-    func removeOptionalOption(_ option: ApplicationCommandOption) {
-        guard !option.isRequired else { return }
-        includedOptionIDs.remove(option.id)
-        displayedOptionIDs.removeAll { $0 == option.id }
-        values[option.id] = nil
-        optionDrafts[option.id] = nil
-        if focusedOptionID == option.id {
-            leaveOptionFocus()
-        }
-    }
-
-    func clearValue(for option: ApplicationCommandOption) {
-        guard activeCommand?.options.contains(where: { $0.id == option.id }) == true else { return }
-        if option.isRequired {
-            values[option.id] = nil
-            optionDrafts[option.id] = ""
-            focus(option)
-        } else {
-            removeOptionalOption(option)
-        }
-    }
-
-    func focus(_ option: ApplicationCommandOption) {
-        guard displayedOptions.contains(where: { $0.id == option.id }) else { return }
-        focusedOptionID = option.id
-        clearAutocompleteState()
-    }
-
-    func leaveOptionFocus() {
-        focusedOptionID = nil
-        clearAutocompleteState()
-    }
-
-    private func clearAutocompleteState() {
-        discardCurrentAutocomplete()
-        autocompleteChoices = []
-        autocompleteError = nil
-    }
-
-    func setValue(_ value: ApplicationCommandArgument?, for option: ApplicationCommandOption) {
-        setValue(value, displayText: nil, for: option)
-    }
-
-    func setValue(
-        _ value: ApplicationCommandArgument?,
-        displayText: String?,
-        for option: ApplicationCommandOption
-    ) {
-        guard activeCommand?.options.contains(where: { $0.id == option.id }) == true else { return }
-        if value == nil, !option.isRequired {
-            includedOptionIDs.remove(option.id)
-            displayedOptionIDs.removeAll { $0 == option.id }
-        } else {
-            includeForDisplayIfNeeded(option)
-        }
-        values[option.id] = value
-        if let displayText {
-            optionDrafts[option.id] = displayText
-        } else if let value {
-            optionDrafts[option.id] = draftText(for: value, option: option)
-        } else if optionDrafts[option.id] == nil {
-            optionDrafts[option.id] = ""
-        }
-    }
-
-    func value(for option: ApplicationCommandOption) -> ApplicationCommandArgument? {
-        values[option.id]
-    }
-
-    func draftText(for option: ApplicationCommandOption) -> String {
-        optionDrafts[option.id] ?? values[option.id].map { draftText(for: $0, option: option) } ?? ""
-    }
-
-    func updateDraftText(_ text: String, for option: ApplicationCommandOption) {
-        guard activeCommand?.options.contains(where: { $0.id == option.id }) == true else { return }
-        includeForDisplayIfNeeded(option)
-        optionDrafts[option.id] = text
-        if !option.choices.isEmpty {
-            values[option.id] = nil
-            return
-        }
-        switch option.type {
-        case .string:
-            values[option.id] = text.isEmpty && !option.isRequired ? nil : .string(text)
-        case .integer:
-            values[option.id] = Int64(text).map(ApplicationCommandArgument.integer)
-        case .number:
-            let normalized = text.replacingOccurrences(
-                of: Locale.current.decimalSeparator ?? ".", with: "."
-            )
-            values[option.id] = Double(normalized).flatMap {
-                $0.isFinite ? .number($0) : nil
-            }
-        case .boolean, .user, .channel, .role, .mentionable, .attachment:
-            values[option.id] = nil
-        default:
-            values[option.id] = nil
-        }
-    }
-
-    func moveOptionFocus(by delta: Int) {
-        let options = displayedOptions
-        guard !options.isEmpty else { return }
-        guard let focusedOptionID,
-              let current = options.firstIndex(where: { $0.id == focusedOptionID })
-        else {
-            focus(delta < 0 ? options[options.count - 1] : options[0])
-            return
-        }
-        let destination = current + delta
-        guard options.indices.contains(destination) else {
-            leaveOptionFocus()
-            return
-        }
-        focus(options[destination])
-    }
-
-    private func includeForDisplayIfNeeded(_ option: ApplicationCommandOption) {
-        if includedOptionIDs.insert(option.id).inserted {
-            displayedOptionIDs.append(option.id)
-        }
+        fieldIssue = ApplicationCommandFieldIssue(fieldID: invalid.field.id, message: invalid.message)
+        var updated = draft
+        updated.focus = .field(invalid.field.id)
+        self.draft = updated
+        requestCaret(ApplicationCommandEditorDocument(draft: updated).caret(endOf: updated.focus))
+        return false
     }
 
     func invocation(channelID: ChannelID, guildID: GuildID?) -> ApplicationCommandInvocation? {
-        guard let activeCommand else { return nil }
-        let optionValues = activeCommand.options.compactMap { option -> ApplicationCommandOptionValue? in
-            guard let value = values[option.id] else { return nil }
-            return ApplicationCommandOptionValue(
-                optionID: option.id, name: option.name, type: option.type, argument: value
-            )
-        }
+        guard let draft else { return nil }
         return ApplicationCommandInvocation(
-            command: activeCommand, channelID: channelID, guildID: guildID, values: optionValues
+            command: draft.command, channelID: channelID, guildID: guildID,
+            values: draft.optionValues()
         )
     }
 
-    func prepareAutocomplete(
-        option: ApplicationCommandOption,
-        query: String,
-        nonce: String
-    ) -> ApplicationCommandAutocompleteStart {
-        guard let activeCommand,
-              activeCommand.options.contains(where: { $0.id == option.id })
-        else { return .pending }
+    /// Discord records every executed command; SakuraCord's own commands
+    /// never enter the synced history.
+    func recordUse(of command: ApplicationCommand, guildID: GuildID?) {
+        guard command.applicationID != SakuraCordBuiltInCommands.application.id else { return }
+        frecencyStore.recordUse(ApplicationCommandPickerEngine.frecencyKey(of: command, guildID: guildID))
+        browseSnapshot = nil
+        cachedPickerEngine = nil
+        pickerNeedsRefresh = true
+        if isPickerPresented { refreshPickerSections() }
+    }
+
+    // MARK: Autocomplete
+
+    /// The request the focused field needs, or nil when choices are cached,
+    /// already pending, or the field does not use remote autocomplete.
+    func autocompleteRequest(channelID: ChannelID, guildID: GuildID?) -> ApplicationCommandAutocompleteRequest? {
+        guard let draft, let field = draft.focusedField,
+              field.option.usesAutocomplete, field.option.type.supportsAutocomplete,
+              field.resolved == nil
+        else {
+            currentAutocompleteKey = nil
+            if autocompleteStatus != .idle { autocompleteStatus = .idle }
+            return nil
+        }
+        let siblings = draft.siblingValues(excluding: field.id)
         let key = AutocompleteKey(
-            commandID: activeCommand.id, optionID: option.id, query: query
+            commandID: draft.command.id, optionID: field.id, query: field.text,
+            siblings: siblings.map { "\($0.optionID)=\($0.argument)" }.joined(separator: "&")
         )
-        if let choices = autocompleteCache[key] {
-            discardCurrentAutocomplete()
-            autocompleteChoices = choices
-            autocompleteError = nil
-            isAutocompleteLoading = false
-            return .cached
+        guard key != currentAutocompleteKey else { return nil }
+        currentAutocompleteKey = key
+        if let cached = autocompleteCache[key] {
+            autocompleteStatus = .loaded(cached)
+            return nil
         }
-        if let pendingNonce = pendingAutocompleteNonceByKey[key] {
-            autocompleteNonce = pendingNonce
-            autocompleteChoices = []
-            autocompleteError = nil
-            isAutocompleteLoading = true
-            return .pending
+        let previous = autocompleteStatus.choices
+        if autocompleteKeyByNonce.values.contains(key) {
+            autocompleteStatus = .loading(previous: previous)
+            return nil
         }
-        discardCurrentAutocomplete()
-        autocompleteNonce = nonce
-        rememberAutocompleteNonce(nonce)
-        autocompleteKeyByNonce[nonce] = key
-        pendingAutocompleteNonceByKey[key] = nonce
-        autocompleteChoices = []
-        autocompleteError = nil
-        isAutocompleteLoading = true
-        return .request
+        autocompleteStatus = .loading(previous: previous)
+        let request = ApplicationCommandAutocompleteRequest(
+            invocation: ApplicationCommandInvocation(
+                command: draft.command, channelID: channelID, guildID: guildID, values: siblings
+            ),
+            focusedOptionID: field.id,
+            query: field.text
+        )
+        autocompleteKeyByNonce[request.nonce] = key
+        return request
     }
 
+    /// Choices are correlated by nonce. A late answer still shows if the person
+    /// is waiting on the same field and query; an obsolete one is only cached.
     func receiveAutocomplete(_ result: ApplicationCommandAutocompleteResult) {
-        forgetAutocompleteNonce(result.nonce)
         guard let key = autocompleteKeyByNonce.removeValue(forKey: result.nonce) else { return }
-        pendingAutocompleteNonceByKey[key] = nil
         cacheAutocomplete(result.choices, for: key)
-        guard result.nonce == autocompleteNonce else { return }
-        autocompleteChoices = result.choices
-        isAutocompleteLoading = false
-        autocompleteError = nil
+        guard key == currentAutocompleteKey else { return }
+        autocompleteStatus = .loaded(Array(result.choices.prefix(25)))
+        suggestionIndex = nil
     }
 
-    func failAutocomplete(nonce: String, message: String) {
-        if let key = autocompleteKeyByNonce.removeValue(forKey: nonce) {
-            pendingAutocompleteNonceByKey[key] = nil
+    /// Returns true when the nonce belonged to an autocomplete request.
+    @discardableResult
+    func failAutocomplete(nonce: String, failure: InteractionFailure) -> Bool {
+        guard let key = autocompleteKeyByNonce[nonce] else { return false }
+        if key == currentAutocompleteKey, autocompleteStatus.isLoading {
+            autocompleteStatus = .failed("Loading options failed")
         }
-        guard nonce == autocompleteNonce else { return }
-        autocompleteNonce = nil
-        isAutocompleteLoading = false
-        autocompleteError = message
+        return true
     }
 
-    private func discardCurrentAutocomplete() {
-        guard let nonce = autocompleteNonce else { return }
-        if let key = autocompleteKeyByNonce.removeValue(forKey: nonce) {
-            pendingAutocompleteNonceByKey[key] = nil
+    /// A transport error before Discord accepted the request.
+    func abandonAutocomplete(nonce: String, message: String) {
+        guard let key = autocompleteKeyByNonce.removeValue(forKey: nonce) else { return }
+        if key == currentAutocompleteKey {
+            autocompleteStatus = .failed(message)
+            currentAutocompleteKey = nil
         }
-        autocompleteNonce = nil
-        isAutocompleteLoading = false
     }
 
-    private func cacheAutocomplete(
-        _ choices: [ApplicationCommandChoice],
-        for key: AutocompleteKey
-    ) {
+    private func cacheAutocomplete(_ choices: [ApplicationCommandChoice], for key: AutocompleteKey) {
         autocompleteCache[key] = Array(choices.prefix(25))
         autocompleteCacheOrder.removeAll { $0 == key }
         autocompleteCacheOrder.append(key)
         if autocompleteCacheOrder.count > 32 {
-            let evicted = autocompleteCacheOrder.removeFirst()
-            autocompleteCache[evicted] = nil
+            autocompleteCache[autocompleteCacheOrder.removeFirst()] = nil
         }
     }
 
-    private func resetAutocompleteSession() {
+    private func resetAutocomplete() {
+        autocompleteStatus = .idle
+        currentAutocompleteKey = nil
         autocompleteCache = [:]
         autocompleteCacheOrder = []
-        autocompleteKeyByNonce = [:]
-        pendingAutocompleteNonceByKey = [:]
     }
 
-    private func rememberAutocompleteNonce(_ nonce: String) {
-        guard recentAutocompleteNonces.insert(nonce).inserted else { return }
-        recentAutocompleteNonceOrder.append(nonce)
-        if recentAutocompleteNonceOrder.count > 64 {
-            recentAutocompleteNonces.remove(recentAutocompleteNonceOrder.removeFirst())
-        }
-    }
+    // MARK: Ranking
 
-    private func forgetAutocompleteNonce(_ nonce: String) {
-        recentAutocompleteNonces.remove(nonce)
-        recentAutocompleteNonceOrder.removeAll { $0 == nonce }
-    }
-
-    func updateExecutionProgress(_ progress: ApplicationCommandProgress) {
-        executionProgress = progress
-        switch progress {
-        case let .submitting(nonce):
-            executionState = .queued(nonce: nonce)
-            if let activeCommand {
-                pendingInvocations[nonce] = PendingInvocation(
-                    commandName: activeCommand.displayName,
-                    localizedName: activeCommand.localizedName,
-                    applicationID: activeCommand.applicationID
-                )
-            }
-        case let .awaitingResponse(nonce): executionState = .queued(nonce: nonce)
-        default: break
-        }
-    }
-
-    func interactionCreated(nonce: String, interactionID: String) {
-        guard executionState?.nonce == nonce else { return }
-        executionState = .created(nonce: nonce, interactionID: interactionID)
-    }
-
-    func interactionSucceeded(nonce: String) {
-        guard executionState?.nonce == nonce else { return }
-        executionState = .succeeded(nonce: nonce)
-        executionError = nil
-        if let activeCommand {
-            recordUse(of: activeCommand)
-        }
-        cancelActiveCommand()
-        executionProgress = nil
-    }
-
-    @discardableResult
-    func interactionFailed(nonce: String, message: String) -> Bool {
-        if recentAutocompleteNonces.contains(nonce) {
-            forgetAutocompleteNonce(nonce)
-            if nonce == autocompleteNonce {
-                failAutocomplete(nonce: nonce, message: message)
-            }
-            return true
-        }
-        guard executionState?.nonce == nonce else { return false }
-        pendingInvocations[nonce] = nil
-        executionState = .failed(nonce: nonce, message: message)
-        executionError = message
-        executionProgress = nil
-        return true
-    }
-
-    func failExecution(_ message: String) {
-        executionError = message
-        executionProgress = nil
-    }
-
-    func resetForChannelChange() {
-        dismissPicker()
-        cancelActiveCommand()
-        executionProgress = nil
-        executionState = nil
-        executionError = nil
-        clearCatalogs()
-        currentTargets = []
-        isLoading = false
-        loadError = nil
-        pendingInvocations = [:]
-    }
-
-    private func clearCatalogs() {
-        commands = SakuraCordBuiltInCommands.commands
-        applications = [SakuraCordBuiltInCommands.application]
-        hasLoadedCatalogs = false
-    }
-
-    func enrichInteractionResponse(_ message: inout Message, currentUser: User?) {
-        guard let nonce = message.nonce,
-              let pending = pendingInvocations.removeValue(forKey: nonce)
-        else { return }
-        var metadata = message.interactionMetadata ?? MessageInteractionMetadata()
-        metadata.name = metadata.name ?? pending.commandName
-        metadata.localizedName = metadata.localizedName ?? pending.localizedName
-        metadata.applicationID = metadata.applicationID ?? pending.applicationID
-        metadata.user = metadata.user ?? currentUser
-        message.interactionMetadata = metadata
+    private var pickerEngine: ApplicationCommandPickerEngine {
+        if let cachedPickerEngine { return cachedPickerEngine }
+        let guildID = contextGuildID
+        let store = frecencyStore
+        let engine = ApplicationCommandPickerEngine(
+            sources: pickerSources,
+            builtIns: availableBuiltIns,
+            locale: locale,
+            frecencyScore: { command in
+                store.score(for: ApplicationCommandPickerEngine.frecencyKey(of: command, guildID: guildID))
+            },
+            frequentCommandIDs: ApplicationCommandPickerEngine.scopedCommandIDs(store.frequently, guildID: guildID)
+        )
+        cachedPickerEngine = engine
+        return engine
     }
 
     func rankedCommands(query: String) -> [ApplicationCommand] {
-        let normalizedQuery = normalize(query)
-        let now = Date.now
-        return commands.compactMap { command -> RankedCommand? in
-            let metadata = commandSearchIndex[command.id]
-            if normalizedQuery.isEmpty {
-                return RankedCommand(
-                    command: command,
-                    searchScore: 0,
-                    frecencyScore: frecencyScore(for: command, now: now)
-                )
-            }
-            guard let score = searchScore(
-                query: normalizedQuery,
-                path: metadata?.path ?? normalize(command.displayName),
-                application: metadata?.application ?? normalize(command.application.name),
-                description: metadata?.description ?? normalize(command.displayDescription)
-            ) else { return nil }
-            return RankedCommand(
-                command: command,
-                searchScore: score,
-                frecencyScore: frecencyScore(for: command, now: now)
-            )
-        }.sorted { lhs, rhs in
-            if lhs.searchScore != rhs.searchScore { return lhs.searchScore > rhs.searchScore }
-            if lhs.frecencyScore != rhs.frecencyScore {
-                return lhs.frecencyScore > rhs.frecencyScore
-            }
-            let lhsRank = lhs.command.globalPopularityRank ?? .max
-            let rhsRank = rhs.command.globalPopularityRank ?? .max
-            if lhsRank != rhsRank { return lhsRank < rhsRank }
-            return stableCommandOrder(lhs.command, rhs.command)
-        }.map(\.command)
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty || query.contains(" ") else {
+            return pickerEngine.browse().sections.flatMap(\.commands)
+        }
+        return pickerEngine.search(query)
     }
 
     func sections(query: String) -> [ApplicationCommandSection] {
-        let ranked = rankedCommands(query: query)
-        guard !ranked.isEmpty else { return [] }
-        var result: [ApplicationCommandSection] = []
-        let isBrowsing = query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        if isBrowsing {
-            let now = Date.now
-            let locallyFrequent = commands
-                .filter { frecency[$0.id] != nil }
-                .sorted {
-                    let left = frecencyScore(for: $0, now: now)
-                    let right = frecencyScore(for: $1, now: now)
-                    return left == right ? stableCommandOrder($0, $1) : left > right
-                }
-            let serverFrequent = commands
-                .filter { $0.globalPopularityRank != nil }
-                .sorted {
-                    let left = $0.globalPopularityRank ?? .max
-                    let right = $1.globalPopularityRank ?? .max
-                    return left == right ? stableCommandOrder($0, $1) : left < right
-                }
-            var seen = Set<String>()
-            let frequent = (locallyFrequent + serverFrequent)
-                .filter { seen.insert($0.id).inserted }
-                .prefix(5)
-            result.append(
-                ApplicationCommandSection(
-                    kind: .frequentlyUsed, title: "Frequently Used",
-                    application: nil, commands: Array(frequent)
-                )
-            )
-        }
-        let frequentIDs = Set(result.flatMap(\.commands).map(\.id))
-        let rankedByApplication = Dictionary(grouping: ranked, by: { $0.application.id })
-        for application in applications {
-            var values = (rankedByApplication[application.id] ?? []).filter {
-                !frequentIDs.contains($0.id)
+        let engine = pickerEngine
+        if query.isEmpty {
+            let browse = engine.browse()
+            var result: [ApplicationCommandSection] = []
+            if !browse.frequentlyUsed.isEmpty {
+                result.append(ApplicationCommandSection(
+                    kind: .frequentlyUsed, title: "Frequently Used", application: nil,
+                    commands: browse.frequentlyUsed
+                ))
             }
-            if isBrowsing {
-                values.sort(by: stableCommandOrder)
-            }
-            guard !values.isEmpty else { continue }
-            result.append(
+            result += browse.sections.map {
                 ApplicationCommandSection(
-                    kind: .application(application.id), title: application.name,
-                    application: application, commands: values
+                    kind: .application($0.application.id), title: $0.name,
+                    application: $0.application, commands: $0.commands
                 )
-            )
+            }
+            return result
         }
-        return result
+        let results = engine.search(query)
+        guard !results.isEmpty else { return [] }
+        let title = ApplicationCommandPickerEngine.parse(query).text
+        return [ApplicationCommandSection(
+            kind: .searchResults, title: "Commands matching /\(title)", application: nil, commands: results
+        )]
     }
 
-    func pickerCommandOrder(query: String) -> [ApplicationCommand] {
-        sections(query: query).flatMap(\.commands)
-    }
-
-    private func recordUse(of command: ApplicationCommand) {
-        let previous = frecency[command.id]
-        frecency[command.id] = FrecencyRecord(
-            count: (previous?.count ?? 0) + 1, lastUsed: .now
-        )
-        if let data = try? JSONEncoder().encode(frecency) {
-            UserDefaults.standard.set(data, forKey: frecencyDefaultsKey)
+    private func refreshPickerSections(invalidateBrowse: Bool = true) {
+        if invalidateBrowse { browseSnapshot = nil; cachedPickerEngine = nil }
+        pickerNeedsRefresh = false
+        AppPerformanceSignposts.measureSync("CommandPickerQuery") {
+            if searchText.isEmpty, let cached = browseSnapshot {
+                pickerSections = cached.sections
+                pickerRows = cached.rows
+                pickerDocumentRows = cached.documentRows
+                pickerIndicesByID = cached.indices
+                pickerDocumentHeight = cached.height
+                pickerDocumentRevision &+= 1
+                return
+            }
+            pickerSections = sections(query: searchText)
+            pickerRows = pickerSections.flatMap { section in
+                section.commands.map { PickerRow(id: Self.pickerRowID(section: section, command: $0), command: $0) }
+            }
+            pickerIndicesByID = Dictionary(pickerRows.enumerated().map { ($0.element.id, $0.offset) }, uniquingKeysWith: { first, _ in first })
+            pickerDocumentRows = pickerSections.flatMap { section in
+                [ApplicationCommandDocumentRow(section: section)] + section.commands.map {
+                    ApplicationCommandDocumentRow(section: section, command: $0)
+                }
+            }
+            pickerDocumentHeight = pickerDocumentRows.reduce(0) { $0 + $1.height }
+            if searchText.isEmpty {
+                browseSnapshot = PickerSnapshot(sections: pickerSections, rows: pickerRows,
+                    documentRows: pickerDocumentRows, indices: pickerIndicesByID, height: pickerDocumentHeight)
+            }
+            pickerDocumentRevision &+= 1
         }
     }
 
-    private func frecencyScore(
-        for command: ApplicationCommand,
-        now: Date = .now
-    ) -> Double {
-        guard let record = frecency[command.id] else { return 0 }
-        let ageDays = max(0, now.timeIntervalSince(record.lastUsed) / 86_400)
-        return Double(record.count) * 10 + max(0, 30 - ageDays)
-    }
-
-    private func draftText(
-        for value: ApplicationCommandArgument,
-        option: ApplicationCommandOption
-    ) -> String {
-        switch value {
-        case let .string(value):
-            return option.choices.first(where: { $0.value == .string(value) })?.displayName ?? value
-        case let .integer(value):
-            return option.choices.first(where: { $0.value == .integer(value) })?.displayName
-                ?? String(value)
-        case let .number(value):
-            return option.choices.first(where: { $0.value == .number(value) })?.displayName
-                ?? value.formatted(.number)
-        case let .boolean(value): return value ? "True" : "False"
-        case let .user(value): return "@\(value.description)"
-        case let .channel(value): return "#\(value.description)"
-        case let .role(value): return "@\(value.description)"
-        case let .mentionable(value): return "@\(value)"
-        case let .attachment(url): return url.lastPathComponent
-        }
+    private func frecencyScore(for command: ApplicationCommand) -> Double {
+        frecencyStore.score(for: ApplicationCommandPickerEngine.frecencyKey(of: command, guildID: contextGuildID))
     }
 
     private func stableCommandOrder(_ lhs: ApplicationCommand, _ rhs: ApplicationCommand) -> Bool {
@@ -885,45 +784,6 @@ final class ApplicationCommandComposerModel {
         let appComparison = lhs.application.name.localizedStandardCompare(rhs.application.name)
         if appComparison != .orderedSame { return appComparison == .orderedAscending }
         return lhs.id < rhs.id
-    }
-
-    private func searchScore(
-        query: String, path: String, application: String, description: String
-    ) -> Int? {
-        if path == query { return 10_000 }
-        if path.hasPrefix(query) { return 9_000 - max(0, path.count - query.count) }
-        let queryTokens = query.split(separator: " ")
-        let pathTokens = path.split(separator: " ")
-        if queryTokens.allSatisfy({ queryToken in
-            pathTokens.contains(where: { $0.hasPrefix(queryToken) })
-        }) {
-            return 8_000 - max(0, path.count - query.count)
-        }
-        if let range = path.range(of: query) {
-            return 7_000 - path.distance(from: path.startIndex, to: range.lowerBound)
-        }
-        if let score = subsequenceScore(query: query, candidate: path) {
-            return 6_000 + score
-        }
-        if application.contains(query) { return 4_000 }
-        if description.contains(query) { return 2_000 }
-        return nil
-    }
-
-    private func subsequenceScore(query: String, candidate: String) -> Int? {
-        var candidateIndex = candidate.startIndex
-        var gap = 0
-        for character in query {
-            guard let match = candidate[candidateIndex...].firstIndex(of: character) else { return nil }
-            gap += candidate.distance(from: candidateIndex, to: match)
-            candidateIndex = candidate.index(after: match)
-        }
-        return max(0, 500 - gap)
-    }
-
-    private func normalize(_ value: String) -> String {
-        value.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
@@ -1026,15 +886,5 @@ enum ApplicationCommandAvailability {
             return String(number - UInt64(-offset))
         }
         return String(number + UInt64(offset))
-    }
-}
-
-private extension ApplicationCommandExecutionState {
-    var nonce: String {
-        switch self {
-        case let .queued(nonce), let .created(nonce, _), let .succeeded(nonce),
-             let .failed(nonce, _):
-            nonce
-        }
     }
 }
