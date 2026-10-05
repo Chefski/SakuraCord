@@ -77,7 +77,7 @@ struct IssueReportView: View {
                     .padding(8)
             }
         }
-        .scrollBounceBehavior(.basedOnSize)
+        .scrollBounceBehavior(.always, axes: .vertical)
         .frame(maxHeight: min(600, max(220, availableSize.height - 170)))
         .fixedSize(horizontal: false, vertical: true)
     }

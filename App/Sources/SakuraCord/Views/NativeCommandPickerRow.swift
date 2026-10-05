@@ -117,7 +117,7 @@ final class NativeCommandPickerRow: NSView, NativePickerReusableRow {
         if row.isFrequent, row.command == nil {
             icon.image = symbolImage("clock.fill", size: size, scale: scale, colorScheme: colorScheme)
         } else if row.application?.id == SakuraCordBuiltInCommands.application.id {
-            icon.image = NSApp.applicationIconImage
+            icon.image = CommandGeneratedIcon.sakuraFlower
         } else if let url {
             if let cached = SharedDecodedImageLoader.shared.cachedImage(for: url, maximumPixelDimension: 64) {
                 icon.image = NSImage(cgImage: cached, size: .zero)

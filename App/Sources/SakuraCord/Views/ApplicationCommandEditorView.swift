@@ -10,6 +10,7 @@ struct ApplicationCommandEditorView: NSViewRepresentable {
     let caretRequestRevision: Int
     let fieldIssue: ApplicationCommandFieldIssue?
     let roles: [GuildRole]
+    var generalInputSettings: GeneralInputSettingsSnapshot = .defaults
     let onKeyboardCommand: (ComposerAutocompleteCommand) -> Bool
     let onSubmit: () -> Void
     /// Leaves the command, continuing with the given ordinary message text.
@@ -45,6 +46,7 @@ struct ApplicationCommandEditorView: NSViewRepresentable {
         textView.isRichText = true
         textView.importsGraphics = false
         textView.usesFontPanel = false
+        // Undo restores draft values and structure together, not derived text ranges.
         textView.allowsUndo = false
         textView.drawsBackground = false
         textView.isHorizontallyResizable = false
@@ -60,6 +62,7 @@ struct ApplicationCommandEditorView: NSViewRepresentable {
         textView.isAutomaticSpellingCorrectionEnabled = false
         textView.isContinuousSpellCheckingEnabled = false
         textView.isAutomaticLinkDetectionEnabled = false
+        ComposerTextCheckingConfiguration.apply(generalInputSettings, to: textView)
         textView.writingToolsBehavior = .none
         textView.unregisterDraggedTypes()
         textView.registerForDraggedTypes([.fileURL])
@@ -83,8 +86,9 @@ struct ApplicationCommandEditorView: NSViewRepresentable {
         guard let textView = scrollView.documentView as? ApplicationCommandTextView else { return }
         let coordinator = context.coordinator
         coordinator.parent = self
+        ComposerTextCheckingConfiguration.apply(generalInputSettings, to: textView)
         textView.applySakuraCordTextSelectionAppearance()
-        guard !textView.hasMarkedText() else {
+        guard !textView.isComposing else {
             coordinator.applyFocus(to: textView)
             return
         }
@@ -123,6 +127,14 @@ struct ApplicationCommandEditorView: NSViewRepresentable {
         private var pendingNativeCaret = 0
         private var isApplying = false
         private var appliedFocus = false
+        private var isContinuingAsPlainText = false
+        private var renderedDraft: ApplicationCommandDraft?
+        private var undoSelection: NSRange?
+        let undoManager: UndoManager = {
+            let manager = UndoManager()
+            manager.levelsOfUndo = 100
+            return manager
+        }()
 
         init(parent: ApplicationCommandEditorView) {
             self.parent = parent
@@ -162,6 +174,7 @@ struct ApplicationCommandEditorView: NSViewRepresentable {
 
         /// Rebuilds styled text from the draft when it differs from what is shown.
         func render(in textView: ApplicationCommandTextView, caret: ApplicationCommandEditorCaret?) {
+            guard !isContinuingAsPlainText else { return }
             let draft = parent.composer.draft ?? parent.draft
             let document = ApplicationCommandEditorDocument(draft: draft)
             var hasher = Hasher()
@@ -172,6 +185,12 @@ struct ApplicationCommandEditorView: NSViewRepresentable {
             hasher.combine(parent.roles.map(\.colorHex))
             let signature = hasher.finalize()
             let previousSelection = textView.selectedRange()
+            if let previous = renderedDraft, previous.command.id == draft.command.id,
+               previous.fields != draft.fields || previous.gapText != draft.gapText {
+                registerUndo(previous, selection: undoSelection ?? previousSelection, in: textView)
+            }
+            renderedDraft = draft
+            undoSelection = nil
             self.document = document
             textView.document = document
             textView.focus = draft.focus
@@ -207,6 +226,34 @@ struct ApplicationCommandEditorView: NSViewRepresentable {
             if caret != nil { textView.scrollRangeToVisible(target) }
         }
 
+        private func registerUndo(
+            _ previous: ApplicationCommandDraft, selection: NSRange, in textView: ApplicationCommandTextView
+        ) {
+            undoManager.registerUndo(withTarget: self) { [weak textView] coordinator in
+                guard let textView, coordinator.parent.composer.draft?.command.id == previous.command.id else { return }
+                coordinator.parent.composer.applyEditorDraft(previous, caret: nil)
+                coordinator.render(in: textView, caret: nil)
+                let length = textView.string.utf16.count
+                let location = min(selection.location, length)
+                textView.setSelectedRange(NSRange(location: location, length: min(selection.length, length - location)))
+            }
+            undoManager.setActionName("Edit Command")
+        }
+
+        /// NSTextView moves its caret after textDidChange. Finish structural
+        /// edits now so the next IME operation/keystroke reaches the new field.
+        func finishNativeInsertion(in textView: ApplicationCommandTextView) {
+            let composer = parent.composer
+            guard appliedCaretRevision != composer.caretRequestRevision,
+                  let caret = composer.caretRequest else { return }
+            appliedCaretRevision = composer.caretRequestRevision
+            switch caret {
+            case let .field(id, _): composer.setFocus(.field(id))
+            case let .gap(index, _): composer.setFocus(.gap(index))
+            }
+            render(in: textView, caret: caret)
+        }
+
         func applyFocus(to textView: NSTextView) {
             guard parent.isFocused != appliedFocus else { return }
             appliedFocus = parent.isFocused
@@ -235,8 +282,9 @@ struct ApplicationCommandEditorView: NSViewRepresentable {
             shouldChangeTextIn range: NSRange,
             replacementString: String?
         ) -> Bool {
-            guard !isApplying, let document, let textView = textView as? ApplicationCommandTextView
-            else { return true }
+            guard !isApplying, let document, let textView = textView as? ApplicationCommandTextView,
+                  !textView.isComposing else { return true }
+            undoSelection = textView.selectedRange()
             switch document.edit(replacing: range, with: replacementString ?? "", draft: draft) {
             case let .native(focus):
                 pendingNativeFocus = focus
@@ -247,6 +295,19 @@ struct ApplicationCommandEditorView: NSViewRepresentable {
                 apply(updated, caret: caret, in: textView)
                 return false
             case let .cancel(text):
+                // SwiftUI replaces this view on its next update. Keep accepting
+                // native edits in the meantime instead of repeatedly replacing
+                // the selected command and losing the start of fast input.
+                isContinuingAsPlainText = true
+                pendingNativeFocus = nil
+                self.document = nil
+                textView.document = nil
+                textView.focus = nil
+                textView.remainingOptionCount = 0
+                isApplying = true
+                textView.string = text
+                textView.setSelectedRange(NSRange(location: text.utf16.count, length: 0))
+                isApplying = false
                 parent.onCancel(text)
                 return false
             case .ignore:
@@ -256,9 +317,14 @@ struct ApplicationCommandEditorView: NSViewRepresentable {
         }
 
         func textDidChange(_ notification: Notification) {
+            if isContinuingAsPlainText, !isApplying,
+               let textView = notification.object as? ApplicationCommandTextView {
+                if !textView.isComposing { parent.onCancel(textView.string) }
+                return
+            }
             guard !isApplying, let focus = pendingNativeFocus, let document,
-                  let textView = notification.object as? ApplicationCommandTextView
-            else { return }
+                  let textView = notification.object as? ApplicationCommandTextView,
+                  !textView.isComposing else { return }
             pendingNativeFocus = nil
             let delta = (textView.string as NSString).length - pendingNativeLength
             let original: NSRange? = switch focus {
@@ -303,7 +369,8 @@ struct ApplicationCommandEditorView: NSViewRepresentable {
             willChangeSelectionFromCharacterRange old: NSRange,
             toCharacterRange new: NSRange
         ) -> NSRange {
-            guard !isApplying, let document, new.length == 0 else { return new }
+            guard !isApplying, let document, new.length == 0,
+                  (textView as? ApplicationCommandTextView)?.isComposing != true else { return new }
             let direction: ApplicationCommandEditorDirection =
                 new.location > old.location ? .forward : (new.location < old.location ? .backward : .nearest)
             let isPointer = NSApp.currentEvent.map {
@@ -317,8 +384,8 @@ struct ApplicationCommandEditorView: NSViewRepresentable {
 
         func textViewDidChangeSelection(_ notification: Notification) {
             guard !isApplying, let document,
-                  let textView = notification.object as? ApplicationCommandTextView
-            else { return }
+                  let textView = notification.object as? ApplicationCommandTextView,
+                  !textView.isComposing else { return }
             let selection = textView.selectedRange()
             if let focus = document.focus(at: selection.location),
                selection.length == 0 || document.focus(at: NSMaxRange(selection)) == focus
@@ -547,6 +614,77 @@ final class ApplicationCommandTextView: NSTextView {
     var commandPasteboard = NSPasteboard.general
     private lazy var unfocusedTypingMonitor = ComposerUnfocusedTypingMonitor()
 
+    private struct Composition {
+        let original: NSAttributedString
+        var range: NSRange
+    }
+    private var composition: Composition?
+    private var isUpdatingComposition = false
+    private var insertionDepth = 0
+    var isComposing: Bool { composition != nil || isUpdatingComposition || hasMarkedText() }
+
+    // AppKit owns provisional text. It can replace marked text without sending
+    // textDidChange, so draft ranges must not be used to snap or edit it. Apply
+    // the committed replacement once, through the normal structured editor.
+    override func setMarkedText(_ value: Any, selectedRange: NSRange, replacementRange: NSRange) {
+        if composition == nil {
+            composition = Composition(original: NSAttributedString(attributedString: attributedString()), range:
+                replacementRange.location == NSNotFound ? self.selectedRange() : replacementRange)
+        } else if replacementRange.location != NSNotFound, hasMarkedText(), var current = composition {
+            // Reconversion can extend beyond the previously marked range.
+            let marked = markedRange()
+            let before = min(current.range.location, max(0, marked.location - replacementRange.location))
+            let after = max(0, NSMaxRange(replacementRange) - NSMaxRange(marked))
+            current.range.location -= before
+            current.range.length = min(current.original.length - current.range.location,
+                current.range.length + before + after)
+            composition = current
+        }
+        isUpdatingComposition = true
+        super.setMarkedText(value, selectedRange: selectedRange, replacementRange: replacementRange)
+        isUpdatingComposition = false
+        if !hasMarkedText() { unmarkText() }
+    }
+
+    override func insertText(_ value: Any, replacementRange: NSRange) {
+        guard !isUpdatingComposition else {
+            super.insertText(value, replacementRange: replacementRange)
+            return
+        }
+        insertionDepth += 1
+        defer {
+            insertionDepth -= 1
+            // AppKit can re-enter insertion before its outer call moves the
+            // selection. Apply the model's caret after all native insertion.
+            if insertionDepth == 0 { coordinator?.finishNativeInsertion(in: self) }
+        }
+        let range = restoreComposition() ?? replacementRange
+        super.insertText(value, replacementRange: range)
+    }
+
+    override func unmarkText() {
+        guard !isUpdatingComposition, composition != nil else {
+            super.unmarkText()
+            return
+        }
+        let marked = markedRange()
+        let value = marked.location == NSNotFound ? "" : (string as NSString).substring(with: marked)
+        if let range = restoreComposition() {
+            insertText(value, replacementRange: range)
+        }
+    }
+
+    private func restoreComposition() -> NSRange? {
+        guard let current = composition else { return nil }
+        isUpdatingComposition = true
+        super.unmarkText()
+        textStorage?.setAttributedString(current.original)
+        setSelectedRange(current.range)
+        composition = nil
+        isUpdatingComposition = false
+        return current.range
+    }
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         // Take focus as soon as the editor replaces the plain composer, so a
@@ -557,10 +695,8 @@ final class ApplicationCommandTextView: NSTextView {
         unfocusedTypingMonitor.synchronize(
             with: self,
             enabled: true,
-            onUnfocusedReturn: { [weak self] _ in
-                guard let self else { return false }
-                self.coordinator?.submit()
-                return true
+            onUnfocusedReturn: { [weak self] event in
+                self?.handleReturn(event) ?? false
             }
         )
     }
@@ -583,7 +719,7 @@ final class ApplicationCommandTextView: NSTextView {
         case 126 where plain: .previous
         case 125 where plain: .next
         case 48 where flags.isSubset(of: [.shift]): flags.contains(.shift) ? .previousField : .advance
-        case 36, 76: flags.isSubset(of: [.shift, .command]) ? .accept : nil
+        case 36 where plain, 76 where plain: .accept
         case 53 where plain: .dismiss
         default: nil
         }
@@ -591,15 +727,26 @@ final class ApplicationCommandTextView: NSTextView {
             if coordinator.keyboardCommand(command, in: self) { return }
             switch command {
             case .accept:
-                coordinator.submit()
-                return
+                break
             case .advance, .previousField, .dismiss:
                 return
             default:
                 break
             }
         }
+        if ComposerUnfocusedTypingMonitor.shouldOfferReturn(event.keyCode), handleReturn(event) { return }
         super.keyDown(with: event)
+    }
+
+    private func handleReturn(_ event: NSEvent) -> Bool {
+        let action = ComposerReturnAction.decide(
+            sendWithReturn: coordinator?.parent.generalInputSettings.sendsWithReturn ?? true,
+            shift: event.modifierFlags.contains(.shift), command: event.modifierFlags.contains(.command),
+            hasMarkedText: hasMarkedText()
+        )
+        guard action == .send else { return false }
+        coordinator?.submit()
+        return true
     }
 
     override func deleteBackward(_ sender: Any?) {
@@ -612,16 +759,25 @@ final class ApplicationCommandTextView: NSTextView {
         super.deleteForward(sender)
     }
 
-    override func insertNewline(_: Any?) {
-        coordinator?.submit()
-    }
-
     override func insertTab(_: Any?) {
         _ = coordinator?.keyboardCommand(.advance, in: self)
     }
 
     override func insertBacktab(_: Any?) {
         _ = coordinator?.keyboardCommand(.previousField, in: self)
+    }
+
+    override var undoManager: UndoManager? { coordinator?.undoManager }
+
+    @objc func undo(_ sender: Any?) { undoManager?.undo() }
+    @objc func redo(_ sender: Any?) { undoManager?.redo() }
+
+    override func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        switch menuItem.action {
+        case #selector(undo(_:)): undoManager?.canUndo == true
+        case #selector(redo(_:)): undoManager?.canRedo == true
+        default: super.validateMenuItem(menuItem)
+        }
     }
 
     // MARK: Pasteboard
@@ -729,7 +885,7 @@ final class ApplicationCommandTextView: NSTextView {
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
-        guard remainingOptionCount > 0, let layoutManager, let textContainer, textStorage?.length ?? 0 > 0
+        guard remainingOptionCount > 0, let layoutManager, textContainer != nil, textStorage?.length ?? 0 > 0
         else { return }
         let lastGlyph = layoutManager.glyphIndexForCharacter(at: max(0, (textStorage?.length ?? 1) - 1))
         var line = layoutManager.lineFragmentUsedRect(forGlyphAt: lastGlyph, effectiveRange: nil)

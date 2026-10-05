@@ -91,9 +91,10 @@ final class ApplicationCommandFrecencyStore {
         compute()
     }
 
-    /// A save succeeded; the history it produced arrives separately.
-    func clearPendingUsages() {
-        pendingUsages = []
+    /// A save acknowledges exactly its captured prefix; newer uses stay pending.
+    func acknowledge(_ saved: [PendingUsage]) {
+        guard pendingUsages.starts(with: saved) else { return }
+        pendingUsages.removeFirst(saved.count)
         persistPending()
     }
 
@@ -117,7 +118,8 @@ final class ApplicationCommandFrecencyStore {
     /// The history Discord's client would save: entries in stored order with
     /// their current frecency and rounded score.
     func historyForSave() -> ApplicationCommandFrecencyHistory {
-        ApplicationCommandFrecencyHistory(entries: keys.compactMap { key in
+        if isDirty { compute() }
+        return ApplicationCommandFrecencyHistory(entries: keys.compactMap { key in
             guard let entry = entries[key] else { return nil }
             return ApplicationCommandFrecencyEntry(
                 key: key,

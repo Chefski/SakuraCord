@@ -507,10 +507,18 @@ extension AppModel {
         releaseAllOwnedPromisedFiles()
         oversizedAttachmentPrompt = nil
         queuedOversizedAttachmentPrompts.removeAll()
+        for task in interactionDeadlineTasks.values { task.cancel() }
+        interactionDeadlineTasks = [:]
         commandLoadTask?.cancel()
         commandLoadTask = nil
-        commandAutocompleteTask?.cancel()
-        commandAutocompleteTask = nil
+        commandFrecencyLoadTask?.cancel()
+        commandFrecencyLoadTask = nil
+        commandFrecencyFlushTask?.cancel()
+        commandFrecencyFlushTask = nil
+        commandFrecencySaveTask?.cancel()
+        commandFrecencySaveTask = nil
+        deferredCommandFrecency = nil
+        cancelApplicationCommandAutocompleteTask()
         commandMemberSearchTask?.cancel()
         commandMemberSearchTask = nil
         commandMemberSearchQuery = nil

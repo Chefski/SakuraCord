@@ -23,7 +23,9 @@ extension DiscordRESTProvider {
             return cached
         }
         if let task = applicationCommandCatalogTasks[target] {
-            return try await task.value
+            let catalog = try await task.value
+            guard !task.isCancelled else { throw CancellationError() }
+            return catalog
         }
         let task = Task { [weak self] in
             guard let self else { throw CancellationError() }
@@ -32,11 +34,14 @@ extension DiscordRESTProvider {
         applicationCommandCatalogTasks[target] = task
         do {
             let catalog = try await task.value
+            guard !task.isCancelled else { throw CancellationError() }
             applicationCommandCatalogTasks[target] = nil
             cachedApplicationCommandCatalogs[target] = catalog
             return catalog
         } catch {
-            applicationCommandCatalogTasks[target] = nil
+            // Invalidation cancels and removes the old task. It may finish
+            // after a replacement has started; never remove that replacement.
+            if !task.isCancelled { applicationCommandCatalogTasks[target] = nil }
             throw error
         }
     }
@@ -109,6 +114,12 @@ extension DiscordRESTProvider {
             body["guild_id"] = .string(guildID.description)
         }
         rememberAutocompleteOptionType(focused.type, nonce: request.nonce)
+        autocompleteTimeoutTasks[request.nonce]?.cancel()
+        autocompleteTimeoutTasks[request.nonce] = Task { [weak self] in
+            try? await Task.sleep(for: Self.autocompleteResponseDeadline)
+            guard !Task.isCancelled else { return }
+            await self?.expireAutocomplete(nonce: request.nonce)
+        }
         do {
             let (_, response) = try await perform(
                 "/interactions", method: "POST", query: [], body: body
@@ -121,12 +132,7 @@ extension DiscordRESTProvider {
             forgetAutocomplete(nonce: request.nonce)
             throw error
         }
-        autocompleteTimeoutTasks[request.nonce]?.cancel()
-        autocompleteTimeoutTasks[request.nonce] = Task { [weak self] in
-            try? await Task.sleep(for: Self.autocompleteResponseDeadline)
-            guard !Task.isCancelled else { return }
-            await self?.expireAutocomplete(nonce: request.nonce)
-        }
+
     }
 
     public func executeApplicationCommand(

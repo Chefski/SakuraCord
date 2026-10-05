@@ -24,9 +24,11 @@ struct ComposerView: View {
     @State private var selectionBeforeEmojiPicker: NSRange?
     @State private var isSubmitting = false
     @State private var gifPickerDismissedAt: TimeInterval = -.infinity
+    @State private var stickerPickerInitialQuery = ""
     @State private var stickerPickerDismissedAt: TimeInterval = -.infinity
     @State private var emojiPickerDismissedAt: TimeInterval = -.infinity
     @State private var autocompleteIndex = 0
+    @State private var autocompleteKeyboardSelectionRevision = 0
     @State private var isAutocompleteDismissed = false
 
     var body: some View {
@@ -139,6 +141,7 @@ struct ComposerView: View {
                                 caretRequestRevision: model.commandComposer.caretRequestRevision,
                                 fieldIssue: model.commandComposer.fieldIssue,
                                 roles: model.guildRoles,
+                                generalInputSettings: model.generalInputSettings,
                                 onKeyboardCommand: handleAutocomplete,
                                 onSubmit: submitComposer,
                                 onCancel: leaveCommand(restoring:),
@@ -148,7 +151,11 @@ struct ComposerView: View {
                                 receiveAttachment: { attachments in
                                     Task { await model.receiveCommandAttachment(attachments) }
                                 },
-                                isFocused: $isFocused
+                                // Ignore focus callbacks from the editor being replaced.
+                                isFocused: Binding(
+                                    get: { hasActiveCommand && isFocused },
+                                    set: { if hasActiveCommand { isFocused = $0 } }
+                                )
                             )
                         }
                     } else {
@@ -199,7 +206,10 @@ struct ComposerView: View {
                                     ? ChatChromeMetrics.composerTextVerticalInset
                                     : 0,
                                 selection: $draftSelection,
-                                isFocused: $isFocused
+                                isFocused: Binding(
+                                    get: { !hasActiveCommand && isFocused },
+                                    set: { if !hasActiveCommand { isFocused = $0 } }
+                                )
                             )
                             .frame(minHeight: ChatChromeMetrics.composerControlHeight)
                             if draft.isEmpty, !isComposing {
@@ -386,7 +396,8 @@ struct ComposerView: View {
             }
         }
         .onChange(of: model.builtInExpressionPickerRequest) { _, request in
-            guard let request else { return }
+            guard conversation == .channel, let request,
+                  request.channelID == model.selectedChannelID else { return }
             model.builtInExpressionPickerRequest = nil
             showEmojiPicker = false
             switch request.kind {
@@ -396,6 +407,7 @@ struct ComposerView: View {
                 showGIFPicker = true
             case .sticker:
                 showGIFPicker = false
+                stickerPickerInitialQuery = request.query
                 showStickerPicker = true
             }
         }
@@ -414,7 +426,11 @@ struct ComposerView: View {
             updateMentionMemberSearch()
         }
         .onChange(of: model.commandComposer.draft) { previous, current in
-            guard let current else { return }
+            guard let current else {
+                model.cancelApplicationCommandAutocompleteTask()
+                model.cancelApplicationCommandMemberSearch()
+                return
+            }
             if previous?.focus != current.focus {
                 model.cancelApplicationCommandMemberSearch()
             }
@@ -436,6 +452,7 @@ struct ComposerView: View {
             guard conversation == .thread || !isClosedVoiceChat else { return }
             isFocused = true
             if conversation == .channel, model.selectedChannel?.kind != .voice {
+                model.ensureApplicationCommandsLoaded()
                 updateSlashPicker(for: draft)
             }
         }
@@ -483,7 +500,8 @@ struct ComposerView: View {
                         selectedIndex: model.commandComposer.suggestionIndex ?? content.defaultIndex,
                         select: acceptCommandSuggestion,
                         highlight: { model.commandComposer.suggestionIndex = $0 },
-                        cornerRadius: commandPanelCornerRadius
+                        cornerRadius: commandPanelCornerRadius,
+                        keyboardSelectionRevision: autocompleteKeyboardSelectionRevision
                     )
                 }
                 ApplicationCommandHelpStrip(draft: draft, issue: model.commandComposer.fieldIssue, cancel: cancelCommand)
@@ -499,7 +517,9 @@ struct ComposerView: View {
                     suggestions: suggestions,
                     selectedIndex: autocompleteIndex,
                     highlight: { autocompleteIndex = $0 },
-                    select: { acceptMentionAutocomplete($0, context: context) }
+                    select: { acceptMentionAutocomplete($0, context: context) },
+                    cornerRadius: commandPanelCornerRadius,
+                    keyboardSelectionRevision: autocompleteKeyboardSelectionRevision
                 )
             }
         } else if let context = autocompleteContext {
@@ -509,7 +529,9 @@ struct ComposerView: View {
                     suggestions: suggestions,
                     selectedIndex: autocompleteIndex,
                     highlight: { autocompleteIndex = $0 },
-                    select: { acceptAutocomplete($0, context: context) }
+                    select: { acceptAutocomplete($0, context: context) },
+                    cornerRadius: commandPanelCornerRadius,
+                    keyboardSelectionRevision: autocompleteKeyboardSelectionRevision
                 )
             }
         }
@@ -562,7 +584,7 @@ struct ComposerView: View {
     }
 
     private var composerStickerPicker: some View {
-        StickerPickerView(model: model, destination: conversation) {
+        StickerPickerView(model: model, destination: conversation, initialQuery: stickerPickerInitialQuery) {
             showStickerPicker = false
             Task { @MainActor in
                 await Task.yield()
@@ -653,6 +675,7 @@ struct ComposerView: View {
 
         let now = ProcessInfo.processInfo.systemUptime
         guard now - stickerPickerDismissedAt > 0.25 else { return }
+        stickerPickerInitialQuery = ""
         showEmojiPicker = false
         showGIFPicker = false
         selectionBeforeEmojiPicker = nil
@@ -991,6 +1014,7 @@ struct ComposerView: View {
         let suggestions = content?.suggestions ?? []
         let index = composer.suggestionIndex ?? content?.defaultIndex
         let selected = index.flatMap { suggestions.indices.contains($0) ? suggestions[$0] : nil }
+        if command == .previous || command == .next { autocompleteKeyboardSelectionRevision &+= 1 }
         switch command {
         case .previous:
             guard !suggestions.isEmpty else { return false }
@@ -1038,6 +1062,7 @@ struct ComposerView: View {
         _ command: ComposerAutocompleteCommand,
         context: MentionAutocompleteContext
     ) -> Bool {
+        if command == .previous || command == .next { autocompleteKeyboardSelectionRevision &+= 1 }
         switch command {
         case .previous:
             autocompleteIndex = (autocompleteIndex - 1 + mentionAutocompleteSuggestions.count)
@@ -1061,6 +1086,7 @@ struct ComposerView: View {
         _ command: ComposerAutocompleteCommand,
         context: ColonAutocompleteContext
     ) -> Bool {
+        if command == .previous || command == .next { autocompleteKeyboardSelectionRevision &+= 1 }
         switch command {
         case .previous:
             autocompleteIndex =

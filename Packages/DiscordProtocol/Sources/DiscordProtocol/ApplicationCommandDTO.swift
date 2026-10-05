@@ -29,23 +29,38 @@ struct ApplicationCommandIndexDecoder {
         }
     }
 
-    private struct Envelope: Decodable {
-        var applications: [JSONValue]
-        var applicationCommands: [JSONValue]
+    private struct Envelope {
+        var applications: [Any]
+        var applicationCommands: [Any]
         var version: StringOrInteger
 
-        enum CodingKeys: String, CodingKey {
-            case applications
-            case applicationCommands = "application_commands"
-            case version
-        }
-
-        init(from decoder: Decoder) throws {
-            let values = try decoder.container(keyedBy: CodingKeys.self)
-            applications = try values.decodeIfPresent([JSONValue].self, forKey: .applications) ?? []
-            applicationCommands =
-                try values.decodeIfPresent([JSONValue].self, forKey: .applicationCommands) ?? []
-            version = try values.decodeIfPresent(StringOrInteger.self, forKey: .version) ?? .string("")
+        init(data: Data) throws {
+            guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                throw DecodingError.typeMismatch(
+                    [String: Any].self,
+                    .init(codingPath: [], debugDescription: "Expected a command index object.")
+                )
+            }
+            func entries(_ key: String) throws -> [Any] {
+                guard let value = object[key], !(value is NSNull) else { return [] }
+                guard let values = value as? [Any] else {
+                    throw DecodingError.typeMismatch(
+                        [Any].self,
+                        .init(codingPath: [], debugDescription: "Expected an array for \(key).")
+                    )
+                }
+                return values
+            }
+            applications = try entries("applications")
+            applicationCommands = try entries("application_commands")
+            if let value = object["version"], !(value is NSNull) {
+                version = try JSONDecoder().decode(
+                    StringOrInteger.self,
+                    from: JSONSerialization.data(withJSONObject: value, options: .fragmentsAllowed)
+                )
+            } else {
+                version = .string("")
+            }
         }
     }
 
@@ -113,20 +128,17 @@ struct ApplicationCommandIndexDecoder {
         func domain(optionType: ApplicationCommandOptionType) -> ApplicationCommandChoice? {
             let parsed: ApplicationCommandChoiceValue
             switch (optionType, value) {
-            case (.integer, let .number(value)) where value.isFinite
-                && value.rounded(.towardZero) == value
-                && value >= Double(Int64.min) && value <= Double(Int64.max):
-                parsed = .integer(Int64(value))
+            case (.integer, let .number(value)):
+                guard let integer = Int64(exactly: value) else { return nil }
+                parsed = .integer(integer)
             case (.number, let .number(value)) where value.isFinite:
                 parsed = .number(value)
             case (.string, let .string(value)):
                 parsed = .string(value)
             case (_, let .string(value)):
                 parsed = .string(value)
-            case (_, let .number(value)) where value.isFinite && value.rounded(.towardZero) == value:
-                parsed = .integer(Int64(value))
             case (_, let .number(value)) where value.isFinite:
-                parsed = .number(value)
+                parsed = Int64(exactly: value).map(ApplicationCommandChoiceValue.integer) ?? .number(value)
             default:
                 return nil
             }
@@ -319,13 +331,16 @@ struct ApplicationCommandIndexDecoder {
     static func decode(_ data: Data, target: ApplicationCommandIndexTarget) throws
         -> ApplicationCommandCatalog
     {
-        let envelope = try JSONDecoder().decode(Envelope.self, from: data)
+        // Preserve unknown command fields for execution without decoding every
+        // scalar through JSONValue's speculative Codable type checks.
+        let envelope = try Envelope(data: data)
+        let decoder = JSONDecoder()
         var applications: [String: ApplicationCommandApplication] = [:]
         // Index order breaks ties between equally named sections, as in Discord.
         var applicationOrder: [String] = []
         for value in envelope.applications {
-            guard let payload = try? JSONEncoder().encode(value),
-                  let application = try? JSONDecoder().decode(ApplicationDTO.self, from: payload)
+            guard let payload = try? JSONSerialization.data(withJSONObject: value, options: .fragmentsAllowed),
+                  let application = try? decoder.decode(ApplicationDTO.self, from: payload)
             else { continue }
             if applications[application.id] == nil { applicationOrder.append(application.id) }
             applications[application.id] = application.domain
@@ -333,8 +348,8 @@ struct ApplicationCommandIndexDecoder {
 
         var commands: [ApplicationCommand] = []
         for value in envelope.applicationCommands {
-            guard let payload = try? JSONEncoder().encode(value),
-                  let command = try? JSONDecoder().decode(CommandDTO.self, from: payload),
+            guard let payload = try? JSONSerialization.data(withJSONObject: value, options: .fragmentsAllowed),
+                  let command = try? decoder.decode(CommandDTO.self, from: payload),
                   let application = applications[command.applicationID]
             else { continue }
             commands.append(contentsOf: command.flattened(application: application, rawJSON: payload))

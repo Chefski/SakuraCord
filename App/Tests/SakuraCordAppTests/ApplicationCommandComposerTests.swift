@@ -89,6 +89,29 @@ func commandAvailabilityFiltering() throws {
         command, channel: channel, currentUserID: userID, memberRoleIDs: [roleID],
         indexTarget: .user
     ))
+
+    // Reusing a prepared catalog across conversations must still apply the
+    // destination's permissions, and must not retain an old command definition.
+    let model = ApplicationCommandComposerModel()
+    command.integrationTypes = [0]
+    command.permissions = [.init(id: channelID.description, type: 3, allows: false)]
+    let otherChannel = Channel(id: ChannelID(rawValue: 701), guildID: guildID, name: "other")
+    func load(in destination: Channel) {
+        model.resetForChannelChange()
+        model.replaceCatalogs([
+            ApplicationCommandCatalog(target: .guild(guildID), applications: [application], commands: [command])
+        ], channel: destination, currentUserID: userID)
+    }
+    load(in: otherChannel)
+    #expect(model.rankedCommands(query: "verify").map(\.id) == [command.id])
+    load(in: channel)
+    #expect(model.rankedCommands(query: "verify").isEmpty)
+    load(in: otherChannel)
+    #expect(model.rankedCommands(query: "verify").map(\.id) == [command.id])
+    command.name = "inspect"
+    load(in: otherChannel)
+    #expect(model.rankedCommands(query: "verify").isEmpty)
+    #expect(model.rankedCommands(query: "inspect").map(\.id) == [command.id])
 }
 
 @MainActor
@@ -240,7 +263,8 @@ func commandDraftValidation() throws {
     for (text, message) in [
         ("x", "Enter a whole number."),
         ("8", "Enter a number between -3 and 7."),
-        ("99999999999999999", "This number is too large.")
+        ("99999999999999999", "This number is too large."),
+        (String(Int64.min), "This number is too large.")
     ] {
         model.setText(text, for: .field("200/count"))
         #expect(!model.prepareSubmission())
@@ -314,4 +338,79 @@ func attachmentPasteTargetLifecycle() throws {
     // The caret moves on, and the next paste targets the empty option.
     #expect(model.draft?.focus == .gap(1))
     #expect(model.pastedAttachmentOption?.id == second.id)
+
+    var optional = second
+    optional.isRequired = false
+    model.activate(composerFixtureCommand(id: "201", name: "optional", application: composerApplication, options: [optional]))
+    #expect(model.draft?.fields.isEmpty == true)
+    let optionalTarget = try #require(model.attachmentPasteTarget())
+    #expect(model.finishAttachmentPaste(newURL, target: optionalTarget))
+    #expect(model.draft?.field(optional.id)?.resolved == .attachment(newURL))
+}
+
+@MainActor
+@Test("autocomplete retries failures and isolates new drafts and conversations")
+func commandAutocompleteLifecycle() throws {
+    let model = ApplicationCommandComposerModel()
+    let option = ApplicationCommandOption(id: "300/query", name: "query", type: .string, isRequired: true, usesAutocomplete: true)
+    let command = composerFixtureCommand(id: "300", name: "find", application: composerApplication, options: [option])
+    let channel = ChannelID(rawValue: 400)
+    model.activate(command)
+    let first = try #require(model.autocompleteRequest(channelID: channel, guildID: nil))
+    #expect(model.failAutocomplete(nonce: first.nonce, failure: InteractionFailure(reasonCode: 2)))
+    model.setText("changed", for: .field(option.id))
+    _ = model.autocompleteRequest(channelID: channel, guildID: nil)
+    model.setText("", for: .field(option.id))
+    let retry = try #require(model.autocompleteRequest(channelID: channel, guildID: nil))
+    model.receiveAutocomplete(.init(nonce: first.nonce, choices: [.init(name: "obsolete", value: .string("obsolete"))]))
+    #expect(model.autocompleteStatus.isLoading)
+    #expect(model.isAutocompleteRequestCurrent(retry.nonce))
+    model.abandonAutocomplete(nonce: retry.nonce, message: "Cancelled")
+    let afterDebounceCancellation = try #require(model.autocompleteRequest(channelID: channel, guildID: nil))
+    model.cancelActiveCommand()
+    model.activate(command)
+    #expect(!model.isAutocompleteRequestCurrent(afterDebounceCancellation.nonce))
+    _ = try #require(model.autocompleteRequest(channelID: channel, guildID: nil))
+    let differentChannel = try #require(model.autocompleteRequest(channelID: ChannelID(rawValue: 401), guildID: nil))
+    #expect(differentChannel.invocation.channelID != channel)
+}
+
+@MainActor
+@Test("command copying and submission preserve literal Unicode and whitespace values")
+func commandLiteralTextPreservation() throws {
+    var draft = ApplicationCommandDraft(command: researchCommand())
+    let value = " 🌸  e\u{301} "
+    draft.setText(value, for: "200/text")
+    let document = ApplicationCommandEditorDocument(draft: draft)
+    let span = try #require(document.span("200/text"))
+    #expect(document.plainText(in: span.value) == value)
+    #expect(document.plainText(in: NSRange(location: 0, length: document.length)) == "/research text:" + value + " ")
+    #expect(draft.optionValues().first?.argument == .string(value))
+}
+
+@MainActor
+@Test("returned modals settle their opener and late successes cannot close another form")
+func commandInteractionModalOrdering() throws {
+    let model = AppModel(launchMode: .offlineTesting)
+    let channel = ChannelID(rawValue: 400)
+    model.trackInteraction(.init(kind: .command(channelID: channel, commandName: "find", application: composerApplication)), nonce: "opening")
+    #expect(model.interactionDeadlineTasks.isEmpty)
+    model.startInteractionDeadline(nonce: "opening")
+    #expect(model.interactionDeadlineTasks.count == 1)
+    let modal = InteractionModal(interactionID: "modal-one", openingNonce: "opening", application: composerApplication,
+        channelID: channel, guildID: nil, customID: "form", title: "Form", nodes: [])
+    model.consumeInteraction(.presentModal(modal))
+    #expect(model.pendingInteractions["opening"]?.isFinished == true)
+    #expect(model.interactionDeadlineTasks.isEmpty)
+    let form = try #require(model.interactionModalForm)
+    model.consumeInteraction(.failed(nonce: "opening", failure: .init(reasonCode: 2)))
+    #expect(model.interactionModalForm === form)
+    model.trackInteraction(.init(kind: .modalSubmission(channelID: channel, application: composerApplication, formID: "older-form")), nonce: "older-submit")
+    model.consumeInteraction(.succeeded(nonce: "older-submit", interactionID: "old"))
+    #expect(model.interactionModalForm === form)
+    model.trackInteraction(.init(kind: .modalSubmission(channelID: channel, application: composerApplication, formID: form.id)), nonce: "submit")
+    form.beginSubmitting()
+    model.consumeInteraction(.succeeded(nonce: "submit", interactionID: "current"))
+    #expect(model.interactionModalForm == nil)
+    #expect(model.finishPendingInteraction("submit") == nil)
 }

@@ -32,17 +32,24 @@ enum SakuraCordBuiltInCommands {
     )
 
     static let commands = [
-        command("report", description: "Report a bug in SakuraCord"),
+        command("bug", description: "Report a bug in SakuraCord"),
         command("suggest", description: "Suggest a feature for SakuraCord"),
     ]
 
     static func issueReportKind(for command: ApplicationCommand) -> IssueReportKind? {
         guard command.applicationID == application.id else { return nil }
         return switch command.name {
-        case "report": .bug
+        case "bug": .bug
         case "suggest": .feature
         default: nil
         }
+    }
+
+    /// Only the community bot's reporting slash commands are replaced locally.
+    static func replaces(_ command: ApplicationCommand) -> Bool {
+        command.applicationID == AppModel.issueReportAuthorization.clientID
+            && command.type == .chatInput
+            && (command.name == "bug" || command.name == "suggest")
     }
 
     private static func command(_ name: String, description: String) -> ApplicationCommand {
@@ -88,7 +95,9 @@ final class ApplicationCommandComposerModel {
         var commandID: String
         var optionID: String
         var query: String
-        var siblings: String
+        var channelID: ChannelID
+        var guildID: GuildID?
+        var siblings: [ApplicationCommandOptionValue]
     }
 
     // MARK: Catalogue
@@ -151,6 +160,9 @@ final class ApplicationCommandComposerModel {
     @ObservationIgnored private var autocompleteCacheOrder: [AutocompleteKey] = []
     @ObservationIgnored private var autocompleteKeyByNonce: [String: AutocompleteKey] = [:]
     @ObservationIgnored private var currentAutocompleteKey: AutocompleteKey?
+    @ObservationIgnored private var currentAutocompleteNonce: String?
+    @ObservationIgnored private var autocompleteNonceOrder: [String] = []
+    @ObservationIgnored private var failedAutocompleteNonces: Set<String> = []
 
     var activeCommand: ApplicationCommand? { draft?.command }
 
@@ -161,6 +173,7 @@ final class ApplicationCommandComposerModel {
     // MARK: Catalogue loading
 
     func configureFrecencyScope(_ scope: String) {
+        reusablePickerEngine = nil
         frecencyStore.configure(scope: scope)
         refreshPickerSections()
     }
@@ -208,6 +221,7 @@ final class ApplicationCommandComposerModel {
             {
                 switch command.type {
                 case .chatInput:
+                    guard !SakuraCordBuiltInCommands.replaces(command) else { continue }
                     if catalog.target == .user {
                         userCommands[command.applicationID, default: []].append(command)
                     } else {
@@ -239,6 +253,7 @@ final class ApplicationCommandComposerModel {
         applications = sources.map(\.application)
         contextMenuCommands = contextByID.values.sorted(by: stableCommandOrder)
         commands = sources.flatMap(\.commands) + availableBuiltIns
+        reusablePickerEngine = cachedPickerEngine
         hasLoadedCatalogs = true
         isLoading = false
         loadError = nil
@@ -288,6 +303,7 @@ final class ApplicationCommandComposerModel {
             case let .application(applicationID): command.applicationID == applicationID
             }
         } ?? false
+        if wasActive { cancelActiveCommand() }
         clearCatalogs()
         loadError = nil
         return isPickerPresented || wasActive
@@ -514,6 +530,7 @@ final class ApplicationCommandComposerModel {
         if focusChanged {
             autocompleteStatus = .idle
             currentAutocompleteKey = nil
+            currentAutocompleteNonce = nil
         }
     }
 
@@ -534,7 +551,7 @@ final class ApplicationCommandComposerModel {
     var pastedAttachmentOption: ApplicationCommandOption? {
         guard let draft else { return nil }
         if let field = draft.focusedField, field.option.type == .attachment { return field.option }
-        return draft.fields.first { $0.option.type == .attachment && $0.resolved == nil }?.option
+        return draft.command.options.first { $0.type == .attachment && draft.field($0.id)?.resolved == nil }
     }
 
     struct AttachmentPasteTarget {
@@ -549,6 +566,7 @@ final class ApplicationCommandComposerModel {
     @discardableResult
     func finishAttachmentPaste(_ url: URL, target: AttachmentPasteTarget) -> Bool {
         guard target.revision == attachmentPasteRevision, var updated = draft else { return false }
+        if updated.field(target.option.id) == nil { updated.addOptionalOption(target.option) }
         updated.resolve(target.option.id, to: .attachment(url), display: url.lastPathComponent)
         updated.focus = updated.gap(after: target.option.id)
         draft = updated
@@ -612,22 +630,27 @@ final class ApplicationCommandComposerModel {
               field.resolved == nil
         else {
             currentAutocompleteKey = nil
+            currentAutocompleteNonce = nil
             if autocompleteStatus != .idle { autocompleteStatus = .idle }
             return nil
         }
         let siblings = draft.siblingValues(excluding: field.id)
         let key = AutocompleteKey(
             commandID: draft.command.id, optionID: field.id, query: field.text,
-            siblings: siblings.map { "\($0.optionID)=\($0.argument)" }.joined(separator: "&")
+            channelID: channelID, guildID: guildID, siblings: siblings
         )
         guard key != currentAutocompleteKey else { return nil }
         currentAutocompleteKey = key
+        currentAutocompleteNonce = nil
         if let cached = autocompleteCache[key] {
             autocompleteStatus = .loaded(cached)
             return nil
         }
         let previous = autocompleteStatus.choices
-        if autocompleteKeyByNonce.values.contains(key) {
+        if let nonce = autocompleteNonceOrder.last(where: {
+            autocompleteKeyByNonce[$0] == key && !failedAutocompleteNonces.contains($0)
+        }) {
+            currentAutocompleteNonce = nonce
             autocompleteStatus = .loading(previous: previous)
             return nil
         }
@@ -639,16 +662,27 @@ final class ApplicationCommandComposerModel {
             focusedOptionID: field.id,
             query: field.text
         )
+        // A retry supersedes failed requests for the same query, while other
+        // queries can still populate this draft's bounded cache.
+        for nonce in autocompleteNonceOrder where autocompleteKeyByNonce[nonce] == key {
+            forgetAutocomplete(nonce)
+        }
         autocompleteKeyByNonce[request.nonce] = key
+        autocompleteNonceOrder.append(request.nonce)
+        currentAutocompleteNonce = request.nonce
+        while autocompleteNonceOrder.count > 64 {
+            forgetAutocomplete(autocompleteNonceOrder[0])
+        }
         return request
     }
 
     /// Choices are correlated by nonce. A late answer still shows if the person
     /// is waiting on the same field and query; an obsolete one is only cached.
     func receiveAutocomplete(_ result: ApplicationCommandAutocompleteResult) {
-        guard let key = autocompleteKeyByNonce.removeValue(forKey: result.nonce) else { return }
+        guard let key = autocompleteKeyByNonce[result.nonce] else { return }
+        forgetAutocomplete(result.nonce)
         cacheAutocomplete(result.choices, for: key)
-        guard key == currentAutocompleteKey else { return }
+        guard key == currentAutocompleteKey, result.nonce == currentAutocompleteNonce else { return }
         autocompleteStatus = .loaded(Array(result.choices.prefix(25)))
         suggestionIndex = nil
     }
@@ -657,7 +691,8 @@ final class ApplicationCommandComposerModel {
     @discardableResult
     func failAutocomplete(nonce: String, failure: InteractionFailure) -> Bool {
         guard let key = autocompleteKeyByNonce[nonce] else { return false }
-        if key == currentAutocompleteKey, autocompleteStatus.isLoading {
+        failedAutocompleteNonces.insert(nonce)
+        if key == currentAutocompleteKey, nonce == currentAutocompleteNonce, autocompleteStatus.isLoading {
             autocompleteStatus = .failed("Loading options failed")
         }
         return true
@@ -665,11 +700,24 @@ final class ApplicationCommandComposerModel {
 
     /// A transport error before Discord accepted the request.
     func abandonAutocomplete(nonce: String, message: String) {
-        guard let key = autocompleteKeyByNonce.removeValue(forKey: nonce) else { return }
-        if key == currentAutocompleteKey {
+        guard let key = autocompleteKeyByNonce[nonce] else { return }
+        forgetAutocomplete(nonce)
+        if key == currentAutocompleteKey, nonce == currentAutocompleteNonce {
             autocompleteStatus = .failed(message)
             currentAutocompleteKey = nil
+            currentAutocompleteNonce = nil
         }
+    }
+
+    func isAutocompleteRequestCurrent(_ nonce: String) -> Bool {
+        guard let key = autocompleteKeyByNonce[nonce] else { return false }
+        return nonce == currentAutocompleteNonce && key == currentAutocompleteKey
+    }
+
+    private func forgetAutocomplete(_ nonce: String) {
+        autocompleteKeyByNonce[nonce] = nil
+        autocompleteNonceOrder.removeAll { $0 == nonce }
+        failedAutocompleteNonces.remove(nonce)
     }
 
     private func cacheAutocomplete(_ choices: [ApplicationCommandChoice], for key: AutocompleteKey) {
@@ -686,14 +734,32 @@ final class ApplicationCommandComposerModel {
         currentAutocompleteKey = nil
         autocompleteCache = [:]
         autocompleteCacheOrder = []
+        autocompleteKeyByNonce = [:]
+        autocompleteNonceOrder = []
+        failedAutocompleteNonces = []
+        currentAutocompleteNonce = nil
     }
 
     // MARK: Ranking
+
+    /// Keep one prepared index across channel changes. Availability is still
+    /// recomputed per channel; reuse requires the entire filtered catalog to match.
+    @ObservationIgnored private var reusablePickerEngine: ApplicationCommandPickerEngine?
 
     private var pickerEngine: ApplicationCommandPickerEngine {
         if let cachedPickerEngine { return cachedPickerEngine }
         let guildID = contextGuildID
         let store = frecencyStore
+        let frequentIDs = ApplicationCommandPickerEngine.scopedCommandIDs(store.frequently, guildID: guildID)
+        if var engine = reusablePickerEngine,
+           engine.locale == locale, engine.sources == pickerSources, engine.builtIns == availableBuiltIns {
+            engine.frecencyScore = { command in
+                store.score(for: ApplicationCommandPickerEngine.frecencyKey(of: command, guildID: guildID))
+            }
+            engine.frequentCommandIDs = frequentIDs
+            cachedPickerEngine = engine
+            return engine
+        }
         let engine = ApplicationCommandPickerEngine(
             sources: pickerSources,
             builtIns: availableBuiltIns,
@@ -701,7 +767,7 @@ final class ApplicationCommandComposerModel {
             frecencyScore: { command in
                 store.score(for: ApplicationCommandPickerEngine.frecencyKey(of: command, guildID: guildID))
             },
-            frequentCommandIDs: ApplicationCommandPickerEngine.scopedCommandIDs(store.frequently, guildID: guildID)
+            frequentCommandIDs: frequentIDs
         )
         cachedPickerEngine = engine
         return engine

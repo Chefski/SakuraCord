@@ -11,8 +11,7 @@ import SwiftUI
 
 extension NativeTimelineCanvasView {
     override func updateTrackingAreas() {
-        guard model?.commandComposer.isPickerPresented != true,
-              !suppressesHoverPresentation,
+        guard !suppressesHoverPresentation,
               !overlayBlocksInteractions
         else {
             pointer.removeTrackingAreas(from: self)
@@ -38,8 +37,7 @@ extension NativeTimelineCanvasView {
 
     override func resetCursorRects() {
         guard WindowModalCoordinator.allowsInput(for: self) else { return }
-        guard model?.commandComposer.isPickerPresented != true,
-              !suppressesHoverPresentation,
+        guard !suppressesHoverPresentation,
               !overlayBlocksInteractions
         else { return }
         super.resetCursorRects()
@@ -170,9 +168,12 @@ extension NativeTimelineCanvasView {
     }
 
     override func mouseEntered(with event: NSEvent) {
+        guard !ComposerOverlayPointerRegion.containsPointer(in: window, at: event.locationInWindow) else {
+            clearComposerCoveredHover()
+            return
+        }
         guard WindowModalCoordinator.allowsInput(for: self) else { return }
-        guard model?.commandComposer.isPickerPresented != true,
-              !suppressesHoverPresentation,
+        guard !suppressesHoverPresentation,
               !overlayBlocksInteractions,
               editingMessageID == nil,
               event.trackingArea?.userInfo?["nativeTimelineTrackingKind"]
@@ -181,7 +182,7 @@ extension NativeTimelineCanvasView {
                 "nativeTimelineRowIndex"
               ] as? Int
         else { return }
-        let point = currentMouseLocationInCanvas()
+        let point = convert(event.locationInWindow, from: nil)
         guard !actionCapsuleContains(point) else { return }
         setHoveredRow(index)
         setHoveredPollTarget(pollPointerHit(at: point)?.target)
@@ -212,15 +213,18 @@ extension NativeTimelineCanvasView {
     }
 
     override func mouseMoved(with event: NSEvent) {
+        guard !ComposerOverlayPointerRegion.containsPointer(in: window, at: event.locationInWindow) else {
+            clearComposerCoveredHover()
+            return
+        }
         guard WindowModalCoordinator.allowsInput(for: self) else { return }
-        guard model?.commandComposer.isPickerPresented != true,
-              !suppressesHoverPresentation,
+        guard !suppressesHoverPresentation,
               !overlayBlocksInteractions,
               editingMessageID == nil
         else {
             return
         }
-        let point = currentMouseLocationInCanvas()
+        let point = convert(event.locationInWindow, from: nil)
         guard !actionCapsuleContains(point) else { return }
         setHoveredPollTarget(pollPointerHit(at: point)?.target)
         synchronizeHoveredRow(at: point)
@@ -1154,9 +1158,31 @@ extension NativeTimelineCanvasView {
         }
     }
 
+    @objc func composerOverlayDidChange(_ notification: Notification) {
+        guard notification.object as? NSWindow === window else { return }
+        synchronizeHoverWithCurrentPointer()
+    }
+
+    private func clearComposerCoveredHover() {
+        setHoveredPollTarget(nil)
+        setHoveredCompactTimestampRow(nil)
+        setHoveredAuthorMessageID(nil)
+        setHoveredMention(nil)
+        setHoveredTextLink(nil)
+        setHoveredTextSpoiler(nil)
+        setHoveredCodeBlock(nil)
+        setHoveredComponentButton(nil)
+        setHoveredForwardedSourceMessageID(nil)
+        setHoveredReaction(nil)
+        setHoveredRow(nil)
+    }
+
     func synchronizeHoverWithCurrentPointer() {
-        guard model?.commandComposer.isPickerPresented != true,
-              WindowModalCoordinator.allowsInput(for: self), !overlayBlocksInteractions, !suppressesHoverPresentation,
+        guard !ComposerOverlayPointerRegion.containsPointer(in: window) else {
+            clearComposerCoveredHover()
+            return
+        }
+        guard WindowModalCoordinator.allowsInput(for: self), !overlayBlocksInteractions, !suppressesHoverPresentation,
               editingMessageID == nil,
               window?.isKeyWindow == true
         else { return }

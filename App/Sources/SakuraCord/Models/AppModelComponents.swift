@@ -18,6 +18,10 @@ extension AppModel {
         guard let applicationID = message.applicationID
             ?? message.application.flatMap({ ApplicationID($0.id) })
             ?? message.interactionMetadata?.applicationID.flatMap(ApplicationID.init)
+            // Ordinary bot messages have no interaction/application envelope.
+            // Incoming webhooks are message-scoped identities, not bot apps.
+            ?? (message.author.isBot && message.webhookID == nil
+                ? ApplicationID(rawValue: message.author.id.rawValue) : nil)
         else {
             updateComponentPresentation {
                 $0.errors[key] = "This message doesn’t identify the app that owns it."
@@ -47,9 +51,10 @@ extension AppModel {
         let session = accountSession()
         do {
             try await session.provider.submitComponentInteraction(submission)
-        } catch {
             guard isCurrentAccountSession(session) else { return }
-            pendingInteractions[submission.nonce]?.isFinished = true
+            startInteractionDeadline(nonce: submission.nonce)
+        } catch {
+            guard isCurrentAccountSession(session), finishPendingInteraction(submission.nonce) != nil else { return }
             DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
             updateComponentPresentation {
                 $0.pendingControls.remove(key)
@@ -102,7 +107,8 @@ extension AppModel {
         kind: ComponentSelectKind,
         guildID: GuildID?,
         channelTypes: [Int],
-        limit: Int = 25
+        limit: Int = 25,
+        query: String = ""
     ) -> [ComponentSelectOption] {
         let roles = componentChoiceRoles(in: guildID)
         let choices: [ComponentSelectOption]
@@ -129,7 +135,10 @@ extension AppModel {
                 channelTypes: channelTypes
             ).map(componentChoice(for:))
         }
-        return Array(choices.prefix(limit))
+        return Array(choices.lazy.filter {
+            query.isEmpty || $0.label.localizedCaseInsensitiveContains(query)
+                || $0.description?.localizedCaseInsensitiveContains(query) == true
+        }.prefix(limit))
     }
 
     /// Display metadata for entity defaults, which arrive as bare IDs.

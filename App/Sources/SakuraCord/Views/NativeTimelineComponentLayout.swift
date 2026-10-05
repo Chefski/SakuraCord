@@ -582,26 +582,36 @@ private enum NodeBuilder {
         case let .actionRow(_, children):
             var result = Node()
             var horizontalOffset: CGFloat = 0
-            var maximumHeight: CGFloat = 0
+            var verticalOffset: CGFloat = 0
+            var rowHeight: CGFloat = 0
+            var contentWidth: CGFloat = 0
             for child in children {
-                if horizontalOffset > 0 {
-                    horizontalOffset += 8
-                }
-                let remaining = max(1, maximumWidth - horizontalOffset)
+                // Measure against the whole row so a button moves intact to
+                // the next line instead of shrinking into the leftover space.
                 let childNode = node(
                     for: child,
                     message: message,
                     model: model,
-                    maximumWidth: remaining,
+                    maximumWidth: maximumWidth,
                     inBubble: inBubble
                 )
-                result.merge(childNode, at: CGPoint(x: horizontalOffset, y: 0))
+                if horizontalOffset > 0 {
+                    if horizontalOffset + 8 + childNode.size.width > maximumWidth {
+                        verticalOffset += rowHeight + 8
+                        horizontalOffset = 0
+                        rowHeight = 0
+                    } else {
+                        horizontalOffset += 8
+                    }
+                }
+                result.merge(childNode, at: CGPoint(x: horizontalOffset, y: verticalOffset))
                 horizontalOffset += childNode.size.width
-                maximumHeight = max(maximumHeight, childNode.size.height)
+                contentWidth = max(contentWidth, horizontalOffset)
+                rowHeight = max(rowHeight, childNode.size.height)
             }
             result.size = CGSize(
-                width: min(maximumWidth, horizontalOffset),
-                height: maximumHeight
+                width: min(maximumWidth, contentWidth),
+                height: verticalOffset + rowHeight
             )
             return result
 
@@ -789,11 +799,11 @@ private enum NodeBuilder {
             let showsExternalLink = url != nil
             let width = min(
                 maximumWidth,
-                ceil(
+                max(32, ceil(
                     24 + labelWidth
                         + (showsLeadingGlyph ? 22 : 0)
                         + (showsExternalLink ? 18 : 0)
-                )
+                ))
             )
             // While one action on this message is pending, its siblings are
             // disabled and the activated button shows progress.
@@ -810,7 +820,7 @@ private enum NodeBuilder {
                 ))
             return Node(
                 size: CGSize(
-                    width: max(32, width),
+                    width: width,
                     height: NativeTimelineComponentButtonMetrics.height
                 ),
                 buttons: [
@@ -818,7 +828,7 @@ private enum NodeBuilder {
                         frame: CGRect(
                             x: 0,
                             y: 0,
-                            width: max(32, width),
+                            width: width,
                             height:
                                 NativeTimelineComponentButtonMetrics
                                     .height

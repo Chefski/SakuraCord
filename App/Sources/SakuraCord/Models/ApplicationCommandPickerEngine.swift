@@ -2,7 +2,7 @@ import Foundation
 import SakuraCordModels
 
 /// One application's commands in the picker, in index order.
-struct ApplicationCommandPickerSource {
+struct ApplicationCommandPickerSource: Equatable {
     var application: ApplicationCommandApplication
     var commands: [ApplicationCommand]
 
@@ -51,6 +51,8 @@ struct ApplicationCommandPickerEngine {
         let displayTail: String
         let description: String
         let displayDescription: String
+        let hasLocalizedName: Bool
+        let hasLocalizedDescription: Bool
     }
 
     private struct SearchSection {
@@ -61,6 +63,7 @@ struct ApplicationCommandPickerEngine {
 
     private var commandSortRanks: [String: Int] = [:]
     private var searchSections: [SearchSection] = []
+    private var browseSections: [BrowseSection] = []
 
     init(sources: [ApplicationCommandPickerSource], builtIns: [ApplicationCommand], locale: Locale,
          frecencyScore: @escaping (ApplicationCommand) -> Double, frequentCommandIDs: [String]) {
@@ -104,34 +107,31 @@ struct ApplicationCommandPickerEngine {
                 commands: section.commands.map { command in
                     let name = lower(Self.untranslatedName(of: command))
                     let display = lower(command.displayName)
+                    let description = lower(command.description)
+                    let displayDescription = lower(command.displayDescription)
                     return SearchCommand(command: command, name: name, display: display,
                         tail: tail(name),
                         displayTail: tail(display),
-                        description: lower(command.description),
-                        displayDescription: lower(command.displayDescription))
+                        description: description,
+                        displayDescription: displayDescription,
+                        hasLocalizedName: !name.utf16.elementsEqual(display.utf16),
+                        hasLocalizedDescription: !description.utf16.elementsEqual(displayDescription.utf16))
                 })
+        }
+        browseSections = sections.compactMap { section in
+            guard !section.commands.isEmpty else { return nil }
+            return BrowseSection(application: section.application, name: section.name,
+                commands: stableSorted(section.commands) { commandSortRanks[$0.id, default: 0] < commandSortRanks[$1.id, default: 0] })
         }
     }
 
     // MARK: Browse
 
     func browse() -> Browse {
-        var sections = sortedSections(sources.compactMap { source -> BrowseSection? in
-            let commands = stableSorted(source.commands) { commandSortRanks[$0.id, default: 0] < commandSortRanks[$1.id, default: 0] }
-            guard !commands.isEmpty else { return nil }
-            return BrowseSection(application: source.application, name: source.name, commands: commands)
-        })
-        if !builtIns.isEmpty {
-            sections.append(BrowseSection(
-                application: DiscordBuiltInCommands.application,
-                name: DiscordBuiltInCommands.application.name,
-                commands: stableSorted(builtIns) { commandSortRanks[$0.id, default: 0] < commandSortRanks[$1.id, default: 0] }
-            ))
-        }
         let frequent = Set(frequentCommandIDs)
-        let candidates = sections.flatMap(\.commands).filter { frequent.contains(Self.discordID(of: $0)) }
+        let candidates = browseSections.flatMap(\.commands).filter { frequent.contains(Self.discordID(of: $0)) }
         let frequentlyUsed = stableSorted(candidates) { frecencyScore($0) > frecencyScore($1) }
-        return Browse(frequentlyUsed: Array(frequentlyUsed.prefix(Self.frequentlyUsedLimit)), sections: sections)
+        return Browse(frequentlyUsed: Array(frequentlyUsed.prefix(Self.frequentlyUsedLimit)), sections: browseSections)
     }
 
     // MARK: Search
@@ -236,20 +236,33 @@ struct ApplicationCommandPickerEngine {
         let command = prepared.command
         let untranslated = prepared.name
         let display = prepared.display
-        if Self.hasPrefix(untranslated, query) || Self.hasPrefix(display, query) { return 0 }
+        if Self.hasPrefix(untranslated, query) || (prepared.hasLocalizedName && Self.hasPrefix(display, query)) { return 0 }
         if (Self.hasPrefix(untranslated, firstWord) && Self.hasPrefix(prepared.tail, rest))
-            || (Self.hasPrefix(display, firstWord) && Self.hasPrefix(prepared.displayTail, rest)) { return 1 }
-        if Self.contains(untranslated, query) || Self.contains(display, query) { return 2 }
+            || (prepared.hasLocalizedName && Self.hasPrefix(display, firstWord) && Self.hasPrefix(prepared.displayTail, rest)) { return 1 }
+        if Self.contains(untranslated, query) || (prepared.hasLocalizedName && Self.contains(display, query)) { return 2 }
+        // A qualified option can only match once the query has passed the
+        // command name. Read its suffix once, rather than build two qualified
+        // strings for every option on every keystroke.
+        func optionQuery(after name: String) -> String? {
+            let prefix = name + " "
+            guard Self.hasPrefix(query, prefix) else { return nil }
+            return String(decoding: query.utf16.dropFirst(prefix.utf16.count), as: UTF16.self)
+        }
+        let canonicalOptionQuery = optionQuery(after: untranslated)
+        let localizedOptionQuery = prepared.hasLocalizedName ? optionQuery(after: display) : nil
+        func optionHasPrefix(_ name: String) -> Bool {
+            Self.hasPrefix(name, query)
+                || canonicalOptionQuery.map { Self.hasPrefix(name, $0) } == true
+                || localizedOptionQuery.map { Self.hasPrefix(name, $0) } == true
+        }
         var optionContains = false
         for option in command.options {
             let name = option.name, localized = option.localizedName
-            if Self.hasPrefix(name, query) || Self.hasPrefix("\(untranslated) \(name)", query)
-                || Self.hasPrefix("\(display) \(name)", query)
+            if optionHasPrefix(name)
             {
                 return 3
             }
-            if let localized, Self.hasPrefix(localized, query) || Self.hasPrefix("\(untranslated) \(localized)", query)
-                || Self.hasPrefix("\(display) \(localized)", query)
+            if let localized, optionHasPrefix(localized)
             {
                 return 3
             }
@@ -260,15 +273,15 @@ struct ApplicationCommandPickerEngine {
         if optionContains { return 4 }
         let untranslatedDescription = prepared.description
         let displayDescription = prepared.displayDescription
-        if Self.contains(untranslatedDescription, query) || Self.contains(displayDescription, query) { return 7 }
-        if Self.fuzzyMatches(query, untranslated) || Self.fuzzyMatches(query, display) { return 9 }
+        if Self.contains(untranslatedDescription, query) || (prepared.hasLocalizedDescription && Self.contains(displayDescription, query)) { return 7 }
+        if Self.fuzzyMatches(query, untranslated) || (prepared.hasLocalizedName && Self.fuzzyMatches(query, display)) { return 9 }
         for option in command.options
             where Self.fuzzyMatches(query, option.name) || option.localizedName.map({ Self.fuzzyMatches(query, $0) }) == true
         {
             _ = option
             return 10
         }
-        if Self.fuzzyMatches(query, untranslatedDescription) || Self.fuzzyMatches(query, displayDescription) {
+        if Self.fuzzyMatches(query, untranslatedDescription) || (prepared.hasLocalizedDescription && Self.fuzzyMatches(query, displayDescription)) {
             return 12
         }
         return nil
@@ -342,16 +355,15 @@ struct ApplicationCommandPickerEngine {
 
     /// The `fuzzysearch` package: every needle code unit in order.
     static func fuzzyMatches(_ needle: String, _ haystack: String) -> Bool {
-        let needle = Array(needle.utf16), haystack = Array(haystack.utf16)
-        if needle.count > haystack.count { return false }
-        if needle.count == haystack.count { return needle == haystack }
-        var position = 0
-        outer: for unit in needle {
-            while position < haystack.count {
-                position += 1
-                if haystack[position - 1] == unit { continue outer }
+        // Walk code units without allocating two arrays for every candidate.
+        // UTF-16 preserves the official client's matching, including surrogates.
+        var candidate = haystack.utf16.makeIterator()
+        for unit in needle.utf16 {
+            var found = false
+            while let next = candidate.next() {
+                if next == unit { found = true; break }
             }
-            return false
+            if !found { return false }
         }
         return true
     }

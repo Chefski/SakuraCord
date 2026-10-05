@@ -4,25 +4,34 @@ import SakuraCordModels
 
 /// Slash-command usage synced through Discord's frecency settings. Uses stay
 /// pending locally and are saved on Discord's own schedule: shortly after the
-/// Gateway becomes ready, every two hours, and when the app stops being
-/// active or the connection closes.
+/// Gateway becomes ready, every two hours, and when the connection closes.
+/// Desktop window focus/minimization is not Discord's mobile APP_STATE_UPDATE.
 extension AppModel {
     static let commandFrecencyFlushInterval: Duration = .seconds(2 * 60 * 60)
 
     /// Discord loads synced usage when the picker first needs it.
     func loadCommandFrecencyIfNeeded() {
-        guard !commandComposer.frecencyStore.hasLoadedRemoteHistory, commandFrecencyLoadTask == nil else { return }
+        guard !commandComposer.frecencyStore.hasLoadedRemoteHistory, commandFrecencyLoadTask == nil,
+              commandFrecencySaveTask == nil else { return }
         let session = accountSession()
         commandFrecencyLoadTask = Task { [weak self] in
-            defer { self?.commandFrecencyLoadTask = nil }
+            defer {
+                if let self, isCurrentAccountSession(session) { commandFrecencyLoadTask = nil }
+            }
             guard let history = try? await session.provider.applicationCommandFrecency(),
-                  let self, isCurrentAccountSession(session)
+                  let self, !Task.isCancelled, isCurrentAccountSession(session)
             else { return }
-            commandComposer.applyRemoteFrecency(history)
+            applyRemoteCommandFrecency(history)
         }
     }
 
     func applyRemoteCommandFrecency(_ history: ApplicationCommandFrecencyHistory) {
+        // A Gateway echo can arrive before the PATCH returns. Keep it from
+        // replaying the already included prefix while that save is in flight.
+        guard commandFrecencySaveTask == nil else {
+            deferredCommandFrecency = history
+            return
+        }
         commandComposer.applyRemoteFrecency(history)
     }
 
@@ -37,12 +46,13 @@ extension AppModel {
     }
 
     private func scheduleCommandFrecencyFlush(after delay: Duration) {
+        let session = accountSession()
         commandFrecencyFlushTask?.cancel()
         commandFrecencyFlushTask = Task { [weak self] in
             if delay > .zero { try? await Task.sleep(for: delay) }
-            guard !Task.isCancelled, let self else { return }
+            guard !Task.isCancelled, let self, isCurrentAccountSession(session) else { return }
             await flushCommandFrecencyIfNeeded()
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, isCurrentAccountSession(session) else { return }
             scheduleCommandFrecencyFlush(
                 after: Self.commandFrecencyFlushInterval + .milliseconds(Int.random(in: 0 ..< 600_000))
             )
@@ -52,12 +62,41 @@ extension AppModel {
     /// Saves pending uses on top of the latest synced history, then adopts
     /// what Discord stored.
     func flushCommandFrecencyIfNeeded() async {
+        if let saving = commandFrecencySaveTask {
+            await saving.value
+            return
+        }
+        let session = accountSession()
+        let saving = startAccountChildTask(account: session) { model, session in
+            defer {
+                if model.isCurrentAccountSession(session) {
+                    model.commandFrecencySaveTask = nil
+                    if let history = model.deferredCommandFrecency {
+                        model.deferredCommandFrecency = nil
+                        model.commandComposer.applyRemoteFrecency(history)
+                    }
+                }
+            }
+            await model.saveCommandFrecencyIfNeeded(session: session)
+        }
+        commandFrecencySaveTask = saving
+        await saving.value
+    }
+
+    private func saveCommandFrecencyIfNeeded(session: AppModelAccountSession) async {
+        // Join the initial read before writing, so its stale response cannot
+        // later overwrite the history returned by this save.
+        if let loading = commandFrecencyLoadTask { await loading.value }
+        guard !Task.isCancelled, isCurrentAccountSession(session) else { return }
+        if let history = deferredCommandFrecency {
+            deferredCommandFrecency = nil
+            commandComposer.applyRemoteFrecency(history)
+        }
         let store = commandComposer.frecencyStore
         guard store.hasPendingUsage, supportedCapabilities.contains(.slashCommands) else { return }
-        let session = accountSession()
         if !store.hasLoadedRemoteHistory {
             guard let history = try? await session.provider.applicationCommandFrecency(),
-                  isCurrentAccountSession(session)
+                  !Task.isCancelled, isCurrentAccountSession(session)
             else { return }
             commandComposer.applyRemoteFrecency(history)
         }
@@ -65,10 +104,16 @@ extension AppModel {
         do {
             let stored = try await session.provider.saveApplicationCommandFrecency(store.historyForSave())
             guard isCurrentAccountSession(session) else { return }
-            if store.pendingUsages == saving { store.clearPendingUsages() }
+            store.acknowledge(saving)
+            deferredCommandFrecency = nil
             commandComposer.applyRemoteFrecency(stored)
         } catch {
-            DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
+            guard isCurrentAccountSession(session) else { return }
+            if let history = deferredCommandFrecency {
+                deferredCommandFrecency = nil
+                commandComposer.applyRemoteFrecency(history)
+            }
+            if !(error is CancellationError) { DiscordAPIDiagnosticStore.shared.recordClientFailure(error) }
         }
     }
 }

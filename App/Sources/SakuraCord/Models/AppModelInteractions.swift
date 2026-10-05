@@ -2,8 +2,6 @@ import DiscordProtocol
 import Foundation
 import SakuraCordModels
 
-/// What an outbound interaction was for. Lifecycle events carry only a nonce,
-/// so this decides which surface reflects success, failure or a returned form.
 /// Where a locally shown interaction row belongs and who it speaks for.
 struct InteractionRowOrigin {
     let nonce: String
@@ -13,11 +11,12 @@ struct InteractionRowOrigin {
     let commandName: String?
 }
 
+/// Routes nonce-correlated lifecycle events back to their initiating surface.
 struct PendingInteractionRecord {
     enum Kind {
         case command(channelID: ChannelID, commandName: String, application: ApplicationCommandApplication)
         case component(ComponentControlKey, channelID: ChannelID, applicationName: String)
-        case modalSubmission(channelID: ChannelID, application: ApplicationCommandApplication)
+        case modalSubmission(channelID: ChannelID, application: ApplicationCommandApplication, formID: String)
     }
 
     let kind: Kind
@@ -36,14 +35,23 @@ extension AppModel {
             pendingInteractionOrder.append(nonce)
         }
         while pendingInteractionOrder.count > Self.maximumRetainedInteractionRecords {
-            pendingInteractions[pendingInteractionOrder.removeFirst()] = nil
+            let oldest = pendingInteractionOrder.removeFirst()
+            consumeInteraction(.failed(nonce: oldest, failure: InteractionFailure(reasonCode: 2)))
+            interactionDeadlineTasks.removeValue(forKey: oldest)?.cancel()
+            pendingInteractions[oldest] = nil
         }
+    }
+
+    /// Start after transport acceptance, so preparing and uploading attachments
+    /// cannot consume the application's acknowledgement deadline.
+    func startInteractionDeadline(nonce: String) {
+        guard pendingInteractions[nonce]?.isFinished == false,
+              interactionDeadlineTasks[nonce] == nil else { return }
         let session = accountSession()
-        Task { [weak self] in
-            try? await Task.sleep(for: Self.interactionPendingDeadline)
+        interactionDeadlineTasks[nonce] = Task { [weak self] in
+            do { try await Task.sleep(for: Self.interactionPendingDeadline) } catch { return }
             guard let self, isCurrentAccountSession(session),
-                  pendingInteractions[nonce]?.isFinished == false
-            else { return }
+                  pendingInteractions[nonce]?.isFinished == false else { return }
             consumeInteraction(.failed(
                 nonce: nonce,
                 failure: InteractionFailure(reasonCode: InteractionFailure.applicationDidNotRespond)
@@ -68,8 +76,9 @@ extension AppModel {
     }
 
     /// Marks a tracked interaction finished; nil when unknown or already settled.
-    private func finishPendingInteraction(_ nonce: String) -> PendingInteractionRecord? {
+    func finishPendingInteraction(_ nonce: String) -> PendingInteractionRecord? {
         guard var record = pendingInteractions[nonce], !record.isFinished else { return nil }
+        interactionDeadlineTasks.removeValue(forKey: nonce)?.cancel()
         record.isFinished = true
         pendingInteractions[nonce] = record
         return record
@@ -87,8 +96,11 @@ extension AppModel {
                 $0.pendingMessages.remove(key.messageID)
                 $0.errors[key] = nil
             }
-        case .modalSubmission:
-            break
+        case let .modalSubmission(_, _, formID):
+            if let form = interactionModalForm, form.id == formID {
+                form.finishSubmitting(rejection: nil)
+                interactionModalForm = nil
+            }
         }
     }
 
@@ -107,7 +119,7 @@ extension AppModel {
                     ? "\(applicationName) didn’t respond in time"
                     : failure.message ?? "This interaction failed."
             }
-        case let .modalSubmission(channelID, application):
+        case let .modalSubmission(channelID, application, _):
             appendInteractionFailureRow(
                 nonce: nonce, channelID: channelID, application: application,
                 commandName: nil, message: Self.commandFailureText(failure)
@@ -118,6 +130,7 @@ extension AppModel {
     private func presentInteractionModal(_ modal: InteractionModal) {
         // Only a form opened by this session's own action is presented.
         guard let record = pendingInteractions[modal.openingNonce] else { return }
+        _ = finishPendingInteraction(modal.openingNonce)
         switch record.kind {
         case let .command(channelID, _, _):
             removeInteractionPlaceholderIfPending(nonce: modal.openingNonce, channelID: channelID)
@@ -293,13 +306,13 @@ extension AppModel {
         let submission = ModalSubmission(modal: form.modal, values: form.submissionValues())
         trackInteraction(
             PendingInteractionRecord(kind: .modalSubmission(
-                channelID: form.modal.channelID, application: form.modal.application
+                channelID: form.modal.channelID, application: form.modal.application, formID: form.id
             )),
             nonce: submission.nonce
         )
         let session = accountSession()
         let fileURLs = form.fileURLs
-        Task { [weak self] in
+        startAccountChildTask(account: session) { [weak self] _, session in
             guard let self else { return }
             let uploadsFiles = !fileURLs.isEmpty
             if uploadsFiles { activeAttachmentUploadCount += 1 }
@@ -313,16 +326,15 @@ extension AppModel {
             do {
                 try await session.provider.submitModal(submission)
                 guard isCurrentAccountSession(session) else { return }
+                startInteractionDeadline(nonce: submission.nonce)
                 form.finishSubmitting(rejection: nil)
                 // An accepted submission closes the form; the response follows separately.
                 if interactionModalForm === form { interactionModalForm = nil }
             } catch let rejection as ModalSubmissionRejection {
-                guard isCurrentAccountSession(session) else { return }
-                pendingInteractions[submission.nonce]?.isFinished = true
+                guard isCurrentAccountSession(session), finishPendingInteraction(submission.nonce) != nil else { return }
                 form.finishSubmitting(rejection: rejection)
             } catch {
-                guard isCurrentAccountSession(session) else { return }
-                pendingInteractions[submission.nonce]?.isFinished = true
+                guard isCurrentAccountSession(session), finishPendingInteraction(submission.nonce) != nil else { return }
                 DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
                 form.failSubmitting("Something went wrong. Try again.")
             }

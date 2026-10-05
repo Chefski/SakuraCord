@@ -152,7 +152,7 @@ enum ApplicationCommandSuggestionFactory {
             content.title = matchingTitle("Channels", query: query)
             content.suggestions = channels.filter { channel in
                 (option.channelTypes.isEmpty || option.channelTypes.contains(channel.discordCommandType))
-                    && matches(channel.name, query: query)
+                    && (matches(channel.name, query: query) || matches(channel.category, query: query))
             }.prefix(limit).map { channel in
                 ApplicationCommandSuggestion(
                     id: "channel:\(channel.id)", title: channel.name, detail: channel.category,
@@ -331,6 +331,7 @@ struct ApplicationCommandSuggestionPanel: View {
     let highlight: (Int) -> Void
 
     var cornerRadius: CGFloat = ChatChromeMetrics.composerCornerRadius
+    var keyboardSelectionRevision = 0
 
     private static let rowHeight: CGFloat = 34
 
@@ -344,29 +345,26 @@ struct ApplicationCommandSuggestionPanel: View {
                 .padding(.top, 10)
                 .padding(.bottom, 5)
             if !content.suggestions.isEmpty {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(spacing: 0) {
-                            ForEach(content.suggestions.enumerated(), id: \.element.id) { index, suggestion in
-                                ApplicationCommandSuggestionRow(
-                                    suggestion: suggestion,
-                                    height: Self.rowHeight,
-                                    cornerRadius: max(0, cornerRadius - 6),
-                                    isSelected: index == selectedIndex,
-                                    select: { select(suggestion) },
-                                    highlight: { highlight(index) }
-                                )
-                                .id(suggestion.id)
-                            }
-                        }
-                        .padding(.horizontal, 6)
+                ComposerSuggestionList(
+                    rows: content.suggestions,
+                    selectedID: selectedIndex.flatMap { content.suggestions.indices.contains($0) ? content.suggestions[$0].id : nil },
+                    keyboardSelectionRevision: keyboardSelectionRevision,
+                    maximumHeight: 320,
+                    rowHeight: { _ in Self.rowHeight },
+                    highlight: { suggestion in
+                        if let index = content.suggestions.firstIndex(where: { $0.id == suggestion.id }), index != selectedIndex { highlight(index) }
+                    },
+                    content: { suggestion in
+                        let index = content.suggestions.firstIndex(where: { $0.id == suggestion.id })
+                        ApplicationCommandSuggestionRow(
+                            suggestion: suggestion,
+                            height: Self.rowHeight,
+                            cornerRadius: max(0, cornerRadius - 6),
+                            isSelected: index == selectedIndex,
+                            select: { select(suggestion) }
+                        )
                     }
-                    .frame(height: min(320, CGFloat(content.suggestions.count) * Self.rowHeight))
-                    .onChange(of: selectedIndex) { _, index in
-                        guard let index, content.suggestions.indices.contains(index) else { return }
-                        proxy.scrollTo(content.suggestions[index].id)
-                    }
-                }
+                )
             }
             statusView
         }
@@ -406,7 +404,6 @@ private struct ApplicationCommandSuggestionRow: View {
     let cornerRadius: CGFloat
     let isSelected: Bool
     let select: () -> Void
-    let highlight: () -> Void
 
     var body: some View {
         Button(action: select) {
@@ -442,7 +439,6 @@ private struct ApplicationCommandSuggestionRow: View {
         }
         .buttonStyle(.plain)
         .focusable(false)
-        .onModalHover { if $0 { highlight() } }
         .accessibilityLabel([suggestion.title, suggestion.detail].compactMap { $0 }.joined(separator: ", "))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }

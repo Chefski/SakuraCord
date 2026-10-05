@@ -132,15 +132,29 @@ func reportEntryPoints() throws {
     let composer = ApplicationCommandComposerModel()
     #expect(composer.commands.compactMap(SakuraCordBuiltInCommands.issueReportKind) == [.bug, .feature])
     #expect(!composer.hasLoadedCatalogs)
-    let application = ApplicationCommandApplication(id: "100", name: "Bot")
-    let command = ApplicationCommand(
-        id: "200", rootCommandID: "200", applicationID: "100", version: "1",
-        name: "report", application: application
-    )
-    composer.replaceCatalogs([ApplicationCommandCatalog(target: .user, applications: [application], commands: [command])])
+    let application = ApplicationCommandApplication(id: "100", name: "SakuraCord")
+    let communityBot = ApplicationCommandApplication(id: AppModel.issueReportAuthorization.clientID, name: "SakuraCord")
+    let foreignCommands = ["bug", "suggest", "report"].map { name in
+        ApplicationCommand(
+            id: "other:\(name)", rootCommandID: "other:\(name)", applicationID: application.id,
+            version: "1", name: name, application: application
+        )
+    }
+    let communityCommands = ["bug", "suggest", "roadmap"].map { name in
+        ApplicationCommand(
+            id: "community:\(name)", rootCommandID: "community:\(name)", applicationID: communityBot.id,
+            version: "1", name: name, application: communityBot
+        )
+    }
+    composer.replaceCatalogs([ApplicationCommandCatalog(
+        target: .user, applications: [application, communityBot], commands: foreignCommands + communityCommands
+    )])
     #expect(composer.hasLoadedCatalogs)
-    #expect(composer.commands.map(\.id) == ["200", "sakuracord:report", "sakuracord:suggest"])
-    #expect(SakuraCordBuiltInCommands.issueReportKind(for: command) == nil)
+    #expect(composer.commands.map(\.id) == [
+        "other:bug", "other:suggest", "other:report", "community:roadmap", "sakuracord:bug", "sakuracord:suggest"
+    ])
+    #expect(composer.rankedCommands(query: "bug").map(\.id).sorted() == ["other:bug", "sakuracord:bug"])
+    #expect(foreignCommands.allSatisfy { SakuraCordBuiltInCommands.issueReportKind(for: $0) == nil })
     composer.resetForChannelChange()
     #expect(!composer.hasLoadedCatalogs)
     #expect(composer.commands.count == 2)

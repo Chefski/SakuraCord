@@ -40,6 +40,7 @@ struct NativePickerDocument<Row: Identifiable, Content: View>: NSViewRepresentab
     var becameVisible: (Row) -> Void = { _ in }
     var didScrollTo: (Row) -> Void = { _ in }
     var topVisibleRowChanged: (Row) -> Void = { _ in }
+    var pointerRowChanged: ((Row) -> Void)?
     var nativeContent: ((Row, NSView?, EnvironmentValues) -> NSView?)?
     @ViewBuilder let content: (Row) -> Content
     @Environment(\.self) private var environment
@@ -63,7 +64,7 @@ struct NativePickerDocument<Row: Identifiable, Content: View>: NSViewRepresentab
         canvas.update(
             rows: rows, revision: revision, width: scroll.contentSize.width,
             height: rowHeight, visible: becameVisible, pinnedHeader: pinnedHeader,
-            didScrollTo: didScrollTo, topVisibleRowChanged: topVisibleRowChanged,
+            didScrollTo: didScrollTo, topVisibleRowChanged: topVisibleRowChanged, pointerRowChanged: pointerRowChanged,
             nativeContent: { row, reused in nativeContent?(row, reused, environment) },
             content: { row in AnyView(content(row).environment(\.self, environment).id(row.id)) }
         )
@@ -83,6 +84,7 @@ struct NativePickerDocument<Row: Identifiable, Content: View>: NSViewRepresentab
 
 @MainActor protocol NativePickerViewport: AnyObject {
     func viewportDidLayout()
+    func synchronizePointerHighlight(at location: NSPoint?)
 }
 
 final class NativePickerScrollView: NSScrollView {
@@ -122,6 +124,9 @@ final class NativePickerScrollView: NSScrollView {
                     pressed.mouseUp(with: event)
                     return true
                 }
+                if event.type == .mouseMoved {
+                    (self.documentView as? any NativePickerViewport)?.synchronizePointerHighlight(at: event.locationInWindow)
+                }
                 guard inside else { return false }
                 if let scroller = self.verticalScroller, !scroller.isHidden,
                    scroller.bounds.contains(scroller.convert(event.locationInWindow, from: nil)) {
@@ -129,7 +134,11 @@ final class NativePickerScrollView: NSScrollView {
                 }
                 let target = self.documentView.flatMap { $0.hitTest($0.convert(event.locationInWindow, from: nil)) }
                 switch event.type {
-                case .mouseMoved: target?.mouseMoved(with: event)
+                case .mouseMoved:
+                    target?.mouseMoved(with: event)
+                    // Let the covered timeline clear its old hover; its region
+                    // guard prevents it from highlighting anything underneath.
+                    return false
                 case .leftMouseDown:
                     self.pressedView = target
                     target?.mouseDown(with: event)
@@ -168,6 +177,7 @@ final class NativePickerScrollView: NSScrollView {
 
     override func scrollWheel(with event: NSEvent) {
         guard WindowModalCoordinator.allowsInput(for: self) else { return }
+        (documentView as? any NativePickerViewport)?.synchronizePointerHighlight(at: event.locationInWindow)
         super.scrollWheel(with: event)
     }
 }

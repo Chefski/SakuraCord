@@ -33,6 +33,7 @@ struct InteractionModalView: View {
                     }
                     .padding(.horizontal, 18)
                     .padding(.vertical, 16)
+                    .disabled(form.isSubmitting)
                 }
                 .scrollBounceBehavior(.always, axes: .vertical)
                 .frame(maxHeight: min(600, max(200, availableSize.height - 180)))
@@ -54,7 +55,8 @@ struct InteractionModalView: View {
             }
             Divider()
             HStack {
-                ModalGlassButton(symbol: "xmark", label: "Cancel") { dismiss?(allowsDisabled: true) }
+                ModalGlassButton(symbol: "xmark", label: "Cancel") { dismiss?() }
+                    .disabled(form.isSubmitting)
                 Spacer(minLength: 16)
                 if form.isSubmitting {
                     ProgressView().controlSize(.small).padding(.trailing, 6)
@@ -167,11 +169,11 @@ struct InteractionModalView: View {
                 form: form, control: control, style: style, placeholder: placeholder,
                 maximum: maximum, focus: $focusedField, submit: submit
             ))
-        case let .select(kind, placeholder, options, minimum, maximum, channelTypes, _):
+        case let .select(kind, placeholder, options, _, maximum, channelTypes, _):
             if kind == .string {
                 AnyView(InteractionModalStringSelect(
                     form: form, control: control, placeholder: placeholder, options: options,
-                    minimum: minimum, maximum: maximum
+                    maximum: maximum
                 ))
             } else {
                 AnyView(InteractionModalEntitySelect(
@@ -300,130 +302,25 @@ private struct InteractionModalStringSelect: View {
     let control: ModalControl
     let placeholder: String?
     let options: [ComponentSelectOption]
-    let minimum: Int
     let maximum: Int
-    @State private var isPresented = false
 
     var body: some View {
-        let selected = form.selectedValues(for: control)
-        // The summary follows option order; the request keeps selection order.
-        let summary = options.filter { selected.contains($0.value) }
-        // Same field as the entity selects: chips for chosen values and
-        // Discord's down chevron.
-        Button { isPresented.toggle() } label: {
-            HStack(spacing: 6) {
-                if summary.isEmpty {
-                    Text(placeholder ?? (maximum > 1 ? "Make selections" : "Make a selection"))
-                        .foregroundStyle(.secondary)
-                        .padding(.vertical, 2)
-                } else {
-                    FlowLayout(spacing: 5) {
-                        ForEach(summary) { option in
-                            InteractionModalEntityChip(option: option) {
-                                form.setSelection(selected.filter { $0 != option.value }, for: control)
-                            }
-                        }
-                    }
-                }
-                Spacer(minLength: 6)
-                InteractionModalSelectChevron(isOpen: isPresented)
-            }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 7)
-            .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
-            .contentShape(Rectangle())
-            .modifier(InteractionModalFieldBackground(
-                isFocused: isPresented, hasError: form.errors[control.customID] != nil
-            ))
-        }
-        .buttonStyle(.plain)
-        .disabled(control.isDisabled)
-        .escapeDismissiblePopover(isPresented: $isPresented, arrowEdge: .bottom) {
-            InteractionModalOptionList(
-                options: options,
-                selected: selected,
-                maximum: maximum,
-                toggle: { option in
-                    var values = form.selectedValues(for: control)
-                    if let index = values.firstIndex(of: option.value) {
-                        values.remove(at: index)
-                    } else if maximum == 1 {
-                        values = [option.value]
-                    } else if values.count < maximum {
-                        values.append(option.value)
-                    }
-                    form.setSelection(values, for: control)
-                    if maximum == 1 { isPresented = false }
-                }
-            )
-        }
-    }
-}
-
-private struct InteractionModalOptionList: View {
-    let options: [ComponentSelectOption]
-    let selected: [String]
-    let maximum: Int
-    let toggle: (ComponentSelectOption) -> Void
-    @State private var query = ""
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            if options.count > 8 {
-                TextField("Search", text: $query)
-                    .textFieldStyle(.roundedBorder)
-                    .padding(6)
-            }
-            ScrollView {
-                VStack(spacing: 2) {
-                    ForEach(filtered) { option in
-                        let isSelected = selected.contains(option.value)
-                        let isAvailable = isSelected || maximum == 1 || selected.count < maximum
-                        Button { toggle(option) } label: {
-                            HStack(spacing: 9) {
-                                if let emoji = option.emoji {
-                                    InteractionModalEmoji(emoji: emoji)
-                                }
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(option.label).foregroundStyle(.primary)
-                                    if let description = option.description {
-                                        Text(description).font(.caption).foregroundStyle(.secondary)
-                                    }
-                                }
-                                Spacer(minLength: 8)
-                                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(isSelected ? AnyShapeStyle(SakuraCordAccentColor.color) : AnyShapeStyle(.tertiary))
-                            }
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 7)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(PopoverRowButtonStyle())
-                        .disabled(!isAvailable)
-                        .opacity(isAvailable ? 1 : 0.45)
-                    }
-                }
-                .padding(5)
-            }
-            .frame(maxHeight: 300)
-            if maximum > 1 {
-                Text("\(selected.count) of up to \(maximum) selected")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 8)
-            }
-        }
-        .frame(width: 320)
-        .fixedSize(horizontal: false, vertical: true)
-    }
-
-    private var filtered: [ComponentSelectOption] {
-        guard !query.isEmpty else { return options }
-        return options.filter {
-            $0.label.localizedCaseInsensitiveContains(query)
-                || $0.description?.localizedCaseInsensitiveContains(query) == true
-        }
+        SelectionField(
+            selection: Binding(
+                get: { form.selectedValues(for: control) },
+                set: { form.setSelection($0, for: control) }
+            ),
+            mode: maximum == 1 ? .single : .multiple(maximum: maximum),
+            source: .local(options: options.map {
+                ComponentChoiceOptionPresentation.fieldOption($0, selectKind: .string)
+            }),
+            configuration: .init(
+                placeholder: placeholder ?? (maximum > 1 ? "Make selections" : "Make a selection"),
+                searchPlaceholder: "Search options"
+            ),
+            accessibilityIdentifier: "modal-select-\(control.customID)"
+        )
+        .disabled(control.isDisabled || form.isSubmitting)
     }
 }
 
@@ -447,50 +344,61 @@ private struct InteractionModalEntitySelect: View {
     let placeholder: String?
     let maximum: Int
     let channelTypes: [Int]
-    @State private var isPresented = false
+    @State private var knownOptions: [String: ComponentSelectOption] = [:]
 
     var body: some View {
-        let selection = form.entitySelection(for: control)
-        HStack(spacing: 6) {
-            if selection.isEmpty {
-                Text(placeholder ?? defaultPlaceholder).foregroundStyle(.secondary)
-                    .padding(.vertical, 2)
-            } else {
-                FlowLayout(spacing: 5) {
-                    ForEach(selection) { option in
-                        InteractionModalEntityChip(option: option) {
-                            form.setEntitySelection(selection.filter { $0.value != option.value }, for: control)
+        let initial = initialOptions
+        SelectionField(
+            selection: Binding(
+                get: { form.selectedValues(for: control) },
+                set: { values in
+                    let options = Dictionary(initial.map { ($0.value, $0) }, uniquingKeysWith: { _, newer in newer })
+                    form.setEntitySelection(values.compactMap { knownOptions[$0] ?? options[$0] }, for: control)
+                }
+            ),
+            mode: maximum == 1 ? .single : .multiple(maximum: maximum),
+            source: .dynamic(
+                initialOptions: initial.map { ComponentChoiceOptionPresentation.fieldOption($0, selectKind: kind) },
+                debounce: .milliseconds(250),
+                maximumResults: 50,
+                search: { query in
+                    var results = local(query: query)
+                    if kind != .channel, model.supportsCapability(.remoteComponentChoices) {
+                        do {
+                            let remote = try await model.componentChoices(
+                                kind: kind, query: query, guildID: form.modal.guildID, channelID: form.modal.channelID
+                            )
+                            var seen = Set(results.map(\.value))
+                            results += remote.filter { seen.insert($0.value).inserted }
+                        } catch {
+                            if results.isEmpty { throw error }
                         }
                     }
+                    try Task.checkCancellation()
+                    // Retain selected metadata across searches, without accumulating every result.
+                    knownOptions = Dictionary(
+                        (results + form.entitySelection(for: control)).map { ($0.value, $0) },
+                        uniquingKeysWith: { _, newer in newer }
+                    )
+                    return results.map { ComponentChoiceOptionPresentation.fieldOption($0, selectKind: kind) }
                 }
-            }
-            Spacer(minLength: 6)
-            InteractionModalSelectChevron(isOpen: isPresented)
-        }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 7)
-        .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
-        .contentShape(Rectangle())
-        .onTapGesture { if !control.isDisabled { isPresented = true } }
-        .modifier(InteractionModalFieldBackground(
-            isFocused: isPresented, hasError: form.errors[control.customID] != nil
-        ))
-        .escapeDismissiblePopover(isPresented: $isPresented, arrowEdge: .bottom) {
-            InteractionModalEntityPicker(
-                model: model,
-                modal: form.modal,
-                kind: kind,
-                channelTypes: channelTypes,
-                maximum: maximum,
-                selection: form.entitySelection(for: control),
-                change: { options in
-                    form.setEntitySelection(options, for: control)
-                    if maximum == 1, !options.isEmpty { isPresented = false }
-                }
-            )
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isButton)
+            ),
+            configuration: .init(placeholder: placeholder ?? defaultPlaceholder, searchPlaceholder: "Search options"),
+            accessibilityIdentifier: "modal-select-\(control.customID)"
+        )
+        .disabled(control.isDisabled || form.isSubmitting)
+    }
+
+    private var initialOptions: [ComponentSelectOption] {
+        var seen = Set<String>()
+        return (form.entitySelection(for: control) + local(query: ""))
+            .filter { seen.insert($0.value).inserted }
+    }
+
+    private func local(query: String) -> [ComponentSelectOption] {
+        model.cachedComponentChoices(
+            kind: kind, guildID: form.modal.guildID, channelTypes: channelTypes, limit: 50, query: query
+        )
     }
 
     private var defaultPlaceholder: String {
@@ -501,177 +409,6 @@ private struct InteractionModalEntitySelect: View {
         case .channel: maximum > 1 ? "Choose channels" : "Choose a channel"
         case .string: "Make a selection"
         }
-    }
-}
-
-private struct InteractionModalEntityChip: View {
-    let option: ComponentSelectOption
-    let remove: () -> Void
-
-    var body: some View {
-        HStack(spacing: 5) {
-            switch option.entityKind {
-            case .user:
-                AvatarView(name: option.label, url: option.imageURL, size: 18)
-            case .role:
-                RoleColorIndicator(colorHex: option.colorHex, size: 10)
-            case .channel:
-                Image(systemName: "number").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-            case nil:
-                if let emoji = option.emoji { InteractionModalEmoji(emoji: emoji) }
-            }
-            Text(option.label)
-                .font(.callout.weight(.medium))
-                .foregroundStyle(
-                    option.entityKind == .role
-                        ? SakuraCordAccentColor.color(forRoleColorHex: option.colorHex) : .primary
-                )
-                .lineLimit(1)
-            Button(action: remove) {
-                Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-            .help("Remove \(option.label)")
-        }
-        .padding(.leading, 5)
-        .padding(.trailing, 7)
-        .padding(.vertical, 3)
-        .background(.quaternary, in: Capsule())
-    }
-}
-
-/// Searchable entity choices: cached members, roles and channels first, then
-/// a server member search for anything not loaded.
-private struct InteractionModalEntityPicker: View {
-    let model: AppModel
-    let modal: InteractionModal
-    let kind: ComponentSelectKind
-    let channelTypes: [Int]
-    let maximum: Int
-    let selection: [ComponentSelectOption]
-    let change: ([ComponentSelectOption]) -> Void
-    @State private var query = ""
-    @State private var results: [ComponentSelectOption] = []
-    @State private var isSearching = false
-    @FocusState private var searchFocused: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            TextField("Search", text: $query)
-                .textFieldStyle(.roundedBorder)
-                .focused($searchFocused)
-                .padding(6)
-            ScrollView {
-                VStack(spacing: 2) {
-                    ForEach(results) { option in
-                        let isSelected = selection.contains { $0.value == option.value }
-                        let isAvailable = isSelected || maximum == 1 || selection.count < maximum
-                        Button { toggle(option) } label: {
-                            HStack(spacing: 9) {
-                                InteractionModalEntityIcon(option: option)
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(option.label)
-                                        .foregroundStyle(
-                                            option.entityKind == .role
-                                                ? SakuraCordAccentColor.color(forRoleColorHex: option.colorHex) : .primary
-                                        )
-                                    if let description = option.description {
-                                        Text(description).font(.caption).foregroundStyle(.secondary)
-                                    }
-                                }
-                                Spacer(minLength: 8)
-                                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(isSelected ? AnyShapeStyle(SakuraCordAccentColor.color) : AnyShapeStyle(.tertiary))
-                            }
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 6)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(PopoverRowButtonStyle())
-                        .disabled(!isAvailable)
-                        .opacity(isAvailable ? 1 : 0.45)
-                    }
-                    if results.isEmpty {
-                        Text(isSearching ? "Searching…" : "No matches")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .padding(12)
-                    }
-                }
-                .padding(5)
-            }
-            .frame(maxHeight: 300)
-        }
-        .frame(width: 320)
-        .fixedSize(horizontal: false, vertical: true)
-        .onAppear {
-            results = local(query: "")
-            searchFocused = true
-        }
-        .task(id: query) {
-            results = local(query: query)
-            guard kind != .channel, !query.isEmpty, model.supportsCapability(.remoteComponentChoices) else { return }
-            isSearching = true
-            defer { isSearching = false }
-            try? await Task.sleep(for: .milliseconds(250))
-            guard !Task.isCancelled,
-                  let remote = try? await model.componentChoices(
-                      kind: kind, query: query, guildID: modal.guildID, channelID: modal.channelID
-                  ),
-                  !Task.isCancelled
-            else { return }
-            var seen = Set(results.map(\.value))
-            results += remote.filter { seen.insert($0.value).inserted }
-        }
-    }
-
-    private func local(query: String) -> [ComponentSelectOption] {
-        let cached = model.cachedComponentChoices(
-            kind: kind, guildID: modal.guildID, channelTypes: channelTypes, limit: 200
-        )
-        let filtered = query.isEmpty ? cached : cached.filter {
-            $0.label.localizedCaseInsensitiveContains(query)
-                || $0.description?.localizedCaseInsensitiveContains(query) == true
-        }
-        return Array(filtered.prefix(50))
-    }
-
-    private func toggle(_ option: ComponentSelectOption) {
-        var updated = selection
-        if let index = updated.firstIndex(where: { $0.value == option.value }) {
-            updated.remove(at: index)
-        } else if maximum == 1 {
-            updated = [option]
-        } else if updated.count < maximum {
-            updated.append(option)
-        }
-        change(updated)
-    }
-}
-
-private struct InteractionModalEntityIcon: View {
-    let option: ComponentSelectOption
-
-    var body: some View {
-        Group {
-            switch option.entityKind {
-            case .user:
-                AvatarView(name: option.label, url: option.imageURL, size: 26)
-            case .role:
-                if let url = option.imageURL {
-                    AnimatedRemoteImage(url: url)
-                } else {
-                    RoleColorIndicator(colorHex: option.colorHex, size: 13)
-                }
-            case .channel, nil:
-                Image(systemName: option.channelKind.map {
-                    ChannelIconPresentation.systemImage(for: $0, isHidden: false)
-                } ?? "number")
-                .foregroundStyle(.secondary)
-            }
-        }
-        .frame(width: 26, height: 26)
     }
 }
 
@@ -879,68 +616,5 @@ private struct InteractionModalFileUpload: View {
             let accepted = await model.attachmentURLsWithinDiscordLimit(urls)
             form.addFiles(accepted, to: control)
         }
-    }
-}
-
-/// Wraps chips onto as many lines as they need.
-private struct FlowLayout: Layout {
-    var spacing: CGFloat = 6
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache _: inout ()) -> CGSize {
-        let rows = arrange(subviews, width: proposal.width ?? .infinity)
-        let height = rows.map(\.height).reduce(0, +) + spacing * CGFloat(max(0, rows.count - 1))
-        let width = rows.map(\.width).max() ?? 0
-        return CGSize(width: proposal.width ?? width, height: height)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal _: ProposedViewSize, subviews: Subviews, cache _: inout ()) {
-        var originY = bounds.minY
-        for row in arrange(subviews, width: bounds.width) {
-            var originX = bounds.minX
-            for index in row.indices {
-                let size = subviews[index].sizeThatFits(.unspecified)
-                subviews[index].place(at: CGPoint(x: originX, y: originY), proposal: ProposedViewSize(size))
-                originX += size.width + spacing
-            }
-            originY += row.height + spacing
-        }
-    }
-
-    private struct Row {
-        var indices: [Int] = []
-        var width: CGFloat = 0
-        var height: CGFloat = 0
-    }
-
-    private func arrange(_ subviews: Subviews, width: CGFloat) -> [Row] {
-        var rows: [Row] = [Row()]
-        for index in subviews.indices {
-            let size = subviews[index].sizeThatFits(.unspecified)
-            if !rows[rows.count - 1].indices.isEmpty,
-               rows[rows.count - 1].width + spacing + size.width > width
-            {
-                rows.append(Row())
-            }
-            var row = rows[rows.count - 1]
-            row.width += (row.indices.isEmpty ? 0 : spacing) + size.width
-            row.height = max(row.height, size.height)
-            row.indices.append(index)
-            rows[rows.count - 1] = row
-        }
-        return rows
-    }
-}
-
-private struct InteractionModalSelectChevron: View {
-    let isOpen: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        Image(systemName: "chevron.down")
-            .font(.callout.weight(.semibold))
-            .foregroundStyle(isOpen ? AnyShapeStyle(SakuraCordAccentColor.color) : AnyShapeStyle(.secondary))
-            .rotationEffect(.degrees(isOpen ? 180 : 0))
-            .animation(reduceMotion ? nil : .spring(response: 0.22, dampingFraction: 0.86), value: isOpen)
-            .accessibilityHidden(true)
     }
 }

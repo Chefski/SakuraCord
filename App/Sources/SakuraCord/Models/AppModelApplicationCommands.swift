@@ -73,38 +73,58 @@ extension AppModel {
     /// Requests remote choices for the focused field when its query changed.
     /// Discord answers through the Gateway; results correlate by nonce.
     func refreshApplicationCommandAutocomplete() {
-        guard let channelID = selectedChannelID,
-              let request = commandComposer.autocompleteRequest(
-                  channelID: channelID, guildID: selectedGuildID
-              )
-        else { return }
-        commandAutocompleteTask?.cancel()
+        guard let channelID = selectedChannelID else { return }
+        let request = commandComposer.autocompleteRequest(channelID: channelID, guildID: selectedGuildID)
+        if let nonce = commandAutocompleteDebounceNonce,
+           !commandComposer.isAutocompleteRequestCurrent(nonce) {
+            cancelApplicationCommandAutocompleteTask(resetTiming: false)
+        }
+        guard let request else { return }
         let session = accountSession()
-        commandAutocompleteTask = Task { [weak self] in
-            guard let self else { return }
+        // Discord's desktop picker uses a 500 ms leading/trailing debounce:
+        // an isolated query starts immediately, a burst sends its latest value
+        // after typing settles. Keep dispatched requests alive for nonce routing.
+        let now = ContinuousClock.now
+        let delay: Duration = commandAutocompleteLastQueryTime.map {
+            $0.duration(to: now) < .milliseconds(500) ? .milliseconds(500) : .zero
+        } ?? .zero
+        commandAutocompleteLastQueryTime = now
+        commandAutocompleteDebounceNonce = request.nonce
+        commandAutocompleteTask = startAccountChildTask(account: session) { model, session in
             do {
-                // Coalesce fast typing into one request per settled query.
-                try await Task.sleep(for: .milliseconds(250))
+                if delay > .zero { try await Task.sleep(for: delay) }
                 try Task.checkCancellation()
+                guard model.commandComposer.isAutocompleteRequestCurrent(request.nonce) else {
+                    model.commandComposer.abandonAutocomplete(nonce: request.nonce, message: "")
+                    return
+                }
+                model.commandAutocompleteDebounceNonce = nil
+                model.commandAutocompleteTask = nil
                 try await AppPerformanceSignposts.measure("CommandAutocompleteRequest") {
                     try await session.provider.requestApplicationCommandAutocomplete(request)
                 }
             } catch is CancellationError {
-                commandComposer.abandonAutocomplete(nonce: request.nonce, message: "")
+                guard model.isCurrentAccountSession(session) else { return }
+                model.commandComposer.abandonAutocomplete(nonce: request.nonce, message: "")
                 return
             } catch {
-                guard isCurrentAccountSession(session) else { return }
+                guard model.isCurrentAccountSession(session) else { return }
                 DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
-                commandComposer.abandonAutocomplete(
+                model.commandComposer.abandonAutocomplete(
                     nonce: request.nonce, message: "Loading options failed"
                 )
             }
         }
     }
 
-    func cancelApplicationCommandAutocompleteTask() {
+    func cancelApplicationCommandAutocompleteTask(resetTiming: Bool = true) {
+        if resetTiming { commandAutocompleteLastQueryTime = nil }
         commandAutocompleteTask?.cancel()
         commandAutocompleteTask = nil
+        if let nonce = commandAutocompleteDebounceNonce {
+            commandComposer.abandonAutocomplete(nonce: nonce, message: "")
+        }
+        commandAutocompleteDebounceNonce = nil
     }
 
     func requestApplicationCommandMemberSearch(query: String) {
@@ -298,7 +318,8 @@ extension AppModel {
               )
         else { return }
         guard allowSlowmodeSubmission(in: channelID) else { return }
-        commandAutocompleteTask?.cancel()
+        cancelApplicationCommandAutocompleteTask()
+        let submittedDraft = commandComposer.draft
         stopLocalTyping(clearThrottle: true)
         commandComposer.recordUse(of: invocation.command, guildID: invocation.guildID)
         commandComposer.cancelActiveCommand()
@@ -306,7 +327,7 @@ extension AppModel {
         if DiscordBuiltInCommands.isBuiltIn(invocation.command) {
             runBuiltInCommand(invocation)
         } else {
-            runApplicationCommand(invocation)
+            runApplicationCommand(invocation, restoringDraftOnFailure: submittedDraft)
         }
     }
 
@@ -321,7 +342,10 @@ extension AppModel {
         ))
     }
 
-    private func runApplicationCommand(_ invocation: ApplicationCommandInvocation) {
+    private func runApplicationCommand(
+        _ invocation: ApplicationCommandInvocation,
+        restoringDraftOnFailure submittedDraft: ApplicationCommandDraft? = nil
+    ) {
         let nonce = invocation.nonce
         let channelID = invocation.channelID
         trackInteraction(
@@ -334,16 +358,17 @@ extension AppModel {
         )
         appendInteractionPlaceholder(for: invocation)
         let session = accountSession()
-        Task { [weak self] in
+        let attachmentURLs = invocation.values.compactMap { value -> URL? in
+            guard case let .attachment(url) = value.argument else { return nil }
+            return url
+        }
+        // Lease before yielding: changing channels may prune the cleared draft.
+        beginUsingOwnedPromisedFiles(attachmentURLs)
+        startAccountChildTask(account: session) { [weak self] _, session in
             guard let self else { return }
-            let attachmentURLs = invocation.values.compactMap { value -> URL? in
-                guard case let .attachment(url) = value.argument else { return nil }
-                return url
-            }
             let uploadsAttachments = !attachmentURLs.isEmpty
             if uploadsAttachments { activeAttachmentUploadCount += 1 }
             defer { if uploadsAttachments { activeAttachmentUploadCount -= 1 } }
-            beginUsingOwnedPromisedFiles(attachmentURLs)
             let scoped = attachmentURLs.filter { $0.startAccessingSecurityScopedResource() }
             defer {
                 scoped.forEach { $0.stopAccessingSecurityScopedResource() }
@@ -358,16 +383,24 @@ extension AppModel {
                         )
                     }
                 }
+                guard isCurrentAccountSession(session) else { return }
+                startInteractionDeadline(nonce: nonce)
             } catch is CancellationError {
                 return
             } catch {
-                guard isCurrentAccountSession(session) else { return }
+                guard isCurrentAccountSession(session), finishPendingInteraction(nonce) != nil else { return }
                 DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
                 // A definite request failure is final; it is never replayed.
-                pendingInteractions[nonce]?.isFinished = true
                 failInteractionPlaceholder(
                     nonce: nonce, channelID: channelID, message: error.localizedDescription
                 )
+                // Keep failed input available for editing without replacing a
+                // newer draft or automatically repeating the account action.
+                if let submittedDraft, selectedChannelID == channelID,
+                   draft.isEmpty, commandComposer.draft == nil {
+                    commandComposer.activate(submittedDraft.command)
+                    commandComposer.applyEditorDraft(submittedDraft, caret: nil)
+                }
             }
         }
     }
@@ -404,6 +437,7 @@ extension AppModel {
     /// Runs one of Discord's client-side commands the way the official client
     /// does: most become an ordinary message; none reach an application.
     func runBuiltInCommand(_ invocation: ApplicationCommandInvocation) {
+        let session = accountSession()
         let channelID = invocation.channelID
         func string(_ name: String) -> String {
             for value in invocation.values where value.name == name {
@@ -420,21 +454,21 @@ extension AppModel {
         let message = string("message")
         if let text = Self.builtInMessageText(command: invocation.command.name, message: message) {
             let isTTS = invocation.command.name == "tts"
-            Task { [weak self] in
-                await self?.sendChannelMessage(
+            startAccountChildTask(account: session) { model, _ in
+                await model.sendChannelMessage(
                     channelID: channelID, content: text, replyTo: nil, replyPreview: nil,
                     attachments: [], clearsComposer: false, isTTS: isTTS
                 )
             }
             return
         }
-        let session = accountSession()
         switch invocation.command.name {
         case "msg":
             guard let recipient = user("user") else { return }
-            Task { [weak self] in
+            startAccountChildTask(account: session) { [weak self] _, session in
                 do {
                     let channel = try await session.provider.ensurePrivateChannel(for: recipient)
+                    guard let self, !Task.isCancelled, isCurrentAccountSession(session) else { return }
                     _ = try await session.provider.send(SendMessageDraft(channelID: channel.id, content: message))
                 } catch {
                     guard let self, isCurrentAccountSession(session) else { return }
@@ -443,9 +477,10 @@ extension AppModel {
             }
         case "thread":
             let name = string("name")
-            Task { [weak self] in
+            startAccountChildTask(account: session) { [weak self] _, session in
                 do {
                     let thread = try await session.provider.createThread(CreateThreadDraft(channelID: channelID, name: name))
+                    guard let self, !Task.isCancelled, isCurrentAccountSession(session) else { return }
                     _ = try await session.provider.send(SendMessageDraft(channelID: thread.id, content: message))
                 } catch {
                     guard let self, isCurrentAccountSession(session) else { return }
@@ -453,9 +488,9 @@ extension AppModel {
                 }
             }
         case "gif":
-            builtInExpressionPickerRequest = BuiltInExpressionPickerRequest(kind: .gif, query: string("query"))
+            builtInExpressionPickerRequest = BuiltInExpressionPickerRequest(channelID: channelID, kind: .gif, query: string("query"))
         case "sticker":
-            builtInExpressionPickerRequest = BuiltInExpressionPickerRequest(kind: .sticker, query: string("query"))
+            builtInExpressionPickerRequest = BuiltInExpressionPickerRequest(channelID: channelID, kind: .sticker, query: string("query"))
         default:
             appendBuiltInNotice("/\(invocation.command.name) isn’t available in SakuraCord yet.", in: channelID)
         }
@@ -485,6 +520,7 @@ extension AppModel {
 
 struct BuiltInExpressionPickerRequest: Equatable {
     enum Kind { case gif, sticker }
+    var channelID: ChannelID
     var kind: Kind
     var query: String
     var id = UUID()

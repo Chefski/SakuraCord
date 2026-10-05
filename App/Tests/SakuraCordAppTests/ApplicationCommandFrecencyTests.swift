@@ -59,10 +59,19 @@ func commandFrecencyPendingReplay() {
     #expect(store.hasPendingUsage)
     #expect(store.historyForSave().entries.first?.totalUses == 5)
 
-    store.clearPendingUsages()
-    store.overwrite(with: store.historyForSave())
+    let saving = store.pendingUsages
+    let response = store.historyForSave()
+    // Another command is executed while the save is in flight.
+    store.recordUse("-7")
+    store.acknowledge(saving)
+    store.overwrite(with: response)
+    #expect(store.pendingUsages.count == 1)
+    #expect(store.historyForSave().entries.first?.totalUses == 6)
+    let finalResponse = store.historyForSave()
+    store.acknowledge(store.pendingUsages)
+    store.overwrite(with: finalResponse)
     #expect(!store.hasPendingUsage)
-    #expect(store.historyForSave().entries.first?.totalUses == 5)
+    #expect(store.historyForSave().entries.first?.totalUses == 6)
 }
 
 @MainActor

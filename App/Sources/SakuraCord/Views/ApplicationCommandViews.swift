@@ -56,6 +56,9 @@ struct ApplicationCommandPickerView: View {
                         topVisibleRowChanged: { row in
                             if visibleSection != row.sectionID { visibleSection = row.sectionID }
                         },
+                        pointerRowChanged: { row in
+                            if row.command != nil, composer.selectedRowID != row.id { composer.selectedRowID = row.id }
+                        },
                         nativeContent: { row, reused, environment in
                             let view = reused as? NativeCommandPickerRow ?? NativeCommandPickerRow()
                             view.configure(row, selected: row.id == selectedRowID,
@@ -66,6 +69,7 @@ struct ApplicationCommandPickerView: View {
                         content: { _ in EmptyView() }
                     )
                     .frame(height: min(348, composer.pickerDocumentHeight))
+                    .padding(.horizontal, 6)
                 }
             }
             .onChange(of: composer.pickerKeyboardSelectionRevision) { _, _ in
@@ -76,7 +80,6 @@ struct ApplicationCommandPickerView: View {
                 if let id = composer.pickerDocumentRows.first?.id { proxy.scrollTo(id, anchor: .top) }
             }
         }
-        .padding(.horizontal, 6)
         .frame(maxWidth: .infinity)
         .commandPanelSurface(cornerRadius: cornerRadius)
         .accessibilityElement(children: .contain)
@@ -143,7 +146,7 @@ struct CommandApplicationIcon: View {
     var body: some View {
         Group {
             if application?.id == SakuraCordBuiltInCommands.application.id {
-                Image(nsImage: NSApp.applicationIconImage)
+                Image(nsImage: CommandGeneratedIcon.sakuraFlower)
                     .resizable()
                     .scaledToFit()
             } else if application?.id == DiscordBuiltInCommands.application.id {
@@ -178,6 +181,13 @@ struct CommandApplicationIcon: View {
 /// Resolve generated artwork before it enters the glass foreground, just like
 /// downloaded avatars. The bounded cache avoids rasterizing during scrolling.
 @MainActor enum CommandGeneratedIcon {
+    static let sakuraFlower: NSImage = {
+        guard let url = Bundle.module.url(forResource: "SakuraCord-Flower-Transparent-Liquid-128", withExtension: "png"),
+              let image = NSImage(contentsOf: url) else { return NSImage() }
+        image.isTemplate = false
+        return image
+    }()
+
     private static let images: NSCache<NSString, NSImage> = {
         let cache = NSCache<NSString, NSImage>()
         cache.countLimit = 128

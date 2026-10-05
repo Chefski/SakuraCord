@@ -540,6 +540,9 @@ extension AppModel {
             cache(message)
         }
         reconcileForumMessage(message)
+        if let nonce = message.nonce {
+            consumeInteraction(.succeeded(nonce: nonce, interactionID: message.interactionMetadata?.id))
+        }
         receiveGuideResourceEvent(.messageCreated(message))
         guard let currentUserID = snapshot?.currentUser.id else { return }
         let disposition = readState.receive(message, currentUserID: currentUserID)

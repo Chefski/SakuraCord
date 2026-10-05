@@ -260,23 +260,27 @@ struct ApplicationCommandEditorDocument: Equatable {
     func plainText(in range: NSRange) -> String {
         let source = string as NSString
         let clipped = NSIntersectionRange(range, NSRange(location: 0, length: length))
-        var output = ""
-        var cursor = clipped.location
-        for span in fields where NSIntersectionRange(clipped, span.label).length > 0 {
-            if span.label.location > cursor {
-                output += source.substring(with: NSRange(location: cursor, length: span.label.location - cursor))
+        let output = NSMutableString(string: source.substring(with: clipped))
+        var edits: [(range: NSRange, text: String)] = []
+        for span in fields {
+            let label = NSIntersectionRange(clipped, span.label)
+            if label.length > 0, NSMaxRange(label) == NSMaxRange(span.label) {
+                edits.append((NSRange(location: NSMaxRange(label), length: 0), ":"))
             }
-            let labelPart = NSIntersectionRange(clipped, span.label)
-            output += source.substring(with: labelPart)
-            if NSMaxRange(labelPart) == NSMaxRange(span.label) { output += ":" }
-            cursor = NSMaxRange(labelPart)
         }
-        if NSMaxRange(clipped) > cursor {
-            output += source.substring(with: NSRange(location: cursor, length: NSMaxRange(clipped) - cursor))
+        // Only the two structural spaces around an empty gap collapse. Text
+        // inside values and typed gaps must survive copying verbatim.
+        for gap in gaps.dropLast() where gap.length == 0 {
+            if clipped.location <= gap.location - 1, NSMaxRange(clipped) > gap.location {
+                edits.append((NSRange(location: gap.location, length: 1), ""))
+            }
         }
-        // Gaps render as two separator spaces; copy them as one.
-        while output.contains("  ") { output = output.replacingOccurrences(of: "  ", with: " ") }
-        return output
+        for edit in edits.sorted(by: { $0.range.location > $1.range.location }) {
+            output.replaceCharacters(
+                in: NSRange(location: edit.range.location - clipped.location, length: edit.range.length), with: edit.text
+            )
+        }
+        return output as String
     }
 
     private func contains(_ range: NSRange, _ location: Int) -> Bool {

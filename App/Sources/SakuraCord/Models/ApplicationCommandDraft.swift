@@ -21,8 +21,12 @@ struct ApplicationCommandDraftField: Identifiable, Equatable {
         }
     }
 
-    var isEmpty: Bool {
-        resolved == nil && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    var isEmpty: Bool { resolved == nil && textForParsing.isEmpty }
+
+    /// Whitespace is data in free text; other option types parse trimmed input.
+    var textForParsing: String {
+        option.type == .string && option.choices.isEmpty
+            ? text : text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
@@ -204,7 +208,7 @@ struct ApplicationCommandDraft: Equatable {
     /// The typed value a field currently represents, if any.
     func argument(for field: ApplicationCommandDraftField) -> ApplicationCommandArgument? {
         if let resolved = field.resolved { return resolved }
-        let text = field.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = field.textForParsing
         guard !text.isEmpty else { return nil }
         let option = field.option
         if !option.choices.isEmpty {
@@ -215,7 +219,7 @@ struct ApplicationCommandDraft: Equatable {
         }
         switch option.type {
         case .string:
-            return .string(text)
+            return .string(field.text)
         case .integer:
             return Int64(text).map(ApplicationCommandArgument.integer)
         case .number:
@@ -271,7 +275,7 @@ struct ApplicationCommandDraft: Equatable {
         case let .string(text):
             lengthError(text, option: option)
         case let .integer(number):
-            abs(number) <= 9_007_199_254_740_991
+            (-9_007_199_254_740_991 ... 9_007_199_254_740_991).contains(number)
                 ? boundsError(Double(number), option: option) : "This number is too large."
         case let .number(number):
             boundsError(number, option: option)
@@ -301,7 +305,7 @@ struct ApplicationCommandDraft: Equatable {
         let above = option.maximumValue.map { number > $0 } ?? false
         guard below || above else { return nil }
         let format: (Double) -> String = {
-            $0.rounded() == $0 ? String(Int64($0)) : $0.formatted(.number)
+            Int64(exactly: $0).map(String.init) ?? $0.formatted(.number)
         }
         return switch (option.minimumValue, option.maximumValue) {
         case let (minimum?, maximum?): "Enter a number between \(format(minimum)) and \(format(maximum))."

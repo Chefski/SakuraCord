@@ -955,7 +955,8 @@ final class AppModel {
                 lastOpenedChannelIDsByGuild[guildID] = selectedChannel.id
             }
             commandLoadTask?.cancel()
-            commandAutocompleteTask?.cancel()
+            builtInExpressionPickerRequest = nil
+            cancelApplicationCommandAutocompleteTask()
             cancelApplicationCommandMemberSearch()
             commandComposer.resetForChannelChange()
             clearComposerAttachments(for: .channel)
@@ -1061,8 +1062,12 @@ final class AppModel {
     @ObservationIgnored var soundboardLoadTask: Task<Void, Never>?
     @ObservationIgnored var soundboardLoadGeneration: UInt64 = 0
     @ObservationIgnored var commandLoadTask: Task<Void, Never>?
+    @ObservationIgnored var commandFrecencySaveTask: Task<Void, Never>?
+    @ObservationIgnored var deferredCommandFrecency: ApplicationCommandFrecencyHistory?
     @ObservationIgnored var commandFrecencyLoadTask: Task<Void, Never>?
     @ObservationIgnored var commandFrecencyFlushTask: Task<Void, Never>?
+    @ObservationIgnored var commandAutocompleteDebounceNonce: String?
+    @ObservationIgnored var commandAutocompleteLastQueryTime: ContinuousClock.Instant?
     @ObservationIgnored var commandAutocompleteTask: Task<Void, Never>?
     @ObservationIgnored var commandMemberSearchTask: Task<Void, Never>?
     @ObservationIgnored var commandMemberSearchQuery: CommandMemberQuery?
@@ -1074,6 +1079,7 @@ final class AppModel {
     @ObservationIgnored var roleMemberTask: Task<Void, Never>?
     @ObservationIgnored var stickerLoadTasks: [GuildID: Task<Void, Never>] = [:]
     @ObservationIgnored var stickerLoadGeneration: UInt64 = 0
+    @ObservationIgnored var interactionDeadlineTasks: [String: Task<Void, Never>] = [:]
     @ObservationIgnored var pendingInteractions: [String: PendingInteractionRecord] = [:]
     @ObservationIgnored var pendingInteractionOrder: [String] = []
     @ObservationIgnored var loadingReactionReactors: Set<ReactionReactorLoadKey> = []

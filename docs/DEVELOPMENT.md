@@ -265,7 +265,7 @@ databases, personal Discord data, or unsanitized protocol captures.
 
 ## Report a problem
 
-Type `/report` or `/suggest` in a conversation's composer, or use **Help →
+Type `/bug` or `/suggest` in a conversation's composer, or use **Help →
 Report a Bug…** or **Suggest a Feature…**. SakuraCord files the report with the
 signed-in Discord account and fills in the version and system information. Bug
 reports can also attach the sanitized Discord API log and the latest panic save

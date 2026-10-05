@@ -12,6 +12,10 @@ final class NativePickerCanvas<Row: Identifiable>: NSView, NativePickerViewport 
     private var visible: ((Row) -> Void)?
     private var didScrollTo: ((Row) -> Void)?
     private var topVisibleRowChanged: ((Row) -> Void)?
+    private var pointerRowChanged: ((Row) -> Void)?
+    private var pointerLocationInWindow: NSPoint?
+    private var pointerFollowsScrolling = false
+    private var pointerRefreshTask: Task<Void, Never>?
     private var hosts: [String: NSView] = [:]
     private var nativeContent: ((Row, NSView?) -> NSView?)?
     private var visibleIDs: Set<String> = []
@@ -47,6 +51,18 @@ final class NativePickerCanvas<Row: Identifiable>: NSView, NativePickerViewport 
 
     func viewportDidLayout() { viewportChanged() }
 
+    func synchronizePointerHighlight(at location: NSPoint?) {
+        guard let pointerRowChanged, let window, window.isKeyWindow,
+              WindowModalCoordinator.allowsInput(for: self) else { return }
+        if let location { pointerLocationInWindow = location }
+        pointerFollowsScrolling = true
+        let point = convert(pointerLocationInWindow ?? window.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil)
+        guard viewport.contains(point), currentPinnedHeader?.frame.contains(point) != true,
+              let index = geometry.rows(intersecting: CGRect(x: point.x, y: point.y, width: 1, height: 0.01)).first,
+              rows.indices.contains(index) else { return }
+        pointerRowChanged(rows[index])
+    }
+
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { false }
 
@@ -75,6 +91,7 @@ final class NativePickerCanvas<Row: Identifiable>: NSView, NativePickerViewport 
         pinnedHeader: ((Row) -> Bool)? = nil,
         didScrollTo: @escaping (Row) -> Void = { _ in },
         topVisibleRowChanged: @escaping (Row) -> Void = { _ in },
+        pointerRowChanged: ((Row) -> Void)? = nil,
         nativeContent: ((Row, NSView?) -> NSView?)? = nil,
         content: @escaping (Row) -> AnyView
     ) {
@@ -84,6 +101,7 @@ final class NativePickerCanvas<Row: Identifiable>: NSView, NativePickerViewport 
         self.visible = visible
         self.didScrollTo = didScrollTo
         self.topVisibleRowChanged = topVisibleRowChanged
+        self.pointerRowChanged = pointerRowChanged
         self.nativeContent = nativeContent
         let changed = self.revision != revision || abs(layoutWidth - width) > 0.5
         let anchorIndex = geometry.rows(intersecting: viewport).first
@@ -116,9 +134,17 @@ final class NativePickerCanvas<Row: Identifiable>: NSView, NativePickerViewport 
         if abs(layoutWidth - scroll.contentSize.width) > 0.5 || frame.height != max(geometry.contentHeight, scroll.contentSize.height),
            let revision, let height, let visible, let content {
             update(rows: rows, revision: revision, width: scroll.contentSize.width, height: height, visible: visible, pinnedHeader: pinnedHeader,
-                didScrollTo: didScrollTo ?? { _ in }, topVisibleRowChanged: topVisibleRowChanged ?? { _ in }, nativeContent: nativeContent, content: content)
+                didScrollTo: didScrollTo ?? { _ in }, topVisibleRowChanged: topVisibleRowChanged ?? { _ in }, pointerRowChanged: pointerRowChanged, nativeContent: nativeContent, content: content)
         } else {
             reconcile(refresh: false)
+        }
+        if pointerFollowsScrolling {
+            pointerRefreshTask?.cancel()
+            pointerRefreshTask = Task { @MainActor [weak self] in
+                await Task.yield()
+                guard !Task.isCancelled, let self, pointerFollowsScrolling else { return }
+                synchronizePointerHighlight(at: nil)
+            }
         }
     }
 
@@ -126,6 +152,8 @@ final class NativePickerCanvas<Row: Identifiable>: NSView, NativePickerViewport 
         guard let request, deliveredRequest != request.sequence,
               let index = geometry.indicesByID[request.id], let scroll = enclosingScrollView else { return }
         deliveredRequest = request.sequence
+        pointerFollowsScrolling = false
+        pointerRefreshTask?.cancel()
         pendingDestinationID = request.id
         let row = CGRect(x: 0, y: geometry.origins[index], width: bounds.width, height: geometry.heights[index])
         if let anchor = request.anchor {
@@ -136,7 +164,18 @@ final class NativePickerCanvas<Row: Identifiable>: NSView, NativePickerViewport 
         } else {
             // Keep keyboard-selected commands below the pinned section heading.
             let headerHeight = headerIndices.last(where: { $0 <= index }).map { geometry.heights[$0] } ?? 0
-            scrollToVisible(CGRect(x: row.minX, y: row.minY - headerHeight, width: row.width, height: row.height + headerHeight))
+            let viewport = scroll.documentVisibleRect
+            let originY: CGFloat
+            if row.minY - headerHeight < viewport.minY {
+                originY = row.minY - headerHeight
+            } else if row.maxY > viewport.maxY {
+                originY = row.maxY - viewport.height
+            } else {
+                originY = viewport.minY
+            }
+            let maximum = max(0, frame.height - scroll.contentSize.height)
+            scroll.contentView.scroll(to: NSPoint(x: 0, y: min(maximum, max(0, originY))))
+            scroll.reflectScrolledClipView(scroll.contentView)
         }
         reconcile(refresh: false)
     }
@@ -238,6 +277,7 @@ final class NativePickerCanvas<Row: Identifiable>: NSView, NativePickerViewport 
     }
 
     func stop() {
+        pointerRefreshTask?.cancel()
         notificationTask?.cancel()
         NotificationCenter.default.removeObserver(self, name: NSView.boundsDidChangeNotification, object: nil)
         for view in hosts.values { remove(view) }
@@ -247,6 +287,7 @@ final class NativePickerCanvas<Row: Identifiable>: NSView, NativePickerViewport 
         visible = nil
         didScrollTo = nil
         topVisibleRowChanged = nil
+        pointerRowChanged = nil
         nativeContent = nil
         pinnedHeader = nil
         headerIndices = []

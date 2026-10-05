@@ -363,6 +363,8 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
         mediaViewerHost.frame = .zero
         addSubview(mediaViewerHost)
         let notificationCenter = NotificationCenter.default
+        notificationCenter.addObserver(self, selector: #selector(composerOverlayDidChange(_:)),
+                                       name: ComposerOverlayPointerRegion.changed, object: nil)
         notificationCenter.addObserver(self, selector: #selector(restoreInboxKeyboardFocus),
                                        name: NSApplication.didBecomeActiveNotification, object: nil)
         NSWorkspace.shared.notificationCenter.addObserver(

@@ -116,9 +116,17 @@ Thread lifecycle events advance the parent forum boundary before unread
 projection. Metadata, archive, lock, pin and delete are explicit, permission-gated
 mutations. Message-created thread cards use cached thread/message data.
 
-A cold slash-command picker loads one context index and one user index, coalesced
-per target. Search, option editing and cached entity resolution are local.
-Autocomplete sends type 4 per settled distinct query; execution sends type 2,
+The active conversation preloads one context command index and one user index,
+coalesced and cached per target. A picker opened before that preload finishes
+shows its loading state. Channel changes reapply availability and can reuse the
+prepared search index only when the full filtered catalog and locale match.
+The index decoder retains unknown root fields while decoding typed commands;
+malformed entries and unrepresentable integer choices do not discard the usable
+catalog. Search, option editing and cached entity resolution are local.
+Autocomplete sends type 4 with the desktop client's 500 ms leading/trailing
+debounce: the first distinct query starts immediately, and a typing burst sends
+its latest query after a quiet interval. Cached choices need no request, and
+obsolete queued work is cancelled before dispatch. Execution sends type 2,
 with attachment uploads completed first. Pending nonce state reconciles through
 Gateway events. Invocation `guild_id` and command-registration `data.guild_id`
 have different meanings; the latter appears only for guild-scoped commands.
@@ -145,9 +153,18 @@ Command usage syncs through Frecency type 2 field 7 (see
 [Settings](SETTINGS.md#emoji-gifs-stickers-and-sounds)). Keys are the command
 ID with subcommand names joined by NUL, suffixed `:guildID` for guild-registered
 commands, and negative IDs for built-ins. Uses stay pending, survive relaunch
-and replay over newer synced history. They are saved as one field-7 PATCH
-shortly after the Gateway becomes ready, about every two hours, when the app
-resigns active and when the connection closes. Built-ins run locally: text
+and replay over newer synced history. Saves are serialized per account and
+acknowledge only their captured usage prefix; uses recorded during a save stay
+pending. Gateway echoes wait until the save settles to avoid replaying an
+already accepted prefix. They are saved as one field-7 PATCH
+10 ms plus up to ten seconds after the Gateway becomes ready, every two hours
+plus up to ten minutes, and when the connection closes. Desktop focus loss and
+minimization do not flush usage: the official client's `APP_STATE_UPDATE`
+background trigger is distinct from window focus. A received type-2 Gateway
+settings update refreshes the live picker without reloading the receiving app.
+These timing and two-session rules were checked in Discord Official Fresh
+0.0.411, web build `01ad17390800dffe4fbc9791dab1081e4b5290fd`, on 2026-10-05.
+Built-ins run locally: text
 built-ins send an ordinary message (`/tts` sets `tts:true`), `/msg` and
 `/thread` use the ordinary DM and thread routes, and `/gif` and `/sticker` open
 the native pickers. Moderation, nickname, group-leave and schedule built-ins
@@ -187,12 +204,21 @@ Observed selects include both `component_type` and `type` (3, 5, 6, 7 or 8), plu
 selects can commit when the dropdown closes, including with Escape; closing an
 unchanged selection sends nothing. This differs from modal cancellation.
 Nested V2 controls retain their source application and message identity.
+Ordinary bot-authored messages can omit the application and interaction
+metadata. SakuraCord resolves their application from the bot author, excluding
+incoming webhook identities; scoped fixture execution verifies this path.
 
 HTTP 204 acknowledges transport, not completed output. Reconcile
 `INTERACTION_CREATE`, `INTERACTION_SUCCESS`, `INTERACTION_FAILURE`, modal events
 and message events independently; Gateway events can precede the HTTP response.
 Failure `reason_code:2` was observed for missing application acknowledgement.
 A bot-authored permission error can instead be a successful interaction result.
+A returned modal or correlated message settles its opener even if a separate
+success event is absent. Local acknowledgement deadlines begin after transport
+acceptance, excluding attachment preparation and upload. A later transport
+failure must not overwrite a Gateway-confirmed result. Failed submission input
+is restored only if its original conversation still has an empty composer;
+SakuraCord never automatically repeats the interaction.
 Deferred acknowledgement can clear pending state before the eventual edit.
 Loading messages transition flags 128 to 0 publicly or 192 to 64 privately,
 retaining their message ID. Followups can omit the original nonce. Ephemeral
