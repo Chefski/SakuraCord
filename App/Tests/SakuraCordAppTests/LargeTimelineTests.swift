@@ -970,11 +970,10 @@ func `hidden text spoilers stay private to accessibility until revealed`() {
         ) == "before Spoiler after"
     )
     #expect(
-        TimelineTextAccessibility
-            .hiddenSpoilerRanges(
-                in: value,
-                revealedLocations: []
-            ) == [NSRange(location: 7, length: 6)]
+        NativeTimelineTextSpoilers.hiddenRanges(
+            in: value,
+            revealedLocations: []
+        ) == [NSRange(location: 7, length: 6)]
     )
     #expect(
         TimelineTextAccessibility.text(
@@ -995,24 +994,14 @@ func `hidden text spoilers stay private to accessibility until revealed`() {
 @Test
 @MainActor
 func `inline rich tokens inherit their enclosing spoiler`() throws {
-    let source = "before ||<@&10> and <:glow:123>|| after"
+    let source = "before ||<@&10> and [site](https://example.com) <:glow:123> now|| after"
     let prepared = RichMessageAttributedText.prepare(source: source)
     let value = NativeTimelineCoreText.make(
         prepared: prepared,
         emojiSize: 18,
         mentionPresentations: [:]
     )
-    let fullRange = NSRange(location: 0, length: value.length)
-    var spoilerRanges: [NSRange] = []
-    value.enumerateAttribute(
-        .discordMarkdownSpoiler,
-        in: fullRange
-    ) { rawValue, range, _ in
-        guard (rawValue as? NSNumber)?.boolValue == true else {
-            return
-        }
-        spoilerRanges.append(range)
-    }
+    let spoilerRanges = NativeTimelineTextSpoilers.ranges(in: value)
 
     #expect(spoilerRanges.count == 1)
     #expect(
@@ -1038,6 +1027,149 @@ func `inline rich tokens inherit their enclosing spoiler`() throws {
     )
     #expect(hit?.spoilerRange == spoilerRanges.first)
     #expect(hit?.mention?.target == .role(RoleID(rawValue: 10)))
+
+    // Later runs, including a link, resolve to the whole painted spoiler
+    // across the full line height, which the mention makes taller than their
+    // glyphs. The link keeps its URL everywhere so it opens after reveal.
+    let string = value.string as NSString
+    for text in ["site", "now"] {
+        let lineFrame = try #require(NativeTimelineTextHitTester.rangeFrame(
+            value: value,
+            framesetter: framesetter,
+            frame: frame,
+            range: string.range(of: text)
+        ))
+        for y in [lineFrame.minY + 1, lineFrame.midY, lineFrame.maxY - 1] {
+            let hit = NativeTimelineTextHitTester.hit(
+                value: value,
+                framesetter: framesetter,
+                frame: frame,
+                point: CGPoint(x: lineFrame.midX, y: y)
+            )
+            #expect(hit?.spoilerRange == spoilerRanges.first, "\(text) at \(y)")
+            #expect(
+                hit?.url == (text == "site" ? URL(string: "https://example.com") : nil),
+                "\(text) at \(y)"
+            )
+        }
+    }
+}
+
+@Test
+@MainActor
+func `forum previews conceal hidden spoilers and share their reveal with the timeline`() throws {
+    let model = AppModel(launchMode: .offlineTesting)
+    let messageID = MessageID(rawValue: 8_600)
+    let source = "before ||secret [site](https://example.com) <:glow:123>|| after"
+    let preview = ForumPostPreviewTextView()
+    preview.configure(
+        ForumPostPreviewTextView.Configuration(
+            messageID: messageID,
+            source: source,
+            mentionPresentations: [:],
+            fontSize: 13,
+            emojiSize: 18,
+            maximumNumberOfLines: 2,
+            isEmphasized: true,
+            underlinesLinks: false,
+            prefix: ForumPostPreviewTextView.Prefix(
+                value: NSAttributedString(string: "Ada: "),
+                accessibilityText: "Ada: "
+            )
+        ),
+        revealStore: model.timelineSpoilerRevealStore
+    )
+    let card = NSView(frame: CGRect(x: 0, y: 0, width: 400, height: 100))
+    preview.frame = CGRect(origin: .zero, size: preview.measuredSize(proposedWidth: 400))
+    card.addSubview(preview)
+
+    #expect(preview.accessibilityValue() as? String == "Ada: before Spoiler after")
+    let spoiler = try #require(
+        NativeTimelineTextSpoilers.ranges(in: preview.content).first
+    )
+    let spoilerFrame = try #require(preview.hiddenSpoilerFrames(for: spoiler).first)
+    let spoilerPoint = CGPoint(x: spoilerFrame.midX, y: spoilerFrame.midY)
+    // Hidden spoilers take the click; the rest of the text opens the post.
+    #expect(preview.hitTest(spoilerPoint) === preview)
+    #expect(preview.hitTest(CGPoint(x: 1, y: spoilerFrame.midY)) == nil)
+
+    // Revealing the timeline's rendering of the same message reveals it here.
+    let timelineValue = NativeTimelineCoreText.make(
+        prepared: RichMessageAttributedText.prepare(source: source),
+        emojiSize: 22,
+        mentionPresentations: [:]
+    )
+    let timelineSpoiler = try #require(
+        NativeTimelineTextSpoilers.ranges(in: timelineValue).first
+    )
+    model.timelineSpoilerRevealStore.revealText(NativeTimelineTextSpoilerRevealKey(
+        messageID: messageID,
+        contentID: NativeTimelineTextSpoilerRevealKey.messageContentID,
+        contentHash: timelineValue.string.hashValue,
+        rangeLocation: timelineSpoiler.location
+    ))
+    #expect(
+        preview.accessibilityValue() as? String
+            == "Ada: before secret site :glow: after"
+    )
+    #expect(preview.hitTest(spoilerPoint) == nil)
+}
+
+@Test
+@MainActor
+func `reply summaries keep spoilers concealed and their plain text unchanged`() {
+    let content = "look  ||the killer is **Bob** [here](https://example.com)||   ok\n> bye"
+    let summary = MessageReplySummary.summary(content: content)
+    // Surfaces that use the plain text keep their previous output.
+    let plain = String(DiscordMarkdown.attributed(content).characters)
+        .split(whereSeparator: \.isWhitespace)
+        .joined(separator: " ")
+    #expect(summary.text == plain)
+    #expect(
+        summary.spoilerRanges.map { (summary.text as NSString).substring(with: $0) }
+            == ["the killer is Bob here"]
+    )
+    #expect(MessageReplySummary.accessibilityText(content: content) == "look Spoiler ok bye")
+}
+
+@Test
+@MainActor
+func `adjacent text spoilers hit test and reveal independently`() throws {
+    let source = "||one||||two||"
+    let value = NativeTimelineCoreText.make(
+        prepared: RichMessageAttributedText.prepare(source: source),
+        emojiSize: 22,
+        mentionPresentations: [:]
+    )
+    let spoilers = NativeTimelineTextSpoilers.ranges(in: value)
+    #expect(spoilers == [NSRange(location: 0, length: 3), NSRange(location: 3, length: 3)])
+
+    let frame = CGRect(x: 0, y: 0, width: 360, height: 40)
+    let framesetter = CTFramesetterCreateWithAttributedString(value)
+    for spoiler in spoilers {
+        let spoilerFrame = try #require(NativeTimelineTextHitTester.rangeFrame(
+            value: value,
+            framesetter: framesetter,
+            frame: frame,
+            range: spoiler
+        ))
+        let hit = NativeTimelineTextHitTester.hit(
+            value: value,
+            framesetter: framesetter,
+            frame: frame,
+            point: CGPoint(x: spoilerFrame.midX, y: spoilerFrame.midY)
+        )
+        #expect(hit?.spoilerRange == spoiler)
+    }
+    // Revealing the first spoiler, keyed by its location, leaves the second.
+    #expect(
+        NativeTimelineTextSpoilers.hiddenRanges(
+            in: value,
+            revealedLocations: [spoilers[0].location]
+        ) == [spoilers[1]]
+    )
+    #expect(TimelineTextAccessibility.text(value, revealedLocations: [0]) == "oneSpoiler")
+    #expect(MessageReplySummary.summary(content: source).spoilerRanges == spoilers)
 }
 
 @Test func `native scrolling caches bounded rows and directly paints oversized rows`() {

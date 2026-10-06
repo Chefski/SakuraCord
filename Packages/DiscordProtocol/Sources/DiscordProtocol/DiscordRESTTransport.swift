@@ -12,6 +12,7 @@ private struct DiscordRESTRequestContext {
     let isMessageHistoryRequest: Bool
     let canRetryAsRead: Bool
     let maximumAttempts: Int
+    let statusSave: StatusSettingsSaveContext?
 }
 
 private struct DiscordRESTPreparedRequest {
@@ -255,15 +256,28 @@ extension DiscordRESTProvider {
         method: String = "GET",
         query: [URLQueryItem] = [],
         body: [String: JSONValue]? = nil,
-        headers: [String: String] = [:]
+        headers: [String: String] = [:],
+        mapFailure: (_ status: Int, _ discordCode: Int?) -> (any Error)? = { _, _ in nil }
     ) async throws -> Response {
-        let isMessageHistoryRequest = method == "GET"
-            && path.hasPrefix("/channels/")
-            && path.hasSuffix("/messages")
         let (data, response) = try await perform(
             path, method: method, query: query, body: body, headers: headers
         )
+        return try decodedResponse(data, response, method: method, path: path, mapFailure: mapFailure)
+    }
+
+    /// Maps a non-2xx response to its provider error, or decodes the body.
+    func decodedResponse<Response: Decodable>(
+        _ data: Data,
+        _ response: HTTPURLResponse,
+        method: String,
+        path: String,
+        mapFailure: (_ status: Int, _ discordCode: Int?) -> (any Error)? = { _, _ in nil }
+    ) throws -> Response {
+        let isMessageHistoryRequest = method == "GET"
+            && path.hasPrefix("/channels/")
+            && path.hasSuffix("/messages")
         guard (200 ..< 300).contains(response.statusCode) else {
+            if let error = mapFailure(response.statusCode, Self.discordErrorCode(from: data)) { throw error }
             if response.statusCode == 401 {
                 authorizationValue = nil
                 throw apiDiagnostics.coalescing(ChatProviderError.unauthenticated, with: response)
@@ -324,11 +338,12 @@ extension DiscordRESTProvider {
         _ query: [URLQueryItem],
         _ body: [String: JSONValue]?,
         _ headers: [String: String],
-        _ requestedMaximumAttempts: Int?
+        _ requestedMaximumAttempts: Int?,
+        statusSave: StatusSettingsSaveContext? = nil
     ) async throws -> (Data, HTTPURLResponse) {
         guard !requestSafetyCircuitIsOpen else {
             throw ChatProviderError.invalidRequest(
-                "Discord networking was stopped for this session after an authentication or permission response. Restart only after checking the account status."
+                requestSafetyStopReason
             )
         }
 
@@ -350,7 +365,8 @@ extension DiscordRESTProvider {
             rateLimitKey: requestRateLimitKey,
             isMessageHistoryRequest: isMessageHistoryRequest,
             canRetryAsRead: canRetryAsRead,
-            maximumAttempts: maximumAttempts
+            maximumAttempts: maximumAttempts,
+            statusSave: statusSave
         )
         for attempt in 0 ..< maximumAttempts {
             if let result = try await performRESTRequestAttempt(
@@ -413,7 +429,7 @@ extension DiscordRESTProvider {
             // have opened the safety circuit while this one was suspended.
             guard !requestSafetyCircuitIsOpen else {
                 throw ChatProviderError.invalidRequest(
-                    "Discord networking is stopped for this session.")
+                    requestSafetyStopReason)
             }
             request.setValue(token, forHTTPHeaderField: "Authorization")
             try clientMetadata.apply(to: &request, clientAppState: clientAppState)
@@ -477,6 +493,9 @@ extension DiscordRESTProvider {
             let data: Data
             let rawResponse: URLResponse
             do {
+                // Rate-limit reservation and authorization can suspend. Validate
+                // the immutable status payload immediately before transmission.
+                if let statusSave = context.statusSave { try validateStatusSettingsSave(statusSave) }
                 let networkName: StaticString = isMessageHistoryRequest
                     ? "MessageHistoryNetworkAttempt"
                     : "RESTNetworkAttempt"
@@ -648,7 +667,7 @@ extension DiscordRESTProvider {
                     if unexpectedNotFoundCounts[route, default: 0] >= 2 {
                         await openSafetyCircuit(status: 404, discordCode: discordCode, route: route)
                         throw apiDiagnostics.coalescing(ChatProviderError.invalidRequest(
-                            "Discord networking was stopped after this route repeatedly returned an unexpected not-found response."
+                            requestSafetyStopReason
                         ), with: response)
                     }
                 }
@@ -664,10 +683,11 @@ extension DiscordRESTProvider {
         query: [URLQueryItem],
         body: [String: JSONValue]?,
         headers: [String: String] = [:],
-        maximumAttempts requestedMaximumAttempts: Int? = nil
+        maximumAttempts requestedMaximumAttempts: Int? = nil,
+        statusSave: StatusSettingsSaveContext? = nil
     ) async throws -> (Data, HTTPURLResponse) {
         try await requestPerformance(
-            path, method, query, body, headers, requestedMaximumAttempts
+            path, method, query, body, headers, requestedMaximumAttempts, statusSave: statusSave
         )
     }
     @discardableResult
@@ -678,7 +698,7 @@ extension DiscordRESTProvider {
             try Task.checkCancellation()
             guard !requestSafetyCircuitIsOpen else {
                 throw ChatProviderError.invalidRequest(
-                    "Discord networking is stopped for this session."
+                    requestSafetyStopReason
                 )
             }
             let now = Date.now
@@ -912,6 +932,9 @@ extension DiscordRESTProvider {
 
     func openSafetyCircuit(status: Int, discordCode: Int?, route: String) async {
         guard !requestSafetyCircuitIsOpen else { return }
+        requestSafetyStopReason = status == 404
+            ? "Discord networking was stopped after repeated unexpected not-found responses from \(route) (HTTP 404)."
+            : Self.safetyStopMessage(status: status, discordCode: discordCode)
         requestSafetyCircuitIsOpen = true
         let authenticationFailure = Self.isAuthenticationFailure(
             status: status,
@@ -969,6 +992,8 @@ extension DiscordRESTProvider {
         {
             return true
         }
+        // Invalid type-1 settings data: the settings writer reloads, so the server wins.
+        if status == 400, discordCode == 50105, method == "PATCH", path == "/users/@me/settings-proto/1" { return false }
         // A structured error for user-entered profile text/media is editable.
         // Known poll failures can race local expiry and permission checks.
         if status == 400, profileValidationError(data: data, method: method, path: path) != nil { return false }
@@ -976,6 +1001,8 @@ extension DiscordRESTProvider {
         if status == 400, method == "POST", path.split(separator: "/").count == 2,
            path.hasPrefix("/invites/"), let discordCode,
            [10006, 50270, 40007, 30001].contains(discordCode) { return false }
+        // Discord's per-server invite cap is an expected creation failure.
+        if status == 400, method == "POST", discordCode == 30016, path.hasPrefix("/channels/"), path.hasSuffix("/invites") { return false }
         return status == 400 && method != "GET"
     }
 
@@ -988,6 +1015,8 @@ extension DiscordRESTProvider {
         if method == "GET" || method == "POST", inviteParts.count == 2, inviteParts[0] == "invites" { return true }
         guard method == "GET" else { return false }
         let segments = path.split(separator: "/")
+        if segments.count == 3, segments[0] == "channels", UInt64(segments[1]) != nil,
+           segments[2] == "application-command-index" { return true }
         return segments.count == 3
             && segments[0] == "users"
             && UInt64(segments[1]) != nil
@@ -1063,7 +1092,7 @@ extension DiscordRESTProvider {
     func authorizationToken() async throws -> String {
         guard !requestSafetyCircuitIsOpen else {
             throw ChatProviderError.invalidRequest(
-                "Discord networking is stopped for this session."
+                requestSafetyStopReason
             )
         }
         if let authorizationValue {
@@ -1073,7 +1102,7 @@ extension DiscordRESTProvider {
         defer { credential.resetBytes(in: credential.indices) }
         guard !requestSafetyCircuitIsOpen else {
             throw ChatProviderError.invalidRequest(
-                "Discord networking is stopped for this session."
+                requestSafetyStopReason
             )
         }
         guard let value = String(data: credential, encoding: .utf8) else {

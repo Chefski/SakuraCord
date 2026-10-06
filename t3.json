@@ -1,0 +1,52 @@
+{
+  "$schema": "https://t3.codes/schema/t3.json",
+  "scripts": [
+    {
+      "name": "Run",
+      "command": "./script/run.sh",
+      "icon": "play"
+    },
+    {
+      "name": "Run Offline",
+      "command": "./script/run.sh --offline",
+      "icon": "play"
+    },
+    {
+      "name": "Build & Run",
+      "command": "./script/build_and_run.sh",
+      "icon": "play"
+    },
+    {
+      "name": "Build & Run Offline",
+      "command": "./script/build_and_run.sh --offline",
+      "icon": "play"
+    },
+    {
+      "name": "Build & Run Release",
+      "command": "./script/build_and_run.sh run-release",
+      "icon": "play"
+    },
+    {
+      "name": "Test App",
+      "command": "./script/test.sh app",
+      "icon": "test"
+    },
+    {
+      "name": "Run Offline Sign In",
+      "command": "./script/run.sh --offline-sign-in",
+      "icon": "play"
+    },
+    {
+      "name": "Build & Run Offline Sign In",
+      "command": "./script/build_and_run.sh --offline-sign-in",
+      "icon": "play"
+    },
+    {
+      "name": "Setup",
+      "command": "./script/setup.sh",
+      "icon": "configure",
+      "runOnWorktreeCreate": true,
+      "async": false
+    }
+  ]
+}

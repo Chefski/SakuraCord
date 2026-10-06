@@ -14,6 +14,28 @@ nonisolated enum NativeTimelineSpoilerAppearance {
         isHovered ? 0.62 : 0.46
     }
 
+    static func textBackgroundColor(isHovered: Bool) -> NSColor {
+        NSColor.secondaryLabelColor.withAlphaComponent(
+            textBackgroundAlpha(isHovered: isHovered)
+        )
+    }
+
+    /// Hides the glyphs and text decorations of a hidden text spoiler while
+    /// keeping its layout. Apply it after every other color adjustment; a
+    /// revealed spoiler omits it and keeps its real colors.
+    static func concealText(
+        in value: NSMutableAttributedString,
+        range: NSRange
+    ) {
+        for key: NSAttributedString.Key in [
+            .foregroundColor,
+            .underlineColor,
+            .strikethroughColor,
+        ] {
+            value.addAttribute(key, value: NSColor.clear, range: range)
+        }
+    }
+
     static func pillFrame(
         in bounds: CGRect,
         measuredLabelWidth: CGFloat

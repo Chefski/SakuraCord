@@ -300,7 +300,7 @@ struct CustomEmojiRichText: View {
                 profileRequestID: requestID
             )
         case let .role(id):
-            model.showMembers(withRole: id)
+            model.showMembers(withRole: id, in: model.selectedGuildID)
             presentedMention = AnchoredMentionPresentation(
                 mention: mention,
                 anchor: anchor,
@@ -348,7 +348,7 @@ private struct AnchoredMentionPopoverLayer: View {
                         )
                     }
                 case let .role(id):
-                    RoleMembersPopover(model: model, roleID: id)
+                    RoleMembersPopover(model: model, roleID: id, guildID: model.selectedGuildID)
                 case .unresolved, .guildNavigation, .channel, .linkedChannel, .message:
                     EmptyView()
                 }
@@ -380,7 +380,8 @@ nonisolated struct LinkedImagePresentation: Sendable {
 
     init(content: String) {
         let sourceRange = NSRange(content.startIndex ..< content.endIndex, in: content)
-        let references = Self.expression.matches(in: content, range: sourceRange).compactMap { match -> (NSRange, LinkedImageReference)? in
+        let matches = Self.expression.matches(in: content, range: sourceRange)
+        var references = matches.compactMap { match -> (NSRange, LinkedImageReference)? in
             guard let labelRange = Range(match.range(at: 1), in: content),
                   let urlRange = Range(match.range(at: 2), in: content),
                   let url = URL(string: String(content[urlRange])),
@@ -394,6 +395,13 @@ nonisolated struct LinkedImagePresentation: Sendable {
                     url: url
                 )
             )
+        }
+        // Discord leaves an emoji link inside a spoiler as a spoilered link.
+        if references.contains(where: { $0.1.linkedEmoji != nil }) {
+            let spoilered = Self.spoileredMatchLocations(matches, in: content)
+            references.removeAll {
+                $0.1.linkedEmoji != nil && spoilered.contains($0.0.location)
+            }
         }
         matchedEmojiURLs = Set(
             references.compactMap { reference in
@@ -426,6 +434,29 @@ nonisolated struct LinkedImagePresentation: Sendable {
         }
         visibleText = String(presentedText)
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Give each masked-link target a distinct, parse-only identity. Matching
+    /// by destination loses source identity when bare, angle-bracket, adjacent,
+    /// or code-contained links share the same URL. Keep all surrounding syntax
+    /// intact so the Markdown parser remains the authority on spoiler state.
+    private static func spoileredMatchLocations(
+        _ matches: [NSTextCheckingResult],
+        in content: String
+    ) -> Set<Int> {
+        var prefix = "https://sakuracord.invalid/spoiler-match/"
+        while content.contains(prefix) { prefix += "x/" }
+        let marked = NSMutableString(string: content)
+        var locations: [URL: Int] = [:]
+        for (index, match) in matches.enumerated().reversed() {
+            let marker = prefix + String(index)
+            guard let url = URL(string: marker) else { continue }
+            locations[url] = match.range.location
+            marked.replaceCharacters(in: match.range(at: 2), with: marker)
+        }
+        return Set(DiscordMarkdown.linkOccurrences(String(marked)).compactMap {
+            $0.isSpoiler ? locations[$0.url] : nil
+        })
     }
 
     private static func remainingText(

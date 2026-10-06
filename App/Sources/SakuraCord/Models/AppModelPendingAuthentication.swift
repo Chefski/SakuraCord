@@ -70,6 +70,7 @@ extension AppModel {
             preservesInteractivePresentation: preservesInteractivePresentation,
             transitionGeneration: transitionGeneration
         ) else { return false }
+        let statusRevision = currentStatusRevision
         isLoading = true
         defer {
             if isCurrentAccountSession(session) {
@@ -104,7 +105,8 @@ extension AppModel {
             await applyLiveBootstrap(
                 value,
                 publishesSessionState: !preservesInteractivePresentation,
-                account: session
+                account: session,
+                statusRevision: statusRevision
             )
             guard isCurrentAccountSession(session) else { return false }
             isAuthenticated = snapshot != nil
@@ -151,6 +153,7 @@ extension AppModel {
         resetPendingCreatedMessages()
         resetTimelineLiveScrolling()
         clearReactionMutationState()
+        pollVoteMutations.removeAll()
         stopLocalTyping(clearThrottle: true)
         typingState.clearAll()
         if !preservesInteractivePresentation {

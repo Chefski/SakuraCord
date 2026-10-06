@@ -6,12 +6,14 @@ import Testing
 @Test func `server invite recognition excludes code and lookalike hosts while deduplicating bare URLs`() {
     let source = """
     discord.gg/Valid https://discord.com/invite/Valid discordapp.com/invite/Other
+    ||https://discord.gg/Third|| ||discord.gg/BareSpoiler|| ||[hidden](https://discord.gg/Masked)||
     <https://discord.gg/Third> https://notdiscord.gg/Hidden
     `discord.gg/Inline`
     ```
     discord.gg/Fenced
     ```
     discord.gg/ie3urhej
+    ||https://discord.gg/HiddenInvite||
     """
     #expect(DiscordMarkdown.serverInviteReferences(in: source).map(\.code) == ["Valid", "Other", "Third", "ie3urhej"])
     #expect(ServerInviteReference("https://discord.gg@evil.example/test") == nil)
@@ -241,6 +243,16 @@ import Testing
     #expect(animated.rawToken == "<a:wave:123>")
 }
 
+@Test func `masked discord message links stay links while bare ones become pills`() {
+    let link = "https://discord.com/channels/1/2/3"
+    #expect(MessageDocument(source: "[Jump to original message](\(link))").segments
+        == [.markdown("[Jump to original message](\(link))")])
+    guard case .mention? = MessageDocument(source: "see \(link)").segments.last else {
+        Issue.record("Bare message link should remain a pill")
+        return
+    }
+}
+
 @Test func `message document detects jumbo custom emoji`() {
     #expect(MessageDocument(source: "<:one:1> <:two:2>").isEmojiOnly)
     #expect(!MessageDocument(source: "text <:one:1>").isEmojiOnly)
@@ -316,11 +328,11 @@ import Testing
     #expect(String(value.characters).filter { $0 == "\n" }.count == 3)
 }
 
-@Test func `discord markdown reproduces discord nested traits and hides spoilers`() {
+@Test func `discord markdown reproduces discord nested traits and marks spoilers`() {
     let value = DiscordMarkdown.appKitAttributed(
-        "**bold** _italic_ __underline__ ~~strike~~ ||secret|| ___triple___ __***all***__"
+        "**bold** _italic_ __underline__ ~~strike~~ ||secret|| ___triple___ __***all***__ ||[hidden](https://example.com)||"
     )
-    #expect(value.string == "bold italic underline strike secret triple all")
+    #expect(value.string == "bold italic underline strike secret triple all hidden")
     let string = value.string as NSString
 
     let bold = string.range(of: "bold")
@@ -355,14 +367,23 @@ import Testing
             .discordMarkdownSpoiler,
             at: spoiler.location,
             effectiveRange: nil
-        ) as? NSNumber == NSNumber(value: true)
+        ) != nil
     )
+    // Spoilers keep their real colors; presentation conceals hidden ones.
+    let spoilerLink = string.range(of: "hidden")
     #expect(
         value.attribute(
             .foregroundColor,
             at: spoiler.location,
             effectiveRange: nil
-        ) as? NSColor == NSColor.clear
+        ) as? NSColor == NSColor.labelColor
+    )
+    #expect(
+        value.attribute(
+            .foregroundColor,
+            at: spoilerLink.location,
+            effectiveRange: nil
+        ) as? NSColor == NSColor.linkColor
     )
 
     let triple = string.range(of: "triple")
@@ -549,4 +570,57 @@ import Testing
     #expect(!DiscordAttachmentLink.needsRefresh(try url("?ex=6a000e11&is=1&hm=2&"), now: now))
     #expect(DiscordAttachmentLink.matches(try url("?ex=6a000e11&is=1&hm=2&")))
     #expect(!DiscordAttachmentLink.matches(try #require(URL(string: "https://cdn.discordapp.com/attachments/1/2/a.png#x"))))
+}
+
+/// Renders plain text with each spoiler in brackets, like `a [b] c`.
+private func spoilerOutline(_ source: String) -> String {
+    var output = ""
+    var openSpoiler: Int?
+    for run in DiscordMarkdown.plainTextRuns(source) {
+        if run.spoilerID != openSpoiler {
+            if openSpoiler != nil { output += "]" }
+            if run.spoilerID != nil { output += "[" }
+            openSpoiler = run.spoilerID
+        }
+        output += run.text
+    }
+    return output + (openSpoiler == nil ? "" : "]")
+}
+
+@Test func `spoilers follow discord's nearest non-empty delimiter rule and stay separate`() {
+    let cases: [(source: String, outline: String)] = [
+        ("||one||||two||", "[one][two]"),
+        ("||a||b||c||", "[a]b[c]"),
+        ("||||", "||||"),
+        ("||", "||"),
+        ("||a", "||a"),
+        ("|| ||", "[ ]"),
+        ("||||x||", "[||x]"),
+        ("`||x||`", "||x||"),
+        ("||`x`||", "[x]"),
+        ("**a ||b** c||", "a ||b c||"),
+        ("||a **b|| c**", "[a **b] c**"),
+        (#"\|\|x\|\|"#, "||x||"),
+        (#"\||x||"#, "||x||"),
+    ]
+    for (source, outline) in cases {
+        #expect(spoilerOutline(source) == outline, "\(source)")
+    }
+    // Spoilers on different lines have different identifiers too.
+    #expect(Set(DiscordMarkdown.plainTextRuns("||a||\n||b||").compactMap(\.spoilerID)).count == 2)
+
+    // Adjacent spoilers are separate attribute runs, and inline code keeps
+    // its own styling inside a spoiler.
+    let adjacent = DiscordMarkdown.appKitAttributed("||one||||two||")
+    var ranges: [NSRange] = []
+    adjacent.enumerateAttribute(
+        .discordMarkdownSpoiler,
+        in: NSRange(location: 0, length: adjacent.length)
+    ) { value, range, _ in
+        if value != nil { ranges.append(range) }
+    }
+    #expect(ranges == [NSRange(location: 0, length: 3), NSRange(location: 3, length: 3)])
+    let code = DiscordMarkdown.appKitAttributed("||`x`||")
+    #expect(code.attribute(.discordMarkdownInlineCode, at: 0, effectiveRange: nil) != nil)
+    #expect(code.attribute(.discordMarkdownSpoiler, at: 0, effectiveRange: nil) != nil)
 }

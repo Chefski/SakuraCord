@@ -445,28 +445,18 @@ enum NativeTimelineTextHitTester {
         textFrame: CTFrame,
         frame: CGRect
     ) -> [NativeTimelineTextSpoilerHitRegion] {
-        var result: [NativeTimelineTextSpoilerHitRegion] = []
-        value.enumerateAttribute(
-            .discordMarkdownSpoiler,
-            in: NSRange(location: 0, length: value.length)
-        ) { rawValue, range, _ in
-            guard (rawValue as? NSNumber)?.boolValue == true else {
-                return
+        NativeTimelineTextSpoilers.ranges(in: value).flatMap { range in
+            NativeTimelineTextSpoilerGeometry.rects(
+                in: textFrame,
+                outerFrame: frame,
+                range: range
+            ).map {
+                NativeTimelineTextSpoilerHitRegion(
+                    range: range,
+                    frame: $0
+                )
             }
-            result.append(contentsOf:
-                NativeTimelineTextSelectionGeometry.rects(
-                    in: textFrame,
-                    outerFrame: frame,
-                    range: range
-                ).map {
-                    NativeTimelineTextSpoilerHitRegion(
-                        range: range,
-                        frame: $0.insetBy(dx: -2, dy: -1)
-                    )
-                }
-            )
         }
-        return result
     }
 
     static func linkFrames(
@@ -506,14 +496,10 @@ enum NativeTimelineTextHitTester {
             in: NSRange(location: 0, length: value.length)
         ) { rawLink, range, _ in
             guard let url = linkURL(from: rawLink) else { return }
-            var spoilerRange = NSRange(location: 0, length: 0)
-            let isSpoiler = (
-                value.attribute(
-                    .discordMarkdownSpoiler,
-                    at: range.location,
-                    effectiveRange: &spoilerRange
-                ) as? NSNumber
-            )?.boolValue == true
+            let spoilerRange = NativeTimelineTextSpoilers.range(
+                at: range.location,
+                in: value
+            )
             let frames = bridgedLinkFrames(
                 NativeTimelineTextSelectionGeometry.rects(
                     in: textFrame,
@@ -525,10 +511,7 @@ enum NativeTimelineTextHitTester {
                 NativeTimelineTextLinkHitRegion(
                     characterIndex: range.location,
                     url: url,
-                    spoilerRange:
-                        isSpoiler && spoilerRange.length > 0
-                            ? spoilerRange
-                            : nil,
+                    spoilerRange: spoilerRange,
                     frame: $0
                 )
             })
@@ -903,18 +886,34 @@ enum NativeTimelineTextHitTester {
             textFrame: layout.frame,
             frame: frame
         ).first(where: { $0.frame.contains(point) })
+        if let paintedSpoiler {
+            let textHit = textLineHit(
+                value: value, layout: layout, frame: frame, point: point,
+                targetsTextCharacters: true
+            )
+            let index = min(NSMaxRange(paintedSpoiler.range) - 1,
+                            max(paintedSpoiler.range.location, textHit?.characterIndex ?? paintedSpoiler.range.location))
+            return NativeTimelineTextHit(
+                characterIndex: index,
+                url: linkURL(from: value.attribute(.link, at: index, effectiveRange: nil)),
+                mention: (value.attribute(.nativeTimelineMention, at: index, effectiveRange: nil)
+                    as? NativeTimelineMentionBox)?.presentation,
+                spoilerRange: paintedSpoiler.range
+            )
+        }
         if let hit = inlineAttachmentHit(
             value: value,
             layout: layout,
             outerFrame: frame,
             point: point,
             paintedSpoiler: paintedSpoiler
-        ) { return hit }
+        ) { return hit.spoilerRange == nil ? hit : nil }
         if let link = linkRegions(
             value: value,
             textFrame: layout.frame,
             outerFrame: frame
         ).first(where: { $0.frame.contains(point) }) {
+            guard link.spoilerRange == nil else { return nil }
             return NativeTimelineTextHit(
                 characterIndex: link.characterIndex,
                 url: link.url,
@@ -923,15 +922,8 @@ enum NativeTimelineTextHitTester {
                 displayedText: MessageLinkActivator.safetyDisplayedText(in: value, at: link.characterIndex)
             )
         }
-        return textLineHit(value: value, layout: layout, frame: frame, point: point)
-            ?? paintedSpoiler.map {
-                NativeTimelineTextHit(
-                    characterIndex: $0.range.location,
-                    url: nil,
-                    mention: nil,
-                    spoilerRange: $0.range
-                )
-            }
+        let hit = textLineHit(value: value, layout: layout, frame: frame, point: point)
+        return hit?.spoilerRange == nil ? hit : nil
     }
 
     private static func coreTextFrameLayout(
@@ -984,14 +976,6 @@ enum NativeTimelineTextHitTester {
                       range.location < value.length,
                       attachmentFrame.contains(point)
                 else { continue }
-                var spoilerRange = NSRange(location: 0, length: 0)
-                let isSpoiler = (
-                    value.attribute(
-                        .discordMarkdownSpoiler,
-                        at: range.location,
-                        effectiveRange: &spoilerRange
-                    ) as? NSNumber
-                )?.boolValue == true
                 let mention = (
                     value.attribute(
                         .nativeTimelineMention,
@@ -1001,13 +985,20 @@ enum NativeTimelineTextHitTester {
                 )?.presentation
                 let effectiveSpoilerRange =
                     paintedSpoiler?.range
-                    ?? (isSpoiler && spoilerRange.length > 0
-                        ? spoilerRange
-                        : nil)
+                    ?? NativeTimelineTextSpoilers.range(
+                        at: range.location,
+                        in: value
+                    )
                 if let effectiveSpoilerRange {
+                    // Keep the run's link so it opens once the spoiler is
+                    // revealed; activation reveals a hidden spoiler first.
                     return NativeTimelineTextHit(
                         characterIndex: range.location,
-                        url: nil,
+                        url: linkURL(from: value.attribute(
+                            .link,
+                            at: range.location,
+                            effectiveRange: nil
+                        )),
                         mention: mention,
                         spoilerRange: effectiveSpoilerRange
                     )
@@ -1100,23 +1091,15 @@ enum NativeTimelineTextHitTester {
                 at: characterIndex,
                 effectiveRange: nil
             )
-            var spoilerRange = NSRange(location: 0, length: 0)
-            let isSpoiler = (
-                value.attribute(
-                    .discordMarkdownSpoiler,
-                    at: characterIndex,
-                    effectiveRange: &spoilerRange
-                ) as? NSNumber
-            )?.boolValue == true
             let url = linkURL(from: rawLink)
             return NativeTimelineTextHit(
                 characterIndex: characterIndex,
                 url: url,
                 mention: mention,
-                spoilerRange:
-                    isSpoiler && spoilerRange.length > 0
-                        ? spoilerRange
-                        : nil,
+                spoilerRange: NativeTimelineTextSpoilers.range(
+                    at: characterIndex,
+                    in: value
+                ),
                 displayedText: MessageLinkActivator.safetyDisplayedText(in: value, at: characterIndex)
             )
         }

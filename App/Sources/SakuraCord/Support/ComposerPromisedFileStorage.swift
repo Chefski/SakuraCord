@@ -12,6 +12,14 @@ struct ComposerPromisedFileBatch {
     }
 }
 
+/// Files offered to a composer by drop or paste.
+enum ComposerIncomingAttachments {
+    /// User files that stay in place.
+    case external([URL])
+    /// App-owned copies that the model adopts and removes when unused.
+    case owned(ComposerPromisedFileBatch)
+}
+
 enum ComposerPromisedFileStorage {
     static func rootDirectory(fileManager: FileManager = .default) -> URL {
         let applicationIdentifier = Bundle.main.bundleIdentifier
@@ -40,6 +48,28 @@ enum ComposerPromisedFileStorage {
             withIntermediateDirectories: true
         )
         return directory
+    }
+
+    /// Writes app-created content, such as pasted data, as a one-file batch.
+    static func makeBatch(
+        writing data: Data,
+        named filename: String,
+        fileManager: FileManager = .default
+    ) -> ComposerPromisedFileBatch? {
+        guard let directory = try? makeReceivingDirectory(fileManager: fileManager) else { return nil }
+        let url = directory.appendingPathComponent(filename)
+        // The file must stay a direct child of its batch directory.
+        guard url.standardizedFileURL.deletingLastPathComponent() == directory.standardizedFileURL else {
+            removeDirectory(directory, fileManager: fileManager)
+            return nil
+        }
+        do {
+            try data.write(to: url, options: .atomic)
+            return ComposerPromisedFileBatch(directory: directory, urls: [url])
+        } catch {
+            removeDirectory(directory, fileManager: fileManager)
+            return nil
+        }
     }
 
     static func isManagedDirectory(

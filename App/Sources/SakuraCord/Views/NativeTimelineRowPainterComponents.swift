@@ -263,7 +263,16 @@ enum NativeTimelineSystemSymbolCache {
                         named: "play.circle.fill",
                         pointSize: 36,
                         weight: .regular,
-                        color: .labelColor,
+                        color: .white,
+                        appearance: appearance
+                    )
+                },
+                {
+                    prewarmConfiguredImage(
+                        named: "play.fill",
+                        pointSize: 15,
+                        weight: .regular,
+                        color: NSColor.black.withAlphaComponent(0.75),
                         appearance: appearance
                     )
                 },
@@ -652,8 +661,7 @@ extension NativeTimelineRowPainter {
             guard target != input.activeComponentChoiceTarget else { continue }
             componentSelect(
                 region,
-                cornerRadius: bubbleConcentricCornerRadius(for: region.frame, in: input.bubbleRegion, fallback: 11),
-                isExpanded: target == input.activeComponentChoiceTarget
+                cornerRadius: bubbleConcentricCornerRadius(for: region.frame, in: input.bubbleRegion, fallback: 11)
             )
         }
     }
@@ -885,8 +893,13 @@ extension NativeTimelineRowPainter {
         ).fill()
     }
 
+    /// Discord's thread card: the name and message count, then the thread's
+    /// latest message or an empty state.
     static func threadSummary(
         _ thread: MessageThreadSummary,
+        preview: Message?,
+        message: Message,
+        model: AppModel?,
         in frame: CGRect
     ) {
         NSColor.secondaryLabelColor.withAlphaComponent(0.08).setFill()
@@ -894,49 +907,71 @@ extension NativeTimelineRowPainter {
             concentricRoundedRect: frame,
             cornerRadius: 8
         ).fill()
-        systemSymbol(
-            "bubble.left.and.bubble.right",
-            in: CGRect(
-                x: frame.minX + 9,
-                y: frame.midY - 9,
-                width: 18,
-                height: 18
-            ),
-            color: .labelColor,
-            inset: 1
+        let inset: CGFloat = 10
+        let nameFont = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        let nameWidth = min(
+            NativeTimelineReplyMetrics.textWidth(thread.name, font: nameFont),
+            frame.width * 0.6
         )
         text(
             thread.name,
-            in: CGRect(
-                x: frame.minX + 35,
-                y: frame.minY + 6,
-                width: max(1, frame.width - 70),
-                height: 18
-            ),
-            font: .systemFont(ofSize: 12, weight: .semibold),
+            in: CGRect(x: frame.minX + inset, y: frame.minY + 7, width: nameWidth, height: 18),
+            font: nameFont,
             color: .labelColor
         )
         text(
-            "\(thread.messageCount) replies · \(thread.memberCount) participants",
+            NativeTimelineThreadCard.countText(thread),
             in: CGRect(
-                x: frame.minX + 35,
-                y: frame.minY + 23,
-                width: max(1, frame.width - 70),
-                height: 16
+                x: frame.minX + inset + nameWidth + 8,
+                y: frame.minY + 7,
+                width: max(1, frame.width - nameWidth - inset * 2 - 8),
+                height: 18
             ),
-            font: .systemFont(ofSize: 11),
-            color: .secondaryLabelColor
+            font: .systemFont(ofSize: 13, weight: .semibold),
+            color: .sakuraCordAccentColor
         )
-        systemSymbol(
-            "chevron.right",
-            in: CGRect(
-                x: frame.maxX - 25,
-                y: frame.midY - 7,
-                width: 14,
-                height: 14
-            ),
-            color: .secondaryLabelColor,
-            inset: 2
+
+        let rowFrame = CGRect(
+            x: frame.minX + inset,
+            y: frame.minY + 28,
+            width: frame.width - inset * 2,
+            height: 20
+        )
+        let activity = NativeTimelineThreadCard.activityText(
+            thread.lastMessageID?.createdAt ?? thread.createdAt ?? thread.id.createdAt
+        )
+        let activityFont = NSFont.systemFont(ofSize: 11)
+        let activityWidth = NativeTimelineReplyMetrics.textWidth(activity, font: activityFont)
+        text(
+            activity,
+            in: CGRect(x: rowFrame.maxX - activityWidth, y: rowFrame.minY + 1, width: activityWidth, height: 18),
+            font: activityFont,
+            color: .tertiaryLabelColor
+        )
+        let bodyFrame = CGRect(
+            x: rowFrame.minX,
+            y: rowFrame.minY,
+            width: max(0, rowFrame.width - activityWidth - 8),
+            height: rowFrame.height
+        )
+        guard !thread.isArchived, thread.messageCount > 0, let preview else {
+            text(
+                thread.isArchived || thread.messageCount > 0
+                    ? "There are no recent messages in this thread."
+                    : "There are no messages in this thread yet.",
+                in: bodyFrame,
+                font: NativeTimelineReplyMetrics.summaryFont,
+                color: .secondaryLabelColor
+            )
+            return
+        }
+        replyPreviewLine(
+            MessageReplyPreview(message: preview),
+            frame: bodyFrame,
+            avatarFrame: CGRect(x: bodyFrame.minX, y: bodyFrame.minY + 3, width: 14, height: 14),
+            trailingInset: 0,
+            message: message,
+            model: model
         )
     }
 
@@ -1130,7 +1165,7 @@ extension NativeTimelineRowPainter {
                 isHovered: isHovered,
                 pressProgress: pressProgress
             )
-        let opacity: CGFloat = region.isDisabled ? 0.65 : 1
+        let opacity: CGFloat = region.isDisabled && !region.isLoading ? 0.65 : 1
         let background = adjustedBrightness(
             roleColor(
                 DiscordComponentButtonAppearance.backgroundHex(
@@ -1188,6 +1223,8 @@ extension NativeTimelineRowPainter {
         brightness: CGFloat,
         opacity: CGFloat
     ) {
+        // The row's loading-dots overlay replaces the label.
+        guard !region.isLoading else { return }
         var horizontalPosition = region.frame.minX + 12
         if let emoji = region.emoji {
             componentEmoji(emoji, in: CGRect(
@@ -1269,8 +1306,7 @@ extension NativeTimelineRowPainter {
 
     static func componentSelect(
         _ region: NativeTimelineComponentLayout.SelectRegion,
-        cornerRadius: CGFloat = 11,
-        isExpanded: Bool = false
+        cornerRadius: CGFloat = 11
     ) {
         let opacity: CGFloat = region.isDisabled ? 0.65 : 1
         NSColor.labelColor.withAlphaComponent(0.075 * opacity).setFill()
@@ -1278,7 +1314,8 @@ extension NativeTimelineRowPainter {
             concentricRoundedRect: region.frame,
             cornerRadius: cornerRadius
         ).fill()
-        NSColor.labelColor.withAlphaComponent(0.10 * opacity).setStroke()
+        // The open field's resting border.
+        NSColor.labelColor.withAlphaComponent(0.16 * opacity).setStroke()
         let border = NSBezierPath(
             concentricRoundedRect: region.frame.insetBy(dx: 0.5, dy: 0.5),
             cornerRadius: max(0, cornerRadius - 0.5)
@@ -1293,10 +1330,10 @@ extension NativeTimelineRowPainter {
             )
         }
         if options.isEmpty {
-            SelectionFieldChromeRenderer.drawText(
+            SelectionFieldRenderer.drawText(
                 region.placeholder,
                 in: region.frame,
-                color: .placeholderTextColor,
+                color: .secondaryLabelColor,
                 opacity: opacity
             )
         } else {
@@ -1306,11 +1343,12 @@ extension NativeTimelineRowPainter {
                 opacity: opacity
             )
         }
-        SelectionFieldChromeRenderer.drawChevron(
-            isExpanded: isExpanded,
-            in: region.frame,
-            opacity: opacity
-        )
+        if !region.isLoading {
+            SelectionFieldRenderer.drawChevron(
+                in: region.frame,
+                opacity: opacity
+            )
+        }
     }
 
     static func componentSelectTokens(
@@ -1319,24 +1357,29 @@ extension NativeTimelineRowPainter {
         opacity: CGFloat
     ) {
         let available = max(40, frame.width - 50)
-        var origin = CGPoint(x: frame.minX + 11, y: frame.minY + 7)
+        var origin = CGPoint(x: frame.minX + 11, y: 0)
+        var placements: [(option: SelectionFieldOption<String>, frame: CGRect)] = []
         for option in options {
             let tokenWidth = SelectionFieldLayoutMetrics.tokenWidth(option, availableWidth: available)
             if origin.x > frame.minX + 11, origin.x + tokenWidth > frame.minX + 11 + available {
                 origin.x = frame.minX + 11
                 origin.y += 34
             }
-            let image = SelectionFieldTokenRenderer.images(
-                option: option, font: SelectionFieldLayoutMetrics.font, usesCard: true,
-                leadingImage: componentSelectLeadingImage(option.leading), maximumWidth: tokenWidth
-            ).normal
-            image.draw(
-                in: CGRect(origin: origin, size: image.size),
-                from: .zero, operation: .sourceOver, fraction: opacity, respectFlipped: true, hints: nil
-            )
+            placements.append((option, CGRect(origin: origin, size: CGSize(width: tokenWidth, height: 28))))
             origin.x += tokenWidth + 6
         }
-
+        // Like the open field, centre the token rows within its minimum height.
+        let top = frame.minY + ((frame.height - (origin.y + 28)) / 2).rounded()
+        for placement in placements {
+            let image = SelectionFieldRenderer.tokenImage(
+                option: placement.option, font: SelectionFieldLayoutMetrics.font,
+                leadingImage: componentSelectLeadingImage(placement.option.leading), maximumWidth: placement.frame.width
+            )
+            image.draw(
+                in: CGRect(origin: CGPoint(x: placement.frame.minX, y: top + placement.frame.minY), size: image.size),
+                from: .zero, operation: .sourceOver, fraction: opacity, respectFlipped: true, hints: nil
+            )
+        }
     }
 
     static func componentSelectLeadingImage(

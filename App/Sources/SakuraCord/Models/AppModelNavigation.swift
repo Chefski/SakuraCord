@@ -593,8 +593,8 @@ extension AppModel {
     func restoreMemberPresentation(for guildID: GuildID?) {
         let restoredGroups = guildID.flatMap { memberListGroupsByGuildID[$0] } ?? []
         let restoredRoles = guildID.flatMap { guildRolesByGuildID[$0] } ?? []
-        let restoredMembersByID = guildID.flatMap { membersByGuildID[$0] } ?? [:]
-        let restoredMembers = guildID.flatMap { memberListsByGuildID[$0] } ?? []
+        let restoredMembersByID = (guildID.flatMap { membersByGuildID[$0] } ?? [:]).mapValues(memberWithCurrentStatus)
+        let restoredMembers = membersWithCurrentStatus(guildID.flatMap { memberListsByGuildID[$0] } ?? [])
         let presentationChanged =
             memberListGroups != restoredGroups
             || guildRoles != restoredRoles

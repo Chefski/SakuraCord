@@ -85,6 +85,7 @@ extension AppModel {
     func invalidateAccountSession() {
         accountSessionGeneration &+= 1
         serverInvites.reset()
+        issueReports.reset()
         onboarding.reset()
     }
 
@@ -233,6 +234,46 @@ nonisolated enum MessageComposerDestination: Hashable, Sendable {
     case thread
 }
 
+nonisolated struct ThreadCreationPermissions: Equatable, Sendable {
+    let canCreatePublic: Bool
+    let canCreatePrivate: Bool
+
+    var canCreateAny: Bool { canCreatePublic || canCreatePrivate }
+}
+
+/// A reference type so editing the name does not invalidate every view that
+/// only observes whether a thread is being created.
+@Observable
+final class ThreadCreationDraft {
+    static let maximumNameLength = 100
+
+    let identity = UUID()
+    let parentID: ChannelID
+    /// Resolved when the pane opens; submission rechecks the live permissions.
+    let permissions: ThreadCreationPermissions
+    /// Discord's name field replaces newlines with spaces while typing.
+    var name = "" {
+        didSet {
+            let normalized = String(name.replacing(/\R/, with: " ").prefix(Self.maximumNameLength))
+            // The observable setter re-enters didSet, so only reassign a changed value.
+            if normalized != name { name = normalized }
+        }
+    }
+    /// Without public-thread permission, every created thread is private.
+    var isPrivate: Bool
+    /// Required-field errors appear after an invalid submission, never while a valid draft is consumed.
+    var showsValidationErrors = false
+    var isSubmitting = false
+
+    var trimmedName: String { name.trimmingCharacters(in: .whitespaces) }
+
+    init(parentID: ChannelID, permissions: ThreadCreationPermissions) {
+        self.parentID = parentID
+        self.permissions = permissions
+        isPrivate = !permissions.canCreatePublic
+    }
+}
+
 nonisolated enum MessageReplyNavigationDirection: Equatable, Sendable {
     case older
     case newer
@@ -257,11 +298,16 @@ nonisolated struct ConversationNewestRequest: Equatable, Sendable {
 struct ProfilePresentationState: Identifiable {
     var id: UUID { requestID }
     let requestID: UUID
+    let guildID: GuildID?
     var member: Member
     let isCurrentUser: Bool
     var profile: UserProfile?
     var isLoading: Bool
     var errorMessage: String?
+    var isWebhook = false
+    var isClyde = false
+    var isLocalIdentity: Bool { isWebhook || isClyde }
+    var sourceMessageID: MessageID?
 }
 
 struct ProfileCacheKey: Hashable {

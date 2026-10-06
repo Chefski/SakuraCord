@@ -18,6 +18,7 @@ nonisolated enum ConversationAccess: Equatable, Sendable {
 }
 
 nonisolated enum DiscordPermissionBits {
+    static let createInstantInvite: UInt64 = 1 << 0
     static let administrator: UInt64 = 1 << 3
     static let viewChannel: UInt64 = 1 << 10
     static let sendMessages: UInt64 = 1 << 11
@@ -29,6 +30,8 @@ nonisolated enum DiscordPermissionBits {
     static let speak: UInt64 = 1 << 21
     static let changeNickname: UInt64 = 1 << 26
     static let manageThreads: UInt64 = 1 << 34
+    static let createPublicThreads: UInt64 = 1 << 35
+    static let createPrivateThreads: UInt64 = 1 << 36
     static let useExternalStickers: UInt64 = 1 << 37
     static let sendMessagesInThreads: UInt64 = 1 << 38
     static let useSoundboard: UInt64 = 1 << 42
@@ -434,7 +437,10 @@ nonisolated struct MessageAuthorPresentation: Equatable {
         member: Member?,
         roles: [GuildRole]
     ) -> Self {
-        resolve(
+        if message.webhookID != nil, message.author.isWebhookIdentity {
+            return Self(user: message.author, roleColorHex: nil)
+        }
+        return resolve(
             user: message.author,
             guildMember: message.guildMember,
             member: member,
@@ -447,7 +453,10 @@ nonisolated struct MessageAuthorPresentation: Equatable {
         member: Member?,
         roles: [GuildRole]
     ) -> Self {
-        resolve(
+        if replyPreview.webhookID != nil, replyPreview.author.isWebhookIdentity {
+            return Self(user: replyPreview.author, roleColorHex: nil)
+        }
+        return resolve(
             user: replyPreview.author,
             guildMember: replyPreview.guildMember,
             member: member,

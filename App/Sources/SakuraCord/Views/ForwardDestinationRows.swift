@@ -89,9 +89,9 @@ private struct ForwardDestinationAvatar: View {
     var body: some View {
         switch destination.kind {
         case .channel(let channel) where channel.guildID != nil:
-            guildIcon(channelKind: channel.kind)
-        case .thread:
-            guildIcon(channelKind: .text)
+            guildIcon(symbol: channel.kind == .voice ? "speaker.wave.2.fill" : "number")
+        case .thread(_, let parent):
+            guildIcon(symbol: parent?.kind == .forum ? "number" : SakuraCordSystemSymbol.thread)
         case .channel, .user:
             AvatarView(
                 name: destination.title,
@@ -101,7 +101,7 @@ private struct ForwardDestinationAvatar: View {
         }
     }
 
-    private func guildIcon(channelKind: ChannelKindValue) -> some View {
+    private func guildIcon(symbol: String) -> some View {
         ZStack(alignment: .bottomTrailing) {
             if destination.guild?.iconURL != nil {
                 GuildIconView(
@@ -126,7 +126,7 @@ private struct ForwardDestinationAvatar: View {
                 .fill(Color(nsColor: .windowBackgroundColor))
                 .frame(width: 18, height: 18)
                 .overlay {
-                    Image(systemName: channelKind == .voice ? "speaker.wave.2.fill" : "number")
+                    SakuraCordSystemSymbol.swiftUIImage(named: symbol)
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(.secondary)
                 }

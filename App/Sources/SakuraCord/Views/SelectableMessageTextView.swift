@@ -195,6 +195,7 @@ struct SelectableMessageTextView: NSViewRepresentable {
                 range: NSRange(location: 0, length: rendered.length)
             )
         }
+        RichMessageAttributedText.concealSpoilers(in: rendered)
         textView.textStorage?.setAttributedString(rendered)
         textView.invalidateIntrinsicContentSize()
         context.coordinator.loadEmojiImages(in: textView)
@@ -414,24 +415,32 @@ nonisolated enum RichMessageAttributedText {
             placeholderRanges.reversed(),
             prepared.tokens.reversed()
         ) {
-            switch token {
+            let spoiler = output.attribute(
+                .discordMarkdownSpoiler,
+                at: range.location,
+                effectiveRange: nil
+            )
+            let replacement = switch token {
             case let .customEmoji(emoji):
-                output.replaceCharacters(
-                    in: range,
-                    with: customEmoji(emoji, size: emojiSize, font: baseFont)
-                )
+                customEmoji(emoji, size: emojiSize, font: baseFont)
             case let .mention(mention):
-                output.replaceCharacters(
-                    in: range,
-                    with: mentionAttributedString(
-                        mentionPresentations[mention.rawToken]
-                            ?? MentionPresentation.fallback(for: mention),
-                        font: baseFont
-                    )
+                mentionAttributedString(
+                    mentionPresentations[mention.rawToken]
+                        ?? MentionPresentation.fallback(for: mention),
+                    font: baseFont
+                )
+            }
+            output.replaceCharacters(in: range, with: replacement)
+            if let spoiler {
+                output.addAttribute(
+                    .discordMarkdownSpoiler,
+                    value: spoiler,
+                    range: NSRange(location: range.location, length: replacement.length)
                 )
             }
         }
         insertAttachmentLinkIcons(in: output, font: baseFont)
+        NativeTimelineCoreText.normalizeParagraphMetrics(in: output, spoilersOnly: true)
         return output
     }
 
@@ -472,6 +481,35 @@ nonisolated enum RichMessageAttributedText {
             let icon = NSMutableAttributedString(attachment: attachment)
             icon.addAttributes(attributes, range: NSRange(location: 0, length: icon.length))
             output.insert(icon, at: location)
+        }
+    }
+
+    /// Text views cannot reveal spoilers, so every spoiler stays concealed:
+    /// its glyphs, link styling, and inline attachments are hidden behind a
+    /// spoiler background.
+    @MainActor
+    static func concealSpoilers(in value: NSMutableAttributedString) {
+        value.enumerateAttribute(
+            .discordMarkdownSpoiler,
+            in: NSRange(location: 0, length: value.length)
+        ) { rawValue, range, _ in
+            guard rawValue != nil else { return }
+            NativeTimelineSpoilerAppearance.concealText(in: value, range: range)
+            value.removeAttribute(.link, range: range)
+            value.enumerateAttribute(.attachment, in: range) { rawAttachment, attachmentRange, _ in
+                guard let original = rawAttachment as? NSTextAttachment else { return }
+                // Removing an attachment also removes its advance and baseline.
+                // Retain layout with an empty image that cannot expose its payload.
+                let concealed = NSTextAttachment()
+                concealed.image = NSImage(size: original.bounds.size, flipped: false) { rect in
+                    NSColor.clear.setFill()
+                    rect.fill(using: .copy)
+                    return true
+                }
+                concealed.bounds = original.bounds
+                value.addAttribute(.attachment, value: concealed, range: attachmentRange)
+            }
+            value.removeAttribute(.backgroundColor, range: range)
         }
     }
 
@@ -788,6 +826,7 @@ final class RichMessageNSTextView: NSTextView {
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
         drawSelectionOverAttachments(in: dirtyRect)
+        SelectableTextSpoilerGeometry.draw(in: self, dirtyRect: dirtyRect)
     }
 
     override func copy(_ sender: Any?) {

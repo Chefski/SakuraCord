@@ -215,7 +215,8 @@ struct ProviderRequestContractTests {
         ])
     }
 
-    @Test func `history reports incomplete member hydration when Gateway lookup is unavailable`() async throws {
+    @Test(arguments: [false, true])
+    func `history reports incomplete member hydration when Gateway lookup is unavailable`(isThread: Bool) async throws {
         RateLimitURLProtocol.reset()
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [RateLimitURLProtocol.self]
@@ -225,11 +226,13 @@ struct ProviderRequestContractTests {
             session: URLSession(configuration: configuration),
             installationID: "server-issued-installation"
         )
-        await provider.seedGuildChannelForTesting(Channel(
-            id: ChannelID(rawValue: 200),
+        await provider.seedForumChannelForTesting(Channel(
+            id: ChannelID(rawValue: isThread ? 199 : 200),
             guildID: GuildID(rawValue: 100),
             name: "general"
-        ))
+        ), posts: isThread ? [ForumPost(thread: MessageThreadSummary(
+            id: ChannelID(rawValue: 200), parentID: ChannelID(rawValue: 199), name: "Thread"
+        ))] : [])
 
         let page = try await provider.messages(
             in: ChannelID(rawValue: 200),
@@ -239,6 +242,7 @@ struct ProviderRequestContractTests {
 
         #expect(page.resolvedMembers.isEmpty)
         #expect(!page.hasCompleteMemberResolution)
+        #expect(page.messages.first?.guildID == GuildID(rawValue: 100))
     }
 
     @Test func `desktop ready lifecycle matches official opcode ordering`() async throws {
@@ -252,6 +256,7 @@ struct ProviderRequestContractTests {
             data: .object([
                 "session_id": .string("desktop-session"),
                 "resume_gateway_url": .string("wss://gateway.discord.gg"),
+                "user_settings_proto": .string(statusSettingsFixture("dnd").base64EncodedString()),
             ]),
             sequence: 12,
             eventName: "READY"
@@ -268,6 +273,9 @@ struct ProviderRequestContractTests {
         try await provider.startGateway()
         #expect(await eventually { await socket.sentCount == 5 })
         #expect(await socket.sentOpcodes() == [2, 4, 3, 41, 40])
+        // The post-READY presence carries the account-wide status another
+        // client saved instead of a stale local value.
+        #expect(await presenceStatuses(socket) == ["dnd"])
         await provider.disconnect()
     }
 

@@ -885,6 +885,22 @@ import UserNotifications
         return model.authorPresentation(for: message).roleColorHex == 0xFF7900
     })
     #expect(await provider.resolutionRequests() == [[UserID(rawValue: 76_101)]])
+    var threadMessage = try #require(model.messages.first)
+    let parentID = threadMessage.channelID
+    threadMessage.channelID = ChannelID(rawValue: 76_003)
+    threadMessage.guildID = nil
+    threadMessage.guildMember = nil
+    model.openThread = MessageThreadSummary(id: threadMessage.channelID, parentID: parentID, name: "Thread")
+    let reply = MessageReplyPreview(message: threadMessage)
+    #expect(model.authorPresentation(for: threadMessage).roleColorHex == 0xFF7900)
+    #expect(model.authorPresentation(for: reply, in: threadMessage).roleColorHex == 0xFF7900)
+    model.inbox.threads[threadMessage.channelID] = model.openThread
+    model.openThread = nil
+    model.selectedGuildID = GuildID(rawValue: 76_999)
+    model.membersByID = [:]
+    model.guildRoles = []
+    #expect(model.authorPresentation(for: threadMessage).roleColorHex == 0xFF7900)
+    #expect(model.authorPresentation(for: reply, in: threadMessage).roleColorHex == 0xFF7900)
 }
 
 @MainActor
@@ -1569,6 +1585,53 @@ import UserNotifications
     await Task.yield()
 
     #expect(model.openThread?.id == thread.id)
+}
+
+@MainActor
+@Test(arguments: [(false, false), (true, false), (true, true)])
+func `authoritative thread deletion removes open cached and resource conversations`(location: (isOpen: Bool, resourceOnly: Bool)) {
+    let model = AppModel(launchMode: .offlineTesting)
+    let parent = ChannelID(rawValue: 200)
+    let thread = MessageThreadSummary(id: ChannelID(rawValue: 201), parentID: parent, name: "Deleted thread")
+    let author = User(id: UserID(rawValue: 1), username: "author", displayName: "Author")
+    var starter = Message(id: MessageID(rawValue: 201), channelID: parent, author: author, content: "Keep starter")
+    starter.thread = thread
+    let reply = Message(id: MessageID(rawValue: 202), channelID: thread.id, author: author, content: "Reply")
+    let other = Message(id: MessageID(rawValue: 302), channelID: ChannelID(rawValue: 301), author: author, content: "Keep other")
+    if location.resourceOnly {
+        let guildID = GuildID(rawValue: 100)
+        model.selectedGuildID = guildID
+        model.onboarding.presentedGuildID = guildID
+        model.onboarding.page = .guide
+        model.onboarding.guides[guildID] = GuildGuideEntry(resource: GuildResourceState(
+            channelID: parent, messages: [starter], rows: [MessageRowPresentation(
+                message: starter, startsGroup: false, startsDay: false,
+                replyPreview: nil, isReplyAvailable: false, isResource: true
+            )]
+        ))
+    } else {
+        model.storeCachedMessages([starter], for: parent)
+    }
+    model.storeCachedMessages([reply], for: thread.id)
+    model.storeCachedMessages([other], for: other.channelID)
+    model.hasMoreCache[thread.id] = false
+    model.refreshTimelineThreadCards(parentID: parent, posts: [ForumPost(thread: thread, mostRecentMessage: reply)])
+    if location.isOpen {
+        model.openThread = thread
+        model.threadMessages = [reply]
+    }
+
+    model.consumeImmediately(.threadDeleted(channelID: thread.id))
+
+    #expect(model.openThread == nil)
+    #expect(model.threadMessages.isEmpty)
+    #expect(model.messageCache[thread.id] == nil)
+    #expect(model.hasMoreCache[thread.id] == nil)
+    #expect(model.threadPreviewMessages[thread.id] == nil)
+    let retained = location.resourceOnly ? model.presentedGuideResource?.rows.first?.message : model.messageCache[parent]?.first
+    #expect(retained?.thread == nil)
+    #expect(retained?.content == starter.content)
+    #expect(model.messageCache[other.channelID] == [other])
 }
 
 @MainActor
@@ -2526,11 +2589,18 @@ func `removing a saved account without a credential still clears derived caches`
         .appending(path: "dev.sakuracord.SakuraCord")
     let cacheURLs = ["ForwardSearchPeople/\(accountID).json", "QuickSwitcherChannelStore/\(accountID).json", "EmojiCache/\(accountID)"]
         .map { root.appending(path: $0) }
-    defer { for url in cacheURLs { try? FileManager.default.removeItem(at: url) } }
+    // An unsaved status edit belongs to the account and leaves with it.
+    let statusKeys = ["dev.sakuracord.pending-status-edit.\(accountID)", "dev.sakuracord.presence.\(accountID)"]
+    defer {
+        for url in cacheURLs { try? FileManager.default.removeItem(at: url) }
+        for key in statusKeys { UserDefaults.standard.removeObject(forKey: key) }
+    }
     for url in cacheURLs {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data("fixture".utf8).write(to: url)
     }
+    UserDefaults.standard.set(["status": "invisible"], forKey: statusKeys[0])
+    UserDefaults.standard.set("invisible", forKey: statusKeys[1])
     let savedAccounts = SavedAccountStoreSpy()
     let model = AppModel(
         launchMode: .normal, restoresStoredSession: false,
@@ -2541,6 +2611,7 @@ func `removing a saved account without a credential still clears derived caches`
     if switchesAccount { #expect(await !model.switchAccount(to: accountID)) }
     else { await model.logout(accountID: accountID) }
     for url in cacheURLs { #expect(!FileManager.default.fileExists(atPath: url.path)) }
+    for key in statusKeys { #expect(UserDefaults.standard.object(forKey: key) == nil) }
     #expect(model.savedAccounts.map(\.accountID) == ["94000"])
     #expect(await savedAccounts.preferredAccountID() == "94000")
     #expect(model.activeAccountID == "94000")
@@ -3107,7 +3178,7 @@ func `GIF completion preserves newer text and channel drafts`(changesChannel: Bo
     commandModel.selectedChannelID = commandChannel.id
     commandModel.supportedCapabilities = [.slashCommands]
     commandModel.loadApplicationCommands()
-    let commandTask = commandModel.commandLoadTask
+    let commandTask = commandModel.commandComposer.loadTask
 
     commandModel.invalidateAccountSession()
     commandModel.installAccountSession(provider: newProvider, database: nil)
@@ -3893,25 +3964,69 @@ func `GIF completion preserves newer text and channel drafts`(changesChannel: Bo
 }
 
 @MainActor
-@Test func `selecting member loads full profile and expands independently`() async throws {
+@Test func `account status changes from other clients update the current user and self member`() async throws {
     let model = AppModel(launchMode: .offlineTesting)
     await model.start()
-    let member = try #require(model.members.first)
+    let currentUserID = try #require(model.snapshot?.currentUser.id)
+    let others = model.members.filter { $0.id != currentUserID }
+    #expect(model.members.contains { $0.id == currentUserID })
+    #expect(model.currentStatus != .dnd)
 
-    model.selectMember(member)
-    #expect(await until { model.selectedProfile?.id == member.id })
+    await model.consume(.currentUserStatusChanged(.dnd))
 
-    let profile = try #require(model.selectedProfile)
-    #expect(model.isInspectorProfilePresented)
+    #expect(model.currentStatus == .dnd)
+    #expect(model.members.filter { $0.id == currentUserID }.allSatisfy { $0.status == .dnd })
+    #expect(model.members.filter { $0.id != currentUserID } == others)
+
+    // Cached member lists shown again, or republished, carry the current status.
+    let guildID = try #require(model.selectedGuildID)
+    var stale = try #require(model.members.first { $0.id == currentUserID })
+    stale.status = .online
+    model.memberListsByGuildID[guildID] = [stale]
+    model.membersByGuildID[guildID] = [currentUserID: stale]
+    model.restoreMemberPresentation(for: guildID)
+    #expect(model.members.map(\.status) == [.dnd])
+    #expect(model.membersByID[currentUserID]?.status == .dnd)
+    model.consumeMembersChanged(guildID: guildID, members: [stale], groups: [])
+    #expect(model.members.map(\.status) == [.dnd])
+    #expect(model.memberListsByGuildID[guildID]?.map(\.status) == [.dnd])
+}
+
+@MainActor
+@Test(arguments: [false, true])
+func `selecting member loads full profile and expands independently`(fromInbox: Bool) async throws {
+    let model = AppModel(launchMode: .offlineTesting)
+    await model.start()
+    var member = try #require(model.members.first)
+    let destination: ProfilePresentationDestination = fromInbox ? .contextual : .inspector
+    let guildID = fromInbox ? GuildID(rawValue: 99_999) : model.selectedGuildID
+    if fromInbox {
+        member.user.displayName = "Inbox server nickname"
+        member.roleName = "Inbox server role"
+        model.membersByGuildID[try #require(guildID)] = [member.id: member]
+        let message = Message(id: MessageID(rawValue: 99_998), channelID: ChannelID(rawValue: 99_997),
+                              author: member.user, content: "Inbox mention", guildID: guildID)
+        model.showProfile(for: member.user, sourceMessage: message)
+    } else {
+        model.selectMember(member)
+    }
+    #expect(await until { model.profilePresentation(for: destination)?.profile?.id == member.id })
+
+    let profile = try #require(model.profilePresentation(for: destination)?.profile)
+    #expect(model.isInspectorProfilePresented == !fromInbox)
     #expect(profile.id == member.id)
     #expect(!profile.badges.isEmpty)
     #expect(!profile.mutualGuilds.isEmpty)
+    #expect(model.profileCache[SakuraCord.ProfileCacheKey(userID: member.id, guildID: guildID)] != nil)
 
-    let presentation = try #require(model.inspectorProfilePresentation)
+    let presentation = try #require(model.liveProfilePresentation(for: destination))
+    #expect(presentation.member.user.displayName == member.user.displayName)
+    #expect(presentation.member.roleName == member.roleName)
     model.expandProfile(presentation)
     model.dismissInspectorProfile()
     #expect(model.expandedProfilePresentation?.profile?.id == member.id)
     #expect(model.expandedProfilePresentation?.isLoading == false)
+    #expect(model.liveProfilePresentation(for: .expanded)?.member.user.displayName == member.user.displayName)
     #expect(!model.isInspectorProfilePresented)
 
     model.dismissAllProfiles(clearsCache: true)
@@ -3934,6 +4049,7 @@ func `GIF completion preserves newer text and channel drafts`(changesChannel: Bo
         ?? Member(user: currentUser, roleName: "You", status: model.currentStatus)
     let requestID = model.presentProfile(
         for: member,
+        in: model.selectedGuildID,
         destination: .contextual
     )
     #expect(model.contextualProfilePresentation?.requestID == requestID)
@@ -7363,4 +7479,61 @@ private actor DelayedMemberViewportTestProvider: ChatProvider {
         memberLoadContinuation?.resume()
         memberLoadContinuation = nil
     }
+}
+
+@MainActor
+@Test func `thread previews clear on deletion and replacement but preserve other parents`() {
+    let model = AppModel(launchMode: .offlineTesting)
+    let parent = ChannelID(rawValue: 200)
+    let thread = MessageThreadSummary(id: ChannelID(rawValue: 201), parentID: parent, name: "Thread")
+    let other = MessageThreadSummary(id: ChannelID(rawValue: 301), parentID: ChannelID(rawValue: 300), name: "Other")
+    let author = User(id: UserID(rawValue: 1), username: "author", displayName: "Author")
+    let preview = Message(id: MessageID(rawValue: 202), channelID: thread.id, author: author, content: "Deleted")
+    let otherPreview = Message(id: MessageID(rawValue: 302), channelID: other.id, author: author, content: "Retained")
+    let post = ForumPost(thread: thread, mostRecentMessage: preview)
+    model.refreshTimelineThreadCards(parentID: ChannelID(rawValue: 300), posts: [ForumPost(thread: other, mostRecentMessage: otherPreview)])
+    model.refreshTimelineThreadCards(parentID: parent, posts: [post])
+    model.consumeMessageDeleted(channelID: thread.id, messageID: preview.id)
+    #expect(model.threadPreviewMessages[thread.id] == nil)
+    model.refreshTimelineThreadCards(parentID: parent, posts: [post])
+    model.refreshTimelineThreadCards(parentID: parent, posts: [ForumPost(thread: thread)])
+    #expect(model.threadPreviewMessages[thread.id] == nil)
+    model.refreshTimelineThreadCards(parentID: parent, posts: [post])
+    model.refreshTimelineThreadCards(parentID: parent, posts: [])
+    #expect(model.threadPreviewMessages[thread.id] == nil)
+    #expect(model.threadPreviewMessages[other.id] == otherPreview)
+}
+
+@MainActor
+@Test(arguments: [false, true])
+func `resource thread permissions belong to its parent rather than the selected channel`(parentAllows: Bool) {
+    let user = User(id: UserID(rawValue: 1), username: "reader", displayName: "Reader")
+    let guildID = GuildID(rawValue: 100)
+    let permissions = DiscordPermissionBits.sendMessagesInThreads | DiscordPermissionBits.pinMessages
+        | DiscordPermissionBits.manageMessages | DiscordPermissionBits.attachFiles | (UInt64(1) << 49)
+        | DiscordPermissionBits.viewChannel | DiscordPermissionBits.readMessageHistory
+    let guild = Guild(id: guildID, name: "Community", isOwnedByCurrentUser: false,
+        currentUserPermissions: permissions)
+    let selected = Channel(id: ChannelID(rawValue: 200), guildID: guildID, name: "Previous",
+        permissionOverwrites: [.init(id: guildID.description, type: 0, deny: parentAllows ? permissions : 0)])
+    let resource = Channel(id: ChannelID(rawValue: 201), guildID: guildID, name: "Resource",
+        permissionOverwrites: [.init(id: guildID.description, type: 0, deny: parentAllows ? 0 : permissions)])
+    let model = AppModel(launchMode: .offlineTesting, provider: MockChatProvider())
+    model.snapshot = BootstrapSnapshot(currentUser: user, guilds: [guild], channels: [selected, resource], members: [])
+    model.serverRailGuildsByID[guildID] = guild
+    model.currentUserRoleIDsByGuild[guildID] = []
+    model.selectedChannel = selected
+    let thread = MessageThreadSummary(id: ChannelID(rawValue: 202), parentID: resource.id, name: "Resource thread")
+    model.openThread = thread
+    let message = Message(id: MessageID(rawValue: 203), channelID: thread.id,
+        author: User(id: UserID(rawValue: 2), username: "author", displayName: "Author"), content: "Thread message")
+    #expect(model.openThreadAccess.canSend == parentAllows)
+    #expect(model.canCreatePoll(in: thread.id) == parentAllows)
+    #expect(model.canManagePins(for: message) == parentAllows)
+    #expect(model.canDeleteMessage(message) == parentAllows)
+    #expect(model.isComposerDropEligible(.thread) == parentAllows)
+    model.sessionState = .workspace
+    model.presentPinnedMessages()
+    #expect(model.pinnedMessages.hasReadPermission == parentAllows)
+    model.dismissPinnedMessages()
 }

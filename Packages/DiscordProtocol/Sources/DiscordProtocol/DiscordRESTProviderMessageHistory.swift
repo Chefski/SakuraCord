@@ -99,6 +99,7 @@ public extension DiscordRESTProvider {
         )
         cacheForwardSearchMessageAliases(values)
         for index in values.indices {
+            attachKnownThread(to: &values[index])
             if let existing = cachedMessages[values[index].id] {
                 values[index].guildMember = MessageGuildMember.merging(
                     incoming: values[index].guildMember,
@@ -106,6 +107,9 @@ public extension DiscordRESTProvider {
                 )
             }
             cachedMessages[values[index].id] = values[index]
+        }
+        if case .newest = anchor, let latest = values.last {
+            recordLoadedThreadLatestMessage(latest)
         }
         let firstID = values.first?.id
         let lastID = values.last?.id
@@ -139,9 +143,13 @@ public extension DiscordRESTProvider {
         channelID: ChannelID,
         resolvesMissingMembers: Bool = true
     ) async -> (members: [Member], isComplete: Bool) {
-        if let guildID = cachedChannels.values.lazy.flatMap(\.self).first(where: {
-            $0.id == channelID
-        })?.guildID {
+        let thread = cachedJoinedThreads[channelID]
+            ?? cachedForumPosts.values.lazy.compactMap { $0[channelID]?.thread }.first
+        let parentID = thread?.parentID ?? channelID
+        let guildID = thread?.guildID ?? cachedChannels.values.lazy.flatMap(\.self).first(where: {
+            $0.id == parentID
+        })?.guildID ?? values.first?.guildID
+        if let guildID {
             for index in values.indices where values[index].guildID == nil {
                 values[index].guildID = guildID
             }

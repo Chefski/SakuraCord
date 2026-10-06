@@ -55,6 +55,10 @@ extension DiscordRESTProvider {
             max(0, rateLimit.retryAfter)
         )
         failGatewayRequests(rateLimited: rateLimit)
+        if rateLimit.opcode == 3 {
+            lastSentPresenceStatus = nil
+            await sendPresenceIfChanged()
+        }
     }
 
     func handleUserApplicationUpdateDispatch(
@@ -74,10 +78,10 @@ extension DiscordRESTProvider {
             )
         else { return }
         let nonce = response.nonce.value
-        guard let optionType = pendingAutocompleteTypes.removeValue(forKey: nonce) else {
-            return
-        }
-        autocompleteTimeoutTasks.removeValue(forKey: nonce)?.cancel()
+        // The type outlives the local deadline so late choices still reach a
+        // draft that is waiting for this exact nonce.
+        guard let optionType = autocompleteOptionTypes[nonce] else { return }
+        forgetAutocomplete(nonce: nonce)
         let choices = response.choices.compactMap { $0.domain(optionType: optionType) }
         continuation?.yield(
             .applicationCommandAutocomplete(
@@ -109,9 +113,9 @@ extension DiscordRESTProvider {
                 GatewayInteractionLifecycleDTO.self, from: body),
             let nonce = event.nonce?.value
         else { return }
-        if pendingAutocompleteTypes[nonce] == nil {
-            continuation?.yield(.interaction(.succeeded(nonce: nonce)))
-        }
+        // Autocomplete success can precede its choices and is not a result.
+        guard autocompleteOptionTypes[nonce] == nil else { return }
+        continuation?.yield(.interaction(.succeeded(nonce: nonce, interactionID: event.id)))
     }
 
     func handleInteractionFailureDispatch(
@@ -123,20 +127,8 @@ extension DiscordRESTProvider {
                 GatewayInteractionLifecycleDTO.self, from: body),
             let nonce = event.nonce?.value
         else { return }
-        pendingAutocompleteTypes[nonce] = nil
         autocompleteTimeoutTasks.removeValue(forKey: nonce)?.cancel()
-        continuation?.yield(
-            .interaction(
-                .failed(
-                    nonce: nonce,
-                    message: event.errorMessage
-                        ?? event.errorCode.map {
-                            "Discord rejected the interaction (code \($0))."
-                        }
-                        ?? "Discord rejected the interaction."
-                )
-            )
-        )
+        continuation?.yield(.interaction(.failed(nonce: nonce, failure: event.failure)))
     }
 
     func handleInteractionModalCreateDispatch(
@@ -148,9 +140,8 @@ extension DiscordRESTProvider {
                 GatewayInteractionModalDTO.self, from: body
             )
         else { return }
-        pendingModalContexts[event.nonce.value] = event
-        continuation?.yield(
-            .interaction(.presentModal(nonce: event.nonce.value, modal: event.modal))
-        )
+        let context = event.nonce.flatMap { pendingInteractionContexts[$0.value] }
+        guard let modal = event.modal(invocationGuildID: context?.guildID) else { return }
+        continuation?.yield(.interaction(.presentModal(modal)))
     }
 }

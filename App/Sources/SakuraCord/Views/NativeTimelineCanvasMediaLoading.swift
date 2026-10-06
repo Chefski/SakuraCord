@@ -23,7 +23,8 @@ extension NativeTimelineCanvasView {
                 owner: requestOwner,
                 subscriber: identifier,
                 priority: priority
-            ) { [weak self] _ in
+            ) { [weak self] outcome in
+                guard outcome == .ready else { return }
                 self?.scheduleMediaInvalidation(identifier)
             }
         }
@@ -403,14 +404,7 @@ extension NativeTimelineCanvasView {
                     store: spoilerRevealStore
                 )
             else { continue }
-            switch attachment.mediaKind {
-            case .image, .animatedImage:
-                if let key = NativeTimelineMediaKey.attachment(attachment) {
-                    keys.append(key)
-                }
-            case .video, .audio, .file:
-                break
-            }
+            if let key = region.previewKey { keys.append(key) }
         }
     }
 

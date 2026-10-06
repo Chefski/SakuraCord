@@ -289,7 +289,7 @@ extension NativeTimelineCanvasView {
             let element = accessibilityElement(role: .row, label: header.title, identifier: "inbox-group-\(header.channelID)", frame: rowFrame, parent: self)
             element.setAccessibilityCustomActions([
                 NSAccessibilityCustomAction(name: header.isCollapsed ? "Expand" : "Collapse") { [weak self] in
-                    self?.model?.toggleInboxGroup(header.channelID)
+                    self?.toggleInboxGroup(header.channelID)
                     return self != nil
                 },
                 NSAccessibilityCustomAction(name: "Mark Read") { [weak self] in
@@ -584,6 +584,7 @@ extension NativeTimelineCanvasView {
                 else { return false }
                 self.showMessageProfile(
                     for: user,
+                    sourceMessage: message,
                     anchor: self.accessibilityChildFrame(
                         region.profileFrame,
                         rowIndex: rowIndex
@@ -617,6 +618,7 @@ extension NativeTimelineCanvasView {
                     guard let self else { return false }
                     self.showMessageProfile(
                         for: author,
+                        sourceMessage: message,
                         anchor: self.accessibilityChildFrame(
                             authorFrame,
                             rowIndex: rowIndex
@@ -647,17 +649,7 @@ extension NativeTimelineCanvasView {
         rowIndex: Int,
         parent: NSAccessibilityElement
     ) {
-        if let frame = layout.loadingIndicatorFrame {
-            children.append(accessibilityElement(
-                role: .progressIndicator,
-                label: "Loading",
-                frame: accessibilityChildFrame(
-                    frame,
-                    rowIndex: rowIndex
-                ),
-                parent: parent
-            ))
-        }
+        // Loading dots are decorative; the status text beside them is read.
         if let frame = layout.contentFrame,
            let value = layout.attributedContent,
            let framesetter = layout.contentFramesetter
@@ -972,6 +964,11 @@ extension NativeTimelineCanvasView {
         input: NativeTimelineTextAccessibilityInput
     ) {
         guard let sourceMessage = input.sourceMessage else { return }
+        // A hidden spoiler exposes only its reveal button, not its links.
+        let hiddenSpoilerRanges = NativeTimelineTextSpoilers.hiddenRanges(
+            in: input.value,
+            revealedLocations: input.revealedLocations
+        )
         input.value.enumerateAttribute(
                 .link,
                 in: NSRange(location: 0, length: input.value.length)
@@ -979,6 +976,9 @@ extension NativeTimelineCanvasView {
                 let url = (rawLink as? URL)
                     ?? (rawLink as? String).flatMap(URL.init(string:))
                 guard let url,
+                      !hiddenSpoilerRanges.contains(where: {
+                          NSIntersectionRange($0, range).length > 0
+                      }),
                       let localFrame = NativeTimelineTextHitTester.rangeFrame(
                           value: input.value,
                           framesetter: input.framesetter,
@@ -1012,6 +1012,7 @@ extension NativeTimelineCanvasView {
                         presentSystemProfile: { [weak self] user in
                             self?.showMessageProfile(
                                 for: user,
+                                sourceMessage: sourceMessage,
                                 anchor: anchor
                             )
                         }
@@ -1049,19 +1050,17 @@ extension NativeTimelineCanvasView {
         to children: inout [Any],
         input: NativeTimelineTextAccessibilityInput
     ) {
-        let hiddenRanges =
-            TimelineTextAccessibility
-                .hiddenSpoilerRanges(
-                    in: input.value,
-                    revealedLocations: input.revealedLocations
-                )
+        let hiddenRanges = NativeTimelineTextSpoilers.hiddenRanges(
+            in: input.value,
+            revealedLocations: input.revealedLocations
+        )
+        let regions = NativeTimelineTextHitTester.spoilerRegions(
+            value: input.value, framesetter: input.framesetter, frame: input.drawingFrame
+        )
         for range in hiddenRanges {
-            let localFrame = NativeTimelineTextHitTester.rangeFrame(
-                value: input.value,
-                framesetter: input.framesetter,
-                frame: input.drawingFrame,
-                range: range
-            ) ?? input.accessibilityFrame
+            let localFrame = regions.filter { $0.range == range }
+                .map(\.frame).reduce(CGRect.null) { $0.union($1) }
+            guard !localFrame.isNull else { continue }
             children.append(accessibilityElement(
                 role: .button,
                 label: "Reveal spoiler",

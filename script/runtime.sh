@@ -26,6 +26,8 @@ SAKURACORD_EXECUTABLE_PATH="$SAKURACORD_APP_BUNDLE/Contents/MacOS/$SAKURACORD_AP
 SAKURACORD_RUNTIME_DIR="$SAKURACORD_ROOT_DIR/.codex-runtime"
 SAKURACORD_OPERATION_LOCK="$SAKURACORD_RUNTIME_DIR/operation.lock"
 SAKURACORD_SWIFTPM_CACHE_DIR="$SAKURACORD_RUNTIME_DIR/swiftpm-cache"
+# Resolve helpers beside this runtime, even when targeting an older checkout.
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/development_launch.sh"
 
 sakuracord_scoped_pids() {
   ps -ww -axo pid=,command= | while read -r pid command; do
@@ -70,6 +72,7 @@ sakuracord_wait_for_scoped_app() {
 }
 
 sakuracord_launch_scoped_app() {
+  sakuracord_verify_development_launch || return
   # A launcher can reopen the old app while compilation or packaging runs.
   # Check again at launch time, and let LaunchServices reuse an instance if
   # another launcher races this final check instead of forcing a duplicate.

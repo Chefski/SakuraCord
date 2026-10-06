@@ -318,6 +318,8 @@ public struct ForumPostQuery: Hashable, Sendable {
     public var sortOrder: ForumSortOrder
     public var selectedTagIDs: Set<ForumTagID>
     public var tagMatch: ForumTagMatch
+    /// Await the server page and propagate failures instead of presenting a partial cache.
+    public var requiresFreshPage: Bool
     public var offset: Int
     public var limit: Int
 
@@ -327,12 +329,14 @@ public struct ForumPostQuery: Hashable, Sendable {
         selectedTagIDs: Set<ForumTagID> = [],
         tagMatch: ForumTagMatch = .matchSome,
         offset: Int = 0,
-        limit: Int = 10
+        limit: Int = 10,
+        requiresFreshPage: Bool = false
     ) {
         self.scope = scope
         self.sortOrder = sortOrder
         self.selectedTagIDs = selectedTagIDs
         self.tagMatch = tagMatch
+        self.requiresFreshPage = requiresFreshPage
         self.offset = max(0, offset)
         self.limit = max(1, limit)
     }
@@ -482,6 +486,27 @@ public struct CreateForumPostDraft: Equatable, Sendable {
         self.content = content
         self.attachments = attachments
         self.appliedTagIDs = appliedTagIDs
+        self.autoArchiveDuration = autoArchiveDuration
+    }
+}
+
+/// A thread started from a text or announcement channel without a starter
+/// message. Its first message is sent separately once Discord creates it.
+public struct CreateThreadDraft: Equatable, Sendable {
+    public var channelID: ChannelID
+    public var name: String
+    public var isPrivate: Bool
+    public var autoArchiveDuration: Int
+
+    public init(
+        channelID: ChannelID,
+        name: String,
+        isPrivate: Bool = false,
+        autoArchiveDuration: Int = 4_320
+    ) {
+        self.channelID = channelID
+        self.name = name
+        self.isPrivate = isPrivate
         self.autoArchiveDuration = autoArchiveDuration
     }
 }

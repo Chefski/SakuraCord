@@ -67,6 +67,41 @@ import SakuraCordModels
             await handleGatewayDispatch(name: name, body: data)
         }
 
+        /// Occupies the single StatusSettings save slot so later writers queue.
+        func holdStatusSettingsSaveForTesting() {
+            profileStatusSaveID = UUID()
+        }
+
+        func releaseStatusSettingsSaveForTesting() {
+            finishStatusSettingsSave()
+        }
+
+        func statusSettingsSaveWaiterCountForTesting() -> Int {
+            statusSettingsSaveWaiters.count
+        }
+
+        func pendingStatusEditForTesting() -> PendingStatusEdit? {
+            pendingStatusEdit
+        }
+
+        /// Runs a scheduled status-edit save now; false when none is scheduled.
+        func runScheduledStatusEditSaveForTesting() async -> Bool {
+            guard statusEditSaveTask != nil else { return false }
+            cancelStatusEditSave()
+            await runStatusEditSave(statusEditSaveToken)
+            return true
+        }
+
+        /// Ends the presence rate-limit window without waiting 20 seconds.
+        func reopenPresenceSendWindowForTesting() async {
+            presenceSendWindowEnds = []
+            await sendPresenceIfChanged()
+        }
+
+        func hasDeferredPresenceForTesting() -> Bool {
+            deferredPresenceTask != nil
+        }
+
         func cachedChannelForTesting(channelID: ChannelID) -> Channel? {
             cachedChannels.values.lazy.flatMap { $0 }.first { $0.id == channelID }
         }

@@ -89,6 +89,14 @@ extension DiscordRESTProvider {
         {
             // A newly created poll starts empty; historical omitted results remain unknown.
             if message.poll != nil, message.poll?.results == nil { message.poll?.results = PollResults() }
+            // Ephemeral interaction responses can omit guild_id; their channel
+            // still identifies the guild that later component actions need.
+            if message.guildID == nil {
+                message.guildID = cachedJoinedThreads[message.channelID]?.guildID
+                    ?? cachedChannels.values.lazy.flatMap(\.self)
+                    .first { $0.id == message.channelID }?.guildID
+            }
+            attachKnownThread(to: &message)
             cacheMessageSearchUsers(dto.searchIndexUsers)
             cacheForwardSearchMessageAliases([message])
             cachedMessages[message.id] = message
@@ -211,6 +219,20 @@ extension DiscordRESTProvider {
         }
     }
 
+    /// Preview caches outlive the message working set. Remove deleted content
+    /// there too so a later catalogue publication cannot resurrect it.
+    func removeDeletedForumPreview(channelID: ChannelID, messageID: MessageID) {
+        for (parentID, posts) in cachedForumPosts {
+            guard var post = posts[channelID] else { continue }
+            var changed = false
+            if post.firstMessage?.id == messageID { post.firstMessage = nil; changed = true }
+            if post.mostRecentMessage?.id == messageID { post.mostRecentMessage = nil; changed = true }
+            guard changed else { continue }
+            cachedForumPosts[parentID]?[channelID] = post
+            publishForumPosts(parentID: parentID)
+        }
+    }
+
     func handleMessageDeleteDispatch(
         name: String,
         body: JSONValue
@@ -219,6 +241,7 @@ extension DiscordRESTProvider {
            let channelID = ChannelID(value.channelID), let messageID = MessageID(value.id)
         {
             cachedMessages[messageID] = nil
+            removeDeletedForumPreview(channelID: channelID, messageID: messageID)
             continuation?.yield(.messageDeleted(channelID: channelID, messageID: messageID))
         }
     }
@@ -234,6 +257,7 @@ extension DiscordRESTProvider {
         else { return }
         for messageID in deletion.ids.compactMap(MessageID.init) {
             cachedMessages[messageID] = nil
+            removeDeletedForumPreview(channelID: channelID, messageID: messageID)
             continuation?.yield(
                 .messageDeleted(channelID: channelID, messageID: messageID)
             )

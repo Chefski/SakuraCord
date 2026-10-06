@@ -371,6 +371,71 @@ extension AppModel {
         refreshServerRailPresentation(guildID: guild.id)
     }
 
+    func moveServerRailItems(
+        _ sources: [GuildRailItem.RailIdentifier],
+        to destination: GuildRailDestination
+    ) {
+        editServerRail(serverRailItems.moving(sources, to: destination))
+    }
+
+    /// Dropping one server onto another makes a folder of the two. Like the
+    /// first-party client, the folder gets a random unused 32-bit identifier.
+    func combineServerRailGuild(_ source: GuildID, onto target: GuildID) {
+        var folderID: Int64
+        repeat {
+            folderID = Int64(UInt32.random(in: 0 ... .max))
+        } while serverRailItems.contains { $0.id == .folder(folderID) }
+        editServerRail(serverRailItems.combining(source, onto: target, folderID: folderID))
+    }
+
+    func updateServerFolder(_ id: Int64, name: String?, colorHex: UInt32?) {
+        editServerRail(serverRailItems.updatingFolder(id, name: name, colorHex: colorHex))
+    }
+
+    func markServerFolderRead(_ guildIDs: [GuildID]) {
+        guildIDs.forEach(markGuildRead)
+    }
+
+    /// Shows an edited rail immediately and hands it to the provider, which
+    /// owns saving it and reverting a rejected save.
+    private func editServerRail(_ edited: [GuildRailItem]) {
+        let previous = serverRailItems
+        guard edited != previous else { return }
+        // Only the rail changes now. The account-wide refresh that follows a
+        // layout change waits until the rail has settled, so it cannot stall
+        // the animation.
+        serverRailItems = edited
+        let session = accountSession()
+        let previousTask = serverRailLayoutTask
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(400))
+            guard let self, isCurrentAccountSession(session), serverRailItems == edited else { return }
+            applyServerRailLayout(edited)
+        }
+        serverRailLayoutTask = Task { [weak self] in
+            await previousTask?.value
+            guard let self, isCurrentAccountSession(session) else { return }
+            do {
+                try await session.provider.updateGuildRailLayout(edited)
+            } catch {
+                guard isCurrentAccountSession(session) else { return }
+                if serverRailItems == edited { applyServerRailLayout(previous) }
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func applyServerRailLayout(_ items: [GuildRailItem]) {
+        guard let guilds = snapshot?.guilds else { return }
+        let guildsByID = Dictionary(guilds.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let railGuildIDs = items.flattenedGuildIDs
+        let placed = Set(railGuildIDs)
+        consumeGuildLayoutChanged(
+            guilds: guilds.filter { !placed.contains($0.id) } + railGuildIDs.compactMap { guildsByID[$0] },
+            railItems: items
+        )
+    }
+
     func refreshServerRailPresentation(guildID: GuildID? = nil) {
         if let guildID {
             serverRailPresentation.updateGuild(

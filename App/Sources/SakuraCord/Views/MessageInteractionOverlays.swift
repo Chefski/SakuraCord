@@ -180,6 +180,10 @@ nonisolated enum MessageOutboxPresentation {
         }
     }
 
+    static func interactionMode(for message: Message) -> InteractionMode {
+        message.flags.contains(.ephemeral) ? .disabled : interactionMode(for: message.outboxState)
+    }
+
     static func interactionMode(for state: OutboxState) -> InteractionMode {
         switch state {
         case .queued, .uploading, .sending, .awaitingReconciliation:
@@ -191,8 +195,18 @@ nonisolated enum MessageOutboxPresentation {
         }
     }
 
-    static func textOpacity(for state: OutboxState) -> Double {
-        contentOpacity(for: state)
+    /// Pending-interaction status replaces dimming; it is already muted.
+    static func textOpacity(for message: Message) -> Double {
+        message.flags.contains(.loading) ? 1 : contentOpacity(for: message.outboxState)
+    }
+
+    /// Discord labels a pending interaction from its loading flag, not its
+    /// body: a local command row reports its own progress, and an app's
+    /// deferred response is the app "thinking".
+    static func interactionLoadingStatus(for message: Message, authorName: String) -> String? {
+        guard message.flags.contains(.loading) else { return nil }
+        if message.outboxState != .confirmed, !message.content.isEmpty { return message.content }
+        return "\(authorName) is thinking…"
     }
 
     static func mediaOpacity(for state: OutboxState) -> Double {
@@ -223,6 +237,8 @@ nonisolated enum MessageOutboxPresentation {
 }
 
 struct NativeTimelineEditingMessageContent: View {
+    @State private var isDismissHovered = false
+
     let model: AppModel
     let message: Message
     let save: (String) -> Void
@@ -294,9 +310,12 @@ struct NativeTimelineEditingMessageContent: View {
                         .accessibilityHidden(true)
                     Text("Only you can see this")
                     Text("•")
-                    Button("Dismiss message") {
+                    Button {
                         model.dismissEphemeralMessage(message)
+                    } label: {
+                        Text("Dismiss message").underline(isDismissHovered)
                     }
+                    .onModalHover { isDismissHovered = $0 }
                     .buttonStyle(.plain)
                     .foregroundStyle(SakuraCordAccentColor.color)
                 }
@@ -404,7 +423,7 @@ struct MessageActionCapsule: View {
                 HoverActionButton(systemImage: "link", help: "Copy message link", action: copyLink)
                 if let openThread {
                     HoverActionButton(
-                        systemImage: "bubble.left.and.bubble.right", help: "Open thread", action: openThread
+                        systemImage: SakuraCordSystemSymbol.thread, help: "Open thread", action: openThread
                     )
                 }
                 if canDelete {
@@ -571,35 +590,70 @@ enum MessageReplySummary {
     nonisolated struct Prepared: Sendable {
         let source: String
         let text: String
+        /// UTF-16 ranges of `text` inside spoilers. Reply bars never reveal
+        /// them, so presentation conceals these ranges.
+        let spoilerRanges: [NSRange]
     }
 
-    private static let values: NSCache<NSString, NSString> = {
-        let cache = NSCache<NSString, NSString>()
+    private final class CachedValue {
+        let prepared: Prepared
+
+        init(_ prepared: Prepared) {
+            self.prepared = prepared
+        }
+    }
+
+    private static let values: NSCache<NSString, CachedValue> = {
+        let cache = NSCache<NSString, CachedValue>()
         cache.countLimit = 2_000
         cache.totalCostLimit = 4 * 1_024 * 1_024
         return cache
     }()
 
+    static let defaultMentionLabel: (RenderedMention) -> String = { mention in
+        switch mention.kind {
+        case .guildNavigation: GuildNavigationMention(rawValue: mention.id)?.title ?? mention.rawToken
+        case .user: "@unknown-user"
+        case .role: "@unknown-role"
+        case .channel: "#unknown-channel"
+        case .channelLink: "Channel link"
+        case .message: "Message link"
+        }
+    }
+
+    /// Plain single-line text, including spoiler contents.
     static func text(
         content: String,
-        mentionLabel: (RenderedMention) -> String = { mention in
-            switch mention.kind {
-            case .guildNavigation: GuildNavigationMention(rawValue: mention.id)?.title ?? mention.rawToken
-            case .user: "@unknown-user"
-            case .role: "@unknown-role"
-            case .channel: "#unknown-channel"
-            case .channelLink: "Channel link"
-            case .message: "Message link"
-            }
-        }
+        mentionLabel: (RenderedMention) -> String = defaultMentionLabel
     ) -> String {
+        summary(content: content, mentionLabel: mentionLabel).text
+    }
+
+    /// Single-line text with its spoiler ranges.
+    static func summary(
+        content: String,
+        mentionLabel: (RenderedMention) -> String = defaultMentionLabel
+    ) -> Prepared {
         let source = resolvedSource(content: content, mentionLabel: mentionLabel)
         if let cached = values.object(forKey: source as NSString) {
-            return cached as String
+            return cached.prepared
         }
         let prepared = prepare(source)
         install(prepared)
-        return prepared.text
+        return prepared
+    }
+
+    /// Text for accessibility, which reads each spoiler as "Spoiler".
+    static func accessibilityText(
+        content: String,
+        mentionLabel: (RenderedMention) -> String = defaultMentionLabel
+    ) -> String {
+        let prepared = summary(content: content, mentionLabel: mentionLabel)
+        let text = NSMutableString(string: prepared.text)
+        for range in prepared.spoilerRanges.reversed() {
+            text.replaceCharacters(in: range, with: "Spoiler")
+        }
+        return text as String
     }
 
     static func preparation(
@@ -627,15 +681,60 @@ enum MessageReplySummary {
         }
     }
 
+    /// Collapses the rendered text's whitespace to single spaces. A collapsed
+    /// space is a spoiler only inside one spoiler, and adjacent spoilers stay
+    /// separate ranges.
     nonisolated static func prepare(_ source: String) -> Prepared {
-        let plainText = String(DiscordMarkdown.attributed(source).characters)
-        let collapsed = plainText.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        return Prepared(source: source, text: collapsed.isEmpty ? "Attachment" : collapsed)
+        var text = ""
+        var spoilerRanges: [NSRange] = []
+        var length = 0
+        var pendingSpace = false
+        var previousSpoilerID: Int?
+        var rangeSpoilerID: Int?
+
+        func append(_ value: String, spoilerID: Int?) {
+            let valueLength = value.utf16.count
+            if let spoilerID {
+                if let last = spoilerRanges.last,
+                   NSMaxRange(last) == length,
+                   rangeSpoilerID == spoilerID
+                {
+                    spoilerRanges[spoilerRanges.count - 1].length += valueLength
+                } else {
+                    spoilerRanges.append(NSRange(location: length, length: valueLength))
+                    rangeSpoilerID = spoilerID
+                }
+            }
+            text += value
+            length += valueLength
+        }
+
+        for run in DiscordMarkdown.plainTextRuns(source) {
+            for character in run.text {
+                if character.isWhitespace {
+                    pendingSpace = !text.isEmpty
+                    continue
+                }
+                if pendingSpace {
+                    append(
+                        " ",
+                        spoilerID: previousSpoilerID == run.spoilerID ? run.spoilerID : nil
+                    )
+                    pendingSpace = false
+                }
+                append(String(character), spoilerID: run.spoilerID)
+                previousSpoilerID = run.spoilerID
+            }
+        }
+        guard !text.isEmpty else {
+            return Prepared(source: source, text: "Attachment", spoilerRanges: [])
+        }
+        return Prepared(source: source, text: text, spoilerRanges: spoilerRanges)
     }
 
     static func install(_ prepared: Prepared) {
         values.setObject(
-            prepared.text as NSString,
+            CachedValue(prepared),
             forKey: prepared.source as NSString,
             cost: prepared.source.utf8.count + prepared.text.utf8.count
         )

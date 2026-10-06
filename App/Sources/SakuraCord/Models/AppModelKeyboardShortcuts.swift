@@ -152,7 +152,7 @@ extension AppModel {
         case .messageSearch:
             MessageSearchSurfacePolicy.showsToolbar(
                 channelKind: selectedChannel?.kind,
-                hasOpenThread: openThread != nil
+                hasOpenThread: hasThreadPane
             )
         case .previousConversation, .nextConversation:
             hasKeyboardShortcutConversationDestination(unreadOnly: false)
@@ -181,18 +181,18 @@ extension AppModel {
         case .searchCurrentConversation:
             MessageSearchSurfacePolicy.showsToolbar(
                 channelKind: selectedChannel?.kind,
-                hasOpenThread: openThread != nil
+                hasOpenThread: hasThreadPane
             )
         case .copyChannelLink:
             openThread != nil || selectedChannelID != nil
         case .togglePins:
             activePinsChannelID != nil
         case .toggleEmojiPicker, .toggleGIFPicker, .toggleStickerPicker:
-            commandComposer.activeCommand == nil && selectedChannelID != nil && selectedConversationAccess.canSend
+            commandComposer(for: activeComposerDestination).activeCommand == nil && selectedChannelID != nil && selectedConversationAccess.canSend
         case .markServerRead:
             selectedGuildID != nil
         case .upload:
-            commandComposer.activeCommand == nil
+            commandComposer(for: activeComposerDestination).activeCommand == nil
                 && selectedChannelID != nil
                 && selectedConversationAccess.canSend
         default: false
@@ -221,7 +221,7 @@ extension AppModel {
     }
 
     private var activeComposerDestination: MessageComposerDestination {
-        openThread == nil ? .channel : .thread
+        hasThreadPane ? .thread : .channel
     }
 
 }

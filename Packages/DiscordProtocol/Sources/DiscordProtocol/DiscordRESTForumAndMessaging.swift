@@ -14,7 +14,7 @@ extension DiscordRESTProvider {
         switch query.scope {
         case .active:
             let cachedPosts = Array(cachedForumPosts[channelID, default: [:]].values)
-            if query.offset == 0, !cachedPosts.isEmpty {
+            if !query.requiresFreshPage, query.offset == 0, !cachedPosts.isEmpty {
                 let immediatePosts = Self.filteredAndSortedForumPosts(
                     cachedPosts,
                     query: query
@@ -43,7 +43,7 @@ extension DiscordRESTProvider {
                 return page
             } catch {
                 if Task.isCancelled { throw CancellationError() }
-                guard !cachedPosts.isEmpty else { throw error }
+                guard !query.requiresFreshPage, !cachedPosts.isEmpty else { throw error }
                 gatewayLogger.warning(
                     "Older forum-post pagination failed; retaining cached posts for channel \(channelID)"
                 )
@@ -234,6 +234,38 @@ extension DiscordRESTProvider {
         publishForumPosts(parentID: draft.channelID)
         progress(.completed(messageID: MessageID(rawValue: post.id.rawValue)))
         return post
+    }
+
+    /// Mirrors the first-party composer Plus Button action. The starter
+    /// message is an ordinary send to the returned thread.
+    public func createThread(_ draft: CreateThreadDraft) async throws -> MessageThreadSummary {
+        guard
+            let channel = cachedChannels.values.lazy.flatMap(\.self).first(where: {
+                $0.id == draft.channelID && ($0.kind == .text || $0.kind == .announcement)
+            })
+        else { throw ChatProviderError.channelNotFound }
+        let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard (1 ... 100).contains(name.count) else {
+            throw ChatProviderError.invalidRequest("Thread names must be between 1 and 100 characters.")
+        }
+        guard !draft.isPrivate || channel.kind == .text else {
+            throw ChatProviderError.invalidRequest("Announcement channels cannot have private threads.")
+        }
+        guard Self.validForumAutoArchiveDurations.contains(draft.autoArchiveDuration) else {
+            throw ChatProviderError.invalidRequest("The selected auto-archive duration is invalid.")
+        }
+        let type = draft.isPrivate ? 12 : (channel.kind == .announcement ? 10 : 11)
+        let dto: ChannelDTO = try await request(
+            "/channels/\(draft.channelID)/threads",
+            method: "POST",
+            body: [
+                "name": .string(name),
+                "type": .number(Double(type)),
+                "auto_archive_duration": .number(Double(draft.autoArchiveDuration)),
+                "location": .string("Plus Button"),
+            ]
+        )
+        return try dto.forumPost(fallbackGuildID: channel.guildID).thread
     }
 
     public func updateForumPost(_ post: ForumPost, mutation: ForumPostMutation) async throws
@@ -757,6 +789,29 @@ extension DiscordRESTProvider {
         _ post: ForumPost
     ) -> Bool {
         post.thread.isArchived || post.thread.isLocked
+    }
+
+    /// A thread-created system message names its thread only through its
+    /// reference; attach the known thread so the timeline can draw its card.
+    func attachKnownThread(to message: inout Message) {
+        guard message.thread == nil,
+              let threadID = message.referencedThreadID,
+              let thread = cachedForumPosts[message.channelID]?[threadID]?.thread
+        else { return }
+        message.thread = thread
+    }
+
+    /// A thread's newest history page supplies its card preview, as in
+    /// Discord's client. Only a newer message republishes the catalogue.
+    func recordLoadedThreadLatestMessage(_ message: Message) {
+        for (parentID, posts) in cachedForumPosts {
+            guard var post = posts[message.channelID] else { continue }
+            guard post.mostRecentMessage.map({ message.id > $0.id }) ?? true else { return }
+            post.mostRecentMessage = message
+            cachedForumPosts[parentID]?[post.id] = post
+            publishForumPosts(parentID: parentID)
+            return
+        }
     }
 
     func updateForumPostForMessage(

@@ -63,6 +63,44 @@ func `animated linked Discord emoji use the normal animated emoji presentation`(
 }
 
 @MainActor @Test
+func `linked emoji inside spoilers stay spoilered links`() throws {
+    let party = "https://cdn.discordapp.com/emojis/456.png"
+    let wave = "https://cdn.discordapp.com/emojis/789.png"
+    #expect(LinkedImagePresentation(content: "[party](\(party))").visibleText == "<:party:456>")
+
+    let hidden = "||[party](\(party))||"
+    let spoilered = LinkedImagePresentation(content: hidden)
+    #expect(spoilered.visibleText == hidden)
+    #expect(spoilered.images.isEmpty)
+    #expect(spoilered.matchedEmojiURLs.isEmpty)
+
+    // Only the unspoilered link, including one to the same emoji, converts.
+    let mixed = LinkedImagePresentation(
+        content: "[wave](\(wave)) [party](\(party)) ||[party](\(party))||"
+    )
+    #expect(mixed.images.map(\.id) == ["0:\(wave)", "50:\(party)"])
+    #expect(mixed.matchedEmojiURLs == Set([wave, party].compactMap(URL.init(string:))))
+    #expect(mixed.visibleText.hasSuffix("||[party](\(party))||"))
+
+    // A different syntax occurrence of the same URL must not borrow or
+    // consume the masked link's spoiler state, including adjacent links.
+    for content in [
+        "||<\(party)>|| [party](\(party))",
+        "<\(party)> ||[party](\(party))|| [party](\(party))",
+        "||[party](\(party))||[party](\(party))",
+        "`[party](\(party))` ||[party](\(party))|| [party](\(party))",
+    ] {
+        let result = LinkedImagePresentation(content: content)
+        let visibleLocation = (content as NSString).range(of: "[party]", options: .backwards).location
+        #expect(result.images.contains { $0.id == "\(visibleLocation):\(party)" })
+        #expect(!result.images.contains { reference in
+            let hidden = (content as NSString).range(of: "||[party]")
+            return hidden.location != NSNotFound && reference.id == "\(hidden.location + 2):\(party)"
+        })
+    }
+}
+
+@MainActor @Test
 func `linked emoji previews replace duplicate Discord bare media embeds`() throws {
     let sourceURL = try #require(URL(
         string:

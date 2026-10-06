@@ -4,6 +4,8 @@ import SwiftUI
 enum SakuraCordSystemSymbol {
     nonisolated static let emojiFaceGrinning = "emoji.face.grinning"
     nonisolated static let stickerFill = "sticker.fill"
+    nonisolated static let thread = "thread"
+    nonisolated static let applicationCommands = "xmark.triangle.circle.square.fill"
 
     private static let privateSymbolsBundle = Bundle(
         path: "/System/Library/PrivateFrameworks/SFSymbols.framework/Resources/CoreGlyphsPrivate.bundle"
@@ -23,11 +25,21 @@ enum SakuraCordSystemSymbol {
         return Image(stickerFill, bundle: privateSymbolsBundle)
     }
 
+    @ViewBuilder
+    static func swiftUIImage(named name: String) -> some View {
+        if name == thread {
+            Image(name, bundle: .module)
+                .imageScale(.large)
+        } else {
+            Image(systemName: name)
+        }
+    }
+
     static func image(
         named name: String,
         accessibilityDescription: String? = nil
     ) -> NSImage? {
-        let source = NSImage(
+        let source = name == thread ? Bundle.module.image(forResource: name) : NSImage(
             systemSymbolName: name,
             accessibilityDescription: accessibilityDescription
         ) ?? privateSymbolsBundle?.image(forResource: name)

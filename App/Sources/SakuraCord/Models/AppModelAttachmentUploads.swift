@@ -1,6 +1,11 @@
 import Foundation
 import SakuraCordModels
 
+enum AttachmentComposerContext: Equatable {
+    case conversation(ChannelID)
+    case threadCreation(UUID)
+}
+
 struct OversizedAttachmentPrompt: Identifiable {
     enum Stage { case compaction, externalUpload }
     let id = UUID()
@@ -9,13 +14,13 @@ struct OversizedAttachmentPrompt: Identifiable {
     let discordLimit: Int64
     let premiumType: Int
     let destination: MessageComposerDestination
-    let channelID: ChannelID
+    let context: AttachmentComposerContext
     var stage: Stage = .externalUpload
     var compactionOutcome: String?
 
     func externalUpload(after outcome: String? = nil) -> Self {
         Self(fileURL: fileURL, fileSize: fileSize, discordLimit: discordLimit,
-             premiumType: premiumType, destination: destination, channelID: channelID,
+             premiumType: premiumType, destination: destination, context: context,
              stage: .externalUpload, compactionOutcome: outcome)
     }
 
@@ -42,18 +47,22 @@ extension AppModel {
         _ urls: [URL],
         offeringExternalUploadFor destination: MessageComposerDestination? = nil
     ) async -> [URL] {
+        let urls = uploadableFileURLs(urls)
         guard !urls.isEmpty else { return [] }
         let generation = accountSessionGeneration
-        let channelID = destination.flatMap { conversationChannelID(for: $0) } ?? selectedChannelID
+        let context = attachmentComposerContext(for: destination ?? .channel)
         let checkedFiles: [UploadPrivacyPreparation.CheckedFile]
         do {
             checkedFiles = try await uploadPrivacyPreparation.checkSelection(urls)
         } catch {
+            guard generation == accountSessionGeneration,
+                  attachmentComposerContext(for: destination ?? .channel) == context,
+                  !Task.isCancelled, !(error is CancellationError) else { return [] }
             errorMessage = error.localizedDescription
             return []
         }
         guard generation == accountSessionGeneration,
-              (destination.flatMap { conversationChannelID(for: $0) } ?? selectedChannelID) == channelID,
+              attachmentComposerContext(for: destination ?? .channel) == context,
               !Task.isCancelled else { return [] }
         let premiumType = snapshot?.currentUser.premiumType ?? 0
         let limit = DiscordAttachmentUploadPolicy.maximumFileSize(premiumType: premiumType)
@@ -78,9 +87,7 @@ extension AppModel {
         }
 
         guard !oversized.isEmpty else { return accepted }
-        if let destination,
-           let channelID = conversationChannelID(for: destination)
-        {
+        if let destination, let context {
             for (url, size) in oversized {
                 enqueueOversizedAttachmentPrompt(
                     OversizedAttachmentPrompt(
@@ -89,7 +96,7 @@ extension AppModel {
                         discordLimit: limit,
                         premiumType: premiumType,
                         destination: destination,
-                        channelID: channelID,
+                        context: context,
                         stage: .compaction
                     )
                 )
@@ -102,6 +109,24 @@ extension AppModel {
             )
         }
         return accepted
+    }
+
+    /// Skips folders like Discord, which reports an error only when no file
+    /// remains, and rejects the whole batch when any file is empty.
+    func uploadableFileURLs(_ urls: [URL]) -> [URL] {
+        let keys: Set<URLResourceKey> = [.isDirectoryKey, .fileSizeKey]
+        let files = urls.compactMap { url -> (url: URL, size: Int?)? in
+            let values = try? url.resourceValues(forKeys: keys)
+            return values?.isDirectory == true ? nil : (url, values?.fileSize)
+        }
+        if files.isEmpty, !urls.isEmpty {
+            errorMessage = "That file type is not supported."
+        }
+        guard !files.contains(where: { $0.size == 0 }) else {
+            errorMessage = "File cannot be empty."
+            return []
+        }
+        return files.map(\.url)
     }
 
     func dismissOversizedAttachmentPrompt(id expectedID: UUID? = nil) {
@@ -123,7 +148,7 @@ extension AppModel {
         guard prompt.stage == .externalUpload,
               prompt.availableServices.contains(service),
               isComposerDropEligible(prompt.destination),
-              conversationChannelID(for: prompt.destination) == prompt.channelID
+              attachmentComposerContext(for: prompt.destination) == prompt.context
         else { return }
 
         externalAttachmentUploadTask?.cancel()
@@ -157,7 +182,7 @@ extension AppModel {
                 )
                 try Task.checkCancellation()
                 guard externalAttachmentUploadGeneration == generation else { return }
-                guard conversationChannelID(for: prompt.destination) == prompt.channelID else {
+                guard attachmentComposerContext(for: prompt.destination) == prompt.context else {
                     throw ExternalAttachmentUploadError.conversationChanged(link)
                 }
                 appendExternalAttachmentLink(link, to: prompt.destination)
@@ -247,6 +272,7 @@ extension AppModel {
                 .flatMap(\.attachmentURLs)
                 .map(\.standardizedFileURL)
         )
+        retainedFileURLs.formUnion(commandComposers.flatMap(\.attachmentURLs).map(\.standardizedFileURL))
         retainedFileURLs.formUnion(promisedAttachmentFilesInFlight)
 
         let staleFileURLs = promisedAttachmentDirectoryByFileURL.keys.filter {
@@ -316,12 +342,17 @@ extension AppModel {
         routeOversizedAttachment(prompt)
     }
 
-    func conversationChannelID(
+    func attachmentComposerContext(
         for destination: MessageComposerDestination
-    ) -> ChannelID? {
+    ) -> AttachmentComposerContext? {
         switch destination {
-        case .channel: selectedChannelID
-        case .thread: openThread?.id
+        case .channel: selectedChannelID.map(AttachmentComposerContext.conversation)
+        case .thread:
+            if let creation = threadCreation {
+                .threadCreation(creation.identity)
+            } else {
+                openThread.map { .conversation($0.id) }
+            }
         }
     }
 

@@ -12,7 +12,7 @@ public struct MessageUpdate: Equatable, Sendable {
     public var embeds: [MessageEmbed]?
     public var components: [MessageComponent]?
     public var stickers: [MessageSticker]?
-    public var thread: MessageThreadSummary?
+    public var thread: MessageThreadSummary??
     public var flags: MessageFlags?
     public var isPinned: Bool?
     public var type: DiscordMessageType?
@@ -22,6 +22,7 @@ public struct MessageUpdate: Equatable, Sendable {
     public var mentionedRoleIDs: [RoleID]?
     public var mentionsEveryone: Bool?
     public var updatedUsers: [UserID: User] = [:]
+    public var webhookAuthor: User?
 
     public init(messageID: MessageID, channelID: ChannelID) {
         self.messageID = messageID
@@ -37,7 +38,7 @@ public struct MessageUpdate: Equatable, Sendable {
         embeds = newer.embeds ?? embeds
         components = newer.components ?? components
         stickers = newer.stickers ?? stickers
-        thread = newer.thread ?? thread
+        if newer.thread != nil { thread = newer.thread }
         flags = newer.flags ?? flags
         isPinned = newer.isPinned ?? isPinned
         type = newer.type ?? type
@@ -49,11 +50,15 @@ public struct MessageUpdate: Equatable, Sendable {
         mentionedRoleIDs = newer.mentionedRoleIDs ?? mentionedRoleIDs
         mentionsEveryone = newer.mentionsEveryone ?? mentionsEveryone
         updatedUsers.merge(newer.updatedUsers) { _, newer in newer }
+        webhookAuthor = newer.webhookAuthor ?? webhookAuthor
     }
 
     public func apply(to message: inout Message) {
         guard message.id == messageID, message.channelID == channelID else { return }
         for user in updatedUsers.values { message.applyIdentityUpdate(user) }
+        if let webhookAuthor, message.webhookID != nil, message.author.id == webhookAuthor.id {
+            message.author = webhookAuthor
+        }
         applyContent(to: &message)
         for update in pollUpdates { update.apply(to: &message) }
         if let thread { message.thread = thread }
