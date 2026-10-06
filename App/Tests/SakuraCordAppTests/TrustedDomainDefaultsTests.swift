@@ -14,10 +14,14 @@ import Testing
         "support.microsoft.com", "docs.github.com", "old.reddit.com", "support.discord.com",
         "www.mercadolivre.com.br", "www.jumia.co.ke", "www.aljazeera.net", "www.flipkart.com",
         "www.naver.com", "www.yahoo.co.jp", "www.grab.com", "www.abc.net.au",
+        "www.fedoraproject.org", "docs.fedoraproject.org",
     ] {
         #expect(!ExternalLinkConfirmationPolicy.untrustedDomains.requiresConfirmation(for: host, trustedDomains: rules))
     }
-    for host in ["customer.github.io", "customer.pages.dev", "customer.azurewebsites.net", "customer.wordpress.com"] {
+    for host in [
+        "customer.github.io", "customer.pages.dev", "customer.azurewebsites.net", "customer.wordpress.com",
+        "customer.cloud.fedoraproject.org", "customer.app.os.fedoraproject.org", "customer.app.os.stg.fedoraproject.org",
+    ] {
         #expect(ExternalLinkConfirmationPolicy.untrustedDomains.requiresConfirmation(for: host, trustedDomains: rules))
     }
     #expect(PrivacySafetySettingsSnapshot.defaults.trustedDomains == rules)
