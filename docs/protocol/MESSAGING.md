@@ -386,7 +386,9 @@ code, not in the transport-wide baseline.
   activated link whose complete URL matches the rule, because its click paths
   carry only the URL; the first-party client refreshes only attachment-link
   clicks and its "Copy link" item, and SakuraCord has no message link context
-  menu. Neither client refreshes image embeds, attachments, or the media viewer.
+  menu. This activation path does not refresh image embeds, attachments, or the
+  media viewer. The first-party client separately detects expired attachment
+  and embed URLs when loading a channel and refetches message history.
 
 | Route | Contract | Evidence |
 | --- | --- | --- |

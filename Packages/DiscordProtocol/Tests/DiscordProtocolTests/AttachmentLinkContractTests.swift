@@ -1,5 +1,6 @@
 import Foundation
 import SakuraCordModels
+import Synchronization
 import Testing
 @testable import DiscordProtocol
 
@@ -78,14 +79,20 @@ private struct CapturedAttachmentRefreshRequest: @unchecked Sendable {
 }
 
 private final class AttachmentRefreshURLProtocol: URLProtocol, @unchecked Sendable {
-    nonisolated(unsafe) static var requests: [CapturedAttachmentRefreshRequest] = []
-    nonisolated(unsafe) static var status = 200
-    nonisolated(unsafe) static var responseBody = ""
+    private struct State: Sendable {
+        var requests: [CapturedAttachmentRefreshRequest] = []
+        var status = 200
+        var responseBody = ""
+    }
+
+    private static let state = Mutex(State())
+
+    static var requests: [CapturedAttachmentRefreshRequest] {
+        state.withLock { $0.requests }
+    }
 
     static func reset(status: Int, body: String) {
-        requests = []
-        self.status = status
-        responseBody = body
+        state.withLock { $0 = State(status: status, responseBody: body) }
     }
 
     override static func canInit(with request: URLRequest) -> Bool { true }
@@ -103,17 +110,21 @@ private final class AttachmentRefreshURLProtocol: URLProtocol, @unchecked Sendab
             }
             stream.close()
         }
-        Self.requests.append(CapturedAttachmentRefreshRequest(
+        let captured = CapturedAttachmentRefreshRequest(
             method: request.httpMethod ?? "",
             path: request.url?.path ?? "",
             body: (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
-        ))
+        )
+        let (status, responseBody) = Self.state.withLock {
+            $0.requests.append(captured)
+            return ($0.status, $0.responseBody)
+        }
         let response = HTTPURLResponse(
-            url: request.url!, statusCode: Self.status, httpVersion: "HTTP/1.1",
+            url: request.url!, statusCode: status, httpVersion: "HTTP/1.1",
             headerFields: ["Content-Type": "application/json"]
         )!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Data(Self.responseBody.utf8))
+        client?.urlProtocol(self, didLoad: Data(responseBody.utf8))
         client?.urlProtocolDidFinishLoading(self)
     }
 
