@@ -34,7 +34,7 @@ extension NativeMemberListCanvasView {
         let hasRoleIndicator = presentation.roleColorDisplay == .nextToNames
             && MessageAuthorPresentation.topRoleColor(in: member.roles) != nil
         let nameX = textX + (hasRoleIndicator ? 13 : 0)
-        let accessoryWidths: [CGFloat] = (member.user.isBot ? [30] : [])
+        let accessoryWidths: [CGFloat] = (member.user.isBot ? [NativeAppBadgePresentation.width] : [])
             + (prepared.serverTag.map { [$0.width] } ?? [])
         let layout = NativeMemberNameLayout.layout(
             measuredNameWidth: prepared.nameWidth,

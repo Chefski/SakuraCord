@@ -1535,14 +1535,12 @@ extension NativeTimelineRowLayout {
         let authorFont: NSFont
         let timestampFont: NSFont
         let editedFont: NSFont
-        let badgeFont: NSFont
         let timestampGutterWidth: CGFloat
 
         init(settings: InterfaceSettingsSnapshot) {
             authorFont = .systemFont(ofSize: NSFont.preferredFont(forTextStyle: .headline).pointSize, weight: .semibold)
             timestampFont = .preferredFont(forTextStyle: .caption1)
             editedFont = .preferredFont(forTextStyle: .caption2)
-            badgeFont = .systemFont(ofSize: editedFont.pointSize, weight: .bold)
             timestampGutterWidth = NativeTimelineCompactTimestampMetrics.width(settings: settings)
         }
     }

@@ -491,6 +491,7 @@ private struct ProfileHeroSection: View {
                 legacyUsername: profile?.legacyUsername,
                 nameStyle: cosmeticPolicy.disables(.nameStyle, for: member.id) ? nil : (profile?.user.displayNameStyle ?? member.user.displayNameStyle),
                 primaryGuildIdentity: profile?.user.primaryGuild ?? member.user.primaryGuild,
+                showsServerTag: !cosmeticPolicy.disables(.serverTag, for: member.id),
                 isBot: profile?.user.isBot ?? member.user.isBot,
                 isVerifiedApp: isVerifiedApp,
                 badges: profile.map(SakuraCordSponsors.badges) ?? [],
@@ -712,6 +713,7 @@ private struct ProfileIdentitySection: View {
     let legacyUsername: String?
     let nameStyle: DisplayNameStyle?
     let primaryGuildIdentity: PrimaryGuildIdentity?
+    var showsServerTag = true
     let isBot: Bool
     var isVerifiedApp = false
     let badges: [ProfileBadge]
@@ -743,21 +745,7 @@ private struct ProfileIdentitySection: View {
                         .help("You don’t have permission to change your nickname in this server.")
                 } else { styledName }
                 if isBot {
-                    HStack(spacing: 3) {
-                        if isVerifiedApp {
-                            Image(systemName: "checkmark").accessibilityHidden(true)
-                        }
-                        Text("APP")
-                    }
-                        .accessibilityLabel(isVerifiedApp ? "Verified App" : "App")
-                        .font(.caption.weight(.bold))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .foregroundStyle(.white)
-                        .background(
-                            isVerifiedApp ? Color(hex: DiscordBuiltInCommands.clydeAccent) : .indigo,
-                            in: ConcentricRectangle(cornerRadius: 5)
-                        )
+                    AppIdentityBadge(isVerified: isVerifiedApp)
                 }
             }
             ProfileRoleFlowLayout(spacing: 6, constrainsChildren: true, alignment: .firstTextBaseline) {
@@ -787,7 +775,7 @@ private struct ProfileIdentitySection: View {
                 if let editor {
                     ProfileServerTagPicker(editor: editor, identity: primaryGuildIdentity)
                 }
-                if editor == nil, let primaryGuildIdentity, let tag = primaryGuildIdentity.tag, !tag.isEmpty {
+                if editor == nil, showsServerTag, let primaryGuildIdentity, let tag = primaryGuildIdentity.tag, !tag.isEmpty {
                     InteractiveProfileServerTag(identity: primaryGuildIdentity)
                         .fixedSize(horizontal: true, vertical: false)
                 }

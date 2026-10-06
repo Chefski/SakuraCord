@@ -2,15 +2,37 @@ import SakuraCordModels
 import SwiftUI
 
 nonisolated enum ServerTagAppearance {
-    static let height: CGFloat = 20
-    static let badgeSize: CGFloat = 14
-    static let fontSize: CGFloat = 12
+    static let height: CGFloat = 18
+    static let badgeSize: CGFloat = 12
+    static let fontSize: CGFloat = 11
     static let spacing: CGFloat = 4
-    static let horizontalPadding: CGFloat = 6
-    static let cornerRadius: CGFloat = 6
+    static let horizontalPadding: CGFloat = 5
+    static let cornerRadius: CGFloat = 5
     static let backgroundOpacity = 0.025
     static let highlightedBackgroundOpacity = 0.09
     static let outlineOpacity = 0.1
+}
+
+struct AppIdentityBadge: View {
+    var isVerified = false
+
+    var body: some View {
+        HStack(spacing: ServerTagAppearance.spacing) {
+            if isVerified {
+                Image(systemName: "checkmark").accessibilityHidden(true)
+            }
+            Text("APP")
+        }
+        .font(.system(size: ServerTagAppearance.fontSize, weight: .bold))
+        .padding(.horizontal, ServerTagAppearance.horizontalPadding)
+        .frame(height: ServerTagAppearance.height)
+        .foregroundStyle(.white)
+        .background(
+            isVerified ? Color(hex: DiscordBuiltInCommands.clydeAccent) : .indigo,
+            in: .rect(cornerRadius: ServerTagAppearance.cornerRadius)
+        )
+        .accessibilityLabel(isVerified ? "Verified App" : "App")
+    }
 }
 
 struct ProfileServerTag: View {

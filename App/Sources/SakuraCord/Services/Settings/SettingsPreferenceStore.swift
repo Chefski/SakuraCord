@@ -559,6 +559,12 @@ nonisolated struct SettingsPreferenceRegistry: Sendable {
         ),
 
         SettingsPreferenceRegistration(
+            id: .accessibilityDisableServerTags,
+            page: .accessibility,
+            storage: .appWide(key: "settings.accessibility.disableServerTags"),
+            defaultValue: .bool(false)
+        ),
+        SettingsPreferenceRegistration(
             id: .accessibilityAnnounceTimestamp,
             page: .accessibility,
             storage: .appWide(key: "settings.accessibility.announceTimestamp"),

@@ -2,6 +2,29 @@ import AppKit
 import CoreText
 import SakuraCordModels
 
+nonisolated enum NativeAppBadgePresentation {
+    static let text = NativeIdentityTextPresentation(
+        "APP", font: .systemFont(ofSize: ServerTagAppearance.fontSize, weight: .bold)
+    )
+    static let width = text.width + ServerTagAppearance.horizontalPadding * 2
+
+    @MainActor
+    static func draw(in frame: CGRect, color: NSColor, context: CGContext) {
+        context.saveGState()
+        context.setFillColor(color.cgColor)
+        context.addPath(CGPath(
+            roundedRect: frame, cornerWidth: ServerTagAppearance.cornerRadius,
+            cornerHeight: ServerTagAppearance.cornerRadius, transform: nil
+        ))
+        context.fillPath()
+        text.draw(
+            in: frame.insetBy(dx: ServerTagAppearance.horizontalPadding, dy: 0),
+            color: .white, context: context
+        )
+        context.restoreGState()
+    }
+}
+
 /// Immutable CoreText content prepared with the row, including its visible
 /// glyph bounds. Drawing never measures or truncates identity text.
 nonisolated struct NativeIdentityTextPresentation: @unchecked Sendable {

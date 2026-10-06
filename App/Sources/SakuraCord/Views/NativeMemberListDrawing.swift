@@ -335,7 +335,7 @@ extension NativeMemberListCanvasView {
 
         let textX = row.minX + 4 + NativeMemberListMetrics.avatarContainerSize + 8
         let nameY = prepared.activity == nil ? row.minY + 13 : row.minY + 5
-        let botBadgeWidth: CGFloat = 30
+        let botBadgeWidth = NativeAppBadgePresentation.width
         let tagPresentation = prepared.serverTag
         let roleColor = presentation.roleColorDisplay == .nextToNames
             ? MessageAuthorPresentation.topRoleColor(in: member.roles).map(Self.color(hex:)) : nil
@@ -583,14 +583,11 @@ extension NativeMemberListCanvasView {
     }
 
     func drawBotBadge(at badgeX: CGFloat, nameY: CGFloat, context: CGContext) {
-        let badge = CGRect(x: badgeX, y: nameY - 1, width: 30, height: 17)
-        Self.fillRounded(badge, radius: 4, color: .systemIndigo, context: context)
-        let line = Self.line(
-            "APP",
-            font: .systemFont(ofSize: 10, weight: .bold),
-            color: .white
+        let badge = CGRect(
+            x: badgeX, y: nameY + 8 - ServerTagAppearance.height / 2,
+            width: NativeAppBadgePresentation.width, height: ServerTagAppearance.height
         )
-        Self.draw(line: line, at: CGPoint(x: badge.minX + 5, y: badge.minY + 2), context: context)
+        NativeAppBadgePresentation.draw(in: badge, color: .systemIndigo, context: context)
     }
 
 }

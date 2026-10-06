@@ -159,22 +159,9 @@ extension NativeTimelineRowPainter {
     private static func drawMessageIdentityMetadata(
         _ input: NativeTimelineMessageDrawInput
     ) {
-        if let frame = input.layout.botBadgeFrame {
-            NSColor.sakuraCordAccentColor.setFill()
-            NSBezierPath(
-                concentricRoundedRect: frame,
-                cornerRadius: 3
-            ).fill()
-            text(
-                "APP",
-                in: frame,
-                font: .systemFont(
-                    ofSize: NSFont.preferredFont(forTextStyle: .caption2).pointSize,
-                    weight: .bold
-                ),
-                color: .white,
-                alignment: .center
-            )
+        if let frame = input.layout.botBadgeFrame,
+           let context = NSGraphicsContext.current?.cgContext {
+            NativeAppBadgePresentation.draw(in: frame, color: .sakuraCordAccentColor, context: context)
         }
         if let region = input.layout.serverTagRegion,
            let context = NSGraphicsContext.current?.cgContext {

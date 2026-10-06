@@ -243,8 +243,7 @@ extension NativeTimelineRowLayout {
             // Keep the adjacent controls visible while long decorative names
             // truncate. At narrow widths the tag is omitted before the name.
             let timestampReserve = min(timestampWidth, availableWidth / 3) + 7
-            let naturalBotWidth = author.isBot
-                ? NativeTimelineRowLayout.measuredTextWidth("APP", font: metrics.badgeFont) + 8 : 0
+            let naturalBotWidth = author.isBot ? NativeAppBadgePresentation.width : 0
             let botWidth = availableWidth >= naturalBotWidth + 7 + 12 ? naturalBotWidth : 0
             let botReserve = botWidth > 0 ? botWidth + 7 : 0
             let tag = author.primaryGuild.flatMap { NativeServerTagPresentation(identity: $0) }?
@@ -254,7 +253,8 @@ extension NativeTimelineRowLayout {
                 author.displayName, font: authorFont,
                 maximumWidth: max(0, availableWidth - botReserve - tagReserve - timestampReserve)
             )
-            let headerHeight = tag == nil ? MessageRowLayoutMetrics.authorLineHeight : NativeServerTagPresentation.height
+            let headerHeight = tag == nil && botWidth == 0
+                ? MessageRowLayoutMetrics.authorLineHeight : ServerTagAppearance.height
             result.authorText = authorText
             result.authorFrame = CGRect(
                 x: contentX + indicatorWidth, y: verticalOffset,
@@ -264,8 +264,8 @@ extension NativeTimelineRowLayout {
             if botWidth > 0 {
                 headerX += 7
                 result.botBadgeFrame = CGRect(
-                    x: headerX, y: verticalOffset + (headerHeight - 14) / 2,
-                    width: botWidth, height: 14
+                    x: headerX, y: verticalOffset,
+                    width: botWidth, height: ServerTagAppearance.height
                 )
                 headerX += botWidth
             }

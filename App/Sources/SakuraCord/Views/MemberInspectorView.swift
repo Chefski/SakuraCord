@@ -390,6 +390,7 @@ private struct MemberSectionHeader: View {
 
 struct MemberRow: View {
     @Environment(\.roleColorDisplay) private var roleColorDisplay
+    @Environment(\.profileCosmeticPolicy) private var cosmeticPolicy
     let member: Member
     let isSelected: Bool
     var showsContents = true
@@ -432,14 +433,10 @@ struct MemberRow: View {
                                         .lineLimit(1)
                                 }
                                 if member.user.isBot {
-                                    Text("APP")
-                                        .font(.caption2.weight(.bold))
-                                        .padding(.horizontal, 5)
-                                        .padding(.vertical, 2)
-                                        .foregroundStyle(.white)
-                                        .background(.indigo, in: ConcentricRectangle(cornerRadius: 4))
+                                    AppIdentityBadge()
                                 }
-                                if let identity = member.user.primaryGuild, identity.tag != nil {
+                                if !cosmeticPolicy.disables(.serverTag, for: member.id),
+                                   let identity = member.user.primaryGuild, identity.tag != nil {
                                     PrimaryGuildTag(identity: identity)
                                 }
                             }

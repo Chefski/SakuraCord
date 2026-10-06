@@ -64,6 +64,12 @@ struct AccessibilitySettingsPage: View {
                         .accessibilityLabel("Disable nitro profile gradients")
                         .settingsControlAnchor(.accessibilityDisableProfileGradients, state: state)
                 }
+                GridRow {
+                    Toggle("Server tags", isOn: $value.disablesServerTags)
+                        .accessibilityLabel("Disable server tags")
+                        .settingsControlAnchor(.accessibilityDisableServerTags, state: state)
+                        .gridCellColumns(2)
+                }
             }
             .toggleStyle(.checkbox)
             .tint(SakuraCordAccentColor.color)
