@@ -3,30 +3,32 @@ import Foundation
 import SakuraCordModels
 
 extension AppModel {
-    func loadApplicationCommands() {
+    func loadApplicationCommands(in destination: MessageComposerDestination = .channel) {
+        let commandComposer = commandComposer(for: destination)
         guard supportedCapabilities.contains(.slashCommands),
-              let channel = selectedChannel,
-              channel.kind != .voice, channel.kind != .forum, channel.kind != .unknown
+              let context = commandContext(for: destination)
         else {
             commandComposer.failLoading(
                 ChatProviderError.capabilityDisabled(.slashCommands).localizedDescription
             )
             return
         }
+        let channel = context.channel
+        let generation = commandComposer.conversationGeneration
         let contextTarget = ApplicationCommandAvailability.contextIndexTarget(for: channel)
         let targets = Set([contextTarget, .user].compactMap { $0 })
         commandComposer.beginLoading(targets: targets)
         commandComposer.locale = Locale(identifier: Locale.preferredLanguages.first ?? "en-US")
         loadCommandFrecencyIfNeeded()
-        commandLoadTask?.cancel()
+        commandComposer.loadTask?.cancel()
         let account = accountSession()
-        commandLoadTask = Task { [weak self] in
+        commandComposer.loadTask = Task { [weak self] in
             guard let self,
                   !Task.isCancelled,
                   isCurrentAccountSession(account)
             else { return }
             do {
-                async let context: ApplicationCommandCatalog? = {
+                async let contextCatalog: ApplicationCommandCatalog? = {
                     guard let contextTarget else { return nil }
                     return try? await account.provider.applicationCommandCatalog(for: contextTarget)
                 }()
@@ -34,7 +36,7 @@ extension AppModel {
                     try? account.provider.applicationCommandCatalog(
                         for: .user
                     )
-                let catalogs = await [context, user].compactMap(\.self)
+                let catalogs = await [contextCatalog, user].compactMap(\.self)
                 guard !catalogs.isEmpty else {
                     throw ChatProviderError.invalidRequest(
                         "Discord did not return an application command index for this conversation."
@@ -42,7 +44,8 @@ extension AppModel {
                 }
                 guard !Task.isCancelled,
                       isCurrentAccountSession(account),
-                      selectedChannelID == channel.id
+                      commandContext(for: destination)?.channelID == context.channelID,
+                      commandComposer.conversationGeneration == generation
                 else { return }
                 let roleIDs = Set(
                     (snapshot?.currentUser.id).flatMap { membersByID[$0] }?.roles.map(\.id) ?? []
@@ -52,7 +55,7 @@ extension AppModel {
                     channel: channel,
                     currentUserID: snapshot?.currentUser.id,
                     memberRoleIDs: roleIDs,
-                    builtInContext: builtInCommandContext(for: channel)
+                    builtInContext: builtInCommandContext(for: channel, in: destination)
                 )
                 commandComposer.refreshApplicationIdentities { membersByID[$0]?.user }
             } catch is CancellationError {
@@ -60,7 +63,8 @@ extension AppModel {
             } catch {
                 guard !Task.isCancelled,
                       isCurrentAccountSession(account),
-                      selectedChannelID == channel.id
+                      commandContext(for: destination)?.channelID == context.channelID,
+                      commandComposer.conversationGeneration == generation
                 else { return }
                 DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
                 commandComposer.failLoading(error.localizedDescription)
@@ -70,12 +74,13 @@ extension AppModel {
 
     /// Requests remote choices for the focused field when its query changed.
     /// Discord answers through the Gateway; results correlate by nonce.
-    func refreshApplicationCommandAutocomplete() {
-        guard let channelID = selectedChannelID else { return }
-        let request = commandComposer.autocompleteRequest(channelID: channelID, guildID: selectedGuildID)
-        if let nonce = commandAutocompleteDebounceNonce,
+    func refreshApplicationCommandAutocomplete(in destination: MessageComposerDestination = .channel) {
+        let commandComposer = commandComposer(for: destination)
+        guard let context = commandContext(for: destination) else { return }
+        let request = commandComposer.autocompleteRequest(channelID: context.channelID, guildID: context.channel.guildID)
+        if let nonce = commandComposer.autocompleteDebounceNonce,
            !commandComposer.isAutocompleteRequestCurrent(nonce) {
-            cancelApplicationCommandAutocompleteTask(resetTiming: false)
+            cancelApplicationCommandAutocompleteTask(in: destination, resetTiming: false)
         }
         guard let request else { return }
         let session = accountSession()
@@ -83,72 +88,74 @@ extension AppModel {
         // an isolated query starts immediately, a burst sends its latest value
         // after typing settles. Keep dispatched requests alive for nonce routing.
         let now = ContinuousClock.now
-        let delay: Duration = commandAutocompleteLastQueryTime.map {
+        let delay: Duration = commandComposer.autocompleteLastQueryTime.map {
             $0.duration(to: now) < .milliseconds(500) ? .milliseconds(500) : .zero
         } ?? .zero
-        commandAutocompleteLastQueryTime = now
-        commandAutocompleteDebounceNonce = request.nonce
-        commandAutocompleteTask = startAccountChildTask(account: session) { model, session in
+        commandComposer.autocompleteLastQueryTime = now
+        commandComposer.autocompleteDebounceNonce = request.nonce
+        commandComposer.autocompleteTask = startAccountChildTask(account: session) { model, session in
             do {
                 if delay > .zero { try await Task.sleep(for: delay) }
                 try Task.checkCancellation()
-                guard model.commandComposer.isAutocompleteRequestCurrent(request.nonce) else {
-                    model.commandComposer.abandonAutocomplete(nonce: request.nonce, message: "")
+                guard commandComposer.isAutocompleteRequestCurrent(request.nonce) else {
+                    commandComposer.abandonAutocomplete(nonce: request.nonce, message: "")
                     return
                 }
-                model.commandAutocompleteDebounceNonce = nil
-                model.commandAutocompleteTask = nil
+                commandComposer.autocompleteDebounceNonce = nil
+                commandComposer.autocompleteTask = nil
                 try await AppPerformanceSignposts.measure("CommandAutocompleteRequest") {
                     try await session.provider.requestApplicationCommandAutocomplete(request)
                 }
             } catch is CancellationError {
                 guard model.isCurrentAccountSession(session) else { return }
-                model.commandComposer.abandonAutocomplete(nonce: request.nonce, message: "")
+                commandComposer.abandonAutocomplete(nonce: request.nonce, message: "")
                 return
             } catch {
                 guard model.isCurrentAccountSession(session) else { return }
                 DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
-                model.commandComposer.abandonAutocomplete(
+                commandComposer.abandonAutocomplete(
                     nonce: request.nonce, message: "Loading options failed"
                 )
             }
         }
     }
 
-    func cancelApplicationCommandAutocompleteTask(resetTiming: Bool = true) {
-        if resetTiming { commandAutocompleteLastQueryTime = nil }
-        commandAutocompleteTask?.cancel()
-        commandAutocompleteTask = nil
-        if let nonce = commandAutocompleteDebounceNonce {
+    func cancelApplicationCommandAutocompleteTask(in destination: MessageComposerDestination = .channel, resetTiming: Bool = true) {
+        let commandComposer = commandComposer(for: destination)
+        if resetTiming { commandComposer.autocompleteLastQueryTime = nil }
+        commandComposer.autocompleteTask?.cancel()
+        commandComposer.autocompleteTask = nil
+        if let nonce = commandComposer.autocompleteDebounceNonce {
             commandComposer.abandonAutocomplete(nonce: nonce, message: "")
         }
-        commandAutocompleteDebounceNonce = nil
+        commandComposer.autocompleteDebounceNonce = nil
     }
 
-    func requestApplicationCommandMemberSearch(query: String) {
+    func requestApplicationCommandMemberSearch(query: String, in destination: MessageComposerDestination = .channel) {
+        let commandComposer = commandComposer(for: destination)
         let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let option = commandComposer.draft?.focusedField?.option,
               option.type == .user || option.type == .mentionable,
-              let guildID = selectedGuildID,
+              let guildID = commandContext(for: destination)?.channel.guildID,
               !normalized.isEmpty
         else {
-            cancelApplicationCommandMemberSearch()
+            cancelApplicationCommandMemberSearch(in: destination)
             return
         }
         let key = CommandMemberQuery(guildID: guildID, query: normalized.lowercased())
-        if let cached = commandMemberSearchCache[key] {
-            commandMemberSearchTask?.cancel()
-            commandMemberSearchTask = nil
-            commandMemberSearchQuery = nil
-            commandMemberResults = cached
+        if let cached = commandComposer.memberSearchCache[key] {
+            commandComposer.memberSearchTask?.cancel()
+            commandComposer.memberSearchTask = nil
+            commandComposer.memberSearchQuery = nil
+            commandComposer.memberResults = cached
             return
         }
-        guard commandMemberSearchQuery != key else { return }
-        commandMemberSearchTask?.cancel()
-        commandMemberSearchQuery = key
-        commandMemberResults = []
+        guard commandComposer.memberSearchQuery != key else { return }
+        commandComposer.memberSearchTask?.cancel()
+        commandComposer.memberSearchQuery = key
+        commandComposer.memberResults = []
         let session = accountSession()
-        commandMemberSearchTask = Task { [weak self] in
+        commandComposer.memberSearchTask = Task { [weak self] in
             guard let self else { return }
             do {
                 try await Task.sleep(for: .milliseconds(250))
@@ -158,32 +165,33 @@ extension AppModel {
                 )
                 guard !Task.isCancelled,
                       isCurrentAccountSession(session),
-                      commandMemberSearchQuery == key,
-                      selectedGuildID == guildID
+                      commandComposer.memberSearchQuery == key,
+                      commandContext(for: destination)?.channel.guildID == guildID
                 else { return }
-                commandMemberSearchCache[key] = results
-                commandMemberResults = results
-                commandMemberSearchQuery = nil
-                commandMemberSearchTask = nil
+                commandComposer.memberSearchCache[key] = results
+                commandComposer.memberResults = results
+                commandComposer.memberSearchQuery = nil
+                commandComposer.memberSearchTask = nil
             } catch is CancellationError {
                 return
             } catch {
-                guard isCurrentAccountSession(session),
-                      commandMemberSearchQuery == key
+                guard !Task.isCancelled, isCurrentAccountSession(session),
+                      commandComposer.memberSearchQuery == key
                 else { return }
                 DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
-                commandMemberSearchQuery = nil
-                commandMemberSearchTask = nil
-                commandMemberResults = []
+                commandComposer.memberSearchQuery = nil
+                commandComposer.memberSearchTask = nil
+                commandComposer.memberResults = []
             }
         }
     }
 
-    func cancelApplicationCommandMemberSearch() {
-        commandMemberSearchTask?.cancel()
-        commandMemberSearchTask = nil
-        commandMemberSearchQuery = nil
-        commandMemberResults = []
+    func cancelApplicationCommandMemberSearch(in destination: MessageComposerDestination = .channel) {
+        let commandComposer = commandComposer(for: destination)
+        commandComposer.memberSearchTask?.cancel()
+        commandComposer.memberSearchTask = nil
+        commandComposer.memberSearchQuery = nil
+        commandComposer.memberResults = []
     }
 
     func requestMentionMemberSearch(query: String) {
@@ -307,47 +315,60 @@ extension AppModel {
 
     /// Sends the composed command. Like Discord, the composer clears at once
     /// and a private placeholder row tracks the app's answer.
-    func executeApplicationCommand() {
-        AppPerformanceSignposts.measureSync("CommandSubmit") { submitApplicationCommand() }
+    func executeApplicationCommand(in destination: MessageComposerDestination = .channel) {
+        AppPerformanceSignposts.measureSync("CommandSubmit") { submitApplicationCommand(in: destination) }
     }
 
-    private func submitApplicationCommand() {
-        guard let channelID = selectedChannelID,
+    private func submitApplicationCommand(in destination: MessageComposerDestination) {
+        let commandComposer = commandComposer(for: destination)
+        guard let context = commandContext(for: destination),
+              let channelID = composerSendChannelID(in: destination),
               commandComposer.prepareSubmission(),
               let invocation = commandComposer.invocation(
-                  channelID: channelID, guildID: selectedGuildID
+                  channelID: channelID, guildID: context.channel.guildID
               )
         else { return }
         let isNicknameChange = DiscordBuiltInCommands.isBuiltIn(invocation.command) && invocation.command.name == "nick"
         guard isNicknameChange || allowSlowmodeSubmission(in: channelID) else { return }
-        cancelApplicationCommandAutocompleteTask()
+        cancelApplicationCommandAutocompleteTask(in: destination)
         let submittedDraft = commandComposer.draft
         stopLocalTyping(clearThrottle: true)
         commandComposer.recordUse(of: invocation.command, guildID: invocation.guildID)
+        for composer in commandComposers where composer !== commandComposer { composer.refreshFrecency() }
         commandComposer.cancelActiveCommand()
-        updateDraft("")
+        switch destination {
+        case .channel: updateDraft("")
+        case .thread: updateThreadDraft("")
+        }
         if DiscordBuiltInCommands.isBuiltIn(invocation.command) {
             runBuiltInCommand(invocation)
         } else {
-            runApplicationCommand(invocation, restoringDraftOnFailure: submittedDraft)
+            runApplicationCommand(invocation, restoringDraftOnFailure: submittedDraft, in: destination)
         }
     }
 
     /// Runs a user or message context-menu command against its target.
     func runContextMenuCommand(_ command: ApplicationCommand, targetID: String, in channelID: ChannelID) {
         guard supportedCapabilities.contains(.slashCommands) else { return }
-        let guildID = visibleChannels.first { $0.id == channelID }?.guildID
+        let destination = commandDestination(in: channelID)
+        let guildID = (openThread?.id == channelID ? openThread?.guildID ?? openThreadParentChannel?.guildID : nil)
+            ?? visibleChannels.first { $0.id == channelID }?.guildID
             ?? snapshot?.channels.first { $0.id == channelID }?.guildID
+        let commandComposer = commandComposer(for: destination)
         commandComposer.recordUse(of: command, guildID: guildID)
+        for composer in commandComposers where composer !== commandComposer { composer.refreshFrecency() }
         runApplicationCommand(ApplicationCommandInvocation(
             command: command, channelID: channelID, guildID: guildID, values: [], targetID: targetID
-        ))
+        ), in: destination)
     }
 
     private func runApplicationCommand(
         _ invocation: ApplicationCommandInvocation,
-        restoringDraftOnFailure submittedDraft: ApplicationCommandDraft? = nil
+        restoringDraftOnFailure submittedDraft: ApplicationCommandDraft? = nil,
+        in destination: MessageComposerDestination = .channel
     ) {
+        let commandComposer = commandComposer(for: destination)
+        let generation = commandComposer.conversationGeneration
         let nonce = invocation.nonce
         let channelID = invocation.channelID
         trackInteraction(
@@ -398,8 +419,9 @@ extension AppModel {
                 )
                 // Keep failed input available for editing without replacing a
                 // newer draft or automatically repeating the account action.
-                if let submittedDraft, selectedChannelID == channelID,
-                   draft.isEmpty, commandComposer.draft == nil {
+                if let submittedDraft, commandContext(for: destination)?.channelID == channelID,
+                   commandComposer.conversationGeneration == generation,
+                   (destination == .thread ? threadDraft : draft).isEmpty, commandComposer.draft == nil {
                     commandComposer.activate(submittedDraft.command)
                     commandComposer.applyEditorDraft(submittedDraft, caret: nil)
                 }
@@ -408,13 +430,14 @@ extension AppModel {
     }
 
     /// Context-menu commands need the same catalogues as the slash picker.
-    func ensureApplicationCommandsLoaded() {
+    func ensureApplicationCommandsLoaded(in destination: MessageComposerDestination = .channel) {
+        let commandComposer = commandComposer(for: destination)
         guard !commandComposer.hasLoadedCatalogs, !commandComposer.isLoading else { return }
-        loadApplicationCommands()
+        loadApplicationCommands(in: destination)
     }
 
     /// What decides which Discord built-ins this conversation offers.
-    func builtInCommandContext(for channel: Channel) -> DiscordBuiltInCommands.Context {
+    func builtInCommandContext(for channel: Channel, in destination: MessageComposerDestination = .channel) -> DiscordBuiltInCommands.Context {
         let channelPermissions = effectiveMessagePermissions(in: channel)
         let guildPermissions = channel.guildID.flatMap { guildID -> UInt64? in
             guard let basis = conversationPermissionBasis(for: guildID) else { return nil }
@@ -429,7 +452,7 @@ extension AppModel {
             isGroupDirectMessage: channel.kind == .groupDirectMessage,
             channelPermissions: channelPermissions,
             guildPermissions: guildPermissions,
-            canCreatePublicThread: canCreateThread,
+            canCreatePublicThread: destination == .channel && canCreateThread,
             allowsTTSCommand: true
         )
     }

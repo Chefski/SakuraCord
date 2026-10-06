@@ -1200,9 +1200,11 @@ extension NativeTimelineCanvasView {
         ) != nil
         let type: ApplicationCommandType = targetsAuthor ? .user : .message
         let targetID = targetsAuthor ? message.author.id.description : message.id.description
-        model.ensureApplicationCommandsLoaded()
-        guard !model.commandComposer.contextMenuCommands(of: type).isEmpty
-            || model.commandComposer.isLoading
+        let destination = model.commandDestination(in: message.channelID)
+        model.ensureApplicationCommandsLoaded(in: destination)
+        let commandComposer = model.commandComposer(for: destination)
+        guard !commandComposer.contextMenuCommands(of: type).isEmpty
+            || commandComposer.isLoading
         else { return }
         let submenu = NSMenu()
         submenu.autoenablesItems = false

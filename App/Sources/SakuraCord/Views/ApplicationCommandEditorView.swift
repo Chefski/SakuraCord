@@ -11,6 +11,7 @@ struct ApplicationCommandEditorView: NSViewRepresentable {
     let fieldIssue: ApplicationCommandFieldIssue?
     let roles: [GuildRole]
     var generalInputSettings: GeneralInputSettingsSnapshot = .defaults
+    var capturesUnfocusedTyping = true
     let onKeyboardCommand: (ComposerAutocompleteCommand) -> Bool
     let onSubmit: () -> Void
     /// Leaves the command, continuing with the given ordinary message text.
@@ -41,6 +42,7 @@ struct ApplicationCommandEditorView: NSViewRepresentable {
         let textView = ApplicationCommandTextView(frame: .zero, textContainer: textContainer)
         textView.delegate = context.coordinator
         textView.coordinator = context.coordinator
+        textView.capturesUnfocusedTyping = capturesUnfocusedTyping
         textView.onFirstResponderChange = { [weak coordinator = context.coordinator] in
             coordinator?.firstResponderDidChange($0)
         }
@@ -89,6 +91,7 @@ struct ApplicationCommandEditorView: NSViewRepresentable {
         guard let textView = scrollView.documentView as? ApplicationCommandTextView else { return }
         let coordinator = context.coordinator
         coordinator.parent = self
+        textView.capturesUnfocusedTyping = capturesUnfocusedTyping
         ComposerTextCheckingConfiguration.apply(generalInputSettings, to: textView)
         textView.applySakuraCordTextSelectionAppearance()
         guard !textView.isComposing else {
@@ -785,6 +788,16 @@ final class ApplicationCommandTextView: ComposerFocusReportingTextView {
     var issueFieldID: String?
     var commandPasteboard = NSPasteboard.general
     private lazy var unfocusedTypingMonitor = ComposerUnfocusedTypingMonitor()
+    var capturesUnfocusedTyping = true {
+        didSet { synchronizeTypingMonitor() }
+    }
+
+    private func synchronizeTypingMonitor() {
+        unfocusedTypingMonitor.synchronize(
+            with: self, enabled: capturesUnfocusedTyping,
+            onUnfocusedReturn: { [weak self] event in self?.handleReturn(event) ?? false }
+        )
+    }
 
     private struct Composition {
         let original: NSAttributedString
@@ -871,13 +884,7 @@ final class ApplicationCommandTextView: ComposerFocusReportingTextView {
         if let window, coordinator?.parent.isFocused == true {
             window.makeFirstResponder(self)
         }
-        unfocusedTypingMonitor.synchronize(
-            with: self,
-            enabled: true,
-            onUnfocusedReturn: { [weak self] event in
-                self?.handleReturn(event) ?? false
-            }
-        )
+        synchronizeTypingMonitor()
     }
 
     func updateTypingAttributes(for draft: ApplicationCommandDraft) {

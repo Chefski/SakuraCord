@@ -56,8 +56,8 @@ final class ApplicationCommandAppsMenuPopulator: NSObject, NSMenuDelegate, NSSea
     private func observeCatalog() {
         guard let model else { return }
         withObservationTracking {
-            _ = model.commandComposer.isLoading
-            _ = model.commandComposer.contextMenuCommands
+            _ = model.commandComposer(for: model.commandDestination(in: channelID)).isLoading
+            _ = model.commandComposer(for: model.commandDestination(in: channelID)).contextMenuCommands
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self, self.isOpen, let menu = self.menu else { return }
@@ -115,14 +115,14 @@ final class ApplicationCommandAppsMenuPopulator: NSObject, NSMenuDelegate, NSSea
         menu.addItem(.separator())
         let query = search.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         if !query.isEmpty {
-            let results = model.commandComposer.searchContextMenuCommands(of: type, query: query)
+            let results = model.commandComposer(for: model.commandDestination(in: channelID)).searchContextMenuCommands(of: type, query: query)
             for command in results { menu.addItem(commandItem(command, showsAvatar: true)) }
             if results.isEmpty { menu.addItem(statusItem("No matching commands")) }
             return
         }
-        let sections = model.commandComposer.contextMenuSections(of: type)
+        let sections = model.commandComposer(for: model.commandDestination(in: channelID)).contextMenuSections(of: type)
         guard !sections.applications.isEmpty else {
-            menu.addItem(statusItem(model.commandComposer.isLoading ? "Loading Apps…" : "No Apps"))
+            menu.addItem(statusItem(model.commandComposer(for: model.commandDestination(in: channelID)).isLoading ? "Loading Apps…" : "No Apps"))
             return
         }
         if !sections.frequent.isEmpty {

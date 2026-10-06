@@ -509,8 +509,10 @@ extension AppModel {
         queuedOversizedAttachmentPrompts.removeAll()
         for task in interactionDeadlineTasks.values { task.cancel() }
         interactionDeadlineTasks = [:]
-        commandLoadTask?.cancel()
-        commandLoadTask = nil
+        for commandComposer in commandComposers {
+            commandComposer.resetForChannelChange()
+            commandComposer.memberSearchCache = [:]
+        }
         commandFrecencyLoadTask?.cancel()
         commandFrecencyLoadTask = nil
         commandFrecencyFlushTask?.cancel()
@@ -519,11 +521,6 @@ extension AppModel {
         commandFrecencySaveTask = nil
         deferredCommandFrecency = nil
         cancelApplicationCommandAutocompleteTask()
-        commandMemberSearchTask?.cancel()
-        commandMemberSearchTask = nil
-        commandMemberSearchQuery = nil
-        commandMemberSearchCache = [:]
-        commandMemberResults = []
         mentionMemberSearchTask?.cancel()
         mentionMemberSearchTask = nil
         mentionMemberSearchQuery = nil

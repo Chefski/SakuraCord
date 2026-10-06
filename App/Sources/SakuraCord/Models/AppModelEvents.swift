@@ -363,11 +363,9 @@ extension AppModel {
              .currentUserChanged, .currentUserStatusChanged:
             consumeGatewayWorkspaceStateEvent(event)
         case .applicationCommandIndexInvalidated(let target):
-            if commandComposer.invalidated(target) {
-                loadApplicationCommands()
-            }
+            invalidateApplicationCommandIndex(target)
         case .applicationCommandAutocomplete(let result):
-            commandComposer.receiveAutocomplete(result)
+            commandComposers.forEach { $0.receiveAutocomplete(result) }
         case .interaction(let event):
             consumeInteraction(event)
         default:

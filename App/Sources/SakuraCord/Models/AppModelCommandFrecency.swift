@@ -32,7 +32,7 @@ extension AppModel {
             deferredCommandFrecency = history
             return
         }
-        commandComposer.applyRemoteFrecency(history)
+        updateCommandFrecency(history)
     }
 
     /// Discord waits up to ten seconds after (re)connecting, then repeats about
@@ -73,7 +73,7 @@ extension AppModel {
                     model.commandFrecencySaveTask = nil
                     if let history = model.deferredCommandFrecency {
                         model.deferredCommandFrecency = nil
-                        model.commandComposer.applyRemoteFrecency(history)
+                        model.updateCommandFrecency(history)
                     }
                 }
             }
@@ -90,7 +90,7 @@ extension AppModel {
         guard !Task.isCancelled, isCurrentAccountSession(session) else { return }
         if let history = deferredCommandFrecency {
             deferredCommandFrecency = nil
-            commandComposer.applyRemoteFrecency(history)
+            updateCommandFrecency(history)
         }
         let store = commandComposer.frecencyStore
         guard store.hasPendingUsage, supportedCapabilities.contains(.slashCommands) else { return }
@@ -98,7 +98,7 @@ extension AppModel {
             guard let history = try? await session.provider.applicationCommandFrecency(),
                   !Task.isCancelled, isCurrentAccountSession(session)
             else { return }
-            commandComposer.applyRemoteFrecency(history)
+            updateCommandFrecency(history)
         }
         let saving = store.pendingUsages
         do {
@@ -106,12 +106,12 @@ extension AppModel {
             guard isCurrentAccountSession(session) else { return }
             store.acknowledge(saving)
             deferredCommandFrecency = nil
-            commandComposer.applyRemoteFrecency(stored)
+            updateCommandFrecency(stored)
         } catch {
             guard isCurrentAccountSession(session) else { return }
             if let history = deferredCommandFrecency {
                 deferredCommandFrecency = nil
-                commandComposer.applyRemoteFrecency(history)
+                updateCommandFrecency(history)
             }
             if !(error is CancellationError) { DiscordAPIDiagnosticStore.shared.recordClientFailure(error) }
         }

@@ -145,7 +145,16 @@ final class ApplicationCommandComposerModel {
 
     @ObservationIgnored private var attachmentPasteRevision = 0
     /// Discord-synced command usage.
-    @ObservationIgnored let frecencyStore = ApplicationCommandFrecencyStore()
+    @ObservationIgnored let frecencyStore: ApplicationCommandFrecencyStore
+    var memberResults: [Member] = []
+    @ObservationIgnored var loadTask: Task<Void, Never>?
+    @ObservationIgnored var autocompleteDebounceNonce: String?
+    @ObservationIgnored var autocompleteLastQueryTime: ContinuousClock.Instant?
+    @ObservationIgnored var autocompleteTask: Task<Void, Never>?
+    @ObservationIgnored var memberSearchTask: Task<Void, Never>?
+    @ObservationIgnored var memberSearchQuery: CommandMemberQuery?
+    @ObservationIgnored var memberSearchCache: [CommandMemberQuery: [Member]] = [:]
+    @ObservationIgnored private(set) var conversationGeneration: UInt64 = 0
     @ObservationIgnored private var pickerSources: [ApplicationCommandPickerSource] = [
         ApplicationCommandPickerSource(
             application: SakuraCordBuiltInCommands.application, commands: SakuraCordBuiltInCommands.commands
@@ -166,7 +175,8 @@ final class ApplicationCommandComposerModel {
 
     var activeCommand: ApplicationCommand? { draft?.command }
 
-    init() {
+    init(frecencyStore: ApplicationCommandFrecencyStore = ApplicationCommandFrecencyStore()) {
+        self.frecencyStore = frecencyStore
         refreshPickerSections()
     }
 
@@ -448,6 +458,17 @@ final class ApplicationCommandComposerModel {
     }
 
     func resetForChannelChange() {
+        conversationGeneration &+= 1
+        loadTask?.cancel()
+        loadTask = nil
+        autocompleteTask?.cancel()
+        autocompleteTask = nil
+        autocompleteDebounceNonce = nil
+        autocompleteLastQueryTime = nil
+        memberSearchTask?.cancel()
+        memberSearchTask = nil
+        memberSearchQuery = nil
+        memberResults = []
         dismissPicker()
         cancelActiveCommand()
         clearCatalogs()
@@ -682,6 +703,10 @@ final class ApplicationCommandComposerModel {
     func recordUse(of command: ApplicationCommand, guildID: GuildID?) {
         guard command.applicationID != SakuraCordBuiltInCommands.application.id else { return }
         frecencyStore.recordUse(ApplicationCommandPickerEngine.frecencyKey(of: command, guildID: guildID))
+        refreshFrecency()
+    }
+
+    func refreshFrecency() {
         browseSnapshot = nil
         cachedPickerEngine = nil
         pickerNeedsRefresh = true

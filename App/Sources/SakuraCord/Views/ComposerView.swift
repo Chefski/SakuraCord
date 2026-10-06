@@ -76,7 +76,7 @@ struct ComposerView: View {
             },
             leading: {
                 Group {
-                    if hasActiveCommand, let commandDraft = model.commandComposer.draft {
+                    if hasActiveCommand, let commandDraft = commandComposer.draft {
                         ApplicationCommandComposerBadge(command: commandDraft.command, cancel: cancelCommand)
                     } else if !isCreatingThread {
                         ComposerAttachmentButton(appearance: appearance) {
@@ -133,22 +133,23 @@ struct ComposerView: View {
             },
             input: {
                 Group {
-                    if hasActiveCommand, let commandDraft = model.commandComposer.draft {
+                    if hasActiveCommand, let commandDraft = commandComposer.draft {
                         ApplicationCommandEditorView(
-                            composer: model.commandComposer,
+                            composer: commandComposer,
                             draft: commandDraft,
-                            caretRequestRevision: model.commandComposer.caretRequestRevision,
-                            fieldIssue: model.commandComposer.fieldIssue,
+                            caretRequestRevision: commandComposer.caretRequestRevision,
+                            fieldIssue: commandComposer.fieldIssue,
                             roles: model.guildRoles,
                             generalInputSettings: model.generalInputSettings,
+                            capturesUnfocusedTyping: capturesUnfocusedTyping,
                             onKeyboardCommand: handleAutocomplete,
                             onSubmit: submitComposer,
                             onCancel: leaveCommand(restoring:),
                             canReceiveAttachment: {
-                                model.commandComposer.pastedAttachmentOption != nil
+                                commandComposer.pastedAttachmentOption != nil
                             },
                             receiveAttachment: { attachments in
-                                Task { await model.receiveCommandAttachment(attachments) }
+                                Task { await model.receiveCommandAttachment(attachments, in: conversation) }
                             },
                             // Ignore focus callbacks from the editor being replaced.
                             isFocused: Binding(
@@ -195,11 +196,7 @@ struct ComposerView: View {
                                 },
                                 canReceiveAttachments: { model.isComposerDropEligible(conversation) },
                                 onCompositionStateChange: { isComposing = $0 },
-                                capturesUnfocusedTyping:
-                                    model.threadCreation?.isSubmitting != true
-                                        && !showEmojiPicker
-                                        && !showGIFPicker
-                                        && !showStickerPicker,
+                                capturesUnfocusedTyping: capturesUnfocusedTyping,
                                 verticalContentInset: appearance == .defaultStyle
                                     ? ChatChromeMetrics.composerTextVerticalInset
                                     : 0,
@@ -355,7 +352,7 @@ struct ComposerView: View {
             guard case let .success(urls) = result else { return }
             Task {
                 if hasActiveCommand {
-                    await model.receiveCommandAttachment(.external(urls))
+                    await model.receiveCommandAttachment(.external(urls), in: conversation)
                 } else {
                     await model.addComposerAttachments(urls, to: conversation)
                 }
@@ -394,8 +391,8 @@ struct ComposerView: View {
             }
         }
         .onChange(of: model.builtInExpressionPickerRequest) { _, request in
-            guard conversation == .channel, let request,
-                  request.channelID == model.selectedChannelID else { return }
+            guard let request,
+                  request.channelID == activeConversationID else { return }
             model.builtInExpressionPickerRequest = nil
             showEmojiPicker = false
             switch request.kind {
@@ -423,16 +420,16 @@ struct ComposerView: View {
             autocompleteIndex = 0
             updateMentionMemberSearch()
         }
-        .onChange(of: model.commandComposer.draft) { previous, current in
+        .onChange(of: commandComposer.draft) { previous, current in
             guard let current else {
-                model.cancelApplicationCommandAutocompleteTask()
-                model.cancelApplicationCommandMemberSearch()
+                model.cancelApplicationCommandAutocompleteTask(in: conversation)
+                model.cancelApplicationCommandMemberSearch(in: conversation)
                 return
             }
             if previous?.focus != current.focus {
-                model.cancelApplicationCommandMemberSearch()
+                model.cancelApplicationCommandMemberSearch(in: conversation)
             }
-            model.refreshApplicationCommandAutocomplete()
+            model.refreshApplicationCommandAutocomplete(in: conversation)
             updateCommandMemberSearch(current)
         }
         .onDisappear {
@@ -449,8 +446,8 @@ struct ComposerView: View {
                 && !model.isVoiceChatOpen
             guard conversation == .thread || !isClosedVoiceChat else { return }
             isFocused = true
-            if conversation == .channel, model.selectedChannel?.kind != .voice {
-                model.ensureApplicationCommandsLoaded()
+            if supportsCommands {
+                model.ensureApplicationCommandsLoaded(in: conversation)
                 updateSlashPicker(for: draft)
             }
         }
@@ -493,30 +490,30 @@ struct ComposerView: View {
 
     @ViewBuilder
     private var composerMenus: some View {
-        if conversation == .channel, model.commandComposer.isPickerPresented,
+        if supportsCommands, commandComposer.isPickerPresented,
            // Like Discord, nothing shows for a query that matches no command.
-           !model.commandComposer.pickerSections.isEmpty
-               || model.commandComposer.isLoading || model.commandComposer.loadError != nil
+           !commandComposer.pickerSections.isEmpty
+               || commandComposer.isLoading || commandComposer.loadError != nil
         {
             ApplicationCommandPickerView(
-                composer: model.commandComposer,
+                composer: commandComposer,
                 choose: activateCommand,
-                dismiss: model.commandComposer.dismissPicker,
+                dismiss: commandComposer.dismissPicker,
                 cornerRadius: commandPanelCornerRadius
             )
-        } else if hasActiveCommand, let draft = model.commandComposer.draft {
+        } else if hasActiveCommand, let draft = commandComposer.draft {
             VStack(spacing: 6) {
                 if let content = visibleCommandSuggestionContent {
                     ApplicationCommandSuggestionPanel(
                         content: content,
-                        selectedIndex: model.commandComposer.suggestionIndex ?? content.defaultIndex,
+                        selectedIndex: commandComposer.suggestionIndex ?? content.defaultIndex,
                         select: acceptCommandSuggestion,
-                        highlight: { model.commandComposer.suggestionIndex = $0 },
+                        highlight: { commandComposer.suggestionIndex = $0 },
                         cornerRadius: commandPanelCornerRadius,
                         keyboardSelectionRevision: autocompleteKeyboardSelectionRevision
                     )
                 }
-                ApplicationCommandHelpStrip(draft: draft, issue: model.commandComposer.fieldIssue, cancel: cancelCommand)
+                ApplicationCommandHelpStrip(draft: draft, issue: commandComposer.fieldIssue, cancel: cancelCommand)
                     .commandPanelSurface(cornerRadius: commandPanelCornerRadius)
             }
         } else if let context = mentionAutocompleteContext {
@@ -822,10 +819,10 @@ struct ComposerView: View {
     }
 
     private var commandSuggestionContent: ApplicationCommandSuggestionContent? {
-        guard let draft = model.commandComposer.draft else { return nil }
+        guard let draft = commandComposer.draft else { return nil }
         return ApplicationCommandSuggestionFactory.content(
             draft: draft,
-            autocomplete: model.commandComposer.autocompleteStatus,
+            autocomplete: commandComposer.autocompleteStatus,
             members: commandSuggestionMembers.map(model.cosmeticPolicy.member),
             roles: model.guildRoles,
             channels: model.visibleChannels
@@ -833,7 +830,7 @@ struct ComposerView: View {
     }
 
     private var visibleCommandSuggestionContent: ApplicationCommandSuggestionContent? {
-        guard isInputActive, !model.commandComposer.areSuggestionsDismissed,
+        guard isInputActive, !commandComposer.areSuggestionsDismissed,
               let content = commandSuggestionContent, !content.isEmpty
         else { return nil }
         return content
@@ -841,7 +838,7 @@ struct ComposerView: View {
 
     private var commandSuggestionMembers: [Member] {
         var seen = Set<UserID>()
-        return (model.commandMemberResults + model.members).filter { seen.insert($0.id).inserted }
+        return (commandComposer.memberResults + model.members).filter { seen.insert($0.id).inserted }
     }
 
     private func updateCommandMemberSearch(_ draft: ApplicationCommandDraft) {
@@ -850,7 +847,7 @@ struct ComposerView: View {
         else { return }
         let text = field.text.trimmingCharacters(in: .whitespaces)
         model.requestApplicationCommandMemberSearch(
-            query: text.hasPrefix("@") ? String(text.dropFirst()) : text
+            query: text.hasPrefix("@") ? String(text.dropFirst()) : text, in: conversation
         )
     }
 
@@ -909,49 +906,49 @@ struct ComposerView: View {
     }
 
     private func updateSlashPicker(for text: String) {
-        guard conversation == .channel, !hasActiveCommand else { return }
+        guard supportsCommands, !hasActiveCommand else { return }
         guard model.supportsCapability(.slashCommands),
               let context = SlashCommandQuery(text: text, selection: draftSelection)
         else {
-            if model.commandComposer.isPickerPresented {
-                model.commandComposer.dismissPicker()
+            if commandComposer.isPickerPresented {
+                commandComposer.dismissPicker()
             }
             return
         }
-        let shouldLoad = !model.commandComposer.hasLoadedCatalogs
-            && !model.commandComposer.isLoading
+        let shouldLoad = !commandComposer.hasLoadedCatalogs
+            && !commandComposer.isLoading
         // Typing a command's full name and a space selects it, as in Discord.
         if context.query.hasSuffix(" "),
-           let command = model.commandComposer.exactCommand(named: context.query)
+           let command = commandComposer.exactCommand(named: context.query)
         {
             activateCommand(command)
             return
         }
-        if !model.commandComposer.isPickerPresented {
-            model.commandComposer.presentPicker(query: context.query)
+        if !commandComposer.isPickerPresented {
+            commandComposer.presentPicker(query: context.query)
         } else {
-            model.commandComposer.updatePickerQuery(context.query)
+            commandComposer.updatePickerQuery(context.query)
         }
         if shouldLoad {
-            model.loadApplicationCommands()
+            model.loadApplicationCommands(in: conversation)
         }
     }
 
     private func activateCommand(_ command: ApplicationCommand) {
         if let kind = SakuraCordBuiltInCommands.issueReportKind(for: command) {
-            model.commandComposer.dismissPicker()
-            model.updateDraft("")
+            commandComposer.dismissPicker()
+            updateDraft("")
             draftSelection = nil
             model.presentIssueReport(kind)
             return
         }
-        model.commandComposer.activate(command)
-        model.cancelReply()
-        model.updateDraft("")
+        commandComposer.activate(command)
+        cancelReply()
+        updateDraft("")
         model.clearComposerAttachments(for: conversation)
         draftSelection = nil
         isFocused = true
-        model.refreshApplicationCommandAutocomplete()
+        model.refreshApplicationCommandAutocomplete(in: conversation)
     }
 
     private func cancelCommand() {
@@ -961,9 +958,9 @@ struct ComposerView: View {
     /// Leaves the structured command, continuing with ordinary text. Removing
     /// the command with Backspace restores its name so the picker reopens.
     private func leaveCommand(restoring text: String) {
-        model.commandComposer.cancelActiveCommand()
-        model.cancelApplicationCommandAutocompleteTask()
-        model.cancelApplicationCommandMemberSearch()
+        commandComposer.cancelActiveCommand()
+        model.cancelApplicationCommandAutocompleteTask(in: conversation)
+        model.cancelApplicationCommandMemberSearch(in: conversation)
         updateDraft(text)
         draftSelection = NSRange(location: text.utf16.count, length: 0)
         isFocused = true
@@ -976,7 +973,7 @@ struct ComposerView: View {
                draft.trimmingCharacters(in: .whitespacesAndNewlines) == "/\($0.name)"
            }), let kind = SakuraCordBuiltInCommands.issueReportKind(for: command)
         {
-            model.commandComposer.dismissPicker()
+            commandComposer.dismissPicker()
             updateDraft("")
             draftSelection = nil
             model.presentIssueReport(kind)
@@ -984,14 +981,14 @@ struct ComposerView: View {
         }
         guard allowsSubmission() else { return }
         if hasActiveCommand {
-            model.executeApplicationCommand()
+            model.executeApplicationCommand(in: conversation)
         } else {
             send()
         }
     }
 
     private func acceptCommandSuggestion(_ suggestion: ApplicationCommandSuggestion) {
-        let composer = model.commandComposer
+        let composer = commandComposer
         switch suggestion.action {
         case let .value(value, display):
             composer.resolveFocusedField(value, display: display)
@@ -1008,7 +1005,7 @@ struct ComposerView: View {
         if hasActiveCommand {
             return handleActiveCommandAutocomplete(command)
         }
-        if conversation == .channel, model.commandComposer.isPickerPresented {
+        if supportsCommands, commandComposer.isPickerPresented {
             return handleCommandPickerAutocomplete(command)
         }
         if let context = mentionAutocompleteContext, !mentionAutocompleteSuggestions.isEmpty {
@@ -1021,7 +1018,7 @@ struct ComposerView: View {
     /// Keys while a command is active: the panel takes navigation and
     /// acceptance when it lists something, otherwise keys move between fields.
     private func handleActiveCommandAutocomplete(_ command: ComposerAutocompleteCommand) -> Bool {
-        let composer = model.commandComposer
+        let composer = commandComposer
         let content = visibleCommandSuggestionContent
         let suggestions = content?.suggestions ?? []
         let index = composer.suggestionIndex ?? content?.defaultIndex
@@ -1062,12 +1059,12 @@ struct ComposerView: View {
 
     private func handleCommandPickerAutocomplete(_ command: ComposerAutocompleteCommand) -> Bool {
         switch command {
-        case .previous: model.commandComposer.movePickerSelection(by: -1)
-        case .next: model.commandComposer.movePickerSelection(by: 1)
+        case .previous: commandComposer.movePickerSelection(by: -1)
+        case .next: commandComposer.movePickerSelection(by: 1)
         case .accept, .advance:
-            guard let selected = model.commandComposer.selectedPickerCommand else { return true }
+            guard let selected = commandComposer.selectedPickerCommand else { return true }
             activateCommand(selected)
-        case .dismiss: model.commandComposer.dismissPicker()
+        case .dismiss: commandComposer.dismissPicker()
         case .previousField, .nextField, .removeField: return true
         }
         return true
@@ -1154,8 +1151,22 @@ struct ComposerView: View {
         return edit.selection
     }
 
+    private var capturesUnfocusedTyping: Bool {
+        conversation == (model.hasThreadPane ? .thread : .channel)
+            && model.threadCreation?.isSubmitting != true
+            && !showEmojiPicker && !showGIFPicker && !showStickerPicker
+    }
+
+    private var commandComposer: ApplicationCommandComposerModel {
+        model.commandComposer(for: conversation)
+    }
+
+    private var supportsCommands: Bool {
+        model.commandContext(for: conversation) != nil
+    }
+
     private var hasActiveCommand: Bool {
-        conversation == .channel && model.commandComposer.activeCommand != nil
+        supportsCommands && commandComposer.activeCommand != nil
     }
 
     private var canAddAttachments: Bool {

@@ -116,6 +116,14 @@ Thread lifecycle events advance the parent forum boundary before unread
 projection. Metadata, archive, lock, pin and delete are explicit, permission-gated
 mutations. Message-created thread cards use cached thread/message data.
 
+Text-channel and voice-channel chats, existing threads, and existing forum posts
+support the same slash-command composer. The main conversation and supplementary
+thread pane own separate command drafts, autocomplete work and member results,
+while sharing account-scoped command usage. Thread availability uses the parent
+channel; execution, autocomplete, attachments and responses use the thread ID.
+Closing or replacing a pane invalidates its pending editor work. Thread and forum
+creation drafts do not execute commands before Discord has created a destination.
+
 The active conversation preloads the user command index plus a context index
 only for a guild or a one-to-one DM whose recipient is a bot. Human and group
 DMs use `/users/@me/application-command-index`; bot DMs additionally use

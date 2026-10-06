@@ -228,7 +228,7 @@ final class AppModel {
             let indexed = mergedMemberStore(with: members)
             if membersByID != indexed {
                 membersByID = indexed
-                commandComposer.refreshApplicationIdentities { indexed[$0]?.user }
+                for commandComposer in commandComposers { commandComposer.refreshApplicationIdentities { indexed[$0]?.user } }
             }
             refreshVoiceSidebarPresentation(using: indexed)
             var permissionsChanged = false
@@ -288,7 +288,6 @@ final class AppModel {
         }
     }
     @ObservationIgnored var guildRolesByGuildID: [GuildID: [GuildRole]] = [:]
-    var commandMemberResults: [Member] = []
     var mentionMemberResults: [Member] = []
     var mentionAutocompleteMembers: [Member] = []
     var knownMentionMembers: [UserID: Member] = [:] {
@@ -317,6 +316,7 @@ final class AppModel {
     let launchMode: AppLaunchMode
     let typingState: TypingStateModel
     let commandComposer = ApplicationCommandComposerModel()
+    @ObservationIgnored lazy var threadCommandComposer = ApplicationCommandComposerModel(frecencyStore: commandComposer.frecencyStore)
     let readState = AccountReadStateModel()
     let notificationPreferences: NotificationPreferences
     let voiceVideoPreferences: VoiceVideoPreferences
@@ -955,7 +955,6 @@ final class AppModel {
             {
                 lastOpenedChannelIDsByGuild[guildID] = selectedChannel.id
             }
-            commandLoadTask?.cancel()
             builtInExpressionPickerRequest = nil
             cancelApplicationCommandAutocompleteTask()
             cancelApplicationCommandMemberSearch()
@@ -1062,17 +1061,10 @@ final class AppModel {
     @ObservationIgnored var gifPickerLoadGeneration: UInt64 = 0
     @ObservationIgnored var soundboardLoadTask: Task<Void, Never>?
     @ObservationIgnored var soundboardLoadGeneration: UInt64 = 0
-    @ObservationIgnored var commandLoadTask: Task<Void, Never>?
     @ObservationIgnored var commandFrecencySaveTask: Task<Void, Never>?
     @ObservationIgnored var deferredCommandFrecency: ApplicationCommandFrecencyHistory?
     @ObservationIgnored var commandFrecencyLoadTask: Task<Void, Never>?
     @ObservationIgnored var commandFrecencyFlushTask: Task<Void, Never>?
-    @ObservationIgnored var commandAutocompleteDebounceNonce: String?
-    @ObservationIgnored var commandAutocompleteLastQueryTime: ContinuousClock.Instant?
-    @ObservationIgnored var commandAutocompleteTask: Task<Void, Never>?
-    @ObservationIgnored var commandMemberSearchTask: Task<Void, Never>?
-    @ObservationIgnored var commandMemberSearchQuery: CommandMemberQuery?
-    @ObservationIgnored var commandMemberSearchCache: [CommandMemberQuery: [Member]] = [:]
     @ObservationIgnored var mentionMemberSearchTask: Task<Void, Never>?
     @ObservationIgnored var mentionMemberSearchQuery: CommandMemberQuery?
     @ObservationIgnored var mentionMemberSearchCache:

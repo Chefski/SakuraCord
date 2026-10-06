@@ -257,6 +257,7 @@ extension AppModel {
     }
 
     func closeThread() {
+        threadCommandComposer.resetForChannelChange()
         if let threadID = openThread?.id {
             cancelConversationRefresh(in: threadID)
             let hasLoadedHistory = hasMoreCache[threadID] != nil

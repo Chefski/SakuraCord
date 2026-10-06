@@ -67,7 +67,7 @@ extension AppModel {
             guard let record = finishPendingInteraction(nonce) else { return }
             interactionSucceeded(record, nonce: nonce)
         case let .failed(nonce, failure):
-            if commandComposer.failAutocomplete(nonce: nonce, failure: failure) { return }
+            if commandComposers.contains(where: { $0.failAutocomplete(nonce: nonce, failure: failure) }) { return }
             guard let record = finishPendingInteraction(nonce) else { return }
             interactionFailed(record, nonce: nonce, failure: failure)
         case let .presentModal(modal):
