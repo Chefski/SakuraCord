@@ -36,6 +36,9 @@ nonisolated struct ForwardMessagePreviewPlan: Equatable {
             case .audio: .audio
             case .file: .file
             }
+            if kind == .video, attachment.isSpoiler {
+                return ForwardPreviewMedia(url: nil, kind: kind)
+            }
             return ForwardPreviewMedia(
                 url: kind == .video
                     ? attachment.videoPosterURL(
@@ -131,8 +134,15 @@ nonisolated struct ForwardMessagePreviewPlan: Equatable {
 
     private static func media(in component: MessageComponent) -> [ForwardPreviewMedia] {
         switch component {
-        case .actionRow(_, let children), .container(_, _, _, let children):
+        case .actionRow(_, let children):
             children.flatMap(Self.media(in:))
+        case .container(_, _, let spoiler, let children):
+            children.flatMap(Self.media(in:)).map { item in
+                ForwardPreviewMedia(
+                    url: spoiler && item.kind == .video ? nil : item.url,
+                    kind: item.kind
+                )
+            }
         case .section(_, let children, let accessory):
             children.flatMap(Self.media(in:)) + (accessory.map(Self.media(in:)) ?? [])
         case .thumbnail(_, let value):
@@ -151,7 +161,7 @@ nonisolated struct ForwardMessagePreviewPlan: Equatable {
         let url = value.proxyURL ?? value.url
         if contentType.hasPrefix("video/") {
             return ForwardPreviewMedia(
-                url: DiscordVideoPosterURL.url(
+                url: value.isSpoiler ? nil : DiscordVideoPosterURL.url(
                     proxyURL: value.proxyURL,
                     width: value.width,
                     height: value.height,
