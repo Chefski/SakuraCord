@@ -316,6 +316,7 @@ extension NativeTimelineRowPainter {
                 framesetter: contentFramesetter,
                 in: drawingFrame,
                 model: model,
+                isOutgoingBubble: layout.bubbleRegion?.isOutgoing == true,
                 selectionRange:
                     textSelection?.itemIdentifier == .message(row.identity)
                         && textSelection?.region == .content
