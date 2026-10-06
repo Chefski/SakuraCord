@@ -239,6 +239,10 @@ private struct MediaViewerZoomableImage: View {
                                 )
                             }
                     )
+                    .onTapGesture(
+                        count: 2,
+                        perform: interaction.toggleZoom
+                    )
                     .accessibilityLabel("Media image")
                     .accessibilityValue(
                         "Zoom \(scale, format: .number.precision(.fractionLength(1))) times"

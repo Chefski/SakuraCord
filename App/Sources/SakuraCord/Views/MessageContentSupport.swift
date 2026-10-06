@@ -300,7 +300,7 @@ struct CustomEmojiRichText: View {
                 profileRequestID: requestID
             )
         case let .role(id):
-            model.showMembers(withRole: id)
+            model.showMembers(withRole: id, in: model.selectedGuildID)
             presentedMention = AnchoredMentionPresentation(
                 mention: mention,
                 anchor: anchor,
@@ -348,7 +348,7 @@ private struct AnchoredMentionPopoverLayer: View {
                         )
                     }
                 case let .role(id):
-                    RoleMembersPopover(model: model, roleID: id)
+                    RoleMembersPopover(model: model, roleID: id, guildID: model.selectedGuildID)
                 case .unresolved, .guildNavigation, .channel, .linkedChannel, .message:
                     EmptyView()
                 }
@@ -374,7 +374,7 @@ nonisolated struct LinkedImagePresentation: Sendable {
         #"\[([^\]]+)\]\((https://[^\s)]+)\)"#
     )
     private static let bareURLExpression = RegularExpressionFactory.make(
-        #"https://[^\s<>]+"#
+        #"https://[^\s<>`]+"#
     )
 
     let visibleText: String
@@ -426,6 +426,14 @@ nonisolated struct LinkedImagePresentation: Sendable {
                       LinkedImageReference.isBareAttachmentURL(url),
                       !excludedURLs.contains(url)
                 else { continue }
+                // A signed URL's query can otherwise absorb closing emphasis
+                // delimiters. Preserve the source when Markdown parsed a
+                // different destination rather than removing its formatting.
+                if let last = candidate.last, "*_~|".contains(last),
+                   !DiscordMarkdown.linkOccurrences(content).contains(where: {
+                       !$0.isSpoiler && $0.url == url
+                   })
+                { continue }
                 let removesLeadingSpace = matchedRange.lowerBound != content.startIndex
                     && content[content.index(before: matchedRange.lowerBound)] == " "
                 let range = NSRange(
