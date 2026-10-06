@@ -97,7 +97,7 @@ enum MessageLinkActivator {
         case .web:
             if customHandler(url) { break }
             if let model, DiscordAttachmentLink.matches(url) {
-                Task {
+                model.startAccountChildTask(account: model.accountSession()) { model, _ in
                     await model.openAttachmentLink(url) {
                         confirmExternal(ExternalLinkSafetyPolicy.assess($0, displayedText: displayedText))
                     }
