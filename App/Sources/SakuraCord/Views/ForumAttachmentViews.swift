@@ -569,15 +569,15 @@ struct ForumPostAttachmentPreview: View {
 private struct ForumPostVideoPreview: View {
     let attachment: Attachment
     let maximumPixelDimension: Int
-    @State private var didFailPosterLoad = false
+    @State private var failedPosterURL: URL?
 
     var body: some View {
-        if let posterURL, !didFailPosterLoad {
+        if let posterURL, failedPosterURL != posterURL {
             AnimatedRemoteImage(
                 url: posterURL,
                 animates: false,
                 maximumPixelDimension: maximumPixelDimension,
-                onFailure: { didFailPosterLoad = true }
+                onFailure: { failedPosterURL = posterURL }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .overlay {
