@@ -78,11 +78,7 @@ struct ServerTagCard: View {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
                         Text(profile.name).font(.title3.weight(.bold)).lineLimit(2)
-                        if let url = profile.badgeURL {
-                            StaticRemoteImage(url: url, maximumPixelDimension: 32)
-                                .frame(width: 18, height: 18)
-                                .accessibilityHidden(true)
-                        }
+                        ServerTagStatusBadge(profile: profile)
                     }
                     counts(profile)
                     Text("Est. \(profile.id.createdAt.formatted(.dateTime.month(.abbreviated).year()))")
@@ -229,6 +225,52 @@ struct ServerTagCard: View {
                 .frame(height: 26)
                 .overlay { Capsule().strokeBorder(.primary.opacity(0.13)) }
             }
+        }
+    }
+}
+
+/// Server status belongs beside its name; the custom clan badge belongs on the user's tag.
+private struct ServerTagStatusBadge: View {
+    let profile: GuildProfile
+
+    private struct Status {
+        let symbol: String
+        let label: LocalizedStringKey
+        let color: Color
+    }
+
+    private var status: Status? {
+        let features = profile.features
+        if features.contains("STAFF") {
+            return Status(symbol: "wrench.and.screwdriver.fill", label: "Staff Server", color: .green)
+        }
+        if features.contains("VERIFIED") {
+            return Status(symbol: "checkmark", label: features.contains("PARTNERED") ? "Verified and Partnered Server" : "Verified Server", color: .green)
+        }
+        if features.contains("PARTNERED") {
+            return Status(symbol: "link", label: "Partnered Server", color: .indigo)
+        }
+        guard features.contains("COMMUNITY") else { return nil }
+        let boosted = profile.premiumSubscriptionCount > 0 || profile.premiumTier > 0
+        return features.contains("DISCOVERABLE")
+            ? Status(symbol: "globe", label: boosted ? "Boosted Discoverable Server" : "Discoverable Server", color: boosted ? .pink : .secondary)
+            : Status(symbol: "house.fill", label: boosted ? "Boosted Community Server" : "Community Server", color: boosted ? .pink : .secondary)
+    }
+
+    var body: some View {
+        if let status {
+            Image(systemName: "seal.fill")
+                .font(.system(size: 18))
+                .foregroundStyle(status.color)
+                .overlay {
+                    Image(systemName: status.symbol)
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+                .frame(width: 18, height: 18)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(Text(status.label))
+                .help(Text(status.label))
         }
     }
 }

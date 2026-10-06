@@ -195,7 +195,6 @@ struct ServerInviteContractTests {
         #expect(profile.brandColor == nil)
         #expect((profile.bannerURL != nil) == profile.isDiscoverable)
         #expect(profile.rankedGameApplicationIDs == ["2", "1"])
-        #expect(profile.badgeHash == "hash")
     }
 
     @Test func `invite creation sends the observed settings once and keeps limit failures local`() async throws {

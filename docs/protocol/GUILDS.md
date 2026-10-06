@@ -44,7 +44,10 @@ for exact create/delete fields rather than extending preview behaviour implicitl
 An explicit profile tag opens `GET /guilds/{guild}/profile` without query or body.
 Validate the returned guild identity. `403` / `50001` means a private profile;
 `404` is expected. Neither stops account networking. The Guide shares this profile.
-The image badge uses `badge_hash`, not the numeric `badge` preset. Discovery banners
+The title badge represents server status, not the custom `badge_hash` from its tag.
+Staff, verified and partnered features take priority; other Community servers use
+a globe when discoverable or a house otherwise. Positive subscription count or
+premium tier adds the boost tint only to those Community badges. Discovery banners
 are shown only for `DISCOVERABLE` guilds. Resolve the five top `game_application_ids`
 through the existing games provider after ranking by `game_activity.activity_score`.
 
@@ -57,7 +60,13 @@ SakuraCord has no lurker mode: it sends the final full-membership
 CAPTCHA replay on the same provider/Gateway session. Banned/server-limit responses
 remain operation-scoped; Gateway membership reconciliation confirms completion.
 
-The request construction was established by first-party web build `622805` static
+Live first-party build `630444` on 6 October 2026 confirmed profile reads and the
+Go to Server / Join / no-action states for joined, unjoined discoverable and
+unjoined non-discoverable servers. Status-badge precedence also follows that
+build’s public GuildBadge implementation. Hidden-profile errors and actual joins
+were not exercised in that live pass.
+
+The join request construction was established by first-party web build `622805` static
 analysis on 29 September 2026. Paicord has only the PATCH member route and pinned
 Swiftcord has no equivalent. No live join was performed. The provider request and
 budget coverage lives in `ServerInviteContractTests`.

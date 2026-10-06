@@ -16,7 +16,8 @@ public struct GuildProfile: Decodable, Equatable, Sendable {
     public var traits: [Trait]
     public var gameApplicationIDs: [String]
     public var gameActivityScores: [String: Double]
-    public var badgeHash: String?
+    public var premiumSubscriptionCount: Int
+    public var premiumTier: Int
 
     public struct Trait: Decodable, Equatable, Sendable {
         public var label: String
@@ -49,13 +50,14 @@ public struct GuildProfile: Decodable, Equatable, Sendable {
         gameApplicationIDs = (try? values.decodeIfPresent([String].self, forKey: .gameApplicationIDs)) ?? []
         gameActivityScores = ((try? values.decodeIfPresent([String: Activity].self, forKey: .gameActivity)) ?? [:])
             .compactMapValues(\.score)
-        // `badge` is a numeric preset; the CDN image uses `badge_hash`.
-        badgeHash = (try? values.decodeIfPresent(String.self, forKey: .badgeHash)) ?? nil
+        premiumSubscriptionCount = (try? values.decodeIfPresent(Int.self, forKey: .premiumSubscriptionCount)) ?? 0
+        premiumTier = (try? values.decodeIfPresent(Int.self, forKey: .premiumTier)) ?? 0
     }
 
     enum CodingKeys: String, CodingKey {
         case id, name, description, traits, visibility, features
-        case iconHash = "icon_hash", customBannerHash = "custom_banner_hash", badgeHash = "badge_hash"
+        case iconHash = "icon_hash", customBannerHash = "custom_banner_hash"
+        case premiumSubscriptionCount = "premium_subscription_count", premiumTier = "premium_tier"
         case memberCount = "member_count", onlineCount = "online_count", brandColorPrimary = "brand_color_primary"
         case gameApplicationIDs = "game_application_ids", gameActivity = "game_activity"
     }
@@ -66,10 +68,6 @@ public struct GuildProfile: Decodable, Equatable, Sendable {
         iconHash.flatMap {
             URL(string: "https://cdn.discordapp.com/icons/\(id)/\($0).webp?size=128&animated=\($0.hasPrefix("a_") ? "true" : "false")")
         }
-    }
-
-    public var badgeURL: URL? {
-        badgeHash.flatMap { URL(string: "https://cdn.discordapp.com/clan-badges/\(id)/\($0).png?size=32") }
     }
 
     /// The first-party card shows the custom banner only for discoverable servers.
