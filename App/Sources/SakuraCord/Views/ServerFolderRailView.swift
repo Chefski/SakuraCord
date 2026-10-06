@@ -8,7 +8,7 @@ struct ServerFolderRailView: View {
     let expansionChanged: () -> Void
 
     @AppStorage private var isExpanded: Bool
-    @State private var isHovering = false
+    @Environment(ServerRailDragController.self) private var drag
 
     init(
         entry: ServerRailFolderEntry,
@@ -22,16 +22,32 @@ struct ServerFolderRailView: View {
         self.expansionChanged = expansionChanged
         _isExpanded = AppStorage(
             wrappedValue: false,
-            "GuildFolders.\(entry.folder.id).isExpanded"
+            Self.expansionKey(entry.folder.id)
         )
+    }
+
+    static func expansionKey(_ folderID: Int64) -> String {
+        "GuildFolders.\(folderID).isExpanded"
     }
 
     var body: some View {
         VStack(spacing: 8) {
-            folderButton
+            ServerFolderRailHeader(
+                entry: entry,
+                isExpanded: isExpanded,
+                contextMenuActions: contextMenuActions
+            ) {
+                guard !drag.swallowsClick else { return }
+                withAnimation(ServerRailAnimations.folderExpansion) {
+                    isExpanded.toggle()
+                    expansionChanged()
+                }
+            }
+            .modifier(ServerRailDraggableRow(id: entry.id, isExpandedFolder: isExpanded))
 
             if isExpanded {
                 ExpandedFolderGuilds(
+                    folderID: entry.folder.id,
                     guildEntries: entry.guildEntries,
                     selectGuild: selectGuild,
                     contextMenuActions: contextMenuActions
@@ -43,26 +59,30 @@ struct ServerFolderRailView: View {
         .background {
             if isExpanded {
                 ConcentricRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(folderColor.opacity(0.12))
+                    .fill(Color(hex: entry.folder.colorHex ?? ServerFolderSettingsView.defaultColor).opacity(0.12))
                     .padding(.horizontal, 7)
                     .transition(.opacity)
             }
         }
     }
+}
 
-    private var folderButton: some View {
+/// A folder's button. It is also drawn on its own while the folder is dragged.
+struct ServerFolderRailHeader: View {
+    let entry: ServerRailFolderEntry
+    let isExpanded: Bool
+    let contextMenuActions: ServerRailContextMenuActions
+    let toggle: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
         HStack(spacing: 5) {
             ServerRailSelectionIndicator(
                 isSelected: entry.containsSelectedGuild,
                 isHovering: isHovering,
                 hasNotification: showsUnreadIndicators && entry.hasUnreadGuild
             )
-            Button {
-                withAnimation(ServerRailAnimations.folderExpansion) {
-                    isExpanded.toggle()
-                    expansionChanged()
-                }
-            } label: {
+            Button(action: toggle) {
                 ServerRailBadgedIcon(
                     mentionCount: showsUnreadIndicators ? entry.mentionCount : 0
                 ) {
@@ -81,6 +101,13 @@ struct ServerFolderRailView: View {
                 }
             }
             .buttonStyle(.plain)
+            .overlay {
+                ServerFolderContextMenuBridge(
+                    isUnread: entry.hasUnreadGuild || entry.mentionCount > 0,
+                    markRead: { contextMenuActions.markFolderRead(entry.guildEntries.map(\.id)) },
+                    openSettings: { contextMenuActions.openFolderSettings(entry.folder) }
+                )
+            }
             .accessibilityLabel(displayName)
             .accessibilityValue(
                 "\(isExpanded ? "Expanded" : "Collapsed")"
@@ -141,11 +168,12 @@ struct ServerFolderRailView: View {
     }
 
     private var folderColor: Color {
-        Color(hex: entry.folder.colorHex ?? 0x5865F2)
+        Color(hex: entry.folder.colorHex ?? ServerFolderSettingsView.defaultColor)
     }
 }
 
 private struct ExpandedFolderGuilds: View {
+    let folderID: Int64
     let guildEntries: [ServerRailGuildEntry]
     let selectGuild: (GuildID?) -> Void
     let contextMenuActions: ServerRailContextMenuActions
@@ -158,6 +186,7 @@ private struct ExpandedFolderGuilds: View {
                     selectGuild: selectGuild,
                     contextMenuActions: contextMenuActions
                 )
+                .modifier(ServerRailDraggableRow(id: .guild(entry.id), folderID: folderID))
             }
         }
     }

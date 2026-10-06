@@ -189,6 +189,7 @@ extension DiscordRESTProvider {
     }
 
     public func disconnect() async {
+        await finishGuildFoldersEdits()
         currentAccountDetails = nil
         currentAuthSessionIDHash = nil
         accountInformationRevision = UUID()
@@ -646,8 +647,10 @@ extension DiscordRESTProvider {
             task.cancel()
         }
         autocompleteTimeoutTasks = [:]
-        pendingAutocompleteTypes = [:]
-        pendingModalContexts = [:]
+        autocompleteOptionTypes = [:]
+        autocompleteNonceOrder = []
+        pendingInteractionContexts = [:]
+        pendingInteractionContextOrder = []
     }
 
     func publishEmojiCollection(

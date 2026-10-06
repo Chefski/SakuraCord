@@ -66,10 +66,11 @@ nonisolated struct TranslationTokenProtector: Equatable, Sendable {
     // Preserve Markdown delimiters and line structure, including unmatched code
     // fences. Link destinations (including non-HTTP schemes) stay byte-for-byte.
     // Splitting prose at syntax boundaries trades some context for token safety.
+    // Fences close on delimiter lines; inline code needs matching backtick runs.
     private static let syntax: NSRegularExpression = {
         let pattern = [
-        #"```[\s\S]*?(?:```|$)"#,
-        #"`+[^`\n]*(?:`+|$)"#,
+        #"(?m:^[ \t]*(?:>[ \t]*)*(`{3,})(?!`)[^\n]*\n[\s\S]*?(?:^[ \t]*(?:>[ \t]*)*\1`*[ \t]*\r?$|\z))"#,
+        #"(`+)(?!`)[\s\S]*?(?:(?<!`)\2(?!`)|\z)"#,
         #"\[[^\]\n]*\]\(https?://(?:cdn|media)\.discordapp\.(?:com|net)/emojis/[^\s]+?\)"#,
         #"\]\([^\n]*\)"#,
         #"<[^>\n]*>"#,

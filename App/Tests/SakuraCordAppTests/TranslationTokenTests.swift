@@ -57,3 +57,16 @@ func `translation syntax and repeated tokens round trip without model placeholde
     #expect(!TranslationTokenProtector("<@1> `code` https://example.com 👋").hasTranslatableText)
     #expect(TranslationTokenProtector("Hi").hasTranslatableText)
 }
+
+@Test func `translation keeps code containing literal backticks out of prose slots`() throws {
+    for source in [
+        "Hoi ``code met `letterlijk` en tekst`` dag",
+        "Hoi ````code met ```letterlijk``` en tekst```` dag",
+        "Hoi\n```swift\nlet marker = \"```\"\nlet secret = true\n```\ndag",
+        "Hoi\n> ```swift\n> let marker = \"```\"\n> let secret = true\n> ```\ndag",
+    ] {
+        let plan = TranslationTokenProtector(source)
+        #expect(plan.slots.map(\.text) == ["Hoi", "dag"])
+        #expect(try plan.restore(plan.slots) == source)
+    }
+}

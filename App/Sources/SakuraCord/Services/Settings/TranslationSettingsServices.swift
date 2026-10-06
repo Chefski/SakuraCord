@@ -38,5 +38,6 @@ extension AppModel {
         resetAllTranslations()
         translation.settings = value
         translation.settingsStore.save(value)
+        invalidateTimelinePresentation()
     }
 }

@@ -35,6 +35,8 @@ extension AppModel {
         guard let database = session.database else {
             throw LocalPrivacyActionError.noActiveAccount
         }
+        translation.resetDraft(.channel)
+        translation.resetDraft(.thread)
         let previousDraftChannelIDs = quickSwitcherDraftChannelIDs
         quickSwitcherDraftChannelIDs = []
         do {

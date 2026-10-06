@@ -39,10 +39,16 @@ enum DiscordSettingsProto {
     }
 
     static func guildLayout(from data: Data) -> DiscordGuildLayout? {
+        guildFoldersSettings(in: data).map(layout(fromGuildFolders:))
+    }
+
+    /// The raw GuildFolders message in root field 14, or nil when the settings
+    /// do not carry one.
+    static func guildFoldersSettings(in data: Data) -> Data? {
         var topLevel = ProtoReader(data: data)
         while let tag = topLevel.readTag() {
             if tag.field == 14, tag.wireType == 2, let guildFolders = topLevel.readLengthDelimited() {
-                return layout(fromGuildFolders: guildFolders)
+                return guildFolders
             }
             guard topLevel.skip(wireType: tag.wireType) else { return nil }
         }
@@ -349,7 +355,7 @@ enum DiscordSettingsProto {
         return result
     }
 
-    private static func protoStringField(_ field: Int, _ value: String) -> Data {
+    static func protoStringField(_ field: Int, _ value: String) -> Data {
         protoLengthDelimitedField(field, Data(value.utf8))
     }
 
@@ -620,7 +626,7 @@ enum DiscordSettingsProto {
         frecencyComputation(data, nowMilliseconds)
     }
 
-    private static func layout(fromGuildFolders data: Data) -> DiscordGuildLayout {
+    static func layout(fromGuildFolders data: Data) -> DiscordGuildLayout {
         var reader = ProtoReader(data: data)
         var folders: [DiscordGuildLayout.Folder] = []
         var legacyOrder: [GuildID] = []
@@ -637,7 +643,7 @@ enum DiscordSettingsProto {
         return DiscordGuildLayout(folders: folders, guildPositions: legacyOrder)
     }
 
-    private static func folder(from data: Data) -> DiscordGuildLayout.Folder {
+    static func folder(from data: Data) -> DiscordGuildLayout.Folder {
         var reader = ProtoReader(data: data)
         var guildIDs: [GuildID] = []
         var id: Int64?

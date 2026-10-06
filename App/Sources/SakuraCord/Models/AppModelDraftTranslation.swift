@@ -11,6 +11,7 @@ extension AppModel {
     }
 
     func canTranslateDraft(in destination: MessageComposerDestination) -> Bool {
+        guard !isDraftTranslationBlocked(in: destination) else { return false }
         if let state = draftTranslation(for: destination) {
             switch state.phase {
             case .translating: return false
@@ -27,7 +28,7 @@ extension AppModel {
         guard translation.settings.isEnabled else { return }
         let text = draftText(for: destination)
         let language = translation.settings.draftLanguage
-        if destination == .channel, commandComposer.activeCommand != nil || commandComposer.isPickerPresented {
+        if isDraftTranslationBlocked(in: destination) {
             translation.resetDraft(destination)
             return
         }
@@ -59,7 +60,8 @@ extension AppModel {
     }
 
     func showOriginalDraft(in destination: MessageComposerDestination) {
-        guard var state = translation.drafts[destination], state.phase == .translated else { return }
+        guard !isDraftTranslationBlocked(in: destination),
+              var state = translation.drafts[destination], state.phase == .translated else { return }
         // Keep edits made to the translated draft for the next toggle.
         state.translated = draftText(for: destination)
         state.phase = .showingOriginal
@@ -77,12 +79,33 @@ extension AppModel {
         clearMessageTranslations()
     }
 
+    /// Native Undo and Redo publish ordinary text edits, so keep the toggle
+    /// state and translated edits synchronized with the actual composer text.
+    func reconcileDraftTranslationText(_ text: String, in destination: MessageComposerDestination) {
+        guard var state = translation.drafts[destination],
+              state.phase == .translated || state.phase == .showingOriginal else { return }
+        let previous = state
+        if text == state.original {
+            state.phase = .showingOriginal
+        } else if state.phase == .translated || text == state.translated {
+            state.phase = .translated
+            state.translated = text
+        }
+        if state != previous { translation.drafts[destination] = state }
+    }
+
+    private func isDraftTranslationBlocked(in destination: MessageComposerDestination) -> Bool {
+        let command = commandComposer(for: destination)
+        return !translation.settings.isEnabled
+            || command.activeCommand != nil || command.isPickerPresented
+            || (destination == .thread && threadCreation?.isSubmitting == true)
+    }
+
     private func draftTranslationRefusal(for destination: MessageComposerDestination) -> LocalTranslationError? {
         guard translation.settings.isEnabled else { return .disabled }
         let text = draftText(for: destination)
-        if destination == .channel, commandComposer.activeCommand != nil || commandComposer.isPickerPresented {
-            return .slashCommand
-        }
+        let command = commandComposer(for: destination)
+        if command.activeCommand != nil || command.isPickerPresented { return .slashCommand }
         if text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("/") { return .slashCommand }
         return TranslationTokenProtector(text).hasTranslatableText ? nil : .emptyText
     }
@@ -124,7 +147,8 @@ extension AppModel {
         translation.draftTasks[destination] = nil
         guard var state = translation.drafts[destination], state.phase == .translating else { return }
         // A result for text the user has since changed would overwrite their edits.
-        guard draftRevision(for: destination) == state.requestRevision,
+        guard !isDraftTranslationBlocked(in: destination),
+              draftRevision(for: destination) == state.requestRevision,
               draftText(for: destination) == state.original,
               draftTranslationRefusal(for: destination) == nil
         else {

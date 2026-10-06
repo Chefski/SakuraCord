@@ -153,6 +153,7 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     var rateLimitDiscoveryWaitersByRoute:
         [String: [UUID: CheckedContinuation<Void, Never>]] = [:]
     var requestSafetyCircuitIsOpen = false
+    var requestSafetyStopReason = "Discord networking is stopped for this session."
     var unexpectedNotFoundCounts: [String: Int] = [:]
     var gatewaySession: GatewaySession?
     var gatewayEventTask: Task<Void, Never>?
@@ -223,6 +224,12 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     var cachedGuilds: [GuildID: Guild] = [:]
     var cachedGuildRailItems: [GuildRailItem] = []
     var cachedGuildLayout: DiscordGuildLayout?
+    var guildFoldersSettings: Data?
+    var pendingGuildFoldersSettings: Data?
+    var guildFoldersFlushTask: Task<Void, Never>?
+    var guildFoldersRevision: UInt64 = 0
+    var guildFoldersGeneration: UInt64 = 0
+    var guildFoldersSaveTask: Task<Void, Never>?
     var cachedProfiles: [ProfileCacheKey: UserProfile] = [:]
     var profileTasks: [ProfileCacheKey: Task<UserProfile, Error>] = [:]
     var collectibleProductTasks: [String: Task<ProfileCollectibleProductDTO, Error>] = [:]
@@ -273,9 +280,11 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
         [ApplicationCommandIndexTarget: ApplicationCommandCatalog] = [:]
     var applicationCommandCatalogTasks:
         [ApplicationCommandIndexTarget: Task<ApplicationCommandCatalog, Error>] = [:]
-    var pendingAutocompleteTypes: [String: ApplicationCommandOptionType] = [:]
+    var autocompleteOptionTypes: [String: ApplicationCommandOptionType] = [:]
+    var autocompleteNonceOrder: [String] = []
     var autocompleteTimeoutTasks: [String: Task<Void, Never>] = [:]
-    var pendingModalContexts: [String: GatewayInteractionModalDTO] = [:]
+    var pendingInteractionContexts: [String: PendingInteractionContext] = [:]
+    var pendingInteractionContextOrder: [String] = []
     var profileEffects: [String: ProfileEffectConfigDTO]?
     var pendingVoiceNegotiation: PendingVoiceNegotiation?
     var activeVoiceConnection: VoiceConnectionInfo?

@@ -69,6 +69,12 @@ private func translationMessage(_ id: UInt64 = 300, content: String = "Hallo <@1
         canvas.reconcileAccessibilityProxies()
         return try #require(canvas.accessibilityProxyRowsInTimelineOrder().first as? NSView)
     }
+    model.applyTranslationSettings(.defaults)
+    let disabled = try refresh()
+    #expect(disabled.accessibilityCustomActions()?.contains { $0.name == "Translate Message" } == false)
+    let disabledRevision = model.timelinePresentationRevision
+    model.applyTranslationSettings(.init(isEnabled: true, messageLanguage: "en", draftLanguage: "en"))
+    #expect(model.timelinePresentationRevision > disabledRevision)
     let original = try refresh()
     #expect(original.accessibilityCustomActions()?.contains { $0.name == "Translate Message" } == true)
     let entry = MessageTranslationEntry(sourceContent: message.content, language: "en", status: .translated(.init(text: "Hello ||world|| [example](https://example.com)", detectedSourceLanguage: "nl")))
@@ -86,6 +92,9 @@ private func translationMessage(_ id: UInt64 = 300, content: String = "Hallo <@1
     #expect(hidden !== translated)
     #expect(hidden.accessibilityCustomActions()?.contains { $0.name == "Translate Message" } == true)
     #expect(hidden.accessibilityCustomActions()?.contains { $0.name == "Copy Translation" } == false)
+    model.applyTranslationSettings(.defaults)
+    let disabledAgain = try refresh()
+    #expect(disabledAgain.accessibilityCustomActions()?.contains { $0.name == "Translate Message" } == false)
 }
 
 @MainActor
@@ -161,9 +170,21 @@ func `draft translation toggles preserve translated edits and dismissal keeps cu
     await translator.waitForRequests(1)
     translator.complete(0)
     await task.value
+    // Native Undo publishes the original text through the same draft callback.
+    if destination == .channel { model.updateDraft("Hallo") } else { model.updateThreadDraft("Hallo") }
+    #expect(model.draftTranslation(for: destination)?.phase == .showingOriginal)
+    model.translateDraft(in: destination)
+    #expect((destination == .channel ? model.draft : model.threadDraft) == "Hello")
+    if destination == .channel { model.updateDraft("Hallo") } else { model.updateThreadDraft("Hallo") }
+    model.showOriginalDraft(in: destination)
+    model.translateDraft(in: destination)
+    #expect((destination == .channel ? model.draft : model.threadDraft) == "Hello")
     if destination == .channel { model.updateDraft("Hello edited") } else { model.updateThreadDraft("Hello edited") }
     model.showOriginalDraft(in: destination)
     #expect((destination == .channel ? model.draft : model.threadDraft) == "Hallo")
+    if destination == .channel { model.updateDraft("Hello edited") } else { model.updateThreadDraft("Hello edited") }
+    #expect(model.draftTranslation(for: destination)?.phase == .translated)
+    model.showOriginalDraft(in: destination)
     model.translateDraft(in: destination)
     #expect((destination == .channel ? model.draft : model.threadDraft) == "Hello edited")
     #expect(translator.requests.count == 1)
@@ -246,4 +267,33 @@ func `commands and nontext drafts never invoke translation`(_ draft: String) {
     #expect(!model.canTranslateDraft(in: .channel))
     #expect(translator.requests.isEmpty)
     #expect(model.draft == draft)
+}
+
+@MainActor
+@Test(arguments: [MessageComposerDestination.channel, .thread])
+func `clearing local drafts discards translated originals and pending results`(_ destination: MessageComposerDestination) async throws {
+    let translator = ControlledTranslationTestService()
+    let model = translationFixture(translator)
+    if destination == .channel { model.updateDraft("Hallo") } else { model.updateThreadDraft("Hallo") }
+    model.translateDraft(in: destination)
+    let completed = try #require(model.translation.draftTasks[destination])
+    await translator.waitForRequests(1)
+    translator.complete(0)
+    await completed.value
+    try await model.clearLocalDrafts()
+    model.showOriginalDraft(in: destination)
+    await model.composer.flushDraftOperations()
+    let database = try #require(model.database)
+    #expect(try await database.draft(channelID: ChannelID(rawValue: 200)) == "")
+    #expect((destination == .channel ? model.draft : model.threadDraft).isEmpty)
+    #expect(model.draftTranslation(for: destination) == nil)
+    if destination == .channel { model.updateDraft("Dag") } else { model.updateThreadDraft("Dag") }
+    model.translateDraft(in: destination)
+    let pending = try #require(model.translation.draftTasks[destination])
+    await translator.waitForRequests(2)
+    try await model.clearLocalDrafts()
+    translator.complete(1, text: "Goodbye")
+    await pending.value
+    #expect((destination == .channel ? model.draft : model.threadDraft).isEmpty)
+    #expect(model.draftTranslation(for: destination) == nil)
 }
