@@ -72,6 +72,8 @@ public protocol ChatProvider: Sendable {
     func profileWidgetApplication(id: String) async throws -> [ProfileApplicationWidget]
     func profileWidgetApplicationIdentities(for userID: UserID) async throws -> [ProfileWidgetApplicationIdentity]
     func profileWidgetConnections(applicationIDs: [String]) async throws -> [String: ProfileWidgetConnection]
+    /// Changes the current member's nickname; an empty string resets it.
+    func setNickname(_ nickname: String, in guildID: GuildID) async throws -> String?
     func saveProfileChanges(
         _ changes: ProfileEditChanges, in scope: ProfileEditingScope,
         didSave: @Sendable (ProfileSaveConfirmation) async -> Void
@@ -156,7 +158,10 @@ public protocol ChatProvider: Sendable {
         progress: @escaping @Sendable (ApplicationCommandProgress) -> Void
     ) async throws
     func submitComponentInteraction(_ submission: ComponentInteractionSubmission) async throws
-    func submitModal(_ submission: ModalSubmission, nonce: String) async throws
+    /// Submits a returned form. A definite rejection throws `ModalSubmissionRejection`.
+    func submitModal(_ submission: ModalSubmission) async throws
+    /// Grants an OAuth2 authorization code after the person explicitly asked to sign in.
+    func authorizeOAuth2(_ request: OAuth2AuthorizationRequest) async throws -> OAuth2AuthorizationGrant
     func componentChoices(
         kind: ComponentSelectKind, query: String, guildID: GuildID?, channelID: ChannelID
     ) async throws -> [ComponentSelectOption]
@@ -173,6 +178,12 @@ public protocol ChatProvider: Sendable {
     func setStickerFavorite(_ stickerID: String, isFavorite: Bool) async throws
         -> StickerUserSettings
     func recordStickerUse(_ stickerID: String) async throws -> StickerUserSettings
+    /// Synced slash-command usage from Discord's frecency settings.
+    func applicationCommandFrecency() async throws -> ApplicationCommandFrecencyHistory
+    /// Replaces the synced command usage, as Discord's client does when it
+    /// flushes pending uses. Returns what the server stored.
+    func saveApplicationCommandFrecency(_ history: ApplicationCommandFrecencyHistory) async throws
+        -> ApplicationCommandFrecencyHistory
     func edit(messageID: MessageID, channelID: ChannelID, content: String) async throws -> Message
     func delete(messageID: MessageID, channelID: ChannelID) async throws
     func acknowledge(
@@ -407,6 +418,10 @@ public extension ChatProvider {
 
     func deleteProfileAvatarHistoryEntry(id: String) async throws {
         throw ChatProviderError.invalidRequest("Avatar history is unavailable for this session.")
+    }
+
+    func setNickname(_ nickname: String, in guildID: GuildID) async throws -> String? {
+        throw ChatProviderError.invalidRequest("Nickname editing is unavailable for this session.")
     }
 
     func saveProfileChanges(
@@ -666,8 +681,12 @@ public extension ChatProvider {
         throw ChatProviderError.capabilityDisabled(.components)
     }
 
-    func submitModal(_ submission: ModalSubmission, nonce: String) async throws {
+    func submitModal(_ submission: ModalSubmission) async throws {
         throw ChatProviderError.capabilityDisabled(.modals)
+    }
+
+    func authorizeOAuth2(_ request: OAuth2AuthorizationRequest) async throws -> OAuth2AuthorizationGrant {
+        throw OAuth2AuthorizationError.unavailable
     }
 
     func componentChoices(
@@ -720,6 +739,16 @@ public extension ChatProvider {
 
     func recordStickerUse(_ stickerID: String) async throws -> StickerUserSettings {
         StickerUserSettings()
+    }
+
+    func applicationCommandFrecency() async throws -> ApplicationCommandFrecencyHistory {
+        ApplicationCommandFrecencyHistory()
+    }
+
+    func saveApplicationCommandFrecency(_ history: ApplicationCommandFrecencyHistory) async throws
+        -> ApplicationCommandFrecencyHistory
+    {
+        history
     }
 
     func emojis(in guildID: GuildID) async throws -> [DiscordEmoji] {

@@ -53,6 +53,7 @@ struct MentionMemberSearchCacheEntry {
 
 struct ComponentInteractionPresentationState {
     var pendingControls: Set<ComponentControlKey> = []
+    var pendingMessages: Set<MessageID> = []
     var errors: [ComponentControlKey: String] = [:]
     var selections: [ComponentControlKey: [ComponentSelectOption]] = [:]
 }
@@ -153,6 +154,7 @@ final class AppModel {
         ServerRailPresentationStore()
     @ObservationIgnored let onboarding = GuildOnboardingStore()
     @ObservationIgnored let serverInvites = ServerInvitePresentationStore()
+    @ObservationIgnored let issueReports = IssueReportStore()
     @ObservationIgnored let voiceSidebarPresentation =
         VoiceSidebarPresentationStore()
     var serverRailGuildsByID: [GuildID: Guild] = [:] {
@@ -226,6 +228,7 @@ final class AppModel {
             let indexed = mergedMemberStore(with: members)
             if membersByID != indexed {
                 membersByID = indexed
+                for commandComposer in commandComposers { commandComposer.refreshApplicationIdentities { indexed[$0]?.user } }
             }
             refreshVoiceSidebarPresentation(using: indexed)
             var permissionsChanged = false
@@ -285,7 +288,6 @@ final class AppModel {
         }
     }
     @ObservationIgnored var guildRolesByGuildID: [GuildID: [GuildRole]] = [:]
-    var commandMemberResults: [Member] = []
     var mentionMemberResults: [Member] = []
     var mentionAutocompleteMembers: [Member] = []
     var knownMentionMembers: [UserID: Member] = [:] {
@@ -314,6 +316,7 @@ final class AppModel {
     let launchMode: AppLaunchMode
     let typingState: TypingStateModel
     let commandComposer = ApplicationCommandComposerModel()
+    @ObservationIgnored lazy var threadCommandComposer = ApplicationCommandComposerModel(frecencyStore: commandComposer.frecencyStore)
     let readState = AccountReadStateModel()
     let notificationPreferences: NotificationPreferences
     let voiceVideoPreferences: VoiceVideoPreferences
@@ -357,9 +360,7 @@ final class AppModel {
     var forumSortOrder: ForumSortOrder = .latestActivity
     var forumLayout: ForumLayout = .list
     var forumTagMatch: ForumTagMatch = .matchSome
-    var presentedInteractionModal: InteractionModal?
-    var interactionModalNonce: String?
-    var interactionErrorMessage: String?
+    var interactionModalForm: InteractionModalFormState?
     var isVoiceChatOpen = false
     var openThread: MessageThreadSummary?
     /// A thread being composed in the supplementary pane. It is mutually
@@ -425,6 +426,8 @@ final class AppModel {
     var gifErrorMessage: String?
     var gifFavoriteMutationURL: URL?
     var stickerPickerState = StickerPickerPresentationState()
+    /// `/gif` and `/sticker` open the composer's pickers.
+    var builtInExpressionPickerRequest: BuiltInExpressionPickerRequest?
     var soundboardState = SoundboardPresentationState()
     var supportedCapabilities: Set<ChatCapability> = []
     var componentInteractionPresentation =
@@ -952,10 +955,9 @@ final class AppModel {
             {
                 lastOpenedChannelIDsByGuild[guildID] = selectedChannel.id
             }
-            commandLoadTask?.cancel()
-            commandAutocompleteTask?.cancel()
+            builtInExpressionPickerRequest = nil
+            cancelApplicationCommandAutocompleteTask()
             cancelApplicationCommandMemberSearch()
-            commandExecutionTask?.cancel()
             commandComposer.resetForChannelChange()
             clearComposerAttachments(for: .channel)
             isVoiceChatOpen = selectedChannel?.kind == .voice
@@ -1059,20 +1061,20 @@ final class AppModel {
     @ObservationIgnored var gifPickerLoadGeneration: UInt64 = 0
     @ObservationIgnored var soundboardLoadTask: Task<Void, Never>?
     @ObservationIgnored var soundboardLoadGeneration: UInt64 = 0
-    @ObservationIgnored var commandLoadTask: Task<Void, Never>?
-    @ObservationIgnored var commandAutocompleteTask: Task<Void, Never>?
-    @ObservationIgnored var commandMemberSearchTask: Task<Void, Never>?
-    @ObservationIgnored var commandMemberSearchQuery: CommandMemberQuery?
-    @ObservationIgnored var commandMemberSearchCache: [CommandMemberQuery: [Member]] = [:]
+    @ObservationIgnored var commandFrecencySaveTask: Task<Void, Never>?
+    @ObservationIgnored var deferredCommandFrecency: ApplicationCommandFrecencyHistory?
+    @ObservationIgnored var commandFrecencyLoadTask: Task<Void, Never>?
+    @ObservationIgnored var commandFrecencyFlushTask: Task<Void, Never>?
     @ObservationIgnored var mentionMemberSearchTask: Task<Void, Never>?
     @ObservationIgnored var mentionMemberSearchQuery: CommandMemberQuery?
     @ObservationIgnored var mentionMemberSearchCache:
         [CommandMemberQuery: MentionMemberSearchCacheEntry] = [:]
     @ObservationIgnored var roleMemberTask: Task<Void, Never>?
-    @ObservationIgnored var commandExecutionTask: Task<Void, Never>?
     @ObservationIgnored var stickerLoadTasks: [GuildID: Task<Void, Never>] = [:]
     @ObservationIgnored var stickerLoadGeneration: UInt64 = 0
-    @ObservationIgnored var componentKeyByNonce: [String: ComponentControlKey] = [:]
+    @ObservationIgnored var interactionDeadlineTasks: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored var pendingInteractions: [String: PendingInteractionRecord] = [:]
+    @ObservationIgnored var pendingInteractionOrder: [String] = []
     @ObservationIgnored var loadingReactionReactors: Set<ReactionReactorLoadKey> = []
     @ObservationIgnored var failedReactionReactorLoads: [ReactionReactorLoadKey: Date] = [:]
     @ObservationIgnored var liveScrollingConversationIDs:

@@ -86,6 +86,13 @@ extension NativeTimelineRowLayout {
             if isOutgoingBubble {
                 contentPresentation = NativeTimelineTextPresentation.outgoingBubble(contentPresentation)
             }
+            if message.flags.contains(.localInteractionFailure) {
+                contentPresentation = NativeTimelineTextPresentation.interactionFailure(contentPresentation)
+            }
+            let authorName = (model?.authorPresentation(for: message).user ?? message.author).displayName
+            if let status = MessageOutboxPresentation.interactionLoadingStatus(for: message, authorName: authorName) {
+                contentPresentation = NativeTimelineTextPresentation.interactionLoading(status)
+            }
             let preferredBubbleContentWidth =
                 NativeTimelineBubbleLayout.preferredContentWidth(
                     for: message,
@@ -293,21 +300,6 @@ extension NativeTimelineRowLayout {
                 )
                 headerX = result.editedFrame?.maxX ?? headerX
             }
-            if message.flags.contains(.loading) {
-                headerX += 7
-                result.loadingIndicatorFrame = CGRect(
-                    x: headerX,
-                    y: verticalOffset + 2,
-                    width: min(
-                        12,
-                        max(
-                            0,
-                            contentX + contentWidth - headerX
-                        )
-                    ),
-                    height: 12
-                )
-            }
         }
 
         private mutating func appendTextAndPoll() {
@@ -344,6 +336,18 @@ extension NativeTimelineRowLayout {
                     width: contentWidth
                 )
                 result.contentFrame = CGRect(x: contentX, y: verticalOffset, width: contentWidth, height: textHeight)
+                if message.flags.contains(.loading) {
+                    let font = NSFont.systemFont(ofSize: InterfaceTypographyMetrics.messageTextSize)
+                    let lineHeight = font.ascender - font.descender + font.leading
+                    let dots = InteractionLoadingDots.size
+                    result.activityIndicators.append(.init(
+                        frame: CGRect(
+                            x: contentX, y: verticalOffset + (lineHeight - dots.height) / 2,
+                            width: dots.width, height: dots.height
+                        ),
+                        style: .dots(.content)
+                    ))
+                }
                 verticalOffset += textHeight
                 hasRichContent = true
             }
@@ -518,7 +522,28 @@ extension NativeTimelineRowLayout {
                 hasRichContent = true
             }
             result.componentFrames = result.componentLayouts.map(\.frame)
-
+            // An activated button shows the dots in place of its label, and a
+            // committed select in place of its chevron.
+            let dots = InteractionLoadingDots.size
+            for button in result.componentLayouts.flatMap(\.buttons) where button.isLoading {
+                result.activityIndicators.append(.init(
+                    frame: CGRect(
+                        x: button.frame.midX - dots.width / 2, y: button.frame.midY - dots.height / 2,
+                        width: dots.width, height: dots.height
+                    ),
+                    style: .dots(.onFill)
+                ))
+            }
+            for select in result.componentLayouts.flatMap(\.selects) where select.isLoading {
+                let chevron = SelectionFieldRenderer.chevronRect(in: select.frame)
+                result.activityIndicators.append(.init(
+                    frame: CGRect(
+                        x: chevron.maxX - dots.width, y: chevron.midY - dots.height / 2,
+                        width: dots.width, height: dots.height
+                    ),
+                    style: .dots(.content)
+                ))
+            }
         }
 
         private mutating func appendStickers() {

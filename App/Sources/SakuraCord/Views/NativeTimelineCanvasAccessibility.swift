@@ -289,7 +289,7 @@ extension NativeTimelineCanvasView {
             let element = accessibilityElement(role: .row, label: header.title, identifier: "inbox-group-\(header.channelID)", frame: rowFrame, parent: self)
             element.setAccessibilityCustomActions([
                 NSAccessibilityCustomAction(name: header.isCollapsed ? "Expand" : "Collapse") { [weak self] in
-                    self?.model?.toggleInboxGroup(header.channelID)
+                    self?.toggleInboxGroup(header.channelID)
                     return self != nil
                 },
                 NSAccessibilityCustomAction(name: "Mark Read") { [weak self] in
@@ -649,17 +649,7 @@ extension NativeTimelineCanvasView {
         rowIndex: Int,
         parent: NSAccessibilityElement
     ) {
-        if let frame = layout.loadingIndicatorFrame {
-            children.append(accessibilityElement(
-                role: .progressIndicator,
-                label: "Loading",
-                frame: accessibilityChildFrame(
-                    frame,
-                    rowIndex: rowIndex
-                ),
-                parent: parent
-            ))
-        }
+        // Loading dots are decorative; the status text beside them is read.
         if let frame = layout.contentFrame,
            let value = layout.attributedContent,
            let framesetter = layout.contentFramesetter

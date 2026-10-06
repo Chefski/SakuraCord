@@ -623,6 +623,17 @@ The artwork remains Discord’s property; Discord has not published an open-sour
 license for it. It reproduces the official Guide’s fallback when a server has
 not uploaded a header and does not imply affiliation or endorsement.
 
+## Discord Clyde avatar
+
+`DiscordClyde.png` is the unmodified local Clyde avatar displayed by Discord
+Official Fresh 0.0.411, inspected on 2026-10-05.
+
+- Source: https://discord.com/assets/9380e4b5bd8d267c.png
+- SHA-256: `8f782f8ce761f522c13157bb2df929b5252f39a7011448bbe61f87296ab2d923`
+
+The artwork remains Discord’s property and identifies Discord's local command
+notices. Its inclusion does not imply affiliation or endorsement.
+
 ## Public Suffix List
 
 SakuraCord bundles the unmodified Public Suffix List to reject wildcard trust

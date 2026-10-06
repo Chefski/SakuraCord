@@ -46,6 +46,40 @@ enum NativeTimelineTextPresentation {
         )
     }
 
+    /// Discord shows an unanswered interaction as red text behind an alert glyph.
+    static func interactionFailure(_ value: Value) -> Value {
+        guard let attributedContent = value.attributedContent, attributedContent.length > 0 else { return value }
+        let resolved = NSMutableAttributedString(attributedString: attributedContent)
+        let attributes = resolved.attributes(at: 0, effectiveRange: nil)
+        resolved.insert(NSAttributedString(string: "⚠\u{FE0E} ", attributes: attributes), at: 0)
+        resolved.addAttribute(.foregroundColor, value: NSColor.systemRed, range: NSRange(location: 0, length: resolved.length))
+        return Value(
+            attributedContent: resolved,
+            framesetter: CTFramesetterCreateWithAttributedString(resolved),
+            linkedImages: value.linkedImages
+        )
+    }
+
+    /// Discord replaces a pending interaction's body with muted status text
+    /// whose first line leaves room for the loading dots.
+    static func interactionLoading(_ status: String) -> Value {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineSpacing = 1
+        paragraph.firstLineHeadIndent = interactionLoadingTextIndent
+        let resolved = NSAttributedString(string: status, attributes: [
+            .font: NSFont.systemFont(ofSize: InterfaceTypographyMetrics.messageTextSize),
+            .foregroundColor: NSColor.secondaryLabelColor,
+            .paragraphStyle: paragraph,
+        ])
+        return Value(
+            attributedContent: resolved,
+            framesetter: CTFramesetterCreateWithAttributedString(resolved),
+            linkedImages: []
+        )
+    }
+
+    static let interactionLoadingTextIndent = InteractionLoadingDots.size.width + 4
+
     static var empty: Value {
         Value(
             attributedContent: nil,

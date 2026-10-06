@@ -243,6 +243,16 @@ import Testing
     #expect(animated.rawToken == "<a:wave:123>")
 }
 
+@Test func `masked discord message links stay links while bare ones become pills`() {
+    let link = "https://discord.com/channels/1/2/3"
+    #expect(MessageDocument(source: "[Jump to original message](\(link))").segments
+        == [.markdown("[Jump to original message](\(link))")])
+    guard case .mention? = MessageDocument(source: "see \(link)").segments.last else {
+        Issue.record("Bare message link should remain a pill")
+        return
+    }
+}
+
 @Test func `message document detects jumbo custom emoji`() {
     #expect(MessageDocument(source: "<:one:1> <:two:2>").isEmojiOnly)
     #expect(!MessageDocument(source: "text <:one:1>").isEmojiOnly)

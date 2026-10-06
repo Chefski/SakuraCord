@@ -91,8 +91,9 @@ conversation between GitHub, Discord forum posts, and the
 The hub database holds projections, links, subscriptions, and sync state; do not
 maintain a second backlog there or in a repository `ROADMAP.md`.
 
-- File reports through the app's **Help** menu, the website, Discord's report
-  forms, or GitHub's issue forms. Continue discussion on the existing report.
+- File reports in the app (`/bug`, `/suggest`, the **Help** menu, or a
+  `sakuracord.app/report` link card), the website, Discord's report forms, or
+  GitHub's issue forms. Continue discussion on the existing report.
 - Issue types are Bug or Feature; area and priority use `area: …` and
   `priority: …` labels. The hub normalizes status from one `status: …` label
   and the issue's open/closed state and close reason. Closing as completed alone
@@ -115,7 +116,9 @@ maintain a second backlog there or in a repository `ROADMAP.md`.
   report, recent comments, screenshots, and similar reports, then posts one
   assessment with classification, questions, duplicate suggestions, and code
   findings. The hub validates the result before applying metadata; later
-  maintainer status decisions take precedence over automated triage.
+  maintainer status decisions take precedence over automated triage. Each agent
+  edits one Discord status card with its current workflow step (refreshed about
+  once a minute) and final outcome. Triage puts the assessment in that same card.
 - Both bugs and suggestions require the latest published nightly or regular
   release. The agent can correct either category and considers closed reports
   as duplicates. It verifies fix-commit ancestry against the reported release:

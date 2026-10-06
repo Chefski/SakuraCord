@@ -38,17 +38,20 @@ struct ChatWorkspaceView: View {
                 conversation
             }
         }
-        .sheet(
+        .windowModal(
             item: Binding(
-                get: { model.presentedInteractionModal },
+                get: { model.interactionModalForm },
                 set: {
                     if $0 == nil {
                         model.dismissInteractionModal()
                     }
                 }
-            )
-        ) { modal in
-            InteractionModalSheet(model: model, modal: modal)
+            ),
+            cornerRadius: 32,
+            cornerStyle: .circular
+        ) { form in
+            InteractionModalView(model: model, form: form)
+                .windowModalDismissDisabled(form.isSubmitting)
         }
     }
 

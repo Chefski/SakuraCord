@@ -55,6 +55,7 @@ and each topic's contract tests before changing them.
 | Cold installation/fingerprint preflight | Original plus at most three bounded status retries for `429`, `500`, `502`, `504`. |
 | Stored/QR credential installation repair | Once per provider: one unauthenticated Apex GET, then one experiments GET only if needed; no automatic retry or login replay. |
 | Password/MFA | Original plus at most two bounded retries for the documented transient status set above. |
+| Report-service OAuth2 authorization | One ordinary read of the consent details, then one authorizing POST that is never replayed. See [report-service sign-in](protocol/SESSION.md#report-service-sign-in). |
 | Remote-auth ticket exchange | Original plus at most three bounded transient-status retries. |
 | User-completed login or invite CAPTCHA | At most one challenged-request replay after human completion; a second challenge terminates the attempt. |
 
@@ -66,11 +67,10 @@ contract and linked from this table.
 
 [DiscordRESTProvider.supports](../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordRESTNotificationsAndMessaging.swift)
 is authoritative for the [provider capability interface](../Packages/DiscordProtocol/Sources/DiscordProtocol/ChatProvider.swift).
-It currently enables forums, slash commands, GIFs, forwarding, soundboard,
-sticker browsing and sticker sending. Production component actions, returned-modal
-submission and remote component choices remain disabled; offline fixtures can
-exercise them. Other features also have permission, membership or entitlement
-checks outside this capability enum.
+It currently enables forums, slash commands, message components, returned-modal
+submission, remote component choices, GIFs, forwarding, soundboard, sticker
+browsing and sticker sending. Other features also have permission, membership or
+entitlement checks outside this capability enum.
 
 Rendering a payload does not authorize its corresponding mutation. UI controls
 must ask the provider and check current account/channel eligibility.

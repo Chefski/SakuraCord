@@ -226,7 +226,7 @@ struct SelectionField<ID: Hashable & Sendable>: View {
                 isPresented: isExpanded, height: resultHeight,
                 preferredPlacement: configuration.resultPlacement, reduceMotion: reduceMotion,
                 dismiss: { close(.dismissed) }, cancel: { close(.cancelled) },
-                content: { height in menu(height: height) }
+                content: { height in menu(height: height).disabled(!isEnabled) }
             )
         }
         .onAppear {
@@ -238,6 +238,9 @@ struct SelectionField<ID: Hashable & Sendable>: View {
         .onChange(of: model.results.map(\.id)) { _, ids in
             if let highlightedID, ids.contains(highlightedID) { return }
             highlightedID = model.query.isEmpty ? nil : ids.first
+        }
+        .onChange(of: isEnabled) { _, enabled in
+            if !enabled, isExpanded { close(.cancelled) }
         }
         .onDisappear { model.cancel() }
         .accessibilityIdentifier(accessibilityIdentifier)
@@ -357,6 +360,9 @@ struct SelectionField<ID: Hashable & Sendable>: View {
                 activate: activate
             )
         }
+        // The list floats over message text; a backing keeps rows legible
+        // while the glass still picks up the surrounding tint.
+        .background(Color(nsColor: .windowBackgroundColor).opacity(0.78), in: .rect(cornerRadius: 11))
         .glassEffect(.regular, in: .rect(cornerRadius: 11))
         .overlay {
             RoundedRectangle(cornerRadius: 11).strokeBorder(.primary.opacity(0.1), lineWidth: 0.75)
@@ -392,7 +398,7 @@ struct SelectionField<ID: Hashable & Sendable>: View {
     }
 
     private func activate(_ id: ID) {
-        guard model.state == .loaded,
+        guard isEnabled, model.state == .loaded,
               let updated = SelectionFieldSelectionPolicy.toggled(id, in: selection, mode: mode) else { return }
         withAnimation(motion) { selection = updated }
         if mode == .single, configuration.collapsesAfterSingleSelection { close(.selected) }

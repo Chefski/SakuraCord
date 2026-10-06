@@ -103,11 +103,11 @@ extension AppModel {
     }
 
     func canManagePins(for message: Message) -> Bool {
-        return canManagePins(in: message.channelID)
+        !message.flags.contains(.ephemeral) && canManagePins(in: message.channelID)
     }
 
     func canDeleteMessage(_ message: Message) -> Bool {
-        guard message.outboxState == .confirmed else { return false }
+        guard message.outboxState == .confirmed, !message.flags.contains(.ephemeral) else { return false }
         if !message.type.hasGeneratedContent,
            message.author.id == snapshot?.currentUser.id
         {

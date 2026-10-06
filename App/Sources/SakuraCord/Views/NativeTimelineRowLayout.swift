@@ -105,6 +105,18 @@ struct NativeTimelineRowLayout {
         let timestamp: Date
     }
 
+    /// An animated progress mark hosted as a layer-backed canvas overlay, so
+    /// its animation never repaints the row.
+    struct ActivityIndicator: Equatable {
+        enum Style: Equatable {
+            case spinner
+            case dots(InteractionLoadingDots.Tone)
+        }
+
+        let frame: CGRect
+        let style: Style
+    }
+
     struct CommandInvocationRegion {
         let frame: CGRect
         let connectorFrame: CGRect
@@ -133,7 +145,7 @@ struct NativeTimelineRowLayout {
     var botBadgeFrame: CGRect?
     var timestampFrame: CGRect?
     var editedFrame: CGRect?
-    var loadingIndicatorFrame: CGRect?
+    var activityIndicators: [ActivityIndicator] = []
     var replyFrame: CGRect?
     var replyContentFrame: CGRect?
     var commandInvocationRegion: CommandInvocationRegion?
@@ -185,7 +197,7 @@ struct NativeTimelineRowLayout {
             return Self(
                 height: loaderLayout.height,
                 loaderLayout: loaderLayout,
-                loadingIndicatorFrame: loaderLayout.spinnerFrame
+                activityIndicators: loaderLayout.spinnerFrame.map { [.init(frame: $0, style: .spinner)] } ?? []
             )
         case let .beginning(beginning):
             let beginningLayout = NativeTimelineBeginningLayout.make(

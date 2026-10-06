@@ -314,6 +314,8 @@ extension AppModel {
             forwardSearchSourceRevision &+= 1
         case .stickerUserSettingsChanged, .stickersChanged:
             consumeStickerEvent(event)
+        case let .applicationCommandFrecencyChanged(history):
+            applyRemoteCommandFrecency(history)
         case .soundboardUserSettingsChanged,
              .soundboardSoundsChanged,
              .voiceChannelEffect:
@@ -361,11 +363,9 @@ extension AppModel {
              .currentUserChanged, .currentUserStatusChanged:
             consumeGatewayWorkspaceStateEvent(event)
         case .applicationCommandIndexInvalidated(let target):
-            if commandComposer.invalidated(target) {
-                loadApplicationCommands()
-            }
+            invalidateApplicationCommandIndex(target)
         case .applicationCommandAutocomplete(let result):
-            commandComposer.receiveAutocomplete(result)
+            commandComposers.forEach { $0.receiveAutocomplete(result) }
         case .interaction(let event):
             consumeInteraction(event)
         default:
@@ -466,7 +466,10 @@ extension AppModel {
         handleApplicationStreamsForGatewayState(state)
         if state == .ready, previousState != .ready {
             refreshSelectedGuildOnboarding(force: true)
+            scheduleCommandFrecencyFlushAfterConnecting()
         }
+        // Discord saves pending command uses as soon as its connection closes.
+        if state == .disconnected, previousState == .ready { flushCommandFrecencyNow() }
         if state == .ready, previousState != .ready, inbox.isPresented { refreshInbox() }
         if state != .ready {
             if previousState == .ready {
@@ -516,10 +519,7 @@ extension AppModel {
         message = outgoingMediaPresentationPreserving(message)
         typingState.clear(userID: message.author.id, in: message.channelID)
         if let nonce = message.nonce {
-            commandComposer.enrichInteractionResponse(
-                &message, currentUser: snapshot?.currentUser
-            )
-            commandComposer.interactionSucceeded(nonce: nonce)
+            enrichInteractionResponse(&message)
             composer.outbox.draftsByNonce[nonce] = nil
             composer.outbox.stickerUploadSourceURLByNonce[nonce] = nil
             pruneOwnedPromisedAttachmentFiles()
@@ -538,6 +538,9 @@ extension AppModel {
             cache(message)
         }
         reconcileForumMessage(message)
+        if let nonce = message.nonce {
+            consumeInteraction(.succeeded(nonce: nonce, interactionID: message.interactionMetadata?.id))
+        }
         receiveGuideResourceEvent(.messageCreated(message))
         guard let currentUserID = snapshot?.currentUser.id else { return }
         let disposition = readState.receive(message, currentUserID: currentUserID)
@@ -595,6 +598,12 @@ extension AppModel {
         reconcileForumMessage(message)
         reconcilePollSearchMessage(message)
         if updatesPinnedMessages { reconcilePinnedMessage(message) }
+        if var presentation = contextualProfilePresentation,
+           presentation.isWebhook, presentation.sourceMessageID == message.id {
+            presentation.member.user = message.author
+            presentation.profile = UserProfile(user: message.author)
+            contextualProfilePresentation = presentation
+        }
         reconcileInboxMessage(message)
         receiveGuideResourceEvent(.messageUpdated(message))
     }
@@ -1005,32 +1014,4 @@ extension AppModel {
         }
     }
 
-    func consumeInteraction(_ event: InteractionEvent) {
-        switch event {
-        case .created(let nonce, let interactionID):
-            commandComposer.interactionCreated(nonce: nonce, interactionID: interactionID)
-        case .succeeded(let nonce):
-            commandComposer.interactionSucceeded(nonce: nonce)
-            if let key = componentKeyByNonce.removeValue(forKey: nonce) {
-                componentInteractionPresentation.pendingControls.remove(key)
-                componentInteractionPresentation.errors[key] = nil
-            }
-            interactionErrorMessage = nil
-        case .failed(let nonce, let message):
-            let commandHandled = commandComposer.interactionFailed(nonce: nonce, message: message)
-            if let key = componentKeyByNonce.removeValue(forKey: nonce) {
-                componentInteractionPresentation.pendingControls.remove(key)
-                componentInteractionPresentation.errors[key] = message
-            } else if !commandHandled {
-                interactionErrorMessage = message
-            }
-        case .presentModal(let nonce, let modal):
-            interactionModalNonce = nonce
-            if let key = componentKeyByNonce.removeValue(forKey: nonce) {
-                componentInteractionPresentation.pendingControls.remove(key)
-            }
-            presentedInteractionModal = modal
-            interactionErrorMessage = nil
-        }
-    }
 }

@@ -36,6 +36,7 @@ public extension MockChatProvider {
     ) async throws {
         let payload = try ApplicationCommandPayloadBuilder.execution(invocation)
         progress(.preparing)
+        let interactionID = String(nextMessageID + 1)
         if !payload.attachmentURLs.isEmpty {
             progress(.reserving(files: payload.attachmentURLs.count))
             for url in payload.attachmentURLs {
@@ -55,6 +56,30 @@ public extension MockChatProvider {
             )
         )
         progress(.awaitingResponse(nonce: invocation.nonce))
+        if invocation.command.name == "form" {
+            let layout = invocation.values.first.flatMap { value -> String? in
+                if case let .string(layout) = value.argument { return layout }
+                return nil
+            } ?? "modern"
+            continuation?.yield(
+                .interaction(
+                    .presentModal(
+                        Self.offlineForm(
+                            layout: layout,
+                            interactionID: interactionID,
+                            nonce: invocation.nonce,
+                            application: invocation.command.application,
+                            channelID: invocation.channelID,
+                            guildID: invocation.guildID
+                        )
+                    )
+                )
+            )
+            continuation?.yield(
+                .interaction(.succeeded(nonce: invocation.nonce, interactionID: interactionID))
+            )
+            return
+        }
         let responseMode =
             invocation.command.name == "response"
                 ? invocation.command.subcommandPath.last?.name
@@ -64,7 +89,9 @@ public extension MockChatProvider {
                 .interaction(
                     .failed(
                         nonce: invocation.nonce,
-                        message: "Synthetic interaction failure. No retry was attempted."
+                        failure: InteractionFailure(
+                            reasonCode: InteractionFailure.applicationDidNotRespond
+                        )
                     )
                 )
             )
@@ -85,7 +112,9 @@ public extension MockChatProvider {
         )
         messagesByChannel[invocation.channelID, default: []].append(message)
         continuation?.yield(.messageCreated(message))
-        continuation?.yield(.interaction(.succeeded(nonce: invocation.nonce)))
+        continuation?.yield(
+            .interaction(.succeeded(nonce: invocation.nonce, interactionID: interactionID))
+        )
         try await completeCommandResponse(
             message,
             invocation: invocation,
@@ -107,9 +136,11 @@ public extension MockChatProvider {
             author: author,
             content: responseMode == "deferred"
                 ? "The offline app is working…"
-                : "Offline command **/\(invocation.command.displayName)** completed successfully.",
+                : invocation.targetID.map {
+                    "Offline **\(invocation.command.displayName)** inspected `\($0)`."
+                } ?? "Offline command **/\(invocation.command.displayName)** completed successfully.",
             nonce: invocation.nonce,
-            type: .chatInputCommand,
+            type: invocation.command.type == .chatInput ? .chatInputCommand : .contextMenuCommand,
             flags: responseMode == "ephemeral"
                 ? .ephemeral
                 : (responseMode == "deferred" ? .loading : []),
@@ -181,33 +212,172 @@ public extension MockChatProvider {
     func submitComponentInteraction(_ submission: ComponentInteractionSubmission)
         async throws
     {
+        nextMessageID += 1
+        let interactionID = String(nextMessageID)
+        continuation?.yield(
+            .interaction(.created(nonce: submission.nonce, interactionID: interactionID))
+        )
+        try await Task.sleep(for: .milliseconds(150))
         if submission.customID == "offline-modal" {
-            let modal = InteractionModal(
-                customID: "offline-feedback", title: "Offline feedback",
-                controls: [
-                    .label(
-                        id: "label", label: "Feedback",
-                        description: "This synthetic modal never contacts Discord.",
-                        child: .textInput(
-                            id: "text", customID: "feedback", style: 2, label: nil, value: nil,
-                            placeholder: "What should improve?", required: true, minLength: 3,
-                            maxLength: 500
+            continuation?.yield(
+                .interaction(
+                    .presentModal(
+                        Self.offlineForm(
+                            layout: "modern",
+                            interactionID: interactionID,
+                            nonce: submission.nonce,
+                            application: ApplicationCommandApplication(
+                                id: submission.applicationID.description, name: "Verified"
+                            ),
+                            channelID: submission.channelID,
+                            guildID: submission.guildID
                         )
-                    ),
-                    .checkbox(
-                        id: "checkbox", customID: "follow-up", label: "Allow a fictional follow-up",
-                        value: false
-                    ),
-                ]
+                    )
+                )
             )
-            continuation?.yield(.interaction(.presentModal(nonce: submission.nonce, modal: modal)))
-        } else {
-            continuation?.yield(.interaction(.succeeded(nonce: submission.nonce)))
         }
+        continuation?.yield(
+            .interaction(.succeeded(nonce: submission.nonce, interactionID: interactionID))
+        )
     }
 
-    func submitModal(_ submission: ModalSubmission, nonce: String) async throws {
-        continuation?.yield(.interaction(.succeeded(nonce: nonce)))
+    func submitModal(_ submission: ModalSubmission) async throws {
+        let plan = ModalSubmissionPayloadBuilder.plan(submission)
+        try await Task.sleep(for: .milliseconds(150))
+        nextMessageID += 1
+        let interactionID = String(nextMessageID)
+        continuation?.yield(
+            .interaction(.created(nonce: submission.nonce, interactionID: interactionID))
+        )
+        let summary = submission.modal.controls.map { control -> String in
+            let value: String = switch submission.values[control.customID] {
+            case let .text(text)?: text.map { "“\($0)”" } ?? "untouched"
+            case let .radio(choice)?: choice ?? "untouched"
+            case let .values(values)?: values.map { $0.joined(separator: ", ") } ?? "untouched"
+            case let .checkbox(isChecked)?: isChecked ? "checked" : "unchecked"
+            case let .files(urls)?: urls.map { $0.map(\.lastPathComponent).joined(separator: ", ") } ?? "untouched"
+            case nil: "untouched"
+            }
+            return "- `\(control.customID)`: \(value)"
+        }.joined(separator: "\n")
+        let application = submission.modal.application
+        let message = Message(
+            id: MessageID(rawValue: nextMessageID),
+            channelID: submission.modal.channelID,
+            author: application.bot ?? User(
+                id: UserID(rawValue: 900_000_000_000_000_101), username: "verified",
+                displayName: application.name, isBot: true
+            ),
+            content: "**\(submission.modal.title)** submitted with \(plan.fileURLs.count) file(s):\n\(summary)",
+            nonce: submission.nonce,
+            type: .reply,
+            flags: .ephemeral,
+            applicationID: ApplicationID(application.id),
+            application: application,
+            interactionMetadata: MessageInteractionMetadata(
+                id: interactionID, type: 5, user: currentUser, applicationID: application.id
+            ),
+            guildID: submission.modal.guildID
+        )
+        messagesByChannel[submission.modal.channelID, default: []].append(message)
+        continuation?.yield(.messageCreated(message))
+        continuation?.yield(
+            .interaction(.succeeded(nonce: submission.nonce, interactionID: interactionID))
+        )
+    }
+
+    static func offlineForm(
+        layout: String,
+        interactionID: String,
+        nonce: String,
+        application: ApplicationCommandApplication,
+        channelID: ChannelID,
+        guildID: GuildID?
+    ) -> InteractionModal {
+        let choices = [
+            ComponentSelectOption(label: "Alpha", value: "alpha", description: "First choice"),
+            ComponentSelectOption(label: "Sakura 🌸", value: "sakura", isDefault: true),
+            ComponentSelectOption(label: "Gamma", value: "gamma"),
+        ]
+        func control(
+            _ id: String, _ customID: String, _ kind: ModalControl.Kind, required: Bool = false,
+            label: String? = nil
+        ) -> ModalNode {
+            .control(ModalControl(
+                id: id, customID: customID, kind: kind, isRequired: required, label: label
+            ))
+        }
+        let nodes: [ModalNode]
+        if layout == "legacy" {
+            nodes = [
+                .actionRow(id: "1", children: [control(
+                    "2", "title",
+                    .textInput(style: .short, placeholder: "A short title", minLength: 0, maxLength: 256, initialValue: nil),
+                    required: true, label: "Title"
+                )]),
+                .actionRow(id: "3", children: [control(
+                    "4", "description",
+                    .textInput(style: .paragraph, placeholder: nil, minLength: 0, maxLength: 4000, initialValue: nil),
+                    label: "Description"
+                )]),
+            ]
+        } else {
+            nodes = [
+                .textDisplay(id: "1", content: "Synthetic inputs only. **Nothing** leaves this Mac."),
+                .label(id: "2", label: "Short text", description: "Between 3 and 12 characters", child: control(
+                    "3", "short",
+                    .textInput(style: .short, placeholder: "3–12 characters", minLength: 3, maxLength: 12, initialValue: nil),
+                    required: true
+                )),
+                .label(id: "4", label: "Paragraph", description: nil, child: control(
+                    "5", "paragraph",
+                    .textInput(style: .paragraph, placeholder: "Optional multiline text", minLength: 0, maxLength: 100, initialValue: nil)
+                )),
+                .label(id: "6", label: "Prefilled", description: nil, child: control(
+                    "7", "prefilled",
+                    .textInput(style: .short, placeholder: nil, minLength: 0, maxLength: 4000, initialValue: "seed 🌸")
+                )),
+                .label(id: "8", label: "String choices", description: nil, child: control(
+                    "9", "strings",
+                    .select(kind: .string, placeholder: "Choose values", options: choices, minValues: 1, maxValues: 2, channelTypes: [], defaultValues: []),
+                    required: true
+                )),
+                .label(id: "10", label: "Users", description: nil, child: control(
+                    "11", "users",
+                    .select(kind: .user, placeholder: "Choose members", options: [], minValues: 0, maxValues: 2, channelTypes: [], defaultValues: [])
+                )),
+                .label(id: "12", label: "Text channel", description: nil, child: control(
+                    "13", "channels",
+                    .select(
+                        kind: .channel, placeholder: "Choose a channel", options: [], minValues: 1, maxValues: 1,
+                        channelTypes: [0], defaultValues: [ComponentDefaultValue(id: channelID.description, kind: .channel)]
+                    ),
+                    required: true
+                )),
+                .label(id: "14", label: "Radio", description: nil, child: control(
+                    "15", "radio", .radioGroup(options: choices), required: true
+                )),
+                .label(id: "16", label: "Pick up to two", description: nil, child: control(
+                    "17", "checks", .checkboxGroup(options: choices.map { var option = $0; option.isDefault = false; return option }, minValues: 0, maxValues: 2)
+                )),
+                .label(id: "18", label: "Single checkbox", description: nil, child: control(
+                    "19", "check", .checkbox(isInitiallyChecked: false)
+                )),
+                .label(id: "20", label: "Files", description: "Up to two text files", child: control(
+                    "21", "files", .fileUpload(minValues: 0, maxValues: 2, fileTypes: [".txt", ".json"])
+                )),
+            ]
+        }
+        return InteractionModal(
+            interactionID: interactionID,
+            openingNonce: nonce,
+            application: application,
+            channelID: channelID,
+            guildID: guildID,
+            customID: "offline-form:\(layout)",
+            title: layout == "legacy" ? "Create Embed Message" : "Offline form",
+            nodes: nodes
+        )
     }
 
     func componentChoices(
