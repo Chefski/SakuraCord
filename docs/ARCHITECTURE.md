@@ -128,6 +128,29 @@ exports only allowlisted local preferences to versioned
 `.sakurasettings` files. Imports validate each entry, preserve omitted/unsupported
 values and apply changes through existing owners. Credentials, account content,
 Discord-synchronized values, trusted domains and OS permission grants are excluded.
+External-link confirmation defaults to a bundled, worldwide list in
+`App/Sources/SakuraCord/Resources/trusted-domains.json`. Bundled entries are exact
+hostnames: no blanket subdomain trust. File-sharing, raw-content and arbitrary
+page-publishing hosts (including Dropbox, Google Sites and Discord attachment
+CDNs) require confirmation by default. Ordinary GitHub pages remain trusted;
+known GitHub raw, archive, release-download and attachment URLs carry a warning.
+Trust never suppresses suspicious-link warnings in Untrusted Domains mode.
+Known services may still contain user content or redirect elsewhere; inclusion
+is not a guarantee of page safety or a download/content scanner.
+
+Users may add `*.example.com` rules matching one or more subdomain levels,
+but not the apex. Matching respects label boundaries. The bundled Public Suffix
+List (ICANN and private sections) rejects wildcards over registries and shared
+hosting namespaces; without that resource, wildcard validation fails closed.
+
+The preference store seeds each installation once, merging defaults with any
+existing list, including an explicitly empty legacy list. Later launches and
+catalogue changes preserve edits and removals. A privacy reset restores the
+current bundled list; its separate migration marker is not reset or exported.
+No catalogue downloads or account requests are needed. Exact entries retain
+their existing semantics, and the link-warning checkbox trusts only its exact
+hostname. Always Ask and Never Ask retain their existing behaviour.
+
 Platform-owned preferences use their platform services. Download bookmarks are
 usable only when accessible on the receiving Mac.
 
