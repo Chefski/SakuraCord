@@ -329,6 +329,9 @@ extension AppModel {
         case .channelsChanged(let guildID, let channels):
             consumeChannelsChanged(guildID: guildID, channels: channels)
             reconcileInboxEligibility()
+        case let .threadMembersChanged(guildID, threadID, members):
+            guard snapshot?.guilds.contains(where: { $0.id == guildID }) == true else { return }
+            threadMembersByID[threadID] = members
         case .membersChanged(let guildID, let value, let groups):
             consumeMembersChanged(
                 guildID: guildID,

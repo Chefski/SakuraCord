@@ -59,7 +59,7 @@ struct ChatWorkspaceView: View {
         let presentation = ChatWorkspacePresentation(
             isVoiceChannel: model.selectedChannel?.kind == .voice,
             isForumChannel: model.selectedChannel?.kind == .forum,
-            hasOpenThread: model.hasThreadPane,
+            hasOpenThread: model.hasThreadPane && !model.isThreadFullWidth,
             hasOpenVoiceChat: model.isVoiceChatOpen,
             showsInspector: model.showInspector,
             showsMessageSearch: model.messageSearch.isPresented
@@ -70,12 +70,17 @@ struct ChatWorkspaceView: View {
         )
 
         HStack(spacing: 0) {
-            ChatWorkspacePrimaryContent(
-                model: model,
-                content: presentation.primaryContent,
-                presentsForumComposer: $presentsForumComposer
-            )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if model.isThreadFullWidth {
+                ThreadConversationView(model: model)
+            } else {
+                ChatWorkspacePrimaryContent(
+                    model: model,
+                    content: presentation.primaryContent,
+                    presentsForumComposer: $presentsForumComposer
+                )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            }
 
             if let supplementaryContent = presentation.supplementaryContent {
                 HStack(spacing: 0) {
@@ -211,7 +216,12 @@ private struct ChatWorkspaceSupplementaryContent: View {
         case .voiceChat:
             VoiceChannelChatView(model: model)
         case .memberInspector:
-            if let channel = model.selectedChannel,
+            if model.isThreadFullWidth, let thread = model.openThread,
+               model.openThreadParentChannel?.kind != .announcement {
+                ThreadMemberInspectorView(model: model, thread: thread)
+                    .frame(width: ChatChromeMetrics.memberListWidth)
+                    .frame(maxHeight: .infinity)
+            } else if let channel = model.selectedChannel,
                channel.kind == .directMessage,
                let recipient = channel.recipients.first
             {

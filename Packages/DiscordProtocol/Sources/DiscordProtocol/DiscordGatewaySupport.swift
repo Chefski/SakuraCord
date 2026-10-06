@@ -15,7 +15,8 @@ enum DiscordGatewayPayloadFactory {
 
     static func guildSubscriptions(
         guildID: GuildID,
-        channelRanges: [ChannelID: [ClosedRange<Int>]]
+        channelRanges: [ChannelID: [ClosedRange<Int>]],
+        threadMemberLists: [ChannelID]? = nil
     ) -> [String: Any] {
         let channels = Dictionary(
             uniqueKeysWithValues: channelRanges.map { channelID, ranges in
@@ -25,18 +26,28 @@ enum DiscordGatewayPayloadFactory {
                 )
             }
         )
+        var subscription: [String: Any] = [
+            "typing": true, "activities": true, "threads": true, "channels": channels
+        ]
+        if let threadMemberLists {
+            subscription["thread_member_lists"] = threadMemberLists.map(\.description)
+        }
         return [
             "op": 37,
             "d": [
                 "subscriptions": [
-                    guildID.description: [
-                        "typing": true,
-                        "activities": true,
-                        "threads": true,
-                        "channels": channels,
-                    ] as [String: Any]
+                    guildID.description: subscription
                 ]
             ] as [String: Any],
+        ]
+    }
+
+    static func threadMemberSubscriptions(guildID: GuildID, threadIDs: [ChannelID]) -> [String: Any] {
+        [
+            "op": 37,
+            "d": ["subscriptions": [guildID.description: [
+                "thread_member_lists": threadIDs.map(\.description)
+            ]]]
         ]
     }
 
@@ -1067,6 +1078,7 @@ struct GatewayUserGuildSettingsDTO: Decodable {
     var guildID: String?
     var messageNotifications: Int?
     var muted: Bool?
+    var hideMutedChannels: Bool?
     var muteConfig: MuteConfigDTO?
     var hasMuteConfig: Bool
     var suppressEveryone: Bool?
@@ -1082,6 +1094,7 @@ struct GatewayUserGuildSettingsDTO: Decodable {
         case guildID = "guild_id"
         case messageNotifications = "message_notifications"
         case muted
+        case hideMutedChannels = "hide_muted_channels"
         case muteConfig = "mute_config"
         case suppressEveryone = "suppress_everyone"
         case suppressRoles = "suppress_roles"
@@ -1097,6 +1110,7 @@ struct GatewayUserGuildSettingsDTO: Decodable {
         guildID = try? values.decode(String.self, forKey: .guildID)
         messageNotifications = try? values.decode(Int.self, forKey: .messageNotifications)
         muted = try? values.decode(Bool.self, forKey: .muted)
+        hideMutedChannels = try? values.decode(Bool.self, forKey: .hideMutedChannels)
         hasMuteConfig = values.contains(.muteConfig)
         muteConfig = try? values.decode(MuteConfigDTO.self, forKey: .muteConfig)
         suppressEveryone = try? values.decode(Bool.self, forKey: .suppressEveryone)
@@ -1127,6 +1141,7 @@ struct GatewayUserGuildSettingsDTO: Decodable {
         ) {
             value.messageNotifications = messageNotifications
         }
+        if let hideMutedChannels { value.hideMutedChannels = hideMutedChannels }
         if let muted {
             value.isMuted = muted
         }

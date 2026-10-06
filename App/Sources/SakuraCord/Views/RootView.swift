@@ -620,6 +620,16 @@ private struct ChatRootView: View {
                     }
                 }
 
+                if let thread = model.openThread {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button("Open in Full View", systemImage: "arrow.up.left.and.arrow.down.right") {
+                            model.openSidebarThread(thread)
+                        }
+                        .labelStyle(.iconOnly)
+                        .help("Open thread in full view")
+                    }
+                }
+
                 ToolbarItem(placement: .primaryAction) {
                     Button(action: closeSupplementaryConversation) {
                         Label("Close conversation", systemImage: "xmark")
@@ -934,7 +944,7 @@ private struct ChatRootView: View {
     }
 
     private var hasOpenSupplementaryToolbarConversation: Bool {
-        model.hasThreadPane
+        (model.hasThreadPane && !model.isThreadFullWidth)
             || model.isVoiceChatOpen
             || model.hasOpenGuildSupplementaryConversation
     }
@@ -951,12 +961,15 @@ private struct ChatRootView: View {
 
     private var toolbarPinsChannelID: ChannelID? {
         guard model.guildWorkspacePage == nil, model.onboardingEntryGuildID == nil,
-              selectedVoiceChannel == nil, !model.hasThreadPane
+              selectedVoiceChannel == nil, !model.hasThreadPane || model.isThreadFullWidth
         else { return nil }
         return model.activePinsChannelID
     }
 
     private var conversationToolbarPresentation: ConversationToolbarPresentation? {
+        if model.isThreadFullWidth, let thread = model.openThread {
+            return .init(title: thread.name, systemImage: SakuraCordSystemSymbol.thread)
+        }
         if let page = model.guildWorkspacePage {
             return .init(title: page == .guide ? "Server Guide" : model.customizationTitle(in: model.selectedGuildID),
                          systemImage: page == .guide ? "signpost.right" : "slider.horizontal.3")
@@ -971,6 +984,7 @@ private struct ChatRootView: View {
     }
 
     private var supplementaryToolbarPresentation: SupplementaryToolbarPresentation? {
+        guard !model.isThreadFullWidth else { return nil }
         if model.hasThreadPane {
             return SupplementaryToolbarPresentation(
                 title: model.openThread?.name ?? "New Thread",

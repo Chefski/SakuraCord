@@ -101,3 +101,41 @@ identities separately from message bodies; member-list presentation should neith
 scan history nor create a REST fan-out. Full profile reads are explicit/coalesced
 and are not a substitute for guild member state. Check current access before
 publishing a cached channel or member result after asynchronous work.
+
+### Thread member inspector
+
+Full-width public/private threads and forum posts use explicit thread membership,
+not the parent channel's lazy member list and not the set of message authors.
+The desktop client sends bulk Gateway opcode 37 with
+`subscriptions[guild_id].thread_member_lists: [thread_id, ...]`, retaining at most
+three thread lists per guild. Other subscription fields are partial updates;
+adding a thread must not erase existing channel ranges. Reconnect restores the
+retained subscriptions; a fresh READY clears member snapshots before repopulating.
+
+`THREAD_MEMBER_LIST_UPDATE` replaces the thread's member IDs. Its `members` entries
+carry `user_id`, optional guild `member`, and optional `presence` records.
+`THREAD_MEMBERS_UPDATE` adds/removes IDs; guild member, role, user, and presence
+updates refresh their presentation. Keep the shared guild identity cache separate
+from the per-thread membership set. Closing/archiving or deleting a thread removes
+its member subscription. Announcement threads use the parent channel's member
+list; archived threads show an empty member state instead of unrelated guild members.
+
+Group online members by hoisted role, then Online, then Offline (including
+Invisible). Within each group sort by lowercase guild display name, then user ID.
+The current user's account status overrides the public presence record.
+
+This user-client contract was observed on 2026-10-06 in Discord Official Fresh
+host 0.0.411, `web.90d3ab34abfe98da.js`, including a decoded member-list event after
+an opcode 37 subscription. Static first-party modules 63238 and 219065 establish
+subscription retention and grouping. The public [thread documentation](https://docs.discord.com/developers/topics/threads)
+corroborates explicit membership; its bot REST enumeration is not the desktop
+member-inspector transport.
+
+In the same test server, an official-client leave/rejoin produced
+`THREAD_MEMBERS_UPDATE` removal/addition events and changed the open SakuraCord
+inspector from one member to empty and back without navigation or reload.
+
+Paicord revision `5c76f3674e2cace7a6a4369497fcf482f3d9ebe3` declares the optional
+subscription field but its GatewayStore leaves it unset. Swiftcord v1 revision
+`14465d927ebe1ba34b3befa00f9365fad7b56eb9` has no equivalent thread-member-list
+consumer. These references do not supply a competing inspector implementation.

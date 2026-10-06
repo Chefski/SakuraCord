@@ -204,7 +204,8 @@ nonisolated struct MemberSection: Identifiable, Equatable, Sendable {
     static func make(
         from members: [Member],
         groups: [GuildMemberListGroup] = [],
-        roles: [GuildRole] = []
+        roles: [GuildRole] = [],
+        forThread: Bool = false
     ) -> [MemberSection] {
         if !groups.isEmpty {
             return makeServerOrderedSections(members: members, groups: groups, roles: roles)
@@ -216,7 +217,7 @@ nonisolated struct MemberSection: Identifiable, Equatable, Sendable {
         offlineMembers.reserveCapacity(members.count)
 
         for member in members {
-            guard member.isListedOnline else {
+            guard forThread ? member.isOnline : member.isListedOnline else {
                 offlineMembers.append(member)
                 continue
             }
@@ -231,10 +232,11 @@ nonisolated struct MemberSection: Identifiable, Equatable, Sendable {
             }
         }
 
-        var sections = makeRoleSections(roleMembers)
+        let sort = forThread ? threadMemberNameSort : memberNameSort
+        var sections = makeRoleSections(roleMembers, sort: sort)
 
         if !ungroupedOnline.isEmpty {
-            ungroupedOnline.sort(by: memberNameSort)
+            ungroupedOnline.sort(by: sort)
             sections.append(MemberSection(
                 id: .online,
                 title: "Online",
@@ -245,7 +247,7 @@ nonisolated struct MemberSection: Identifiable, Equatable, Sendable {
         }
 
         if !offlineMembers.isEmpty {
-            offlineMembers.sort(by: memberNameSort)
+            offlineMembers.sort(by: sort)
             sections.append(MemberSection(
                 id: .offline,
                 title: "Offline",
@@ -257,7 +259,7 @@ nonisolated struct MemberSection: Identifiable, Equatable, Sendable {
         return sections
     }
 
-    private static func makeRoleSections(_ roleMembers: [SectionIdentifier: [Member]]) -> [MemberSection] {
+    private static func makeRoleSections(_ roleMembers: [SectionIdentifier: [Member]], sort: (Member, Member) -> Bool) -> [MemberSection] {
         return roleMembers.map { id, members in
             let name = switch id {
             case let .role(name, _): name
@@ -272,7 +274,7 @@ nonisolated struct MemberSection: Identifiable, Equatable, Sendable {
                     }?.colorHex
                 }.first,
                 totalCount: members.count,
-                members: members.sorted(by: memberNameSort)
+                members: members.sorted(by: sort)
             )
         }
         .sorted { lhs, rhs in
@@ -356,6 +358,12 @@ nonisolated struct MemberSection: Identifiable, Equatable, Sendable {
             ))
         }
         return sections
+    }
+
+    private static func threadMemberNameSort(_ lhs: Member, _ rhs: Member) -> Bool {
+        let left = lhs.user.displayName.lowercased()
+        let right = rhs.user.displayName.lowercased()
+        return left == right ? lhs.id < rhs.id : left < right
     }
 
     private static func memberNameSort(_ lhs: Member, _ rhs: Member) -> Bool {

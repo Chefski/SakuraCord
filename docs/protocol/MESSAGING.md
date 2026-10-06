@@ -116,6 +116,49 @@ Thread lifecycle events advance the parent forum boundary before unread
 projection. Metadata, archive, lock, pin and delete are explicit, permission-gated
 mutations. Message-created thread cards use cached thread/message data.
 
+### Sidebar threads
+
+The channel list needs no request. READY and `GUILD_CREATE` `threads` contain only
+active threads the account has joined, each with an embedded `member` whose
+`join_timestamp` orders the rows. A created thread arrives as a member-less
+`THREAD_CREATE` followed by `THREAD_MEMBER_UPDATE`; joining yields
+`THREAD_MEMBERS_UPDATE` `added_members` plus a `THREAD_CREATE` with `member`;
+leaving yields `removed_member_ids`; closing yields an archived `THREAD_UPDATE`.
+
+Discord lists a joined thread under its text, announcement or forum parent only
+while it is relevant: its auto-archive window has not elapsed since the latest of
+its last message (or creation), `last_non_message_activity_timestamp`, and
+`archive_timestamp`, it is pinned, it is unread
+and not muted, or it has mentions. A collapsed category or muted parent keeps
+only unread-and-unmuted or mentioned threads unless the parent or one of its
+threads is open. Rows sort by newest join; a selected full-channel thread absent from that set is
+inserted first. A thread open only in the side pane does not receive that exception.
+`hide_muted_channels` removes muted, unmentioned threads unless their parent or
+one of its threads is selected. Relevance and timed mute expiry re-evaluate the rows.
+Sidebar selection and channel keyboard traversal open the existing thread timeline
+as the main conversation; the hidden parent is not eligible for read acknowledgements.
+Thread menus resolve permissions against their own parent and recheck eligibility
+when invoking a mutation. Private threads additionally require membership or
+Manage Threads to expose content or actions after leaving. Close requires Manage Threads or the unlocked thread's
+creator; reopening an unlocked thread uses the first-party send permissions,
+while reopening a locked thread requires Manage Threads. Lock/unlock and pin/unpin
+require Manage Threads; pinning is forum-only. Ordinary thread creators cannot
+delete a thread without Manage Threads. Forum authors may delete an empty post;
+deleting only a starter message after replies exist is a separate action, not
+permission to delete the whole thread. Notification controls require membership;
+unjoined threads must not implicitly join through a sidebar notification change.
+These gates follow first-party modules 406704, 307623, 57907, and 375500 in the
+2026-10-06 official client. Sidebar action failures use a visible application alert,
+including when the forum browser is not presented.
+
+Follow/leave uses
+`POST`/`DELETE /channels/{id}/thread-members/@me?location=Context%20Menu` and
+reconciles membership through Gateway; notification responses also publish the
+joined-thread catalogue immediately.
+See [SidebarThreadPresentation.swift](../../App/Sources/SakuraCord/Models/SidebarThreadPresentation.swift).
+Observed in official web build `b70721f9bc10ca0b` (desktop host 0.0.411) on
+2026-10-06, where it matched 5 of 51 joined forum posts exactly.
+
 Text-channel and voice-channel chats, existing threads, and existing forum posts
 support the same slash-command composer. The main conversation and supplementary
 thread pane own separate command drafts, autocomplete work and member results,

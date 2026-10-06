@@ -50,6 +50,7 @@ extension DiscordRESTProvider {
     }
 
     func publishMembers(guildID: GuildID, members: [Member], groups: [GuildMemberListGroup]) {
+        publishThreadMembers(guildID: guildID)
         continuation?.yield(.membersChanged(guildID: guildID, members: membersWithCurrentStatus(members), groups: groups))
     }
 

@@ -1,9 +1,31 @@
 @testable import SakuraCord
+import Foundation
 import SakuraCordModels
 import Testing
 
 @MainActor
 struct KeyboardShortcutNavigationTests {
+    @Test func `sidebar thread traversal includes its parent and hides parent read presentation`() {
+        let model = makeModel()
+        let parentID = ChannelID(rawValue: 10)
+        let thread = MessageThreadSummary(
+            id: ChannelID(rawValue: 1000), guildID: GuildID(rawValue: 1), parentID: parentID,
+            name: "Thread", archiveTimestamp: .now, autoArchiveDuration: 1440,
+            notificationSettings: ThreadNotificationSettings(joinedAt: .now)
+        )
+        model.snapshot?.activeJoinedThreads = [thread]
+        model.selectedChannelID = parentID
+        #expect(model.keyboardShortcutConversationDestination(direction: 1, unreadOnly: false) == thread.id)
+        model.openThread = thread
+        model.isThreadFullWidth = true
+        #expect(model.isConversationPresented(thread.id))
+        #expect(!model.isConversationPresented(parentID))
+        #expect(model.keyboardShortcutConversationDestination(direction: -1, unreadOnly: false) == parentID)
+        #expect(model.keyboardShortcutConversationDestination(direction: 1, unreadOnly: false) == ChannelID(rawValue: 11))
+        model.closeThread()
+        #expect(model.isConversationPresented(parentID))
+    }
+
     @Test func `channel shortcuts wrap within the current server and skip inaccessible channels`() {
         let model = makeModel()
         model.selectedChannelID = ChannelID(rawValue: 12)

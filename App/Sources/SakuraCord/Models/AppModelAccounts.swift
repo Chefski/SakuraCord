@@ -327,6 +327,7 @@ extension AppModel {
         profileCustomStatusUserID = nil
         presentedProfileGame = nil
         memberListsByGuildID = [:]
+        threadMembersByID = [:]
         memberListGroupsByGuildID = [:]
         memberListViewportRequest = nil
         lastMemberListVisibleRange = nil

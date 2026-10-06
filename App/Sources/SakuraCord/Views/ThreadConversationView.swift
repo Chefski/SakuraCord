@@ -58,8 +58,15 @@ struct ThreadConversationView: View {
     @State private var editRequest: MessageTimelineEditRequest?
 
     var body: some View {
-        SupplementaryConversationPane {
-            if let thread = model.openThread {
+        if model.isThreadFullWidth {
+            conversation.frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            SupplementaryConversationPane { conversation }
+        }
+    }
+
+    @ViewBuilder private var conversation: some View {
+        if let thread = model.openThread {
                 if model.openThreadAccess == .hidden {
                     ThreadUnavailableView()
                 } else {
@@ -88,7 +95,6 @@ struct ThreadConversationView: View {
             } else if let creation = model.threadCreation {
                 ThreadCreationView(model: model, creation: creation)
             }
-        }
     }
 }
 

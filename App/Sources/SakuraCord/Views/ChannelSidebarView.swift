@@ -154,27 +154,32 @@ struct ChannelSidebarView: View {
                     bottomContentInset: accountControlHeight
                 )
             } else {
-                GuildChannelList(
-                    input: GuildChannelListInput(
-                        modelIdentity: ObjectIdentifier(voiceModel),
-                        guildID: guild?.id,
-                        customizationTitle: voiceModel.customizationTitle(in: guild?.id),
-                        hasCustomization: guild.map { voiceModel.hasChannelsAndRoles(in: $0.id) } ?? false,
-                        hasGuide: guild.map { voiceModel.hasGuildGuide(in: $0.id) } ?? false,
-                        page: voiceModel.guildWorkspacePage,
-                        channelGroups: voiceModel.selectedChannelGroups(channelGroups, guildID: guild?.id),
-                        rulesChannelID: guild?.rulesChannelID,
-                        activeVoiceChannelID: activeVoiceChannelID,
-                        hiddenChannelIDs: hiddenChannelIDs,
-                        checkingChannelIDs: checkingChannelIDs,
-                        unreadCategoryIDs: unreadCategoryIDs,
-                        selectedChannelID: selection,
-                        bottomContentInset: accountControlHeight
-                    ),
-                    model: voiceModel,
-                    selection: deferredGuildSelection
-                )
-                .equatable()
+                // Re-evaluate when a timed-relevant thread expires. An explicit
+                // schedule reports its next entry as `context.date`, so read the clock.
+                TimelineView(.explicit(threadRelevanceDeadlines)) { _ in
+                    GuildChannelList(
+                        input: GuildChannelListInput(
+                            modelIdentity: ObjectIdentifier(voiceModel),
+                            guildID: guild?.id,
+                            customizationTitle: voiceModel.customizationTitle(in: guild?.id),
+                            hasCustomization: guild.map { voiceModel.hasChannelsAndRoles(in: $0.id) } ?? false,
+                            hasGuide: guild.map { voiceModel.hasGuildGuide(in: $0.id) } ?? false,
+                            page: voiceModel.guildWorkspacePage,
+                            channelGroups: voiceModel.selectedChannelGroups(channelGroups, guildID: guild?.id),
+                            rulesChannelID: guild?.rulesChannelID,
+                            activeVoiceChannelID: activeVoiceChannelID,
+                            hiddenChannelIDs: hiddenChannelIDs,
+                            checkingChannelIDs: checkingChannelIDs,
+                            unreadCategoryIDs: unreadCategoryIDs,
+                            selectedChannelID: selection,
+                            threadsByParentID: threadLayout(at: .now).threadsByParentID,
+                            bottomContentInset: accountControlHeight
+                        ),
+                        model: voiceModel,
+                        selection: deferredGuildSelection
+                    )
+                    .equatable()
+                }
                 .onChange(of: guildSelection) { _, newSelection in
                     selectionCommitter.selectedValueChanged(
                         to: newSelection
@@ -225,7 +230,22 @@ struct ChannelSidebarView: View {
 
     private var guildSelection: GuildSidebarSelection? {
         if let page = voiceModel.guildWorkspacePage { return .page(page) }
+        if voiceModel.isThreadFullWidth, let thread = voiceModel.openThread, thread.parentID == selection {
+            return .thread(thread.id)
+        }
         return selection.map(GuildSidebarSelection.channel)
+    }
+
+    private func threadLayout(at date: Date) -> SidebarThreadPolicy.Layout {
+        voiceModel.sidebarThreadLayout(
+            guildID: guild?.id,
+            channelGroups: channelGroups,
+            now: date
+        )
+    }
+
+    private var threadRelevanceDeadlines: [Date] {
+        threadLayout(at: .now).relevanceDeadlines
     }
 
     private var deferredGuildSelection: Binding<GuildSidebarSelection?> {
@@ -250,7 +270,17 @@ struct ChannelSidebarView: View {
                         switch newSelection {
                         case .channel(let channelID):
                             voiceModel.recordForwardDestinationVisit(channelID)
+                            if selection == channelID {
+                                // The parent row leaves its open thread, as in Discord.
+                                voiceModel.closeThread()
+                            }
                             selection = channelID
+                        case .thread(let threadID):
+                            if let thread = threadLayout(at: .now).threadsByParentID.values
+                                .lazy.flatMap(\.self).first(where: { $0.id == threadID })?.thread
+                            {
+                                voiceModel.openSidebarThread(thread)
+                            }
                         case .page(let page):
                             guard let guildID else { return }
                             if page == .guide {
@@ -307,11 +337,13 @@ nonisolated private struct GuildChannelListInput: Equatable, Sendable {
     let checkingChannelIDs: Set<ChannelID>
     let unreadCategoryIDs: Set<ChannelID>
     let selectedChannelID: ChannelID?
+    let threadsByParentID: [ChannelID: [SidebarThreadRow]]
     let bottomContentInset: CGFloat
 }
 
 nonisolated private enum GuildSidebarSelection: Hashable {
     case channel(ChannelID)
+    case thread(ChannelID)
     case page(GuildWorkspacePage)
 }
 
@@ -358,6 +390,7 @@ private struct GuildChannelList: View, Equatable {
                     selectedChannelID: input.selectedChannelID,
                     hiddenChannelIDs: input.hiddenChannelIDs,
                     checkingChannelIDs: input.checkingChannelIDs,
+                    threadsByParentID: input.threadsByParentID,
                     isUnread: group.categoryID.map(
                         input.unreadCategoryIDs.contains
                     ) ?? false
@@ -504,6 +537,7 @@ private struct ChannelGroupRows: View {
     let selectedChannelID: ChannelID?
     let hiddenChannelIDs: Set<ChannelID>
     let checkingChannelIDs: Set<ChannelID>
+    let threadsByParentID: [ChannelID: [SidebarThreadRow]]
     let isUnread: Bool
     let voiceParticipantEntriesByChannel:
         [ChannelID: VoiceSidebarChannelEntry]
@@ -519,6 +553,7 @@ private struct ChannelGroupRows: View {
         selectedChannelID: ChannelID?,
         hiddenChannelIDs: Set<ChannelID>,
         checkingChannelIDs: Set<ChannelID>,
+        threadsByParentID: [ChannelID: [SidebarThreadRow]],
         isUnread: Bool
     ) {
         self.model = model
@@ -530,6 +565,7 @@ private struct ChannelGroupRows: View {
         self.selectedChannelID = selectedChannelID
         self.hiddenChannelIDs = hiddenChannelIDs
         self.checkingChannelIDs = checkingChannelIDs
+        self.threadsByParentID = threadsByParentID
         self.isUnread = isUnread
         voiceParticipantEntriesByChannel = Dictionary(
             uniqueKeysWithValues: group.channels.lazy
@@ -601,6 +637,15 @@ private struct ChannelGroupRows: View {
                         isChecking: checkingChannelIDs.contains(channel.id)
                     )
                     .tag(GuildSidebarSelection.channel(channel.id))
+                    let threads = threadsByParentID[channel.id] ?? []
+                    ForEach(threads) { row in
+                        ThreadRow(
+                            model: model,
+                            row: row,
+                            continuesBelow: row.id != threads.last?.id
+                        )
+                        .tag(GuildSidebarSelection.thread(row.id))
+                    }
                 }
             }
 
@@ -707,6 +752,7 @@ private struct ChannelGroupRows: View {
         }
         return group.channels.filter { channel in
             channel.id == selectedChannelID
+                || threadsByParentID[channel.id]?.isEmpty == false
                 || channel.mentionCount > 0
                 || (!isCategoryMuted && channel.unreadCount > 0)
         }
@@ -1414,5 +1460,89 @@ private struct ChannelRow: View {
             )
         }
         return values.joined(separator: ", ")
+    }
+}
+
+private struct ThreadRow: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    let model: AppModel
+    let row: SidebarThreadRow
+    let continuesBelow: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Capsule()
+                .fill(colorScheme == .dark ? Color.white : Color.black)
+                .frame(width: 4, height: 8)
+                .opacity(row.isUnread ? 1 : 0)
+                .frame(width: 8)
+            ThreadConnector(continuesBelow: continuesBelow)
+                .stroke(
+                    .primary.opacity(0.32),
+                    style: StrokeStyle(lineWidth: 1.5, lineCap: .round)
+                )
+                .frame(width: 16)
+            Text(row.thread.name)
+                .fontWeight(row.isUnread && !row.isMuted ? .medium : .regular)
+                .foregroundStyle(nameForegroundStyle)
+                .lineLimit(1)
+            Spacer()
+            if row.mentionCount > 0 {
+                Text(row.mentionCount, format: .number)
+                    .font(.caption2.bold())
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color(hex: 0xF23F43), in: Capsule())
+            }
+        }
+        .frame(minHeight: ChannelSidebarLayoutMetrics.minimumRowHeight)
+        .accessibilityElement(children: .combine)
+        .overlay { ThreadContextMenuBridge(model: model, row: row) }
+        .accessibilityLabel("\(row.thread.name), thread")
+        .accessibilityValue(accessibilityValue)
+    }
+
+    private var nameForegroundStyle: Color {
+        if row.isMuted { return .primary.opacity(0.35) }
+        return row.isUnread ? .primary : .primary.opacity(0.78)
+    }
+
+    private var accessibilityValue: String {
+        var values: [String] = []
+        if row.isUnread { values.append("Unread") }
+        if row.mentionCount > 0 {
+            values.append(
+                row.mentionCount == 1
+                    ? "1 unread mention"
+                    : "\(row.mentionCount) unread mentions"
+            )
+        }
+        return values.joined(separator: ", ")
+    }
+}
+
+/// The spine joining a thread to its parent channel's icon column.
+private struct ThreadConnector: Shape {
+    let continuesBelow: Bool
+
+    nonisolated func path(in rect: CGRect) -> Path {
+        let radius: CGFloat = 5
+        // Reach into the row spacing so consecutive spines join.
+        let top = rect.minY - 6
+        var path = Path()
+        path.move(to: CGPoint(x: rect.midX, y: top))
+        path.addLine(to: CGPoint(x: rect.midX, y: rect.midY - radius))
+        path.addQuadCurve(
+            to: CGPoint(x: rect.midX + radius, y: rect.midY),
+            control: CGPoint(x: rect.midX, y: rect.midY)
+        )
+        path.addLine(to: CGPoint(x: rect.maxX + 2, y: rect.midY))
+        if continuesBelow {
+            path.move(to: CGPoint(x: rect.midX, y: rect.midY - radius))
+            path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY + 6))
+        }
+        return path
     }
 }

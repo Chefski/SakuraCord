@@ -108,6 +108,12 @@ extension DiscordRESTProvider {
         privateCallsByChannel = [:]
         cancelPendingRoleMemberRequests(error: CancellationError())
         cachedMembers = [:]
+        cachedThreadMemberIDs = [:]
+        for (guildID, threadIDs) in threadMemberSubscriptions {
+            for threadID in threadIDs {
+                continuation?.yield(.threadMembersChanged(guildID: guildID, threadID: threadID, members: nil))
+            }
+        }
         quickSwitcherGuildMemberUserIDsByGuildID = [:]
         quickSwitcherJoinedMemberIDsByGuildID = [:]
         cachedMemberListItems = [:]

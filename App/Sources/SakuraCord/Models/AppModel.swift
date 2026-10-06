@@ -268,6 +268,7 @@ final class AppModel {
     @ObservationIgnored var memberListGroupsByGuildID: [GuildID: [GuildMemberListGroup]] = [:]
     @ObservationIgnored var defersMemberPresentationRebuild = false
     var memberSections: [MemberSection] = []
+    var threadMembersByID: [ChannelID: [Member]] = [:]
     var memberListGroups: [GuildMemberListGroup] = [] {
         didSet {
             if oldValue != memberListGroups, !defersMemberPresentationRebuild {
@@ -363,6 +364,7 @@ final class AppModel {
     var interactionModalForm: InteractionModalFormState?
     var isVoiceChatOpen = false
     var openThread: MessageThreadSummary?
+    var isThreadFullWidth = false
     /// A thread being composed in the supplementary pane. It is mutually
     /// exclusive with `openThread` and becomes it once Discord creates the thread.
     var threadCreation: ThreadCreationDraft?

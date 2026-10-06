@@ -32,6 +32,7 @@ public enum ClientEvent: Equatable, Sendable {
         members: [Member],
         groups: [GuildMemberListGroup]
     )
+    case threadMembersChanged(guildID: GuildID, threadID: ChannelID, members: [Member]?)
     case privateMembersChanged([Member])
     case knownUsersChanged([User])
     case quickSwitcherUserIDsChanged([UserID])

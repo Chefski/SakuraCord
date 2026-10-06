@@ -39,6 +39,7 @@ public protocol ChatProvider: Sendable {
     func prepareAuthentication() async throws
     func bootstrap() async throws -> BootstrapSnapshot
     func channels(in guildID: GuildID?) async throws -> [Channel]
+    func threadMembers(in thread: MessageThreadSummary) async throws -> [Member]?
     func members(in guildID: GuildID?) async throws -> [Member]
     func updateMemberListViewport(
         in guildID: GuildID,
@@ -130,6 +131,7 @@ public protocol ChatProvider: Sendable {
     func createThread(_ draft: CreateThreadDraft) async throws -> MessageThreadSummary
     func updateForumPost(_ post: ForumPost, mutation: ForumPostMutation) async throws -> ForumPost
     func deleteForumPost(_ post: ForumPost) async throws
+    func setThreadMembership(threadID: ChannelID, isJoined: Bool) async throws
     func updateForumPostNotificationLevel(
         _ post: ForumPost,
         level: MessageNotificationLevel
@@ -598,6 +600,8 @@ public extension ChatProvider {
         }
     }
 
+    func threadMembers(in thread: MessageThreadSummary) async throws -> [Member]? { [] }
+
     func updateMemberListViewport(
         in guildID: GuildID,
         channelID: ChannelID,
@@ -886,6 +890,10 @@ public extension ChatProvider {
     }
 
     func deleteForumPost(_ post: ForumPost) async throws {
+        throw ChatProviderError.capabilityDisabled(.forums)
+    }
+
+    func setThreadMembership(threadID: ChannelID, isJoined: Bool) async throws {
         throw ChatProviderError.capabilityDisabled(.forums)
     }
 

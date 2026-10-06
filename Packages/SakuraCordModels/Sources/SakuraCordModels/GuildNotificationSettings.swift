@@ -15,6 +15,7 @@ public enum GuildNotificationToggle: Int, CaseIterable, Codable, Hashable, Senda
 public struct GuildNotificationSettings: Codable, Hashable, Sendable {
     public var guildID: GuildID?
     public var messageNotifications: MessageNotificationLevel
+    public var hideMutedChannels: Bool
     public var isMuted: Bool
     public var muteConfiguration: DiscordMuteConfiguration?
     public var suppressEveryone: Bool
@@ -29,6 +30,7 @@ public struct GuildNotificationSettings: Codable, Hashable, Sendable {
         guildID: GuildID?,
         messageNotifications: MessageNotificationLevel = .onlyMentions,
         isMuted: Bool = false,
+        hideMutedChannels: Bool = false,
         muteConfiguration: DiscordMuteConfiguration? = nil,
         suppressEveryone: Bool = false,
         suppressRoles: Bool = false,
@@ -41,6 +43,7 @@ public struct GuildNotificationSettings: Codable, Hashable, Sendable {
         self.guildID = guildID
         self.messageNotifications = messageNotifications
         self.isMuted = isMuted
+        self.hideMutedChannels = hideMutedChannels
         self.muteConfiguration = muteConfiguration
         self.suppressEveryone = suppressEveryone
         self.suppressRoles = suppressRoles
@@ -80,6 +83,7 @@ public struct GuildNotificationSettings: Codable, Hashable, Sendable {
         case guildID
         case messageNotifications
         case isMuted
+        case hideMutedChannels
         case muteConfiguration
         case suppressEveryone
         case suppressRoles
@@ -98,6 +102,7 @@ public struct GuildNotificationSettings: Codable, Hashable, Sendable {
                 MessageNotificationLevel.self,
                 forKey: .messageNotifications
             ) ?? .onlyMentions
+        hideMutedChannels = try container.decodeIfPresent(Bool.self, forKey: .hideMutedChannels) ?? false
         isMuted = try container.decodeIfPresent(Bool.self, forKey: .isMuted) ?? false
         muteConfiguration = try container.decodeIfPresent(
             DiscordMuteConfiguration.self,

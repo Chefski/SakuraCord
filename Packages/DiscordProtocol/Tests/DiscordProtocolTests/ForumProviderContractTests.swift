@@ -256,6 +256,50 @@ import Testing
     await provider.disconnect()
 }
 
+/// Observed 2026-10-06: creating a thread delivers a member-less THREAD_CREATE,
+/// then THREAD_MEMBER_UPDATE carrying the join timestamp the sidebar orders by.
+@Test func `created thread joins on the following member update`() async throws {
+    let provider = DiscordRESTProvider(
+        credentials: ForumPostDeletionCredentialStore(),
+        handle: CredentialHandle(accountID: "joined-thread-create")
+    )
+    await provider.receiveGatewayDispatchForTesting(
+        name: "THREAD_CREATE",
+        data: .object([
+            "id": .string("400"),
+            "guild_id": .string("1"),
+            "parent_id": .string("7"),
+            "name": .string("New thread"),
+            "type": .number(11),
+            "newly_created": .bool(true),
+            "thread_metadata": .object([
+                "archived": .bool(false),
+                "auto_archive_duration": .number(4320),
+            ]),
+        ])
+    )
+    #expect(await provider.activeJoinedThreadsForTesting().isEmpty)
+
+    await provider.receiveGatewayDispatchForTesting(
+        name: "THREAD_MEMBER_UPDATE",
+        data: .object([
+            "id": .string("400"),
+            "guild_id": .string("1"),
+            "flags": .number(1),
+            "join_timestamp": .string("2026-10-06T13:59:32.181145+00:00"),
+            "muted": .bool(false),
+            "mute_config": .null,
+        ])
+    )
+    let joined = await provider.activeJoinedThreadsForTesting()
+    #expect(joined.map(\.id) == [ChannelID(rawValue: 400)])
+    #expect(
+        joined.first?.notificationSettings?.joinedAt
+            == DiscordDate.parse("2026-10-06T13:59:32.181145+00:00")
+    )
+    await provider.disconnect()
+}
+
 /// Both thread-creation routes share `ForumPostCreationURLProtocol`'s captured request.
 @Suite(.serialized)
 struct ThreadCreationContractTests {
@@ -1251,5 +1295,56 @@ func `deleted messages cannot return through cached thread previews`(bulk: Bool)
     let cached = try #require(await provider.cachedForumPostForTesting(threadID: thread.id))
     #expect(cached.firstMessage == nil)
     #expect(cached.mostRecentMessage == nil)
+    await provider.disconnect()
+}
+
+@Test func `thread member snapshots stay separate from the guild and reconcile membership and presence`() async throws {
+    let payload = DiscordGatewayPayloadFactory.threadMemberSubscriptions(
+        guildID: GuildID(rawValue: 1), threadIDs: [ChannelID(rawValue: 42)]
+    )
+    let encoded = try JSONDecoder().decode(JSONValue.self, from: JSONSerialization.data(withJSONObject: payload))
+    #expect(encoded == .object([
+        "op": .number(37), "d": .object(["subscriptions": .object([
+            "1": .object(["thread_member_lists": .array([.string("42")])])
+        ])])
+    ]))
+    let provider = DiscordRESTProvider(
+        credentials: ForumPostDeletionCredentialStore(),
+        handle: CredentialHandle(accountID: "thread-members")
+    )
+    let guildID = GuildID(rawValue: 1)
+    let thread = MessageThreadSummary(id: ChannelID(rawValue: 42), guildID: guildID, parentID: ChannelID(rawValue: 7), name: "Members")
+    await provider.seedForumChannelForTesting(
+        Channel(id: ChannelID(rawValue: 7), guildID: guildID, name: "general"),
+        posts: [ForumPost(thread: thread)]
+    )
+    #expect(try await provider.threadMembers(in: thread) == nil)
+    let snapshot = try JSONDecoder().decode(JSONValue.self, from: Data(#"""
+    {"guild_id":"1","thread_id":"42","members":[
+      {"user_id":"9","member":{"user":{"id":"9","username":"joined"},"nick":"Thread Nick","roles":[]},
+       "presence":{"status":"online","activities":[]}}
+    ]}
+    """#.utf8))
+    await provider.receiveGatewayDispatchForTesting(name: "THREAD_MEMBER_LIST_UPDATE", data: snapshot)
+    var members = try #require(try await provider.threadMembers(in: thread))
+    #expect(members.map(\.id) == [UserID(rawValue: 9)])
+    #expect(members.first?.user.displayName == "Thread Nick")
+    #expect(members.first?.status == .online)
+    #expect(members.first?.memberListIndex == nil)
+
+    let presence = try JSONDecoder().decode(JSONValue.self, from: Data(#"{"guild_id":"1","user":{"id":"9"},"status":"idle","activities":[]}"#.utf8))
+    await provider.receiveGatewayDispatchForTesting(name: "PRESENCE_UPDATE", data: presence)
+    #expect(try await provider.threadMembers(in: thread)?.first?.status == .idle)
+    let changed = try JSONDecoder().decode(JSONValue.self, from: Data(#"""
+    {"guild_id":"1","id":"42","member_count":1,"removed_member_ids":["9"],"added_members":[
+      {"user_id":"10","member":{"user":{"id":"10","username":"new"},"roles":[]},"presence":{"status":"offline"}}
+    ]}
+    """#.utf8))
+    await provider.receiveGatewayDispatchForTesting(name: "THREAD_MEMBERS_UPDATE", data: changed)
+    members = try #require(try await provider.threadMembers(in: thread))
+    #expect(members.map(\.id) == [UserID(rawValue: 10)])
+    // A new full snapshot replaces membership instead of accumulating stale users.
+    await provider.receiveGatewayDispatchForTesting(name: "THREAD_MEMBER_LIST_UPDATE", data: snapshot)
+    #expect(try await provider.threadMembers(in: thread)?.map(\.id) == [UserID(rawValue: 9)])
     await provider.disconnect()
 }

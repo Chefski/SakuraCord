@@ -18,12 +18,16 @@ struct ThreadMemberDTO: Decodable {
     var flags: UInt64?
     var muted: Bool?
     var muteConfig: MuteConfigDTO?
+    var joinTimestamp: String?
+    var member: GuildMemberDTO?
+    var presence: GuildPresenceDTO?
 
     enum CodingKeys: String, CodingKey {
         case id
         case userID = "user_id"
-        case flags, muted
+        case flags, muted, member, presence
         case muteConfig = "mute_config"
+        case joinTimestamp = "join_timestamp"
     }
 
     var domain: ThreadNotificationSettings {
@@ -34,7 +38,8 @@ struct ThreadMemberDTO: Decodable {
                 DiscordMuteConfiguration(
                     endTime: $0.endTime.flatMap(DiscordDate.parse)
                 )
-            }
+            },
+            joinedAt: joinTimestamp.flatMap(DiscordDate.parse)
         )
     }
 }
@@ -139,6 +144,7 @@ struct ChannelDTO: Decodable {
     var memberCount: Int?
     var totalMessageSent: Int?
     var threadMetadata: ThreadMetadataDTO?
+    var lastNonMessageActivityTimestamp: String?
     var appliedTags: [String]?
     var flags: UInt64?
     var member: ThreadMemberDTO?
@@ -184,6 +190,7 @@ struct ChannelDTO: Decodable {
         case memberListID = "member_list_id"
         case lastMessageID = "last_message_id"
         case lastPinTimestamp = "last_pin_timestamp"
+        case lastNonMessageActivityTimestamp = "last_non_message_activity_timestamp"
         case ownerID = "owner_id"
         case owner, flags, member
         case embeddedMessage = "message"
@@ -328,7 +335,9 @@ struct ChannelDTO: Decodable {
                 autoArchiveDuration: threadMetadata?.autoArchiveDuration,
                 totalMessageSent: totalMessageSent ?? messageCount ?? 0,
                 notificationSettings: member?.domain,
-                rateLimitPerUser: rateLimitPerUser ?? 0
+                rateLimitPerUser: rateLimitPerUser ?? 0,
+                lastNonMessageActivityAt: lastNonMessageActivityTimestamp.flatMap(DiscordDate.parse),
+                isPrivate: type == 12
             ),
             owner: ownerUser ?? firstMessage?.author,
             firstMessage: firstMessage,
