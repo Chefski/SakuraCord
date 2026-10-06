@@ -26,12 +26,6 @@ public extension NSAttributedString.Key {
     static let discordMarkdownListMarker = NSAttributedString.Key(
         "dev.sakuracord.markdown.list-marker"
     )
-
-    /// Marks the file name of a Discord attachment link. Renderers place a
-    /// paperclip before it. The value is an NSNumber boolean.
-    static let discordMarkdownAttachmentLink = NSAttributedString.Key(
-        "dev.sakuracord.markdown.attachment-link"
-    )
 }
 
 public enum DiscordMarkdown {
@@ -56,7 +50,6 @@ public enum DiscordMarkdown {
             fileprivate let traits: InlineTraits
             fileprivate let link: URL?
             fileprivate let color: SemanticColor?
-            fileprivate var isAttachmentLink = false
             /// Identifies the spoiler containing this run by the line and UTF-8
             /// offset of its opening delimiter. Spoilers never nest, since each
             /// one closes at the nearest delimiter.
@@ -435,7 +428,6 @@ public enum DiscordMarkdown {
             attributes[.link] = link
             attributes[.foregroundColor] = NSColor.linkColor
         }
-        if run.isAttachmentLink { attributes[.discordMarkdownAttachmentLink] = NSNumber(value: true) }
         if run.traits.contains(.spoiler) {
             attributes[.discordMarkdownSpoiler] = NSNumber(value: run.spoilerID ?? 0)
         }
@@ -644,7 +636,7 @@ public enum DiscordMarkdown {
                    in: source,
                    at: cursor,
                    traits: inheritedTraits,
-                   anchored: sourceCollector != nil, attachmentLinks: sourceCollector == nil && !widgetRules
+                   anchored: sourceCollector != nil
                )
             {
                 flushPlain()
@@ -752,6 +744,27 @@ public enum DiscordMarkdown {
             label: source.index(after: cursor) ..< labelEnd,
             url: url,
             end: source.index(after: closingParenthesis)
+        )
+    }
+
+    private static func bareAutolink(
+        in source: Substring,
+        at cursor: String.Index,
+        traits: AppKitPlan.InlineTraits,
+        anchored: Bool = false
+    ) -> (run: AppKitPlan.InlineRun, endIndex: String.Index)? {
+        guard let match = firstURL(in: source[cursor...], anchored: anchored),
+              match.range.lowerBound == cursor
+        else { return nil }
+
+        return (
+            AppKitPlan.InlineRun(
+                text: String(source[match.range]),
+                traits: traits,
+                link: match.url,
+                color: nil
+            ),
+            match.range.upperBound
         )
     }
 
@@ -1318,32 +1331,6 @@ public enum DiscordMarkdown {
 }
 
 private extension DiscordMarkdown {
-    static func bareAutolink(
-        in source: Substring,
-        at cursor: String.Index,
-        traits: AppKitPlan.InlineTraits,
-        anchored: Bool = false,
-        attachmentLinks: Bool = false
-    ) -> (run: AppKitPlan.InlineRun, endIndex: String.Index)? {
-        if attachmentLinks, let attachment = DiscordAttachmentLink.prefix(of: source[cursor...]) {
-            let run = AppKitPlan.InlineRun(text: attachment.link.name, traits: traits, link: attachment.link.url, color: nil, isAttachmentLink: true)
-            return (run, attachment.endIndex)
-        }
-        guard let match = firstURL(in: source[cursor...], anchored: anchored),
-              match.range.lowerBound == cursor
-        else { return nil }
-
-        return (
-            AppKitPlan.InlineRun(
-                text: String(source[match.range]),
-                traits: traits,
-                link: match.url,
-                color: nil
-            ),
-            match.range.upperBound
-        )
-    }
-
     static func isComposerSyntaxCharacter(_ character: Character) -> Bool {
         switch character {
         case "\\", "`", "[", "<", "*", "_", "~", "|", "h": true

@@ -319,6 +319,7 @@ nonisolated enum NativeTimelineCoreText {
                 baseFontSize: resolvedBaseFontSize
             )
         )
+        let fullRange = NSRange(location: 0, length: output.length)
         let placeholderRanges = ranges(of: "\u{FFFC}", in: output.string)
         for (range, token) in zip(
             placeholderRanges.reversed(),
@@ -364,10 +365,7 @@ nonisolated enum NativeTimelineCoreText {
             }
             output.replaceCharacters(in: range, with: replacement)
         }
-        insertAttachmentLinkIcons(in: output, font: baseFont)
-        output.enumerateAttribute(
-            .link, in: NSRange(location: 0, length: output.length)
-        ) { value, range, _ in
+        output.enumerateAttribute(.link, in: fullRange) { value, range, _ in
             guard value != nil else { return }
             output.addAttributes(
                 [
@@ -379,45 +377,6 @@ nonisolated enum NativeTimelineCoreText {
         }
         normalizeParagraphMetrics(in: output)
         return output
-    }
-
-    /// Places a link-colored paperclip run before each attachment link's
-    /// file name. The run keeps the link so it shares the name's click target.
-    static func insertAttachmentLinkIcons(
-        in output: NSMutableAttributedString,
-        font: NSFont
-    ) {
-        var locations: [Int] = []
-        output.enumerateAttribute(
-            .link, in: NSRange(location: 0, length: output.length)
-        ) { value, range, _ in
-            guard value != nil,
-                  output.attribute(.discordMarkdownAttachmentLink, at: range.location, effectiveRange: nil) != nil
-            else { return }
-            locations.append(range.location)
-        }
-        let size = attachmentLinkIconSize(font: font)
-        for location in locations.reversed() {
-            var attributes = output.attributes(at: location, effectiveRange: nil)
-            attributes[.discordMarkdownAttachmentLink] = nil
-            attributes[.discordAttachmentLinkIcon] = NSNumber(value: true)
-            output.insert(
-                inlineRun(
-                    width: size + attachmentLinkIconSpacing,
-                    height: size,
-                    baselineOffset: ComposerEmojiAttributedText.attachmentOriginY(font: font, size: size),
-                    attributes: attributes
-                ),
-                at: location
-            )
-        }
-    }
-
-    static let attachmentLinkIconSpacing: CGFloat = 3
-
-    /// Matches Discord's paperclip, which spans roughly the text's full height.
-    static func attachmentLinkIconSize(font: NSFont) -> CGFloat {
-        (font.pointSize * 1.1).rounded()
     }
 
     static func normalizeParagraphMetrics(

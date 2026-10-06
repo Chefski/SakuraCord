@@ -682,14 +682,12 @@ extension NativeTimelineRowPainter {
             selectionFrame: CGRect?
         )
         case emojiFallback(CGRect, selectionFrame: CGRect?)
-        case attachmentLinkIcon(CGRect, selectionFrame: CGRect?)
 
         var selectionFrame: CGRect? {
             switch self {
             case let .image(_, _, selectionFrame),
                  let .mention(_, _, _, selectionFrame),
-                 let .emojiFallback(_, selectionFrame),
-                 let .attachmentLinkIcon(_, selectionFrame):
+                 let .emojiFallback(_, selectionFrame):
                 selectionFrame
             }
         }
@@ -789,12 +787,7 @@ extension NativeTimelineRowPainter {
             at: range.location,
             effectiveRange: nil
         ) as? String
-        let isAttachmentLinkIcon = attributedText.attribute(
-            .discordAttachmentLinkIcon,
-            at: range.location,
-            effectiveRange: nil
-        ) != nil
-        guard mention != nil || emojiToken != nil || isAttachmentLinkIcon else { return nil }
+        guard mention != nil || emojiToken != nil else { return nil }
         let isHiddenSpoiler = attributedText.attribute(
             .discordMarkdownSpoiler,
             at: range.location,
@@ -825,9 +818,6 @@ extension NativeTimelineRowPainter {
             return .mention(
                 mention, frame, characterIndex: range.location, selectionFrame: selectionFrame
             )
-        }
-        if isAttachmentLinkIcon {
-            return .attachmentLinkIcon(frame, selectionFrame: selectionFrame)
         }
         guard let emojiToken,
               let image = inlineEmojiImage(token: emojiToken, model: model)
@@ -873,21 +863,6 @@ extension NativeTimelineRowPainter {
                 color: .labelColor,
                 alignment: .center
             )
-        case let .attachmentLinkIcon(frame, _):
-            let iconFrame = CGRect(
-                x: frame.minX,
-                y: frame.minY,
-                width: frame.width - NativeTimelineCoreText.attachmentLinkIconSpacing,
-                height: frame.height
-            )
-            if let image = NativeTimelineSystemSymbolCache.configuredImage(
-                named: "paperclip",
-                pointSize: iconFrame.height * 0.9,
-                weight: .medium,
-                color: .linkColor
-            ) {
-                drawImage(image, in: iconFrame, cornerRadius: 0, fillsFrame: false)
-            }
         }
         if let selectionFrame = draw.selectionFrame {
             attachmentSelectionHighlightColor.setFill()

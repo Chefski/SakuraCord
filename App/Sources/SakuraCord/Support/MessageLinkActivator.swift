@@ -18,19 +18,7 @@ enum MessageLinkActivator {
         }
     }
 
-    /// Compact filename runs are not claimed destination addresses. Preserve
-    /// explicit labels, including masked URLs, for host-mismatch protection.
-    static func safetyDisplayedText(in value: NSAttributedString) -> String? {
-        var hasExplicitLabel = false
-        value.enumerateAttributes(in: NSRange(location: 0, length: value.length)) { attributes, _, _ in
-            if attributes[.discordMarkdownAttachmentLink] == nil,
-               attributes[.discordAttachmentLinkIcon] == nil {
-                hasExplicitLabel = true
-            }
-        }
-        return hasExplicitLabel ? value.string : nil
-    }
-
+    /// Keep the whole displayed label when formatting splits it into attribute runs.
     static func safetyDisplayedText(in value: NSAttributedString, at index: Int) -> String? {
         guard index >= 0, index < value.length else { return nil }
         var range = NSRange(location: 0, length: 0)
@@ -38,7 +26,7 @@ enum MessageLinkActivator {
             .link, at: index, longestEffectiveRange: &range,
             in: NSRange(location: 0, length: value.length)
         ) != nil else { return nil }
-        return safetyDisplayedText(in: value.attributedSubstring(from: range))
+        return value.attributedSubstring(from: range).string
     }
 
     static func activate(

@@ -257,9 +257,9 @@ struct SelectableMessageTextView: NSViewRepresentable {
                 in: NSRange(location: 0, length: richTextView.attributedString().length)
             )
             let displayedText = linkRange.length > 0
-                ? MessageLinkActivator.safetyDisplayedText(
-                    in: richTextView.attributedString().attributedSubstring(from: linkRange)
-                )
+                ? richTextView.attributedString().attributedSubstring(
+                    from: linkRange
+                ).string
                 : nil
             return MessageLinkActivator.activate(
                 url,
@@ -439,49 +439,8 @@ nonisolated enum RichMessageAttributedText {
                 )
             }
         }
-        insertAttachmentLinkIcons(in: output, font: baseFont)
         NativeTimelineCoreText.normalizeParagraphMetrics(in: output, spoilersOnly: true)
         return output
-    }
-
-    /// Places a link-colored paperclip before each attachment link's file name.
-    @MainActor
-    private static func insertAttachmentLinkIcons(
-        in output: NSMutableAttributedString,
-        font: NSFont
-    ) {
-        var locations: [Int] = []
-        output.enumerateAttribute(
-            .link, in: NSRange(location: 0, length: output.length)
-        ) { value, range, _ in
-            guard value != nil,
-                  output.attribute(.discordMarkdownAttachmentLink, at: range.location, effectiveRange: nil) != nil
-            else { return }
-            locations.append(range.location)
-        }
-        guard !locations.isEmpty else { return }
-        let size = NativeTimelineCoreText.attachmentLinkIconSize(font: font)
-        let attachment = NSTextAttachment()
-        attachment.image = NSImage(systemSymbolName: "paperclip", accessibilityDescription: nil)?
-            .withSymbolConfiguration(
-                NSImage.SymbolConfiguration(pointSize: size, weight: .medium)
-                    .applying(NSImage.SymbolConfiguration(paletteColors: [.linkColor]))
-            )
-        attachment.bounds = CGRect(
-            x: 0,
-            y: ComposerEmojiAttributedText.attachmentOriginY(font: font, size: size),
-            width: size,
-            height: size
-        )
-        for location in locations.reversed() {
-            var attributes = output.attributes(at: location, effectiveRange: nil)
-            attributes[.discordMarkdownAttachmentLink] = nil
-            attributes[.discordAttachmentLinkIcon] = NSNumber(value: true)
-            attributes[.kern] = NativeTimelineCoreText.attachmentLinkIconSpacing
-            let icon = NSMutableAttributedString(attachment: attachment)
-            icon.addAttributes(attributes, range: NSRange(location: 0, length: icon.length))
-            output.insert(icon, at: location)
-        }
     }
 
     /// Text views cannot reveal spoilers, so every spoiler stays concealed:
@@ -571,8 +530,6 @@ enum RichMessageCopySerializer {
         value.enumerateAttributes(in: range) { attributes, effectiveRange, _ in
             if let token = (attributes[.discordEmojiToken] ?? attributes[.discordMentionToken]) as? String {
                 output += token
-            } else if attributes[.discordAttachmentLinkIcon] != nil {
-                return
             } else {
                 output += value.attributedSubstring(from: effectiveRange).string
             }

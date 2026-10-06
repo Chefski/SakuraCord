@@ -123,18 +123,14 @@ struct NativeTimelineTextPlan: Equatable, Sendable {
                 )
             )
         } else if let prepared, prepared.tokens.isEmpty {
-            let fontSize = prepared.isEmojiOnly ? 48 : baseFontSize
-            let value = NSMutableAttributedString(
-                attributedString: DiscordMarkdown.appKitAttributed(
+            attributed = NativeTimelineAttributedTextBox(
+                DiscordMarkdown.appKitAttributed(
                     prepared.markdownPlan,
-                    baseFontSize: fontSize
+                    baseFontSize: prepared.isEmojiOnly
+                        ? 48
+                        : baseFontSize
                 )
             )
-            NativeTimelineCoreText.insertAttachmentLinkIcons(
-                in: value,
-                font: .systemFont(ofSize: fontSize)
-            )
-            attributed = NativeTimelineAttributedTextBox(value)
         } else {
             attributed = nil
         }

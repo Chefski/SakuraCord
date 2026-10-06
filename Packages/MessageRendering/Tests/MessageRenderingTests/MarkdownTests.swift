@@ -534,29 +534,18 @@ import Testing
     }
 }
 
-@Test func `bare Discord attachment URLs render as their file name while other link forms stay intact`() throws {
-    let signed = "https://cdn.discordapp.com/attachments/1/2/funny_Giff.gif?ex=6a000000&is=69f00000&hm=ab12&"
-    let ephemeral = "https://media-eu.discordapp.net/ephemeral-attachments/3/4/clip.mp4"
-    let angle = "https://cdn.discordapp.com/attachments/5/6/kept.png"
-    let source = "\(signed) and \(ephemeral)%20tail <\(angle)> [label](\(angle)) https://cdn.discord.com/attachments/7/8/a.png"
-
-    let value = DiscordMarkdown.appKitAttributed(source)
-    #expect(value.string == "funny_Giff.gif and clip.mp4%20tail \(angle) label https://cdn.discord.com/attachments/7/8/a.png")
-    let text = value.string as NSString
-    for (name, url) in [("funny_Giff.gif", signed), ("clip.mp4", ephemeral)] {
-        var linkRange = NSRange()
-        let location = text.range(of: name).location
-        #expect(value.attribute(.link, at: location, effectiveRange: &linkRange) as? URL == URL(string: url))
-        #expect(NSEqualRanges(linkRange, text.range(of: name)))
-        #expect(value.attribute(.discordMarkdownAttachmentLink, at: location, effectiveRange: nil) != nil)
+@Test func `bare attachment links preserve the full URL and destination`() throws {
+    for source in [
+        "https://cdn.discordapp.com/attachments/1/2/funny_Giff.gif?ex=6a000000&is=69f00000&hm=ab12&",
+        "https://media-eu.discordapp.net/ephemeral-attachments/3/4/clip.mp4%20tail",
+        "https://cdn.discordapp.com.example.com/attachments/1/2/file.pdf",
+    ] {
+        let value = DiscordMarkdown.appKitAttributed(source)
+        #expect(value.string == source)
+        var range = NSRange()
+        #expect(value.attribute(.link, at: 0, effectiveRange: &range) as? URL == URL(string: source))
+        #expect(range == NSRange(location: 0, length: value.length))
     }
-    #expect(value.attribute(.link, at: text.range(of: "%20tail").location, effectiveRange: nil) == nil)
-    for other in [angle, "label", "https://cdn.discord.com"] {
-        let location = text.range(of: other).location
-        #expect(value.attribute(.link, at: location, effectiveRange: nil) != nil)
-        #expect(value.attribute(.discordMarkdownAttachmentLink, at: location, effectiveRange: nil) == nil)
-    }
-    #expect(DiscordMarkdown.appKitAttributed("`\(angle)`").string == angle)
 }
 
 @Test func `attachment links refresh when unsigned or expiring within the hour`() throws {

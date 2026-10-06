@@ -374,21 +374,22 @@ code, not in the transport-wide baseline.
 
 ## Attachment links
 
-- A bare HTTPS URL on `cdn`/`media`/`images` Discord CDN hosts (including
-  subdomains and hyphen-suffixed variants) with an `/attachments/` or
-  `/ephemeral-attachments/` path renders as a paperclip and its undecoded
-  file name, matching the first-party `attachmentLink` rule in stable web
-  build `622805` (28 September 2026). The rule is anchored only at its start,
-  so a query stops at characters outside `[A-Za-z0-9?&=_-]`. Angle-bracket,
-  masked, and code-span URLs keep their ordinary presentation; profile widgets
-  exclude the rule. Activation refreshes the URL only when needed, as described
-  in the route table. SakuraCord deliberately applies that refresh to any
-  activated link whose complete URL matches the rule, because its click paths
-  carry only the URL; the first-party client refreshes only attachment-link
-  clicks and its "Copy link" item, and SakuraCord has no message link context
-  menu. This activation path does not refresh image embeds, attachments, or the
-  media viewer. The first-party client separately detects expired attachment
-  and embed URLs when loading a channel and refetches message history.
+Attachment URLs retain their ordinary full-URL presentation. An explicit
+activation refreshes an unsigned or nearly expired HTTPS attachment URL only
+when its complete URL matches the first-party attachment-link rule: `cdn`,
+`media`, or `images` Discord CDN hosts (including subdomains and hyphen-suffixed
+variants), an `/attachments/` or `/ephemeral-attachments/` path, numeric IDs,
+and the rule's filename/query character set. Nonmatching URLs remain ordinary
+links; no URL prefix is substituted for the original destination.
+
+SakuraCord deliberately applies refresh to any activated link whose complete
+URL matches that rule, including masked links. The first-party client refreshes
+attachment-link clicks and its "Copy link" item; SakuraCord has no message link
+context menu. The refreshed destination still goes through external-link safety
+assessment with the original displayed label. This activation path does not
+refresh image embeds, attachments, or the media viewer. The first-party client
+separately detects expired attachment and embed URLs when loading a channel and
+refetches message history.
 
 | Route | Contract | Evidence |
 | --- | --- | --- |
