@@ -146,6 +146,7 @@ struct ChannelContextMenuBridge: NSViewRepresentable {
     let copyChannelID: () -> Void
     let copyLink: () -> Void
     var pinAction: ChannelPinMenuAction = .unavailable
+    var usesCustomSelectionBackground = false
 
     func makeCoordinator() -> Coordinator {
         Coordinator(from: self)
@@ -153,6 +154,7 @@ struct ChannelContextMenuBridge: NSViewRepresentable {
 
     func makeNSView(context: Context) -> ChannelContextMenuHitView {
         let view = ChannelContextMenuHitView()
+        view.usesCustomSelectionBackground = usesCustomSelectionBackground
         view.menuProvider = { [weak coordinator = context.coordinator] in
             coordinator?.makeMenu()
         }
@@ -162,6 +164,7 @@ struct ChannelContextMenuBridge: NSViewRepresentable {
 
     func updateNSView(_ nsView: ChannelContextMenuHitView, context: Context) {
         context.coordinator.update(from: self)
+        nsView.usesCustomSelectionBackground = usesCustomSelectionBackground
         nsView.menuProvider = { [weak coordinator = context.coordinator] in
             coordinator?.makeMenu()
         }
@@ -426,6 +429,7 @@ extension MessageNotificationLevel {
 
 final class ChannelContextMenuHitView: NSView {
     var menuProvider: (() -> NSMenu?)?
+    var usesCustomSelectionBackground = false
     var isSelected = false {
         didSet {
             updateNativeHoverPresentation()
@@ -534,6 +538,15 @@ final class ChannelContextMenuHitView: NSView {
     }
 
     private func updateNativeHoverPresentation() {
+        if usesCustomSelectionBackground,
+           let nativeRowView,
+           let tableView = enclosingNativeTableView(near: nativeRowView),
+           tableView.selectionHighlightStyle != .none
+        {
+            // Keep native selection and keyboard navigation while the inbox
+            // draws its own neutral selection background.
+            tableView.selectionHighlightStyle = .none
+        }
         nativeHoverView.showsHover = isHovering && !isSelected
         guard nativeHoverView.showsHover else { return }
         synchronizeNativeHoverGeometry()

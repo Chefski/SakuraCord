@@ -17,31 +17,26 @@ struct DirectMessageInboxView: View {
             pinnedChannelIDs: pinnedChannelIDs
         )
 
-        List {
+        List(selection: $selection) {
             Section {
                 ForEach(directMessages) { channel in
-                    Button {
-                        selection = channel.id
-                    } label: {
-                        DirectMessageInboxRow(
-                            model: model,
-                            channel: channel,
-                            isPinned: pinnedChannelIDs.contains(channel.id),
-                            member: DirectMessageInboxPolicy.recipientMember(
-                                for: channel,
-                                membersByID: membersByID
-                            ),
-                            call: privateCallsByChannel[channel.id],
-                            animatesAvatar: animatesAvatars
-                        )
-                    }
-                    .buttonStyle(.plain)
+                    DirectMessageInboxRow(
+                        model: model,
+                        channel: channel,
+                        isPinned: pinnedChannelIDs.contains(channel.id),
+                        member: DirectMessageInboxPolicy.recipientMember(
+                            for: channel,
+                            membersByID: membersByID
+                        ),
+                        call: privateCallsByChannel[channel.id],
+                        animatesAvatar: animatesAvatars
+                    )
+                    .tag(channel.id)
                     .pointerStyle(.link)
                     .listRowBackground(
                         RoundedRectangle(cornerRadius: 8)
                             .fill(selection == channel.id ? Color.primary.opacity(0.08) : .clear)
                     )
-                    .accessibilityAddTraits(selection == channel.id ? [.isSelected] : [])
                 }
 
                 SidebarBottomScrollSpacer(height: bottomContentInset)
@@ -135,6 +130,7 @@ private struct DirectMessageInboxRow: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(channel.name)
+                    .accessibilityLabel(isMuted ? "\(channel.name), Muted" : channel.name)
                     .fontWeight(
                         channel.unreadCount > 0 && !isMuted
                             ? .semibold
@@ -238,7 +234,8 @@ private struct DirectMessageInboxRow: View {
                 },
                 pinAction: .available(isPinned: isPinned, toggle: {
                     model.toggleDirectMessagePin(channel.id)
-                })
+                }),
+                usesCustomSelectionBackground: true
             )
         }
     }
@@ -259,7 +256,6 @@ private struct DirectMessageInboxRow: View {
 
     private var accessibilityValue: String {
         var states: [String] = []
-        if isMuted { states.append("Muted") }
         if channel.mentionCount > 0 {
             states.append(channel.mentionCount == 1
                 ? "1 unread mention"
