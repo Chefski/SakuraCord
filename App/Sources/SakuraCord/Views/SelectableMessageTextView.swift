@@ -253,7 +253,8 @@ struct SelectableMessageTextView: NSViewRepresentable {
             richTextView.attributedString().attribute(
                 .link,
                 at: charIndex,
-                effectiveRange: &linkRange
+                longestEffectiveRange: &linkRange,
+                in: NSRange(location: 0, length: richTextView.attributedString().length)
             )
             let displayedText = linkRange.length > 0
                 ? richTextView.attributedString().attributedSubstring(
@@ -690,7 +691,8 @@ final class RichMessageNSTextView: NSTextView {
         let rawLink = attributedString().attribute(
             .link,
             at: index,
-            effectiveRange: &range
+            longestEffectiveRange: &range,
+            in: NSRange(location: 0, length: attributedString().length)
         )
         let url: URL? = switch rawLink {
         case let value as URL:

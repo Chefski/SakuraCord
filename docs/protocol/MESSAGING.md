@@ -414,3 +414,26 @@ See [external-host checks](../../App/Tests/SakuraCordAppTests/ExternalAttachment
 and [metadata fixtures](../../Packages/MediaPipeline/Tests/MediaPipelineTests/UploadMetadataTests.swift)
 for failure/privacy boundaries. Detailed container algorithms belong beside that
 code, not in the transport-wide baseline.
+
+## Attachment links
+
+Attachment URLs retain their ordinary full-URL presentation. An explicit
+activation refreshes an unsigned or nearly expired HTTPS attachment URL only
+when its complete URL matches the first-party attachment-link rule: `cdn`,
+`media`, or `images` Discord CDN hosts (including subdomains and hyphen-suffixed
+variants), an `/attachments/` or `/ephemeral-attachments/` path, numeric IDs,
+and the rule's filename/query character set. Nonmatching URLs remain ordinary
+links; no URL prefix is substituted for the original destination.
+
+SakuraCord deliberately applies refresh to any activated link whose complete
+URL matches that rule, including masked links. The first-party client refreshes
+attachment-link clicks and its "Copy link" item; SakuraCord has no message link
+context menu. The refreshed destination still goes through external-link safety
+assessment with the original displayed label. This activation path does not
+refresh image embeds, attachments, or the media viewer. The first-party client
+separately detects expired attachment and embed URLs when loading a channel and
+refetches message history.
+
+| Route | Contract | Evidence |
+| --- | --- | --- |
+| `POST /attachments/refresh-urls` | One explicit activation of a Discord attachment link whose URL is unsigned or whose hexadecimal `ex` expires within one hour; `attachment_urls` contains exactly the original URL. `refreshed_urls[0].refreshed` is opened; a null or absent value opens the original URL. No retry, context header, or cache. | Stable web build `622805` (`web.d4c7976eccf337f1.js`, SHA-256 `7341aa3d5a2208664901f65bf776a48fb5cafe21a1a9e6ce504db79a4a636f7d`), 28 September 2026. Public docs define `ex`/`is`/`hm` but not this route; pinned Paicord and Swiftcord v1 have no equivalent contract. |

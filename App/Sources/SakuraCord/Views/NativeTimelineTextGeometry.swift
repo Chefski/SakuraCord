@@ -25,6 +25,7 @@ struct NativeTimelineTextHit {
     let url: URL?
     let mention: MentionPresentation?
     let spoilerRange: NSRange?
+    var displayedText: String?
 }
 
 private struct NativeTimelineTextLinkHitRegion {
@@ -70,7 +71,8 @@ enum NativeTimelineLinkAppearance {
         guard value.attribute(
             .link,
             at: characterIndex,
-            effectiveRange: &linkRange
+            longestEffectiveRange: &linkRange,
+            in: NSRange(location: 0, length: value.length)
         ) != nil, linkRange.length > 0
         else { return }
         value.addAttribute(
@@ -916,7 +918,8 @@ enum NativeTimelineTextHitTester {
                 characterIndex: link.characterIndex,
                 url: link.url,
                 mention: nil,
-                spoilerRange: link.spoilerRange
+                spoilerRange: link.spoilerRange,
+                displayedText: MessageLinkActivator.safetyDisplayedText(in: value, at: link.characterIndex)
             )
         }
         let hit = textLineHit(value: value, layout: layout, frame: frame, point: point)
@@ -1096,7 +1099,8 @@ enum NativeTimelineTextHitTester {
                 spoilerRange: NativeTimelineTextSpoilers.range(
                     at: characterIndex,
                     in: value
-                )
+                ),
+                displayedText: MessageLinkActivator.safetyDisplayedText(in: value, at: characterIndex)
             )
         }
         return nil

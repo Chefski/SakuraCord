@@ -2,6 +2,11 @@ import Foundation
 import SakuraCordModels
 
 public extension MockChatProvider {
+    func refreshAttachmentURL(_ url: URL) async throws -> URL? {
+        attachmentURLRefreshRequests.append(url)
+        return url
+    }
+
     func messages(in channelID: ChannelID, before: MessageID?, limit: Int) async throws
         -> MessagePage
     {
