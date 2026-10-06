@@ -590,14 +590,10 @@ public enum DiscordMarkdown {
                let close = nextInlineTerminator("`", in: source, from: source.index(after: cursor), collector: sourceCollector)
             {
                 flushPlain()
-                result.append(
-                    AppKitPlan.InlineRun(
-                        text: String(source[source.index(after: cursor) ..< close]),
-                        traits: inheritedTraits.union(.inlineCode),
-                        link: inheritedLink,
-                        color: nil
-                    )
-                )
+                result.append(inlineCodeRun(
+                    source[source.index(after: cursor) ..< close],
+                    traits: inheritedTraits, link: inheritedLink, sourceCollector: sourceCollector
+                ))
                 cursor = source.index(after: close)
                 continue
             }
@@ -788,7 +784,7 @@ public enum DiscordMarkdown {
             // except that a spoiler, like Discord's `\|\|([\s\S]+?)\|\|`, holds at
             // least one character before its nearest closing delimiter.
             let isSpoiler = delimiter.traits.contains(.spoiler)
-            let closingRange = if let sourceCollector {
+            let closingRange = if let sourceCollector, sourceCollector.matchesComposerDelimiters {
                 composerClosingDelimiter(delimiter.marker, in: source, after: contentStart, collector: sourceCollector)
             } else if isSpoiler {
                 contentStart < source.endIndex
@@ -1330,7 +1326,39 @@ public enum DiscordMarkdown {
     }
 }
 
+extension DiscordMarkdown {
+    /// Literal code ranges use the same delimiter rules as message rendering.
+    static func sourceCodeRanges(_ source: String) -> [NSRange] {
+        guard source.utf8.contains(96) else { return [] }
+        var source = source
+        source.makeContiguousUTF8()
+        var ranges: [NSRange] = []
+        let collector = SourceFormatCollector(source: source, matchesComposerDelimiters: false) { range, traits, _ in
+            if traits.contains(.inlineCode) { ranges.append(NSRange(range, in: source)) }
+        }
+        var inCodeFence = false
+        for line in source.split(separator: "\n", omittingEmptySubsequences: false) {
+            if line.hasPrefix("```") {
+                inCodeFence.toggle()
+                ranges.append(NSRange(line.startIndex ..< line.endIndex, in: source))
+            } else if inCodeFence {
+                ranges.append(NSRange(line.startIndex ..< line.endIndex, in: source))
+            } else {
+                _ = inlineRuns(line, inheritedTraits: [], inheritedLink: nil, sourceCollector: collector)
+            }
+        }
+        return ranges
+    }
+}
+
 private extension DiscordMarkdown {
+    static func inlineCodeRun(
+        _ source: Substring, traits: AppKitPlan.InlineTraits, link: URL?, sourceCollector: SourceFormatCollector?
+    ) -> AppKitPlan.InlineRun {
+        sourceCollector?.collect(source.startIndex ..< source.endIndex, .inlineCode, "`")
+        return AppKitPlan.InlineRun(text: String(source), traits: traits.union(.inlineCode), link: link, color: nil)
+    }
+
     static func isComposerSyntaxCharacter(_ character: Character) -> Bool {
         switch character {
         case "\\", "`", "[", "<", "*", "_", "~", "|", "h": true
@@ -1355,10 +1383,12 @@ private extension DiscordMarkdown {
     /// remainder of the draft for the same closing bracket or backtick.
     final class SourceFormatCollector {
         let collect: (Range<String.Index>, AppKitPlan.InlineTraits, String) -> Void
+        let matchesComposerDelimiters: Bool
         private var terminators: [Character: [String.Index]] = [:]
 
-        init(source: String, collect: @escaping (Range<String.Index>, AppKitPlan.InlineTraits, String) -> Void) {
+        init(source: String, matchesComposerDelimiters: Bool = true, collect: @escaping (Range<String.Index>, AppKitPlan.InlineTraits, String) -> Void) {
             self.collect = collect
+            self.matchesComposerDelimiters = matchesComposerDelimiters
             for index in source.indices {
                 let character = source[index]
                 switch character {
@@ -1441,7 +1471,7 @@ private final class AppKitMarkdownCacheKey: NSObject {
 
 public extension DiscordMarkdown {
     /// Discord invite cards are client-derived, including bare links and links inside angle brackets.
-    /// Reuse the Markdown parser so code blocks and inline code never initiate preview requests.
+    /// Code and spoiler text never initiate preview requests or expose invite cards.
     static func serverInviteReferences(in source: String) -> [ServerInviteReference] {
         guard source.contains("discord.gg/") || source.contains("discord.com/invite/")
                 || source.contains("discordapp.com/invite/") else { return [] }
@@ -1449,7 +1479,7 @@ public extension DiscordMarkdown {
         var seen: Set<String> = []
         for line in appKitPlan(source).lines {
             if case .code = line.block { continue }
-            for run in line.runs where !run.traits.contains(.inlineCode) {
+            for run in line.runs where run.traits.isDisjoint(with: [.inlineCode, .spoiler]) {
                 let candidates = run.link.map { [$0.absoluteString] }
                     ?? run.text.components(separatedBy: .whitespacesAndNewlines)
                 for candidate in candidates {

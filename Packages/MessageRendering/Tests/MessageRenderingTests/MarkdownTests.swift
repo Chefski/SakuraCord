@@ -6,12 +6,14 @@ import Testing
 @Test func `server invite recognition excludes code and lookalike hosts while deduplicating bare URLs`() {
     let source = """
     discord.gg/Valid https://discord.com/invite/Valid discordapp.com/invite/Other
+    ||https://discord.gg/Third|| ||discord.gg/BareSpoiler|| ||[hidden](https://discord.gg/Masked)||
     <https://discord.gg/Third> https://notdiscord.gg/Hidden
     `discord.gg/Inline`
     ```
     discord.gg/Fenced
     ```
     discord.gg/ie3urhej
+    ||https://discord.gg/HiddenInvite||
     """
     #expect(DiscordMarkdown.serverInviteReferences(in: source).map(\.code) == ["Valid", "Other", "Third", "ie3urhej"])
     #expect(ServerInviteReference("https://discord.gg@evil.example/test") == nil)
@@ -241,6 +243,16 @@ import Testing
     #expect(animated.rawToken == "<a:wave:123>")
 }
 
+@Test func `masked discord message links stay links while bare ones become pills`() {
+    let link = "https://discord.com/channels/1/2/3"
+    #expect(MessageDocument(source: "[Jump to original message](\(link))").segments
+        == [.markdown("[Jump to original message](\(link))")])
+    guard case .mention? = MessageDocument(source: "see \(link)").segments.last else {
+        Issue.record("Bare message link should remain a pill")
+        return
+    }
+}
+
 @Test func `message document detects jumbo custom emoji`() {
     #expect(MessageDocument(source: "<:one:1> <:two:2>").isEmojiOnly)
     #expect(!MessageDocument(source: "text <:one:1>").isEmojiOnly)
@@ -323,6 +335,19 @@ import Testing
     #expect(mentions.map(\.kind) == [.game])
     #expect(mentions.first?.id == "356875221078245376")
     #expect(mentions.first?.rawToken == token)
+}
+
+@Test func `new mention types stay literal in code and escaped text`() {
+    let raw = "@everyone <t:1000000:R> <@$356875221078245376>"
+    for source in ["🌸 `\(raw)`", "**`\(raw)`**", "```swift\n\(raw)\n```", #"\@everyone \<t:1000000:R> \<@$356875221078245376>"#] {
+        #expect(MessageDocument(source: source).segments == [.markdown(source)])
+    }
+    let mixed = MessageDocument(source: "`\(raw)` \(raw)")
+    let mentions = mixed.segments.compactMap { segment -> RenderedMention? in
+        guard case let .mention(mention) = segment else { return nil }
+        return mention
+    }
+    #expect(mentions.map(\.rawToken) == raw.split(separator: " ").map(String.init))
 }
 
 @Test func `message document recognizes discord message links as structured mentions`() throws {

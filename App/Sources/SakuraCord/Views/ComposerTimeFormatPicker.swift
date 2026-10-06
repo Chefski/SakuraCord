@@ -14,7 +14,7 @@ struct ComposerTimeFormatPicker: View {
     let highlight: (Int) -> Void
 
     var body: some View {
-        ComposerAutocompletePanel(heading: "TIME FORMATS", count: Self.styles.count) {
+        ComposerAutocompletePanel(heading: "TIME FORMATS") {
             LazyVStack(spacing: 2) {
                 ForEach(Self.styles.indices, id: \.self) { index in
                     let style = Self.styles[index]

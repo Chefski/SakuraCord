@@ -183,6 +183,7 @@ public struct MessageDocument: Hashable, Sendable {
             in: source, range: NSRange(source.startIndex ..< source.endIndex, in: source)
         )
         guard !matches.isEmpty else { return source.isEmpty ? [] : [.markdown(source)] }
+        let codeRanges = DiscordMarkdown.sourceCodeRanges(source)
         var result: [Segment] = []
         var cursor = source.startIndex
         for match in matches {
@@ -193,7 +194,8 @@ public struct MessageDocument: Hashable, Sendable {
             let token = String(source[range])
             if let emoji = RenderedEmoji(rawToken: token) {
                 result.append(.customEmoji(emoji))
-            } else if let mention = RenderedMention(rawToken: token) {
+            } else if !isMaskedLinkTarget(range, in: source), let mention = RenderedMention(rawToken: token),
+                      !isLiteralMention(mention, range: range, in: source, codeRanges: codeRanges) {
                 result.append(.mention(mention))
             } else {
                 result.append(.markdown(token))
@@ -203,7 +205,37 @@ public struct MessageDocument: Hashable, Sendable {
         if cursor < source.endIndex {
             result.append(.markdown(String(source[cursor...])))
         }
-        return result
+        // Markdown must see a masked link and its target as one run.
+        return result.reduce(into: []) { merged, segment in
+            if case let .markdown(next) = segment, case let .markdown(previous)? = merged.last {
+                merged[merged.count - 1] = .markdown(previous + next)
+            } else {
+                merged.append(segment)
+            }
+        }
+    }
+
+    private static func isLiteralMention(
+        _ mention: RenderedMention, range: Range<String.Index>, in source: String, codeRanges: [NSRange]
+    ) -> Bool {
+        guard mention.kind == .game || mention.kind == .broadcast || mention.kind == .timestamp else { return false }
+        let tokenRange = NSRange(range, in: source)
+        if codeRanges.contains(where: { NSIntersectionRange($0, tokenRange).length > 0 }) { return true }
+        var cursor = range.lowerBound
+        var escaped = false
+        while cursor > source.startIndex {
+            let previous = source.index(before: cursor)
+            guard source[previous] == "\\" else { break }
+            escaped.toggle()
+            cursor = previous
+        }
+        return escaped
+    }
+
+    /// `[label](https://discord.com/channels/…)` is a masked link, as in
+    /// Discord, not a message-link pill.
+    private static func isMaskedLinkTarget(_ range: Range<String.Index>, in source: String) -> Bool {
+        source[..<range.lowerBound].hasSuffix("](") && source[range.upperBound...].hasPrefix(")")
     }
 
     private static func detectEmojiOnly(source: String, segments: [Segment]) -> Bool {

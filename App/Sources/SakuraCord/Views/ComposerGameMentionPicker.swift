@@ -10,6 +10,7 @@ struct ComposerGameMentionPicker: View {
     @State private var query = ""
     @State private var games: [ProfileGame] = []
     @State private var selectedIndex = 0
+    @State private var keyboardSelectionRevision = 0
     @State private var isSearching = false
     @State private var errorMessage: String?
     @FocusState private var searchFocused: Bool
@@ -45,9 +46,17 @@ struct ComposerGameMentionPicker: View {
                     return .handled
                 }
             Divider().padding(.horizontal, 9)
-            ScrollView {
-                LazyVStack(spacing: 2) {
-                    ForEach(Array(games.enumerated()), id: \.element.id) { index, game in
+            if !games.isEmpty {
+                ComposerSuggestionList(
+                    rows: games,
+                    selectedID: games.indices.contains(selectedIndex) ? games[selectedIndex].id : nil,
+                    keyboardSelectionRevision: keyboardSelectionRevision,
+                    rowHeight: { _ in 42 },
+                    highlight: { game in
+                        if let index = games.firstIndex(where: { $0.id == game.id }) { selectedIndex = index }
+                    },
+                    activate: select,
+                    content: { game in
                         Button { select(game) } label: {
                             HStack(spacing: 9) {
                                 gameIcon(for: game)
@@ -59,28 +68,29 @@ struct ComposerGameMentionPicker: View {
                             .padding(.horizontal, 9)
                             .frame(height: 40)
                             .background(
-                                index == selectedIndex ? Color.primary.opacity(0.10) : .clear,
+                                games.indices.contains(selectedIndex) && games[selectedIndex].id == game.id ? Color.primary.opacity(0.10) : .clear,
                                 in: ConcentricRectangle(cornerRadius: 7, style: .continuous)
                             )
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .onModalHover { if $0 { selectedIndex = index } }
                     }
+                )
+                .padding(.bottom, 5)
+            } else {
+                Group {
                     if isSearching {
-                        ProgressView().controlSize(.small).frame(maxWidth: .infinity).padding(12)
+                        ProgressView().controlSize(.small)
                     } else if let errorMessage {
-                        Text(errorMessage).foregroundStyle(.secondary).padding(12)
-                    } else if games.isEmpty {
+                        Text(errorMessage).foregroundStyle(.secondary)
+                    } else {
                         Text(normalizedQuery.isEmpty ? "Search for a game to mention." : "No games found.")
                             .foregroundStyle(.secondary)
-                            .padding(12)
                     }
                 }
-                .padding(.horizontal, 5)
-                .padding(.bottom, 5)
+                .frame(maxWidth: .infinity)
+                .frame(height: 84)
             }
-            .frame(height: min(340, CGFloat(max(2, games.count)) * 42))
         }
         .frame(maxWidth: .infinity)
         .glassEffect(
@@ -118,6 +128,7 @@ struct ComposerGameMentionPicker: View {
     private func moveSelection(by offset: Int) {
         guard !games.isEmpty else { return }
         selectedIndex = (selectedIndex + offset + games.count) % games.count
+        keyboardSelectionRevision &+= 1
     }
 
     private func search() async {
