@@ -142,6 +142,15 @@ struct NativeTimelineRowLayout {
     var avatarFrame: CGRect?
     var compactTimestampFrame: CGRect?
     var authorFrame: CGRect?
+    var authorText: NativeIdentityTextPresentation?
+    var authorPrimaryGuild: PrimaryGuildIdentity?
+    struct ServerTagRegion {
+        let frame: CGRect
+        let presentation: NativeServerTagPresentation
+    }
+    var serverTagRegion: ServerTagRegion?
+    var timestampText: NativeIdentityTextPresentation?
+    var editedText: NativeIdentityTextPresentation?
     var botBadgeFrame: CGRect?
     var timestampFrame: CGRect?
     var editedFrame: CGRect?

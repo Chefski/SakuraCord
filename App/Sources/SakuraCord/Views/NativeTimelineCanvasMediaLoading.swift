@@ -336,6 +336,9 @@ extension NativeTimelineCanvasView {
         {
             keys.append(.avatarDecoration(url))
         }
+        if let url = layout.serverTagRegion?.presentation.identity.badgeURL {
+            keys.append(.media(url, maximumPixelDimension: 32))
+        }
         if let url = message.interactionMetadata?.user?.avatarURL {
             keys.append(.avatar(url))
         }

@@ -283,7 +283,8 @@ extension NativeMessageTimelineCoordinator {
                preparation.matches(parent, width: width),
                let cached = preparation.layouts[item.identifier],
                cached.item == item,
-               cached.layout.fontRevision == ProfileNameFontCache.revision {
+               cached.layout.fontRevision == ProfileNameFontCache.revision,
+               cached.layout.matchesAuthorPrimaryGuild(for: item, model: parent.model) {
                 recentLayoutCacheHits += 1
                 return cached.layout
             }

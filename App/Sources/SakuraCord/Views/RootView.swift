@@ -128,6 +128,7 @@ struct RootView: View {
             )
         }
         .environment(\.profileCosmeticPolicy, model.cosmeticPolicy)
+        .environment(\.serverTagCardModel, model)
         .environment(\.roleColorDisplay, model.accessibilitySettings.roleColorDisplay)
         .modifier(SakuraCordWindowBackground(opacity: model.appearanceSettings.windowOpacity))
     }

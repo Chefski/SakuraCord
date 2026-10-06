@@ -10,12 +10,16 @@ extension NativeMemberListCanvasView {
         guard isScrolling != scrolling else { return }
         isScrolling = scrolling
         if scrolling {
+            clearServerTagHover()
+            dismissServerTagCard()
             hoveredIndex = nil
             removeRowOverlay()
         } else if !interactionsBlocked, let window {
             let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
             hoveredIndex = index(at: point)
+            updateServerTagHover(at: point)
         }
+        window?.invalidateCursorRects(for: self)
         updateVisibleOverlaysAndPrewarming()
     }
 
@@ -35,6 +39,10 @@ extension NativeMemberListCanvasView {
         guard force || viewportChanged else { return false }
         reconciledVisibleRange = visible
         reconciledViewportWidth = bounds.width
+        reconcileServerTagCardPresentation()
+        window?.invalidateCursorRects(for: self)
+        let visibleIDs = Set(visible.map { items[$0].id })
+        memberNameGeometries = memberNameGeometries.filter { visibleIDs.contains($0.key) }
         let prewarmLower = max(0, visible.lowerBound - NativeMemberListMetrics.prewarmItemCount)
         let prewarmUpper = min(items.count, visible.upperBound + NativeMemberListMetrics.prewarmItemCount)
         let prewarmRange = prewarmLower ..< prewarmUpper
@@ -260,6 +268,8 @@ extension NativeMemberListCanvasView {
 
     func installAccessibilityRows(in range: Range<Int>) {
         var visibleIDs: Set<ItemID> = []
+        var tagIDs: Set<ItemID> = []
+        var children: [Any] = []
         for index in range {
             guard case .member(let member, _) = items[index] else { continue }
             let id = items[index].id
@@ -271,16 +281,40 @@ extension NativeMemberListCanvasView {
                 return value
             }()
             proxy.member = member
-            proxy.activation = { [weak self] member in self?.selectMember(member) }
+            proxy.activation = { [weak self] member in
+                guard let self, !self.interactionsBlocked,
+                      WindowModalCoordinator.allowsInput(for: self)
+                else { return }
+                self.selectMember(member)
+            }
             proxy.frame = paintedRowRect(at: index)
+            children.append(proxy)
+            if canActivateServerTag(at: index), let frame = serverTagFrame(at: index) {
+                tagIDs.insert(id)
+                let button = serverTagAccessibilityButtons[id] ?? {
+                    let value = NativeMemberTagAccessibilityButton()
+                    addSubview(value)
+                    serverTagAccessibilityButtons[id] = value
+                    return value
+                }()
+                button.frame = frame
+                button.setAccessibilityLabel("Server Tag \(member.user.primaryGuild?.tag ?? "")")
+                button.activation = { [weak self] in
+                    guard let self, let currentIndex = self.itemIndexesByID[id] else { return }
+                    self.activateServerTag(at: currentIndex)
+                }
+                children.append(button)
+            }
         }
         for (id, proxy) in accessibilityRows where !visibleIDs.contains(id) {
             proxy.removeFromSuperview()
             accessibilityRows[id] = nil
         }
-        setAccessibilityChildren(range.compactMap { index in
-            accessibilityRows[items[index].id]
-        })
+        for (id, button) in serverTagAccessibilityButtons where !tagIDs.contains(id) {
+            button.removeFromSuperview()
+            serverTagAccessibilityButtons[id] = nil
+        }
+        setAccessibilityChildren(children)
     }
 
     func installRowOverlayIfNeeded() {
@@ -371,7 +405,8 @@ extension NativeMemberListCanvasView {
             },
             presentationIdentity: AnyHashable(presentation.member.id),
             content: AnyView(ProfilePresentationContent(presentation: presentation, openProfile: openProfile)
-                .environment(\.profileCosmeticPolicy, cosmeticPolicy))
+                .environment(\.profileCosmeticPolicy, cosmeticPolicy)
+                .environment(\.serverTagCardModel, serverTagCardModel))
         )
     }
 
@@ -529,6 +564,11 @@ extension NativeMemberListCanvasView {
         reconciledViewportWidth = nil
         removeRowOverlay()
         removeProfileAnchor(immediately: true)
+        dismissServerTagCard()
+        clearServerTagHover()
+        memberNameGeometries.removeAll()
+        for button in serverTagAccessibilityButtons.values { button.removeFromSuperview() }
+        serverTagAccessibilityButtons.removeAll()
         for host in avatarOverlays.values { host.removeFromSuperview() }
         for host in activityEmojiOverlays.values { host.removeFromSuperview() }
         avatarOverlayConfigurations.removeAll()

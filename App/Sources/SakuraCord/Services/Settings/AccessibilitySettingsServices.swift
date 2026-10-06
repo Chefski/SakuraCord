@@ -25,6 +25,7 @@ nonisolated struct AccessibilitySettingsSnapshot: Equatable, Sendable {
         disablesProfileFrames: false,
         disablesNameStyles: false,
         disablesProfileGradients: false,
+        disablesServerTags: false,
         announcesTimestamps: true,
         announcesEditedStatus: true,
         announcesReactionCounts: true,
@@ -41,6 +42,7 @@ nonisolated struct AccessibilitySettingsSnapshot: Equatable, Sendable {
     var disablesProfileFrames: Bool
     var disablesNameStyles: Bool
     var disablesProfileGradients: Bool
+    var disablesServerTags: Bool
     var announcesTimestamps: Bool
     var announcesEditedStatus: Bool
     var announcesReactionCounts: Bool
@@ -76,6 +78,8 @@ final class AccessibilitySettingsStore {
             ?? value.disablesNameStyles
         value.disablesProfileGradients = bool(.accessibilityDisableProfileGradients)
             ?? value.disablesProfileGradients
+        value.disablesServerTags = bool(.accessibilityDisableServerTags)
+            ?? value.disablesServerTags
         value.announcesTimestamps = bool(.accessibilityAnnounceTimestamp)
             ?? value.announcesTimestamps
         value.announcesEditedStatus = bool(.accessibilityAnnounceEdited)
@@ -100,6 +104,7 @@ final class AccessibilitySettingsStore {
         preferences.set(.bool(value.disablesProfileFrames), for: .accessibilityDisableProfileFrames)
         preferences.set(.bool(value.disablesNameStyles), for: .accessibilityDisableNameStyles)
         preferences.set(.bool(value.disablesProfileGradients), for: .accessibilityDisableProfileGradients)
+        preferences.set(.bool(value.disablesServerTags), for: .accessibilityDisableServerTags)
         preferences.set(.bool(value.announcesTimestamps), for: .accessibilityAnnounceTimestamp)
         preferences.set(.bool(value.announcesEditedStatus), for: .accessibilityAnnounceEdited)
         preferences.set(.bool(value.announcesReactionCounts), for: .accessibilityAnnounceReactions)

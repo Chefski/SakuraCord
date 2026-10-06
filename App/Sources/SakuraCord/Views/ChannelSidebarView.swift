@@ -1039,6 +1039,7 @@ private struct CurrentUserCapsule: View {
                 )
             })
             .environment(\.profileCosmeticPolicy, model.cosmeticPolicy)
+            .environment(\.serverTagCardModel, model)
         } else {
             ProgressView("Loading profile…")
                 .padding(24)

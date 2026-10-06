@@ -22,8 +22,8 @@ membership. Already-member cards navigate without posting another acceptance.
 Leaving is `DELETE /users/@me/guilds/{guild}` with `lurking:false`; guild owners
 cannot use it. `GUILD_DELETE unavailable:true` is an outage, not a leave.
 
-Supported invite hCaptcha retains the original body/context and permits one
-replay after human completion on the same provider and Gateway session. Empty
+Supported invite and discoverable-server join hCaptcha retains the original
+body/context and permits one replay after human completion on the same provider and Gateway session. Empty
 solutions, cancellation, account replacement, another challenge or ambiguous
 failure terminate that attempt. Unsupported/malformed challenges and account
 restrictions retain the session safety circuit. Widget test-token verification does not establish successful handling of a live
@@ -38,6 +38,38 @@ Created invite links are user-requested mutations with explicit options. Cached
 links are account-scoped, expire locally and are checked before reuse; they are
 not evidence of membership or authorization. Use the provider request builders
 for exact create/delete fields rather than extending preview behaviour implicitly.
+
+## Server tag cards
+
+An explicit profile tag opens `GET /guilds/{guild}/profile` without query or body.
+Validate the returned guild identity. `403` / `50001` means a private profile;
+`404` is expected. Neither stops account networking. The Guide shares this profile.
+The title badge represents server status, not the custom `badge_hash` from its tag.
+Staff, verified and partnered features take priority; other Community servers use
+a globe when discoverable or a house otherwise. Positive subscription count or
+premium tier adds the boost tint only to those Community badges. Discovery banners
+are shown only for `DISCOVERABLE` guilds. Resolve the five top `game_application_ids`
+through the existing games provider after ranking by `game_activity.activity_score`.
+
+Existing members navigate without joining. Without an invite, Join is offered only
+for discoverable guilds. Manual-approval recruitment (`visibility:3` plus screening
+and manual-approval features) remains delegated to Discord, as does member screening.
+SakuraCord has no lurker mode: it sends the final full-membership
+`PUT /guilds/{guild}/members/@me?lurker=false` with `{}` and
+`X-Context-Properties: e30=`. This has one attempt and at most one human-completed
+CAPTCHA replay on the same provider/Gateway session. Banned/server-limit responses
+remain operation-scoped; Gateway membership reconciliation confirms completion.
+
+Live first-party build `630444` on 6 October 2026 confirmed profile reads and the
+Go to Server / Join / no-action states for joined, unjoined discoverable and
+unjoined non-discoverable servers. Status-badge precedence also follows that
+build’s public GuildBadge implementation. Hidden-profile errors and actual joins
+were not exercised in that live pass.
+
+The join request construction was established by first-party web build `622805` static
+analysis on 29 September 2026. Paicord has only the PATCH member route and pinned
+Swiftcord has no equivalent. No live join was performed. The provider request and
+budget coverage lives in `ServerInviteContractTests`.
 
 ## Onboarding and channel selection
 

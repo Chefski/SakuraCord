@@ -53,6 +53,7 @@ extension NativeTimelineCanvasView {
         // transient geometry reads it.
         reconcileEditingRow()
         self.contentOriginY = transientContentOriginY
+        reconcileServerTagCardPresentation()
         contentOriginMoved =
             abs(previousContentOriginY - self.contentOriginY) >= 0.5
         if activeMentionPopoverAnchor?.sourceRect() == nil {
@@ -345,6 +346,7 @@ extension NativeTimelineCanvasView {
         let clearedTargets = pointer.clearHoverAndPressTargets()
         reactionHoverCoordinator.close()
         closeMessageProfilePopover()
+        closeServerTagPopover()
         removeActionCapsule()
         freezeEditingRowForScroll()
         reconcileAccessibilityProxiesIfActive()
@@ -398,6 +400,9 @@ extension NativeTimelineCanvasView {
            let index = items.firstIndex(where: { $0.messageID == messageID })
         {
             setNeedsDisplay(rowFrame(at: index))
+        }
+        if let messageID = clearedTargets.serverTagMessageID {
+            invalidateServerTag(messageID: messageID)
         }
         if let messageID = clearedTargets.ephemeralDismissMessageID,
            let index = items.firstIndex(where: { $0.messageID == messageID })
@@ -456,6 +461,7 @@ extension NativeTimelineCanvasView {
             pointer.clearHoverAndPressTargets()
             reactionHoverCoordinator.close()
             closeMessageProfilePopover()
+            closeServerTagPopover()
             closeMentionPopover()
             closeComponentChoiceOverlay()
         }
@@ -559,6 +565,7 @@ extension NativeTimelineCanvasView {
             reactionPickerCoordinator.close(notifyBinding: false)
             reactionHoverCoordinator.close()
             closeMessageProfilePopover()
+            closeServerTagPopover()
             closeComponentChoiceOverlay()
             closeMentionPopover()
             reactionPickerSource.frame = .zero
@@ -833,6 +840,8 @@ extension NativeTimelineCanvasView {
             || mediaViewerHighlightedMessageID == item.messageID
             || hoveredCompactTimestampRow == index
             || hoveredAuthorMessageID == item.messageID
+            || hoveredServerTagMessageID == item.messageID
+            || serverTagCardPresentation?.messageID == item.messageID
             || hoveredMention?.itemIdentifier == item.identifier
             || hoveredTextLink?.itemIdentifier == item.identifier
             || hoveredTextSpoiler?.itemIdentifier == item.identifier
@@ -863,6 +872,7 @@ extension NativeTimelineCanvasView {
             isHovered: hoveredRow == index || presentsViewerHighlight,
             showsCompactTimestamp: hoveredCompactTimestampRow == index,
             isAuthorHovered: hoveredAuthorMessageID == item.messageID,
+            isServerTagHovered: hoveredServerTagMessageID == item.messageID || serverTagCardPresentation?.messageID == item.messageID,
             hoveredMention: hoveredMention?.itemIdentifier == item.identifier ? hoveredMention : nil,
             hoveredTextLink: hoveredTextLink?.itemIdentifier == item.identifier ? hoveredTextLink : nil,
             hoveredTextSpoiler: hoveredTextSpoiler?.itemIdentifier == item.identifier ? hoveredTextSpoiler : nil,

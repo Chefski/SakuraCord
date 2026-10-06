@@ -57,7 +57,7 @@ and each topic's contract tests before changing them.
 | Password/MFA | Original plus at most two bounded retries for the documented transient status set above. |
 | Report-service OAuth2 authorization | One ordinary read of the consent details, then one authorizing POST that is never replayed. See [report-service sign-in](protocol/SESSION.md#report-service-sign-in). |
 | Remote-auth ticket exchange | Original plus at most three bounded transient-status retries. |
-| User-completed login or invite CAPTCHA | At most one challenged-request replay after human completion; a second challenge terminates the attempt. |
+| User-completed login or server-join CAPTCHA | At most one challenged-request replay after human completion; a second challenge terminates the attempt. |
 
 A later explicit user action is distinct from automatic retry. Message retry
 retains its nonce; operation-specific exceptions must be documented beside their

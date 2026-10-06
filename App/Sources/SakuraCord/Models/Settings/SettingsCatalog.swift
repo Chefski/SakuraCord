@@ -343,6 +343,7 @@ nonisolated extension SettingsControlID {
     static let accessibilityDisableProfileFrames = Self(rawValue: "accessibility.disable-profile-frames")
     static let accessibilityDisableNameStyles = Self(rawValue: "accessibility.disable-name-styles")
     static let accessibilityDisableProfileGradients = Self(rawValue: "accessibility.disable-profile-gradients")
+    static let accessibilityDisableServerTags = Self(rawValue: "accessibility.disable-server-tags")
     static let accessibilityAnnounceTimestamp = Self(rawValue: "accessibility.announce-timestamp")
     static let accessibilityAnnounceEdited = Self(rawValue: "accessibility.announce-edited")
     static let accessibilityAnnounceReactions = Self(rawValue: "accessibility.announce-reactions")

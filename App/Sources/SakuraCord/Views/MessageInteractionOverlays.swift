@@ -960,6 +960,7 @@ struct MessageProfilePopoverContent: View {
             {
                 ProfilePresentationContent(presentation: presentation, openProfile: model.expandProfile)
                     .environment(\.profileCosmeticPolicy, model.cosmeticPolicy)
+                    .environment(\.serverTagCardModel, model)
             } else {
                 Color.clear.frame(width: 330, height: 250)
             }

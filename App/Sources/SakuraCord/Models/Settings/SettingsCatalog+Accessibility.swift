@@ -45,6 +45,12 @@ nonisolated extension SettingsCatalog {
             keywords: ["disable cosmetics", "profile"], scope: .appWideLocal
         ),
         control(
+            .accessibilityDisableServerTags, page: .accessibility,
+            section: .accessibilityCosmetics, label: "Server tags",
+            help: "Hide server tags in SakuraCord.",
+            keywords: ["disable cosmetics", "profile", "guild tag", "clan tag", "badge"], scope: .appWideLocal
+        ),
+        control(
             .accessibilityDisableOwnCosmetics, page: .accessibility,
             section: .accessibilityCosmetics, label: "Disable own",
             help: "Apply the selected cosmetic restrictions to your own profile too.",
