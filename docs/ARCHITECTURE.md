@@ -129,14 +129,19 @@ exports only allowlisted local preferences to versioned
 values and apply changes through existing owners. Credentials, account content,
 Discord-synchronized values, trusted domains and OS permission grants are excluded.
 External-link confirmation defaults to a bundled, worldwide list in
-`App/Sources/SakuraCord/Resources/trusted-domains.json`. Entries are normalized
-exact hostnames or `*.example.com` rules matching one or more subdomain levels,
+`App/Sources/SakuraCord/Resources/trusted-domains.json`. Bundled entries are exact
+hostnames: no blanket subdomain trust. File-sharing, raw-content and arbitrary
+page-publishing hosts (including Dropbox, Google Sites and Discord attachment
+CDNs) require confirmation by default. Ordinary GitHub pages remain trusted;
+known GitHub raw, archive, release-download and attachment URLs carry a warning.
+Trust never suppresses suspicious-link warnings in Untrusted Domains mode.
+Known services may still contain user content or redirect elsewhere; inclusion
+is not a guarantee of page safety or a download/content scanner.
+
+Users may add `*.example.com` rules matching one or more subdomain levels,
 but not the apex. Matching respects label boundaries. The bundled Public Suffix
 List (ICANN and private sections) rejects wildcards over registries and shared
 hosting namespaces; without that resource, wildcard validation fails closed.
-Curate first-party service domains across regions; do not wildcard arbitrary
-customer websites or general-purpose hosting platforms. Known services may
-still contain user content, so inclusion is not a guarantee of page safety.
 
 The preference store seeds each installation once, merging defaults with any
 existing list, including an explicitly empty legacy list. Later launches and

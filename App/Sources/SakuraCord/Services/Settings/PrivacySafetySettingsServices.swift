@@ -31,6 +31,16 @@ nonisolated enum ExternalLinkConfirmationPolicy: String, CaseIterable, Identifia
     }
 
     func requiresConfirmation(
+        for assessment: ExternalLinkSafetyAssessment,
+        trustedDomains: [String]
+    ) -> Bool {
+        if self == .untrustedDomains, assessment.isSuspicious {
+            return true
+        }
+        return requiresConfirmation(for: assessment.domain, trustedDomains: trustedDomains)
+    }
+
+    func requiresConfirmation(
         for domain: String,
         trustedDomains: [String]
     ) -> Bool {
@@ -164,6 +174,11 @@ nonisolated enum ExternalLinkSafetyPolicy {
                 "The domain contains the name of a known service but is not that service's domain."
             ))
         }
+        if isGitHubDownload(url, host: host) {
+            warnings.append(localized(
+                "This GitHub link can open a user-uploaded file or download directly."
+            ))
+        }
         if let displayedHost = displayedHost(in: displayedText),
            displayedHost != host
         {
@@ -178,6 +193,26 @@ nonisolated enum ExternalLinkSafetyPolicy {
             warnings: warnings,
             isAllowed: true
         )
+    }
+
+    private static func isGitHubDownload(_ url: URL, host: String) -> Bool {
+        guard let normalizedHost = ExternalLinkTrustedDomain.normalized(host),
+              ["github.com", "www.github.com"].contains(normalizedHost)
+        else { return false }
+        let parts = url.standardized.path.split(separator: "/").map(String.init)
+        if parts.first == "user-attachments" { return true }
+        guard parts.count >= 3 else { return false }
+        let route = parts[2]
+        if ["raw", "archive", "zipball", "tarball", "files"].contains(route) { return true }
+        if route == "releases", parts.count >= 4 {
+            if parts[3] == "download" { return true }
+            if parts.count >= 5, parts[3] == "latest", parts[4] == "download" { return true }
+        }
+        if route == "blob" {
+            return URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?
+                .contains { $0.name == "raw" || $0.name.hasPrefix("raw[") } == true
+        }
+        return false
     }
 
     private static func resemblesTrustedDomain(_ host: String) -> Bool {
@@ -233,7 +268,7 @@ final class ExternalLinkConfirmationPresenter {
         }
         let settings = settingsStore.load()
         guard settings.externalLinkConfirmationPolicy.requiresConfirmation(
-            for: assessment.domain,
+            for: assessment,
             trustedDomains: settings.trustedDomains
         ) else {
             opener(assessment.url)
@@ -269,7 +304,7 @@ final class ExternalLinkConfirmationPresenter {
             bundle: #bundle
         )))
         let trustDomainCheckbox: NSButton? = if settings.externalLinkConfirmationPolicy
-            == .untrustedDomains
+            == .untrustedDomains, !assessment.isSuspicious
         {
             NSButton(
                 checkboxWithTitle: String(localized: LocalizedStringResource(

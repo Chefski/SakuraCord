@@ -9,9 +9,10 @@ import Testing
     #expect(bundled == rules)
     #expect(!rules.isEmpty)
     #expect(rules.contains("microsoft.com"))
-    #expect(rules.contains("*.microsoft.com"))
+    #expect(!rules.contains { $0.contains("*") })
     for host in [
         "support.microsoft.com", "docs.github.com", "old.reddit.com", "support.discord.com",
+        "github.com", "www.youtube.com", "youtu.be",
         "www.mercadolivre.com.br", "www.jumia.co.ke", "www.aljazeera.net", "www.flipkart.com",
         "www.naver.com", "www.yahoo.co.jp", "www.grab.com", "www.abc.net.au",
         "www.fedoraproject.org", "docs.fedoraproject.org",
@@ -19,6 +20,10 @@ import Testing
         #expect(!ExternalLinkConfirmationPolicy.untrustedDomains.requiresConfirmation(for: host, trustedDomains: rules))
     }
     for host in [
+        "dropbox.com", "www.dropbox.com", "sites.google.com", "drive.google.com",
+        "docs.google.com", "script.google.com", "forms.office.com", "onedrive.live.com",
+        "cdn.discordapp.com", "media.discordapp.net", "raw.githubusercontent.com",
+        "gist.githubusercontent.com", "notion.so", "www.canva.com", "huggingface.co",
         "customer.github.io", "customer.pages.dev", "customer.azurewebsites.net", "customer.wordpress.com",
         "customer.cloud.fedoraproject.org", "customer.app.os.fedoraproject.org", "customer.app.os.stg.fedoraproject.org",
     ] {
