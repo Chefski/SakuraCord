@@ -30,11 +30,9 @@ final class ServerTagCardStore {
     }
 
     var entries: [GuildID: Entry] = [:]
-    var joining: Set<GuildID> = []
 
     func reset() {
         entries = [:]
-        joining = []
     }
 }
 
@@ -103,11 +101,16 @@ extension AppModel {
             store.entries[guildID]?.actionError = "This server requires member screening. Join it in Discord, then return to SakuraCord."
             return false
         }
-        guard store.joining.insert(guildID).inserted else { return false }
+        let invites = serverInvites
+        guard invites.joining.insert(guildID).inserted else { return false }
+        invites.changed()
         let session = accountSession()
         store.entries[guildID]?.actionError = nil
         defer {
-            if isCurrentAccountSession(session) { store.joining.remove(guildID) }
+            if isCurrentAccountSession(session) {
+                invites.joining.remove(guildID)
+                invites.changed()
+            }
         }
         do {
             let requiresVerification = try await session.provider.joinDiscoverableGuild(guildID) { [weak self] challenge in

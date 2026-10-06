@@ -86,6 +86,7 @@ extension AppModel {
         accountSessionGeneration &+= 1
         serverInvites.reset()
         serverTagCards.reset()
+        issueReports.reset()
         onboarding.reset()
     }
 
@@ -247,6 +248,7 @@ nonisolated struct ThreadCreationPermissions: Equatable, Sendable {
 final class ThreadCreationDraft {
     static let maximumNameLength = 100
 
+    let identity = UUID()
     let parentID: ChannelID
     /// Resolved when the pane opens; submission rechecks the live permissions.
     let permissions: ThreadCreationPermissions
@@ -297,11 +299,16 @@ nonisolated struct ConversationNewestRequest: Equatable, Sendable {
 struct ProfilePresentationState: Identifiable {
     var id: UUID { requestID }
     let requestID: UUID
+    let guildID: GuildID?
     var member: Member
     let isCurrentUser: Bool
     var profile: UserProfile?
     var isLoading: Bool
     var errorMessage: String?
+    var isWebhook = false
+    var isClyde = false
+    var isLocalIdentity: Bool { isWebhook || isClyde }
+    var sourceMessageID: MessageID?
 }
 
 struct ProfileCacheKey: Hashable {

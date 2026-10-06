@@ -48,7 +48,7 @@ struct ServerTagCard: View {
         Group {
             switch entry?.content {
             case let .loaded(profile):
-                content(profile, entry: entry ?? .init(), isJoining: store.joining.contains(guildID))
+                content(profile, entry: entry ?? .init(), isJoining: model.serverInvites.joining.contains(guildID))
             case .restricted:
                 restricted
             case let .failed(error):

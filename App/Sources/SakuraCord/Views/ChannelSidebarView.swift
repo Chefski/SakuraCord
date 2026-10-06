@@ -1014,6 +1014,7 @@ private struct CurrentUserCapsule: View {
             ?? Member(user: user, roleName: "You", status: currentStatus)
         profileRequestID = model.presentProfile(
             for: member,
+            in: model.selectedGuildID,
             destination: .contextual
         )
         isYouPopoverPresented = true

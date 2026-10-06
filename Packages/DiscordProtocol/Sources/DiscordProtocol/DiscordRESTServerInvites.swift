@@ -52,7 +52,7 @@ public extension DiscordRESTProvider {
         return ServerInviteAcceptance(invite: invite, requiresVerification: accepted.showVerificationForm == true)
     }
 
-    /// Full-membership join from a discoverable server's profile; see PROTOCOL_BASELINE, Server tag cards.
+    /// Full-membership join from a discoverable server's profile; see docs/protocol/GUILDS.md, Server tag cards.
     /// Returns whether Discord still requires verification.
     func joinDiscoverableGuild(_ guildID: GuildID, captchaHandler: DiscordCaptchaHandler?) async throws -> Bool {
         if cachedGuilds[guildID] != nil { return false }
@@ -219,10 +219,8 @@ private struct ServerInviteDTO: Decodable {
 
         func domain() -> User? {
             guard let userID = UserID(id) else { return nil }
-            let defaultIndex = discriminator.flatMap(Int.init).flatMap { $0 == 0 ? nil : $0 % 5 }
-                ?? Int((userID.rawValue >> 22) % 6)
             let url = avatar.flatMap { URL(string: "https://cdn.discordapp.com/avatars/\(id)/\($0).webp?size=32") }
-                ?? URL(string: "https://cdn.discordapp.com/embed/avatars/\(defaultIndex).png")
+                ?? DiscordProfileImageAssets.defaultAvatarURL(userID: id, discriminator: discriminator)
             return User(id: userID, username: username, discriminator: discriminator ?? "0",
                         displayName: globalName ?? username, avatarURL: url)
         }
