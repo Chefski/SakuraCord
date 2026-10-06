@@ -31,7 +31,12 @@ struct DirectMessageInboxView: View {
                         call: privateCallsByChannel[channel.id],
                         animatesAvatar: animatesAvatars
                     )
-                        .tag(channel.id)
+                    .tag(channel.id)
+                    .pointerStyle(.link)
+                    .listRowBackground(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(selection == channel.id ? Color.primary.opacity(0.08) : .clear)
+                    )
                 }
 
                 SidebarBottomScrollSpacer(height: bottomContentInset)
@@ -121,19 +126,17 @@ private struct DirectMessageInboxRow: View {
                 animates: animatesAvatar,
                 isHovered: isHovered
             )
+            .opacity(dimsMutedConversation ? 0.3 : 1)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(channel.name)
+                    .accessibilityLabel(isMuted ? "\(channel.name), Muted" : channel.name)
                     .fontWeight(
                         channel.unreadCount > 0 && !isMuted
                             ? .semibold
                             : .regular
                     )
-                    .foregroundStyle(
-                        isMuted
-                            ? Color.primary.opacity(0.35)
-                            : Color.primary
-                    )
+                    .foregroundStyle(nameColor)
                     .lineLimit(1)
                 if let callStatus =
                     DirectMessageInboxPolicy.callStatus(for: call)
@@ -143,6 +146,12 @@ private struct DirectMessageInboxRow: View {
                     .fontWeight(.semibold)
                     .foregroundStyle(Color(hex: 0x23A55A))
                     .lineLimit(1)
+                } else if channel.kind == .groupDirectMessage {
+                    Text("\(channel.recipients.count + 1) members")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .opacity(dimsMutedConversation ? 0.65 : 1)
+                        .lineLimit(1)
                 } else if let secondaryText =
                     DirectMessageInboxPolicy.secondaryText(for: channel, member: member)
                 {
@@ -154,6 +163,7 @@ private struct DirectMessageInboxRow: View {
                     )
                         .frame(maxWidth: .infinity, minHeight: 14, maxHeight: 16, alignment: .leading)
                         .lineLimit(1)
+                        .opacity(dimsMutedConversation ? 0.65 : 1)
                         .allowsHitTesting(false)
                 }
             }
@@ -181,6 +191,7 @@ private struct DirectMessageInboxRow: View {
                     .accessibilityLabel("Unread")
             }
         }
+        .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityValue(accessibilityValue)
         .onModalHover { isHovered = $0 }
@@ -223,7 +234,8 @@ private struct DirectMessageInboxRow: View {
                 },
                 pinAction: .available(isPinned: isPinned, toggle: {
                     model.toggleDirectMessagePin(channel.id)
-                })
+                }),
+                usesCustomSelectionBackground: true
             )
         }
     }
@@ -232,13 +244,26 @@ private struct DirectMessageInboxRow: View {
         model.isChannelMuted(channel)
     }
 
+    private var dimsMutedConversation: Bool {
+        isMuted && model.selectedChannelID != channel.id
+    }
+
+    private var nameColor: Color {
+        if model.selectedChannelID == channel.id { return .primary }
+        if isMuted { return .primary.opacity(0.3) }
+        return channel.unreadCount > 0 ? .primary : .secondary
+    }
+
     private var accessibilityValue: String {
+        var states: [String] = []
         if channel.mentionCount > 0 {
-            return channel.mentionCount == 1
+            states.append(channel.mentionCount == 1
                 ? "1 unread mention"
-                : "\(channel.mentionCount) unread mentions"
+                : "\(channel.mentionCount) unread mentions")
+        } else if channel.unreadCount > 0 {
+            states.append("Unread")
         }
-        return channel.unreadCount > 0 ? "Unread" : ""
+        return states.joined(separator: ", ")
     }
 }
 
