@@ -35,6 +35,7 @@ are mapped in [Testing](TESTING.md#choose-the-verification-boundary).
 | Joining, onboarding, Guide | [AppModelOnboarding.swift](../App/Sources/SakuraCord/Models/AppModelOnboarding.swift); [AppModelGuildGuide.swift](../App/Sources/SakuraCord/Models/AppModelGuildGuide.swift) | [DiscordRESTOnboarding.swift](../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordRESTOnboarding.swift); [DiscordRESTGuildGuide.swift](../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordRESTGuildGuide.swift) | [GuildCustomizationView.swift](../App/Sources/SakuraCord/Views/GuildCustomizationView.swift) |
 | Profiles and account settings | [ProfileEditorState.swift](../App/Sources/SakuraCord/Models/Settings/ProfileEditorState.swift) | [DiscordRESTProfileSaving.swift](../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordRESTProfileSaving.swift) | [ProfilesSettingsPage.swift](../App/Sources/SakuraCord/Views/Settings/ProfilesSettingsPage.swift) |
 | Attachment preparation | [AppModelComposerAttachments.swift](../App/Sources/SakuraCord/Models/AppModelComposerAttachments.swift) | [MediaPipeline](../Packages/MediaPipeline/Sources) | [AttachmentSettingsSection.swift](../App/Sources/SakuraCord/Views/Settings/AttachmentSettingsSection.swift) |
+| Bug reports and suggestions | [IssueReportStore.swift](../App/Sources/SakuraCord/Models/IssueReportStore.swift); [AppModelIssueReports.swift](../App/Sources/SakuraCord/Models/AppModelIssueReports.swift) | [IssueReportHubClient.swift](../App/Sources/SakuraCord/Services/IssueReportHubClient.swift) (sakuracord.app); [report-service sign-in](protocol/SESSION.md#report-service-sign-in) | [IssueReportView.swift](../App/Sources/SakuraCord/Views/IssueReport/IssueReportView.swift) |
 | Voice and screen sharing | [AppModelVoice.swift](../App/Sources/SakuraCord/Models/AppModelVoice.swift); [AppModelScreenSharing.swift](../App/Sources/SakuraCord/Models/AppModelScreenSharing.swift) | [DiscordVoiceSession.swift](../Packages/MediaPipeline/Sources/MediaPipeline/DiscordVoiceSession.swift) | [ScreenShareWindowOverlay.swift](../App/Sources/SakuraCord/Views/ScreenShareWindowOverlay.swift) |
 
 ## Runtime and account lifetime
@@ -104,6 +105,7 @@ not start network work merely because a row redraws.
 | Unsaved account status pick | Account-scoped user defaults until saved, superseded or rejected; removed with the account. See [settings synchronization](protocol/SETTINGS.md#status-and-custom-status). |
 | Derived people search, channel ordering and emoji catalogues | Account-scoped disposable caches under `Caches/dev.sakuracord.SakuraCord`. Never bootstrap the workspace or store credentials/message bodies. |
 | Media cache | Disposable LRU; shares the configured storage budget with drafts, which reserve space first and are never automatically evicted. |
+| Report drafts and report-service session | Session memory; drafts are discarded once filed, and both are cleared when the account changes. Attachments use the existing upload-privacy preparation and are read when attached. |
 | Diagnostics | Bounded memory and optional/specific disk output. See the single [retention and redaction contract](protocol/SESSION.md#diagnostics). |
 
 Clear Local Activity drains pending writes before removing derived caches and
@@ -126,6 +128,29 @@ exports only allowlisted local preferences to versioned
 `.sakurasettings` files. Imports validate each entry, preserve omitted/unsupported
 values and apply changes through existing owners. Credentials, account content,
 Discord-synchronized values, trusted domains and OS permission grants are excluded.
+External-link confirmation defaults to a bundled, worldwide list in
+`App/Sources/SakuraCord/Resources/trusted-domains.json`. Bundled entries are exact
+hostnames: no blanket subdomain trust. File-sharing, raw-content and arbitrary
+page-publishing hosts (including Dropbox, Google Sites and Discord attachment
+CDNs) require confirmation by default. Ordinary GitHub pages remain trusted;
+known GitHub raw, archive, release-download and attachment URLs carry a warning.
+Trust never suppresses suspicious-link warnings in Untrusted Domains mode.
+Known services may still contain user content or redirect elsewhere; inclusion
+is not a guarantee of page safety or a download/content scanner.
+
+Users may add `*.example.com` rules matching one or more subdomain levels,
+but not the apex. Matching respects label boundaries. The bundled Public Suffix
+List (ICANN and private sections) rejects wildcards over registries and shared
+hosting namespaces; without that resource, wildcard validation fails closed.
+
+The preference store seeds each installation once, merging defaults with any
+existing list, including an explicitly empty legacy list. Later launches and
+catalogue changes preserve edits and removals. A privacy reset restores the
+current bundled list; its separate migration marker is not reset or exported.
+No catalogue downloads or account requests are needed. Exact entries retain
+their existing semantics, and the link-warning checkbox trusts only its exact
+hostname. Always Ask and Never Ask retain their existing behaviour.
+
 Platform-owned preferences use their platform services. Download bookmarks are
 usable only when accessible on the receiving Mac.
 

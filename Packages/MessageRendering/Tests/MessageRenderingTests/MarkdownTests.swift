@@ -243,6 +243,16 @@ import Testing
     #expect(animated.rawToken == "<a:wave:123>")
 }
 
+@Test func `masked discord message links stay links while bare ones become pills`() {
+    let link = "https://discord.com/channels/1/2/3"
+    #expect(MessageDocument(source: "[Jump to original message](\(link))").segments
+        == [.markdown("[Jump to original message](\(link))")])
+    guard case .mention? = MessageDocument(source: "see \(link)").segments.last else {
+        Issue.record("Bare message link should remain a pill")
+        return
+    }
+}
+
 @Test func `message document detects jumbo custom emoji`() {
     #expect(MessageDocument(source: "<:one:1> <:two:2>").isEmojiOnly)
     #expect(!MessageDocument(source: "text <:one:1>").isEmojiOnly)
@@ -522,6 +532,33 @@ import Testing
         #expect(bold?.isBold == true)
         #expect(bold?.isItalic == false)
     }
+}
+
+@Test func `bare attachment links preserve the full URL and destination`() throws {
+    for source in [
+        "https://cdn.discordapp.com/attachments/1/2/funny_Giff.gif?ex=6a000000&is=69f00000&hm=ab12&",
+        "https://media-eu.discordapp.net/ephemeral-attachments/3/4/clip.mp4%20tail",
+        "https://cdn.discordapp.com.example.com/attachments/1/2/file.pdf",
+    ] {
+        let value = DiscordMarkdown.appKitAttributed(source)
+        #expect(value.string == source)
+        var range = NSRange()
+        #expect(value.attribute(.link, at: 0, effectiveRange: &range) as? URL == URL(string: source))
+        #expect(range == NSRange(location: 0, length: value.length))
+    }
+}
+
+@Test func `attachment links refresh when unsigned or expiring within the hour`() throws {
+    let now = Date(timeIntervalSince1970: 0x6A00_0000)
+    func url(_ query: String) throws -> URL {
+        try #require(URL(string: "https://cdn.discordapp.com/attachments/1/2/a.png\(query)"))
+    }
+    #expect(DiscordAttachmentLink.needsRefresh(try url(""), now: now))
+    #expect(DiscordAttachmentLink.needsRefresh(try url("?ex=zz"), now: now))
+    #expect(DiscordAttachmentLink.needsRefresh(try url("?ex=6a000e10&is=1&hm=2&"), now: now))
+    #expect(!DiscordAttachmentLink.needsRefresh(try url("?ex=6a000e11&is=1&hm=2&"), now: now))
+    #expect(DiscordAttachmentLink.matches(try url("?ex=6a000e11&is=1&hm=2&")))
+    #expect(!DiscordAttachmentLink.matches(try #require(URL(string: "https://cdn.discordapp.com/attachments/1/2/a.png#x"))))
 }
 
 /// Renders plain text with each spoiler in brackets, like `a [b] c`.

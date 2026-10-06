@@ -228,6 +228,50 @@ import Testing
     #expect(message.mentionedUsers.first?.displayName == "Server Nick")
 }
 
+@Test func `image embeds promote a thumbnail-only signed GIF to their image`() throws {
+    let source = "https://cdn.discordapp.com/attachments/1/2/cat.gif"
+    let signed = "https://cdn.discordapp.com/attachments/1/2/cat.gif?ex=1&is=2&hm=3&"
+    let signedProxy = "https://media.discordapp.net/attachments/1/2/cat.gif?ex=1&is=2&hm=3&"
+    let media = #"""
+        {"url":"\#(signed)","proxy_url":"\#(signedProxy)","width":498,"height":280,
+         "content_type":"image/gif","placeholder":"thumbhash","placeholder_version":1,"flags":32}
+        """#
+    let data = Data(
+        #"""
+        {
+          "id":"100","channel_id":"200","type":0,
+          "author":{"id":"1","username":"fixture"},
+          "content":"\#(source)","timestamp":"2026-09-28T10:00:00.000Z","attachments":[],
+          "embeds":[
+            {"type":"image","url":"\#(source)","thumbnail":\#(media)},
+            {"type":"image","url":"\#(source)","image":{"url":"https://cdn.example/explicit.png"},
+             "thumbnail":\#(media)},
+            {"type":"article","url":"https://example.com","thumbnail":\#(media)}
+          ]
+        }
+        """#.utf8
+    )
+
+    let embeds = try RichMessageFixtureDecoder.decodeMessage(from: data).embeds
+    #expect(embeds.count == 3)
+    let promoted = try #require(embeds[0].image)
+    #expect(embeds[0].url?.absoluteString == source)
+    #expect(embeds[0].thumbnail == nil)
+    #expect(promoted.url?.absoluteString == signed)
+    #expect(promoted.proxyURL?.absoluteString == signedProxy)
+    #expect(promoted.width == 498)
+    #expect(promoted.height == 280)
+    #expect(promoted.contentType == "image/gif")
+    #expect(promoted.placeholder == "thumbhash")
+    #expect(promoted.flags == 32)
+
+    #expect(embeds[1].image?.url?.absoluteString == "https://cdn.example/explicit.png")
+    #expect(embeds[1].thumbnail?.url?.absoluteString == signed)
+
+    #expect(embeds[2].image == nil)
+    #expect(embeds[2].thumbnail?.url?.absoluteString == signed)
+}
+
 @Test func `welcome messages and standard lottie stickers retain renderable metadata`() throws {
     let data = Data(
         #"""
@@ -351,4 +395,73 @@ import Testing
     #expect(message.interactionMetadata?.displayName == "verifyforme")
     #expect(message.interactionMetadata?.user?.displayName == "Tester")
     #expect(message.interactionMetadata?.originalResponseMessageID == MessageID("700"))
+}
+
+@Test func `uploaded component media keeps its delivered URL alongside the attachment reference`() throws {
+    let data = Data(
+        #"""
+        {
+          "id":"700","channel_id":"200","type":23,"flags":32768,"content":"","attachments":[],
+          "author":{"id":"101","username":"greed","bot":true},
+          "components":[{"type":12,"id":1,"items":[{"media":{
+            "url":"https://cdn.discordapp.com/attachments/200/900/quote.png?ex=1",
+            "proxy_url":"https://media.discordapp.net/attachments/200/900/quote.png?ex=1",
+            "width":1200,"height":630,"content_type":"image/png","attachment_id":"900","flags":0
+          },"description":null,"spoiler":false}]}]
+        }
+        """#.utf8
+    )
+
+    let message = try RichMessageFixtureDecoder.decodeMessage(from: data)
+    guard case let .mediaGallery(_, items) = message.components.first, let media = items.first?.media else {
+        Issue.record("Expected a media gallery")
+        return
+    }
+    #expect(media.attachmentName == "900")
+    #expect(media.url?.host() == "cdn.discordapp.com")
+    #expect(media.proxyURL?.host() == "media.discordapp.net")
+}
+
+@Test func `webhook message identity survives decoding and sparse updates without indexing a user`() throws {
+    let data = Data(#"""
+    {"id":"100","channel_id":"200","webhook_id":"300",
+     "author":{"id":"300","username":"Test persona","discriminator":"0000","avatar":"custom_hash","bot":true},
+     "content":"Test","referenced_message":{"id":"99","webhook_id":"300",
+       "author":{"id":"300","username":"Other persona","discriminator":"0000","avatar":null,"bot":true},"content":"Earlier"}}
+    """#.utf8)
+    let dto = try JSONDecoder().decode(MessageDTO.self, from: data)
+    let message = try dto.domain()
+    #expect(message.webhookID == "300")
+    #expect(message.author.isWebhookIdentity)
+    #expect(message.author.avatarURL?.path == "/avatars/300/custom_hash.webp")
+    #expect(dto.searchIndexUsers.isEmpty)
+    #expect(message.replyPreview?.author.displayName == "Other persona")
+    #expect(message.replyPreview?.webhookID == "300")
+    // Legacy "0000" selects the first default artwork, like Discord's client.
+    #expect(message.replyPreview?.author.avatarURL?.lastPathComponent == "18e336a74a159cfd.png")
+    #expect(try JSONDecoder().decode(Message.self, from: JSONEncoder().encode(message)) == message)
+    var updated = message
+    let update = try JSONDecoder().decode(MessageUpdateDTO.self, from: Data(#"{"id":"100","channel_id":"200","content":"Edited"}"#.utf8))
+    update.apply(to: &updated)
+    #expect(updated.webhookID == message.webhookID && updated.author == message.author)
+    #expect(updated.content == "Edited")
+    // New avatar URLs are materialized asynchronously: CREATE has avatar:null,
+    // then UPDATE carries the complete message-scoped webhook author.
+    let avatarUpdate = try JSONDecoder().decode(MessageUpdateDTO.self, from: Data(#"""
+    {"id":"100","channel_id":"200","webhook_id":"300",
+     "author":{"id":"300","username":"New persona","discriminator":"0000","avatar":"ready_hash","bot":true}}
+    """#.utf8))
+    var coalesced = try #require(avatarUpdate.domain(guildID: nil))
+    coalesced.merge(try #require(update.domain(guildID: nil)))
+    coalesced.apply(to: &updated)
+    #expect(updated.author.displayName == "New persona")
+    #expect(updated.author.avatarURL?.path == "/avatars/300/ready_hash.webp")
+    #expect(updated.replyPreview == message.replyPreview)
+    #expect(coalesced.updatedUsers.isEmpty)
+    #expect(updated.content == "Edited")
+    var otherDTO = dto
+    otherDTO.id = "101"
+    var otherMessage = try otherDTO.domain()
+    coalesced.apply(to: &otherMessage)
+    #expect(otherMessage.author == message.author)
 }

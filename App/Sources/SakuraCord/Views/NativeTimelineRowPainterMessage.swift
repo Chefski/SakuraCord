@@ -15,6 +15,7 @@ struct NativeTimelineMessageDrawInput {
     let isHovered: Bool
     let showsCompactTimestamp: Bool
     let isAuthorHovered: Bool
+    let isServerTagHovered: Bool
     let hoveredMention: NativeTimelineMentionHover?
     let hoveredTextLink: NativeTimelineTextLinkHover?
     let hoveredTextSpoiler: NativeTimelineTextSpoilerHover?
@@ -23,6 +24,7 @@ struct NativeTimelineMessageDrawInput {
     let pressedComponentButton: NativeTimelineComponentButtonTarget?
     let componentButtonPressProgress: CGFloat
     let isForwardedSourceHovered: Bool
+    let isEphemeralDismissHovered: Bool
     let hidesMessageContent: Bool
     let hoveredReactionID: String?
     let isAddReactionHovered: Bool
@@ -135,20 +137,16 @@ extension NativeTimelineRowPainter {
             let presentedAuthor =
                 author?.user
                 ?? message.author
-            text(
-                presentedAuthor.displayName,
-                in: frame,
-                font: ProfileNameFontLoader.shared.resolvedFont(for: presentedAuthor, fallback: .systemFont(
-                    ofSize: NSFont.preferredFont(forTextStyle: .headline).pointSize,
-                    weight: .semibold
-                )),
-                color: presentedAuthor.isBot
-                    ? .sakuraCordAccentColor
-                    : input.model?.accessibilitySettings.roleColorDisplay != .inNames
-                    ? .labelColor
-                    : roleColor(author?.roleColorHex) ?? .labelColor,
-                isInteractiveHovered: input.isAuthorHovered
-            )
+            if let context = NSGraphicsContext.current?.cgContext {
+                input.layout.authorText?.draw(
+                    in: frame,
+                    color: presentedAuthor.isBot
+                        ? .sakuraCordAccentColor
+                        : input.model?.accessibilitySettings.roleColorDisplay != .inNames
+                        ? .labelColor : roleColor(author?.roleColorHex) ?? .labelColor,
+                    context: context, isUnderlined: input.isAuthorHovered
+                )
+            }
             if input.model?.accessibilitySettings.roleColorDisplay == .nextToNames,
                let color = roleColor(author?.roleColorHex) {
                 color.setFill()
@@ -161,33 +159,23 @@ extension NativeTimelineRowPainter {
     private static func drawMessageIdentityMetadata(
         _ input: NativeTimelineMessageDrawInput
     ) {
-        if let frame = input.layout.botBadgeFrame {
-            NSColor.sakuraCordAccentColor.setFill()
-            NSBezierPath(
-                concentricRoundedRect: frame,
-                cornerRadius: 3
-            ).fill()
-            text(
-                "APP",
-                in: frame,
-                font: .systemFont(
-                    ofSize: NSFont.preferredFont(forTextStyle: .caption2).pointSize,
-                    weight: .bold
-                ),
-                color: .white,
-                alignment: .center
-            )
+        if let frame = input.layout.botBadgeFrame,
+           let context = NSGraphicsContext.current?.cgContext {
+            NativeAppBadgePresentation.draw(in: frame, color: .sakuraCordAccentColor, context: context)
         }
-        if let frame = input.layout.timestampFrame {
-            text(
-                NativeTimelineTimestamp.headerText(
-                    for: input.row.message.timestamp,
-                    settings: input.model?.interfaceSettings ?? .defaults
-                ),
-                in: frame,
-                font: .preferredFont(forTextStyle: .caption1),
-                color: .secondaryLabelColor
-            )
+        if let region = input.layout.serverTagRegion,
+           let context = NSGraphicsContext.current?.cgContext {
+            region.presentation.draw(in: region.frame, badgeImage: nil,
+                                     isHighlighted: input.isServerTagHovered, context: context)
+            if let url = region.presentation.identity.badgeURL,
+               let frame = region.presentation.badgeFrame(in: region.frame),
+               let image = mediaImage(for: .media(url, maximumPixelDimension: 32)) {
+                drawImage(image, in: frame, cornerRadius: 0, fillsFrame: false)
+            }
+        }
+        if let frame = input.layout.timestampFrame,
+           let context = NSGraphicsContext.current?.cgContext {
+            input.layout.timestampText?.draw(in: frame, color: .secondaryLabelColor, context: context)
         }
         if input.showsCompactTimestamp || input.model?.interfaceSettings.alwaysShowsTimestamps == true,
            let frame = input.layout.compactTimestampFrame
@@ -214,13 +202,12 @@ extension NativeTimelineRowPainter {
                 color: .secondaryLabelColor
             )
         }
-        if let frame = input.layout.editedFrame {
-            text(
-                "(edited)",
-                in: frame,
-                font: .preferredFont(forTextStyle: .caption2),
-                color: .tertiaryLabelColor
-            )
+        if let frame = input.layout.editedFrame,
+           let prepared = input.layout.editedText,
+           let context = NSGraphicsContext.current?.cgContext {
+            prepared.draw(in: frame, color: .tertiaryLabelColor, context: context)
+        } else if let frame = input.layout.editedFrame {
+            text("(edited)", in: frame, font: .preferredFont(forTextStyle: .caption2), color: .tertiaryLabelColor)
         }
     }
 
@@ -320,9 +307,7 @@ extension NativeTimelineRowPainter {
             NSGraphicsContext.saveGraphicsState()
             NSGraphicsContext.current?.cgContext.setAlpha(
                 CGFloat(
-                    MessageOutboxPresentation.textOpacity(
-                        for: message.outboxState
-                    )
+                    MessageOutboxPresentation.textOpacity(for: message)
                 )
             )
             // CoreText requires the full fractional typographic line box to
@@ -737,7 +722,7 @@ extension NativeTimelineRowPainter {
             )
         }
         if let region = layout.ephemeralRegion {
-            ephemeralFooter(region)
+            ephemeralFooter(region, isDismissHovered: input.isEphemeralDismissHovered)
         }
         if let frame = layout.failedFrame {
             systemSymbol(
@@ -1111,7 +1096,7 @@ extension NativeTimelineRowPainter {
             yRadius: 4
         ).fill()
         systemSymbol(
-            "xmark.triangle.circle.square.fill",
+            SakuraCordSystemSymbol.applicationCommands,
             in: region.commandSymbolFrame,
             color: .sakuraCordAccentColor,
             inset: 0,
@@ -1132,7 +1117,8 @@ extension NativeTimelineRowPainter {
     }
 
     static func ephemeralFooter(
-        _ region: NativeTimelineRowLayout.EphemeralRegion
+        _ region: NativeTimelineRowLayout.EphemeralRegion,
+        isDismissHovered: Bool
     ) {
         systemSymbol(
             "eye",
@@ -1157,7 +1143,8 @@ extension NativeTimelineRowPainter {
             "Dismiss message",
             in: region.dismissFrame,
             font: font,
-            color: .sakuraCordAccentColor
+            color: .sakuraCordAccentColor,
+            isInteractiveHovered: isDismissHovered
         )
     }
 

@@ -23,7 +23,7 @@ public struct PartialBulkReadAcknowledgementError: Error, Sendable {
 
 public protocol ChatProvider: Sendable {
     func guildGuide(in guildID: GuildID) async throws -> GuildGuide
-    func guildGuideProfile(in guildID: GuildID) async throws -> GuildGuideProfile
+    func guildProfile(in guildID: GuildID) async throws -> GuildProfile
     func guildGuideProgress(in guildID: GuildID) async throws -> GuildGuideProgress
     func completeGuildGuideAction(in guildID: GuildID, channelID: ChannelID) async throws -> GuildGuideProgress
     func guildOnboarding(in guildID: GuildID) async throws -> GuildOnboarding
@@ -33,12 +33,14 @@ public protocol ChatProvider: Sendable {
 
     func serverInvite(_ reference: ServerInviteReference) async throws -> ServerInvite
     func acceptServerInvite(_ reference: ServerInviteReference, messageID: MessageID?, captchaHandler: DiscordCaptchaHandler?) async throws -> ServerInviteAcceptance
+    func joinDiscoverableGuild(_ guildID: GuildID, captchaHandler: DiscordCaptchaHandler?) async throws -> Bool
     func createServerInvite(in channelID: ChannelID, guildID: GuildID, settings: ServerInviteSettings) async throws -> CreatedServerInvite
     func leaveGuild(_ guildID: GuildID) async throws
     func clearLocalSearchCache() async throws
     func prepareAuthentication() async throws
     func bootstrap() async throws -> BootstrapSnapshot
     func channels(in guildID: GuildID?) async throws -> [Channel]
+    func threadMembers(in thread: MessageThreadSummary) async throws -> [Member]?
     func members(in guildID: GuildID?) async throws -> [Member]
     func updateMemberListViewport(
         in guildID: GuildID,
@@ -72,6 +74,8 @@ public protocol ChatProvider: Sendable {
     func profileWidgetApplication(id: String) async throws -> [ProfileApplicationWidget]
     func profileWidgetApplicationIdentities(for userID: UserID) async throws -> [ProfileWidgetApplicationIdentity]
     func profileWidgetConnections(applicationIDs: [String]) async throws -> [String: ProfileWidgetConnection]
+    /// Changes the current member's nickname; an empty string resets it.
+    func setNickname(_ nickname: String, in guildID: GuildID) async throws -> String?
     func saveProfileChanges(
         _ changes: ProfileEditChanges, in scope: ProfileEditingScope,
         didSave: @Sendable (ProfileSaveConfirmation) async -> Void
@@ -128,6 +132,7 @@ public protocol ChatProvider: Sendable {
     func createThread(_ draft: CreateThreadDraft) async throws -> MessageThreadSummary
     func updateForumPost(_ post: ForumPost, mutation: ForumPostMutation) async throws -> ForumPost
     func deleteForumPost(_ post: ForumPost) async throws
+    func setThreadMembership(threadID: ChannelID, isJoined: Bool) async throws
     func updateForumPostNotificationLevel(
         _ post: ForumPost,
         level: MessageNotificationLevel
@@ -145,6 +150,8 @@ public protocol ChatProvider: Sendable {
     func setPollAnswers(_ answerIDs: [Int], messageID: MessageID, channelID: ChannelID) async throws
     func pollVoters(messageID: MessageID, channelID: ChannelID, answerID: Int, after: UserID?, limit: Int) async throws -> PollVoterPage
     func endPoll(messageID: MessageID, channelID: ChannelID) async throws -> Message
+    /// Returns a freshly signed copy of a Discord attachment URL, or nil when Discord returns none.
+    func refreshAttachmentURL(_ url: URL) async throws -> URL?
     func forward(_ draft: ForwardMessageDraft) async throws -> Message
     func supports(_ capability: ChatCapability) async -> Bool
     func applicationCommandCatalog(for target: ApplicationCommandIndexTarget) async throws
@@ -156,7 +163,10 @@ public protocol ChatProvider: Sendable {
         progress: @escaping @Sendable (ApplicationCommandProgress) -> Void
     ) async throws
     func submitComponentInteraction(_ submission: ComponentInteractionSubmission) async throws
-    func submitModal(_ submission: ModalSubmission, nonce: String) async throws
+    /// Submits a returned form. A definite rejection throws `ModalSubmissionRejection`.
+    func submitModal(_ submission: ModalSubmission) async throws
+    /// Grants an OAuth2 authorization code after the person explicitly asked to sign in.
+    func authorizeOAuth2(_ request: OAuth2AuthorizationRequest) async throws -> OAuth2AuthorizationGrant
     func componentChoices(
         kind: ComponentSelectKind, query: String, guildID: GuildID?, channelID: ChannelID
     ) async throws -> [ComponentSelectOption]
@@ -173,6 +183,12 @@ public protocol ChatProvider: Sendable {
     func setStickerFavorite(_ stickerID: String, isFavorite: Bool) async throws
         -> StickerUserSettings
     func recordStickerUse(_ stickerID: String) async throws -> StickerUserSettings
+    /// Synced slash-command usage from Discord's frecency settings.
+    func applicationCommandFrecency() async throws -> ApplicationCommandFrecencyHistory
+    /// Replaces the synced command usage, as Discord's client does when it
+    /// flushes pending uses. Returns what the server stored.
+    func saveApplicationCommandFrecency(_ history: ApplicationCommandFrecencyHistory) async throws
+        -> ApplicationCommandFrecencyHistory
     func edit(messageID: MessageID, channelID: ChannelID, content: String) async throws -> Message
     func delete(messageID: MessageID, channelID: ChannelID) async throws
     func acknowledge(
@@ -295,7 +311,7 @@ public extension ChatProvider {
         throw ChatProviderError.invalidRequest("Rearranging servers is unavailable for this session.")
     }
     func guildGuide(in guildID: GuildID) async throws -> GuildGuide { throw ChatProviderError.invalidRequest("Server Guide is unavailable.") }
-    func guildGuideProfile(in guildID: GuildID) async throws -> GuildGuideProfile { throw ChatProviderError.invalidRequest("Server profile is unavailable.") }
+    func guildProfile(in guildID: GuildID) async throws -> GuildProfile { throw ChatProviderError.invalidRequest("Server profile is unavailable.") }
     func guildGuideProgress(in guildID: GuildID) async throws -> GuildGuideProgress { throw ChatProviderError.invalidRequest("Server Guide is unavailable.") }
     func completeGuildGuideAction(in guildID: GuildID, channelID: ChannelID) async throws -> GuildGuideProgress { throw ChatProviderError.invalidRequest("Server Guide is unavailable.") }
     func guildOnboarding(in guildID: GuildID) async throws -> GuildOnboarding {
@@ -320,6 +336,10 @@ public extension ChatProvider {
     }
 
     func acceptServerInvite(_ reference: ServerInviteReference, messageID: MessageID?, captchaHandler: DiscordCaptchaHandler?) async throws -> ServerInviteAcceptance {
+        throw ServerInviteError.unsupported("Joining servers is unavailable for this session.")
+    }
+
+    func joinDiscoverableGuild(_ guildID: GuildID, captchaHandler: DiscordCaptchaHandler?) async throws -> Bool {
         throw ServerInviteError.unsupported("Joining servers is unavailable for this session.")
     }
 
@@ -407,6 +427,10 @@ public extension ChatProvider {
 
     func deleteProfileAvatarHistoryEntry(id: String) async throws {
         throw ChatProviderError.invalidRequest("Avatar history is unavailable for this session.")
+    }
+
+    func setNickname(_ nickname: String, in guildID: GuildID) async throws -> String? {
+        throw ChatProviderError.invalidRequest("Nickname editing is unavailable for this session.")
     }
 
     func saveProfileChanges(
@@ -583,6 +607,8 @@ public extension ChatProvider {
         }
     }
 
+    func threadMembers(in thread: MessageThreadSummary) async throws -> [Member]? { [] }
+
     func updateMemberListViewport(
         in guildID: GuildID,
         channelID: ChannelID,
@@ -666,8 +692,12 @@ public extension ChatProvider {
         throw ChatProviderError.capabilityDisabled(.components)
     }
 
-    func submitModal(_ submission: ModalSubmission, nonce: String) async throws {
+    func submitModal(_ submission: ModalSubmission) async throws {
         throw ChatProviderError.capabilityDisabled(.modals)
+    }
+
+    func authorizeOAuth2(_ request: OAuth2AuthorizationRequest) async throws -> OAuth2AuthorizationGrant {
+        throw OAuth2AuthorizationError.unavailable
     }
 
     func componentChoices(
@@ -720,6 +750,16 @@ public extension ChatProvider {
 
     func recordStickerUse(_ stickerID: String) async throws -> StickerUserSettings {
         StickerUserSettings()
+    }
+
+    func applicationCommandFrecency() async throws -> ApplicationCommandFrecencyHistory {
+        ApplicationCommandFrecencyHistory()
+    }
+
+    func saveApplicationCommandFrecency(_ history: ApplicationCommandFrecencyHistory) async throws
+        -> ApplicationCommandFrecencyHistory
+    {
+        history
     }
 
     func emojis(in guildID: GuildID) async throws -> [DiscordEmoji] {
@@ -857,6 +897,10 @@ public extension ChatProvider {
     }
 
     func deleteForumPost(_ post: ForumPost) async throws {
+        throw ChatProviderError.capabilityDisabled(.forums)
+    }
+
+    func setThreadMembership(threadID: ChannelID, isJoined: Bool) async throws {
         throw ChatProviderError.capabilityDisabled(.forums)
     }
 
@@ -1010,5 +1054,8 @@ public extension ChatProvider {
     }
     func endPoll(messageID: MessageID, channelID: ChannelID) async throws -> Message {
         throw ChatProviderError.invalidRequest("Ending polls is unavailable.")
+    }
+    func refreshAttachmentURL(_ url: URL) async throws -> URL? {
+        throw ChatProviderError.invalidRequest("Opening attachment links is unavailable.")
     }
 }

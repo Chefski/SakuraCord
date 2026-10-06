@@ -343,7 +343,7 @@ extension DiscordRESTProvider {
     ) async throws -> (Data, HTTPURLResponse) {
         guard !requestSafetyCircuitIsOpen else {
             throw ChatProviderError.invalidRequest(
-                "Discord networking was stopped for this session after an authentication or permission response. Restart only after checking the account status."
+                requestSafetyStopReason
             )
         }
 
@@ -429,7 +429,7 @@ extension DiscordRESTProvider {
             // have opened the safety circuit while this one was suspended.
             guard !requestSafetyCircuitIsOpen else {
                 throw ChatProviderError.invalidRequest(
-                    "Discord networking is stopped for this session.")
+                    requestSafetyStopReason)
             }
             request.setValue(token, forHTTPHeaderField: "Authorization")
             try clientMetadata.apply(to: &request, clientAppState: clientAppState)
@@ -667,7 +667,7 @@ extension DiscordRESTProvider {
                     if unexpectedNotFoundCounts[route, default: 0] >= 2 {
                         await openSafetyCircuit(status: 404, discordCode: discordCode, route: route)
                         throw apiDiagnostics.coalescing(ChatProviderError.invalidRequest(
-                            "Discord networking was stopped after this route repeatedly returned an unexpected not-found response."
+                            requestSafetyStopReason
                         ), with: response)
                     }
                 }
@@ -698,7 +698,7 @@ extension DiscordRESTProvider {
             try Task.checkCancellation()
             guard !requestSafetyCircuitIsOpen else {
                 throw ChatProviderError.invalidRequest(
-                    "Discord networking is stopped for this session."
+                    requestSafetyStopReason
                 )
             }
             let now = Date.now
@@ -932,6 +932,9 @@ extension DiscordRESTProvider {
 
     func openSafetyCircuit(status: Int, discordCode: Int?, route: String) async {
         guard !requestSafetyCircuitIsOpen else { return }
+        requestSafetyStopReason = status == 404
+            ? "Discord networking was stopped after repeated unexpected not-found responses from \(route) (HTTP 404)."
+            : Self.safetyStopMessage(status: status, discordCode: discordCode)
         requestSafetyCircuitIsOpen = true
         let authenticationFailure = Self.isAuthenticationFailure(
             status: status,
@@ -981,8 +984,8 @@ extension DiscordRESTProvider {
         if let discordCode, [40001, 40002, 40003, 40004, 40012, 40333].contains(discordCode) {
             return true
         }
-        // Only supported invite challenges reach the explicit human-completion path.
-        if DiscordCaptchaChallenge.inviteChallenge(data: data, status: status, method: method, path: path) != nil { return false }
+        // Only supported join challenges reach the explicit human-completion path.
+        if DiscordCaptchaChallenge.joinChallenge(data: data, status: status, method: method, path: path) != nil { return false }
         if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            object["captcha_key"] != nil || object["captcha_sitekey"] != nil
            || object["captcha_service"] != nil
@@ -995,8 +998,7 @@ extension DiscordRESTProvider {
         // Known poll failures can race local expiry and permission checks.
         if status == 400, profileValidationError(data: data, method: method, path: path) != nil { return false }
         if status == 400, isExpectedPollFailure(discordCode: discordCode, method: method, path: path) { return false }
-        if status == 400, method == "POST", path.split(separator: "/").count == 2,
-           path.hasPrefix("/invites/"), let discordCode,
+        if status == 400, DiscordCaptchaChallenge.isJoinRoute(method: method, path: path), let discordCode,
            [10006, 50270, 40007, 30001].contains(discordCode) { return false }
         // Discord's per-server invite cap is an expected creation failure.
         if status == 400, method == "POST", discordCode == 30016, path.hasPrefix("/channels/"), path.hasSuffix("/invites") { return false }
@@ -1012,8 +1014,10 @@ extension DiscordRESTProvider {
         if method == "GET" || method == "POST", inviteParts.count == 2, inviteParts[0] == "invites" { return true }
         guard method == "GET" else { return false }
         let segments = path.split(separator: "/")
+        if segments.count == 3, segments[0] == "channels", UInt64(segments[1]) != nil,
+           segments[2] == "application-command-index" { return true }
         return segments.count == 3
-            && segments[0] == "users"
+            && (segments[0] == "users" || segments[0] == "guilds")
             && UInt64(segments[1]) != nil
             && segments[2] == "profile"
     }
@@ -1087,7 +1091,7 @@ extension DiscordRESTProvider {
     func authorizationToken() async throws -> String {
         guard !requestSafetyCircuitIsOpen else {
             throw ChatProviderError.invalidRequest(
-                "Discord networking is stopped for this session."
+                requestSafetyStopReason
             )
         }
         if let authorizationValue {
@@ -1097,7 +1101,7 @@ extension DiscordRESTProvider {
         defer { credential.resetBytes(in: credential.indices) }
         guard !requestSafetyCircuitIsOpen else {
             throw ChatProviderError.invalidRequest(
-                "Discord networking is stopped for this session."
+                requestSafetyStopReason
             )
         }
         guard let value = String(data: credential, encoding: .utf8) else {

@@ -188,6 +188,20 @@ Cloudflare Worker serves the newest published prerelease's signed
 tracks in the app checks the newly selected feed through a silent Sparkle
 information check and remains silent when no newer build exists.
 
+## Homebrew distribution
+
+The [Homebrew tap](https://github.com/SakuraCordApp/homebrew-tap) owns the
+`sakuracord` cask. Its scheduled workflow checks this repository's latest regular
+release hourly, verifies the downloaded DMG against GitHub's SHA-256 digest,
+and updates the tap's version, URL, and checksum. Beta releases are excluded.
+The tap uses its own `GITHUB_TOKEN`; app release publication needs no additional
+secret or cross-repository write permission.
+
+After a regular release, verify the tap's **Update cask** workflow succeeds, or
+dispatch it manually for an immediate update. If the app's minimum macOS,
+architecture, or packaging layout changes, update the cask's requirements too.
+The tap's README owns its local checks and workflow setup.
+
 ## One-time Sparkle setup
 
 SakuraCord pins the `SakuraCordApp/Sparkle` fork at

@@ -890,7 +890,8 @@ extension AppModel {
 
     func setForumPostNotificationLevel(
         _ level: MessageNotificationLevel,
-        for post: ForumPost
+        for post: ForumPost,
+        reportErrorInAlert: Bool = false
     ) {
         guard forumNotificationMutationTasks[post.id] == nil else { return }
         let generation = forumNotificationMutationGeneration
@@ -916,8 +917,8 @@ extension AppModel {
                       self.isCurrentAccountSession(session),
                       generation == self.forumNotificationMutationGeneration
                 else { return }
-                self.forumActionError =
-                    "Discord did not accept the post notification setting."
+                let message = "Discord did not accept the notification setting."
+                if reportErrorInAlert { self.errorMessage = message } else { self.forumActionError = message }
             }
             guard let self,
                   self.isCurrentAccountSession(session),
@@ -930,7 +931,8 @@ extension AppModel {
     func setForumPostMute(
         _ isMuted: Bool,
         until: Date?,
-        for post: ForumPost
+        for post: ForumPost,
+        reportErrorInAlert: Bool = false
     ) {
         guard forumNotificationMutationTasks[post.id] == nil else { return }
         let generation = forumNotificationMutationGeneration
@@ -959,7 +961,8 @@ extension AppModel {
                       self.isCurrentAccountSession(session),
                       generation == self.forumNotificationMutationGeneration
                 else { return }
-                self.forumActionError = "Discord did not accept the post mute setting."
+                let message = "Discord did not accept the mute setting."
+                if reportErrorInAlert { self.errorMessage = message } else { self.forumActionError = message }
             }
             guard let self,
                   self.isCurrentAccountSession(session),

@@ -1753,6 +1753,32 @@ func `composer attachment controls preserve edits and spoiler state`(anonymisesF
 }
 
 @MainActor
+@Test(.timeLimit(.minutes(1)))
+func `cached mention results survive an older in flight search`() async throws {
+    let provider = TypingTestProvider()
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    let guildID = GuildID(rawValue: 100)
+    model.selectedGuildID = guildID
+    let cached = Member(user: provider.currentUser, roleName: "Member", status: .offline)
+    let stale = Member(user: provider.otherUser, roleName: "Member", status: .offline)
+    model.mentionMemberSearchCache[CommandMemberQuery(guildID: guildID, query: "me")] =
+        MentionMemberSearchCacheEntry(members: [cached], storedAt: Date())
+
+    model.requestMentionMemberSearch(query: "other")
+    let pending = try #require(model.mentionMemberSearchTask)
+    await provider.waitUntilMemberSearchStarts()
+    model.requestMentionMemberSearch(query: "me")
+    #expect(model.mentionMemberResults == [cached])
+
+    // Complete the old provider call even if its task was cancelled.
+    await provider.releaseMemberSearch([stale])
+    await pending.value
+    #expect(model.mentionMemberResults == [cached])
+    #expect(model.mentionMemberSearchQuery == nil)
+}
+
+@MainActor
 @Test func `empty member autocomplete uses recent authors up to the shared result limit before roles`() {
     let members = (1 ... 6).map { id in
         Member(
@@ -1773,18 +1799,37 @@ func `composer attachment controls preserve edits and spoiler state`(anonymisesF
             content: "message"
         )
     }
+    // Webhook deliveries name a mentionable author only when it is a member.
+    let webhook = Message(
+        id: MessageID(rawValue: 20), channelID: ChannelID(rawValue: 20),
+        author: User(id: UserID(rawValue: 900), username: "Persona", discriminator: "0000", displayName: "Persona", isBot: true),
+        webhookID: "900", content: "say"
+    )
+    let userAppReply = Message(
+        id: MessageID(rawValue: 21), channelID: ChannelID(rawValue: 20),
+        author: User(id: UserID(rawValue: 901), username: "greed", discriminator: "6058", displayName: "greed", isBot: true),
+        webhookID: "901", content: "quote"
+    )
+    let guildApp = Member(
+        user: User(id: UserID(rawValue: 902), username: "testing", discriminator: "0468", displayName: "Testing", isBot: true),
+        roleName: "Member", status: .offline
+    )
+    let guildAppReply = Message(
+        id: MessageID(rawValue: 22), channelID: ChannelID(rawValue: 20),
+        author: guildApp.user, guildMember: MessageGuildMember(member: guildApp), webhookID: "902", content: "result"
+    )
     let role = GuildRole(id: RoleID(rawValue: 40), name: "Access", position: 1)
 
     let suggestions = MentionAutocompleteSuggestionFactory.memberSuggestions(
         query: "",
-        recentMessages: messages,
+        recentMessages: Array(messages.dropFirst()) + [guildAppReply, userAppReply, webhook],
         localMembers: members,
         remoteMembers: [],
         roles: [role]
     )
 
     #expect(suggestions.map(\.title) == [
-        "Member 6", "Member 5", "Member 4", "Member 3", "Member 2", "Member 1", "@Access",
+        "Testing", "Member 6", "Member 5", "Member 4", "Member 3", "Member 2", "@Access",
     ])
     #expect(MentionAutocompleteSuggestionFactory.memberHeading(query: "") == "MEMBERS")
 }
@@ -2315,7 +2360,7 @@ private func downArrowKeyEvent(
     #expect(failed.nonce != nil)
     #expect(model.draft.isEmpty)
     #expect(model.errorMessage == nil)
-    #expect(MessageOutboxPresentation.textOpacity(for: failed.outboxState) == 1)
+    #expect(MessageOutboxPresentation.textOpacity(for: failed) == 1)
     let failedInteraction = MessageOutboxPresentation.interactionMode(
         for: failed.outboxState
     )
@@ -2401,7 +2446,7 @@ func `retry resends the exact failed draft through sending and confirmed states`
 
     let retrying = try #require(model.messages.first { $0.nonce == failed.nonce })
     #expect(retrying.outboxState == .sending)
-    #expect(MessageOutboxPresentation.textOpacity(for: retrying.outboxState) == 0.55)
+    #expect(MessageOutboxPresentation.textOpacity(for: retrying) == 0.55)
     let sentDrafts = await provider.sentDrafts
     #expect(sentDrafts.count == 2)
     #expect(sentDrafts[0] == sentDrafts[1])
@@ -2507,7 +2552,7 @@ func `retry resends the exact failed draft through sending and confirmed states`
     #expect(pendingInteraction?.allowsMediaContextMenu == false)
     #expect(
         pending.map {
-            MessageOutboxPresentation.textOpacity(for: $0.outboxState)
+            MessageOutboxPresentation.textOpacity(for: $0)
         } == 0.55
     )
 
@@ -2517,7 +2562,7 @@ func `retry resends the exact failed draft through sending and confirmed states`
     #expect(confirmed?.outboxState == .confirmed)
     #expect(
         confirmed.map {
-            MessageOutboxPresentation.textOpacity(for: $0.outboxState)
+            MessageOutboxPresentation.textOpacity(for: $0)
         } == 1
     )
 }
@@ -2848,6 +2893,8 @@ private actor TypingTestProvider: ChatProvider {
     private var sendStartedWaiter: CheckedContinuation<Void, Never>?
     private var sendReleaseWaiter: CheckedContinuation<Void, Never>?
     private var didStartSuspendedSend = false
+    private var memberSearchStartedWaiter: CheckedContinuation<Void, Never>?
+    private var memberSearchReleaseWaiter: CheckedContinuation<[Member], Never>?
 
     var typingCount: Int {
         typingChannels.count
@@ -2864,6 +2911,24 @@ private actor TypingTestProvider: ChatProvider {
 
     func members(in guildID: GuildID?) async throws -> [Member] {
         []
+    }
+
+    func searchMembers(in guildID: GuildID, query: String, limit: Int) async throws -> [Member] {
+        await withCheckedContinuation { continuation in
+            memberSearchReleaseWaiter = continuation
+            memberSearchStartedWaiter?.resume()
+            memberSearchStartedWaiter = nil
+        }
+    }
+
+    func waitUntilMemberSearchStarts() async {
+        if memberSearchReleaseWaiter != nil { return }
+        await withCheckedContinuation { memberSearchStartedWaiter = $0 }
+    }
+
+    func releaseMemberSearch(_ members: [Member]) {
+        memberSearchReleaseWaiter?.resume(returning: members)
+        memberSearchReleaseWaiter = nil
     }
 
     func profile(for userID: UserID, in guildID: GuildID?) async throws -> UserProfile {

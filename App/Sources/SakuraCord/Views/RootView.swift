@@ -17,6 +17,16 @@ struct RootView: View {
                     model: model,
                     toolbarSearchFieldMetrics: toolbarSearchFieldMetrics
                 )
+                .windowModal(
+                    item: Binding(
+                        get: { model.issueReports.presentation },
+                        set: { if $0 == nil { model.issueReports.dismiss() } }
+                    ),
+                    cornerRadius: 32,
+                    cornerStyle: .circular
+                ) { _ in
+                    IssueReportView(model: model)
+                }
             case .signedOut:
                 if model.launchMode == .normal || model.includesOfflineSignIn {
                     if model.savedAccounts.isEmpty {
@@ -118,6 +128,7 @@ struct RootView: View {
             )
         }
         .environment(\.profileCosmeticPolicy, model.cosmeticPolicy)
+        .environment(\.serverTagCardModel, model)
         .environment(\.roleColorDisplay, model.accessibilitySettings.roleColorDisplay)
         .modifier(SakuraCordWindowBackground(opacity: model.appearanceSettings.windowOpacity))
     }
@@ -610,6 +621,16 @@ private struct ChatRootView: View {
                     }
                 }
 
+                if let thread = model.openThread {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button("Open in Full View", systemImage: "arrow.up.left.and.arrow.down.right") {
+                            model.openSidebarThread(thread)
+                        }
+                        .labelStyle(.iconOnly)
+                        .help("Open thread in full view")
+                    }
+                }
+
                 ToolbarItem(placement: .primaryAction) {
                     Button(action: closeSupplementaryConversation) {
                         Label("Close conversation", systemImage: "xmark")
@@ -811,7 +832,7 @@ private struct ChatRootView: View {
             && model.guildWorkspacePage == nil
             && !presentsForumComposer
             && !showAccountSwitcher
-            && model.presentedInteractionModal == nil
+            && model.interactionModalForm == nil
             && (model.isComposerDropEligible(.channel)
                 || model.isComposerDropEligible(.thread))
     }
@@ -924,7 +945,7 @@ private struct ChatRootView: View {
     }
 
     private var hasOpenSupplementaryToolbarConversation: Bool {
-        model.hasThreadPane
+        (model.hasThreadPane && !model.isThreadFullWidth)
             || model.isVoiceChatOpen
             || model.hasOpenGuildSupplementaryConversation
     }
@@ -941,12 +962,15 @@ private struct ChatRootView: View {
 
     private var toolbarPinsChannelID: ChannelID? {
         guard model.guildWorkspacePage == nil, model.onboardingEntryGuildID == nil,
-              selectedVoiceChannel == nil, !model.hasThreadPane
+              selectedVoiceChannel == nil, !model.hasThreadPane || model.isThreadFullWidth
         else { return nil }
         return model.activePinsChannelID
     }
 
     private var conversationToolbarPresentation: ConversationToolbarPresentation? {
+        if model.isThreadFullWidth, let thread = model.openThread {
+            return .init(title: thread.name, systemImage: SakuraCordSystemSymbol.thread)
+        }
         if let page = model.guildWorkspacePage {
             return .init(title: page == .guide ? "Server Guide" : model.customizationTitle(in: model.selectedGuildID),
                          systemImage: page == .guide ? "signpost.right" : "slider.horizontal.3")
@@ -961,6 +985,7 @@ private struct ChatRootView: View {
     }
 
     private var supplementaryToolbarPresentation: SupplementaryToolbarPresentation? {
+        guard !model.isThreadFullWidth else { return nil }
         if model.hasThreadPane {
             return SupplementaryToolbarPresentation(
                 title: model.openThread?.name ?? "New Thread",

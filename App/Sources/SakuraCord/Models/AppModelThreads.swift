@@ -13,6 +13,10 @@ extension AppModel {
     var openThreadAccess: ConversationAccess {
         guard let thread = openThread, let channel = openThreadParentChannel else { return .checking }
         guard let guildID = channel.guildID else { return .readable(canSend: true) }
+        if thread.isPrivate, thread.notificationSettings == nil {
+            guard let permissions = effectiveMessagePermissions(in: channel) else { return .checking }
+            guard permissions & DiscordPermissionBits.manageThreads != 0 else { return .hidden }
+        }
         let access = ConversationPermissionResolver.threadAccess(
             effectivePermissions: effectiveMessagePermissions(in: channel),
             isLocked: thread.isLocked
@@ -52,12 +56,14 @@ extension AppModel {
         starter: User?,
         startedAt: Date?,
         starterMessageID: MessageID? = nil,
-        initialMessages: [Message]
+        initialMessages: [Message],
+        fullWidth: Bool = false
     ) {
         closeThread()
         AppPerformanceSignposts.beginConversationNavigation(to: thread.id)
         readState.merge(thread: thread)
         openThread = thread
+        isThreadFullWidth = fullWidth
         if let selectedChannelID, !isConversationPresented(selectedChannelID) {
             suspendSelectedConversationPresentation()
         }
@@ -257,6 +263,7 @@ extension AppModel {
     }
 
     func closeThread() {
+        threadCommandComposer.resetForChannelChange()
         if let threadID = openThread?.id {
             cancelConversationRefresh(in: threadID)
             let hasLoadedHistory = hasMoreCache[threadID] != nil
@@ -276,6 +283,7 @@ extension AppModel {
         threadLoadTask?.cancel()
         threadLoadTask = nil
         openThread = nil
+        isThreadFullWidth = false
         threadCreation = nil
         openThreadStarter = nil
         openThreadStartedAt = nil
@@ -555,6 +563,9 @@ extension AppModel {
     /// Keeps timeline thread cards current. A card's summary lives on its
     /// message; its latest-message preview mirrors the provider's catalogue.
     func refreshTimelineThreadCards(parentID: ChannelID, posts: [ForumPost], replacesAll: Bool = true) {
+        if let updated = posts.first(where: { $0.id == openThread?.id }) {
+            openThread = updated.thread
+        }
         var changedPreviewThreadIDs = Set<ChannelID>()
         if replacesAll {
             let retained = Set(posts.map(\.id))

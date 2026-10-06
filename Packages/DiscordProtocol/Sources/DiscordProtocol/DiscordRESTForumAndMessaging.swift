@@ -417,6 +417,16 @@ extension DiscordRESTProvider {
         return joined
     }
 
+    /// Sidebar Follow/Leave. Discord confirms through THREAD_MEMBERS_UPDATE,
+    /// which updates the joined-thread catalogue.
+    public func setThreadMembership(threadID: ChannelID, isJoined: Bool) async throws {
+        try await requestEmpty(
+            "/channels/\(threadID)/thread-members/@me",
+            method: isJoined ? "POST" : "DELETE",
+            query: [URLQueryItem(name: "location", value: "Context Menu")]
+        )
+    }
+
     func patchThreadNotificationSettings(
         threadID: ChannelID,
         body: [String: JSONValue]
@@ -436,7 +446,9 @@ extension DiscordRESTProvider {
         var cached = cachedForumPosts[parentID]?[post.id] ?? post
         cached.thread.notificationSettings = settings
         cachedForumPosts[parentID, default: [:]][post.id] = cached
+        reconcileJoinedThread(cached.thread)
         publishForumPosts(parentID: parentID)
+        publishActiveJoinedThreads()
     }
 
     nonisolated static func forumPostDeletionPath(postID: ChannelID) -> String {
@@ -527,6 +539,8 @@ extension DiscordRESTProvider {
         } else {
             merged.mostRecentMessage = existing.mostRecentMessage
         }
+        merged.thread.lastNonMessageActivityAt = incoming.thread.lastNonMessageActivityAt
+            ?? existing.thread.lastNonMessageActivityAt
         merged.owner = incoming.owner ?? existing.owner
         merged.isUnread = existing.isUnread
         if merged.thread.notificationSettings == nil {

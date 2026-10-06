@@ -3178,7 +3178,7 @@ func `GIF completion preserves newer text and channel drafts`(changesChannel: Bo
     commandModel.selectedChannelID = commandChannel.id
     commandModel.supportedCapabilities = [.slashCommands]
     commandModel.loadApplicationCommands()
-    let commandTask = commandModel.commandLoadTask
+    let commandTask = commandModel.commandComposer.loadTask
 
     commandModel.invalidateAccountSession()
     commandModel.installAccountSession(provider: newProvider, database: nil)

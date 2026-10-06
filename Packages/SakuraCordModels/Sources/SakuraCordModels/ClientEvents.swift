@@ -32,6 +32,7 @@ public enum ClientEvent: Equatable, Sendable {
         members: [Member],
         groups: [GuildMemberListGroup]
     )
+    case threadMembersChanged(guildID: GuildID, threadID: ChannelID, members: [Member]?)
     case privateMembersChanged([Member])
     case knownUsersChanged([User])
     case quickSwitcherUserIDsChanged([UserID])
@@ -50,6 +51,8 @@ public enum ClientEvent: Equatable, Sendable {
     )
     case stickersChanged(guildID: GuildID, stickers: [MessageSticker])
     case stickerUserSettingsChanged(StickerUserSettings)
+    /// Synced command usage changed on Discord, by another client or a save.
+    case applicationCommandFrecencyChanged(ApplicationCommandFrecencyHistory)
     case soundboardSoundsChanged(guildID: GuildID?, sounds: [SoundboardSound])
     case voiceChannelEffect(VoiceChannelEffect)
     case voiceStateChanged(VoiceParticipantState)

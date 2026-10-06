@@ -97,7 +97,8 @@ The explicit `settings/diagnostics/send` action is described in
 checks current permissions and account ownership, and shares the existing export
 without changing the draft. A URL cannot supply an arbitrary destination.
 The `https://sakuracord.app/update` action and `themes/<token>` links remain
-supported.
+supported. `https://sakuracord.app/report` opens the in-app report flow;
+`?type=bug` or `?type=feature` chooses the form.
 
 ## Local credential mode
 
@@ -175,6 +176,16 @@ a stalled process group. Diagnostics live in `.codex-runtime/test-diagnostics/`;
 failed or cancelled CI runs upload them as a seven-day artifact. A timeout fails
 validation without retrying or skipping tests. The CI build-and-test step also
 has a 30-minute outer limit covering compilation and framework staging.
+
+### Profiling command pickers
+
+In Instruments, use Time Profiler with the app's `PointsOfInterest` signposts.
+`CommandPickerQuery`, `CommandActivation`, `CommandSubmit`, and `PickerViewport`
+measure local preparation and native viewport work. `CommandAutocompleteRequest`
+measures the autocomplete HTTP request after its typing debounce; it does not
+include the later Gateway response. Compare cold catalog loading separately from
+warm typing, keyboard navigation, selection, and sending. Viewport timings exclude
+Core Animation presentation and must not be reported as complete frame times.
 
 ### Verifying native notification audio
 
@@ -254,11 +265,13 @@ databases, personal Discord data, or unsanitized protocol captures.
 
 ## Report a problem
 
-Use **Help → Report a Bug…** to open the website form with the app version,
-macOS version, and Mac model prefilled. **Help → Suggest a Feature…** prefills
-only the app version. Review and submit the form yourself; diagnostics files
-are attached separately. Search **Help → SakuraCord Tracker** for an existing
-report first. Reports and discussion follow the shared
+Type `/bug` or `/suggest` in a conversation's composer, or use **Help →
+Report a Bug…** or **Suggest a Feature…**. SakuraCord files the report with the
+signed-in Discord account and fills in the version and system information. Bug
+reports can also attach the sanitized Discord API log and the latest panic save
+directly. Matching reports appear while you type so you can follow one instead.
+Without a signed-in account, the Help menu opens the website form with the same
+values prefilled. Reports and discussion follow the shared
 [issue-management flow](README.md#issues-and-roadmap).
 
 1. Record the steps, expected result, actual result, and approximate failure time.

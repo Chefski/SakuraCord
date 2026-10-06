@@ -13,6 +13,8 @@ extension DiscordRESTProvider {
             await handleThreadUpdateDispatch(name: name, body: body)
         case "THREAD_DELETE":
             await handleThreadDeleteDispatch(name: name, body: body)
+        case "THREAD_MEMBER_LIST_UPDATE":
+            handleThreadMemberListUpdate(body: body)
         case "THREAD_MEMBER_UPDATE":
             await handleThreadMemberUpdateDispatch(name: name, body: body)
         case "THREAD_MEMBERS_UPDATE":
@@ -43,6 +45,9 @@ extension DiscordRESTProvider {
     ) async {
         guard let dto = try? JSONValueDecoder().decode(ChannelDTO.self, from: body) else { return }
         ingestForumThreads([dto], fallbackGuildID: dto.guildID.flatMap(GuildID.init))
+        if dto.threadMetadata?.archived == true, let threadID = ChannelID(dto.id) {
+            await removeThreadMemberSubscription(threadID)
+        }
     }
 
     func handleThreadDeleteDispatch(
@@ -53,6 +58,7 @@ extension DiscordRESTProvider {
               let threadID = ChannelID(deleted.id),
               let parentID = deleted.parentID.flatMap(ChannelID.init)
         else { return }
+        await removeThreadMemberSubscription(threadID)
         cachedForumPosts[parentID]?[threadID] = nil
         cachedForumThreadOrder.removeAll { $0 == threadID }
         cachedJoinedThreads[threadID] = nil
@@ -98,6 +104,16 @@ extension DiscordRESTProvider {
                 GatewayThreadMembersUpdateDTO.self, from: body
             ), let threadID = ChannelID(update.id)
         else { return }
+        if let guildID = GuildID(update.guildID), cachedThreadMemberIDs[threadID] != nil {
+            ingestThreadMembers(update.addedMembers ?? [], guildID: guildID)
+            var ids = cachedThreadMemberIDs[threadID] ?? []
+            for member in update.addedMembers ?? [] {
+                if let id = member.userID.flatMap(UserID.init), !ids.contains(id) { ids.append(id) }
+            }
+            let removed = Set((update.removedMemberIDs ?? []).compactMap(UserID.init))
+            cachedThreadMemberIDs[threadID] = ids.filter { !removed.contains($0) }
+            publishThreadMembers(guildID: guildID)
+        }
         for parentID in cachedForumPosts.keys.sorted(by: {
             $0.rawValue < $1.rawValue
         }) where cachedForumPosts[parentID]?[threadID] != nil {

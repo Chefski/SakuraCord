@@ -13,11 +13,16 @@ extension NativeMemberListCanvasView {
         dismissProfile: @escaping () -> Void
     ) {
         let previousSelectedMemberID = selectedMemberID
+        let previousProfileRequestID = self.profilePresentation?.requestID
         let previousCustomEmojiURLsByID = self.customEmojiURLsByID
         self.customEmojiURLsByID = customEmojiURLsByID
         self.profilePresentation = profilePresentation
         self.isProfilePresented = isProfilePresented
         self.dismissProfile = dismissProfile
+        reconcileServerTagCardPresentation()
+        if isProfilePresented, previousProfileRequestID != profilePresentation?.requestID {
+            dismissServerTagCard()
+        }
         selectedMemberID = isProfilePresented
             ? profilePresentation?.member.id
             : nil
@@ -43,6 +48,8 @@ extension NativeMemberListCanvasView {
         guard interactionsBlocked != blocked else { return }
         interactionsBlocked = blocked
         if blocked {
+            clearServerTagHover()
+            dismissServerTagCard()
             if let old = hoveredIndex {
                 hoveredIndex = nil
                 setNeedsDisplay(itemRect(at: old))
@@ -97,6 +104,9 @@ extension NativeMemberListCanvasView {
         contentHeight = document.contentHeight
         invalidateIntrinsicContentSize()
         preparedText = document.preparedText
+        memberNameGeometries.removeAll(keepingCapacity: true)
+        reconcileServerTagCardPresentation()
+        window?.invalidateCursorRects(for: self)
         loadedItemIndexes = document.loadedItemIndexes
         let placeholderStateChanged = hasLoadingPlaceholders
             != document.hasLoadingPlaceholders
@@ -647,7 +657,8 @@ extension NativeMemberListCanvasView {
                 activityTruncationToken: activityTruncationToken,
                 activityWidth: activity.map {
                     CGFloat(CTLineGetTypographicBounds($0, nil, nil, nil))
-                } ?? 0
+                } ?? 0,
+                serverTag: member.user.primaryGuild.flatMap { NativeServerTagPresentation(identity: $0) }
             )
         }
         return preparedText

@@ -38,6 +38,7 @@ extension NativeTimelineCanvasView {
         invalidateVisibleMediaProjection(keepingCapacity: true)
         self.storage = storage
         self.model = model
+        refreshInboxDisclosureGeometry()
         reconcilePollPresentations()
         installSpoilerRevealStore(model.timelineSpoilerRevealStore)
         self.actions = actions
@@ -52,6 +53,7 @@ extension NativeTimelineCanvasView {
         // transient geometry reads it.
         reconcileEditingRow()
         self.contentOriginY = transientContentOriginY
+        reconcileServerTagCardPresentation()
         contentOriginMoved =
             abs(previousContentOriginY - self.contentOriginY) >= 0.5
         if activeMentionPopoverAnchor?.sourceRect() == nil {
@@ -111,7 +113,7 @@ extension NativeTimelineCanvasView {
         scheduleAnimatedMediaReconciliation()
         positionAnimatedMediaOverlays()
         reconcileBeginningSelectionOverlay()
-        reconcileLoadingIndicators()
+        reconcileActivityIndicators()
         reconcileSpoilerOverlays()
         if !suppressesHoverPresentation {
             updateTrackingAreas()
@@ -204,7 +206,7 @@ extension NativeTimelineCanvasView {
         reconcileBeginningSelectionOverlay()
         positionInlineVideoOverlays()
         positionLottieStickerOverlays()
-        reconcileLoadingIndicators()
+        reconcileActivityIndicators()
         positionSpoilerOverlays()
         componentChoiceOverlay?.repositionWithAnchor()
         needsDisplay = true
@@ -344,6 +346,7 @@ extension NativeTimelineCanvasView {
         let clearedTargets = pointer.clearHoverAndPressTargets()
         reactionHoverCoordinator.close()
         closeMessageProfilePopover()
+        closeServerTagPopover()
         removeActionCapsule()
         freezeEditingRowForScroll()
         reconcileAccessibilityProxiesIfActive()
@@ -398,6 +401,14 @@ extension NativeTimelineCanvasView {
         {
             setNeedsDisplay(rowFrame(at: index))
         }
+        if let messageID = clearedTargets.serverTagMessageID {
+            invalidateServerTag(messageID: messageID)
+        }
+        if let messageID = clearedTargets.ephemeralDismissMessageID,
+           let index = items.firstIndex(where: { $0.messageID == messageID })
+        {
+            setNeedsDisplay(rowFrame(at: index))
+        }
     }
 
     func allowHoverPresentationAfterScroll() {
@@ -419,7 +430,7 @@ extension NativeTimelineCanvasView {
         reconcileVisibleReactionPreviewLoads()
         restoreEditingRowAfterScroll()
         reconcileAnimatedMedia()
-        reconcileLoadingIndicators()
+        reconcileActivityIndicators()
         reconcileSpoilerOverlays()
         updateTrackingAreas()
         window?.invalidateCursorRects(for: self)
@@ -450,6 +461,7 @@ extension NativeTimelineCanvasView {
             pointer.clearHoverAndPressTargets()
             reactionHoverCoordinator.close()
             closeMessageProfilePopover()
+            closeServerTagPopover()
             closeMentionPopover()
             closeComponentChoiceOverlay()
         }
@@ -501,7 +513,7 @@ extension NativeTimelineCanvasView {
         positionAnimatedMediaOverlays()
         positionInlineVideoOverlays()
         positionLottieStickerOverlays()
-        reconcileLoadingIndicators()
+        reconcileActivityIndicators()
         positionSpoilerOverlays()
     }
 
@@ -548,11 +560,12 @@ extension NativeTimelineCanvasView {
             removeInlineVideoOverlays()
             removeLottieStickerOverlays()
             removeAnimatedMediaOverlays()
-            removeLoadingIndicators()
+            removeActivityIndicators()
             removeSpoilerOverlays()
             reactionPickerCoordinator.close(notifyBinding: false)
             reactionHoverCoordinator.close()
             closeMessageProfilePopover()
+            closeServerTagPopover()
             closeComponentChoiceOverlay()
             closeMentionPopover()
             reactionPickerSource.frame = .zero
@@ -743,22 +756,20 @@ extension NativeTimelineCanvasView {
         // composite newly positioned rows over their former positions.
         NSGraphicsContext.current?.cgContext.clear(dirtyRect)
         drawHistorySkeleton(in: dirtyRect)
-        guard !items.isEmpty,
-              var index = rowIndex(at: max(0, dirtyRect.minY))
-        else { return }
-        while items.indices.contains(index),
-              displayedRowOrigin(at: index) < dirtyRect.maxY
-        {
+        forEachDisplayedRow(in: dirtyRect) { index in
             let rowFrame = rowFrame(at: index)
-            if rowFrame.intersects(dirtyRect) {
-                drawTimelineRow(
-                    at: index,
-                    rowFrame: rowFrame,
-                    dirtyRect: dirtyRect,
-                    visibleMediaKeys: visibleMediaKeys
-                )
+            guard rowFrame.intersects(dirtyRect) else { return }
+            guard inboxDisclosureRange.contains(index) else {
+                drawTimelineRow(at: index, rowFrame: rowFrame, dirtyRect: dirtyRect, visibleMediaKeys: visibleMediaKeys)
+                return
             }
-            index += 1
+            // An animating Inbox group is clipped to its revealed height.
+            guard rowFrame.minY < inboxDisclosureClipMaxY, let context = NSGraphicsContext.current?.cgContext else { return }
+            context.saveGState()
+            context.clip(to: CGRect(x: rowFrame.minX, y: rowFrame.minY, width: rowFrame.width,
+                                    height: inboxDisclosureClipMaxY - rowFrame.minY))
+            drawTimelineRow(at: index, rowFrame: rowFrame, dirtyRect: dirtyRect, visibleMediaKeys: visibleMediaKeys)
+            context.restoreGState()
         }
     }
 
@@ -829,6 +840,8 @@ extension NativeTimelineCanvasView {
             || mediaViewerHighlightedMessageID == item.messageID
             || hoveredCompactTimestampRow == index
             || hoveredAuthorMessageID == item.messageID
+            || hoveredServerTagMessageID == item.messageID
+            || serverTagCardPresentation?.messageID == item.messageID
             || hoveredMention?.itemIdentifier == item.identifier
             || hoveredTextLink?.itemIdentifier == item.identifier
             || hoveredTextSpoiler?.itemIdentifier == item.identifier
@@ -836,6 +849,7 @@ extension NativeTimelineCanvasView {
             || activeComponentChoiceTarget?.messageID == item.messageID
             || visualPressedComponentButton?.messageID == item.messageID
             || hoveredForwardedSourceMessageID == item.messageID
+            || hoveredEphemeralDismissMessageID == item.messageID
             || !reactionCountTransitions(inMessageAt: index).isEmpty
             || textSelection?.itemIdentifier == item.identifier
             || !revealState.isEmpty
@@ -858,6 +872,7 @@ extension NativeTimelineCanvasView {
             isHovered: hoveredRow == index || presentsViewerHighlight,
             showsCompactTimestamp: hoveredCompactTimestampRow == index,
             isAuthorHovered: hoveredAuthorMessageID == item.messageID,
+            isServerTagHovered: hoveredServerTagMessageID == item.messageID || serverTagCardPresentation?.messageID == item.messageID,
             hoveredMention: hoveredMention?.itemIdentifier == item.identifier ? hoveredMention : nil,
             hoveredTextLink: hoveredTextLink?.itemIdentifier == item.identifier ? hoveredTextLink : nil,
             hoveredTextSpoiler: hoveredTextSpoiler?.itemIdentifier == item.identifier ? hoveredTextSpoiler : nil,
@@ -866,6 +881,7 @@ extension NativeTimelineCanvasView {
             pressedComponentButton: visualPressedComponentButton?.messageID == item.messageID ? visualPressedComponentButton : nil,
             componentButtonPressProgress: visualPressedComponentButton?.messageID == item.messageID ? componentButtonPressProgress : 0,
             isForwardedSourceHovered: hoveredForwardedSourceMessageID == item.messageID,
+            isEphemeralDismissHovered: hoveredEphemeralDismissMessageID == item.messageID,
             hoveredReactionID: hoveredReactionID(inMessageAt: index),
             isAddReactionHovered: isAddReactionHovered(inMessageAt: index),
             textSelection: textSelection,

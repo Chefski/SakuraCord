@@ -85,6 +85,8 @@ extension AppModel {
     func invalidateAccountSession() {
         accountSessionGeneration &+= 1
         serverInvites.reset()
+        serverTagCards.reset()
+        issueReports.reset()
         onboarding.reset()
     }
 
@@ -303,6 +305,10 @@ struct ProfilePresentationState: Identifiable {
     var profile: UserProfile?
     var isLoading: Bool
     var errorMessage: String?
+    var isWebhook = false
+    var isClyde = false
+    var isLocalIdentity: Bool { isWebhook || isClyde }
+    var sourceMessageID: MessageID?
 }
 
 struct ProfileCacheKey: Hashable {

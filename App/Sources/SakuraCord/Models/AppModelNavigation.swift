@@ -16,7 +16,8 @@ extension AppModel {
     }
 
     private var navigationChannel: Channel? {
-        snapshot?.channels.first { $0.id == selectedChannelID }
+        if isThreadFullWidth, let openThread { return threadNavigationChannel(openThread) }
+        return snapshot?.channels.first { $0.id == selectedChannelID }
             ?? visibleChannels.first { $0.id == selectedChannelID }
     }
 
@@ -91,6 +92,7 @@ extension AppModel {
     }
 
     func updateMemberListViewport(_ visibleRange: ClosedRange<Int>) {
+        guard !isThreadFullWidth || openThreadParentChannel?.kind == .announcement else { return }
         guard let guildID = selectedGuildID,
               let channelID = selectedChannelID
         else { return }
@@ -214,6 +216,10 @@ extension AppModel {
         historyDestination: ConversationNavigationHistory.Destination? = nil
     ) {
         onboarding.presentedGuildID = nil
+        if let thread = sidebarThread(channelID) {
+            openSidebarThread(thread, historyDestination: historyDestination)
+            return
+        }
         guard
             let channel = snapshot?.channels.first(where: { $0.id == channelID })
             ?? visibleChannels.first(where: { $0.id == channelID })
@@ -229,6 +235,7 @@ extension AppModel {
                   model.isCurrentAccountSession(account)
             else { return }
             model.recordForwardDestinationVisit(channel.id)
+            model.closeThread()
             model.selectedChannelID = channel.id
         }
     }

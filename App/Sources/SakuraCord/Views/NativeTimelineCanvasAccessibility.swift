@@ -289,7 +289,7 @@ extension NativeTimelineCanvasView {
             let element = accessibilityElement(role: .row, label: header.title, identifier: "inbox-group-\(header.channelID)", frame: rowFrame, parent: self)
             element.setAccessibilityCustomActions([
                 NSAccessibilityCustomAction(name: header.isCollapsed ? "Expand" : "Collapse") { [weak self] in
-                    self?.model?.toggleInboxGroup(header.channelID)
+                    self?.toggleInboxGroup(header.channelID)
                     return self != nil
                 },
                 NSAccessibilityCustomAction(name: "Mark Read") { [weak self] in
@@ -627,6 +627,20 @@ extension NativeTimelineCanvasView {
                     return true
                 })
             }
+            if let tag = layout.serverTagRegion {
+                let label = "Server Tag \(tag.presentation.identity.tag ?? "")"
+                let frame = accessibilityChildFrame(tag.frame, rowIndex: rowIndex)
+                if let guildID = tag.presentation.identity.guildID {
+                    children.append(accessibilityElement(role: .button, label: label,
+                        help: "Shows the server’s profile", frame: frame, parent: parent) { [weak self] in
+                        guard let self else { return false }
+                        self.showServerTagCard(guildID: guildID, anchor: self.accessibilityChildFrame(tag.frame, rowIndex: rowIndex))
+                        return true
+                    })
+                } else {
+                    children.append(accessibilityElement(role: .staticText, label: label, frame: frame, parent: parent))
+                }
+            }
             if accessibilitySettings.announcesTimestamps,
                let frame = layout.timestampFrame
             {
@@ -649,17 +663,7 @@ extension NativeTimelineCanvasView {
         rowIndex: Int,
         parent: NSAccessibilityElement
     ) {
-        if let frame = layout.loadingIndicatorFrame {
-            children.append(accessibilityElement(
-                role: .progressIndicator,
-                label: "Loading",
-                frame: accessibilityChildFrame(
-                    frame,
-                    rowIndex: rowIndex
-                ),
-                parent: parent
-            ))
-        }
+        // Loading dots are decorative; the status text beside them is read.
         if let frame = layout.contentFrame,
            let value = layout.attributedContent,
            let framesetter = layout.contentFramesetter

@@ -9,6 +9,7 @@
 | Identity and REST | [DiscordProductionBaseline.swift](../../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordProductionBaseline.swift); [DiscordRESTTransport.swift](../../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordRESTTransport.swift) | [ProviderBootstrapContractTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/ProviderBootstrapContractTests.swift); [ProviderRequestContractTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/ProviderRequestContractTests.swift) |
 | Pending credentials | [AppModelPendingAuthentication.swift](../../App/Sources/SakuraCord/Models/AppModelPendingAuthentication.swift) | [DiscordSessionAuthenticatorTests.swift](../../App/Tests/SakuraCordAppTests/DiscordSessionAuthenticatorTests.swift); [AuthenticationInstallationContractTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/AuthenticationInstallationContractTests.swift) |
 | Main Gateway | [GatewaySession.swift](../../Packages/DiscordProtocol/Sources/DiscordProtocol/GatewaySession.swift); [payload builders](../../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordGatewaySupport.swift) | [GatewaySessionTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/GatewaySessionTests.swift); [GatewayCodecTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/GatewayCodecTests.swift); [GatewayBacklogTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/GatewayBacklogTests.swift) |
+| Service sign-in | [DiscordRESTOAuth2Authorization.swift](../../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordRESTOAuth2Authorization.swift); [AppModelIssueReports.swift](../../App/Sources/SakuraCord/Models/AppModelIssueReports.swift) | [OAuth2AuthorizationContractTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/OAuth2AuthorizationContractTests.swift) |
 | Diagnostics | [DiscordAPIDiagnostics.swift](../../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordAPIDiagnostics.swift); [DiscordDiagnosticSanitizer.swift](../../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordDiagnosticSanitizer.swift) | [DiscordAPIDiagnosticsTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/DiscordAPIDiagnosticsTests.swift); [DiagnosticsSettingsTests.swift](../../App/Tests/SakuraCordAppTests/DiagnosticsSettingsTests.swift) |
 
 ## Client identity and bootstrap
@@ -43,6 +44,20 @@ a fresh READY refreshes the authoritative snapshot with pending intent overlaid.
 - New credentials stay in memory until a valid `READY.user` supplies account
   identity. Import additionally requires that ID to match the selected account.
   Cancellation or failed bootstrap discards the pending credential.
+
+### Report-service sign-in
+
+Filing a report signs in to sakuracord.app with the first-party OAuth2 consent
+sequence: `GET /oauth2/authorize` reads the consent details, then one `POST`
+sends `authorize: true` with the placeholder `location_context` the official
+client uses outside a channel. The app pins the application ID, `identify`
+scope and `/report/callback` redirect, and rejects a service response that asks
+for anything else. The returned location is parsed, never followed; its state
+must match and only the one-time code reaches sakuracord.app, which exchanges it
+for a bearer session kept in memory. The account credential never leaves the
+provider. The sequence matches the production web bundle as of 2026-10-03
+(`web.24a0dd4254453b09`). Native sign-in and report submission were also verified
+against the live service; the first-party comparison remains static.
 
 The [architecture guide](../ARCHITECTURE.md#persistence-and-privacy) owns local
 import, credential storage and account-removal boundaries. Authentication must
