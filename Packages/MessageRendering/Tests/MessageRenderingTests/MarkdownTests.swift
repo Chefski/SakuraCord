@@ -339,7 +339,11 @@ import Testing
 
 @Test func `new mention types stay literal in code and escaped text`() {
     let raw = "@everyone <t:1000000:R> <@$356875221078245376>"
-    for source in ["🌸 `\(raw)`", "**`\(raw)`**", "```swift\n\(raw)\n```", #"\@everyone \<t:1000000:R> \<@$356875221078245376>"#] {
+    for source in [
+        "🌸 `\(raw)`", "**`\(raw)`**", "```swift\n\(raw)\n```",
+        "* `**\(raw)**`", ">>> quote\n\n* `**\(raw)**`",
+        #"\@everyone \<t:1000000:R> \<@$356875221078245376>"#,
+    ] {
         #expect(MessageDocument(source: source).segments == [.markdown(source)])
     }
     let mixed = MessageDocument(source: "`\(raw)` \(raw)")

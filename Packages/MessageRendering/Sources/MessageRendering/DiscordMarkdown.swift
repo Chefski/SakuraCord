@@ -1337,6 +1337,7 @@ extension DiscordMarkdown {
             if traits.contains(.inlineCode) { ranges.append(NSRange(range, in: source)) }
         }
         var inCodeFence = false
+        var inMultilineQuote = false
         for line in source.split(separator: "\n", omittingEmptySubsequences: false) {
             if line.hasPrefix("```") {
                 inCodeFence.toggle()
@@ -1344,7 +1345,12 @@ extension DiscordMarkdown {
             } else if inCodeFence {
                 ranges.append(NSRange(line.startIndex ..< line.endIndex, in: source))
             } else {
-                _ = inlineRuns(line, inheritedTraits: [], inheritedLink: nil, sourceCollector: collector)
+                if line.isEmpty { inMultilineQuote = false }
+                // planLine removes a list marker before parsing inline syntax;
+                // multiline quote continuations instead retain their whole line.
+                let content = line.hasPrefix("* ") && !inMultilineQuote ? line.dropFirst(2) : line
+                _ = inlineRuns(content, inheritedTraits: [], inheritedLink: nil, sourceCollector: collector)
+                if line.hasPrefix(">>> ") { inMultilineQuote = true }
             }
         }
         return ranges
