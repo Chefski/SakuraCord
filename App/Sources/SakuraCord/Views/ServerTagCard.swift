@@ -40,7 +40,15 @@ struct ServerTagCard: View {
     let model: AppModel
     let guildID: GuildID
     let dismiss: () -> Void
+    private let account: AppModelAccountSession
     @Environment(\.colorScheme) private var colorScheme
+
+    init(model: AppModel, guildID: GuildID, dismiss: @escaping () -> Void) {
+        self.model = model
+        self.guildID = guildID
+        self.dismiss = dismiss
+        account = model.accountSession()
+    }
 
     var body: some View {
         let store = model.serverTagCards
@@ -57,7 +65,10 @@ struct ServerTagCard: View {
                 } description: {
                     Text(error)
                 } actions: {
-                    Button("Try Again") { model.loadServerTagCard(guildID) }
+                    Button("Try Again") {
+                        guard model.isCurrentAccountSession(account) else { dismiss(); return }
+                        model.loadServerTagCard(guildID)
+                    }
                 }
                 .padding(.vertical, 12)
             case nil:
@@ -67,7 +78,10 @@ struct ServerTagCard: View {
             }
         }
         .frame(width: Self.width)
-        .task(id: guildID) { model.loadServerTagCard(guildID) }
+        .task(id: guildID) {
+            guard model.isCurrentAccountSession(account) else { dismiss(); return }
+            model.loadServerTagCard(guildID)
+        }
     }
 
     private func content(_ profile: GuildProfile, entry: ServerTagCardStore.Entry, isJoining: Bool) -> some View {
@@ -94,7 +108,8 @@ struct ServerTagCard: View {
                 }
                 if let action = model.serverTagCardAction(for: profile) {
                     Button {
-                        model.startAccountChildTask(account: model.accountSession()) { model, _ in
+                        guard model.isCurrentAccountSession(account) else { dismiss(); return }
+                        model.startAccountChildTask(account: account) { model, _ in
                             if await model.activateServerTagCard(guildID) { dismiss() }
                         }
                     } label: {

@@ -201,7 +201,7 @@ extension NativeTimelineRowLayout {
                showsIncomingIdentity
             {
                 appendAuthorHeader()
-                verticalOffset += MessageRowLayoutMetrics.authorLineHeight
+                verticalOffset += (result.authorFrame?.height ?? MessageRowLayoutMetrics.authorLineHeight)
                     + MessageRowLayoutMetrics.authorToContentSpacing(
                         isCommandResponse: message.type == .chatInputCommand
                     )
@@ -228,77 +228,75 @@ extension NativeTimelineRowLayout {
         }
 
         private mutating func appendAuthorHeader() {
-            let author = model.map {
-                $0.authorPresentation(for: message).user
-            } ?? message.author
+            let presentation = model?.authorPresentation(for: message)
+            let author = presentation?.user ?? message.author
+            result.authorPrimaryGuild = author.primaryGuild
             let authorFont = ProfileNameFontLoader.shared.resolvedFont(for: author, fallback: metrics.authorFont)
             let showsRoleIndicator = model?.accessibilitySettings.roleColorDisplay == .nextToNames
-                && model?.authorPresentation(for: message).roleColorHex != nil
+                && presentation?.roleColorHex != nil
             let indicatorWidth: CGFloat = showsRoleIndicator ? 14 : 0
-            let authorWidth = min(
-                max(0, ordinaryContentWidth - indicatorWidth),
-                NativeTimelineRowLayout.measuredTextWidth(author.displayName, font: authorFont)
-            )
-            result.authorFrame = CGRect(
-                x: contentX + indicatorWidth,
-                y: verticalOffset,
-                width: authorWidth,
-                height: MessageRowLayoutMetrics.authorLineHeight
-            )
-            var headerX = contentX + authorWidth + indicatorWidth
-            if author.isBot {
-                headerX += 7
-                let badgeFont = metrics.badgeFont
-                let badgeWidth = NativeTimelineRowLayout.measuredTextWidth(
-                    "APP",
-                    font: badgeFont
-                ) + 8
-                result.botBadgeFrame = CGRect(
-                    x: headerX,
-                    // Discord gives the application badge enough vertical
-                    // weight to read as a badge, while keeping it centered
-                    // inside the fixed author line.
-                    y: verticalOffset + 1,
-                    width: badgeWidth,
-                    height: 14
-                )
-                headerX += badgeWidth
-            }
-            appendTimestamp(at: headerX)
-        }
-
-        private mutating func appendTimestamp(at originX: CGFloat) {
-            var headerX = originX
-            headerX += 7
-            let timestampFont = metrics.timestampFont
+            let availableWidth = max(0, ordinaryContentWidth - indicatorWidth)
             let timestamp = NativeTimelineTimestamp.headerText(
-                for: message.timestamp,
-                settings: model?.interfaceSettings ?? .defaults
+                for: message.timestamp, settings: model?.interfaceSettings ?? .defaults
             )
-            let timestampWidth = NativeTimelineRowLayout.measuredTextWidth(
-                timestamp,
-                font: timestampFont
+            let timestampWidth = NativeTimelineRowLayout.measuredTextWidth(timestamp, font: metrics.timestampFont)
+            // Keep the adjacent controls visible while long decorative names
+            // truncate. At narrow widths the tag is omitted before the name.
+            let timestampReserve = min(timestampWidth, availableWidth / 3) + 7
+            let naturalBotWidth = author.isBot
+                ? NativeTimelineRowLayout.measuredTextWidth("APP", font: metrics.badgeFont) + 8 : 0
+            let botWidth = availableWidth >= naturalBotWidth + 7 + 12 ? naturalBotWidth : 0
+            let botReserve = botWidth > 0 ? botWidth + 7 : 0
+            let tag = author.primaryGuild.flatMap { NativeServerTagPresentation(identity: $0) }?
+                .fitting(maximumWidth: availableWidth - botReserve - timestampReserve - 32 - 7)
+            let tagReserve = tag.map { $0.width + 7 } ?? 0
+            let authorText = NativeIdentityTextPresentation(
+                author.displayName, font: authorFont,
+                maximumWidth: max(0, availableWidth - botReserve - tagReserve - timestampReserve)
             )
+            let headerHeight = tag == nil ? MessageRowLayoutMetrics.authorLineHeight : NativeServerTagPresentation.height
+            result.authorText = authorText
+            result.authorFrame = CGRect(
+                x: contentX + indicatorWidth, y: verticalOffset,
+                width: authorText.width, height: headerHeight
+            )
+            var headerX = contentX + indicatorWidth + authorText.width
+            if botWidth > 0 {
+                headerX += 7
+                result.botBadgeFrame = CGRect(
+                    x: headerX, y: verticalOffset + (headerHeight - 14) / 2,
+                    width: botWidth, height: 14
+                )
+                headerX += botWidth
+            }
+            if let tag {
+                headerX += 7
+                result.serverTagRegion = .init(
+                    frame: CGRect(x: headerX, y: verticalOffset, width: tag.width, height: headerHeight),
+                    presentation: tag
+                )
+                headerX += tag.width
+            }
+            headerX += 7
+            let timestampText = NativeIdentityTextPresentation(
+                timestamp, font: metrics.timestampFont,
+                maximumWidth: max(0, contentX + contentWidth - headerX)
+            )
+            result.timestampText = timestampText
             result.timestampFrame = CGRect(
-                x: headerX,
-                y: verticalOffset + 3,
-                width: min(timestampWidth, max(0, contentX + contentWidth - headerX)),
-                height: 13
+                x: headerX, y: verticalOffset, width: timestampText.width, height: headerHeight
             )
-            headerX = result.timestampFrame?.maxX ?? headerX
+            headerX += timestampText.width
             if message.editedTimestamp != nil {
                 headerX += 7
-                let editedFont = metrics.editedFont
-                result.editedFrame = CGRect(
-                    x: headerX,
-                    y: verticalOffset + 4,
-                    width: min(
-                        NativeTimelineRowLayout.measuredTextWidth("(edited)", font: editedFont),
-                        max(0, contentX + contentWidth - headerX)
-                    ),
-                    height: 11
+                let editedText = NativeIdentityTextPresentation(
+                    "(edited)", font: metrics.editedFont,
+                    maximumWidth: max(0, contentX + contentWidth - headerX)
                 )
-                headerX = result.editedFrame?.maxX ?? headerX
+                result.editedText = editedText
+                result.editedFrame = CGRect(
+                    x: headerX, y: verticalOffset, width: editedText.width, height: headerHeight
+                )
             }
         }
 

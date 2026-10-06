@@ -116,6 +116,8 @@ final class NativeMemberListCoordinator: NSObject {
 
     func update(parent: NativeMemberListView, scrollView: NSScrollView) {
         if viewportIdentity != parent.viewportIdentity {
+            canvas?.dismissServerTagCard()
+            canvas?.clearServerTagHover()
             viewportTask?.cancel()
             viewportTask = nil
             lastViewportRange = nil
@@ -133,6 +135,7 @@ final class NativeMemberListCoordinator: NSObject {
         }
         let cosmeticsChanged = canvas.cosmeticPolicy != parent.cosmeticPolicy
         canvas.cosmeticPolicy = parent.cosmeticPolicy
+        let serverTagModelChanged = canvas.serverTagCardModel !== parent.serverTagCardModel
         canvas.serverTagCardModel = parent.serverTagCardModel
         canvas.openProfile = parent.openProfile
         canvas.modalInputDidChange()
@@ -144,7 +147,9 @@ final class NativeMemberListCoordinator: NSObject {
                 dismissProfile: parent.dismissProfile
             )
         }
-        if cosmeticsChanged { canvas.updateVisibleOverlaysAndPrewarming(force: true) }
+        if cosmeticsChanged || serverTagModelChanged {
+            canvas.updateVisibleOverlaysAndPrewarming(force: true)
+        }
         requestDocumentUpdate(
             sections: parent.sections,
             presentation: parent.presentation,

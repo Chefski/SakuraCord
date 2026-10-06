@@ -104,6 +104,9 @@ extension NativeTimelineCanvasView {
                         cursor: .pointingHand
                     )
                 }
+                if let tag = layouts[index].serverTagRegion, tag.presentation.identity.guildID != nil {
+                    addCursorRect(tag.frame.offsetBy(dx: 0, dy: rowOrigin), cursor: .pointingHand)
+                }
                 installForwardedSourceCursor(at: index, rowOrigin: rowOrigin)
                 installPollCursors(at: index, rowOrigin: rowOrigin)
                 installInviteCursors(at: index, rowOrigin: rowOrigin)
@@ -192,6 +195,7 @@ extension NativeTimelineCanvasView {
         setHoveredAuthorMessageID(
             authorNamePointerHit(at: point)
         )
+        setHoveredServerTagMessageID(serverTagPointerHit(at: point))
         setHoveredMention(
             mentionPointerHit(at: point)
         )
@@ -233,6 +237,7 @@ extension NativeTimelineCanvasView {
             compactTimestampRowIndex(at: point)
         )
         setHoveredAuthorMessageID(authorNamePointerHit(at: point))
+        setHoveredServerTagMessageID(serverTagPointerHit(at: point))
         setHoveredMention(mentionPointerHit(at: point))
         setHoveredTextLink(textLinkPointerHit(at: point))
         setHoveredTextSpoiler(textSpoilerPointerHit(at: point))
@@ -280,6 +285,10 @@ extension NativeTimelineCanvasView {
                items[index].messageID == hoveredAuthorMessageID
             {
                 setHoveredAuthorMessageID(nil)
+            }
+            if let index = event.trackingArea?.userInfo?["nativeTimelineRowIndex"] as? Int,
+               items.indices.contains(index), items[index].messageID == hoveredServerTagMessageID {
+                setHoveredServerTagMessageID(nil)
             }
             if let index = event.trackingArea?.userInfo?[
                 "nativeTimelineRowIndex"
@@ -753,6 +762,11 @@ extension NativeTimelineCanvasView {
             model?.dismissEphemeralMessage(row.message)
             return true
         }
+        if let tag = layout.serverTagRegion, tag.frame.contains(point),
+           let guildID = tag.presentation.identity.guildID {
+            showServerTagCard(guildID: guildID, anchor: tag.frame.offsetBy(dx: 0, dy: displayedRowOrigin(at: rowIndex)))
+            return true
+        }
         if !row.message.type.hasGeneratedContent,
            let authorFrame =
                NativeTimelineAuthorProfileGeometry.hitFrame(
@@ -948,6 +962,7 @@ extension NativeTimelineCanvasView {
     ) {
         guard let model else { return }
         closeMentionPopover()
+        closeServerTagPopover()
         // One webhook can post with different names and avatars in adjacent messages.
         let presentationIdentity = sourceMessage.webhookID != nil && user.isWebhookIdentity
             ? AnyHashable(sourceMessage.id)
@@ -1173,6 +1188,7 @@ extension NativeTimelineCanvasView {
         setHoveredPollTarget(nil)
         setHoveredCompactTimestampRow(nil)
         setHoveredAuthorMessageID(nil)
+        setHoveredServerTagMessageID(nil)
         setHoveredMention(nil)
         setHoveredTextLink(nil)
         setHoveredTextSpoiler(nil)
@@ -1207,6 +1223,7 @@ extension NativeTimelineCanvasView {
                 ? authorNamePointerHit(at: point)
                 : nil
         )
+        setHoveredServerTagMessageID(visibleRect.contains(point) ? serverTagPointerHit(at: point) : nil)
         setHoveredMention(
             visibleRect.contains(point)
                 ? mentionPointerHit(at: point)
@@ -1572,6 +1589,10 @@ extension NativeTimelineCanvasView {
         let message = row.message
         if layout.ephemeralRegion?.dismissFrame.contains(point) == true {
             return .ephemeralDismiss(message.id)
+        }
+        if let tag = layout.serverTagRegion, tag.frame.contains(point),
+           let guildID = tag.presentation.identity.guildID {
+            return .serverTag(message.id, guildID)
         }
         if !message.type.hasGeneratedContent,
            NativeTimelineAuthorProfileGeometry.hitFrame(

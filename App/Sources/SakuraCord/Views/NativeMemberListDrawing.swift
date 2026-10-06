@@ -336,18 +336,12 @@ extension NativeMemberListCanvasView {
         let textX = row.minX + 4 + NativeMemberListMetrics.avatarContainerSize + 8
         let nameY = prepared.activity == nil ? row.minY + 13 : row.minY + 5
         let botBadgeWidth: CGFloat = 30
-        let tagPresentation = member.user.primaryGuild.flatMap(guildTagPresentation)
+        let tagPresentation = prepared.serverTag
         let roleColor = presentation.roleColorDisplay == .nextToNames
             ? MessageAuthorPresentation.topRoleColor(in: member.roles).map(Self.color(hex:)) : nil
-        let indicatorWidth: CGFloat = roleColor != nil ? 13 : 0
-        let nameX = textX + indicatorWidth
-        let accessoryWidths: [CGFloat] = (member.user.isBot ? [botBadgeWidth] : [])
-            + (tagPresentation.map { [$0.width] } ?? [])
-        let nameLayout = NativeMemberNameLayout.layout(
-            measuredNameWidth: prepared.nameWidth,
-            availableWidth: max(0, row.maxX - 4 - nameX),
-            accessoryWidths: accessoryWidths
-        )
+        let geometry = memberNameGeometry(member, prepared: prepared, at: index)
+        let nameX = geometry.nameX
+        let nameLayout = geometry.layout
         if nameLayout.nameWidth > 0 {
             let visibleName = Self.truncatedLine(
                 prepared.name,
@@ -357,30 +351,28 @@ extension NativeMemberListCanvasView {
             Self.draw(line: visibleName, at: CGPoint(x: nameX, y: nameY), context: context)
         }
 
-        var accessoryIndex = 0
         if let roleColor {
             context.setFillColor(roleColor.cgColor)
             context.fillEllipse(in: CGRect(x: textX, y: nameY + 5, width: 8, height: 8))
         }
-        if member.user.isBot, nameLayout.accessoryFrames.indices.contains(accessoryIndex) {
-            let accessory = nameLayout.accessoryFrames[accessoryIndex]
+        if member.user.isBot, let accessory = nameLayout.accessoryFrames.first {
             if accessory.width >= botBadgeWidth {
                 drawBotBadge(at: nameX + accessory.minX, nameY: nameY, context: context)
             }
-            accessoryIndex += 1
         }
-        if let identity = member.user.primaryGuild,
-           let tagPresentation,
-           nameLayout.accessoryFrames.indices.contains(accessoryIndex)
-        {
-            drawGuildTag(
-                tagPresentation,
-                identity: identity,
-                accessoryFrame: nameLayout.accessoryFrames[accessoryIndex],
-                textX: nameX,
-                nameY: nameY,
-                itemIndex: index,
+        if let tagPresentation, let frame = geometry.serverTagFrame {
+            tagPresentation.draw(
+                in: frame,
+                badgeImage: tagPresentation.identity.badgeURL.flatMap { images[$0] },
+                isHighlighted: hoveredServerTagID == items[index].id
+                    || serverTagCardPresentation?.itemID == items[index].id,
                 context: context
+            )
+            requestImageIfNeeded(
+                url: tagPresentation.identity.badgeURL,
+                index: index,
+                priority: .visible,
+                maximumPixelDimension: 32
             )
         }
         if let activity = prepared.activity,
@@ -588,67 +580,6 @@ extension NativeMemberListCanvasView {
         )
         context.drawPath(using: .eoFill)
         context.restoreGState()
-    }
-
-    func guildTagPresentation(for identity: PrimaryGuildIdentity) -> GuildTagPresentation? {
-        guard let tag = identity.tag else { return nil }
-        let image = identity.badgeURL.flatMap { images[$0] }
-        let line = Self.line(
-            tag,
-            font: .systemFont(ofSize: 11, weight: .bold),
-            color: .labelColor
-        )
-        let iconWidth: CGFloat = image == nil ? 0 : 17
-        return GuildTagPresentation(
-            line: line,
-            width: CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil)) + 10 + iconWidth,
-            iconWidth: iconWidth,
-            image: image
-        )
-    }
-
-    func drawGuildTag(
-        _ presentation: GuildTagPresentation,
-        identity: PrimaryGuildIdentity,
-        accessoryFrame: CGRect,
-        textX: CGFloat,
-        nameY: CGFloat,
-        itemIndex: Int,
-        context: CGContext
-    ) {
-        let badge = CGRect(
-            x: textX + accessoryFrame.minX,
-            y: nameY - 1,
-            width: accessoryFrame.width,
-            height: 17
-        )
-        Self.fillRounded(
-            badge,
-            radius: 5,
-            color: .black.withAlphaComponent(0.32),
-            context: context
-        )
-        if let image = presentation.image, accessoryFrame.width >= 24 {
-            Self.draw(
-                image: image,
-                in: CGRect(x: badge.minX + 5, y: badge.minY + 1.5, width: 14, height: 14),
-                context: context,
-                fills: false
-            )
-        }
-        Self.draw(
-            line: presentation.line,
-            at: CGPoint(x: badge.minX + 5 + presentation.iconWidth, y: badge.minY + 2),
-            context: context
-        )
-        if let badgeURL = identity.badgeURL {
-            requestImageIfNeeded(
-                url: badgeURL,
-                index: itemIndex,
-                priority: .visible,
-                maximumPixelDimension: 32
-            )
-        }
     }
 
     func drawBotBadge(at badgeX: CGFloat, nameY: CGFloat, context: CGContext) {

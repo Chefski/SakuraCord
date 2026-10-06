@@ -439,8 +439,8 @@ struct MemberRow: View {
                                         .foregroundStyle(.white)
                                         .background(.indigo, in: ConcentricRectangle(cornerRadius: 4))
                                 }
-                                if let identity = member.user.primaryGuild, let tag = identity.tag {
-                                    PrimaryGuildTag(identity: identity, tag: tag)
+                                if let identity = member.user.primaryGuild, identity.tag != nil {
+                                    PrimaryGuildTag(identity: identity)
                                 }
                             }
                             if let activity = member.memberListActivityText, !activity.isEmpty {
@@ -667,23 +667,8 @@ struct NameplateBackground: View {
 
 private struct PrimaryGuildTag: View {
     let identity: PrimaryGuildIdentity
-    let tag: String
 
     var body: some View {
-        HStack(spacing: 3) {
-            if let badgeURL = identity.badgeURL {
-                AnimatedRemoteImage(
-                    url: badgeURL,
-                    animates: false,
-                    maximumPixelDimension: 32
-                )
-                .frame(width: 14, height: 14)
-            }
-            Text(tag)
-                .font(.caption.weight(.bold))
-        }
-        .padding(.horizontal, 5)
-        .padding(.vertical, 2)
-        .background(.black.opacity(0.32), in: ConcentricRectangle(cornerRadius: 5))
+        InteractiveProfileServerTag(identity: identity)
     }
 }

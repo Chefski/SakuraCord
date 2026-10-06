@@ -1,23 +1,34 @@
 import SakuraCordModels
 import SwiftUI
 
+nonisolated enum ServerTagAppearance {
+    static let height: CGFloat = 24
+    static let badgeSize: CGFloat = 16
+    static let spacing: CGFloat = 6
+    static let horizontalPadding: CGFloat = 8
+    static let cornerRadius: CGFloat = 8
+    static let backgroundOpacity = 0.025
+    static let highlightedBackgroundOpacity = 0.09
+    static let outlineOpacity = 0.1
+}
+
 struct ProfileServerTag: View {
     let identity: PrimaryGuildIdentity?
     var showsDisclosure = false
     var isHighlighted = false
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
+        HStack(alignment: .firstTextBaseline, spacing: ServerTagAppearance.spacing) {
             if let identity, let tag = identity.tag {
                 Text(tag)
                     .overlay(alignment: .leading) {
                         if let badgeURL = identity.badgeURL {
                             StaticRemoteImage(url: badgeURL, maximumPixelDimension: 32)
-                                .frame(width: 16, height: 16)
-                                .offset(x: -22)
+                                .frame(width: ServerTagAppearance.badgeSize, height: ServerTagAppearance.badgeSize)
+                                .offset(x: -(ServerTagAppearance.badgeSize + ServerTagAppearance.spacing))
                         }
                     }
-                    .padding(.leading, identity.badgeURL == nil ? 0 : 22)
+                    .padding(.leading, identity.badgeURL == nil ? 0 : ServerTagAppearance.badgeSize + ServerTagAppearance.spacing)
             } else {
                 Text("Server Tag", bundle: #bundle).italic().foregroundStyle(.secondary)
             }
@@ -26,10 +37,13 @@ struct ProfileServerTag: View {
             }
         }
         .font(.callout).lineLimit(1)
-        .padding(.horizontal, 8)
-        .frame(height: 24)
-        .background(.primary.opacity(isHighlighted ? 0.09 : 0.025), in: .rect(cornerRadius: 8))
-        .overlay { RoundedRectangle(cornerRadius: 8).strokeBorder(.primary.opacity(0.1)) }
-        .contentShape(.rect(cornerRadius: 8))
+        .padding(.horizontal, ServerTagAppearance.horizontalPadding)
+        .frame(height: ServerTagAppearance.height)
+        .background(
+            .primary.opacity(isHighlighted ? ServerTagAppearance.highlightedBackgroundOpacity : ServerTagAppearance.backgroundOpacity),
+            in: .rect(cornerRadius: ServerTagAppearance.cornerRadius)
+        )
+        .overlay { RoundedRectangle(cornerRadius: ServerTagAppearance.cornerRadius).strokeBorder(.primary.opacity(ServerTagAppearance.outlineOpacity)) }
+        .contentShape(.rect(cornerRadius: ServerTagAppearance.cornerRadius))
     }
 }

@@ -264,6 +264,10 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
     let messageProfilePopoverCoordinator =
         StableAnchoredPopoverPresenter<AnyView>.Coordinator()
     var activeMessageProfilePopoverAnchor: StablePopoverAnchor?
+    let serverTagPopoverCoordinator = StableAnchoredPopoverPresenter<AnyView>.Coordinator()
+    var activeServerTagPopoverAnchor: StablePopoverAnchor?
+    var serverTagCardPresentation: ServerTagCardPresentation?
+
     var componentChoiceOverlay: ComponentChoiceOverlayController?
     var activeComponentChoiceTarget: NativeTimelineComponentSelectTarget?
     let mentionPopoverCoordinator =
@@ -453,6 +457,7 @@ enum NativeTimelineRowPainter {
         isHovered: Bool,
         showsCompactTimestamp: Bool = false,
         isAuthorHovered: Bool = false,
+        isServerTagHovered: Bool = false,
         hoveredMention: NativeTimelineMentionHover? = nil,
         hoveredTextLink: NativeTimelineTextLinkHover? = nil,
         hoveredTextSpoiler: NativeTimelineTextSpoilerHover? = nil,
@@ -526,6 +531,7 @@ enum NativeTimelineRowPainter {
                 isHovered: isHovered,
                 showsCompactTimestamp: showsCompactTimestamp,
                 isAuthorHovered: isAuthorHovered,
+                isServerTagHovered: isServerTagHovered,
                 hoveredMention: hoveredMention,
                 hoveredTextLink: hoveredTextLink,
                 hoveredTextSpoiler: hoveredTextSpoiler,
