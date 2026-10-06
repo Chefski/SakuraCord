@@ -290,11 +290,6 @@ extension NativeTimelineRowPainter {
         let layout = input.layout
         let model = input.model
         let message = row.message
-        let mentionBackgroundColor = layout.bubbleRegion.flatMap { region in
-            region.isOutgoing
-                ? NativeTimelineBubbleDrawing.fillColor(for: region)
-                : nil
-        }
         let textSelection = input.textSelection
         let hoveredMention = input.hoveredMention
         let hoveredTextLink = input.hoveredTextLink
@@ -321,7 +316,7 @@ extension NativeTimelineRowPainter {
                 framesetter: contentFramesetter,
                 in: drawingFrame,
                 model: model,
-                mentionBackgroundColor: mentionBackgroundColor,
+                isOutgoingBubble: layout.bubbleRegion?.isOutgoing == true,
                 selectionRange:
                     textSelection?.itemIdentifier == .message(row.identity)
                         && textSelection?.region == .content

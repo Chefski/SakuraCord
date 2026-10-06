@@ -326,7 +326,7 @@ extension NativeTimelineRowPainter {
         framesetter: CTFramesetter,
         in frame: CGRect,
         model: AppModel?,
-        mentionBackgroundColor: NSColor? = nil,
+        isOutgoingBubble: Bool = false,
         selectionRange: NSRange? = nil,
         hoveredMentionCharacterIndex: Int? = nil,
         hoveredLinkCharacterIndex: Int? = nil,
@@ -373,7 +373,7 @@ extension NativeTimelineRowPainter {
             outerFrame: frame,
             attributedText: drawingValue,
             model: model,
-            mentionBackgroundColor: mentionBackgroundColor,
+            isOutgoingBubble: isOutgoingBubble,
             selectionRange: selectionRange,
             hoveredMentionCharacterIndex: hoveredMentionCharacterIndex
         )
@@ -708,7 +708,7 @@ extension NativeTimelineRowPainter {
         outerFrame: CGRect,
         attributedText: NSAttributedString,
         model: AppModel?,
-        mentionBackgroundColor: NSColor? = nil,
+        isOutgoingBubble: Bool = false,
         selectionRange: NSRange?,
         hoveredMentionCharacterIndex: Int?
     ) {
@@ -722,7 +722,7 @@ extension NativeTimelineRowPainter {
         for draw in draws {
             renderInlineAttachment(
                 draw,
-                mentionBackgroundColor: mentionBackgroundColor,
+                isOutgoingBubble: isOutgoingBubble,
                 hoveredMentionCharacterIndex: hoveredMentionCharacterIndex
             )
         }
@@ -851,7 +851,7 @@ extension NativeTimelineRowPainter {
 
     private static func renderInlineAttachment(
         _ draw: InlineAttachmentDraw,
-        mentionBackgroundColor: NSColor?,
+        isOutgoingBubble: Bool,
         hoveredMentionCharacterIndex: Int?
     ) {
         switch draw {
@@ -862,7 +862,7 @@ extension NativeTimelineRowPainter {
                 presentation,
                 in: frame,
                 isHovered: hoveredMentionCharacterIndex == characterIndex,
-                backgroundColor: mentionBackgroundColor
+                isOutgoingBubble: isOutgoingBubble
             )
         case let .emojiFallback(frame, _):
             text(
@@ -891,31 +891,31 @@ extension NativeTimelineRowPainter {
         _ presentation: MentionPresentation,
         in frame: CGRect,
         isHovered: Bool,
-        backgroundColor: NSColor? = nil
+        isOutgoingBubble: Bool = false
     ) {
-        let color = roleColor(presentation.colorHex) ?? .sakuraCordAccentColor
-        let labelColor = backgroundColor.map {
-            contrastingMentionTextColor(
-                mentionColor: color,
-                isHovered: isHovered,
-                backgroundColor: $0
-            )
-        } ?? color
+        let color: NSColor = isOutgoingBubble
+            ? .white : roleColor(presentation.colorHex) ?? .sakuraCordAccentColor
         let shape = NSBezierPath(
             concentricRoundedRect: frame,
             cornerRadius: 5.5
         )
-        color.withAlphaComponent(
-            NativeTimelineMentionAppearance.backgroundAlpha(
-                isHovered: isHovered
-            )
-        ).setFill()
+        if isOutgoingBubble {
+            // Outgoing message text is white. A black backing at this opacity
+            // keeps its matching mention text readable even on a white accent.
+            NSColor.black.withAlphaComponent(isHovered ? 0.65 : 0.55).setFill()
+        } else {
+            color.withAlphaComponent(
+                NativeTimelineMentionAppearance.backgroundAlpha(isHovered: isHovered)
+            ).setFill()
+        }
         shape.fill()
-        if case .role = presentation.target,
-           SakuraCordAccentColor.usesAccentFallback(
-               forRoleColorHex: presentation.colorHex
-           )
-        {
+        if isOutgoingBubble {
+            // Keep the pill distinct even when the bubble itself is black.
+            color.withAlphaComponent(isHovered ? 0.4 : 0.25).setStroke()
+            shape.lineWidth = 1
+            shape.stroke()
+        } else if case .role = presentation.target,
+                  SakuraCordAccentColor.usesAccentFallback(forRoleColorHex: presentation.colorHex) {
             color.withAlphaComponent(isHovered ? 0.9 : 0.7).setStroke()
             shape.lineWidth = 1
             shape.stroke()
@@ -976,42 +976,8 @@ extension NativeTimelineRowPainter {
                 height: frame.height
             ),
             font: .systemFont(ofSize: 15, weight: .semibold),
-            color: labelColor
+            color: color
         )
-    }
-
-    private static func contrastingMentionTextColor(
-        mentionColor: NSColor,
-        isHovered: Bool,
-        backgroundColor: NSColor
-    ) -> NSColor {
-        guard let mention = mentionColor.usingColorSpace(.deviceRGB),
-              let background = backgroundColor.usingColorSpace(.deviceRGB)
-        else { return .white }
-
-        let alpha = NativeTimelineMentionAppearance.backgroundAlpha(
-            isHovered: isHovered
-        )
-        let red = mention.redComponent * alpha
-            + background.redComponent * (1 - alpha)
-        let green = mention.greenComponent * alpha
-            + background.greenComponent * (1 - alpha)
-        let blue = mention.blueComponent * alpha
-            + background.blueComponent * (1 - alpha)
-        let luminance = 0.2126 * linearSRGB(red)
-            + 0.7152 * linearSRGB(green)
-            + 0.0722 * linearSRGB(blue)
-        let blackContrast = (luminance + 0.05) / 0.05
-        let whiteContrast = 1.05 / (luminance + 0.05)
-        return whiteContrast >= blackContrast ? .white : .black
-    }
-
-    private static func linearSRGB(_ component: CGFloat) -> CGFloat {
-        let component = min(max(component, 0), 1)
-        if component <= 0.04045 {
-            return component / 12.92
-        }
-        return pow((component + 0.055) / 1.055, 2.4)
     }
 
     static func inlineEmojiImage(
