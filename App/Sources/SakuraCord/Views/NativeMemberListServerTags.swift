@@ -50,7 +50,7 @@ extension NativeMemberListCanvasView {
             let nameY = prepared.activity == nil ? row.minY + 13 : row.minY + 5
             tagFrame = CGRect(
                 x: nameX + layout.accessoryFrames[tagIndex].minX,
-                y: nameY - 4,
+                y: nameY + 8 - NativeServerTagPresentation.height / 2,
                 width: tag.width,
                 height: NativeServerTagPresentation.height
             )

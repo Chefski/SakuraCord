@@ -68,7 +68,7 @@ nonisolated struct NativeServerTagPresentation: @unchecked Sendable {
     private var badgeInset: CGFloat { identity.badgeURL == nil ? 0 : ServerTagAppearance.badgeSize + ServerTagAppearance.spacing }
     private var textInset: CGFloat { ServerTagAppearance.horizontalPadding + badgeInset }
 
-    init?(identity: PrimaryGuildIdentity, font: NSFont = .preferredFont(forTextStyle: .callout)) {
+    init?(identity: PrimaryGuildIdentity, font: NSFont = .systemFont(ofSize: ServerTagAppearance.fontSize)) {
         guard let tag = identity.tag, !tag.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         self.identity = identity
         self.font = font
@@ -85,7 +85,7 @@ nonisolated struct NativeServerTagPresentation: @unchecked Sendable {
     }
 
     func fitting(maximumWidth: CGFloat) -> Self? {
-        guard maximumWidth >= (identity.badgeURL == nil ? 30 : 52) else { return nil }
+        guard maximumWidth >= textInset + ServerTagAppearance.horizontalPadding + 14 else { return nil }
         return maximumWidth >= width ? self : Self(identity: identity, font: font, maximumWidth: maximumWidth)
     }
 

@@ -2,11 +2,12 @@ import SakuraCordModels
 import SwiftUI
 
 nonisolated enum ServerTagAppearance {
-    static let height: CGFloat = 24
-    static let badgeSize: CGFloat = 16
-    static let spacing: CGFloat = 6
-    static let horizontalPadding: CGFloat = 8
-    static let cornerRadius: CGFloat = 8
+    static let height: CGFloat = 20
+    static let badgeSize: CGFloat = 14
+    static let fontSize: CGFloat = 12
+    static let spacing: CGFloat = 4
+    static let horizontalPadding: CGFloat = 6
+    static let cornerRadius: CGFloat = 6
     static let backgroundOpacity = 0.025
     static let highlightedBackgroundOpacity = 0.09
     static let outlineOpacity = 0.1
@@ -36,7 +37,7 @@ struct ProfileServerTag: View {
                 Image(systemName: "chevron.down").font(.caption2)
             }
         }
-        .font(.callout).lineLimit(1)
+        .font(.system(size: ServerTagAppearance.fontSize)).lineLimit(1)
         .padding(.horizontal, ServerTagAppearance.horizontalPadding)
         .frame(height: ServerTagAppearance.height)
         .background(
