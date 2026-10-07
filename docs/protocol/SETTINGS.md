@@ -71,8 +71,24 @@ menu item, `canManageUser`, the friend-nickname modal, menu and request,
 RelationshipStore, and name resolution. The public
 [Modify Guild Member](https://docs.discord.com/developers/resources/guild#modify-guild-member)
 route corroborates the member request. Pinned Paicord declares the same
-relationship PATCH without a UI; Swiftcord v1 has no equivalent. No live
-nickname mutation was performed.
+relationship PATCH without a UI; Swiftcord v1 has no equivalent. Server-member
+nickname mutations remain source-corroborated rather than live-verified.
+
+A live official-client capture on 7 October 2026 (desktop 0.0.411,
+`web.d3978f1210c00a8f.js`) confirmed friend Save and Reset both use
+`PATCH /api/v9/users/@me/relationships/{user}` with a string and explicit `null`,
+respectively. Both returned empty `204` responses and corresponding
+`RELATIONSHIP_UPDATE` events with `type: 1` and the saved string or `null`.
+The DM title updated without reloading and the original unset nickname was
+restored. The event arrived before the HTTP response for Save and after it for
+Reset, so reconciliation must handle either order.
+
+A second pass used the same account in official Discord and SakuraCord. An
+official Save updated SakuraCord's existing DM row without a reload; a Reset
+saved in SakuraCord produced `RELATIONSHIP_UPDATE` with `nickname: null` in the
+independent official session and restored its DM title without a reload. Native
+timeline presentation must also be invalidated when relationship nicknames
+change, so cached message author labels follow the live value.
 
 ## Protobuf preservation
 

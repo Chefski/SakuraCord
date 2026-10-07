@@ -1344,6 +1344,9 @@ extension AppModel {
         currentUser = snapshot?.currentUser
         refreshServerRailDirectMessages(replacing: previous)
         refreshSelectedGuildPresentation()
+        if previous?.relationshipNicknamesByUserID != snapshot?.relationshipNicknamesByUserID {
+            invalidateTimelinePresentation()
+        }
         if previous?.currentUser != snapshot?.currentUser {
             refreshVoiceSidebarPresentation()
         }
