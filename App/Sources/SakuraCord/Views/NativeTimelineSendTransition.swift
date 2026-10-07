@@ -781,11 +781,11 @@ extension NativeTimelineCanvasView {
         !sendTransitions.isEmpty && sendTransitions.contains { $0.identifier == identifier }
     }
 
-    /// Ends every transition early, for example when scrolling begins or
-    /// the conversation changes; those paths reconcile media themselves.
-    func finishSendTransitions() {
+    /// Ends every transition early. Scrolling and conversation changes
+    /// reconcile media themselves; appearance changes must restore it here.
+    func finishSendTransitions(reconcilesHeldMedia: Bool = false) {
         for transition in sendTransitions {
-            finishSendTransition(transition, reconcilesHeldMedia: false)
+            finishSendTransition(transition, reconcilesHeldMedia: reconcilesHeldMedia)
         }
     }
 
@@ -823,6 +823,10 @@ extension NativeTimelineCanvasView {
         layer?.removeAnimation(forKey: Self.transcriptGlideKey)
     }
 
+    var isTranscriptGliding: Bool {
+        transcriptGlide.map { CACurrentMediaTime() < $0.endsAt } ?? false
+    }
+
     /// The destination bubble stays transparent while its copy is in flight.
     func clearSendTransitionBubble(
         for item: NativeMessageTimelineItem,
@@ -845,8 +849,8 @@ extension NativeTimelineCanvasView {
     }
 
     /// Plays the earlier rows' jump back as a glide on the bubble's vertical
-    /// curve. The animation is additive and presentation-only, so hit testing
-    /// and scroll state already describe the final positions.
+    /// curve. Pointer actions wait until this presentation-only animation
+    /// reaches the final positions used by hit testing.
     func glideTranscript(by shift: CGFloat, holdingFor hold: CFTimeInterval = 0) {
         guard abs(shift) >= 0.5, let layer else { return }
         typealias Timing = NativeTimelineSendTransitionTiming
@@ -879,6 +883,12 @@ extension NativeTimelineCanvasView {
             return
         }
         transcriptGlide = NativeTimelineTranscriptGlide(offset: translation, beganAt: now, hold: hold)
+        // A press begun before the rows moved must not activate on release.
+        pointer.clearHoverAndPressTargets()
+        pressedPollTarget = nil
+        hoveredPollTarget = nil
+        textSelectionGesture = nil
+        removeActionCapsule()
         // Rows outside the viewport become visible during the glide.
         setNeedsDisplay(visible.insetBy(dx: 0, dy: -abs(translation)))
         let animation: CAAnimation

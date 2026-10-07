@@ -108,7 +108,7 @@ final class ComposerSendTransitionAnchor {
         else { return nil }
         let type = UTType(filenameExtension: attachment.url.pathExtension)
         let isMedia = type?.conforms(to: .image) == true
-            || type?.conforms(to: .audiovisualContent) == true
+            || type?.conforms(to: .movie) == true
         let image: NSImage
         let bounds: CGRect
         if isMedia {

@@ -10,6 +10,13 @@ import SakuraCordModels
 import SwiftUI
 
 extension NativeTimelineCanvasView {
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let hit = super.hitTest(point)
+        // Subview controls share the canvas's presentation transform, but
+        // AppKit hit testing uses their unanimated frames as well.
+        return isTranscriptGliding && hit != nil ? self : hit
+    }
+
     override func updateTrackingAreas() {
         guard !suppressesHoverPresentation,
               !overlayBlocksInteractions
@@ -354,7 +361,7 @@ extension NativeTimelineCanvasView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        guard !overlayBlocksInteractions else { return }
+        guard !overlayBlocksInteractions, !isTranscriptGliding else { return }
         window?.makeFirstResponder(self)
         guard event.buttonNumber == 0 else { return }
         let point = convert(event.locationInWindow, from: nil)
@@ -438,6 +445,7 @@ extension NativeTimelineCanvasView {
     override func quickLook(with event: NSEvent) {
         guard WindowModalCoordinator.allowsInput(for: self),
               !overlayBlocksInteractions,
+              !isTranscriptGliding,
               editingMessageID == nil
         else {
             super.quickLook(with: event)
@@ -565,7 +573,7 @@ extension NativeTimelineCanvasView {
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard !overlayBlocksInteractions else { return }
+        guard !overlayBlocksInteractions, !isTranscriptGliding else { return }
         if pressedPollTarget != nil {
             setHoveredPollTarget(pollPointerHit(at: convert(event.locationInWindow, from: nil))?.target)
             return
@@ -617,7 +625,7 @@ extension NativeTimelineCanvasView {
     }
 
     override func mouseUp(with event: NSEvent) {
-        guard !overlayBlocksInteractions else { return }
+        guard !overlayBlocksInteractions, !isTranscriptGliding else { return }
         if let pressed = pressedPollTarget {
             pressedPollTarget = nil
             setNeedsDisplay(visibleRect)
@@ -1085,6 +1093,7 @@ extension NativeTimelineCanvasView {
             guard let self,
                   event.window === self.window,
                   !self.overlayBlocksInteractions,
+                  !self.isTranscriptGliding,
                   self.editingMessageID == nil
             else { return event }
             let point = self.convert(event.locationInWindow, from: nil)

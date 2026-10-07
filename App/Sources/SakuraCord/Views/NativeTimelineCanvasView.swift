@@ -398,7 +398,7 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         // In-flight copies were rendered for the previous appearance.
-        finishSendTransitions()
+        finishSendTransitions(reconcilesHeldMedia: true)
         invalidatePresentationCaches()
         reconcileBeginningSelectionOverlay()
     }
