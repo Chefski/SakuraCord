@@ -373,6 +373,12 @@ extension NativeTimelineCanvasView {
                 continue
             }
             let identifier = items[index].identifier
+            // A message still flying in from the composer gets its media
+            // once it lands.
+            if hidesRowForSendTransition(identifier) {
+                index += 1
+                continue
+            }
             let keys = animatedMediaKeys(
                 for: row,
                 layout: layouts[index]

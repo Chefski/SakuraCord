@@ -197,7 +197,7 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
     var historySkeletonShimmerTask: Task<Void, Never>?
     var messageJumpHighlight: MessageJumpHighlight?
     var messageJumpHighlightTask: Task<Void, Never>?
-    var sendTransition: NativeTimelineSendTransition?
+    var sendTransitions: [NativeTimelineSendTransition] = []
     var transcriptGlide: NativeTimelineTranscriptGlide?
     var minimumHeight: CGFloat = 1
     var bottomSpacerHeight: CGFloat = 0
@@ -397,6 +397,8 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
+        // In-flight copies were rendered for the previous appearance.
+        finishSendTransitions()
         invalidatePresentationCaches()
         reconcileBeginningSelectionOverlay()
     }
@@ -413,8 +415,10 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
             visibleMediaRequestTask?.cancel()
             historySkeletonShimmerTask?.cancel()
             messageJumpHighlightTask?.cancel()
-            sendTransition?.finishTask?.cancel()
-            sendTransition?.overlay.removeFromSuperview()
+            for transition in sendTransitions {
+                transition.finishTask?.cancel()
+                transition.overlay.removeFromSuperview()
+            }
             cancelReactionPreviewLoads()
             NativeTimelineMediaStore.shared.removeStaticRequests(
                 owner: visibleMediaPinOwner

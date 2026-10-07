@@ -441,6 +441,9 @@ struct ComposerView: View {
         }
         .onDisappear {
             composerDropInteraction?.clear(destination: conversation)
+            if let channelID = sendTransitionAnchor.channelID {
+                model.timelineSendTransitionStore.discard(channelID)
+            }
         }
         .task(id: composerPresentationID) {
             sendTransitionAnchor.channelID = activeConversationID
@@ -735,6 +738,10 @@ struct ComposerView: View {
                 await model.submitComposerMessage(attachments: staged)
             case .thread:
                 await model.submitThreadComposerMessage(attachments: staged)
+            }
+            if !result.consumedComposer, let conversationID {
+                // Nothing will arrive to take the held message over.
+                model.timelineSendTransitionStore.discard(conversationID)
             }
             if !keepsCreationDraft, !result.consumedComposer, activeConversationID == conversationID {
                 model.restoreComposerAttachments(staged, to: conversation)
@@ -1286,8 +1293,11 @@ private extension ComposerView {
         channelID: ChannelID,
         attachments: [ForumPostAttachment]
     ) {
+        // A send from older history first loads the newest messages, so
+        // the field stays editable and nothing arrives to take it over yet.
         guard model.appearanceSettings.messageAppearance == .bubbles,
               !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+              conversation == .thread || !model.hasMoreLaterMessages,
               let source = sendTransitionAnchor.source(
                   channelID: channelID,
                   content: draft.trimmingCharacters(in: .whitespacesAndNewlines),

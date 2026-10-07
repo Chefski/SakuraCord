@@ -27,7 +27,9 @@ final class ComposerSendTransitionAnchor {
     }
 
     func recordAttachmentThumbnail(_ image: NSImage, for id: UUID) {
-        preview(for: id).thumbnail = image
+        // A thumbnail can finish loading after its tile was removed.
+        guard let preview = attachmentPreviews[id], preview.view != nil else { return }
+        preview.thumbnail = image
     }
 
     func removeAttachmentPreview(_ view: NSView, for id: UUID) {

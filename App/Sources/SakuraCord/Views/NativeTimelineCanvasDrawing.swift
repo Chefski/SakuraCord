@@ -282,7 +282,8 @@ extension NativeTimelineCanvasView {
     /// not synchronously raster every visible CoreText row again.
     func invalidateConversationTransientCaches() {
         cancelMessageJumpHighlight()
-        finishSendTransition()
+        finishSendTransitions()
+        cancelTranscriptGlide()
         animatedMediaReconcileTask?.cancel()
         animatedMediaReconcileTask = nil
         visibleMediaRequestTask?.cancel()
@@ -319,7 +320,7 @@ extension NativeTimelineCanvasView {
         // into scrolling, never for each tick.
         guard !suppressesHoverPresentation else { return }
         suppressesHoverPresentation = true
-        finishSendTransition()
+        finishSendTransitions()
         // Pause native playback once without destroying its presentation.
         // Recreating AVPlayer and Lottie overlays on each reconciliation
         // produced the benchmark's regular FAST/pause cadence, while removing
@@ -529,7 +530,8 @@ extension NativeTimelineCanvasView {
 
     override func viewWillMove(toWindow newWindow: NSWindow?) {
         if newWindow == nil {
-            finishSendTransition()
+            finishSendTransitions()
+            cancelTranscriptGlide()
             cancelReactionPreviewLoads()
             mediaInvalidationTask?.cancel()
             mediaInvalidationTask = nil

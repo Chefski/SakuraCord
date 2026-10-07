@@ -58,6 +58,12 @@ final class NativeTimelineSendTransitionStore {
     private var localSends: [String: TimeInterval] = [:]
 
     func registerComposer(_ anchor: ComposerSendTransitionAnchor) {
+        // Text held for a conversation the composer just left must not
+        // linger over the next one.
+        for (channelID, composer) in composers
+        where composer.anchor === anchor && channelID != anchor.channelID {
+            discard(channelID)
+        }
         composers = composers.filter {
             $0.value.anchor != nil && $0.value.anchor !== anchor
         }
@@ -548,6 +554,10 @@ struct NativeTimelineTranscriptGlide {
     /// How long the rows stay put before gliding.
     let hold: CFTimeInterval
 
+    var endsAt: CFTimeInterval {
+        beganAt + hold + NativeTimelineSendTransitionTiming.duration
+    }
+
     func remaining(at time: CFTimeInterval) -> CGFloat {
         let fraction = (time - beganAt - hold) / NativeTimelineSendTransitionTiming.duration
         return offset * CGFloat(1 - NativeTimelineSendTransitionTiming.verticalProgress(at: fraction))
@@ -592,7 +602,6 @@ extension NativeTimelineCanvasView {
         rowIndex index: Int,
         transcriptShift: CGFloat
     ) {
-        finishSendTransition()
         guard let window,
               let (geometry, bubbleInWindow) = sendTransitionGeometry(
                   from: pending, rowIndex: index, in: window
@@ -609,10 +618,10 @@ extension NativeTimelineCanvasView {
             overlay: pending.overlay,
             omittedAttachments: Set(geometry.pieces.filter { !$0.fadesOut }.map(\.index)),
             bubbleFrameInWindow: bubbleInWindow,
-            endUptime: ProcessInfo.processInfo.systemUptime
-                + NativeTimelineSendTransitionTiming.duration
+            endUptime: CACurrentMediaTime() + NativeTimelineSendTransitionTiming.duration
         )
-        sendTransition = transition
+        // Earlier sends keep flying; each hides only its own row.
+        sendTransitions.append(transition)
         setNeedsDisplay(rowFrame(at: index))
         glideTranscript(by: transcriptShift)
         displayIfNeeded()
@@ -705,15 +714,20 @@ extension NativeTimelineCanvasView {
         return (geometry, bubbleInWindow)
     }
 
-    /// Keeps an in-flight bubble aimed at its row after a later timeline
-    /// update moves it, and ends the transition if the row changed shape.
-    func reconcileSendTransition() {
-        guard let transition = sendTransition else { return }
+    /// Keeps in-flight bubbles aimed at their rows after a later timeline
+    /// update moves them, and ends a transition whose row changed shape.
+    func reconcileSendTransitions() {
+        for transition in sendTransitions {
+            reconcileSendTransition(transition)
+        }
+    }
+
+    private func reconcileSendTransition(_ transition: NativeTimelineSendTransition) {
         guard let index = items.lastIndex(where: { $0.identifier == transition.identifier }),
               layouts.indices.contains(index),
               let region = layouts[index].bubbleRegion
         else {
-            finishSendTransition()
+            finishSendTransition(transition)
             return
         }
         let rowFrame = rowFrame(at: index)
@@ -723,15 +737,16 @@ extension NativeTimelineCanvasView {
               abs(bubbleInWindow.height - previous.height) < 0.5
         else {
             // The copy no longer matches its row, so let it dissolve there.
-            finishSendTransition(dissolving: true)
+            finishSendTransition(transition, dissolving: true)
             return
         }
         let delta = CGPoint(x: bubbleInWindow.minX - previous.minX, y: bubbleInWindow.minY - previous.minY)
         guard abs(delta.x) >= 0.5 || abs(delta.y) >= 0.5 else { return }
         transition.bubbleFrameInWindow = bubbleInWindow
-        let now = ProcessInfo.processInfo.systemUptime
-        let duration = max(0.2, transition.endUptime - now)
-        transition.endUptime = max(transition.endUptime, now + duration)
+        // Rows moved by the same update glide for a full duration from now;
+        // the copy follows on that timing so both settle together.
+        let duration = NativeTimelineSendTransitionTiming.duration
+        transition.endUptime = max(transition.endUptime, CACurrentMediaTime() + duration)
         transition.overlay.retarget(by: delta, duration: duration)
         scheduleSendTransitionFinish(transition)
     }
@@ -741,23 +756,40 @@ extension NativeTimelineCanvasView {
     func refreshSendTransitionContent(
         for identifiers: Set<NativeMessageTimelineItem.Identifier>
     ) {
-        guard let transition = sendTransition,
-              identifiers.contains(transition.identifier),
-              let index = items.lastIndex(where: { $0.identifier == transition.identifier }),
-              layouts.indices.contains(index),
-              let content = sendTransitionContent(
-                  item: items[index],
-                  layout: layouts[index],
-                  rowFrame: rowFrame(at: index),
-                  omittingAttachments: transition.omittedAttachments
-              )
-        else { return }
-        transition.overlay.updateContent(content.image)
+        for transition in sendTransitions where identifiers.contains(transition.identifier) {
+            guard let index = items.lastIndex(where: { $0.identifier == transition.identifier }),
+                  layouts.indices.contains(index),
+                  let content = sendTransitionContent(
+                      item: items[index],
+                      layout: layouts[index],
+                      rowFrame: rowFrame(at: index),
+                      omittingAttachments: transition.omittedAttachments
+                  )
+            else { continue }
+            transition.overlay.updateContent(content.image)
+        }
     }
 
-    func finishSendTransition(dissolving: Bool = false) {
-        guard let transition = sendTransition else { return }
-        sendTransition = nil
+    /// Whether a message's row is hidden while its copy is in flight.
+    func hidesRowForSendTransition(_ identifier: NativeMessageTimelineItem.Identifier) -> Bool {
+        !sendTransitions.isEmpty && sendTransitions.contains { $0.identifier == identifier }
+    }
+
+    /// Ends every transition early, for example when scrolling begins or
+    /// the conversation changes; those paths reconcile media themselves.
+    func finishSendTransitions() {
+        for transition in sendTransitions {
+            finishSendTransition(transition, reconcilesHeldMedia: false)
+        }
+    }
+
+    func finishSendTransition(
+        _ transition: NativeTimelineSendTransition,
+        dissolving: Bool = false,
+        reconcilesHeldMedia: Bool = true
+    ) {
+        guard let position = sendTransitions.firstIndex(where: { $0 === transition }) else { return }
+        sendTransitions.remove(at: position)
         transition.finishTask?.cancel()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -771,6 +803,18 @@ extension NativeTimelineCanvasView {
             transition.overlay.removeFromSuperview()
         }
         CATransaction.commit()
+        guard reconcilesHeldMedia else { return }
+        // The landed row's animated media, videos and spoiler covers were
+        // held back while its copy was in flight.
+        reconcileAnimatedMedia()
+        startVisibleInlineVideosImmediately()
+        reconcileSpoilerOverlays()
+        reconcileActivityIndicators()
+    }
+
+    func cancelTranscriptGlide() {
+        transcriptGlide = nil
+        layer?.removeAnimation(forKey: Self.transcriptGlideKey)
     }
 
     /// The destination bubble stays transparent while its copy is in flight.
@@ -779,7 +823,7 @@ extension NativeTimelineCanvasView {
         layout: NativeTimelineRowLayout,
         rowFrame: CGRect
     ) {
-        guard sendTransition?.identifier == item.identifier,
+        guard hidesRowForSendTransition(item.identifier),
               let region = layout.bubbleRegion,
               let context = NSGraphicsContext.current?.cgContext
         else { return }
@@ -806,25 +850,59 @@ extension NativeTimelineCanvasView {
         // distance.
         let now = CACurrentMediaTime()
         // Layer geometry follows the superview's coordinate space.
-        let translation = (transcriptGlide?.remaining(at: now) ?? 0)
-            + (superview?.isFlipped == true ? shift : -shift)
+        let isFlippedSuperlayer = superview?.isFlipped == true
+        var translation = (transcriptGlide?.remaining(at: now) ?? 0)
+            + (isFlippedSuperlayer ? shift : -shift)
+        // Only rows inside the bounded canvas backing can be drawn, so never
+        // glide further than the backing extends past the viewport, unless
+        // that edge is the document's own, which is empty beyond it.
+        let visible = visibleRect
+        let documentHeight = max(displayedContentHeight, minimumHeight)
+        // Positive moves the drawn rows down, exposing rows above the viewport.
+        let displacement = isFlippedSuperlayer ? translation : -translation
+        let coverage = if displacement > 0 {
+            bounds.minY <= 0.5 ? CGFloat.greatestFiniteMagnitude : visible.minY - bounds.minY
+        } else {
+            bounds.maxY >= documentHeight - 0.5 ? CGFloat.greatestFiniteMagnitude : bounds.maxY - visible.maxY
+        }
+        if abs(displacement) > coverage {
+            translation = (translation < 0 ? -1 : 1) * max(0, coverage)
+        }
+        guard abs(translation) >= 0.5 else {
+            cancelTranscriptGlide()
+            return
+        }
         transcriptGlide = NativeTimelineTranscriptGlide(offset: translation, beganAt: now, hold: hold)
         // Rows outside the viewport become visible during the glide.
-        setNeedsDisplay(visibleRect.insetBy(dx: 0, dy: -abs(translation)))
-        let animation = CAKeyframeAnimation(keyPath: "transform.translation.y")
-        animation.values = [translation, translation, 0]
-        animation.keyTimes = [0, NSNumber(value: hold / (hold + Timing.duration)), 1]
-        animation.timingFunctions = [CAMediaTimingFunction(name: .linear), Timing.vertical]
+        setNeedsDisplay(visible.insetBy(dx: 0, dy: -abs(translation)))
+        let animation: CAAnimation
+        if hold > 0 {
+            let held = CAKeyframeAnimation(keyPath: "transform.translation.y")
+            held.values = [translation, translation, 0]
+            held.keyTimes = [0, NSNumber(value: hold / (hold + Timing.duration)), 1]
+            held.timingFunctions = [CAMediaTimingFunction(name: .linear), Timing.vertical]
+            held.isAdditive = true
+            animation = held
+        } else {
+            let glide = CABasicAnimation(keyPath: "transform.translation.y")
+            glide.fromValue = translation
+            glide.toValue = 0
+            glide.timingFunction = Timing.vertical
+            glide.isAdditive = true
+            animation = glide
+        }
         animation.duration = hold + Timing.duration
-        animation.isAdditive = true
         layer.add(animation, forKey: Self.transcriptGlideKey)
     }
 
     private func scheduleSendTransitionFinish(_ transition: NativeTimelineSendTransition) {
         transition.finishTask?.cancel()
         transition.finishTask = Task { @MainActor [weak self, weak transition] in
-            while let transition {
-                let remaining = transition.endUptime - ProcessInfo.processInfo.systemUptime
+            // Hand off only once the transcript has also settled, so the
+            // landed row cannot appear offset by a glide still in progress.
+            while let transition, let self {
+                let settles = max(transition.endUptime, self.transcriptGlide?.endsAt ?? 0)
+                let remaining = settles - CACurrentMediaTime()
                 guard remaining > 0 else { break }
                 do {
                     try await Task.sleep(for: .milliseconds(Int(ceil(remaining * 1_000))))
@@ -832,11 +910,12 @@ extension NativeTimelineCanvasView {
                     return
                 }
             }
-            let mediaDeadline = ProcessInfo.processInfo.systemUptime
+            let mediaDeadline = CACurrentMediaTime()
                 + NativeTimelineSendTransitionTiming.mediaWaitLimit
-            while let self, let transition, self.sendTransition === transition,
+            while let self, let transition,
+                  self.sendTransitions.contains(where: { $0 === transition }),
                   self.sendTransitionAwaitsMedia(transition),
-                  ProcessInfo.processInfo.systemUptime < mediaDeadline
+                  CACurrentMediaTime() < mediaDeadline
             {
                 do {
                     try await Task.sleep(for: .milliseconds(30))
@@ -844,8 +923,8 @@ extension NativeTimelineCanvasView {
                     return
                 }
             }
-            guard let self, let transition, self.sendTransition === transition else { return }
-            self.finishSendTransition()
+            guard let self, let transition else { return }
+            self.finishSendTransition(transition)
         }
     }
 
@@ -979,7 +1058,7 @@ extension NativeMessageTimelineCoordinator {
               let canvas
         else { return nil }
         let store = parent.model.timelineSendTransitionStore
-        let isSending = canvas.sendTransition != nil || store.hasPendingSource(for: channelID)
+        let isSending = !canvas.sendTransitions.isEmpty || store.hasPendingSource(for: channelID)
         guard isSending || store.hasComposer(for: channelID) else { return nil }
         let index = items.lastIndex(where: { $0.messageID != nil })
         return SendTransitionTranscriptAnchor(
@@ -996,7 +1075,7 @@ extension NativeMessageTimelineCoordinator {
         transcriptAnchor anchor: SendTransitionTranscriptAnchor?
     ) {
         guard let canvas else { return }
-        canvas.reconcileSendTransition()
+        canvas.reconcileSendTransitions()
         guard let anchor,
               !preparation.conversationChanged,
               let channelID = parent.conversation.sendTransitionChannelID
@@ -1018,10 +1097,11 @@ extension NativeMessageTimelineCoordinator {
             // The composer resizing as it clears moves the transcript too.
             // Until the message arrives, hold the rows where they were so
             // they move once, together with the bubble.
+            let holdsForMessage = canvas.sendTransitions.isEmpty
+                && preparation.bottomInsetChanged
             canvas.glideTranscript(
                 by: shift(),
-                holdingFor: canvas.sendTransition == nil
-                    ? NativeTimelineSendTransitionStore.lifetime : 0
+                holdingFor: holdsForMessage ? NativeTimelineSendTransitionStore.lifetime : 0
             )
         }
     }
@@ -1047,9 +1127,11 @@ extension NativeMessageTimelineCoordinator {
             if let pending = store.consume(for: row.message) {
                 return (index, pending)
             }
-            guard let pending = store.fieldPending(for: channelID, in: canvas?.window)
+            // A captured draft waits for its own row; another send arriving
+            // first appears without the transition.
+            guard !store.hasPendingSource(for: channelID),
+                  let pending = store.fieldPending(for: channelID, in: canvas?.window)
             else { continue }
-            store.discard(channelID)
             return (index, pending)
         }
         return nil
