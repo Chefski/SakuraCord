@@ -622,6 +622,12 @@ extension NativeTimelineCanvasView {
         )
         // Earlier sends keep flying; each hides only its own row.
         sendTransitions.append(transition)
+        // The canvas update already installed media at the destination.
+        // Remove those overlays now that their row is held back for flight.
+        reconcileAnimatedMedia()
+        startVisibleInlineVideosImmediately()
+        reconcileSpoilerOverlays()
+        reconcileActivityIndicators()
         setNeedsDisplay(rowFrame(at: index))
         glideTranscript(by: transcriptShift)
         displayIfNeeded()
