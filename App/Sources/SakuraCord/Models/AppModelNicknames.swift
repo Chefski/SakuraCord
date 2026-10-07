@@ -22,20 +22,21 @@ extension AppModel {
     /// Discord's Change Nickname eligibility for another member: Manage
     /// Nicknames over a member whose highest role is below yours.
     func canChangeNickname(of userID: UserID, in guildID: GuildID) -> Bool {
-        // Without the member's roles the hierarchy is unknown, so offer nothing.
         guard let currentUserID = currentUser?.id, userID != currentUserID,
-              let basis = conversationPermissionBasis(for: guildID),
-              let member = profileMember(userID, in: guildID)
+              let basis = conversationPermissionBasis(for: guildID)
         else { return false }
+        let member = profileMember(userID, in: guildID)
         let context = NicknamePermissionPolicy.Context(
             ownerID: basis.guild.ownerID,
             isOwner: basis.guild.isOwnedByCurrentUser == true,
             permissions: basis.resolvedBasePermissions,
             roleIDs: currentUserRoleIDsByGuild[guildID] ?? Set(profileMember(currentUserID, in: guildID)?.roleIDs ?? []),
-            roles: guildRolesByGuildID[guildID] ?? (guildID == selectedGuildID ? guildRoles : [])
+            roles: guildRolesByGuildID[guildID] ?? (guildID == selectedGuildID ? guildRoles : []),
+            guildID: guildID,
+            currentMember: onboardingMember(in: guildID)
         )
         return NicknamePermissionPolicy.canChangeNickname(
-            of: userID, roleIDs: Set(member.roleIDs.isEmpty ? member.roles.map(\.id) : member.roleIDs), in: context
+            of: userID, roleIDs: Set(member.map { $0.roleIDs.isEmpty ? $0.roles.map(\.id) : $0.roleIDs } ?? []), in: context
         )
     }
 
@@ -150,33 +151,49 @@ nonisolated enum NicknamePermissionPolicy {
         let permissions: UInt64?
         let roleIDs: Set<RoleID>
         let roles: [GuildRole]
+        var guildID: GuildID?
+        var currentMember: Member?
     }
 
     /// Discord's `canManageUser(MANAGE_NICKNAMES)`: never the owner; the owner
     /// manages everyone else; others, administrators included, need a highest
-    /// role above the target's. Unknown ownership or roles offer nothing.
-    static func canChangeNickname(of targetUserID: UserID, roleIDs targetRoleIDs: Set<RoleID>, in context: Context) -> Bool {
-        if context.isOwner { return targetUserID != context.ownerID }
-        guard let ownerID = context.ownerID, targetUserID != ownerID,
-              targetRoleIDs.isSubset(of: context.roles.map(\.id))
-        else { return false }
+    /// role above the target's. Missing role records are ignored, as in Discord.
+    static func canChangeNickname(
+        of targetUserID: UserID, roleIDs targetRoleIDs: Set<RoleID>, in context: Context, now: Date = .now
+    ) -> Bool {
+        guard targetUserID != context.ownerID else { return false }
+        if context.isOwner { return true }
         let permissions = context.permissions ?? 0
-        guard permissions & (DiscordPermissionBits.administrator | DiscordPermissionBits.manageNicknames) != 0
-        else { return false }
+        let isAdministrator = permissions & DiscordPermissionBits.administrator != 0
+        guard isAdministrator || permissions & DiscordPermissionBits.manageNicknames != 0 else { return false }
+        let member = context.currentMember
+        let flags = member?.flags ?? 0
+        // Discord restricts pending members and guests even with Administrator.
+        guard member?.isPending != true, flags & 16 == 0 else { return false }
+        // AutoMod quarantine and timeout masks apply only to non-administrators.
+        if !isAdministrator {
+            guard flags & (128 | 256 | 1024) == 0,
+                  member?.communicationDisabledUntil.map({ $0 > now }) != true else { return false }
+        }
         return isRole(
-            highestRole(context.roleIDs, in: context.roles),
-            higherThan: highestRole(targetRoleIDs, in: context.roles)
+            highestRole(context.roleIDs, in: context),
+            higherThan: highestRole(targetRoleIDs, in: context),
+            guildID: context.guildID
         )
     }
 
-    private static func highestRole(_ roleIDs: Set<RoleID>, in roles: [GuildRole]) -> GuildRole? {
-        roles.filter { roleIDs.contains($0.id) }.max { isRole($1, higherThan: $0) }
+    private static func highestRole(_ roleIDs: Set<RoleID>, in context: Context) -> GuildRole? {
+        context.roles.filter { roleIDs.contains($0.id) }.max {
+            isRole($1, higherThan: $0, guildID: context.guildID)
+        }
     }
 
-    /// Discord orders roles by position, then by the older (lower) ID.
-    private static func isRole(_ lhs: GuildRole?, higherThan rhs: GuildRole?) -> Bool {
+    /// Discord places @everyone last, then orders by position and older role ID.
+    private static func isRole(_ lhs: GuildRole?, higherThan rhs: GuildRole?, guildID: GuildID?) -> Bool {
         guard let lhs else { return false }
         guard let rhs else { return true }
+        if lhs.id.rawValue == guildID?.rawValue { return false }
+        if rhs.id.rawValue == guildID?.rawValue { return true }
         if lhs.position != rhs.position { return lhs.position > rhs.position }
         return lhs.id.rawValue < rhs.id.rawValue
     }

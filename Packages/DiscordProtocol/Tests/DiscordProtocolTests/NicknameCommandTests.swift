@@ -182,6 +182,36 @@ struct NicknameCommandTests {
         await provider.disconnect()
     }
 
+    @Test func `member timeouts hydrate on READY and distinguish omitted updates from reset`() async throws {
+        let provider = await makeProvider()
+        let guildID = GuildID(rawValue: 100)
+        let expiry = "2030-01-01T00:00:00.000Z"
+        let user = JSONValue.object(["id": .string("1"), "username": .string("fixture")])
+        let merged = try JSONValueDecoder().decode(ReadyMergedMemberDTO.self, from: .object([
+            "user_id": .string("1"), "roles": .array([]), "communication_disabled_until": .string(expiry),
+        ]))
+        let dto = try #require(merged.hydrated(using: ["1": JSONValueDecoder().decode(UserDTO.self, from: user)]))
+        #expect(try dto.domain(currentUserID: nil, currentStatus: .offline).communicationDisabledUntil == DiscordDate.parse(expiry))
+
+        var fields: [String: JSONValue] = [
+            "guild_id": .string("100"), "user": user, "roles": .array([]),
+            "flags": .number(128), "pending": .bool(true), "communication_disabled_until": .string(expiry),
+        ]
+        await provider.handleGatewayDispatch(name: "GUILD_MEMBER_UPDATE", body: .object(fields))
+        #expect(await provider.cachedMembers[guildID]?.first?.communicationDisabledUntil == DiscordDate.parse(expiry))
+        #expect(await provider.cachedMembers[guildID]?.first?.flags == 128)
+        #expect(await provider.cachedMembers[guildID]?.first?.isPending == true)
+        fields.removeValue(forKey: "communication_disabled_until")
+        fields["nick"] = .string("New name")
+        await provider.handleGatewayDispatch(name: "GUILD_MEMBER_UPDATE", body: .object(fields))
+        #expect(await provider.cachedMembers[guildID]?.first?.communicationDisabledUntil == DiscordDate.parse(expiry))
+        fields["communication_disabled_until"] = .null
+        await provider.handleGatewayDispatch(name: "GUILD_MEMBER_UPDATE", body: .object(fields))
+        #expect(await provider.cachedMembers[guildID]?.first?.communicationDisabledUntil == nil)
+        #expect(NicknameURLProtocol.requests.withLock { $0.isEmpty })
+        await provider.disconnect()
+    }
+
     private func relationship(userID: String = "2", type: Int, nickname: JSONValue?) -> JSONValue {
         var body: [String: JSONValue] = ["id": .string(userID), "type": .number(Double(type))]
         if let nickname { body["nickname"] = nickname }

@@ -82,6 +82,8 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
     /// normal guild channel access even when role IDs are already present.
     public var isPending: Bool?
     public var flags: UInt64?
+    /// Discord server timeout expiry; nil means no active timeout is recorded.
+    public var communicationDisabledUntil: Date?
 
     public var requiresOnboarding: Bool {
         guard let flags else { return false }
@@ -123,6 +125,7 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
         isMobileOnly: Bool = false,
         isPending: Bool? = nil,
         flags: UInt64? = nil,
+        communicationDisabledUntil: Date? = nil,
         joinedAt: Date? = nil,
         memberListIndex: Int? = nil
     ) {
@@ -144,6 +147,7 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
         self.isMobileOnly = isMobileOnly
         self.isPending = isPending
         self.flags = flags
+        self.communicationDisabledUntil = communicationDisabledUntil
         self.joinedAt = joinedAt
         self.memberListIndex = memberListIndex
     }
@@ -167,6 +171,7 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
         isMobileOnly: Bool = false,
         isPending: Bool? = nil,
         flags: UInt64? = nil,
+        communicationDisabledUntil: Date? = nil,
         joinedAt: Date? = nil,
         memberListIndex: Int? = nil
     ) {
@@ -188,6 +193,7 @@ public struct Member: Identifiable, Codable, Hashable, Sendable {
         self.isMobileOnly = isMobileOnly
         self.isPending = isPending
         self.flags = flags
+        self.communicationDisabledUntil = communicationDisabledUntil
         self.joinedAt = joinedAt
         self.memberListIndex = memberListIndex
     }

@@ -38,8 +38,12 @@ offers **Edit Per-server Profile**, which opens Profiles on that server's scope.
 For another member, **Change Nickname** follows Discord's `canManageUser`:
 never the guild owner; the owner manages everyone else; anyone else needs
 Manage Nicknames (or Administrator) and a highest role above the target's, by
-`position` and then the older role ID. Administrators remain bound by that
-hierarchy; an unknown owner or an unloaded member or role offers nothing. The dialog sends one `PATCH /guilds/{guild}/members/{user}` with
+`position` and then the older role ID, with @everyone last. Unloaded role
+records are ignored, matching Discord's highest-role lookup. Administrators
+remain bound by hierarchy. Pending members and guests cannot manage nicknames;
+non-administrators are also restricted during a timeout or AutoMod quarantine
+(member flag 128, 256, or 1024). Guild owners bypass these member restrictions.
+The dialog sends one `PATCH /guilds/{guild}/members/{user}` with
 `{"nick":"value"}` as typed; Reset sends `""` and an unchanged value closes
 without a request. The member response reconciles the store unless
 the target member has a newer revision in that guild or the session has reset.
@@ -81,8 +85,11 @@ a reload. Reset from SakuraCord produced `nick: null` in the independent
 official session and restored both member lists without a reload. Existing
 owner and second-account menus matched in both clients: the owner could rename
 the target; the second account had no action for the owner or the other member
-checked. No roles were changed; the remaining hierarchy cases have deterministic
-coverage rather than live permission-mutation coverage.
+checked. A source comparison against that web build's PermissionStore, guild
+permission masks, and role comparator established the restriction rules above.
+READY hydrates timeout expiry; an omitted timeout in `GUILD_MEMBER_UPDATE`
+preserves it, while explicit null clears it. No roles or restrictions were
+changed live; those cases have deterministic coverage.
 
 A live official-client capture on 7 October 2026 (desktop 0.0.411,
 `web.d3978f1210c00a8f.js`) confirmed friend Save and Reset both use
