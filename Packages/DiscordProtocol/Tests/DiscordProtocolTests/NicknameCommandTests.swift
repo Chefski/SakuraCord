@@ -90,6 +90,49 @@ struct NicknameCommandTests {
         await provider.disconnect()
     }
 
+    @Test(arguments: ["2", "3"], ["RELATIONSHIP_UPDATE", "RELATIONSHIP_REMOVE"])
+    func `friend nickname saves ignore unrelated events and preserve newer target state`(
+        updatedUser: String, eventName: String
+    ) async throws {
+        let credentials = NicknameInterleavingCredentials()
+        let provider = await makeProvider(credentials: credentials)
+        let friendID = UserID(rawValue: 2)
+        await provider.seedFriendDirectMessage()
+        await provider.handleGatewayDispatch(name: "RELATIONSHIP_ADD", body: relationship(type: 1, nickname: .string("Old")))
+        let event = relationship(userID: updatedUser, type: 1, nickname: .string("Newer"))
+        await credentials.interleave {
+            await provider.handleGatewayDispatch(name: eventName, body: event)
+        }
+        #expect(try await provider.setFriendNickname("Saved", for: friendID) == "Saved")
+        let expected: String? = updatedUser == "3" ? "Saved" : eventName == "RELATIONSHIP_REMOVE" ? nil : "Newer"
+        #expect(await provider.cachedRelationshipNicknamesByUserID[friendID] == expected)
+        #expect(await provider.cachedFriendUserIDs.contains(friendID) == (expected != nil))
+        #expect(await provider.cachedChannels[nil]?.map(\.name) == [expected ?? "Friend", "Friend Group"])
+        #expect(NicknameURLProtocol.requests.withLock { $0.count } == 1)
+        await provider.disconnect()
+    }
+
+    @Test func `friend nickname response cannot replace fresh READY state`() async throws {
+        let credentials = NicknameInterleavingCredentials()
+        let provider = await makeProvider(credentials: credentials)
+        func ready(_ nickname: String) -> JSONValue {
+            .object([
+                "user": .object(["id": .string("1"), "username": .string("fixture")]),
+                "relationships": .array([relationship(type: 1, nickname: .string(nickname))]),
+            ])
+        }
+        await provider.handleGatewayDispatch(name: "READY", body: ready("Old"))
+        let replacement = ready("Reconnected")
+        await credentials.interleave {
+            await provider.handleGatewayDispatch(name: "READY", body: replacement)
+        }
+        let friendID = UserID(rawValue: 2)
+        #expect(try await provider.setFriendNickname("Saved", for: friendID) == "Saved")
+        #expect(await provider.cachedRelationshipNicknamesByUserID[friendID] == "Reconnected")
+        #expect(NicknameURLProtocol.requests.withLock { $0.count } == 1)
+        await provider.disconnect()
+    }
+
     @Test(arguments: ["100", "101"], ["1", "2"])
     func `nickname responses ignore other guild revisions and preserve newer target guild updates`(
         updatedGuild: String, targetUser: String
@@ -139,8 +182,8 @@ struct NicknameCommandTests {
         await provider.disconnect()
     }
 
-    private func relationship(type: Int, nickname: JSONValue?) -> JSONValue {
-        var body: [String: JSONValue] = ["id": .string("2"), "type": .number(Double(type))]
+    private func relationship(userID: String = "2", type: Int, nickname: JSONValue?) -> JSONValue {
+        var body: [String: JSONValue] = ["id": .string(userID), "type": .number(Double(type))]
         if let nickname { body["nickname"] = nickname }
         return .object(body)
     }

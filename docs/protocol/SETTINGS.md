@@ -53,7 +53,8 @@ server, thread, DM and group-DM user menus. Save sends one
 `PATCH /users/@me/relationships/{user}` with the trimmed `{"nickname":"value"}`;
 Reset or blank text sends `null`, and success is `204`. A `400` stays in the
 dialog rather than opening the session safety circuit, and a result that returns
-after READY or a newer relationship event does not replace that state. READY
+after a session reset or a newer event for that friend does not replace that state.
+Events for other friends do not suppress the saved nickname. READY
 `relationships[].nickname` seeds the map. `RELATIONSHIP_ADD` sets a non-null nickname, `RELATIONSHIP_UPDATE`
 replaces it (null or absent clears) and `RELATIONSHIP_REMOVE` deletes it.
 

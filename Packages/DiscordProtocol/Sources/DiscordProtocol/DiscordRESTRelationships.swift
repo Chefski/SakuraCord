@@ -18,7 +18,7 @@ extension DiscordRESTProvider {
             guard let dto = try? JSONValueDecoder().decode(GatewayRelationshipDTO.self, from: body),
                   let userID = UserID(dto.id)
             else { return true }
-            relationshipRevision &+= 1
+            relationshipRevisions[userID, default: 0] &+= 1
             var friends = cachedFriendUserIDs
             var nicknames = cachedRelationshipNicknamesByUserID
             if let type = dto.type, name != "RELATIONSHIP_REMOVE" {
@@ -52,7 +52,8 @@ extension DiscordRESTProvider {
         guard (value?.utf16.count ?? 0) <= Self.maximumFriendNicknameLength else {
             throw ChatProviderError.invalidRequest("Friend nicknames must be 32 characters or fewer.")
         }
-        let revision = relationshipRevision
+        let revision = relationshipRevisions[userID, default: 0]
+        let generation = profileEditingGeneration
         let path = "/users/@me/relationships/\(userID)"
         let (data, response) = try await perform(
             path, method: "PATCH", query: [], body: ["nickname": value.map(JSONValue.string) ?? .null]
@@ -69,8 +70,10 @@ extension DiscordRESTProvider {
                 status: response.statusCode, requestID: response.value(forHTTPHeaderField: "x-request-id")
             ), with: response)
         }
-        // READY or a relationship event during the request is newer than this result.
-        guard currentUser?.id == user.id, relationshipRevision == revision else { return value }
+        // Only this friend's events supersede the save; the generation also
+        // guards READY and disconnect, which clear the per-user revisions.
+        guard currentUser?.id == user.id, profileEditingGeneration == generation,
+              relationshipRevisions[userID, default: 0] == revision else { return value }
         var nicknames = cachedRelationshipNicknamesByUserID
         nicknames[userID] = value
         publishRelationships(friendUserIDs: cachedFriendUserIDs, nicknames: nicknames)

@@ -144,7 +144,6 @@ extension DiscordRESTProvider {
         await loadStartupSearchCaches()
         cachedBlockedOrIgnoredUserIDs = ready.blockedOrIgnoredUserIDs
         cachedRelationshipNicknamesByUserID = ready.relationshipNicknamesByUserID
-        relationshipRevision &+= 1
         profileApexAssignments = ready.apexExperiments
         resetProfileEditingState()
     }

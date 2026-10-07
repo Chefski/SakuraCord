@@ -215,9 +215,8 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     var cachedFriendUserIDs: Set<UserID> = []
     var cachedBlockedOrIgnoredUserIDs: Set<UserID> = []
     var cachedRelationshipNicknamesByUserID: [UserID: String] = [:]
-    /// Advances with READY and each relationship event so a late REST result
-    /// cannot replace newer Gateway state.
-    var relationshipRevision: UInt64 = 0
+    /// Per-user revisions keep unrelated relationship events from suppressing saves.
+    var relationshipRevisions: [UserID: UInt64] = [:]
     var cachedGuildRoles: [GuildID: [GuildRoleDTO]] = [:]
     var guildRoleTasks: [GuildID: Task<[GuildRoleDTO], Error>] = [:]
     var pendingMemberSearchRequests: [String: PendingMemberSearchRequest] = [:]
