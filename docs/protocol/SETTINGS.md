@@ -42,7 +42,8 @@ Manage Nicknames (or Administrator) and a highest role above the target's, by
 hierarchy; an unknown owner or an unloaded member or role offers nothing. The dialog sends one `PATCH /guilds/{guild}/members/{user}` with
 `{"nick":"value"}` as typed; Reset sends `""` and an unchanged value closes
 without a request. The member response reconciles the store unless
-`GUILD_MEMBER_UPDATE` already delivered a newer revision. `nick` validation
+the target member has a newer revision in that guild or the session has reset.
+Updates in other guilds do not suppress the saved nickname. `nick` validation
 errors stay in the dialog and `403` remains operation-scoped. No audit-log reason
 is sent.
 

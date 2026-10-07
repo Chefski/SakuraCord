@@ -14,7 +14,8 @@ extension DiscordRESTProvider {
         }
         let saveID = UUID()
         let generation = profileEditingGeneration
-        let revision = profilePresentationRevisions[user.id, default: 0]
+        let memberKey = ProfileCacheKey(userID: user.id, guildID: guildID)
+        let revision = memberPresentationRevisions[memberKey, default: 0]
         profileSaveID = saveID
         defer { if profileSaveID == saveID { profileSaveID = nil } }
         try Task.checkCancellation()
@@ -32,8 +33,8 @@ extension DiscordRESTProvider {
             throw ChatProviderError.invalidRequest("Discord saved the nickname, but its response could not be loaded. Check your server profile before trying again.")
         }
         // Gateway may have already applied this change, or a newer one. Only
-        // reconcile the REST snapshot if no intervening profile event arrived.
-        if profilePresentationRevisions[user.id, default: 0] == revision {
+        // reconcile if this member has not changed in the target guild.
+        if memberPresentationRevisions[memberKey, default: 0] == revision {
             body["guild_id"] = .string(guildID.description)
             await handleGuildMemberAddDispatch(name: "GUILD_MEMBER_UPDATE", body: .object(body))
         }
@@ -48,7 +49,8 @@ extension DiscordRESTProvider {
         guard nickname.utf16.count <= 32 else {
             throw ChatProviderError.invalidRequest("Nicknames must be 32 characters or fewer.")
         }
-        let revision = profilePresentationRevisions[userID, default: 0]
+        let memberKey = ProfileCacheKey(userID: userID, guildID: guildID)
+        let revision = memberPresentationRevisions[memberKey, default: 0]
         let generation = profileEditingGeneration
         let path = "/guilds/\(guildID)/members/\(userID)"
         let (data, response) = try await perform(path, method: "PATCH", query: [], body: ["nick": .string(nickname)])
@@ -65,7 +67,7 @@ extension DiscordRESTProvider {
             throw ChatProviderError.invalidRequest("Discord saved the nickname, but its response could not be loaded.")
         }
         // READY resets revisions, so the generation also guards a reconnect.
-        if profileEditingGeneration == generation, profilePresentationRevisions[userID, default: 0] == revision {
+        if profileEditingGeneration == generation, memberPresentationRevisions[memberKey, default: 0] == revision {
             body["guild_id"] = .string(guildID.description)
             await handleGuildMemberAddDispatch(name: "GUILD_MEMBER_UPDATE", body: .object(body))
         }

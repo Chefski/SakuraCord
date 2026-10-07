@@ -91,6 +91,7 @@ public extension DiscordRESTProvider {
 
     internal func resetProfileEditingState() {
         profileEditingGeneration &+= 1
+        memberPresentationRevisions = [:]
         profileSaveID = nil
         invalidateSavedProfilePresentation()
         profileEditingResponses = [:]

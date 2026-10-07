@@ -245,6 +245,7 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     var profileEditingGeneration: UInt64 = 0
     var profilePresentationGeneration: UInt64 = 0
     var profilePresentationRevisions: [UserID: UInt64] = [:]
+    var memberPresentationRevisions: [ProfileCacheKey: UInt64] = [:]
     var profileResponses: [ProfileCacheKey: UserProfileDTO] = [:]
     var profileSaveID: UUID?
     var cachedEmojis: [GuildID: EmojiCacheEntry] = [:]

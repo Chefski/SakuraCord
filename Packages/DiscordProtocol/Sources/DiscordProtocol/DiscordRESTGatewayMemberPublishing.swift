@@ -2,6 +2,7 @@ import SakuraCordModels
 
 extension DiscordRESTProvider {
     func publishMemberChange(_ member: Member, guildID: GuildID) {
+        memberPresentationRevisions[ProfileCacheKey(userID: member.id, guildID: guildID), default: 0] &+= 1
         let previous = cachedMembers[guildID]?.first { $0.id == member.id }
         cachedMembers[guildID] = DiscordMemberStoreOrdering.merging(
             existing: cachedMembers[guildID] ?? [], updates: [member]
@@ -28,6 +29,7 @@ extension DiscordRESTProvider {
     }
 
     func removeMember(userID: UserID, guildID: GuildID) {
+        memberPresentationRevisions[ProfileCacheKey(userID: userID, guildID: guildID), default: 0] &+= 1
         cachedMembers[guildID]?.removeAll { $0.id == userID }
         let memberListIDs = cachedMemberListItems[guildID].map { Array($0.keys) } ?? []
         for memberListID in memberListIDs {

@@ -472,7 +472,8 @@ private struct MockFixtureAssembly {
             iconURL: auroraIcon,
             accentHex: 0x8B5CF6,
             unreadCount: 3,
-            currentUserPermissions: textPermissions,
+            ownerID: maya.id,
+            currentUserPermissions: textPermissions | (1 << 27),
             rulesChannelID: ChannelID(rawValue: 202)
         )
         let nativeLab = Guild(

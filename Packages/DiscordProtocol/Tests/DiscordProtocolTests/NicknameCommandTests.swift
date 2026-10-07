@@ -90,6 +90,33 @@ struct NicknameCommandTests {
         await provider.disconnect()
     }
 
+    @Test(arguments: ["100", "101"], ["1", "2"])
+    func `nickname responses ignore other guild revisions and preserve newer target guild updates`(
+        updatedGuild: String, targetUser: String
+    ) async throws {
+        let credentials = NicknameInterleavingCredentials()
+        let provider = await makeProvider(credentials: credentials)
+        let guildID = GuildID(rawValue: 100)
+        let memberID = try #require(UserID(targetUser))
+        let event = JSONValue.object([
+            "guild_id": .string(updatedGuild), "nick": .string("Newer"), "roles": .array([]),
+            "user": .object(["id": .string(targetUser), "username": .string("fixture")]),
+        ])
+        // Credential loading suspends the save after its revision is captured,
+        // before the mocked PATCH completes. No timing or real networking needed.
+        await credentials.interleave {
+            await provider.handleGatewayDispatch(name: "GUILD_MEMBER_UPDATE", body: event)
+        }
+        #expect(try await provider.setMemberNickname("Saved", for: memberID, in: guildID) == "Saved")
+        let expected = updatedGuild == "100" ? "Newer" : "Saved"
+        #expect(await provider.cachedMembers[guildID]?.first { $0.id == memberID }?.guildNickname == expected)
+        if updatedGuild == "101" {
+            #expect(await provider.cachedMembers[GuildID(rawValue: 101)]?.first { $0.id == memberID }?.guildNickname == "Newer")
+        }
+        #expect(NicknameURLProtocol.requests.withLock { $0.count } == 1)
+        await provider.disconnect()
+    }
+
     @Test func `friend nicknames keep explicit group names and the empty group fallback`() async throws {
         let provider = await makeProvider()
         await provider.seedFriendDirectMessage()
@@ -118,17 +145,35 @@ struct NicknameCommandTests {
         return .object(body)
     }
 
-    private func makeProvider() async -> DiscordRESTProvider {
+    private func makeProvider(credentials: any CredentialStore = TestCredentialStore()) async -> DiscordRESTProvider {
         NicknameURLProtocol.requests.withLock { $0.removeAll() }
         NicknameURLProtocol.bodies.withLock { $0.removeAll() }
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [NicknameURLProtocol.self]
-        let provider = DiscordRESTProvider(credentials: TestCredentialStore(),
+        let provider = DiscordRESTProvider(credentials: credentials,
                                            handle: CredentialHandle(accountID: "nickname-command"),
                                            session: URLSession(configuration: configuration))
         await provider.seedNicknameCommand()
         return provider
     }
+}
+
+private actor NicknameInterleavingCredentials: CredentialStore {
+    private let base = TestCredentialStore()
+    private var action: (@Sendable () async -> Void)?
+
+    func interleave(_ action: @escaping @Sendable () async -> Void) { self.action = action }
+    func credential(for handle: CredentialHandle) async throws -> Data {
+        let pending = action
+        action = nil
+        await pending?()
+        return try await base.credential(for: handle)
+    }
+    func store(_ credential: Data, accountID: String) async throws -> CredentialHandle {
+        try await base.store(credential, accountID: accountID)
+    }
+    func remove(_ handle: CredentialHandle) async throws { try await base.remove(handle) }
+    func handles() async throws -> [CredentialHandle] { try await base.handles() }
 }
 
 private extension DiscordRESTProvider {
