@@ -31,6 +31,8 @@ struct ComposerView: View {
     @State private var autocompleteIndex = 0
     @State private var autocompleteKeyboardSelectionRevision = 0
     @State private var isAutocompleteDismissed = false
+    @State private var sendTransitionAnchor = ComposerSendTransitionAnchor()
+    @State private var holdsPlaceholderForSendTransition = false
 
     var body: some View {
         @Bindable var model = model
@@ -200,6 +202,7 @@ struct ComposerView: View {
                                 verticalContentInset: appearance == .defaultStyle
                                     ? ChatChromeMetrics.composerTextVerticalInset
                                     : 0,
+                                sendTransitionAnchor: sendTransitionAnchor,
                                 selection: $draftSelection,
                                 isFocused: Binding(
                                     get: { !hasActiveCommand && isFocused },
@@ -220,6 +223,9 @@ struct ComposerView: View {
                                         maxHeight: .infinity,
                                         alignment: .leading
                                     )
+                                    // Sent text leaves from this spot; let it go first.
+                                    .opacity(holdsPlaceholderForSendTransition ? 0 : 1)
+                                    .animation(.easeIn(duration: 0.15), value: holdsPlaceholderForSendTransition)
                             }
                             if ChatCharacterLimitPolicy.shouldShowCounter(
                                 characterCount: draft.count,
@@ -702,6 +708,9 @@ struct ComposerView: View {
         let staged = attachments
         let conversationID = activeConversationID
         let keepsCreationDraft = isCreatingThread
+        if !keepsCreationDraft, staged.isEmpty, let conversationID {
+            registerSendTransition(channelID: conversationID)
+        }
         model.beginUsingOwnedPromisedFiles(staged.map(\.url))
         if !keepsCreationDraft {
             model.clearComposerAttachments(for: conversation)
@@ -729,6 +738,24 @@ struct ComposerView: View {
             }
             isSubmitting = false
             isFocused = true
+        }
+    }
+
+    /// Bubble timelines animate a text message out of the field; the
+    /// timeline consumes this when the optimistic row arrives.
+    private func registerSendTransition(channelID: ChannelID) {
+        guard model.appearanceSettings.messageAppearance == .bubbles,
+              !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+              let source = sendTransitionAnchor.source(
+                  channelID: channelID,
+                  content: draft.trimmingCharacters(in: .whitespacesAndNewlines)
+              )
+        else { return }
+        model.timelineSendTransitionStore.register(source)
+        holdsPlaceholderForSendTransition = true
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(180))
+            holdsPlaceholderForSendTransition = false
         }
     }
 

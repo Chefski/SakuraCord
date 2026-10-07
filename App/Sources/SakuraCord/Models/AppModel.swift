@@ -204,6 +204,8 @@ final class AppModel {
     @ObservationIgnored let messageRowsUpdateJournal = MessageRowsUpdateJournal()
     @ObservationIgnored let timelineSpoilerRevealStore =
         NativeTimelineSpoilerRevealStore()
+    @ObservationIgnored let timelineSendTransitionStore =
+        NativeTimelineSendTransitionStore()
     @ObservationIgnored var latestMessageRowsRevision: UInt64 = 0
     @ObservationIgnored var messageRowsNonAppendRevision: UInt64 = 0
     @ObservationIgnored var selectedMessageIDs: Set<MessageID> = []

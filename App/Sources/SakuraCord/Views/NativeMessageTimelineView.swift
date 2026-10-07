@@ -370,6 +370,7 @@ extension NativeMessageTimelineCoordinator {
             scrollView: NSScrollView
         ) {
             guard let canvas else { return }
+            let sendTransitionAnchor = sendTransitionTranscriptAnchor(for: parent)
             let (preparation, measurement) = prepareTimelineUpdate(
                 parent: parent,
                 scrollView: scrollView,
@@ -450,6 +451,12 @@ extension NativeMessageTimelineCoordinator {
                 canvas: canvas,
                 scrollView: scrollView,
                 preparation: preparation
+            )
+            canvas.reconcileSendTransition()
+            startSendTransitionIfNeeded(
+                parent: parent,
+                preparation: preparation,
+                transcriptAnchor: sendTransitionAnchor
             )
             Self.performanceSignposter.endInterval(
                 "MessageTimelineReload",

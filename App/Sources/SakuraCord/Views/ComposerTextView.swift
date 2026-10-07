@@ -293,6 +293,7 @@ struct ComposerTextView: NSViewRepresentable {
     var capturesUnfocusedTyping = false
     var verticalContentInset: CGFloat = 0
     var maximumHeight: CGFloat = 150
+    var sendTransitionAnchor: ComposerSendTransitionAnchor?
     @Binding var selection: NSRange?
     @Binding var isFocused: Bool
 
@@ -381,6 +382,7 @@ struct ComposerTextView: NSViewRepresentable {
         scrollView.hasVerticalScroller = false
         scrollView.autohidesScrollers = true
         scrollView.scrollerStyle = .overlay
+        sendTransitionAnchor?.textView = textView
 
         return scrollView
     }
@@ -396,6 +398,7 @@ struct ComposerTextView: NSViewRepresentable {
             textView.delegate = context.coordinator
         }
         context.coordinator.parent = self
+        sendTransitionAnchor?.textView = textView
         textView.isEditable = context.environment.isEnabled
         textView.capturesUnfocusedTyping = capturesUnfocusedTyping && context.environment.isEnabled
         context.coordinator.updateCompositionState(from: textView, deferringNotification: true)
