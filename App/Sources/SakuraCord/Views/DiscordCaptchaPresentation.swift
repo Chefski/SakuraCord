@@ -184,10 +184,10 @@ struct DiscordCaptchaPresentation: View {
                 .opacity(isVisible ? 0.58 : 0)
                 .ignoresSafeArea()
 
-            VStack(spacing: 14) {
+            VStack(spacing: InterfaceScale.metric(14)) {
                 HStack {
                     Text("Discord verification")
-                        .font(.headline)
+                        .font(.interface(.headline))
                         .foregroundStyle(.primary)
                     Spacer()
                     SakuraCordAuthenticationCloseButton(action: cancel)
@@ -199,10 +199,10 @@ struct DiscordCaptchaPresentation: View {
                     onInteractionRequired: interactionRequired,
                     onToken: onToken
                 )
-                .frame(width: 520, height: 590)
+                .frame(width: InterfaceScale.metric(520), height: InterfaceScale.metric(590))
                 .clipShape(ConcentricRectangle(cornerRadius: SakuraCordAuthenticationMetrics.controlRadius))
             }
-            .padding(18)
+            .padding(InterfaceScale.metric(18))
             .background(
                 .regularMaterial,
                 in: RoundedRectangle(cornerRadius: SakuraCordAuthenticationMetrics.controlRadius + 18, style: .continuous)
@@ -212,7 +212,7 @@ struct DiscordCaptchaPresentation: View {
                     .stroke(SakuraCordAccentColor.color.opacity(0.24), lineWidth: 1)
             }
             .containerShape(.rect(cornerRadius: SakuraCordAuthenticationMetrics.controlRadius + 18))
-            .shadow(color: .black.opacity(0.5), radius: 30, y: 16)
+            .shadow(color: .black.opacity(0.5), radius: InterfaceScale.metric(30), y: 16)
             .opacity(isVisible ? 1 : 0)
             .accessibilityHidden(!isVisible)
         }

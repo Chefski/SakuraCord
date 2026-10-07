@@ -14,10 +14,10 @@ extension View {
         onDismiss: @escaping () -> Void
     ) -> some View {
         textFieldStyle(.plain)
-            .font(.body)
+            .font(.interface(.body))
             .foregroundStyle(.primary)
-            .padding(.horizontal, 18)
-            .frame(height: 44)
+            .padding(.horizontal, InterfaceScale.metric(18))
+            .frame(height: InterfaceScale.metric(44))
             .background(.background.opacity(0.72), in: Capsule())
             .overlay {
                 Capsule()

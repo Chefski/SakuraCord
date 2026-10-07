@@ -56,7 +56,7 @@ extension NativeMemberListCanvasView {
         context: CGContext
     ) {
         let label = "\(section.title) — \(section.totalCount)"
-        let font = NSFont.systemFont(
+        let font = NSFont.interfaceSystemFont(
             ofSize: InterfaceTypographyMetrics.interfaceTextSize,
             weight: .semibold
         )
@@ -71,7 +71,7 @@ extension NativeMemberListCanvasView {
         let labelY = origins[index] + 12
         let labelX: CGFloat
         if showsRoleIndicator {
-            let indicatorSize: CGFloat = 8
+            let indicatorSize: CGFloat = InterfaceScale.metric(8)
             var lineAscent: CGFloat = 0
             CTLineGetTypographicBounds(line, &lineAscent, nil, nil)
             let glyphBounds = CTLineGetBoundsWithOptions(
@@ -80,7 +80,7 @@ extension NativeMemberListCanvasView {
             )
             let labelMidY = labelY + lineAscent - glyphBounds.midY
             let indicatorRect = CGRect(
-                x: NativeMemberListMetrics.horizontalInset + 10,
+                x: NativeMemberListMetrics.horizontalInset + InterfaceScale.metric(10),
                 y: labelMidY - indicatorSize / 2,
                 width: indicatorSize,
                 height: indicatorSize
@@ -145,13 +145,13 @@ extension NativeMemberListCanvasView {
     ) {
         drawSkeletonShape(
             in: CGRect(
-                x: NativeMemberListMetrics.horizontalInset + 10,
+                x: NativeMemberListMetrics.horizontalInset + InterfaceScale.metric(10),
                 y: origins[index]
-                    + (NativeMemberListMetrics.sectionHeaderHeight - 10) / 2,
-                width: 96,
-                height: 10
+                    + (NativeMemberListMetrics.sectionHeaderHeight - InterfaceScale.metric(10)) / 2,
+                width: InterfaceScale.metric(96),
+                height: InterfaceScale.metric(10)
             ),
-            radius: 5,
+            radius: InterfaceScale.metric(5),
             opacity: 1,
             context: context,
             style: style
@@ -179,10 +179,10 @@ extension NativeMemberListCanvasView {
             height: NativeMemberListMetrics.avatarSize
         )
         let presence = CGRect(
-            x: avatar.minX + NativeMemberListMetrics.avatarSize - 10,
-            y: avatar.minY + NativeMemberListMetrics.avatarSize - 10,
-            width: 11,
-            height: 11
+            x: avatar.minX + NativeMemberListMetrics.avatarSize - InterfaceScale.metric(10),
+            y: avatar.minY + NativeMemberListMetrics.avatarSize - InterfaceScale.metric(10),
+            width: InterfaceScale.metric(11),
+            height: InterfaceScale.metric(11)
         )
         drawSkeletonShape(
             in: avatar,
@@ -193,7 +193,7 @@ extension NativeMemberListCanvasView {
         )
         drawSkeletonShape(
             in: presence,
-            radius: 5.5,
+            radius: InterfaceScale.metric(5.5),
             opacity: 1,
             context: context,
             style: style
@@ -202,15 +202,15 @@ extension NativeMemberListCanvasView {
         let textX = contentX
             + NativeMemberListMetrics.avatarContainerSize + 8
         drawSkeletonShape(
-            in: CGRect(x: textX, y: row.minY + 6, width: 104, height: 10),
-            radius: 5,
+            in: CGRect(x: textX, y: row.minY + InterfaceScale.metric(6), width: InterfaceScale.metric(104), height: InterfaceScale.metric(10)),
+            radius: InterfaceScale.metric(5),
             opacity: 1,
             context: context,
             style: style
         )
         drawSkeletonShape(
-            in: CGRect(x: textX, y: row.minY + 25, width: 138, height: 8),
-            radius: 4,
+            in: CGRect(x: textX, y: row.minY + InterfaceScale.metric(25), width: InterfaceScale.metric(138), height: InterfaceScale.metric(8)),
+            radius: InterfaceScale.metric(4),
             opacity: 0.7,
             context: context,
             style: style
@@ -353,7 +353,7 @@ extension NativeMemberListCanvasView {
 
         if let roleColor {
             context.setFillColor(roleColor.cgColor)
-            context.fillEllipse(in: CGRect(x: textX, y: nameY + 5, width: 8, height: 8))
+            context.fillEllipse(in: CGRect(x: textX, y: nameY + InterfaceScale.metric(5), width: InterfaceScale.metric(8), height: InterfaceScale.metric(8)))
         }
         if member.user.isBot, let accessory = nameLayout.accessoryFrames.first {
             if accessory.width >= botBadgeWidth {
@@ -384,7 +384,7 @@ extension NativeMemberListCanvasView {
                 token: truncationToken,
                 maximumWidth: maximumWidth
             )
-            let origin = CGPoint(x: textX, y: row.minY + 24)
+            let origin = CGPoint(x: textX, y: row.minY + InterfaceScale.metric(24))
             Self.draw(line: visibleActivity, at: origin, context: context)
             for region in NativeMemberActivityPresentation.emojiRegions(
                 in: visibleActivity,
@@ -415,7 +415,7 @@ extension NativeMemberListCanvasView {
         context: CGContext
     ) {
         let container = CGRect(
-            x: NativeMemberListMetrics.horizontalInset + 4,
+            x: NativeMemberListMetrics.horizontalInset + InterfaceScale.metric(4),
             y: origins[index] + 1
                 + (NativeMemberListMetrics.paintedRowHeight
                     - NativeMemberListMetrics.avatarContainerSize) / 2,
@@ -584,7 +584,7 @@ extension NativeMemberListCanvasView {
 
     func drawBotBadge(at badgeX: CGFloat, nameY: CGFloat, context: CGContext) {
         let badge = CGRect(
-            x: badgeX, y: nameY + 8 - ServerTagAppearance.height / 2,
+            x: badgeX, y: nameY + InterfaceScale.metric(8) - ServerTagAppearance.height / 2,
             width: NativeAppBadgePresentation.width, height: ServerTagAppearance.height
         )
         NativeAppBadgePresentation.draw(in: badge, color: .systemIndigo, context: context)

@@ -571,7 +571,7 @@ extension NativeMemberListCanvasView {
     }
 
     private nonisolated static func nameFont(for member: Member) -> NSFont {
-        ProfileNameFontCache.font(id: member.user.displayNameStyle?.fontID, fallback: .systemFont(
+        ProfileNameFontCache.font(id: member.user.displayNameStyle?.fontID, fallback: .interfaceSystemFont(
             ofSize: InterfaceTypographyMetrics.interfaceTextSize, weight: .semibold
         ))
     }
@@ -582,7 +582,7 @@ extension NativeMemberListCanvasView {
         reusing preparationSnapshot: PreparationSnapshot?,
         cancelsCooperatively: Bool
     ) -> [ItemID: PreparedText]? {
-        let activityFont = NSFont.systemFont(
+        let activityFont = NSFont.interfaceSystemFont(
             ofSize: max(10, InterfaceTypographyMetrics.interfaceTextSize - 1)
         )
         let appearance = NSAppearance(named: presentation.isDark ? .darkAqua : .aqua)

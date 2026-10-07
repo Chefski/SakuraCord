@@ -80,9 +80,9 @@ struct DiagnosticsSettingsPage: View {
     private var statusSection: some View {
         Section {
             LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 210), spacing: 10)],
+                columns: [GridItem(.adaptive(minimum: 210), spacing: InterfaceScale.metric(10))],
                 alignment: .leading,
-                spacing: 10
+                spacing: InterfaceScale.metric(10)
             ) {
                 ForEach(statusItems) { item in
                     DiagnosticsStatusCard(item: item)
@@ -102,7 +102,7 @@ struct DiagnosticsSettingsPage: View {
                 }
                 Spacer()
                 Text(lastRefreshedDescription)
-                    .font(.caption)
+                    .font(.interface(.caption))
                     .foregroundStyle(.secondary)
             }
         } header: {
@@ -296,25 +296,25 @@ private struct DiagnosticsStatusCard: View {
     let item: DiagnosticsStatusItem
 
     var body: some View {
-        HStack(alignment: .top, spacing: 9) {
+        HStack(alignment: .top, spacing: InterfaceScale.metric(9)) {
             Image(systemName: item.health.systemImage)
                 .foregroundStyle(healthColor)
-                .frame(width: 16)
+                .frame(width: InterfaceScale.metric(16))
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(2)) {
                 Text(item.subsystem.title)
-                    .font(.callout.weight(.medium))
+                    .font(.interface(.callout).weight(.medium))
                 Text(item.health.title)
-                    .font(.caption.weight(.medium))
+                    .font(.interface(.caption).weight(.medium))
                     .foregroundStyle(healthColor)
                 Text(item.detail)
-                    .font(.caption)
+                    .font(.interface(.caption))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 4)
+        .padding(.vertical, InterfaceScale.metric(4))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
             "\(item.subsystem.title), \(item.health.title), \(item.detail)"
@@ -336,7 +336,7 @@ private struct DiagnosticsSupportSummaryPreview: View {
     let summary: DiagnosticsSupportSummary
 
     var body: some View {
-        Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 5) {
+        Grid(alignment: .leading, horizontalSpacing: InterfaceScale.metric(18), verticalSpacing: InterfaceScale.metric(5)) {
             GridRow {
                 Text("SakuraCord")
                     .foregroundStyle(.secondary)
@@ -368,7 +368,7 @@ private struct DiagnosticsSupportSummaryPreview: View {
                 Text(diagnosticModeDescription)
             }
         }
-        .font(.callout)
+        .font(.interface(.callout))
         .textSelection(.enabled)
         .tint(SakuraCordAccentColor.color)
         .accessibilityElement(children: .combine)

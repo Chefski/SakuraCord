@@ -2,7 +2,7 @@ import SakuraCordModels
 import SwiftUI
 
 struct PollVotersView: View {
-    static let size = CGSize(width: 540, height: 420)
+    static var size: CGSize { CGSize(width: InterfaceScale.metric(540), height: InterfaceScale.metric(420)) }
 
     let model: AppModel
     let message: Message
@@ -39,7 +39,7 @@ struct PollVotersView: View {
             header
             Divider()
             HStack(spacing: 0) {
-                answerList.frame(width: 220)
+                answerList.frame(width: InterfaceScale.metric(220))
                 Divider()
                 voterList.frame(maxWidth: .infinity)
             }
@@ -51,19 +51,19 @@ struct PollVotersView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(poll?.question ?? "Poll").font(.headline).lineLimit(2)
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(2)) {
+            Text(poll?.question ?? "Poll").font(.interface(.headline)).lineLimit(2)
             if let poll {
-                Text(summary(poll)).font(.callout).foregroundStyle(.secondary).lineLimit(1)
+                Text(summary(poll)).font(.interface(.callout)).foregroundStyle(.secondary).lineLimit(1)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 20).padding(.vertical, 16)
+        .padding(.horizontal, InterfaceScale.metric(20)).padding(.vertical, InterfaceScale.metric(16))
     }
 
     private var answerList: some View {
         ScrollView(.vertical) {
-            VStack(spacing: 2) {
+            VStack(spacing: InterfaceScale.metric(2)) {
                 if let poll {
                     ForEach(poll.answers) { answer in
                         Button { selectedAnswerID = answer.id } label: {
@@ -74,7 +74,7 @@ struct PollVotersView: View {
                     }
                 }
             }
-            .padding(8)
+            .padding(InterfaceScale.metric(8))
         }
         .scrollBounceBehavior(.basedOnSize)
     }
@@ -85,25 +85,25 @@ struct PollVotersView: View {
         let voters = displayedUsers(page?.users ?? [])
         let guildID = model.messagePresentationGuildID(for: message)
         return ScrollView(.vertical) {
-            LazyVStack(alignment: .leading, spacing: 2) {
+            LazyVStack(alignment: .leading, spacing: InterfaceScale.metric(2)) {
                 ForEach(voters) { user in
                     PollVoterRow(model: model, user: user, guildID: guildID)
                 }
                 if let page, let error = errors[answerID] {
-                    VStack(spacing: 6) {
-                        Text(error).font(.caption).foregroundStyle(.secondary)
+                    VStack(spacing: InterfaceScale.metric(6)) {
+                        Text(error).font(.interface(.caption)).foregroundStyle(.secondary)
                         Button("Try Again") {
                             load(answerID, after: page.count == count(for: answerID) ? page.users.last?.id : nil)
                         }
                     }
-                    .frame(maxWidth: .infinity).padding(.vertical, 8)
+                    .frame(maxWidth: .infinity).padding(.vertical, InterfaceScale.metric(8))
                 } else if let page, page.hasMore {
-                    ProgressView().controlSize(.small).frame(maxWidth: .infinity).padding(.vertical, 8)
+                    ProgressView().controlSize(.small).frame(maxWidth: .infinity).padding(.vertical, InterfaceScale.metric(8))
                         .id(page.users.last?.id)
                         .onAppear { load(answerID, after: page.users.last?.id) }
                 }
             }
-            .padding(8)
+            .padding(InterfaceScale.metric(8))
         }
         .id(answerID)
         .scrollBounceBehavior(.basedOnSize)
@@ -201,21 +201,21 @@ private struct PollVotersAnswerRow: View {
         let count = poll.count(for: answer.id)
         let fraction = poll.totalVotes > 0 ? Double(count) / Double(poll.totalVotes) : 0
         let voted = poll.selectedAnswerIDs.contains(answer.id)
-        HStack(spacing: 10) {
-            if let emoji = answer.emoji { PollAnswerEmoji(emoji: emoji, size: 20) }
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(answer.text).font(.callout.weight(.medium)).lineLimit(2)
+        HStack(spacing: InterfaceScale.metric(10)) {
+            if let emoji = answer.emoji { PollAnswerEmoji(emoji: emoji, size: InterfaceScale.metric(20)) }
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(6)) {
+                HStack(alignment: .firstTextBaseline, spacing: InterfaceScale.metric(6)) {
+                    Text(answer.text).font(.interface(.callout).weight(.medium)).lineLimit(2)
                     if voted {
-                        Image(systemName: "checkmark.circle.fill").font(.caption)
+                        Image(systemName: "checkmark.circle.fill").font(.interface(.caption))
                             .foregroundStyle(SakuraCordAccentColor.color)
                             .accessibilityLabel("You voted")
                     }
-                    Spacer(minLength: 4)
-                    Text(poll.results == nil ? "—" : "\(count)").font(.callout.weight(.semibold)).monospacedDigit()
+                    Spacer(minLength: InterfaceScale.metric(4))
+                    Text(poll.results == nil ? "—" : "\(count)").font(.interface(.callout).weight(.semibold)).monospacedDigit()
                         .foregroundStyle(.secondary)
                 }
-                Capsule().fill(.quaternary).frame(height: 4).overlay(alignment: .leading) {
+                Capsule().fill(.quaternary).frame(height: InterfaceScale.metric(4)).overlay(alignment: .leading) {
                     GeometryReader { geometry in
                         Capsule().fill(voted ? SakuraCordAccentColor.color : .secondary)
                             .frame(width: geometry.size.width * fraction)
@@ -224,9 +224,9 @@ private struct PollVotersAnswerRow: View {
                 .accessibilityHidden(true)
             }
         }
-        .padding(.horizontal, 10).padding(.vertical, 9)
+        .padding(.horizontal, InterfaceScale.metric(10)).padding(.vertical, InterfaceScale.metric(9))
         .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(ConcentricRectangle(cornerRadius: 16))
+        .contentShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(16)))
         .animation(.snappy, value: fraction)
         .accessibilityElement(children: .combine)
         .accessibilityValue(poll.results == nil ? "Votes unavailable" : count == 1 ? "1 vote" : "\(count) votes")
@@ -244,18 +244,18 @@ private struct PollVoterRow: View {
                 ?? (guildID == model.selectedGuildID ? model.membersByID[user.id] : nil)
         }
         let isCurrentUser = model.snapshot?.currentUser.id == user.id
-        HStack(spacing: 10) {
-            AvatarView(name: user.displayName, url: member?.guildAvatarURL ?? user.avatarURL, size: 32)
+        HStack(spacing: InterfaceScale.metric(10)) {
+            AvatarView(name: user.displayName, url: member?.guildAvatarURL ?? user.avatarURL, size: InterfaceScale.metric(32))
             VStack(alignment: .leading, spacing: 1) {
-                Text(member?.user.displayName ?? user.displayName).font(.callout.weight(.medium)).lineLimit(1)
-                Text(user.username).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Text(member?.user.displayName ?? user.displayName).font(.interface(.callout).weight(.medium)).lineLimit(1)
+                Text(user.username).font(.interface(.caption)).foregroundStyle(.secondary).lineLimit(1)
             }
-            Spacer(minLength: 8)
+            Spacer(minLength: InterfaceScale.metric(8))
             if isCurrentUser {
-                Text("You").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                Text("You").font(.interface(.caption).weight(.semibold)).foregroundStyle(.secondary)
             }
         }
-        .padding(.horizontal, 10).padding(.vertical, 6)
+        .padding(.horizontal, InterfaceScale.metric(10)).padding(.vertical, InterfaceScale.metric(6))
         .accessibilityElement(children: .combine)
     }
 }

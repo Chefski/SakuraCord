@@ -41,7 +41,7 @@ private struct ComposerIconEditor: View {
             leading: { ComposerAttachmentButton(appearance: appearance, action: nil) },
             input: {
                 Text("Message")
-                    .font(.system(size: 15))
+                    .font(.interfaceSystem(size: 15))
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, minHeight: ChatChromeMetrics.composerControlHeight, alignment: .leading)
             },

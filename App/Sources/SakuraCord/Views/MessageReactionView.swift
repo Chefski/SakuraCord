@@ -3,14 +3,14 @@ import SakuraCordModels
 import SwiftUI
 
 nonisolated enum MessageReactionMetrics {
-    static let pillHeight: CGFloat = 28
-    static let emojiSize: CGFloat = 18
+    static var pillHeight: CGFloat { InterfaceScale.metric(28) }
+    static var emojiSize: CGFloat { InterfaceScale.metric(18) }
     static let nativeEmojiVisualScale: CGFloat = 0.78
-    static let avatarSize: CGFloat = 16
+    static var avatarSize: CGFloat { InterfaceScale.metric(16) }
     static let maximumAvatarCount = 5
     static let avatarCountBeforeOverflow = 4
-    static let horizontalSpacing: CGFloat = 4
-    static let verticalSpacing: CGFloat = 4
+    static var horizontalSpacing: CGFloat { InterfaceScale.metric(4) }
+    static var verticalSpacing: CGFloat { InterfaceScale.metric(4) }
 }
 
 nonisolated struct MessageReactionPreviewPlan: Equatable, Sendable {
@@ -246,7 +246,7 @@ struct MessageReactionPill: View {
 
     var body: some View {
         Button(action: react) {
-            HStack(spacing: 4) {
+            HStack(spacing: InterfaceScale.metric(4)) {
                 MessageReactionEmoji(
                     reaction: reaction,
                     url: emojiURL,
@@ -254,7 +254,7 @@ struct MessageReactionPill: View {
                 )
                 if reaction.count > 0 {
                     Text(reaction.count, format: .number)
-                        .font(.caption.weight(.semibold))
+                        .font(.interface(.caption).weight(.semibold))
                         .monospacedDigit()
                         .foregroundStyle(
                             reaction.didCurrentUserReact ? SakuraCordAccentColor.color : .primary
@@ -270,18 +270,18 @@ struct MessageReactionPill: View {
                     MessageReactionAvatarStack(plan: previewPlan)
                 }
             }
-            .padding(.horizontal, 6)
+            .padding(.horizontal, InterfaceScale.metric(6))
             .frame(height: MessageReactionMetrics.pillHeight)
             .background(
-                ConcentricRectangle(cornerRadius: 9, style: .continuous)
+                ConcentricRectangle(cornerRadius: InterfaceScale.metric(9), style: .continuous)
                     .fill(backgroundColor)
             )
             .overlay {
-                ConcentricRectangle(cornerRadius: 9, style: .continuous)
+                ConcentricRectangle(cornerRadius: InterfaceScale.metric(9), style: .continuous)
                     .stroke(borderColor, lineWidth: reaction.didCurrentUserReact ? 1.5 : 1)
                     .padding(reaction.didCurrentUserReact ? 0.75 : 0.5)
             }
-            .contentShape(ConcentricRectangle(cornerRadius: 9, style: .continuous))
+            .contentShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(9), style: .continuous))
         }
         .buttonStyle(.plain)
         .task(
@@ -356,7 +356,7 @@ private struct MessageReactionEmoji: View {
                         )
                     } else {
                         ZStack {
-                            ConcentricRectangle(cornerRadius: 5, style: .continuous)
+                            ConcentricRectangle(cornerRadius: InterfaceScale.metric(5), style: .continuous)
                                 .fill(Color.secondary.opacity(0.12))
                             SakuraCordSystemSymbol.emojiFaceGrinningImage
                                 .font(.system(size: size * 0.58, weight: .medium))
@@ -383,8 +383,8 @@ private struct MessageReactionAvatarStack: View {
     let plan: MessageReactionPreviewPlan
 
     var body: some View {
-        HStack(spacing: 2) {
-            HStack(spacing: -5) {
+        HStack(spacing: InterfaceScale.metric(2)) {
+            HStack(spacing: -InterfaceScale.metric(5)) {
                 ForEach(plan.reactors) { reactor in
                     AvatarView(
                         name: reactor.displayName,
@@ -399,7 +399,7 @@ private struct MessageReactionAvatarStack: View {
             }
             if plan.overflowCount > 0 {
                 Text("+\(plan.overflowCount)")
-                    .font(.caption2.monospacedDigit().weight(.bold))
+                    .font(.interface(.caption2).monospacedDigit().weight(.bold))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
@@ -415,23 +415,23 @@ struct MessageReactionTooltip: View {
     let emojiURL: URL?
 
     var body: some View {
-        HStack(spacing: 9) {
-            MessageReactionEmoji(reaction: reaction, url: emojiURL, size: 30)
+        HStack(spacing: InterfaceScale.metric(9)) {
+            MessageReactionEmoji(reaction: reaction, url: emojiURL, size: InterfaceScale.metric(30))
             VStack(alignment: .leading, spacing: 1) {
                 Text(MessageReactionPresentation.emojiName(for: reaction))
-                    .font(.caption.weight(.semibold))
+                    .font(.interface(.caption).weight(.semibold))
                     .lineLimit(1)
                 Text(MessageReactionPresentation.tooltipDescription(for: reaction))
-                    .font(.caption)
+                    .font(.interface(.caption))
                     .foregroundStyle(.secondary)
             }
             .multilineTextAlignment(.leading)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(width: 260, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .frame(width: InterfaceScale.metric(260), alignment: .leading)
+        .padding(.horizontal, InterfaceScale.metric(12))
+        .padding(.vertical, InterfaceScale.metric(10))
         .accessibilityHidden(true)
     }
 }

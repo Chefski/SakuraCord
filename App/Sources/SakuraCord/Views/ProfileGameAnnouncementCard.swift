@@ -7,51 +7,51 @@ struct ProfileGameAnnouncementCard: View {
     @Environment(\.displayScale) private var displayScale
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(12)) {
             if let poll = message.poll {
-                Text(poll.question).font(.headline).lineLimit(3)
+                Text(poll.question).font(.interface(.headline)).lineLimit(3)
                 ForEach(poll.answers.prefix(3)) { answer in
-                    Text(answer.text).font(.callout).lineLimit(1)
-                        .frame(maxWidth: .infinity, alignment: .leading).padding(8)
-                        .background(.primary.opacity(0.06), in: .rect(cornerRadius: 6))
+                    Text(answer.text).font(.interface(.callout)).lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(InterfaceScale.metric(8))
+                        .background(.primary.opacity(0.06), in: .rect(cornerRadius: InterfaceScale.metric(6)))
                 }
-                if poll.answers.count > 3 { Text("\(poll.answers.count - 3) more options").font(.caption).foregroundStyle(.secondary) }
+                if poll.answers.count > 3 { Text("\(poll.answers.count - 3) more options").font(.interface(.caption)).foregroundStyle(.secondary) }
             } else {
                 if let source = message.embedSource {
-                    if let url = source.url { Link(url.absoluteString, destination: url).font(.caption).lineLimit(1) }
+                    if let url = source.url { Link(url.absoluteString, destination: url).font(.interface(.caption)).lineLimit(1) }
                     if let author = source.author {
-                        HStack(spacing: 6) {
+                        HStack(spacing: InterfaceScale.metric(6)) {
                             if let icon = author.proxyIconURL ?? author.iconURL {
-                                ProfileWidgetImageView(url: icon).frame(width: 20, height: 20).clipShape(.circle)
+                                ProfileWidgetImageView(url: icon).frame(width: InterfaceScale.metric(20), height: InterfaceScale.metric(20)).clipShape(.circle)
                             }
-                            Text(author.name).font(.caption.weight(.semibold)).lineLimit(1)
+                            Text(author.name).font(.interface(.caption).weight(.semibold)).lineLimit(1)
                         }
                     }
                 }
                 if let url = imageURL {
-                    ProfileWidgetImageView(url: url, contentMode: .fill).frame(height: 160).clipped()
+                    ProfileWidgetImageView(url: url, contentMode: .fill).frame(height: InterfaceScale.metric(160)).clipped()
                 }
-                if let title = message.title { Text(DiscordMarkdown.attributed(title)).font(.headline).lineLimit(3) }
-                if !message.body.isEmpty { Text(DiscordMarkdown.attributed(message.body)).font(.callout).lineLimit(5) }
+                if let title = message.title { Text(DiscordMarkdown.attributed(title)).font(.interface(.headline)).lineLimit(3) }
+                if !message.body.isEmpty { Text(DiscordMarkdown.attributed(message.body)).font(.interface(.callout)).lineLimit(5) }
             }
-            HStack(spacing: 5) {
+            HStack(spacing: InterfaceScale.metric(5)) {
                 if let source = message.embedSource {
                     if let icon = source.footer?.proxyIconURL ?? source.footer?.iconURL {
-                        ProfileWidgetImageView(url: icon).frame(width: 16, height: 16)
+                        ProfileWidgetImageView(url: icon).frame(width: InterfaceScale.metric(16), height: InterfaceScale.metric(16))
                     }
                     if let name = source.footer?.text ?? source.provider?.name { Text("\(name) ·").lineLimit(1) }
                 }
                 Text(message.timestamp.formatted(date: .abbreviated, time: .omitted))
                 Spacer(minLength: 0)
                 if message.reactionCount > 0, message.poll == nil { Label(message.reactionCount.formatted(), systemImage: "face.smiling") }
-            }.font(.caption).foregroundStyle(.secondary)
+            }.font(.interface(.caption)).foregroundStyle(.secondary)
             if let expiry = message.poll?.expiry {
                 Text(expiry > .now ? "Poll ends \(expiry.formatted(date: .abbreviated, time: .shortened))" : "Poll ended")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.interface(.caption)).foregroundStyle(.secondary)
             }
         }
-        .frame(width: 280, alignment: .leading).padding(16)
-        .background(.primary.opacity(0.04), in: .rect(cornerRadius: 12))
+        .frame(width: InterfaceScale.metric(280), alignment: .leading).padding(InterfaceScale.metric(16))
+        .background(.primary.opacity(0.04), in: .rect(cornerRadius: InterfaceScale.metric(12)))
     }
 
     private var imageURL: URL? {
@@ -71,10 +71,10 @@ struct ProfileGameDescription: View {
     @State private var fullHeight: CGFloat = 0
     @State private var collapsedHeight: CGFloat = 0
 
-    private var description: some View { Text(text).font(.system(size: 14)).lineSpacing(4).frame(maxWidth: .infinity, alignment: .leading) }
+    private var description: some View { Text(text).font(.interfaceSystem(size: 14)).lineSpacing(4).frame(maxWidth: .infinity, alignment: .leading) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(8)) {
             description.lineLimit(expanded ? nil : 8).textSelection(.enabled)
                 .background {
                     description.fixedSize(horizontal: false, vertical: true).hidden()

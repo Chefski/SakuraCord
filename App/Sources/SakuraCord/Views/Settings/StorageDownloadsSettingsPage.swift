@@ -101,7 +101,7 @@ struct StorageDownloadsSettingsPage: View {
                 .settingsControlAnchor(.clearAllAccountDrafts, state: state)
                 Spacer()
                 Text(lastCacheClearDescription)
-                    .font(.caption)
+                    .font(.interface(.caption))
                     .foregroundStyle(.secondary)
             }
         } header: {
@@ -111,19 +111,19 @@ struct StorageDownloadsSettingsPage: View {
 
     private var downloadsSection: some View {
         Section {
-            HStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: InterfaceScale.metric(16)) {
+                VStack(alignment: .leading, spacing: InterfaceScale.metric(2)) {
                     Text("Default download folder", bundle: #bundle)
                     if let defaultFolderPath {
                         Text(defaultFolderPath)
-                            .font(.caption)
+                            .font(.interface(.caption))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                             .truncationMode(.middle)
                             .help(defaultFolderPath)
                     } else {
                         Text("No folder selected", bundle: #bundle)
-                            .font(.caption)
+                            .font(.interface(.caption))
                             .foregroundStyle(.secondary)
                     }
                 }

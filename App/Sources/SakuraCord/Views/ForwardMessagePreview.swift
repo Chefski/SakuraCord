@@ -237,18 +237,18 @@ struct ForwardedMessagePreview: View {
     }
 
     var body: some View {
-        HStack(spacing: 12) {
-            RoundedRectangle(cornerRadius: 2, style: .continuous)
+        HStack(spacing: InterfaceScale.metric(12)) {
+            RoundedRectangle(cornerRadius: InterfaceScale.metric(2), style: .continuous)
                 .fill(Color.secondary.opacity(0.20))
-                .frame(width: 4)
-            VStack(alignment: .leading, spacing: 6) {
+                .frame(width: InterfaceScale.metric(4))
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(6)) {
                 if let content = plan.content {
                     let resolver = MessageMentionResolver(model: model, message: message)
                     CustomEmojiRichText(
                         model: model,
                         content: content,
-                        emojiSize: 22,
-                        baseFontSize: 16,
+                        emojiSize: InterfaceScale.metric(22),
+                        baseFontSize: InterfaceScale.fontSize(16),
                         maximumNumberOfLines: plan.contentLineLimit,
                         isSelectable: false,
                         foregroundColor: plan.hasAttachmentRow
@@ -257,8 +257,8 @@ struct ForwardedMessagePreview: View {
                         mentionPresentation: resolver.presentation
                     )
                     .frame(
-                        minHeight: 22,
-                        maxHeight: CGFloat(plan.contentLineLimit) * 22,
+                        minHeight: InterfaceScale.metric(22),
+                        maxHeight: CGFloat(plan.contentLineLimit) * InterfaceScale.metric(22),
                         alignment: .top
                     )
                     .clipped()
@@ -266,19 +266,19 @@ struct ForwardedMessagePreview: View {
                 if let summary = plan.attachmentSummary,
                    let systemImage = plan.attachmentSystemImage
                 {
-                    HStack(spacing: 6) {
+                    HStack(spacing: InterfaceScale.metric(6)) {
                         Image(systemName: systemImage)
-                            .font(.system(size: 16, weight: .medium))
-                            .frame(width: 20, height: 20)
+                            .font(.interfaceSystem(size: 16, weight: .medium))
+                            .frame(width: InterfaceScale.metric(20), height: InterfaceScale.metric(20))
                         Text(summary)
-                            .font(.system(size: 16, weight: .medium))
+                            .font(.interfaceSystem(size: 16, weight: .medium))
                             .lineLimit(1)
                     }
                     .foregroundStyle(.secondary)
-                    .frame(height: 20)
+                    .frame(height: InterfaceScale.metric(20))
                 }
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, InterfaceScale.metric(4))
             Spacer(minLength: 0)
             if let media = plan.media {
                 ForwardPreviewThumbnail(
@@ -287,8 +287,8 @@ struct ForwardedMessagePreview: View {
                 )
             }
         }
-        .padding(.leading, 16)
-        .frame(minHeight: 30, maxHeight: 56)
+        .padding(.leading, InterfaceScale.metric(16))
+        .frame(minHeight: InterfaceScale.metric(30), maxHeight: InterfaceScale.metric(56))
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Message being forwarded: \(accessibilitySummary)")
@@ -328,9 +328,9 @@ private struct ForwardPreviewThumbnail: View {
                     )
                 }
                 Image(systemName: "play.fill")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.interfaceSystem(size: 18, weight: .semibold))
                     .foregroundStyle(.white)
-                    .shadow(radius: 2)
+                    .shadow(radius: InterfaceScale.metric(2))
             case .audio:
                 Image(systemName: "waveform")
                     .foregroundStyle(.secondary)
@@ -339,16 +339,16 @@ private struct ForwardPreviewThumbnail: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .frame(width: 56, height: 56)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .frame(width: InterfaceScale.metric(56), height: InterfaceScale.metric(56))
+        .clipShape(RoundedRectangle(cornerRadius: InterfaceScale.metric(8), style: .continuous))
         .overlay(alignment: .bottomTrailing) {
             if overflowCount > 0 {
                 Text("+\(overflowCount)")
-                    .font(.system(size: 12, weight: .semibold))
-                    .frame(width: 24, height: 24)
+                    .font(.interfaceSystem(size: 12, weight: .semibold))
+                    .frame(width: InterfaceScale.metric(24), height: InterfaceScale.metric(24))
                     .background(
                         Color(nsColor: .controlBackgroundColor).opacity(0.94),
-                        in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        in: RoundedRectangle(cornerRadius: InterfaceScale.metric(8), style: .continuous)
                     )
             }
         }

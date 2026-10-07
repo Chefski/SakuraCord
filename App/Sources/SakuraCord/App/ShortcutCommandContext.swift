@@ -3,7 +3,7 @@ import SwiftUI
 /// Commands follow the key scene rather than the app's shared workspace model.
 enum ShortcutCommandContext {
     case workspace(AppModel)
-    case settings(focusSearch: () -> Void)
+    case settings(model: AppModel, focusSearch: () -> Void)
 
     var allowsWorkspaceNavigation: Bool {
         guard case let .workspace(model) = self else { return false }
@@ -13,7 +13,10 @@ enum ShortcutCommandContext {
     func isEnabled(_ action: KeyboardShortcutAction) -> Bool {
         switch self {
         case let .workspace(model): model.keyboardShortcutActionIsEnabled(action)
-        case .settings: action == .messageSearch || action == .searchCurrentConversation
+        case let .settings(model, _):
+            action.group == .interface
+                ? model.keyboardShortcutActionIsEnabled(action)
+                : action == .messageSearch || action == .searchCurrentConversation
         }
     }
 
@@ -21,7 +24,12 @@ enum ShortcutCommandContext {
         guard isEnabled(action) else { return }
         switch self {
         case let .workspace(model): model.performKeyboardShortcutAction(action)
-        case let .settings(focusSearch): focusSearch()
+        case let .settings(model, focusSearch):
+            if action.group == .interface {
+                model.performKeyboardShortcutAction(action)
+            } else {
+                focusSearch()
+            }
         }
     }
 

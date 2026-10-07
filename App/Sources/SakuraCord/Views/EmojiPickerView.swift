@@ -33,16 +33,16 @@ enum EmojiPickerActivationPolicy {
 struct EmojiPickerHeader: View {
     let title: String
     let count: Int
-    var horizontalInset: CGFloat = 14
+    var horizontalInset: CGFloat = InterfaceScale.metric(14)
 
     var body: some View {
         HStack {
-            Text(title).font(.headline)
+            Text(title).font(.interface(.headline))
             Spacer()
-            Text(count, format: .number).font(.caption).foregroundStyle(.secondary)
+            Text(count, format: .number).font(.interface(.caption)).foregroundStyle(.secondary)
         }
         .padding(.horizontal, horizontalInset)
-        .padding(.bottom, 8)
+        .padding(.bottom, InterfaceScale.metric(8))
     }
 }
 
@@ -151,10 +151,11 @@ enum EmojiPickerItem: Identifiable {
         dimension: CGFloat = 40,
         nativeFontSize: CGFloat = 38
     ) -> some View {
+        let dimension = InterfaceScale.metric(dimension)
         switch self {
         case let .native(emoji):
             Text(emoji.value(for: skinTone))
-                .font(.system(size: nativeFontSize))
+                .font(.interfaceSystem(size: nativeFontSize))
                 .fixedSize()
                 .frame(width: dimension, height: dimension, alignment: .center)
                 .offset(y: -1)
@@ -178,7 +179,8 @@ enum EmojiPickerItem: Identifiable {
 
 enum EmojiPickerGridMetrics {
     static let columns = 9
-    static let cellSize: CGFloat = 43
+    static var cellSize: CGFloat { InterfaceScale.metric(43) }
+    static var glyphSize: CGFloat { InterfaceScale.metric(38) }
 }
 
 struct EmojiPickerCell: Identifiable {
@@ -386,7 +388,7 @@ struct EmojiPickerView: View {
                                 skinTone: selectedSkinTone,
                                 guildsByID: model.serverRailGuildsByID
                             )
-                            .frame(height: 38)
+                            .frame(height: InterfaceScale.metric(38))
                         }
                     }
                 }
@@ -417,7 +419,7 @@ struct EmojiPickerView: View {
                 }
             }
         }
-        .frame(width: ChatChromeMetrics.emojiPickerWidth, height: 420)
+        .frame(width: ChatChromeMetrics.emojiPickerWidth, height: InterfaceScale.metric(420))
         .onExitCommand(perform: handleEscapeCommand)
         .alert("Emoji Unavailable", isPresented: Binding(get: { emojiLockMessage != nil }, set: { if !$0 { emojiLockMessage = nil } })) {
             Button("OK", role: .cancel) { emojiLockMessage = nil }
@@ -715,7 +717,7 @@ private struct PickerSearchTextField: NSViewRepresentable {
         textField.isBezeled = false
         textField.drawsBackground = false
         textField.focusRingType = .none
-        textField.font = .systemFont(ofSize: ChatChromeMetrics.pickerSearchHeaderFontSize)
+        textField.font = .interfaceSystemFont(ofSize: ChatChromeMetrics.pickerSearchHeaderFontSize)
         textField.textColor = .labelColor
         textField.lineBreakMode = .byTruncatingTail
         textField.cell?.usesSingleLineMode = true
@@ -730,6 +732,8 @@ private struct PickerSearchTextField: NSViewRepresentable {
     func updateNSView(_ textField: EmojiSearchNSTextField, context: Context) {
         context.coordinator.text = $text
         context.coordinator.isFocused = $isFocused
+        let font = NSFont.interfaceSystemFont(ofSize: ChatChromeMetrics.pickerSearchHeaderFontSize)
+        if textField.font != font { textField.font = font }
         if textField.stringValue != text {
             textField.stringValue = text
         }

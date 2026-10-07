@@ -33,9 +33,9 @@ struct InteractiveProfileServerTag: View {
 }
 
 struct ServerTagCard: View {
-    private static let width: CGFloat = 300
-    private static let bannerHeight: CGFloat = 120
-    private static let iconSize: CGFloat = 72
+    private static var width: CGFloat { InterfaceScale.metric(300) }
+    private static var bannerHeight: CGFloat { InterfaceScale.metric(120) }
+    private static var iconSize: CGFloat { InterfaceScale.metric(72) }
 
     let model: AppModel
     let guildID: GuildID
@@ -70,10 +70,10 @@ struct ServerTagCard: View {
                         model.loadServerTagCard(guildID)
                     }
                 }
-                .padding(.vertical, 12)
+                .padding(.vertical, InterfaceScale.metric(12))
             case nil:
                 ProgressView().controlSize(.small)
-                    .frame(maxWidth: .infinity, minHeight: 180)
+                    .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(180))
                     .accessibilityLabel("Loading server")
             }
         }
@@ -88,10 +88,10 @@ struct ServerTagCard: View {
         VStack(alignment: .leading, spacing: 0) {
             header(color: profile.brandColor ?? entry.adaptiveColor, bannerURL: profile.bannerURL,
                    iconURL: profile.iconURL, name: profile.name)
-            VStack(alignment: .leading, spacing: 10) {
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Text(profile.name).font(.title3.weight(.bold)).lineLimit(2)
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(10)) {
+                VStack(alignment: .leading, spacing: InterfaceScale.metric(3)) {
+                    HStack(spacing: InterfaceScale.metric(6)) {
+                        Text(profile.name).font(.interface(.title3).weight(.bold)).lineLimit(2)
                         ServerTagStatusBadge(profile: profile)
                     }
                     counts(profile)
@@ -104,7 +104,7 @@ struct ServerTagCard: View {
                 if !entry.games.isEmpty { games(entry.games) }
                 if !profile.traits.isEmpty { traits(profile) }
                 if let error = entry.actionError {
-                    Text(error).font(.callout).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
+                    Text(error).font(.interface(.callout)).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
                 }
                 if let action = model.serverTagCardAction(for: profile) {
                     Button {
@@ -124,10 +124,10 @@ struct ServerTagCard: View {
                     .tint(SakuraCordAccentColor.color)
                     .controlSize(.large)
                     .disabled(isJoining)
-                    .padding(.top, 4)
+                    .padding(.top, InterfaceScale.metric(4))
                 }
             }
-            .padding(EdgeInsets(top: Self.iconSize / 2 + 10, leading: 16, bottom: 16, trailing: 16))
+            .padding(EdgeInsets(top: Self.iconSize / 2 + 10, leading: InterfaceScale.metric(16), bottom: InterfaceScale.metric(16), trailing: InterfaceScale.metric(16)))
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(profile.name)
@@ -137,12 +137,12 @@ struct ServerTagCard: View {
     private var restricted: some View {
         VStack(alignment: .leading, spacing: 0) {
             header(color: nil, bannerURL: nil, iconURL: nil, name: "?")
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Private Server").font(.title2.weight(.semibold))
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(6)) {
+                Text("Private Server").font(.interface(.title2).weight(.semibold))
                 Text("The server has limited who can see this profile.")
                     .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
-            .padding(EdgeInsets(top: Self.iconSize / 2 + 10, leading: 16, bottom: 16, trailing: 16))
+            .padding(EdgeInsets(top: Self.iconSize / 2 + 10, leading: InterfaceScale.metric(16), bottom: InterfaceScale.metric(16), trailing: InterfaceScale.metric(16)))
         }
         .accessibilityElement(children: .combine)
     }
@@ -164,7 +164,7 @@ struct ServerTagCard: View {
         .clipped()
         .overlay(alignment: .bottomLeading) {
             icon(url: iconURL, name: name)
-                .offset(x: 16, y: Self.iconSize / 2)
+                .offset(x: InterfaceScale.metric(16), y: Self.iconSize / 2)
         }
         .accessibilityHidden(true)
     }
@@ -175,25 +175,25 @@ struct ServerTagCard: View {
                 StaticRemoteImage(url: url, maximumPixelDimension: 256, contentMode: .fill)
             } else {
                 Text(name.split(separator: " ").prefix(3).compactMap(\.first).map(String.init).joined())
-                    .font(.title2.weight(.semibold))
+                    .font(.interface(.title2).weight(.semibold))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(.quaternary)
             }
         }
         .frame(width: Self.iconSize, height: Self.iconSize)
-        .clipShape(.rect(cornerRadius: 20))
-        .padding(4)
-        .background(.background, in: .rect(cornerRadius: 24))
+        .clipShape(.rect(cornerRadius: InterfaceScale.metric(20)))
+        .padding(InterfaceScale.metric(4))
+        .background(.background, in: .rect(cornerRadius: InterfaceScale.metric(24)))
     }
 
     private func counts(_ profile: GuildProfile) -> some View {
-        HStack(spacing: 12) {
-            HStack(spacing: 5) {
-                Circle().fill(.green).frame(width: 8, height: 8)
+        HStack(spacing: InterfaceScale.metric(12)) {
+            HStack(spacing: InterfaceScale.metric(5)) {
+                Circle().fill(.green).frame(width: InterfaceScale.metric(8), height: InterfaceScale.metric(8))
                 Text("\(profile.onlineCount.formatted()) Online")
             }
-            HStack(spacing: 5) {
-                Circle().fill(.secondary).frame(width: 8, height: 8)
+            HStack(spacing: InterfaceScale.metric(5)) {
+                Circle().fill(.secondary).frame(width: InterfaceScale.metric(8), height: InterfaceScale.metric(8))
                 Text("\(profile.memberCount.formatted()) \(profile.memberCount == 1 ? "Member" : "Members")")
             }
         }
@@ -202,7 +202,7 @@ struct ServerTagCard: View {
     }
 
     private func games(_ games: [ProfileGame]) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: InterfaceScale.metric(8)) {
             ForEach(games) { game in
                 Group {
                     if let url = game.iconURL {
@@ -211,9 +211,9 @@ struct ServerTagCard: View {
                         Image(systemName: "gamecontroller.fill").foregroundStyle(.secondary)
                     }
                 }
-                .frame(width: 28, height: 28)
-                .clipShape(.rect(cornerRadius: 7))
-                .overlay { RoundedRectangle(cornerRadius: 7).strokeBorder(.primary.opacity(0.1)) }
+                .frame(width: InterfaceScale.metric(28), height: InterfaceScale.metric(28))
+                .clipShape(.rect(cornerRadius: InterfaceScale.metric(7)))
+                .overlay { RoundedRectangle(cornerRadius: InterfaceScale.metric(7)).strokeBorder(.primary.opacity(0.1)) }
                 .help(game.name)
             }
             if games.count == 1, let game = games.first {
@@ -225,19 +225,19 @@ struct ServerTagCard: View {
     }
 
     private func traits(_ profile: GuildProfile) -> some View {
-        ProfileRoleFlowLayout(spacing: 6, constrainsChildren: true, alignment: .center) {
+        ProfileRoleFlowLayout(spacing: InterfaceScale.metric(6), constrainsChildren: true, alignment: .center) {
             ForEach(Array(profile.traits.enumerated()), id: \.offset) { _, trait in
-                HStack(spacing: 4) {
+                HStack(spacing: InterfaceScale.metric(4)) {
                     if let url = trait.emojiURL {
-                        StaticRemoteImage(url: url, maximumPixelDimension: 32).frame(width: 16, height: 16)
+                        StaticRemoteImage(url: url, maximumPixelDimension: 32).frame(width: InterfaceScale.metric(16), height: InterfaceScale.metric(16))
                     } else if let emoji = trait.emojiName {
                         Text(NativeEmojiCatalogMetadata.value(forShortcode: emoji) ?? emoji)
                     }
                     Text(trait.label).lineLimit(1)
                 }
-                .font(.callout)
-                .padding(.horizontal, 8)
-                .frame(height: 26)
+                .font(.interface(.callout))
+                .padding(.horizontal, InterfaceScale.metric(8))
+                .frame(height: InterfaceScale.metric(26))
                 .overlay { Capsule().strokeBorder(.primary.opacity(0.13)) }
             }
         }
@@ -275,14 +275,14 @@ private struct ServerTagStatusBadge: View {
     var body: some View {
         if let status {
             Image(systemName: "seal.fill")
-                .font(.system(size: 18))
+                .font(.interfaceSystem(size: 18))
                 .foregroundStyle(status.color)
                 .overlay {
                     Image(systemName: status.symbol)
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.interfaceSystem(size: 9, weight: .bold))
                         .foregroundStyle(.white)
                 }
-                .frame(width: 18, height: 18)
+                .frame(width: InterfaceScale.metric(18), height: InterfaceScale.metric(18))
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(Text(status.label))
                 .help(Text(status.label))

@@ -9,7 +9,7 @@ struct GuildOnboardingView: View {
     @State private var movingForward = true
     @State private var navigationHeight: CGFloat = 40
 
-    private let navigationInset: CGFloat = 16
+    private let navigationInset: CGFloat = InterfaceScale.metric(16)
     private var cardRadius: CGFloat { navigationHeight / 2 + navigationInset }
 
     private var entry: GuildOnboardingStore.Entry { model.onboarding.entries[guildID] ?? .init() }
@@ -24,8 +24,8 @@ struct GuildOnboardingView: View {
                 .id(entry.configuration == nil ? "loading" : entry.promptID ?? "welcome")
                 .transition(reduceMotion ? .opacity : .push(from: movingForward ? .trailing : .leading))
         }
-        .frame(maxWidth: 820, maxHeight: 560)
-        .padding(24)
+        .frame(maxWidth: InterfaceScale.metric(820), maxHeight: InterfaceScale.metric(560))
+        .padding(InterfaceScale.metric(24))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipped()
         .background { SakuraCordSignInBackdrop().ignoresSafeArea(edges: .top) }
@@ -36,7 +36,7 @@ struct GuildOnboardingView: View {
 
     @ViewBuilder private var content: some View {
         if entry.configuration == nil {
-            VStack(spacing: 20) {
+            VStack(spacing: InterfaceScale.metric(20)) {
                 if entry.isLoading { ProgressView().controlSize(.large) }
                 if let error = entry.error {
                     ContentUnavailableView("Unable to Load Onboarding", systemImage: "wifi.exclamationmark", description: Text(error))
@@ -54,12 +54,12 @@ struct GuildOnboardingView: View {
     private var welcome: some View {
         GeometryReader { geometry in
             ScrollView {
-                VStack(spacing: 24) {
+                VStack(spacing: InterfaceScale.metric(24)) {
                     GuildWelcomeArtwork(guild: guild, size: 120)
                     Text("Welcome to \(guild?.name ?? "the server")")
-                        .font(.title2).multilineTextAlignment(.center)
+                        .font(.interface(.title2)).multilineTextAlignment(.center)
                     Text("Let’s customize your experience")
-                        .font(.largeTitle.weight(.semibold))
+                        .font(.interface(.largeTitle).weight(.semibold))
                         .multilineTextAlignment(.center)
                     OnboardingStatus(entry: entry)
                     Button(prompts.isEmpty ? "Finish Joining" : "Get Started", systemImage: "arrow.right") {
@@ -71,7 +71,7 @@ struct GuildOnboardingView: View {
                     .disabled(working || entry.needsRefresh || entry.isLoading)
                     if entry.needsRefresh { refreshButton }
                 }
-                .padding(24)
+                .padding(InterfaceScale.metric(24))
                 .frame(maxWidth: .infinity, minHeight: geometry.size.height)
             }
             .scrollBounceBehavior(.basedOnSize)
@@ -82,17 +82,17 @@ struct GuildOnboardingView: View {
         let prompt = prompts[index]
         return VStack(spacing: 0) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: InterfaceScale.metric(24)) {
                     HStack {
                         Text("Question \(index + 1) of \(prompts.count)").foregroundStyle(.secondary)
                         if prompt.required { Text("Required").foregroundStyle(SakuraCordAccentColor.color) }
                     }
-                    .font(.callout.weight(.medium))
+                    .font(.interface(.callout).weight(.medium))
                     OnboardingQuestion(model: model, guildID: guildID, prompt: prompt, large: true)
                     consequence(prompt)
                     OnboardingStatus(entry: entry)
                 }
-                .padding(32).frame(maxWidth: .infinity, alignment: .leading)
+                .padding(InterfaceScale.metric(32)).frame(maxWidth: .infinity, alignment: .leading)
             }
             .scrollBounceBehavior(.basedOnSize)
             .id(prompt.id)
@@ -112,15 +112,15 @@ struct GuildOnboardingView: View {
         let roles = Set(options.flatMap(\.roleIDs))
         let names = (model.snapshot?.channels ?? []).filter { channels.contains($0.id) }.map { "#\($0.name)" }
         let roleNames = (model.guildRolesByGuildID[guildID] ?? model.guildRoles).filter { roles.contains($0.id) }.map { "@\($0.name)" }
-        return VStack(alignment: .leading, spacing: 4) {
+        return VStack(alignment: .leading, spacing: InterfaceScale.metric(4)) {
             if model.featuresSettings.channelManagement, !names.isEmpty { Text("Channels: \(names.formatted())") }
             if !roleNames.isEmpty { Text("Roles: \(roleNames.formatted())") }
         }
-        .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        .font(.interface(.callout)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
     }
 
     private func navigation(index: Int) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: InterfaceScale.metric(12)) {
             if index > 0 {
                 Button("Back", systemImage: "arrow.left") { advance(to: prompts[index - 1].id) }
                     .buttonStyle(.glass).disabled(working)
@@ -165,7 +165,7 @@ struct GuildWelcomeArtwork: View {
         }
         .frame(width: size, height: size)
         .clipShape(ConcentricRectangle(cornerRadius: size * 0.25))
-        .shadow(color: SakuraCordAccentColor.color.opacity(0.22), radius: 30, y: 12)
+        .shadow(color: SakuraCordAccentColor.color.opacity(0.22), radius: InterfaceScale.metric(30), y: 12)
         .accessibilityHidden(true)
     }
 }
@@ -173,10 +173,10 @@ struct GuildWelcomeArtwork: View {
 struct OnboardingStatus: View {
     let entry: GuildOnboardingStore.Entry
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(8)) {
             if let notice = entry.notice { Text(notice).foregroundStyle(.secondary) }
             if let error = entry.error { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red).textSelection(.enabled) }
         }
-        .font(.callout).fixedSize(horizontal: false, vertical: true)
+        .font(.interface(.callout)).fixedSize(horizontal: false, vertical: true)
     }
 }

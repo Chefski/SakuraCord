@@ -25,7 +25,7 @@ struct ForumPostPreviewText: NSViewRepresentable {
         for case let .mention(mention) in prepared.tokens {
             mentions[mention.rawToken] = resolver.presentation(mention)
         }
-        let fontSize = NSFont.preferredFont(forTextStyle: textStyle).pointSize
+        let fontSize = NSFont.interfacePreferredFont(forTextStyle: textStyle).pointSize
         view.configure(
             ForumPostPreviewTextView.Configuration(
                 messageID: message.id,

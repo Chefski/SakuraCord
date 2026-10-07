@@ -40,8 +40,8 @@ private struct NativeHoverHelp: ViewModifier {
         content
             .onModalHover { isPresented = $0 }
             .nativeHoverPopover(isPresented: $isPresented) {
-                Text(title).font(.subheadline.weight(.medium))
-                    .fixedSize().padding(.horizontal, 12).padding(.vertical, 10)
+                Text(title).font(.interface(.subheadline).weight(.medium))
+                    .fixedSize().padding(.horizontal, InterfaceScale.metric(12)).padding(.vertical, InterfaceScale.metric(10))
             }
     }
 }

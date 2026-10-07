@@ -13,16 +13,16 @@ struct SoftwareUpdateOverviewSection<Destination: Hashable>: View {
 
     var body: some View {
         Section {
-            HStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: InterfaceScale.metric(16)) {
+                VStack(alignment: .leading, spacing: InterfaceScale.metric(5)) {
                     Text("SakuraCord Version", bundle: #bundle)
-                        .font(.headline)
+                        .font(.interface(.headline))
 
                     Text(versionDisplay)
                         .foregroundStyle(.secondary)
                 }
 
-                Spacer(minLength: 16)
+                Spacer(minLength: InterfaceScale.metric(16))
 
                 Button("Check Now…") {
                     updateController.checkForUpdates()

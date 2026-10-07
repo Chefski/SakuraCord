@@ -33,7 +33,7 @@ extension NativeMemberListCanvasView {
         let textX = row.minX + 4 + NativeMemberListMetrics.avatarContainerSize + 8
         let hasRoleIndicator = presentation.roleColorDisplay == .nextToNames
             && MessageAuthorPresentation.topRoleColor(in: member.roles) != nil
-        let nameX = textX + (hasRoleIndicator ? 13 : 0)
+        let nameX = textX + (hasRoleIndicator ? InterfaceScale.metric(13) : 0)
         let accessoryWidths: [CGFloat] = (member.user.isBot ? [NativeAppBadgePresentation.width] : [])
             + (prepared.serverTag.map { [$0.width] } ?? [])
         let layout = NativeMemberNameLayout.layout(
@@ -50,7 +50,7 @@ extension NativeMemberListCanvasView {
             let nameY = prepared.activity == nil ? row.minY + 13 : row.minY + 5
             tagFrame = CGRect(
                 x: nameX + layout.accessoryFrames[tagIndex].minX,
-                y: nameY + 8 - NativeServerTagPresentation.height / 2,
+                y: nameY + InterfaceScale.metric(8) - NativeServerTagPresentation.height / 2,
                 width: tag.width,
                 height: NativeServerTagPresentation.height
             )

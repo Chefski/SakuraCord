@@ -91,7 +91,7 @@ struct MessageTimelineView: View {
             }
         }
         .overlay(alignment: .top) {
-            VStack(spacing: 8) {
+            VStack(spacing: InterfaceScale.metric(8)) {
                 if let error = model.messageLoadError {
                     MessageLoadErrorBanner(message: error, retry: model.retryMessageLoad)
                 }
@@ -103,7 +103,7 @@ struct MessageTimelineView: View {
                     }
                 }
             }
-            .padding(8)
+            .padding(InterfaceScale.metric(8))
         }
         .overlay(alignment: .bottom) {
             if hasEstablishedInitialPosition,
@@ -124,11 +124,11 @@ struct MessageTimelineView: View {
                     }
                 } label: {
                     Label("New messages", systemImage: "arrow.down")
-                        .font(.callout.weight(.semibold))
+                        .font(.interface(.callout).weight(.semibold))
                         .foregroundStyle(.primary)
                         .environment(\.colorScheme, .dark)
-                        .padding(.horizontal, 15)
-                        .padding(.vertical, 8)
+                        .padding(.horizontal, InterfaceScale.metric(15))
+                        .padding(.vertical, InterfaceScale.metric(8))
                         .contentShape(Capsule())
                         .glassEffect(
                             .regular.tint(SakuraCordAccentColor.color).interactive(),
@@ -468,16 +468,16 @@ struct MessageTimelineView: View {
 struct DateSeparator: View {
     let date: Date
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: InterfaceScale.metric(10)) {
             separatorLine
             Text(date, format: .dateTime.day().month(.wide).year())
-                .font(.caption2.weight(.semibold))
+                .font(.interface(.caption2).weight(.semibold))
                 .foregroundStyle(.secondary)
                 .fixedSize()
             separatorLine
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .padding(.horizontal, InterfaceScale.metric(14))
+        .padding(.vertical, InterfaceScale.metric(12))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Messages from \(date.formatted(date: .long, time: .omitted))")
     }
@@ -491,20 +491,20 @@ struct DateSeparator: View {
 
 struct NewMessagesSeparator: View {
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: InterfaceScale.metric(8)) {
             Rectangle()
                 .fill(Color.red)
                 .frame(maxWidth: .infinity, minHeight: 1, maxHeight: 1)
             Text("NEW")
-                .font(.caption2.weight(.bold))
+                .font(.interface(.caption2).weight(.bold))
                 .foregroundStyle(.white)
-                .padding(.horizontal, 7)
-                .padding(.vertical, 3)
+                .padding(.horizontal, InterfaceScale.metric(7))
+                .padding(.vertical, InterfaceScale.metric(3))
                 .background(Color.red, in: Capsule())
         }
-        .padding(.leading, 14)
-        .padding(.trailing, 10)
-        .padding(.vertical, 5)
+        .padding(.leading, InterfaceScale.metric(14))
+        .padding(.trailing, InterfaceScale.metric(10))
+        .padding(.vertical, InterfaceScale.metric(5))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("New messages")
     }
@@ -515,10 +515,10 @@ struct UnreadMessagesBanner: View {
     let markRead: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: InterfaceScale.metric(12)) {
             Text(message)
                 .lineLimit(1)
-            Spacer(minLength: 8)
+            Spacer(minLength: InterfaceScale.metric(8))
             Button(action: markRead) {
                 Label("Mark as Read", systemImage: "bell.badge")
                     .labelStyle(.titleAndIcon)
@@ -526,12 +526,12 @@ struct UnreadMessagesBanner: View {
             .buttonStyle(.plain)
             .accessibilityHint("Marks this conversation read")
         }
-        .font(.callout.weight(.semibold))
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
+        .font(.interface(.callout).weight(.semibold))
+        .padding(.horizontal, InterfaceScale.metric(14))
+        .padding(.vertical, InterfaceScale.metric(9))
         .glassEffect(
             .regular.interactive(),
-            in: ConcentricRectangle(cornerRadius: 13, style: .continuous)
+            in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(13), style: .continuous)
         )
         .accessibilityElement(children: .contain)
     }
@@ -668,7 +668,7 @@ struct MessageTimelineLoadingSkeleton: View {
     var body: some View {
         SkeletonShimmerTimeline {
             GeometryReader { geometry in
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: InterfaceScale.metric(20)) {
                     ForEach(
                         0 ..< MessageTimelineSkeletonLayout.rowCount(
                             for: max(0, geometry.size.height - bottomContentInset)
@@ -681,8 +681,8 @@ struct MessageTimelineLoadingSkeleton: View {
                         )
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 18)
+                .padding(.horizontal, InterfaceScale.metric(16))
+                .padding(.vertical, InterfaceScale.metric(18))
                 .frame(
                     maxWidth: .infinity,
                     minHeight: 0,
@@ -708,27 +708,27 @@ struct ChannelBeginningView: View {
     let rulesChannelID: ChannelID?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(9)) {
             Image(systemName: symbol)
-                .font(.system(size: 34, weight: .semibold))
+                .font(.interfaceSystem(size: 34, weight: .semibold))
                 .foregroundStyle(.secondary)
-                .frame(width: 68, height: 68)
+                .frame(width: InterfaceScale.metric(68), height: InterfaceScale.metric(68))
                 .background(.quaternary, in: Circle())
 
             Text(title)
-                .font(.largeTitle.weight(.bold))
+                .font(.interface(.largeTitle).weight(.bold))
                 .textSelection(.enabled)
                 .tint(SakuraCordAccentColor.color)
 
             Text(description)
-                .font(.body)
+                .font(.interface(.body))
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
                 .tint(SakuraCordAccentColor.color)
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 28)
-        .padding(.bottom, 18)
+        .padding(.horizontal, InterfaceScale.metric(16))
+        .padding(.top, InterfaceScale.metric(28))
+        .padding(.bottom, InterfaceScale.metric(18))
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
     }
@@ -784,27 +784,27 @@ private struct MessageTimelineSkeletonMessage: View {
     let availableLineWidth: CGFloat
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: InterfaceScale.metric(12)) {
             Circle()
                 .fill(.secondary.opacity(0.16))
-                .frame(width: 40, height: 40)
+                .frame(width: InterfaceScale.metric(40), height: InterfaceScale.metric(40))
                 .skeletonShimmer()
 
-            VStack(alignment: .leading, spacing: 7) {
-                HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(7)) {
+                HStack(spacing: InterfaceScale.metric(8)) {
                     skeletonLine(
                         width: min(row.firstLineWidth, availableLineWidth * 0.52),
-                        height: 10
+                        height: InterfaceScale.metric(10)
                     )
                     skeletonLine(width: min(54, availableLineWidth * 0.2), height: 8)
                 }
                 skeletonLine(width: min(row.secondLineWidth, availableLineWidth), height: 9)
                 skeletonLine(
                     width: min(row.secondLineWidth * 0.68, availableLineWidth * 0.72),
-                    height: 9
+                    height: InterfaceScale.metric(9)
                 )
             }
-            .padding(.top, 2)
+            .padding(.top, InterfaceScale.metric(2))
         }
     }
 
@@ -821,16 +821,16 @@ private struct MessageLoadErrorBanner: View {
     let retry: () -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: InterfaceScale.metric(8)) {
             Image(systemName: "wifi.exclamationmark")
             Text(message).lineLimit(2)
-            Spacer(minLength: 8)
+            Spacer(minLength: InterfaceScale.metric(8))
             Button("Retry", action: retry).buttonStyle(.link)
         }
-        .font(.caption)
+        .font(.interface(.caption))
         .foregroundStyle(.secondary)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.horizontal, InterfaceScale.metric(14))
+        .padding(.vertical, InterfaceScale.metric(8))
         .background(.quaternary)
     }
 }

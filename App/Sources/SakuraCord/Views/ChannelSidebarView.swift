@@ -3,18 +3,19 @@ import SakuraCordModels
 import SwiftUI
 
 nonisolated enum ChannelSidebarLayoutMetrics {
-    static let minimumRowHeight: CGFloat = 24
+    static var minimumRowHeight: CGFloat { InterfaceScale.metric(24) }
+    static var iconWidth: CGFloat { InterfaceScale.metric(16) }
 }
 
 nonisolated enum SidebarAccountControlMetrics {
-    static let capsuleHeight = ChatChromeMetrics.controlHeight
-    static let cornerRadius = capsuleHeight / 2
-    static let contentInset: CGFloat = 8
-    static let avatarSize: CGFloat = 32
-    static let settingsIconSize: CGFloat = 14
-    static let settingsDiameter: CGFloat = 30
-    static let settingsInset = (capsuleHeight - settingsDiameter) / 2
-    static let surfaceSpacing: CGFloat = 6
+    static var capsuleHeight: CGFloat { ChatChromeMetrics.controlHeight }
+    static var cornerRadius: CGFloat { capsuleHeight / 2 }
+    static var contentInset: CGFloat { InterfaceScale.metric(8) }
+    static var avatarSize: CGFloat { InterfaceScale.metric(32) }
+    static var settingsIconSize: CGFloat { InterfaceScale.metric(14) }
+    static var settingsDiameter: CGFloat { InterfaceScale.metric(30) }
+    static var settingsInset: CGFloat { (capsuleHeight - settingsDiameter) / 2 }
+    static var surfaceSpacing: CGFloat { InterfaceScale.metric(6) }
 
     static func bottomInset(for appearance: ComposerBarAppearance) -> CGFloat {
         let composerHeight = appearance == .defaultStyle
@@ -207,7 +208,7 @@ struct ChannelSidebarView: View {
             }
             .zIndex(1)
         }
-        .font(.system(size: InterfaceTypographyMetrics.interfaceTextSize))
+        .font(.interfaceSystem(size: InterfaceTypographyMetrics.interfaceTextSize))
         .environment(
             \.defaultMinListRowHeight,
             ChannelSidebarLayoutMetrics.minimumRowHeight
@@ -371,7 +372,7 @@ private struct GuildChannelList: View, Equatable {
             }
             if input.hasGuide || input.hasCustomization {
                 Divider()
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, InterfaceScale.metric(16))
                     .listRowInsets(EdgeInsets())
                     .selectionDisabled()
                     .accessibilityHidden(true)
@@ -399,7 +400,7 @@ private struct GuildChannelList: View, Equatable {
 
         }
         .listStyle(.sidebar)
-        .font(.system(size: InterfaceTypographyMetrics.interfaceTextSize))
+        .font(.interfaceSystem(size: InterfaceTypographyMetrics.interfaceTextSize))
         .environment(\.defaultMinListRowHeight, ChannelSidebarLayoutMetrics.minimumRowHeight)
         .scrollContentBackground(.hidden)
         .scrollClipDisabled()
@@ -412,15 +413,16 @@ private struct GuildChannelList: View, Equatable {
         }
     }
     private func guildPageRow(_ title: String, symbol: String, page: GuildWorkspacePage) -> some View {
-        HStack(spacing: 8) {
-            Color.clear.frame(width: 8, height: 8)
+        HStack(spacing: InterfaceScale.metric(8)) {
+            Color.clear.frame(width: InterfaceScale.metric(8), height: InterfaceScale.metric(8))
             Image(systemName: symbol)
                 .foregroundStyle(.primary.opacity(0.66))
-                .frame(width: 16)
-            Text(title).foregroundStyle(.primary.opacity(0.78)).lineLimit(1)
+                .frame(width: ChannelSidebarLayoutMetrics.iconWidth)
+            Text(title).interfaceFontOverride(.interfaceSystem(size: InterfaceTypographyMetrics.interfaceTextSize)).foregroundStyle(.primary.opacity(0.78)).lineLimit(1)
             Spacer()
         }
         .frame(minHeight: ChannelSidebarLayoutMetrics.minimumRowHeight)
+        .interfaceFontOverride(.interfaceSystem(size: InterfaceTypographyMetrics.interfaceTextSize))
         .accessibilityElement(children: .combine)
         .tag(GuildSidebarSelection.page(page))
         .overlay { ChannelRowHoverBridge(isSelected: input.page == page) }
@@ -595,12 +597,15 @@ private struct ChannelGroupRows: View {
                 channelRows
             } else if followsPageDestinations {
                 categoryHeader
-                    .font(.subheadline.weight(.semibold))
+                    .font(.interface(.subheadline).weight(.semibold))
                     .foregroundStyle(.tertiary)
                     .selectionDisabled()
                 channelRows
             } else {
-                Section { channelRows } header: { categoryHeader }
+                Section { channelRows } header: {
+                    categoryHeader
+                        .interfaceFontOverride(.interface(.subheadline).weight(.bold))
+                }
             }
         }
         .onChange(of: isCollapsedInModel) { _, isCollapsed in
@@ -671,10 +676,10 @@ private struct ChannelGroupRows: View {
                             categoryID: categoryID
                         )
                     } label: {
-                        HStack(spacing: 5) {
+                        HStack(spacing: InterfaceScale.metric(5)) {
                             Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                                .font(.caption2.weight(.semibold))
-                                .frame(width: 8)
+                                .font(.interface(.caption2).weight(.semibold))
+                                .frame(width: InterfaceScale.metric(8))
                             Text(name)
                             Spacer(minLength: 0)
                         }
@@ -773,12 +778,12 @@ private struct VoiceParticipantRow: View {
     let participant: VoiceSidebarParticipant
 
     var body: some View {
-        HStack(spacing: 8) {
-            AvatarView(name: participant.name, url: participant.avatarURL, size: 24)
+        HStack(spacing: InterfaceScale.metric(8)) {
+            AvatarView(name: participant.name, url: participant.avatarURL, size: InterfaceScale.metric(24))
             Text(participant.name)
-                .font(.caption)
+                .font(.interface(.caption))
                 .lineLimit(1)
-            Spacer(minLength: 4)
+            Spacer(minLength: InterfaceScale.metric(4))
             if participant.isStreaming {
                 Image(systemName: "display")
                     .foregroundStyle(Color(hex: 0x23A55A))
@@ -796,8 +801,8 @@ private struct VoiceParticipantRow: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .font(.caption2)
-        .padding(.leading, 24)
+        .font(.interface(.caption2))
+        .padding(.leading, InterfaceScale.metric(24))
         .padding(.vertical, 1)
         .accessibilityLabel(participant.name)
         .accessibilityValue(
@@ -844,7 +849,7 @@ private struct AccountControlView: View {
                 )
             }
         }
-        .padding(.horizontal, 8)
+        .padding(.horizontal, InterfaceScale.metric(8))
         .padding(
             .bottom,
             SidebarAccountControlMetrics.bottomInset(
@@ -906,18 +911,18 @@ private struct CurrentUserCapsule: View {
                 .allowsHitTesting(false)
 
             Button(action: presentYouPopover) {
-                HStack(spacing: 8) {
+                HStack(spacing: InterfaceScale.metric(8)) {
                     accountAvatar
 
                     VStack(alignment: .leading, spacing: 0) {
                         Text(displayName)
-                            .font(.system(
+                            .font(.interfaceSystem(
                                 size: InterfaceTypographyMetrics.interfaceTextSize,
                                 weight: .semibold
                             ))
                             .lineLimit(1)
                         Text(subtitle)
-                            .font(.system(
+                            .font(.interfaceSystem(
                                 size: max(
                                     10,
                                     InterfaceTypographyMetrics.interfaceTextSize - 2
@@ -927,7 +932,7 @@ private struct CurrentUserCapsule: View {
                             .lineLimit(1)
                     }
 
-                    Spacer(minLength: 4)
+                    Spacer(minLength: InterfaceScale.metric(4))
                 }
                 .padding(.leading, SidebarAccountControlMetrics.contentInset)
                 .padding(
@@ -989,7 +994,7 @@ private struct CurrentUserCapsule: View {
         AvatarPresenceView(
             status: currentStatus,
             avatarSize: SidebarAccountControlMetrics.avatarSize,
-            indicatorSize: 10
+            indicatorSize: InterfaceScale.metric(10)
         ) {
             DecoratedAvatarView(
                 name: displayName,
@@ -1015,7 +1020,7 @@ private struct CurrentUserCapsule: View {
         {
             ProfilePresentationContent(
                 presentation: presentation,
-                maximumPopoverHeight: 720,
+                maximumPopoverHeight: InterfaceScale.metric(720),
                 showsRoles: false,
                 openProfile: model.expandProfile,
             footer: {
@@ -1042,7 +1047,7 @@ private struct CurrentUserCapsule: View {
             .environment(\.serverTagCardModel, model)
         } else {
             ProgressView("Loading profile…")
-                .padding(24)
+                .padding(InterfaceScale.metric(24))
                 .frame(width: MemberProfilePopover<EmptyView>.preferredWidth)
         }
     }
@@ -1082,26 +1087,26 @@ private struct YouPopoverOptions: View {
     @State private var isAccountPopoverPresented = false
 
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: InterfaceScale.metric(4)) {
             Divider()
-                .padding(.horizontal, 8)
-                .padding(.bottom, 4)
+                .padding(.horizontal, InterfaceScale.metric(8))
+                .padding(.bottom, InterfaceScale.metric(4))
 
             Button {
                 isStatusPopoverPresented.toggle()
             } label: {
-                HStack(spacing: 10) {
-                    PresenceIndicator(status: currentStatus, size: 13)
-                        .frame(width: 18)
+                HStack(spacing: InterfaceScale.metric(10)) {
+                    PresenceIndicator(status: currentStatus, size: InterfaceScale.metric(13))
+                        .frame(width: InterfaceScale.metric(18))
                     Text(currentStatus.label)
-                    Spacer(minLength: 24)
+                    Spacer(minLength: InterfaceScale.metric(24))
                     Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
+                        .font(.interface(.caption).weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
-                .padding(.horizontal, 8)
+                .padding(.horizontal, InterfaceScale.metric(8))
                 .frame(maxWidth: .infinity)
-                .frame(height: 38)
+                .frame(height: InterfaceScale.metric(38))
                 .contentShape(Rectangle())
             }
             .buttonStyle(PopoverRowButtonStyle())
@@ -1120,18 +1125,18 @@ private struct YouPopoverOptions: View {
             Button {
                 isAccountPopoverPresented.toggle()
             } label: {
-                HStack(spacing: 10) {
+                HStack(spacing: InterfaceScale.metric(10)) {
                     Image(systemName: "person.crop.circle")
-                        .frame(width: 18)
+                        .frame(width: InterfaceScale.metric(18))
                     Text("Switch Accounts")
-                    Spacer(minLength: 24)
+                    Spacer(minLength: InterfaceScale.metric(24))
                     Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
+                        .font(.interface(.caption).weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
-                .padding(.horizontal, 8)
+                .padding(.horizontal, InterfaceScale.metric(8))
                 .frame(maxWidth: .infinity)
-                .frame(height: 38)
+                .frame(height: InterfaceScale.metric(38))
                 .contentShape(Rectangle())
             }
             .buttonStyle(PopoverRowButtonStyle())
@@ -1150,9 +1155,9 @@ private struct YouPopoverOptions: View {
                 )
             }
         }
-        .font(.callout)
-        .padding(.horizontal, 10)
-        .padding(.top, 2)
+        .font(.interface(.callout))
+        .padding(.horizontal, InterfaceScale.metric(10))
+        .padding(.top, InterfaceScale.metric(2))
     }
 }
 
@@ -1163,7 +1168,7 @@ private struct StatusSelectionPopover: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: InterfaceScale.metric(4)) {
             ForEach(PresenceStatus.allCases.filter { $0 != .offline }, id: \.self) { status in
                 Button {
                     Task {
@@ -1171,9 +1176,9 @@ private struct StatusSelectionPopover: View {
                         dismiss()
                     }
                 } label: {
-                    HStack(spacing: 10) {
-                        PresenceIndicator(status: status, size: 13)
-                            .frame(width: 18)
+                    HStack(spacing: InterfaceScale.metric(10)) {
+                        PresenceIndicator(status: status, size: InterfaceScale.metric(13))
+                            .frame(width: InterfaceScale.metric(18))
                         Text(status.label)
                         Spacer()
                         if status == currentStatus {
@@ -1181,17 +1186,17 @@ private struct StatusSelectionPopover: View {
                                 .foregroundStyle(SakuraCordAccentColor.color)
                         }
                     }
-                    .padding(.horizontal, 8)
+                    .padding(.horizontal, InterfaceScale.metric(8))
                     .frame(maxWidth: .infinity)
-                    .frame(height: 34)
+                    .frame(height: InterfaceScale.metric(34))
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(PopoverRowButtonStyle())
             }
         }
-        .font(.callout)
-        .padding(12)
-        .frame(width: 220)
+        .font(.interface(.callout))
+        .padding(InterfaceScale.metric(12))
+        .frame(width: InterfaceScale.metric(220))
     }
 }
 
@@ -1206,18 +1211,18 @@ private struct AccountSelectionPopover: View {
     @State private var switchingAccountID: String?
 
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: InterfaceScale.metric(4)) {
             if savedAccounts.isEmpty {
                 Text("No saved accounts")
-                    .font(.callout)
+                    .font(.interface(.callout))
                     .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
-                    .padding(.horizontal, 8)
+                    .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(34), alignment: .leading)
+                    .padding(.horizontal, InterfaceScale.metric(8))
             } else {
                 ForEach(savedAccounts) { account in
                     accountButton(account)
                 }
-                Divider().padding(.horizontal, 8)
+                Divider().padding(.horizontal, InterfaceScale.metric(8))
             }
 
             Button {
@@ -1225,15 +1230,15 @@ private struct AccountSelectionPopover: View {
                 manageAccounts()
             } label: {
                 Label("Manage Accounts…", systemImage: "person.crop.circle")
-                    .padding(.horizontal, 8)
-                    .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
+                    .padding(.horizontal, InterfaceScale.metric(8))
+                    .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(34), alignment: .leading)
                     .contentShape(Rectangle())
             }
             .buttonStyle(PopoverRowButtonStyle())
         }
-        .font(.callout)
-        .padding(12)
-        .frame(width: 250)
+        .font(.interface(.callout))
+        .padding(InterfaceScale.metric(12))
+        .frame(width: InterfaceScale.metric(250))
     }
 
     private func accountButton(_ account: SavedAccount) -> some View {
@@ -1250,11 +1255,11 @@ private struct AccountSelectionPopover: View {
                 accountActivated()
             }
         } label: {
-            HStack(spacing: 9) {
+            HStack(spacing: InterfaceScale.metric(9)) {
                 AvatarView(
                     name: account.resolvedDisplayName,
                     url: account.avatarURL,
-                    size: 20,
+                    size: InterfaceScale.metric(20),
                     maximumPixelDimension: 40,
                     animates: false
                 )
@@ -1266,14 +1271,14 @@ private struct AccountSelectionPopover: View {
                         .foregroundStyle(SakuraCordAccentColor.color)
                 }
             }
-            .padding(.horizontal, 8)
+            .padding(.horizontal, InterfaceScale.metric(8))
             .frame(maxWidth: .infinity)
-            .frame(height: 36)
+            .frame(height: InterfaceScale.metric(36))
             .contentShape(Rectangle())
         }
         .buttonStyle(PopoverRowButtonStyle())
         .disabled(switchingAccountID != nil)
-        .authenticationLoading(switchingAccountID == account.accountID, in: ConcentricRectangle(cornerRadius: 8))
+        .authenticationLoading(switchingAccountID == account.accountID, in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(8)))
         .accessibilityValue(switchingAccountID == account.accountID ? "Switching account" : "")
     }
 }
@@ -1301,13 +1306,14 @@ private struct ChannelRow: View {
     var isChecking = false
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: InterfaceScale.metric(8)) {
             Capsule()
                 .fill(colorScheme == .dark ? Color.white : Color.black)
-                .frame(width: 4, height: 8)
+                .frame(width: InterfaceScale.metric(4), height: InterfaceScale.metric(8))
                 .opacity(showsUnread ? 1 : 0)
-                .frame(width: 8)
+                .frame(width: InterfaceScale.metric(8))
             Image(systemName: systemImage)
+                .interfaceFontOverride(.interfaceSystem(size: InterfaceTypographyMetrics.interfaceTextSize))
                 .fontWeight(
                     showsUnread && !isMuted
                         ? .medium
@@ -1317,8 +1323,9 @@ private struct ChannelRow: View {
                     isVoiceConnected ? Color.green
                         : channelIconForegroundStyle
                 )
-                .frame(width: 16)
+                .frame(width: ChannelSidebarLayoutMetrics.iconWidth)
             Text(channel.name)
+                .interfaceFontOverride(.interfaceSystem(size: InterfaceTypographyMetrics.interfaceTextSize))
                 .fontWeight(
                     showsUnread && !isMuted
                         ? .medium
@@ -1329,29 +1336,30 @@ private struct ChannelRow: View {
             Spacer()
             if hasActiveScreenShare {
                 Image(systemName: "display")
-                    .font(.caption)
+                    .font(.interface(.caption))
                     .foregroundStyle(Color(hex: 0x23A55A))
                     .accessibilityLabel("Active screen share")
             }
             if isVoiceConnected {
                 Image(systemName: "waveform")
-                    .font(.caption)
+                    .font(.interface(.caption))
                     .foregroundStyle(.green)
             }
             if channel.kind == .forum, showsUnread {
                 Text("\(channel.unreadCount) New")
-                    .font(.caption.weight(.semibold))
+                    .font(.interface(.caption).weight(.semibold))
                     .foregroundStyle(Color(hex: 0x5865F2))
             }
             if !isChecking, channel.mentionCount > 0 {
                 Text(channel.mentionCount, format: .number)
-                    .font(.caption2.bold())
+                    .font(.interface(.caption2).bold())
                     .foregroundStyle(.white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
+                    .padding(.horizontal, InterfaceScale.metric(6))
+                    .padding(.vertical, InterfaceScale.metric(2))
                     .background(Color(hex: 0xF23F43), in: Capsule())
             }
         }
+        .interfaceFontOverride(.interfaceSystem(size: InterfaceTypographyMetrics.interfaceTextSize))
         .accessibilityElement(children: .combine)
         .accessibilityValue(accessibilityValue)
         .overlay {
@@ -1472,33 +1480,35 @@ private struct ThreadRow: View {
     let continuesBelow: Bool
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: InterfaceScale.metric(8)) {
             Capsule()
                 .fill(colorScheme == .dark ? Color.white : Color.black)
-                .frame(width: 4, height: 8)
+                .frame(width: InterfaceScale.metric(4), height: InterfaceScale.metric(8))
                 .opacity(row.isUnread ? 1 : 0)
-                .frame(width: 8)
+                .frame(width: InterfaceScale.metric(8))
             ThreadConnector(continuesBelow: continuesBelow)
                 .stroke(
                     .primary.opacity(0.32),
                     style: StrokeStyle(lineWidth: 1.5, lineCap: .round)
                 )
-                .frame(width: 16)
+                .frame(width: ChannelSidebarLayoutMetrics.iconWidth)
             Text(row.thread.name)
+                .interfaceFontOverride(.interfaceSystem(size: InterfaceTypographyMetrics.interfaceTextSize))
                 .fontWeight(row.isUnread && !row.isMuted ? .medium : .regular)
                 .foregroundStyle(nameForegroundStyle)
                 .lineLimit(1)
             Spacer()
             if row.mentionCount > 0 {
                 Text(row.mentionCount, format: .number)
-                    .font(.caption2.bold())
+                    .font(.interface(.caption2).bold())
                     .foregroundStyle(.white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
+                    .padding(.horizontal, InterfaceScale.metric(6))
+                    .padding(.vertical, InterfaceScale.metric(2))
                     .background(Color(hex: 0xF23F43), in: Capsule())
             }
         }
         .frame(minHeight: ChannelSidebarLayoutMetrics.minimumRowHeight)
+        .interfaceFontOverride(.interfaceSystem(size: InterfaceTypographyMetrics.interfaceTextSize))
         .accessibilityElement(children: .combine)
         .overlay { ThreadContextMenuBridge(model: model, row: row) }
         .accessibilityLabel("\(row.thread.name), thread")
@@ -1529,7 +1539,7 @@ private struct ThreadConnector: Shape {
     let continuesBelow: Bool
 
     nonisolated func path(in rect: CGRect) -> Path {
-        let radius: CGFloat = 5
+        let radius: CGFloat = InterfaceScale.metric(5)
         // Reach into the row spacing so consecutive spines join.
         let top = rect.minY - 6
         var path = Path()
@@ -1539,10 +1549,10 @@ private struct ThreadConnector: Shape {
             to: CGPoint(x: rect.midX + radius, y: rect.midY),
             control: CGPoint(x: rect.midX, y: rect.midY)
         )
-        path.addLine(to: CGPoint(x: rect.maxX + 2, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.maxX + InterfaceScale.metric(2), y: rect.midY))
         if continuesBelow {
             path.move(to: CGPoint(x: rect.midX, y: rect.midY - radius))
-            path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY + 6))
+            path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY + InterfaceScale.metric(6)))
         }
         return path
     }

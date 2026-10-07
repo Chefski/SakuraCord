@@ -2,12 +2,12 @@ import SakuraCordModels
 import SwiftUI
 
 nonisolated enum ServerTagAppearance {
-    static let height: CGFloat = 18
-    static let badgeSize: CGFloat = 12
+    static var height: CGFloat { InterfaceScale.metric(18) }
+    static var badgeSize: CGFloat { InterfaceScale.metric(12) }
     static let fontSize: CGFloat = 11
-    static let spacing: CGFloat = 4
-    static let horizontalPadding: CGFloat = 5
-    static let cornerRadius: CGFloat = 5
+    static var spacing: CGFloat { InterfaceScale.metric(4) }
+    static var horizontalPadding: CGFloat { InterfaceScale.metric(5) }
+    static var cornerRadius: CGFloat { InterfaceScale.metric(5) }
     static let backgroundOpacity = 0.025
     static let highlightedBackgroundOpacity = 0.09
     static let outlineOpacity = 0.1
@@ -23,7 +23,7 @@ struct AppIdentityBadge: View {
             }
             Text("APP")
         }
-        .font(.system(size: ServerTagAppearance.fontSize, weight: .bold))
+        .font(.interfaceSystem(size: ServerTagAppearance.fontSize, weight: .bold))
         .padding(.horizontal, ServerTagAppearance.horizontalPadding)
         .frame(height: ServerTagAppearance.height)
         .foregroundStyle(.white)
@@ -56,10 +56,10 @@ struct ProfileServerTag: View {
                 Text("Server Tag", bundle: #bundle).italic().foregroundStyle(.secondary)
             }
             if showsDisclosure {
-                Image(systemName: "chevron.down").font(.caption2)
+                Image(systemName: "chevron.down").font(.interface(.caption2))
             }
         }
-        .font(.system(size: ServerTagAppearance.fontSize)).lineLimit(1)
+        .font(.interfaceSystem(size: ServerTagAppearance.fontSize)).lineLimit(1)
         .padding(.horizontal, ServerTagAppearance.horizontalPadding)
         .frame(height: ServerTagAppearance.height)
         .background(

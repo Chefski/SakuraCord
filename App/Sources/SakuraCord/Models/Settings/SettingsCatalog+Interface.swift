@@ -3,11 +3,20 @@ import Foundation
 nonisolated extension SettingsCatalog {
     static let interfacePage = page(
         .interface, group: .preferences, title: "Appearance", image: "circle.lefthalf.filled",
-        help: "Choose message appearance, input bar icons, and timestamps.",
-        keywords: ["messages", "bubbles", "density", "composer", "input bar", "clock", "timestamp"]
+        help: "Choose interface size, message appearance, input bar icons, and timestamps.",
+        keywords: ["messages", "bubbles", "density", "composer", "input bar", "clock", "timestamp", "zoom", "size"]
     )
 
     static let interfaceControls: [SettingsControlMetadata] = [
+        control(
+            .interfaceSize,
+            page: .interface,
+            section: .interfaceSize,
+            label: "Interface size",
+            help: "Make text, icons, and controls throughout SakuraCord smaller or larger.",
+            keywords: ["zoom", "scale", "text size", "font size", "larger", "smaller", "readability"],
+            scope: .appWideLocal
+        ),
         control(
             .messageAppearance,
             page: .interface,

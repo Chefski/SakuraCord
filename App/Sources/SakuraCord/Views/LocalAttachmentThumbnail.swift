@@ -34,9 +34,9 @@ struct LocalAttachmentThumbnail: View {
                 }
                 if isVideoFile {
                     Image(systemName: "play.fill")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.interfaceSystem(size: 14, weight: .semibold))
                         .foregroundStyle(.white)
-                        .frame(width: 30, height: 30)
+                        .frame(width: InterfaceScale.metric(30), height: InterfaceScale.metric(30))
                         .background(.black.opacity(0.55), in: Circle())
                 }
             } else if isImageFile {
@@ -46,7 +46,7 @@ struct LocalAttachmentThumbnail: View {
                 Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
                     .resizable()
                     .scaledToFit()
-                    .padding(14)
+                    .padding(InterfaceScale.metric(14))
             }
         }
         .clipped()

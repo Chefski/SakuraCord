@@ -70,7 +70,7 @@ struct ComposerView: View {
                             }
                         )
                         Divider()
-                            .padding(.horizontal, 11)
+                            .padding(.horizontal, InterfaceScale.metric(11))
                     }
                 }
             },
@@ -85,21 +85,21 @@ struct ComposerView: View {
                         .disabled(hasActiveCommand || !hasComposerActions)
                         .opacity(hasComposerActions ? 1 : 0.4)
                         .escapeDismissiblePopover(isPresented: $showComposerActions, arrowEdge: .top) {
-                            VStack(alignment: .leading, spacing: 4) {
+                            VStack(alignment: .leading, spacing: InterfaceScale.metric(4)) {
                                 if canAddAttachments {
                                     Button {
                                         showComposerActions = false
                                         showFileImporter = true
                                     } label: {
                                         Label("Upload a File", systemImage: "doc.badge.plus")
-                                            .frame(maxWidth: .infinity, alignment: .leading).padding(8)
+                                            .frame(maxWidth: .infinity, alignment: .leading).padding(InterfaceScale.metric(8))
                                     }
                                     Button {
                                         showComposerActions = false
                                         showPhotosPicker = true
                                     } label: {
                                         Label("Select from Photos", systemImage: "photo.on.rectangle")
-                                            .frame(maxWidth: .infinity, alignment: .leading).padding(8)
+                                            .frame(maxWidth: .infinity, alignment: .leading).padding(InterfaceScale.metric(8))
                                     }
                                 }
                                 if canCreateThread {
@@ -112,7 +112,7 @@ struct ComposerView: View {
                                         } icon: {
                                             SakuraCordSystemSymbol.swiftUIImage(named: SakuraCordSystemSymbol.thread)
                                         }
-                                            .frame(maxWidth: .infinity, alignment: .leading).padding(8)
+                                            .frame(maxWidth: .infinity, alignment: .leading).padding(InterfaceScale.metric(8))
                                     }
                                 }
                                 if canCreatePoll {
@@ -121,12 +121,12 @@ struct ComposerView: View {
                                         showPollCreator = true
                                     } label: {
                                         Label("Create a Poll", systemImage: "chart.bar.xaxis")
-                                            .frame(maxWidth: .infinity, alignment: .leading).padding(8)
+                                            .frame(maxWidth: .infinity, alignment: .leading).padding(InterfaceScale.metric(8))
                                     }
                                 }
                             }
                             .labelStyle(ComposerActionLabelStyle())
-                            .buttonStyle(PopoverRowButtonStyle()).padding(6).frame(width: 200)
+                            .buttonStyle(PopoverRowButtonStyle()).padding(InterfaceScale.metric(6)).frame(width: InterfaceScale.metric(200))
                         }
                     }
                 }
@@ -210,7 +210,7 @@ struct ComposerView: View {
                             if draft.isEmpty, !isComposing {
                                 Text(composerPlaceholder)
                                     .foregroundStyle(.tertiary)
-                                    .font(.system(size: 15))
+                                    .font(.interfaceSystem(size: 15))
                                     .lineLimit(1)
                                     .truncationMode(.tail)
                                     .allowsHitTesting(false)
@@ -334,7 +334,7 @@ struct ComposerView: View {
                     LinearKeyframe(0, duration: 0.04)
                 }
         }
-        .windowModal(isPresented: $showPollCreator, cornerRadius: 32, cornerStyle: .circular) {
+        .windowModal(isPresented: $showPollCreator, cornerRadius: InterfaceScale.metric(32), cornerStyle: .circular) {
             if let channelID = activeConversationID {
                 PollCreationView(model: model, channelID: channelID)
             }
@@ -502,7 +502,7 @@ struct ComposerView: View {
                 cornerRadius: commandPanelCornerRadius
             )
         } else if hasActiveCommand, let draft = commandComposer.draft {
-            VStack(spacing: 6) {
+            VStack(spacing: InterfaceScale.metric(6)) {
                 if let content = visibleCommandSuggestionContent {
                     ApplicationCommandSuggestionPanel(
                         content: content,
@@ -1269,8 +1269,8 @@ struct ComposerView: View {
 
 private struct ComposerActionLabelStyle: LabelStyle {
     func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 8) {
-            configuration.icon.frame(width: 20, alignment: .center)
+        HStack(spacing: InterfaceScale.metric(8)) {
+            configuration.icon.frame(width: InterfaceScale.metric(20), alignment: .center)
             configuration.title
         }
     }

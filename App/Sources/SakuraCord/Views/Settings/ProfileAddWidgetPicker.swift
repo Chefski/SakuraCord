@@ -29,23 +29,23 @@ struct ProfileAddWidgetPicker: View {
             if !canAddPersonalWidget, availableGameKinds.isEmpty {
                 Text("No more widgets to add", bundle: #bundle)
                     .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 40)
+                    .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(40))
             }
         }
-        .padding(4)
-        .frame(width: 264)
+        .padding(InterfaceScale.metric(4))
+        .frame(width: InterfaceScale.metric(264))
         .disabled(!editor.canEditWidgets)
     }
 
     private func option(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 7) {
-                Image(systemName: systemImage).frame(width: 20)
+            HStack(spacing: InterfaceScale.metric(7)) {
+                Image(systemName: systemImage).frame(width: InterfaceScale.metric(20))
                 Text(title)
-                Spacer(minLength: 4)
+                Spacer(minLength: InterfaceScale.metric(4))
             }
-            .padding(.horizontal, 6)
-            .frame(height: 40)
+            .padding(.horizontal, InterfaceScale.metric(6))
+            .frame(height: InterfaceScale.metric(40))
             .contentShape(Rectangle())
         }
         .buttonStyle(PopoverRowButtonStyle())

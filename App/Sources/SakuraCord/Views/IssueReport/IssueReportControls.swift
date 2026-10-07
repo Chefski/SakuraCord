@@ -4,14 +4,14 @@ import UniformTypeIdentifiers
 
 enum IssueReportMetrics {
     /// Rows are inset 8 points from the 32-point panel.
-    static let rowRadius: CGFloat = 24
+    static var rowRadius: CGFloat { InterfaceScale.metric(24) }
     /// Controls are inset 8 points from their row.
-    static let controlRadius: CGFloat = 16
+    static var controlRadius: CGFloat { InterfaceScale.metric(16) }
 }
 
 struct IssueReportRowBackground: ViewModifier {
     var isHighlighted = false
-    var padding: CGFloat = 14
+    var padding: CGFloat = InterfaceScale.metric(14)
 
     func body(content: Content) -> some View {
         content
@@ -42,15 +42,15 @@ struct IssueReportFieldHeader: View {
     var maximum: Int?
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(label).font(.callout.weight(.semibold))
+        HStack(alignment: .firstTextBaseline, spacing: InterfaceScale.metric(6)) {
+            Text(label).font(.interface(.callout).weight(.semibold))
             if isOptional {
-                Text("Optional").font(.caption).foregroundStyle(.tertiary)
+                Text("Optional").font(.interface(.caption)).foregroundStyle(.tertiary)
             }
-            Spacer(minLength: 8)
+            Spacer(minLength: InterfaceScale.metric(8))
             if let count, let maximum, count > maximum * 4 / 5 {
                 Text("\(count)/\(maximum)")
-                    .font(.caption)
+                    .font(.interface(.caption))
                     .monospacedDigit()
                     .foregroundStyle(count > maximum ? .red : .secondary)
                     .contentTransition(.numericText())
@@ -67,7 +67,7 @@ struct IssueReportTextArea<Focus: Hashable>: View {
     let focusValue: Focus
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(8)) {
             IssueReportFieldHeader(
                 label: field.label, isOptional: !field.required,
                 count: text.count, maximum: field.maxLength
@@ -84,15 +84,15 @@ struct IssueReportTextArea<Focus: Hashable>: View {
                     .scrollContentBackground(.hidden)
                     .focused(focus, equals: focusValue)
                     .tint(SakuraCordAccentColor.color)
-                    .frame(minHeight: field.kind == .paragraph ? 66 : 20, maxHeight: 180)
+                    .frame(minHeight: field.kind == .paragraph ? 66 : 20, maxHeight: InterfaceScale.metric(180))
                     .fixedSize(horizontal: false, vertical: true)
                     // Aligns typed text with the label despite the text view's line padding.
-                    .padding(.horizontal, -5)
+                    .padding(.horizontal, -InterfaceScale.metric(5))
                     .accessibilityLabel(field.label)
             }
-            .font(.body)
+            .font(.interface(.body))
             if let description = field.description {
-                Text(description).font(.caption).foregroundStyle(.secondary)
+                Text(description).font(.interface(.caption)).foregroundStyle(.secondary)
             }
         }
         .contentShape(RoundedRectangle(cornerRadius: IssueReportMetrics.rowRadius, style: .continuous))
@@ -106,11 +106,11 @@ struct IssueReportChoiceGroup: View {
     @Binding var selection: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(4)) {
             IssueReportFieldHeader(label: field.label, isOptional: !field.required)
-                .padding(.horizontal, 8)
-                .padding(.top, 6)
-                .padding(.bottom, 4)
+                .padding(.horizontal, InterfaceScale.metric(8))
+                .padding(.top, InterfaceScale.metric(6))
+                .padding(.bottom, InterfaceScale.metric(4))
             ForEach(field.options ?? []) { option in
                 IssueReportChoiceRow(
                     title: option.label,
@@ -136,17 +136,17 @@ private struct IssueReportChoiceRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 10) {
+            HStack(spacing: InterfaceScale.metric(10)) {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 17))
+                    .font(.interfaceSystem(size: 17))
                     .foregroundStyle(isSelected ? AnyShapeStyle(SakuraCordAccentColor.color) : AnyShapeStyle(.tertiary))
                     .contentTransition(.symbolEffect(.replace))
                 Text(title)
                     .foregroundStyle(.primary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, 10)
-            .frame(minHeight: 36)
+            .padding(.horizontal, InterfaceScale.metric(10))
+            .frame(minHeight: InterfaceScale.metric(36))
             .background(
                 isSelected
                     ? AnyShapeStyle(SakuraCordAccentColor.color.opacity(0.16))
@@ -169,10 +169,10 @@ struct IssueReportAreaPicker: View {
     @Binding var selection: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(10)) {
             IssueReportFieldHeader(label: field.label, isOptional: !field.required)
-                .padding(.horizontal, 6)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 6)], alignment: .leading, spacing: 6) {
+                .padding(.horizontal, InterfaceScale.metric(6))
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: InterfaceScale.metric(6))], alignment: .leading, spacing: InterfaceScale.metric(6)) {
                 chip(id: "", emoji: "🤷", label: "Not sure", help: "We’ll pick one")
                 ForEach(areas) { area in
                     chip(id: area.id, emoji: area.emoji, label: area.label, help: area.description)
@@ -187,13 +187,13 @@ struct IssueReportAreaPicker: View {
         return Button {
             withAnimation(.spring(duration: 0.3, bounce: 0.35)) { selection = id }
         } label: {
-            HStack(spacing: 7) {
+            HStack(spacing: InterfaceScale.metric(7)) {
                 Text(emoji)
                 Text(label).lineLimit(1).minimumScaleFactor(0.85)
             }
-            .font(.callout)
-            .padding(.horizontal, 12)
-            .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+            .font(.interface(.callout))
+            .padding(.horizontal, InterfaceScale.metric(12))
+            .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(32), alignment: .leading)
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -220,37 +220,37 @@ struct IssueReportAttachmentTray: View {
     @State private var isTargeted = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(10)) {
             IssueReportFieldHeader(label: field.label, isOptional: !field.required)
-                .padding(.horizontal, 6)
+                .padding(.horizontal, InterfaceScale.metric(6))
             if !attachments.isEmpty {
                 ScrollView(.horizontal) {
-                    HStack(spacing: 8) {
+                    HStack(spacing: InterfaceScale.metric(8)) {
                         ForEach(attachments) { attachment in
                             IssueReportAttachmentTile(attachment: attachment) { remove(attachment) }
                                 .transition(.scale(scale: 0.8).combined(with: .opacity))
                         }
                     }
-                    .padding(.vertical, 2)
+                    .padding(.vertical, InterfaceScale.metric(2))
                 }
                 .scrollIndicators(.never)
             }
             Button { isImporting = true } label: {
-                HStack(spacing: 10) {
+                HStack(spacing: InterfaceScale.metric(10)) {
                     Image(systemName: isTargeted ? "arrow.down.doc.fill" : "photo.badge.plus")
-                        .font(.system(size: 18))
+                        .font(.interfaceSystem(size: 18))
                         .foregroundStyle(isTargeted ? AnyShapeStyle(SakuraCordAccentColor.color) : AnyShapeStyle(.secondary))
                         .contentTransition(.symbolEffect(.replace))
                     VStack(alignment: .leading, spacing: 1) {
                         Text(isTargeted ? "Drop to attach" : "Drop files or choose…")
                         Text(field.description ?? "Up to 5 files, 10 MB each")
-                            .font(.caption)
+                            .font(.interface(.caption))
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
                 }
-                .padding(.horizontal, 12)
-                .frame(minHeight: 52)
+                .padding(.horizontal, InterfaceScale.metric(12))
+                .frame(minHeight: InterfaceScale.metric(52))
                 .background(
                     SakuraCordAccentColor.color.opacity(isTargeted ? 0.14 : 0),
                     in: RoundedRectangle(cornerRadius: IssueReportMetrics.controlRadius, style: .continuous)
@@ -297,31 +297,31 @@ private struct IssueReportAttachmentTile: View {
                 if let thumbnail {
                     Image(decorative: thumbnail, scale: 2).resizable().scaledToFill()
                 } else {
-                    VStack(spacing: 4) {
+                    VStack(spacing: InterfaceScale.metric(4)) {
                         Image(nsImage: NSWorkspace.shared.icon(for: attachment.contentType))
                             .resizable()
-                            .frame(width: 34, height: 34)
+                            .frame(width: InterfaceScale.metric(34), height: InterfaceScale.metric(34))
                         Text(attachment.name)
-                            .font(.caption2)
+                            .font(.interface(.caption2))
                             .lineLimit(1)
                             .truncationMode(.middle)
                             .foregroundStyle(.secondary)
-                            .padding(.horizontal, 6)
+                            .padding(.horizontal, InterfaceScale.metric(6))
                     }
                 }
             }
-            .frame(width: 76, height: 76)
+            .frame(width: InterfaceScale.metric(76), height: InterfaceScale.metric(76))
             .background(.quaternary.opacity(0.6))
             .clipShape(RoundedRectangle(cornerRadius: IssueReportMetrics.controlRadius, style: .continuous))
             Button(action: remove) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .bold))
-                    .frame(width: 20, height: 20)
+                    .font(.interfaceSystem(size: 9, weight: .bold))
+                    .frame(width: InterfaceScale.metric(20), height: InterfaceScale.metric(20))
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
             .glassEffect(.regular.interactive(), in: Circle())
-            .padding(4)
+            .padding(InterfaceScale.metric(4))
             .opacity(isHovered ? 1 : 0.85)
             .help("Remove \(attachment.name)")
             .accessibilityLabel("Remove \(attachment.name)")
@@ -351,21 +351,21 @@ struct IssueReportToggleRow: View {
     var isAvailable = true
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: InterfaceScale.metric(10)) {
             Image(systemName: symbol)
-                .font(.system(size: 15, weight: .medium))
+                .font(.interfaceSystem(size: 15, weight: .medium))
                 .foregroundStyle(isOn && isAvailable ? AnyShapeStyle(SakuraCordAccentColor.color) : AnyShapeStyle(.secondary))
-                .frame(width: 32, height: 32)
+                .frame(width: InterfaceScale.metric(32), height: InterfaceScale.metric(32))
                 .glassEffect(.regular, in: Circle())
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
                 Text(title)
                 Text(detail)
-                    .font(.caption)
+                    .font(.interface(.caption))
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
-            Spacer(minLength: 8)
+            Spacer(minLength: InterfaceScale.metric(8))
             Toggle(title, isOn: $isOn)
                 .labelsHidden()
                 .toggleStyle(.switch)
@@ -373,8 +373,8 @@ struct IssueReportToggleRow: View {
                 .tint(SakuraCordAccentColor.color)
                 .disabled(!isAvailable)
         }
-        .padding(.horizontal, 8)
-        .frame(minHeight: 48)
+        .padding(.horizontal, InterfaceScale.metric(8))
+        .frame(minHeight: InterfaceScale.metric(48))
         .opacity(isAvailable ? 1 : 0.6)
         .accessibilityElement(children: .combine)
     }
@@ -390,7 +390,7 @@ struct IssueReportActionButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 8) {
+            HStack(spacing: InterfaceScale.metric(8)) {
                 if isBusy {
                     ProgressView().controlSize(.small)
                 } else {
@@ -398,9 +398,9 @@ struct IssueReportActionButton: View {
                 }
                 Text(title)
             }
-            .font(.body.weight(.semibold))
-            .padding(.horizontal, 18)
-            .frame(height: 40)
+            .font(.interface(.body).weight(.semibold))
+            .padding(.horizontal, InterfaceScale.metric(18))
+            .frame(height: InterfaceScale.metric(40))
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)

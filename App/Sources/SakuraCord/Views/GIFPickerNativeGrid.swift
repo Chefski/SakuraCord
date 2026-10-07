@@ -44,8 +44,8 @@ nonisolated struct GIFPickerVideoFallbackMemory {
 }
 
 nonisolated extension GIFMasonryLayout {
-    static let horizontalInset: CGFloat = 12
-    static let verticalInset: CGFloat = 10
+    static var horizontalInset: CGFloat { InterfaceScale.metric(12) }
+    static var verticalInset: CGFloat { InterfaceScale.metric(10) }
 
     static func geometry(
         for results: [GIFSearchResult],
@@ -344,12 +344,7 @@ private final class GIFPickerCollectionView: NSCollectionView {
             x: point.x - attribute.frame.minX,
             y: point.y - attribute.frame.minY
         )
-        let favoriteFrame = CGRect(
-            x: max(0, attribute.frame.width - 35),
-            y: 7,
-            width: 28,
-            height: 28
-        )
+        let favoriteFrame = GIFFavoriteButtonGeometry.frame(inTileWidth: attribute.frame.width)
         return PressTarget(
             index: indexPath.item,
             action: favoriteFrame.contains(localPoint) ? .favorite : .choose
@@ -526,12 +521,7 @@ private final class GIFPickerCollectionCellView: NSView {
         mediaCanvas.frame = bounds
         videoCanvas.frame = bounds
         hoverOverlay.frame = bounds
-        favoriteGlass.frame = CGRect(
-            x: max(0, bounds.width - 35),
-            y: 7,
-            width: 28,
-            height: 28
-        )
+        favoriteGlass.frame = GIFFavoriteButtonGeometry.frame(inTileWidth: bounds.width)
         favoriteButton.frame = favoriteGlass.bounds
         updateViewportVisibility()
     }
@@ -1186,5 +1176,14 @@ private final class GIFPickerGridScrollView: NSScrollView {
         )
         guard collectionView.frame.size != size else { return }
         collectionView.frame = CGRect(origin: .zero, size: size)
+    }
+}
+
+/// The favourite button's tile-relative frame, shared by layout and hit testing.
+private enum GIFFavoriteButtonGeometry {
+    static func frame(inTileWidth width: CGFloat) -> CGRect {
+        let inset = InterfaceScale.metric(7)
+        let diameter = InterfaceScale.metric(28)
+        return CGRect(x: max(0, width - inset - diameter), y: inset, width: diameter, height: diameter)
     }
 }

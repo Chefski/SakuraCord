@@ -24,8 +24,8 @@ nonisolated struct StablePopoverPlacement: Equatable {
 }
 
 nonisolated enum StablePopoverPlacementPolicy {
-    static let sourceClearance: CGFloat = 18
-    static let screenInset: CGFloat = 8
+    static var sourceClearance: CGFloat { InterfaceScale.metric(18) }
+    static var screenInset: CGFloat { InterfaceScale.metric(8) }
 
     static func placement(
         sourceFrame: CGRect,
@@ -142,14 +142,16 @@ struct StablePopoverConfiguration {
              stabilizesInitialContentSize: stabilizesInitialContentSize)
     }
 
-    static let hover = StablePopoverConfiguration(
-        preferredEdge: .minY,
-        behavior: .applicationDefined,
-        animates: true,
-        ignoresMouseEvents: true,
-        contentSizing: .constrained(CGSize(width: 400, height: 600)),
-        stabilizesInitialContentSize: false
-    )
+    static var hover: StablePopoverConfiguration {
+        StablePopoverConfiguration(
+            preferredEdge: .minY,
+            behavior: .applicationDefined,
+            animates: true,
+            ignoresMouseEvents: true,
+            contentSizing: .constrained(CGSize(width: InterfaceScale.metric(400), height: InterfaceScale.metric(600))),
+            stabilizesInitialContentSize: false
+        )
+    }
 
     static let intrinsicHoverLabel = StablePopoverConfiguration(
         preferredEdge: .minY,
@@ -160,32 +162,38 @@ struct StablePopoverConfiguration {
         stabilizesInitialContentSize: false
     )
 
-    static let interactive = StablePopoverConfiguration(
-        preferredEdge: .maxX,
-        behavior: .transient,
-        animates: true,
-        ignoresMouseEvents: false,
-        contentSizing: .constrained(CGSize(width: 520, height: 760)),
-        stabilizesInitialContentSize: false
-    )
+    static var interactive: StablePopoverConfiguration {
+        StablePopoverConfiguration(
+            preferredEdge: .maxX,
+            behavior: .transient,
+            animates: true,
+            ignoresMouseEvents: false,
+            contentSizing: .constrained(CGSize(width: InterfaceScale.metric(520), height: InterfaceScale.metric(760))),
+            stabilizesInitialContentSize: false
+        )
+    }
 
-    static let memberProfile = StablePopoverConfiguration(
-        preferredEdge: .maxX,
-        behavior: .semitransient,
-        animates: true,
-        ignoresMouseEvents: false,
-        contentSizing: .constrained(CGSize(width: 520, height: 760)),
-        stabilizesInitialContentSize: true
-    )
+    static var memberProfile: StablePopoverConfiguration {
+        StablePopoverConfiguration(
+            preferredEdge: .maxX,
+            behavior: .semitransient,
+            animates: true,
+            ignoresMouseEvents: false,
+            contentSizing: .constrained(CGSize(width: InterfaceScale.metric(520), height: InterfaceScale.metric(760))),
+            stabilizesInitialContentSize: true
+        )
+    }
 
-    static let toolbarPanel = StablePopoverConfiguration(
-        preferredEdge: .minY,
-        behavior: .semitransient,
-        animates: true,
-        ignoresMouseEvents: false,
-        contentSizing: .constrained(CGSize(width: 520, height: 760)),
-        stabilizesInitialContentSize: true
-    )
+    static var toolbarPanel: StablePopoverConfiguration {
+        StablePopoverConfiguration(
+            preferredEdge: .minY,
+            behavior: .semitransient,
+            animates: true,
+            ignoresMouseEvents: false,
+            contentSizing: .constrained(CGSize(width: InterfaceScale.metric(520), height: InterfaceScale.metric(760))),
+            stabilizesInitialContentSize: true
+        )
+    }
 }
 
 nonisolated struct StablePopoverAnchorSnapshot: Equatable, Sendable {
@@ -359,6 +367,7 @@ struct StablePopoverHostedContent<Content: View>: View {
             \.stablePopoverPresentationContext,
             presentationContext
         )
+        .interfaceScaleRoot()
         .tint(SakuraCordAccentColor.color)
     }
 }

@@ -991,7 +991,7 @@ extension NativeTimelineCanvasView {
             NSColor.labelColor.withAlphaComponent(0.10).setFill()
             NSBezierPath(
                 concentricRoundedRect: buttonFrame,
-                cornerRadius: 4
+                cornerRadius: InterfaceScale.metric(4)
             ).fill()
         }
         guard let symbol = NSImage(
@@ -1015,7 +1015,7 @@ extension NativeTimelineCanvasView {
         let iconFrame = NativeTimelineSymbolGeometry.opticallyFitted(
             sourceSize: symbol.size,
             alignmentRect: symbol.alignmentRect,
-            in: buttonFrame.insetBy(dx: 6, dy: 6)
+            in: buttonFrame.insetBy(dx: InterfaceScale.metric(6), dy: InterfaceScale.metric(6))
         )
         symbol.draw(
             in: iconFrame,
@@ -1138,7 +1138,7 @@ extension NativeTimelineCanvasView {
         let clipped = frame.intersection(dirtyRect)
         guard !clipped.isNull, clipped.height > 0 else { return }
 
-        let rowStride: CGFloat = 76
+        let rowStride: CGFloat = InterfaceScale.metric(76)
         let rowCount = max(1, Int(ceil(frame.height / rowStride)))
         let firstOrdinal = max(
             0,
@@ -1176,8 +1176,8 @@ extension NativeTimelineCanvasView {
         frameWidth: CGFloat,
         shimmerMask: NSBezierPath
     ) {
-        let contentX: CGFloat = 64
-        let maximumContentWidth = max(80, frameWidth - contentX - 14)
+        let contentX: CGFloat = InterfaceScale.metric(64)
+        let maximumContentWidth = max(InterfaceScale.metric(80), frameWidth - contentX - InterfaceScale.metric(14))
         let authorWidths: [CGFloat] = [92, 126, 108, 148]
         let lineFractions: [[CGFloat]] = [
             [0.72],
@@ -1186,10 +1186,10 @@ extension NativeTimelineCanvasView {
             [0.64, 0.88],
         ]
         let avatarPath = NSBezierPath(ovalIn: CGRect(
-            x: 14,
-            y: rowTop + 11,
-            width: 38,
-            height: 38
+            x: InterfaceScale.metric(14),
+            y: rowTop + InterfaceScale.metric(11),
+            width: InterfaceScale.metric(38),
+            height: InterfaceScale.metric(38)
         ))
         NSColor.placeholderTextColor.withAlphaComponent(0.18).setFill()
         avatarPath.fill()
@@ -1202,12 +1202,12 @@ extension NativeTimelineCanvasView {
         let authorPath = NSBezierPath(
             roundedRect: CGRect(
                 x: contentX,
-                y: rowTop + 10,
+                y: rowTop + InterfaceScale.metric(10),
                 width: authorWidth,
-                height: 10
+                height: InterfaceScale.metric(10)
             ),
-            xRadius: 5,
-            yRadius: 5
+            xRadius: InterfaceScale.metric(5),
+            yRadius: InterfaceScale.metric(5)
         )
         NSColor.placeholderTextColor.withAlphaComponent(0.16).setFill()
         authorPath.fill()
@@ -1215,13 +1215,13 @@ extension NativeTimelineCanvasView {
 
         let timestampPath = NSBezierPath(
             roundedRect: CGRect(
-                x: contentX + authorWidth + 8,
-                y: rowTop + 12,
-                width: 38,
-                height: 7
+                x: contentX + authorWidth + InterfaceScale.metric(8),
+                y: rowTop + InterfaceScale.metric(12),
+                width: InterfaceScale.metric(38),
+                height: InterfaceScale.metric(7)
             ),
-            xRadius: 3.5,
-            yRadius: 3.5
+            xRadius: InterfaceScale.metric(3.5),
+            yRadius: InterfaceScale.metric(3.5)
         )
         NSColor.placeholderTextColor.withAlphaComponent(0.11).setFill()
         timestampPath.fill()
@@ -1232,12 +1232,12 @@ extension NativeTimelineCanvasView {
             let linePath = NSBezierPath(
                 roundedRect: CGRect(
                     x: contentX,
-                    y: rowTop + 28 + CGFloat(line) * 13,
-                    width: max(34, maximumContentWidth * fraction),
-                    height: 8
+                    y: rowTop + InterfaceScale.metric(28) + CGFloat(line) * 13,
+                    width: max(InterfaceScale.metric(34), maximumContentWidth * fraction),
+                    height: InterfaceScale.metric(8)
                 ),
-                xRadius: 4,
-                yRadius: 4
+                xRadius: InterfaceScale.metric(4),
+                yRadius: InterfaceScale.metric(4)
             )
             linePath.fill()
             shimmerMask.append(linePath)

@@ -19,7 +19,7 @@ struct DiscordMFAForm: View {
     let goBack: () -> Void
 
     var body: some View {
-        VStack(spacing: 28) {
+        VStack(spacing: InterfaceScale.metric(28)) {
             header
 
             ZStack {
@@ -29,7 +29,7 @@ struct DiscordMFAForm: View {
                     methodChoices
                 }
             }
-            .padding(2)
+            .padding(InterfaceScale.metric(2))
         }
         .frame(maxWidth: .infinity)
         .animation(.easeInOut(duration: 0.2), value: errorMessage)
@@ -41,24 +41,24 @@ struct DiscordMFAForm: View {
     }
 
     private var header: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: InterfaceScale.metric(10)) {
             Text("Multi-Factor Authentication")
-                .font(.title2.bold())
+                .font(.interface(.title2).bold())
                 .foregroundStyle(.primary)
             Text(selectedMethod?.instructions ?? "Choose how to verify your sign-in.")
-                .font(.subheadline)
+                .font(.interface(.subheadline))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .multilineTextAlignment(.center)
-        .padding(.horizontal, 36)
+        .padding(.horizontal, InterfaceScale.metric(36))
         .frame(maxWidth: .infinity)
         .overlay(alignment: .topLeading) {
             Button(action: goBack) {
                 Image(systemName: selectedMethod == nil ? "xmark" : "chevron.left")
-                    .font(.body.weight(.semibold))
+                    .font(.interface(.body).weight(.semibold))
                     .contentTransition(.symbolEffect(.replace))
-                    .frame(width: 18, height: 18)
+                    .frame(width: InterfaceScale.metric(18), height: InterfaceScale.metric(18))
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.circle)
@@ -71,14 +71,14 @@ struct DiscordMFAForm: View {
     }
 
     private var methodChoices: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: InterfaceScale.metric(12)) {
             ForEach(challenge.methods, id: \.self) { method in
                 Button {
                     selectMethod(method)
                 } label: {
                     Label(method.title, systemImage: method.systemImage)
-                        .font(.body.weight(.medium))
-                        .frame(maxWidth: .infinity, minHeight: 28)
+                        .font(.interface(.body).weight(.medium))
+                        .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(28))
                 }
                 .buttonStyle(.glassProminent)
                 .buttonBorderShape(.capsule)
@@ -90,7 +90,7 @@ struct DiscordMFAForm: View {
     }
 
     private func verificationInput(for method: DiscordMFAMethod) -> some View {
-        VStack(spacing: 16) {
+        VStack(spacing: InterfaceScale.metric(16)) {
             segmentedCodeInput(for: method)
                 .disabled(isWorking)
 
@@ -98,7 +98,7 @@ struct DiscordMFAForm: View {
                 smsSendControl
             }
 
-            VStack(spacing: 8) {
+            VStack(spacing: InterfaceScale.metric(8)) {
                 if let errorMessage {
                     Text(errorMessage)
                         .foregroundStyle(.red)
@@ -108,10 +108,10 @@ struct DiscordMFAForm: View {
                     .foregroundStyle(.secondary)
                     .contentTransition(.numericText())
             }
-            .font(.caption)
+            .font(.interface(.caption))
             .multilineTextAlignment(.center)
             .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, minHeight: 28)
+            .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(28))
         }
     }
 
@@ -129,13 +129,13 @@ struct DiscordMFAForm: View {
                 .onSubmit(submit)
                 .opacity(0.01)
 
-            HStack(spacing: method == .backup ? 6 : 10) {
+            HStack(spacing: method == .backup ? InterfaceScale.metric(6) : InterfaceScale.metric(10)) {
                 ForEach(0 ..< method.codeLength, id: \.self) { index in
                     if method == .backup, index == 4 {
                         Text("-")
-                            .font(.title3.monospaced())
+                            .font(.interface(.title3).monospaced())
                             .foregroundStyle(.secondary)
-                            .frame(width: 10)
+                            .frame(width: InterfaceScale.metric(10))
                     }
                     codeCell(at: index, method: method)
                 }
@@ -143,7 +143,7 @@ struct DiscordMFAForm: View {
             .allowsHitTesting(false)
             .accessibilityHidden(true)
         }
-        .frame(height: 58)
+        .frame(height: InterfaceScale.metric(58))
         .contentShape(Rectangle())
         .onTapGesture { focusedField.wrappedValue = .mfa }
         .pointerStyle(.horizontalText)
@@ -158,17 +158,17 @@ struct DiscordMFAForm: View {
     private func codeCell(at index: Int, method: DiscordMFAMethod) -> some View {
         let characters = Array(code.uppercased())
         let isCurrent = focusedField.wrappedValue == .mfa && !isWorking && index == min(characters.count, method.codeLength - 1)
-        let radius: CGFloat = method == .backup ? 14 : 18
+        let radius: CGFloat = method == .backup ? InterfaceScale.metric(14) : InterfaceScale.metric(18)
         return ZStack {
             RoundedRectangle(cornerRadius: radius)
                 .fill(.background.opacity(0.72))
             if index < characters.count {
                 Text(String(characters[index]))
-                    .font(.system(size: method == .backup ? 22 : 25, weight: .medium, design: .monospaced))
+                    .font(.interfaceSystem(size: method == .backup ? 22 : 25, weight: .medium, design: .monospaced))
             } else if isCurrent {
                 Capsule()
                     .fill(SakuraCordAccentColor.color)
-                    .frame(width: 2, height: 22)
+                    .frame(width: InterfaceScale.metric(2), height: InterfaceScale.metric(22))
             }
         }
         .overlay {
@@ -186,7 +186,7 @@ struct DiscordMFAForm: View {
     private var smsSendControl: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let remaining = max(0, Int(ceil(smsCooldownEndsAt?.timeIntervalSince(context.date) ?? 0)))
-            HStack(spacing: 12) {
+            HStack(spacing: InterfaceScale.metric(12)) {
                 Button("Resend code", action: sendSMS)
                     .buttonStyle(.glass)
                     .buttonBorderShape(.capsule)
@@ -195,7 +195,7 @@ struct DiscordMFAForm: View {
 
                 if remaining > 0 {
                     Text("Available in \(remaining)s")
-                        .font(.caption)
+                        .font(.interface(.caption))
                         .monospacedDigit()
                         .foregroundStyle(.secondary)
                 }

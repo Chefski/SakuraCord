@@ -19,7 +19,7 @@ struct ImportExportSettingsPage: View {
     var body: some View {
         SettingsPageForm(page: .importExport, state: state) {
             Section {
-                Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 10) {
+                Grid(alignment: .leading, horizontalSpacing: InterfaceScale.metric(24), verticalSpacing: InterfaceScale.metric(10)) {
                     ForEach(0 ..< (SettingsTransferService.pages.count + 1) / 2, id: \.self) { row in
                         GridRow {
                             categoryToggle(at: row * 2)

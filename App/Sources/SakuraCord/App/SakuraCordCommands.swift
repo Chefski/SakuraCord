@@ -79,6 +79,12 @@ struct SakuraCordCommands: Commands {
             ShortcutCommandButton(action: .previousServer)
             ShortcutCommandButton(action: .nextServer)
             ShortcutCommandButton(action: .toggleDirectMessages)
+
+            Divider()
+
+            ShortcutCommandButton(action: .increaseInterfaceSize)
+            ShortcutCommandButton(action: .decreaseInterfaceSize)
+            ShortcutCommandButton(action: .resetInterfaceSize)
         }
 
         CommandMenu("Navigate") {

@@ -154,6 +154,19 @@ hostname. Always Ask and Never Ask retain their existing behaviour.
 Platform-owned preferences use their platform services. Download bookmarks are
 usable only when accessible on the receiving Mac.
 
+Interface size is an app-wide factor owned by
+[InterfaceScale](../App/Sources/SakuraCord/Support/InterfaceScale.swift), because
+macOS text styles ignore Dynamic Type. New fonts use `Font.interface`,
+`.interfaceSystem` or the `NSFont.interface…` constructors with base sizes;
+layout lengths use `InterfaceScale.metric`. Scale each value once: sizes derived
+from a scaled frame or font stay unscaled. Content roots (split-view columns,
+settings pages, popovers and modals) apply `interfaceScaleRoot()`; never wrap a
+view that declares a toolbar, because toolbar items then lose their native
+sizing. AppKit-drawn surfaces relayout through their
+presentation revisions. At 100% every helper returns its input. Message density
+stays in points and is independent. System chrome (window controls, toolbar
+items, menus, alerts) keeps the system size.
+
 `WindowModalCoordinator` owns input order and focus for each window;
 `WindowModalOverlay` supplies the shared custom modal host. Closing transitions
 retain input ownership until removal. Native sheets and anchored popovers keep

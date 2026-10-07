@@ -33,14 +33,14 @@ enum KeyboardShortcutLabel {
                 keys.append(.text(text))
             }
         }
-        let side: CGFloat = 18
-        let gap: CGFloat = 3
+        let side: CGFloat = InterfaceScale.metric(18)
+        let gap: CGFloat = InterfaceScale.metric(3)
         let totalWidth = side * CGFloat(keys.count) + gap * CGFloat(keys.count - 1)
         var originX = bounds.midX - totalWidth / 2
         let background = NSColor.unemphasizedSelectedContentBackgroundColor
         for key in keys {
             let rect = NSRect(x: originX, y: bounds.midY - side / 2, width: side, height: side)
-            let box = NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: 4, yRadius: 4)
+            let box = NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: InterfaceScale.metric(4), yRadius: InterfaceScale.metric(4))
             background.setFill()
             box.fill()
             NSColor.separatorColor.setStroke()
@@ -58,7 +58,7 @@ enum KeyboardShortcutLabel {
                 .applying(NSImage.SymbolConfiguration(paletteColors: [foreground]))
             guard let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
                 .withSymbolConfiguration(configuration) else { return }
-            let contentBounds = rect.insetBy(dx: 3, dy: 3)
+            let contentBounds = rect.insetBy(dx: InterfaceScale.metric(3), dy: InterfaceScale.metric(3))
             let scale = min(
                 contentBounds.width / image.size.width,
                 min(contentBounds.height, font.capHeight + 1) / image.size.height

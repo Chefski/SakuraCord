@@ -401,10 +401,11 @@ nonisolated enum RichMessageAttributedText {
         baseFontSize: CGFloat? = nil,
         mentionPresentations: [String: MentionPresentation]
     ) -> NSAttributedString {
-        let resolvedBaseFontSize = baseFontSize ?? (prepared.isEmojiOnly ? emojiSize : 15)
+        let resolvedBaseFontSize = baseFontSize
+            ?? (prepared.isEmojiOnly ? emojiSize : InterfaceScale.fontSize(15))
         let baseFont = NSFont.systemFont(ofSize: resolvedBaseFontSize)
         let output = NSMutableAttributedString(
-            attributedString: DiscordMarkdown.appKitAttributed(
+            attributedString: NativeTimelineCoreText.scaledMarkdown(
                 prepared.markdownPlan,
                 baseFontSize: resolvedBaseFontSize
             )

@@ -124,7 +124,7 @@ private struct AccountContactRow: View {
     let emptyLabel: LocalizedStringKey
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 16) {
+        HStack(alignment: .firstTextBaseline, spacing: InterfaceScale.metric(16)) {
             Text(title, bundle: #bundle)
                 .fixedSize()
             Spacer(minLength: 0)
@@ -157,9 +157,9 @@ private struct AccountContactValue: View {
                 .lineLimit(nil)
                 .fixedSize(horizontal: false, vertical: true)
                 .blur(radius: isRevealed ? 0 : 5)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(.primary.opacity(isHovered ? 0.06 : 0), in: .rect(cornerRadius: 5))
+                .padding(.horizontal, InterfaceScale.metric(6))
+                .padding(.vertical, InterfaceScale.metric(3))
+                .background(.primary.opacity(isHovered ? 0.06 : 0), in: .rect(cornerRadius: InterfaceScale.metric(5)))
                 .contentShape(.rect)
                 .accessibilityHidden(true)
         }
@@ -196,17 +196,17 @@ private struct SettingsAccountIdentityHeader: View {
     let account: SavedAccount
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: InterfaceScale.metric(14)) {
             AvatarView(
                 name: account.resolvedDisplayName,
                 url: account.avatarURL,
-                size: 56,
+                size: InterfaceScale.metric(56),
                 maximumPixelDimension: 140
             )
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(3)) {
                 Text(account.resolvedDisplayName)
-                    .font(.title3.weight(.semibold))
+                    .font(.interface(.title3).weight(.semibold))
                     .lineLimit(1)
                 Text(account.resolvedSubtitle)
                     .foregroundStyle(.secondary)
@@ -215,7 +215,7 @@ private struct SettingsAccountIdentityHeader: View {
 
             Spacer()
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, InterfaceScale.metric(4))
         .accessibilityElement(children: .combine)
     }
 }

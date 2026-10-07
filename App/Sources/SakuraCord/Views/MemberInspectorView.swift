@@ -376,18 +376,18 @@ private struct MemberSectionHeader: View {
     let section: MemberSection
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: InterfaceScale.metric(6)) {
             if case .role = section.id {
-                RoleColorIndicator(colorHex: section.colorHex, size: 8)
+                RoleColorIndicator(colorHex: section.colorHex, size: InterfaceScale.metric(8))
             }
             Text("\(section.title) — \(section.totalCount)")
-                .font(.body.weight(.semibold))
+                .font(.interface(.body).weight(.semibold))
                 .foregroundStyle(headerColor)
         }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 10)
-            .padding(.top, 12)
-            .padding(.bottom, 5)
+            .padding(.horizontal, InterfaceScale.metric(10))
+            .padding(.top, InterfaceScale.metric(12))
+            .padding(.bottom, InterfaceScale.metric(5))
     }
 
     private var headerColor: Color {
@@ -415,7 +415,7 @@ struct MemberRow: View {
                     )
                     .opacity(NameplatePresentationPolicy.opacity(isHovered: isHovered))
                 } else {
-                    ConcentricRectangle(cornerRadius: 9, style: .continuous)
+                    ConcentricRectangle(cornerRadius: InterfaceScale.metric(9), style: .continuous)
                         .fill(isSelected && !isHovered ? Color.primary.opacity(0.07) : .clear)
                 }
                 if isHovered {
@@ -425,10 +425,10 @@ struct MemberRow: View {
                 }
 
                 if showsContents {
-                    HStack(spacing: 8) {
+                    HStack(spacing: InterfaceScale.metric(8)) {
                         MemberAvatar(member: member, isHovered: isHovered)
-                        VStack(alignment: .leading, spacing: 2) {
-                            HStack(spacing: 5) {
+                        VStack(alignment: .leading, spacing: InterfaceScale.metric(2)) {
+                            HStack(spacing: InterfaceScale.metric(5)) {
                                 NameRoleColorIndicator(colorHex: MessageAuthorPresentation.topRoleColor(in: member.roles))
                                 if let style = member.user.displayNameStyle {
                                     ProfileDisplayName(name: member.user.displayName, style: style, size: 13,
@@ -436,7 +436,7 @@ struct MemberRow: View {
                                         .allowsHitTesting(false)
                                 } else {
                                     Text(member.user.displayName)
-                                        .font(.body.weight(.semibold))
+                                        .font(.interface(.body).weight(.semibold))
                                         .foregroundStyle(nameColor)
                                         .lineLimit(1)
                                 }
@@ -449,7 +449,7 @@ struct MemberRow: View {
                                 }
                             }
                             if let activity = member.memberListActivityText, !activity.isEmpty {
-                                HStack(spacing: 4) {
+                                HStack(spacing: InterfaceScale.metric(4)) {
                                     if member.isListeningToMusic {
                                         Image(systemName: "music.note")
                                             .foregroundStyle(Color(hex: 0x1DB954))
@@ -465,21 +465,21 @@ struct MemberRow: View {
                                         usesSecondaryColor: true
                                     )
                                 }
-                                .font(.system(size: 12))
-                                .frame(maxWidth: .infinity, minHeight: 14, maxHeight: 16, alignment: .leading)
+                                .font(.interfaceSystem(size: 12))
+                                .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(14), maxHeight: InterfaceScale.metric(16), alignment: .leading)
                                 .allowsHitTesting(false)
                             }
                         }
                         .opacity(member.isListedOnline ? 1 : 0.55)
                         Spacer(minLength: 0)
                     }
-                    .padding(.horizontal, 4)
+                    .padding(.horizontal, InterfaceScale.metric(4))
                 }
             }
-            .frame(height: 44)
+            .frame(height: InterfaceScale.metric(44))
             .padding(.vertical, 1)
-            .clipShape(ConcentricRectangle(cornerRadius: 9, style: .continuous))
-            .contentShape(ConcentricRectangle(cornerRadius: 9, style: .continuous))
+            .clipShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(9), style: .continuous))
+            .contentShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(9), style: .continuous))
         }
         .buttonStyle(.plain)
         .onModalHover { isHovered = $0 }
@@ -498,15 +498,15 @@ struct MemberAvatar: View {
     var body: some View {
         AvatarPresenceView(
             status: member.memberListStatus,
-            avatarSize: 34,
-            indicatorSize: 11,
+            avatarSize: InterfaceScale.metric(34),
+            indicatorSize: InterfaceScale.metric(11),
             isMobile: member.showsMobileIndicator
         ) {
             DecoratedAvatarView(
                 name: member.user.displayName,
                 avatarURL: member.guildAvatarURL ?? member.user.avatarURL,
                 decorationURL: member.user.avatarDecorationURL,
-                size: 34,
+                size: InterfaceScale.metric(34),
                 playback: .hover(isHovered)
             )
         }

@@ -79,23 +79,23 @@ private struct JoinServerInput: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 12) {
+            HStack(spacing: InterfaceScale.metric(12)) {
                 Image(systemName: "link").foregroundStyle(.secondary)
                 TextField("Invite link or code", text: $text)
                     .textFieldStyle(.plain)
-                    .font(.title3)
+                    .font(.interface(.title3))
                     .tint(SakuraCordAccentColor.color)
                     .focused($isFocused)
                     .accessibilityIdentifier("server-invite-input")
                     .onSubmit(submit)
             }
-            .padding(.horizontal, 20)
-            .frame(height: 64)
+            .padding(.horizontal, InterfaceScale.metric(20))
+            .frame(height: InterfaceScale.metric(64))
             .contentShape(Rectangle())
             .onTapGesture { isFocused = true }
             if let error {
-                Text(error).font(.callout).foregroundStyle(.red)
-                    .padding(.horizontal, 20).padding(.bottom, 12)
+                Text(error).font(.interface(.callout)).foregroundStyle(.red)
+                    .padding(.horizontal, InterfaceScale.metric(20)).padding(.bottom, InterfaceScale.metric(12))
             }
         }
         .task { await Task.yield(); isFocused = true }
@@ -113,12 +113,12 @@ private struct JoinServerFooter: View {
         HStack {
             ModalGlassButton(symbol: hasPreview ? "chevron.left" : "xmark",
                                   label: hasPreview ? "Edit Invite" : "Cancel", action: back)
-            Spacer(minLength: 16)
+            Spacer(minLength: InterfaceScale.metric(16))
             ModalGlassButton(symbol: hasPreview ? "arrow.clockwise" : "arrow.right",
                                   label: hasPreview ? "Refresh Invite" : "Continue", primary: !hasPreview, action: proceed)
                 .disabled(!canContinue)
         }
-        .padding(12)
+        .padding(InterfaceScale.metric(12))
         .disabled(isWorking)
     }
 }

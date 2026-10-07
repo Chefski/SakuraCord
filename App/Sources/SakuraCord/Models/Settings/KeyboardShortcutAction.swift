@@ -5,6 +5,7 @@ nonisolated enum KeyboardShortcutGroup: String, CaseIterable, Identifiable, Send
     case navigation
     case messaging
     case voiceVideo
+    case interface
 
     var id: String { rawValue }
 
@@ -13,6 +14,7 @@ nonisolated enum KeyboardShortcutGroup: String, CaseIterable, Identifiable, Send
         case .navigation: LocalizedStringResource("Navigation", bundle: #bundle)
         case .messaging: LocalizedStringResource("Messaging", bundle: #bundle)
         case .voiceVideo: LocalizedStringResource("Voice & Video", bundle: #bundle)
+        case .interface: LocalizedStringResource("Interface", bundle: #bundle)
         }
     }
 
@@ -21,6 +23,7 @@ nonisolated enum KeyboardShortcutGroup: String, CaseIterable, Identifiable, Send
         case .navigation: .shortcutNavigation
         case .messaging: .shortcutMessaging
         case .voiceVideo: .shortcutVoiceVideo
+        case .interface: .shortcutInterface
         }
     }
 }
@@ -59,6 +62,9 @@ nonisolated enum KeyboardShortcutAction: String, CaseIterable, Codable, Identifi
     case startCall
     case answerCall
     case toggleSoundboard
+    case increaseInterfaceSize
+    case decreaseInterfaceSize
+    case resetInterfaceSize
 
     var id: String { rawValue }
     var controlID: SettingsControlID {
@@ -81,6 +87,7 @@ nonisolated enum KeyboardShortcutAction: String, CaseIterable, Codable, Identifi
         case .startCall: .voiceVideo
         case .answerCall: .voiceVideo
         case .toggleSoundboard: .voiceVideo
+        case .increaseInterfaceSize, .decreaseInterfaceSize, .resetInterfaceSize: .interface
         case .quickSwitch, .messageSearch, .previousConversation,
              .nextConversation, .previousUnread, .nextUnread, .currentCall,
              .previousServer, .nextServer, .toggleChannelSidebar, .toggleMemberList:
@@ -109,6 +116,9 @@ nonisolated enum KeyboardShortcutAction: String, CaseIterable, Codable, Identifi
         case .startCall: LocalizedStringResource("Start Private Call", bundle: #bundle)
         case .answerCall: LocalizedStringResource("Answer Incoming Call", bundle: #bundle)
         case .toggleSoundboard: LocalizedStringResource("Toggle Soundboard", bundle: #bundle)
+        case .increaseInterfaceSize: LocalizedStringResource("Increase Interface Size", bundle: #bundle)
+        case .decreaseInterfaceSize: LocalizedStringResource("Decrease Interface Size", bundle: #bundle)
+        case .resetInterfaceSize: LocalizedStringResource("Reset Interface Size", bundle: #bundle)
         case .quickSwitch: LocalizedStringResource("Quick Switch…", bundle: #bundle)
         case .messageSearch: LocalizedStringResource("Message Search…", bundle: #bundle)
         case .previousConversation: LocalizedStringResource("Previous Conversation", bundle: #bundle)
@@ -151,6 +161,10 @@ nonisolated enum KeyboardShortcutAction: String, CaseIterable, Codable, Identifi
         case .startCall: LocalizedStringResource("Start a call in the current direct message or group.", bundle: #bundle)
         case .answerCall: LocalizedStringResource("Answer the first incoming private call.", bundle: #bundle)
         case .toggleSoundboard: LocalizedStringResource("Show or hide the soundboard while connected to a call.", bundle: #bundle)
+        case .increaseInterfaceSize, .decreaseInterfaceSize:
+            LocalizedStringResource("Steps the Interface size setting by 10%.", bundle: #bundle)
+        case .resetInterfaceSize:
+            LocalizedStringResource("Returns the Interface size setting to 100%.", bundle: #bundle)
         case .previousConversation, .nextConversation:
             LocalizedStringResource("Cycles through channels in the current server, wrapping at either end.", bundle: #bundle)
         case .previousUnread, .nextUnread:
@@ -176,6 +190,8 @@ nonisolated enum KeyboardShortcutAction: String, CaseIterable, Codable, Identifi
              .toggleDirectMessages, .togglePins, .toggleEmojiPicker,
              .toggleGIFPicker, .toggleStickerPicker, .markServerRead,
              .startCall, .answerCall, .toggleSoundboard: [title, help]
+        case .increaseInterfaceSize, .decreaseInterfaceSize, .resetInterfaceSize:
+            ["zoom", "scale", "text size", "larger", "smaller", "actual size"]
         case .quickSwitch: ["switcher", "navigate", "command k"]
         case .messageSearch, .searchCurrentConversation: ["find", "messages", "search"]
         case .previousConversation, .nextConversation: ["channel", "direct message", "navigate"]
@@ -231,6 +247,12 @@ nonisolated enum KeyboardShortcutAction: String, CaseIterable, Codable, Identifi
             KeyboardShortcutChord(key: "\u{1b}", modifiers: .shift)
         case .toggleSoundboard:
             KeyboardShortcutChord(key: "b", modifiers: [.command, .shift])
+        case .increaseInterfaceSize:
+            KeyboardShortcutChord(key: "+", modifiers: .command)
+        case .decreaseInterfaceSize:
+            KeyboardShortcutChord(key: "-", modifiers: .command)
+        case .resetInterfaceSize:
+            KeyboardShortcutChord(key: "0", modifiers: .command)
         case .quickSwitch:
             KeyboardShortcutChord(key: "k", modifiers: command)
         case .messageSearch:

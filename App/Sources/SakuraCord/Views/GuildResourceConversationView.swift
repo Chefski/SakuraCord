@@ -16,7 +16,7 @@ struct GuildResourceConversationView: View {
                             .buttonStyle(.glass)
                             .disabled(resource.loading)
                     }
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, InterfaceScale.metric(24))
                 }
                 if resource.loading, resource.messages.isEmpty {
                     ProgressView("Loading resource…").frame(maxWidth: .infinity, maxHeight: .infinity)

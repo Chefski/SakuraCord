@@ -10,24 +10,24 @@ struct IssueReportCompletionView: View {
 
     var body: some View {
         if let outcome = store.outcome {
-            VStack(spacing: 18) {
+            VStack(spacing: InterfaceScale.metric(18)) {
                 IssueReportCelebration(kind: store.kind)
-                VStack(spacing: 6) {
+                VStack(spacing: InterfaceScale.metric(6)) {
                     Text(outcome.followedExisting
                         ? "You’re following #\(outcome.filed.number)"
                         : "Filed as #\(outcome.filed.number)")
-                        .font(.title2.weight(.bold))
+                        .font(.interface(.title2).weight(.bold))
                     Text(message(outcome))
-                        .font(.callout)
+                        .font(.interface(.callout))
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, InterfaceScale.metric(24))
                 actions(outcome)
                 if case let .failed(message) = store.joinState {
                     Text(message)
-                        .font(.caption)
+                        .font(.interface(.caption))
                         .foregroundStyle(.red)
                         .multilineTextAlignment(.center)
                         .transition(.opacity)
@@ -37,8 +37,8 @@ struct IssueReportCompletionView: View {
                     .foregroundStyle(.secondary)
                     .keyboardShortcut(.defaultAction)
             }
-            .padding(.top, 28)
-            .padding(.bottom, 20)
+            .padding(.top, InterfaceScale.metric(28))
+            .padding(.bottom, InterfaceScale.metric(20))
             .frame(maxWidth: .infinity)
             .animation(.snappy(duration: 0.35), value: model.isInSakuraCordServer)
             .animation(.snappy(duration: 0.25), value: store.joinState)
@@ -47,8 +47,8 @@ struct IssueReportCompletionView: View {
 
     @ViewBuilder
     private func actions(_ outcome: IssueReportStore.Outcome) -> some View {
-        GlassEffectContainer(spacing: 10) {
-            HStack(spacing: 10) {
+        GlassEffectContainer(spacing: InterfaceScale.metric(10)) {
+            HStack(spacing: InterfaceScale.metric(10)) {
                 if model.isInSakuraCordServer {
                     if outcome.filed.threadId != nil {
                         IssueReportActionButton(
@@ -118,15 +118,15 @@ private struct IssueReportCelebration: View {
                 }
             }
             Image(systemName: "checkmark")
-                .font(.system(size: 30, weight: .bold))
+                .font(.interfaceSystem(size: 30, weight: .bold))
                 .foregroundStyle(.white)
                 .symbolEffect(.bounce, value: landed)
-                .frame(width: 72, height: 72)
+                .frame(width: InterfaceScale.metric(72), height: InterfaceScale.metric(72))
                 .glassEffect(.regular.tint(SakuraCordAccentColor.color), in: Circle())
                 .scaleEffect(landed ? 1 : 0.4)
                 .opacity(landed ? 1 : 0)
         }
-        .frame(width: 150, height: 120)
+        .frame(width: InterfaceScale.metric(150), height: InterfaceScale.metric(120))
         .accessibilityHidden(true)
         .task {
             withAnimation(.spring(duration: 0.5, bounce: 0.45)) { landed = true }

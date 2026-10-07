@@ -53,9 +53,10 @@ final class NativeEmojiPickerRowView: NSView, NativePickerReusableRow {
         super.layout()
         let columnWidth = bounds.width / CGFloat(EmojiPickerGridMetrics.columns)
         let scale = window?.backingScaleFactor ?? 2
+        let cellSize = EmojiPickerGridMetrics.cellSize
         for (index, button) in buttons.enumerated() {
-            let originX = (CGFloat(index) * columnWidth + (columnWidth - 43) / 2) * scale
-            button.frame = CGRect(x: originX.rounded() / scale, y: 0, width: 43, height: 43)
+            let originX = (CGFloat(index) * columnWidth + (columnWidth - cellSize) / 2) * scale
+            button.frame = CGRect(x: originX.rounded() / scale, y: 0, width: cellSize, height: cellSize)
         }
     }
 
@@ -187,7 +188,7 @@ private final class NativeEmojiPickerCell: NSView {
         let canvas = animation ?? AnimatedImageCanvas()
         canvas.display(decoded, animates: animates, isLooping: true)
         canvas.alphaValue = isLocked ? 0.4 : 1
-        canvas.frame = bounds.insetBy(dx: 2.5, dy: 2.5)
+        canvas.frame = bounds.insetBy(dx: InterfaceScale.metric(2.5), dy: InterfaceScale.metric(2.5))
         canvas.setAccessibilityElement(false)
         if canvas.superview == nil { addSubview(canvas) }
         addSubview(lockOverlay, positioned: .above, relativeTo: canvas)
@@ -196,7 +197,7 @@ private final class NativeEmojiPickerCell: NSView {
 
     override func layout() {
         super.layout()
-        animation?.frame = bounds.insetBy(dx: 2.5, dy: 2.5)
+        animation?.frame = bounds.insetBy(dx: InterfaceScale.metric(2.5), dy: InterfaceScale.metric(2.5))
         lockOverlay.frame = bounds
     }
 
@@ -206,9 +207,10 @@ private final class NativeEmojiPickerCell: NSView {
         if let image = previewImage {
             let rect: CGRect
             if drawsFullCell { rect = bounds } else {
-                let ratio = min(38 / max(1, image.size.width), 38 / max(1, image.size.height))
+                let glyph = EmojiPickerGridMetrics.glyphSize
+                let ratio = min(glyph / max(1, image.size.width), glyph / max(1, image.size.height))
                 let size = CGSize(width: image.size.width * ratio, height: image.size.height * ratio)
-                rect = CGRect(x: (43 - size.width) / 2, y: (43 - size.height) / 2, width: size.width, height: size.height)
+                rect = CGRect(x: bounds.midX - size.width / 2, y: bounds.midY - size.height / 2, width: size.width, height: size.height)
             }
             image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: isLocked ? 0.4 : 1, respectFlipped: true, hints: nil)
         }
@@ -294,57 +296,60 @@ private final class NativeEmojiPickerCell: NSView {
 
     static func emoji(_ emoji: NativeEmoji, skinTone: NativeEmojiSkinTone, scale: CGFloat) -> NSImage? {
         let value = emoji.value(for: skinTone)
-        let key = "emoji:\(value):\(scale)" as NSString
+        let cell = EmojiPickerGridMetrics.cellSize
+        let key = "emoji:\(value):\(scale):\(cell)" as NSString
         if let image = cache.object(forKey: key) { return image }
         // Use the same font, centered text line and one-point upward offset as
         // EmojiPickerItem.preview. Core Text avoids constructing a SwiftUI
         // render graph for every cold glyph during a large scrollbar jump.
-        let text = NSAttributedString(string: value, attributes: [.font: NSFont.systemFont(ofSize: 38)])
+        let text = NSAttributedString(string: value, attributes: [.font: NSFont.systemFont(ofSize: EmojiPickerGridMetrics.glyphSize)])
         let size = text.size()
-        let pixels = Int(ceil(43 * scale))
+        let pixels = Int(ceil(cell * scale))
         guard let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: pixels, pixelsHigh: pixels,
             bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
             colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
-        bitmap.size = CGSize(width: 43, height: 43)
+        bitmap.size = CGSize(width: cell, height: cell)
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
-        NSGraphicsContext.current?.cgContext.clear(CGRect(x: 0, y: 0, width: 43, height: 43))
-        text.draw(at: CGPoint(x: (43 - size.width) / 2, y: (43 - size.height) / 2 + 1))
+        NSGraphicsContext.current?.cgContext.clear(CGRect(x: 0, y: 0, width: cell, height: cell))
+        text.draw(at: CGPoint(x: (cell - size.width) / 2, y: (cell - size.height) / 2 + 1))
         NSGraphicsContext.restoreGraphicsState()
         guard let pixels = bitmap.cgImage else { return nil }
-        let image = NSImage(cgImage: pixels, size: CGSize(width: 43, height: 43))
+        let image = NSImage(cgImage: pixels, size: CGSize(width: cell, height: cell))
         cache.setObject(image, forKey: key, cost: pixels.bytesPerRow * pixels.height)
         return image
     }
 
     static func fallback(colorScheme: ColorScheme, scale: CGFloat) -> NSImage? {
         render(key: "fallback:\(colorScheme):\(scale)", scale: scale) {
-            Image(systemName: "face.dashed").frame(width: 43, height: 43)
+            Image(systemName: "face.dashed").frame(width: InterfaceScale.metric(43), height: InterfaceScale.metric(43))
                 .environment(\.colorScheme, colorScheme)
         }
     }
 
     static func background(colorScheme: ColorScheme, scale: CGFloat) -> NSImage? {
         render(key: "background:\(colorScheme):\(scale)", scale: scale) {
-            ConcentricRectangle(cornerRadius: 9, style: .continuous).fill(Color.primary.opacity(0.13))
-                .frame(width: 43, height: 43).environment(\.colorScheme, colorScheme)
+            ConcentricRectangle(cornerRadius: InterfaceScale.metric(9), style: .continuous).fill(Color.primary.opacity(0.13))
+                .frame(width: InterfaceScale.metric(43), height: InterfaceScale.metric(43)).environment(\.colorScheme, colorScheme)
         }
     }
 
     static func lock(colorScheme: ColorScheme, scale: CGFloat) -> NSImage? {
         render(key: "lock:\(colorScheme):\(scale)", scale: scale) {
-            Color.clear.frame(width: 43, height: 43).overlay(alignment: .bottomTrailing) {
-                Image(systemName: "lock.fill").font(.caption2).padding(3)
+            Color.clear.frame(width: InterfaceScale.metric(43), height: InterfaceScale.metric(43)).overlay(alignment: .bottomTrailing) {
+                Image(systemName: "lock.fill").font(.interface(.caption2)).padding(InterfaceScale.metric(3))
             }.environment(\.colorScheme, colorScheme)
         }
     }
 
     private static func render<Content: View>(key: String, scale: CGFloat, @ViewBuilder content: () -> Content) -> NSImage? {
+        let cell = EmojiPickerGridMetrics.cellSize
+        let key = "\(key):\(cell)"
         if let image = cache.object(forKey: key as NSString) { return image }
         let renderer = ImageRenderer(content: content())
         renderer.scale = scale
         guard let pixels = renderer.cgImage else { return nil }
-        let image = NSImage(cgImage: pixels, size: CGSize(width: 43, height: 43))
+        let image = NSImage(cgImage: pixels, size: CGSize(width: cell, height: cell))
         cache.setObject(image, forKey: key as NSString, cost: pixels.bytesPerRow * pixels.height)
         return image
     }

@@ -864,3 +864,28 @@ private final class ThemeIntermediateFrameProbe {
         }
     }
 }
+
+@MainActor
+@Test func `Interface size persists normalized and stays independent of density`() throws {
+    let preferences = SettingsPreferenceStore(defaults: InMemoryPreferences())
+    let store = AppearanceSettingsStore(preferences: preferences)
+    #expect(store.load().interfaceSize == InterfaceScale.defaultFactor)
+
+    var selected = AppearanceSettingsSnapshot.defaults
+    selected.interfaceSize = 1.27
+    store.save(selected)
+    let loaded = store.load()
+    #expect(loaded.interfaceSize == 1.3)
+    #expect(loaded.messageSpacing == AppearanceSettingsSnapshot.defaultMessageSpacing)
+
+    selected.interfaceSize = 9
+    store.save(selected)
+    #expect(store.load().interfaceSize == InterfaceScale.range.upperBound)
+
+    let registration = try #require(
+        SettingsPreferenceRegistry.foundation.registrations.first { $0.id == .interfaceSize }
+    )
+    #expect(SettingsImportValidation.accepts(.double(0.8), registration: registration))
+    #expect(!SettingsImportValidation.accepts(.double(2), registration: registration))
+    #expect(!SettingsImportValidation.accepts(.double(.nan), registration: registration))
+}

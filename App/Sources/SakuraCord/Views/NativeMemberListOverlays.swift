@@ -151,7 +151,7 @@ extension NativeMemberListCanvasView {
                 avatarOverlayConfigurations[id] = configuration
             }
             host.frame = CGRect(
-                x: NativeMemberListMetrics.horizontalInset + 4,
+                x: NativeMemberListMetrics.horizontalInset + InterfaceScale.metric(4),
                 y: origins[index] + 1
                     + (NativeMemberListMetrics.paintedRowHeight
                         - NativeMemberListMetrics.avatarContainerSize) / 2,
@@ -189,7 +189,7 @@ extension NativeMemberListCanvasView {
                 token: truncationToken,
                 maximumWidth: max(0, row.maxX - textX - 4)
             )
-            let origin = CGPoint(x: textX, y: row.minY + 24)
+            let origin = CGPoint(x: textX, y: row.minY + InterfaceScale.metric(24))
             for (ordinal, region) in NativeMemberActivityPresentation.emojiRegions(
                 in: visibleActivity,
                 origin: origin

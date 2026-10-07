@@ -9,11 +9,16 @@ struct DisplayNameFontModifier: ViewModifier {
     let textStyle: NSFont.TextStyle
     @State private var loadedFont: NSFont?
 
+    private struct FontRequest: Equatable {
+        let fontID: Int?
+        let size: CGFloat
+    }
+
     func body(content: Content) -> some View {
-        let fallback = NSFont.systemFont(ofSize: NSFont.preferredFont(forTextStyle: textStyle).pointSize, weight: .semibold)
+        let fallback = NSFont.systemFont(ofSize: NSFont.interfacePreferredFont(forTextStyle: textStyle).pointSize, weight: .semibold)
         content
             .font(Font(loadedFont ?? ProfileNameFontCache.font(id: fontID, fallback: fallback)))
-            .task(id: fontID) {
+            .task(id: FontRequest(fontID: fontID, size: fallback.pointSize)) {
                 loadedFont = nil
                 guard let definition = ProfileNameFontCache.customDefinition(for: fontID) else { return }
                 loadedFont = try? await ProfileNameFontLoader.shared.font(definition, size: fallback.pointSize)
