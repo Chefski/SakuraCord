@@ -191,7 +191,7 @@ extension AppModel {
         let roles = guildID.flatMap { guildRolesByGuildID[$0] }
             ?? (guildID == selectedGuildID ? guildRoles : [])
         let presentation = MessageAuthorPresentation.resolve(message: message, member: member, roles: roles)
-        var user = presentation.user
+        var user = privateConversationUser(presentation.user, in: guildID)
         user.avatarDecorationURL = user.avatarDecorationURL ?? message.author.avatarDecorationURL
         return MessageAuthorPresentation(user: cosmeticPolicy.user(user), roleColorHex: presentation.roleColorHex)
     }
@@ -208,7 +208,18 @@ extension AppModel {
             member: member,
             roles: roles
         )
-        return MessageAuthorPresentation(user: cosmeticPolicy.user(presentation.user), roleColorHex: presentation.roleColorHex)
+        return MessageAuthorPresentation(
+            user: cosmeticPolicy.user(privateConversationUser(presentation.user, in: guildID)),
+            roleColorHex: presentation.roleColorHex
+        )
+    }
+
+    /// Discord names people by their friend nickname in DMs and group DMs only.
+    func privateConversationUser(_ user: User, in guildID: GuildID?) -> User {
+        guard guildID == nil, !user.isWebhookIdentity, let nickname = friendNickname(for: user.id) else { return user }
+        var user = user
+        user.displayName = nickname
+        return user
     }
 
     func messagePresentationGuildID(for message: Message) -> GuildID? {
@@ -402,6 +413,11 @@ extension AppModel {
         if presentation.member.id == profileCustomStatusUserID {
             // Account settings are authoritative for our own status, including clears.
             presentation.member.customStatus = profileCustomStatus?.displayText
+        }
+        if presentation.guildID == nil, let nickname = friendNickname(for: presentation.member.id) {
+            // Profiles opened from a DM or group DM use the friend nickname.
+            presentation.member.user.displayName = nickname
+            presentation.profile?.displayName = nickname
         }
         return presentation
     }

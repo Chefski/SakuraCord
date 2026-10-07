@@ -201,6 +201,7 @@ final class NativeMemberListCanvasView: NSView, WindowModalInputParticipant {
     var isProfilePresented = false
     var dismissProfile: () -> Void = {}
     var selectMember: (Member) -> Void = { _ in }
+    var nicknameActions: (Member) -> [NicknameMenuAction] = { _ in [] }
     var hoveredIndex: Int?
     var hoveredServerTagID: ItemID?
     var serverTagCardPresentation: ServerTagCardPresentation?
@@ -361,6 +362,15 @@ final class NativeMemberListCanvasView: NSView, WindowModalInputParticipant {
               case .member(let member, _) = items[index]
         else { return }
         selectMember(member)
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        guard !interactionsBlocked, WindowModalCoordinator.allowsInput(for: self) else { return nil }
+        let point = convert(event.locationInWindow, from: nil)
+        guard let index = index(at: point),
+              case .member(let member, _) = items[index]
+        else { return nil }
+        return NicknameContextMenu.menu(for: nicknameActions(member))
     }
 
 }

@@ -58,7 +58,7 @@ struct MessageMentionResolver {
         }
         return MentionPresentation(
             rawToken: mention.rawToken,
-            label: "@\(member?.user.displayName ?? value?.displayName ?? "unknown-user")",
+            label: "@\((sourceGuildID == nil ? model.friendNickname(for: userID) : nil) ?? member?.user.displayName ?? value?.displayName ?? "unknown-user")",
             target: .user(userID),
             avatarURL: member?.guildAvatarURL ?? value?.avatarURL,
             colorHex: topColor

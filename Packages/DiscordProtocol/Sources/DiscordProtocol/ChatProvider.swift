@@ -91,6 +91,10 @@ public protocol ChatProvider: Sendable {
     func profileWidgetConnections(applicationIDs: [String]) async throws -> [String: ProfileWidgetConnection]
     /// Changes the current member's nickname; an empty string resets it.
     func setNickname(_ nickname: String, in guildID: GuildID) async throws -> String?
+    /// Changes any member's server nickname; an empty string resets it.
+    func setMemberNickname(_ nickname: String, for userID: UserID, in guildID: GuildID) async throws -> String?
+    /// Sets the private nickname for a friend; nil or blank text removes it.
+    func setFriendNickname(_ nickname: String?, for userID: UserID) async throws -> String?
     func saveProfileChanges(
         _ changes: ProfileEditChanges, in scope: ProfileEditingScope,
         didSave: @Sendable (ProfileSaveConfirmation) async -> Void
@@ -448,6 +452,14 @@ public extension ChatProvider {
 
     func setNickname(_ nickname: String, in guildID: GuildID) async throws -> String? {
         throw ChatProviderError.invalidRequest("Nickname editing is unavailable for this session.")
+    }
+
+    func setMemberNickname(_ nickname: String, for userID: UserID, in guildID: GuildID) async throws -> String? {
+        throw ChatProviderError.invalidRequest("Nickname editing is unavailable for this session.")
+    }
+
+    func setFriendNickname(_ nickname: String?, for userID: UserID) async throws -> String? {
+        throw ChatProviderError.invalidRequest("Friend nicknames are unavailable for this session.")
     }
 
     func saveProfileChanges(

@@ -217,6 +217,8 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     var cachedFriendUserIDs: Set<UserID> = []
     var cachedBlockedOrIgnoredUserIDs: Set<UserID> = []
     var cachedRelationshipNicknamesByUserID: [UserID: String] = [:]
+    /// Per-user revisions keep unrelated relationship events from suppressing saves.
+    var relationshipRevisions: [UserID: UInt64] = [:]
     var cachedGuildRoles: [GuildID: [GuildRoleDTO]] = [:]
     var guildRoleTasks: [GuildID: Task<[GuildRoleDTO], Error>] = [:]
     var pendingMemberSearchRequests: [String: PendingMemberSearchRequest] = [:]
@@ -244,6 +246,7 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     var profileEditingGeneration: UInt64 = 0
     var profilePresentationGeneration: UInt64 = 0
     var profilePresentationRevisions: [UserID: UInt64] = [:]
+    var memberPresentationRevisions: [ProfileCacheKey: UInt64] = [:]
     var profileResponses: [ProfileCacheKey: UserProfileDTO] = [:]
     var profileSaveID: UUID?
     var cachedEmojis: [GuildID: EmojiCacheEntry] = [:]

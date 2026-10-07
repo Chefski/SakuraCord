@@ -183,10 +183,7 @@ extension DiscordRESTProvider {
             method: "POST",
             body: ["recipients": .array([.string(userID.description)])]
         )
-        let channel = try dto.domain(
-            guildID: nil,
-            knownUsersByID: cachedGatewayUsersByID
-        )
+        let channel = try privateChannel(from: dto)
         upsertPrivateChannel(channel)
         continuation?.yield(.channelsChanged(
             guildID: nil,

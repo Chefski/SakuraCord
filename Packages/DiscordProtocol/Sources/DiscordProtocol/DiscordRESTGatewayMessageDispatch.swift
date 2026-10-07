@@ -48,7 +48,7 @@ extension DiscordRESTProvider {
         guard let typing = try? JSONValueDecoder().decode(TypingStartDTO.self, from: body),
               let channelID = ChannelID(typing.channelID),
               let userID = UserID(typing.userID),
-              let user = DiscordTypingEventResolver.resolve(.init(
+              var user = DiscordTypingEventResolver.resolve(.init(
                   typing: typing,
                   userID: userID,
                   currentUser: currentUser,
@@ -62,6 +62,9 @@ extension DiscordRESTProvider {
         else {
             gatewayLogger.debug("Ignored an unresolved or malformed typing event")
             return
+        }
+        if typing.guildID == nil, let nickname = cachedRelationshipNicknamesByUserID[userID] {
+            user.displayName = nickname
         }
         continuation?.yield(.typing(channelID: channelID, user: user))
     }

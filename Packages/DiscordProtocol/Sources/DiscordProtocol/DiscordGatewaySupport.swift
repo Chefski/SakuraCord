@@ -811,6 +811,7 @@ struct GatewayReadyGuildsDTO: Decodable {
                 name: name,
                 iconURL: iconURL,
                 isOwnedByCurrentUser: isOwnedByCurrentUser,
+                ownerID: ownerID.flatMap(UserID.init),
                 currentUserPermissions: permissions.flatMap(UInt64.init),
                 rulesChannelID: rulesChannelID.flatMap(ChannelID.init),
                 features: features,
@@ -1243,6 +1244,7 @@ struct ReadyMergedMemberDTO: Decodable {
     var bio: String?
     var pending: Bool?
     var flags: UInt64?
+    var communicationDisabledUntil: String?
     var joinedAt: String?
     var avatarDecorationData: UserDTO.AvatarDecorationDTO?
     var collectibles: UserCollectiblesDTO?
@@ -1252,6 +1254,7 @@ struct ReadyMergedMemberDTO: Decodable {
         case userID = "user_id"
         case nick, roles, presence, avatar, banner, bio, pending, flags, collectibles
         case joinedAt = "joined_at"
+        case communicationDisabledUntil = "communication_disabled_until"
         case avatarDecorationData = "avatar_decoration_data"
         case displayNameStyles = "display_name_styles"
     }
@@ -1268,6 +1271,7 @@ struct ReadyMergedMemberDTO: Decodable {
             bio: bio,
             pending: pending,
             flags: flags,
+            communicationDisabledUntil: communicationDisabledUntil,
             joinedAt: joinedAt,
             avatarDecorationData: avatarDecorationData,
             collectibles: collectibles,

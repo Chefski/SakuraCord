@@ -14,7 +14,8 @@ extension DiscordRESTProvider {
         }
         let saveID = UUID()
         let generation = profileEditingGeneration
-        let revision = profilePresentationRevisions[user.id, default: 0]
+        let memberKey = ProfileCacheKey(userID: user.id, guildID: guildID)
+        let revision = memberPresentationRevisions[memberKey, default: 0]
         profileSaveID = saveID
         defer { if profileSaveID == saveID { profileSaveID = nil } }
         try Task.checkCancellation()
@@ -32,12 +33,45 @@ extension DiscordRESTProvider {
             throw ChatProviderError.invalidRequest("Discord saved the nickname, but its response could not be loaded. Check your server profile before trying again.")
         }
         // Gateway may have already applied this change, or a newer one. Only
-        // reconcile the REST snapshot if no intervening profile event arrived.
-        if profilePresentationRevisions[user.id, default: 0] == revision {
+        // reconcile if this member has not changed in the target guild.
+        if memberPresentationRevisions[memberKey, default: 0] == revision {
             body["guild_id"] = .string(guildID.description)
             await handleGuildMemberAddDispatch(name: "GUILD_MEMBER_UPDATE", body: .object(body))
         }
         return dto.nick
+    }
+
+    /// A moderator's Change Nickname action for another member. The current
+    /// member keeps the `/nick` route above. One PATCH, never replayed.
+    public func setMemberNickname(_ nickname: String, for userID: UserID, in guildID: GuildID) async throws -> String? {
+        guard let user = currentUser else { throw ChatProviderError.unauthenticated }
+        guard userID != user.id else { return try await setNickname(nickname, in: guildID) }
+        guard nickname.utf16.count <= 32 else {
+            throw ChatProviderError.invalidRequest("Nicknames must be 32 characters or fewer.")
+        }
+        let memberKey = ProfileCacheKey(userID: userID, guildID: guildID)
+        let revision = memberPresentationRevisions[memberKey, default: 0]
+        let generation = profileEditingGeneration
+        let path = "/guilds/\(guildID)/members/\(userID)"
+        let (data, response) = try await perform(path, method: "PATCH", query: [], body: ["nick": .string(nickname)])
+        if response.statusCode == 400, let error = Self.profileValidationError(data: data, method: "PATCH", path: path) {
+            throw apiDiagnostics.coalescing(error, with: response)
+        }
+        let saved: JSONValue = try decodedResponse(data, response, method: "PATCH", path: path) { status, _ in
+            status == 403 ? ChatProviderError.invalidRequest("You don’t have permission to change this member’s nickname.") : nil
+        }
+        guard currentUser?.id == user.id else { throw CancellationError() }
+        guard case var .object(body) = saved,
+              let dto = try? JSONDecoder().decode(GuildMemberDTO.self, from: data),
+              dto.user.id == userID.description else {
+            throw ChatProviderError.invalidRequest("Discord saved the nickname, but its response could not be loaded.")
+        }
+        // READY resets revisions, so the generation also guards a reconnect.
+        if profileEditingGeneration == generation, memberPresentationRevisions[memberKey, default: 0] == revision {
+            body["guild_id"] = .string(guildID.description)
+            await handleGuildMemberAddDispatch(name: "GUILD_MEMBER_UPDATE", body: .object(body))
+        }
+        return dto.nick.flatMap { $0.isEmpty ? nil : $0 }
     }
 
     public func saveProfileChanges(

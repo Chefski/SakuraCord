@@ -7,6 +7,7 @@
 | Contract | Source | Representative checks |
 | --- | --- | --- |
 | Profile saves and widgets | [DiscordRESTProfileSaving.swift](../../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordRESTProfileSaving.swift); [DiscordProfileWidgetEligibility.swift](../../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordProfileWidgetEligibility.swift) | [ProfileEditingContractTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/ProfileEditingContractTests.swift); [ProfileEditorStateTests.swift](../../App/Tests/SakuraCordAppTests/ProfileEditorStateTests.swift) |
+| Nicknames | [DiscordRESTProfileSaving.swift](../../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordRESTProfileSaving.swift); [DiscordRESTRelationships.swift](../../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordRESTRelationships.swift); [AppModelNicknames.swift](../../App/Sources/SakuraCord/Models/AppModelNicknames.swift) | [NicknameCommandTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/NicknameCommandTests.swift) |
 | Status | [DiscordProfileSettingsProto.swift](../../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordProfileSettingsProto.swift); [DiscordRESTProfileCustomStatus.swift](../../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordRESTProfileCustomStatus.swift) | [StatusPickContractTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/StatusPickContractTests.swift) |
 | Server folders | [DiscordSettingsProtoMerging.swift](../../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordSettingsProtoMerging.swift) | [GuildFolderSettingsContractTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/GuildFolderSettingsContractTests.swift) |
 | Emoji usage and shared saves | [AppModelEmojiFrecency.swift](../../App/Sources/SakuraCord/Models/AppModelEmojiFrecency.swift); [DiscordRESTEmojiFrecency.swift](../../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordRESTEmojiFrecency.swift) | [EmojiFrecencyTests.swift](../../App/Tests/SakuraCordAppTests/EmojiFrecencyTests.swift); [GIFProviderContractTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/GIFProviderContractTests.swift) |
@@ -29,6 +30,90 @@ Account contact/device details are private session-only values. Do not add email
 phone or session hashes to public User values or saved-account labels. Profile
 and own-user updates invalidate/reconcile the appropriate caches; late work from
 a replaced account cannot publish into the new editor.
+
+## Nicknames
+
+Your own server nickname is edited in the per-server profile or with
+[`/nick`](MESSAGING.md#forums-threads-and-commands). In a server, your user menu
+offers **Edit Per-server Profile**, which opens Profiles on that server's scope.
+For another member, **Change Nickname** follows Discord's `canManageUser`:
+never the guild owner; the owner manages everyone else; anyone else needs
+Manage Nicknames (or Administrator) and a highest role above the target's, by
+`position` and then the older role ID, with @everyone last. Unloaded role
+records are ignored within the low-level highest-role lookup, but Discord's
+menu separately excludes missing members, guests and lurkers (`joined_at: null`).
+Like its member subscription, SakuraCord starts a coalesced lookup through the
+existing member provider when a menu target is missing. The action remains
+hidden until the member store can establish membership and hierarchy; opening
+then seeds the real nickname. Failed resolution offers no editable draft.
+Administrators remain bound by hierarchy. Pending members and guests cannot
+manage nicknames; non-administrators are also restricted during a timeout or AutoMod quarantine
+(member flag 128, 256, or 1024). Guild owners bypass these member restrictions.
+The dialog sends one `PATCH /guilds/{guild}/members/{user}` with
+`{"nick":"value"}` as typed; Reset sends `""` and a value confirmed unchanged
+in the current member store closes without a request. Missing member data never
+turns an explicit reset into an unchanged-value shortcut. The member response
+reconciles the store unless the target member has a newer revision in that guild
+or the session has reset.
+Updates in other guilds do not suppress the saved nickname. `nick` validation
+errors stay in the dialog and `403` remains operation-scoped. No audit-log reason
+is sent.
+
+Friend nicknames are private to the account and offered only for friends
+(relationship type 1): **Add Friend Nickname** or **Change Friend Nickname** in
+server, thread, DM and group-DM user menus. Save sends one
+`PATCH /users/@me/relationships/{user}` with the trimmed `{"nickname":"value"}`;
+Reset or blank text sends `null`, and success is `204`. A `400` stays in the
+dialog rather than opening the session safety circuit, and a result that returns
+after a session reset or a newer event for that friend does not replace that state.
+Events for other friends do not suppress the saved nickname. READY
+`relationships[].nickname` seeds the map. `RELATIONSHIP_ADD` sets a non-null nickname, `RELATIONSHIP_UPDATE`
+replaces it (null or absent clears) and `RELATIONSHIP_REMOVE` deletes it.
+
+Names follow Discord's `getNickname(guild, channel, user)`: servers use only the
+server nickname; DMs and group DMs use the friend nickname before the global
+name. The provider applies it to unnamed DM and group-DM titles, private members
+and DM typing; the app applies it to private message authors, mentions,
+notifications and profiles opened outside a server. Group-DM `nicks` are neither
+shown nor editable, as in the official client.
+
+These contracts come from static analysis of first-party web build `630444`
+(`web.90d3ab34abfe98da.js`) on 7 October 2026: the Change Nickname modal and
+menu item, `canManageUser`, the friend-nickname modal, menu and request,
+RelationshipStore, and name resolution. The public
+[Modify Guild Member](https://docs.discord.com/developers/resources/guild#modify-guild-member)
+route corroborates the member request. Pinned Paicord declares the same
+relationship PATCH without a UI; Swiftcord v1 has no equivalent.
+
+A live server-member check on 8 October 2026 (desktop 0.0.411,
+`web.d3978f1210c00a8f.js`) confirmed the official moderator action sends
+`PATCH /api/v9/guilds/{guild}/members/{user}` with `{"nick":"value"}` and returns
+the member with HTTP `200`. Its `GUILD_MEMBER_UPDATE` updated SakuraCord without
+a reload. Reset from SakuraCord produced `nick: null` in the independent
+official session and restored both member lists without a reload. Existing
+owner and second-account menus matched in both clients: the owner could rename
+the target; the second account had no action for the owner or the other member
+checked. A source comparison against that web build's PermissionStore, guild
+permission masks, and role comparator established the restriction rules above.
+READY hydrates timeout expiry; an omitted timeout in `GUILD_MEMBER_UPDATE`
+preserves it, while explicit null clears it. No roles or restrictions were
+changed live; those cases have deterministic coverage.
+
+A live official-client capture on 7 October 2026 (desktop 0.0.411,
+`web.d3978f1210c00a8f.js`) confirmed friend Save and Reset both use
+`PATCH /api/v9/users/@me/relationships/{user}` with a string and explicit `null`,
+respectively. Both returned empty `204` responses and corresponding
+`RELATIONSHIP_UPDATE` events with `type: 1` and the saved string or `null`.
+The DM title updated without reloading and the original unset nickname was
+restored. The event arrived before the HTTP response for Save and after it for
+Reset, so reconciliation must handle either order.
+
+A second pass used the same account in official Discord and SakuraCord. An
+official Save updated SakuraCord's existing DM row without a reload; a Reset
+saved in SakuraCord produced `RELATIONSHIP_UPDATE` with `nickname: null` in the
+independent official session and restored its DM title without a reload. Native
+timeline presentation must also be invalidated when relationship nicknames
+change, so cached message author labels follow the live value.
 
 ## Protobuf preservation
 

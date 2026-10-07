@@ -138,6 +138,7 @@ final class NativeMemberListCoordinator: NSObject {
         let serverTagModelChanged = canvas.serverTagCardModel !== parent.serverTagCardModel
         canvas.serverTagCardModel = parent.serverTagCardModel
         canvas.openProfile = parent.openProfile
+        canvas.nicknameActions = parent.nicknameActions
         canvas.modalInputDidChange()
         AppPerformanceSignposts.measureSync("MemberListCanvasUpdate") {
             canvas.updatePresentation(

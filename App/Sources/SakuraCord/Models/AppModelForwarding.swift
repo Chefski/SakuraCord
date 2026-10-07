@@ -27,6 +27,11 @@ extension AppModel {
             updateForwardSnapshot { $0.quickSwitcherJoinedGuildMemberUserIDs = userIDsByGuildID }
         case .quickSwitcherGuildMemberAliasesChanged(let aliasesByGuildID):
             updateForwardSnapshot { $0.quickSwitcherGuildMemberAliases = aliasesByGuildID }
+        case let .relationshipsChanged(friendUserIDs, nicknames):
+            updateForwardSnapshot {
+                $0.friendUserIDs = friendUserIDs
+                $0.relationshipNicknamesByUserID = nicknames
+            }
         default:
             return false
         }

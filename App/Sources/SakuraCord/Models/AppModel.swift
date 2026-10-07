@@ -156,6 +156,7 @@ final class AppModel {
     @ObservationIgnored let serverInvites = ServerInvitePresentationStore()
     @ObservationIgnored let serverTagCards = ServerTagCardStore()
     @ObservationIgnored let issueReports = IssueReportStore()
+    @ObservationIgnored let nicknameEditor = NicknameEditorStore()
     @ObservationIgnored let voiceSidebarPresentation =
         VoiceSidebarPresentationStore()
     var serverRailGuildsByID: [GuildID: Guild] = [:] {
@@ -1346,6 +1347,9 @@ extension AppModel {
         currentUser = snapshot?.currentUser
         refreshServerRailDirectMessages(replacing: previous)
         refreshSelectedGuildPresentation()
+        if previous?.relationshipNicknamesByUserID != snapshot?.relationshipNicknamesByUserID {
+            invalidateTimelinePresentation()
+        }
         if previous?.currentUser != snapshot?.currentUser {
             refreshVoiceSidebarPresentation()
         }

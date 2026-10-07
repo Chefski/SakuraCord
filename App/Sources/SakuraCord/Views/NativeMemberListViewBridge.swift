@@ -19,6 +19,7 @@ struct NativeMemberListView: NSViewRepresentable {
     var onViewportRange: (ClosedRange<Int>) -> Void = { _ in }
 
     var openProfile: ((ProfilePresentationState) -> Void)?
+    var nicknameActions: (Member) -> [NicknameMenuAction] = { _ in [] }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)

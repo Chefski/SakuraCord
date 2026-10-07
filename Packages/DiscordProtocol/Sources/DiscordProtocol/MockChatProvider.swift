@@ -198,7 +198,7 @@ public actor MockChatProvider: ChatProvider {
             )
             return usersByID.values.map {
                 let reference = referenceMembersByID[$0.id]
-                return Member(
+                var member = Member(
                     user: $0,
                     roleName: $0.id == currentUser.id ? "You" : "Direct Message",
                     status: $0.id == currentUser.id ? .online : reference?.status ?? .offline,
@@ -206,6 +206,11 @@ public actor MockChatProvider: ChatProvider {
                     customStatus: reference?.customStatus,
                     isListeningToMusic: reference?.isListeningToMusic ?? false
                 )
+                if let nickname = snapshot.relationshipNicknamesByUserID[$0.id] {
+                    member.globalDisplayName = $0.displayName
+                    member.user.displayName = nickname
+                }
+                return member
             }
         }
         return membersByGuild[guildID] ?? []

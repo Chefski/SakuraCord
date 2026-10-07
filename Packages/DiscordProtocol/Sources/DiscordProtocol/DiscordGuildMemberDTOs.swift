@@ -117,6 +117,7 @@ struct GuildMemberDTO: Decodable {
     var bio: String?
     var pending: Bool?
     var flags: UInt64?
+    var communicationDisabledUntil: String?
     var joinedAt: String?
     var avatarDecorationData: UserDTO.AvatarDecorationDTO?
     var collectibles: UserCollectiblesDTO?
@@ -125,6 +126,7 @@ struct GuildMemberDTO: Decodable {
     enum CodingKeys: String, CodingKey {
         case user, nick, roles, presence, avatar, banner, bio, pending, flags, collectibles
         case joinedAt = "joined_at"
+        case communicationDisabledUntil = "communication_disabled_until"
         case avatarDecorationData = "avatar_decoration_data"
         case displayNameStyles = "display_name_styles"
     }
@@ -205,6 +207,7 @@ struct GuildMemberDTO: Decodable {
             isMobileOnly: (overridePresence ?? presence)?.clientStatus?.isMobileOnly ?? false,
             isPending: pending,
             flags: flags,
+            communicationDisabledUntil: communicationDisabledUntil.flatMap(DiscordDate.parse),
             joinedAt: joinedAt.flatMap(DiscordDate.parse)
         )
     }

@@ -118,6 +118,11 @@ struct SettingsView: View {
                 to: request.destination,
                 controlID: request.controlID
             )
+            // The profile picker likewise switches scope without saving a draft.
+            // Consuming the request first would cancel this task mid-load.
+            if let scope = request.profileScope, let profileEditor, !profileEditor.isSaving, profileEditor.scope != scope {
+                await profileEditor.load(scope)
+            }
             navigationRouter.consume(request.id)
         }
         .onChange(of: locale) { _, locale in

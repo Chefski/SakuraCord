@@ -523,3 +523,83 @@ func `server verification blocks sends without exposing hidden channels`(state: 
     model.consumeMessageUpdated(other, preparedTextPlan: nil)
     #expect(model.liveProfilePresentation(for: .contextual)?.member.user == first.author)
 }
+
+@Test func `change nickname follows Discord role hierarchy and protects the owner`() {
+    let owner = UserID(rawValue: 9)
+    let target = UserID(rawValue: 2)
+    let roles = [
+        GuildRole(id: RoleID(rawValue: 20), name: "Moderator", position: 3),
+        GuildRole(id: RoleID(rawValue: 21), name: "Peer", position: 3),
+        GuildRole(id: RoleID(rawValue: 30), name: "Member", position: 1),
+        GuildRole(id: RoleID(rawValue: 100), name: "@everyone", position: 99),
+    ]
+    func can(
+        _ targetUserID: UserID, _ targetRoleIDs: Set<RoleID>, permissions: UInt64,
+        roleIDs: Set<RoleID> = [RoleID(rawValue: 20)], isOwner: Bool = false, ownerID: UserID? = owner
+    ) -> Bool {
+        NicknamePermissionPolicy.canChangeNickname(of: targetUserID, roleIDs: targetRoleIDs, in: .init(
+            ownerID: ownerID, isOwner: isOwner, permissions: permissions, roleIDs: roleIDs, roles: roles,
+            guildID: GuildID(rawValue: 100)
+        ))
+    }
+    let manage = DiscordPermissionBits.manageNicknames
+
+    #expect(can(target, [RoleID(rawValue: 30)], permissions: manage))
+    #expect(can(target, [], permissions: manage))
+    #expect(can(target, [RoleID(rawValue: 100)], permissions: manage))
+    #expect(!can(target, [RoleID(rawValue: 30)], permissions: manage, roleIDs: [RoleID(rawValue: 100)]))
+    #expect(!can(target, [RoleID(rawValue: 30)], permissions: DiscordPermissionBits.changeNickname))
+    // An equal top role is not below ours; Discord breaks position ties by the older role.
+    #expect(!can(target, [RoleID(rawValue: 20)], permissions: manage))
+    #expect(can(target, [RoleID(rawValue: 21)], permissions: manage))
+    // Administrators stay bound by hierarchy; only the owner bypasses it, and nobody renames the owner.
+    #expect(!can(target, [RoleID(rawValue: 30)], permissions: DiscordPermissionBits.administrator, roleIDs: []))
+    #expect(!can(owner, [], permissions: DiscordPermissionBits.administrator))
+    #expect(can(target, [RoleID(rawValue: 20)], permissions: 0, roleIDs: [], isOwner: true))
+    // Discord compares only loaded roles; unknown target roles have no highest role.
+    #expect(can(target, [RoleID(rawValue: 30)], permissions: manage, ownerID: nil))
+    #expect(can(target, [RoleID(rawValue: 99)], permissions: manage))
+    #expect(!can(target, [], permissions: manage, roleIDs: [RoleID(rawValue: 99)]))
+}
+
+@Test func `nickname management follows Discord member restriction masks`() {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    let user = User(id: UserID(rawValue: 1), username: "moderator", displayName: "Moderator")
+    let target = UserID(rawValue: 2)
+    var context = NicknamePermissionPolicy.Context(
+        ownerID: UserID(rawValue: 9), isOwner: false, permissions: DiscordPermissionBits.manageNicknames,
+        roleIDs: [RoleID(rawValue: 20)], roles: [GuildRole(id: RoleID(rawValue: 20), name: "Moderator")]
+    )
+    func can(_ context: NicknamePermissionPolicy.Context) -> Bool {
+        NicknamePermissionPolicy.canChangeNickname(of: target, roleIDs: [], in: context, now: now)
+    }
+    #expect(can(context))
+    for flags: UInt64 in [16, 128, 256, 1024] {
+        context.currentMember = Member(user: user, roleName: "Moderator", isOnline: true, flags: flags)
+        #expect(!can(context))
+    }
+    context.currentMember = Member(user: user, roleName: "Moderator", isOnline: true, isPending: true)
+    #expect(!can(context))
+    context.currentMember?.isPending = false
+    context.currentMember?.communicationDisabledUntil = now.addingTimeInterval(1)
+    #expect(!can(context))
+    context.currentMember?.communicationDisabledUntil = now
+    #expect(can(context))
+
+    // Administrator bypasses timeout and quarantine, but not pending/guest masks.
+    context = .init(ownerID: context.ownerID, isOwner: false, permissions: DiscordPermissionBits.administrator,
+                    roleIDs: context.roleIDs, roles: context.roles, currentMember: context.currentMember)
+    context.currentMember?.communicationDisabledUntil = now.addingTimeInterval(1)
+    context.currentMember?.flags = 128 | 256 | 1024
+    #expect(can(context))
+    context.currentMember?.isPending = true
+    #expect(!can(context))
+    context.currentMember?.isPending = false
+    context.currentMember?.flags = 16
+    #expect(!can(context))
+
+    // Guild owners bypass the member masks entirely.
+    context = .init(ownerID: user.id, isOwner: true, permissions: 0, roleIDs: [], roles: [],
+                    currentMember: context.currentMember)
+    #expect(can(context))
+}

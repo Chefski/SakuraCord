@@ -159,10 +159,11 @@ final class ProfileEditorState {
                 return
             }
             guard refreshExisting, !hasChanges, widgetDraft == nil, !isSaving, !requiresReload else { return }
-            await load(scope, preferCached: preferCached)
+            await load(loadingScope ?? scope, preferCached: preferCached)
             return
         }
-        await load(preferCached: preferCached)
+        // Join a requested scope that is still loading instead of replacing it.
+        await load(loadingScope ?? .main, preferCached: preferCached)
     }
 
     func invalidateSnapshot() {

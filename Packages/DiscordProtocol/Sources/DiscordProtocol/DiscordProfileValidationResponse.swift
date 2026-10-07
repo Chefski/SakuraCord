@@ -14,6 +14,14 @@ extension DiscordRESTProvider {
                   segments[2] == "members", segments[3] == "@me"
         {
             fields = ["nick", "avatar", "avatar_description"]
+        } else if segments.count == 4, segments[0] == "guilds", UInt64(segments[1]) != nil,
+                  segments[2] == "members", UInt64(segments[3]) != nil
+        {
+            fields = ["nick"]
+        } else if segments.count == 4, segments[0] == "users", segments[1] == "@me",
+                  segments[2] == "relationships", UInt64(segments[3]) != nil
+        {
+            fields = ["nickname"]
         } else if segments.count == 5, segments[0] == "guilds", UInt64(segments[1]) != nil,
                   segments[2] == "members", segments[3] == "@me", segments[4] == "nick"
         {

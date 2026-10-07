@@ -558,3 +558,52 @@ private actor ProfileEditorCacheProvider: ChatProvider {
     model.serverRailGuildsByID[guildID] = nil
     #expect(!editor.canEditName)
 }
+
+@MainActor
+@Test func `nickname editor resolves missing members before drafting and rechecks hierarchy`() async throws {
+    let provider = MockChatProvider()
+    let guildID = GuildID(rawValue: 100)
+    let target = try #require(try await provider.members(in: guildID).first { $0.id == UserID(rawValue: 5) })
+    _ = try await provider.setMemberNickname("Existing nickname", for: target.id, in: guildID)
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    model.snapshot = try await provider.bootstrap()
+    model.serverRailGuildsByID[guildID] = Guild(id: guildID, name: "Fixture", ownerID: UserID(rawValue: 9),
+                                              currentUserPermissions: DiscordPermissionBits.manageNicknames)
+    let actorRole = RoleID(rawValue: 11)
+    model.currentUserRoleIDsByGuild[guildID] = [actorRole]
+    model.guildRolesByGuildID[guildID] = target.roles + [GuildRole(id: actorRole, name: "Moderator", position: 18)]
+    #expect(model.profileMember(target.id, in: guildID) == nil)
+    #expect(!model.canChangeNickname(of: target.id, in: guildID))
+    #expect(!model.nicknameMenuActions(for: target.user, in: guildID).contains { $0.title == "Change Nickname" })
+    await model.resolveNicknameMenuMember(target.id, in: guildID).value
+    #expect(model.nicknameMenuActions(for: target.user, in: guildID).contains { $0.title == "Change Nickname" })
+    model.presentNicknameEditor(for: target.user, in: guildID)
+    let presentation = try #require(model.nicknameEditor.presentation)
+    #expect(presentation.currentNickname == "Existing nickname")
+    #expect(model.nicknameEditor.draft == "Existing nickname")
+
+    // Losing the cached record must not turn an explicit reset into a no-op.
+    model.membersByGuildID[guildID] = nil
+    model.nicknameEditor.draft = ""
+    model.saveNickname(presentation)
+    for task in Array(model.accountChildTasks.values) { await task.value }
+    #expect(try await provider.members(in: guildID).first { $0.id == target.id }?.guildNickname == nil)
+
+    // Hydrating a higher-ranked target must not expose an editable draft.
+    model.guildRolesByGuildID[guildID] = target.roles + [GuildRole(id: actorRole, name: "Moderator", position: 14)]
+    await model.resolveNicknameMenuMember(target.id, in: guildID).value
+    #expect(!model.canChangeNickname(of: target.id, in: guildID))
+    model.presentNicknameEditor(for: target.user, in: guildID)
+    #expect(model.nicknameEditor.presentation == nil)
+
+    model.membersByGuildID[guildID] = nil
+    let cancelled = model.resolveNicknameMenuMember(target.id, in: guildID)
+    model.nicknameEditor.reset()
+    await cancelled.value
+    #expect(model.profileMember(target.id, in: guildID) == nil)
+    model.guildRolesByGuildID[guildID] = target.roles + [GuildRole(id: actorRole, name: "Moderator", position: 18)]
+    var guest = target
+    guest.joinedAt = nil
+    model.membersByGuildID[guildID] = [guest.id: guest]
+    #expect(!model.canChangeNickname(of: guest.id, in: guildID))
+}
