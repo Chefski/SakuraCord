@@ -114,8 +114,10 @@ extension AppModel {
         let account = accountSession()
         startAccountChildTask(account: account) { model, account in
             guard model.isCurrentAccountSession(account), !Task.isCancelled else { return }
+            var presented = message
+            presented.author = model.privateConversationUser(message.author, in: guildID)
             let presentation = NotificationContentPresentation.make(
-                message: message,
+                message: presented,
                 channel: channel,
                 guild: guild,
                 style: model.notificationPreferences.previewStyle,
@@ -143,7 +145,8 @@ extension AppModel {
             let user = message.mentionedUsers.first { $0.id == userID }
                 ?? userID.flatMap { knownMentionMembers[$0]?.user }
                 ?? (snapshot?.currentUser.id == userID ? snapshot?.currentUser : nil)
-            return "@\(member?.user.displayName ?? user?.displayName ?? "unknown-user")"
+            let friendNickname = guildID == nil ? userID.flatMap(friendNickname(for:)) : nil
+            return "@\(friendNickname ?? member?.user.displayName ?? user?.displayName ?? "unknown-user")"
         case .role:
             let roles = guildID.flatMap { guildRolesByGuildID[$0] }
                 ?? (guildID == selectedGuildID ? guildRoles : [])

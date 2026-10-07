@@ -53,10 +53,7 @@ extension DiscordRESTProvider {
         }
         cachePrivateRecipientReferences([dto])
         guard dto.type == 1 || dto.type == 3,
-              var channel = try? dto.domain(
-                  guildID: nil,
-                  knownUsersByID: cachedGatewayUsersByID
-              )
+              var channel = try? privateChannel(from: dto)
         else { return }
         if name == "CHANNEL_UPDATE", let existing = privateChannel(id: channel.id) {
             if dto.recipients == nil, dto.recipientIDs == nil {
@@ -64,6 +61,7 @@ extension DiscordRESTProvider {
             }
             if dto.name == nil, dto.recipients == nil, dto.recipientIDs == nil {
                 channel.name = existing.name
+                channel.hasExplicitName = existing.hasExplicitName
             }
             if dto.ownerID == nil {
                 channel.ownerID = existing.ownerID
@@ -75,7 +73,7 @@ extension DiscordRESTProvider {
                 channel.lastMessageID = existing.lastMessageID
             }
         }
-        upsertPrivateChannel(channel)
+        upsertPrivateChannel(applyingFriendNicknames(to: channel))
     }
 
     func handleChannelRecipientAddDispatch(
@@ -106,7 +104,7 @@ extension DiscordRESTProvider {
         )
         cachedPrivateRecipientIDsByChannelID[channelID] =
             channel.recipients.map { $0.id.description }
-        upsertPrivateChannel(channel)
+        upsertPrivateChannel(applyingFriendNicknames(to: channel))
     }
 
     func handleChannelDeleteDispatch(

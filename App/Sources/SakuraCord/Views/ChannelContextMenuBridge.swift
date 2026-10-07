@@ -146,6 +146,9 @@ struct ChannelContextMenuBridge: NSViewRepresentable {
     let copyChannelID: () -> Void
     let copyLink: () -> Void
     var pinAction: ChannelPinMenuAction = .unavailable
+    /// Recipient actions for a direct message, such as a friend nickname.
+    /// Resolved when the menu opens so rows don't observe relationship state.
+    var userActions: () -> [NicknameMenuAction] = { [] }
     var usesCustomSelectionBackground = false
 
     func makeCoordinator() -> Coordinator {
@@ -194,6 +197,7 @@ struct ChannelContextMenuBridge: NSViewRepresentable {
         private var copyChannelID: () -> Void
         private var copyLink: () -> Void
         private var pinAction: ChannelPinMenuAction
+        private var userActions: () -> [NicknameMenuAction]
 
         init(from bridge: ChannelContextMenuBridge) {
             subject = bridge.subject
@@ -210,6 +214,7 @@ struct ChannelContextMenuBridge: NSViewRepresentable {
             copyChannelID = bridge.copyChannelID
             copyLink = bridge.copyLink
             pinAction = bridge.pinAction
+            userActions = bridge.userActions
         }
 
         func update(from bridge: ChannelContextMenuBridge) {
@@ -227,6 +232,7 @@ struct ChannelContextMenuBridge: NSViewRepresentable {
             copyChannelID = bridge.copyChannelID
             copyLink = bridge.copyLink
             pinAction = bridge.pinAction
+            userActions = bridge.userActions
         }
 
         func makeMenu() -> NSMenu {
@@ -252,6 +258,12 @@ struct ChannelContextMenuBridge: NSViewRepresentable {
                         isEnabled: allowsMutations && !isMutationPending
                     )
                 )
+                menu.addItem(.separator())
+            }
+
+            let userItems = NicknameContextMenu.items(for: userActions())
+            if !userItems.isEmpty {
+                userItems.forEach(menu.addItem)
                 menu.addItem(.separator())
             }
 

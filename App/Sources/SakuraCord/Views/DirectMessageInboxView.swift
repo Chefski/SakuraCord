@@ -235,6 +235,10 @@ private struct DirectMessageInboxRow: View {
                 pinAction: .available(isPinned: isPinned, toggle: {
                     model.toggleDirectMessagePin(channel.id)
                 }),
+                userActions: {
+                    guard channel.kind == .directMessage, let recipient = channel.recipients.first else { return [] }
+                    return model.nicknameMenuActions(for: recipient, in: nil)
+                },
                 usesCustomSelectionBackground: true
             )
         }

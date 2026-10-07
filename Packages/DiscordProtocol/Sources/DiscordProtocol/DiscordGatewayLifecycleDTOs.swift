@@ -175,6 +175,7 @@ struct GatewayGuildPatchDTO: Decodable {
             isOwnedByCurrentUser: owner
                 ?? ownerID.map { $0 == currentUserID?.description }
                 ?? existing?.isOwnedByCurrentUser,
+            ownerID: ownerID.flatMap(UserID.init) ?? existing?.ownerID,
             currentUserPermissions: permissions.flatMap(UInt64.init)
                 ?? existing?.currentUserPermissions,
             rulesChannelID: containsRulesChannelID

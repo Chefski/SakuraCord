@@ -257,7 +257,8 @@ mutation with profile editing; it is never automatically replayed. Recognized
 nickname-field validation errors remain local, and an intervening Gateway
 profile update takes precedence over the REST snapshot. The official user
 client still uses this nickname-specific route despite the public API's
-recommendation to use Modify Current Member. Moderation, group-leave and
+recommendation to use Modify Current Member; other members' and friend
+nicknames are described under [nicknames](SETTINGS.md#nicknames). Moderation, group-leave and
 schedule built-ins show a local notice. Built-in notices use Discord's local
 Clyde identity (user `1`, discriminator `0000`), never a remote user-profile
 request. Official Fresh 0.0.411 on 2026-10-05 showed a compact Clyde card with

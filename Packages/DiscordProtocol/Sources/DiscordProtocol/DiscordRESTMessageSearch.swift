@@ -136,10 +136,7 @@ extension DiscordRESTProvider {
                 fallbackGuildID: nil
             )
             let channels = try tab.channels.map {
-                try $0.domain(
-                    guildID: nil,
-                    knownUsersByID: self.cachedGatewayUsersByID
-                )
+                try self.privateChannel(from: $0)
             }
             self.cacheSearchPrivateChannels(channels)
             return MessageSearchPage(

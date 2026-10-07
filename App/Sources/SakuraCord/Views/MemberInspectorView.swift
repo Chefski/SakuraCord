@@ -68,6 +68,7 @@ struct MemberInspectorView: View {
     let viewportIdentity: ChannelID?
     let updateViewport: (ClosedRange<Int>) -> Void
     var openProfile: ((ProfilePresentationState) -> Void)?
+    var nicknameActions: (Member) -> [NicknameMenuAction] = { _ in [] }
     var presentation = NativeMemberListPresentation()
 
     init(
@@ -80,6 +81,7 @@ struct MemberInspectorView: View {
         viewportIdentity: ChannelID? = nil,
         presentation: NativeMemberListPresentation = .init(),
         openProfile: ((ProfilePresentationState) -> Void)? = nil,
+        nicknameActions: @escaping (Member) -> [NicknameMenuAction] = { _ in [] },
         updateViewport: @escaping (ClosedRange<Int>) -> Void = { _ in }
     ) {
         self.sections = sections
@@ -92,6 +94,7 @@ struct MemberInspectorView: View {
         self.presentation = presentation
         self.updateViewport = updateViewport
         self.openProfile = openProfile
+        self.nicknameActions = nicknameActions
     }
 
     var body: some View {
@@ -106,7 +109,8 @@ struct MemberInspectorView: View {
             viewportIdentity: viewportIdentity,
             presentation: presentation,
             onViewportRange: updateViewport,
-            openProfile: openProfile
+            openProfile: openProfile,
+            nicknameActions: nicknameActions
         )
     }
 }

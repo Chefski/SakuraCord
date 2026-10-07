@@ -33,8 +33,94 @@ struct NicknameCommandTests {
         await provider.disconnect()
     }
 
+    @Test func `moderator nickname changes use the member route once and reconcile that member`() async throws {
+        let provider = await makeProvider()
+        let guildID = GuildID(rawValue: 100)
+        let memberID = UserID(rawValue: 2)
+        #expect(try await provider.setMemberNickname("Moderated", for: memberID, in: guildID) == "Moderated")
+        #expect(await provider.cachedMembers[guildID]?.first { $0.id == memberID }?.guildNickname == "Moderated")
+        #expect(try await provider.setMemberNickname("", for: memberID, in: guildID) == nil)
+        #expect(await provider.cachedMembers[guildID]?.first { $0.id == memberID }?.guildNickname == nil)
+        await #expect(throws: (any Error).self) {
+            _ = try await provider.setMemberNickname("forbidden", for: memberID, in: guildID)
+        }
+        #expect(await !provider.requestSafetyCircuitIsOpen)
+        let requests = NicknameURLProtocol.requests.withLock { $0 }
+        #expect(requests.count == 3)
+        #expect(requests.allSatisfy { $0.httpMethod == "PATCH" && $0.url?.absoluteString == "https://discord.com/api/v9/guilds/100/members/2" })
+        await provider.disconnect()
+    }
+
+    @Test func `friend nicknames are one relationship patch and follow relationship events`() async throws {
+        let provider = await makeProvider()
+        let friendID = UserID(rawValue: 2)
+        await provider.handleGatewayDispatch(name: "RELATIONSHIP_ADD", body: relationship(type: 1, nickname: nil))
+        #expect(await provider.cachedFriendUserIDs.contains(friendID))
+        #expect(try await provider.setFriendNickname("Bestie", for: friendID) == "Bestie")
+        #expect(await provider.cachedRelationshipNicknamesByUserID[friendID] == "Bestie")
+        #expect(try await provider.setFriendNickname("  ", for: friendID) == nil)
+        #expect(await provider.cachedRelationshipNicknamesByUserID[friendID] == nil)
+        let requests = NicknameURLProtocol.requests.withLock { $0 }
+        #expect(requests.count == 2)
+        #expect(requests.allSatisfy { $0.httpMethod == "PATCH" && $0.url?.absoluteString == "https://discord.com/api/v9/users/@me/relationships/2" })
+        #expect(NicknameURLProtocol.bodies.withLock { $0 } == [
+            .object(["nickname": .string("Bestie")]), .object(["nickname": .null]),
+        ])
+        // Rejected friend nicknames stay in the dialog instead of stopping the session.
+        await #expect(throws: ProfileValidationError.self) { _ = try await provider.setFriendNickname("invalid", for: friendID) }
+        await #expect(throws: (any Error).self) { _ = try await provider.setFriendNickname("stranger", for: friendID) }
+        #expect(await !provider.requestSafetyCircuitIsOpen)
+
+        // Another session renames. Like Discord's RelationshipStore, an add
+        // without a nickname keeps it, while an update without one clears it.
+        await provider.seedFriendDirectMessage()
+        await provider.handleGatewayDispatch(name: "RELATIONSHIP_UPDATE", body: relationship(type: 1, nickname: .string("Elsewhere")))
+        #expect(await provider.cachedRelationshipNicknamesByUserID[friendID] == "Elsewhere")
+        #expect(await provider.cachedChannels[nil]?.map(\.name) == ["Elsewhere", "Friend Group"])
+        await provider.handleGatewayDispatch(name: "RELATIONSHIP_ADD", body: relationship(type: 1, nickname: nil))
+        #expect(await provider.cachedRelationshipNicknamesByUserID[friendID] == "Elsewhere")
+        await provider.handleGatewayDispatch(name: "RELATIONSHIP_UPDATE", body: relationship(type: 1, nickname: nil))
+        #expect(await provider.cachedRelationshipNicknamesByUserID[friendID] == nil)
+        #expect(await provider.cachedChannels[nil]?.map(\.name) == ["Friend", "Friend Group"])
+        await provider.handleGatewayDispatch(name: "RELATIONSHIP_UPDATE", body: relationship(type: 1, nickname: .string("Again")))
+        await provider.handleGatewayDispatch(name: "RELATIONSHIP_REMOVE", body: relationship(type: 1, nickname: nil))
+        #expect(await !provider.cachedFriendUserIDs.contains(friendID))
+        #expect(await provider.cachedRelationshipNicknamesByUserID[friendID] == nil)
+        #expect(await provider.cachedChannels[nil]?.map(\.name) == ["Friend", "Friend Group"])
+        await provider.disconnect()
+    }
+
+    @Test func `friend nicknames keep explicit group names and the empty group fallback`() async throws {
+        let provider = await makeProvider()
+        await provider.seedFriendDirectMessage()
+        // An icon-only update must not turn the named group into a recipient title.
+        await provider.handleGatewayDispatch(name: "CHANNEL_UPDATE", body: .object([
+            "id": .string("401"), "type": .number(3), "icon": .string("abc"),
+        ]))
+        await provider.handleGatewayDispatch(name: "RELATIONSHIP_UPDATE", body: relationship(type: 1, nickname: .string("Bestie")))
+        #expect(await provider.cachedChannels[nil]?.map(\.name) == ["Bestie", "Friend Group"])
+        // When the only other member leaves an unnamed group, its title falls back.
+        await provider.handleGatewayDispatch(name: "CHANNEL_RECIPIENT_ADD", body: .object([
+            "channel_id": .string("400"), "user": .object(["id": .string("3"), "username": .string("other")]),
+        ]))
+        for userID in ["2", "3"] {
+            await provider.handleGatewayDispatch(name: "CHANNEL_RECIPIENT_REMOVE", body: .object([
+                "channel_id": .string("400"), "user": .object(["id": .string(userID), "username": .string("gone")]),
+            ]))
+        }
+        #expect(await provider.cachedChannels[nil]?.first { $0.id.rawValue == 400 }?.name == "Group Direct Message")
+        await provider.disconnect()
+    }
+
+    private func relationship(type: Int, nickname: JSONValue?) -> JSONValue {
+        var body: [String: JSONValue] = ["id": .string("2"), "type": .number(Double(type))]
+        if let nickname { body["nickname"] = nickname }
+        return .object(body)
+    }
+
     private func makeProvider() async -> DiscordRESTProvider {
         NicknameURLProtocol.requests.withLock { $0.removeAll() }
+        NicknameURLProtocol.bodies.withLock { $0.removeAll() }
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [NicknameURLProtocol.self]
         let provider = DiscordRESTProvider(credentials: TestCredentialStore(),
@@ -49,10 +135,22 @@ private extension DiscordRESTProvider {
     func seedNicknameCommand() {
         currentUser = User(id: .init(rawValue: 1), username: "fixture", displayName: "Fixture")
     }
+
+    /// An unnamed DM takes its title from the friend; a named group keeps its own.
+    func seedFriendDirectMessage() {
+        let friend = User(id: .init(rawValue: 2), username: "friend", displayName: "Friend")
+        cachedChannels[nil] = [
+            Channel(id: .init(rawValue: 400), guildID: nil, name: "Friend", hasExplicitName: false,
+                    kind: .directMessage, recipients: [friend]),
+            Channel(id: .init(rawValue: 401), guildID: nil, name: "Friend Group", kind: .groupDirectMessage,
+                    recipients: [friend]),
+        ]
+    }
 }
 
 private final class NicknameURLProtocol: URLProtocol, @unchecked Sendable {
     static let requests = Mutex<[URLRequest]>([])
+    static let bodies = Mutex<[JSONValue]>([])
     override static func canInit(with request: URLRequest) -> Bool { true }
     override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
@@ -70,6 +168,21 @@ private final class NicknameURLProtocol: URLProtocol, @unchecked Sendable {
             }
             body = data
         } else { body = Data() }
+        if let value = try? JSONDecoder().decode(JSONValue.self, from: body) {
+            Self.bodies.withLock { $0.append(value) }
+        }
+        if request.url?.path.contains("/relationships/") == true {
+            switch (try? JSONDecoder().decode([String: String].self, from: body))?["nickname"] {
+            case "invalid":
+                respond(status: 400, body: #"{"code":50035,"errors":{"nickname":{"_errors":[{"code":"BASE_TYPE_BAD_LENGTH","message":"Must be 32 or fewer in length."}]}}}"#)
+            case "stranger":
+                respond(status: 400, body: #"{"code":80004,"message":"No users with DiscordTag exist"}"#)
+            default:
+                respond(status: 204, body: "")
+            }
+            return
+        }
+        let userID = request.url?.lastPathComponent == "nick" ? "1" : request.url?.lastPathComponent ?? "1"
         let nickname = (try? JSONDecoder().decode([String: String].self, from: body))?["nick"]
         let status = nickname == "invalid" ? 400 : nickname == "forbidden" ? 403 : nickname == nil ? 500 : 200
         let responseBody: String
@@ -79,13 +192,17 @@ private final class NicknameURLProtocol: URLProtocol, @unchecked Sendable {
             responseBody = #"{"code":50013,"message":"Missing Permissions"}"#
         } else {
             let nick = nickname.flatMap { $0.isEmpty ? nil : $0 }.map(JSONValue.string) ?? .null
-            let response = JSONValue.object(["user": .object(["id": .string("1"), "username": .string("fixture")]),
+            let response = JSONValue.object(["user": .object(["id": .string(userID), "username": .string("fixture")]),
                                              "nick": nick, "roles": .array([])])
             responseBody = (try? JSONEncoder().encode(response)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
         }
+        respond(status: status, body: responseBody)
+    }
+
+    private func respond(status: Int, body: String) {
         client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: status,
                                                             httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"])!, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Data(responseBody.utf8))
+        client?.urlProtocol(self, didLoad: Data(body.utf8))
         client?.urlProtocolDidFinishLoading(self)
     }
     override func stopLoading() {}

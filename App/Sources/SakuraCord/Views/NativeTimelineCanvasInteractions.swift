@@ -1178,7 +1178,38 @@ extension NativeTimelineCanvasView {
             )
         }
         appendApplicationCommandMenu(to: menu, row: row, index: index, point: point)
+        appendNicknameMenuItems(to: menu, row: row, index: index, point: point)
         return menu
+    }
+
+    /// Discord's user actions for the author when its avatar or name was right-clicked.
+    private func appendNicknameMenuItems(
+        to menu: NSMenu,
+        row: MessageRowPresentation,
+        index: Int,
+        point: CGPoint
+    ) {
+        let message = row.message
+        guard let model, messageInteractionContext == .conversation,
+              message.outboxState == .confirmed, message.webhookID == nil,
+              !DiscordBuiltInCommands.isClydeMessage(message)
+        else { return }
+        let localPoint = CGPoint(x: point.x, y: point.y - displayedRowOrigin(at: index))
+        guard NativeTimelineAuthorProfileGeometry.hitFrame(
+            at: localPoint,
+            avatarFrame: layouts[index].avatarFrame,
+            authorFrame: layouts[index].authorFrame
+        ) != nil else { return }
+        let items = NicknameContextMenu.items(for: model.nicknameMenuActions(
+            for: message.author, in: model.messagePresentationGuildID(for: message)
+        ))
+        guard !items.isEmpty else { return }
+        // Discord lists these user items ahead of Apps and Mark Unread.
+        let insertion = menu.items.firstIndex { $0.title == "Apps" }
+            ?? menu.items.firstIndex { $0.title == "Mark Unread" } ?? menu.items.count
+        for (offset, item) in items.enumerated() {
+            menu.insertItem(item, at: insertion + offset)
+        }
     }
 
     /// Discord's Apps submenu: message commands for the message, or user

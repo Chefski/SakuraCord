@@ -997,6 +997,8 @@ extension DiscordRESTProvider {
         // A structured error for user-entered profile text/media is editable.
         // Known poll failures can race local expiry and permission checks.
         if status == 400, profileValidationError(data: data, method: method, path: path) != nil { return false }
+        // A rejected friend nickname (for example, no longer a friend) is local to that edit.
+        if status == 400, method == "PATCH", path.hasPrefix("/users/@me/relationships/") { return false }
         if status == 400, isExpectedPollFailure(discordCode: discordCode, method: method, path: path) { return false }
         if status == 400, DiscordCaptchaChallenge.isJoinRoute(method: method, path: path), let discordCode,
            [10006, 50270, 40007, 30001].contains(discordCode) { return false }

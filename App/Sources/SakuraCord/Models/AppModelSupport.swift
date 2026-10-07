@@ -87,6 +87,7 @@ extension AppModel {
         serverInvites.reset()
         serverTagCards.reset()
         issueReports.reset()
+        nicknameEditor.reset()
         onboarding.reset()
     }
 

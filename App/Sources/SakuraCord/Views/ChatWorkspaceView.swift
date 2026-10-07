@@ -243,6 +243,7 @@ private struct ChatWorkspaceSupplementaryContent: View {
                         roleColorDisplay: model.accessibilitySettings.roleColorDisplay
                     ),
                     openProfile: model.expandProfile,
+                    nicknameActions: { model.nicknameMenuActions(for: $0.user, in: model.selectedGuildID) },
                     updateViewport: model.updateMemberListViewport
                 )
                 .frame(width: ChatChromeMetrics.memberListWidth)

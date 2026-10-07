@@ -7,6 +7,7 @@
 | Contract | Source | Representative checks |
 | --- | --- | --- |
 | Profile saves and widgets | [DiscordRESTProfileSaving.swift](../../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordRESTProfileSaving.swift); [DiscordProfileWidgetEligibility.swift](../../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordProfileWidgetEligibility.swift) | [ProfileEditingContractTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/ProfileEditingContractTests.swift); [ProfileEditorStateTests.swift](../../App/Tests/SakuraCordAppTests/ProfileEditorStateTests.swift) |
+| Nicknames | [DiscordRESTProfileSaving.swift](../../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordRESTProfileSaving.swift); [DiscordRESTRelationships.swift](../../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordRESTRelationships.swift); [AppModelNicknames.swift](../../App/Sources/SakuraCord/Models/AppModelNicknames.swift) | [NicknameCommandTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/NicknameCommandTests.swift) |
 | Status | [DiscordProfileSettingsProto.swift](../../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordProfileSettingsProto.swift); [DiscordRESTProfileCustomStatus.swift](../../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordRESTProfileCustomStatus.swift) | [StatusPickContractTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/StatusPickContractTests.swift) |
 | Server folders | [DiscordSettingsProtoMerging.swift](../../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordSettingsProtoMerging.swift) | [GuildFolderSettingsContractTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/GuildFolderSettingsContractTests.swift) |
 | Favourites/frecency | [DiscordSettingsProtoStickers.swift](../../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordSettingsProtoStickers.swift); [DiscordSettingsProtoSoundboard.swift](../../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordSettingsProtoSoundboard.swift); [DiscordSettingsProtoCommandFrecency.swift](../../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordSettingsProtoCommandFrecency.swift) | [ProviderRequestContractTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/ProviderRequestContractTests.swift); [GIFProviderContractTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/GIFProviderContractTests.swift); [ApplicationCommandFrecencyCodecTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/ApplicationCommandFrecencyCodecTests.swift) |
@@ -28,6 +29,48 @@ Account contact/device details are private session-only values. Do not add email
 phone or session hashes to public User values or saved-account labels. Profile
 and own-user updates invalidate/reconcile the appropriate caches; late work from
 a replaced account cannot publish into the new editor.
+
+## Nicknames
+
+Your own server nickname is edited in the per-server profile or with
+[`/nick`](MESSAGING.md#forums-threads-and-commands). In a server, your user menu
+offers **Edit Per-server Profile**, which opens Profiles on that server's scope.
+For another member, **Change Nickname** follows Discord's `canManageUser`:
+never the guild owner; the owner manages everyone else; anyone else needs
+Manage Nicknames (or Administrator) and a highest role above the target's, by
+`position` and then the older role ID. Administrators remain bound by that
+hierarchy; an unknown owner or an unloaded member or role offers nothing. The dialog sends one `PATCH /guilds/{guild}/members/{user}` with
+`{"nick":"value"}` as typed; Reset sends `""` and an unchanged value closes
+without a request. The member response reconciles the store unless
+`GUILD_MEMBER_UPDATE` already delivered a newer revision. `nick` validation
+errors stay in the dialog and `403` remains operation-scoped. No audit-log reason
+is sent.
+
+Friend nicknames are private to the account and offered only for friends
+(relationship type 1): **Add Friend Nickname** or **Change Friend Nickname** in
+server, thread, DM and group-DM user menus. Save sends one
+`PATCH /users/@me/relationships/{user}` with the trimmed `{"nickname":"value"}`;
+Reset or blank text sends `null`, and success is `204`. A `400` stays in the
+dialog rather than opening the session safety circuit, and a result that returns
+after READY or a newer relationship event does not replace that state. READY
+`relationships[].nickname` seeds the map. `RELATIONSHIP_ADD` sets a non-null nickname, `RELATIONSHIP_UPDATE`
+replaces it (null or absent clears) and `RELATIONSHIP_REMOVE` deletes it.
+
+Names follow Discord's `getNickname(guild, channel, user)`: servers use only the
+server nickname; DMs and group DMs use the friend nickname before the global
+name. The provider applies it to unnamed DM and group-DM titles, private members
+and DM typing; the app applies it to private message authors, mentions,
+notifications and profiles opened outside a server. Group-DM `nicks` are neither
+shown nor editable, as in the official client.
+
+These contracts come from static analysis of first-party web build `630444`
+(`web.90d3ab34abfe98da.js`) on 7 October 2026: the Change Nickname modal and
+menu item, `canManageUser`, the friend-nickname modal, menu and request,
+RelationshipStore, and name resolution. The public
+[Modify Guild Member](https://docs.discord.com/developers/resources/guild#modify-guild-member)
+route corroborates the member request. Pinned Paicord declares the same
+relationship PATCH without a UI; Swiftcord v1 has no equivalent. No live
+nickname mutation was performed.
 
 ## Protobuf preservation
 

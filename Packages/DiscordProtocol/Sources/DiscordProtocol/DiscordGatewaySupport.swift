@@ -811,6 +811,7 @@ struct GatewayReadyGuildsDTO: Decodable {
                 name: name,
                 iconURL: iconURL,
                 isOwnedByCurrentUser: isOwnedByCurrentUser,
+                ownerID: ownerID.flatMap(UserID.init),
                 currentUserPermissions: permissions.flatMap(UInt64.init),
                 rulesChannelID: rulesChannelID.flatMap(ChannelID.init),
                 features: features,

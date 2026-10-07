@@ -350,6 +350,11 @@ struct MockChatFixture {
                 bio: "QA engineer. Breaks layouts professionally and labels the reproduction steps recreationally.",
                 pronouns: "she/they", accent: 0x2563EB, theme: [0x172554, 0x2563EB], connection: "juniper-tests"
             )
+        case 6:
+            MockProfileDetails(
+                bio: "Illustrator who answers DMs with sketches. Shows up under the friend nickname you gave them.",
+                pronouns: "he/him", accent: 0x0EA5E9, theme: [0x082F49, 0x0EA5E9], connection: "kai-sketches"
+            )
         default:
             MockProfileDetails(
                 bio: "Community moderator who writes kind guidelines and remembers where every useful thread lives.",
@@ -446,6 +451,14 @@ private struct MockFixtureAssembly {
             displayName: "Rowan Vale",
             avatarURL: demoAsset("avatar-rowan")
         )
+        // A friend outside the demo servers whose friend nickname, "Kai 🌊",
+        // replaces his name in private conversations.
+        let kai = User(
+            id: UserID(rawValue: 6),
+            username: "kai.moreno",
+            displayName: "Kai Moreno"
+        )
+        let friendNicknames = [kai.id: "Kai 🌊"]
         let verifiedApp = User(
             id: UserID(rawValue: 900_000_000_000_000_101),
             username: "verified",
@@ -661,8 +674,12 @@ private struct MockFixtureAssembly {
                 position: 0, categoryPosition: 1
             ),
             Channel(
-                id: ChannelID(rawValue: 400), guildID: nil, name: "Maya Ortiz", kind: .directMessage,
-                recipients: [maya]
+                id: ChannelID(rawValue: 400), guildID: nil, name: "Maya Ortiz", hasExplicitName: false,
+                kind: .directMessage, recipients: [maya]
+            ),
+            Channel(
+                id: ChannelID(rawValue: 402), guildID: nil, name: friendNicknames[kai.id] ?? kai.displayName,
+                hasExplicitName: false, kind: .directMessage, recipients: [kai]
             ),
             Channel(
                 id: ChannelID(rawValue: 401), guildID: nil, name: "Design crew",
@@ -783,7 +800,7 @@ private struct MockFixtureAssembly {
             guildRailItems = guilds.map { .guild($0.id) }
         }
         let allUsers = [nova, maya, theo, juniper, rowan]
-        let profiles = Dictionary(
+        var profiles = Dictionary(
             uniqueKeysWithValues: allUsers.map { user in
                 let member = auroraMembers.first(where: { $0.id == user.id })!
                 return (
@@ -796,6 +813,10 @@ private struct MockFixtureAssembly {
                     )
                 )
             }
+        )
+        profiles[kai.id] = profile(
+            for: kai, member: Member(user: kai, roleName: "Direct Message", status: .online),
+            guilds: [], friends: [nova]
         )
 
         let base = now.addingTimeInterval(-2700)
@@ -924,6 +945,10 @@ private struct MockFixtureAssembly {
                 includesAnimatedMedia: timelineIncludesAnimatedMedia
             ))
         }
+        messages[ChannelID(rawValue: 402)] = [
+            message(4021, 402, kai, "Sketched three icon ideas for the nickname dialog — sending them over.", base.addingTimeInterval(1240)),
+            message(4022, 402, nova, "Love them. Right-click my name and give me a nickname too 😄", base.addingTimeInterval(1270)),
+        ]
         for (index, guild) in longListGuilds.enumerated() {
             let channelID = ChannelID(rawValue: UInt64(2000 + index))
             messages[channelID] = [
@@ -967,6 +992,8 @@ private struct MockFixtureAssembly {
             currentUser: nova,
             snapshot: BootstrapSnapshot(
                 currentUser: nova,
+                friendUserIDs: [maya.id, kai.id],
+                relationshipNicknamesByUserID: friendNicknames,
                 guilds: guilds,
                 guildRailItems: guildRailItems,
                 channels: snapshotChannels,

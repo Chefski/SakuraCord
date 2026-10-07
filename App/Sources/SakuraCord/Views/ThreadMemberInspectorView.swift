@@ -35,6 +35,7 @@ struct ThreadMemberInspectorView: View {
                     viewportIdentity: thread.id,
                     presentation: NativeMemberListPresentation(roleColorDisplay: model.accessibilitySettings.roleColorDisplay),
                     openProfile: model.expandProfile,
+                    nicknameActions: { model.nicknameMenuActions(for: $0.user, in: thread.guildID) },
                     updateViewport: { _ in }
                 )
             } else {

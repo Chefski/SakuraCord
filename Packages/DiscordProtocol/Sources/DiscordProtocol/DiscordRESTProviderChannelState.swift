@@ -110,7 +110,9 @@ extension DiscordRESTProvider {
             guard recipients != channel.recipients else { continue }
             channels[index].recipients = recipients
             if !channel.hasExplicitName {
-                let recipientName = recipients.map(\.displayName).joined(separator: ", ")
+                let recipientName = recipients
+                    .map { cachedRelationshipNicknamesByUserID[$0.id] ?? $0.displayName }
+                    .joined(separator: ", ")
                 if !recipientName.isEmpty {
                     channels[index].name = recipientName
                 } else if channel.kind == .groupDirectMessage,
@@ -151,13 +153,18 @@ extension DiscordRESTProvider {
         var seen: Set<UserID> = []
         return membersWithCurrentStatus((cachedChannels[nil] ?? []).flatMap(\.recipients).compactMap { user in
             guard seen.insert(user.id).inserted else { return nil }
-            if var member = cachedPrivateMembersByID[user.id] {
-                // READY presence records only contain a partial user. Keep DM
-                // identity sourced from the hydrated private-channel recipient.
-                member.user = user
-                return member
+            var member = cachedPrivateMembersByID[user.id]
+                ?? Member(user: user, roleName: "Direct Message", status: .offline)
+            // READY presence records only contain a partial user. Keep DM
+            // identity sourced from the hydrated private-channel recipient.
+            member.user = user
+            // Private conversations show a friend nickname in place of the
+            // name, as a guild nickname does in its server.
+            if let nickname = cachedRelationshipNicknamesByUserID[user.id] {
+                member.globalDisplayName = user.displayName
+                member.user.displayName = nickname
             }
-            return Member(user: user, roleName: "Direct Message", status: .offline)
+            return member
         })
     }
 
