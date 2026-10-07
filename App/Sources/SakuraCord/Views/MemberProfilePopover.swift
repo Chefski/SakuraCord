@@ -11,7 +11,7 @@ enum ProfilePresentationLayout {
 struct ProfilePresentationContent<Footer: View>: View {
     let presentation: ProfilePresentationState
     var layout: ProfilePresentationLayout = .popover
-    var maximumPopoverHeight: CGFloat = 560
+    var maximumPopoverHeight: CGFloat = InterfaceScale.metric(560)
     var showsRoles = true
     let footer: Footer
     var openProfile: ((ProfilePresentationState) -> Void)?
@@ -19,7 +19,7 @@ struct ProfilePresentationContent<Footer: View>: View {
     init(
         presentation: ProfilePresentationState,
         layout: ProfilePresentationLayout = .popover,
-        maximumPopoverHeight: CGFloat = 560,
+        maximumPopoverHeight: CGFloat = InterfaceScale.metric(560),
         showsRoles: Bool = true,
         openProfile: ((ProfilePresentationState) -> Void)? = nil,
         @ViewBuilder footer: () -> Footer
@@ -56,7 +56,7 @@ extension ProfilePresentationContent where Footer == EmptyView {
     init(
         presentation: ProfilePresentationState,
         layout: ProfilePresentationLayout = .popover,
-        maximumPopoverHeight: CGFloat = 560,
+        maximumPopoverHeight: CGFloat = InterfaceScale.metric(560),
         showsRoles: Bool = true,
         openProfile: ((ProfilePresentationState) -> Void)? = nil
     ) {
@@ -92,7 +92,7 @@ private struct CompactIdentityProfilePopover: View {
             isVerifiedApp: isClyde, usesSolidBannerAccent: isClyde
         )
         .frame(width: MemberProfilePopover<EmptyView>.preferredWidth)
-        .padding(.bottom, 16)
+        .padding(.bottom, InterfaceScale.metric(16))
         .task(id: user.avatarURL) {
             guard !isClyde else { return }
             accent = nil
@@ -106,7 +106,7 @@ private struct CompactIdentityProfilePopover: View {
 
 struct MemberProfilePopover<Footer: View>: View {
     @Environment(\.profileCosmeticPolicy) private var cosmeticPolicy
-    static var preferredWidth: CGFloat { 330 }
+    static var preferredWidth: CGFloat { InterfaceScale.metric(330) }
 
     let member: Member
     let isCurrentUser: Bool
@@ -114,7 +114,7 @@ struct MemberProfilePopover<Footer: View>: View {
     let isLoading: Bool
     let errorMessage: String?
     var layout: ProfilePresentationLayout = .popover
-    var maximumPopoverHeight: CGFloat = 560
+    var maximumPopoverHeight: CGFloat = InterfaceScale.metric(560)
     var showsRoles = true
     let footer: Footer
     var openProfile: (() -> Void)?
@@ -214,7 +214,7 @@ struct MemberProfilePopover<Footer: View>: View {
 
     private func profileScrollContent(width contentWidth: CGFloat) -> some View {
         ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: 11) {
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(11)) {
                 ProfileHeroSection(
                     member: member,
                     profile: profile,
@@ -235,31 +235,31 @@ struct MemberProfilePopover<Footer: View>: View {
                     if openProfile != nil {
                         Button(action: expandProfile) {
                             Image(systemName: "arrow.up.left.and.arrow.down.right")
-                                .font(.system(size: 12, weight: .semibold))
-                                .frame(width: 28, height: 28)
+                                .font(.interfaceSystem(size: 12, weight: .semibold))
+                                .frame(width: InterfaceScale.metric(28), height: InterfaceScale.metric(28))
                                 .background(.regularMaterial, in: Circle())
                         }
                         .buttonStyle(.plain)
                         .help("Expand Profile")
                         .accessibilityLabel("Expand Profile")
-                        .padding(10)
+                        .padding(InterfaceScale.metric(10))
                     }
                 }
                 .zIndex(10)
 
                 if isLoading {
-                    HStack(spacing: 9) {
+                    HStack(spacing: InterfaceScale.metric(9)) {
                         ProgressView()
                             .controlSize(.small)
                         Text("Loading full profile…")
                             .foregroundStyle(.secondary)
                     }
-                    .padding(.horizontal, 18)
+                    .padding(.horizontal, InterfaceScale.metric(18))
                 } else if let errorMessage {
                     Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                        .font(.subheadline)
+                        .font(.interface(.subheadline))
                         .foregroundStyle(.orange)
-                        .padding(.horizontal, 18)
+                        .padding(.horizontal, InterfaceScale.metric(18))
                 }
 
                 if let profile, showsDetails {
@@ -275,14 +275,14 @@ struct MemberProfilePopover<Footer: View>: View {
                         ProfileInlineBioEditor(value: Binding(get: { editor.bio }, set: { editor.bio = $0 }), displayValue: profile.bio, model: editor.model)
                         .id(editor.draftGeneration)
                         .settingsControlAnchor(.profileBio)
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, InterfaceScale.metric(16))
                     } else if let bio = profile.bio, !bio.isEmpty {
                         ProfileAboutSection(bio: bio)
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, InterfaceScale.metric(16))
                     }
                     if openProfile != nil, let widgets = profile.widgets, !widgets.isEmpty {
                         CompactProfileWidgets(widgets: widgets, resources: profile.widgetResources, animates: animatesRemoteMedia, open: expandProfile)
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, InterfaceScale.metric(16))
                     }
                     ProfileMembershipSection(createdAt: profile.id.createdAt)
                     if showsRoles, !profile.roles.isEmpty {
@@ -298,7 +298,7 @@ struct MemberProfilePopover<Footer: View>: View {
                 footer
             }
             .frame(width: contentWidth, alignment: .leading)
-            .padding(.bottom, 14)
+            .padding(.bottom, InterfaceScale.metric(14))
             .background {
                 GeometryReader { proxy in
                     Color.clear.preference(key: ProfileContentHeightKey.self, value: proxy.size.height)
@@ -374,12 +374,12 @@ struct MemberProfilePopover<Footer: View>: View {
     }
 
     private var statusBubbleWidth: CGFloat {
-        guard layout == .inspector else { return 168 }
+        guard layout == .inspector else { return InterfaceScale.metric(168) }
         let leadingAnchor = ProfileStatusBubbleLayout.leadingAnchor
-        let trailingInset: CGFloat = 16
+        let trailingInset: CGFloat = InterfaceScale.metric(16)
         let bubbleHorizontalPadding = ProfileStatusBubbleLayout.horizontalPadding * 2
         return max(
-            80,
+            InterfaceScale.metric(80),
             ChatChromeMetrics.memberListWidth
                 - leadingAnchor
                 - trailingInset
@@ -426,8 +426,8 @@ private struct ProfileHeroSection: View {
         return url
     }
 
-    private var avatarSize: CGFloat { 70 }
-    private var horizontalInset: CGFloat { 16 }
+    private var avatarSize: CGFloat { InterfaceScale.metric(70) }
+    private var horizontalInset: CGFloat { InterfaceScale.metric(16) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -452,18 +452,18 @@ private struct ProfileHeroSection: View {
                 .overlay(alignment: .topLeading) {
                     Circle()
                         .fill(.black)
-                        .frame(width: 84.4, height: 84.4)
-                        .offset(x: horizontalInset, y: 58)
+                        .frame(width: InterfaceScale.metric(84.4), height: InterfaceScale.metric(84.4))
+                        .offset(x: horizontalInset, y: InterfaceScale.metric(58))
                         .blendMode(.destinationOut)
                 }
                 .compositingGroup()
                 .modifier(ProfileEditorImageMenu(editor: editor, target: .banner, open: openEditorPicker))
 
-            HStack(alignment: .bottom, spacing: 6) {
+            HStack(alignment: .bottom, spacing: InterfaceScale.metric(6)) {
                 AvatarPresenceView(
                     status: showsPresence ? member.status : nil,
                     avatarSize: avatarSize,
-                    indicatorSize: 15,
+                    indicatorSize: InterfaceScale.metric(15),
                     isMobile: member.showsMobileIndicator
                 ) {
                     DecoratedAvatarView(
@@ -473,15 +473,15 @@ private struct ProfileHeroSection: View {
                         size: avatarSize,
                         playback: animatesRemoteMedia ? .continuous : .paused
                     )
-                    .padding(3)
+                    .padding(InterfaceScale.metric(3))
                 }
                 .modifier(ProfileEditorImageMenu(editor: editor, target: .avatar, open: openEditorPicker))
-                .offset(y: -26)
+                .offset(y: -InterfaceScale.metric(26))
 
                 Spacer(minLength: 0)
             }
             // Keep the avatar in place while bringing the identity closer below it.
-            .frame(height: 28)
+            .frame(height: InterfaceScale.metric(28))
             .padding(.horizontal, horizontalInset)
 
             ProfileIdentitySection(
@@ -491,6 +491,7 @@ private struct ProfileHeroSection: View {
                 legacyUsername: profile?.legacyUsername,
                 nameStyle: cosmeticPolicy.disables(.nameStyle, for: member.id) ? nil : (profile?.user.displayNameStyle ?? member.user.displayNameStyle),
                 primaryGuildIdentity: profile?.user.primaryGuild ?? member.user.primaryGuild,
+                showsServerTag: !cosmeticPolicy.disables(.serverTag, for: member.id),
                 isBot: profile?.user.isBot ?? member.user.isBot,
                 isVerifiedApp: isVerifiedApp,
                 badges: profile.map(SakuraCordSponsors.badges) ?? [],
@@ -520,17 +521,17 @@ private struct ProfileHeroSection: View {
                     }
                 }
                     // The status bubble sits by the avatar's lower edge.
-                    .offset(x: ProfileStatusBubbleLayout.leadingAnchor, y: 99)
+                    .offset(x: ProfileStatusBubbleLayout.leadingAnchor, y: InterfaceScale.metric(99))
             }
         }
     }
 }
 
 private enum ProfileStatusBubbleLayout {
-    static let leadingAnchor: CGFloat = 117
-    static let horizontalPadding: CGFloat = 14
+    static var leadingAnchor: CGFloat { InterfaceScale.metric(117) }
+    static var horizontalPadding: CGFloat { InterfaceScale.metric(14) }
     // Preserve the one-line pill's radius as the status grows vertically.
-    static let shape = RoundedRectangle(cornerRadius: 18, style: .circular)
+    static var shape: RoundedRectangle { RoundedRectangle(cornerRadius: InterfaceScale.metric(18), style: .circular) }
 }
 
 struct ProfileStatusBubble: View {
@@ -555,7 +556,7 @@ struct ProfileStatusBubble: View {
             }
             .background(alignment: .topLeading) {
                 ProfileStatusThoughtDots(surfaceColor: backgroundColor)
-                    .offset(x: -12, y: -12)
+                    .offset(x: -InterfaceScale.metric(12), y: -InterfaceScale.metric(12))
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
             }
@@ -572,9 +573,9 @@ struct ProfileStatusBubble: View {
         if isEmojiOnly {
             let fontSize: CGFloat = isExpandedProfile ? 24 : 18
             ProfileStatusTextView(source: text, isExpanded: true, fontSize: fontSize)
-                .frame(width: contentWidth(fontSize: fontSize), height: ceil(fontSize * 1.3))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
+                .frame(width: contentWidth(fontSize: fontSize), height: ceil(InterfaceScale.fontSize(fontSize) * 1.3))
+                .padding(.horizontal, InterfaceScale.metric(10))
+                .padding(.vertical, InterfaceScale.metric(8))
         } else {
             ProfileStatusTextView(
                 source: text,
@@ -582,9 +583,9 @@ struct ProfileStatusBubble: View {
                 onHoverChange: { isTextHovering = $0 }
             )
             .frame(width: textContentWidth, alignment: .leading)
-            .frame(minHeight: 20, alignment: .topLeading)
+            .frame(minHeight: InterfaceScale.metric(20), alignment: .topLeading)
             .padding(.horizontal, ProfileStatusBubbleLayout.horizontalPadding)
-            .padding(.vertical, 8)
+            .padding(.vertical, InterfaceScale.metric(8))
             .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -596,7 +597,7 @@ struct ProfileStatusBubble: View {
     private func contentWidth(fontSize: CGFloat) -> CGFloat {
         let attributedText = ProfileInlineAttributedText.make(
             source: text,
-            font: .systemFont(ofSize: fontSize),
+            font: .interfaceSystemFont(ofSize: fontSize),
             color: .labelColor,
             emojiImages: [:],
             stylesLinks: false
@@ -629,15 +630,15 @@ private struct ProfileStatusThoughtDots: View {
             Circle()
                 .fill(surfaceColor)
                 .overlay { Circle().stroke(.primary.opacity(0.14), lineWidth: 1) }
-                .frame(width: 6, height: 6)
+                .frame(width: InterfaceScale.metric(6), height: InterfaceScale.metric(6))
                 .offset(x: 1, y: 1)
             Circle()
                 .fill(surfaceColor)
                 .overlay { Circle().stroke(.primary.opacity(0.14), lineWidth: 1) }
-                .frame(width: 10, height: 10)
-                .offset(x: 8, y: 8)
+                .frame(width: InterfaceScale.metric(10), height: InterfaceScale.metric(10))
+                .offset(x: InterfaceScale.metric(8), y: InterfaceScale.metric(8))
         }
-        .frame(width: 18, height: 18)
+        .frame(width: InterfaceScale.metric(18), height: InterfaceScale.metric(18))
     }
 }
 
@@ -697,7 +698,7 @@ private struct ProfileBanner: View {
 
 nonisolated enum ProfileBannerLayout {
     static let maximumPixelDimension = 600
-    static let height: CGFloat = 112
+    static var height: CGFloat { InterfaceScale.metric(112) }
 
     static func constrainedWidth(_ proposedWidth: CGFloat) -> CGFloat {
         guard proposedWidth.isFinite else { return 0 }
@@ -712,6 +713,7 @@ private struct ProfileIdentitySection: View {
     let legacyUsername: String?
     let nameStyle: DisplayNameStyle?
     let primaryGuildIdentity: PrimaryGuildIdentity?
+    var showsServerTag = true
     let isBot: Bool
     var isVerifiedApp = false
     let badges: [ProfileBadge]
@@ -725,13 +727,13 @@ private struct ProfileIdentitySection: View {
     var body: some View {
         let hasPronouns = pronouns?.isEmpty == false
 
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 7) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(3)) {
+            HStack(spacing: InterfaceScale.metric(7)) {
                 if let editor, editor.canEditName {
                     ProfileInlineTextEditor(
                         label: "Edit Display Name", value: Binding(get: { editor.name }, set: { editor.name = $0 }),
                         placeholder: editor.scope == .main ? username : editor.snapshot?.mainPresentation.displayName ?? username,
-                        font: .system(size: nameSize, weight: .bold), nameStyle: nameStyle, nameSize: nameSize, maximumLength: 32
+                        font: .interfaceSystem(size: nameSize, weight: .bold), nameStyle: nameStyle, nameSize: nameSize, maximumLength: 32
                     ) {
                         styledName
                     }
@@ -743,24 +745,10 @@ private struct ProfileIdentitySection: View {
                         .help("You don’t have permission to change your nickname in this server.")
                 } else { styledName }
                 if isBot {
-                    HStack(spacing: 3) {
-                        if isVerifiedApp {
-                            Image(systemName: "checkmark").accessibilityHidden(true)
-                        }
-                        Text("APP")
-                    }
-                        .accessibilityLabel(isVerifiedApp ? "Verified App" : "App")
-                        .font(.caption.weight(.bold))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .foregroundStyle(.white)
-                        .background(
-                            isVerifiedApp ? Color(hex: DiscordBuiltInCommands.clydeAccent) : .indigo,
-                            in: ConcentricRectangle(cornerRadius: 5)
-                        )
+                    AppIdentityBadge(isVerified: isVerifiedApp)
                 }
             }
-            ProfileRoleFlowLayout(spacing: 6, constrainsChildren: true, alignment: .firstTextBaseline) {
+            ProfileRoleFlowLayout(spacing: InterfaceScale.metric(6), constrainsChildren: true, alignment: .firstTextBaseline) {
                 CopyableProfileUsername(
                     username: username,
                     usesSeparatorSlot: hasPronouns
@@ -771,24 +759,24 @@ private struct ProfileIdentitySection: View {
                         : editor.snapshot?.mainPresentation.pronouns ?? String(localized: "Add pronouns", bundle: #bundle)
                     ProfileInlineTextEditor(label: "Edit Pronouns", value: Binding(get: { editor.pronouns }, set: { editor.pronouns = $0 }),
                                             placeholder: placeholder,
-                                            font: .callout, maximumLength: 40) {
+                                            font: .interface(.callout), maximumLength: 40) {
                         Text(pronouns?.isEmpty == false ? pronouns ?? "" : String(localized: "Add pronouns", bundle: #bundle))
-                            .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            .font(.interface(.callout)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
                     .id(editor.draftGeneration)
                         .settingsControlAnchor(.profilePronouns)
                 }
                 if editor == nil, let pronouns, !pronouns.isEmpty {
                     Text(pronouns)
-                        .font(.callout)
+                        .font(.interface(.callout))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
                 if let editor {
                     ProfileServerTagPicker(editor: editor, identity: primaryGuildIdentity)
                 }
-                if editor == nil, let primaryGuildIdentity, let tag = primaryGuildIdentity.tag, !tag.isEmpty {
-                    ProfileServerTag(identity: primaryGuildIdentity)
+                if editor == nil, showsServerTag, let primaryGuildIdentity, let tag = primaryGuildIdentity.tag, !tag.isEmpty {
+                    InteractiveProfileServerTag(identity: primaryGuildIdentity)
                         .fixedSize(horizontal: true, vertical: false)
                 }
             }
@@ -799,7 +787,7 @@ private struct ProfileIdentitySection: View {
                     premiumSince: premiumSince,
                     premiumGuildSince: premiumGuildSince
                 )
-                .padding(.top, 3)
+                .padding(.top, InterfaceScale.metric(3))
             }
         }
     }
@@ -827,35 +815,35 @@ private struct CopyableProfileUsername: View {
             NSPasteboard.general.setString(username, forType: .string)
             didCopy = true
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: InterfaceScale.metric(4)) {
                 Text(username)
                     .lineLimit(1)
                 if usesSeparatorSlot {
                     Text("•")
-                        .font(.caption)
+                        .font(.interface(.caption))
                         .foregroundStyle(.tertiary)
                         .opacity(isActive ? 0 : 1)
                         .overlay {
                             Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
-                                .font(.caption2.weight(.semibold))
+                                .font(.interface(.caption2).weight(.semibold))
                                 .foregroundStyle(.primary)
                                 .opacity(isActive ? 1 : 0)
                                 .accessibilityHidden(true)
                         }
-                        .frame(width: 12)
+                        .frame(width: InterfaceScale.metric(12))
                 } else if isActive {
                     Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
-                        .font(.caption2.weight(.semibold))
+                        .font(.interface(.caption2).weight(.semibold))
                         .accessibilityHidden(true)
                 }
             }
-            .font(.callout)
+            .font(.interface(.callout))
             .foregroundStyle(isActive ? .primary : .secondary)
             .background {
-                ConcentricRectangle(cornerRadius: 5, style: .continuous)
+                ConcentricRectangle(cornerRadius: InterfaceScale.metric(5), style: .continuous)
                     .fill(Color.primary.opacity(isActive ? 0.09 : 0))
-                    .padding(.horizontal, -5)
-                    .padding(.vertical, -2)
+                    .padding(.horizontal, -InterfaceScale.metric(5))
+                    .padding(.vertical, -InterfaceScale.metric(2))
             }
             .contentShape(Rectangle())
         }
@@ -882,7 +870,7 @@ private struct ProfileBadgesRow: View {
     let premiumGuildSince: Date?
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: InterfaceScale.metric(5)) {
             ForEach(badges) { badge in
                 ProfileBadgeIcon(
                     badge: badge,
@@ -917,17 +905,17 @@ private struct ProfileBadgeIcon: View {
                     .foregroundStyle(.cyan)
             }
         }
-        .frame(width: 23, height: 23)
+        .frame(width: InterfaceScale.metric(23), height: InterfaceScale.metric(23))
         .help(helpText)
         .accessibilityLabel(helpText)
         .onModalHover { isShowingDetails = $0 }
         .nativeHoverPopover(isPresented: $isShowingDetails) {
             Text(helpText)
-                .font(.subheadline.weight(.medium))
+                .font(.interface(.subheadline).weight(.medium))
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: true)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
+                .padding(.horizontal, InterfaceScale.metric(12))
+                .padding(.vertical, InterfaceScale.metric(10))
         }
     }
 
@@ -989,7 +977,7 @@ private struct ProfileMutualSummary: View {
 
     var body: some View {
         if !guilds.isEmpty || mutualFriendCount > 0 {
-            HStack(spacing: layout == .inspector ? 8 : 14) {
+            HStack(spacing: layout == .inspector ? InterfaceScale.metric(8) : InterfaceScale.metric(14)) {
                 if !guilds.isEmpty {
                     Button {
                         presentedList = .servers
@@ -1013,11 +1001,11 @@ private struct ProfileMutualSummary: View {
             .buttonStyle(.plain)
             .font(
                 layout == .inspector
-                    ? .caption.weight(.medium)
-                    : .callout.weight(.medium)
+                    ? .interface(.caption).weight(.medium)
+                    : .interface(.callout).weight(.medium)
             )
             .foregroundStyle(.secondary)
-            .padding(.horizontal, layout == .inspector ? 14 : 16)
+            .padding(.horizontal, layout == .inspector ? InterfaceScale.metric(14) : InterfaceScale.metric(16))
             .escapeDismissiblePopover(
                 item: $presentedList,
                 arrowEdge: .trailing
@@ -1079,7 +1067,7 @@ struct ProfileRolesSection: View {
     }
 
     var body: some View {
-        ProfileRoleFlowLayout(spacing: 6) {
+        ProfileRoleFlowLayout(spacing: InterfaceScale.metric(6)) {
             ForEach(visibleRoles) { item in
                 RoleChip(item: item)
             }
@@ -1096,7 +1084,7 @@ struct ProfileRolesSection: View {
             }
         }
         .animation(.snappy(duration: 0.18), value: isExpanded)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, InterfaceScale.metric(16))
     }
 }
 
@@ -1104,18 +1092,18 @@ private struct RoleChip: View {
     let item: ProfileRoleItem
 
     var body: some View {
-        HStack(spacing: 6) {
-            RoleColorIndicator(colorHex: item.role.colorHex, size: 10)
+        HStack(spacing: InterfaceScale.metric(6)) {
+            RoleColorIndicator(colorHex: item.role.colorHex, size: InterfaceScale.metric(10))
             Text(item.name)
-                .font(.callout.weight(.medium))
+                .font(.interface(.callout).weight(.medium))
                 .lineLimit(1)
         }
         .fixedSize(horizontal: true, vertical: true)
-        .padding(.horizontal, 9)
-        .padding(.vertical, 4)
-        .background(.black.opacity(0.2), in: ConcentricRectangle(cornerRadius: 9, style: .continuous))
+        .padding(.horizontal, InterfaceScale.metric(9))
+        .padding(.vertical, InterfaceScale.metric(4))
+        .background(.black.opacity(0.2), in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(9), style: .continuous))
         .overlay {
-            ConcentricRectangle(cornerRadius: 9, style: .continuous)
+            ConcentricRectangle(cornerRadius: InterfaceScale.metric(9), style: .continuous)
                 .stroke(.white.opacity(0.09), lineWidth: 1)
         }
         .help(item.name)
@@ -1149,17 +1137,17 @@ private struct RoleExpansionButton: View {
                     Image(systemName: systemImage)
                 }
             }
-            .font(.callout.weight(.medium))
-            .frame(minWidth: 18, minHeight: 18)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .font(.interface(.callout).weight(.medium))
+            .frame(minWidth: InterfaceScale.metric(18), minHeight: InterfaceScale.metric(18))
+            .padding(.horizontal, InterfaceScale.metric(8))
+            .padding(.vertical, InterfaceScale.metric(4))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .foregroundStyle(.secondary)
-        .background(isHovering ? Color.primary.opacity(0.12) : .black.opacity(0.16), in: ConcentricRectangle(cornerRadius: 9, style: .continuous))
+        .background(isHovering ? Color.primary.opacity(0.12) : .black.opacity(0.16), in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(9), style: .continuous))
         .overlay {
-            ConcentricRectangle(cornerRadius: 9, style: .continuous)
+            ConcentricRectangle(cornerRadius: InterfaceScale.metric(9), style: .continuous)
                 .stroke(.white.opacity(isHovering ? 0.16 : 0.09), lineWidth: 1)
         }
         .onModalHover { isHovering = $0 }
@@ -1262,24 +1250,24 @@ private struct ProfileMutualGuildsList: View {
             ProfileMutualListHeader(title: "Mutual Servers", count: guilds.count)
             Divider()
             ScrollView {
-                VStack(spacing: 9) {
+                VStack(spacing: InterfaceScale.metric(9)) {
                     ForEach(guilds) { guild in
-                        HStack(spacing: 10) {
-                            AvatarView(name: guild.name, url: guild.iconURL, size: 30)
+                        HStack(spacing: InterfaceScale.metric(10)) {
+                            AvatarView(name: guild.name, url: guild.iconURL, size: InterfaceScale.metric(30))
                             VStack(alignment: .leading, spacing: 1) {
-                                Text(guild.name).font(.subheadline.weight(.semibold)).lineLimit(1)
+                                Text(guild.name).font(.interface(.subheadline).weight(.semibold)).lineLimit(1)
                                 if let nickname = guild.nickname, !nickname.isEmpty {
-                                    Text(nickname).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                    Text(nickname).font(.interface(.caption)).foregroundStyle(.secondary).lineLimit(1)
                                 }
                             }
                             Spacer()
                         }
                     }
                 }
-                .padding(14)
+                .padding(InterfaceScale.metric(14))
             }
         }
-        .frame(width: 320, height: ProfileMutualListMetrics.height(for: guilds.count))
+        .frame(width: InterfaceScale.metric(320), height: ProfileMutualListMetrics.height(for: guilds.count))
     }
 }
 
@@ -1292,27 +1280,27 @@ private struct ProfileMutualFriendsList: View {
             ProfileMutualListHeader(title: "Mutual Friends", count: totalCount)
             Divider()
             ScrollView {
-                VStack(alignment: .leading, spacing: 9) {
+                VStack(alignment: .leading, spacing: InterfaceScale.metric(9)) {
                     ForEach(friends) { friend in
-                        HStack(spacing: 10) {
-                            AvatarView(name: friend.displayName, url: friend.avatarURL, size: 28)
+                        HStack(spacing: InterfaceScale.metric(10)) {
+                            AvatarView(name: friend.displayName, url: friend.avatarURL, size: InterfaceScale.metric(28))
                             VStack(alignment: .leading, spacing: 1) {
-                                Text(friend.displayName).font(.subheadline.weight(.semibold)).lineLimit(1)
-                                Text(friend.username).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                Text(friend.displayName).font(.interface(.subheadline).weight(.semibold)).lineLimit(1)
+                                Text(friend.username).font(.interface(.caption)).foregroundStyle(.secondary).lineLimit(1)
                             }
                             Spacer()
                         }
                     }
                     if totalCount > friends.count {
                         Text("Discord returned \(friends.count) of \(totalCount) mutual friends.")
-                            .font(.caption)
+                            .font(.interface(.caption))
                             .foregroundStyle(.secondary)
                     }
                 }
-                .padding(14)
+                .padding(InterfaceScale.metric(14))
             }
         }
-        .frame(width: 320, height: ProfileMutualListMetrics.height(for: max(totalCount, friends.count)))
+        .frame(width: InterfaceScale.metric(320), height: ProfileMutualListMetrics.height(for: max(totalCount, friends.count)))
     }
 }
 
@@ -1322,13 +1310,13 @@ private struct ProfileMutualListHeader: View {
 
     var body: some View {
         HStack {
-            Text(title).font(.headline)
+            Text(title).font(.interface(.headline))
             Spacer()
             Text(count, format: .number)
-                .font(.subheadline.weight(.semibold))
+                .font(.interface(.subheadline).weight(.semibold))
                 .foregroundStyle(.secondary)
         }
-        .padding(14)
+        .padding(InterfaceScale.metric(14))
     }
 }
 
@@ -1345,18 +1333,18 @@ private struct ProfileConnectionsSection: View {
     var body: some View {
         Group {
             if wraps {
-                ProfileRoleFlowLayout(spacing: 10) { icons }
-                    .padding(.vertical, 3)
+                ProfileRoleFlowLayout(spacing: InterfaceScale.metric(10)) { icons }
+                    .padding(.vertical, InterfaceScale.metric(3))
             } else {
                 ScrollView(.horizontal) {
-                    HStack(spacing: 10) { icons }
-                        .padding(.vertical, 3)
+                    HStack(spacing: InterfaceScale.metric(10)) { icons }
+                        .padding(.vertical, InterfaceScale.metric(3))
                 }
                 .scrollIndicators(.hidden)
                 .scrollClipDisabled()
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, InterfaceScale.metric(16))
     }
 
     private var icons: some View {
@@ -1384,18 +1372,18 @@ private struct ProfileConnectionIcon: View {
         .help(account.name)
         .nativeHoverPopover(isPresented: $isHovered) {
             Text(account.name)
-                .font(.subheadline.weight(.medium))
+                .font(.interface(.subheadline).weight(.medium))
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: true)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
+                .padding(.horizontal, InterfaceScale.metric(12))
+                .padding(.vertical, InterfaceScale.metric(10))
         }
         .accessibilityLabel("\(account.name), \(ConnectionBrand.displayName(for: account.type))")
     }
 
     private var logo: some View {
         ConnectionLogo(type: account.type)
-            .frame(width: 30, height: 30)
+            .frame(width: InterfaceScale.metric(30), height: InterfaceScale.metric(30))
     }
 }
 
@@ -1412,7 +1400,7 @@ private struct ConnectionLogo: View {
             Image(systemName: type == "domain" ? "globe" : "link")
                 .resizable()
                 .scaledToFit()
-                .padding(2)
+                .padding(InterfaceScale.metric(2))
                 .foregroundStyle(.secondary)
         }
     }

@@ -12,6 +12,8 @@ extension AppModel {
             performMessagingShortcutAction(action)
         case .voiceVideo:
             performVoiceShortcutAction(action)
+        case .interface:
+            performInterfaceShortcutAction(action)
         }
     }
 
@@ -137,6 +139,10 @@ extension AppModel {
     }
 
     func keyboardShortcutActionIsEnabled(_ action: KeyboardShortcutAction) -> Bool {
+        // Interface size applies to every window and session state.
+        if action.group == .interface {
+            return interfaceShortcutIsEnabled(action)
+        }
         guard sessionState == .workspace else {
             return false
         }
@@ -144,6 +150,27 @@ extension AppModel {
         case .navigation: navigationShortcutIsEnabled(action)
         case .messaging: messagingShortcutIsEnabled(action)
         case .voiceVideo: voiceShortcutIsEnabled(action)
+        case .interface: false
+        }
+    }
+
+    private func performInterfaceShortcutAction(_ action: KeyboardShortcutAction) {
+        var value = appearanceSettings
+        value.interfaceSize = switch action {
+        case .increaseInterfaceSize: value.interfaceSize + InterfaceScale.step
+        case .decreaseInterfaceSize: value.interfaceSize - InterfaceScale.step
+        default: InterfaceScale.defaultFactor
+        }
+        applyAppearanceSettings(value)
+    }
+
+    private func interfaceShortcutIsEnabled(_ action: KeyboardShortcutAction) -> Bool {
+        let size = appearanceSettings.interfaceSize
+        return switch action {
+        case .increaseInterfaceSize: size < InterfaceScale.range.upperBound
+        case .decreaseInterfaceSize: size > InterfaceScale.range.lowerBound
+        case .resetInterfaceSize: size != InterfaceScale.defaultFactor
+        default: false
         }
     }
 

@@ -106,7 +106,7 @@ struct SoundboardPickerView: View {
                 }
             }
         }
-        .frame(width: ChatChromeMetrics.emojiPickerWidth, height: 420)
+        .frame(width: ChatChromeMetrics.emojiPickerWidth, height: InterfaceScale.metric(420))
         .task {
             searchIsFocused = true
             await model.loadSoundboard()
@@ -121,26 +121,26 @@ struct SoundboardPickerView: View {
     }
 
     private func soundboardErrorBanner(_ error: String) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: InterfaceScale.metric(8)) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(Color(hex: 0xF0B232))
             Text(error)
-                .font(.caption)
+                .font(.interface(.caption))
                 .lineLimit(2)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Button {
                 model.soundboardErrorMessage = nil
             } label: {
                 Image(systemName: "xmark")
-                    .font(.caption.weight(.semibold))
-                    .frame(width: 22, height: 22)
+                    .font(.interface(.caption).weight(.semibold))
+                    .frame(width: InterfaceScale.metric(22), height: InterfaceScale.metric(22))
             }
             .buttonStyle(.plain)
             .help("Dismiss Error")
             .accessibilityLabel("Dismiss soundboard error")
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
+        .padding(.horizontal, InterfaceScale.metric(10))
+        .padding(.vertical, InterfaceScale.metric(7))
         .background(Color(hex: 0xF0B232).opacity(0.1))
     }
 
@@ -156,8 +156,8 @@ struct SoundboardPickerView: View {
 
             if !guilds.isEmpty {
                 Divider()
-                    .frame(width: 28)
-                    .padding(.vertical, 2)
+                    .frame(width: InterfaceScale.metric(28))
+                    .padding(.vertical, InterfaceScale.metric(2))
 
                 ForEach(guilds) { guild in
                     PickerSectionBookmark(
@@ -184,7 +184,7 @@ struct SoundboardPickerView: View {
             help: help,
             jump: { jump(to: $0, proxy: proxy) },
             content: {
-                Image(systemName: systemImage).font(.system(size: 16, weight: .semibold))
+                Image(systemName: systemImage).font(.interfaceSystem(size: 16, weight: .semibold))
             }
         )
     }
@@ -198,8 +198,8 @@ struct SoundboardPickerView: View {
             showsIndicators: false,
             rowHeight: { row, width in
                 switch row.content {
-                case .sounds: return 48
-                case .spacer: return 8
+                case .sounds: return InterfaceScale.metric(48)
+                case .spacer: return InterfaceScale.metric(8)
                 default:
                     return measurement.height(key: "\(row.id):\(row.content)", width: width) { rowView(row) }
                 }
@@ -247,35 +247,35 @@ struct SoundboardPickerView: View {
     @ViewBuilder private func rowView(_ row: SoundboardDocumentRow) -> some View {
         switch row.content {
         case .spacer:
-            Color.clear.frame(height: 8)
+            Color.clear.frame(height: InterfaceScale.metric(8))
         case let .header(title, count):
-            EmojiPickerHeader(title: title, count: count).padding(.top, 5)
+            EmojiPickerHeader(title: title, count: count).padding(.top, InterfaceScale.metric(5))
         case let .empty(message):
-            Text(message).font(.callout).foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, minHeight: 38)
+            Text(message).font(.interface(.callout)).foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(38))
         case .loading:
-            HStack(spacing: 8) {
+            HStack(spacing: InterfaceScale.metric(8)) {
                 ProgressView().controlSize(.small)
                 Text("Loading sounds…")
             }
             .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, minHeight: 80)
+            .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(80))
         case let .failure(error):
-            VStack(spacing: 8) {
+            VStack(spacing: InterfaceScale.metric(8)) {
                 Text("Couldn’t load the soundboard.")
                 Button("Retry") { Task { await model.retrySoundboardLoad() } }.buttonStyle(.link)
             }
             .help(error).foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, minHeight: 100)
+            .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(100))
         case let .sounds(sounds):
-            HStack(spacing: 6) {
+            HStack(spacing: InterfaceScale.metric(6)) {
                 ForEach(sounds) { sound in SoundboardButton(sound: sound, model: model) }
                 ForEach(sounds.count ..< 3, id: \.self) { _ in
-                    Color.clear.frame(maxWidth: .infinity).frame(height: 42)
+                    Color.clear.frame(maxWidth: .infinity).frame(height: InterfaceScale.metric(42))
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.bottom, 6)
+            .padding(.horizontal, InterfaceScale.metric(10))
+            .padding(.bottom, InterfaceScale.metric(6))
         }
     }
 
@@ -387,7 +387,7 @@ private struct SoundboardButton: View {
         ZStack {
             Button { Task { await model.playSound(sound) } } label: {
                 SoundboardButtonLabel(sound: sound)
-                .padding(.horizontal, 8)
+                .padding(.horizontal, InterfaceScale.metric(8))
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 .contentShape(Rectangle())
                 .opacity(isHovering ? 0.2 : 1)
@@ -409,8 +409,8 @@ private struct SoundboardButton: View {
                     ) { Task { await model.previewSound(sound) } }
                     Spacer(minLength: 0)
                     Image(systemName: "play.fill")
-                        .font(.system(size: 18, weight: .semibold))
-                        .frame(width: 30, height: 30)
+                        .font(.interfaceSystem(size: 18, weight: .semibold))
+                        .frame(width: InterfaceScale.metric(30), height: InterfaceScale.metric(30))
                         .allowsHitTesting(false)
                     Spacer(minLength: 0)
                     SoundboardActionButton(
@@ -418,24 +418,24 @@ private struct SoundboardButton: View {
                         help: model.isFavoriteSound(sound) ? "Remove from Favorites" : "Favorite"
                     ) { Task { await model.toggleFavoriteSound(sound) } }
                 }
-                .padding(.horizontal, 6)
+                .padding(.horizontal, InterfaceScale.metric(6))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 42)
+        .frame(height: InterfaceScale.metric(42))
         .background(
             surfaceColor,
-            in: ConcentricRectangle(cornerRadius: 8, style: .continuous)
+            in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(8), style: .continuous)
         )
         .overlay {
-            ConcentricRectangle(cornerRadius: 8, style: .continuous)
+            ConcentricRectangle(cornerRadius: InterfaceScale.metric(8), style: .continuous)
                 .stroke(
                     outlineColor,
                     lineWidth: 0.5
                 )
         }
-        .contentShape(ConcentricRectangle(cornerRadius: 8, style: .continuous))
+        .contentShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(8), style: .continuous))
         .onModalHover { isHovering = $0 }
         .offset(y: isPressed ? 2 : 0)
         .animation(.easeOut(duration: 0.08), value: isPressed)
@@ -595,9 +595,9 @@ private struct SoundboardActionButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.interfaceSystem(size: 13, weight: .semibold))
                 .foregroundStyle(iconColor)
-                .frame(width: 28, height: 28)
+                .frame(width: InterfaceScale.metric(28), height: InterfaceScale.metric(28))
                 .background(
                     Color.primary.opacity(isHovering ? 0.14 : 0),
                     in: Circle()
@@ -630,7 +630,7 @@ private struct SoundboardButtonLabel: View {
                 case .empty:
                     label {
                         Color.clear
-                            .frame(width: 21, height: 21)
+                            .frame(width: InterfaceScale.metric(21), height: InterfaceScale.metric(21))
                     }
                 case .success(let image):
                     label {
@@ -638,7 +638,7 @@ private struct SoundboardButtonLabel: View {
                             .resizable()
                             .interpolation(.high)
                             .scaledToFit()
-                            .frame(width: 21, height: 21)
+                            .frame(width: InterfaceScale.metric(21), height: InterfaceScale.metric(21))
                     }
                 case .failure:
                     name
@@ -649,10 +649,10 @@ private struct SoundboardButtonLabel: View {
         } else if let emojiName = sound.emojiName, !emojiName.isEmpty {
             label {
                 Text(emojiName)
-                    .font(.system(size: 17))
+                    .font(.interfaceSystem(size: 17))
                     .fixedSize()
                     .offset(y: -0.5)
-                    .frame(width: 21, height: 21)
+                    .frame(width: InterfaceScale.metric(21), height: InterfaceScale.metric(21))
             }
         } else {
             name
@@ -661,7 +661,7 @@ private struct SoundboardButtonLabel: View {
 
     private var name: some View {
         Text(sound.name)
-            .font(.system(size: 11, weight: .semibold))
+            .font(.interfaceSystem(size: 11, weight: .semibold))
             .lineLimit(1)
             .truncationMode(.tail)
     }
@@ -669,7 +669,7 @@ private struct SoundboardButtonLabel: View {
     private func label<Icon: View>(
         @ViewBuilder icon: () -> Icon
     ) -> some View {
-        HStack(spacing: 6) {
+        HStack(spacing: InterfaceScale.metric(6)) {
             icon()
             name
         }

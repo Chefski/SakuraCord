@@ -968,7 +968,7 @@ struct VoiceParticipantNameCapsule: View {
             }
             Text(isLocal ? "\(name) (You)" : name).lineLimit(1)
         }
-        .font(.system(size: 12 * scale, weight: .semibold))
+        .font(.interfaceSystem(size: 12 * scale, weight: .semibold))
         .foregroundStyle(.primary)
         .padding(.horizontal, 10 * scale)
         .frame(height: 28 * scale)
@@ -990,7 +990,7 @@ private struct ParticipantVolumeControl: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(name).font(.headline).lineLimit(1)
+            Text(name).font(.interface(.headline)).lineLimit(1)
             HStack(spacing: 10) {
                 Image(systemName: volume == 0 ? "speaker.slash.fill" : "speaker.wave.2.fill")
                     .foregroundStyle(.secondary)
@@ -999,7 +999,7 @@ private struct ParticipantVolumeControl: View {
                     .tint(SakuraCordAccentColor.color)
                     .frame(width: 180)
                 Text("\(Int(volume * 100))%")
-                    .font(.caption.monospacedDigit())
+                    .font(.interface(.caption).monospacedDigit())
                     .foregroundStyle(.secondary)
                     .frame(width: 40, alignment: .trailing)
             }

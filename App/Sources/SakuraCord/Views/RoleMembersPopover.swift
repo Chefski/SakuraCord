@@ -2,8 +2,8 @@ import SakuraCordModels
 import SwiftUI
 
 nonisolated enum RoleMembersPopoverMetrics {
-    static let width: CGFloat = 330
-    static let height: CGFloat = 390
+    static var width: CGFloat { InterfaceScale.metric(330) }
+    static var height: CGFloat { InterfaceScale.metric(390) }
 }
 
 struct RoleMembersPopover: View {
@@ -19,17 +19,17 @@ struct RoleMembersPopover: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
-                RoleColorIndicator(colorHex: role?.colorHex, size: 10)
+            HStack(spacing: InterfaceScale.metric(8)) {
+                RoleColorIndicator(colorHex: role?.colorHex, size: InterfaceScale.metric(10))
                 Text(role.map { "@\($0.name)" } ?? "Role members")
-                    .font(.headline)
+                    .font(.interface(.headline))
                 Spacer()
                 if let result = model.roleMemberResult {
                     Text("\(result.totalCount)")
                         .foregroundStyle(.secondary)
                 }
             }
-            .padding(12)
+            .padding(InterfaceScale.metric(12))
 
             Divider()
 
@@ -38,47 +38,47 @@ struct RoleMembersPopover: View {
             } else if let error = model.roleMemberErrorMessage {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
-                    .padding(14)
+                    .padding(InterfaceScale.metric(14))
             } else if let result = model.roleMemberResult {
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 2) {
+                    LazyVStack(alignment: .leading, spacing: InterfaceScale.metric(2)) {
                         ForEach(result.members) { member in
                             Button {
                                 model.presentProfile(for: member, in: guildID, destination: .contextual)
                             } label: {
-                                HStack(spacing: 9) {
+                                HStack(spacing: InterfaceScale.metric(9)) {
                                     AvatarView(
                                         name: member.user.displayName,
                                         url: member.guildAvatarURL ?? member.user.avatarURL,
-                                        size: 28
+                                        size: InterfaceScale.metric(28)
                                     )
                                     VStack(alignment: .leading, spacing: 1) {
                                         Text(member.user.displayName).lineLimit(1)
                                         Text("@\(member.user.username)")
-                                            .font(.caption)
+                                            .font(.interface(.caption))
                                             .foregroundStyle(.secondary)
                                     }
                                     Spacer()
                                 }
-                                .padding(.horizontal, 10)
-                                .frame(height: 42)
+                                .padding(.horizontal, InterfaceScale.metric(10))
+                                .frame(height: InterfaceScale.metric(42))
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                         }
                         if result.isTruncated {
                             Text("Showing the first \(result.members.count) members.")
-                                .font(.caption)
+                                .font(.interface(.caption))
                                 .foregroundStyle(.secondary)
-                                .padding(10)
+                                .padding(InterfaceScale.metric(10))
                         }
                     }
-                    .padding(5)
+                    .padding(InterfaceScale.metric(5))
                 }
             } else {
                 Text("No members found.")
                     .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 100)
+                    .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(100))
             }
         }
         .frame(

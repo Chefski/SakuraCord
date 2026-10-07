@@ -39,7 +39,7 @@ struct SupplementaryConversationPane<Content: View>: View {
 
     var body: some View {
         content
-            .frame(minWidth: 340, idealWidth: 400, maxWidth: 440, maxHeight: .infinity)
+            .frame(minWidth: InterfaceScale.metric(340), idealWidth: InterfaceScale.metric(400), maxWidth: InterfaceScale.metric(440), maxHeight: .infinity)
             .background {
                 GeometryReader { proxy in
                     Color.clear.preference(
@@ -58,8 +58,15 @@ struct ThreadConversationView: View {
     @State private var editRequest: MessageTimelineEditRequest?
 
     var body: some View {
-        SupplementaryConversationPane {
-            if let thread = model.openThread {
+        if model.isThreadFullWidth {
+            conversation.frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            SupplementaryConversationPane { conversation }
+        }
+    }
+
+    @ViewBuilder private var conversation: some View {
+        if let thread = model.openThread {
                 if model.openThreadAccess == .hidden {
                     ThreadUnavailableView()
                 } else {
@@ -88,7 +95,6 @@ struct ThreadConversationView: View {
             } else if let creation = model.threadCreation {
                 ThreadCreationView(model: model, creation: creation)
             }
-        }
     }
 }
 
@@ -104,34 +110,34 @@ private struct ThreadCreationView: View {
                 ? ChatChromeMetrics.composerCornerRadius : ChatChromeMetrics.composerMinimumCornerRadius,
             style: .continuous
         )
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(18)) {
             SakuraCordSystemSymbol.swiftUIImage(named: SakuraCordSystemSymbol.thread)
-                .font(.system(size: 26, weight: .medium))
+                .font(.interfaceSystem(size: 26, weight: .medium))
                 .foregroundStyle(.secondary)
-                .frame(width: 64, height: 64)
+                .frame(width: InterfaceScale.metric(64), height: InterfaceScale.metric(64))
                 .background(.quaternary, in: Circle())
                 .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(6)) {
                 Text("Thread Name")
-                    .font(.headline)
+                    .font(.interface(.headline))
                 ZStack(alignment: .leading) {
                     TextField("", text: $creation.name)
                         .tint(SakuraCordAccentColor.color)
                         .textFieldStyle(.plain)
-                        .font(.system(size: 15))
+                        .font(.interfaceSystem(size: 15))
                         .focused($isNameFocused)
                         .accessibilityLabel("Thread Name")
                         .onSubmit { model.validateThreadCreation() }
                     if creation.name.isEmpty {
                         Text("New Thread")
-                            .font(.system(size: 15))
+                            .font(.interfaceSystem(size: 15))
                             .foregroundStyle(.tertiary)
                             .allowsHitTesting(false)
                             .accessibilityHidden(true)
                     }
                 }
-                .padding(.horizontal, 11)
+                .padding(.horizontal, InterfaceScale.metric(11))
                 .frame(
                     maxWidth: .infinity,
                     minHeight: usesDefaultStyle
@@ -149,9 +155,9 @@ private struct ThreadCreationView: View {
             }
 
             if creation.permissions.canCreatePrivate {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: InterfaceScale.metric(6)) {
                     Text("Private Thread")
-                        .font(.headline)
+                        .font(.interface(.headline))
                     Toggle("Only people you invite and moderators can see", isOn: $creation.isPrivate)
                         .toggleStyle(.checkbox)
                         .tint(SakuraCordAccentColor.color)
@@ -164,7 +170,7 @@ private struct ThreadCreationView: View {
             }
         }
         .padding(.horizontal, ChatChromeMetrics.composerWindowInset)
-        .padding(.bottom, 12)
+        .padding(.bottom, InterfaceScale.metric(12))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             ComposerView(model: model, channelName: "", conversation: .thread)
@@ -183,7 +189,7 @@ private struct ThreadCreationError: View {
 
     var body: some View {
         Label(message, systemImage: "exclamationmark.circle.fill")
-            .font(.callout)
+            .font(.interface(.callout))
             .foregroundStyle(.red)
     }
 }
@@ -302,45 +308,45 @@ private struct ThreadStateBanner: View {
     let action: () -> Void
 
     var body: some View {
-        GlassEffectContainer(spacing: 8) {
-            HStack(spacing: 10) {
+        GlassEffectContainer(spacing: InterfaceScale.metric(8)) {
+            HStack(spacing: InterfaceScale.metric(10)) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.interfaceSystem(size: 12, weight: .semibold))
                     .foregroundStyle(.secondary)
-                    .frame(width: 26, height: 26)
+                    .frame(width: InterfaceScale.metric(26), height: InterfaceScale.metric(26))
                     .background(.quaternary, in: Circle())
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title)
-                        .font(.callout.weight(.semibold))
+                        .font(.interface(.callout).weight(.semibold))
                     Text(message)
-                        .font(.caption)
+                        .font(.interface(.caption))
                         .foregroundStyle(.secondary)
                 }
                 .lineLimit(1)
 
-                Spacer(minLength: 8)
+                Spacer(minLength: InterfaceScale.metric(8))
 
                 if let actionTitle {
                     Button(action: action) {
                         Label(actionTitle, systemImage: actionSystemImage)
-                            .padding(.horizontal, 10)
-                            .frame(minHeight: 30)
+                            .padding(.horizontal, InterfaceScale.metric(10))
+                            .frame(minHeight: InterfaceScale.metric(30))
                             .contentShape(Capsule())
                     }
                     .buttonStyle(.plain)
                     .glassEffect(.regular.interactive(), in: Capsule())
                 }
             }
-            .padding(.horizontal, 10)
-            .frame(minHeight: 46)
+            .padding(.horizontal, InterfaceScale.metric(10))
+            .frame(minHeight: InterfaceScale.metric(46))
             .glassEffect(
                 .regular,
-                in: ConcentricRectangle(cornerRadius: 13, style: .continuous)
+                in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(13), style: .continuous)
             )
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.horizontal, InterfaceScale.metric(10))
+        .padding(.vertical, InterfaceScale.metric(8))
         .accessibilityElement(children: .contain)
     }
 }
@@ -423,7 +429,7 @@ private struct ThreadMessageTimelineView: View {
                 UnreadMessagesBanner(summary: summary) {
                     model.markConversationRead(channelID: threadID)
                 }
-                .padding(8)
+                .padding(InterfaceScale.metric(8))
             }
         }
         .overlay(alignment: .bottom) {
@@ -439,9 +445,9 @@ private struct ThreadMessageTimelineView: View {
                     requestScroll(.bottom)
                 } label: {
                     Label("New replies", systemImage: "arrow.down")
-                        .font(.callout.weight(.semibold))
-                        .padding(.horizontal, 15)
-                        .padding(.vertical, 8)
+                        .font(.interface(.callout).weight(.semibold))
+                        .padding(.horizontal, InterfaceScale.metric(15))
+                        .padding(.vertical, InterfaceScale.metric(8))
                         .contentShape(Capsule())
                         .glassEffect(
                             .regular.tint(SakuraCordAccentColor.color).interactive(),
@@ -709,22 +715,22 @@ private struct ThreadErrorBanner: View {
     let retry: (() -> Void)?
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: InterfaceScale.metric(8)) {
             Image(systemName: "exclamationmark.triangle")
             Text(message)
                 .lineLimit(2)
-            Spacer(minLength: 8)
+            Spacer(minLength: InterfaceScale.metric(8))
             if let retry {
                 Button("Retry", action: retry)
                     .buttonStyle(.link)
             }
         }
-        .font(.caption)
+        .font(.interface(.caption))
         .foregroundStyle(.secondary)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.quaternary, in: ConcentricRectangle(cornerRadius: 10, style: .continuous))
-        .padding(.horizontal, 12)
-        .padding(.bottom, 6)
+        .padding(.horizontal, InterfaceScale.metric(12))
+        .padding(.vertical, InterfaceScale.metric(8))
+        .background(.quaternary, in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(10), style: .continuous))
+        .padding(.horizontal, InterfaceScale.metric(12))
+        .padding(.bottom, InterfaceScale.metric(6))
     }
 }

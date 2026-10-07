@@ -7,6 +7,10 @@ nonisolated struct TranslationLanguage: Hashable, Identifiable, Sendable {
         locale.localizedString(forIdentifier: id) ?? id
     }
 
+    static func targetDisplayName(_ preference: String) -> String {
+        preference.isEmpty ? String(localized: "System Language") : TranslationLanguage(id: preference).displayName()
+    }
+
     static func sourceDisplayName(_ identifier: String?) -> String? {
         identifier.map { TranslationLanguage(id: $0).displayName() }
     }

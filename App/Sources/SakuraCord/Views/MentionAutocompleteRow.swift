@@ -8,7 +8,7 @@ struct MentionAutocompleteRow: View {
 
     var body: some View {
         Button(action: select) {
-            HStack(spacing: 9) {
+            HStack(spacing: InterfaceScale.metric(9)) {
                 leadingVisual
                 if suggestion.detail.isEmpty {
                     Text(suggestion.title)
@@ -17,11 +17,11 @@ struct MentionAutocompleteRow: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 12) {
+                        HStack(spacing: InterfaceScale.metric(12)) {
                             Text(suggestion.title)
                                 .foregroundStyle(.primary)
                                 .fixedSize(horizontal: true, vertical: false)
-                            Spacer(minLength: 8)
+                            Spacer(minLength: InterfaceScale.metric(8))
                             Text(suggestion.detail)
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: true, vertical: false)
@@ -33,8 +33,8 @@ struct MentionAutocompleteRow: View {
                     }
                 }
             }
-            .padding(.horizontal, 9)
-            .frame(height: 40)
+            .padding(.horizontal, InterfaceScale.metric(9))
+            .frame(height: InterfaceScale.metric(40))
             .background(
                 isSelected ? Color.primary.opacity(0.10) : .clear,
                 in: ConcentricRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -50,25 +50,25 @@ struct MentionAutocompleteRow: View {
         case .unresolved:
             EmptyView()
         case .user:
-            AvatarView(name: suggestion.title, url: suggestion.avatarURL, size: 28)
+            AvatarView(name: suggestion.title, url: suggestion.avatarURL, size: InterfaceScale.metric(28))
         case .role:
-            RoleColorIndicator(colorHex: suggestion.colorHex, size: 16)
-                .frame(width: 28, height: 28)
+            RoleColorIndicator(colorHex: suggestion.colorHex, size: InterfaceScale.metric(16))
+                .frame(width: InterfaceScale.metric(28), height: InterfaceScale.metric(28))
         case .channel, .guildNavigation:
             Image(systemName: suggestion.systemImage ?? "questionmark")
-                .font(.system(size: 17, weight: .semibold))
+                .font(.interfaceSystem(size: 17, weight: .semibold))
                 .foregroundStyle(.secondary)
-                .frame(width: 28, height: 28)
+                .frame(width: InterfaceScale.metric(28), height: InterfaceScale.metric(28))
         case .linkedChannel:
             Image(systemName: ChannelIconPresentation.forumPostSystemImage)
-                .font(.system(size: 17, weight: .semibold))
+                .font(.interfaceSystem(size: 17, weight: .semibold))
                 .foregroundStyle(.secondary)
-                .frame(width: 28, height: 28)
+                .frame(width: InterfaceScale.metric(28), height: InterfaceScale.metric(28))
         case .message:
             Image(systemName: "bubble.left.fill")
-                .font(.system(size: 17, weight: .semibold))
+                .font(.interfaceSystem(size: 17, weight: .semibold))
                 .foregroundStyle(.secondary)
-                .frame(width: 28, height: 28)
+                .frame(width: InterfaceScale.metric(28), height: InterfaceScale.metric(28))
         }
     }
 }

@@ -291,6 +291,7 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
     @Binding var searchTokens: [MessageSearchToken]
     @Binding var isSearchFocused: Bool
     let isToolbarItemVisible: Bool
+    let preferredFieldWidth: CGFloat
     let didUseBuiltInClear: @MainActor () -> Void
     let didEndEditing: @MainActor () -> Void
     let pasteCanonicalSyntax: @MainActor (String) -> MessageSearchTokenParser.Result
@@ -302,6 +303,7 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
             searchTokens: $searchTokens,
             isSearchFocused: $isSearchFocused,
             isToolbarItemVisible: isToolbarItemVisible,
+            preferredFieldWidth: preferredFieldWidth,
             didUseBuiltInClear: didUseBuiltInClear,
             didEndEditing: didEndEditing,
             pasteCanonicalSyntax: pasteCanonicalSyntax,
@@ -322,6 +324,7 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
         context.coordinator.searchTokens = $searchTokens
         context.coordinator.isSearchFocused = $isSearchFocused
         context.coordinator.isToolbarItemVisible = isToolbarItemVisible
+        context.coordinator.preferredFieldWidth = preferredFieldWidth
         context.coordinator.didUseBuiltInClear = didUseBuiltInClear
         context.coordinator.didEndEditing = didEndEditing
         context.coordinator.pasteCanonicalSyntax = pasteCanonicalSyntax
@@ -350,6 +353,7 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
         var searchTokens: Binding<[MessageSearchToken]>
         var isSearchFocused: Binding<Bool>
         var isToolbarItemVisible: Bool
+        var preferredFieldWidth: CGFloat
         var didUseBuiltInClear: @MainActor () -> Void
         var didEndEditing: @MainActor () -> Void
         var pasteCanonicalSyntax: @MainActor (String) -> MessageSearchTokenParser.Result
@@ -363,6 +367,9 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
         private weak var sizedSearchField: NSSearchField?
         private var originalPreferredSearchFieldWidth: CGFloat?
         private var appliedPreferredSearchFieldWidth: CGFloat?
+        private weak var searchContainerWidthConstraint: NSLayoutConstraint?
+        private var originalSearchContainerWidth: CGFloat?
+        private var appliedSearchContainerWidth: CGFloat?
         private var searchFieldWidthConstraint: NSLayoutConstraint?
         private var observers: [NSObjectProtocol] = []
         private var searchFieldDelegateProxy: ToolbarSearchFieldDelegateProxy?
@@ -383,6 +390,7 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
             searchTokens: Binding<[MessageSearchToken]>,
             isSearchFocused: Binding<Bool>,
             isToolbarItemVisible: Bool,
+            preferredFieldWidth: CGFloat,
             didUseBuiltInClear: @escaping @MainActor () -> Void,
             didEndEditing: @escaping @MainActor () -> Void,
             pasteCanonicalSyntax: @escaping @MainActor (String) -> MessageSearchTokenParser.Result,
@@ -392,6 +400,7 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
             self.searchTokens = searchTokens
             self.isSearchFocused = isSearchFocused
             self.isToolbarItemVisible = isToolbarItemVisible
+            self.preferredFieldWidth = preferredFieldWidth
             self.didUseBuiltInClear = didUseBuiltInClear
             self.didEndEditing = didEndEditing
             self.pasteCanonicalSyntax = pasteCanonicalSyntax
@@ -591,14 +600,10 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
                 searchToolbarItem = item
                 originalSearchToolbarItemIsHidden = item.isHidden
             }
-            if sizedSearchToolbarItem !== item
-                || sizedSearchField !== item.searchField
-            {
-                _ = updateSearchToolbarItemSizing(
-                    item,
-                    width: ChatChromeMetrics.toolbarSearchMaximumFieldWidth
-                )
-            }
+            // The field survives interface-size changes. Update its existing
+            // constraint too, so AppKit reflows the adjacent toolbar items.
+            _ = updateSearchToolbarItemSizing(item, width: preferredFieldWidth)
+            updateSearchContainerWidth(for: item.searchField, width: preferredFieldWidth)
             let isHidden = isToolbarItemVisible
                 ? (originalSearchToolbarItemIsHidden ?? false)
                 : true
@@ -635,6 +640,7 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
                     equalToConstant: width
                 )
                 constraint.identifier = "SakuraCord.ToolbarSearchFieldWidth"
+                constraint.priority = NSLayoutConstraint.Priority(999)
                 constraint.isActive = true
                 searchFieldWidthConstraint = constraint
             } else if let searchFieldWidthConstraint,
@@ -648,6 +654,42 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
             item.preferredWidthForSearchField = width
             appliedPreferredSearchFieldWidth = width
             return true
+        }
+
+        private func updateSearchContainerWidth(for field: NSSearchField, width: CGFloat) {
+            // AppKit caches a maximum width on the enclosing search-item view.
+            // Updating the field alone leaves that initial limit in place, even
+            // after intrinsic-size invalidation. Keep its limit in sync without
+            // replacing SwiftUI's field, delegate, or active editor.
+            guard let container = field.superview,
+                  let constraint = container.constraints.first(where: {
+                      $0.firstItem as? NSView === container
+                          && $0.firstAttribute == .width
+                          && $0.relation == .lessThanOrEqual
+                          && $0.secondItem == nil
+                  })
+            else { return }
+            if searchContainerWidthConstraint !== constraint {
+                restoreSearchContainerWidth()
+                searchContainerWidthConstraint = constraint
+                originalSearchContainerWidth = constraint.constant
+            }
+            if constraint.constant != width {
+                constraint.constant = width
+            }
+            appliedSearchContainerWidth = width
+        }
+
+        private func restoreSearchContainerWidth() {
+            if let searchContainerWidthConstraint,
+               let originalSearchContainerWidth,
+               searchContainerWidthConstraint.constant == appliedSearchContainerWidth
+            {
+                searchContainerWidthConstraint.constant = originalSearchContainerWidth
+            }
+            searchContainerWidthConstraint = nil
+            originalSearchContainerWidth = nil
+            appliedSearchContainerWidth = nil
         }
 
         private func restoreSearchToolbarItemVisibility() {
@@ -667,6 +709,7 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
             searchFieldWidthConstraint?.isActive = false
             searchFieldWidthConstraint = nil
             sizedSearchField = nil
+            restoreSearchContainerWidth()
             if let sizedSearchToolbarItem,
                let originalPreferredSearchFieldWidth,
                let appliedPreferredSearchFieldWidth,

@@ -27,7 +27,7 @@ struct ComposerTranslationHeader: View {
         case .translating:
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
-                Text("Translating to \(TranslationLanguage(id: state.language).displayName())…")
+                Text("Translating to \(TranslationLanguage.targetDisplayName(state.language))…")
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 8)
                 closeButton(help: "Cancel translation")
@@ -44,7 +44,7 @@ struct ComposerTranslationHeader: View {
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }.frame(maxHeight: 100)
-                    Text("Translated to \(TranslationLanguage(id: state.language).displayName())")
+                    Text("Translated to \(TranslationLanguage.targetDisplayName(state.language))")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(SakuraCordAccentColor.color)
                 }

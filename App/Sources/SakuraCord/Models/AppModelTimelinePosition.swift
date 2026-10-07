@@ -6,7 +6,7 @@ extension AppModel {
     func isConversationPresented(_ channelID: ChannelID) -> Bool {
         guard onboardingEntryGuildID == nil else { return false }
         if openThread?.id == channelID { return true }
-        guard selectedChannelID == channelID else { return false }
+        guard !isThreadFullWidth, selectedChannelID == channelID else { return false }
         guard guildWorkspacePage != nil else { return true }
         return !hasThreadPane && customizationPreviewChannel?.id == channelID
     }

@@ -9,6 +9,9 @@ struct SettingsForm<Content: View>: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+        // Every settings page and destination follows the interface size;
+        // toolbars declared by the pages stay outside this root.
+        .interfaceScaleRoot()
     }
 }
 
@@ -18,7 +21,7 @@ struct SettingsPermissionRow<Action: View>: View {
     @ViewBuilder let action: Action
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
+        HStack(alignment: .firstTextBaseline, spacing: InterfaceScale.metric(10)) {
             Text(title, bundle: #bundle)
             Spacer()
             Text(status)
@@ -165,8 +168,8 @@ private struct SettingsControlHighlightOverlay: View {
     var body: some View {
         GeometryReader { proxy in
             if let bounds = highlightedControlBounds(in: proxy) {
-                let highlightedBounds = bounds.insetBy(dx: -16, dy: -10)
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                let highlightedBounds = bounds.insetBy(dx: -InterfaceScale.metric(16), dy: -InterfaceScale.metric(10))
+                RoundedRectangle(cornerRadius: InterfaceScale.metric(12), style: .continuous)
                     .stroke(SakuraCordAccentColor.color, lineWidth: 2)
                     .frame(
                         width: highlightedBounds.width,

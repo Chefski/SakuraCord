@@ -33,10 +33,10 @@ private struct ServerInviteCaptchaContent: View {
                     .contentShape(Rectangle())
                     .onTapGesture(perform: cancel)
                 if let widgetBounds, interactionRequired {
-                    RoundedRectangle(cornerRadius: 16)
+                    RoundedRectangle(cornerRadius: InterfaceScale.metric(16))
                         .fill(Color(nsColor: .windowBackgroundColor))
-                        .overlay { RoundedRectangle(cornerRadius: 16).stroke(.separator, lineWidth: 1) }
-                        .shadow(color: .black.opacity(0.28), radius: 24, y: 10)
+                        .overlay { RoundedRectangle(cornerRadius: InterfaceScale.metric(16)).stroke(.separator, lineWidth: 1) }
+                        .shadow(color: .black.opacity(0.28), radius: InterfaceScale.metric(24), y: 10)
                         .frame(width: widgetBounds.width + 24, height: widgetBounds.height + 24)
                         .position(x: widgetBounds.midX, y: widgetBounds.midY)
                         .allowsHitTesting(false)

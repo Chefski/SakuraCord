@@ -16,13 +16,13 @@ struct ProfilePersonalWidgetCard: View {
     private var hasFields: Bool { widget.sections.contains { if case let .fields(fields) = $0 { !fields.isEmpty } else { false } } }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 5) {
-                Image(systemName: "sparkles").font(.system(size: 14)).frame(width: 16, height: 16)
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(16)) {
+            HStack(spacing: InterfaceScale.metric(5)) {
+                Image(systemName: "sparkles").font(.interfaceSystem(size: 14)).frame(width: InterfaceScale.metric(16), height: InterfaceScale.metric(16))
                 ProfileWidgetText(value: widget.header, placeholder: "Add Widget Name", limit: 50, lines: 1, size: 14, weight: .medium, markdown: false,
                                   edit: editor?.canEditPersonalWidget == true ? { value in editor?.updatePersonalWidget(id: id) { $0.header = value } } : nil)
             }
-            .padding(.trailing, editor == nil ? 0 : 24)
+            .padding(.trailing, editor == nil ? 0 : InterfaceScale.metric(24))
             if let editor, editor.canEditPersonalWidget, !hasCover {
                 ProfileWidgetSectionInsertion(title: String(localized: "Add Header", bundle: #bundle)) {
                     editor.updatePersonalWidget(id: id) { $0.sections.insert(.cover(ProfileWidgetCover()), at: 0) }
@@ -44,9 +44,9 @@ struct ProfilePersonalWidgetCard: View {
                 if hasCover {
                     ProfileWidgetSectionInsertion(title: String(localized: "Add Blocks", bundle: #bundle)) { addFields(2, editor: editor) }
                 } else {
-                    HStack(spacing: 16) {
+                    HStack(spacing: InterfaceScale.metric(16)) {
                         ProfileWidgetAddField(alwaysVisible: true) { addFields(1, editor: editor) }
-                        Color.clear.frame(maxWidth: .infinity, maxHeight: 48)
+                        Color.clear.frame(maxWidth: .infinity, maxHeight: InterfaceScale.metric(48))
                     }
                 }
             }
@@ -54,7 +54,7 @@ struct ProfilePersonalWidgetCard: View {
                 Button { expanded.toggle() } label: {
                     Text(expanded ? "Show Less" : "Show More").underline(isExpansionHovered)
                 }
-                .buttonStyle(.plain).font(.system(size: 14, weight: .medium))
+                .buttonStyle(.plain).font(.interfaceSystem(size: 14, weight: .medium))
                 .onModalHover { isExpansionHovered = $0 }
             }
         }
@@ -66,8 +66,8 @@ struct ProfilePersonalWidgetCard: View {
             })
             imageVisibilityOverrides = imageVisibilityOverrides.filter { ids.contains($0.key) }
         }
-        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-        .background(.primary.opacity(0.035), in: ConcentricRectangle(cornerRadius: 16))
+        .padding(InterfaceScale.metric(16)).frame(maxWidth: .infinity, alignment: .leading)
+        .background(.primary.opacity(0.035), in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(16)))
     }
 
     private func addFields(_ count: Int, editor: ProfileEditorState) {
@@ -89,7 +89,7 @@ private struct ProfilePersonalWidgetCover: View {
     @State private var isSubtitleHovered = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(4)) {
             ProfileWidgetText(value: cover.title, placeholder: "Add Title", limit: 50, lines: 2, size: 24, weight: .semibold,
                               edit: editor?.canEditPersonalWidget == true ? { value in editor?.updateWidgetCover(id: id, section: section) { $0.title = value } } : nil,
                               onHoverChange: { isTitleHovered = $0 })
@@ -98,8 +98,8 @@ private struct ProfilePersonalWidgetCover: View {
                               onHoverChange: { isSubtitleHovered = $0 })
         }
         .frame(maxWidth: .infinity, minHeight: cover.image != nil || editor != nil ? 54 : nil, alignment: .bottomLeading)
-        .padding(cover.image != nil || editor != nil ? 16 : 0)
-        .padding(.top, cover.image != nil || editor != nil ? 56 : 0)
+        .padding(cover.image != nil || editor != nil ? InterfaceScale.metric(16) : 0)
+        .padding(.top, cover.image != nil || editor != nil ? InterfaceScale.metric(56) : 0)
         .foregroundStyle(cover.image == nil ? Color.primary : .white)
         .background {
             if cover.image != nil || editor?.canEditPersonalWidget == true {
@@ -118,7 +118,7 @@ private struct ProfilePersonalWidgetCover: View {
                 }
             }
         }
-        .clipShape(.rect(cornerRadius: 8))
+        .clipShape(.rect(cornerRadius: InterfaceScale.metric(8)))
         .overlay(alignment: .topTrailing) {
             if let editor, editor.canEditPersonalWidget, isHovered {
                 HoverActionPill {
@@ -126,7 +126,7 @@ private struct ProfilePersonalWidgetCover: View {
                         removeBlock()
                     }
                 }
-                .padding(8)
+                .padding(InterfaceScale.metric(8))
             }
         }
         .onModalHover { isHovered = $0 }
@@ -159,7 +159,11 @@ private struct ProfilePersonalWidgetFields: View {
     @Binding var imageVisibilityOverrides: [ProfileWidgetField.ID: Bool]
 
     var body: some View {
-        LazyVGrid(columns: [.init(.flexible(), spacing: 16, alignment: .topLeading), .init(.flexible(), spacing: 16, alignment: .topLeading)], alignment: .leading, spacing: 16) {
+        LazyVGrid(
+            columns: [.init(.flexible(), spacing: InterfaceScale.metric(16), alignment: .topLeading), .init(.flexible(), spacing: InterfaceScale.metric(16), alignment: .topLeading)],
+            alignment: .leading,
+            spacing: InterfaceScale.metric(16)
+        ) {
             ForEach(fields.filter { !$0.isEmpty || editor?.canEditPersonalWidget == true }) { field in
                 ProfilePersonalWidgetField(id: id, section: section, field: field, animates: animates, editor: editor, imageVisibilityOverrides: $imageVisibilityOverrides)
             }
@@ -201,7 +205,7 @@ private struct ProfilePersonalWidgetField: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: InterfaceScale.metric(12)) {
             if field.image != nil || (editor?.canEditPersonalWidget == true && !hidesImage) {
                 ProfileWidgetEditableImage(image: field.image, purpose: .widgetField, animates: animates, editor: editor, aspectRatio: 1, onHoverChange: { isImageHovered = $0 }, removeImage: {
                     imageVisibilityOverrides[field.id] = true
@@ -209,12 +213,12 @@ private struct ProfilePersonalWidgetField: View {
                 }, update: { image in
                     editor?.updateWidgetField(id: id, section: section, fieldID: field.id) { $0.image = image }
                 })
-                .frame(width: 48, height: 48)
+                .frame(width: InterfaceScale.metric(48), height: InterfaceScale.metric(48))
                 .contextMenu {
                     if editor?.canEditPersonalWidget == true, field.image == nil { Button("Remove Image") { imageVisibilityOverrides[field.id] = true } }
                 }
             }
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(4)) {
                 ProfileWidgetText(value: field.title, placeholder: "Add title", limit: 40, lines: 2, size: 14, weight: .medium,
                                   edit: editor?.canEditPersonalWidget == true ? { value in editor?.updateWidgetField(id: id, section: section, fieldID: field.id) { $0.title = value } } : nil)
                 ProfileWidgetText(value: field.description, placeholder: "Add description", limit: 90, lines: 4, size: 12,
@@ -237,7 +241,7 @@ private struct ProfilePersonalWidgetField: View {
                 }
                 .onModalHover { isActionHovered = $0 }
                 .onDisappear { isActionHovered = false }
-                .offset(x: 8, y: -12)
+                .offset(x: InterfaceScale.metric(8), y: -12)
             }
         }
         .onModalHover { isHovered = $0 }
@@ -309,7 +313,7 @@ struct ProfileWidgetText: View {
                 }.buttonStyle(.plain).accessibilityLabel(placeholder).accessibilityValue(value)
             } else if !value.isEmpty { renderedText }
         }
-        .font(.system(size: size, weight: weight))
+        .font(.interfaceSystem(size: size, weight: weight))
         .multilineTextAlignment(.leading)
         .frame(minWidth: 0, alignment: .leading)
         .clipped()
@@ -330,10 +334,10 @@ struct ProfileWidgetText: View {
 
     private var renderedText: some View {
         let content = markdown
-            ? DiscordMarkdown.profileWidgetAttributed(value, font: .system(size: size, weight: weight), links: edit == nil)
+            ? DiscordMarkdown.profileWidgetAttributed(value, font: .interfaceSystem(size: size, weight: weight), links: edit == nil)
             : AttributedString(value)
         return Text(content)
-            .font(.system(size: size, weight: weight))
+            .font(.interfaceSystem(size: size, weight: weight))
             .lineLimit(expanded ? nil : lines)
             .fixedSize(horizontal: false, vertical: true)
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { displayedHeight = $0 }

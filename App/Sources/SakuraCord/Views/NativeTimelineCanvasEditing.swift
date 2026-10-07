@@ -119,11 +119,11 @@ extension NativeTimelineCanvasView {
             setNeedsDisplay(rowFrame(at: index))
         }
     }
-    func setHoveredEphemeralDismissMessageID(_ value: MessageID?) {
-        guard hoveredEphemeralDismissMessageID != value else { return }
-        let old = hoveredEphemeralDismissMessageID
-        hoveredEphemeralDismissMessageID = value
-        for messageID in [old, value].compactMap({ $0 }) {
+    func setHoveredFooterAction(_ value: NativeTimelineFooterActionTarget?) {
+        guard hoveredFooterAction != value else { return }
+        let old = hoveredFooterAction
+        hoveredFooterAction = value
+        for messageID in [old, value].compactMap({ $0?.messageID }) {
             guard let index = items.firstIndex(where: {
                 $0.messageID == messageID
             }) else { continue }
@@ -368,8 +368,8 @@ extension NativeTimelineCanvasView {
         host.layoutSubtreeIfNeeded()
         let fitting = host.fittingSize
         actionCapsuleSize = NSSize(
-            width: max(36, fitting.width),
-            height: max(36, fitting.height)
+            width: max(InterfaceScale.metric(36), fitting.width),
+            height: max(InterfaceScale.metric(36), fitting.height)
         )
         positionActionCapsule(at: knownIndex)
     }
@@ -392,17 +392,17 @@ extension NativeTimelineCanvasView {
         if let bubble = layout.bubbleRegion {
             host.frame = CGRect(
                 x: min(
-                    max(8, bubble.frame.maxX - size.width),
-                    max(8, bounds.width - 8 - size.width)
+                    max(InterfaceScale.metric(8), bubble.frame.maxX - size.width),
+                    max(InterfaceScale.metric(8), bounds.width - InterfaceScale.metric(8) - size.width)
                 ),
-                y: max(0, origin + bubble.frame.minY - size.height + 7),
+                y: max(0, origin + bubble.frame.minY - size.height + InterfaceScale.metric(7)),
                 width: size.width,
                 height: size.height
             )
         } else {
             host.frame = CGRect(
-                x: max(0, bounds.width - 14 - size.width),
-                y: origin + (layout.highlightFrame?.minY ?? 0) - 13,
+                x: max(0, bounds.width - InterfaceScale.metric(14) - size.width),
+                y: origin + (layout.highlightFrame?.minY ?? 0) - InterfaceScale.metric(13),
                 width: size.width,
                 height: size.height
             )
@@ -781,7 +781,7 @@ extension NativeTimelineCanvasView {
 
         let layout = layouts[index]
         let contentOrigin = editingContentOrigin(in: layout)
-        let width = max(80, bounds.width - contentOrigin.x - 14)
+        let width = max(InterfaceScale.metric(80), bounds.width - contentOrigin.x - InterfaceScale.metric(14))
         let root = NativeTimelineEditingMessageContent(
             model: model,
             message: row.message,
@@ -810,7 +810,7 @@ extension NativeTimelineCanvasView {
             x: contentOrigin.x,
             y: displayedRowOrigin(at: index) + contentOrigin.y,
             width: width,
-            height: max(1, layout.contentFrame?.height ?? 24)
+            height: max(1, layout.contentFrame?.height ?? InterfaceScale.metric(24))
         )
         addSubview(host, positioned: .above, relativeTo: nil)
         host.layoutSubtreeIfNeeded()
@@ -1142,8 +1142,8 @@ extension NativeTimelineCanvasView {
             return first.origin
         }
         return CGPoint(
-            x: layout.authorFrame?.minX ?? 64,
-            y: (layout.authorFrame?.maxY ?? layout.replyFrame?.maxY ?? 3) + 3
+            x: layout.authorFrame?.minX ?? InterfaceScale.metric(64),
+            y: (layout.authorFrame?.maxY ?? layout.replyFrame?.maxY ?? InterfaceScale.metric(3)) + InterfaceScale.metric(3)
         )
     }
 

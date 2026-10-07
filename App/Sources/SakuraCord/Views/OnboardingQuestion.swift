@@ -12,10 +12,10 @@ struct OnboardingQuestion: View {
     private var usesMenu: Bool { prompt.type == 1 || prompt.options.count >= 13 }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(16)) {
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(6)) {
                 Text(prompt.title + (!large && prompt.required ? " *" : ""))
-                    .font(large ? .largeTitle.weight(.semibold) : .headline)
+                    .font(large ? .interface(.largeTitle).weight(.semibold) : .interface(.headline))
                     .fixedSize(horizontal: false, vertical: true)
             }
             if ![0, 1].contains(prompt.type) {
@@ -28,7 +28,7 @@ struct OnboardingQuestion: View {
                 optionGrid
             }
             if !prompt.singleSelect, [0, 1].contains(prompt.type), !prompt.options.isEmpty {
-                Text("Choose all that apply.").font(.callout).foregroundStyle(.secondary)
+                Text("Choose all that apply.").font(.interface(.callout)).foregroundStyle(.secondary)
             }
         }
         .onGeometryChange(for: Int.self) { $0.size.width >= (large ? 520 : 430) ? 2 : 1 } action: { columnCount = $0 }
@@ -36,7 +36,7 @@ struct OnboardingQuestion: View {
     }
 
     private var optionGrid: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: columnCount), spacing: 12) {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: InterfaceScale.metric(12)), count: columnCount), spacing: InterfaceScale.metric(12)) {
             ForEach(prompt.options) { option in optionButton(option, descriptions: true) }
         }
     }
@@ -87,25 +87,28 @@ private struct OnboardingOptionRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 12) {
+            HStack(spacing: InterfaceScale.metric(12)) {
                 OnboardingEmoji(emoji: option.emoji)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(option.title).font(.body.weight(.medium))
+                VStack(alignment: .leading, spacing: InterfaceScale.metric(4)) {
+                    Text(option.title).font(.interface(.body).weight(.medium))
                     if descriptions, let description = option.description, !description.isEmpty {
-                        Text(description).font(.callout).foregroundStyle(.secondary)
+                        Text(description).font(.interface(.callout)).foregroundStyle(.secondary)
                     }
                 }
                 .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 4)
+                Spacer(minLength: InterfaceScale.metric(4))
                 Image(systemName: singleSelect
                     ? (selected ? "checkmark.circle.fill" : "circle")
                     : (selected ? "checkmark.square.fill" : "square"))
                     .foregroundStyle(selected ? SakuraCordAccentColor.color : .secondary.opacity(0.5))
             }
-            .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(RoundedRectangle(cornerRadius: 16))
-            .background(selected ? SakuraCordAccentColor.color.opacity(hovered ? 0.20 : 0.13) : Color.primary.opacity(hovered ? 0.09 : 0.04), in: RoundedRectangle(cornerRadius: 16))
-            .overlay { RoundedRectangle(cornerRadius: 16).stroke(selected ? SakuraCordAccentColor.color.opacity(0.8) : Color.primary.opacity(0.08)) }
+            .padding(InterfaceScale.metric(16)).frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(RoundedRectangle(cornerRadius: InterfaceScale.metric(16)))
+            .background(
+                selected ? SakuraCordAccentColor.color.opacity(hovered ? 0.20 : 0.13) : Color.primary.opacity(hovered ? 0.09 : 0.04),
+                in: RoundedRectangle(cornerRadius: InterfaceScale.metric(16))
+            )
+            .overlay { RoundedRectangle(cornerRadius: InterfaceScale.metric(16)).stroke(selected ? SakuraCordAccentColor.color.opacity(0.8) : Color.primary.opacity(0.08)) }
         }
         .buttonStyle(.plain).onModalHover { hovered = $0 }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovered)
@@ -121,9 +124,9 @@ struct OnboardingEmoji: View {
     var body: some View {
         if let url = emoji?.url {
             AnimatedRemoteImage(url: url, maximumPixelDimension: 64, usesSwiftUIRendering: true)
-                .frame(width: 24, height: 24).accessibilityHidden(true)
+                .frame(width: InterfaceScale.metric(24), height: InterfaceScale.metric(24)).accessibilityHidden(true)
         } else if let name = emoji?.name, !name.isEmpty {
-            Text(name).font(.title3).accessibilityHidden(true)
+            Text(name).font(.interface(.title3)).accessibilityHidden(true)
         }
     }
 }

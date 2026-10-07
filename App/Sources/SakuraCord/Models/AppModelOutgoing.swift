@@ -233,6 +233,7 @@ extension AppModel {
         do {
             let confirmed = try await session.provider.send(outgoing)
             guard isCurrentAccountSession(session) else { return false }
+            recordMessageEmojiUsage(outgoing.content)
             confirmSlowmodeMessage(confirmed)
             let reconciled = reconcileVisibleOrCached(confirmed)
             composer.outbox.draftsByNonce[outgoing.nonce] = nil

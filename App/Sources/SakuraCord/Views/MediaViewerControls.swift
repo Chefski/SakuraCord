@@ -1,14 +1,14 @@
 import SwiftUI
 
 nonisolated enum MediaViewerThumbnailMetrics {
-    static let width: CGFloat = 58
-    static let height: CGFloat = 42
-    static let spacing: CGFloat = 6
-    static let edgePadding: CGFloat = 3
-    static let cornerRadius: CGFloat = 7
-    static let selectedBorderWidth: CGFloat = 3
+    static var width: CGFloat { InterfaceScale.metric(58) }
+    static var height: CGFloat { InterfaceScale.metric(42) }
+    static var spacing: CGFloat { InterfaceScale.metric(6) }
+    static var edgePadding: CGFloat { InterfaceScale.metric(3) }
+    static var cornerRadius: CGFloat { InterfaceScale.metric(7) }
+    static var selectedBorderWidth: CGFloat { InterfaceScale.metric(3) }
     static let ordinaryBorderWidth: CGFloat = 1
-    static let railHeight = height + edgePadding * 2
+    static var railHeight: CGFloat { height + edgePadding * 2 }
 
     static func contentWidth(itemCount: Int) -> CGFloat {
         guard itemCount > 0 else { return 0 }
@@ -23,12 +23,12 @@ nonisolated enum MediaViewerThumbnailMetrics {
 }
 
 nonisolated enum MediaViewerTopChromeMetrics {
-    static let outerPadding: CGFloat = 18
-    static let height: CGFloat = 36
-    static let avatarDiameter = height
-    static let actionDiameter: CGFloat = 28
-    static let actionPadding: CGFloat = 4
-    static let mediaTopInset = outerPadding + height + outerPadding
+    static var outerPadding: CGFloat { InterfaceScale.metric(18) }
+    static var height: CGFloat { InterfaceScale.metric(36) }
+    static var avatarDiameter: CGFloat { height }
+    static var actionDiameter: CGFloat { InterfaceScale.metric(28) }
+    static var actionPadding: CGFloat { InterfaceScale.metric(4) }
+    static var mediaTopInset: CGFloat { outerPadding + height + outerPadding }
 }
 
 struct MediaViewerHeader: View {
@@ -40,20 +40,20 @@ struct MediaViewerHeader: View {
     let itemCount: Int
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: InterfaceScale.metric(10)) {
             AvatarView(
                 name: authorName,
                 url: authorAvatarURL,
                 size: MediaViewerTopChromeMetrics.avatarDiameter
             )
             VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 6) {
+                HStack(spacing: InterfaceScale.metric(6)) {
                     Text(authorName)
                         .displayNameFont(authorFontID, textStyle: .callout)
                         .lineLimit(1)
                     if itemCount > 1 {
                         Text("\(selection + 1) / \(itemCount)")
-                            .font(.caption.weight(.medium))
+                            .font(.interface(.caption).weight(.medium))
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -61,14 +61,14 @@ struct MediaViewerHeader: View {
                     timestamp,
                     format: .dateTime.day().month().year().hour().minute()
                 )
-                .font(.caption)
+                .font(.interface(.caption))
                 .foregroundStyle(.secondary)
             }
         }
         .foregroundStyle(.white)
-        .shadow(color: .black.opacity(0.75), radius: 8, y: 2)
+        .shadow(color: .black.opacity(0.75), radius: InterfaceScale.metric(8), y: 2)
         .frame(
-            maxWidth: 260,
+            maxWidth: InterfaceScale.metric(260),
             minHeight: MediaViewerTopChromeMetrics.height,
             maxHeight: MediaViewerTopChromeMetrics.height,
             alignment: .leading
@@ -86,7 +86,7 @@ struct MediaViewerTopControls: View {
     let close: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: InterfaceScale.metric(10)) {
             HoverActionPill(
                 spacing: 1,
                 padding: MediaViewerTopChromeMetrics.actionPadding
@@ -110,7 +110,7 @@ struct MediaViewerTopControls: View {
                         } else {
                             Image(systemName: "arrow.down.to.line")
                                 .symbolVariant(.none)
-                                .font(.callout.weight(.medium))
+                                .font(.interface(.callout).weight(.medium))
                         }
                     }
                 }
@@ -148,7 +148,7 @@ struct MediaViewerTopControls: View {
                     systemImage: "xmark",
                     help: "Close",
                     diameter: MediaViewerTopChromeMetrics.actionDiameter,
-                    iconFont: .body.weight(.semibold),
+                    iconFont: .interface(.body).weight(.semibold),
                     action: close
                 )
                 .keyboardShortcut(.cancelAction)
@@ -163,7 +163,7 @@ struct MediaViewerTopControls: View {
         ) {
             Image(systemName: systemImage)
                 .symbolVariant(.none)
-                .font(.callout.weight(.medium))
+                .font(.interface(.callout).weight(.medium))
         }
     }
 }
@@ -181,12 +181,12 @@ struct MediaViewerNavigationButtons: View {
                     HoverActionButton(
                         systemImage: "chevron.left",
                         help: "Previous Media",
-                        iconFont: .title3.weight(.semibold),
+                        iconFont: .interface(.title3).weight(.semibold),
                         action: moveBackward
                     )
                 }
             } else {
-                Color.clear.frame(width: 36, height: 36)
+                Color.clear.frame(width: InterfaceScale.metric(36), height: InterfaceScale.metric(36))
             }
             Spacer()
             if canMoveForward {
@@ -194,12 +194,12 @@ struct MediaViewerNavigationButtons: View {
                     HoverActionButton(
                         systemImage: "chevron.right",
                         help: "Next Media",
-                        iconFont: .title3.weight(.semibold),
+                        iconFont: .interface(.title3).weight(.semibold),
                         action: moveForward
                     )
                 }
             } else {
-                Color.clear.frame(width: 36, height: 36)
+                Color.clear.frame(width: InterfaceScale.metric(36), height: InterfaceScale.metric(36))
             }
         }
         .foregroundStyle(.white)
@@ -278,14 +278,23 @@ private struct MediaViewerThumbnail: View {
                         contentMode: .fill
                     )
                 case .video:
+                    if let posterURL = item.videoPosterURL(maximumPixelDimension: 160) {
+                        AnimatedRemoteImage(
+                            url: posterURL,
+                            animates: false,
+                            maximumPixelDimension: 160,
+                            contentMode: .fill
+                        )
+                    }
                     Image(systemName: "play.fill")
-                        .font(.title3)
+                        .font(.interface(.title3))
+                        .shadow(radius: InterfaceScale.metric(2))
                 case .audio:
                     Image(systemName: "waveform")
-                        .font(.title3)
+                        .font(.interface(.title3))
                 case .file:
                     Image(systemName: "doc.fill")
-                        .font(.title3)
+                        .font(.interface(.title3))
                 }
             }
             .frame(
@@ -325,9 +334,9 @@ struct MediaViewerFeedbackPill: View {
 
     var body: some View {
         Label(message, systemImage: "checkmark.circle.fill")
-            .font(.callout.weight(.semibold))
-            .padding(.horizontal, 14)
-            .padding(.vertical, 9)
+            .font(.interface(.callout).weight(.semibold))
+            .padding(.horizontal, InterfaceScale.metric(14))
+            .padding(.vertical, InterfaceScale.metric(9))
             .glassEffect(.regular, in: Capsule())
             .foregroundStyle(.white)
     }

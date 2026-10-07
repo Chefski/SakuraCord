@@ -53,9 +53,10 @@ struct NativeTimelineTranslationPresentation {
     /// The widest line this block needs, so message bubbles can fit it.
     func preferredWidth(maximumWidth: CGFloat) -> CGFloat {
         let font = NativeTimelineRowLayout.translationCaptionFont
-        var captionWidth = 17 + NativeTimelineRowLayout.measuredTextWidth(caption, font: font)
+        var captionWidth = InterfaceScale.metric(13) + 4 + NativeTimelineRowLayout.measuredTextWidth(caption, font: font)
         if let actionTitle {
-            captionWidth += 8 + NativeTimelineRowLayout.measuredTextWidth("• \(actionTitle)", font: font)
+            captionWidth += 8 + NativeTimelineRowLayout.measuredTextWidth("•", font: font)
+                + NativeTimelineRowLayout.measuredTextWidth(actionTitle, font: font)
         }
         guard let attributed = text?.attributedContent, attributed.length > 0 else {
             return min(maximumWidth, captionWidth)
@@ -76,6 +77,7 @@ extension NativeTimelineRowLayout {
         let iconFrame: CGRect
         let caption: String
         let captionFrame: CGRect
+        let bulletFrame: CGRect?
         let actionTitle: String?
         let actionFrame: CGRect?
         let textFrame: CGRect?
@@ -84,7 +86,7 @@ extension NativeTimelineRowLayout {
     }
 
     static var translationCaptionFont: NSFont {
-        NSFont.preferredFont(forTextStyle: .caption1)
+        NSFont.interfacePreferredFont(forTextStyle: .caption1)
     }
 
     static func translation(
@@ -96,21 +98,25 @@ extension NativeTimelineRowLayout {
     ) -> TranslationRegion {
         let font = translationCaptionFont
         let maxX = origin.x + width
-        let iconFrame = CGRect(x: origin.x, y: origin.y + 1, width: 13, height: 13)
-        let actionWidth = presentation.actionTitle.map { measuredTextWidth("• \($0)", font: font) } ?? 0
-        let reservedWidth = actionWidth > 0 ? actionWidth + 4 : 0
+        let iconFrame = CGRect(x: origin.x, y: origin.y + 1, width: InterfaceScale.metric(13), height: InterfaceScale.metric(13))
+        let actionWidth = presentation.actionTitle.map { measuredTextWidth($0, font: font) } ?? 0
+        let bulletWidth = measuredTextWidth("•", font: font)
+        let reservedWidth = actionWidth > 0 ? actionWidth + bulletWidth + 8 : 0
         let captionX = iconFrame.maxX + 4
         let captionFrame = CGRect(
             x: captionX,
             y: origin.y,
             width: min(measuredTextWidth(presentation.caption, font: font), max(0, maxX - captionX - reservedWidth)),
-            height: 15
+            height: InterfaceScale.metric(15)
         )
-        let actionFrame = presentation.actionTitle.map { _ in
-            CGRect(x: captionFrame.maxX + 4, y: origin.y, width: min(actionWidth, max(0, maxX - captionFrame.maxX - 4)), height: 15)
+        let bulletFrame = presentation.actionTitle.map { _ in
+            CGRect(x: captionFrame.maxX + 4, y: origin.y, width: bulletWidth, height: InterfaceScale.metric(15))
+        }
+        let actionFrame = bulletFrame.map { bullet in
+            CGRect(x: bullet.maxX + 4, y: origin.y, width: min(actionWidth, max(0, maxX - bullet.maxX - 4)), height: InterfaceScale.metric(15))
         }
         var textFrame: CGRect?
-        var bottom = origin.y + 15
+        var bottom = origin.y + InterfaceScale.metric(15)
         if let attributed = presentation.text?.attributedContent, let framesetter = presentation.text?.framesetter {
             let height = measuredTextHeight(framesetter, value: attributed, length: attributed.length, width: width)
             textFrame = CGRect(x: origin.x, y: bottom + 2, width: width, height: height)
@@ -125,6 +131,7 @@ extension NativeTimelineRowLayout {
             iconFrame: iconFrame,
             caption: presentation.caption,
             captionFrame: captionFrame,
+            bulletFrame: bulletFrame,
             actionTitle: presentation.actionTitle,
             actionFrame: actionFrame,
             textFrame: textFrame,
@@ -143,8 +150,11 @@ extension NativeTimelineRowPainter {
         let symbol = region.kind == .failed ? "exclamationmark.triangle" : "translate"
         systemSymbol(symbol, in: region.iconFrame, color: region.kind == .failed ? .systemRed : secondary, inset: 0)
         text(region.caption, in: region.captionFrame, font: font, color: secondary)
+        if let bulletFrame = region.bulletFrame {
+            text("•", in: bulletFrame, font: font, color: secondary)
+        }
         if let actionTitle = region.actionTitle, let actionFrame = region.actionFrame {
-            text("• \(actionTitle)", in: actionFrame, font: font, color: accent)
+            text(actionTitle, in: actionFrame, font: font, color: accent, isInteractiveHovered: input.isTranslationActionHovered)
         }
         guard let textFrame = region.textFrame,
               let attributed = region.attributedText,

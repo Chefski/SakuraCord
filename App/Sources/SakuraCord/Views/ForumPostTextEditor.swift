@@ -33,7 +33,7 @@ struct ForumPostTextEditor: View {
 
             if text.isEmpty {
                 Text(placeholder)
-                    .font(.system(size: 15))
+                    .font(.interfaceSystem(size: 15))
                     .foregroundStyle(.tertiary)
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)

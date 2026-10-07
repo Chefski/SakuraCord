@@ -44,11 +44,11 @@ struct ComposerAutocompletePanel<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(heading)
-                .font(.caption.weight(.semibold))
+                .font(.interface(.caption).weight(.semibold))
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 14)
-                .padding(.top, 10)
-                .padding(.bottom, 5)
+                .padding(.horizontal, InterfaceScale.metric(14))
+                .padding(.top, InterfaceScale.metric(10))
+                .padding(.bottom, InterfaceScale.metric(5))
             content()
         }
         .frame(maxWidth: .infinity)

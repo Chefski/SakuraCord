@@ -14,33 +14,33 @@ struct GuildGuideView: View {
     var body: some View {
         GeometryReader { geometry in
             ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
+                VStack(alignment: .leading, spacing: InterfaceScale.metric(28)) {
                     header
                     if let error = entry.error {
                         HStack {
-                            Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red).font(.callout).textSelection(.enabled)
+                            Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red).font(.interface(.callout)).textSelection(.enabled)
                             Button("Try Again") { model.refreshGuildGuide(in: guildID) }.buttonStyle(.glass)
                         }
                     }
                     if let guide = entry.configuration, guide.enabled {
                         if geometry.size.width >= 760 {
-                            HStack(alignment: .top, spacing: 24) {
-                                mainColumn(guide).frame(minWidth: 340, maxWidth: .infinity)
-                                sideColumn(guide).frame(width: 280)
+                            HStack(alignment: .top, spacing: InterfaceScale.metric(24)) {
+                                mainColumn(guide).frame(minWidth: InterfaceScale.metric(340), maxWidth: .infinity)
+                                sideColumn(guide).frame(width: InterfaceScale.metric(280))
                             }
                         } else {
-                            VStack(alignment: .leading, spacing: 24) {
+                            VStack(alignment: .leading, spacing: InterfaceScale.metric(24)) {
                                 mainColumn(guide)
                                 sideColumn(guide)
                             }
                         }
                     } else if entry.isLoading {
-                        ProgressView().frame(maxWidth: .infinity).padding(32)
+                        ProgressView().frame(maxWidth: .infinity).padding(InterfaceScale.metric(32))
                     } else {
                         ContentUnavailableView("Server Guide Unavailable", systemImage: "signpost.right")
                     }
                 }
-                .padding(24).frame(maxWidth: 1400).frame(maxWidth: .infinity)
+                .padding(InterfaceScale.metric(24)).frame(maxWidth: InterfaceScale.metric(1400)).frame(maxWidth: .infinity)
             }
             .scrollBounceBehavior(.always, axes: .vertical)
         }
@@ -64,7 +64,7 @@ struct GuildGuideView: View {
 
     @ViewBuilder private func mainColumn(_ guide: GuildGuide) -> some View {
         if showsTasks {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(20)) {
                 welcome(guide)
                 if !guide.newMemberActions.isEmpty { tasks(guide) }
             }
@@ -74,14 +74,14 @@ struct GuildGuideView: View {
     }
 
     private func sideColumn(_ guide: GuildGuide) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(12)) {
             if let profile = entry.profile { serverProfile(profile) }
             if showsTasks { resources(guide, compact: true) }
         }
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(16)) {
             ZStack(alignment: .bottomLeading) {
                 Group {
                     if let url = guild?.guideHeaderURL {
@@ -98,19 +98,17 @@ struct GuildGuideView: View {
                         .accessibilityHidden(true)
                     }
                 }
-                .frame(height: 160).clipped().clipShape(.rect(cornerRadius: 16))
-                serverIcon(size: 100).padding(.leading, 16).offset(y: 48)
+                .frame(height: InterfaceScale.metric(160)).clipped().clipShape(.rect(cornerRadius: InterfaceScale.metric(16)))
+                serverIcon(size: 100).padding(.leading, InterfaceScale.metric(16)).offset(y: InterfaceScale.metric(48))
             }
             Text(guild?.name ?? "Server")
-                .font(.system(size: 28, weight: .bold))
-                .padding(.top, 40).padding(.horizontal, 16)
+                .font(.interfaceSystem(size: 28, weight: .bold))
+                .padding(.top, InterfaceScale.metric(40)).padding(.horizontal, InterfaceScale.metric(16))
         }
     }
 
     private var bannerColor: UInt32? {
-        entry.profile?.brandColorPrimary.flatMap {
-            UInt32($0.replacingOccurrences(of: "#", with: ""), radix: 16)
-        } ?? previewColor
+        entry.profile?.brandColor ?? previewColor
     }
 
     private func serverIcon(size: CGFloat) -> some View {
@@ -124,26 +122,26 @@ struct GuildGuideView: View {
     }
 
     private func welcome(_ guide: GuildGuide) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(8)) {
+            HStack(spacing: InterfaceScale.metric(8)) {
                 ForEach(guide.welcomeMessage.authorIDs, id: \.self) { id in
                     if let author = model.membersByGuildID[guildID]?[id] ?? model.membersByID[id] {
                         AsyncImage(url: author.user.avatarURL) { image in image.resizable().scaledToFill() } placeholder: { Image(systemName: "person.crop.circle.fill") }
-                            .frame(width: 40, height: 40).clipShape(Circle())
-                        Text(author.user.displayName).font(.callout.weight(.semibold))
+                            .frame(width: InterfaceScale.metric(40), height: InterfaceScale.metric(40)).clipShape(Circle())
+                        Text(author.user.displayName).font(.interface(.callout).weight(.semibold))
                     }
                 }
             }
             Text(DiscordMarkdown.attributed(guide.welcomeMessage.message.replacingOccurrences(of: "[@username]", with: "@" + (model.currentUser?.displayName ?? "you"))))
-                .font(.body).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                .font(.interface(.body)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
         }
-        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-        .background(.background, in: .rect(cornerRadius: 12))
+        .padding(InterfaceScale.metric(16)).frame(maxWidth: .infinity, alignment: .leading)
+        .background(.background, in: .rect(cornerRadius: InterfaceScale.metric(12)))
     }
 
     private func tasks(_ guide: GuildGuide) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Get Started").font(.title3.weight(.bold)).padding(.bottom, 4)
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(8)) {
+            Text("Get Started").font(.interface(.title3).weight(.bold)).padding(.bottom, InterfaceScale.metric(4))
             ForEach(guide.newMemberActions) { task in
                 GuideActionRow(item: task, channelName: model.snapshot?.channels.first { $0.id == task.channelID }?.name,
                                completed: entry.progress?.isCompleted(task.channelID) == true) {
@@ -155,9 +153,9 @@ struct GuildGuideView: View {
     }
 
     private func resources(_ guide: GuildGuide, compact: Bool) -> some View {
-        VStack(alignment: .leading, spacing: compact ? 8 : 12) {
+        VStack(alignment: .leading, spacing: compact ? InterfaceScale.metric(8) : InterfaceScale.metric(12)) {
             if !guide.resourceChannels.isEmpty {
-                Text("Resources").font(compact ? .headline : .title3.weight(.bold)).padding(.bottom, 4)
+                Text("Resources").font(compact ? .interface(.headline) : .interface(.title3).weight(.bold)).padding(.bottom, InterfaceScale.metric(4))
                 ForEach(guide.resourceChannels) { resource in
                     GuideResourceRow(item: resource, compact: compact) {
                         model.openGuideResource(resource.channelID, guildID: guildID)
@@ -167,10 +165,10 @@ struct GuildGuideView: View {
         }
         .padding(compact ? 16 : 0)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(compact ? AnyShapeStyle(.background) : AnyShapeStyle(.clear), in: .rect(cornerRadius: 12))
+        .background(compact ? AnyShapeStyle(.background) : AnyShapeStyle(.clear), in: .rect(cornerRadius: InterfaceScale.metric(12)))
     }
 
-    private func serverProfile(_ profile: GuildGuideProfile) -> some View {
+    private func serverProfile(_ profile: GuildProfile) -> some View {
         let card = NativeTimelineInviteLayout(index: 0, origin: .zero, maximumWidth: 280,
             model: nil, isOwnMessage: false, fillsWidth: true,
             preview: NativeServerCardContent(profile: profile, iconURL: guild?.iconURL, adaptiveColor: previewColor))
@@ -189,27 +187,27 @@ private struct GuideActionRow: View {
     @State private var hovered = false
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 12) {
+            HStack(spacing: InterfaceScale.metric(12)) {
                 if let url = item.iconURL {
                     AsyncImage(url: url) { image in image.resizable().scaledToFill() } placeholder: { Color.clear }
-                        .frame(width: 36, height: 36).clipShape(.rect(cornerRadius: 8))
+                        .frame(width: InterfaceScale.metric(36), height: InterfaceScale.metric(36)).clipShape(.rect(cornerRadius: InterfaceScale.metric(8)))
                 } else if item.emoji != nil {
                     OnboardingEmoji(emoji: item.emoji)
                 } else {
-                    Image(systemName: "number").font(.title3).foregroundStyle(.secondary).frame(width: 32, height: 32)
+                    Image(systemName: "number").font(.interface(.title3)).foregroundStyle(.secondary).frame(width: InterfaceScale.metric(32), height: InterfaceScale.metric(32))
                 }
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(item.title).font(.headline)
-                    if let channelName { Text("#" + channelName).font(.caption).foregroundStyle(.secondary) }
+                VStack(alignment: .leading, spacing: InterfaceScale.metric(4)) {
+                    Text(item.title).font(.interface(.headline))
+                    if let channelName { Text("#" + channelName).font(.interface(.caption)).foregroundStyle(.secondary) }
                 }
-                Spacer(minLength: 8)
+                Spacer(minLength: InterfaceScale.metric(8))
                 Image(systemName: completed ? "checkmark.circle.fill" : "circle")
-                    .font(.title3).foregroundStyle(completed ? AnyShapeStyle(.green) : AnyShapeStyle(.secondary))
+                    .font(.interface(.title3)).foregroundStyle(completed ? AnyShapeStyle(.green) : AnyShapeStyle(.secondary))
             }
-            .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-            .background(.background, in: .rect(cornerRadius: 12))
-            .overlay { RoundedRectangle(cornerRadius: 12).fill(.primary.opacity(hovered ? 0.06 : 0)) }
-            .contentShape(.rect(cornerRadius: 12))
+            .padding(InterfaceScale.metric(16)).frame(maxWidth: .infinity, alignment: .leading)
+            .background(.background, in: .rect(cornerRadius: InterfaceScale.metric(12)))
+            .overlay { RoundedRectangle(cornerRadius: InterfaceScale.metric(12)).fill(.primary.opacity(hovered ? 0.06 : 0)) }
+            .contentShape(.rect(cornerRadius: InterfaceScale.metric(12)))
         }
         .buttonStyle(.plain).onHover { hovered = $0 }
         .accessibilityValue(completed ? "Completed" : "Not completed")
@@ -223,21 +221,21 @@ private struct GuideResourceRow: View {
     @State private var hovered = false
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(8)) {
+                HStack(spacing: InterfaceScale.metric(8)) {
                     if compact { Image(systemName: "doc.text").foregroundStyle(.secondary) }
-                    Text(item.title).font(.headline)
+                    Text(item.title).font(.interface(.headline))
                 }
                 if !compact {
                     if let description = item.description, !description.isEmpty {
-                        Text(DiscordMarkdown.attributed(description)).font(.body).foregroundStyle(.secondary).lineLimit(3)
+                        Text(DiscordMarkdown.attributed(description)).font(.interface(.body)).foregroundStyle(.secondary).lineLimit(3)
                     }
                 }
             }
             .padding(compact ? 8 : 20).frame(maxWidth: .infinity, alignment: .leading)
-            .background(.background, in: .rect(cornerRadius: 12))
-            .overlay { RoundedRectangle(cornerRadius: 12).fill(.primary.opacity(hovered ? 0.06 : 0)) }
-            .contentShape(.rect(cornerRadius: 12))
+            .background(.background, in: .rect(cornerRadius: InterfaceScale.metric(12)))
+            .overlay { RoundedRectangle(cornerRadius: InterfaceScale.metric(12)).fill(.primary.opacity(hovered ? 0.06 : 0)) }
+            .contentShape(.rect(cornerRadius: InterfaceScale.metric(12)))
         }
         .buttonStyle(.plain).onHover { hovered = $0 }
     }

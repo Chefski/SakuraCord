@@ -142,6 +142,15 @@ struct NativeTimelineRowLayout {
     var avatarFrame: CGRect?
     var compactTimestampFrame: CGRect?
     var authorFrame: CGRect?
+    var authorText: NativeIdentityTextPresentation?
+    var authorPrimaryGuild: PrimaryGuildIdentity?
+    struct ServerTagRegion {
+        let frame: CGRect
+        let presentation: NativeServerTagPresentation
+    }
+    var serverTagRegion: ServerTagRegion?
+    var timestampText: NativeIdentityTextPresentation?
+    var editedText: NativeIdentityTextPresentation?
     var botBadgeFrame: CGRect?
     var timestampFrame: CGRect?
     var editedFrame: CGRect?
@@ -181,14 +190,14 @@ struct NativeTimelineRowLayout {
         model: AppModel? = nil,
         metrics: Metrics? = nil
     ) -> Self {
-        let width = max(220, proposedWidth)
+        let width = max(InterfaceScale.metric(220), proposedWidth)
         switch item {
         case .inboxGroup:
-            return Self(height: 58)
+            return Self(height: InboxRowMetrics.headerHeight)
         case .inboxEvent:
-            return Self(height: 104)
+            return Self(height: InboxRowMetrics.scheduledEventHeight)
         case .inboxForumPost:
-            return Self(height: 88)
+            return Self(height: InboxRowMetrics.forumPostHeight)
         case let .loader(isLoading, kind):
             let loaderLayout = NativeTimelineLoaderLayout.make(
                 isLoading: isLoading,
@@ -233,17 +242,17 @@ struct NativeTimelineBeginningLayout {
         beginning: NativeTimelineBeginning,
         width: CGFloat
     ) -> Self {
-        let horizontalInset: CGFloat = 16
+        let horizontalInset: CGFloat = InterfaceScale.metric(16)
         let contentWidth = max(
             1,
             width - horizontalInset * 2
         )
-        let iconFrame = CGRect(x: horizontalInset, y: 28, width: 68, height: 68)
-        let titleFont = NSFont.systemFont(
+        let iconFrame = CGRect(x: horizontalInset, y: InterfaceScale.metric(28), width: InterfaceScale.metric(68), height: InterfaceScale.metric(68))
+        let titleFont = NSFont.interfaceSystemFont(
             ofSize: NSFont.preferredFont(forTextStyle: .largeTitle).pointSize,
             weight: .bold
         )
-        let descriptionFont = NSFont.preferredFont(forTextStyle: .body)
+        let descriptionFont = NSFont.interfacePreferredFont(forTextStyle: .body)
         let titleHeight = legacyLargeTitleHeight(
             beginning.title,
             font: titleFont,
@@ -251,7 +260,7 @@ struct NativeTimelineBeginningLayout {
         )
         let titleFrame = CGRect(
             x: horizontalInset,
-            y: iconFrame.maxY + 9,
+            y: iconFrame.maxY + InterfaceScale.metric(9),
             width: contentWidth,
             height: titleHeight
         )
@@ -262,13 +271,13 @@ struct NativeTimelineBeginningLayout {
         )
         let descriptionFrame = CGRect(
             x: horizontalInset,
-            y: titleFrame.maxY + 9,
+            y: titleFrame.maxY + InterfaceScale.metric(9),
             width: contentWidth,
             height: descriptionHeight
         )
         let contentHeight = descriptionFrame.maxY + 18
         let dateSeparatorFrame = beginning.startedAt.map { _ in
-            CGRect(x: 0, y: contentHeight, width: width, height: 37)
+            CGRect(x: 0, y: contentHeight, width: width, height: InterfaceScale.metric(37))
         }
         return Self(
             iconFrame: iconFrame,
@@ -344,7 +353,7 @@ struct NativeTimelineLoaderLayout {
                 spinnerFrame: nil
             )
         }
-        let font = NSFont.preferredFont(forTextStyle: .caption1)
+        let font = NSFont.interfacePreferredFont(forTextStyle: .caption1)
         let label = kind.loadingLabel
         let measured = (label as NSString).size(
             withAttributes: [.font: font]
@@ -353,15 +362,15 @@ struct NativeTimelineLoaderLayout {
             width: ceil(measured.width),
             height: ceil(measured.height)
         )
-        let spinnerSize: CGFloat = 16
-        let spacing: CGFloat = 8
+        let spinnerSize: CGFloat = InterfaceScale.metric(16)
+        let spacing: CGFloat = InterfaceScale.metric(8)
         let controlSize = CGSize(
             width: spinnerSize + spacing + labelSize.width,
             height: max(spinnerSize, labelSize.height)
         )
         let controlFrame = CGRect(
             x: (width - controlSize.width) / 2,
-            y: 10,
+            y: InterfaceScale.metric(10),
             width: controlSize.width,
             height: controlSize.height
         )
@@ -399,29 +408,29 @@ struct NativeTimelineSearchPrefixLayout {
             return Self(region: nil, height: 0)
         }
         let sectionFrame = CGRect(
-            x: 14,
-            y: 8,
-            width: max(1, width - 28),
-            height: context.sectionSubtitle == nil ? 24 : 34
+            x: InterfaceScale.metric(14),
+            y: InterfaceScale.metric(8),
+            width: max(1, width - InterfaceScale.metric(28)),
+            height: context.sectionSubtitle == nil ? InterfaceScale.metric(24) : InterfaceScale.metric(34)
         )
         let iconFrame = CGRect(
             x: sectionFrame.minX,
-            y: sectionFrame.minY + 2,
-            width: 20,
-            height: 20
+            y: sectionFrame.minY + InterfaceScale.metric(2),
+            width: InterfaceScale.metric(20),
+            height: InterfaceScale.metric(20)
         )
         let titleFrame = CGRect(
-            x: iconFrame.maxX + 7,
+            x: iconFrame.maxX + InterfaceScale.metric(7),
             y: sectionFrame.minY,
-            width: max(1, sectionFrame.maxX - iconFrame.maxX - 7),
-            height: 18
+            width: max(1, sectionFrame.maxX - iconFrame.maxX - InterfaceScale.metric(7)),
+            height: InterfaceScale.metric(18)
         )
         let subtitleFrame = context.sectionSubtitle.map { _ in
             CGRect(
                 x: titleFrame.minX,
                 y: titleFrame.maxY,
                 width: titleFrame.width,
-                height: 14
+                height: InterfaceScale.metric(14)
             )
         }
         return Self(

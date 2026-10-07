@@ -40,7 +40,7 @@ private struct MessageSearchFilterSummary: View {
 
     var body: some View {
         ScrollView(.horizontal) {
-            HStack(spacing: 6) {
+            HStack(spacing: InterfaceScale.metric(6)) {
                 if !filters.authorIDs.isEmpty {
                     chip("From \(filters.authorIDs.count)", image: "person.fill")
                 }
@@ -72,9 +72,9 @@ private struct MessageSearchFilterSummary: View {
 
     private func chip(_ title: String, image: String) -> some View {
         Label(title, systemImage: image)
-            .font(.caption.weight(.medium))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .font(.interface(.caption).weight(.medium))
+            .padding(.horizontal, InterfaceScale.metric(8))
+            .padding(.vertical, InterfaceScale.metric(4))
             .background(.quaternary, in: Capsule())
     }
 }
@@ -84,11 +84,11 @@ private struct MessageSearchResultsHeader: View {
     let search: MessageSearchState
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: InterfaceScale.metric(8)) {
             Text(resultTitle)
-                .font(.headline.weight(.semibold))
+                .font(.interface(.headline).weight(.semibold))
                 .contentTransition(.numericText())
-            Spacer(minLength: 8)
+            Spacer(minLength: InterfaceScale.metric(8))
             Button {
                 search.isFilterModalPresented = true
             } label: {
@@ -114,8 +114,8 @@ private struct MessageSearchResultsHeader: View {
             .menuStyle(.borderlessButton)
             .fixedSize()
         }
-        .padding(.horizontal, 12)
-        .frame(height: 44)
+        .padding(.horizontal, InterfaceScale.metric(12))
+        .frame(height: InterfaceScale.metric(44))
     }
 
     private var resultTitle: String {
@@ -182,14 +182,14 @@ private struct MessageSearchResultsContent: View {
             }
 
             if search.isSearching {
-                VStack(spacing: 10) {
+                VStack(spacing: InterfaceScale.metric(10)) {
                     ProgressView()
                     Text("Searching…")
-                        .font(.caption)
+                        .font(.interface(.caption))
                         .foregroundStyle(.secondary)
                 }
-                .padding(18)
-                .glassEffect(.regular, in: .rect(cornerRadius: 12))
+                .padding(InterfaceScale.metric(18))
+                .glassEffect(.regular, in: .rect(cornerRadius: InterfaceScale.metric(12)))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -254,8 +254,8 @@ private struct MessageSearchPagination: View {
                 .controlSize(.regular)
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 12)
-            .frame(height: 46)
+            .padding(.horizontal, InterfaceScale.metric(12))
+            .frame(height: InterfaceScale.metric(46))
             .frame(maxWidth: .infinity)
             .background(.bar)
         }
@@ -291,7 +291,7 @@ struct MessageSearchFiltersWindowOverlay: View {
 }
 
 struct MessageSearchFiltersOverlay: View {
-    private static let contentWidth: CGFloat = 464
+    private static var contentWidth: CGFloat { InterfaceScale.metric(464) }
 
     let model: AppModel
     let search: MessageSearchState
@@ -312,19 +312,19 @@ struct MessageSearchFiltersOverlay: View {
                     panel
                         .background(
                             Color(nsColor: .windowBackgroundColor),
-                            in: ConcentricRectangle(cornerRadius: 16, style: .continuous)
+                            in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(16), style: .continuous)
                         )
                         .overlay {
-                            ConcentricRectangle(cornerRadius: 16, style: .continuous)
+                            ConcentricRectangle(cornerRadius: InterfaceScale.metric(16), style: .continuous)
                                 .stroke(.separator, lineWidth: 1)
                         }
-                        .shadow(color: .black.opacity(0.28), radius: 24, y: 10)
+                        .shadow(color: .black.opacity(0.28), radius: InterfaceScale.metric(24), y: 10)
                         .scaleEffect(animationState.isVisible ? 1 : 0.965)
                         .frame(
                             width: min(500, max(0, geometry.size.width - 48)),
                             height: min(650, max(0, geometry.size.height - 48))
                         )
-                        .padding(24)
+                        .padding(InterfaceScale.metric(24))
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -345,7 +345,7 @@ struct MessageSearchFiltersOverlay: View {
         VStack(spacing: 0) {
             HStack {
                 Text("Filters")
-                    .font(.title2.weight(.semibold))
+                    .font(.interface(.title2).weight(.semibold))
                 Spacer()
                 HoverCloseButton(
                     help: "Close",
@@ -353,10 +353,10 @@ struct MessageSearchFiltersOverlay: View {
                     action: dismiss
                 )
             }
-            .padding(18)
+            .padding(InterfaceScale.metric(18))
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: InterfaceScale.metric(18)) {
                     MessageSearchMultiSelect(
                         title: "From",
                         subtitle: "Sent by any of the selected users",
@@ -425,7 +425,7 @@ struct MessageSearchFiltersOverlay: View {
                         update: { draft.authorTypes = $0 }
                     )
 
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: InterfaceScale.metric(8)) {
                         MessageSearchFilterLabel(
                             title: "Pinned",
                             subtitle: "Whether the message is pinned"
@@ -447,8 +447,8 @@ struct MessageSearchFiltersOverlay: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .frame(width: Self.contentWidth, alignment: .leading)
-                .padding(.horizontal, 18)
-                .padding(.bottom, 18)
+                .padding(.horizontal, InterfaceScale.metric(18))
+                .padding(.bottom, InterfaceScale.metric(18))
             }
             .clipped()
 
@@ -467,7 +467,7 @@ struct MessageSearchFiltersOverlay: View {
                     .buttonStyle(.borderedProminent)
                     .tint(SakuraCordAccentColor.color)
             }
-            .padding(18)
+            .padding(InterfaceScale.metric(18))
         }
     }
 
@@ -593,7 +593,7 @@ where Value.ID: Hashable & Sendable {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(8)) {
             MessageSearchFilterLabel(title: title, subtitle: subtitle)
             SelectionField(
                 selection: Binding(
@@ -631,7 +631,7 @@ private struct MessageSearchOptionMenu<Value: Hashable & Sendable>: View {
     let update: @MainActor @Sendable ([Value]) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(8)) {
             MessageSearchFilterLabel(title: title, subtitle: subtitle)
             SelectionField(
                 selection: Binding(
@@ -665,7 +665,7 @@ private struct MessageSearchDateFilters: View {
     @Binding var afterDate: Date
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(8)) {
             MessageSearchFilterLabel(
                 title: "Date",
                 subtitle: "When the message was sent"
@@ -701,7 +701,7 @@ private struct MessageSearchDateFilters: View {
                         afterEnabled = true
                     }
                 }
-                .font(.caption)
+                .font(.interface(.caption))
                 .buttonStyle(.link)
             }
         }
@@ -726,9 +726,9 @@ private struct MessageSearchDateFilters: View {
             .labelStyle(.iconOnly)
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 12)
-        .frame(height: 42)
-        .glassEffect(.regular, in: .rect(cornerRadius: 8))
+        .padding(.horizontal, InterfaceScale.metric(12))
+        .frame(height: InterfaceScale.metric(42))
+        .glassEffect(.regular, in: .rect(cornerRadius: InterfaceScale.metric(8)))
     }
 }
 
@@ -737,11 +737,11 @@ private struct MessageSearchFilterLabel: View {
     let subtitle: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(2)) {
             Text(title)
                 .fontWeight(.semibold)
             Text(subtitle)
-                .font(.caption)
+                .font(.interface(.caption))
                 .foregroundStyle(.secondary)
         }
     }
@@ -752,21 +752,21 @@ private struct MessageSearchFilterMenuLabel: View {
     var leadingSystemImage: String?
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: InterfaceScale.metric(8)) {
             if let leadingSystemImage {
                 Image(systemName: leadingSystemImage)
             }
             Text(title)
                 .lineLimit(1)
-            Spacer(minLength: 8)
+            Spacer(minLength: InterfaceScale.metric(8))
             Image(systemName: "chevron.down")
-                .font(.caption.weight(.semibold))
+                .font(.interface(.caption).weight(.semibold))
                 .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 12)
-        .frame(maxWidth: .infinity, minHeight: 42)
+        .padding(.horizontal, InterfaceScale.metric(12))
+        .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(42))
         .contentShape(.rect)
-        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 8))
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: InterfaceScale.metric(8)))
     }
 }
 
@@ -798,7 +798,7 @@ private struct MessageSearchFilterMenu<Content: View>: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .accessibilityLabel(title)
-        .frame(height: 42)
+        .frame(height: InterfaceScale.metric(42))
     }
 }
 

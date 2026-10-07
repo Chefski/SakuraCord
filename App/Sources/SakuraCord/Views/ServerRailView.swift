@@ -57,14 +57,14 @@ struct ServerRailContainer: View {
                 openFolderSettings: { folderSettings = $0 }
             )
         )
-        .windowModal(item: $folderSettings, title: "Folder Settings", cornerRadius: 32, cornerStyle: .circular) { folder in
+        .windowModal(item: $folderSettings, title: "Folder Settings", cornerRadius: InterfaceScale.metric(32), cornerStyle: .circular) { folder in
             ServerFolderSettingsView(folder: folder) { name, colorHex in
                 model.updateServerFolder(folder.id, name: name, colorHex: colorHex)
             }
         }
-        .windowModal(isPresented: $invites.showsJoinDialog, cornerRadius: 32, cornerStyle: .circular,
+        .windowModal(isPresented: $invites.showsJoinDialog, cornerRadius: InterfaceScale.metric(32), cornerStyle: .circular,
                      isConcealed: { model.serverInvites.captcha.challenge != nil }, content: { JoinServerView(model: model) })
-        .windowModal(item: Bindable(invites.creation).presentation, cornerRadius: 32, cornerStyle: .circular) {
+        .windowModal(item: Bindable(invites.creation).presentation, cornerRadius: InterfaceScale.metric(32), cornerStyle: .circular) {
             ServerInviteCreationView(model: model, presentation: $0)
         }
         .modifier(ServerInviteCaptchaPresentation(store: invites.captcha))
@@ -109,7 +109,7 @@ struct ServerRailView: View {
             // Expanded folders make rail rows variable-height. Lazy layout
             // corrects its content estimate while reverse-scrolling, which
             // disrupts AppKit's elastic rebound at the top boundary.
-            VStack(spacing: 10) {
+            VStack(spacing: InterfaceScale.metric(10)) {
                 HomeRailButton(
                     home: home,
                     action: selectHome
@@ -121,7 +121,7 @@ struct ServerRailView: View {
                     }
                 }
 
-                Divider().padding(.horizontal, 12)
+                Divider().padding(.horizontal, InterfaceScale.metric(12))
 
                 ForEach(items) { item in
                     ServerRailItemView(
@@ -134,17 +134,17 @@ struct ServerRailView: View {
                     )
                 }
                 Button(action: joinServer) {
-                    Image(systemName: "plus").font(.system(size: 22, weight: .medium))
-                        .frame(width: 44, height: 44)
+                    Image(systemName: "plus").font(.interfaceSystem(size: 22, weight: .medium))
+                        .frame(width: InterfaceScale.metric(44), height: InterfaceScale.metric(44))
                         .foregroundStyle(.green)
-                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 16))
+                        .background(.quaternary, in: RoundedRectangle(cornerRadius: InterfaceScale.metric(16)))
                 }
                 .buttonStyle(.plain)
                 .help("Add a Server")
                 .accessibilityLabel("Add a Server")
                 .accessibilityIdentifier("add-server")
             }
-            .padding(.bottom, 12)
+            .padding(.bottom, InterfaceScale.metric(12))
             .animation(ServerRailAnimations.folderExpansion, value: folderLayoutRevision)
         }
         // Unlike .hidden, .never overrides macOS's always-visible scrollbar preference.
@@ -255,7 +255,7 @@ private struct DirectMessageRailButton: View {
         let channel = entry.channel
         let displayName = channel.name.isEmpty ? "Group Direct Message" : channel.name
 
-        HStack(spacing: 5) {
+        HStack(spacing: InterfaceScale.metric(5)) {
             ServerRailSelectionIndicator(
                 isSelected: entry.isSelected,
                 isHovering: isHovering,
@@ -265,7 +265,7 @@ private struct DirectMessageRailButton: View {
                 ServerRailBadgedIcon(mentionCount: channel.mentionCount) {
                     DirectMessageAvatar(
                         channel: channel,
-                        size: 44,
+                        size: InterfaceScale.metric(44),
                         status: nil,
                         animates: true,
                         isHovered: isHovering
@@ -281,7 +281,7 @@ private struct DirectMessageRailButton: View {
             )
             .help(displayName)
         }
-        .frame(width: ChatChromeMetrics.serverRailWidth, height: 46, alignment: .topLeading)
+        .frame(width: ChatChromeMetrics.serverRailWidth, height: InterfaceScale.metric(46), alignment: .topLeading)
         .contentShape(Rectangle())
         .anchorPreference(key: ServerRailHoverPreferenceKey.self, value: .bounds) { bounds in
             isHovering ? ServerRailHoverItem(name: displayName, bounds: bounds) : nil
@@ -305,15 +305,15 @@ struct ServerRailBadgedIcon<Icon: View>: View {
             icon
                 .overlay(alignment: .bottomTrailing) {
                     badge
-                        .padding(2)
+                        .padding(InterfaceScale.metric(2))
                         .background(.black, in: Capsule())
-                        .offset(x: 6, y: 6)
+                        .offset(x: InterfaceScale.metric(6), y: InterfaceScale.metric(6))
                         .blendMode(.destinationOut)
                         .accessibilityHidden(true)
                 }
                 .compositingGroup()
                 .overlay(alignment: .bottomTrailing) {
-                    badge.offset(x: 4, y: 4)
+                    badge.offset(x: InterfaceScale.metric(4), y: InterfaceScale.metric(4))
                 }
         } else {
             icon
@@ -322,10 +322,10 @@ struct ServerRailBadgedIcon<Icon: View>: View {
 
     private var badge: some View {
         Text(mentionCount, format: .number)
-            .font(.system(size: 10, weight: .bold))
+            .font(.interfaceSystem(size: 10, weight: .bold))
             .foregroundStyle(.white)
-            .padding(.horizontal, 5)
-            .frame(minWidth: 18, minHeight: 18)
+            .padding(.horizontal, InterfaceScale.metric(5))
+            .frame(minWidth: InterfaceScale.metric(18), minHeight: InterfaceScale.metric(18))
             .background(Color(hex: 0xF23F43), in: Capsule())
     }
 }
@@ -407,7 +407,7 @@ struct GuildRailButton: View {
         let guild = presentation.guild
         let displayName = guild.name.isEmpty ? "Unnamed Server" : guild.name
 
-        HStack(spacing: 5) {
+        HStack(spacing: InterfaceScale.metric(5)) {
             ServerRailSelectionIndicator(
                 isSelected: isSelected,
                 isHovering: isHovering,
@@ -418,8 +418,8 @@ struct GuildRailButton: View {
                     GuildIconView(
                         name: displayName,
                         iconURL: guild.iconURL,
-                        size: 44,
-                        cornerRadius: 14,
+                        size: InterfaceScale.metric(44),
+                        cornerRadius: InterfaceScale.metric(14),
                         animates: isHovering,
                         isSelected: isSelected
                     )
@@ -464,7 +464,7 @@ struct GuildRailButton: View {
             )
             .help(displayName)
         }
-        .frame(width: ChatChromeMetrics.serverRailWidth, height: 46, alignment: .topLeading)
+        .frame(width: ChatChromeMetrics.serverRailWidth, height: InterfaceScale.metric(46), alignment: .topLeading)
         .contentShape(Rectangle())
         .anchorPreference(key: ServerRailHoverPreferenceKey.self, value: .bounds) { bounds in
             isHovering ? ServerRailHoverItem(name: displayName, bounds: bounds) : nil
@@ -479,11 +479,11 @@ private struct ServerRailHoverLabel: View {
 
     var body: some View {
         Text(name)
-            .font(.callout.weight(.semibold))
+            .font(.interface(.callout).weight(.semibold))
             .lineLimit(1)
             .fixedSize()
-            .padding(.horizontal, 11)
-            .frame(height: 32)
+            .padding(.horizontal, InterfaceScale.metric(11))
+            .frame(height: InterfaceScale.metric(32))
             .glassEffect(.regular, in: Capsule())
             .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .leading)))
             .allowsHitTesting(false)
@@ -510,7 +510,7 @@ private struct HomeRailButton: View {
     @State private var isHovering = false
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: InterfaceScale.metric(5)) {
             ServerRailSelectionIndicator(
                 isSelected: home.isSelected,
                 isHovering: isHovering,
@@ -518,19 +518,19 @@ private struct HomeRailButton: View {
             )
             Button(action: action) {
                 Image(systemName: "message.fill")
-                    .font(.title2)
-                    .frame(width: 44, height: 44)
+                    .font(.interface(.title2))
+                    .frame(width: InterfaceScale.metric(44), height: InterfaceScale.metric(44))
                     .background(
                         home.isSelected
                             ? SakuraCordAccentColor.color
                             : Color.secondary.opacity(0.16),
-                        in: ConcentricRectangle(cornerRadius: 14, style: .continuous)
+                        in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(14), style: .continuous)
                     )
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Direct Messages")
         }
-        .frame(width: ChatChromeMetrics.serverRailWidth, height: 46, alignment: .leading)
+        .frame(width: ChatChromeMetrics.serverRailWidth, height: InterfaceScale.metric(46), alignment: .leading)
         .contentShape(Rectangle())
         .onModalHover { isHovering = $0 }
         .help("Direct Messages")
@@ -546,21 +546,21 @@ struct ServerRailSelectionIndicator: View {
     var body: some View {
         Capsule()
             .fill(colorScheme == .dark ? Color.white : Color.black)
-            .frame(width: 4, height: indicatorHeight)
+            .frame(width: InterfaceScale.metric(4), height: indicatorHeight)
             .opacity(indicatorHeight == 0 ? 0 : 1)
-            .frame(width: 7, height: 40)
+            .frame(width: InterfaceScale.metric(7), height: InterfaceScale.metric(40))
             .animation(.snappy(duration: 0.2), value: indicatorHeight)
     }
 
     private var indicatorHeight: CGFloat {
         if isSelected {
-            return 36
+            return InterfaceScale.metric(36)
         }
         if isHovering {
-            return 20
+            return InterfaceScale.metric(20)
         }
         if hasNotification {
-            return 8
+            return InterfaceScale.metric(8)
         }
         return 0
     }

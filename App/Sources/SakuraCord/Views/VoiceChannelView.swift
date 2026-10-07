@@ -19,13 +19,13 @@ struct VoiceChannelView: View {
         if model.voiceSessionState == .connecting || model.voiceSessionState == .reconnecting {
             ZStack {
                 VoiceVideoGrid(model: model)
-                VStack(spacing: 10) {
+                VStack(spacing: InterfaceScale.metric(10)) {
                     ProgressView()
                     Text(model.voiceSessionState == .reconnecting ? "Reconnecting…" : "Connecting…")
-                        .font(.callout.weight(.medium))
+                        .font(.interface(.callout).weight(.medium))
                 }
-                .padding(18)
-                .glassEffect(.regular, in: ConcentricRectangle(cornerRadius: 16, style: .continuous))
+                .padding(InterfaceScale.metric(18))
+                .glassEffect(.regular, in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(16), style: .continuous))
             }
         } else if model.voiceSessionState == .failed
             || model.voiceSessionState == .disconnected
@@ -33,20 +33,20 @@ struct VoiceChannelView: View {
             ZStack {
                 VoiceVideoGrid(model: model)
                     .opacity(0.45)
-                VStack(spacing: 10) {
+                VStack(spacing: InterfaceScale.metric(10)) {
                     Image(systemName: "wifi.exclamationmark")
-                        .font(.system(size: 28, weight: .medium))
+                        .font(.interfaceSystem(size: 28, weight: .medium))
                         .foregroundStyle(Color(hex: 0xDA373C))
                     Text("Voice disconnected")
-                        .font(.headline)
+                        .font(.interface(.headline))
                     Text("SakuraCord is no longer receiving call audio.")
-                        .font(.callout)
+                        .font(.interface(.callout))
                         .foregroundStyle(.secondary)
                 }
-                .padding(20)
+                .padding(InterfaceScale.metric(20))
                 .glassEffect(
                     .regular.tint(Color(hex: 0xDA373C).opacity(0.16)),
-                    in: ConcentricRectangle(cornerRadius: 16, style: .continuous)
+                    in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(16), style: .continuous)
                 )
             }
         } else {
@@ -54,38 +54,38 @@ struct VoiceChannelView: View {
         }
 
         VoiceCallControlDock(model: model)
-            .padding(.horizontal, 18)
-            .padding(.bottom, 18)
+            .padding(.horizontal, InterfaceScale.metric(18))
+            .padding(.bottom, InterfaceScale.metric(18))
     }
 
     private var disconnectedContent: some View {
         let previewParticipants = previewParticipants
-        return VStack(spacing: 16) {
-            HStack(spacing: 9) {
+        return VStack(spacing: InterfaceScale.metric(16)) {
+            HStack(spacing: InterfaceScale.metric(9)) {
                 Image(systemName: "speaker.wave.2.fill")
                     .foregroundStyle(.secondary)
                 Text(channel?.name ?? "Voice")
-                    .font(.title2.weight(.bold))
+                    .font(.interface(.title2).weight(.bold))
             }
-            .padding(.top, 24)
+            .padding(.top, InterfaceScale.metric(24))
 
             if previewParticipants.isEmpty {
                 Spacer()
-                VStack(spacing: 16) {
+                VStack(spacing: InterfaceScale.metric(16)) {
                     Text("No one is currently in voice")
-                        .font(.callout)
+                        .font(.interface(.callout))
                         .foregroundStyle(.secondary)
                     joinButton
                 }
                 Spacer()
             } else {
                 Text(occupancyText)
-                    .font(.callout)
+                    .font(.interface(.callout))
                     .foregroundStyle(.secondary)
                 VoiceChannelPreviewGrid(participants: previewParticipants)
 
                 joinButton
-                    .padding(.bottom, 24)
+                    .padding(.bottom, InterfaceScale.metric(24))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -97,9 +97,9 @@ struct VoiceChannelView: View {
             Task { await model.joinVoice(channel) }
         } label: {
             Label("Join Voice", systemImage: "phone.fill")
-                .font(.callout.weight(.semibold))
-                .padding(.horizontal, 18)
-                .frame(height: 40)
+                .font(.interface(.callout).weight(.semibold))
+                .padding(.horizontal, InterfaceScale.metric(18))
+                .frame(height: InterfaceScale.metric(40))
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -179,18 +179,18 @@ private struct VoiceChannelPreviewGrid: View {
         case 2 ... 4: 2
         default: 3
         }
-        return Array(repeating: GridItem(.flexible(), spacing: 12), count: count)
+        return Array(repeating: GridItem(.flexible(), spacing: InterfaceScale.metric(12)), count: count)
     }
 
     var body: some View {
         ScrollView {
-            LazyVGrid(columns: columns, spacing: 12) {
+            LazyVGrid(columns: columns, spacing: InterfaceScale.metric(12)) {
                 ForEach(participants) { participant in
                     VoiceChannelPreviewCard(participant: participant)
                 }
             }
-            .padding(14)
-            .frame(maxWidth: 1020)
+            .padding(InterfaceScale.metric(14))
+            .frame(maxWidth: InterfaceScale.metric(1020))
         }
         .scrollIndicators(.hidden)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -203,10 +203,10 @@ private struct VoiceChannelPreviewCard: View {
     var body: some View {
         ZStack {
             Color.primary.opacity(0.055)
-            AvatarView(name: participant.name, url: participant.avatarURL, size: 88)
+            AvatarView(name: participant.name, url: participant.avatarURL, size: InterfaceScale.metric(88))
         }
         .overlay(alignment: .topTrailing) {
-            HStack(spacing: 6) {
+            HStack(spacing: InterfaceScale.metric(6)) {
                 if participant.isStreaming {
                     Image(systemName: "display")
                         .foregroundStyle(Color(hex: 0x23A55A))
@@ -217,10 +217,10 @@ private struct VoiceChannelPreviewCard: View {
                         .accessibilityLabel("Camera on")
                 }
             }
-            .font(.caption.weight(.semibold))
-            .padding(8)
+            .font(.interface(.caption).weight(.semibold))
+            .padding(InterfaceScale.metric(8))
             .glassEffect(.regular, in: Capsule())
-            .padding(10)
+            .padding(InterfaceScale.metric(10))
             .opacity(participant.isCameraEnabled || participant.isStreaming ? 1 : 0)
         }
         .overlay(alignment: .bottomLeading) {
@@ -230,13 +230,13 @@ private struct VoiceChannelPreviewCard: View {
                 isMuted: participant.isMuted,
                 isDeafened: participant.isDeafened
             )
-            .padding(10)
+            .padding(InterfaceScale.metric(10))
         }
         .frame(maxWidth: .infinity)
         .aspectRatio(16 / 9, contentMode: .fit)
-        .clipShape(ConcentricRectangle(cornerRadius: 16, style: .continuous))
+        .clipShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(16), style: .continuous))
         .overlay {
-            ConcentricRectangle(cornerRadius: 16, style: .continuous)
+            ConcentricRectangle(cornerRadius: InterfaceScale.metric(16), style: .continuous)
                 .stroke(Color.primary.opacity(0.08), lineWidth: 1)
         }
         .accessibilityElement(children: .combine)

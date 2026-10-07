@@ -14,11 +14,11 @@ struct ComposerSlowmodeIndicator: View {
                 let title = remaining > 0
                     ? Self.countdown(remaining)
                     : (configuration.immune ? "Slowmode Immune" : "Slowmode is enabled")
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: InterfaceScale.metric(4)) {
                     Image(systemName: "stopwatch.fill")
                     Text(title)
                 }
-                    .font(.caption)
+                    .font(.interface(.caption))
                     .monospacedDigit()
                     .keyframeAnimator(
                         initialValue: 0.0,
@@ -34,16 +34,16 @@ struct ComposerSlowmodeIndicator: View {
                     .onModalHover { isHovering = $0 }
                     .nativeHoverPopover(isPresented: $isHovering) {
                         Text("Slowmode is enabled. Members can send one message every \(Self.intervalDescription(configuration.interval)).")
-                            .font(.callout)
+                            .font(.interface(.callout))
                             .multilineTextAlignment(.center)
-                            .frame(width: 250)
-                            .padding(12)
+                            .frame(width: InterfaceScale.metric(250))
+                            .padding(InterfaceScale.metric(12))
                     }
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
             .padding(.leading, ChatChromeMetrics.composerWindowInset)
             .padding(.trailing, trailingInset)
-            .padding(.bottom, 5)
+            .padding(.bottom, InterfaceScale.metric(5))
         }
     }
 

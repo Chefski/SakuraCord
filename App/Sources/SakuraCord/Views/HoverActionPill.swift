@@ -1,9 +1,9 @@
 import SwiftUI
 
 nonisolated enum HoverActionPillMetrics {
-    static let controlDiameter: CGFloat = 28
-    static let spacing: CGFloat = 1
-    static let padding: CGFloat = 4
+    static var controlDiameter: CGFloat { InterfaceScale.metric(28) }
+    static var spacing: CGFloat { InterfaceScale.metric(1) }
+    static var padding: CGFloat { InterfaceScale.metric(4) }
 
     static func size(controlCount: Int) -> CGSize {
         let count = max(1, controlCount)
@@ -38,7 +38,7 @@ struct HoverActionPill<Content: View>: View {
 struct HoverCloseButton: View {
     let help: LocalizedStringResource
     let accessibilityIdentifier: String
-    var diameter: CGFloat = 36
+    var diameter: CGFloat = InterfaceScale.metric(36)
     var iconSize: CGFloat = 15
     let action: () -> Void
     @State private var isHovered = false
@@ -46,7 +46,7 @@ struct HoverCloseButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: "xmark")
-                .font(.system(size: iconSize, weight: .medium))
+                .font(.interfaceSystem(size: iconSize, weight: .medium))
                 .frame(width: diameter, height: diameter)
                 .contentShape(Circle())
                 .background {
@@ -68,7 +68,7 @@ struct HoverActionButton: View {
     var role: ButtonRole?
     var isSelected: Bool?
     var diameter: CGFloat?
-    var iconFont: Font = .callout.weight(.medium)
+    var iconFont: Font = .interface(.callout).weight(.medium)
     var onHoverChanged: ((Bool) -> Void)?
     let action: () -> Void
 
@@ -99,7 +99,7 @@ struct HoverActionButton: View {
 struct HoverActionControlLabel<Content: View>: View {
     var role: ButtonRole?
     var isSelected: Bool?
-    var diameter: CGFloat = 28
+    var diameter: CGFloat = InterfaceScale.metric(28)
     var onHoverChanged: ((Bool) -> Void)?
     @ViewBuilder let content: () -> Content
     @State private var isHovering = false

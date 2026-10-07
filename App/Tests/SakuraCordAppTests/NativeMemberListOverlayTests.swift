@@ -49,7 +49,8 @@ func `member list recycles animated avatar overlays during scrolling`() {
 
 @Test @MainActor
 func `member list reuses prepared text for unchanged members`() {
-    let first = member(id: 1, name: "First")
+    var first = member(id: 1, name: "First")
+    first.user.primaryGuild = PrimaryGuildIdentity(guildID: GuildID(rawValue: 42), tag: "TEST")
     let second = member(id: 2, name: "Second")
     let canvas = NativeMemberListCanvasView()
     canvas.updateDocumentIfNeeded(sections: [
@@ -61,7 +62,8 @@ func `member list reuses prepared text for unchanged members`() {
             members: [first]
         ),
     ])
-    let firstPreparedName = canvas.preparedText[.member(first.id)]?.name
+    let firstPrepared = canvas.preparedText[.member(first.id)]
+    let firstPreparedName = firstPrepared?.name
 
     canvas.updateDocumentIfNeeded(sections: [
         MemberSection(
@@ -74,6 +76,23 @@ func `member list reuses prepared text for unchanged members`() {
     ])
     #expect(canvas.preparedText[.member(first.id)]?.name === firstPreparedName)
     #expect(canvas.preparedText[.member(second.id)] != nil)
+    #expect(canvas.preparedText[.member(first.id)] === firstPrepared)
+    #expect(firstPrepared?.serverTag?.identity == first.user.primaryGuild)
+
+    // A tag identity update must invalidate its prepared content even when
+    // the member's display name and row position remain unchanged.
+    first.user.primaryGuild = PrimaryGuildIdentity(guildID: GuildID(rawValue: 43), tag: "NEW")
+    canvas.updateDocumentIfNeeded(sections: [
+        MemberSection(
+            id: .online,
+            title: "Online",
+            colorHex: nil,
+            totalCount: 2,
+            members: [first, second]
+        ),
+    ])
+    #expect(canvas.preparedText[.member(first.id)] !== firstPrepared)
+    #expect(canvas.preparedText[.member(first.id)]?.serverTag?.identity == first.user.primaryGuild)
 }
 
 @Test @MainActor

@@ -1,5 +1,6 @@
 @testable import SakuraCord
 import Foundation
+import MessageRendering
 import SakuraCordModels
 import Testing
 
@@ -128,6 +129,59 @@ import Testing
     ))
 }
 
+@Test func `Trusted hosts cannot suppress suspicious link and direct download warnings`() throws {
+    let trusted = ["github.com", "www.github.com", "*.example.com"]
+    for address in [
+        "http://github.com/owner/repo",
+        "https://someone@github.com/owner/repo",
+        "https://github.com/owner/repo/releases/download/v1/tool.zip",
+        "https://github.com/owner/repo/releases/latest/download/tool.zip",
+        "https://github.com/owner/repo/raw/main/tool.sh",
+        "https://github.com/owner/repo/zipball/main",
+        "https://github.com/owner/repo/tarball/main",
+        "https://github.com/owner/repo/archive/refs/heads/main.zip",
+        "https://github.com/owner/repo/files/123/tool.zip",
+        "https://github.com/user-attachments/files/123/tool.zip",
+        "https://github.com/owner/repo/blob/main/tool.sh?raw=true",
+        "https://github.com/owner/repo/blob/main/tool.sh?raw=anything",
+        "https://github.com/owner/repo/blob/main/tool.sh?raw%5B%5D=true",
+        "https://github.com/owner/repo/blob/main/tool.sh?raw",
+        "https://www.github.com/owner/repo/blob/main/tool.sh?raw=1",
+        "https://github.com./owner/repo/%72aw/main/tool.sh",
+        "http://sub.example.com/path",
+    ] {
+        let assessment = ExternalLinkSafetyPolicy.assess(try #require(URL(string: address)))
+        #expect(assessment.isSuspicious, "Expected a warning for \(address)")
+        #expect(ExternalLinkConfirmationPolicy.untrustedDomains.requiresConfirmation(
+            for: assessment, trustedDomains: trusted
+        ))
+        #expect(!ExternalLinkConfirmationPolicy.noLinks.requiresConfirmation(
+            for: assessment, trustedDomains: trusted
+        ))
+    }
+    let url = try #require(URL(string: "https://github.com/owner/repo"))
+    let disguised = ExternalLinkSafetyPolicy.assess(url, displayedText: "https://apple.com")
+    #expect(ExternalLinkConfirmationPolicy.untrustedDomains.requiresConfirmation(
+        for: disguised, trustedDomains: trusted
+    ))
+    for address in [
+        "https://github.com/owner/repo",
+        "https://github.com/owner/repo/releases/tag/v1",
+        "https://github.com/owner/repo/blob/main/tool.sh",
+        "https://github.com/owner/repo/issues/1",
+        "https://github.com/owner/repo/blob/main/releases/download/example.md",
+    ] {
+        let assessment = ExternalLinkSafetyPolicy.assess(try #require(URL(string: address)))
+        #expect(!assessment.isSuspicious)
+        #expect(!ExternalLinkConfirmationPolicy.untrustedDomains.requiresConfirmation(
+            for: assessment, trustedDomains: trusted
+        ))
+        #expect(ExternalLinkConfirmationPolicy.allLinks.requiresConfirmation(
+            for: assessment, trustedDomains: trusted
+        ))
+    }
+}
+
 @MainActor
 @Test func `External link presenter bypasses prompts according to privacy policy`() throws {
     let preferences = SettingsPreferenceStore(defaults: InMemoryPreferences())
@@ -146,10 +200,19 @@ import Testing
     presenter.present(ExternalLinkSafetyPolicy.assess(url))
 
     #expect(openedURLs == [url])
+
+    settings.externalLinkConfirmationPolicy = .untrustedDomains
+    settings.trustedDomains = ["example.com"]
+    store.save(settings)
+    openedURLs = []
+    presenter.present(ExternalLinkSafetyPolicy.assess(url, displayedText: "https://apple.com"))
+    #expect(openedURLs.isEmpty)
+    presenter.present(ExternalLinkSafetyPolicy.assess(url))
+    #expect(openedURLs == [url])
 }
 
 @MainActor
-@Test func `Local activity clears only destinations and learned emoji data`() async throws {
+@Test func `Local activity preserves pending synchronized emoji usage`() async throws {
     let model = AppModel(launchMode: .offlineTesting)
     await model.start()
     let channelID = try #require(model.selectedChannelID)
@@ -157,8 +220,8 @@ import Testing
     model.messageSearch.queryText = "private query"
     model.messageSearch.isPresented = true
     model.forwardDestinationHistory = [channelID]
-    model.emojiRecentKeys = ["wave"]
-    model.emojiUsageCounts = ["wave": 4]
+    model.recordMessageEmojiUsage("👋")
+    let pending = model.emojiFrecency.pendingUsages
     model.discordFavoriteEmojiKeys = ["wave"]
 
     try await model.clearLocalActivity()
@@ -166,8 +229,7 @@ import Testing
     #expect(model.messageSearch.queryText == "private query")
     #expect(model.messageSearch.isPresented)
     #expect(model.forwardDestinationHistory.isEmpty)
-    #expect(model.emojiRecentKeys.isEmpty)
-    #expect(model.emojiUsageCounts.isEmpty)
+    #expect(model.emojiFrecency.pendingUsages == pending)
     #expect(model.discordFavoriteEmojiKeys == ["wave"])
 }
 
@@ -212,4 +274,24 @@ import Testing
     #expect(model.localTypingTask == nil)
     model.scheduleLocalTyping(for: "draft")
     #expect(model.localTypingTask == nil)
+}
+
+@MainActor
+@Test func `Attachment confirmations preserve complete masked host warnings`() async throws {
+    let url = try #require(URL(string: "https://cdn.discordapp.com/attachments/1/2/example.com?ex=ffffffff"))
+    let masked = DiscordMarkdown.appKitAttributed("[https://dis**cord**.com](\(url.absoluteString))")
+    let label = MessageLinkActivator.safetyDisplayedText(in: masked, at: 12)
+    #expect(label == "https://discord.com")
+    let model = AppModel(launchMode: .offlineTesting)
+    let assessment = await withCheckedContinuation { continuation in
+        _ = MessageLinkActivator.activate(
+            url,
+            model: model,
+            displayedText: label,
+            confirmExternal: { continuation.resume(returning: $0) }
+        )
+    }
+    #expect(assessment.warnings.contains {
+        $0.contains("discord.com") && $0.contains("cdn.discordapp.com")
+    })
 }

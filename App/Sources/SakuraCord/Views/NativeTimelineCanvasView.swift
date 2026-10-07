@@ -264,6 +264,10 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
     let messageProfilePopoverCoordinator =
         StableAnchoredPopoverPresenter<AnyView>.Coordinator()
     var activeMessageProfilePopoverAnchor: StablePopoverAnchor?
+    let serverTagPopoverCoordinator = StableAnchoredPopoverPresenter<AnyView>.Coordinator()
+    var activeServerTagPopoverAnchor: StablePopoverAnchor?
+    var serverTagCardPresentation: ServerTagCardPresentation?
+
     var componentChoiceOverlay: ComponentChoiceOverlayController?
     var activeComponentChoiceTarget: NativeTimelineComponentSelectTarget?
     let mentionPopoverCoordinator =
@@ -453,6 +457,7 @@ enum NativeTimelineRowPainter {
         isHovered: Bool,
         showsCompactTimestamp: Bool = false,
         isAuthorHovered: Bool = false,
+        isServerTagHovered: Bool = false,
         hoveredMention: NativeTimelineMentionHover? = nil,
         hoveredTextLink: NativeTimelineTextLinkHover? = nil,
         hoveredTextSpoiler: NativeTimelineTextSpoilerHover? = nil,
@@ -465,6 +470,7 @@ enum NativeTimelineRowPainter {
         componentButtonPressProgress: CGFloat = 0,
         isForwardedSourceHovered: Bool = false,
         isEphemeralDismissHovered: Bool = false,
+        isTranslationActionHovered: Bool = false,
         hidesMessageContent: Bool = false,
         hoveredReactionID: String? = nil,
         isAddReactionHovered: Bool = false,
@@ -486,7 +492,7 @@ enum NativeTimelineRowPainter {
             NSColor.separatorColor.withAlphaComponent(0.42).setStroke()
             let border = NSBezierPath(
                 concentricRoundedRect: cardFrame.insetBy(dx: 0.5, dy: 0.5),
-                cornerRadius: 8.5
+                cornerRadius: InterfaceScale.metric(8.5)
             )
             border.lineWidth = 1
             border.stroke()
@@ -526,6 +532,7 @@ enum NativeTimelineRowPainter {
                 isHovered: isHovered,
                 showsCompactTimestamp: showsCompactTimestamp,
                 isAuthorHovered: isAuthorHovered,
+                isServerTagHovered: isServerTagHovered,
                 hoveredMention: hoveredMention,
                 hoveredTextLink: hoveredTextLink,
                 hoveredTextSpoiler: hoveredTextSpoiler,
@@ -536,6 +543,7 @@ enum NativeTimelineRowPainter {
                     componentButtonPressProgress,
                 isForwardedSourceHovered: isForwardedSourceHovered,
                 isEphemeralDismissHovered: isEphemeralDismissHovered,
+                isTranslationActionHovered: isTranslationActionHovered,
                 hidesMessageContent: hidesMessageContent,
                 hoveredReactionID: hoveredReactionID,
                 isAddReactionHovered: isAddReactionHovered,
@@ -562,7 +570,7 @@ enum NativeTimelineRowPainter {
         CGRect(
             x: frame.minX,
             y: frame.minY,
-            width: min(2, frame.width),
+            width: min(InterfaceScale.metric(2), frame.width),
             height: frame.height
         ).fill()
     }
@@ -686,7 +694,7 @@ enum NativeTimelineRowPainter {
             text(
                 beginning.title,
                 in: layout.titleFrame,
-                font: .systemFont(
+                font: .interfaceSystemFont(
                     ofSize: NSFont.preferredFont(
                         forTextStyle: .largeTitle
                     ).pointSize,
@@ -709,7 +717,7 @@ enum NativeTimelineRowPainter {
             text(
                 beginning.description,
                 in: layout.descriptionFrame,
-                font: .preferredFont(forTextStyle: .body),
+                font: .interfacePreferredFont(forTextStyle: .body),
                 color: .secondaryLabelColor,
                 lineBreakMode: .byWordWrapping
             )
@@ -732,7 +740,7 @@ enum NativeTimelineRowPainter {
         text(
             kind.loadingLabel,
             in: loaderLayout.labelFrame,
-            font: .preferredFont(forTextStyle: .caption1),
+            font: .interfacePreferredFont(forTextStyle: .caption1),
             color: .secondaryLabelColor,
             alignment: .center
         )

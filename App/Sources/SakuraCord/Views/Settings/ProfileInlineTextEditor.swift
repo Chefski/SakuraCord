@@ -9,13 +9,18 @@ struct ProfileInlineTextEditor<Content: View>: View {
     let label: LocalizedStringKey
     @Binding var value: String
     var placeholder: String = ""
-    var font: Font = .system(size: 14)
+    var font: Font = .interfaceSystem(size: 14)
     var nameStyle: DisplayNameStyle?
     var nameSize: CGFloat = 22
     var maximumLength: Int?
     @ViewBuilder let content: Content
 
     @State private var loadedFont: NSFont?
+
+    private struct CustomFontRequest: Equatable {
+        let fontID: Int?
+        let size: CGFloat
+    }
     @State private var isEditing = false
     @State private var originalValue = ""
     @FocusState private var isFocused: Bool
@@ -60,10 +65,13 @@ struct ProfileInlineTextEditor<Content: View>: View {
                 return length <= maximumLength
             })
         }
-        .task(id: nameStyle?.fontID) {
+        .task(id: CustomFontRequest(fontID: nameStyle?.fontID, size: InterfaceScale.fontSize(nameSize))) {
             loadedFont = nil
             guard let definition = ProfileNameFontCache.customDefinition(for: nameStyle?.fontID) else { return }
-            loadedFont = try? await ProfileNameFontLoader.shared.font(definition, size: nameSize)
+            loadedFont = try? await ProfileNameFontLoader.shared.font(
+                definition,
+                size: InterfaceScale.fontSize(nameSize)
+            )
         }
         .onChange(of: isFocused) { _, focused in
             if !focused, isEditing { finish() }

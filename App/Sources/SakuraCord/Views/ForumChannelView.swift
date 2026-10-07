@@ -56,7 +56,7 @@ struct ForumChannelView: View {
                 description: Text(error)
             )
             .overlay(alignment: .bottom) {
-                Button("Try Again") { model.reloadForumPosts() }.padding(24)
+                Button("Try Again") { model.reloadForumPosts() }.padding(InterfaceScale.metric(24))
             }
         } else if model.forumPosts.isEmpty, model.isSearchingForumPosts {
             ForumSearchingState()
@@ -105,7 +105,7 @@ private struct ForumPostCollection: View {
     }
 
     private var listContent: some View {
-        LazyVStack(alignment: .leading, spacing: 10) {
+        LazyVStack(alignment: .leading, spacing: InterfaceScale.metric(10)) {
             ForumListPostSection(
                 model: model,
                 channel: channel,
@@ -121,11 +121,11 @@ private struct ForumPostCollection: View {
             )
             paginationStatus
         }
-        .padding(14)
+        .padding(InterfaceScale.metric(14))
     }
 
     private var galleryContent: some View {
-        LazyVStack(alignment: .leading, spacing: 10) {
+        LazyVStack(alignment: .leading, spacing: InterfaceScale.metric(10)) {
             ForumGalleryPostSection(
                 model: model,
                 channel: channel,
@@ -141,17 +141,17 @@ private struct ForumPostCollection: View {
             )
             paginationStatus
         }
-        .padding(14)
+        .padding(InterfaceScale.metric(14))
     }
 
     @ViewBuilder
     private var olderPostsHeader: some View {
         if !model.forumOlderPosts.isEmpty {
             Text("Older Posts")
-                .font(.caption.weight(.bold))
+                .font(.interface(.caption).weight(.bold))
                 .textCase(.uppercase)
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 2)
+                .padding(.horizontal, InterfaceScale.metric(2))
                 .padding(.top, model.forumRecentPosts.isEmpty ? 0 : 12)
         }
     }
@@ -184,22 +184,22 @@ private struct ForumPaginationStatusView: View {
                 .frame(maxWidth: .infinity)
                 .padding()
         } else if let errorMessage {
-            HStack(spacing: 10) {
+            HStack(spacing: InterfaceScale.metric(10)) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: InterfaceScale.metric(2)) {
                     Text("Couldn’t load more posts")
-                        .font(.callout.weight(.semibold))
+                        .font(.interface(.callout).weight(.semibold))
                     Text(errorMessage)
-                        .font(.caption)
+                        .font(.interface(.caption))
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
-                Spacer(minLength: 8)
+                Spacer(minLength: InterfaceScale.metric(8))
                 Button("Try Again", action: retry)
             }
-            .padding(12)
-            .background(.quaternary, in: ConcentricRectangle(cornerRadius: 12))
+            .padding(InterfaceScale.metric(12))
+            .background(.quaternary, in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(12)))
             .accessibilityElement(children: .combine)
         }
     }
@@ -212,7 +212,7 @@ private struct ForumListPostSection: View {
     let lastDisplayedPostID: ChannelID?
 
     var body: some View {
-        LazyVStack(alignment: .leading, spacing: 10) {
+        LazyVStack(alignment: .leading, spacing: InterfaceScale.metric(10)) {
             ForEach(posts) { post in
                 ForumListPostCard(model: model, channel: channel, post: post)
                     .onAppear {
@@ -232,8 +232,8 @@ private struct ForumGalleryPostSection: View {
 
     var body: some View {
         LazyVGrid(
-            columns: [GridItem(.adaptive(minimum: 320), spacing: 12)],
-            spacing: 12
+            columns: [GridItem(.adaptive(minimum: 320), spacing: InterfaceScale.metric(12))],
+            spacing: InterfaceScale.metric(12)
         ) {
             ForEach(posts) { post in
                 ForumGalleryPostCard(model: model, channel: channel, post: post)
@@ -254,10 +254,10 @@ private struct ForumBrowseHeader: View {
     @FocusState private var isSearchFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            GlassEffectContainer(spacing: 10) {
-                HStack(spacing: 10) {
-                    HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(12)) {
+            GlassEffectContainer(spacing: InterfaceScale.metric(10)) {
+                HStack(spacing: InterfaceScale.metric(10)) {
+                    HStack(spacing: InterfaceScale.metric(10)) {
                         Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                         TextField("Search posts", text: $searchText)
                             .tint(SakuraCordAccentColor.color)
@@ -265,12 +265,12 @@ private struct ForumBrowseHeader: View {
                             .focused($isSearchFocused)
                             .onChange(of: searchText) { _, value in model.updateForumSearch(value) }
                     }
-                    .padding(.horizontal, 14)
-                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .padding(.horizontal, InterfaceScale.metric(14))
+                    .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(48))
                     .contentShape(Rectangle())
                     .glassEffect(
                         .regular.interactive(),
-                        in: ConcentricRectangle(cornerRadius: 14, style: .continuous)
+                        in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(14), style: .continuous)
                     )
                     .simultaneousGesture(TapGesture().onEnded { isSearchFocused = true })
 
@@ -279,14 +279,14 @@ private struct ForumBrowseHeader: View {
                         presentsComposer = true
                     } label: {
                         Image(systemName: "square.and.pencil")
-                            .font(.system(size: 16, weight: .semibold))
-                            .frame(width: 48, height: 48)
+                            .font(.interfaceSystem(size: 16, weight: .semibold))
+                            .frame(width: InterfaceScale.metric(48), height: InterfaceScale.metric(48))
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .glassEffect(
                         .regular.interactive(),
-                        in: ConcentricRectangle(cornerRadius: 14, style: .continuous)
+                        in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(14), style: .continuous)
                     )
                     .disabled(!model.canCreateForumPosts)
                     .help("New Post")
@@ -294,12 +294,12 @@ private struct ForumBrowseHeader: View {
                 }
             }
 
-            HStack(spacing: 10) {
+            HStack(spacing: InterfaceScale.metric(10)) {
                 ForumSortMenu(model: model)
-                Divider().frame(height: 24)
+                Divider().frame(height: InterfaceScale.metric(24))
                 ScrollView(.horizontal) {
-                    GlassEffectContainer(spacing: 8) {
-                        HStack(spacing: 8) {
+                    GlassEffectContainer(spacing: InterfaceScale.metric(8)) {
+                        HStack(spacing: InterfaceScale.metric(8)) {
                             ForEach(channel.availableTags) { tag in
                                 ForumTagButton(
                                     tag: tag,
@@ -322,7 +322,7 @@ private struct ForumBrowseHeader: View {
                 .scrollIndicators(.hidden)
             }
         }
-        .padding(14)
+        .padding(InterfaceScale.metric(14))
     }
 }
 
@@ -330,15 +330,15 @@ private struct ForumSortMenu: View {
     let model: AppModel
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: InterfaceScale.metric(5)) {
             Image(systemName: "arrow.up.arrow.down")
             Text("Sort & view")
             Image(systemName: "chevron.down")
-                .font(.caption2.weight(.bold))
+                .font(.interface(.caption2).weight(.bold))
         }
-        .font(.callout.weight(.semibold))
-        .padding(.horizontal, 10)
-        .frame(height: 30)
+        .font(.interface(.callout).weight(.semibold))
+        .padding(.horizontal, InterfaceScale.metric(10))
+        .frame(height: InterfaceScale.metric(30))
         .contentShape(Capsule())
         .glassEffect(.regular.interactive(), in: Capsule())
         .overlay {
@@ -626,13 +626,13 @@ private struct ForumTagButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 5) {
-                ForumTagEmoji(tag: tag, customEmojiURL: customEmojiURL, size: 16)
+            HStack(spacing: InterfaceScale.metric(5)) {
+                ForumTagEmoji(tag: tag, customEmojiURL: customEmojiURL, size: InterfaceScale.metric(16))
                 Text(tag.name)
             }
-            .font(.callout.weight(.semibold))
-            .padding(.horizontal, 10)
-            .frame(height: 30)
+            .font(.interface(.callout).weight(.semibold))
+            .padding(.horizontal, InterfaceScale.metric(10))
+            .frame(height: InterfaceScale.metric(30))
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -677,10 +677,10 @@ private struct ForumTagEmoji: View {
 }
 
 private enum ForumPostCardMetrics {
-    static let cornerRadius: CGFloat = 14
-    static let listAttachmentSize: CGFloat = 92
-    static let galleryCardHeight: CGFloat = 390
-    static let galleryHeroHeight: CGFloat = 238
+    static var cornerRadius: CGFloat { InterfaceScale.metric(14) }
+    static var listAttachmentSize: CGFloat { InterfaceScale.metric(92) }
+    static var galleryCardHeight: CGFloat { InterfaceScale.metric(390) }
+    static var galleryHeroHeight: CGFloat { InterfaceScale.metric(238) }
 }
 
 nonisolated enum ForumTimestampPresentation {
@@ -720,12 +720,12 @@ private struct ForumTimestampLabel: View {
         .onModalHover { isHovering = $0 }
         .nativeHoverPopover(isPresented: $isHovering) {
             Text("\(exactPrefix) \(date.formatted(date: .complete, time: .shortened))")
-                .font(.subheadline.weight(.medium))
+                .font(.interface(.subheadline).weight(.medium))
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-                .frame(width: 280)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
+                .frame(width: InterfaceScale.metric(280))
+                .padding(.horizontal, InterfaceScale.metric(12))
+                .padding(.vertical, InterfaceScale.metric(10))
                 .accessibilityHidden(true)
         }
         .accessibilityLabel(
@@ -742,15 +742,15 @@ private struct ForumListPostCard: View {
     var body: some View {
         ForumPostCardChrome(model: model, channel: channel, post: post) {
             ZStack(alignment: .topTrailing) {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: InterfaceScale.metric(10)) {
                     ForumPostStatusRow(model: model, channel: channel, post: post)
                         .padding(.trailing, attachmentTrailingInset)
                         .allowsHitTesting(false)
 
-                    VStack(alignment: .leading, spacing: 7) {
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    VStack(alignment: .leading, spacing: InterfaceScale.metric(7)) {
+                        HStack(alignment: .firstTextBaseline, spacing: InterfaceScale.metric(8)) {
                             Text(post.thread.name)
-                                .font(.title3.weight(.semibold))
+                                .font(.interface(.title3).weight(.semibold))
                                 .foregroundStyle(
                                     model.shouldEmphasizeForumPost(post) ? .primary : .secondary
                                 )
@@ -780,7 +780,7 @@ private struct ForumListPostCard: View {
                         .allowsHitTesting(false)
                 }
             }
-            .padding(14)
+            .padding(InterfaceScale.metric(14))
         }
     }
 
@@ -815,9 +815,9 @@ private struct ForumPostListAttachment: View {
             height: ForumPostCardMetrics.listAttachmentSize
         )
         .background(.quaternary)
-        .clipShape(ConcentricRectangle(cornerRadius: 11, style: .continuous))
+        .clipShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(11), style: .continuous))
         .overlay {
-            ConcentricRectangle(cornerRadius: 11, style: .continuous)
+            ConcentricRectangle(cornerRadius: InterfaceScale.metric(11), style: .continuous)
                 .stroke(.separator.opacity(0.6), lineWidth: 1)
         }
     }
@@ -830,12 +830,12 @@ private struct ForumGalleryPostCard: View {
 
     var body: some View {
         ForumPostCardChrome(model: model, channel: channel, post: post) {
-            VStack(alignment: .leading, spacing: 9) {
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(9)) {
                 ForumGalleryPostHeader(model: model, post: post)
 
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                HStack(alignment: .firstTextBaseline, spacing: InterfaceScale.metric(8)) {
                     Text(post.thread.name)
-                        .font(.title3.weight(.semibold))
+                        .font(.interface(.title3).weight(.semibold))
                         .foregroundStyle(
                             model.shouldEmphasizeForumPost(post) ? .primary : .secondary
                         )
@@ -844,14 +844,14 @@ private struct ForumGalleryPostCard: View {
                         ForumPostNewBadge()
                     }
                 }
-                .frame(maxWidth: .infinity, minHeight: 48, alignment: .topLeading)
+                .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(48), alignment: .topLeading)
                 .allowsHitTesting(false)
 
                 ForumPostGalleryHero(model: model, channel: channel, post: post)
 
                 ForumPostGalleryFooter(model: model, channel: channel, post: post)
             }
-            .padding(14)
+            .padding(InterfaceScale.metric(14))
             .frame(height: ForumPostCardMetrics.galleryCardHeight, alignment: .top)
         }
     }
@@ -860,10 +860,10 @@ private struct ForumGalleryPostCard: View {
 private struct ForumPostNewBadge: View {
     var body: some View {
         Text("NEW")
-            .font(.caption2.weight(.bold))
+            .font(.interface(.caption2).weight(.bold))
             .foregroundStyle(Color(hex: 0x5865F2))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
+            .padding(.horizontal, InterfaceScale.metric(8))
+            .padding(.vertical, InterfaceScale.metric(3))
             .background(Color(hex: 0xC9D2FF), in: Capsule())
             .fixedSize()
             .accessibilityLabel("New post")
@@ -875,7 +875,7 @@ private struct ForumGalleryPostHeader: View {
     let post: ForumPost
 
     var body: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: InterfaceScale.metric(7)) {
             if let starterMessage = post.firstMessage {
                 ForumPostAuthorName(
                     presentation: model.authorPresentation(for: starterMessage)
@@ -894,7 +894,7 @@ private struct ForumGalleryPostHeader: View {
                 exactPrefix: "Posted",
                 open: { model.open(post) }
             )
-            Spacer(minLength: 6)
+            Spacer(minLength: InterfaceScale.metric(6))
             if post.thread.isPinned {
                 Image(systemName: "pin.fill").help("Pinned post")
             }
@@ -902,7 +902,7 @@ private struct ForumGalleryPostHeader: View {
                 Image(systemName: "lock.fill").help("Locked post")
             }
         }
-        .font(.caption)
+        .font(.interface(.caption))
         .foregroundStyle(.secondary)
     }
 }
@@ -916,7 +916,7 @@ private struct ForumPostGalleryHero: View {
         // Only the preview text takes clicks, and only on hidden spoilers;
         // everything else belongs to the card, which opens the post.
         ZStack(alignment: .bottomLeading) {
-            ConcentricRectangle(cornerRadius: 12, style: .continuous)
+            ConcentricRectangle(cornerRadius: InterfaceScale.metric(12), style: .continuous)
                 .fill(Color.primary.opacity(0.07))
                 .allowsHitTesting(false)
 
@@ -932,10 +932,10 @@ private struct ForumPostGalleryHero: View {
                     isEmphasized: model.shouldEmphasizeForumPost(post)
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .padding(16)
+                .padding(InterfaceScale.metric(16))
             } else {
                 Image(systemName: "bubble.left.and.text.bubble.right")
-                    .font(.system(size: 32, weight: .medium))
+                    .font(.interfaceSystem(size: 32, weight: .medium))
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .allowsHitTesting(false)
@@ -947,13 +947,13 @@ private struct ForumPostGalleryHero: View {
                 post: post,
                 maximumVisibleTags: 3
             )
-            .padding(10)
+            .padding(InterfaceScale.metric(10))
             .allowsHitTesting(false)
         }
         .frame(height: ForumPostCardMetrics.galleryHeroHeight)
-        .clipShape(ConcentricRectangle(cornerRadius: 12, style: .continuous))
+        .clipShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(12), style: .continuous))
         .overlay {
-            ConcentricRectangle(cornerRadius: 12, style: .continuous)
+            ConcentricRectangle(cornerRadius: InterfaceScale.metric(12), style: .continuous)
                 .stroke(.separator.opacity(0.65), lineWidth: 1)
         }
     }
@@ -969,7 +969,7 @@ private struct ForumPostStatusRow: View {
     let post: ForumPost
 
     var body: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: InterfaceScale.metric(7)) {
             if post.thread.isPinned {
                 Image(systemName: "pin.fill")
                     .foregroundStyle(.secondary)
@@ -981,7 +981,7 @@ private struct ForumPostStatusRow: View {
                     .help("Locked post")
             }
             ForumPostAppliedTags(model: model, channel: channel, post: post)
-            Spacer(minLength: 6)
+            Spacer(minLength: InterfaceScale.metric(6))
         }
     }
 }
@@ -991,7 +991,7 @@ private struct ForumPostAuthorName: View {
     let presentation: MessageAuthorPresentation
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: InterfaceScale.metric(4)) {
             NameRoleColorIndicator(colorHex: presentation.roleColorHex)
             Text(presentation.user.displayName)
                 .displayNameFont(presentation.user.displayNameStyle?.fontID, textStyle: .caption1)
@@ -1030,11 +1030,20 @@ private struct ForumPostStarterExcerpt: View {
                 accessibilityText: "\(presentation.user.displayName): "
             )
         )
-        .task(id: presentation.user.displayNameStyle?.fontID) {
+        .task(id: AuthorFontRequest(fontID: presentation.user.displayNameStyle?.fontID, size: authorFontSize)) {
             authorFont = nil
             guard let definition = ProfileNameFontCache.customDefinition(for: presentation.user.displayNameStyle?.fontID) else { return }
-            authorFont = try? await ProfileNameFontLoader.shared.font(definition, size: NSFont.preferredFont(forTextStyle: .body).pointSize)
+            authorFont = try? await ProfileNameFontLoader.shared.font(definition, size: authorFontSize)
         }
+    }
+
+    private struct AuthorFontRequest: Equatable {
+        let fontID: Int?
+        let size: CGFloat
+    }
+
+    private var authorFontSize: CGFloat {
+        NSFont.interfacePreferredFont(forTextStyle: .body).pointSize
     }
 
     /// The author's name, preceded by a role color dot when names show roles
@@ -1046,7 +1055,7 @@ private struct ForumPostStarterExcerpt: View {
            let hex = presentation.roleColorHex, hex != 0,
            let dot = NSImage(systemSymbolName: "circle.fill", accessibilityDescription: nil)?
                .withSymbolConfiguration(
-                   NSImage.SymbolConfiguration(pointSize: 8, weight: .regular)
+                   NSImage.SymbolConfiguration(pointSize: InterfaceScale.fontSize(8), weight: .regular)
                        .applying(.init(paletteColors: [NSColor(Color(hex: hex))]))
                )
         {
@@ -1059,14 +1068,14 @@ private struct ForumPostStarterExcerpt: View {
         value.append(NSAttributedString(
             string: presentation.user.displayName,
             attributes: [
-                .font: authorFont ?? NSFont.systemFont(ofSize: bodySize, weight: .semibold),
+                .font: authorFont ?? NSFont.interfaceSystemFont(ofSize: bodySize, weight: .semibold),
                 .foregroundColor: NSColor(nameColor),
             ]
         ))
         value.append(NSAttributedString(
             string: ": ",
             attributes: [
-                .font: NSFont.systemFont(ofSize: bodySize),
+                .font: NSFont.interfaceSystemFont(ofSize: bodySize),
                 .foregroundColor: isEmphasized ? NSColor.labelColor : NSColor.secondaryLabelColor,
             ]
         ))
@@ -1098,27 +1107,27 @@ private struct ForumPostAppliedTags: View {
     var maximumVisibleTags = 5
 
     var body: some View {
-        GlassEffectContainer(spacing: 6) {
-            HStack(spacing: 6) {
+        GlassEffectContainer(spacing: InterfaceScale.metric(6)) {
+            HStack(spacing: InterfaceScale.metric(6)) {
                 ForEach(appliedTags.prefix(maximumVisibleTags)) { tag in
-                    HStack(spacing: 4) {
+                    HStack(spacing: InterfaceScale.metric(4)) {
                         ForumTagEmoji(
                             tag: tag,
                             customEmojiURL: tag.emojiID.flatMap { model.customEmojiURLsByID[$0] },
-                            size: 13
+                            size: InterfaceScale.metric(13)
                         )
                         Text(tag.name).lineLimit(1)
                     }
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 8)
-                    .frame(height: 26)
+                    .font(.interface(.caption).weight(.semibold))
+                    .padding(.horizontal, InterfaceScale.metric(8))
+                    .frame(height: InterfaceScale.metric(26))
                     .glassEffect(.regular, in: Capsule())
                 }
                 if appliedTags.count > maximumVisibleTags {
                     Text("+\(appliedTags.count - maximumVisibleTags)")
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 8)
-                        .frame(height: 26)
+                        .font(.interface(.caption).weight(.semibold))
+                        .padding(.horizontal, InterfaceScale.metric(8))
+                        .frame(height: InterfaceScale.metric(26))
                         .glassEffect(.regular, in: Capsule())
                 }
             }
@@ -1136,7 +1145,7 @@ private struct ForumPostListFooter: View {
     let post: ForumPost
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: InterfaceScale.metric(12)) {
             ForumPostSummaryReactionPill(model: model, channel: channel, post: post)
             ForumPostMessageCount(model: model, post: post)
             ForumTimestampLabel(
@@ -1146,7 +1155,7 @@ private struct ForumPostListFooter: View {
             )
             Spacer()
         }
-        .font(.caption)
+        .font(.interface(.caption))
         .foregroundStyle(.secondary)
     }
 }
@@ -1157,12 +1166,12 @@ private struct ForumPostGalleryFooter: View {
     let post: ForumPost
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: InterfaceScale.metric(10)) {
             ForumPostMessageCount(model: model, post: post)
             Spacer()
             ForumPostSummaryReactionPill(model: model, channel: channel, post: post)
         }
-        .font(.callout)
+        .font(.interface(.callout))
         .foregroundStyle(.secondary)
     }
 }
@@ -1172,7 +1181,7 @@ private struct ForumPostMessageCount: View {
     let post: ForumPost
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: InterfaceScale.metric(4)) {
             Image(systemName: "bubble.left.fill")
             Text(messageCount.formatted())
             if unreadCount > 0 {
@@ -1490,7 +1499,7 @@ struct ForumPostComposerOverlay: View {
                         ))
                         .environment(\.windowModalContext, context)
                         .frame(width: min(760, max(0, geometry.size.width - 48)), height: min(560, max(0, geometry.size.height - 48)))
-                        .padding(24)
+                        .padding(InterfaceScale.metric(24))
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1524,27 +1533,27 @@ private struct ForumPostComposer: View {
             composerEditor
             if let progress = model.forumCreateProgress {
                 UploadProgressView(progress: progress)
-                    .padding(.horizontal, 18)
-                    .padding(.bottom, 10)
+                    .padding(.horizontal, InterfaceScale.metric(18))
+                    .padding(.bottom, InterfaceScale.metric(10))
             }
             Divider()
             composerFooter
         }
         .background(
             Color(nsColor: .windowBackgroundColor),
-            in: ConcentricRectangle(cornerRadius: 20, style: .continuous)
+            in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(20), style: .continuous)
         )
         .overlay {
-            ConcentricRectangle(cornerRadius: 20, style: .continuous)
+            ConcentricRectangle(cornerRadius: InterfaceScale.metric(20), style: .continuous)
                 .stroke(.separator, lineWidth: 1)
         }
-        .shadow(color: .black.opacity(0.28), radius: 24, y: 10)
+        .shadow(color: .black.opacity(0.28), radius: InterfaceScale.metric(24), y: 10)
         .frame(
-            idealWidth: 760,
-            maxWidth: 920,
-            minHeight: 420,
-            idealHeight: 560,
-            maxHeight: 760
+            idealWidth: InterfaceScale.metric(760),
+            maxWidth: InterfaceScale.metric(920),
+            minHeight: InterfaceScale.metric(420),
+            idealHeight: InterfaceScale.metric(560),
+            maxHeight: InterfaceScale.metric(760)
         )
         .fileImporter(
             isPresented: $showsFileImporter,
@@ -1560,8 +1569,8 @@ private struct ForumPostComposer: View {
             return !urls.isEmpty
         }
         .sheet(isPresented: $showsGuidelines) {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Posting Guidelines").font(.title.bold())
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(16)) {
+                Text("Posting Guidelines").font(.interface(.title).bold())
                 ScrollView {
                     Text(channel.topic ?? "")
                         .textSelection(.enabled)
@@ -1572,7 +1581,7 @@ private struct ForumPostComposer: View {
                     Spacer()
                     Button("Done") { showsGuidelines = false }.keyboardShortcut(.defaultAction)
                 }
-            }.padding(24).frame(minWidth: 480, minHeight: 300)
+            }.padding(InterfaceScale.metric(24)).frame(minWidth: InterfaceScale.metric(480), minHeight: InterfaceScale.metric(300))
         }
         .task {
             await Task.yield()
@@ -1599,22 +1608,22 @@ private struct ForumPostComposer: View {
     }
 
     private var composerEditor: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 14) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(14)) {
+            HStack(alignment: .top, spacing: InterfaceScale.metric(14)) {
                 Button("Cancel", systemImage: "xmark") { isPresented = false }
                     .labelStyle(.iconOnly)
-                    .font(.system(size: 18, weight: .medium))
-                    .frame(width: 38, height: 38)
+                    .font(.interfaceSystem(size: 18, weight: .medium))
+                    .frame(width: InterfaceScale.metric(38), height: InterfaceScale.metric(38))
                     .contentShape(Rectangle())
                     .buttonStyle(.plain)
                     .keyboardShortcut(.cancelAction)
                     .disabled(isSubmitting)
                     .help("Cancel")
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: InterfaceScale.metric(4)) {
                     TextField("Title", text: $title)
                         .tint(SakuraCordAccentColor.color)
-                        .font(.title2.weight(.bold))
+                        .font(.interface(.title2).weight(.bold))
                         .textFieldStyle(.plain)
                         .focused($isTitleFocused)
                         .accessibilityLabel("Title")
@@ -1627,7 +1636,7 @@ private struct ForumPostComposer: View {
                         placeholder: "Enter a message…",
                         receiveAttachments: receiveAttachments
                     )
-                    .frame(maxWidth: .infinity, minHeight: 210, maxHeight: .infinity)
+                    .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(210), maxHeight: .infinity)
                 }
 
                 ForumComposerAttachmentControl(
@@ -1636,14 +1645,14 @@ private struct ForumPostComposer: View {
                 )
             }
 
-            HStack(spacing: 10) {
+            HStack(spacing: InterfaceScale.metric(10)) {
                 Image(systemName: "tag")
                     .symbolVariant(.none)
                     .foregroundStyle(.secondary)
                     .accessibilityLabel("Post tags")
                 ScrollView(.horizontal) {
-                    GlassEffectContainer(spacing: 7) {
-                        HStack(spacing: 7) {
+                    GlassEffectContainer(spacing: InterfaceScale.metric(7)) {
+                        HStack(spacing: InterfaceScale.metric(7)) {
                             ForEach(channel.availableTags) { tag in
                                 ForumTagButton(
                                     tag: tag,
@@ -1662,11 +1671,11 @@ private struct ForumPostComposer: View {
                 .scrollIndicators(.hidden)
             }
         }
-        .padding(18)
+        .padding(InterfaceScale.metric(18))
     }
 
     private var composerFooter: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: InterfaceScale.metric(8)) {
             Button {
                 selectionBeforeEmojiPicker = contentSelection
                 showsEmojiPicker.toggle()
@@ -1674,8 +1683,8 @@ private struct ForumPostComposer: View {
                 SakuraCordSystemSymbol.emojiFaceGrinningImage
                     .environment(\.symbolVariants, .none)
                     .symbolRenderingMode(.monochrome)
-                    .font(.system(size: 18, weight: .regular))
-                    .frame(width: 28, height: 28)
+                    .font(.interfaceSystem(size: 18, weight: .regular))
+                    .frame(width: InterfaceScale.metric(28), height: InterfaceScale.metric(28))
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -1696,21 +1705,21 @@ private struct ForumPostComposer: View {
                         }
                     )
                 }
-                .frame(width: 28, height: 28)
+                .frame(width: InterfaceScale.metric(28), height: InterfaceScale.metric(28))
             }
 
             Spacer()
 
             if let error = model.forumActionError {
                 Text(error)
-                    .font(.caption)
+                    .font(.interface(.caption))
                     .foregroundStyle(.red)
                     .lineLimit(2)
                     .accessibilityLabel("Post failed: \(error)")
             }
             if channel.requiresForumTag, selectedTags.isEmpty {
                 Text("A tag is required")
-                    .font(.caption.weight(.medium))
+                    .font(.interface(.caption).weight(.medium))
                     .foregroundStyle(.red)
                     .accessibilityLabel("A tag is required before posting")
             }
@@ -1726,8 +1735,8 @@ private struct ForumPostComposer: View {
                 .disabled(!isValid || isSubmitting)
         }
         .controlSize(.large)
-        .padding(.horizontal, 18)
-        .padding(.vertical, 14)
+        .padding(.horizontal, InterfaceScale.metric(18))
+        .padding(.vertical, InterfaceScale.metric(14))
     }
 
     private func addAttachments(_ urls: [URL]) {

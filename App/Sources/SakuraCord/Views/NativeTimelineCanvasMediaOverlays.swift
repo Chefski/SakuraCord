@@ -392,7 +392,7 @@ extension NativeTimelineCanvasView {
                 media: NativeTimelineMediaKey.attachment(region.attachment)
                     ?? .media(region.attachment.url),
                 frame: region.frame,
-                cornerRadius: 8,
+                cornerRadius: InterfaceScale.metric(8),
                 isLooping: true,
                 opacity: CGFloat(MessageOutboxPresentation.mediaOpacity(
                     for: row.message.outboxState
@@ -451,7 +451,7 @@ extension NativeTimelineCanvasView {
                     role: .embedMedia(embed.embedID),
                     media: .media(mediaURL),
                     frame: mediaFrame,
-                    cornerRadius: 8,
+                    cornerRadius: InterfaceScale.metric(8),
                     isLooping: true
                 )
             }
@@ -510,7 +510,7 @@ extension NativeTimelineCanvasView {
                 role: .componentMedia(componentIndex, media.componentID),
                 media: .media(media.displayURL),
                 frame: media.frame,
-                cornerRadius: 8,
+                cornerRadius: InterfaceScale.metric(8),
                 isLooping: true
             )
         }
@@ -556,7 +556,7 @@ extension NativeTimelineCanvasView {
             else { continue }
             let size = DiscordComponentEmojiMetrics.buttonSize
             let box = CGRect(
-                x: button.frame.minX + 12,
+                x: button.frame.minX + NativeTimelineComponentButtonMetrics.horizontalPadding,
                 y: button.frame.midY - size / 2,
                 width: size,
                 height: size
@@ -567,7 +567,7 @@ extension NativeTimelineCanvasView {
                 role: .componentButton(componentIndex, button.componentID),
                 media: .media(url, maximumPixelDimension: 64),
                 frame: box.insetBy(dx: opticalInset, dy: opticalInset),
-                cornerRadius: 3,
+                cornerRadius: InterfaceScale.metric(3),
                 isLooping: true
             )
         }
@@ -589,7 +589,7 @@ extension NativeTimelineCanvasView {
                 role: .sticker(sticker.id),
                 media: .media(url, maximumPixelDimension: 384),
                 frame: layout.stickerFrames[stickerIndex],
-                cornerRadius: 8,
+                cornerRadius: InterfaceScale.metric(8),
                 isLooping: true,
                 opacity: CGFloat(MessageOutboxPresentation.mediaOpacity(
                     for: row.message.outboxState
@@ -1117,7 +1117,7 @@ extension NativeTimelineCanvasView {
             appendDesiredSpoilerOverlay(
                 .attachment(messageID: message.id, attachmentID: region.attachment.id),
                 frame: region.frame,
-                cornerRadius: 8,
+                cornerRadius: InterfaceScale.metric(8),
                 rowOrigin: rowOrigin,
                 into: &desired
             )
@@ -1208,7 +1208,7 @@ extension NativeTimelineCanvasView {
                     componentID: region.componentID
                 ),
                 frame: region.frame,
-                cornerRadius: 8,
+                cornerRadius: InterfaceScale.metric(8),
                 rowOrigin: rowOrigin,
                 into: &desired
             )

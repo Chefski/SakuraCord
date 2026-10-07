@@ -397,7 +397,8 @@ extension DiscordRESTProvider {
         try await sendGateway(
             DiscordGatewayPayloadFactory.guildSubscriptions(
                 guildID: guildID,
-                channelRanges: subscriptionState?.rangesByChannel ?? [:]
+                channelRanges: subscriptionState?.rangesByChannel ?? [:],
+                threadMemberLists: threadMemberSubscriptions[guildID]
             )
         )
         if let subscriptionState {
@@ -555,6 +556,7 @@ extension DiscordRESTProvider {
         cachedMembers[guildID] = DiscordMemberStoreOrdering.merging(
             existing: cachedMembers[guildID] ?? [], updates: members
         )
+        publishThreadMembers(guildID: guildID)
         if let joinedUserIDs {
             quickSwitcherJoinedMemberIDsByGuildID[guildID, default: []]
                 .subtract(members.map(\.id))

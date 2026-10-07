@@ -53,7 +53,7 @@ extension NativeTimelineRowPainter {
         ) else { return }
         triangle.draw(in: CGRect(
             // The triangle's visual centre sits left of its bounding box.
-            x: frame.midX - triangle.size.width / 2 + 1.5,
+            x: frame.midX - triangle.size.width / 2 + InterfaceScale.metric(1.5),
             y: frame.midY - triangle.size.height / 2,
             width: triangle.size.width,
             height: triangle.size.height
@@ -326,6 +326,7 @@ extension NativeTimelineRowPainter {
         framesetter: CTFramesetter,
         in frame: CGRect,
         model: AppModel?,
+        isOutgoingBubble: Bool = false,
         selectionRange: NSRange? = nil,
         hoveredMentionCharacterIndex: Int? = nil,
         hoveredLinkCharacterIndex: Int? = nil,
@@ -372,6 +373,7 @@ extension NativeTimelineRowPainter {
             outerFrame: frame,
             attributedText: drawingValue,
             model: model,
+            isOutgoingBubble: isOutgoingBubble,
             selectionRange: selectionRange,
             hoveredMentionCharacterIndex: hoveredMentionCharacterIndex
         )
@@ -548,16 +550,16 @@ extension NativeTimelineRowPainter {
 
     private static func drawInlineCodeDecorations(_ rects: [CGRect]) {
         for inlineRect in rects {
-            let backgroundFrame = inlineRect.insetBy(dx: -4, dy: -2)
+            let backgroundFrame = inlineRect.insetBy(dx: -InterfaceScale.metric(4), dy: -InterfaceScale.metric(2))
             discordCodeBackgroundColor.setFill()
             NSBezierPath(
                 concentricRoundedRect: backgroundFrame,
-                cornerRadius: 4
+                cornerRadius: InterfaceScale.metric(4)
             ).fill()
             discordCodeBorderColor.setStroke()
             let border = NSBezierPath(
                 concentricRoundedRect: backgroundFrame.insetBy(dx: 0.5, dy: 0.5),
-                cornerRadius: 4
+                cornerRadius: InterfaceScale.metric(4)
             )
             border.lineWidth = 1
             border.stroke()
@@ -586,12 +588,12 @@ extension NativeTimelineRowPainter {
             discordCodeBackgroundColor.setFill()
             NSBezierPath(
                 concentricRoundedRect: backgroundFrame,
-                cornerRadius: 4
+                cornerRadius: InterfaceScale.metric(4)
             ).fill()
             discordCodeBorderColor.setStroke()
             let border = NSBezierPath(
                 concentricRoundedRect: backgroundFrame.insetBy(dx: 0.5, dy: 0.5),
-                cornerRadius: 4
+                cornerRadius: InterfaceScale.metric(4)
             )
             border.lineWidth = 1
             border.stroke()
@@ -601,7 +603,7 @@ extension NativeTimelineRowPainter {
     private static func drawListMarkerDecorations(_ rects: [CGRect]) {
         NSColor.labelColor.setFill()
         for markerRect in rects {
-            let diameter: CGFloat = 6
+            let diameter: CGFloat = InterfaceScale.metric(6)
             NSBezierPath(ovalIn: CGRect(
                 x: markerRect.midX - diameter / 2,
                 y: markerRect.midY - diameter / 2,
@@ -622,14 +624,14 @@ extension NativeTimelineRowPainter {
             let bar = CGRect(
                 x: outerFrame.minX + 1,
                 y: union.minY - 1,
-                width: 4,
-                height: union.height + 2
+                width: InterfaceScale.metric(4),
+                height: union.height + InterfaceScale.metric(2)
             )
             NSColor.secondaryLabelColor.withAlphaComponent(0.65).setFill()
             NSBezierPath(
                 roundedRect: bar,
-                xRadius: 2,
-                yRadius: 2
+                xRadius: InterfaceScale.metric(2),
+                yRadius: InterfaceScale.metric(2)
             ).fill()
         }
     }
@@ -706,6 +708,7 @@ extension NativeTimelineRowPainter {
         outerFrame: CGRect,
         attributedText: NSAttributedString,
         model: AppModel?,
+        isOutgoingBubble: Bool = false,
         selectionRange: NSRange?,
         hoveredMentionCharacterIndex: Int?
     ) {
@@ -717,7 +720,11 @@ extension NativeTimelineRowPainter {
             selectionRange: selectionRange
         )
         for draw in draws {
-            renderInlineAttachment(draw, hoveredMentionCharacterIndex: hoveredMentionCharacterIndex)
+            renderInlineAttachment(
+                draw,
+                isOutgoingBubble: isOutgoingBubble,
+                hoveredMentionCharacterIndex: hoveredMentionCharacterIndex
+            )
         }
     }
 
@@ -844,6 +851,7 @@ extension NativeTimelineRowPainter {
 
     private static func renderInlineAttachment(
         _ draw: InlineAttachmentDraw,
+        isOutgoingBubble: Bool,
         hoveredMentionCharacterIndex: Int?
     ) {
         switch draw {
@@ -853,7 +861,8 @@ extension NativeTimelineRowPainter {
             drawMention(
                 presentation,
                 in: frame,
-                isHovered: hoveredMentionCharacterIndex == characterIndex
+                isHovered: hoveredMentionCharacterIndex == characterIndex,
+                isOutgoingBubble: isOutgoingBubble
             )
         case let .emojiFallback(frame, _):
             text(
@@ -881,32 +890,41 @@ extension NativeTimelineRowPainter {
     static func drawMention(
         _ presentation: MentionPresentation,
         in frame: CGRect,
-        isHovered: Bool
+        isHovered: Bool,
+        isOutgoingBubble: Bool = false
     ) {
-        let color = roleColor(presentation.colorHex) ?? .sakuraCordAccentColor
+        let color: NSColor = isOutgoingBubble
+            ? .white : roleColor(presentation.colorHex) ?? .sakuraCordAccentColor
         let shape = NSBezierPath(
             concentricRoundedRect: frame,
-            cornerRadius: 5.5
+            cornerRadius: InterfaceScale.metric(5.5)
         )
-        color.withAlphaComponent(
-            NativeTimelineMentionAppearance.backgroundAlpha(
-                isHovered: isHovered
-            )
-        ).setFill()
+        if isOutgoingBubble {
+            // Outgoing message text is white. A black backing at this opacity
+            // keeps its matching mention text readable even on a white accent.
+            NSColor.black.withAlphaComponent(isHovered ? 0.65 : 0.55).setFill()
+        } else {
+            color.withAlphaComponent(
+                NativeTimelineMentionAppearance.backgroundAlpha(isHovered: isHovered)
+            ).setFill()
+        }
         shape.fill()
-        if case .role = presentation.target,
-           SakuraCordAccentColor.usesAccentFallback(
-               forRoleColorHex: presentation.colorHex
-           )
-        {
+        if isOutgoingBubble {
+            // Keep the pill distinct even when the bubble itself is black.
+            color.withAlphaComponent(isHovered ? 0.4 : 0.25).setStroke()
+            shape.lineWidth = 1
+            shape.stroke()
+        } else if case .role = presentation.target,
+                  SakuraCordAccentColor.usesAccentFallback(forRoleColorHex: presentation.colorHex) {
             color.withAlphaComponent(isHovered ? 0.9 : 0.7).setStroke()
             shape.lineWidth = 1
             shape.stroke()
         }
 
-        var labelX = frame.minX + 6
+        let metrics = NativeTimelineMentionMetrics.self
+        var labelX = frame.minX + metrics.horizontalPadding
         if let systemImage = presentation.systemImage {
-            let iconSize = max(10, frame.height - 7)
+            let iconSize = max(InterfaceScale.metric(10), frame.height - metrics.iconInset)
             let iconFrame = CGRect(
                 x: labelX,
                 y: frame.midY - iconSize / 2,
@@ -926,9 +944,9 @@ extension NativeTimelineRowPainter {
                     fillsFrame: false
                 )
             }
-            labelX = iconFrame.maxX + 4
+            labelX = iconFrame.maxX + metrics.leadingGap
         } else if case .user = presentation.target {
-            let avatarSize = max(10, frame.height - 6)
+            let avatarSize = max(InterfaceScale.metric(10), frame.height - metrics.avatarInset)
             let avatarFrame = CGRect(
                 x: labelX,
                 y: frame.midY - avatarSize / 2,
@@ -948,17 +966,17 @@ extension NativeTimelineRowPainter {
                 color.withAlphaComponent(0.38).setFill()
                 NSBezierPath(ovalIn: avatarFrame).fill()
             }
-            labelX = avatarFrame.maxX + 4
+            labelX = avatarFrame.maxX + metrics.leadingGap
         }
         text(
             presentation.label,
             in: CGRect(
                 x: labelX,
                 y: frame.minY,
-                width: max(1, frame.maxX - labelX - 6),
+                width: max(1, frame.maxX - labelX - metrics.horizontalPadding),
                 height: frame.height
             ),
-            font: .systemFont(ofSize: 15, weight: .semibold),
+            font: .interfaceSystemFont(ofSize: 15, weight: .semibold),
             color: color
         )
     }

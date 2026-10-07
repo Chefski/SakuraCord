@@ -518,9 +518,9 @@ nonisolated enum ConversationBeginningPolicy {
 }
 
 nonisolated enum MessageTimelineSkeletonLayout {
-    static let rowHeight: CGFloat = 44
-    static let rowSpacing: CGFloat = 20
-    static let verticalPadding: CGFloat = 36
+    static var rowHeight: CGFloat { InterfaceScale.metric(44) }
+    static var rowSpacing: CGFloat { InterfaceScale.metric(20) }
+    static var verticalPadding: CGFloat { InterfaceScale.metric(36) }
 
     static func rowCount(for height: CGFloat) -> Int {
         let availableHeight = max(0, height - verticalPadding)

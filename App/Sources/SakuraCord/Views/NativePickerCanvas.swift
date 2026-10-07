@@ -7,6 +7,7 @@ final class NativePickerCanvas<Row: Identifiable>: NSView, NativePickerViewport 
     private var rows: [Row] = []
     private var revision: Int?
     private var layoutWidth: CGFloat = -1
+    private var layoutScale = InterfaceScale.factor
     private var height: ((Row, CGFloat) -> CGFloat)?
     private var content: ((Row) -> AnyView)?
     private var visible: ((Row) -> Void)?
@@ -131,6 +132,7 @@ final class NativePickerCanvas<Row: Identifiable>: NSView, NativePickerViewport 
         self.rowActivated = rowActivated
         self.nativeContent = nativeContent
         let changed = self.revision != revision || abs(layoutWidth - width) > 0.5
+            || layoutScale != InterfaceScale.factor
         let anchorIndex = geometry.rows(intersecting: viewport).first
         let anchorID = anchorIndex.flatMap { self.rows.indices.contains($0) ? self.rows[$0].id : nil }
         let offset = anchorIndex.map { viewport.minY - geometry.origins[$0] } ?? 0
@@ -139,6 +141,7 @@ final class NativePickerCanvas<Row: Identifiable>: NSView, NativePickerViewport 
             isUpdating = true
             self.revision = revision
             layoutWidth = width
+            layoutScale = InterfaceScale.factor
             if changed {
                 geometry = NativePickerLayout(ids: rows.map(\.id), heights: rows.map { height($0, width) })
                 headerIndices = pinnedHeader.map { isHeader in rows.indices.filter { isHeader(rows[$0]) } } ?? []

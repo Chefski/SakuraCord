@@ -77,29 +77,29 @@ struct ChannelListLoadingSkeleton: View {
     }
 
     private var categoryRow: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: InterfaceScale.metric(5)) {
             Image(systemName: "chevron.down")
-                .font(.caption2.weight(.semibold))
+                .font(.interface(.caption2).weight(.semibold))
                 .foregroundStyle(.primary.opacity(0.12))
-                .frame(width: 8)
-            SkeletonShape(cornerRadius: 4)
-                .frame(width: 86, height: 9)
+                .frame(width: InterfaceScale.metric(8))
+            SkeletonShape(cornerRadius: InterfaceScale.metric(4))
+                .frame(width: InterfaceScale.metric(86), height: InterfaceScale.metric(9))
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, InterfaceScale.metric(14))
     }
 
     private var channelRow: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: InterfaceScale.metric(8)) {
             Color.clear
-                .frame(width: 8, height: 8)
-            SkeletonShape(cornerRadius: 4)
-                .frame(width: 16, height: 16)
-            SkeletonShape(cornerRadius: 5.5)
-                .frame(width: 112, height: 11)
+                .frame(width: InterfaceScale.metric(8), height: InterfaceScale.metric(8))
+            SkeletonShape(cornerRadius: InterfaceScale.metric(4))
+                .frame(width: InterfaceScale.metric(16), height: InterfaceScale.metric(16))
+            SkeletonShape(cornerRadius: InterfaceScale.metric(5.5))
+                .frame(width: InterfaceScale.metric(112), height: InterfaceScale.metric(11))
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, InterfaceScale.metric(14))
     }
 }
 
@@ -150,11 +150,11 @@ struct SakuraCordSessionLoadingView: View {
             }
         }
         .overlay(alignment: .topLeading) {
-            SkeletonShape(cornerRadius: 4)
-                .frame(width: 132, height: 14)
+            SkeletonShape(cornerRadius: InterfaceScale.metric(4))
+                .frame(width: InterfaceScale.metric(132), height: InterfaceScale.metric(14))
                 .offset(
                     x: ChatChromeMetrics.sidebarTitleLeadingOffset,
-                    y: ChatChromeMetrics.sidebarTitleTopOffset + 7
+                    y: ChatChromeMetrics.sidebarTitleTopOffset(height: InterfaceScale.metric(14))
                 )
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
@@ -175,11 +175,11 @@ struct SakuraCordSessionLoadingView: View {
 
     private var serverRail: some View {
         ScrollView {
-            VStack(spacing: 10) {
-                railItem(cornerRadius: 14)
-                Divider().padding(.horizontal, 12)
+            VStack(spacing: InterfaceScale.metric(10)) {
+                railItem(cornerRadius: InterfaceScale.metric(14))
+                Divider().padding(.horizontal, InterfaceScale.metric(12))
                 ForEach(0 ..< SessionLoadingSkeletonLayout.serverCount, id: \.self) { _ in
-                    railItem(cornerRadius: 14)
+                    railItem(cornerRadius: InterfaceScale.metric(14))
                 }
             }
             .padding(
@@ -188,19 +188,19 @@ struct SakuraCordSessionLoadingView: View {
                     ? ChatChromeMetrics.controlHeight
                     : 0
             )
-            .padding(.bottom, 12)
+            .padding(.bottom, InterfaceScale.metric(12))
         }
         .scrollIndicators(.hidden)
         .frame(width: ChatChromeMetrics.serverRailWidth)
     }
 
     private func railItem(cornerRadius: CGFloat) -> some View {
-        HStack(spacing: 5) {
-            Color.clear.frame(width: 7, height: 40)
+        HStack(spacing: InterfaceScale.metric(5)) {
+            Color.clear.frame(width: InterfaceScale.metric(7), height: InterfaceScale.metric(40))
             SkeletonShape(cornerRadius: cornerRadius)
-                .frame(width: 44, height: 44)
+                .frame(width: InterfaceScale.metric(44), height: InterfaceScale.metric(44))
         }
-        .frame(width: ChatChromeMetrics.serverRailWidth, height: 46, alignment: .leading)
+        .frame(width: ChatChromeMetrics.serverRailWidth, height: InterfaceScale.metric(46), alignment: .leading)
     }
 
     private var channelSidebar: some View {
@@ -210,17 +210,17 @@ struct SakuraCordSessionLoadingView: View {
             ChannelListLoadingSkeleton()
 
             GlassEffectContainer(spacing: SidebarAccountControlMetrics.surfaceSpacing) {
-                HStack(spacing: 8) {
+                HStack(spacing: InterfaceScale.metric(8)) {
                     SkeletonShape(Circle())
                         .frame(
                             width: SidebarAccountControlMetrics.avatarSize,
                             height: SidebarAccountControlMetrics.avatarSize
                         )
-                    VStack(alignment: .leading, spacing: 3) {
-                        SkeletonShape(cornerRadius: 4)
-                            .frame(width: 82, height: 10)
-                        SkeletonShape(cornerRadius: 3)
-                            .frame(width: 52, height: 7)
+                    VStack(alignment: .leading, spacing: InterfaceScale.metric(3)) {
+                        SkeletonShape(cornerRadius: InterfaceScale.metric(4))
+                            .frame(width: InterfaceScale.metric(82), height: InterfaceScale.metric(10))
+                        SkeletonShape(cornerRadius: InterfaceScale.metric(3))
+                            .frame(width: InterfaceScale.metric(52), height: InterfaceScale.metric(7))
                     }
                     Spacer(minLength: 0)
                     SkeletonShape(Circle())
@@ -237,7 +237,7 @@ struct SakuraCordSessionLoadingView: View {
                     in: SidebarAccountControlMetrics.shape(for: appearance)
                 )
             }
-            .padding(.horizontal, 8)
+            .padding(.horizontal, InterfaceScale.metric(8))
             .padding(.top, SidebarAccountControlMetrics.surfaceSpacing)
             .padding(.bottom, SidebarAccountControlMetrics.bottomInset(for: appearance))
         }

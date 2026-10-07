@@ -156,7 +156,7 @@ struct AnimatedRemoteImage: View {
     var playback: AnimatedImagePlayback?
     var previewImage: NSImage?
     var fallbackSystemImage: String?
-    var fallbackInset: CGFloat = 2
+    var fallbackInset: CGFloat = InterfaceScale.metric(2)
     var maximumPixelDimension: Int?
     var contentMode: ContentMode = .fit
     var onFailure: (() -> Void)?

@@ -25,6 +25,10 @@ extension DiscordRESTProvider {
         cachedGuildChannelDTOs[guildID] = nil
         cachedGuildRoles[guildID] = nil
         cachedMembers[guildID] = nil
+        for threadID in threadMemberSubscriptions.removeValue(forKey: guildID) ?? [] {
+            cachedThreadMemberIDs[threadID] = nil
+            continuation?.yield(.threadMembersChanged(guildID: guildID, threadID: threadID, members: nil))
+        }
         cachedMemberListItems[guildID] = nil
         selectedMemberListID[guildID] = nil
         memberListSubscriptions[guildID] = nil

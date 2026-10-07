@@ -171,10 +171,10 @@ extension NativeTimelineCanvasView {
             self.showReactionPicker(
                 for: message,
                 anchor: CGRect(
-                    x: rowFrame.maxX - 32,
+                    x: rowFrame.maxX - InterfaceScale.metric(32),
                     y: rowFrame.minY,
-                    width: 28,
-                    height: 28
+                    width: InterfaceScale.metric(28),
+                    height: InterfaceScale.metric(28)
                 ),
                 preferredEdge: .minY
             )
@@ -363,7 +363,7 @@ extension NativeTimelineCanvasView {
                 sourceFrame: frame ?? .zero,
                 rowIndex: rowIndex,
                 mediaKey: NativeTimelineMediaKey.attachment(attachment),
-                cornerRadius: 8,
+                cornerRadius: InterfaceScale.metric(8),
                 fillsFrame: MediaGalleryImagePresentation.fillsFrame(
                     itemCount: layouts[rowIndex].attachmentRegions.count
                 )
@@ -393,7 +393,7 @@ extension NativeTimelineCanvasView {
                 mediaKey: region?.mediaURL.map {
                     NativeTimelineMediaKey.media($0)
                 },
-                cornerRadius: 8,
+                cornerRadius: InterfaceScale.metric(8),
                 fillsFrame: false
             )
             return true

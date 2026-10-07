@@ -16,31 +16,41 @@ extension NativeTimelineRowPainter {
         if let invite = card.content {
             inviteGradient(card.gradientColor ?? 0x242424, in: card.bannerFrame)
             background.setFill()
-            NSBezierPath(roundedRect: card.iconFrame.insetBy(dx: -3, dy: -3), xRadius: 22, yRadius: 22).fill()
+            NSBezierPath(
+                roundedRect: card.iconFrame.insetBy(dx: -InterfaceScale.metric(3), dy: -InterfaceScale.metric(3)),
+                xRadius: InterfaceScale.metric(22),
+                yRadius: InterfaceScale.metric(22)
+            ).fill()
             if let url = invite.iconURL, let image = mediaImage(for: .media(url, maximumPixelDimension: 128)) {
                 NSGraphicsContext.saveGraphicsState()
-                NSBezierPath(roundedRect: card.iconFrame, xRadius: 19, yRadius: 19).addClip()
+                NSBezierPath(roundedRect: card.iconFrame, xRadius: InterfaceScale.metric(19), yRadius: InterfaceScale.metric(19)).addClip()
                 drawImage(image, in: card.iconFrame, cornerRadius: 0, fillsFrame: true)
                 NSGraphicsContext.restoreGraphicsState()
             } else {
                 NSColor.black.setFill()
-                NSBezierPath(roundedRect: card.iconFrame, xRadius: 19, yRadius: 19).fill()
+                NSBezierPath(roundedRect: card.iconFrame, xRadius: InterfaceScale.metric(19), yRadius: InterfaceScale.metric(19)).fill()
                 let initials = invite.name.split(separator: " ").prefix(3).compactMap(\.first).map(String.init).joined()
-                text(initials, in: card.iconFrame.insetBy(dx: 3, dy: 19), font: .systemFont(ofSize: 20, weight: .semibold), color: .white, alignment: .center)
+                text(
+                    initials,
+                    in: card.iconFrame.insetBy(dx: InterfaceScale.metric(3), dy: InterfaceScale.metric(19)),
+                    font: .interfaceSystemFont(ofSize: 20, weight: .semibold),
+                    color: .white,
+                    alignment: .center
+                )
             }
         } else if card.isUnavailable {
             NSColor.systemRed.withAlphaComponent(0.12).setFill()
-            NSBezierPath(concentricRoundedRect: card.iconFrame, cornerRadius: 12).fill()
+            NSBezierPath(concentricRoundedRect: card.iconFrame, cornerRadius: InterfaceScale.metric(12)).fill()
             if let image = unavailableInviteSymbol {
-                drawImage(image, in: card.iconFrame.insetBy(dx: 11, dy: 11), cornerRadius: 0, fillsFrame: false)
+                drawImage(image, in: card.iconFrame.insetBy(dx: InterfaceScale.metric(11), dy: InterfaceScale.metric(11)), cornerRadius: 0, fillsFrame: false)
             }
         }
         NSGraphicsContext.saveGraphicsState()
         NSBezierPath(rect: CGRect(x: card.frame.minX, y: card.frame.minY, width: card.frame.width,
-                                 height: card.contentBottom - card.frame.minY + (card.hasCollapsedContent ? 16 : 1))).addClip()
+                                 height: card.contentBottom - card.frame.minY + (card.hasCollapsedContent ? InterfaceScale.metric(16) : 1))).addClip()
         if let avatarFrame = card.inviterAvatarFrame, let url = card.content?.inviter?.avatarURL,
            let image = mediaImage(for: .media(url, maximumPixelDimension: 32)) {
-            drawImage(image, in: avatarFrame, cornerRadius: 8, fillsFrame: true)
+            drawImage(image, in: avatarFrame, cornerRadius: InterfaceScale.metric(8), fillsFrame: true)
         }
         for label in card.labels {
             let color: NSColor = card.isUnavailable && label.bold ? .systemRed : label.secondary ? .secondaryLabelColor : .labelColor
@@ -52,30 +62,30 @@ extension NativeTimelineRowPainter {
         }
         for trait in card.traits {
             NativeTimelineSemanticColor.opacity(.labelColor, 0.13).setStroke()
-            let pill = NSBezierPath(concentricRoundedRect: trait.frame.insetBy(dx: 0.5, dy: 0.5), cornerRadius: 13.5)
+            let pill = NSBezierPath(concentricRoundedRect: trait.frame.insetBy(dx: 0.5, dy: 0.5), cornerRadius: InterfaceScale.metric(13.5))
             pill.lineWidth = 1
             pill.stroke()
-            var textFrame = trait.frame.insetBy(dx: 8, dy: 4)
+            var textFrame = trait.frame.insetBy(dx: InterfaceScale.metric(8), dy: InterfaceScale.metric(4))
             if trait.value.emoji != nil || trait.value.emojiURL != nil {
-                let emojiFrame = CGRect(x: textFrame.minX, y: textFrame.minY + 2, width: 16, height: 16)
+                let emojiFrame = CGRect(x: textFrame.minX, y: textFrame.minY + InterfaceScale.metric(2), width: InterfaceScale.metric(16), height: InterfaceScale.metric(16))
                 if let url = trait.value.emojiURL, let image = mediaImage(for: .media(url, maximumPixelDimension: 32)) {
                     drawImage(image, in: emojiFrame, cornerRadius: 0, fillsFrame: false)
                 } else if let emoji = trait.value.emoji {
                     let value = NativeEmojiCatalogMetadata.value(forShortcode: emoji) ?? emoji
                     drawImage(ComponentUnicodeEmojiRenderer.image(for: value), in: emojiFrame, cornerRadius: 0, fillsFrame: false)
                 }
-                textFrame.origin.x += 20
-                textFrame.size.width -= 20
+                textFrame.origin.x += InterfaceScale.metric(20)
+                textFrame.size.width -= InterfaceScale.metric(20)
             }
-            text(trait.value.label, in: textFrame, font: .systemFont(ofSize: 14), color: .labelColor)
+            text(trait.value.label, in: textFrame, font: .interfaceSystemFont(ofSize: 14), color: .labelColor)
         }
         NSGraphicsContext.restoreGraphicsState()
         if card.hasCollapsedContent {
-            let fade = CGRect(x: card.frame.minX, y: card.contentBottom - 48, width: card.frame.width, height: 64)
+            let fade = CGRect(x: card.frame.minX, y: card.contentBottom - InterfaceScale.metric(48), width: card.frame.width, height: InterfaceScale.metric(64))
             NSGradient(starting: background.withAlphaComponent(0), ending: background)?.draw(in: fade, angle: 90)
         }
         if let details = card.detailsFrame, card.isExpanded {
-            text("Hide Details", in: details, font: .systemFont(ofSize: 13, weight: .semibold), color: .secondaryLabelColor, alignment: .center)
+            text("Hide Details", in: details, font: .interfaceSystemFont(ofSize: 13, weight: .semibold), color: .secondaryLabelColor, alignment: .center)
         }
         if card.buttonFrame.height > 0, !isModalPreview {
             sakuraCordButton(
@@ -94,8 +104,9 @@ extension NativeTimelineRowPainter {
     }
 
     /// The first-party profile gradient brightens the preset by 1.75 CIELAB steps (31.5 L*).
-    private static func inviteGradient(_ hex: UInt32, in frame: CGRect) {
-        guard let context = NSGraphicsContext.current?.cgContext, frame.height > 0 else { return }
+    /// Server tag cards pass their own top-left-origin context.
+    static func inviteGradient(_ hex: UInt32, in frame: CGRect, context: CGContext? = nil) {
+        guard let context = context ?? NSGraphicsContext.current?.cgContext, frame.height > 0 else { return }
         let base = NSColor(srgbRed: CGFloat((hex >> 16) & 255) / 255,
                            green: CGFloat((hex >> 8) & 255) / 255, blue: CGFloat(hex & 255) / 255, alpha: 1)
         let bright = inviteBrightColor(base)

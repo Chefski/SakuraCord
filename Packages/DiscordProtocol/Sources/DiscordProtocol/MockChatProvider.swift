@@ -18,12 +18,14 @@ public actor MockChatProvider: ChatProvider {
     var dismissedInboxMentions: Set<MessageID> = []
     var favoriteGIFValues: [GIFSearchResult] = []
     var favoriteEmojiKeys: [String]?
+    var savedEmojiFrecency: (messages: DiscordFrecencyHistory, reactions: DiscordFrecencyHistory)?
     var soundboardSoundsByGuild: [GuildID: [SoundboardSound]] = [:]
     var soundboardSettings = SoundboardUserSettings()
     var continuation: AsyncStream<ClientEvent>.Continuation?
     var nextMessageID: UInt64
     public internal(set) var typingRequests: [ChannelID] = []
     public internal(set) var pinMutationRequests: [PinMutationRequest] = []
+    public internal(set) var attachmentURLRefreshRequests: [URL] = []
     public internal(set) var voiceJoinRequests: [VoiceJoinRequest] = []
     public internal(set) var soundboardSendRequests: [SoundboardSendRequest] = []
     public internal(set) var acknowledgementRequests: [AcknowledgementRequest] = []

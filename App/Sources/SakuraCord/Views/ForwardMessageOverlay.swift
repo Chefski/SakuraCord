@@ -142,7 +142,7 @@ struct ForwardMessageOverlay: View {
                         )
                         .stroke(.separator, lineWidth: 1)
                     }
-                    .shadow(color: .black.opacity(0.28), radius: 24, y: 10)
+                    .shadow(color: .black.opacity(0.28), radius: InterfaceScale.metric(24), y: 10)
                     .scaleEffect(isVisible ? 1 : 0.965)
                     .frame(
                         width: min(
@@ -198,15 +198,15 @@ struct ForwardMessageOverlay: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(12)) {
             HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: InterfaceScale.metric(3)) {
                     Text("Forward To")
-                        .font(.title2.weight(.semibold))
+                        .font(.interface(.title2).weight(.semibold))
                     Text(selectedDestinationIDs.count >= ForwardDestinationSearchPolicy.maximumSelections
                         ? "Maximum 5 places at once."
                         : "Select where you want to share this message.")
-                        .font(.callout)
+                        .font(.interface(.callout))
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -222,7 +222,7 @@ struct ForwardMessageOverlay: View {
                 accessibilityIdentifier: "forward-search"
             )
         }
-        .padding(24)
+        .padding(InterfaceScale.metric(24))
     }
 
     private var destinationList: some View {
@@ -241,7 +241,7 @@ struct ForwardMessageOverlay: View {
                     }
                 }
             }
-            .padding(8)
+            .padding(InterfaceScale.metric(8))
             .scrollTargetLayout()
         }
         .scrollPosition(id: $destinationScrollPosition, anchor: .top)
@@ -260,27 +260,27 @@ struct ForwardMessageOverlay: View {
         VStack(alignment: .leading, spacing: 0) {
             if let error = model.forwardingErrorMessage {
                 Text(error)
-                    .font(.caption)
+                    .font(.interface(.caption))
                     .foregroundStyle(.red)
-                    .padding(.horizontal, 24)
-                    .padding(.top, 8)
+                    .padding(.horizontal, InterfaceScale.metric(24))
+                    .padding(.top, InterfaceScale.metric(8))
             }
             ForwardedMessagePreview(model: model, message: message)
-                .padding(.horizontal, 24)
-                .padding(.top, 16)
-            HStack(alignment: .bottom, spacing: 8) {
+                .padding(.horizontal, InterfaceScale.metric(24))
+                .padding(.top, InterfaceScale.metric(16))
+            HStack(alignment: .bottom, spacing: InterfaceScale.metric(8)) {
                 TextField("Add an optional message…", text: $context, axis: .vertical)
                     .tint(SakuraCordAccentColor.color)
                     .textFieldStyle(.plain)
                     .focused($isContextFocused)
                     .lineLimit(1 ... 3)
-                    .padding(.horizontal, 11)
-                    .frame(minHeight: 40)
-                    .contentShape(ConcentricRectangle(cornerRadius: 12, style: .continuous))
+                    .padding(.horizontal, InterfaceScale.metric(11))
+                    .frame(minHeight: InterfaceScale.metric(40))
+                    .contentShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(12), style: .continuous))
                     .onTapGesture { isContextFocused = true }
                     .glassEffect(
                         .regular.interactive(),
-                        in: ConcentricRectangle(cornerRadius: 12, style: .continuous)
+                        in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(12), style: .continuous)
                     )
                 Button {
                     let destinations = selectedDestinationIDs
@@ -296,21 +296,21 @@ struct ForwardMessageOverlay: View {
                                 .fontWeight(.semibold)
                         }
                     }
-                    .frame(minWidth: 66)
-                    .frame(height: 40)
-                    .contentShape(ConcentricRectangle(cornerRadius: 12, style: .continuous))
+                    .frame(minWidth: InterfaceScale.metric(66))
+                    .frame(height: InterfaceScale.metric(40))
+                    .contentShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(12), style: .continuous))
                 }
                 .buttonStyle(.plain)
-                .contentShape(ConcentricRectangle(cornerRadius: 12, style: .continuous))
+                .contentShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(12), style: .continuous))
                 .glassEffect(
                     .regular.tint(SakuraCordAccentColor.color).interactive(),
-                    in: ConcentricRectangle(cornerRadius: 12, style: .continuous)
+                    in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(12), style: .continuous)
                 )
                 .disabled(selectedDestinationIDs.isEmpty || model.isForwardingMessages)
             }
-            .padding(.horizontal, 24)
-            .padding(.top, 16)
-            .padding(.bottom, 8)
+            .padding(.horizontal, InterfaceScale.metric(24))
+            .padding(.top, InterfaceScale.metric(16))
+            .padding(.bottom, InterfaceScale.metric(8))
         }
     }
 

@@ -26,8 +26,8 @@ struct SakuraCordColorPicker: View {
     }
 
     var body: some View {
-        GlassEffectContainer(spacing: 20) {
-            VStack(spacing: 16) {
+        GlassEffectContainer(spacing: InterfaceScale.metric(20)) {
+            VStack(spacing: InterfaceScale.metric(16)) {
                 ZStack {
                     ColorPickerHueRing(
                         palette: palette,
@@ -36,7 +36,7 @@ struct SakuraCordColorPicker: View {
                         canRemove: palette.stops.count > colorCount.lowerBound
                     )
                     // Match the designer: the central sliders own their hit regions.
-                    HStack(spacing: 16) {
+                    HStack(spacing: InterfaceScale.metric(16)) {
                         componentSlider(value: palette.saturation, systemImage: "drop.halffull", label: "Saturation",
                                         colors: [.init(hue: palette.stops[0].hue, saturation: 1, brightness: palette.value), .init(white: palette.value)]) {
                             let saturation = $0
@@ -50,7 +50,7 @@ struct SakuraCordColorPicker: View {
                     }
                 }
                 if colorCount.lowerBound != colorCount.upperBound {
-                    HStack(spacing: 8) {
+                    HStack(spacing: InterfaceScale.metric(8)) {
                         ColorPickerCountButton(systemImage: "minus", label: "Remove color", isDisabled: palette.stops.count == colorCount.lowerBound) {
                             removeColor(palette.stops.count - 1)
                         }
@@ -68,7 +68,7 @@ struct SakuraCordColorPicker: View {
                     }
                 }
             }
-            .padding(24)
+            .padding(InterfaceScale.metric(24))
         }
         .fixedSize()
         .onChange(of: colors) { _, newColors in
@@ -90,9 +90,9 @@ struct SakuraCordColorPicker: View {
     }
 
     private func componentSlider(value: Double, systemImage: String, label: LocalizedStringKey, colors: [Color], setter: @escaping (Double) -> Void) -> some View {
-        VStack(spacing: 8) {
+        VStack(spacing: InterfaceScale.metric(8)) {
             Image(systemName: systemImage)
-                .font(.body.weight(.medium))
+                .font(.interface(.body).weight(.medium))
                 .foregroundStyle(.primary.opacity(0.78))
                 .accessibilityHidden(true)
             SakuraCordColorSlider(value: value, colors: colors, label: label, setter: setter)
@@ -175,7 +175,7 @@ private struct ColorPickerCountButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.body.weight(.semibold))
+                .font(.interface(.body).weight(.semibold))
                 .foregroundStyle(Color(nsColor: .labelColor))
                 .frame(width: ThemePickerGeometry.colorCountButtonDiameter, height: ThemePickerGeometry.colorCountButtonDiameter)
                 .contentShape(Circle())

@@ -126,12 +126,12 @@ struct DisabledComposerView: View {
 
         HStack(spacing: 0) {
             Text(message)
-                .font(.system(size: 15))
+                .font(.interfaceSystem(size: 15))
                 .lineLimit(1)
             Spacer(minLength: 0)
         }
         .foregroundStyle(.tertiary)
-        .padding(.horizontal, usesDefaultStyle ? 11 : 24)
+        .padding(.horizontal, usesDefaultStyle ? InterfaceScale.metric(11) : InterfaceScale.metric(24))
         .frame(
             height: usesDefaultStyle
                 ? ChatChromeMetrics.composerControlHeight
@@ -153,7 +153,7 @@ private struct HiddenChannelView: View {
     var body: some View {
         GeometryReader { geometry in
             ScrollView {
-                VStack(spacing: 14) {
+                VStack(spacing: InterfaceScale.metric(14)) {
                     HiddenChannelHeader(channel: channel)
 
                     HiddenChannelMetadata(
@@ -163,10 +163,10 @@ private struct HiddenChannelView: View {
 
                     if !allowedPrincipals.isEmpty {
                         HiddenChannelAllowedPrincipals(principals: allowedPrincipals)
-                            .padding(.top, 10)
+                            .padding(.top, InterfaceScale.metric(10))
                     }
                 }
-                .padding(32)
+                .padding(InterfaceScale.metric(32))
                 .frame(maxWidth: .infinity, minHeight: geometry.size.height)
             }
         }
@@ -177,15 +177,15 @@ private struct HiddenChannelHeader: View {
     let channel: Channel
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: InterfaceScale.metric(14)) {
             Image(systemName: "lock.fill")
-                .font(.system(size: 38, weight: .semibold))
+                .font(.interfaceSystem(size: 38, weight: .semibold))
                 .foregroundStyle(.secondary)
-                .frame(width: 82, height: 82)
+                .frame(width: InterfaceScale.metric(82), height: InterfaceScale.metric(82))
                 .background(.quaternary, in: Circle())
 
             Text(channel.kind == .voice ? "Voice channel chat unavailable" : "This is a hidden text channel")
-                .font(.title.weight(.bold))
+                .font(.interface(.title).weight(.bold))
                 .multilineTextAlignment(.center)
 
             Text(
@@ -193,7 +193,7 @@ private struct HiddenChannelHeader: View {
                     ? "You cannot see the messages in \(channel.name)."
                     : "You cannot see the messages in #\(channel.name)."
             )
-            .font(.title3)
+            .font(.interface(.title3))
             .foregroundStyle(.secondary)
             .multilineTextAlignment(.center)
         }
@@ -206,7 +206,7 @@ private struct HiddenChannelMetadata: View {
     let lastPinDate: Date?
 
     var body: some View {
-        VStack(spacing: 7) {
+        VStack(spacing: InterfaceScale.metric(7)) {
             if let lastMessageDate {
                 Text(
                     "Last message created: \(lastMessageDate, format: .dateTime.day().month(.abbreviated).year().hour().minute())"
@@ -218,7 +218,7 @@ private struct HiddenChannelMetadata: View {
                 )
             }
         }
-        .font(.callout.weight(.semibold))
+        .font(.interface(.callout).weight(.semibold))
         .foregroundStyle(.secondary)
         .multilineTextAlignment(.center)
     }
@@ -229,31 +229,31 @@ private struct HiddenChannelAllowedPrincipals: View {
     @State private var isExpanded = true
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: InterfaceScale.metric(12)) {
             Button {
                 withAnimation(.easeInOut(duration: 0.18)) {
                     isExpanded.toggle()
                 }
             } label: {
-                HStack(spacing: 7) {
+                HStack(spacing: InterfaceScale.metric(7)) {
                     Text("Allowed users and roles:")
                     Image(systemName: "chevron.up")
                         .rotationEffect(.degrees(isExpanded ? 0 : 180))
-                        .font(.callout.weight(.bold))
+                        .font(.interface(.callout).weight(.bold))
                 }
-                .font(.title3.weight(.bold))
+                .font(.interface(.title3).weight(.bold))
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
 
             if isExpanded {
-                HiddenChannelPrincipalFlowLayout(horizontalSpacing: 8, verticalSpacing: 8) {
+                HiddenChannelPrincipalFlowLayout(horizontalSpacing: InterfaceScale.metric(8), verticalSpacing: InterfaceScale.metric(8)) {
                     ForEach(principals) { principal in
                         HiddenChannelPrincipalChip(principal: principal)
                     }
                 }
-                .frame(maxWidth: 700)
+                .frame(maxWidth: InterfaceScale.metric(700))
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
@@ -268,20 +268,20 @@ private struct HiddenChannelPrincipalChip: View {
     }
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: InterfaceScale.metric(6)) {
             switch principal.kind {
             case .member:
-                AvatarView(name: principal.name, url: principal.avatarURL, size: 21)
+                AvatarView(name: principal.name, url: principal.avatarURL, size: InterfaceScale.metric(21))
             case .role:
-                RoleColorIndicator(colorHex: principal.colorHex, size: 9)
+                RoleColorIndicator(colorHex: principal.colorHex, size: InterfaceScale.metric(9))
             }
             Text(principal.name)
-                .font(.callout.weight(.semibold))
+                .font(.interface(.callout).weight(.semibold))
                 .lineLimit(1)
         }
         .foregroundStyle(tint)
-        .padding(.horizontal, 9)
-        .frame(height: 30)
+        .padding(.horizontal, InterfaceScale.metric(9))
+        .frame(height: InterfaceScale.metric(30))
         .background(tint.opacity(0.12), in: Capsule())
         .overlay {
             Capsule().stroke(tint.opacity(0.62), lineWidth: 1)
@@ -351,11 +351,11 @@ private struct TypingIndicatorView: View {
 
     var body: some View {
         Text(typingState.presentation(in: channelID) ?? " ")
-            .font(.caption)
+            .font(.interface(.caption))
             .foregroundStyle(.secondary)
             .lineLimit(1)
-            .frame(maxWidth: .infinity, minHeight: 18, maxHeight: 18, alignment: .leading)
-            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(18), maxHeight: InterfaceScale.metric(18), alignment: .leading)
+            .padding(.horizontal, InterfaceScale.metric(16))
             .accessibilityHidden(typingState.presentation(in: channelID) == nil)
     }
 }

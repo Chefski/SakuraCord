@@ -124,6 +124,7 @@ nonisolated struct AppearanceSettingsSnapshot: Equatable, Sendable {
     )
 
     var composerIcons: ComposerIconLayout = .defaults
+    var interfaceSize: Double = InterfaceScale.defaultFactor
     var windowOpacity: Double = defaultWindowOpacity
     var colorScheme: AppColorScheme
     var composerBarAppearance: ComposerBarAppearance
@@ -133,6 +134,7 @@ nonisolated struct AppearanceSettingsSnapshot: Equatable, Sendable {
     mutating func normalize() {
         windowOpacity = Self.normalizedWindowOpacity(windowOpacity)
         messageSpacing = Self.normalizedMessageSpacing(messageSpacing)
+        interfaceSize = InterfaceScale.normalized(interfaceSize)
     }
 
     static func normalizedWindowOpacity(_ value: Double) -> Double {
@@ -195,6 +197,9 @@ final class AppearanceSettingsStore {
         if case let .double(stored) = preferences.value(for: .windowOpacity) {
             value.windowOpacity = stored
         }
+        if case let .double(stored) = preferences.value(for: .interfaceSize) {
+            value.interfaceSize = stored
+        }
         value.normalize()
         return value
     }
@@ -223,6 +228,10 @@ final class AppearanceSettingsStore {
             )),
             for: .messageDensity
         )
+        preferences.set(
+            .double(InterfaceScale.normalized(value.interfaceSize)),
+            for: .interfaceSize
+        )
     }
 }
 
@@ -238,9 +247,11 @@ extension AppModel {
         let messagePresentationChanged =
             appearanceSettings.messageAppearance != value.messageAppearance
                 || appearanceSettings.messageSpacing != value.messageSpacing
+                || appearanceSettings.interfaceSize != value.interfaceSize
         if colorSchemeChanged {
             AppAppearanceController.shared.apply(value.colorScheme)
         }
+        InterfaceScale.shared.update(value.interfaceSize)
         appearanceSettings = value
         if colorSchemeChanged || messagePresentationChanged {
             timelinePresentationRevision &+= 1

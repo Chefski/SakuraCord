@@ -15,17 +15,18 @@ struct ExpandedProfileView: View {
 
     var body: some View {
         ProfileExpandedSurface(profile: presentation.profile, profileContent: {
-            ProfilePresentationContent(presentation: presentation, layout: .expanded, maximumPopoverHeight: 720)
+            ProfilePresentationContent(presentation: presentation, layout: .expanded, maximumPopoverHeight: InterfaceScale.metric(720))
         }, widgets: {
             widgetBoard
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipped()
                 .overlay(alignment: .topTrailing) {
                     HoverCloseButton(help: "Close Profile", accessibilityIdentifier: "expanded-profile-close") { modal?() }
-                        .padding(10)
+                        .padding(InterfaceScale.metric(10))
                 }
         })
         .environment(\.profileCosmeticPolicy, model.cosmeticPolicy)
+        .environment(\.serverTagCardModel, model)
         .windowModalSize(width: 820, height: 720)
         .background(ProfileVerticalScrollInput())
         .accessibilityElement(children: .contain)
@@ -51,10 +52,10 @@ struct ExpandedProfileView: View {
                             }
                         }
                     )
-                    .padding(.top, 12)
+                    .padding(.top, InterfaceScale.metric(12))
             }
         } else if presentation.isLoading {
-            ProgressView("Loading widgets…").padding(48)
+            ProgressView("Loading widgets…").padding(InterfaceScale.metric(48))
         } else if let error = presentation.errorMessage {
             ContentUnavailableView {
                 Label("Couldn't Load Widgets", systemImage: "exclamationmark.triangle")

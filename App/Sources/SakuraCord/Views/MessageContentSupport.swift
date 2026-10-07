@@ -541,9 +541,9 @@ nonisolated struct LinkedImageReference: Identifiable, Hashable, Sendable {
     }
 
     var displaySize: CGSize {
-        if isEmoji { return CGSize(width: 48, height: 48) }
-        if isSticker { return CGSize(width: 160, height: 160) }
-        return CGSize(width: 360, height: 220)
+        if isEmoji { return CGSize(width: InterfaceScale.metric(48), height: InterfaceScale.metric(48)) }
+        if isSticker { return CGSize(width: InterfaceScale.metric(160), height: InterfaceScale.metric(160)) }
+        return CGSize(width: InterfaceScale.metric(360), height: InterfaceScale.metric(220))
     }
 
     static func isSupported(_ url: URL) -> Bool {

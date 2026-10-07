@@ -10,23 +10,23 @@ struct InboxPopoverView: View {
             InboxContent(model: model)
                 .animation(.easeOut(duration: 0.18), value: model.inbox.tab)
             if let error = model.inbox.errorMessage {
-                HStack(spacing: 8) {
+                HStack(spacing: InterfaceScale.metric(8)) {
                     Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                    Text(error).font(.callout).foregroundStyle(.secondary).lineLimit(2)
-                    Spacer(minLength: 8)
+                    Text(error).font(.interface(.callout)).foregroundStyle(.secondary).lineLimit(2)
+                    Spacer(minLength: InterfaceScale.metric(8))
                     Button("Retry", action: model.retryInboxLoad)
                         .buttonStyle(.glass)
                         .controlSize(.small)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(.primary.opacity(0.06), in: ConcentricRectangle(cornerRadius: 14, style: .continuous))
-                .padding(10)
+                .padding(.horizontal, InterfaceScale.metric(12))
+                .padding(.vertical, InterfaceScale.metric(8))
+                .background(.primary.opacity(0.06), in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(14), style: .continuous))
+                .padding(InterfaceScale.metric(10))
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .animation(.snappy(duration: 0.25), value: model.inbox.errorMessage)
-        .frame(width: 460, height: 580)
+        .frame(width: InterfaceScale.metric(460), height: InterfaceScale.metric(580))
         .sheet(item: Binding(get: { model.inbox.selectedEvent }, set: { model.inbox.selectedEvent = $0 })) { event in
             InboxEventDetailsView(event: event, model: model)
         }
@@ -54,7 +54,7 @@ private struct InboxToolbar: View {
 
     var body: some View {
         let inbox = model.inbox
-        HStack(spacing: 6) {
+        HStack(spacing: InterfaceScale.metric(6)) {
             InboxTabPicker(selection: inbox.tab, unreadCount: inbox.groups.count, select: model.selectInboxTab)
             Spacer(minLength: 0)
             if inbox.tab == .mentions {
@@ -75,7 +75,7 @@ private struct InboxToolbar: View {
                     }
                 } label: {
                     HoverActionControlLabel(isSelected: !inbox.query.includesEveryone || !inbox.query.includesRoles || inbox.query.guildID != nil) {
-                        Image(systemName: "line.3.horizontal.decrease").font(.callout.weight(.medium))
+                        Image(systemName: "line.3.horizontal.decrease").font(.interface(.callout).weight(.medium))
                     }
                 }
                 .buttonStyle(.plain)
@@ -102,9 +102,9 @@ private struct InboxToolbar: View {
         }
         .animation(.snappy(duration: 0.22), value: inbox.tab)
         .animation(.snappy(duration: 0.22), value: inbox.undoGroups.isEmpty)
-        .padding(.horizontal, 10)
-        .padding(.top, 10)
-        .padding(.bottom, 6)
+        .padding(.horizontal, InterfaceScale.metric(10))
+        .padding(.top, InterfaceScale.metric(10))
+        .padding(.bottom, InterfaceScale.metric(6))
     }
 }
 

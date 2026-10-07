@@ -20,16 +20,16 @@ struct AccountSwitcherView: View {
                 ScrollView {
                     GlassEffectContainer {
                         SakuraCordAuthenticationCard {
-                            VStack(alignment: .leading, spacing: 26) {
+                            VStack(alignment: .leading, spacing: InterfaceScale.metric(26)) {
                                 header
                                 accountList
                                 addAccountButton
                             }
                         }
                     }
-                    .frame(maxWidth: 620)
-                    .padding(.horizontal, 34)
-                    .padding(.vertical, 72)
+                    .frame(maxWidth: InterfaceScale.metric(620))
+                    .padding(.horizontal, InterfaceScale.metric(34))
+                    .padding(.vertical, InterfaceScale.metric(72))
                     .frame(maxWidth: .infinity, minHeight: geometry.size.height)
                 }
                 .scrollIndicators(.hidden)
@@ -39,7 +39,7 @@ struct AccountSwitcherView: View {
 
             if showsCancel {
                 SakuraCordAuthenticationCloseButton { dismiss() }
-                    .padding(20)
+                    .padding(InterfaceScale.metric(20))
                     .frame(
                         maxWidth: .infinity,
                         maxHeight: .infinity,
@@ -47,7 +47,7 @@ struct AccountSwitcherView: View {
                     )
             }
         }
-        .frame(minWidth: 860, minHeight: 600)
+        .frame(minWidth: InterfaceScale.metric(860), minHeight: InterfaceScale.metric(600))
         .toolbar(removing: .title)
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .task { await model.refreshSavedAccounts() }
@@ -91,7 +91,7 @@ struct AccountSwitcherView: View {
         VStack(spacing: 0) {
             Color.clear
                 .contentShape(Rectangle())
-                .frame(height: 52)
+                .frame(height: InterfaceScale.metric(52))
                 .gesture(WindowDragGesture())
                 .allowsWindowActivationEvents(true)
             Spacer(minLength: 0)
@@ -99,12 +99,12 @@ struct AccountSwitcherView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(6)) {
             Text("Manage accounts.")
-                .font(.title.bold())
+                .font(.interface(.title).bold())
                 .foregroundStyle(.primary)
             Text("Switch between saved sessions or add another Discord account.")
-                .font(.callout)
+                .font(.interface(.callout))
                 .foregroundStyle(.secondary)
         }
     }
@@ -116,7 +116,7 @@ struct AccountSwitcherView: View {
                     Rectangle()
                         .fill(Color(nsColor: .separatorColor).opacity(0.72))
                         .frame(height: 1)
-                        .padding(.leading, 76)
+                        .padding(.leading, InterfaceScale.metric(76))
                 }
                 accountRow(account)
             }
@@ -132,22 +132,22 @@ struct AccountSwitcherView: View {
         let isActive = account.accountID == model.activeAccountID
         let isSwitching = account.accountID == switchingAccountID
         let isLoggingOut = account.accountID == loggingOutAccountID
-        return HStack(spacing: 14) {
+        return HStack(spacing: InterfaceScale.metric(14)) {
             AvatarView(
                 name: account.resolvedDisplayName,
                 url: account.avatarURL,
-                size: 48,
+                size: InterfaceScale.metric(48),
                 maximumPixelDimension: 96,
                 animates: false
             )
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(3)) {
                 Text(account.resolvedDisplayName)
-                    .font(.body.weight(.semibold))
+                    .font(.interface(.body).weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                 Text(isActive ? "Current account" : account.resolvedSubtitle)
-                    .font(.callout)
+                    .font(.interface(.callout))
                     .foregroundStyle(
                         isActive
                             ? SakuraCordAccentColor.color
@@ -156,16 +156,16 @@ struct AccountSwitcherView: View {
                     .lineLimit(1)
             }
 
-            Spacer(minLength: 12)
+            Spacer(minLength: InterfaceScale.metric(12))
 
             if isSwitching {
                 Text("Switching…")
-                    .font(.caption)
+                    .font(.interface(.caption))
                     .foregroundStyle(.secondary)
-                    .frame(width: 78)
+                    .frame(width: InterfaceScale.metric(78))
             } else if isActive {
                 Color.clear
-                    .frame(width: 78, height: 1)
+                    .frame(width: InterfaceScale.metric(78), height: 1)
                     .accessibilityHidden(true)
             } else {
                 Button("Switch") {
@@ -176,7 +176,7 @@ struct AccountSwitcherView: View {
                 .controlSize(.large)
                 .tint(SakuraCordAccentColor.color)
                 .disabled(switchingAccountID != nil)
-                .frame(width: 78)
+                .frame(width: InterfaceScale.metric(78))
             }
 
             AccountOptionsMenuControl(
@@ -185,8 +185,8 @@ struct AccountSwitcherView: View {
                 accountPendingLogout = account
             }
         }
-        .padding(.horizontal, 18)
-        .frame(height: 76)
+        .padding(.horizontal, InterfaceScale.metric(18))
+        .frame(height: InterfaceScale.metric(76))
         .authenticationLoading(isSwitching || isLoggingOut, in: RoundedRectangle(cornerRadius: SakuraCordAuthenticationMetrics.controlRadius, style: .continuous))
         .accessibilityValue(isLoggingOut ? "Logging out" : isSwitching ? "Switching account" : "")
         .accessibilityElement(children: .contain)
@@ -200,8 +200,8 @@ struct AccountSwitcherView: View {
                 "Add an account…",
                 systemImage: "person.crop.circle.badge.plus"
             )
-            .font(.body.weight(.semibold))
-            .frame(maxWidth: .infinity, minHeight: 34)
+            .font(.interface(.body).weight(.semibold))
+            .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(34))
         }
         .buttonStyle(.glassProminent)
         .buttonBorderShape(.capsule)
@@ -256,10 +256,10 @@ private struct AccountOptionsMenuControl: View {
 
     var body: some View {
         NativeAccountOptionsButton(isEnabled: isEnabled, logOut: logOut)
-            .frame(width: 28, height: 28)
+            .frame(width: InterfaceScale.metric(28), height: InterfaceScale.metric(28))
             .overlay {
                 Image(systemName: "ellipsis")
-                    .font(.body.weight(.semibold))
+                    .font(.interface(.body).weight(.semibold))
                     .foregroundStyle(.secondary)
                     .allowsHitTesting(false)
             }

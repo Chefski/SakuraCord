@@ -99,7 +99,7 @@ struct DiscordLoginView: View {
 
             GeometryReader { geometry in
                 ScrollView {
-                    VStack(spacing: 22) {
+                    VStack(spacing: InterfaceScale.metric(22)) {
                         Group {
                             if onboardingStep == .welcome {
                                 Color.clear
@@ -128,7 +128,7 @@ struct DiscordLoginView: View {
                                         .id(onboardingStep)
                                 }
                             }
-                            .frame(height: 44)
+                            .frame(height: InterfaceScale.metric(44))
                             .disabled(isTransitioning)
                         }
 
@@ -143,8 +143,8 @@ struct DiscordLoginView: View {
                             .modifier(SakuraCordSignInReveal(isVisible: panelVisible, reduceMotion: reduceMotion))
                         }
                     }
-                    .padding(.horizontal, 34)
-                    .padding(.vertical, 42)
+                    .padding(.horizontal, InterfaceScale.metric(34))
+                    .padding(.vertical, InterfaceScale.metric(42))
                     .frame(maxWidth: .infinity, minHeight: geometry.size.height)
                     .modifier(SakuraCordSignInReveal(isVisible: formVisible, reduceMotion: reduceMotion))
                     .allowsHitTesting(formVisible && !isTransitioning)
@@ -162,7 +162,7 @@ struct DiscordLoginView: View {
                     replay: replayEntrance
                 )
                 .disabled(isWorking || isTransitioning)
-                .padding(.bottom, 12)
+                .padding(.bottom, InterfaceScale.metric(12))
                 .frame(maxHeight: .infinity, alignment: .bottom)
             }
 
@@ -170,7 +170,7 @@ struct DiscordLoginView: View {
 
             if showsCancel, challenge == nil, accountImportState == nil {
                 SakuraCordAuthenticationCloseButton { dismiss() }
-                .padding(20)
+                .padding(InterfaceScale.metric(20))
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             }
 
@@ -193,7 +193,7 @@ struct DiscordLoginView: View {
                 )
             }
         }
-        .frame(minWidth: 860, minHeight: 600)
+        .frame(minWidth: InterfaceScale.metric(860), minHeight: InterfaceScale.metric(600))
         .toolbar(removing: .title)
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .task(id: onboardingStep == nil) {
@@ -256,8 +256,8 @@ struct DiscordLoginView: View {
                     goBack: goBackFromMFA
                 )
             } else {
-                HStack(alignment: .center, spacing: 32) {
-                    VStack(alignment: .leading, spacing: 22) {
+                HStack(alignment: .center, spacing: InterfaceScale.metric(32)) {
+                    VStack(alignment: .leading, spacing: InterfaceScale.metric(22)) {
                         DiscordLoginHeader()
                         DiscordCredentialForm(
                             identifier: $identifier,
@@ -272,17 +272,17 @@ struct DiscordLoginView: View {
                             message: errorMessage
                         )
                     }
-                    .frame(width: 390, alignment: .leading)
+                    .frame(width: InterfaceScale.metric(390), alignment: .leading)
 
                     Rectangle()
                         .fill(Color(nsColor: .separatorColor).opacity(0.72))
-                        .frame(width: 1, height: 300)
+                        .frame(width: 1, height: InterfaceScale.metric(300))
 
                     DiscordRemoteAuthPanel(
                         state: remoteAuthState,
                         retry: restartRemoteAuth
                     )
-                    .frame(width: 236)
+                    .frame(width: InterfaceScale.metric(236))
                 }
             }
         }
@@ -430,7 +430,7 @@ struct DiscordLoginView: View {
         VStack(spacing: 0) {
             Color.clear
                 .contentShape(Rectangle())
-                .frame(height: 52)
+                .frame(height: InterfaceScale.metric(52))
                 .gesture(WindowDragGesture())
                 .allowsWindowActivationEvents(true)
             Spacer(minLength: 0)
@@ -768,12 +768,12 @@ struct DiscordLoginView: View {
 
 private struct DiscordLoginHeader: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(6)) {
             Text("Welcome home.")
-                .font(.title.bold())
+                .font(.interface(.title).bold())
                 .foregroundStyle(.primary)
             Text("Sign in to pick up where you left off.")
-                .font(.callout)
+                .font(.interface(.callout))
                 .foregroundStyle(.secondary)
         }
     }
@@ -788,10 +788,10 @@ private struct DiscordCredentialForm: View {
     let submit: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(16)) {
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(8)) {
                 Text("Email or phone")
-                    .font(.caption.weight(.semibold))
+                    .font(.interface(.caption).weight(.semibold))
                     .foregroundStyle(.secondary)
                 TextField("", text: $identifier)
                     .accessibilityLabel("Email or phone")
@@ -804,9 +804,9 @@ private struct DiscordCredentialForm: View {
                         onDismiss: { focusedField.wrappedValue = nil }
                     )
             }
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(8)) {
                 Text("Password")
-                    .font(.caption.weight(.semibold))
+                    .font(.interface(.caption).weight(.semibold))
                     .foregroundStyle(.secondary)
                 SecureField("", text: $password)
                     .accessibilityLabel("Password")
@@ -821,8 +821,8 @@ private struct DiscordCredentialForm: View {
             }
             Button(action: submit) {
                 Text(isWorking ? "Signing in…" : "Sign in")
-                .font(.body.weight(.semibold))
-                .frame(maxWidth: .infinity, minHeight: 34)
+                .font(.interface(.body).weight(.semibold))
+                .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(34))
             }
             .buttonStyle(.glassProminent)
             .buttonBorderShape(.capsule)
@@ -855,12 +855,12 @@ private struct DiscordRemoteAuthPanel: View {
     let retry: () -> Void
 
     var body: some View {
-        VStack(spacing: 15) {
+        VStack(spacing: InterfaceScale.metric(15)) {
             switch state {
             case .disabled:
                 remoteAuthSymbol {
                     Image(systemName: "network.slash")
-                        .font(.system(size: 36, weight: .medium))
+                        .font(.interfaceSystem(size: 36, weight: .medium))
                         .foregroundStyle(SakuraCordAccentColor.color)
                 }
                 title("Sign-in paused")
@@ -884,14 +884,14 @@ private struct DiscordRemoteAuthPanel: View {
                         RoundedRectangle(cornerRadius: SakuraCordAuthenticationMetrics.controlRadius, style: .continuous)
                             .stroke(SakuraCordAccentColor.color.opacity(0.32), lineWidth: 1)
                     }
-                    .shadow(color: SakuraCordAccentColor.color.opacity(0.18), radius: 18, y: 8)
+                    .shadow(color: SakuraCordAccentColor.color.opacity(0.18), radius: InterfaceScale.metric(18), y: 8)
                 title("Scan to sign in")
                 detail("Open Discord on your phone and scan this code.")
 
             case let .scanned(user):
                 remoteAuthSymbol {
                     Image(systemName: "iphone.gen3.radiowaves.left.and.right")
-                        .font(.system(size: 38, weight: .medium))
+                        .font(.interfaceSystem(size: 38, weight: .medium))
                         .foregroundStyle(SakuraCordAccentColor.color)
                 }
                 title(user.map { "Hi, \($0.username)" } ?? "Code scanned")
@@ -906,7 +906,7 @@ private struct DiscordRemoteAuthPanel: View {
             case .challenge:
                 remoteAuthSymbol {
                     Image(systemName: "checkmark.shield")
-                        .font(.system(size: 38, weight: .medium))
+                        .font(.interfaceSystem(size: 38, weight: .medium))
                         .foregroundStyle(SakuraCordAccentColor.color)
                 }
                 title("One more check")
@@ -915,14 +915,14 @@ private struct DiscordRemoteAuthPanel: View {
             case let .failed(message):
                 remoteAuthSymbol {
                     Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 34, weight: .semibold))
+                        .font(.interfaceSystem(size: 34, weight: .semibold))
                         .foregroundStyle(SakuraCordAccentColor.color)
                 }
                 title("QR sign-in unavailable")
                 detail(message)
                 Button("Create a new code", action: retry)
                     .buttonStyle(.plain)
-                    .font(.callout.weight(.semibold))
+                    .font(.interface(.callout).weight(.semibold))
                     .foregroundStyle(SakuraCordAccentColor.color)
             }
         }
@@ -933,13 +933,13 @@ private struct DiscordRemoteAuthPanel: View {
 
     private func title(_ value: String) -> some View {
         Text(value)
-            .font(.title3.bold())
+            .font(.interface(.title3).bold())
             .foregroundStyle(.primary)
     }
 
     private func detail(_ value: String) -> some View {
         Text(value)
-            .font(.callout)
+            .font(.interface(.callout))
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
     }
@@ -1231,13 +1231,13 @@ private struct DiscordLoginStatus: View {
 
     var body: some View {
         if let title, let message {
-            VStack(alignment: .leading, spacing: 7) {
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(7)) {
                 Label(title, systemImage: "exclamationmark.circle")
                     .foregroundStyle(.secondary)
                 Text(message)
                     .foregroundStyle(Color(hex: 0xF23F42))
             }
-            .font(.caption)
+            .font(.interface(.caption))
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }

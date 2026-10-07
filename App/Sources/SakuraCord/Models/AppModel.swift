@@ -154,6 +154,7 @@ final class AppModel {
         ServerRailPresentationStore()
     @ObservationIgnored let onboarding = GuildOnboardingStore()
     @ObservationIgnored let serverInvites = ServerInvitePresentationStore()
+    @ObservationIgnored let serverTagCards = ServerTagCardStore()
     @ObservationIgnored let issueReports = IssueReportStore()
     @ObservationIgnored let voiceSidebarPresentation =
         VoiceSidebarPresentationStore()
@@ -268,6 +269,7 @@ final class AppModel {
     @ObservationIgnored var memberListGroupsByGuildID: [GuildID: [GuildMemberListGroup]] = [:]
     @ObservationIgnored var defersMemberPresentationRebuild = false
     var memberSections: [MemberSection] = []
+    var threadMembersByID: [ChannelID: [Member]] = [:]
     var memberListGroups: [GuildMemberListGroup] = [] {
         didSet {
             if oldValue != memberListGroups, !defersMemberPresentationRebuild {
@@ -287,7 +289,9 @@ final class AppModel {
             }
         }
     }
-    @ObservationIgnored var guildRolesByGuildID: [GuildID: [GuildRole]] = [:]
+    @ObservationIgnored var guildRolesByGuildID: [GuildID: [GuildRole]] = [:] {
+        didSet { if oldValue != guildRolesByGuildID { emojiEligibilityRevision &+= 1 } }
+    }
     var mentionMemberResults: [Member] = []
     var mentionAutocompleteMembers: [Member] = []
     var knownMentionMembers: [UserID: Member] = [:] {
@@ -364,6 +368,7 @@ final class AppModel {
     var interactionModalForm: InteractionModalFormState?
     var isVoiceChatOpen = false
     var openThread: MessageThreadSummary?
+    var isThreadFullWidth = false
     /// A thread being composed in the supplementary pane. It is mutually
     /// exclusive with `openThread` and becomes it once Discord creates the thread.
     var threadCreation: ThreadCreationDraft?
@@ -496,8 +501,14 @@ final class AppModel {
     }
     var loadingEmojiGuildIDs: Set<GuildID> = []
     var emojiLoadErrorsByGuild: [GuildID: String] = [:]
-    var emojiUsageCounts: [String: Int]
-    var emojiRecentKeys: [String]
+    @ObservationIgnored let emojiFrecency = DiscordFrecencyStore(kind: .emoji)
+    @ObservationIgnored let reactionEmojiFrecency = DiscordFrecencyStore(kind: .reaction)
+    @ObservationIgnored var emojiFrecencySaveTask: Task<Bool, Never>?
+    @ObservationIgnored var emojiSettingsLoadTask: Task<EmojiUserSettings?, Never>?
+    @ObservationIgnored var deferredEmojiSettings: EmojiUserSettings?
+    @ObservationIgnored var emojiSettingsDataVersion: UInt32?
+    var discordFrequentlyUsedReactionKeys: [String] = []
+    var discordReactionUsageScores: [String: Int] = [:]
     var discordFavoriteEmojiKeys: [String] = []
     var discordFrequentlyUsedEmojiKeys: [String] = []
     var discordEmojiUsageScores: [String: Int] = [:]
@@ -1064,7 +1075,7 @@ final class AppModel {
     @ObservationIgnored var soundboardLoadTask: Task<Void, Never>?
     @ObservationIgnored var soundboardLoadGeneration: UInt64 = 0
     @ObservationIgnored var commandFrecencySaveTask: Task<Void, Never>?
-    @ObservationIgnored var deferredCommandFrecency: ApplicationCommandFrecencyHistory?
+    @ObservationIgnored var deferredCommandFrecency: DiscordFrecencyHistory?
     @ObservationIgnored var commandFrecencyLoadTask: Task<Void, Never>?
     @ObservationIgnored var commandFrecencyFlushTask: Task<Void, Never>?
     @ObservationIgnored var mentionMemberSearchTask: Task<Void, Never>?
@@ -1170,7 +1181,10 @@ final class AppModel {
     @ObservationIgnored var mainWindowIsActive = false
     @ObservationIgnored var applicationIsActive = false
     @ObservationIgnored var clientAppStateUpdateTask: Task<Void, Never>?
-    @ObservationIgnored var currentUserRoleIDsByGuild: [GuildID: Set<RoleID>] = [:]
+    var emojiEligibilityRevision: UInt64 = 0
+    @ObservationIgnored var currentUserRoleIDsByGuild: [GuildID: Set<RoleID>] = [:] {
+        didSet { if oldValue != currentUserRoleIDsByGuild { emojiEligibilityRevision &+= 1 } }
+    }
     @ObservationIgnored let readAcknowledgementTiming: ReadAcknowledgementTiming
     @ObservationIgnored let externalAttachmentUploader: any ExternalAttachmentUploading
     @ObservationIgnored let attachmentCompactor: any AttachmentCompacting
@@ -1300,10 +1314,6 @@ final class AppModel {
             try? SakuraCordDatabase(accountID: accountID)
         }
         persistsEmojiPreferences = launchMode == .normal
-        let initialEmojiUsageCounts = Self.loadEmojiUsageCounts(persisted: launchMode == .normal)
-        emojiUsageCounts = initialEmojiUsageCounts
-        emojiRecentKeys = launchMode == .normal
-            ? Self.loadEmojiRecents(usageCounts: initialEmojiUsageCounts) : []
         // A normal launch does not know the account yet. Opening the historical
         // account-1 fallback here only to replace it during credential restore
         // duplicates filesystem and SQLite work on every startup.
@@ -1313,6 +1323,7 @@ final class AppModel {
         commandComposer.configureFrecencyScope(
             launchMode == .offlineTesting ? "offline" : "signed-out"
         )
+        configureEmojiFrecency(scope: launchMode == .offlineTesting ? "offline" : "signed-out")
         readState.reset(accountID: launchMode == .offlineTesting ? "offline" : nil)
         mediaDeviceMonitor = MediaDeviceMonitor { [weak self] snapshot in
             Task { @MainActor [weak self] in
@@ -1327,11 +1338,6 @@ extension AppModel {
         subsystem: "dev.sakuracord.SakuraCord",
         category: "MessageSend"
     )
-
-    private static func loadEmojiUsageCounts(persisted: Bool) -> [String: Int] {
-        guard persisted else { return [:] }
-        return UserDefaults.standard.dictionary(forKey: "dev.sakuracord.emoji-usage") as? [String: Int] ?? [:]
-    }
 
     private static func defaultCredentialStore(launchMode: AppLaunchMode, usesInsecureDebugCredentials: Bool) -> any CredentialStore {
         if launchMode == .offlineTesting { return OfflineCredentialStore() }

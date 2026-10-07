@@ -40,10 +40,15 @@ func `translation syntax and repeated tokens round trip without model placeholde
     var unknown = plan.slots
     unknown[0] = .init(index: 999, text: "hello")
     #expect(throws: LocalTranslationError.protectedTokenChanged) { try plan.restore(unknown) }
-    for corrupted in ["<@999>", "||exposed||", "\u{E000}0\u{E001}", "https://evil.example", "`code`", "Hello 😀", "", "line\nbreak"] {
+    for corrupted in ["<@999>", "||exposed||", "\u{E000}0\u{E001}", "https://evil.example", "`code`", "Hello 😀", "", "line\nbreak", "- item", "+ item", "1. item", "# title"] {
         var changed = plan.slots
         changed[0] = .init(index: first.index, text: corrupted)
         #expect(throws: LocalTranslationError.protectedTokenChanged) { try plan.restore(changed) }
+    }
+    for source in ["> Hallo", "> - Hallo", "- Hallo", "# Hallo", "\n  Hallo"] {
+        let block = TranslationTokenProtector(source)
+        let injected = block.slots.map { TranslationTokenProtector.Slot(index: $0.index, text: "- injected list") }
+        #expect(throws: LocalTranslationError.protectedTokenChanged) { try block.restore(injected) }
     }
     let reversed = Array(plan.slots.reversed())
     #expect(try plan.restore(reversed) == plan.original)
@@ -56,6 +61,12 @@ func `translation syntax and repeated tokens round trip without model placeholde
     #expect(try plan.restore(slots) == "Hello <@1> ||secret|| `code`\nBye")
     #expect(!TranslationTokenProtector("<@1> `code` https://example.com 👋").hasTranslatableText)
     #expect(TranslationTokenProtector("Hi").hasTranslatableText)
+    // Apple normalizes this mid-sentence em dash to a hyphen. The last
+    // fragment must not be mistaken for a new Markdown list.
+    let inline = TranslationTokenProtector("Welcome to **Aurora Studio** — a fictional community.")
+    let translated = zip(inline.slots, ["Willkommen bei", "Aurora Studio", "- eine fiktive Gemeinschaft."])
+        .map { TranslationTokenProtector.Slot(index: $0.0.index, text: $0.1) }
+    #expect(try inline.restore(translated) == "Willkommen bei **Aurora Studio** - eine fiktive Gemeinschaft.")
 }
 
 @Test func `translation keeps code containing literal backticks out of prose slots`() throws {

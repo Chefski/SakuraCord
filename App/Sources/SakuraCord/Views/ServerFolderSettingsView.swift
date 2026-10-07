@@ -21,9 +21,9 @@ struct ServerFolderSettingsView: View {
     var body: some View {
         VStack(spacing: 0) {
             ServerFolderNameField(name: $name, submit: done)
-                .padding(.horizontal, 16).padding(.top, 8)
+                .padding(.horizontal, InterfaceScale.metric(16)).padding(.top, InterfaceScale.metric(8))
             ServerFolderColorEditor(color: $color)
-                .padding(.horizontal, 16).padding(.top, 16)
+                .padding(.horizontal, InterfaceScale.metric(16)).padding(.top, InterfaceScale.metric(16))
             Divider()
             ServerFolderSettingsFooter(cancel: { modal?.dismiss() }, done: done)
         }
@@ -42,13 +42,13 @@ private struct ServerFolderNameField: View {
     @FocusState private var isFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Folder Name").font(.headline)
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(8)) {
+            Text("Folder Name").font(.interface(.headline))
             TextField("Server Folder", text: $name)
-                .textFieldStyle(.plain).font(.body)
+                .textFieldStyle(.plain).font(.interface(.body))
                 .focused($isFocused)
                 .onSubmit(submit)
-                .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                .padding(InterfaceScale.metric(14)).frame(maxWidth: .infinity, alignment: .leading)
                 .modifier(ModalInputSurface(isFocused: isFocused) { isFocused = true })
                 .onChange(of: name) { _, value in
                     if value.count > ServerFolderSettingsView.maximumNameLength {
@@ -69,7 +69,7 @@ private struct ServerFolderColorEditor: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Folder Color").font(.headline)
+                Text("Folder Color").font(.interface(.headline))
                 Spacer()
                 Button("Default") { color = nil }
                     .buttonStyle(.glass)
@@ -92,10 +92,10 @@ private struct ServerFolderSettingsFooter: View {
     var body: some View {
         HStack {
             ModalGlassButton(symbol: "xmark", label: "Cancel", action: cancel)
-            Spacer(minLength: 16)
+            Spacer(minLength: InterfaceScale.metric(16))
             ModalGlassButton(symbol: "checkmark", label: "Done", primary: true, action: done)
                 .keyboardShortcut(.defaultAction)
         }
-        .padding(12)
+        .padding(InterfaceScale.metric(12))
     }
 }

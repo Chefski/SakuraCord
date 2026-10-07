@@ -13,11 +13,16 @@ extension NativeMemberListCanvasView {
         dismissProfile: @escaping () -> Void
     ) {
         let previousSelectedMemberID = selectedMemberID
+        let previousProfileRequestID = self.profilePresentation?.requestID
         let previousCustomEmojiURLsByID = self.customEmojiURLsByID
         self.customEmojiURLsByID = customEmojiURLsByID
         self.profilePresentation = profilePresentation
         self.isProfilePresented = isProfilePresented
         self.dismissProfile = dismissProfile
+        reconcileServerTagCardPresentation()
+        if isProfilePresented, previousProfileRequestID != profilePresentation?.requestID {
+            dismissServerTagCard()
+        }
         selectedMemberID = isProfilePresented
             ? profilePresentation?.member.id
             : nil
@@ -43,6 +48,8 @@ extension NativeMemberListCanvasView {
         guard interactionsBlocked != blocked else { return }
         interactionsBlocked = blocked
         if blocked {
+            clearServerTagHover()
+            dismissServerTagCard()
             if let old = hoveredIndex {
                 hoveredIndex = nil
                 setNeedsDisplay(itemRect(at: old))
@@ -97,6 +104,9 @@ extension NativeMemberListCanvasView {
         contentHeight = document.contentHeight
         invalidateIntrinsicContentSize()
         preparedText = document.preparedText
+        memberNameGeometries.removeAll(keepingCapacity: true)
+        reconcileServerTagCardPresentation()
+        window?.invalidateCursorRects(for: self)
         loadedItemIndexes = document.loadedItemIndexes
         let placeholderStateChanged = hasLoadingPlaceholders
             != document.hasLoadingPlaceholders
@@ -561,7 +571,7 @@ extension NativeMemberListCanvasView {
     }
 
     private nonisolated static func nameFont(for member: Member) -> NSFont {
-        ProfileNameFontCache.font(id: member.user.displayNameStyle?.fontID, fallback: .systemFont(
+        ProfileNameFontCache.font(id: member.user.displayNameStyle?.fontID, fallback: .interfaceSystemFont(
             ofSize: InterfaceTypographyMetrics.interfaceTextSize, weight: .semibold
         ))
     }
@@ -572,7 +582,7 @@ extension NativeMemberListCanvasView {
         reusing preparationSnapshot: PreparationSnapshot?,
         cancelsCooperatively: Bool
     ) -> [ItemID: PreparedText]? {
-        let activityFont = NSFont.systemFont(
+        let activityFont = NSFont.interfaceSystemFont(
             ofSize: max(10, InterfaceTypographyMetrics.interfaceTextSize - 1)
         )
         let appearance = NSAppearance(named: presentation.isDark ? .darkAqua : .aqua)
@@ -647,7 +657,8 @@ extension NativeMemberListCanvasView {
                 activityTruncationToken: activityTruncationToken,
                 activityWidth: activity.map {
                     CGFloat(CTLineGetTypographicBounds($0, nil, nil, nil))
-                } ?? 0
+                } ?? 0,
+                serverTag: member.user.primaryGuild.flatMap { NativeServerTagPresentation(identity: $0) }
             )
         }
         return preparedText

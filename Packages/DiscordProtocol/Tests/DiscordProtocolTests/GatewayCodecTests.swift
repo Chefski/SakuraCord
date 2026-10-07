@@ -503,10 +503,9 @@ private func appendETFBinary(_ value: String, to data: inout Data) {
         nowMilliseconds: now
     )
     #expect(settings.favoriteKeys == ["22", "white_heart", "11"])
-    #expect(settings.frequentlyUsedKeys == ["22", "11", "white_heart"])
-    #expect(settings.usageScores["22"] == 300)
-    #expect(settings.usageScores["white_heart"] == 50)
-    #expect(settings.usageScores["reaction_only"] == nil)
+    #expect(settings.messageHistory.entries.map(\.key) == ["white_heart", "22", "11"])
+    #expect(settings.messageHistory.entries[1].recentUses == [now, now - 1, now - 2])
+    #expect(settings.reactionHistory.entries.map(\.key) == ["reaction_only"])
     #expect(settings.guildAndChannelUsageScores["123"] == 500)
     #expect(settings.guildAndChannelUsageScores["456"] == nil)
     #expect(settings.guildAndChannelUsageScores["789"] == 360)
@@ -521,7 +520,7 @@ private func appendETFBinary(_ value: String, to data: inout Data) {
     #expect(settings.guildAndChannelUsageOrder == ["123", "456", "789"])
 }
 
-@Test func `emoji settings cap frequently used to two picker rows`() {
+@Test func `emoji settings retain full histories for client ranking`() {
     func field(_ number: Int, payload: [UInt8]) -> [UInt8] {
         encodeProtoVarint(UInt64(number << 3 | 2)) + encodeProtoVarint(UInt64(payload.count)) + payload
     }
@@ -537,9 +536,9 @@ private func appendETFBinary(_ value: String, to data: inout Data) {
         from: Data(field(6, payload: entries)),
         nowMilliseconds: now
     )
-    #expect(settings.frequentlyUsedKeys.count == 18)
-    #expect(settings.frequentlyUsedKeys.first == "e0")
-    #expect(settings.frequentlyUsedKeys.last == "e17")
+    #expect(settings.messageHistory.entries.count == 19)
+    #expect(settings.messageHistory.entries.first?.key == "e0")
+    #expect(settings.messageHistory.entries.last?.key == "e18")
 }
 
 @Test func `sticker settings preserve favorite order and reproduce desktop frecency`() throws {

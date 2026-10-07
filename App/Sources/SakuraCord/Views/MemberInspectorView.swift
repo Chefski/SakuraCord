@@ -204,7 +204,8 @@ nonisolated struct MemberSection: Identifiable, Equatable, Sendable {
     static func make(
         from members: [Member],
         groups: [GuildMemberListGroup] = [],
-        roles: [GuildRole] = []
+        roles: [GuildRole] = [],
+        forThread: Bool = false
     ) -> [MemberSection] {
         if !groups.isEmpty {
             return makeServerOrderedSections(members: members, groups: groups, roles: roles)
@@ -216,7 +217,7 @@ nonisolated struct MemberSection: Identifiable, Equatable, Sendable {
         offlineMembers.reserveCapacity(members.count)
 
         for member in members {
-            guard member.isListedOnline else {
+            guard forThread ? member.isOnline : member.isListedOnline else {
                 offlineMembers.append(member)
                 continue
             }
@@ -231,10 +232,11 @@ nonisolated struct MemberSection: Identifiable, Equatable, Sendable {
             }
         }
 
-        var sections = makeRoleSections(roleMembers)
+        let sort = forThread ? threadMemberNameSort : memberNameSort
+        var sections = makeRoleSections(roleMembers, sort: sort)
 
         if !ungroupedOnline.isEmpty {
-            ungroupedOnline.sort(by: memberNameSort)
+            ungroupedOnline.sort(by: sort)
             sections.append(MemberSection(
                 id: .online,
                 title: "Online",
@@ -245,7 +247,7 @@ nonisolated struct MemberSection: Identifiable, Equatable, Sendable {
         }
 
         if !offlineMembers.isEmpty {
-            offlineMembers.sort(by: memberNameSort)
+            offlineMembers.sort(by: sort)
             sections.append(MemberSection(
                 id: .offline,
                 title: "Offline",
@@ -257,7 +259,7 @@ nonisolated struct MemberSection: Identifiable, Equatable, Sendable {
         return sections
     }
 
-    private static func makeRoleSections(_ roleMembers: [SectionIdentifier: [Member]]) -> [MemberSection] {
+    private static func makeRoleSections(_ roleMembers: [SectionIdentifier: [Member]], sort: (Member, Member) -> Bool) -> [MemberSection] {
         return roleMembers.map { id, members in
             let name = switch id {
             case let .role(name, _): name
@@ -272,7 +274,7 @@ nonisolated struct MemberSection: Identifiable, Equatable, Sendable {
                     }?.colorHex
                 }.first,
                 totalCount: members.count,
-                members: members.sorted(by: memberNameSort)
+                members: members.sorted(by: sort)
             )
         }
         .sorted { lhs, rhs in
@@ -358,6 +360,12 @@ nonisolated struct MemberSection: Identifiable, Equatable, Sendable {
         return sections
     }
 
+    private static func threadMemberNameSort(_ lhs: Member, _ rhs: Member) -> Bool {
+        let left = lhs.user.displayName.lowercased()
+        let right = rhs.user.displayName.lowercased()
+        return left == right ? lhs.id < rhs.id : left < right
+    }
+
     private static func memberNameSort(_ lhs: Member, _ rhs: Member) -> Bool {
         lhs.user.displayName.localizedStandardCompare(rhs.user.displayName)
             == .orderedAscending
@@ -368,18 +376,18 @@ private struct MemberSectionHeader: View {
     let section: MemberSection
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: InterfaceScale.metric(6)) {
             if case .role = section.id {
-                RoleColorIndicator(colorHex: section.colorHex, size: 8)
+                RoleColorIndicator(colorHex: section.colorHex, size: InterfaceScale.metric(8))
             }
             Text("\(section.title) — \(section.totalCount)")
-                .font(.body.weight(.semibold))
+                .font(.interface(.body).weight(.semibold))
                 .foregroundStyle(headerColor)
         }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 10)
-            .padding(.top, 12)
-            .padding(.bottom, 5)
+            .padding(.horizontal, InterfaceScale.metric(10))
+            .padding(.top, InterfaceScale.metric(12))
+            .padding(.bottom, InterfaceScale.metric(5))
     }
 
     private var headerColor: Color {
@@ -390,6 +398,7 @@ private struct MemberSectionHeader: View {
 
 struct MemberRow: View {
     @Environment(\.roleColorDisplay) private var roleColorDisplay
+    @Environment(\.profileCosmeticPolicy) private var cosmeticPolicy
     let member: Member
     let isSelected: Bool
     var showsContents = true
@@ -406,7 +415,7 @@ struct MemberRow: View {
                     )
                     .opacity(NameplatePresentationPolicy.opacity(isHovered: isHovered))
                 } else {
-                    ConcentricRectangle(cornerRadius: 9, style: .continuous)
+                    ConcentricRectangle(cornerRadius: InterfaceScale.metric(9), style: .continuous)
                         .fill(isSelected && !isHovered ? Color.primary.opacity(0.07) : .clear)
                 }
                 if isHovered {
@@ -416,10 +425,10 @@ struct MemberRow: View {
                 }
 
                 if showsContents {
-                    HStack(spacing: 8) {
+                    HStack(spacing: InterfaceScale.metric(8)) {
                         MemberAvatar(member: member, isHovered: isHovered)
-                        VStack(alignment: .leading, spacing: 2) {
-                            HStack(spacing: 5) {
+                        VStack(alignment: .leading, spacing: InterfaceScale.metric(2)) {
+                            HStack(spacing: InterfaceScale.metric(5)) {
                                 NameRoleColorIndicator(colorHex: MessageAuthorPresentation.topRoleColor(in: member.roles))
                                 if let style = member.user.displayNameStyle {
                                     ProfileDisplayName(name: member.user.displayName, style: style, size: 13,
@@ -427,24 +436,20 @@ struct MemberRow: View {
                                         .allowsHitTesting(false)
                                 } else {
                                     Text(member.user.displayName)
-                                        .font(.body.weight(.semibold))
+                                        .font(.interface(.body).weight(.semibold))
                                         .foregroundStyle(nameColor)
                                         .lineLimit(1)
                                 }
                                 if member.user.isBot {
-                                    Text("APP")
-                                        .font(.caption2.weight(.bold))
-                                        .padding(.horizontal, 5)
-                                        .padding(.vertical, 2)
-                                        .foregroundStyle(.white)
-                                        .background(.indigo, in: ConcentricRectangle(cornerRadius: 4))
+                                    AppIdentityBadge()
                                 }
-                                if let identity = member.user.primaryGuild, let tag = identity.tag {
-                                    PrimaryGuildTag(identity: identity, tag: tag)
+                                if !cosmeticPolicy.disables(.serverTag, for: member.id),
+                                   let identity = member.user.primaryGuild, identity.tag != nil {
+                                    PrimaryGuildTag(identity: identity)
                                 }
                             }
                             if let activity = member.memberListActivityText, !activity.isEmpty {
-                                HStack(spacing: 4) {
+                                HStack(spacing: InterfaceScale.metric(4)) {
                                     if member.isListeningToMusic {
                                         Image(systemName: "music.note")
                                             .foregroundStyle(Color(hex: 0x1DB954))
@@ -460,21 +465,21 @@ struct MemberRow: View {
                                         usesSecondaryColor: true
                                     )
                                 }
-                                .font(.system(size: 12))
-                                .frame(maxWidth: .infinity, minHeight: 14, maxHeight: 16, alignment: .leading)
+                                .font(.interfaceSystem(size: 12))
+                                .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(14), maxHeight: InterfaceScale.metric(16), alignment: .leading)
                                 .allowsHitTesting(false)
                             }
                         }
                         .opacity(member.isListedOnline ? 1 : 0.55)
                         Spacer(minLength: 0)
                     }
-                    .padding(.horizontal, 4)
+                    .padding(.horizontal, InterfaceScale.metric(4))
                 }
             }
-            .frame(height: 44)
+            .frame(height: InterfaceScale.metric(44))
             .padding(.vertical, 1)
-            .clipShape(ConcentricRectangle(cornerRadius: 9, style: .continuous))
-            .contentShape(ConcentricRectangle(cornerRadius: 9, style: .continuous))
+            .clipShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(9), style: .continuous))
+            .contentShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(9), style: .continuous))
         }
         .buttonStyle(.plain)
         .onModalHover { isHovered = $0 }
@@ -493,15 +498,15 @@ struct MemberAvatar: View {
     var body: some View {
         AvatarPresenceView(
             status: member.memberListStatus,
-            avatarSize: 34,
-            indicatorSize: 11,
+            avatarSize: InterfaceScale.metric(34),
+            indicatorSize: InterfaceScale.metric(11),
             isMobile: member.showsMobileIndicator
         ) {
             DecoratedAvatarView(
                 name: member.user.displayName,
                 avatarURL: member.guildAvatarURL ?? member.user.avatarURL,
                 decorationURL: member.user.avatarDecorationURL,
-                size: 34,
+                size: InterfaceScale.metric(34),
                 playback: .hover(isHovered)
             )
         }
@@ -667,23 +672,8 @@ struct NameplateBackground: View {
 
 private struct PrimaryGuildTag: View {
     let identity: PrimaryGuildIdentity
-    let tag: String
 
     var body: some View {
-        HStack(spacing: 3) {
-            if let badgeURL = identity.badgeURL {
-                AnimatedRemoteImage(
-                    url: badgeURL,
-                    animates: false,
-                    maximumPixelDimension: 32
-                )
-                .frame(width: 14, height: 14)
-            }
-            Text(tag)
-                .font(.caption.weight(.bold))
-        }
-        .padding(.horizontal, 5)
-        .padding(.vertical, 2)
-        .background(.black.opacity(0.32), in: ConcentricRectangle(cornerRadius: 5))
+        InteractiveProfileServerTag(identity: identity)
     }
 }

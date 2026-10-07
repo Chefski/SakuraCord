@@ -3,7 +3,7 @@ import SwiftUI
 
 nonisolated enum StableReactionPickerAnchorPolicy {
     static let freezesAnchorWhilePresented = true
-    static let maximumContentSize = CGSize(width: 520, height: 760)
+    static var maximumContentSize: CGSize { CGSize(width: InterfaceScale.metric(520), height: InterfaceScale.metric(760)) }
 
     static func preferredEdge(isInline: Bool) -> NSRectEdge {
         isInline ? .maxX : .minY

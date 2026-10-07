@@ -61,12 +61,12 @@ struct DirectMessageCallWorkspace: View {
 }
 
 struct DirectMessageCallLayout: Equatable {
-    static let defaultHeight: CGFloat = 340
-    static let preferredMinimumHeight: CGFloat = 210
-    static let absoluteMinimumHeight: CGFloat = 150
-    static let maximumHeight: CGFloat = 640
-    static let minimumChatHeight: CGFloat = 220
-    static let resizeHandleHeight: CGFloat = 12
+    static var defaultHeight: CGFloat { InterfaceScale.metric(340) }
+    static var preferredMinimumHeight: CGFloat { InterfaceScale.metric(210) }
+    static var absoluteMinimumHeight: CGFloat { InterfaceScale.metric(150) }
+    static var maximumHeight: CGFloat { InterfaceScale.metric(640) }
+    static var minimumChatHeight: CGFloat { InterfaceScale.metric(220) }
+    static var resizeHandleHeight: CGFloat { InterfaceScale.metric(12) }
 
     let availableHeight: CGFloat
 
@@ -105,7 +105,7 @@ private struct DirectMessageCallResizeHandle: View {
 
             Capsule()
                 .fill(isHovering ? Color.primary.opacity(0.55) : Color.primary.opacity(0.24))
-                .frame(width: 42, height: 4)
+                .frame(width: InterfaceScale.metric(42), height: InterfaceScale.metric(4))
         }
         .frame(height: DirectMessageCallLayout.resizeHandleHeight)
         .contentShape(Rectangle())
@@ -162,8 +162,8 @@ private struct DirectMessageCallRegion: View {
 
             if isConnectedHere {
                 VoiceCallControlDock(model: model)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
+                    .padding(.horizontal, InterfaceScale.metric(14))
+                    .padding(.vertical, InterfaceScale.metric(10))
             } else {
                 PrivateCallActionDock(
                     isIncoming: isIncoming,
@@ -180,8 +180,8 @@ private struct DirectMessageCallRegion: View {
                         Task { await model.joinPrivateCall(in: channel) }
                     }
                 )
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
+                .padding(.horizontal, InterfaceScale.metric(14))
+                .padding(.vertical, InterfaceScale.metric(10))
             }
         }
         .background {
@@ -232,8 +232,8 @@ private struct PrivateCallActionDock: View {
     let join: () -> Void
 
     var body: some View {
-        GlassEffectContainer(spacing: 10) {
-            HStack(spacing: 10) {
+        GlassEffectContainer(spacing: InterfaceScale.metric(10)) {
+            HStack(spacing: InterfaceScale.metric(10)) {
                 if isIncoming {
                     PrivateCallGlassButton(
                         title: "Decline",
@@ -271,10 +271,10 @@ private struct PrivateCallGlassButton: View {
     var body: some View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
-                .font(.callout.weight(.semibold))
+                .font(.interface(.callout).weight(.semibold))
                 .foregroundStyle(.white)
-                .padding(.horizontal, 16)
-                .frame(height: 40)
+                .padding(.horizontal, InterfaceScale.metric(16))
+                .frame(height: InterfaceScale.metric(40))
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -351,34 +351,34 @@ private struct IncomingPrivateCallCard: View {
     let decline: () -> Void
 
     var body: some View {
-        VStack(spacing: 13) {
+        VStack(spacing: InterfaceScale.metric(13)) {
             DirectMessageAvatar(
                 channel: channel,
-                size: 92,
+                size: InterfaceScale.metric(92),
                 status: nil,
                 animates: true
             )
                 .overlay {
                     Circle()
                         .stroke(Color.primary.opacity(0.22), lineWidth: 4)
-                        .padding(-5)
+                        .padding(-InterfaceScale.metric(5))
                 }
-                .padding(.top, 2)
+                .padding(.top, InterfaceScale.metric(2))
 
-            VStack(spacing: 2) {
+            VStack(spacing: InterfaceScale.metric(2)) {
                 Text(channel.name)
-                    .font(.title3.weight(.bold))
+                    .font(.interface(.title3).weight(.bold))
                     .lineLimit(1)
                 Text(
                     channel.kind == .groupDirectMessage
                         ? "Incoming Group Call…" : "Incoming Call…"
                 )
-                .font(.callout)
+                .font(.interface(.callout))
                 .foregroundStyle(.secondary)
             }
 
-            GlassEffectContainer(spacing: 14) {
-                HStack(spacing: 12) {
+            GlassEffectContainer(spacing: InterfaceScale.metric(14)) {
+                HStack(spacing: InterfaceScale.metric(12)) {
                     IncomingCallActionButton(
                         title: "Decline",
                         systemImage: "xmark",
@@ -393,24 +393,24 @@ private struct IncomingPrivateCallCard: View {
                     )
                 }
             }
-            .padding(.top, 10)
+            .padding(.top, InterfaceScale.metric(10))
             .disabled(isDisabled)
 
             if additionalCallCount > 0 {
                 Text("\(additionalCallCount) more incoming")
-                    .font(.caption.weight(.medium))
+                    .font(.interface(.caption).weight(.medium))
                     .foregroundStyle(.secondary)
-                    .padding(.horizontal, 10)
-                    .frame(height: 24)
+                    .padding(.horizontal, InterfaceScale.metric(10))
+                    .frame(height: InterfaceScale.metric(24))
                     .glassEffect(.regular, in: Capsule())
             }
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 30)
-        .frame(width: 236)
+        .padding(.horizontal, InterfaceScale.metric(18))
+        .padding(.vertical, InterfaceScale.metric(30))
+        .frame(width: InterfaceScale.metric(236))
         .glassEffect(
             .regular,
-            in: ConcentricRectangle(cornerRadius: 46, style: .continuous)
+            in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(46), style: .continuous)
         )
     }
 }
@@ -424,9 +424,9 @@ private struct IncomingCallActionButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.system(size: 21, weight: .semibold))
+                .font(.interfaceSystem(size: 21, weight: .semibold))
                 .foregroundStyle(.white)
-                .frame(width: 80, height: 46)
+                .frame(width: InterfaceScale.metric(80), height: InterfaceScale.metric(46))
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)

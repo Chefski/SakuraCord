@@ -24,12 +24,12 @@ struct ProfilesSettingsPage: View {
                             .allowsHitTesting(!editor.isResolvingScope)
                             .overlay {
                                 if editor.isLoading {
-                                    RoundedRectangle(cornerRadius: 16).fill(.black.opacity(0.12))
+                                    RoundedRectangle(cornerRadius: InterfaceScale.metric(16)).fill(.black.opacity(0.12))
                                         .allowsHitTesting(false)
                                 }
                             }
                             .authenticationLoading(editor.isLoading,
-                                                   in: RoundedRectangle(cornerRadius: 16), intensity: 1.8, opacity: 0.28)
+                                                   in: RoundedRectangle(cornerRadius: InterfaceScale.metric(16)), intensity: 1.8, opacity: 0.28)
                     } else {
                         ContentUnavailableView {
                             Label("Profile Unavailable", systemImage: "person.crop.circle.badge.exclamationmark")
@@ -38,31 +38,32 @@ struct ProfilesSettingsPage: View {
                         } actions: {
                             Button("Retry") { Task { await editor.load(editor.scope, preferCached: false) } }
                         }
-                        .frame(maxWidth: .infinity, minHeight: 160)
+                        .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(160))
                     }
                 }
-                .padding(16)
+                .padding(InterfaceScale.metric(16))
                 // Keep overlay clearance inside the document. Scroll content margins
                 // also inset its hit region, blocking the exposed controls beside the bar.
                 .padding(.bottom, showsSaveBar ? saveBarHeight : 0)
                 .frame(maxWidth: .infinity)
                 .overlay(alignment: .top) {
                     if editor.snapshot == nil, let error = editor.errorMessage {
-                        VStack(spacing: 8) {
-                            Text(error).font(.callout)
+                        VStack(spacing: InterfaceScale.metric(8)) {
+                            Text(error).font(.interface(.callout))
                             Button("Retry") { Task { await editor.load(preferCached: false) } }
                         }
-                        .padding(16).glassEffect().padding(24)
+                        .padding(InterfaceScale.metric(16)).glassEffect().padding(InterfaceScale.metric(24))
                     }
                 }
             }
             if showsSaveBar {
                 ProfileEditorSaveBar(editor: editor)
-                    .frame(maxWidth: 640)
-                    .padding(16)
+                    .frame(maxWidth: InterfaceScale.metric(640))
+                    .padding(InterfaceScale.metric(16))
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { saveBarHeight = $0 }
             }
         }
+        .interfaceScaleRoot()
         .modifier(SettingsPageNavigation(page: .profiles, state: state))
         .navigationTitle(state.catalog.page(.profiles).title)
         .environment(\.profileImageImportRequest, imageImport)
@@ -118,14 +119,14 @@ private struct ProfileEditorCanvas: View {
     let open: (ProfileEditorPicker) -> Void
 
     var body: some View {
-        VStack(spacing: 32) {
+        VStack(spacing: InterfaceScale.metric(32)) {
             ProfileEditorExpandedPreview(model: model, editor: editor, profile: profile, open: open)
             ProfileStylesControls(editor: editor, profile: profile)
         }
         .frame(maxWidth: .infinity)
-        .frame(maxWidth: 820)
+        .frame(maxWidth: InterfaceScale.metric(820))
         .frame(maxWidth: .infinity)
-        .containerShape(.rect(cornerRadius: 16))
+        .containerShape(.rect(cornerRadius: InterfaceScale.metric(16)))
     }
 }
 

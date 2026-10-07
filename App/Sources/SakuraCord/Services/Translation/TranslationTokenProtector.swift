@@ -53,12 +53,31 @@ nonisolated struct TranslationTokenProtector: Equatable, Sendable {
               Set(responses.map(\.index)).count == responses.count
         else { throw LocalTranslationError.protectedTokenChanged }
         var output = parts
-        for response in responses {
-            let value = response.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !value.isEmpty,
-                  Self.syntax.firstMatch(in: value, range: NSRange(value.startIndex..., in: value)) == nil
-            else { throw LocalTranslationError.protectedTokenChanged }
-            output[response.index] = value
+        let replacements = Dictionary(uniqueKeysWithValues: responses.map { ($0.index, $0.text) })
+        var isBlockStart = true
+        for index in output.indices {
+            if let response = replacements[index] {
+                let value = response.trimmingCharacters(in: .whitespacesAndNewlines)
+                // A fragment after bold text or a mention is not a new line.
+                // Preserve that context when checking anchored Markdown syntax.
+                let contextualValue = isBlockStart ? value : "x" + value
+                guard !value.isEmpty,
+                      Self.syntax.firstMatch(in: contextualValue, range: NSRange(contextualValue.startIndex..., in: contextualValue)) == nil
+                else { throw LocalTranslationError.protectedTokenChanged }
+                output[index] = value
+            }
+            // Existing quote/list/heading prefixes still leave us at the start
+            // of block content; they must not enable an injected nested list.
+            if isBlockStart, output[index].range(of: Self.blockPrefixPattern + "$", options: .regularExpression) != nil {
+                continue
+            }
+            for character in output[index] {
+                if character.isNewline {
+                    isBlockStart = true
+                } else if character != " ", character != "\t", character != ">" {
+                    isBlockStart = false
+                }
+            }
         }
         return output.joined()
     }
@@ -67,6 +86,8 @@ nonisolated struct TranslationTokenProtector: Equatable, Sendable {
     // fences. Link destinations (including non-HTTP schemes) stay byte-for-byte.
     // Splitting prose at syntax boundaries trades some context for token safety.
     // Fences close on delimiter lines; inline code needs matching backtick runs.
+    private static let blockPrefixPattern = #"^[ \t]*(?:#{1,3} |[-+] |\d+\. )"#
+
     private static let syntax: NSRegularExpression = {
         let pattern = [
         #"(?m:^[ \t]*(?:>[ \t]*)*(`{3,})(?!`)[^\n]*\n[\s\S]*?(?:^[ \t]*(?:>[ \t]*)*\1`*[ \t]*\r?$|\z))"#,
@@ -80,7 +101,7 @@ nonisolated struct TranslationTokenProtector: Equatable, Sendable {
         #"[\p{Co}]+"#,
         #"[0-9#*]\x{FE0F}?\x{20E3}|(?=[\p{Extended_Pictographic}\p{Regional_Indicator}\p{Emoji_Modifier}])\X"#,
         #"[\r\n]+|[*_~|`\[\]<>]+"#,
-        #"(?m)^[ \t]*(?:#{1,3} |[-+] |\d+\. )"#,
+        "(?m)" + blockPrefixPattern,
         ].joined(separator: "|")
         do {
             return try NSRegularExpression(pattern: pattern)

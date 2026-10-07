@@ -1347,23 +1347,6 @@ func `composer attachment controls preserve edits and spoiler state`(anonymisesF
 }
 
 @MainActor
-@Test func `emoji completion hoists account favorites but ignores local usage order`() {
-    let guildID = GuildID(rawValue: 30)
-    let custom = DiscordEmoji(id: "900", name: "catscared", guildID: guildID)
-    let suggestions = ColonAutocompleteSuggestionFactory.suggestions(
-        query: "sc",
-        customEmojis: [custom],
-        customValue: (\.messageToken),
-        discordFavoriteKeys: ["900"],
-        usageCounts: ["unicode:🙀": 10_000]
-    )
-
-    #expect(suggestions.first?.detail == ":catscared:")
-    let native = suggestions.filter { $0.customEmoji == nil }
-    #expect(native.first?.detail == ":scales:")
-}
-
-@MainActor
 @Test func `live emoji settings event replaces account favorites`() {
     let model = AppModel(launchMode: .offlineTesting)
     model.discordFavoriteEmojiKeys = ["old"]
@@ -2346,6 +2329,38 @@ private func downArrowKeyEvent(
 }
 
 @MainActor
+@Test func `emoji usage waits for successful sends and replays only unsaved uses over settings echoes`() async throws {
+    let provider = TypingTestProvider()
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    model.commandFrecencyFlushTask?.cancel()
+    model.applyDiscordEmojiSettings(EmojiUserSettings(dataVersion: 1))
+    model.updateDraft("🐢 🐢 `🐍`")
+    #expect(model.emojiFrecency.pendingUsages.isEmpty)
+    await provider.failNextSend()
+    #expect(!(await model.send()))
+    #expect(model.emojiFrecency.pendingUsages.isEmpty)
+    model.updateDraft("🐢 🐢 `🐍`")
+    #expect(await model.send())
+    #expect(model.emojiFrecency.pendingUsages.map(\.key) == ["turtle", "turtle"])
+
+    let saving = Task { await model.flushEmojiFrecencyIfNeeded() }
+    let submitted = await provider.waitForEmojiSave()
+    // The Gateway can deliver our echo before REST completes. A new reaction
+    // made in the meantime belongs to the next save and must survive once.
+    model.applyDiscordEmojiSettings(submitted)
+    model.recordReactionEmojiUsage("🐢")
+    await provider.completeEmojiSave()
+    #expect(await saving.value)
+    #expect(model.emojiFrecency.pendingUsages.count == 1)
+    #expect(model.reactionEmojiFrecency.pendingUsages.count == 1)
+    #expect(model.emojiFrecency.historyForSave().entries.first { $0.key == "turtle" }?.totalUses == 3)
+    // A delayed older settings read must not replace the acknowledged history.
+    model.applyDiscordEmojiSettings(EmojiUserSettings(dataVersion: 1))
+    #expect(model.emojiSettingsDataVersion == 2)
+}
+
+@MainActor
 @Test func `definite send failure keeps the optimistic message retryable`() async throws {
     let provider = TypingTestProvider()
     let model = AppModel(launchMode: .offlineTesting, provider: provider)
@@ -2993,6 +3008,34 @@ private actor TypingTestProvider: ChatProvider {
     func suspendNextSend() {
         suspendsNextSend = true
         didStartSuspendedSend = false
+    }
+
+    private var emojiSave: EmojiUserSettings?
+    private var emojiSaveStarted: CheckedContinuation<EmojiUserSettings, Never>?
+    private var emojiSaveRelease: CheckedContinuation<Void, Never>?
+
+    func saveEmojiFrecency(
+        _ messages: DiscordFrecencyHistory, reactions: DiscordFrecencyHistory,
+        favoriteKey: String?, isFavorite: Bool
+    ) async throws -> EmojiUserSettings {
+        let settings = EmojiUserSettings(dataVersion: 2, messageHistory: messages, reactionHistory: reactions)
+        emojiSave = settings
+        await withCheckedContinuation { continuation in
+            emojiSaveRelease = continuation
+            emojiSaveStarted?.resume(returning: settings)
+            emojiSaveStarted = nil
+        }
+        return settings
+    }
+
+    func waitForEmojiSave() async -> EmojiUserSettings {
+        if let emojiSave { return emojiSave }
+        return await withCheckedContinuation { emojiSaveStarted = $0 }
+    }
+
+    func completeEmojiSave() {
+        emojiSaveRelease?.resume()
+        emojiSaveRelease = nil
     }
 
     func failNextSend() {

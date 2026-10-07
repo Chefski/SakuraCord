@@ -186,6 +186,12 @@ nonisolated struct SettingsPreferenceRegistry: Sendable {
             )
         ),
         SettingsPreferenceRegistration(
+            id: .interfaceSize,
+            page: .interface,
+            storage: .appWide(key: "settings.interface.size"),
+            defaultValue: .double(InterfaceScale.defaultFactor)
+        ),
+        SettingsPreferenceRegistration(
             id: .timestampFormat,
             page: .interface,
             storage: .appWide(key: "settings.interface.timestampFormat"),
@@ -571,6 +577,12 @@ nonisolated struct SettingsPreferenceRegistry: Sendable {
         ),
 
         SettingsPreferenceRegistration(
+            id: .accessibilityDisableServerTags,
+            page: .accessibility,
+            storage: .appWide(key: "settings.accessibility.disableServerTags"),
+            defaultValue: .bool(false)
+        ),
+        SettingsPreferenceRegistration(
             id: .accessibilityAnnounceTimestamp,
             page: .accessibility,
             storage: .appWide(key: "settings.accessibility.announceTimestamp"),
@@ -610,7 +622,7 @@ nonisolated struct SettingsPreferenceRegistry: Sendable {
             id: .trustedDomains,
             page: .privacySafety,
             storage: .appWide(key: "settings.privacy.trustedDomains"),
-            defaultValue: .strings([]),
+            defaultValue: .strings(ExternalLinkTrustedDomain.defaults),
             exports: false
         ),
         SettingsPreferenceRegistration(
@@ -768,6 +780,26 @@ final class SettingsPreferenceStore {
             defaults.set(enabled ? RoleColorDisplay.inNames.rawValue : RoleColorDisplay.hidden.rawValue, forKey: roleKey)
         }
         defaults.removeObject(forKey: legacyRoleKey)
+        seedTrustedDomains()
+    }
+
+    /// This marker is not registered: resets restore defaults without re-running migration.
+    private func seedTrustedDomains() {
+        let key = "settings.privacy.trustedDomains.seeded.v1"
+        guard defaults.object(forKey: key) as? Bool != true,
+              registry.registration(.trustedDomains) != nil,
+              !ExternalLinkTrustedDomain.defaults.isEmpty
+        else { return }
+        let existing: [String] = if case let .strings(domains) = value(for: .trustedDomains) {
+            domains
+        } else {
+            []
+        }
+        set(
+            .strings(ExternalLinkTrustedDomain.normalizedList(existing + ExternalLinkTrustedDomain.defaults)),
+            for: .trustedDomains
+        )
+        defaults.set(true, forKey: key)
     }
 
     func value(

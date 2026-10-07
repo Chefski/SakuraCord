@@ -33,16 +33,16 @@ enum EmojiPickerActivationPolicy {
 struct EmojiPickerHeader: View {
     let title: String
     let count: Int
-    var horizontalInset: CGFloat = 14
+    var horizontalInset: CGFloat = InterfaceScale.metric(14)
 
     var body: some View {
         HStack {
-            Text(title).font(.headline)
+            Text(title).font(.interface(.headline))
             Spacer()
-            Text(count, format: .number).font(.caption).foregroundStyle(.secondary)
+            Text(count, format: .number).font(.interface(.caption)).foregroundStyle(.secondary)
         }
         .padding(.horizontal, horizontalInset)
-        .padding(.bottom, 8)
+        .padding(.bottom, InterfaceScale.metric(8))
     }
 }
 
@@ -151,10 +151,11 @@ enum EmojiPickerItem: Identifiable {
         dimension: CGFloat = 40,
         nativeFontSize: CGFloat = 38
     ) -> some View {
+        let dimension = InterfaceScale.metric(dimension)
         switch self {
         case let .native(emoji):
             Text(emoji.value(for: skinTone))
-                .font(.system(size: nativeFontSize))
+                .font(.interfaceSystem(size: nativeFontSize))
                 .fixedSize()
                 .frame(width: dimension, height: dimension, alignment: .center)
                 .offset(y: -1)
@@ -178,7 +179,8 @@ enum EmojiPickerItem: Identifiable {
 
 enum EmojiPickerGridMetrics {
     static let columns = 9
-    static let cellSize: CGFloat = 43
+    static var cellSize: CGFloat { InterfaceScale.metric(43) }
+    static var glyphSize: CGFloat { InterfaceScale.metric(38) }
 }
 
 struct EmojiPickerCell: Identifiable {
@@ -386,7 +388,7 @@ struct EmojiPickerView: View {
                                 skinTone: selectedSkinTone,
                                 guildsByID: model.serverRailGuildsByID
                             )
-                            .frame(height: 38)
+                            .frame(height: InterfaceScale.metric(38))
                         }
                     }
                 }
@@ -417,7 +419,7 @@ struct EmojiPickerView: View {
                 }
             }
         }
-        .frame(width: ChatChromeMetrics.emojiPickerWidth, height: 420)
+        .frame(width: ChatChromeMetrics.emojiPickerWidth, height: InterfaceScale.metric(420))
         .onExitCommand(perform: handleEscapeCommand)
         .alert("Emoji Unavailable", isPresented: Binding(get: { emojiLockMessage != nil }, set: { if !$0 { emojiLockMessage = nil } })) {
             Button("OK", role: .cancel) { emojiLockMessage = nil }
@@ -425,11 +427,35 @@ struct EmojiPickerView: View {
         .onChange(of: skinToneRawValue) { _, _ in
             requestSearchFocus()
         }
+        .onChange(of: model.discordFrequentlyUsedEmojiKeys) { _, _ in
+            document.synchronize(with: model, useCase: useCase)
+            interaction.synchronize(with: document.selectableCells)
+        }
+        .onChange(of: model.discordFrequentlyUsedReactionKeys) { _, _ in
+            document.synchronize(with: model, useCase: useCase)
+            interaction.synchronize(with: document.selectableCells)
+        }
+        .onChange(of: model.discordEmojiUsageScores) { _, _ in
+            document.synchronize(with: model, useCase: useCase)
+        }
+        .onChange(of: model.discordReactionUsageScores) { _, _ in
+            document.synchronize(with: model, useCase: useCase)
+        }
         .onChange(of: model.discordFavoriteEmojiKeys) { _, _ in
             document.synchronize(with: model, useCase: useCase)
             interaction.synchronize(with: document.selectableCells)
         }
         .onChange(of: model.emojisByGuild) { _, _ in
+            document.synchronize(with: model, useCase: useCase)
+            interaction.synchronize(with: document.selectableCells)
+        }
+        .onChange(of: model.emojiEligibilityRevision) { _, _ in
+            document.synchronize(with: model, useCase: useCase)
+            interaction.synchronize(with: document.selectableCells)
+        }
+        .onChange(of: Set(model.serverRailGuildsByID.values.filter {
+            $0.features.contains("ROLE_SUBSCRIPTIONS_ENABLED")
+        }.map(\.id))) { _, _ in
             document.synchronize(with: model, useCase: useCase)
             interaction.synchronize(with: document.selectableCells)
         }
@@ -481,7 +507,6 @@ struct EmojiPickerView: View {
     private func activate(_ item: EmojiPickerItem, shiftPressed: Bool) {
         if let reason = lockReason(item) { emojiLockMessage = reason; return }
         let selection = item.selection(skinTone: selectedSkinTone)
-        model.recordEmojiUse(selection.usageKey)
         let keepsPickerPresented = EmojiPickerActivationPolicy.keepsPickerPresented(
             allowsPersistentSelection: allowsPersistentSelection,
             shiftPressed: shiftPressed
@@ -715,7 +740,7 @@ private struct PickerSearchTextField: NSViewRepresentable {
         textField.isBezeled = false
         textField.drawsBackground = false
         textField.focusRingType = .none
-        textField.font = .systemFont(ofSize: ChatChromeMetrics.pickerSearchHeaderFontSize)
+        textField.font = .interfaceSystemFont(ofSize: ChatChromeMetrics.pickerSearchHeaderFontSize)
         textField.textColor = .labelColor
         textField.lineBreakMode = .byTruncatingTail
         textField.cell?.usesSingleLineMode = true
@@ -730,6 +755,8 @@ private struct PickerSearchTextField: NSViewRepresentable {
     func updateNSView(_ textField: EmojiSearchNSTextField, context: Context) {
         context.coordinator.text = $text
         context.coordinator.isFocused = $isFocused
+        let font = NSFont.interfaceSystemFont(ofSize: ChatChromeMetrics.pickerSearchHeaderFontSize)
+        if textField.font != font { textField.font = font }
         if textField.stringValue != text {
             textField.stringValue = text
         }
@@ -926,12 +953,11 @@ final class EmojiPickerDocumentStore {
     private var emojisByGuild: [GuildID: [DiscordEmoji]] = [:]
     private var loadingGuilds: Set<GuildID> = []
     private var errorsByGuild: [GuildID: String] = [:]
-    private var localUsage: [String: Int] = [:]
-    private var localRecents: [String] = []
     private var discordFavorites: [String] = []
     private var discordFavoriteCandidates: Set<String> = []
     private var discordFrequentlyUsed: [String] = []
     private var discordUsage: [String: Int] = [:]
+    private var knownCustomIDs: Set<String> = []
     private var selectableRows: [[EmojiPickerCell]] = []
     private var navigationRows: [[String]] = []
     private var cellsByID: [String: EmojiPickerCell] = [:]
@@ -981,34 +1007,32 @@ final class EmojiPickerDocumentStore {
         let errorsByGuild = model.emojiLoadErrorsByGuild.filter {
             visibleGuildIDs.contains($0.key)
         }
-        let localUsage = model.emojiUsageCounts
-        let localRecents = model.emojiRecentKeys
+        let knownCustomIDs = Set(model.orderedCustomEmojis.filter(model.canResolveFrequentlyUsedEmoji).map(\.id))
         let discordFavorites = model.discordFavoriteEmojiKeys
-        let discordFrequentlyUsed = model.discordFrequentlyUsedEmojiKeys
-        let discordUsage = model.discordEmojiUsageScores
+        let usesReactions: Bool = if case .reaction = useCase { true } else { false }
+        let discordFrequentlyUsed = usesReactions ? model.discordFrequentlyUsedReactionKeys : model.discordFrequentlyUsedEmojiKeys
+        let discordUsage = usesReactions ? model.discordReactionUsageScores : model.discordEmojiUsageScores
         guard self.guilds != guilds
             || self.emojisByGuild != emojisByGuild
             || self.loadingGuilds != loadingGuilds
             || self.errorsByGuild != errorsByGuild
-            || self.localUsage != localUsage
-            || self.localRecents != localRecents
             || self.discordFavorites != discordFavorites
             || self.discordFrequentlyUsed != discordFrequentlyUsed
             || self.discordUsage != discordUsage
+            || self.knownCustomIDs != knownCustomIDs
         else { return }
 
         self.guilds = guilds
         self.emojisByGuild = emojisByGuild
         self.loadingGuilds = loadingGuilds
         self.errorsByGuild = errorsByGuild
-        self.localUsage = localUsage
-        self.localRecents = localRecents
         self.discordFavorites = discordFavorites
         discordFavoriteCandidates = discordFavorites.reduce(into: []) { values, key in
             values.formUnion(settingsKeyCandidates(key))
         }
         self.discordFrequentlyUsed = discordFrequentlyUsed
         self.discordUsage = discordUsage
+        self.knownCustomIDs = knownCustomIDs
         rebuild()
     }
 
@@ -1055,16 +1079,12 @@ final class EmojiPickerDocumentStore {
     private func sections() -> [EmojiDocumentSectionData] {
         let allItems = allItems()
         let favoriteItems = orderedItems(for: discordFavorites, in: allItems)
-        let frequentItems: [EmojiPickerItem]
-        if discordFrequentlyUsed.isEmpty {
-            frequentItems = Array(
-                orderedItems(for: localRecents, in: allItems).prefix(18)
-            )
-        } else {
-            frequentItems = Array(
-                orderedItems(for: discordFrequentlyUsed, in: allItems).prefix(18)
-            )
-        }
+        // Resolve globally before the cutoff; context availability and tone
+        // folding can reduce the displayed count without filling those slots.
+        let candidates = discordFrequentlyUsed.filter {
+            EmojiFrecencyKeys.value(for: $0) != nil || knownCustomIDs.contains($0)
+        }.prefix(42)
+        let frequentItems = orderedItems(for: Array(candidates), in: allItems)
         showsFavorites = !favoriteItems.isEmpty
         showsFrequentlyUsed = !frequentItems.isEmpty
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1203,10 +1223,7 @@ final class EmojiPickerDocumentStore {
             .flatMap(\.self)
             .filter(\.isAvailable)
             .map(EmojiPickerItem.custom)
-        let loadedIDs = Set(loadedCustom.map(\.discordKey))
-        return NativeEmojiPickerIndex.allItems
-            + loadedCustom
-            + unresolvedSettingsCustomItems(excluding: loadedIDs)
+        return NativeEmojiPickerIndex.allItems + loadedCustom
     }
 
     private func orderedItems(
@@ -1228,7 +1245,9 @@ final class EmojiPickerDocumentStore {
     }
 
     private func settingsKeyCandidates(_ key: String) -> Set<String> {
-        var candidates: Set<String> = [key]
+        let base = EmojiFrecencyKeys.baseKey(key)
+        var candidates: Set<String> = [key, base]
+        if let value = EmojiFrecencyKeys.value(for: base) { candidates.insert(value) }
         if let finalComponent = key.split(separator: ":").last,
            finalComponent.allSatisfy(\.isNumber)
         {
@@ -1240,40 +1259,4 @@ final class EmojiPickerDocumentStore {
         return candidates
     }
 
-    private func unresolvedSettingsCustomItems(excluding loadedIDs: Set<String>) -> [EmojiPickerItem] {
-        var keys = Set(discordFavorites)
-        keys.formUnion(discordFrequentlyUsed)
-        keys.formUnion(discordUsage.keys)
-        keys.formUnion(
-            localUsage.keys.compactMap { key in
-                key.hasPrefix("custom:") ? String(key.dropFirst("custom:".count)) : nil
-            }
-        )
-        keys.formUnion(
-            localRecents.compactMap { key in
-                key.hasPrefix("custom:") ? String(key.dropFirst("custom:".count)) : nil
-            }
-        )
-
-        return keys.compactMap { key in
-            let candidate = key.split(separator: ":").last.map(String.init) ?? key
-            guard !candidate.isEmpty,
-                  candidate.allSatisfy(\.isNumber),
-                  !loadedIDs.contains(candidate)
-            else { return nil }
-            let components = key.split(separator: ":")
-            guard components.count >= 3 else { return nil }
-            let name = String(components[components.count - 2]).trimmingCharacters(
-                in: CharacterSet(charactersIn: "<>")
-            )
-            guard !name.isEmpty, name != "emoji", !name.allSatisfy(\.isNumber) else { return nil }
-            return .custom(
-                DiscordEmoji(
-                    id: candidate,
-                    name: name,
-                    guildID: GuildID(rawValue: 0)
-                )
-            )
-        }
-    }
 }

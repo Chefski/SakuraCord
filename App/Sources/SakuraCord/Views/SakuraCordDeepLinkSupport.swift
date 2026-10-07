@@ -205,16 +205,15 @@ nonisolated enum SakuraCordDeepLinkPresentation {
 }
 
 enum NativeTimelineSakuraCordDeepLinkLayout {
-    private static let maximumWidth: CGFloat = 560
-    private static let preferredButtonWidth: CGFloat = 196
-    private static let horizontalInset: CGFloat = 14
-    private static let symbolSize: CGFloat = 32
-    private static let itemSpacing: CGFloat = 11
-    private static let compactRowSpacing: CGFloat = 10
-    private static let titleFont = NSFont.systemFont(
-        ofSize: 14,
-        weight: .semibold
-    )
+    private static var maximumWidth: CGFloat { InterfaceScale.metric(560) }
+    private static var preferredButtonWidth: CGFloat { InterfaceScale.metric(196) }
+    private static var horizontalInset: CGFloat { InterfaceScale.metric(14) }
+    private static var symbolSize: CGFloat { InterfaceScale.metric(32) }
+    private static var itemSpacing: CGFloat { InterfaceScale.metric(11) }
+    private static var compactRowSpacing: CGFloat { InterfaceScale.metric(10) }
+    private static var titleFont: NSFont {
+        NSFont.interfaceSystemFont(ofSize: 14, weight: .semibold)
+    }
 
     static func make(
         _ deepLink: SakuraCordDeepLink,
@@ -265,10 +264,10 @@ enum NativeTimelineSakuraCordDeepLinkLayout {
             height: symbolSize
         )
         let symbolFrame = CGRect(
-            x: symbolBackgroundFrame.midX - 11,
-            y: symbolBackgroundFrame.midY - 11,
-            width: 22,
-            height: 22
+            x: symbolBackgroundFrame.midX - InterfaceScale.metric(11),
+            y: symbolBackgroundFrame.midY - InterfaceScale.metric(11),
+            width: InterfaceScale.metric(22),
+            height: InterfaceScale.metric(22)
         )
         let titleX = symbolBackgroundFrame.maxX + itemSpacing
         let buttonFrame = buttonFrame(
@@ -283,25 +282,25 @@ enum NativeTimelineSakuraCordDeepLinkLayout {
         let titleFrame = CGRect(
             x: titleX,
             y: usesCompactLayout
-                ? headerTop + (hasPalette ? 0 : 6)
-                : cardFrame.midY - (hasPalette ? 18 : 10),
+                ? headerTop + (hasPalette ? 0 : InterfaceScale.metric(6))
+                : cardFrame.midY - (hasPalette ? InterfaceScale.metric(18) : InterfaceScale.metric(10)),
             width: max(
                 1,
                 (usesCompactLayout ? cardFrame.maxX - horizontalInset : buttonFrame.minX - itemSpacing)
                     - titleX
             ),
-            height: 20
+            height: InterfaceScale.metric(20)
         )
         let paletteFrames: [CGRect]
         if let preview = deepLink.action.themePreview {
-            let diameter: CGFloat = 15
+            let diameter: CGFloat = InterfaceScale.metric(15)
             let step: CGFloat = 10
             paletteFrames = preview.theme.activeColors.indices.map { index in
                 CGRect(
                     x: titleX + CGFloat(index) * step,
                     y: usesCompactLayout
-                        ? headerTop + 23
-                        : cardFrame.midY + 6,
+                        ? headerTop + InterfaceScale.metric(23)
+                        : cardFrame.midY + InterfaceScale.metric(6),
                     width: diameter,
                     height: diameter
                 )

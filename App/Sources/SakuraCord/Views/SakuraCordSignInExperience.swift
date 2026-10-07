@@ -102,7 +102,7 @@ struct OfflineSignInControls: View {
     let replay: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: InterfaceScale.metric(12)) {
             Label("Offline preview", systemImage: "network.slash")
                 .foregroundStyle(.secondary)
             Button("Simulate scan") { Task { await service.simulateScan() } }
@@ -120,10 +120,10 @@ struct OfflineSignInControls: View {
                 Text("Error: password incorrect")
             }
         }
-        .font(.caption)
+        .font(.interface(.caption))
         .controlSize(.small)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.horizontal, InterfaceScale.metric(14))
+        .padding(.vertical, InterfaceScale.metric(8))
         .background(.regularMaterial, in: Capsule())
     }
 }

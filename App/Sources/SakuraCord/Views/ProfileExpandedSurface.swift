@@ -29,22 +29,22 @@ struct ProfileExpandedSurface<ProfileContent: View, Widgets: View>: View {
                 .clipped()
                 // The expanded profile reserves a 3-point inner edge. Start
                 // the widget column at its divider, preserving equal card insets.
-                .padding([.top, .bottom, .trailing], 3)
-                .padding(.leading, -3)
+                .padding([.top, .bottom, .trailing], InterfaceScale.metric(3))
+                .padding(.leading, -InterfaceScale.metric(3))
         }
         .background {
             let colors = hidesGradient ? [] : theme.colors(for: profile, scale: displayScale, allowsTheme: allowsTheme)
             if colors.count >= 2 {
                 LinearGradient(colors: colors.prefix(2).map(Color.init(hex:)), startPoint: .topLeading, endPoint: .bottomTrailing)
                     .overlay {
-                        ConcentricRectangle(cornerRadius: 16, style: .continuous)
+                        ConcentricRectangle(cornerRadius: InterfaceScale.metric(16), style: .continuous)
                             .fill(ProfilePalette.innerSurfaceOverlay(for: colorScheme))
-                            .padding(3)
+                            .padding(InterfaceScale.metric(3))
                     }
             }
         }
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
-        .containerShape(.rect(cornerRadius: 16))
+        .containerShape(.rect(cornerRadius: InterfaceScale.metric(16)))
         .task(id: hidesGradient ? nil : theme.source(for: profile, scale: displayScale, allowsTheme: allowsTheme)) {
             if !hidesGradient {
                 await theme.load(theme.source(for: profile, scale: displayScale, allowsTheme: allowsTheme))
@@ -60,8 +60,8 @@ struct ProfileWidgetBoardViewport<Content: View>: View {
     var body: some View {
         ScrollView(.vertical) {
             content
-                .padding(16)
-                .padding(.top, 26)
+                .padding(InterfaceScale.metric(16))
+                .padding(.top, InterfaceScale.metric(26))
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -76,7 +76,7 @@ private struct ProfileExpandedColumns: Layout {
         let heights = subviews.enumerated().map { index, view in
             view.sizeThatFits(ProposedViewSize(width: index == 0 ? profileWidth : max(0, width - profileWidth), height: nil)).height
         }
-        return CGSize(width: width, height: proposal.height ?? min(720, heights.max() ?? 0))
+        return CGSize(width: width, height: proposal.height ?? min(InterfaceScale.metric(720), heights.max() ?? 0))
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {

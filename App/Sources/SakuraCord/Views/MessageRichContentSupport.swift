@@ -3,9 +3,9 @@ import MessageRendering
 import SakuraCordModels
 
 enum DiscordRichMessageMetrics {
-    static let maximumWidth: CGFloat = 520
-    static let cardCornerRadius: CGFloat = 8
-    static let cardPadding: CGFloat = 12
+    static var maximumWidth: CGFloat { InterfaceScale.metric(520) }
+    static var cardCornerRadius: CGFloat { InterfaceScale.metric(8) }
+    static var cardPadding: CGFloat { InterfaceScale.metric(12) }
 }
 
 nonisolated enum DiscordFittingWidthPlan {
@@ -443,6 +443,16 @@ struct RichMediaItem: Identifiable, Hashable {
     var isSpoiler: Bool
     var autoplaysInline: Bool
 
+    func videoPosterURL(maximumPixelDimension: Int) -> URL? {
+        guard kind == .video else { return nil }
+        return DiscordVideoPosterURL.url(
+            proxyURL: previewURL,
+            width: width,
+            height: height,
+            maximumPixelDimension: maximumPixelDimension
+        )
+    }
+
     init(_ attachment: Attachment) {
         id = attachment.id
         url = attachment.url
@@ -642,7 +652,7 @@ nonisolated enum MediaGalleryPlan {
             let ratio = max(0.2, min(12, aspectRatios.first ?? 16 / 9))
             let fittedWidth = min(width, 350 * ratio)
             let fittedHeight = min(350, fittedWidth / ratio)
-            return [CGRect(x: 0, y: 0, width: fittedWidth, height: max(80, fittedHeight))]
+            return [CGRect(x: 0, y: 0, width: fittedWidth, height: max(InterfaceScale.metric(80), fittedHeight))]
         }
         if count == 3 {
             let height = min(300, max(190, width * 0.62))
@@ -693,7 +703,7 @@ nonisolated enum DiscordComponentContainerLayoutPlan {
         padding: CGFloat,
         hasAccent: Bool
     ) -> CGFloat {
-        let fixedWidth = padding * 2 + (hasAccent ? 4 : 0)
+        let fixedWidth = padding * 2 + (hasAccent ? InterfaceScale.metric(4) : 0)
         return DiscordFittingWidthPlan.width(
             ideal: idealContent + fixedWidth,
             available: available,

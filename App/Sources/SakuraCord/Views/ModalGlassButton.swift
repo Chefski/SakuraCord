@@ -13,11 +13,11 @@ struct ModalGlassButton: View {
     var body: some View {
         Button(action: action) {
             Label(label, systemImage: symbol)
-                .font(.body.weight(.semibold))
+                .font(.interface(.body).weight(.semibold))
                 .opacity(isLoading ? 0 : 1)
                 .overlay { if isLoading { InteractionLoadingDotsView(tone: primary ? .onFill : .content) } }
-                .padding(.horizontal, 16)
-                .frame(height: 40)
+                .padding(.horizontal, InterfaceScale.metric(16))
+                .frame(height: InterfaceScale.metric(40))
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)

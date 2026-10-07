@@ -379,12 +379,15 @@ public struct MessageThreadSummary: Codable, Hashable, Sendable {
     public var messageCount: Int
     public var memberCount: Int
     public var lastMessageID: MessageID?
+    public var isPrivate: Bool
     public var isArchived: Bool
     public var isLocked: Bool
     public var ownerID: UserID?
     public var appliedTagIDs: [ForumTagID]
     public var flags: UInt64
     public var archiveTimestamp: Date?
+    /// Discord's `last_non_message_activity_timestamp`, which extends sidebar relevance.
+    public var lastNonMessageActivityAt: Date?
     public var createdAt: Date?
     public var autoArchiveDuration: Int?
     public var totalMessageSent: Int
@@ -398,8 +401,10 @@ public struct MessageThreadSummary: Codable, Hashable, Sendable {
         ownerID: UserID? = nil, appliedTagIDs: [ForumTagID] = [], flags: UInt64 = 0,
         archiveTimestamp: Date? = nil, createdAt: Date? = nil,
         autoArchiveDuration: Int? = nil, totalMessageSent: Int = 0,
-        notificationSettings: ThreadNotificationSettings? = nil, rateLimitPerUser: Int = 0
+        notificationSettings: ThreadNotificationSettings? = nil, rateLimitPerUser: Int = 0,
+        lastNonMessageActivityAt: Date? = nil, isPrivate: Bool = false
     ) {
+        self.lastNonMessageActivityAt = lastNonMessageActivityAt
         self.rateLimitPerUser = rateLimitPerUser
         self.id = id
         self.guildID = guildID
@@ -408,6 +413,7 @@ public struct MessageThreadSummary: Codable, Hashable, Sendable {
         self.messageCount = messageCount
         self.memberCount = memberCount
         self.lastMessageID = lastMessageID
+        self.isPrivate = isPrivate
         self.isArchived = isArchived
         self.isLocked = isLocked
         self.ownerID = ownerID
@@ -424,9 +430,9 @@ public struct MessageThreadSummary: Codable, Hashable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id, guildID, parentID, name, messageCount, memberCount, lastMessageID
-        case isArchived, isLocked, ownerID, appliedTagIDs, flags, archiveTimestamp
+        case isPrivate, isArchived, isLocked, ownerID, appliedTagIDs, flags, archiveTimestamp
         case createdAt, autoArchiveDuration, totalMessageSent
-        case notificationSettings, rateLimitPerUser
+        case notificationSettings, rateLimitPerUser, lastNonMessageActivityAt
     }
 
     public init(from decoder: any Decoder) throws {
@@ -439,12 +445,16 @@ public struct MessageThreadSummary: Codable, Hashable, Sendable {
         messageCount = try values.decodeIfPresent(Int.self, forKey: .messageCount) ?? 0
         memberCount = try values.decodeIfPresent(Int.self, forKey: .memberCount) ?? 0
         lastMessageID = try values.decodeIfPresent(MessageID.self, forKey: .lastMessageID)
+        isPrivate = try values.decodeIfPresent(Bool.self, forKey: .isPrivate) ?? false
         isArchived = try values.decodeIfPresent(Bool.self, forKey: .isArchived) ?? false
         isLocked = try values.decodeIfPresent(Bool.self, forKey: .isLocked) ?? false
         ownerID = try values.decodeIfPresent(UserID.self, forKey: .ownerID)
         appliedTagIDs = try values.decodeIfPresent([ForumTagID].self, forKey: .appliedTagIDs) ?? []
         flags = try values.decodeIfPresent(UInt64.self, forKey: .flags) ?? 0
         archiveTimestamp = try values.decodeIfPresent(Date.self, forKey: .archiveTimestamp)
+        lastNonMessageActivityAt = try values.decodeIfPresent(
+            Date.self, forKey: .lastNonMessageActivityAt
+        )
         createdAt = try values.decodeIfPresent(Date.self, forKey: .createdAt)
         autoArchiveDuration = try values.decodeIfPresent(Int.self, forKey: .autoArchiveDuration)
         totalMessageSent = try values.decodeIfPresent(Int.self, forKey: .totalMessageSent) ?? 0

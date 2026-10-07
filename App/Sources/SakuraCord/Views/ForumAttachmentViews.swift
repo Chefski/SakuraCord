@@ -28,10 +28,10 @@ struct ForumComposerAttachmentControl: View {
     @State private var isHoveringAttachmentActions = false
     @State private var hoverDismissalTask: Task<Void, Never>?
 
-    private let tileSize: CGFloat = 78
-    private let traySpacing: CGFloat = 8
-    private let trayInset: CGFloat = 8
-    private let maximumExpandedWidth: CGFloat = 440
+    private let tileSize: CGFloat = InterfaceScale.metric(78)
+    private let traySpacing: CGFloat = InterfaceScale.metric(8)
+    private let trayInset: CGFloat = InterfaceScale.metric(8)
+    private let maximumExpandedWidth: CGFloat = InterfaceScale.metric(440)
     private var hoverPillWidth: CGFloat { anonymisesFileNames ? 89 : 68 }
 
     var body: some View {
@@ -47,7 +47,7 @@ struct ForumComposerAttachmentControl: View {
             .overlay(alignment: .topTrailing) {
                 if attachments.count > 1, !isExpanded {
                     attachmentCountBadge
-                        .offset(x: 5, y: -5)
+                        .offset(x: InterfaceScale.metric(5), y: -5)
                         .allowsHitTesting(false)
                 }
             }
@@ -113,9 +113,9 @@ struct ForumComposerAttachmentControl: View {
 
     private var attachmentCountBadge: some View {
         Text("\(attachments.count)")
-            .font(.caption.weight(.bold))
+            .font(.interface(.caption).weight(.bold))
             .foregroundStyle(.white)
-            .frame(width: 22, height: 22)
+            .frame(width: InterfaceScale.metric(22), height: InterfaceScale.metric(22))
             .background {
                 Circle().fill(SakuraCordAccentColor.color)
             }
@@ -142,10 +142,10 @@ struct ForumComposerAttachmentControl: View {
         .frame(width: currentWidth, height: currentHeight, alignment: .trailing)
         .background {
             if isExpanded {
-                ConcentricRectangle(cornerRadius: 18, style: .continuous)
+                ConcentricRectangle(cornerRadius: InterfaceScale.metric(18), style: .continuous)
                     .fill(.regularMaterial)
                     .overlay {
-                        ConcentricRectangle(cornerRadius: 18, style: .continuous)
+                        ConcentricRectangle(cornerRadius: InterfaceScale.metric(18), style: .continuous)
                             .stroke(.separator, lineWidth: 1)
                     }
             }
@@ -157,7 +157,7 @@ struct ForumComposerAttachmentControl: View {
         .overlay(alignment: .topLeading) {
             hoveredAttachmentActions
         }
-        .contentShape(ConcentricRectangle(cornerRadius: 18, style: .continuous))
+        .contentShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(18), style: .continuous))
         .onModalHover { hovering in
             isExpanded = hovering
             if !hovering {
@@ -199,7 +199,7 @@ struct ForumComposerAttachmentControl: View {
             width: isExpanded ? expandedAttachmentViewportWidth : tileSize,
             height: tileSize
         )
-        .clipShape(ConcentricRectangle(cornerRadius: 14, style: .continuous))
+        .clipShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(14), style: .continuous))
         .onChange(of: isExpanded) { _, expanded in
             if !expanded {
                 scrollTarget = attachments.first?.url
@@ -238,8 +238,8 @@ struct ForumComposerAttachmentControl: View {
                 systemImage: attachment.isSpoiler ? "eye.slash" : "eye",
                 help: attachment.isSpoiler ? "Remove spoiler" : "Mark as spoiler",
                 isSelected: attachment.isSpoiler,
-                diameter: 20,
-                iconFont: .caption2.weight(.semibold),
+                diameter: InterfaceScale.metric(20),
+                iconFont: .interface(.caption2).weight(.semibold),
                 action: { toggleSpoiler(for: attachment.url) }
             )
             if anonymisesFileNames {
@@ -247,8 +247,8 @@ struct ForumComposerAttachmentControl: View {
                     systemImage: "shuffle",
                     help: attachment.isFilenameAnonymised ? "Restore file name" : "Randomise file name",
                     isSelected: attachment.isFilenameAnonymised,
-                    diameter: 20,
-                    iconFont: .caption2.weight(.semibold)
+                    diameter: InterfaceScale.metric(20),
+                    iconFont: .interface(.caption2).weight(.semibold)
                 ) {
                     toggleFilenamePrivacy(for: attachment.url)
                 }
@@ -256,16 +256,16 @@ struct ForumComposerAttachmentControl: View {
             HoverActionButton(
                 systemImage: "pencil",
                 help: "Edit attachment",
-                diameter: 20,
-                iconFont: .caption2.weight(.semibold),
+                diameter: InterfaceScale.metric(20),
+                iconFont: .interface(.caption2).weight(.semibold),
                 action: { editingTarget = ForumAttachmentEditorTarget(id: attachment.url) }
             )
             HoverActionButton(
                 systemImage: "trash",
                 help: "Delete attachment",
                 role: .destructive,
-                diameter: 20,
-                iconFont: .caption2.weight(.semibold),
+                diameter: InterfaceScale.metric(20),
+                iconFont: .interface(.caption2).weight(.semibold),
                 action: { deleteAttachment(attachment.url) }
             )
         }
@@ -275,17 +275,17 @@ struct ForumComposerAttachmentControl: View {
         Button(action: addAttachments) {
             Image(systemName: "photo.badge.plus")
                 .symbolVariant(.none)
-                .font(.system(size: 22, weight: .medium))
+                .font(.interfaceSystem(size: 22, weight: .medium))
                 .frame(width: tileSize, height: tileSize)
-                .contentShape(ConcentricRectangle(cornerRadius: 14, style: .continuous))
+                .contentShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(14), style: .continuous))
         }
         .buttonStyle(.plain)
         .glassEffect(
             .regular.interactive(),
-            in: ConcentricRectangle(cornerRadius: 14, style: .continuous)
+            in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(14), style: .continuous)
         )
         .overlay {
-            ConcentricRectangle(cornerRadius: 14, style: .continuous)
+            ConcentricRectangle(cornerRadius: InterfaceScale.metric(14), style: .continuous)
                 .stroke(.separator, lineWidth: 1)
         }
         .help("Add attachments")
@@ -381,22 +381,22 @@ private struct ForumComposerAttachmentTile: View {
             if attachment.isSpoiler {
                 Rectangle()
                     .fill(.black.opacity(0.5))
-                VStack(spacing: 4) {
+                VStack(spacing: InterfaceScale.metric(4)) {
                     Image(systemName: "eye.slash")
                     Text("SPOILER")
-                        .font(.caption2.weight(.bold))
+                        .font(.interface(.caption2).weight(.bold))
                 }
                 .foregroundStyle(.white)
             }
         }
         .frame(width: size, height: size)
         .background(.quaternary)
-        .clipShape(ConcentricRectangle(cornerRadius: 14, style: .continuous))
+        .clipShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(14), style: .continuous))
         .overlay {
-            ConcentricRectangle(cornerRadius: 14, style: .continuous)
+            ConcentricRectangle(cornerRadius: InterfaceScale.metric(14), style: .continuous)
                 .stroke(.separator, lineWidth: 1)
         }
-        .contentShape(ConcentricRectangle(cornerRadius: 14, style: .continuous))
+        .contentShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(14), style: .continuous))
         .onModalHover(perform: hoverChanged)
         .help(attachment.filename)
         .accessibilityElement(children: .contain)
@@ -436,51 +436,51 @@ struct ForumAttachmentEditor: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(20)) {
             HStack {
                 Text("Modify Attachment")
-                    .font(.title2.bold())
+                    .font(.interface(.title2).bold())
                 Spacer()
                 Button("Close", systemImage: "xmark", action: cancel)
                     .labelStyle(.iconOnly)
-                    .font(.title3)
+                    .font(.interface(.title3))
                     .buttonStyle(.borderless)
                     .keyboardShortcut(.cancelAction)
             }
 
-            HStack(alignment: .top, spacing: 24) {
+            HStack(alignment: .top, spacing: InterfaceScale.metric(24)) {
                 LocalAttachmentThumbnail(url: attachment.url, maximumPixelDimension: 480)
-                    .frame(width: 220, height: 220)
+                    .frame(width: InterfaceScale.metric(220), height: InterfaceScale.metric(220))
                     .background(.quaternary)
-                    .clipShape(ConcentricRectangle(cornerRadius: 14, style: .continuous))
+                    .clipShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(14), style: .continuous))
 
-                VStack(alignment: .leading, spacing: 18) {
-                    VStack(alignment: .leading, spacing: 7) {
-                        Text("Filename").font(.headline)
+                VStack(alignment: .leading, spacing: InterfaceScale.metric(18)) {
+                    VStack(alignment: .leading, spacing: InterfaceScale.metric(7)) {
+                        Text("Filename").font(.interface(.headline))
                         TextField("Filename", text: $filename)
                             .tint(SakuraCordAccentColor.color)
                             .textFieldStyle(.roundedBorder)
                     }
 
-                    VStack(alignment: .leading, spacing: 7) {
+                    VStack(alignment: .leading, spacing: InterfaceScale.metric(7)) {
                         HStack {
-                            Text("Description (Alt Text)").font(.headline)
+                            Text("Description (Alt Text)").font(.interface(.headline))
                             Spacer()
                             Text("\(description.count)/1024")
-                                .font(.caption)
+                                .font(.interface(.caption))
                                 .foregroundStyle(.secondary)
                         }
                         TextEditor(text: $description)
                             .tint(SakuraCordAccentColor.color)
-                            .font(.body)
+                            .font(.interface(.body))
                             .scrollContentBackground(.hidden)
-                            .padding(7)
-                            .background(.quaternary, in: ConcentricRectangle(cornerRadius: 8))
+                            .padding(InterfaceScale.metric(7))
+                            .background(.quaternary, in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(8)))
                             .overlay {
-                                ConcentricRectangle(cornerRadius: 8)
+                                ConcentricRectangle(cornerRadius: InterfaceScale.metric(8))
                                     .stroke(.separator, lineWidth: 1)
                             }
-                            .frame(minHeight: 116)
+                            .frame(minHeight: InterfaceScale.metric(116))
                             .onChange(of: description) { _, value in
                                 if value.count > 1_024 {
                                     description = String(value.prefix(1_024))
@@ -497,7 +497,7 @@ struct ForumAttachmentEditor: View {
 
             Spacer(minLength: 0)
 
-            HStack(spacing: 10) {
+            HStack(spacing: InterfaceScale.metric(10)) {
                 Spacer()
                 Button("Cancel", action: cancel)
                     .keyboardShortcut(.cancelAction)
@@ -516,14 +516,14 @@ struct ForumAttachmentEditor: View {
             }
             .controlSize(.large)
         }
-        .padding(24)
+        .padding(InterfaceScale.metric(24))
         .frame(
-            minWidth: 560,
-            idealWidth: 680,
-            maxWidth: 760,
-            minHeight: 440,
-            idealHeight: 520,
-            maxHeight: 640
+            minWidth: InterfaceScale.metric(560),
+            idealWidth: InterfaceScale.metric(680),
+            maxWidth: InterfaceScale.metric(760),
+            minHeight: InterfaceScale.metric(440),
+            idealHeight: InterfaceScale.metric(520),
+            maxHeight: InterfaceScale.metric(640)
         )
     }
 }
@@ -534,10 +534,10 @@ struct ForumPostAttachmentPreview: View {
 
     var body: some View {
         if attachment.isSpoiler {
-            VStack(spacing: 6) {
+            VStack(spacing: InterfaceScale.metric(6)) {
                 Image(systemName: "eye.slash.fill")
                 Text("SPOILER")
-                    .font(.caption2.weight(.bold))
+                    .font(.interface(.caption2).weight(.bold))
             }
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -553,7 +553,10 @@ struct ForumPostAttachmentPreview: View {
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             case .video:
-                ForumPostFilePreview(systemImage: "play.rectangle.fill", filename: attachment.filename)
+                ForumPostVideoPreview(
+                    attachment: attachment,
+                    maximumPixelDimension: maximumPixelDimension
+                )
             case .audio:
                 ForumPostFilePreview(systemImage: "waveform", filename: attachment.filename)
             case .file:
@@ -563,21 +566,52 @@ struct ForumPostAttachmentPreview: View {
     }
 }
 
+private struct ForumPostVideoPreview: View {
+    let attachment: Attachment
+    let maximumPixelDimension: Int
+    @State private var failedPosterURL: URL?
+
+    var body: some View {
+        if let posterURL, failedPosterURL != posterURL {
+            AnimatedRemoteImage(
+                url: posterURL,
+                animates: false,
+                maximumPixelDimension: maximumPixelDimension,
+                onFailure: { failedPosterURL = posterURL }
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay {
+                Image(systemName: "play.fill")
+                    .font(.interfaceSystem(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: InterfaceScale.metric(34), height: InterfaceScale.metric(34))
+                    .background(.black.opacity(0.55), in: Circle())
+            }
+        } else {
+            ForumPostFilePreview(systemImage: "play.rectangle.fill", filename: attachment.filename)
+        }
+    }
+
+    private var posterURL: URL? {
+        attachment.videoPosterURL(maximumPixelDimension: maximumPixelDimension)
+    }
+}
+
 private struct ForumPostFilePreview: View {
     let systemImage: String
     let filename: String
 
     var body: some View {
-        VStack(spacing: 7) {
+        VStack(spacing: InterfaceScale.metric(7)) {
             Image(systemName: systemImage)
-                .font(.title2)
+                .font(.interface(.title2))
             Text(filename)
-                .font(.caption)
+                .font(.interface(.caption))
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
         }
         .foregroundStyle(.secondary)
-        .padding(10)
+        .padding(InterfaceScale.metric(10))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
@@ -587,20 +621,20 @@ struct ForumActionErrorBanner: View {
     let dismiss: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: InterfaceScale.metric(10)) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.red)
             Text(message)
-                .font(.callout)
+                .font(.interface(.callout))
                 .lineLimit(2)
-            Spacer(minLength: 8)
+            Spacer(minLength: InterfaceScale.metric(8))
             Button("Dismiss", systemImage: "xmark", action: dismiss)
                 .labelStyle(.iconOnly)
                 .buttonStyle(.plain)
                 .help("Dismiss error")
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
+        .padding(.horizontal, InterfaceScale.metric(14))
+        .padding(.vertical, InterfaceScale.metric(9))
         .background(Color.red.opacity(0.08))
         .accessibilityElement(children: .contain)
     }
@@ -609,14 +643,14 @@ struct ForumActionErrorBanner: View {
 struct ForumLoadingView: View {
     var body: some View {
         ScrollView {
-            LazyVStack(spacing: 10) {
+            LazyVStack(spacing: InterfaceScale.metric(10)) {
                 ForEach(0 ..< 5, id: \.self) { _ in
-                    ConcentricRectangle(cornerRadius: 14)
+                    ConcentricRectangle(cornerRadius: InterfaceScale.metric(14))
                         .fill(.quaternary)
-                        .frame(height: 130)
+                        .frame(height: InterfaceScale.metric(130))
                 }
             }
-            .padding(14)
+            .padding(InterfaceScale.metric(14))
         }
         .scrollDisabled(true)
         .redacted(reason: .placeholder)
@@ -630,18 +664,18 @@ struct ForumEmptyState: View {
     let systemImage: String
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: InterfaceScale.metric(10)) {
             Image(systemName: systemImage)
-                .font(.system(size: 34, weight: .medium))
+                .font(.interfaceSystem(size: 34, weight: .medium))
                 .foregroundStyle(.tertiary)
             Text(title)
-                .font(.headline)
+                .font(.interface(.headline))
             Text(description)
-                .font(.callout)
+                .font(.interface(.callout))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal, InterfaceScale.metric(24))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .combine)
     }
@@ -649,11 +683,11 @@ struct ForumEmptyState: View {
 
 struct ForumSearchingState: View {
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: InterfaceScale.metric(10)) {
             ProgressView()
                 .controlSize(.small)
             Text("Searching posts…")
-                .font(.callout)
+                .font(.interface(.callout))
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

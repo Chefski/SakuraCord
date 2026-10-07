@@ -1440,6 +1440,15 @@ private final class AppKitMarkdownCacheKey: NSObject {
 }
 
 public extension DiscordMarkdown {
+    /// Visible emoji-bearing text for send-time usage tracking. Code and link
+    /// destinations are not parsed as emoji by Discord's outgoing parser.
+    static func emojiUsageText(in source: String) -> String {
+        appKitPlan(source).lines.flatMap { line -> [String] in
+            if case .code = line.block { return [] }
+            return line.runs.filter { !$0.traits.contains(.inlineCode) }.map(\.text)
+        }.joined(separator: " ")
+    }
+
     /// Discord invite cards are client-derived, including bare links and links inside angle brackets.
     /// Code and spoiler text never initiate preview requests or expose invite cards.
     static func serverInviteReferences(in source: String) -> [ServerInviteReference] {

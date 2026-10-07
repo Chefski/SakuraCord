@@ -560,7 +560,7 @@ extension NativeTimelineRowPainter {
                     fillsFrame: false
                 )
             } else {
-                systemSymbol("photo", in: region.frame, color: .secondaryLabelColor, inset: 22)
+                systemSymbol("photo", in: region.frame, color: .secondaryLabelColor, inset: InterfaceScale.metric(22))
             }
         }
     }
@@ -579,15 +579,17 @@ extension NativeTimelineRowPainter {
                 isSpoiler: region.isSpoiler,
                 input: input
             ) {
-                spoilerConcealedBase(in: region.frame, cornerRadius: 8)
+                spoilerConcealedBase(in: region.frame, cornerRadius: InterfaceScale.metric(8))
                 continue
             }
             NSColor.secondaryLabelColor.withAlphaComponent(0.10).setFill()
-            NSBezierPath(concentricRoundedRect: region.frame, cornerRadius: 8).fill()
-            if let image = mediaImage(for: .media(region.displayURL)) {
-                drawImage(image, in: region.frame, cornerRadius: 8, fillsFrame: true)
+            NSBezierPath(concentricRoundedRect: region.frame, cornerRadius: InterfaceScale.metric(8)).fill()
+            if let previewURL = region.previewURL,
+               let image = mediaImage(for: .media(previewURL))
+            {
+                drawImage(image, in: region.frame, cornerRadius: InterfaceScale.metric(8), fillsFrame: true)
             } else if region.isVideo {
-                systemSymbol("film", in: region.frame, color: .secondaryLabelColor, inset: 30)
+                systemSymbol("film", in: region.frame, color: .secondaryLabelColor, inset: InterfaceScale.metric(30))
             }
             if region.isVideo { mediaPlayGlyph(in: region.frame) }
         }
@@ -680,7 +682,7 @@ extension NativeTimelineRowPainter {
                 in: CGRect(
                     x: region.frame.minX,
                     y: region.frame.minY,
-                    width: 16,
+                    width: InterfaceScale.metric(16),
                     height: region.frame.height
                 ),
                 color: .secondaryLabelColor,
@@ -689,12 +691,12 @@ extension NativeTimelineRowPainter {
             text(
                 region.label,
                 in: CGRect(
-                    x: region.frame.minX + 22,
+                    x: region.frame.minX + InterfaceScale.metric(22),
                     y: region.frame.minY,
-                    width: max(1, region.frame.width - 22),
+                    width: max(1, region.frame.width - InterfaceScale.metric(22)),
                     height: region.frame.height
                 ),
-                font: .systemFont(ofSize: 11),
+                font: .interfaceSystemFont(ofSize: 11),
                 color: .secondaryLabelColor
             )
         }
@@ -718,7 +720,7 @@ extension NativeTimelineRowPainter {
             CGRect(
                 x: frame.minX,
                 y: frame.minY,
-                width: 4,
+                width: InterfaceScale.metric(4),
                 height: frame.height
             ).fill()
         }
@@ -756,7 +758,7 @@ extension NativeTimelineRowPainter {
             CGRect(
                 x: geometry.frame.minX,
                 y: geometry.frame.minY,
-                width: 4,
+                width: InterfaceScale.metric(4),
                 height: geometry.frame.height
             ).fill()
             NSGraphicsContext.restoreGraphicsState()
@@ -775,8 +777,8 @@ extension NativeTimelineRowPainter {
             NSBezierPath(rect: CGRect(
                 x: geometry.frame.minX - 1,
                 y: geometry.frame.minY - 1,
-                width: geometry.frame.width + 2,
-                height: geometry.cornerRadius + 2
+                width: geometry.frame.width + InterfaceScale.metric(2),
+                height: geometry.cornerRadius + InterfaceScale.metric(2)
             )).addClip()
             NSColor.separatorColor.withAlphaComponent(0.28).setStroke()
             let separator = geometry.path
@@ -905,53 +907,53 @@ extension NativeTimelineRowPainter {
         NSColor.secondaryLabelColor.withAlphaComponent(0.08).setFill()
         NSBezierPath(
             concentricRoundedRect: frame,
-            cornerRadius: 8
+            cornerRadius: InterfaceScale.metric(8)
         ).fill()
-        let inset: CGFloat = 10
-        let nameFont = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        let inset: CGFloat = InterfaceScale.metric(10)
+        let nameFont = NSFont.interfaceSystemFont(ofSize: 13, weight: .semibold)
         let nameWidth = min(
             NativeTimelineReplyMetrics.textWidth(thread.name, font: nameFont),
             frame.width * 0.6
         )
         text(
             thread.name,
-            in: CGRect(x: frame.minX + inset, y: frame.minY + 7, width: nameWidth, height: 18),
+            in: CGRect(x: frame.minX + inset, y: frame.minY + InterfaceScale.metric(7), width: nameWidth, height: InterfaceScale.metric(18)),
             font: nameFont,
             color: .labelColor
         )
         text(
             NativeTimelineThreadCard.countText(thread),
             in: CGRect(
-                x: frame.minX + inset + nameWidth + 8,
-                y: frame.minY + 7,
-                width: max(1, frame.width - nameWidth - inset * 2 - 8),
-                height: 18
+                x: frame.minX + inset + nameWidth + InterfaceScale.metric(8),
+                y: frame.minY + InterfaceScale.metric(7),
+                width: max(1, frame.width - nameWidth - inset * 2 - InterfaceScale.metric(8)),
+                height: InterfaceScale.metric(18)
             ),
-            font: .systemFont(ofSize: 13, weight: .semibold),
+            font: .interfaceSystemFont(ofSize: 13, weight: .semibold),
             color: .sakuraCordAccentColor
         )
 
         let rowFrame = CGRect(
             x: frame.minX + inset,
-            y: frame.minY + 28,
+            y: frame.minY + InterfaceScale.metric(28),
             width: frame.width - inset * 2,
-            height: 20
+            height: InterfaceScale.metric(20)
         )
         let activity = NativeTimelineThreadCard.activityText(
             thread.lastMessageID?.createdAt ?? thread.createdAt ?? thread.id.createdAt
         )
-        let activityFont = NSFont.systemFont(ofSize: 11)
+        let activityFont = NSFont.interfaceSystemFont(ofSize: 11)
         let activityWidth = NativeTimelineReplyMetrics.textWidth(activity, font: activityFont)
         text(
             activity,
-            in: CGRect(x: rowFrame.maxX - activityWidth, y: rowFrame.minY + 1, width: activityWidth, height: 18),
+            in: CGRect(x: rowFrame.maxX - activityWidth, y: rowFrame.minY + 1, width: activityWidth, height: InterfaceScale.metric(18)),
             font: activityFont,
             color: .tertiaryLabelColor
         )
         let bodyFrame = CGRect(
             x: rowFrame.minX,
             y: rowFrame.minY,
-            width: max(0, rowFrame.width - activityWidth - 8),
+            width: max(0, rowFrame.width - activityWidth - InterfaceScale.metric(8)),
             height: rowFrame.height
         )
         guard !thread.isArchived, thread.messageCount > 0, let preview else {
@@ -968,7 +970,7 @@ extension NativeTimelineRowPainter {
         replyPreviewLine(
             MessageReplyPreview(message: preview),
             frame: bodyFrame,
-            avatarFrame: CGRect(x: bodyFrame.minX, y: bodyFrame.minY + 3, width: 14, height: 14),
+            avatarFrame: CGRect(x: bodyFrame.minX, y: bodyFrame.minY + InterfaceScale.metric(3), width: InterfaceScale.metric(14), height: InterfaceScale.metric(14)),
             trailingInset: 0,
             message: message,
             model: model
@@ -995,8 +997,8 @@ extension NativeTimelineRowPainter {
     ) {
         let shape = NSBezierPath(
             roundedRect: frame,
-            xRadius: 9,
-            yRadius: 9
+            xRadius: InterfaceScale.metric(9),
+            yRadius: InterfaceScale.metric(9)
         )
         (
             selected
@@ -1041,13 +1043,13 @@ extension NativeTimelineRowPainter {
                 NSColor.secondaryLabelColor.withAlphaComponent(0.12).setFill()
                 NSBezierPath(
                     concentricRoundedRect: region.emojiFrame,
-                    cornerRadius: 5
+                    cornerRadius: InterfaceScale.metric(5)
                 ).fill()
                 systemSymbol(
                     SakuraCordSystemSymbol.emojiFaceGrinning,
                     in: region.emojiFrame,
                     color: .secondaryLabelColor,
-                    inset: 4,
+                    inset: InterfaceScale.metric(4),
                     weight: .medium
                 )
             }
@@ -1116,7 +1118,7 @@ extension NativeTimelineRowPainter {
     ) {
         let shape = NSBezierPath(
             concentricRoundedRect: frame,
-            cornerRadius: 9
+            cornerRadius: InterfaceScale.metric(9)
         )
         NSColor.labelColor.withAlphaComponent(
             isHovered ? 0.14 : 0.09
@@ -1225,23 +1227,23 @@ extension NativeTimelineRowPainter {
     ) {
         // The row's loading-dots overlay replaces the label.
         guard !region.isLoading else { return }
-        var horizontalPosition = region.frame.minX + 12
+        var horizontalPosition = region.frame.minX + NativeTimelineComponentButtonMetrics.horizontalPadding
         if let emoji = region.emoji {
             componentEmoji(emoji, in: CGRect(
                 x: horizontalPosition,
-                y: region.frame.midY - 8,
-                width: 16,
-                height: 16
+                y: region.frame.midY - InterfaceScale.metric(8),
+                width: InterfaceScale.metric(16),
+                height: InterfaceScale.metric(16)
             ))
-            horizontalPosition += 22
+            horizontalPosition += NativeTimelineComponentButtonMetrics.leadingGlyphAdvance
         } else if region.style == .premium {
             systemSymbol(
                 "sparkles",
                 in: CGRect(
                     x: horizontalPosition,
-                    y: region.frame.midY - 8,
-                    width: 16,
-                    height: 16
+                    y: region.frame.midY - InterfaceScale.metric(8),
+                    width: InterfaceScale.metric(16),
+                    height: InterfaceScale.metric(16)
                 ),
                 color: adjustedBrightness(
                     .white,
@@ -1249,9 +1251,11 @@ extension NativeTimelineRowPainter {
                 ).withAlphaComponent(opacity),
                 inset: 1
             )
-            horizontalPosition += 22
+            horizontalPosition += NativeTimelineComponentButtonMetrics.leadingGlyphAdvance
         }
-        let trailingAllowance: CGFloat = region.url == nil ? 12 : 30
+        let trailingAllowance = region.url == nil
+            ? NativeTimelineComponentButtonMetrics.horizontalPadding
+            : NativeTimelineComponentButtonMetrics.externalLinkAllowance
         text(
             region.label,
             in: CGRect(
@@ -1275,10 +1279,10 @@ extension NativeTimelineRowPainter {
             systemSymbol(
                 "arrow.up.right",
                 in: CGRect(
-                    x: region.frame.maxX - 22,
-                    y: region.frame.midY - 7,
-                    width: 14,
-                    height: 14
+                    x: region.frame.maxX - InterfaceScale.metric(22),
+                    y: region.frame.midY - InterfaceScale.metric(7),
+                    width: InterfaceScale.metric(14),
+                    height: InterfaceScale.metric(14)
                 ),
                 color: adjustedBrightness(
                     .white,
@@ -1356,20 +1360,22 @@ extension NativeTimelineRowPainter {
         in frame: CGRect,
         opacity: CGFloat
     ) {
-        let available = max(40, frame.width - 50)
-        var origin = CGPoint(x: frame.minX + 11, y: 0)
+        let metrics = SelectionFieldLayoutMetrics.self
+        let available = metrics.tokenAvailableWidth(in: frame.width)
+        let leadingX = frame.minX + metrics.leadingInset
+        var origin = CGPoint(x: leadingX, y: 0)
         var placements: [(option: SelectionFieldOption<String>, frame: CGRect)] = []
         for option in options {
-            let tokenWidth = SelectionFieldLayoutMetrics.tokenWidth(option, availableWidth: available)
-            if origin.x > frame.minX + 11, origin.x + tokenWidth > frame.minX + 11 + available {
-                origin.x = frame.minX + 11
-                origin.y += 34
+            let tokenWidth = metrics.tokenWidth(option, availableWidth: available)
+            if origin.x > leadingX, origin.x + tokenWidth > leadingX + available {
+                origin.x = leadingX
+                origin.y += metrics.tokenHeight + metrics.tokenSpacing
             }
-            placements.append((option, CGRect(origin: origin, size: CGSize(width: tokenWidth, height: 28))))
-            origin.x += tokenWidth + 6
+            placements.append((option, CGRect(origin: origin, size: CGSize(width: tokenWidth, height: metrics.tokenHeight))))
+            origin.x += tokenWidth + metrics.tokenSpacing
         }
         // Like the open field, centre the token rows within its minimum height.
-        let top = frame.minY + ((frame.height - (origin.y + 28)) / 2).rounded()
+        let top = frame.minY + ((frame.height - (origin.y + metrics.tokenHeight)) / 2).rounded()
         for placement in placements {
             let image = SelectionFieldRenderer.tokenImage(
                 option: placement.option, font: SelectionFieldLayoutMetrics.font,
@@ -1407,10 +1413,10 @@ extension NativeTimelineRowPainter {
         systemSymbol(
             "doc.fill",
             in: CGRect(
-                x: region.frame.minX + 10,
-                y: region.frame.midY - 12,
-                width: 24,
-                height: 24
+                x: region.frame.minX + InterfaceScale.metric(10),
+                y: region.frame.midY - InterfaceScale.metric(12),
+                width: InterfaceScale.metric(24),
+                height: InterfaceScale.metric(24)
             ),
             color: .secondaryLabelColor,
             inset: 1
@@ -1418,24 +1424,24 @@ extension NativeTimelineRowPainter {
         text(
             region.title,
             in: CGRect(
-                x: region.frame.minX + 44,
-                y: region.frame.minY + 8,
-                width: max(1, region.frame.width - 88),
-                height: 18
+                x: region.frame.minX + InterfaceScale.metric(44),
+                y: region.frame.minY + InterfaceScale.metric(8),
+                width: max(1, region.frame.width - InterfaceScale.metric(88)),
+                height: InterfaceScale.metric(18)
             ),
-            font: .systemFont(ofSize: 13, weight: .semibold),
+            font: .interfaceSystemFont(ofSize: 13, weight: .semibold),
             color: .labelColor
         )
         if let description = region.description, !description.isEmpty {
             text(
                 description,
                 in: CGRect(
-                    x: region.frame.minX + 44,
-                    y: region.frame.minY + 27,
-                    width: max(1, region.frame.width - 88),
-                    height: max(14, region.frame.height - 33)
+                    x: region.frame.minX + InterfaceScale.metric(44),
+                    y: region.frame.minY + InterfaceScale.metric(27),
+                    width: max(1, region.frame.width - InterfaceScale.metric(88)),
+                    height: max(InterfaceScale.metric(14), region.frame.height - InterfaceScale.metric(33))
                 ),
-                font: .systemFont(ofSize: 11),
+                font: .interfaceSystemFont(ofSize: 11),
                 color: .secondaryLabelColor,
                 lineBreakMode: .byWordWrapping
             )
@@ -1443,10 +1449,10 @@ extension NativeTimelineRowPainter {
         systemSymbol(
             "arrow.down.circle",
             in: CGRect(
-                x: region.frame.maxX - 32,
-                y: region.frame.midY - 10,
-                width: 20,
-                height: 20
+                x: region.frame.maxX - InterfaceScale.metric(32),
+                y: region.frame.midY - InterfaceScale.metric(10),
+                width: InterfaceScale.metric(20),
+                height: InterfaceScale.metric(20)
             ),
             color: .secondaryLabelColor,
             inset: 1
@@ -1466,7 +1472,7 @@ extension NativeTimelineRowPainter {
             drawImage(
                 image,
                 in: frame.insetBy(dx: 1, dy: 1),
-                cornerRadius: 3,
+                cornerRadius: InterfaceScale.metric(3),
                 fillsFrame: false
             )
             return
@@ -1577,9 +1583,9 @@ extension NativeTimelineRowPainter {
         in frame: CGRect
     ) {
         let title = attachment.title ?? attachment.filename
-        let font = NSFont.preferredFont(forTextStyle: .body)
-        let symbolSize: CGFloat = 18
-        let spacing: CGFloat = 6
+        let font = NSFont.interfacePreferredFont(forTextStyle: .body)
+        let symbolSize: CGFloat = InterfaceScale.metric(18)
+        let spacing: CGFloat = InterfaceScale.metric(6)
         let titleWidth = min(
             measuredTextWidth(title, font: font),
             max(1, frame.width - 24 - symbolSize - spacing)
@@ -1601,9 +1607,9 @@ extension NativeTimelineRowPainter {
             title,
             in: CGRect(
                 x: horizontalPosition + symbolSize + spacing,
-                y: frame.midY - 10,
+                y: frame.midY - InterfaceScale.metric(10),
                 width: titleWidth,
-                height: 20
+                height: InterfaceScale.metric(20)
             ),
             font: font,
             color: .labelColor

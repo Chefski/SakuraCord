@@ -116,6 +116,49 @@ Thread lifecycle events advance the parent forum boundary before unread
 projection. Metadata, archive, lock, pin and delete are explicit, permission-gated
 mutations. Message-created thread cards use cached thread/message data.
 
+### Sidebar threads
+
+The channel list needs no request. READY and `GUILD_CREATE` `threads` contain only
+active threads the account has joined, each with an embedded `member` whose
+`join_timestamp` orders the rows. A created thread arrives as a member-less
+`THREAD_CREATE` followed by `THREAD_MEMBER_UPDATE`; joining yields
+`THREAD_MEMBERS_UPDATE` `added_members` plus a `THREAD_CREATE` with `member`;
+leaving yields `removed_member_ids`; closing yields an archived `THREAD_UPDATE`.
+
+Discord lists a joined thread under its text, announcement or forum parent only
+while it is relevant: its auto-archive window has not elapsed since the latest of
+its last message (or creation), `last_non_message_activity_timestamp`, and
+`archive_timestamp`, it is pinned, it is unread
+and not muted, or it has mentions. A collapsed category or muted parent keeps
+only unread-and-unmuted or mentioned threads unless the parent or one of its
+threads is open. Rows sort by newest join; a selected full-channel thread absent from that set is
+inserted first. A thread open only in the side pane does not receive that exception.
+`hide_muted_channels` removes muted, unmentioned threads unless their parent or
+one of its threads is selected. Relevance and timed mute expiry re-evaluate the rows.
+Sidebar selection and channel keyboard traversal open the existing thread timeline
+as the main conversation; the hidden parent is not eligible for read acknowledgements.
+Thread menus resolve permissions against their own parent and recheck eligibility
+when invoking a mutation. Private threads additionally require membership or
+Manage Threads to expose content or actions after leaving. Close requires Manage Threads or the unlocked thread's
+creator; reopening an unlocked thread uses the first-party send permissions,
+while reopening a locked thread requires Manage Threads. Lock/unlock and pin/unpin
+require Manage Threads; pinning is forum-only. Ordinary thread creators cannot
+delete a thread without Manage Threads. Forum authors may delete an empty post;
+deleting only a starter message after replies exist is a separate action, not
+permission to delete the whole thread. Notification controls require membership;
+unjoined threads must not implicitly join through a sidebar notification change.
+These gates follow first-party modules 406704, 307623, 57907, and 375500 in the
+2026-10-06 official client. Sidebar action failures use a visible application alert,
+including when the forum browser is not presented.
+
+Follow/leave uses
+`POST`/`DELETE /channels/{id}/thread-members/@me?location=Context%20Menu` and
+reconciles membership through Gateway; notification responses also publish the
+joined-thread catalogue immediately.
+See [SidebarThreadPresentation.swift](../../App/Sources/SakuraCord/Models/SidebarThreadPresentation.swift).
+Observed in official web build `b70721f9bc10ca0b` (desktop host 0.0.411) on
+2026-10-06, where it matched 5 of 51 joined forum posts exactly.
+
 Text-channel and voice-channel chats, existing threads, and existing forum posts
 support the same slash-command composer. The main conversation and supplementary
 thread pane own separate command drafts, autocomplete work and member results,
@@ -157,7 +200,7 @@ Discord's client-side built-ins last, Frequently Used as the five
 highest-scoring browse commands among the 100 most frecent, and typed search
 ranked by Discord's match tiers, then frecency score, then name, at most 20.
 [ApplicationCommandPickerEngine.swift](../../App/Sources/SakuraCord/Models/ApplicationCommandPickerEngine.swift)
-and [ApplicationCommandFrecencyStore.swift](../../App/Sources/SakuraCord/Models/ApplicationCommandFrecencyStore.swift)
+and [DiscordFrecencyStore.swift](../../App/Sources/SakuraCord/Models/DiscordFrecencyStore.swift)
 own those rules; [ApplicationCommandFrecencyTests.swift](../../App/Tests/SakuraCordAppTests/ApplicationCommandFrecencyTests.swift)
 pins them. The command list uses the emoji picker's bounded native viewport and shared
 section rail. Section headings scroll in the list, pin at the top, and are pushed
@@ -371,3 +414,26 @@ See [external-host checks](../../App/Tests/SakuraCordAppTests/ExternalAttachment
 and [metadata fixtures](../../Packages/MediaPipeline/Tests/MediaPipelineTests/UploadMetadataTests.swift)
 for failure/privacy boundaries. Detailed container algorithms belong beside that
 code, not in the transport-wide baseline.
+
+## Attachment links
+
+Attachment URLs retain their ordinary full-URL presentation. An explicit
+activation refreshes an unsigned or nearly expired HTTPS attachment URL only
+when its complete URL matches the first-party attachment-link rule: `cdn`,
+`media`, or `images` Discord CDN hosts (including subdomains and hyphen-suffixed
+variants), an `/attachments/` or `/ephemeral-attachments/` path, numeric IDs,
+and the rule's filename/query character set. Nonmatching URLs remain ordinary
+links; no URL prefix is substituted for the original destination.
+
+SakuraCord deliberately applies refresh to any activated link whose complete
+URL matches that rule, including masked links. The first-party client refreshes
+attachment-link clicks and its "Copy link" item; SakuraCord has no message link
+context menu. The refreshed destination still goes through external-link safety
+assessment with the original displayed label. This activation path does not
+refresh image embeds, attachments, or the media viewer. The first-party client
+separately detects expired attachment and embed URLs when loading a channel and
+refetches message history.
+
+| Route | Contract | Evidence |
+| --- | --- | --- |
+| `POST /attachments/refresh-urls` | One explicit activation of a Discord attachment link whose URL is unsigned or whose hexadecimal `ex` expires within one hour; `attachment_urls` contains exactly the original URL. `refreshed_urls[0].refreshed` is opened; a null or absent value opens the original URL. No retry, context header, or cache. | Stable web build `622805` (`web.d4c7976eccf337f1.js`, SHA-256 `7341aa3d5a2208664901f65bf776a48fb5cafe21a1a9e6ce504db79a4a636f7d`), 28 September 2026. Public docs define `ex`/`is`/`hm` but not this route; pinned Paicord and Swiftcord v1 have no equivalent contract. |

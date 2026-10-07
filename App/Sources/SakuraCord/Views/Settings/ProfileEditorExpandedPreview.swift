@@ -18,7 +18,7 @@ struct ProfileEditorExpandedPreview: View {
         ProfileExpandedSurface(profile: profile, allowsTheme: editor.isNitro, profileContent: {
             MemberProfilePopover(member: Member(user: profile.user, roleName: "", status: model.currentStatus),
                                  isCurrentUser: true, profile: profile,
-                                 isLoading: false, errorMessage: nil, layout: .expanded, maximumPopoverHeight: 720, showsRoles: false,
+                                 isLoading: false, errorMessage: nil, layout: .expanded, maximumPopoverHeight: InterfaceScale.metric(720), showsRoles: false,
                                  footer: EmptyView(), editor: editor, openEditorPicker: open)
                 .disabled(editor.isSaving || editor.requiresReload)
         }, widgets: {
@@ -26,9 +26,9 @@ struct ProfileEditorExpandedPreview: View {
                 .id(editor.draftGeneration)
                 .settingsControlAnchor(.profileWidgets)
         })
-        .background(Color(nsColor: .windowBackgroundColor), in: ConcentricRectangle(cornerRadius: 16, style: .continuous))
-        .clipShape(ConcentricRectangle(cornerRadius: 16, style: .continuous))
-        .overlay { ConcentricRectangle(cornerRadius: 16, style: .continuous).stroke(.separator, lineWidth: 1) }
+        .background(Color(nsColor: .windowBackgroundColor), in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(16), style: .continuous))
+        .clipShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(16), style: .continuous))
+        .overlay { ConcentricRectangle(cornerRadius: InterfaceScale.metric(16), style: .continuous).stroke(.separator, lineWidth: 1) }
         .backgroundPreferenceValue(ProfileFrameAnchorKey.self) { anchor in
             ProfileFrameDecoration(anchor: anchor, order: "back")
         }
