@@ -7,39 +7,61 @@ source "$ROOT_DIR/script/runtime.sh"
 
 MODE="${1:-all}"
 case "$MODE" in
-  all|checks) ;;
+  all|checks|packages|app) ;;
   *)
-    echo "usage: $0 [all|checks]" >&2
+    echo "usage: $0 [all|checks|packages|app]" >&2
     exit 2
     ;;
 esac
 
-"$ROOT_DIR/script/code_quality.sh" check
-"$ROOT_DIR/script/test_code_quality.sh"
-"$ROOT_DIR/script/test_release_metadata.sh"
-"$ROOT_DIR/script/test_sync_main_into_nightly.sh"
-"$ROOT_DIR/script/test_debug_credentials_config.sh"
-python3 "$ROOT_DIR/script/test_run_test_diagnostics.py"
-node --test "$ROOT_DIR/script/release_automation.test.mjs"
-node --test "$ROOT_DIR/script/ci_reuse.test.mjs"
-node --test "$ROOT_DIR/script/update_appcast_display_version.test.mjs"
-"$ROOT_DIR/script/test_release_tag_guard.sh"
-
-CREDENTIAL_PATTERN='(Authorization:[[:space:]]*(Bot|Bearer)?[[:space:]]*[A-Za-z0-9._-]{24,}|mfa\.[A-Za-z0-9_-]{20,})'
-if command -v rg >/dev/null 2>&1; then
-  CREDENTIAL_SCAN=(rg -n --hidden -g '!README.md' -g '!script/ci.sh' -g '!.git/**' -g '!.build/**' -g '!.codex-runtime/**')
-else
-  CREDENTIAL_SCAN=(grep -REnI --exclude=README.md --exclude=ci.sh --exclude-dir=.git --exclude-dir=.build --exclude-dir=.codex-runtime)
+# Hosted CI opts in so restored build outputs match the fresh checkout.
+if [[ "${SAKURACORD_STABLE_MTIMES:-}" == "1" ]]; then
+  python3 -I "$ROOT_DIR/script/stabilize_mtimes.py" "$ROOT_DIR"
 fi
 
-if "${CREDENTIAL_SCAN[@]}" "$CREDENTIAL_PATTERN" "$ROOT_DIR"; then
-  echo "Potential credential material found." >&2
-  exit 1
-fi
+run_checks() {
+  "$ROOT_DIR/script/code_quality.sh" check
+  "$ROOT_DIR/script/test_code_quality.sh"
+  "$ROOT_DIR/script/test_release_metadata.sh"
+  "$ROOT_DIR/script/test_sync_main_into_nightly.sh"
+  "$ROOT_DIR/script/test_debug_credentials_config.sh"
+  python3 "$ROOT_DIR/script/test_run_test_diagnostics.py"
+  node --test "$ROOT_DIR/script/release_automation.test.mjs"
+  node --test "$ROOT_DIR/script/ci_reuse.test.mjs"
+  node --test "$ROOT_DIR/script/update_appcast_display_version.test.mjs"
+  "$ROOT_DIR/script/test_release_tag_guard.sh"
 
-if [[ "$MODE" == "checks" ]]; then
-  exit 0
-fi
+  CREDENTIAL_PATTERN='(Authorization:[[:space:]]*(Bot|Bearer)?[[:space:]]*[A-Za-z0-9._-]{24,}|mfa\.[A-Za-z0-9_-]{20,})'
+  if command -v rg >/dev/null 2>&1; then
+    CREDENTIAL_SCAN=(rg -n --hidden -g '!README.md' -g '!script/ci.sh' -g '!.git/**' -g '!.build/**' -g '!.codex-runtime/**')
+  else
+    CREDENTIAL_SCAN=(grep -REnI --exclude=README.md --exclude=ci.sh --exclude-dir=.git --exclude-dir=.build --exclude-dir=.codex-runtime)
+  fi
+
+  if "${CREDENTIAL_SCAN[@]}" "$CREDENTIAL_PATTERN" "$ROOT_DIR"; then
+    echo "Potential credential material found." >&2
+    exit 1
+  fi
+}
+
+case "$MODE" in
+  checks)
+    run_checks
+    exit 0
+    ;;
+  packages)
+    run_checks
+    "$ROOT_DIR/script/test.sh" packages
+    exit 0
+    ;;
+  app)
+    TEST_TARGET=app
+    ;;
+  all)
+    run_checks
+    TEST_TARGET=all
+    ;;
+esac
 
 for attempt in 1 2 3; do
   if swift package \
@@ -57,7 +79,7 @@ for attempt in 1 2 3; do
   sleep $((attempt * 5))
 done
 
-"$ROOT_DIR/script/test.sh" all
+"$ROOT_DIR/script/test.sh" "$TEST_TARGET"
 
 swift build \
   --package-path "$SAKURACORD_PACKAGE_DIR" \

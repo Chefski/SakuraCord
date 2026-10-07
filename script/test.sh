@@ -13,6 +13,20 @@ run_tests() {
   local package_path="$1"
   local bin_dir
   local framework
+  local checkout
+
+  if [[ "${SAKURACORD_STABLE_MTIMES:-}" == "1" ]]; then
+    echo "=== $(basename "$package_path"): stabilize dependency file times ==="
+    swift package \
+      --package-path "$package_path" \
+      --cache-path "$SAKURACORD_SWIFTPM_CACHE_DIR" \
+      --scratch-path "$package_path/.build" \
+      resolve
+    for checkout in "$package_path"/.build/checkouts/*/; do
+      [[ -e "$checkout/.git" ]] || continue
+      python3 -I "$ROOT_DIR/script/stabilize_mtimes.py" "$checkout"
+    done
+  fi
 
   echo "=== $(basename "$package_path"): build tests ==="
   swift build \
@@ -48,6 +62,15 @@ run_tests() {
     --skip-build
 }
 
+run_package_tests() {
+  run_tests "$ROOT_DIR/Packages/SakuraCordModels"
+  run_tests "$ROOT_DIR/Packages/DiscordProtocol"
+  run_tests "$ROOT_DIR/Packages/SakuraCordPersistence"
+  run_tests "$ROOT_DIR/Packages/MessageRendering"
+  run_tests "$ROOT_DIR/Packages/MediaPipeline"
+  run_tests "$ROOT_DIR/Packages/SakuraCordPluginSDK"
+}
+
 case "$TARGET" in
   app)
     run_tests "$ROOT_DIR/App"
@@ -58,17 +81,15 @@ case "$TARGET" in
   media)
     run_tests "$ROOT_DIR/Packages/MediaPipeline"
     ;;
+  packages)
+    run_package_tests
+    ;;
   all)
-    run_tests "$ROOT_DIR/Packages/SakuraCordModels"
-    run_tests "$ROOT_DIR/Packages/DiscordProtocol"
-    run_tests "$ROOT_DIR/Packages/SakuraCordPersistence"
-    run_tests "$ROOT_DIR/Packages/MessageRendering"
-    run_tests "$ROOT_DIR/Packages/MediaPipeline"
-    run_tests "$ROOT_DIR/Packages/SakuraCordPluginSDK"
+    run_package_tests
     run_tests "$ROOT_DIR/App"
     ;;
   *)
-    echo "usage: $0 [app|protocol|media|all]" >&2
+    echo "usage: $0 [app|protocol|media|packages|all]" >&2
     exit 2
     ;;
 esac

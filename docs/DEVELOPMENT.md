@@ -160,12 +160,17 @@ proportion to its risk:
 | `./script/test.sh protocol` | Run protocol package tests |
 | `./script/test.sh media` | Run media package tests |
 | `./script/test.sh app` | Run application package tests |
+| `./script/test.sh packages` | Run the six library package tests |
 | `./script/test.sh all` | Run the configured first-party test matrix |
 | `./script/code_quality.sh check` | Run the pinned SwiftFormat and SwiftLint policy |
 | `./script/ci.sh` | Run code-quality and release checks, the full first-party test matrix, and the app build |
 
-Hosted CI caches the app and all six library test builds. Release compilation
-runs alongside any required validation, and publication waits for both. See
+Hosted CI runs `./script/ci.sh packages` (checks and library tests) and
+`./script/ci.sh app` (app tests and build) as parallel jobs, each with its own
+compiler output cache. Branch CI runs on pushes to `main`, `nightly`, and
+release tags, and on pull requests; a newer push to a pull request cancels its
+in-progress run. Release compilation runs alongside any required validation,
+and publication waits for both. See
 [release validation and caches](RELEASING.md#validation-parallel-packaging-and-caches)
 for the exact commit reuse rules and cache boundaries.
 

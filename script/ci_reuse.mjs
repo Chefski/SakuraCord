@@ -6,8 +6,16 @@ import { fileURLToPath } from 'node:url';
 
 const workflowPath = '.github/workflows/ci.yml';
 const releaseTag = /^v\d+\.\d+\.\d+(?:-Beta-\d+)?$/;
+// Full validation is the union of these jobs from the `build` matrix.
+export const suites = ['packages', 'app'];
+const archives = {
+  packages: ['SakuraCordModels', 'DiscordProtocol', 'SakuraCordPersistence',
+    'MessageRendering', 'MediaPipeline', 'SakuraCordPluginSDK'].map(name => `Packages/${name}/.build/out`),
+  app: ['App/.build/out'],
+  release: ['App/.build/out'],
+};
 
-export function trustedRun(run, repository, configuration = 'debug') {
+export function trustedRun(run, repository, configuration = 'app') {
   const branch = configuration === 'release'
     ? releaseTag.test(run.head_branch)
     : ['main', 'nightly'].includes(run.head_branch);
@@ -18,10 +26,11 @@ export function trustedRun(run, repository, configuration = 'debug') {
 }
 
 export function fullValidation(jobs) {
-  return jobs.some(job => job.name === 'build' && job.conclusion === 'success'
+  return suites.every(suite => jobs.some(job => job.name === `build (${suite})`
+    && job.conclusion === 'success'
     && ['Verify checked-out commit', 'Build and test'].every(name =>
       job.steps?.some(step => step.name === name
-        && step.status === 'completed' && step.conclusion === 'success')));
+        && step.status === 'completed' && step.conclusion === 'success'))));
 }
 
 export async function findValidation({ api, repository, sha, currentRun }) {
@@ -75,7 +84,7 @@ function cacheKey(configuration) {
   ]) add(command(program, args));
   const files = command('git', ['ls-files', '-z']).split('\0').filter(path =>
     /(^|\/)Package\.(swift|resolved)$/.test(path)
-    || /^script\/(ci|ci_reuse|test|run_test_diagnostics|runtime|build_and_run|package_dmg)\./.test(path)
+    || /^script\/(ci|ci_reuse|test|run_test_diagnostics|runtime|build_and_run|package_dmg|stabilize_mtimes)\./.test(path)
     || path === workflowPath);
   for (const path of files.sort()) {
     add(path);
@@ -110,16 +119,10 @@ async function main() {
     if (run) console.log(`Reusing full validation: ${run.html_url}`);
     return;
   }
-  if (!['debug', 'release'].includes(configuration)) throw new Error('Expected debug or release configuration.');
+  if (!Object.hasOwn(archives, configuration)) throw new Error('Expected packages, app, or release configuration.');
   const archive = join(process.env.RUNNER_TEMP, `swiftpm-${configuration}.tar`);
   if (mode === 'archive') {
-    const paths = ['App/.build/out'];
-    if (configuration === 'debug') {
-      for (const name of ['SakuraCordModels', 'DiscordProtocol', 'SakuraCordPersistence',
-        'MessageRendering', 'MediaPipeline', 'SakuraCordPluginSDK']) {
-        paths.push(`Packages/${name}/.build/out`);
-      }
-    }
+    const paths = archives[configuration];
     // Archive only compiler outputs, never credentials, app state, or signed dist assets.
     const present = paths.filter(path => existsSync(path));
     if (present.length !== paths.length) throw new Error('Expected SwiftPM build output is missing.');
@@ -129,6 +132,12 @@ async function main() {
   if (mode !== 'restore') throw new Error('Expected validation, restore, or archive.');
   const key = cacheKey(configuration);
   output('key', key);
+  // Branch pushes build clean so the validation that releases reuse never
+  // depends on an incremental build; they still save outputs for pull requests.
+  if (configuration !== 'release' && process.env.GITHUB_EVENT_NAME !== 'pull_request') {
+    console.log('Branch validation compiles from source.');
+    return;
+  }
   try {
     const cached = await findCache({ api, repository, key, configuration, currentRun,
       isAncestor: sha => {

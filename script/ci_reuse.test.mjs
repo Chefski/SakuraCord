@@ -9,10 +9,10 @@ const run = {
   status: 'completed', conclusion: 'success', path: '.github/workflows/ci.yml',
   repository: { full_name: repository }, head_repository: { full_name: repository },
 };
-const jobs = [{ name: 'build', conclusion: 'success', steps: [
+const jobs = ['packages', 'app'].map(suite => ({ name: `build (${suite})`, conclusion: 'success', steps: [
   { name: 'Build and test', status: 'completed', conclusion: 'success' },
   { name: 'Verify checked-out commit', status: 'completed', conclusion: 'success' },
-] }];
+] }));
 
 test('only successful first-party branch pushes can supply full validation', () => {
   assert.equal(trustedRun(run, repository), true);
@@ -26,9 +26,15 @@ test('only successful first-party branch pushes can supply full validation', () 
 
 test('a green workflow with skipped tests or checks-only work is not validation', () => {
   assert.equal(fullValidation(jobs), true);
-  assert.equal(fullValidation([{ ...jobs[0], conclusion: 'skipped' }]), false);
-  assert.equal(fullValidation([{ ...jobs[0], steps: [{ ...jobs[0].steps[0], conclusion: 'skipped' }] }]), false);
-  assert.equal(fullValidation([{ ...jobs[0], steps: [{ ...jobs[0].steps[0], name: 'Validate release sources' }] }]), false);
+  assert.equal(fullValidation([{ ...jobs[0], conclusion: 'skipped' }, jobs[1]]), false);
+  assert.equal(fullValidation([{ ...jobs[0], steps: [{ ...jobs[0].steps[0], conclusion: 'skipped' }] }, jobs[1]]), false);
+  assert.equal(fullValidation([{ ...jobs[0], steps: [{ ...jobs[0].steps[0], name: 'Validate release sources' }] }, jobs[1]]), false);
+});
+
+test('validation requires every build suite', () => {
+  assert.equal(fullValidation([jobs[0]]), false);
+  assert.equal(fullValidation([jobs[1]]), false);
+  assert.equal(fullValidation([{ ...jobs[0], name: 'build' }, jobs[1]]), false);
 });
 
 test('validation requires the exact SHA and inspects the successful attempt', async () => {
@@ -63,23 +69,23 @@ test('release caches require successful release tag pushes', () => {
 });
 
 test('cache selection rejects expired, wrong-key, foreign, and unrelated sources', async () => {
-  const key = 'swiftpm-v1-debug-compatible';
+  const key = 'swiftpm-v1-app-compatible';
   const artifact = { id: 1, name: key, expired: false, workflow_run: { id: 123, head_sha: sha } };
   for (const change of [
     { expired: true }, { name: 'different-toolchain' }, { workflow_run: { id: 999, head_sha: sha } },
     { workflow_run: { id: 123, head_sha: 'b'.repeat(40) } },
   ]) {
     const api = async path => path.includes('/artifacts?') ? { artifacts: [{ ...artifact, ...change }] } : run;
-    assert.equal(await findCache({ api, repository, key, configuration: 'debug', currentRun: 999,
+    assert.equal(await findCache({ api, repository, key, configuration: 'app', currentRun: 999,
       isAncestor: () => true }), null);
   }
   for (const source of [run, { ...run, event: 'pull_request' }]) {
     const api = async path => path.includes('/artifacts?') ? { artifacts: [artifact] } : source;
-    assert.equal(await findCache({ api, repository, key, configuration: 'debug', currentRun: 999,
+    assert.equal(await findCache({ api, repository, key, configuration: 'app', currentRun: 999,
       isAncestor: () => false }), null);
   }
   const api = async path => path.includes('/artifacts?') ? { artifacts: [artifact] } : run;
-  const match = await findCache({ api, repository, key, configuration: 'debug', currentRun: 999,
+  const match = await findCache({ api, repository, key, configuration: 'app', currentRun: 999,
     isAncestor: candidate => candidate === sha });
   assert.equal(match.artifact.id, 1);
 });

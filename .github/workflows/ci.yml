@@ -2,6 +2,8 @@ name: CI
 
 on:
   push:
+    branches: [main, nightly]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
     inputs:
@@ -13,6 +15,12 @@ on:
 permissions:
   contents: read
   actions: read
+
+# A newer commit supersedes an in-progress pull request run. Every other run
+# gets its own group so branch, tag, and release runs always finish.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('ci-pr-{0}', github.event.pull_request.number) || format('ci-run-{0}', github.run_id) }}
+  cancel-in-progress: true
 
 env:
   CI_CONTROL_ROOT: ${{ github.event_name == 'workflow_dispatch' && 'release-control' || '.' }}
@@ -44,6 +52,13 @@ jobs:
     needs: validation
     if: needs.validation.outputs.reused != 'true'
     runs-on: xcode-27
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [packages, app]
+    name: build (${{ matrix.suite }})
+    env:
+      SAKURACORD_STABLE_MTIMES: 1
     steps:
       - uses: actions/checkout@v6
         with:
@@ -63,25 +78,25 @@ jobs:
         uses: actions/cache@v5
         with:
           path: .codex-runtime/swiftpm-cache
-          key: swiftpm-${{ runner.os }}-${{ runner.arch }}-xcode-27-${{ hashFiles('App/Package.resolved', 'App/Package.swift', 'Packages/**/Package.swift') }}
+          key: swiftpm-${{ runner.os }}-${{ runner.arch }}-xcode-27-${{ matrix.suite }}-${{ hashFiles('App/Package.resolved', 'App/Package.swift', 'Packages/**/Package.swift') }}
           restore-keys: |
-            swiftpm-${{ runner.os }}-${{ runner.arch }}-xcode-27-
+            swiftpm-${{ runner.os }}-${{ runner.arch }}-xcode-27-${{ matrix.suite }}-
       - name: Restore SwiftPM build cache
         id: build-cache
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node "$CI_CONTROL_ROOT/script/ci_reuse.mjs" restore debug
+        run: node "$CI_CONTROL_ROOT/script/ci_reuse.mjs" restore ${{ matrix.suite }}
       - name: Verify checked-out commit
         if: github.event_name != 'workflow_dispatch'
         run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
       - name: Build and test
         timeout-minutes: 30
-        run: ./script/ci.sh
+        run: ./script/ci.sh ${{ matrix.suite }}
       - name: Upload test diagnostics
         if: failure() || cancelled()
         uses: actions/upload-artifact@v7
         with:
-          name: test-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          name: test-diagnostics-${{ matrix.suite }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: .codex-runtime/test-diagnostics
           include-hidden-files: true
           retention-days: 7
@@ -90,14 +105,14 @@ jobs:
         id: cache-archive
         continue-on-error: true
         if: github.event_name == 'push' && (github.ref == 'refs/heads/nightly' || github.ref == 'refs/heads/main')
-        run: node "$CI_CONTROL_ROOT/script/ci_reuse.mjs" archive debug
+        run: node "$CI_CONTROL_ROOT/script/ci_reuse.mjs" archive ${{ matrix.suite }}
       - name: Save SwiftPM build cache
         continue-on-error: true
         if: (github.event_name == 'push' && (github.ref == 'refs/heads/nightly' || github.ref == 'refs/heads/main')) && steps.cache-archive.outcome == 'success'
         uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.build-cache.outputs.key }}
-          path: ${{ runner.temp }}/swiftpm-debug.tar
+          path: ${{ runner.temp }}/swiftpm-${{ matrix.suite }}.tar
           compression-level: 1
           retention-days: 7
           overwrite: true
