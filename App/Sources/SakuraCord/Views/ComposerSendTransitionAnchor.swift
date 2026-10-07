@@ -1,20 +1,65 @@
 import AppKit
 import SakuraCordModels
+import SwiftUI
+import UniformTypeIdentifiers
 
-/// Locates the composer text so a sent message can leave the field the way
-/// an iMessage bubble does. The timeline owns the animation; the composer
-/// only describes where the message starts.
+/// Locates the composer text and attachment previews so a sent message can
+/// leave the field the way an iMessage bubble does. The timeline owns the
+/// animation; the composer only describes where the message starts.
 @MainActor
 final class ComposerSendTransitionAnchor {
     /// The field's leading padding before its text, matching a bubble's.
     static let fieldLeadingPadding: CGFloat = 11
     static let fieldTrailingPadding: CGFloat = 4
 
-    weak var textView: NSTextView?
+    private final class AttachmentPreview {
+        weak var view: NSView?
+        var thumbnail: NSImage?
+    }
 
+    weak var textView: NSTextView?
+    /// The conversation this composer sends to.
+    var channelID: ChannelID?
+    private var attachmentPreviews: [UUID: AttachmentPreview] = [:]
+
+    func registerAttachmentPreview(_ view: NSView, for id: UUID) {
+        preview(for: id).view = view
+    }
+
+    func recordAttachmentThumbnail(_ image: NSImage, for id: UUID) {
+        preview(for: id).thumbnail = image
+    }
+
+    func removeAttachmentPreview(_ view: NSView, for id: UUID) {
+        guard attachmentPreviews[id]?.view === view else { return }
+        attachmentPreviews[id] = nil
+    }
+
+    /// Describes a send of the current draft and staged attachments.
     func source(
         channelID: ChannelID,
-        content: String
+        content: String,
+        attachments: [ForumPostAttachment]
+    ) -> NativeTimelineSendTransitionSource? {
+        fieldSource(
+            channelID: channelID,
+            content: content,
+            text: content.isEmpty ? nil : textSnapshot(),
+            attachments: attachments.map(attachmentSnapshot)
+        )
+    }
+
+    /// Describes a send that did not come from the draft, such as a GIF,
+    /// sticker, poll or dropped file. It leaves from the empty field.
+    func fieldSource(channelID: ChannelID) -> NativeTimelineSendTransitionSource? {
+        fieldSource(channelID: channelID, content: nil, text: nil, attachments: [])
+    }
+
+    private func fieldSource(
+        channelID: ChannelID,
+        content: String?,
+        text: NativeTimelineSendTransitionSource.Text?,
+        attachments: [NativeTimelineSendTransitionSource.Attachment?]
     ) -> NativeTimelineSendTransitionSource? {
         guard let textView,
               let window = textView.window
@@ -37,7 +82,50 @@ final class ComposerSendTransitionAnchor {
             capturedAt: ProcessInfo.processInfo.systemUptime,
             window: window,
             fieldFrame: fieldFrame,
-            text: textSnapshot()
+            text: text,
+            attachments: attachments
+        )
+    }
+
+    private func preview(for id: UUID) -> AttachmentPreview {
+        if let preview = attachmentPreviews[id] { return preview }
+        let preview = AttachmentPreview()
+        attachmentPreviews[id] = preview
+        return preview
+    }
+
+    /// The visible preview of a staged attachment: an image or video
+    /// thumbnail, or another file's icon. Spoilers never fly uncovered.
+    private func attachmentSnapshot(
+        _ attachment: ForumPostAttachment
+    ) -> NativeTimelineSendTransitionSource.Attachment? {
+        guard !attachment.isSpoiler,
+              let preview = attachmentPreviews[attachment.id],
+              let view = preview.view,
+              view.window === textView?.window
+        else { return nil }
+        let type = UTType(filenameExtension: attachment.url.pathExtension)
+        let isMedia = type?.conforms(to: .image) == true
+            || type?.conforms(to: .audiovisualContent) == true
+        let image: NSImage
+        let bounds: CGRect
+        if isMedia {
+            guard let thumbnail = preview.thumbnail else { return nil }
+            image = thumbnail
+            bounds = view.bounds
+        } else {
+            // Matches the icon inset in `LocalAttachmentThumbnail`.
+            image = NSWorkspace.shared.icon(forFile: attachment.url.path)
+            bounds = view.bounds.insetBy(dx: 14, dy: 14)
+        }
+        guard image.size.width > 0, image.size.height > 0 else { return nil }
+        let fitted = ComposerEmojiImageStore.aspectFitRect(imageSize: image.size, in: bounds)
+        guard view.visibleRect.contains(fitted) else { return nil }
+        return NativeTimelineSendTransitionSource.Attachment(
+            image: image,
+            frame: view.convert(fitted, to: nil),
+            cornerRadius: isMedia ? ComposerAttachmentTray.thumbnailCornerRadius : 0,
+            fillsFrame: isMedia
         )
     }
 
@@ -70,38 +158,56 @@ final class ComposerSendTransitionAnchor {
             x: origin.x + firstLine.minX + glyphLocation.x,
             y: origin.y + firstLine.minY + glyphLocation.y
         )
-        let scale = max(1, window.backingScaleFactor)
-        guard let representation = NSBitmapImageRep(
-            bitmapDataPlanes: nil,
-            pixelsWide: max(1, Int(ceil(drawRect.width * scale))),
-            pixelsHigh: max(1, Int(ceil(drawRect.height * scale))),
-            bitsPerSample: 8,
-            samplesPerPixel: 4,
-            hasAlpha: true,
-            isPlanar: false,
-            colorSpaceName: .deviceRGB,
-            bytesPerRow: 0,
-            bitsPerPixel: 0
-        ), let graphics = NSGraphicsContext(bitmapImageRep: representation)
-        else { return nil }
-        NSGraphicsContext.saveGraphicsState()
-        let context = graphics.cgContext
-        context.scaleBy(x: scale, y: scale)
-        context.translateBy(x: 0, y: drawRect.height)
-        context.scaleBy(x: 1, y: -1)
-        context.translateBy(x: -drawRect.minX, y: -drawRect.minY)
-        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
-        textView.effectiveAppearance.performAsCurrentDrawingAppearance {
-            layoutManager.drawGlyphs(forGlyphRange: glyphRange, at: origin)
-        }
-        NSGraphicsContext.restoreGraphicsState()
-        representation.size = drawRect.size
-        let image = NSImage(size: drawRect.size)
-        image.addRepresentation(representation)
+        guard let image = NativeTimelineSendTransitionSnapshot.render(
+            size: drawRect.size,
+            scale: window.backingScaleFactor,
+            draw: {
+                NSGraphicsContext.current?.cgContext.translateBy(x: -drawRect.minX, y: -drawRect.minY)
+                textView.effectiveAppearance.performAsCurrentDrawingAppearance {
+                    layoutManager.drawGlyphs(forGlyphRange: glyphRange, at: origin)
+                }
+            }
+        ) else { return nil }
         return NativeTimelineSendTransitionSource.Text(
             image: image,
             frame: textView.convert(drawRect, to: nil),
             baseline: textView.convert(baseline, to: nil)
         )
+    }
+}
+
+/// Reports where a staged attachment's thumbnail is drawn.
+struct ComposerSendTransitionAttachmentReader: NSViewRepresentable {
+    let anchor: ComposerSendTransitionAnchor?
+    let id: UUID
+
+    func makeNSView(context: Context) -> ReaderView {
+        let view = ReaderView()
+        view.anchor = anchor
+        view.id = id
+        anchor?.registerAttachmentPreview(view, for: id)
+        return view
+    }
+
+    func updateNSView(_ view: ReaderView, context: Context) {
+        if view.anchor !== anchor || view.id != id, let previousID = view.id {
+            view.anchor?.removeAttachmentPreview(view, for: previousID)
+        }
+        view.anchor = anchor
+        view.id = id
+        anchor?.registerAttachmentPreview(view, for: id)
+    }
+
+    static func dismantleNSView(_ view: ReaderView, coordinator: ()) {
+        if let id = view.id {
+            view.anchor?.removeAttachmentPreview(view, for: id)
+        }
+    }
+
+    final class ReaderView: NSView {
+        weak var anchor: ComposerSendTransitionAnchor?
+        var id: UUID?
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
     }
 }

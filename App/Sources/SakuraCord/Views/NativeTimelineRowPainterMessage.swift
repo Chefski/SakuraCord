@@ -377,6 +377,8 @@ extension NativeTimelineRowPainter {
         }
     }
 
+    static let attachmentCornerRadius: CGFloat = 8
+
     private static func drawMessageAttachments(_ input: NativeTimelineMessageDrawInput) {
         let layout = input.layout
         guard !layout.attachmentRegions.isEmpty else { return }
@@ -413,14 +415,14 @@ extension NativeTimelineRowPainter {
             if isConcealed {
                 spoilerConcealedBase(
                     in: region.frame,
-                    cornerRadius: 8
+                    cornerRadius: attachmentCornerRadius
                 )
                 continue
             }
             NSColor.secondaryLabelColor.withAlphaComponent(0.10).setFill()
             NSBezierPath(
                 concentricRoundedRect: region.frame,
-                cornerRadius: 8
+                cornerRadius: attachmentCornerRadius
             ).fill()
             switch attachment.mediaKind {
             case .image, .animatedImage, .video:
@@ -429,7 +431,7 @@ extension NativeTimelineRowPainter {
                     drawImage(
                         image,
                         in: region.frame,
-                        cornerRadius: 8,
+                        cornerRadius: attachmentCornerRadius,
                         fillsFrame: attachmentFillsFrame
                     )
                 } else if isVideo {

@@ -184,6 +184,7 @@ extension NativeTimelineCanvasView {
             if !dirtyRect.isNull {
                 self.setNeedsDisplay(dirtyRect)
             }
+            self.refreshSendTransitionContent(for: identifiers)
         }
     }
 

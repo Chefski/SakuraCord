@@ -198,6 +198,7 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
     var messageJumpHighlight: MessageJumpHighlight?
     var messageJumpHighlightTask: Task<Void, Never>?
     var sendTransition: NativeTimelineSendTransition?
+    var transcriptGlide: NativeTimelineTranscriptGlide?
     var minimumHeight: CGFloat = 1
     var bottomSpacerHeight: CGFloat = 0
     var maximumDrawDuration = 0.0

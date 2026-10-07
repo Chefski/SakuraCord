@@ -60,6 +60,7 @@ struct ComposerView: View {
                     if !hasActiveCommand, !attachments.isEmpty {
                         ComposerAttachmentTray(
                             attachments: attachments,
+                            sendTransitionAnchor: sendTransitionAnchor,
                             open: openComposerAttachment,
                             toggleSpoiler: {
                                 model.toggleComposerAttachmentSpoiler($0, in: conversation)
@@ -442,6 +443,8 @@ struct ComposerView: View {
             composerDropInteraction?.clear(destination: conversation)
         }
         .task(id: composerPresentationID) {
+            sendTransitionAnchor.channelID = activeConversationID
+            model.timelineSendTransitionStore.registerComposer(sendTransitionAnchor)
             draftSelection = nil
             selectionBeforeEmojiPicker = nil
             showFileImporter = false
@@ -708,8 +711,8 @@ struct ComposerView: View {
         let staged = attachments
         let conversationID = activeConversationID
         let keepsCreationDraft = isCreatingThread
-        if !keepsCreationDraft, staged.isEmpty, let conversationID {
-            registerSendTransition(channelID: conversationID)
+        if !keepsCreationDraft, let conversationID {
+            registerSendTransition(channelID: conversationID, attachments: staged)
         }
         model.beginUsingOwnedPromisedFiles(staged.map(\.url))
         if !keepsCreationDraft {
@@ -738,24 +741,6 @@ struct ComposerView: View {
             }
             isSubmitting = false
             isFocused = true
-        }
-    }
-
-    /// Bubble timelines animate a text message out of the field; the
-    /// timeline consumes this when the optimistic row arrives.
-    private func registerSendTransition(channelID: ChannelID) {
-        guard model.appearanceSettings.messageAppearance == .bubbles,
-              !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
-              let source = sendTransitionAnchor.source(
-                  channelID: channelID,
-                  content: draft.trimmingCharacters(in: .whitespacesAndNewlines)
-              )
-        else { return }
-        model.timelineSendTransitionStore.register(source)
-        holdsPlaceholderForSendTransition = true
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(180))
-            holdsPlaceholderForSendTransition = false
         }
     }
 
@@ -1291,6 +1276,30 @@ struct ComposerView: View {
             !activeReplyMentionsAuthor,
             in: conversation
         )
+    }
+}
+
+private extension ComposerView {
+    /// Bubble timelines animate a sent message out of the field; the
+    /// timeline consumes this when the optimistic row arrives.
+    func registerSendTransition(
+        channelID: ChannelID,
+        attachments: [ForumPostAttachment]
+    ) {
+        guard model.appearanceSettings.messageAppearance == .bubbles,
+              !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+              let source = sendTransitionAnchor.source(
+                  channelID: channelID,
+                  content: draft.trimmingCharacters(in: .whitespacesAndNewlines),
+                  attachments: attachments
+              )
+        else { return }
+        model.timelineSendTransitionStore.register(source)
+        holdsPlaceholderForSendTransition = true
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(180))
+            holdsPlaceholderForSendTransition = false
+        }
     }
 }
 

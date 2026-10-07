@@ -452,8 +452,7 @@ extension NativeMessageTimelineCoordinator {
                 scrollView: scrollView,
                 preparation: preparation
             )
-            canvas.reconcileSendTransition()
-            startSendTransitionIfNeeded(
+            updateSendTransition(
                 parent: parent,
                 preparation: preparation,
                 transcriptAnchor: sendTransitionAnchor
