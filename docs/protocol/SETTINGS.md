@@ -71,8 +71,18 @@ menu item, `canManageUser`, the friend-nickname modal, menu and request,
 RelationshipStore, and name resolution. The public
 [Modify Guild Member](https://docs.discord.com/developers/resources/guild#modify-guild-member)
 route corroborates the member request. Pinned Paicord declares the same
-relationship PATCH without a UI; Swiftcord v1 has no equivalent. Server-member
-nickname mutations remain source-corroborated rather than live-verified.
+relationship PATCH without a UI; Swiftcord v1 has no equivalent.
+
+A live server-member check on 8 October 2026 (desktop 0.0.411,
+`web.d3978f1210c00a8f.js`) confirmed the official moderator action sends
+`PATCH /api/v9/guilds/{guild}/members/{user}` with `{"nick":"value"}` and returns
+the member with HTTP `200`. Its `GUILD_MEMBER_UPDATE` updated SakuraCord without
+a reload. Reset from SakuraCord produced `nick: null` in the independent
+official session and restored both member lists without a reload. Existing
+owner and second-account menus matched in both clients: the owner could rename
+the target; the second account had no action for the owner or the other member
+checked. No roles were changed; the remaining hierarchy cases have deterministic
+coverage rather than live permission-mutation coverage.
 
 A live official-client capture on 7 October 2026 (desktop 0.0.411,
 `web.d3978f1210c00a8f.js`) confirmed friend Save and Reset both use
