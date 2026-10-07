@@ -75,10 +75,10 @@ struct KeyboardShortcutsSettingsPage: View {
     }
 
     private func shortcutRow(_ action: KeyboardShortcutAction) -> some View {
-        HStack(alignment: .center, spacing: 16) {
+        HStack(alignment: .center, spacing: InterfaceScale.metric(16)) {
             Text(action.title)
             Spacer(minLength: 0)
-            HStack(spacing: 8) {
+            HStack(spacing: InterfaceScale.metric(8)) {
                 KeyboardShortcutRecorder(
                     actionTitle: action.localizedTitle,
                     shortcut: shortcuts.shortcut(for: action),
@@ -86,7 +86,7 @@ struct KeyboardShortcutsSettingsPage: View {
                     clear: { shortcuts.set(nil, for: action) },
                     cancel: {}
                 )
-                .frame(width: 142, height: 32)
+                .frame(width: InterfaceScale.metric(142), height: InterfaceScale.metric(32))
 
                 Button {
                     assign(action.defaultShortcut, to: action)

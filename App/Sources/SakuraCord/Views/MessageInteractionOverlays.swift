@@ -4,20 +4,21 @@ import SakuraCordModels
 import SwiftUI
 
 enum MessageRowLayoutMetrics {
-    nonisolated static let horizontalInset: CGFloat = 14
-    nonisolated static let avatarDiameter: CGFloat = 38
-    nonisolated static let avatarColumnGap: CGFloat = 12
-    nonisolated static let compactContentHeight: CGFloat = 18
-    nonisolated static let authorLineHeight: CGFloat = 16
-    nonisolated static let authorContentSpacing: CGFloat = 4
-    nonisolated static let commandAuthorContentSpacing: CGFloat = 2
-    nonisolated static let messageGroupSeparation: CGFloat = 12
+    nonisolated static var horizontalInset: CGFloat { InterfaceScale.metric(14) }
+    nonisolated static var avatarDiameter: CGFloat { InterfaceScale.metric(38) }
+    nonisolated static var avatarColumnGap: CGFloat { InterfaceScale.metric(12) }
+    nonisolated static var compactContentHeight: CGFloat { InterfaceScale.metric(18) }
+    nonisolated static var authorLineHeight: CGFloat { InterfaceScale.metric(16) }
+    nonisolated static var authorContentSpacing: CGFloat { InterfaceScale.metric(4) }
+    nonisolated static var commandAuthorContentSpacing: CGFloat { InterfaceScale.metric(2) }
+    nonisolated static var messageGroupSeparation: CGFloat { InterfaceScale.metric(12) }
+    // Message density is set in points and is independent of interface size.
     nonisolated static let visibleHighlightInset: CGFloat = 3
     nonisolated static let defaultMessageSpacing = visibleHighlightInset * 2
-    nonisolated static let replyPreviewIntrinsicTopInset: CGFloat = 3
-    nonisolated static let editFooterIntrinsicBottomInset: CGFloat = 3
-    nonisolated static let commandInvocationHeight: CGFloat = 20
-    nonisolated static let commandInvocationContentInset: CGFloat = 3
+    nonisolated static var replyPreviewIntrinsicTopInset: CGFloat { InterfaceScale.metric(3) }
+    nonisolated static var editFooterIntrinsicBottomInset: CGFloat { InterfaceScale.metric(3) }
+    nonisolated static var commandInvocationHeight: CGFloat { InterfaceScale.metric(20) }
+    nonisolated static var commandInvocationContentInset: CGFloat { InterfaceScale.metric(3) }
 
     nonisolated static func avatarColumnHeight(startsGroup: Bool) -> CGFloat {
         startsGroup ? avatarDiameter : compactContentHeight
@@ -263,7 +264,7 @@ struct NativeTimelineEditingMessageContent: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(4)) {
             InlineMessageEditor(
                 model: model,
                 text: $editText,
@@ -305,7 +306,7 @@ struct NativeTimelineEditingMessageContent: View {
                 )
             }
             if message.flags.contains(.ephemeral) {
-                HStack(spacing: 4) {
+                HStack(spacing: InterfaceScale.metric(4)) {
                     Image(systemName: "eye")
                         .accessibilityHidden(true)
                     Text("Only you can see this")
@@ -319,7 +320,7 @@ struct NativeTimelineEditingMessageContent: View {
                     .buttonStyle(.plain)
                     .foregroundStyle(SakuraCordAccentColor.color)
                 }
-                .font(.caption)
+                .font(.interface(.caption))
                 .foregroundStyle(.secondary)
                 .accessibilityElement(children: .combine)
             }
@@ -328,7 +329,7 @@ struct NativeTimelineEditingMessageContent: View {
                     "Failed",
                     systemImage: "exclamationmark.circle"
                 )
-                .font(.caption2)
+                .font(.interface(.caption2))
                 .foregroundStyle(.red)
             }
         }
@@ -448,8 +449,8 @@ struct MessageActionCapsule: View {
     private var deleteConfirmation: some View {
         HoverActionPill {
             Text("Delete message?")
-                .font(.caption.weight(.semibold))
-                .padding(.horizontal, 4)
+                .font(.interface(.caption).weight(.semibold))
+                .padding(.horizontal, InterfaceScale.metric(4))
             HoverActionButton(
                 systemImage: "xmark",
                 help: "Cancel deletion"
@@ -494,7 +495,7 @@ private struct ReactionActionMenu: View {
             } label: {
                 SakuraCordSystemSymbol.emojiFaceGrinningImage
                     .symbolVariant(.none)
-                    .font(.callout.weight(.medium))
+                    .font(.interface(.callout).weight(.medium))
                     .foregroundStyle(.primary)
                     .frame(width: width, height: height)
                     .contentShape(
@@ -566,7 +567,7 @@ enum ReactionActionMenuPresentation {
     var width: CGFloat {
         self == .toolbar
             ? HoverActionPillMetrics.controlDiameter
-            : 30
+            : InterfaceScale.metric(30)
     }
     var height: CGFloat {
         self == .toolbar
@@ -576,7 +577,7 @@ enum ReactionActionMenuPresentation {
     var cornerRadius: CGFloat {
         self == .toolbar
             ? HoverActionPillMetrics.controlDiameter / 2
-            : 9
+            : InterfaceScale.metric(9)
     }
     var popoverEdge: NSRectEdge {
         StableReactionPickerAnchorPolicy.preferredEdge(isInline: self == .inline)
@@ -742,13 +743,13 @@ enum MessageReplySummary {
 }
 
 enum MessageEditLayoutMetrics {
-    nonisolated static let editorFooterSpacing: CGFloat = 2
-    nonisolated static let footerVerticalPadding: CGFloat = 0
-    nonisolated static let footerHorizontalPadding: CGFloat = 0
-    nonisolated static let actionHeight: CGFloat = 22
-    nonisolated static let actionHorizontalPadding: CGFloat = 5
-    nonisolated static let keycapHorizontalPadding: CGFloat = 5
-    nonisolated static let keycapVerticalPadding: CGFloat = 1
+    nonisolated static var editorFooterSpacing: CGFloat { InterfaceScale.metric(2) }
+    nonisolated static var footerVerticalPadding: CGFloat { InterfaceScale.metric(0) }
+    nonisolated static var footerHorizontalPadding: CGFloat { InterfaceScale.metric(0) }
+    nonisolated static var actionHeight: CGFloat { InterfaceScale.metric(22) }
+    nonisolated static var actionHorizontalPadding: CGFloat { InterfaceScale.metric(5) }
+    nonisolated static var keycapHorizontalPadding: CGFloat { InterfaceScale.metric(5) }
+    nonisolated static var keycapVerticalPadding: CGFloat { InterfaceScale.metric(1) }
 
     nonisolated static var footerIntrinsicHeight: CGFloat {
         actionHeight + (footerVerticalPadding * 2)
@@ -804,13 +805,13 @@ private struct InlineMessageEditor: View {
                 selection: $selection,
                 isFocused: $isFocused
             )
-                .padding(9)
+                .padding(InterfaceScale.metric(9))
                 .background(
                     Color.primary.opacity(0.065),
-                    in: ConcentricRectangle(cornerRadius: 8, style: .continuous)
+                    in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(8), style: .continuous)
                 )
                 .overlay {
-                    ConcentricRectangle(cornerRadius: 8, style: .continuous)
+                    ConcentricRectangle(cornerRadius: InterfaceScale.metric(8), style: .continuous)
                         .stroke(Color.primary.opacity(0.07), lineWidth: 1)
                         .padding(0.5)
                 }
@@ -845,7 +846,6 @@ private struct InlineMessageEditor: View {
             customValue: model.composerText(for:),
             customSource: { model.serverRailGuildsByID[$0.guildID]?.name },
             discordFavoriteKeys: Set(model.discordFavoriteEmojiKeys),
-            usageCounts: model.emojiUsageCounts,
             discordUsageScores: model.discordEmojiUsageScores,
             discordSettingsAreLoaded: model.hasLoadedDiscordEmojiSettings
         )
@@ -871,7 +871,6 @@ private struct InlineMessageEditor: View {
         selection = NSRange(
             location: context.range.location + suggestion.value.utf16.count, length: 0
         )
-        model.recordEmojiUse(suggestion.usageKey)
         isAutocompleteDismissed = true
     }
 }
@@ -882,7 +881,7 @@ private struct InlineMessageEditFooter: View {
     let cancel: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: InterfaceScale.metric(12)) {
             Spacer(minLength: 0)
             InlineEditTextButton(title: "Cancel", key: "esc", action: cancel)
                 .keyboardShortcut(.cancelAction)
@@ -911,16 +910,16 @@ private struct InlineEditTextButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 4) {
+            HStack(spacing: InterfaceScale.metric(4)) {
                 Text(title)
-                    .font(.caption.weight(.semibold))
+                    .font(.interface(.caption).weight(.semibold))
                 InlineEditKeycap(key: key, isActive: isHovering && isEnabled)
             }
             .foregroundStyle(isHovering && isEnabled ? .primary : .secondary)
             .padding(.horizontal, MessageEditLayoutMetrics.actionHorizontalPadding)
             .frame(height: MessageEditLayoutMetrics.actionHeight)
             .background {
-                ConcentricRectangle(cornerRadius: 5, style: .continuous)
+                ConcentricRectangle(cornerRadius: InterfaceScale.metric(5), style: .continuous)
                     .fill(Color.primary.opacity(isHovering && isEnabled ? 0.09 : 0))
             }
             .contentShape(Rectangle())
@@ -938,11 +937,11 @@ private struct InlineEditKeycap: View {
 
     var body: some View {
         Text(key)
-            .font(.caption2.monospaced().weight(.semibold))
+            .font(.interface(.caption2).monospaced().weight(.semibold))
             .foregroundStyle(isActive ? .primary : .secondary)
             .padding(.horizontal, MessageEditLayoutMetrics.keycapHorizontalPadding)
             .padding(.vertical, MessageEditLayoutMetrics.keycapVerticalPadding)
-            .background(.quaternary, in: ConcentricRectangle(cornerRadius: 4, style: .continuous))
+            .background(.quaternary, in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(4), style: .continuous))
             .accessibilityHidden(true)
     }
 }
@@ -962,7 +961,7 @@ struct MessageProfilePopoverContent: View {
                     .environment(\.profileCosmeticPolicy, model.cosmeticPolicy)
                     .environment(\.serverTagCardModel, model)
             } else {
-                Color.clear.frame(width: 330, height: 250)
+                Color.clear.frame(width: InterfaceScale.metric(330), height: InterfaceScale.metric(250))
             }
         }
         .onDisappear {

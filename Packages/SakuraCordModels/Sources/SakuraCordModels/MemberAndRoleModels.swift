@@ -17,6 +17,7 @@ public struct GuildRole: Identifiable, Codable, Hashable, Sendable {
     public var unicodeEmoji: String?
     public var isMentionable: Bool
     public var permissions: UInt64?
+    public var isPurchasableSubscription: Bool?
 
     public init(
         id: RoleID,
@@ -26,7 +27,8 @@ public struct GuildRole: Identifiable, Codable, Hashable, Sendable {
         iconURL: URL? = nil,
         unicodeEmoji: String? = nil,
         isMentionable: Bool = true,
-        permissions: UInt64? = nil
+        permissions: UInt64? = nil,
+        isPurchasableSubscription: Bool? = nil
     ) {
         self.id = id
         self.name = name
@@ -36,6 +38,7 @@ public struct GuildRole: Identifiable, Codable, Hashable, Sendable {
         self.unicodeEmoji = unicodeEmoji
         self.isMentionable = isMentionable
         self.permissions = permissions
+        self.isPurchasableSubscription = isPurchasableSubscription
     }
 }
 

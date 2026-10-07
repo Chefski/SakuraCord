@@ -508,6 +508,7 @@ private struct WindowModalHostedContent: View {
 
     var body: some View {
         content
+            .interfaceScaleRoot()
             .environment(\.windowModalInputAllowed, context.isInputActive)
             .allowsHitTesting(context.isInputActive)
             .accessibilityHidden(!context.isInputActive)

@@ -25,41 +25,41 @@ struct ProfileWidgetGamePicker: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 6) {
+            HStack(spacing: InterfaceScale.metric(6)) {
                 TextField("Search games", text: $query)
                     .textFieldStyle(.plain)
-                    .font(.body)
+                    .font(.interface(.body))
                     .focused($searchFocused)
                 if !query.isEmpty {
-                    ComposerActionButton(icon: Image(systemName: "xmark"), help: String(localized: "Clear search", bundle: #bundle), iconSize: 12, size: 28) {
+                    ComposerActionButton(icon: Image(systemName: "xmark"), help: String(localized: "Clear search", bundle: #bundle), iconSize: 12, size: InterfaceScale.metric(28)) {
                         query = ""
                         searchFocused = true
                     }
                 }
             }
-            .frame(minHeight: 34)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            Divider().padding(.horizontal, 12)
+            .frame(minHeight: InterfaceScale.metric(34))
+            .padding(.horizontal, InterfaceScale.metric(16))
+            .padding(.vertical, InterfaceScale.metric(8))
+            Divider().padding(.horizontal, InterfaceScale.metric(12))
             ScrollView {
                 LazyVStack(spacing: 0) {
                     ForEach(games) { game in gameRow(game) }
                     if isLoading {
-                        ProgressView().controlSize(.small).frame(maxWidth: .infinity).padding(12)
+                        ProgressView().controlSize(.small).frame(maxWidth: .infinity).padding(InterfaceScale.metric(12))
                     } else if games.isEmpty, errorMessage == nil {
                         Text(normalizedQuery.isEmpty ? "Search for a game to add." : "No games found.")
-                            .font(.callout).foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity).padding(12)
+                            .font(.interface(.callout)).foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity).padding(InterfaceScale.metric(12))
                     }
                     if let errorMessage {
-                        Text(errorMessage).font(.callout).foregroundStyle(.secondary).padding(12)
+                        Text(errorMessage).font(.interface(.callout)).foregroundStyle(.secondary).padding(InterfaceScale.metric(12))
                     }
                 }
-                .padding(4)
+                .padding(InterfaceScale.metric(4))
             }
             .scrollIndicators(.visible)
         }
-        .frame(width: 320, height: 320)
+        .frame(width: InterfaceScale.metric(320), height: InterfaceScale.metric(320))
         .disabled(!editor.canEditWidgets)
         .task {
             searchFocused = true
@@ -97,13 +97,13 @@ struct ProfileWidgetGamePicker: View {
             errorMessage = nil
             pendingGameID = game.id
         } label: {
-            HStack(spacing: 7) {
+            HStack(spacing: InterfaceScale.metric(7)) {
                 Text(game.name).lineLimit(1)
-                Spacer(minLength: 4)
+                Spacer(minLength: InterfaceScale.metric(4))
                 if pendingGameID == game.id { ProgressView().controlSize(.mini) }
             }
-            .padding(.horizontal, 6)
-            .frame(height: 40)
+            .padding(.horizontal, InterfaceScale.metric(6))
+            .frame(height: InterfaceScale.metric(40))
             .contentShape(Rectangle())
         }
         .buttonStyle(PopoverRowButtonStyle())

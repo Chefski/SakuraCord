@@ -186,6 +186,12 @@ nonisolated struct SettingsPreferenceRegistry: Sendable {
             )
         ),
         SettingsPreferenceRegistration(
+            id: .interfaceSize,
+            page: .interface,
+            storage: .appWide(key: "settings.interface.size"),
+            defaultValue: .double(InterfaceScale.defaultFactor)
+        ),
+        SettingsPreferenceRegistration(
             id: .timestampFormat,
             page: .interface,
             storage: .appWide(key: "settings.interface.timestampFormat"),

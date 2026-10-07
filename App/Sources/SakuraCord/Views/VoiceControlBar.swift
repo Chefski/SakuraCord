@@ -18,13 +18,13 @@ struct VoiceControlBar<SettingsControl: View>: View {
     }
 
     var body: some View {
-        VStack(spacing: 9) {
+        VStack(spacing: InterfaceScale.metric(9)) {
             connectionRow
             controlRow
         }
-        .padding(.horizontal, 9)
-        .padding(.top, 9)
-        .padding(.bottom, 10)
+        .padding(.horizontal, InterfaceScale.metric(9))
+        .padding(.top, InterfaceScale.metric(9))
+        .padding(.bottom, InterfaceScale.metric(10))
         .task { await model.refreshMediaDevices() }
         .onReceive(NotificationCenter.default.publisher(for: .sakuracordToggleSoundboard)) { _ in
             guard model.selectedChannelID != model.activeVoiceChannel?.id else { return }
@@ -33,31 +33,31 @@ struct VoiceControlBar<SettingsControl: View>: View {
     }
 
     private var connectionRow: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: InterfaceScale.metric(7)) {
             Image(systemName: connectionSymbol)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.interfaceSystem(size: 14, weight: .semibold))
                 .foregroundStyle(statusColor)
-                .frame(width: 18)
+                .frame(width: InterfaceScale.metric(18))
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(statusLabel)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.interfaceSystem(size: 11, weight: .bold))
                     .foregroundStyle(statusColor)
                     .lineLimit(1)
                 Text(connectionSubtitle)
-                    .font(.caption2)
+                    .font(.interface(.caption2))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
 
-            Spacer(minLength: 3)
+            Spacer(minLength: InterfaceScale.metric(3))
 
             Button {
                 showConnectionDetails.toggle()
             } label: {
                 Image(systemName: "cellularbars")
-                    .font(.callout.weight(.medium))
-                    .frame(width: 25, height: 25)
+                    .font(.interface(.callout).weight(.medium))
+                    .frame(width: InterfaceScale.metric(25), height: InterfaceScale.metric(25))
             }
             .buttonStyle(.plain)
             .foregroundStyle(statusColor)
@@ -73,8 +73,8 @@ struct VoiceControlBar<SettingsControl: View>: View {
                 Task { await model.leaveVoice() }
             } label: {
                 Image(systemName: "phone.down.fill")
-                    .font(.callout.weight(.semibold))
-                    .frame(width: 25, height: 25)
+                    .font(.interface(.callout).weight(.semibold))
+                    .frame(width: InterfaceScale.metric(25), height: InterfaceScale.metric(25))
             }
             .buttonStyle(.plain)
             .foregroundStyle(Color(hex: 0xDA373C))
@@ -83,7 +83,7 @@ struct VoiceControlBar<SettingsControl: View>: View {
     }
 
     private var controlRow: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: InterfaceScale.metric(7)) {
             VoiceSquareButton(
                 systemImage: model.localApplicationStreamKey == nil
                     ? "rectangle.on.rectangle" : "rectangle.on.rectangle.slash",
@@ -163,9 +163,9 @@ struct VoiceControlBar<SettingsControl: View>: View {
             }
 
             settingsControl
-                .frame(width: 34, height: 34)
-                .contentShape(ConcentricRectangle(cornerRadius: 8, style: .continuous))
-                .background(Color.primary.opacity(0.045), in: ConcentricRectangle(cornerRadius: 8, style: .continuous))
+                .frame(width: InterfaceScale.metric(34), height: InterfaceScale.metric(34))
+                .contentShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(8), style: .continuous))
+                .background(Color.primary.opacity(0.045), in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(8), style: .continuous))
         }
         .frame(maxWidth: .infinity)
         .onChange(of: model.isVoiceDeafened) { _, isDeafened in
@@ -245,19 +245,19 @@ struct VoiceSidebarControlPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             Button(action: navigateToChannel) {
-                HStack(spacing: 9) {
+                HStack(spacing: InterfaceScale.metric(9)) {
                     Image(systemName: statusSymbol)
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.interfaceSystem(size: 18, weight: .semibold))
                         .foregroundStyle(statusColor)
-                        .frame(width: 24)
+                        .frame(width: InterfaceScale.metric(24))
 
                     VStack(alignment: .leading, spacing: 1) {
                         Text(statusLabel)
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.interfaceSystem(size: 12, weight: .bold))
                             .foregroundStyle(statusColor)
                             .lineLimit(1)
                         Text(connectionSubtitle)
-                            .font(.caption)
+                            .font(.interface(.caption))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                         connectionDuration
@@ -265,8 +265,8 @@ struct VoiceSidebarControlPanel: View {
 
                     Spacer(minLength: 0)
                 }
-                .padding(.horizontal, 12)
-                .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
+                .padding(.horizontal, InterfaceScale.metric(12))
+                .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(54), alignment: .leading)
                 .contentShape(Rectangle())
                 .background(
                     Color.primary.opacity(isHeaderHovering ? 0.09 : 0)
@@ -350,7 +350,7 @@ struct VoiceSidebarControlPanel: View {
                     height: proxy.size.height
                 )
             }
-            .frame(height: 46)
+            .frame(height: InterfaceScale.metric(46))
         }
         .clipShape(panelShape)
         .glassEffect(
@@ -364,7 +364,7 @@ struct VoiceSidebarControlPanel: View {
         if let connectedAt = model.voiceConnectedAt {
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 Text(Self.durationLabel(from: connectedAt, to: context.date))
-                    .font(.caption2)
+                    .font(.interface(.caption2))
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
@@ -415,10 +415,10 @@ struct VoiceSidebarControlPanel: View {
     }
 
     private static let controlCount: CGFloat = 5
-    private static let controlHorizontalPadding: CGFloat = 6
-    private static let preferredControlDiameter: CGFloat = 36
-    private static let preferredControlSpacing: CGFloat = 7
-    private static let minimumControlSpacing: CGFloat = 2
+    private static var controlHorizontalPadding: CGFloat { InterfaceScale.metric(6) }
+    private static var preferredControlDiameter: CGFloat { InterfaceScale.metric(36) }
+    private static var preferredControlSpacing: CGFloat { InterfaceScale.metric(7) }
+    private static var minimumControlSpacing: CGFloat { InterfaceScale.metric(2) }
 
     private static func controlSpacing(for width: CGFloat) -> CGFloat {
         let contentWidth = max(0, width - (controlHorizontalPadding * 2))
@@ -466,7 +466,7 @@ private struct SidebarVoiceGlassButton: View {
         Button(role: role, action: action) {
             Image(systemName: systemImage)
                 .symbolVariant(.none)
-                .font(.callout.weight(.semibold))
+                .font(.interface(.callout).weight(.semibold))
                 .frame(width: diameter, height: diameter)
                 .contentShape(Circle())
         }
@@ -511,7 +511,7 @@ struct VoiceCallControlDock: View {
     @State private var showSoundboard = false
 
     var body: some View {
-        GlassEffectContainer(spacing: 8) {
+        GlassEffectContainer(spacing: InterfaceScale.metric(8)) {
             ViewThatFits(in: .horizontal) {
                 controlRow(showsTitles: true)
                     .fixedSize(horizontal: true, vertical: false)
@@ -529,7 +529,7 @@ struct VoiceCallControlDock: View {
     }
 
     private func controlRow(showsTitles: Bool) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: InterfaceScale.metric(8)) {
                 if model.localApplicationStreamKey == nil {
                     CallDockButton(
                         title: "Share Screen",
@@ -665,7 +665,7 @@ private struct ScreenShareControlsPopover: View {
     @State private var showQualityControls = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(4)) {
             actionRow(
                 title: "Stop Sharing",
                 systemImage: "rectangle.on.rectangle.slash",
@@ -684,16 +684,16 @@ private struct ScreenShareControlsPopover: View {
             }
 
             Button { showFrameRateControls.toggle() } label: {
-                HStack(spacing: 10) {
+                HStack(spacing: InterfaceScale.metric(10)) {
                     Label("Frame Rate", systemImage: "gauge.with.dots.needle.67percent")
-                    Spacer(minLength: 24)
+                    Spacer(minLength: InterfaceScale.metric(24))
                     Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
+                        .font(.interface(.caption).weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
-                .padding(.horizontal, 8)
+                .padding(.horizontal, InterfaceScale.metric(8))
                 .frame(maxWidth: .infinity)
-                .frame(height: 34)
+                .frame(height: InterfaceScale.metric(34))
                 .contentShape(Rectangle())
             }
             .buttonStyle(PopoverRowButtonStyle())
@@ -705,16 +705,16 @@ private struct ScreenShareControlsPopover: View {
             }
 
             Button { showQualityControls.toggle() } label: {
-                HStack(spacing: 10) {
+                HStack(spacing: InterfaceScale.metric(10)) {
                     Label("Stream Quality", systemImage: "sparkles.tv")
-                    Spacer(minLength: 24)
+                    Spacer(minLength: InterfaceScale.metric(24))
                     Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
+                        .font(.interface(.caption).weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
-                .padding(.horizontal, 8)
+                .padding(.horizontal, InterfaceScale.metric(8))
                 .frame(maxWidth: .infinity)
-                .frame(height: 34)
+                .frame(height: InterfaceScale.metric(34))
                 .contentShape(Rectangle())
             }
             .buttonStyle(PopoverRowButtonStyle())
@@ -732,25 +732,25 @@ private struct ScreenShareControlsPopover: View {
                     await model.updateScreenShareSettings(settings)
                 }
             } label: {
-                HStack(spacing: 10) {
+                HStack(spacing: InterfaceScale.metric(10)) {
                     Label("Share Audio", systemImage: model.screenShareSettings.includesAudio
                         ? "speaker.wave.2.fill" : "speaker.slash.fill")
-                    Spacer(minLength: 24)
+                    Spacer(minLength: InterfaceScale.metric(24))
                     Image(systemName: model.screenShareSettings.includesAudio
                         ? "checkmark.square.fill" : "square")
                         .foregroundStyle(model.screenShareSettings.includesAudio
                             ? SakuraCordAccentColor.color : Color.secondary)
                 }
-                .padding(.horizontal, 8)
+                .padding(.horizontal, InterfaceScale.metric(8))
                 .frame(maxWidth: .infinity)
-                .frame(height: 34)
+                .frame(height: InterfaceScale.metric(34))
                 .contentShape(Rectangle())
             }
             .buttonStyle(PopoverRowButtonStyle())
         }
-        .font(.callout)
-        .padding(12)
-        .frame(width: 255)
+        .font(.interface(.callout))
+        .padding(InterfaceScale.metric(12))
+        .frame(width: InterfaceScale.metric(255))
     }
 
     private func actionRow(
@@ -762,8 +762,8 @@ private struct ScreenShareControlsPopover: View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
                 .foregroundStyle(color)
-                .padding(.horizontal, 8)
-                .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
+                .padding(.horizontal, InterfaceScale.metric(8))
+                .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(34), alignment: .leading)
                 .contentShape(Rectangle())
         }
         .buttonStyle(PopoverRowButtonStyle())
@@ -774,11 +774,11 @@ struct ScreenShareQualityPopover: View {
     let model: AppModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(4)) {
             Text("Stream Quality")
-                .font(.headline)
-                .padding(.horizontal, 4)
-                .padding(.bottom, 4)
+                .font(.interface(.headline))
+                .padding(.horizontal, InterfaceScale.metric(4))
+                .padding(.bottom, InterfaceScale.metric(4))
             ForEach(model.availableScreenShareQualities, id: \.self) { quality in
                 Button {
                     Task {
@@ -795,17 +795,17 @@ struct ScreenShareQualityPopover: View {
                                 .foregroundStyle(SakuraCordAccentColor.color)
                         }
                     }
-                    .padding(.horizontal, 8)
+                    .padding(.horizontal, InterfaceScale.metric(8))
                     .frame(maxWidth: .infinity)
-                    .frame(height: 30)
+                    .frame(height: InterfaceScale.metric(30))
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(PopoverRowButtonStyle())
             }
         }
-        .font(.callout)
-        .padding(12)
-        .frame(width: 190)
+        .font(.interface(.callout))
+        .padding(InterfaceScale.metric(12))
+        .frame(width: InterfaceScale.metric(190))
     }
 }
 
@@ -825,9 +825,9 @@ private struct CallDockButton: View {
                         .labelStyle(.iconOnly)
                 }
             }
-                .font(.callout.weight(.medium))
-                .padding(.horizontal, showsTitle ? 14 : 13)
-                .frame(height: 40)
+                .font(.interface(.callout).weight(.medium))
+                .padding(.horizontal, showsTitle ? InterfaceScale.metric(14) : InterfaceScale.metric(13))
+                .frame(height: InterfaceScale.metric(40))
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -857,22 +857,22 @@ private struct CallDockSplitButton: View {
                             .labelStyle(.iconOnly)
                     }
                 }
-                    .font(.callout.weight(.medium))
-                    .padding(.leading, showsTitle ? 14 : 13)
-                    .padding(.trailing, showsTitle ? 10 : 12)
-                    .frame(height: 40)
+                    .font(.interface(.callout).weight(.medium))
+                    .padding(.leading, showsTitle ? InterfaceScale.metric(14) : InterfaceScale.metric(13))
+                    .padding(.trailing, showsTitle ? InterfaceScale.metric(10) : InterfaceScale.metric(12))
+                    .frame(height: InterfaceScale.metric(40))
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
             Rectangle()
                 .fill(Color.primary.opacity(0.14))
-                .frame(width: 1, height: 22)
+                .frame(width: 1, height: InterfaceScale.metric(22))
 
             Button(action: secondaryAction) {
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .bold))
-                    .frame(width: 28, height: 40)
+                    .font(.interfaceSystem(size: 9, weight: .bold))
+                    .frame(width: InterfaceScale.metric(28), height: InterfaceScale.metric(40))
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -906,9 +906,9 @@ private struct CallDockLeaveButton: View {
                         .labelStyle(.iconOnly)
                 }
             }
-            .font(.callout.weight(.semibold))
-            .padding(.horizontal, showsTitle ? 15 : 14)
-            .frame(height: 40)
+            .font(.interface(.callout).weight(.semibold))
+            .padding(.horizontal, showsTitle ? InterfaceScale.metric(15) : InterfaceScale.metric(14))
+            .frame(height: InterfaceScale.metric(40))
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -931,13 +931,13 @@ private struct VoiceSquareButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.system(size: 15, weight: .semibold))
-                .frame(width: 34, height: 34)
+                .font(.interfaceSystem(size: 15, weight: .semibold))
+                .frame(width: InterfaceScale.metric(34), height: InterfaceScale.metric(34))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .foregroundStyle(isAlert ? Color(hex: 0xF23F43) : Color.primary)
-        .background(buttonBackground, in: ConcentricRectangle(cornerRadius: 8, style: .continuous))
+        .background(buttonBackground, in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(8), style: .continuous))
         .disabled(isDisabled)
         .opacity(isDisabled ? 0.42 : 1)
         .help(help)
@@ -961,8 +961,8 @@ private struct VoiceSplitButton: View {
         HStack(spacing: 0) {
             Button(action: primaryAction) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 15, weight: .semibold))
-                    .frame(width: 35, height: 34)
+                    .font(.interfaceSystem(size: 15, weight: .semibold))
+                    .frame(width: InterfaceScale.metric(35), height: InterfaceScale.metric(34))
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -970,20 +970,20 @@ private struct VoiceSplitButton: View {
 
             Rectangle()
                 .fill(isAlert ? Color(hex: 0xF23F43).opacity(0.25) : Color.primary.opacity(0.12))
-                .frame(width: 1, height: 20)
+                .frame(width: 1, height: InterfaceScale.metric(20))
 
             Button(action: secondaryAction) {
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .bold))
-                    .frame(width: 22, height: 34)
+                    .font(.interfaceSystem(size: 9, weight: .bold))
+                    .frame(width: InterfaceScale.metric(22), height: InterfaceScale.metric(34))
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .help(secondaryHelp)
         }
         .foregroundStyle(isAlert ? Color(hex: 0xF23F43) : Color.primary)
-        .background(buttonBackground, in: ConcentricRectangle(cornerRadius: 8, style: .continuous))
-        .clipShape(ConcentricRectangle(cornerRadius: 8, style: .continuous))
+        .background(buttonBackground, in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(8), style: .continuous))
+        .clipShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(8), style: .continuous))
         .disabled(isDisabled)
         .opacity(isDisabled ? 0.42 : 1)
     }
@@ -999,10 +999,10 @@ private struct VoiceConnectionDetails: View {
     let statusColor: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Circle().fill(statusColor).frame(width: 8, height: 8)
-                Text(statusLabel).font(.headline)
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(12)) {
+            HStack(spacing: InterfaceScale.metric(8)) {
+                Circle().fill(statusColor).frame(width: InterfaceScale.metric(8), height: InterfaceScale.metric(8))
+                Text(statusLabel).font(.interface(.headline))
             }
             Divider()
             LabeledContent("Channel", value: model.activeVoiceChannel?.name ?? "Voice")
@@ -1011,14 +1011,14 @@ private struct VoiceConnectionDetails: View {
             LabeledContent("Participants", value: "\(max(1, model.voiceParticipants.count + 1))")
             if let error = model.voiceErrorMessage {
                 Text(error)
-                    .font(.caption)
+                    .font(.interface(.caption))
                     .foregroundStyle(Color(hex: 0xDA373C))
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .font(.caption)
-        .padding(16)
-        .frame(width: 260)
+        .font(.interface(.caption))
+        .padding(InterfaceScale.metric(16))
+        .frame(width: InterfaceScale.metric(260))
     }
 
     private var encryptionLabel: String {
@@ -1034,8 +1034,8 @@ private struct VoiceInputControls: View {
     let model: AppModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Input").font(.headline)
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(14)) {
+            Text("Input").font(.interface(.headline))
             VoiceDevicePicker(
                 title: "Input Device",
                 systemImage: "mic",
@@ -1053,13 +1053,13 @@ private struct VoiceInputControls: View {
             )
             if let status = model.voiceDeviceStatusMessage {
                 Text(status)
-                    .font(.caption)
+                    .font(.interface(.caption))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(16)
-        .frame(width: 300)
+        .padding(InterfaceScale.metric(16))
+        .frame(width: InterfaceScale.metric(300))
         .task { await model.refreshMediaDevices() }
     }
 }
@@ -1068,8 +1068,8 @@ private struct VoiceOutputControls: View {
     let model: AppModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Output").font(.headline)
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(14)) {
+            Text("Output").font(.interface(.headline))
             VoiceDevicePicker(
                 title: "Output Device",
                 systemImage: "speaker.wave.2",
@@ -1087,13 +1087,13 @@ private struct VoiceOutputControls: View {
             )
             if let status = model.voiceDeviceStatusMessage {
                 Text(status)
-                    .font(.caption)
+                    .font(.interface(.caption))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(16)
-        .frame(width: 300)
+        .padding(InterfaceScale.metric(16))
+        .frame(width: InterfaceScale.metric(300))
         .task { await model.refreshMediaDevices() }
     }
 }
@@ -1102,16 +1102,16 @@ private struct VoiceCameraControls: View {
     let model: AppModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Camera").font(.headline)
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(14)) {
+            Text("Camera").font(.interface(.headline))
             CameraDevicePicker(
                 devices: model.mediaDevices.cameras,
                 selectedUID: model.selectedCameraUID,
                 select: { camera in Task { _ = await model.selectCamera(camera) } }
             )
         }
-        .padding(16)
-        .frame(width: 300)
+        .padding(InterfaceScale.metric(16))
+        .frame(width: InterfaceScale.metric(300))
         .task { await model.refreshMediaDevices() }
     }
 }
@@ -1122,7 +1122,7 @@ private struct VolumeControl: View {
     @Binding var value: Double
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(5)) {
             HStack {
                 Label(title, systemImage: systemImage)
                 Spacer()
@@ -1130,7 +1130,7 @@ private struct VolumeControl: View {
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
-            .font(.caption)
+            .font(.interface(.caption))
             Slider(value: $value, in: 0 ... 2)
                 .tint(SakuraCordAccentColor.color)
         }
@@ -1170,7 +1170,7 @@ private struct VoiceDevicePicker: View {
             }
             .labelsHidden()
             .pickerStyle(.menu)
-            .frame(maxWidth: 170)
+            .frame(maxWidth: InterfaceScale.metric(170))
             .onChange(of: selectionUID) { _, uid in
                 let previousUID = selectedUID ?? ""
                 Task {
@@ -1185,7 +1185,7 @@ private struct VoiceDevicePicker: View {
             }
         } label: {
             Label(title, systemImage: systemImage)
-                .font(.callout)
+                .font(.interface(.callout))
         }
     }
 }
@@ -1220,13 +1220,13 @@ private struct CameraDevicePicker: View {
             }
             .labelsHidden()
             .pickerStyle(.menu)
-            .frame(maxWidth: 170)
+            .frame(maxWidth: InterfaceScale.metric(170))
             .onChange(of: selectionUID) { _, uid in
                 select(devices.first(where: { $0.uniqueID == uid }))
             }
         } label: {
             Label("Camera Device", systemImage: "video")
-                .font(.callout)
+                .font(.interface(.callout))
         }
     }
 }

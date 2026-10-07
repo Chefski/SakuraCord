@@ -891,7 +891,7 @@ extension NativeTimelineCanvasView {
                     sourceFrame: attachmentRegion.frame,
                     rowIndex: rowIndex,
                     mediaKey: NativeTimelineMediaKey.attachment(attachment),
-                    cornerRadius: 8,
+                    cornerRadius: InterfaceScale.metric(8),
                     fillsFrame: MediaGalleryImagePresentation.fillsFrame(
                         itemCount: layout.attachmentRegions.count
                     )
@@ -915,7 +915,7 @@ extension NativeTimelineCanvasView {
                     mediaKey: embedRegion.mediaURL.map {
                         NativeTimelineMediaKey.media($0)
                     },
-                    cornerRadius: 8,
+                    cornerRadius: InterfaceScale.metric(8),
                     fillsFrame: false
                 )
             } else if let mediaURL = embedRegion.mediaURL {

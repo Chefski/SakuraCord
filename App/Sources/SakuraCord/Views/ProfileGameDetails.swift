@@ -6,16 +6,16 @@ struct ProfileGameDetails: View {
     let open: (URL) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 28) {
-            VStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(28)) {
+            VStack(spacing: InterfaceScale.metric(8)) {
                 if let steam = metadata.steamURL { website("Steam", url: steam) }
                 ForEach(metadata.websites.filter { [16, 20, 21, 22, 23].contains($0.category) }) { site in
                     website(ProfileGameLabels.websites[site.category] ?? "Store", url: site.url)
                 }
             }
             reviews
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Details", bundle: #bundle).font(.headline)
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(12)) {
+                Text("Details", bundle: #bundle).font(.interface(.headline))
                 VStack(spacing: 0) {
                     detail("Genres", value: ProfileGameLabels.genres(metadata.genres))
                     detail("Publishers", value: metadata.publishers.joined(separator: ", "))
@@ -23,14 +23,14 @@ struct ProfileGameDetails: View {
                     if let date = metadata.releaseDate { detail("Release Date", value: date.formatted(date: .long, time: .omitted)) }
                     detail("Platforms", value: ProfileGameLabels.platforms(metadata.platforms))
                 }
-                .background(.primary.opacity(0.035), in: .rect(cornerRadius: 14))
-                .overlay { RoundedRectangle(cornerRadius: 14).stroke(.primary.opacity(0.08)) }
+                .background(.primary.opacity(0.035), in: .rect(cornerRadius: InterfaceScale.metric(14)))
+                .overlay { RoundedRectangle(cornerRadius: InterfaceScale.metric(14)).stroke(.primary.opacity(0.08)) }
             }
-            HStack(spacing: 12) {
+            HStack(spacing: InterfaceScale.metric(12)) {
                 ForEach(ProfileGameLabels.websiteOrder, id: \.self) { category in
                     if let site = metadata.websites.first(where: { $0.category == category }) {
                         Button { open(site.url) } label: {
-                            Text(ProfileGameLabels.websites[category] ?? "Website").font(.caption)
+                            Text(ProfileGameLabels.websites[category] ?? "Website").font(.interface(.caption))
                         }.buttonStyle(.plain).help(site.url.host ?? "")
                     }
                 }
@@ -39,25 +39,25 @@ struct ProfileGameDetails: View {
     }
 
     private func website(_ title: String, url: URL) -> some View {
-        Button { open(url) } label: { Text(title).font(.system(size: 16, weight: .medium)).frame(maxWidth: .infinity).padding(10) }
-            .buttonStyle(.plain).background(.primary.opacity(0.06), in: .rect(cornerRadius: 8))
+        Button { open(url) } label: { Text(title).font(.interfaceSystem(size: 16, weight: .medium)).frame(maxWidth: .infinity).padding(InterfaceScale.metric(10)) }
+            .buttonStyle(.plain).background(.primary.opacity(0.06), in: .rect(cornerRadius: InterfaceScale.metric(8)))
     }
 
     @ViewBuilder private func detail(_ title: String, value: String) -> some View {
         if !value.isEmpty {
-            HStack(alignment: .top, spacing: 20) {
+            HStack(alignment: .top, spacing: InterfaceScale.metric(20)) {
                 Text(title).foregroundStyle(.secondary)
                 Spacer(minLength: 0)
                 Text(value).multilineTextAlignment(.trailing).textSelection(.enabled)
-            }.font(.system(size: 13)).padding(12)
+            }.font(.interfaceSystem(size: 13)).padding(InterfaceScale.metric(12))
             Divider().opacity(0.4)
         }
     }
 
     @ViewBuilder private var reviews: some View {
         if metadata.criticReviews != nil || metadata.steamURL != nil && !metadata.isRetiredFromSteam {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Reviews", bundle: #bundle).font(.headline)
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(12)) {
+                Text("Reviews", bundle: #bundle).font(.interface(.headline))
                 VStack(spacing: 0) {
                     if let url = metadata.steamURL, !metadata.isRetiredFromSteam {
                         let steam = metadata.steamReviews
@@ -78,14 +78,14 @@ struct ProfileGameDetails: View {
                                 Text(ProfileGameLabels.criticTiers[critic.tier] ?? "")
                                 if critic.rating > 0, (critic.count ?? 0) > 0 {
                                     Text(Int(critic.rating.rounded(.down)).formatted()).monospacedDigit().fontWeight(.semibold)
-                                        .frame(width: 30, height: 30).background(.tint.opacity(0.1), in: .circle)
+                                        .frame(width: InterfaceScale.metric(30), height: InterfaceScale.metric(30)).background(.tint.opacity(0.1), in: .circle)
                                 }
-                            }.font(.system(size: 13)).padding(12)
+                            }.font(.interfaceSystem(size: 13)).padding(InterfaceScale.metric(12))
                         }.buttonStyle(.plain)
                     }
                 }
-                .background(.primary.opacity(0.035), in: .rect(cornerRadius: 14))
-                .overlay { RoundedRectangle(cornerRadius: 14).stroke(.primary.opacity(0.08)) }
+                .background(.primary.opacity(0.035), in: .rect(cornerRadius: InterfaceScale.metric(14)))
+                .overlay { RoundedRectangle(cornerRadius: InterfaceScale.metric(14)).stroke(.primary.opacity(0.08)) }
             }
         }
     }
@@ -97,7 +97,7 @@ struct ProfileGameDetails: View {
                 Spacer()
                 Text(ProfileGameLabels.steamRating(rating, count: count, recent: recent)).foregroundStyle(.tint)
                 if let count, count >= 10 { Text("(\(count.formatted()))").foregroundStyle(.secondary) }
-            }.font(.system(size: 12)).padding(12)
+            }.font(.interfaceSystem(size: 12)).padding(InterfaceScale.metric(12))
         }.buttonStyle(.plain)
     }
 }

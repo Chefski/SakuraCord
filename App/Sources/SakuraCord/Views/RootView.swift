@@ -22,7 +22,7 @@ struct RootView: View {
                         get: { model.issueReports.presentation },
                         set: { if $0 == nil { model.issueReports.dismiss() } }
                     ),
-                    cornerRadius: 32,
+                    cornerRadius: InterfaceScale.metric(32),
                     cornerStyle: .circular
                 ) { _ in
                     IssueReportView(model: model)
@@ -54,8 +54,10 @@ struct RootView: View {
                                     : (model.errorMessage ?? "Discord account bootstrap failed for an unknown reason.")
                             }
                         )
+                        .interfaceScaleRoot()
                     } else {
                         AccountSwitcherView(model: model, showsCancel: false)
+                            .interfaceScaleRoot()
                     }
                 } else {
                     SakuraCordSessionLoadingView(
@@ -68,7 +70,10 @@ struct RootView: View {
                 // sign-in, so do not expose chat skeletons or toolbar chrome.
                 SakuraCordSignInBackdrop()
                     .ignoresSafeArea()
-                    .frame(minWidth: 860, minHeight: 600)
+                    .frame(
+                        minWidth: InterfaceScale.windowLength(860, axis: .horizontal),
+                        minHeight: InterfaceScale.windowLength(600, axis: .vertical)
+                    )
                     .toolbar(removing: .title)
                     .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
             case .connecting:
@@ -184,7 +189,7 @@ private struct ChatRootView: View {
     @State private var supplementaryPaneFrame = CGRect.zero
     @State private var supplementaryToolbarSpacerWidth: CGFloat = 0
     @State private var workspaceFrame = CGRect.zero
-    @State private var sidebarWidth = ChatChromeMetrics.serverRailWidth + 230
+    @State private var sidebarWidth = ChatChromeMetrics.serverRailWidth + InterfaceScale.metric(230)
     @State private var presentsForumComposer = false
     @State private var isFileDropTargeted = false
     @State private var isInstantUpload = false
@@ -221,6 +226,9 @@ private struct ChatRootView: View {
                     updateStatus: { await model.updateStatus($0) }
                 )
             }
+            // Column content follows the interface size; the window toolbar
+            // is system chrome and keeps its native item sizing.
+            .interfaceScaleRoot()
             .opacity(model.isSwitchingAccounts ? 0 : 1)
             .onGeometryChange(for: CGFloat.self) { proxy in
                 proxy.size.width
@@ -229,9 +237,9 @@ private struct ChatRootView: View {
                 sidebarWidth = width
             }
             .navigationSplitViewColumnWidth(
-                min: ChatChromeMetrics.serverRailWidth + 190,
-                ideal: ChatChromeMetrics.serverRailWidth + 230,
-                max: ChatChromeMetrics.serverRailWidth + 310
+                min: ChatChromeMetrics.serverRailWidth + InterfaceScale.metric(190),
+                ideal: ChatChromeMetrics.serverRailWidth + InterfaceScale.metric(230),
+                max: ChatChromeMetrics.serverRailWidth + InterfaceScale.metric(310)
             )
         } detail: {
             Group {
@@ -248,6 +256,7 @@ private struct ChatRootView: View {
                     )
                 }
             }
+            .interfaceScaleRoot()
             .navigationTitle("")
             .toolbar {
                 detailToolbar
@@ -271,25 +280,25 @@ private struct ChatRootView: View {
                 if columnVisibility != .detailOnly {
                     if model.isSwitchingAccounts {
                         SkeletonShimmerTimeline {
-                            SkeletonShape(cornerRadius: 4)
-                                .frame(width: 132, height: 14)
+                            SkeletonShape(cornerRadius: InterfaceScale.metric(4))
+                                .frame(width: InterfaceScale.metric(132), height: InterfaceScale.metric(14))
                         }
                         .offset(
                             x: ChatChromeMetrics.sidebarTitleLeadingOffset,
-                            y: ChatChromeMetrics.sidebarTitleTopOffset + 7
+                            y: ChatChromeMetrics.sidebarTitleTopOffset(height: InterfaceScale.metric(14))
                         )
                     } else {
                         Text(sidebarDisplayName)
-                            .font(.system(
+                            .font(.interfaceSystem(
                                 size: InterfaceTypographyMetrics.interfaceTextSize + 2,
                                 weight: .semibold
                             ))
                             .lineLimit(1)
                             .truncationMode(.tail)
-                            .frame(width: 150, height: 28, alignment: .leading)
+                            .frame(width: InterfaceScale.metric(150), height: InterfaceScale.metric(28), alignment: .leading)
                             .offset(
                                 x: ChatChromeMetrics.sidebarTitleLeadingOffset,
-                                y: ChatChromeMetrics.sidebarTitleTopOffset
+                                y: ChatChromeMetrics.sidebarTitleTopOffset(height: InterfaceScale.metric(28))
                             )
                     }
                 }
@@ -382,6 +391,7 @@ private struct ChatRootView: View {
                     hoveredDestination: effectiveFileDropDestination,
                     isInstantUpload: effectiveInstantUpload
                 )
+                .interfaceScaleRoot()
                 .allowsHitTesting(false)
             }
         }
@@ -462,6 +472,7 @@ private struct ChatRootView: View {
                 showsCancel: true,
                 accountActivated: { showAccountSwitcher = false }
             )
+            .interfaceScaleRoot()
         }
         .background {
             AttachmentPromptPresenter(model: model)
@@ -473,24 +484,25 @@ private struct ChatRootView: View {
                 ZStack {
                     Color.black.opacity(0.28)
                         .ignoresSafeArea()
-                    VStack(spacing: 14) {
+                    VStack(spacing: InterfaceScale.metric(14)) {
                         ProgressView()
                             .controlSize(.large)
                         Text(upload.map { "Uploading to \($0.service.displayName)…" } ?? "Compressing file…")
-                            .font(.headline)
+                            .font(.interface(.headline))
                         Text(upload?.fileName ?? compaction?.fileURL.lastPathComponent ?? "")
-                            .font(.callout)
+                            .font(.interface(.callout))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                         Button("Cancel", role: .cancel) {
                             if compaction != nil { model.cancelAttachmentCompaction() } else { model.cancelExternalAttachmentUpload() }
                         }
                     }
-                    .padding(24)
-                    .frame(minWidth: 280)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
-                    .shadow(radius: 18)
+                    .padding(InterfaceScale.metric(24))
+                    .frame(minWidth: InterfaceScale.metric(280))
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: InterfaceScale.metric(16)))
+                    .shadow(radius: InterfaceScale.metric(18))
                 }
+                .interfaceScaleRoot()
             }
         }
         .alert("SakuraCord", isPresented: Binding(get: { model.errorMessage != nil }, set: {
@@ -1157,6 +1169,7 @@ private struct MessageSearchToolbarBridge: View {
             searchTokens: local ? .constant([]) : $search.tokens,
             isSearchFocused: local ? $onboarding.isChannelSearchFocused : $search.isInputFocused,
             isToolbarItemVisible: isVisible,
+            preferredFieldWidth: ChatChromeMetrics.toolbarSearchMaximumFieldWidth,
             didUseBuiltInClear: {
                 if local { onboarding.channelSearch = "" } else { model.clearMessageSearchUsingBuiltInButton() }
             },
@@ -1250,18 +1263,18 @@ private struct ComposerFileDropOverlay: View {
             ZStack {
                 Color.black.opacity(0.6)
 
-                GlassEffectContainer(spacing: 14) {
-                    VStack(spacing: 18) {
+                GlassEffectContainer(spacing: InterfaceScale.metric(14)) {
+                    VStack(spacing: InterfaceScale.metric(18)) {
                         Image(
                             systemName: isInstantUpload
                                 ? "paperplane.fill" : "tray.and.arrow.down.fill"
                         )
-                        .font(.system(size: 50, weight: .semibold))
+                        .font(.interfaceSystem(size: 50, weight: .semibold))
                         .foregroundStyle(.primary)
                         .symbolEffect(.bounce, value: isInstantUpload)
 
                         Text(isInstantUpload ? "Upload directly to" : "Upload to")
-                            .font(.title2.weight(.bold))
+                            .font(.interface(.title2).weight(.bold))
 
                         Label {
                             Text(title)
@@ -1272,35 +1285,35 @@ private struct ComposerFileDropOverlay: View {
                                         ? "bubble.left.and.bubble.right.fill" : SakuraCordSystemSymbol.thread) : "number"
                             )
                         }
-                        .font(.headline.weight(.semibold))
+                        .font(.interface(.headline).weight(.semibold))
                         .lineLimit(1)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 7)
+                        .padding(.horizontal, InterfaceScale.metric(14))
+                        .padding(.vertical, InterfaceScale.metric(7))
                         .glassEffect(.regular, in: Capsule())
 
-                        VStack(spacing: 10) {
+                        VStack(spacing: InterfaceScale.metric(10)) {
                             Text(
                                 isInstantUpload
                                     ? "Release to upload immediately."
                                     : "You can add a message before uploading."
                             )
-                            .font(.callout)
+                            .font(.interface(.callout))
                             .foregroundStyle(.secondary)
 
                             if !isInstantUpload {
-                                HStack(spacing: 7) {
+                                HStack(spacing: InterfaceScale.metric(7)) {
                                     Text("⇧")
-                                        .font(.caption.weight(.bold))
-                                        .frame(width: 21, height: 19)
+                                        .font(.interface(.caption).weight(.bold))
+                                        .frame(width: InterfaceScale.metric(21), height: InterfaceScale.metric(19))
                                         .glassEffect(
                                             .regular,
                                             in: ConcentricRectangle(
-                                                cornerRadius: 6,
+                                                cornerRadius: InterfaceScale.metric(6),
                                                 style: .continuous
                                             )
                                         )
                                     Text("Hold Shift to upload directly")
-                                        .font(.caption.weight(.medium))
+                                        .font(.interface(.caption).weight(.medium))
                                 }
                                 .foregroundStyle(.secondary)
                             }
@@ -1308,14 +1321,14 @@ private struct ComposerFileDropOverlay: View {
                         .fixedSize(horizontal: false, vertical: true)
                     }
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 48)
-                    .padding(.vertical, 38)
-                    .frame(maxWidth: 460)
+                    .padding(.horizontal, InterfaceScale.metric(48))
+                    .padding(.vertical, InterfaceScale.metric(38))
+                    .frame(maxWidth: InterfaceScale.metric(460))
                     .glassEffect(
                         .regular,
-                        in: ConcentricRectangle(cornerRadius: 28, style: .continuous)
+                        in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(28), style: .continuous)
                     )
-                    .padding(24)
+                    .padding(InterfaceScale.metric(24))
                 }
             }
         } else {
@@ -1450,7 +1463,8 @@ private struct ChannelTopicPopover: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .textSelection(.enabled)
             .tint(SakuraCordAccentColor.color)
-            .padding(16)
-            .frame(width: 320, alignment: .leading)
+            .padding(InterfaceScale.metric(16))
+            .frame(width: InterfaceScale.metric(320), alignment: .leading)
+            .interfaceScaleRoot()
     }
 }

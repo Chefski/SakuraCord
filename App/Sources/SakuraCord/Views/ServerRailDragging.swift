@@ -343,7 +343,7 @@ struct ServerRailDragOverlay<Preview: View>: View {
                 preview(id)
                     .frame(width: row.frame.width, height: row.frame.height)
                     .scaleEffect(ServerRailFlight.liftedScale)
-                    .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
+                    .shadow(color: .black.opacity(0.3), radius: InterfaceScale.metric(8), y: 4)
                     .position(x: frame.midX, y: frame.midY)
                     .transition(.identity)
             }
@@ -380,13 +380,13 @@ struct ServerRailDragOverlay<Preview: View>: View {
         case .insert(_, let indicatorY):
             Capsule()
                 .fill(SakuraCordAccentColor.color)
-                .frame(width: 40, height: 4)
+                .frame(width: InterfaceScale.metric(40), height: InterfaceScale.metric(4))
                 .position(x: ChatChromeMetrics.serverRailWidth / 2, y: indicatorY)
         case .combine(_, let frame), .addToFolder(_, let frame):
-            RoundedRectangle(cornerRadius: 17, style: .continuous)
+            RoundedRectangle(cornerRadius: InterfaceScale.metric(17), style: .continuous)
                 .fill(SakuraCordAccentColor.color.opacity(0.22))
                 .strokeBorder(SakuraCordAccentColor.color, lineWidth: 2)
-                .frame(width: 52, height: 52)
+                .frame(width: InterfaceScale.metric(52), height: InterfaceScale.metric(52))
                 .position(x: frame.minX + ChatChromeMetrics.serverRailWidth / 2, y: frame.midY)
         }
     }
@@ -407,7 +407,7 @@ private struct ServerRailFlightView<Content: View>: View {
             .frame(width: start.width, height: start.height)
             // Starts exactly as the dragged row looked when it was released.
             .scaleEffect(hasLanded ? (vanishes ? 0.4 : 1) : ServerRailFlight.liftedScale)
-            .shadow(color: .black.opacity(hasLanded ? 0 : 0.3), radius: 8, y: 4)
+            .shadow(color: .black.opacity(hasLanded ? 0 : 0.3), radius: InterfaceScale.metric(8), y: 4)
             .opacity(hasLanded && vanishes ? 0 : 1)
             .position(x: frame.midX, y: frame.midY)
             .onAppear {

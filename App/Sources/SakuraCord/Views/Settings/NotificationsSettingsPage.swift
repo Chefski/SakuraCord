@@ -192,7 +192,7 @@ private struct NotificationEventSettingsSection: View {
     var body: some View {
         @Bindable var preferences = preferences
         Section {
-            Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 10) {
+            Grid(alignment: .leading, horizontalSpacing: InterfaceScale.metric(24), verticalSpacing: InterfaceScale.metric(10)) {
                 GridRow {
                     Toggle("Direct messages", isOn: $preferences.notifiesDirectMessages)
                         .settingsControlAnchor(.notificationDirectMessages, state: state)

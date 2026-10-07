@@ -2,7 +2,7 @@ import SakuraCordModels
 import SwiftUI
 
 struct ComposerAttachmentTray: View {
-    static let thumbnailCornerRadius: CGFloat = 16
+    static var thumbnailCornerRadius: CGFloat { InterfaceScale.metric(16) }
 
     @AppStorage(PrivacySafetySettingsStore.anonymiseFileNamesKey) private var anonymisesFileNames = false
     let attachments: [ForumPostAttachment]
@@ -14,19 +14,19 @@ struct ComposerAttachmentTray: View {
     @State private var hoveredID: UUID?
     @State private var editingTarget: ComposerAttachmentEditorTarget?
 
-    private let tileSize: CGFloat = 230
-    private let filenameRowHeight: CGFloat = 38
+    private let tileSize: CGFloat = InterfaceScale.metric(230)
+    private let filenameRowHeight: CGFloat = InterfaceScale.metric(38)
 
     var body: some View {
         ScrollView(.horizontal) {
-            HStack(spacing: 12) {
+            HStack(spacing: InterfaceScale.metric(12)) {
                 ForEach(attachments) { attachment in
                     attachmentTile(attachment)
                         .id(attachment.id)
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 14)
+            .padding(.horizontal, InterfaceScale.metric(14))
+            .padding(.vertical, InterfaceScale.metric(14))
         }
         .scrollIndicators(.hidden)
         .frame(height: tileSize + 28)
@@ -55,10 +55,10 @@ struct ComposerAttachmentTray: View {
         VStack(alignment: .leading, spacing: 0) {
             attachmentPreview(attachment)
             Text(attachment.filename)
-                .font(.callout.weight(.medium))
+                .font(.interface(.callout).weight(.medium))
                 .lineLimit(1)
                 .truncationMode(.middle)
-                .padding(.horizontal, 14)
+                .padding(.horizontal, InterfaceScale.metric(14))
                 .frame(
                     width: tileSize,
                     height: filenameRowHeight,
@@ -67,12 +67,12 @@ struct ComposerAttachmentTray: View {
         }
             .frame(width: tileSize, height: tileSize, alignment: .topLeading)
             .background(.primary.opacity(0.035))
-            .clipShape(ConcentricRectangle(cornerRadius: 16, style: .continuous))
+            .clipShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(16), style: .continuous))
             .overlay {
-                ConcentricRectangle(cornerRadius: 16, style: .continuous)
+                ConcentricRectangle(cornerRadius: InterfaceScale.metric(16), style: .continuous)
                     .stroke(.separator, lineWidth: 1)
             }
-            .contentShape(ConcentricRectangle(cornerRadius: 14, style: .continuous))
+            .contentShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(14), style: .continuous))
             .onModalHover { hovering in
                 hoveredID =
                     hovering
@@ -122,16 +122,16 @@ struct ComposerAttachmentTray: View {
             .background {
                 ComposerSendTransitionAttachmentReader(anchor: sendTransitionAnchor, id: attachment.id)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
+            .padding(.horizontal, InterfaceScale.metric(10))
+            .padding(.vertical, InterfaceScale.metric(8))
 
             if attachment.isSpoiler {
                 Rectangle()
                     .fill(.black.opacity(0.58))
-                VStack(spacing: 5) {
+                VStack(spacing: InterfaceScale.metric(5)) {
                     Image(systemName: "eye.slash")
                     Text("SPOILER")
-                        .font(.caption2.weight(.bold))
+                        .font(.interface(.caption2).weight(.bold))
                 }
                 .foregroundStyle(.white)
             }
@@ -145,7 +145,7 @@ struct ComposerAttachmentTray: View {
         .overlay(alignment: .topTrailing) {
             if hoveredID == attachment.id {
                 attachmentActions(attachment)
-                    .padding(7)
+                    .padding(InterfaceScale.metric(7))
             }
         }
     }
@@ -162,8 +162,8 @@ struct ComposerAttachmentTray: View {
                 systemImage: attachment.isSpoiler ? "eye.slash" : "eye",
                 help: attachment.isSpoiler ? "Remove spoiler" : "Mark as spoiler",
                 isSelected: attachment.isSpoiler,
-                diameter: 22,
-                iconFont: .caption2.weight(.semibold)
+                diameter: InterfaceScale.metric(22),
+                iconFont: .interface(.caption2).weight(.semibold)
             ) {
                 toggleSpoiler(attachment.id)
             }
@@ -172,8 +172,8 @@ struct ComposerAttachmentTray: View {
                     systemImage: "shuffle",
                     help: attachment.isFilenameAnonymised ? "Restore file name" : "Randomise file name",
                     isSelected: attachment.isFilenameAnonymised,
-                    diameter: 22,
-                    iconFont: .caption2.weight(.semibold)
+                    diameter: InterfaceScale.metric(22),
+                    iconFont: .interface(.caption2).weight(.semibold)
                 ) {
                     toggleFilenamePrivacy(attachment)
                 }
@@ -181,8 +181,8 @@ struct ComposerAttachmentTray: View {
             HoverActionButton(
                 systemImage: "pencil",
                 help: "Edit attachment",
-                diameter: 22,
-                iconFont: .caption2.weight(.semibold)
+                diameter: InterfaceScale.metric(22),
+                iconFont: .interface(.caption2).weight(.semibold)
             ) {
                 editingTarget = ComposerAttachmentEditorTarget(id: attachment.id)
             }
@@ -190,8 +190,8 @@ struct ComposerAttachmentTray: View {
                 systemImage: "trash",
                 help: "Delete attachment",
                 role: .destructive,
-                diameter: 22,
-                iconFont: .caption2.weight(.semibold)
+                diameter: InterfaceScale.metric(22),
+                iconFont: .interface(.caption2).weight(.semibold)
             ) {
                 remove(attachment.id)
             }

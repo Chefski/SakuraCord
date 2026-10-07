@@ -850,6 +850,7 @@ struct GuildEmojiDTO: Decodable {
     var animated: Bool?
     var available: Bool?
     var managed: Bool?
+    var roles: [String]?
 
     func domain(guildID: GuildID) -> DiscordEmoji? {
         guard let id, let name, !name.isEmpty else { return nil }
@@ -859,7 +860,8 @@ struct GuildEmojiDTO: Decodable {
             isAnimated: animated ?? false,
             guildID: guildID,
             isAvailable: available ?? true,
-            isManaged: managed ?? false
+            isManaged: managed ?? false,
+            roleIDs: (roles ?? []).compactMap(RoleID.init)
         )
     }
 }

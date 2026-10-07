@@ -47,7 +47,7 @@ struct ChatWorkspaceView: View {
                     }
                 }
             ),
-            cornerRadius: 32,
+            cornerRadius: InterfaceScale.metric(32),
             cornerStyle: .circular
         ) { form in
             InteractionModalView(model: model, form: form)

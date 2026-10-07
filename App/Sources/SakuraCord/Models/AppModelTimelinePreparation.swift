@@ -64,7 +64,7 @@ extension AppModel {
                 model: self,
                 baseFontSize: row.message.type.hasGeneratedContent
                     ? row.textPlan.baseFontSize
-                    : InterfaceTypographyMetrics.messageTextSize
+                    : InterfaceScale.fontSize(InterfaceTypographyMetrics.messageTextSize)
             )
         }
         let replyPreparations = rows.compactMap { row -> String? in

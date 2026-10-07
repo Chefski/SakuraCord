@@ -15,11 +15,14 @@ struct ProfileWidgetEmptyGameLayout: Layout {
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         let tile = tileSize(width: bounds.width)
         subviews[0].place(at: CGPoint(x: bounds.minX, y: bounds.midY), anchor: .leading, proposal: ProposedViewSize(tile))
-        subviews[1].place(at: CGPoint(x: bounds.minX + tile.width + 16, y: bounds.midY), anchor: .leading,
+        subviews[1].place(at: CGPoint(x: bounds.minX + tile.width + InterfaceScale.metric(16), y: bounds.midY), anchor: .leading,
                           proposal: ProposedViewSize(width: max(0, bounds.width - tile.width - 16), height: bounds.height))
     }
 
     private func tileSize(width: CGFloat) -> CGSize {
-        isGrid ? CGSize(width: max(0, (width - 48) / 4), height: max(0, (width - 48) / 3)) : CGSize(width: 88, height: 116)
+        isGrid ? CGSize(
+            width: max(0, (width - InterfaceScale.metric(48)) / 4),
+            height: max(0, (width - InterfaceScale.metric(48)) / 3)
+        ) : CGSize(width: InterfaceScale.metric(88), height: InterfaceScale.metric(116))
     }
 }

@@ -90,21 +90,21 @@ private struct UpdatesUnavailableNotice: View {
     let reason: String
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: InterfaceScale.metric(12)) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.title3)
+                .font(.interface(.title3))
                 .foregroundStyle(.orange)
                 .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(4)) {
                 Text("Updates Unavailable", bundle: #bundle)
-                    .font(.headline)
+                    .font(.interface(.headline))
 
                 Text(reason)
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, InterfaceScale.metric(4))
         .accessibilityElement(children: .combine)
     }
 }

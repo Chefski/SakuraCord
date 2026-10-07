@@ -20,7 +20,7 @@ struct ApplicationCommandEditorView: NSViewRepresentable {
     let receiveAttachment: (ComposerIncomingAttachments) -> Void
     @Binding var isFocused: Bool
 
-    static let maximumHeight: CGFloat = 150
+    static var maximumHeight: CGFloat { InterfaceScale.metric(150) }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
@@ -31,7 +31,7 @@ struct ApplicationCommandEditorView: NSViewRepresentable {
         let layoutManager = NSLayoutManager()
         textStorage.addLayoutManager(layoutManager)
         let textContainer = NSTextContainer(
-            containerSize: NSSize(width: 400, height: CGFloat.greatestFiniteMagnitude)
+            containerSize: NSSize(width: InterfaceScale.metric(400), height: CGFloat.greatestFiniteMagnitude)
         )
         textContainer.widthTracksTextView = true
         textContainer.heightTracksTextView = false
@@ -117,7 +117,7 @@ struct ApplicationCommandEditorView: NSViewRepresentable {
             max(ApplicationCommandEditorStyle.lineHeight, used.height) + textView.textContainerInset.height * 2
         )
         scrollView.hasVerticalScroller = height > Self.maximumHeight
-        return CGSize(width: width ?? min(ceil(used.width), 600), height: min(height, Self.maximumHeight))
+        return CGSize(width: width ?? min(ceil(used.width), InterfaceScale.metric(600)), height: min(height, Self.maximumHeight))
     }
 
     @MainActor
@@ -189,7 +189,9 @@ struct ApplicationCommandEditorView: NSViewRepresentable {
             hasher.combine(draft.focus)
             hasher.combine(parent.fieldIssue?.fieldID)
             hasher.combine(parent.roles.map(\.colorHex))
+            hasher.combine(InterfaceScale.factor)
             let signature = hasher.finalize()
+            textView.textContainerInset = NSSize(width: 0, height: ApplicationCommandEditorStyle.verticalInset)
             let previousSelection = textView.selectedRange()
             if let previous = renderedDraft, previous.command.id == draft.command.id,
                previous.fields != draft.fields || previous.gapTexts != draft.gapTexts {
@@ -667,15 +669,15 @@ struct ApplicationCommandEditorView: NSViewRepresentable {
 
 /// Typography and colours shared by the editor's text and chip drawing.
 enum ApplicationCommandEditorStyle {
-    static let font = NSFont.systemFont(ofSize: 15)
-    static let lineHeight: CGFloat = 24
-    static let verticalInset: CGFloat = 6
-    static let chipPadding: CGFloat = 6
-    static let labelGap: CGFloat = 10
-    static let spaceWidth = (" " as NSString).size(withAttributes: [.font: font]).width
+    static var font: NSFont { .interfaceSystemFont(ofSize: 15) }
+    static var lineHeight: CGFloat { InterfaceScale.metric(24) }
+    static var verticalInset: CGFloat { InterfaceScale.metric(6) }
+    static var chipPadding: CGFloat { InterfaceScale.metric(6) }
+    static var labelGap: CGFloat { InterfaceScale.metric(10) }
+    static var spaceWidth: CGFloat { (" " as NSString).size(withAttributes: [.font: font]).width }
 
     static func trailingChipInset(_ span: ApplicationCommandEditorDocument.Span) -> CGFloat {
-        chipPadding + (span.value.length == 0 ? 3 : 0)
+        chipPadding + (span.value.length == 0 ? InterfaceScale.metric(3) : 0)
     }
 
     static let partKey = NSAttributedString.Key("dev.sakuracord.command-part")
@@ -704,7 +706,7 @@ enum ApplicationCommandEditorStyle {
             attributes: baseAttributes()
         )
         result.addAttributes(
-            [.font: NSFont.systemFont(ofSize: 15, weight: .semibold)],
+            [.font: NSFont.interfaceSystemFont(ofSize: 15, weight: .semibold)],
             range: document.command
         )
         // Structural spaces carry only the neighbouring pill's inset. The
@@ -721,7 +723,7 @@ enum ApplicationCommandEditorStyle {
         }
         for span in document.fields {
             result.addAttributes([
-                .font: NSFont.systemFont(ofSize: 14, weight: .medium),
+                .font: NSFont.interfaceSystemFont(ofSize: 14, weight: .medium),
                 .foregroundColor: NSColor.labelColor.withAlphaComponent(0.85),
                 .baselineOffset: 3.5,
                 partKey: "label",
@@ -762,20 +764,20 @@ enum ApplicationCommandEditorStyle {
         guard let resolved = field.resolved else { return attributes }
         switch resolved {
         case .user, .channel, .mentionable:
-            attributes[.font] = NSFont.systemFont(ofSize: 15, weight: .semibold)
+            attributes[.font] = NSFont.interfaceSystemFont(ofSize: 15, weight: .semibold)
             attributes[.foregroundColor] = NSColor.sakuraCordAccentColor
             if case let .mentionable(id) = resolved, let role = roles.first(where: { $0.id.description == id }) {
                 attributes[.foregroundColor] = SakuraCordAccentColor.nsColor(forRoleColorHex: role.colorHex)
             }
         case let .role(id):
-            attributes[.font] = NSFont.systemFont(ofSize: 15, weight: .semibold)
+            attributes[.font] = NSFont.interfaceSystemFont(ofSize: 15, weight: .semibold)
             attributes[.foregroundColor] = SakuraCordAccentColor.nsColor(
                 forRoleColorHex: roles.first { $0.id == id }?.colorHex
             )
         case .attachment:
-            attributes[.font] = NSFont.systemFont(ofSize: 14, weight: .medium)
+            attributes[.font] = NSFont.interfaceSystemFont(ofSize: 14, weight: .medium)
         default:
-            attributes[.font] = NSFont.systemFont(ofSize: 15, weight: .medium)
+            attributes[.font] = NSFont.interfaceSystemFont(ofSize: 15, weight: .medium)
         }
         return attributes
     }
@@ -1054,7 +1056,7 @@ final class ApplicationCommandTextView: ComposerFocusReportingTextView {
                 chip.size.width += leading + trailing
                 chip = chip.insetBy(dx: 0, dy: 1)
                 guard chip.intersects(rect) else { continue }
-                let path = NSBezierPath(roundedRect: chip, xRadius: 7, yRadius: 7)
+                let path = NSBezierPath(roundedRect: chip, xRadius: InterfaceScale.metric(7), yRadius: InterfaceScale.metric(7))
                 // Discord marks only the focused or empty chip; a filled chip
                 // shows its value pill alone.
                 if isFocused || span.value.length == 0 {
@@ -1072,11 +1074,11 @@ final class ApplicationCommandTextView: ComposerFocusReportingTextView {
             let tint = valueTints[span.id]
             for line in lineRects(span.value) {
                 let pill = NSRect(
-                    x: line.minX - 4, y: line.minY + 3, width: line.width + 8, height: line.height - 6
+                    x: line.minX - InterfaceScale.metric(4), y: line.minY + InterfaceScale.metric(3), width: line.width + InterfaceScale.metric(8), height: line.height - InterfaceScale.metric(6)
                 )
                 guard pill.intersects(rect) else { continue }
                 (tint?.withAlphaComponent(0.2) ?? NSColor.labelColor.withAlphaComponent(0.11)).setFill()
-                NSBezierPath(roundedRect: pill, xRadius: 5, yRadius: 5).fill()
+                NSBezierPath(roundedRect: pill, xRadius: InterfaceScale.metric(5), yRadius: InterfaceScale.metric(5)).fill()
             }
         }
     }
@@ -1094,7 +1096,7 @@ final class ApplicationCommandTextView: ComposerFocusReportingTextView {
         var line = layoutManager.lineFragmentUsedRect(forGlyphAt: lastGlyph, effectiveRange: nil)
         line = line.offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y)
         let label = NSAttributedString(string: "+\(remainingOptionCount) more", attributes: [
-            .font: NSFont.systemFont(ofSize: 14),
+            .font: NSFont.interfaceSystemFont(ofSize: 14),
             .foregroundColor: NSColor.tertiaryLabelColor,
         ])
         let size = label.size()

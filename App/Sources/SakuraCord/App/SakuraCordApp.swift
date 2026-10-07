@@ -90,6 +90,7 @@ struct SakuraCordApp: App {
         AppAppearanceController.shared.apply(
             appModel.appearanceSettings.colorScheme
         )
+        InterfaceScale.shared.update(appModel.appearanceSettings.interfaceSize)
         SakuraCordRuntimeModelHolder.shared.model = appModel
         _model = State(initialValue: appModel)
     }
@@ -101,7 +102,10 @@ struct SakuraCordApp: App {
             RootView(model: model)
                 .focusedSceneValue(\.shortcutCommandContext, .workspace(model))
                 .windowModalInputScope()
-                .frame(minWidth: 860, minHeight: 560)
+                .frame(
+                    minWidth: ChatChromeMetrics.windowMinimumSize.width,
+                    minHeight: ChatChromeMetrics.windowMinimumSize.height
+                )
                 .onAppear {
                     appDelegate.model = model
                     AppPerformanceSignposts.reportRootViewAppeared()

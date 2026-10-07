@@ -407,6 +407,9 @@ extension AppModel {
                     }
                 }
                 guard isCurrentAccountSession(session) else { return }
+                for value in invocation.values {
+                    if case let .string(text) = value.argument { recordMessageEmojiUsage(text) }
+                }
                 startInteractionDeadline(nonce: nonce)
             } catch is CancellationError {
                 return
@@ -497,6 +500,7 @@ extension AppModel {
                     let channel = try await session.provider.ensurePrivateChannel(for: recipient)
                     guard let self, !Task.isCancelled, isCurrentAccountSession(session) else { return }
                     _ = try await session.provider.send(SendMessageDraft(channelID: channel.id, content: message))
+                    recordMessageEmojiUsage(message, session: session)
                 } catch {
                     guard let self, isCurrentAccountSession(session) else { return }
                     appendBuiltInNotice("Your message could not be delivered.", in: channelID)
@@ -509,6 +513,7 @@ extension AppModel {
                     let thread = try await session.provider.createThread(CreateThreadDraft(channelID: channelID, name: name))
                     guard let self, !Task.isCancelled, isCurrentAccountSession(session) else { return }
                     _ = try await session.provider.send(SendMessageDraft(channelID: thread.id, content: message))
+                    recordMessageEmojiUsage(message, session: session)
                 } catch {
                     guard let self, isCurrentAccountSession(session) else { return }
                     appendBuiltInNotice("The thread could not be created.", in: channelID)

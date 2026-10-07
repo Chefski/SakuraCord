@@ -163,6 +163,7 @@ import Testing
 @MainActor
 @Test func `Interface catalog exposes every control and required search synonym`() {
     let expected: Set<SettingsControlID> = [
+        .interfaceSize,
         .messageAppearance,
         .messageDensity,
         .composerBarAppearance,
@@ -185,6 +186,8 @@ import Testing
         ("roles", .roleColorDisplay),
         ("bubbles", .messageAppearance),
         ("density", .messageDensity),
+        ("zoom", .interfaceSize),
+        ("text size", .interfaceSize),
         ("input bar", .composerBarAppearance),
         ("defaults", .resetMessageAppearance),
     ]

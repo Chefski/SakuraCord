@@ -60,6 +60,8 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     static let maximumReactionReactorCacheEntries = 256
     static let maximumConcurrentReactionReactorReads = 4
 
+    var prepareEmojiFrecencySave: (@Sendable () async -> EmojiFrecencySaveContribution?)?
+
     var credentialSource: DiscordCredentialSource
     var accountID: String?
     var restSession: URLSession

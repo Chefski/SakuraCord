@@ -500,7 +500,7 @@ enum NativeTimelineRowPainter {
             NSColor.separatorColor.withAlphaComponent(0.42).setStroke()
             let border = NSBezierPath(
                 concentricRoundedRect: cardFrame.insetBy(dx: 0.5, dy: 0.5),
-                cornerRadius: 8.5
+                cornerRadius: InterfaceScale.metric(8.5)
             )
             border.lineWidth = 1
             border.stroke()
@@ -577,7 +577,7 @@ enum NativeTimelineRowPainter {
         CGRect(
             x: frame.minX,
             y: frame.minY,
-            width: min(2, frame.width),
+            width: min(InterfaceScale.metric(2), frame.width),
             height: frame.height
         ).fill()
     }
@@ -701,7 +701,7 @@ enum NativeTimelineRowPainter {
             text(
                 beginning.title,
                 in: layout.titleFrame,
-                font: .systemFont(
+                font: .interfaceSystemFont(
                     ofSize: NSFont.preferredFont(
                         forTextStyle: .largeTitle
                     ).pointSize,
@@ -724,7 +724,7 @@ enum NativeTimelineRowPainter {
             text(
                 beginning.description,
                 in: layout.descriptionFrame,
-                font: .preferredFont(forTextStyle: .body),
+                font: .interfacePreferredFont(forTextStyle: .body),
                 color: .secondaryLabelColor,
                 lineBreakMode: .byWordWrapping
             )
@@ -747,7 +747,7 @@ enum NativeTimelineRowPainter {
         text(
             kind.loadingLabel,
             in: loaderLayout.labelFrame,
-            font: .preferredFont(forTextStyle: .caption1),
+            font: .interfacePreferredFont(forTextStyle: .caption1),
             color: .secondaryLabelColor,
             alignment: .center
         )

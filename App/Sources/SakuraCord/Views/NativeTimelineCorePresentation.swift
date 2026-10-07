@@ -30,13 +30,13 @@ nonisolated enum TimelineInlineVideoPolicy {
 }
 
 enum NativeTimelineDateSeparatorMetrics {
-    static let rowHeight: CGFloat = 37
-    static let verticalPadding: CGFloat = 12
-    static let lineSpacing: CGFloat = 10
-    static let labelHeight: CGFloat = 13
+    static var rowHeight: CGFloat { InterfaceScale.metric(37) }
+    static var verticalPadding: CGFloat { InterfaceScale.metric(12) }
+    static var lineSpacing: CGFloat { InterfaceScale.metric(10) }
+    static var labelHeight: CGFloat { InterfaceScale.metric(13) }
 
     static var font: NSFont {
-        .systemFont(ofSize: 10, weight: .semibold)
+        .interfaceSystemFont(ofSize: 10, weight: .semibold)
     }
 
     static func labelWidth(_ label: String) -> CGFloat {
@@ -65,14 +65,14 @@ enum NativeTimelineDateSeparatorMetrics {
 }
 
 enum NativeTimelineUnreadSeparatorMetrics {
-    static let rowHeight: CGFloat = 29
-    static let capsuleHeight: CGFloat = 19
-    static let verticalPadding: CGFloat = 5
+    static var rowHeight: CGFloat { InterfaceScale.metric(29) }
+    static var capsuleHeight: CGFloat { InterfaceScale.metric(19) }
+    static var verticalPadding: CGFloat { InterfaceScale.metric(5) }
 }
 
 /// Text rules for the timeline thread card, matching Discord's client.
 nonisolated enum NativeTimelineThreadCard {
-    static let height: CGFloat = 54
+    static var height: CGFloat { InterfaceScale.metric(54) }
     /// Discord capped message counts at 50 for threads created before July 2022.
     private static let cappedCountCutoff = Date(timeIntervalSince1970: 1_656_712_657)
 
@@ -104,10 +104,10 @@ nonisolated enum NativeTimelineThreadCard {
 }
 
 enum NativeTimelineReplyMetrics {
-    static let horizontalSpacing: CGFloat = 5
+    static var horizontalSpacing: CGFloat { InterfaceScale.metric(5) }
 
     static var authorFont: NSFont {
-        .systemFont(
+        .interfaceSystemFont(
             ofSize: NSFont.preferredFont(
                 forTextStyle: .caption2
             ).pointSize,
@@ -116,7 +116,7 @@ enum NativeTimelineReplyMetrics {
     }
 
     static var summaryFont: NSFont {
-        .preferredFont(forTextStyle: .caption1)
+        .interfacePreferredFont(forTextStyle: .caption1)
     }
 
     static func textWidth(

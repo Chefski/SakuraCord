@@ -89,7 +89,7 @@ enum NativeTimelineBeginningText {
     ) -> NativeTimelineAttributedTextBox {
         box(
             beginning.title,
-            font: .systemFont(
+            font: .interfaceSystemFont(
                 ofSize: NSFont.preferredFont(
                     forTextStyle: .largeTitle
                 ).pointSize,
@@ -104,7 +104,7 @@ enum NativeTimelineBeginningText {
     ) -> NativeTimelineAttributedTextBox {
         box(
             beginning.description,
-            font: .preferredFont(forTextStyle: .body),
+            font: .interfacePreferredFont(forTextStyle: .body),
             color: .secondaryLabelColor
         )
     }
@@ -377,13 +377,13 @@ nonisolated enum NativeTimelineCodeBlockGeometry {
                     + NativeTimelineMarkdownChromeMetrics
                         .codeBlockInset * 2
             )
-            let buttonWidth: CGFloat = 28
+            let buttonWidth: CGFloat = InterfaceScale.metric(28)
             let buttonFrame = CGRect(
                 x: max(
                     backgroundFrame.minX,
-                    backgroundFrame.maxX - buttonWidth - 4
+                    backgroundFrame.maxX - buttonWidth - InterfaceScale.metric(4)
                 ),
-                y: backgroundFrame.minY + 4,
+                y: backgroundFrame.minY + InterfaceScale.metric(4),
                 width: buttonWidth,
                 height: buttonWidth
             )

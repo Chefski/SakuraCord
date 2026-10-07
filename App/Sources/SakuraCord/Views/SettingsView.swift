@@ -36,6 +36,9 @@ struct SettingsView: View {
                 state: state,
                 onSearchResultActivated: dismissSearchFocus
             )
+            // Content follows the interface size; the window toolbar and its
+            // items are system chrome and keep their native sizing.
+            .interfaceScaleRoot()
             .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 280)
         } detail: {
             SettingsDetailRouter(
@@ -58,7 +61,7 @@ struct SettingsView: View {
             )
         )
         .searchFocused($isSearchFocused)
-        .focusedSceneValue(\.shortcutCommandContext, .settings {
+        .focusedSceneValue(\.shortcutCommandContext, .settings(model: model) {
             columnVisibility = .all
             isSearchPresented = true
             isSearchFocused = true
@@ -127,11 +130,11 @@ struct SettingsView: View {
             refreshProfileAfterExternalChange()
         }
         .frame(
-            minWidth: 1060,
-            idealWidth: 1060,
-            maxWidth: 1060,
-            minHeight: 520,
-            idealHeight: 760,
+            minWidth: InterfaceScale.windowLength(1060, axis: .horizontal),
+            idealWidth: InterfaceScale.windowLength(1060, axis: .horizontal),
+            maxWidth: InterfaceScale.windowLength(1060, axis: .horizontal),
+            minHeight: InterfaceScale.windowLength(520, axis: .vertical),
+            idealHeight: InterfaceScale.windowLength(760, axis: .vertical),
             maxHeight: .infinity
         )
     }

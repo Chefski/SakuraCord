@@ -58,11 +58,11 @@ struct AppearanceSettingsPage: View {
                         }
                         .labelsHidden()
                         .tint(SakuraCordAccentColor.color)
-                        .frame(minWidth: 220)
+                        .frame(minWidth: InterfaceScale.metric(220))
                         .disabled(reduceTransparency || !SakuraCordWindowBlur.isAvailable)
                         Text(value.windowOpacity, format: .percent.precision(.fractionLength(0)))
                             .monospacedDigit()
-                            .frame(width: 42, alignment: .trailing)
+                            .frame(width: InterfaceScale.metric(42), alignment: .trailing)
                     }
                 }
                 .accessibilityElement(children: .contain)

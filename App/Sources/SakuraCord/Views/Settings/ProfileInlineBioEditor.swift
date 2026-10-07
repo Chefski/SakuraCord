@@ -40,19 +40,19 @@ struct ProfileInlineBioEditor: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .topLeading) {
             if visibleValue.isEmpty {
-                Text("Add a bio", bundle: #bundle).font(.system(size: 14)).foregroundStyle(.secondary)
+                Text("Add a bio", bundle: #bundle).font(.interfaceSystem(size: 14)).foregroundStyle(.secondary)
                     .allowsHitTesting(false).accessibilityHidden(true)
             }
         }
         .overlay(alignment: .bottomTrailing) {
-            if isEditing { accessories.offset(y: 22) }
+            if isEditing { accessories.offset(y: InterfaceScale.metric(22)) }
         }
     }
 
     private var visibleValue: String { isEditing && hasTyped ? value : displayValue ?? value }
 
     private var accessories: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: InterfaceScale.metric(8)) {
             Button("Add Emoji", systemImage: "face.smiling") {
                 interaction.captureSelection()
                 pickedEmoji = nil
@@ -75,10 +75,10 @@ struct ProfileInlineBioEditor: View {
                 }
             }
             Text("\(visibleValue.utf16.count)/300")
-                .font(.caption2.monospacedDigit())
+                .font(.interface(.caption2).monospacedDigit())
                 .foregroundStyle(visibleValue.utf16.count > 300 ? .red : .secondary)
         }
-        .padding(.horizontal, 6).padding(.vertical, 3)
+        .padding(.horizontal, InterfaceScale.metric(6)).padding(.vertical, InterfaceScale.metric(3))
         .glassEffect(.regular, in: .capsule)
     }
 }
@@ -108,7 +108,7 @@ final class ProfileBioTextInteraction {
         textView.setSelectedRange(range)
         if let emoji {
             let attributed = ProfileInlineAttributedText.make(
-                source: emoji, font: .systemFont(ofSize: 14), color: .labelColor,
+                source: emoji, font: .interfaceSystemFont(ofSize: 14), color: .labelColor,
                 emojiImages: [:], stylesLinks: false
             )
             textView.insertText(attributed, replacementRange: range)

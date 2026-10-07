@@ -30,8 +30,12 @@ struct ProfileDisplayName: View {
         }
     }
 
+    /// The display size at the current interface size.
+    private var pointSize: CGFloat { InterfaceScale.fontSize(size) }
+
     var body: some View {
-        Group {
+        let size = pointSize
+        return Group {
             if let style {
                 TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !animatesEffect)) { timeline in
                     ProfileNameNativeText(
@@ -101,7 +105,7 @@ private struct ProfileNameNativeText: NSViewRepresentable {
 
 private final class ProfileNameTextView: NSView {
     private var name = ""
-    private var font = NSFont.systemFont(ofSize: 22, weight: .bold)
+    private var font = NSFont.interfaceSystemFont(ofSize: 22, weight: .bold)
     private var tracking: CGFloat = 0
     private var style = DisplayNameStyle()
     private var showsEffects = true

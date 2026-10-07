@@ -34,11 +34,11 @@ struct IssueReportView: View {
     private var content: some View {
         switch store.formState {
         case .loading where store.form == nil:
-            VStack(spacing: 12) {
+            VStack(spacing: InterfaceScale.metric(12)) {
                 ProgressView()
                 Text("Loading the report form…").foregroundStyle(.secondary)
             }
-            .frame(maxWidth: .infinity, minHeight: 240)
+            .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(240))
         case let .failed(message) where store.form == nil:
             IssueReportUnavailableView(kind: store.kind, message: message) {
                 store.loadForm(force: true)
@@ -72,9 +72,9 @@ struct IssueReportView: View {
 
     private func scrolling(@ViewBuilder _ content: () -> some View) -> some View {
         ScrollView(.vertical) {
-            GlassEffectContainer(spacing: 8) {
+            GlassEffectContainer(spacing: InterfaceScale.metric(8)) {
                 content()
-                    .padding(8)
+                    .padding(InterfaceScale.metric(8))
             }
         }
         .scrollBounceBehavior(.always, axes: .vertical)
@@ -91,7 +91,7 @@ struct IssueReportView: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: InterfaceScale.metric(10)) {
             if store.step == .describe {
                 ModalGlassButton(symbol: "xmark", label: "Cancel") { modalContext?() }
             } else {
@@ -100,7 +100,7 @@ struct IssueReportView: View {
                 }
                 .keyboardShortcut("[", modifiers: .command)
             }
-            Spacer(minLength: 12)
+            Spacer(minLength: InterfaceScale.metric(12))
             if store.pendingAttachmentLoads > 0 {
                 IssueReportProgressLabel(phase: .preparing)
             } else if let phase = store.phase {
@@ -122,7 +122,7 @@ struct IssueReportView: View {
                 .keyboardShortcut(.return, modifiers: .command)
             }
         }
-        .padding(12)
+        .padding(InterfaceScale.metric(12))
     }
 
     private func navigate(forward: Bool, _ change: () -> Void) {
@@ -137,20 +137,20 @@ private struct IssueReportHeader: View {
     let close: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            IssueReportKindBadge(kind: store.kind, size: 40)
+        HStack(spacing: InterfaceScale.metric(12)) {
+            IssueReportKindBadge(kind: store.kind, size: InterfaceScale.metric(40))
             VStack(alignment: .leading, spacing: 1) {
                 Text(IssueReportKindBadge.title(store.kind))
-                    .font(.title3.weight(.semibold))
+                    .font(.interface(.title3).weight(.semibold))
                     .contentTransition(.opacity)
                 Text(subtitle)
-                    .font(.callout)
+                    .font(.interface(.callout))
                     .foregroundStyle(.secondary)
                     .contentTransition(.opacity)
             }
             .animation(.snappy, value: store.kind)
             .animation(.snappy, value: store.step)
-            Spacer(minLength: 12)
+            Spacer(minLength: InterfaceScale.metric(12))
             if store.step != .done, store.definition != nil {
                 IssueReportStepIndicator(step: store.step) { target in
                     navigate(false) { store.go(to: target) }
@@ -159,9 +159,9 @@ private struct IssueReportHeader: View {
             HoverCloseButton(help: "Close", accessibilityIdentifier: "issue-report-close", action: close)
                 .disabled(store.isSubmitting)
         }
-        .padding(.leading, 16)
-        .padding(.trailing, 12)
-        .padding(.vertical, 12)
+        .padding(.leading, InterfaceScale.metric(16))
+        .padding(.trailing, InterfaceScale.metric(12))
+        .padding(.vertical, InterfaceScale.metric(12))
     }
 
     private var subtitle: String {
@@ -180,14 +180,14 @@ private struct IssueReportStepIndicator: View {
     let select: (IssueReportStore.Step) -> Void
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: InterfaceScale.metric(5)) {
             ForEach([IssueReportStore.Step.describe, .details, .review], id: \.self) { item in
                 Button { select(item) } label: {
                     Capsule()
                         .fill(item <= step ? AnyShapeStyle(SakuraCordAccentColor.color) : AnyShapeStyle(.quaternary))
                         .opacity(item < step ? 0.55 : 1)
-                        .frame(width: item == step ? 24 : 8, height: 8)
-                        .padding(.vertical, 6)
+                        .frame(width: item == step ? 24 : 8, height: InterfaceScale.metric(8))
+                        .padding(.vertical, InterfaceScale.metric(6))
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -240,10 +240,10 @@ private struct IssueReportProgressLabel: View {
     let phase: IssueReportStore.Phase
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: InterfaceScale.metric(8)) {
             ProgressView().controlSize(.small)
             Text(text)
-                .font(.callout)
+                .font(.interface(.callout))
                 .foregroundStyle(.secondary)
                 .contentTransition(.opacity)
         }
@@ -266,11 +266,11 @@ private struct IssueReportErrorBanner: View {
     var body: some View {
         if let message, !message.isEmpty {
             Label(message, systemImage: "exclamationmark.circle.fill")
-                .font(.callout)
+                .font(.interface(.callout))
                 .foregroundStyle(.red)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 10)
+                .padding(.horizontal, InterfaceScale.metric(18))
+                .padding(.vertical, InterfaceScale.metric(10))
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .accessibilityAddTraits(.updatesFrequently)
         }
@@ -283,25 +283,25 @@ private struct IssueReportUnavailableView: View {
     let retry: () -> Void
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: InterfaceScale.metric(14)) {
             Image(systemName: "icloud.slash")
-                .font(.system(size: 34, weight: .medium))
+                .font(.interfaceSystem(size: 34, weight: .medium))
                 .foregroundStyle(.secondary)
-            VStack(spacing: 4) {
-                Text("Reporting is unavailable").font(.headline)
+            VStack(spacing: InterfaceScale.metric(4)) {
+                Text("Reporting is unavailable").font(.interface(.headline))
                 Text(message)
-                    .font(.callout)
+                    .font(.interface(.callout))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
-            HStack(spacing: 10) {
+            HStack(spacing: InterfaceScale.metric(10)) {
                 ModalGlassButton(symbol: "safari", label: "Use the Website") {
                     NSWorkspace.shared.open(IssueReportLink.current(kind).url)
                 }
                 ModalGlassButton(symbol: "arrow.clockwise", label: "Try Again", primary: true, action: retry)
             }
         }
-        .padding(28)
-        .frame(maxWidth: .infinity, minHeight: 240)
+        .padding(InterfaceScale.metric(28))
+        .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(240))
     }
 }

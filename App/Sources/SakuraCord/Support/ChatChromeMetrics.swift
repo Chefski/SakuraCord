@@ -1,49 +1,71 @@
 import SwiftUI
 
 nonisolated enum ChatChromeMetrics {
-    static let controlHeight: CGFloat = 48
-    static let composerControlHeight: CGFloat = 36
-    static let composerCornerRadius = composerControlHeight / 2
-    static let composerTextVerticalInset: CGFloat = 9
-    static let composerAccessoryButtonSize: CGFloat = 32
-    static let composerAccessoryEdgeInset: CGFloat =
+    static var controlHeight: CGFloat { InterfaceScale.metric(48) }
+    static var composerControlHeight: CGFloat { InterfaceScale.metric(36) }
+    static var composerCornerRadius: CGFloat { composerControlHeight / 2 }
+    static var composerTextVerticalInset: CGFloat { InterfaceScale.metric(9) }
+    static var composerAccessoryButtonSize: CGFloat { InterfaceScale.metric(32) }
+    static var composerAccessoryEdgeInset: CGFloat {
         (composerControlHeight - composerAccessoryButtonSize) / 2
-    static let composerSegmentSpacing: CGFloat = 8
-    static let controlCornerRadius: CGFloat = 16
-    static let serverRailWidth: CGFloat = 68
-    static let sidebarTitleLeadingOffset: CGFloat = serverRailWidth + 24
-    static let sidebarTitleTopOffset: CGFloat = 11
-    static let sidebarContentCornerRadius: CGFloat = 16
-    static let composerWindowInset: CGFloat = 12
+    }
+    static var composerSegmentSpacing: CGFloat { InterfaceScale.metric(8) }
+    static var controlCornerRadius: CGFloat { InterfaceScale.metric(16) }
+    static var serverRailWidth: CGFloat { InterfaceScale.metric(68) }
+    /// The window controls are fixed-size system chrome, so the sidebar title
+    /// stays clear of them and centred on their line at every interface size.
+    static var sidebarTitleLeadingOffset: CGFloat {
+        max(92, serverRailWidth + InterfaceScale.metric(24))
+    }
+    static let sidebarTitleCenterY: CGFloat = 25
+
+    /// The workspace minimum grows with the interface size so the chat column
+    /// keeps its default share at the narrowest width, within the screen.
+    @MainActor
+    static var windowMinimumSize: CGSize {
+        CGSize(
+            width: InterfaceScale.windowLength(860, axis: .horizontal),
+            height: InterfaceScale.windowLength(560, axis: .vertical)
+        )
+    }
+
+    static func sidebarTitleTopOffset(height: CGFloat) -> CGFloat {
+        sidebarTitleCenterY - height / 2
+    }
+    static var sidebarContentCornerRadius: CGFloat { InterfaceScale.metric(16) }
+    static var composerWindowInset: CGFloat { InterfaceScale.metric(12) }
     /// Only a fallback for layouts where the composer isn't adjacent to a
     /// rounded container corner. macOS resolves the actual aligned radius.
-    static let composerMinimumCornerRadius: CGFloat = 12
-    static let channelListTopPadding: CGFloat = 10
-    static let memberListWidth: CGFloat = 280
+    static var composerMinimumCornerRadius: CGFloat { InterfaceScale.metric(12) }
+    static var channelListTopPadding: CGFloat { InterfaceScale.metric(10) }
+    static var memberListWidth: CGFloat { InterfaceScale.metric(280) }
     /// Native toolbar search keeps its own outer item margin. An eight-point
     /// field inset centers the visible glass inside the fixed inspector pane.
-    static let toolbarPaneEdgeInset: CGFloat = 8
-    static let toolbarSearchMaximumFieldWidth: CGFloat =
+    static var toolbarPaneEdgeInset: CGFloat { InterfaceScale.metric(8) }
+    static var toolbarSearchMaximumFieldWidth: CGFloat {
         memberListWidth - (toolbarPaneEdgeInset * 2)
-    static let emojiPickerWidth: CGFloat = 520
-    static let pickerSearchHeaderHeight: CGFloat = 48
-    static let pickerSearchHeaderInset: CGFloat = 15
-    static let pickerSearchHeaderSpacing: CGFloat = 9
+    }
+    static var emojiPickerWidth: CGFloat { InterfaceScale.metric(520) }
+    static var pickerSearchHeaderHeight: CGFloat { InterfaceScale.metric(48) }
+    static var pickerSearchHeaderInset: CGFloat { InterfaceScale.metric(15) }
+    static var pickerSearchHeaderSpacing: CGFloat { InterfaceScale.metric(9) }
     static let pickerSearchHeaderIconSize: CGFloat = 14
     static let pickerSearchHeaderFontSize: CGFloat = 15
 }
 
 nonisolated enum ChatDetailLayoutPolicy {
-    static let timelineTopPadding: CGFloat = 12
-    static let timelineBottomPadding: CGFloat = 12
+    static var timelineTopPadding: CGFloat { InterfaceScale.metric(12) }
+    static var timelineBottomPadding: CGFloat { InterfaceScale.metric(12) }
     /// The former SwiftUI scroll view retained its seven-point soft-edge
     /// overlap in addition to the stack padding when a width reflow exposed
     /// the first intersecting row.
-    static let timelineWidthReflowTopInset: CGFloat =
-        timelineTopPadding + 7
-    static let newMessagesButtonSpacing: CGFloat = 10
-    static let defaultFloatingFooterHeight: CGFloat =
-        ChatChromeMetrics.composerControlHeight + 12 + 18
+    static var timelineWidthReflowTopInset: CGFloat {
+        timelineTopPadding + InterfaceScale.metric(7)
+    }
+    static var newMessagesButtonSpacing: CGFloat { InterfaceScale.metric(10) }
+    static var defaultFloatingFooterHeight: CGFloat {
+        ChatChromeMetrics.composerControlHeight + InterfaceScale.metric(12 + 18)
+    }
 
     static func bottomContentInset(measuredFooterHeight: CGFloat) -> CGFloat {
         guard measuredFooterHeight.isFinite else { return defaultFloatingFooterHeight }

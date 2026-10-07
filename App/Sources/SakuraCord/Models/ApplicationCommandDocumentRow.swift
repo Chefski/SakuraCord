@@ -14,7 +14,7 @@ struct ApplicationCommandDocumentRow: Identifiable {
     let showsIcon: Bool
     let isFrequent: Bool
 
-    var height: CGFloat { command == nil ? 30 : 46 }
+    var height: CGFloat { InterfaceScale.metric(command == nil ? 30 : 46) }
 
     init(section: ApplicationCommandSection, command: ApplicationCommand? = nil) {
         sectionID = section.id

@@ -40,7 +40,7 @@ struct MediaViewer: View {
         let transitionSource = transitionSources[item.id]
         let usesSourceTransition = transitionSource != nil
 
-        GlassEffectContainer(spacing: 12) {
+        GlassEffectContainer(spacing: InterfaceScale.metric(12)) {
             GeometryReader { proxy in
                 ZStack {
                     if let transitionSource {
@@ -104,7 +104,7 @@ struct MediaViewer: View {
                         itemCount: presentation.items.count
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .padding(.leading, 72)
+                    .padding(.leading, InterfaceScale.metric(72))
                     .padding(
                         .top,
                         MediaViewerTopChromeMetrics.outerPadding
@@ -130,7 +130,7 @@ struct MediaViewer: View {
                         close: close
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                    .padding(.trailing, 16)
+                    .padding(.trailing, InterfaceScale.metric(16))
                     .padding(
                         .top,
                         MediaViewerTopChromeMetrics.outerPadding
@@ -150,7 +150,7 @@ struct MediaViewer: View {
                             moveBackward: { move(-1) },
                             moveForward: { move(1) }
                         )
-                        .padding(.horizontal, 18)
+                        .padding(.horizontal, InterfaceScale.metric(18))
                         .modifier(
                             MediaViewerChromePresentationEffect(
                                 isVisible: isVisible,
@@ -169,7 +169,7 @@ struct MediaViewer: View {
                             select: select
                         )
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                        .padding(.bottom, 14)
+                        .padding(.bottom, InterfaceScale.metric(14))
                         .modifier(
                             MediaViewerChromePresentationEffect(
                                 isVisible: isVisible,

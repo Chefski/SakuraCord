@@ -107,21 +107,21 @@ private struct ProfileStatusTextRepresentable: NSViewRepresentable {
         nsView textView: ProfileStatusNSTextView,
         context: Context
     ) -> CGSize? {
-        let width = proposal.width ?? (isExpanded ? 188 : 143)
+        let width = proposal.width ?? InterfaceScale.metric(isExpanded ? 188 : 143)
         textView.frame.size.width = width
         textView.textContainer?.containerSize = NSSize(width: width, height: .greatestFiniteMagnitude)
         guard let layoutManager = textView.layoutManager, let textContainer = textView.textContainer else {
-            return CGSize(width: width, height: fontSize + 3)
+            return CGSize(width: width, height: InterfaceScale.fontSize(fontSize) + InterfaceScale.metric(3))
         }
         layoutManager.ensureLayout(for: textContainer)
         let usedHeight = ceil(layoutManager.usedRect(for: textContainer).height)
-        return CGSize(width: width, height: max(fontSize + 3, usedHeight))
+        return CGSize(width: width, height: max(InterfaceScale.fontSize(fontSize) + InterfaceScale.metric(3), usedHeight))
     }
 
     private func attributedText() -> NSAttributedString {
         ProfileInlineAttributedText.make(
             source: source,
-            font: NSFont.systemFont(ofSize: fontSize),
+            font: NSFont.interfaceSystemFont(ofSize: fontSize),
             color: usesSecondaryColor ? .secondaryLabelColor : .labelColor,
             emojiImages: emojiImages,
             stylesLinks: false
@@ -178,7 +178,7 @@ private struct ProfileTextRepresentable: NSViewRepresentable {
         }
         context.coordinator.images = emojiImages
         context.coordinator.wasActive = editing?.isActive
-        textView.typingAttributes = ComposerEmojiAttributedText.textAttributes(.systemFont(ofSize: 14))
+        textView.typingAttributes = ComposerEmojiAttributedText.textAttributes(.interfaceSystemFont(ofSize: 14))
         textView.invalidateIntrinsicContentSize()
     }
 
@@ -191,16 +191,16 @@ private struct ProfileTextRepresentable: NSViewRepresentable {
         textView.frame.size.width = width
         textView.textContainer?.containerSize = NSSize(width: width, height: .greatestFiniteMagnitude)
         guard let layoutManager = textView.layoutManager, let textContainer = textView.textContainer else {
-            return CGSize(width: width, height: 20)
+            return CGSize(width: width, height: InterfaceScale.metric(20))
         }
         layoutManager.ensureLayout(for: textContainer)
-        return CGSize(width: width, height: max(18, ceil(layoutManager.usedRect(for: textContainer).height)))
+        return CGSize(width: width, height: max(InterfaceScale.metric(18), ceil(layoutManager.usedRect(for: textContainer).height)))
     }
 
     private func attributedText() -> NSAttributedString {
         ProfileInlineAttributedText.make(
             source: source,
-            font: NSFont.systemFont(ofSize: 14),
+            font: NSFont.interfaceSystemFont(ofSize: 14),
             color: .labelColor,
             emojiImages: emojiImages,
             stylesLinks: true
@@ -222,7 +222,7 @@ private struct ProfileTextRepresentable: NSViewRepresentable {
 
         func textViewDidChangeSelection(_ notification: Notification) {
             guard parent.editing != nil, let textView = notification.object as? NSTextView else { return }
-            textView.typingAttributes = ComposerEmojiAttributedText.textAttributes(.systemFont(ofSize: 14))
+            textView.typingAttributes = ComposerEmojiAttributedText.textAttributes(.interfaceSystemFont(ofSize: 14))
         }
 
         func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {

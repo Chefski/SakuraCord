@@ -116,7 +116,7 @@ private struct VoiceVolumeSettingsRow: View {
             Text(volume, format: .percent.precision(.fractionLength(0)))
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
-                .frame(width: 46, alignment: .trailing)
+                .frame(width: InterfaceScale.metric(46), alignment: .trailing)
         } label: {
             Text(title, bundle: #bundle)
         }
@@ -134,9 +134,9 @@ private struct VoiceMicrophoneTestRow: View {
     let state: SettingsViewState
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: InterfaceScale.metric(12)) {
             VoiceMicrophoneLevelMeter(tests: tests)
-            Spacer(minLength: 12)
+            Spacer(minLength: InterfaceScale.metric(12))
             Button(tests.isMicrophoneTestRunning || tests.isMicrophoneTestStarting ? "Stop Test" : "Test Microphone") {
                 toggleTest()
             }
@@ -175,7 +175,7 @@ private struct VoiceMicrophoneLevelMeter: View {
         let level = CGFloat(tests.microphoneLevel)
         Canvas { context, size in
             let count = max(1, Int(size.width / 6))
-            let spacing: CGFloat = 2
+            let spacing: CGFloat = InterfaceScale.metric(2)
             let width = (size.width - CGFloat(count - 1) * spacing) / CGFloat(count)
             let activeCount = Int((level * CGFloat(count)).rounded(.up))
             for index in 0 ..< count {
@@ -186,7 +186,7 @@ private struct VoiceMicrophoneLevelMeter: View {
                     : Color.secondary.opacity(0.25)))
             }
         }
-        .frame(width: 520, height: 16)
+        .frame(width: InterfaceScale.metric(520), height: InterfaceScale.metric(16))
         .transaction { $0.animation = nil }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Microphone level")

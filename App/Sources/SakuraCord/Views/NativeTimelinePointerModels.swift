@@ -193,9 +193,9 @@ nonisolated enum NativeTimelineAvatarPresentation {
     static func replyAvatarFrame(in replyContentFrame: CGRect) -> CGRect {
         CGRect(
             x: replyContentFrame.minX,
-            y: replyContentFrame.minY + 3,
-            width: 14,
-            height: 14
+            y: replyContentFrame.minY + InterfaceScale.metric(3),
+            width: InterfaceScale.metric(14),
+            height: InterfaceScale.metric(14)
         )
     }
 

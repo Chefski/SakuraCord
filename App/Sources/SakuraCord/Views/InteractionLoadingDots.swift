@@ -18,8 +18,8 @@ final class InteractionLoadingDots: NSView {
 
     // Discord's Dots: radius 3.5, centres 2.5 radii apart, a 1.2 s wave whose
     // dots trail one another by 0.15 s (doubled under Reduce Motion).
-    static let dotRadius: CGFloat = 3.5
-    static let size = CGSize(width: dotRadius * 7, height: dotRadius * 2)
+    static var dotRadius: CGFloat { InterfaceScale.metric(3.5) }
+    static var size: CGSize { CGSize(width: dotRadius * 7, height: dotRadius * 2) }
     private static let cycle: CFTimeInterval = 1.2
     private static let phases: [CFTimeInterval] = [0, 1.05, 0.9]
 

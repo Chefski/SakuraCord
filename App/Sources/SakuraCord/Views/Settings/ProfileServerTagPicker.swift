@@ -18,27 +18,27 @@ struct ProfileServerTagPicker: View {
             .accessibilityValue(identity?.tag ?? String(localized: "No Server Tag", bundle: #bundle))
             .escapeDismissiblePopover(isPresented: $isPresented) {
                 ScrollView {
-                    VStack(spacing: 2) {
+                    VStack(spacing: InterfaceScale.metric(2)) {
                         Button { editor.setServerTag(nil); isPresented = false } label: {
                             HStack {
                                 Text("No Server Tag", bundle: #bundle)
                                 Spacer()
                                 if identity?.guildID == nil { Image(systemName: "checkmark") }
                             }
-                            .padding(10).contentShape(Rectangle())
+                            .padding(InterfaceScale.metric(10)).contentShape(Rectangle())
                         }
                         .buttonStyle(PopoverRowButtonStyle(isSelected: identity?.guildID == nil))
                         ForEach(editor.snapshot?.serverTagGuilds ?? []) { guild in
                             if let tag = guild.profileTag, let text = tag.tag {
                                 Button { editor.setServerTag(tag); isPresented = false } label: {
-                                    HStack(spacing: 8) {
-                                        AvatarView(name: guild.name, url: guild.iconURL, size: 20)
+                                    HStack(spacing: InterfaceScale.metric(8)) {
+                                        AvatarView(name: guild.name, url: guild.iconURL, size: InterfaceScale.metric(20))
                                         Text(guild.name).lineLimit(1)
-                                        Spacer(minLength: 4)
+                                        Spacer(minLength: InterfaceScale.metric(4))
                                         ProfileServerTag(identity: tag)
                                         if identity?.guildID == guild.id { Image(systemName: "checkmark") }
                                     }
-                                    .padding(6).contentShape(Rectangle())
+                                    .padding(InterfaceScale.metric(6)).contentShape(Rectangle())
                                 }
                                 .buttonStyle(PopoverRowButtonStyle(isSelected: identity?.guildID == guild.id))
                                 .accessibilityLabel("\(guild.name), Server Tag: \(text)")
@@ -46,9 +46,9 @@ struct ProfileServerTagPicker: View {
                             }
                         }
                     }
-                    .padding(6)
+                    .padding(InterfaceScale.metric(6))
                 }
-                .frame(width: 360, height: min(400, CGFloat((editor.snapshot?.serverTagGuilds.count ?? 0) + 1) * 44 + 12))
+                .frame(width: InterfaceScale.metric(360), height: min(400, CGFloat((editor.snapshot?.serverTagGuilds.count ?? 0) + 1) * 44 + 12))
                 .onExitCommand { isPresented = false }
             }
         }

@@ -17,7 +17,7 @@ struct InteractionModalView: View {
             Divider()
             ScrollViewReader { proxy in
                 ScrollView(.vertical) {
-                    VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: InterfaceScale.metric(14)) {
                         ForEach(form.modal.nodes) { node in
                             nodeView(node)
                         }
@@ -26,12 +26,12 @@ struct InteractionModalView: View {
                                 "This form uses a field SakuraCord can’t show yet, so it can’t be submitted here.",
                                 systemImage: "exclamationmark.triangle"
                             )
-                            .font(.callout)
+                            .font(.interface(.callout))
                             .foregroundStyle(.orange)
                         }
                     }
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 16)
+                    .padding(.horizontal, InterfaceScale.metric(18))
+                    .padding(.vertical, InterfaceScale.metric(16))
                     .disabled(form.isSubmitting)
                 }
                 .scrollBounceBehavior(.always, axes: .vertical)
@@ -46,22 +46,22 @@ struct InteractionModalView: View {
             }
             if let error = form.formError {
                 Label(error, systemImage: "exclamationmark.circle.fill")
-                    .font(.callout)
+                    .font(.interface(.callout))
                     .foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 18)
-                    .padding(.bottom, 12)
+                    .padding(.horizontal, InterfaceScale.metric(18))
+                    .padding(.bottom, InterfaceScale.metric(12))
             }
             Divider()
             HStack {
                 ModalGlassButton(symbol: "xmark", label: "Cancel") { dismiss?() }
                     .disabled(form.isSubmitting)
-                Spacer(minLength: 16)
+                Spacer(minLength: InterfaceScale.metric(16))
                 ModalGlassButton(symbol: "paperplane.fill", label: "Submit", primary: true, isLoading: form.isSubmitting, action: submit)
                     .disabled(form.isSubmitting || !form.isSubmittable)
                     .keyboardShortcut(.return, modifiers: .command)
             }
-            .padding(12)
+            .padding(InterfaceScale.metric(12))
         }
         .frame(width: min(500, availableSize.width))
         .task {
@@ -76,21 +76,21 @@ struct InteractionModalView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 12) {
-            CommandApplicationIcon(application: form.modal.application, size: 34)
+        HStack(spacing: InterfaceScale.metric(12)) {
+            CommandApplicationIcon(application: form.modal.application, size: InterfaceScale.metric(34))
             VStack(alignment: .leading, spacing: 1) {
                 Text(form.modal.title)
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.interfaceSystem(size: 17, weight: .semibold))
                     .lineLimit(2)
                 Text(form.modal.application.name)
-                    .font(.callout)
+                    .font(.interface(.callout))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 14)
+        .padding(.horizontal, InterfaceScale.metric(18))
+        .padding(.vertical, InterfaceScale.metric(14))
     }
 
     private func submit() {
@@ -102,7 +102,7 @@ struct InteractionModalView: View {
     private func nodeView(_ node: ModalNode) -> AnyView {
         switch node {
         case let .actionRow(_, children):
-            return AnyView(VStack(alignment: .leading, spacing: 14) {
+            return AnyView(VStack(alignment: .leading, spacing: InterfaceScale.metric(14)) {
                 ForEach(children) { nodeView($0) }
             })
         case let .label(_, label, description, child):
@@ -121,7 +121,7 @@ struct InteractionModalView: View {
         case let .textDisplay(_, content):
             return AnyView(
                 Text(Self.markdown(content))
-                    .font(.body)
+                    .font(.interface(.body))
                     .foregroundStyle(.primary)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -141,7 +141,7 @@ struct InteractionModalView: View {
         case let .unsupported(_, type):
             return AnyView(
                 Label("Unsupported form field (type \(type))", systemImage: "questionmark.square.dashed")
-                    .font(.callout)
+                    .font(.interface(.callout))
                     .foregroundStyle(.secondary)
             )
         }
@@ -195,23 +195,23 @@ private struct InteractionModalFieldGroup<Content: View>: View {
     @ViewBuilder let content: () -> Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 3) {
-                Text(label).font(.system(size: 13, weight: .semibold))
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(6)) {
+            HStack(spacing: InterfaceScale.metric(3)) {
+                Text(label).font(.interfaceSystem(size: 13, weight: .semibold))
                 if isRequired {
-                    Text("*").font(.system(size: 13, weight: .semibold)).foregroundStyle(.red)
+                    Text("*").font(.interfaceSystem(size: 13, weight: .semibold)).foregroundStyle(.red)
                         .accessibilityLabel("required")
                 }
             }
             if let description, !description.isEmpty {
                 Text(InteractionModalView.markdown(description))
-                    .font(.callout)
+                    .font(.interface(.callout))
                     .foregroundStyle(.secondary)
             }
             content()
             if let error {
                 Label(error, systemImage: "exclamationmark.circle.fill")
-                    .font(.callout)
+                    .font(.interface(.callout))
                     .foregroundStyle(.red)
                     .transition(.opacity)
             }
@@ -224,7 +224,7 @@ private struct InteractionModalFieldGroup<Content: View>: View {
 private struct InteractionModalFieldBackground: ViewModifier {
     var isFocused = false
     var hasError = false
-    var cornerRadius: CGFloat = 14
+    var cornerRadius: CGFloat = InterfaceScale.metric(14)
 
     func body(content: Content) -> some View {
         content
@@ -252,7 +252,7 @@ private struct InteractionModalTextField: View {
     var body: some View {
         let binding = Binding(get: { form.text(for: control) }, set: { form.setText($0, for: control) })
         let count = form.text(for: control).unicodeScalars.count
-        VStack(alignment: .trailing, spacing: 3) {
+        VStack(alignment: .trailing, spacing: InterfaceScale.metric(3)) {
             Group {
                 if style == .paragraph {
                     TextField(placeholder ?? "", text: binding, axis: .vertical)
@@ -266,15 +266,15 @@ private struct InteractionModalTextField: View {
             .tint(SakuraCordAccentColor.color)
             .focused(focus, equals: control.customID)
             .disabled(control.isDisabled)
-            .padding(.horizontal, 11)
-            .padding(.vertical, 9)
+            .padding(.horizontal, InterfaceScale.metric(11))
+            .padding(.vertical, InterfaceScale.metric(9))
             .modifier(InteractionModalFieldBackground(
                 isFocused: focus.wrappedValue == control.customID,
                 hasError: form.errors[control.customID] != nil
             ))
             if let maximum, count > maximum * 3 / 4 || style == .paragraph {
                 Text("\(count)/\(maximum)")
-                    .font(.caption)
+                    .font(.interface(.caption))
                     .monospacedDigit()
                     .foregroundStyle(count >= maximum ? .orange : .secondary)
             }
@@ -314,9 +314,9 @@ private struct InteractionModalEmoji: View {
 
     var body: some View {
         if let url = emoji.imageURL(size: 48) {
-            AnimatedRemoteImage(url: url).frame(width: 20, height: 20)
+            AnimatedRemoteImage(url: url).frame(width: InterfaceScale.metric(20), height: InterfaceScale.metric(20))
         } else {
-            Text(emoji.name).font(.system(size: 17))
+            Text(emoji.name).font(.interfaceSystem(size: 17))
         }
     }
 }
@@ -404,7 +404,7 @@ private struct InteractionModalRadioGroup: View {
 
     var body: some View {
         let selected = form.radioValue(for: control)
-        VStack(spacing: 4) {
+        VStack(spacing: InterfaceScale.metric(4)) {
             ForEach(options) { option in
                 let isSelected = selected == option.value
                 Button { form.setRadio(option.value, for: control) } label: {
@@ -430,7 +430,7 @@ private struct InteractionModalCheckboxGroup: View {
 
     var body: some View {
         let selected = form.selectedValues(for: control)
-        VStack(spacing: 4) {
+        VStack(spacing: InterfaceScale.metric(4)) {
             ForEach(options) { option in
                 let isSelected = selected.contains(option.value)
                 // Discord disables unchecked choices once the maximum is reached.
@@ -456,23 +456,23 @@ private struct InteractionModalChoiceRow: View {
     let isSelected: Bool
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
+        HStack(alignment: .firstTextBaseline, spacing: InterfaceScale.metric(10)) {
             Image(systemName: symbol)
-                .font(.system(size: 16))
+                .font(.interfaceSystem(size: 16))
                 .foregroundStyle(isSelected ? AnyShapeStyle(SakuraCordAccentColor.color) : AnyShapeStyle(.secondary))
             VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 6) {
+                HStack(spacing: InterfaceScale.metric(6)) {
                     if let emoji = option.emoji { InteractionModalEmoji(emoji: emoji) }
                     Text(option.label).foregroundStyle(.primary)
                 }
                 if let description = option.description {
-                    Text(description).font(.callout).foregroundStyle(.secondary)
+                    Text(description).font(.interface(.callout)).foregroundStyle(.secondary)
                 }
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 11)
-        .padding(.vertical, 8)
+        .padding(.horizontal, InterfaceScale.metric(11))
+        .padding(.vertical, InterfaceScale.metric(8))
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .modifier(InteractionModalFieldBackground(isFocused: isSelected))
@@ -489,20 +489,20 @@ private struct InteractionModalCheckboxRow: View {
         let isChecked = form.isChecked(control)
         // Same row as checkbox-group choices so every modal control shares one shape.
         Button { form.setChecked(!isChecked, for: control) } label: {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: InterfaceScale.metric(10)) {
                 Image(systemName: isChecked ? "checkmark.square.fill" : "square")
-                    .font(.system(size: 16))
+                    .font(.interfaceSystem(size: 16))
                     .foregroundStyle(isChecked ? AnyShapeStyle(SakuraCordAccentColor.color) : AnyShapeStyle(.secondary))
                 VStack(alignment: .leading, spacing: 1) {
                     Text(label).foregroundStyle(.primary)
                     if let description, !description.isEmpty {
-                        Text(InteractionModalView.markdown(description)).font(.callout).foregroundStyle(.secondary)
+                        Text(InteractionModalView.markdown(description)).font(.interface(.callout)).foregroundStyle(.secondary)
                     }
                 }
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 11)
-            .padding(.vertical, 8)
+            .padding(.horizontal, InterfaceScale.metric(11))
+            .padding(.vertical, InterfaceScale.metric(8))
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
             .modifier(InteractionModalFieldBackground(isFocused: isChecked))
@@ -525,43 +525,43 @@ private struct InteractionModalFileUpload: View {
 
     var body: some View {
         let files = form.files(for: control)
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(6)) {
             ForEach(files) { file in
-                HStack(spacing: 9) {
+                HStack(spacing: InterfaceScale.metric(9)) {
                     Image(nsImage: NSWorkspace.shared.icon(forFile: file.url.path))
-                        .resizable().scaledToFit().frame(width: 26, height: 26)
+                        .resizable().scaledToFit().frame(width: InterfaceScale.metric(26), height: InterfaceScale.metric(26))
                     VStack(alignment: .leading, spacing: 1) {
                         Text(file.name).lineLimit(1).truncationMode(.middle)
                         if let size = file.byteCount {
                             Text(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
-                                .font(.caption).foregroundStyle(.secondary)
+                                .font(.interface(.caption)).foregroundStyle(.secondary)
                         }
                     }
-                    Spacer(minLength: 6)
-                    HoverActionButton(systemImage: "xmark", help: "Remove \(file.name)", diameter: 26) {
+                    Spacer(minLength: InterfaceScale.metric(6))
+                    HoverActionButton(systemImage: "xmark", help: "Remove \(file.name)", diameter: InterfaceScale.metric(26)) {
                         form.removeFile(file, from: control)
                     }
                     .foregroundStyle(.secondary)
                 }
-                .padding(.horizontal, 9)
-                .padding(.vertical, 6)
+                .padding(.horizontal, InterfaceScale.metric(9))
+                .padding(.vertical, InterfaceScale.metric(6))
                 .modifier(InteractionModalFieldBackground())
             }
             if files.count < maximum {
                 Button { isImporterPresented = true } label: {
-                    VStack(spacing: 4) {
-                        Image(systemName: "arrow.up.doc").font(.title3)
-                        Text("Drop files here or click to browse").font(.callout)
-                        Text(hint).font(.caption).foregroundStyle(.secondary)
+                    VStack(spacing: InterfaceScale.metric(4)) {
+                        Image(systemName: "arrow.up.doc").font(.interface(.title3))
+                        Text("Drop files here or click to browse").font(.interface(.callout))
+                        Text(hint).font(.interface(.caption)).foregroundStyle(.secondary)
                     }
-                    .frame(maxWidth: .infinity, minHeight: 74)
+                    .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(74))
                     .contentShape(Rectangle())
                     .background(
                         .quaternary.opacity(isDropTarget ? 0.9 : 0.35),
-                        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        in: RoundedRectangle(cornerRadius: InterfaceScale.metric(14), style: .continuous)
                     )
                     .overlay {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        RoundedRectangle(cornerRadius: InterfaceScale.metric(14), style: .continuous)
                             .strokeBorder(
                                 form.errors[control.customID] != nil ? Color.red.opacity(0.8) : Color.secondary.opacity(0.5),
                                 style: StrokeStyle(lineWidth: 1, dash: [5, 4])
@@ -576,7 +576,7 @@ private struct InteractionModalFileUpload: View {
                 } isTargeted: { isDropTarget = $0 }
             } else {
                 Label("File upload limit reached. Remove some files to upload new ones.", systemImage: "tray.full")
-                    .font(.callout)
+                    .font(.interface(.callout))
                     .foregroundStyle(.secondary)
             }
         }

@@ -20,61 +20,61 @@ struct ProfileGameWidgetCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(12)) {
             HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(kind.title).font(.system(size: 14, weight: .medium))
+                VStack(alignment: .leading, spacing: InterfaceScale.metric(2)) {
+                    Text(kind.title).font(.interfaceSystem(size: 14, weight: .medium))
                     if editor != nil {
-                        Text(kind == .favorite ? "Choose 1 game" : "Add up to \(kind.capacity) games").font(.system(size: 12))
+                        Text(kind == .favorite ? "Choose 1 game" : "Add up to \(kind.capacity) games").font(.interfaceSystem(size: 12))
                     }
                 }
                 Spacer()
 
             }
-            .padding(.trailing, editor == nil ? 0 : 24)
+            .padding(.trailing, editor == nil ? 0 : InterfaceScale.metric(24))
             if isGrid, !games.isEmpty {
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 16), count: 4), spacing: 16) {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: InterfaceScale.metric(16)), count: 4), spacing: InterfaceScale.metric(16)) {
                     ForEach(visibleGames) { game in
                         ProfileWidgetGameLink(game: records.first { $0.id == game.id }, animates: animates, open: gameAction)
                             .aspectRatio(3 / 4, contentMode: .fit)
                             .modifier(gameActions(game))
-                            .contentShape(.interaction, .rect(cornerRadius: 8))
+                            .contentShape(.interaction, .rect(cornerRadius: InterfaceScale.metric(8)))
                     }
                     if editor != nil, games.count < kind.capacity {
                         addGameButton.aspectRatio(3 / 4, contentMode: .fit)
                     }
                 }
                 if editor == nil, games.count > 8 {
-                    expansionButton.font(.system(size: 12, weight: .medium))
+                    expansionButton.font(.interfaceSystem(size: 12, weight: .medium))
                 }
             } else if kind == .favorite, let game = games.first {
                 gameRow(game)
             } else if !games.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: InterfaceScale.metric(12)) {
                     ForEach(visibleGames) { game in
                         gameRow(game)
-                            .contentShape(.interaction, .rect(cornerRadius: 8))
+                            .contentShape(.interaction, .rect(cornerRadius: InterfaceScale.metric(8)))
                     }
                 }
                 if editor != nil, kind == .rotation, !games.isEmpty, games.count < kind.capacity {
-                    addGameButton.frame(width: 88, height: 116)
+                    addGameButton.frame(width: InterfaceScale.metric(88), height: InterfaceScale.metric(116))
                 }
                 if editor == nil, kind == .rotation, games.count > 2 {
-                    expansionButton.font(.system(size: 14, weight: .medium))
+                    expansionButton.font(.interfaceSystem(size: 14, weight: .medium))
                 }
             }
             if editor != nil, games.isEmpty {
                 ProfileWidgetEmptyGameLayout(isGrid: isGrid) {
                     addGameButton
-                    Text(emptyMessage).font(.system(size: 12))
+                    Text(emptyMessage).font(.interfaceSystem(size: 12))
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
 
         }
-        .padding(16)
+        .padding(InterfaceScale.metric(16))
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.primary.opacity(0.035), in: ConcentricRectangle(cornerRadius: 16))
+        .background(.primary.opacity(0.035), in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(16)))
         .windowModal(item: $selectedGame) { game in
             if let editor { ProfileGameView(model: editor.model, game: game, editor: editor) }
         }
@@ -114,10 +114,10 @@ struct ProfileGameWidgetCard: View {
 
     private var addGameButton: some View {
         Button { showsPicker = true } label: {
-            Image(systemName: "plus").font(.system(size: 24))
+            Image(systemName: "plus").font(.interfaceSystem(size: 24))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .modifier(CompactProfileWidgetHover(backgroundOpacity: 0.05, cornerRadius: 8))
-                .contentShape(.rect(cornerRadius: 8))
+                .modifier(CompactProfileWidgetHover(backgroundOpacity: 0.05, cornerRadius: InterfaceScale.metric(8)))
+                .contentShape(.rect(cornerRadius: InterfaceScale.metric(8)))
         }
         .buttonStyle(.plain)
         .disabled(editor?.canEditWidgets != true || games.count >= kind.capacity)
@@ -171,19 +171,19 @@ private struct ProfileWidgetGameRow: View {
     @State private var isNameHovered = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: 16) {
+        HStack(alignment: .top, spacing: InterfaceScale.metric(16)) {
             ProfileWidgetGameLink(game: record, animates: animates, open: openGame)
-                .frame(width: 88, height: 116)
+                .frame(width: InterfaceScale.metric(88), height: InterfaceScale.metric(116))
                 .modifier(actions)
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(8)) {
                 HStack(alignment: .top) {
                     if let record, let openGame, record.metadata?.isProfileAvailable != false {
                         Button { openGame(record) } label: {
                             Text(record.name).underline(isNameHovered)
                         }
-                        .buttonStyle(.plain).font(.system(size: 14, weight: .medium))
+                        .buttonStyle(.plain).font(.interfaceSystem(size: 14, weight: .medium))
                         .onModalHover { isNameHovered = $0 }
-                    } else { Text(record?.name ?? "Game").font(.system(size: 14, weight: .medium)) }
+                    } else { Text(record?.name ?? "Game").font(.interfaceSystem(size: 14, weight: .medium)) }
                     Spacer(minLength: 0)
                 }
                 ProfileWidgetGameComment(comment: game.comment, displayName: displayName, editable: editable && kind == .favorite) { value in
@@ -213,12 +213,12 @@ private struct ProfileWidgetGameComment: View {
 
     var body: some View {
         if editable || !(comment ?? "").isEmpty {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(4)) {
                 HStack {
                     Label {
                         Text("\(displayName) says:")
                     } icon: { Image(systemName: "quote.opening") }
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.interfaceSystem(size: 12, weight: .medium))
                     Spacer(minLength: 0)
                 }
                 if isEditing {
@@ -238,7 +238,7 @@ private struct ProfileWidgetGameComment: View {
                         .profileEditorTextHover()
                 } else if let comment { Text(comment).foregroundStyle(.secondary) }
             }
-            .font(.system(size: 12))
+            .font(.interfaceSystem(size: 12))
             .onChange(of: editable) { _, available in
                 if !available { isEditing = false; focused = false }
             }
@@ -283,13 +283,13 @@ private struct ProfileWidgetGameActions: ViewModifier {
                 if isEnabled, isHovered {
                     HoverActionPill(padding: showsReordering ? 3 : 4) {
                         if showsReordering {
-                            HoverActionButton(systemImage: "chevron.left", help: String(localized: "Move Game Backward", bundle: #bundle), diameter: 22) { backward?() }
+                            HoverActionButton(systemImage: "chevron.left", help: String(localized: "Move Game Backward", bundle: #bundle), diameter: InterfaceScale.metric(22)) { backward?() }
                                 .disabled(backward == nil)
-                            HoverActionButton(systemImage: "chevron.right", help: String(localized: "Move Game Forward", bundle: #bundle), diameter: 22) { forward?() }
+                            HoverActionButton(systemImage: "chevron.right", help: String(localized: "Move Game Forward", bundle: #bundle), diameter: InterfaceScale.metric(22)) { forward?() }
                                 .disabled(forward == nil)
                         }
                         HoverActionButton(systemImage: "trash", help: String(localized: "Remove Game", bundle: #bundle), role: .destructive, diameter: showsReordering ? 22 : nil, action: remove)
-                    }.padding(4)
+                    }.padding(InterfaceScale.metric(4))
                 }
             }
             .onModalHover { isHovered = $0 }
@@ -302,7 +302,7 @@ struct ProfileWidgetGameCover: View {
 
     var body: some View {
         ProfileWidgetImageView(url: game?.coverURL, animates: animates, contentMode: .fill)
-            .clipShape(.rect(cornerRadius: 8)).accessibilityLabel(game?.name ?? String(localized: "Game", bundle: #bundle))
+            .clipShape(.rect(cornerRadius: InterfaceScale.metric(8))).accessibilityLabel(game?.name ?? String(localized: "Game", bundle: #bundle))
             .help(game?.name ?? "")
     }
 }
@@ -325,6 +325,6 @@ private struct ProfileWidgetGameLink: View {
     private var cover: some View {
         Color.clear
             .overlay { ProfileWidgetGameCover(game: game, animates: animates) }
-            .clipShape(.rect(cornerRadius: 8))
+            .clipShape(.rect(cornerRadius: InterfaceScale.metric(8)))
     }
 }

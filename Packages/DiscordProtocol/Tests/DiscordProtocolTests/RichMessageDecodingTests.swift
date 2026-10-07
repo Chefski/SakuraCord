@@ -19,13 +19,15 @@ import Testing
         #"""
         {
           "id":"10","name":"Orange","position":2,"hoist":true,"color":16777215,
-          "colors":{"primary_color":16753920,"secondary_color":null,"tertiary_color":null}
+          "colors":{"primary_color":16753920,"secondary_color":null,"tertiary_color":null},
+          "tags":{"subscription_listing_id":"20","available_for_purchase":null}
         }
         """#.utf8
     )
     let role = try JSONDecoder().decode(GuildRoleDTO.self, from: data).domain
 
     #expect(role?.colorHex == 0xFFA500)
+    #expect(role?.isPurchasableSubscription == true)
 }
 
 @Test func `role color falls back to legacy field when enhanced color is absent`() throws {
@@ -35,6 +37,7 @@ import Testing
     let role = try JSONDecoder().decode(GuildRoleDTO.self, from: data).domain
 
     #expect(role?.colorHex == 0xFFA500)
+    #expect(role?.isPurchasableSubscription == false)
 }
 
 @Test func `partial message member merge does not erase known role ids`() {

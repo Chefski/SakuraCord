@@ -37,7 +37,7 @@ struct ProfileWidgetMenu: NSViewRepresentable {
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSView, context: Context) -> CGSize? {
-        CGSize(width: proposal.width ?? 24, height: proposal.height ?? 24)
+        CGSize(width: proposal.width ?? InterfaceScale.metric(24), height: proposal.height ?? InterfaceScale.metric(24))
     }
 
     final class Coordinator: NSObject {

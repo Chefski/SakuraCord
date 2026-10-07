@@ -3,6 +3,17 @@ import Foundation
 import SakuraCordModels
 
 extension AppModel {
+    /// Official EmojiStore resolves role-usable custom emoji before its cap.
+    /// Purchasable subscription emoji remain resolvable for locked previews.
+    func canResolveFrequentlyUsedEmoji(_ emoji: DiscordEmoji) -> Bool {
+        guard !emoji.roleIDs.isEmpty else { return true }
+        guard let memberRoles = currentUserRoleIDsByGuild[emoji.guildID] else { return false }
+        if !memberRoles.isDisjoint(with: emoji.roleIDs) { return true }
+        guard serverRailGuildsByID[emoji.guildID]?.features.contains("ROLE_SUBSCRIPTIONS_ENABLED") == true else { return false }
+        let roles = guildRolesByGuildID[emoji.guildID] ?? (emoji.guildID == selectedGuildID ? guildRoles : [])
+        return roles.contains { $0.isPurchasableSubscription == true && emoji.roleIDs.contains($0.id) }
+    }
+
     func loadEmojis(for guildID: GuildID) async {
         guard emojisByGuild[guildID] == nil, !loadingEmojiGuildIDs.contains(guildID) else { return }
         let session = accountSession()
@@ -65,14 +76,20 @@ extension AppModel {
     }
 
     func loadDiscordEmojiSettings() async {
-        guard !didAttemptDiscordEmojiSettings else { return }
+        guard !didAttemptDiscordEmojiSettings || emojiSettingsLoadTask != nil else { return }
         let session = accountSession()
         didAttemptDiscordEmojiSettings = true
-        let settings = try? await session.provider.emojiUserSettings()
-        guard isCurrentAccountSession(session) else { return }
-        if let settings {
-            applyDiscordEmojiSettings(settings)
+        let loading: Task<EmojiUserSettings?, Never>
+        if let task = emojiSettingsLoadTask {
+            loading = task
+        } else {
+            loading = Task { try? await session.provider.emojiUserSettings() }
+            emojiSettingsLoadTask = loading
         }
+        let settings = await loading.value
+        guard !Task.isCancelled, isCurrentAccountSession(session) else { return }
+        emojiSettingsLoadTask = nil
+        if let settings { applyDiscordEmojiSettings(settings) }
         // Destination discovery is local once bootstrap state is available.
         // A failed or timed-out settings enrichment must not leave Forward on
         // an infinite loading state; persisted local deltas still provide the
@@ -83,41 +100,16 @@ extension AppModel {
     }
 
     func applyDiscordEmojiSettings(_ settings: EmojiUserSettings) {
+        if let version = settings.dataVersion, let current = emojiSettingsDataVersion, version < current { return }
+        if let version = settings.dataVersion, let deferred = deferredEmojiSettings?.dataVersion, version < deferred { return }
         discordFavoriteEmojiKeys = settings.favoriteKeys
-        discordFrequentlyUsedEmojiKeys = settings.frequentlyUsedKeys
-        discordEmojiUsageScores = settings.usageScores
+        if emojiFrecencySaveTask != nil {
+            deferredEmojiSettings = settings
+        } else { updateEmojiFrecency(settings) }
         discordGuildAndChannelUsageScores = settings.guildAndChannelUsageScores
         discordSyncedGuildAndChannelUsageScores = settings.guildAndChannelUsageScores
         discordGuildAndChannelUsage = settings.guildAndChannelUsage
         discordGuildAndChannelUsageOrder = settings.guildAndChannelUsageOrder
-    }
-
-    func recordEmojiUse(_ key: String) {
-        emojiUsageCounts[key, default: 0] += 1
-        emojiRecentKeys.removeAll { $0 == key }
-        emojiRecentKeys.insert(key, at: 0)
-        if emojiRecentKeys.count > 50 {
-            emojiRecentKeys.removeLast(emojiRecentKeys.count - 50)
-        }
-        if persistsEmojiPreferences {
-            UserDefaults.standard.set(emojiUsageCounts, forKey: "dev.sakuracord.emoji-usage")
-            UserDefaults.standard.set(emojiRecentKeys, forKey: "dev.sakuracord.emoji-recents")
-        }
-    }
-
-    func clearLocalEmojiRecents() {
-        emojiRecentKeys.removeAll()
-        if persistsEmojiPreferences {
-            UserDefaults.standard.removeObject(forKey: "dev.sakuracord.emoji-recents")
-            UserDefaults.standard.set([String](), forKey: "dev.sakuracord.emoji-recents")
-        }
-    }
-
-    func resetLocalEmojiRanking() {
-        emojiUsageCounts.removeAll()
-        if persistsEmojiPreferences {
-            UserDefaults.standard.removeObject(forKey: "dev.sakuracord.emoji-usage")
-        }
     }
 
     @discardableResult
@@ -125,21 +117,18 @@ extension AppModel {
         discordKey: String,
         isFavorite: Bool
     ) async -> Bool {
+        if emojiFrecency.hasPendingUsage || reactionEmojiFrecency.hasPendingUsage || emojiFrecencySaveTask != nil {
+            return await flushEmojiFrecencyIfNeeded(favoriteKey: discordKey, isFavorite: isFavorite)
+        }
         let session = accountSession()
         do {
-            let settings = try await session.provider.setEmojiFavorite(
-                discordKey,
-                isFavorite: isFavorite
-            )
+            let settings = try await session.provider.setEmojiFavorite(discordKey, isFavorite: isFavorite)
             guard isCurrentAccountSession(session) else { return false }
             applyDiscordEmojiSettings(settings)
-            didAttemptDiscordEmojiSettings = true
             hasLoadedDiscordEmojiSettings = true
             forwardSearchSourceRevision &+= 1
             return true
-        } catch {
-            return false
-        }
+        } catch { return false }
     }
 
     func canComposeEmoji(_ emoji: DiscordEmoji) -> Bool {

@@ -11,8 +11,12 @@ extension AppModel {
     }
 
     func clearLocallyLearnedEmojiRanking() {
-        clearLocalEmojiRecents()
-        resetLocalEmojiRanking()
+        // These obsolete local-only rankings are no longer read. Pending uses
+        // belong to Discord-synchronized settings, not disposable learning.
+        guard persistsEmojiPreferences else { return }
+        for key in ["dev.sakuracord.emoji-recents", "dev.sakuracord.emoji-usage", "dev.sakuracord.favorite-emojis"] {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
     }
 
     func clearLocalActivity() async throws {

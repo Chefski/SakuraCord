@@ -234,15 +234,11 @@ public extension DiscordRESTProvider {
             soundID: soundID,
             isFavorite: isFavorite
         )
-        try await requestEmpty(
-            "/users/@me/settings-proto/2",
-            method: "PATCH",
-            body: ["settings": .string(update.data.base64EncodedString())]
-        )
-        cachedFrecencySettingsProto = update.data
-        cachedSoundboardUserSettings = update.settings
-        continuation?.yield(.soundboardUserSettingsChanged(update.settings))
-        return update.settings
+        let stored = try await persistFrecencySettingsPatch(frecencyField(8, in: update.data))
+        let settings = DiscordSettingsProto.soundboardSettings(from: stored)
+        cachedSoundboardUserSettings = settings
+        continuation?.yield(.soundboardUserSettingsChanged(settings))
+        return settings
     }
 
     func sendSoundboardSound(

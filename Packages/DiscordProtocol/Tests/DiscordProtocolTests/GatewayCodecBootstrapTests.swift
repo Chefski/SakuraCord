@@ -561,7 +561,7 @@ import Testing
                 "emojis":{
                     "op":"full_sync",
                     "items":[
-                        {"id":"200","name":"wave","animated":true,"available":true,"managed":true},
+                        {"id":"200","name":"wave","animated":true,"available":true,"managed":true,"roles":["300"]},
                         {"future_shape":true}
                     ]
                 }
@@ -584,9 +584,11 @@ import Testing
     #expect(emoji.guildID == GuildID(rawValue: 100))
     #expect(emoji.isAnimated)
     #expect(emoji.isManaged)
+    #expect(emoji.roleIDs == [RoleID(rawValue: 300)])
     #expect(try JSONDecoder().decode(DiscordEmoji.self, from: JSONEncoder().encode(emoji)) == emoji)
     let oldCache = Data(#"{"id":"200","name":"wave","isAnimated":true,"guildID":"100","isAvailable":true}"#.utf8)
     #expect(try !JSONDecoder().decode(DiscordEmoji.self, from: oldCache).isManaged)
+    #expect(try JSONDecoder().decode(DiscordEmoji.self, from: oldCache).roleIDs.isEmpty)
 
     let createData = Data(#"""
     {

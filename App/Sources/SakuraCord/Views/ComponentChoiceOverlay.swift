@@ -3,11 +3,11 @@ import SwiftUI
 
 @MainActor
 final class ComponentChoiceOverlayController {
-    private static let height: CGFloat = 360
+    private static var height: CGFloat { InterfaceScale.metric(360) }
 
     private var host: ComponentChoiceOverlayHost?
     private var escapeRegistration: PopoverEscapeKeyRegistration?
-    private var contentHeight: CGFloat = 320
+    private var contentHeight: CGFloat = InterfaceScale.metric(320)
     private var resizeObserver: NSObjectProtocol?
     private var scrollObserver: NSObjectProtocol?
     private weak var anchorView: NSView?

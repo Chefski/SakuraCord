@@ -15,11 +15,11 @@ struct ServerInviteCreationView: View {
             Divider()
             Group {
                 if store.isLoading {
-                    ProgressView().controlSize(.small).frame(maxWidth: .infinity).frame(height: 96)
+                    ProgressView().controlSize(.small).frame(maxWidth: .infinity).frame(height: InterfaceScale.metric(96))
                 } else if store.page == .list {
                     ScrollView(.vertical) {
                         GlassEffectContainer(spacing: 0) {
-                            VStack(spacing: 8) {
+                            VStack(spacing: InterfaceScale.metric(8)) {
                                 ForEach(store.invites) { invite in
                                     ServerInviteLinkRow(invite: invite, channelName: channel(invite.channelID)?.name,
                                                         isCopied: store.copiedCode == invite.reference.code) {
@@ -27,7 +27,7 @@ struct ServerInviteCreationView: View {
                                     }
                                 }
                             }
-                            .padding(8)
+                            .padding(InterfaceScale.metric(8))
                         }
                     }
                     .scrollBounceBehavior(.basedOnSize)
@@ -41,9 +41,9 @@ struct ServerInviteCreationView: View {
                 }
             }
             if let error = store.error {
-                Text(error).font(.callout).foregroundStyle(.red)
+                Text(error).font(.interface(.callout)).foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 20).padding(.bottom, 12)
+                    .padding(.horizontal, InterfaceScale.metric(20)).padding(.bottom, InterfaceScale.metric(12))
             }
             Divider()
             footer(store)
@@ -65,7 +65,7 @@ struct ServerInviteCreationView: View {
             } else {
                 ModalGlassButton(symbol: "xmark", label: "Close") { dismiss?() }
             }
-            Spacer(minLength: 16)
+            Spacer(minLength: InterfaceScale.metric(16))
             if store.page == .list {
                 ModalGlassButton(symbol: "plus", label: "New Invite", primary: true) {
                     store.error = nil
@@ -78,7 +78,7 @@ struct ServerInviteCreationView: View {
                     .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(12)
+        .padding(InterfaceScale.metric(12))
     }
 
     private func channel(_ id: ChannelID) -> Channel? {
@@ -91,18 +91,18 @@ private struct ServerInviteCreationHeader: View {
     let channel: Channel?
 
     var body: some View {
-        HStack(spacing: 12) {
-            GuildIconView(name: guild?.name ?? "Server", iconURL: guild?.iconURL, size: 40, cornerRadius: 12)
+        HStack(spacing: InterfaceScale.metric(12)) {
+            GuildIconView(name: guild?.name ?? "Server", iconURL: guild?.iconURL, size: InterfaceScale.metric(40), cornerRadius: InterfaceScale.metric(12))
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Invite to \(guild?.name ?? "Server")").font(.headline).lineLimit(1)
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(2)) {
+                Text("Invite to \(guild?.name ?? "Server")").font(.interface(.headline)).lineLimit(1)
                 if let channel {
-                    Text("New members land in #\(channel.name)").font(.callout).foregroundStyle(.secondary).lineLimit(1)
+                    Text("New members land in #\(channel.name)").font(.interface(.callout)).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
             Spacer(minLength: 0)
         }
-        .padding(20)
+        .padding(InterfaceScale.metric(20))
     }
 }
 
@@ -113,23 +113,23 @@ private struct ServerInviteLinkRow: View {
     let copy: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(spacing: InterfaceScale.metric(12)) {
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(2)) {
                 Text("discord.gg/\(invite.reference.code)")
-                    .font(.body.weight(.medium))
+                    .font(.interface(.body).weight(.medium))
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .textSelection(.enabled)
-                Text(details).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Text(details).font(.interface(.caption)).foregroundStyle(.secondary).lineLimit(1)
             }
-            Spacer(minLength: 8)
+            Spacer(minLength: InterfaceScale.metric(8))
             // 8-point insets keep this 32-point capsule concentric with the row and panel.
             Button(action: copy) {
                 Label(isCopied ? "Copied" : "Copy", systemImage: isCopied ? "checkmark" : "doc.on.doc")
-                    .font(.callout.weight(.semibold))
+                    .font(.interface(.callout).weight(.semibold))
                     .contentTransition(.symbolEffect(.replace))
-                    .padding(.horizontal, 12)
-                    .frame(height: 32)
+                    .padding(.horizontal, InterfaceScale.metric(12))
+                    .frame(height: InterfaceScale.metric(32))
                     .contentShape(Capsule())
             }
             .buttonStyle(.plain)
@@ -137,9 +137,9 @@ private struct ServerInviteLinkRow: View {
             .help("Copy Invite Link")
             .accessibilityLabel(isCopied ? "Copied" : "Copy Invite Link")
         }
-        .padding(.leading, 14)
-        .padding([.vertical, .trailing], 8)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .padding(.leading, InterfaceScale.metric(14))
+        .padding([.vertical, .trailing], InterfaceScale.metric(8))
+        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: InterfaceScale.metric(24), style: .continuous))
         .accessibilityElement(children: .combine)
     }
 
@@ -161,7 +161,7 @@ private struct ServerInviteSettingsForm: View {
     let allowsNever: Bool
 
     var body: some View {
-        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 16, verticalSpacing: 14) {
+        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: InterfaceScale.metric(16), verticalSpacing: InterfaceScale.metric(14)) {
             GridRow {
                 Text("Expire After").gridColumnAlignment(.trailing)
                 Picker("Expire After", selection: $settings.maxAge) {
@@ -181,7 +181,7 @@ private struct ServerInviteSettingsForm: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .padding(20)
+        .padding(InterfaceScale.metric(20))
         .onChange(of: allowsNever, initial: true) { _, allowed in
             if !allowed, settings.maxAge == .never { settings.maxAge = .sevenDays }
         }

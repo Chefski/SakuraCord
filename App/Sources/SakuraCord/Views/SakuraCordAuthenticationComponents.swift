@@ -2,10 +2,10 @@ import SwiftUI
 
 /// The outer card follows the 44-point pill controls plus its content inset.
 enum SakuraCordAuthenticationMetrics {
-    static let controlRadius: CGFloat = 22
-    static let cardInset: CGFloat = 36
-    static let cardRadius = controlRadius + cardInset
-    static let qrSize: CGFloat = 186
+    static var controlRadius: CGFloat { InterfaceScale.metric(22) }
+    static var cardInset: CGFloat { InterfaceScale.metric(36) }
+    static var cardRadius: CGFloat { controlRadius + cardInset }
+    static var qrSize: CGFloat { InterfaceScale.metric(186) }
 }
 
 struct SakuraCordAuthenticationCard<Content: View>: View {
@@ -21,7 +21,7 @@ struct SakuraCordAuthenticationCard<Content: View>: View {
                 : Double(index) / Double(colors.count - 1)
             return color.opacity(0.20 - 0.04 * progress)
         }
-        VStack(spacing: 18) { content }
+        VStack(spacing: InterfaceScale.metric(18)) { content }
             .padding(SakuraCordAuthenticationMetrics.cardInset)
             .background(
                 .regularMaterial,
@@ -47,7 +47,7 @@ struct SakuraCordAuthenticationCard<Content: View>: View {
                     )
             }
             .containerShape(.rect(cornerRadius: SakuraCordAuthenticationMetrics.cardRadius))
-            .shadow(color: .black.opacity(colorScheme == .dark ? 0.42 : 0.18), radius: 30, y: 18)
+            .shadow(color: .black.opacity(colorScheme == .dark ? 0.42 : 0.18), radius: InterfaceScale.metric(30), y: 18)
     }
 }
 
@@ -57,8 +57,8 @@ struct SakuraCordAuthenticationCloseButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: "xmark")
-                .font(.body.weight(.semibold))
-                .frame(width: 18, height: 18)
+                .font(.interface(.body).weight(.semibold))
+                .frame(width: InterfaceScale.metric(18), height: InterfaceScale.metric(18))
         }
         .buttonStyle(.glass)
         .buttonBorderShape(.circle)
@@ -74,13 +74,13 @@ struct SakuraCordOnboardingContinueButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 8) {
+            HStack(spacing: InterfaceScale.metric(8)) {
                 Text("Continue", bundle: #bundle)
                 Image(systemName: "arrow.right")
             }
-            .font(.body.weight(.semibold))
-            .padding(.horizontal, 20)
-            .frame(height: 44)
+            .font(.interface(.body).weight(.semibold))
+            .padding(.horizontal, InterfaceScale.metric(20))
+            .frame(height: InterfaceScale.metric(44))
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)

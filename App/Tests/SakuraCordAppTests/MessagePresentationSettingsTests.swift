@@ -230,22 +230,6 @@ import Testing
 }
 
 @MainActor
-@Test func `local emoji cleanup actions remain independently scoped`() {
-    let model = AppModel(launchMode: .offlineTesting)
-    model.emojiRecentKeys = ["one", "two"]
-    model.emojiUsageCounts = ["one": 4]
-
-    model.clearLocalEmojiRecents()
-    #expect(model.emojiRecentKeys.isEmpty)
-    #expect(model.emojiUsageCounts == ["one": 4])
-
-    model.emojiRecentKeys = ["two"]
-    model.resetLocalEmojiRanking()
-    #expect(model.emojiUsageCounts.isEmpty)
-    #expect(model.emojiRecentKeys == ["two"])
-}
-
-@MainActor
 @Test func `Settings cards resolve every category and control through search navigation`() throws {
     for page in SettingsPageID.allCases {
         let url = try #require(URL(string: "https://sakuracord.app/settings/\(page.deepLinkPath)"))

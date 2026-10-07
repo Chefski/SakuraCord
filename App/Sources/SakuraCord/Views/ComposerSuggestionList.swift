@@ -7,7 +7,7 @@ struct ComposerSuggestionList<Row: Identifiable, Content: View>: View where Row.
     let rows: [Row]
     let selectedID: String?
     let keyboardSelectionRevision: Int
-    var maximumHeight: CGFloat = 340
+    var maximumHeight: CGFloat = InterfaceScale.metric(340)
     let rowHeight: (Row) -> CGFloat
     let highlight: (Row) -> Void
     let activate: (Row) -> Void
@@ -35,7 +35,7 @@ struct ComposerSuggestionList<Row: Identifiable, Content: View>: View where Row.
             }
         }
         .frame(height: min(maximumHeight, heights.reduce(0, +)))
-        .padding(.horizontal, 6)
+        .padding(.horizontal, InterfaceScale.metric(6))
     }
 
     private func geometryRevision(ids: [String], heights: [CGFloat]) -> Int {

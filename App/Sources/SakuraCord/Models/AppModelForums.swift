@@ -413,6 +413,7 @@ extension AppModel {
                 }
             }
             guard isCurrentAccountSession(session) else { return false }
+            recordMessageEmojiUsage(draft.content)
             mergeForumCatalogue([post])
             applyForumPresentation()
             open(post)

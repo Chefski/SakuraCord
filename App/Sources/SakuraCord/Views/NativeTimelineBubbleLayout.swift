@@ -21,7 +21,7 @@ enum NativeTimelineBubbleLayout {
         let contentWidth: CGFloat
     }
 
-    static let horizontalPadding: CGFloat = 12
+    static var horizontalPadding: CGFloat { InterfaceScale.metric(12) }
 
     static func context(
         for message: Message,
@@ -54,13 +54,13 @@ enum NativeTimelineBubbleLayout {
         availableWidth: CGFloat,
         isEnabled: Bool
     ) -> CGFloat {
-        guard isEnabled else { return 80 }
-        let minimumWidth: CGFloat = 28
+        guard isEnabled else { return InterfaceScale.metric(80) }
+        let minimumWidth: CGFloat = InterfaceScale.metric(28)
         let maximumWidth = max(
             minimumWidth,
-            min(500, availableWidth * 0.68 - horizontalPadding * 2)
+            min(InterfaceScale.metric(500), availableWidth * 0.68 - horizontalPadding * 2)
         )
-        var preferredWidth = message.hasPoll ? min(456, maximumWidth) : minimumWidth
+        var preferredWidth = message.hasPoll ? min(InterfaceScale.metric(456), maximumWidth) : minimumWidth
         if let attributedContent = content.attributedContent {
             preferredWidth = max(
                 preferredWidth,
@@ -84,7 +84,7 @@ enum NativeTimelineBubbleLayout {
                 .map(CGFloat.init).max() ?? 360
             preferredWidth = max(
                 preferredWidth,
-                min(maximumWidth, max(180, attachmentWidth))
+                min(maximumWidth, max(InterfaceScale.metric(180), attachmentWidth))
             )
         }
         if !message.embeds.isEmpty || !message.components.isEmpty
@@ -93,7 +93,7 @@ enum NativeTimelineBubbleLayout {
         {
             preferredWidth = max(
                 preferredWidth,
-                min(420, maximumWidth)
+                min(InterfaceScale.metric(420), maximumWidth)
             )
         }
         if !message.stickers.isEmpty {
@@ -101,7 +101,7 @@ enum NativeTimelineBubbleLayout {
                 preferredWidth,
                 min(
                     maximumWidth,
-                    CGFloat(message.stickers.count) * 120 - 8
+                    CGFloat(message.stickers.count) * InterfaceScale.metric(120) - InterfaceScale.metric(8)
                 )
             )
         }
@@ -224,7 +224,7 @@ enum NativeTimelineBubbleLayout {
 
 @MainActor
 enum NativeTimelineBubbleDrawing {
-    static let cornerRadius: CGFloat = 18
+    static var cornerRadius: CGFloat { InterfaceScale.metric(18) }
 
     static let incomingFillColor = NSColor(name: nil) { appearance in
         switch appearance.bestMatch(from: [.darkAqua, .aqua]) {
@@ -270,61 +270,61 @@ enum NativeTimelineBubbleDrawing {
         let path = NSBezierPath()
         if region.isOutgoing {
             path.move(to: CGPoint(
-                x: region.frame.maxX - 4,
-                y: region.frame.maxY - 15
+                x: region.frame.maxX - InterfaceScale.metric(4),
+                y: region.frame.maxY - InterfaceScale.metric(15)
             ))
             path.curve(
-                to: CGPoint(x: region.frame.maxX + 10, y: region.frame.maxY),
+                to: CGPoint(x: region.frame.maxX + InterfaceScale.metric(10), y: region.frame.maxY),
                 controlPoint1: CGPoint(
-                    x: region.frame.maxX - 2,
-                    y: region.frame.maxY - 5
+                    x: region.frame.maxX - InterfaceScale.metric(2),
+                    y: region.frame.maxY - InterfaceScale.metric(5)
                 ),
                 controlPoint2: CGPoint(
-                    x: region.frame.maxX + 2,
+                    x: region.frame.maxX + InterfaceScale.metric(2),
                     y: region.frame.maxY
                 )
             )
             path.curve(
                 to: CGPoint(
-                    x: region.frame.maxX - 7,
-                    y: region.frame.maxY - 3
+                    x: region.frame.maxX - InterfaceScale.metric(7),
+                    y: region.frame.maxY - InterfaceScale.metric(3)
                 ),
                 controlPoint1: CGPoint(
-                    x: region.frame.maxX + 4,
+                    x: region.frame.maxX + InterfaceScale.metric(4),
                     y: region.frame.maxY
                 ),
                 controlPoint2: CGPoint(
-                    x: region.frame.maxX - 2,
+                    x: region.frame.maxX - InterfaceScale.metric(2),
                     y: region.frame.maxY - 1
                 )
             )
         } else {
             path.move(to: CGPoint(
-                x: region.frame.minX + 4,
-                y: region.frame.maxY - 15
+                x: region.frame.minX + InterfaceScale.metric(4),
+                y: region.frame.maxY - InterfaceScale.metric(15)
             ))
             path.curve(
-                to: CGPoint(x: region.frame.minX - 10, y: region.frame.maxY),
+                to: CGPoint(x: region.frame.minX - InterfaceScale.metric(10), y: region.frame.maxY),
                 controlPoint1: CGPoint(
-                    x: region.frame.minX + 2,
-                    y: region.frame.maxY - 5
+                    x: region.frame.minX + InterfaceScale.metric(2),
+                    y: region.frame.maxY - InterfaceScale.metric(5)
                 ),
                 controlPoint2: CGPoint(
-                    x: region.frame.minX - 2,
+                    x: region.frame.minX - InterfaceScale.metric(2),
                     y: region.frame.maxY
                 )
             )
             path.curve(
                 to: CGPoint(
-                    x: region.frame.minX + 7,
-                    y: region.frame.maxY - 3
+                    x: region.frame.minX + InterfaceScale.metric(7),
+                    y: region.frame.maxY - InterfaceScale.metric(3)
                 ),
                 controlPoint1: CGPoint(
-                    x: region.frame.minX - 4,
+                    x: region.frame.minX - InterfaceScale.metric(4),
                     y: region.frame.maxY
                 ),
                 controlPoint2: CGPoint(
-                    x: region.frame.minX + 2,
+                    x: region.frame.minX + InterfaceScale.metric(2),
                     y: region.frame.maxY - 1
                 )
             )

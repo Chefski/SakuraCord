@@ -14,11 +14,11 @@ struct ComposerPhotosPicker: ViewModifier {
     @State private var importToken: UUID?
 
     func body(content: Content) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(6)) {
             if importToken != nil {
-                HStack(spacing: 8) {
+                HStack(spacing: InterfaceScale.metric(8)) {
                     ProgressView().controlSize(.small)
-                    Text("Preparing photos…").font(.caption).foregroundStyle(.secondary)
+                    Text("Preparing photos…").font(.interface(.caption)).foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, ChatChromeMetrics.composerWindowInset + 8)
             }

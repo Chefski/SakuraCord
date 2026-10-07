@@ -32,7 +32,7 @@ extension AppModel {
         }
     }
 
-    func updateCommandFrecency(_ history: ApplicationCommandFrecencyHistory) {
+    func updateCommandFrecency(_ history: DiscordFrecencyHistory) {
         commandComposer.applyRemoteFrecency(history)
         threadCommandComposer.refreshFrecency()
     }

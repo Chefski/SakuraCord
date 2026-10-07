@@ -6,9 +6,9 @@ struct NativeTimelineSpoilerOverlayPresentation: Hashable {
 }
 
 nonisolated enum NativeTimelineSpoilerAppearance {
-    static let pillHeight: CGFloat = 24
-    static let pillHorizontalPadding: CGFloat = 10
-    static let textCornerRadius: CGFloat = 4
+    static var pillHeight: CGFloat { InterfaceScale.metric(24) }
+    static var pillHorizontalPadding: CGFloat { InterfaceScale.metric(10) }
+    static var textCornerRadius: CGFloat { InterfaceScale.metric(4) }
 
     static func textBackgroundAlpha(isHovered: Bool) -> CGFloat {
         isHovered ? 0.62 : 0.46
@@ -127,7 +127,7 @@ final class NativeTimelineSpoilerOverlayHost: NSView {
         pillLabel.attributedStringValue = NSAttributedString(
             string: "SPOILER",
             attributes: [
-                .font: NSFont.systemFont(ofSize: 11, weight: .bold),
+                .font: NSFont.interfaceSystemFont(ofSize: 11, weight: .bold),
                 .foregroundColor: NSColor.white,
                 .kern: 0.4,
                 .paragraphStyle: labelParagraphStyle,
@@ -259,7 +259,7 @@ final class NativeTimelineSpoilerOverlayHost: NSView {
         if window?.firstResponder === self {
             NSColor.sakuraCordAccentColor.setStroke()
             let focus = NSBezierPath(
-                concentricRoundedRect: bounds.insetBy(dx: 2, dy: 2),
+                concentricRoundedRect: bounds.insetBy(dx: InterfaceScale.metric(2), dy: InterfaceScale.metric(2)),
                 cornerRadius: max(1, cornerRadius - 2)
             )
             focus.lineWidth = 2

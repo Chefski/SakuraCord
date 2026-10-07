@@ -252,7 +252,7 @@ private struct TrustedDomainsEmptyState: View {
                 )
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 260, alignment: .center)
+        .frame(maxWidth: .infinity, minHeight: InterfaceScale.metric(260), alignment: .center)
     }
 }
 
@@ -261,11 +261,11 @@ private struct TrustedDomainRow: View {
     let onRemove: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: InterfaceScale.metric(12)) {
             Image(systemName: "globe")
                 .symbolRenderingMode(.monochrome)
                 .foregroundStyle(.secondary)
-                .frame(width: 18)
+                .frame(width: InterfaceScale.metric(18))
                 .accessibilityHidden(true)
 
             Text(domain)

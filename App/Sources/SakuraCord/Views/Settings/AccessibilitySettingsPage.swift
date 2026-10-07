@@ -37,7 +37,7 @@ struct AccessibilitySettingsPage: View {
 
     private var cosmeticsSection: some View {
         Section {
-            Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 10) {
+            Grid(alignment: .leading, horizontalSpacing: InterfaceScale.metric(24), verticalSpacing: InterfaceScale.metric(10)) {
                 GridRow {
                     Toggle("Profile effects", isOn: $value.disablesProfileEffects)
                         .accessibilityLabel("Disable profile effects")
@@ -99,7 +99,7 @@ struct AccessibilitySettingsPage: View {
 
     private var voiceOverSection: some View {
         Section {
-            Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 10) {
+            Grid(alignment: .leading, horizontalSpacing: InterfaceScale.metric(24), verticalSpacing: InterfaceScale.metric(10)) {
                 GridRow {
                     Toggle("Timestamps", isOn: $value.announcesTimestamps)
                         .settingsControlAnchor(.accessibilityAnnounceTimestamp, state: state)

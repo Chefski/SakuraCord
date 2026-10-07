@@ -15,7 +15,7 @@ struct CompactProfileWidgets: View {
     }
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: InterfaceScale.metric(8)) {
             ForEach(widgets.filter(hasMiniProfile)) { widget in
                 ProfileWidgetCard(widget: widget, resources: resources, animates: animates, compact: true, openProfile: open)
             }
@@ -47,28 +47,28 @@ struct ProfileWidgetCollectionButton: View {
 
     var body: some View {
         Button(action: open) {
-            HStack(spacing: 8) {
+            HStack(spacing: InterfaceScale.metric(8)) {
                 Text(isGameCollection ? "Game Collection" : "Widgets", bundle: #bundle)
-                    .font(.system(size: 13, weight: .semibold))
-                Spacer(minLength: 4)
+                    .font(.interfaceSystem(size: 13, weight: .semibold))
+                Spacer(minLength: InterfaceScale.metric(4))
                 ForEach(Array(gameIDs.prefix(3)), id: \.self) { id in
                     let game = resources?.games.first { $0.id == id }
                     ProfileWidgetImageView(url: game?.iconURL ?? game?.coverURL, animates: false, contentMode: .fill)
-                        .frame(width: 26, height: 26)
-                        .clipShape(.rect(cornerRadius: 6))
+                        .frame(width: InterfaceScale.metric(26), height: InterfaceScale.metric(26))
+                        .clipShape(.rect(cornerRadius: InterfaceScale.metric(6)))
                         .accessibilityHidden(true)
                 }
                 if gameIDs.count > 3 {
-                    Text("+\(gameIDs.count - 3)").font(.system(size: 11, weight: .semibold))
+                    Text("+\(gameIDs.count - 3)").font(.interfaceSystem(size: 11, weight: .semibold))
                 } else if gameIDs.isEmpty {
                     Text("\(widgets.count)").foregroundStyle(.secondary)
                 }
-                Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                Image(systemName: "chevron.right").font(.interfaceSystem(size: 10, weight: .semibold)).foregroundStyle(.secondary)
             }
-            .padding(.horizontal, 10)
-            .frame(height: 44)
+            .padding(.horizontal, InterfaceScale.metric(10))
+            .frame(height: InterfaceScale.metric(44))
             .modifier(CompactProfileWidgetHover(backgroundOpacity: 0.06))
-            .contentShape(ConcentricRectangle(cornerRadius: 10))
+            .contentShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(10)))
         }
         .buttonStyle(.plain)
         .help("View Full Profile")

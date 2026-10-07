@@ -112,9 +112,9 @@ private struct QuickSwitcherView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-                HStack(spacing: 11) {
+                HStack(spacing: InterfaceScale.metric(11)) {
                     Image(systemName: "magnifyingglass")
-                        .font(.system(size: 17, weight: .medium))
+                        .font(.interfaceSystem(size: 17, weight: .medium))
                         .foregroundStyle(.secondary)
                     QuickSwitcherSearchField(
                         text: $query,
@@ -133,8 +133,8 @@ private struct QuickSwitcherView: View {
                         .help("Clear search")
                     }
                 }
-                .padding(.horizontal, 18)
-                .frame(height: 58)
+                .padding(.horizontal, InterfaceScale.metric(18))
+                .frame(height: InterfaceScale.metric(58))
 
                 Divider()
 
@@ -153,14 +153,14 @@ private struct QuickSwitcherView: View {
                     activate: activate
                 )
             }
-            .frame(width: 570, height: 460)
-            .contentShape(ConcentricRectangle(cornerRadius: 18, style: .continuous))
+            .frame(width: InterfaceScale.metric(570), height: InterfaceScale.metric(460))
+            .contentShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(18), style: .continuous))
             .glassEffect(
                 .regular,
-                in: ConcentricRectangle(cornerRadius: 18, style: .continuous)
+                in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(18), style: .continuous)
             )
-            .containerShape(.rect(cornerRadius: 18, style: .continuous))
-            .shadow(color: .black.opacity(0.22), radius: 24, y: 14)
+            .containerShape(.rect(cornerRadius: InterfaceScale.metric(18), style: .continuous))
+            .shadow(color: .black.opacity(0.22), radius: InterfaceScale.metric(24), y: 14)
             .onContinuousHover(coordinateSpace: .local) { phase in
                 guard animationState.isInputActive else { return }
                 switch phase {
@@ -810,12 +810,12 @@ private final class QuickSwitcherResultCanvas: NSView, WindowModalInputParticipa
         updateTrackingAreas()
     }
 
-    private static let horizontalInset: CGFloat = 8
-    private static let contentInset: CGFloat = 10
-    private static let topInset: CGFloat = 8
-    private static let spacing: CGFloat = 2
-    private static let headingHeight: CGFloat = 28
-    private static let resultHeight: CGFloat = 34
+    private static var horizontalInset: CGFloat { InterfaceScale.metric(8) }
+    private static var contentInset: CGFloat { InterfaceScale.metric(10) }
+    private static var topInset: CGFloat { InterfaceScale.metric(8) }
+    private static var spacing: CGFloat { InterfaceScale.metric(2) }
+    private static var headingHeight: CGFloat { InterfaceScale.metric(28) }
+    private static var resultHeight: CGFloat { InterfaceScale.metric(34) }
 
     override var isFlipped: Bool { true }
 
@@ -986,22 +986,22 @@ private final class QuickSwitcherResultCanvas: NSView, WindowModalInputParticipa
         if let heading = row.heading {
             drawText(
                 heading.uppercased(),
-                font: .systemFont(ofSize: 11, weight: .semibold),
+                font: .interfaceSystemFont(ofSize: 11, weight: .semibold),
                 color: .secondaryLabelColor,
-                rect: CGRect(x: rect.minX + 10, y: rect.minY + 10, width: rect.width - 20, height: 15)
+                rect: CGRect(x: rect.minX + InterfaceScale.metric(10), y: rect.minY + InterfaceScale.metric(10), width: rect.width - InterfaceScale.metric(20), height: InterfaceScale.metric(15))
             )
             return
         }
 
         if selectedResultID == row.id {
             NSColor.labelColor.withAlphaComponent(0.09).setFill()
-            NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6).fill()
+            NSBezierPath(roundedRect: rect, xRadius: InterfaceScale.metric(6), yRadius: InterfaceScale.metric(6)).fill()
         }
 
-        let iconRect = CGRect(x: rect.minX + Self.contentInset, y: rect.minY + 6, width: 22, height: 22)
+        let iconRect = CGRect(x: rect.minX + Self.contentInset, y: rect.minY + InterfaceScale.metric(6), width: InterfaceScale.metric(22), height: InterfaceScale.metric(22))
         drawIcon(for: row, in: iconRect, context: context)
 
-        let trailingFont = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        let trailingFont = NSFont.interfaceSystemFont(ofSize: 13, weight: .semibold)
         let trailingWidth = row.trailingDetail.map {
             min(150, ceil(textSize($0, font: trailingFont).width))
         } ?? 0
@@ -1011,16 +1011,16 @@ private final class QuickSwitcherResultCanvas: NSView, WindowModalInputParticipa
                 trailing,
                 font: trailingFont,
                 color: .secondaryLabelColor,
-                rect: CGRect(x: trailingX, y: rect.minY + 9, width: trailingWidth, height: 18),
+                rect: CGRect(x: trailingX, y: rect.minY + InterfaceScale.metric(9), width: trailingWidth, height: InterfaceScale.metric(18)),
                 alignment: .right
             )
         }
 
         let textX = iconRect.maxX + 8
-        let remainingWidth = max(0, trailingX - (trailingWidth > 0 ? 10 : 0) - textX)
-        let titleFont = NSFont.systemFont(ofSize: 15, weight: .medium)
-        let inlineFont = NSFont.systemFont(ofSize: 12, weight: .medium)
-        let mentionFont = NSFont.systemFont(ofSize: 11, weight: .bold)
+        let remainingWidth = max(0, trailingX - (trailingWidth > 0 ? InterfaceScale.metric(10) : 0) - textX)
+        let titleFont = NSFont.interfaceSystemFont(ofSize: 15, weight: .medium)
+        let inlineFont = NSFont.interfaceSystemFont(ofSize: 12, weight: .medium)
+        let mentionFont = NSFont.interfaceSystemFont(ofSize: 11, weight: .bold)
         let mentionWidth = row.mentionCount > 0
             ? max(20, ceil(textSize(String(row.mentionCount), font: mentionFont).width) + 12) : 0
         let inlineWidth = row.inlineDetail.map {
@@ -1033,39 +1033,39 @@ private final class QuickSwitcherResultCanvas: NSView, WindowModalInputParticipa
             row.title,
             font: titleFont,
             color: .labelColor,
-            rect: CGRect(x: textX, y: rect.minY + 8, width: titleWidth, height: 19)
+            rect: CGRect(x: textX, y: rect.minY + InterfaceScale.metric(8), width: titleWidth, height: InterfaceScale.metric(19))
         )
         var horizontalOffset = textX + titleWidth
         if let inline = row.inlineDetail, inlineWidth > 0 {
-            horizontalOffset += 6
+            horizontalOffset += InterfaceScale.metric(6)
             drawText(
                 inline,
                 font: inlineFont,
                 color: .secondaryLabelColor,
                 rect: CGRect(
                     x: horizontalOffset,
-                    y: rect.minY + 10,
+                    y: rect.minY + InterfaceScale.metric(10),
                     width: inlineWidth,
-                    height: 16
+                    height: InterfaceScale.metric(16)
                 )
             )
             horizontalOffset += inlineWidth
         }
         if row.mentionCount > 0 {
-            horizontalOffset += 6
+            horizontalOffset += InterfaceScale.metric(6)
             let badge = CGRect(
                 x: horizontalOffset,
-                y: rect.minY + 7,
+                y: rect.minY + InterfaceScale.metric(7),
                 width: mentionWidth,
-                height: 20
+                height: InterfaceScale.metric(20)
             )
             NSColor.systemRed.setFill()
-            NSBezierPath(roundedRect: badge, xRadius: 5, yRadius: 5).fill()
+            NSBezierPath(roundedRect: badge, xRadius: InterfaceScale.metric(5), yRadius: InterfaceScale.metric(5)).fill()
             drawText(
                 String(row.mentionCount),
                 font: mentionFont,
                 color: .white,
-                rect: badge.offsetBy(dx: 0, dy: 3),
+                rect: badge.offsetBy(dx: 0, dy: InterfaceScale.metric(3)),
                 alignment: .center
             )
         }
@@ -1107,9 +1107,9 @@ private final class QuickSwitcherResultCanvas: NSView, WindowModalInputParticipa
                 context.fillEllipse(in: rect)
                 drawText(
                     String(row.title.prefix(1)).uppercased(),
-                    font: .systemFont(ofSize: 10, weight: .semibold),
+                    font: .interfaceSystemFont(ofSize: 10, weight: .semibold),
                     color: .white,
-                    rect: rect.offsetBy(dx: 0, dy: 5),
+                    rect: rect.offsetBy(dx: 0, dy: InterfaceScale.metric(5)),
                     alignment: .center
                 )
             }
@@ -1152,7 +1152,7 @@ private final class QuickSwitcherResultCanvas: NSView, WindowModalInputParticipa
         let destination = NativeTimelineSymbolGeometry.opticallyFitted(
             sourceSize: image.size,
             alignmentRect: image.alignmentRect,
-            in: rect.insetBy(dx: 2, dy: 2)
+            in: rect.insetBy(dx: InterfaceScale.metric(2), dy: InterfaceScale.metric(2))
         )
         image.draw(
             in: destination,
@@ -1295,7 +1295,7 @@ private struct QuickSwitcherSearchField: NSViewRepresentable {
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
-        field.font = .systemFont(ofSize: 19)
+        field.font = .interfaceSystemFont(ofSize: 19)
         field.placeholderString = placeholder
         field.setAccessibilityIdentifier("quick-switch-search")
         field.handleKeyDown = handleKeyDown
@@ -1307,6 +1307,11 @@ private struct QuickSwitcherSearchField: NSViewRepresentable {
             field.stringValue = text
         }
         field.placeholderString = placeholder
+        let font = NSFont.interfaceSystemFont(ofSize: 19)
+        if field.font != font {
+            field.font = font
+            (field.currentEditor() as? NSTextView)?.font = font
+        }
         field.handleKeyDown = handleKeyDown
         context.coordinator.handleKeyDown = handleKeyDown
         if isPresented,
@@ -1368,13 +1373,13 @@ private final class KeyHandlingTextField: NSTextField {
 
 private func overlayHeader(title: String, subtitle: String) -> some View {
     HStack {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title).font(.title2.weight(.semibold))
-            Text(subtitle).font(.callout).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: InterfaceScale.metric(3)) {
+            Text(title).font(.interface(.title2).weight(.semibold))
+            Text(subtitle).font(.interface(.callout)).foregroundStyle(.secondary)
         }
         Spacer()
     }
-    .padding(.horizontal, 20)
-    .padding(.top, 18)
-    .padding(.bottom, 14)
+    .padding(.horizontal, InterfaceScale.metric(20))
+    .padding(.top, InterfaceScale.metric(18))
+    .padding(.bottom, InterfaceScale.metric(14))
 }

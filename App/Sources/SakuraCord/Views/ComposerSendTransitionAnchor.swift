@@ -9,8 +9,8 @@ import UniformTypeIdentifiers
 @MainActor
 final class ComposerSendTransitionAnchor {
     /// The field's leading padding before its text, matching a bubble's.
-    static let fieldLeadingPadding: CGFloat = 11
-    static let fieldTrailingPadding: CGFloat = 4
+    static var fieldLeadingPadding: CGFloat { InterfaceScale.metric(11) }
+    static var fieldTrailingPadding: CGFloat { InterfaceScale.metric(4) }
 
     private final class AttachmentPreview {
         weak var view: NSView?
@@ -118,7 +118,7 @@ final class ComposerSendTransitionAnchor {
         } else {
             // Matches the icon inset in `LocalAttachmentThumbnail`.
             image = NSWorkspace.shared.icon(forFile: attachment.url.path)
-            bounds = view.bounds.insetBy(dx: 14, dy: 14)
+            bounds = view.bounds.insetBy(dx: InterfaceScale.metric(14), dy: InterfaceScale.metric(14))
         }
         guard image.size.width > 0, image.size.height > 0 else { return nil }
         let fitted = ComposerEmojiImageStore.aspectFitRect(imageSize: image.size, in: bounds)

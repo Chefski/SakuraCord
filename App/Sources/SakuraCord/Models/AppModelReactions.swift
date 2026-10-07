@@ -86,6 +86,7 @@ extension AppModel {
             )
         state.emoji = emoji
         state.desiredReacted.toggle()
+        if state.desiredReacted { recordReactionEmojiUsage(emoji) }
         state.generation &+= 1
         reactionMutations[key] = state
         applyCurrentUserReactionState(state.desiredReacted, for: key, emoji: emoji)

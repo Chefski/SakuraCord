@@ -25,7 +25,7 @@ extension AppModel {
         }
     }
 
-    func applyRemoteCommandFrecency(_ history: ApplicationCommandFrecencyHistory) {
+    func applyRemoteCommandFrecency(_ history: DiscordFrecencyHistory) {
         // A Gateway echo can arrive before the PATCH returns. Keep it from
         // replaying the already included prefix while that save is in flight.
         guard commandFrecencySaveTask == nil else {
@@ -52,6 +52,7 @@ extension AppModel {
             if delay > .zero { try? await Task.sleep(for: delay) }
             guard !Task.isCancelled, let self, isCurrentAccountSession(session) else { return }
             await flushCommandFrecencyIfNeeded()
+            await flushEmojiFrecencyIfNeeded()
             guard !Task.isCancelled, isCurrentAccountSession(session) else { return }
             scheduleCommandFrecencyFlush(
                 after: Self.commandFrecencyFlushInterval + .milliseconds(Int.random(in: 0 ..< 600_000))

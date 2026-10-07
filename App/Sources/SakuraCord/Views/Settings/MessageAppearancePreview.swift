@@ -49,11 +49,11 @@ struct MessageAppearancePreview: View {
                 Color.clear
             }
         }
-        .frame(height: 280)
+        .frame(height: InterfaceScale.metric(280))
         .background { SakuraCordThemeBackground() }
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: InterfaceScale.metric(10)))
         .overlay {
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: InterfaceScale.metric(10))
                 .strokeBorder(.separator.opacity(0.4), lineWidth: 1)
                 .allowsHitTesting(false)
         }

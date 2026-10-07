@@ -41,7 +41,9 @@ nonisolated struct KeyboardShortcutChord: Codable, Hashable, Sendable {
 
     init?(key: String, modifiers: KeyboardShortcutModifiers) {
         guard let character = key.first else { return nil }
-        let source = String(character)
+        // AppKit matches a "+" key equivalent to the unshifted "=" key where
+        // the two share a key, so both record and compare as one binding.
+        let source = character == "=" && !modifiers.contains(.shift) ? "+" : String(character)
         let lowered = source.lowercased(with: Locale(identifier: "en_US_POSIX"))
         self.key = lowered.count == 1 ? lowered : source
         self.modifiers = modifiers

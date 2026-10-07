@@ -96,7 +96,7 @@ enum ComposerEmojiAttributedText {
 
     static func make(
         _ source: String,
-        font: NSFont = .systemFont(ofSize: 15),
+        font: NSFont = .interfaceSystemFont(ofSize: 15),
         mentionPresentations: [String: MentionPresentation] = [:],
         imageProvider: (String) -> NSImage? = { ComposerEmojiImageStore.shared.cachedImage(for: $0) }
     ) -> NSAttributedString {
@@ -292,12 +292,12 @@ struct ComposerTextView: NSViewRepresentable {
     var onCompositionStateChange: ((Bool) -> Void)?
     var capturesUnfocusedTyping = false
     var verticalContentInset: CGFloat = 0
-    var maximumHeight: CGFloat = 150
+    var maximumHeight: CGFloat = InterfaceScale.metric(150)
     var sendTransitionAnchor: ComposerSendTransitionAnchor?
     @Binding var selection: NSRange?
     @Binding var isFocused: Bool
 
-    private let font = NSFont.systemFont(ofSize: 15)
+    private let font = NSFont.interfaceSystemFont(ofSize: 15)
 
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
@@ -436,6 +436,27 @@ struct ComposerTextView: NSViewRepresentable {
         textView.textContainerInset = NSSize(width: 0, height: verticalContentInset)
         ComposerTextCheckingConfiguration.apply(generalInputSettings, to: textView)
         textView.setAccessibilityLabel(placeholder)
+
+        // The interface size changed: restyle the draft without moving the caret.
+        if textView.font != font {
+            let selectedRange = textView.selectedRange()
+            textView.font = font
+            textView.plainTypingAttributes = textAttributes
+            textView.typingAttributes = textAttributes
+            textView.textStorage?.setAttributedString(
+                ComposerEmojiAttributedText.make(
+                    text,
+                    font: font,
+                    mentionPresentations: mentionPresentations
+                )
+            )
+            let length = textView.string.utf16.count
+            let location = min(selectedRange.location, length)
+            textView.setSelectedRange(NSRange(
+                location: location,
+                length: min(selectedRange.length, length - location)
+            ))
+        }
 
         if ComposerEmojiAttributedText.serialize(textView.attributedString()) != text
             || !ComposerEmojiAttributedText.usesCurrentMentionPresentations(
@@ -892,7 +913,7 @@ final class ComposerNSTextView: ComposerFocusReportingTextView {
         restorePlainTypingAttributes()
         if let attributed = insertString as? NSAttributedString {
             let normalized = NSMutableAttributedString(attributedString: attributed)
-            let baseFont = plainTypingAttributes[.font] as? NSFont ?? .systemFont(ofSize: 15)
+            let baseFont = plainTypingAttributes[.font] as? NSFont ?? .interfaceSystemFont(ofSize: 15)
             ComposerMarkdownPresentation.apply(to: normalized, font: baseFont)
             super.insertText(normalized, replacementRange: replacementRange)
         } else {

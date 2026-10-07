@@ -236,13 +236,13 @@ private struct VoiceCameraPreviewSurface: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 240)
-        .clipShape(.rect(cornerRadius: 10))
+        .frame(height: InterfaceScale.metric(240))
+        .clipShape(.rect(cornerRadius: InterfaceScale.metric(10)))
         .overlay(alignment: .bottomTrailing) {
             if tests.isCameraPreviewRunning || tests.isCameraPreviewStarting {
                 Button("Stop Camera", action: togglePreview)
                     .buttonStyle(.glass)
-                    .padding(12)
+                    .padding(InterfaceScale.metric(12))
             }
         }
     }

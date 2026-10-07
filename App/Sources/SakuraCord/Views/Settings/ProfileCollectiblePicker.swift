@@ -28,11 +28,11 @@ struct ProfileCollectiblePicker: View {
             if editor.inventory != nil {
                 options
             } else if let loadError {
-                VStack(spacing: 8) {
-                    Text(loadError).font(.callout)
+                VStack(spacing: InterfaceScale.metric(8)) {
+                    Text(loadError).font(.interface(.callout))
                     Button("Retry") { Task { await load() } }
                 }
-                .padding(16)
+                .padding(InterfaceScale.metric(16))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ProgressView()
@@ -44,18 +44,18 @@ struct ProfileCollectiblePicker: View {
 
     private var options: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: InterfaceScale.metric(12)) {
                 choiceGroup(ownedItems, includesNone: true)
                 if !nitroItems.isEmpty {
                     Label("Included with Nitro", systemImage: "sparkles")
-                        .font(.caption.weight(.semibold))
+                        .font(.interface(.caption).weight(.semibold))
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, 4)
-                        .padding(.top, 4)
+                        .padding(.horizontal, InterfaceScale.metric(4))
+                        .padding(.top, InterfaceScale.metric(4))
                     choiceGroup(nitroItems)
                 }
             }
-            .padding(8)
+            .padding(InterfaceScale.metric(8))
         }
     }
 
@@ -63,12 +63,12 @@ struct ProfileCollectiblePicker: View {
         if kind == .nameplate {
             // A short, fixed-height list needs no estimated lazy layout. Keeping
             // its full extent stable lets NSScrollView own the elastic overscroll.
-            VStack(spacing: 8) {
+            VStack(spacing: InterfaceScale.metric(8)) {
                 if includesNone { choice(nil) }
                 ForEach(items) { choice($0) }
             }
         } else {
-            LazyVGrid(columns: columns, spacing: 8) {
+            LazyVGrid(columns: columns, spacing: InterfaceScale.metric(8)) {
                 if includesNone { choice(nil) }
                 ForEach(items) { choice($0) }
             }
@@ -76,7 +76,7 @@ struct ProfileCollectiblePicker: View {
     }
 
     private var columns: [GridItem] {
-        Array(repeating: GridItem(.flexible(), spacing: 8), count: kind == .nameplate ? 1 : 3)
+        Array(repeating: GridItem(.flexible(), spacing: InterfaceScale.metric(8)), count: kind == .nameplate ? 1 : 3)
     }
 
     private func choice(_ item: ProfileCollectibleItem?) -> some View {
@@ -121,24 +121,24 @@ private struct ProfileCollectibleChoice: View {
                     Label(noneTitle, systemImage: "nosign")
                         .labelStyle(.titleAndIcon)
                         .foregroundStyle(.secondary)
-                        .padding(8)
+                        .padding(InterfaceScale.metric(8))
                 case let .nameplate(nameplate):
-                    ProfileAnonymousMemberRow().padding(.horizontal, 8)
-                        .frame(height: 42)
+                    ProfileAnonymousMemberRow().padding(.horizontal, InterfaceScale.metric(8))
+                        .frame(height: InterfaceScale.metric(42))
                         .background { NameplateBackground(nameplate: nameplate, isAnimated: isHovered) }
                 case let .avatarDecoration(url):
-                    DecoratedAvatarView(name: profile.displayName, avatarURL: profile.avatarURL, decorationURL: url, size: 56, playback: .hover(isHovered))
-                        .frame(maxWidth: .infinity).frame(height: 108)
+                    DecoratedAvatarView(name: profile.displayName, avatarURL: profile.avatarURL, decorationURL: url, size: InterfaceScale.metric(56), playback: .hover(isHovered))
+                        .frame(maxWidth: .infinity).frame(height: InterfaceScale.metric(108))
                 case let .effect(effect):
                     ProfileCosmeticTileArtwork(effect: effect, kind: .effect, fillsTile: true, animates: isHovered)
-                        .frame(height: 108)
+                        .frame(height: InterfaceScale.metric(108))
                 case let .frame(frame):
                     ProfileCosmeticTileArtwork(frame: frame, kind: .frame)
-                        .frame(height: 108)
+                        .frame(height: InterfaceScale.metric(108))
                 }
             }
             .frame(maxWidth: .infinity)
-            .frame(height: kind == .nameplate ? 42 : 108)
+            .frame(height: kind == .nameplate ? InterfaceScale.metric(42) : InterfaceScale.metric(108))
             .background(.primary.opacity(0.05))
             .contentShape(shape)
             .clipShape(shape)
@@ -163,12 +163,12 @@ private struct ProfileCollectibleChoice: View {
 
 private struct ProfileAnonymousMemberRow: View {
     var body: some View {
-        HStack(spacing: 12) {
-            Circle().fill(.primary.opacity(0.25)).frame(width: 32, height: 32)
-            Capsule().fill(.primary.opacity(0.2)).frame(height: 14)
+        HStack(spacing: InterfaceScale.metric(12)) {
+            Circle().fill(.primary.opacity(0.25)).frame(width: InterfaceScale.metric(32), height: InterfaceScale.metric(32))
+            Capsule().fill(.primary.opacity(0.2)).frame(height: InterfaceScale.metric(14))
             Spacer(minLength: 0)
         }
-        .frame(height: 34)
+        .frame(height: InterfaceScale.metric(34))
         .accessibilityHidden(true)
     }
 }

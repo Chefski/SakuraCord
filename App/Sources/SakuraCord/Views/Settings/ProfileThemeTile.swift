@@ -19,15 +19,15 @@ struct ProfileThemeTile: View {
             .fill(LinearGradient(colors: colors.map(Color.init(hex:)), startPoint: .top, endPoint: .bottom))
             .aspectRatio(1, contentMode: .fit)
             .overlay {
-                GlassEffectContainer(spacing: 8) {
-                    VStack(spacing: 8) {
+                GlassEffectContainer(spacing: InterfaceScale.metric(8)) {
+                    VStack(spacing: InterfaceScale.metric(8)) {
                         ProfileThemeColorButton(title: "Primary", color: colorBinding(for: .primary), isPresented: presentation(for: .primary))
                             .settingsControlAnchor(.profileThemePrimary)
                         ProfileThemeColorButton(title: "Accent", color: colorBinding(for: .accent), isPresented: presentation(for: .accent))
                             .settingsControlAnchor(.profileThemeAccent)
                     }
                 }
-                .padding(12)
+                .padding(InterfaceScale.metric(12))
             }
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Profile theme colours")
@@ -75,20 +75,20 @@ private struct ProfileThemeColorButton: View {
 
     var body: some View {
         Button { isPresented = true } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: InterfaceScale.metric(8)) {
                 Circle()
                     .fill(Color(hex: color))
                     .overlay { Circle().strokeBorder(.primary.opacity(0.18), lineWidth: 1) }
-                    .frame(width: 24, height: 24)
+                    .frame(width: InterfaceScale.metric(24), height: InterfaceScale.metric(24))
                 Text(title, bundle: #bundle)
-                    .font(.callout.weight(.semibold))
+                    .font(.interface(.callout).weight(.semibold))
                 Spacer(minLength: 0)
                 Image(systemName: "pencil")
-                    .font(.caption.weight(.semibold))
+                    .font(.interface(.caption).weight(.semibold))
                     .foregroundStyle(.secondary)
             }
             .foregroundStyle(.primary)
-            .padding(10)
+            .padding(InterfaceScale.metric(10))
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)

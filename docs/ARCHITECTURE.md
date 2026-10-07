@@ -102,6 +102,7 @@ not start network work merely because a row redraws.
 | Saved-account labels, avatar and preferred account | Local picker metadata in user defaults; not an authenticated workspace snapshot. |
 | Message drafts and explicitly created invite links | Account-scoped GRDB. Expired links are pruned and checked before reuse; neither restores permissions or membership. |
 | Workspace, message history, members, read state, onboarding choices | Session memory; restored from the live provider, not disk. |
+| Unsaved emoji/reaction usage | Account-scoped user defaults until acknowledged by Discord; replayed over remote history and removed with the account. |
 | Unsaved account status pick | Account-scoped user defaults until saved, superseded or rejected; removed with the account. See [settings synchronization](protocol/SETTINGS.md#status-and-custom-status). |
 | Derived people search, channel ordering and emoji catalogues | Account-scoped disposable caches under `Caches/dev.sakuracord.SakuraCord`. Never bootstrap the workspace or store credentials/message bodies. |
 | Media cache | Disposable LRU; shares the configured storage budget with drafts, which reserve space first and are never automatically evicted. |
@@ -153,6 +154,19 @@ hostname. Always Ask and Never Ask retain their existing behaviour.
 
 Platform-owned preferences use their platform services. Download bookmarks are
 usable only when accessible on the receiving Mac.
+
+Interface size is an app-wide factor owned by
+[InterfaceScale](../App/Sources/SakuraCord/Support/InterfaceScale.swift), because
+macOS text styles ignore Dynamic Type. New fonts use `Font.interface`,
+`.interfaceSystem` or the `NSFont.interface…` constructors with base sizes;
+layout lengths use `InterfaceScale.metric`. Scale each value once: sizes derived
+from a scaled frame or font stay unscaled. Content roots (split-view columns,
+settings pages, popovers and modals) apply `interfaceScaleRoot()`; never wrap a
+view that declares a toolbar, because toolbar items then lose their native
+sizing. AppKit-drawn surfaces relayout through their
+presentation revisions. At 100% every helper returns its input. Message density
+stays in points and is independent. System chrome (window controls, toolbar
+items, menus, alerts) keeps the system size.
 
 `WindowModalCoordinator` owns input order and focus for each window;
 `WindowModalOverlay` supplies the shared custom modal host. Closing transitions

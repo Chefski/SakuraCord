@@ -437,6 +437,7 @@ extension AppModel {
                     channelID: destinationID, content: context
                 ))
                 guard isCurrentAccountSession(session) else { return nil }
+                recordMessageEmojiUsage(context)
                 confirmSlowmodeMessage(confirmedContext)
             }
             return nil

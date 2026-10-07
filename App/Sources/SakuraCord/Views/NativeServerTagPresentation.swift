@@ -1,12 +1,23 @@
 import AppKit
 import CoreText
 import SakuraCordModels
+import Synchronization
 
 nonisolated enum NativeAppBadgePresentation {
-    static let text = NativeIdentityTextPresentation(
-        "APP", font: .systemFont(ofSize: ServerTagAppearance.fontSize, weight: .bold)
-    )
-    static let width = text.width + ServerTagAppearance.horizontalPadding * 2
+    private static let cachedText = Mutex<(size: CGFloat, text: NativeIdentityTextPresentation)?>(nil)
+
+    /// Prepared once per interface size.
+    static var text: NativeIdentityTextPresentation {
+        let size = InterfaceScale.fontSize(ServerTagAppearance.fontSize)
+        return cachedText.withLock { cached in
+            if let cached, cached.size == size { return cached.text }
+            let text = NativeIdentityTextPresentation("APP", font: .systemFont(ofSize: size, weight: .bold))
+            cached = (size, text)
+            return text
+        }
+    }
+
+    static var width: CGFloat { text.width + ServerTagAppearance.horizontalPadding * 2 }
 
     @MainActor
     static func draw(in frame: CGRect, color: NSColor, context: CGContext) {
@@ -72,8 +83,8 @@ nonisolated struct NativeIdentityTextPresentation: @unchecked Sendable {
         if isUnderlined {
             context.setStrokeColor(color.cgColor)
             context.setLineWidth(1)
-            context.move(to: CGPoint(x: 0, y: baseline - 1.5))
-            context.addLine(to: CGPoint(x: min(width, frame.width), y: baseline - 1.5))
+            context.move(to: CGPoint(x: 0, y: baseline - InterfaceScale.metric(1.5)))
+            context.addLine(to: CGPoint(x: min(width, frame.width), y: baseline - InterfaceScale.metric(1.5)))
             context.strokePath()
         }
         context.restoreGState()
@@ -83,7 +94,7 @@ nonisolated struct NativeIdentityTextPresentation: @unchecked Sendable {
 /// The same server-tag chrome as ProfileServerTag, shared by native canvases.
 /// Badge space belongs to the identity even before its cached image arrives.
 nonisolated struct NativeServerTagPresentation: @unchecked Sendable {
-    static let height = ServerTagAppearance.height
+    static var height: CGFloat { ServerTagAppearance.height }
     let identity: PrimaryGuildIdentity
     let width: CGFloat
     private let text: NativeIdentityTextPresentation
@@ -91,7 +102,7 @@ nonisolated struct NativeServerTagPresentation: @unchecked Sendable {
     private var badgeInset: CGFloat { identity.badgeURL == nil ? 0 : ServerTagAppearance.badgeSize + ServerTagAppearance.spacing }
     private var textInset: CGFloat { ServerTagAppearance.horizontalPadding + badgeInset }
 
-    init?(identity: PrimaryGuildIdentity, font: NSFont = .systemFont(ofSize: ServerTagAppearance.fontSize)) {
+    init?(identity: PrimaryGuildIdentity, font: NSFont = .interfaceSystemFont(ofSize: ServerTagAppearance.fontSize)) {
         guard let tag = identity.tag, !tag.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         self.identity = identity
         self.font = font
