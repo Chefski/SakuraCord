@@ -945,9 +945,8 @@ final class ComposerNSTextView: ComposerFocusReportingTextView {
         ),
            onEditLatestMessage?() == true
         {
-            if window?.firstResponder === self {
-                window?.makeFirstResponder(nil)
-            }
+            // The timeline takes focus when it actually opens an editor.
+            // Requests blocked by a send animation keep the composer focused.
             return
         }
         if KeyboardShortcutPolicy.isPlainEscape(keyCode: event.keyCode, modifierFlags: event.modifierFlags) {
