@@ -23,9 +23,9 @@ extension AppModel {
     /// Nicknames over a member whose highest role is below yours.
     func canChangeNickname(of userID: UserID, in guildID: GuildID) -> Bool {
         guard let currentUserID = currentUser?.id, userID != currentUserID,
-              let basis = conversationPermissionBasis(for: guildID)
+              let basis = conversationPermissionBasis(for: guildID),
+              let member = profileMember(userID, in: guildID), member.joinedAt != nil
         else { return false }
-        let member = profileMember(userID, in: guildID)
         let context = NicknamePermissionPolicy.Context(
             ownerID: basis.guild.ownerID,
             isOwner: basis.guild.isOwnedByCurrentUser == true,
@@ -36,7 +36,7 @@ extension AppModel {
             currentMember: onboardingMember(in: guildID)
         )
         return NicknamePermissionPolicy.canChangeNickname(
-            of: userID, roleIDs: Set(member.map { $0.roleIDs.isEmpty ? $0.roles.map(\.id) : $0.roleIDs } ?? []), in: context
+            of: userID, roleIDs: Set(member.roleIDs.isEmpty ? member.roles.map(\.id) : member.roleIDs), in: context
         )
     }
 
@@ -52,6 +52,15 @@ extension AppModel {
                 self?.presentFriendNicknameEditor(for: user, in: guildID)
             })
         }
+        if let guildID {
+            // Discord's menu subscribes to the target member and excludes
+            // missing members, guests and lurkers before canManageUser.
+            guard let member = profileMember(user.id, in: guildID) else {
+                resolveNicknameMenuMember(user.id, in: guildID)
+                return actions
+            }
+            guard member.joinedAt != nil else { return actions }
+        }
         if let guildID, user.id == currentUserID {
             actions.append(NicknameMenuAction(title: "Edit Per-server Profile", systemImage: "person.crop.circle") { [weak self] in
                 self?.editServerProfile(in: guildID)
@@ -62,6 +71,39 @@ extension AppModel {
             })
         }
         return actions
+    }
+
+    /// Hydrates a context-menu target through the existing Gateway member path.
+    /// A later menu request can then use the same authoritative member store.
+    @discardableResult
+    func resolveNicknameMenuMember(_ userID: UserID, in guildID: GuildID) -> Task<Void, Never> {
+        let key = "\(guildID)-\(userID)"
+        let store = nicknameEditor
+        if let task = store.memberLoads[key] { return task }
+        let task = startAccountChildTask(account: accountSession()) { model, session in
+            defer {
+                if !Task.isCancelled, model.isCurrentAccountSession(session) { store.memberLoads[key] = nil }
+            }
+            do {
+                let resolved = try await session.provider.resolveMembers(in: guildID, userIDs: [userID])
+                guard model.isCurrentAccountSession(session), !Task.isCancelled,
+                      model.profileMember(userID, in: guildID) == nil,
+                      let member = resolved.first(where: { $0.id == userID }) else { return }
+                let merged = MemberStoreMerge.merging(existing: model.membersByGuildID[guildID] ?? [:], updates: [member])
+                model.membersByGuildID[guildID] = merged
+                if model.selectedGuildID == guildID {
+                    let previous = model.membersByID
+                    model.membersByID = merged
+                    model.publishTimelineMemberPresentationChanges(from: previous, to: merged)
+                }
+            } catch {
+                if !(error is CancellationError), model.isCurrentAccountSession(session) {
+                    DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
+                }
+            }
+        }
+        store.memberLoads[key] = task
+        return task
     }
 
     /// Opens Profiles settings on this server's profile, where your own
@@ -109,7 +151,8 @@ extension AppModel {
         // Compare with the live nickname: another session may have changed it
         // while the dialog was open.
         if case let .server(guildID) = presentation.target,
-           value == (profileMember(presentation.user.id, in: guildID)?.guildNickname ?? "") {
+           let member = profileMember(presentation.user.id, in: guildID),
+           value == (member.guildNickname ?? "") {
             store.presentation = nil
             return
         }

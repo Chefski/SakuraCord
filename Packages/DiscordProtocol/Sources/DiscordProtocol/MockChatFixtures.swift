@@ -768,7 +768,11 @@ private struct MockFixtureAssembly {
                 isRoleCategory: true,
                 roles: [moderatorRole]
             )
-        ]
+        ].map { member in
+            var member = member
+            member.joinedAt = now.addingTimeInterval(-86400)
+            return member
+        }
         let nativeLabMembers = [
             auroraMembers[0],
             auroraMembers[1],

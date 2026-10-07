@@ -47,8 +47,11 @@ final class NicknameEditorStore {
     /// Incremented to open Settings on a per-server profile.
     var settingsRequest: UInt64 = 0
     @ObservationIgnored var revision: UInt64 = 0
+    @ObservationIgnored var memberLoads: [String: Task<Void, Never>] = [:]
 
     func reset() {
+        memberLoads.values.forEach { $0.cancel() }
+        memberLoads.removeAll()
         presentation = nil
     }
 }

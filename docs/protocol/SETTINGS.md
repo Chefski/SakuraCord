@@ -39,14 +39,21 @@ For another member, **Change Nickname** follows Discord's `canManageUser`:
 never the guild owner; the owner manages everyone else; anyone else needs
 Manage Nicknames (or Administrator) and a highest role above the target's, by
 `position` and then the older role ID, with @everyone last. Unloaded role
-records are ignored, matching Discord's highest-role lookup. Administrators
-remain bound by hierarchy. Pending members and guests cannot manage nicknames;
-non-administrators are also restricted during a timeout or AutoMod quarantine
+records are ignored within the low-level highest-role lookup, but Discord's
+menu separately excludes missing members, guests and lurkers (`joined_at: null`).
+Like its member subscription, SakuraCord starts a coalesced lookup through the
+existing member provider when a menu target is missing. The action remains
+hidden until the member store can establish membership and hierarchy; opening
+then seeds the real nickname. Failed resolution offers no editable draft.
+Administrators remain bound by hierarchy. Pending members and guests cannot
+manage nicknames; non-administrators are also restricted during a timeout or AutoMod quarantine
 (member flag 128, 256, or 1024). Guild owners bypass these member restrictions.
 The dialog sends one `PATCH /guilds/{guild}/members/{user}` with
-`{"nick":"value"}` as typed; Reset sends `""` and an unchanged value closes
-without a request. The member response reconciles the store unless
-the target member has a newer revision in that guild or the session has reset.
+`{"nick":"value"}` as typed; Reset sends `""` and a value confirmed unchanged
+in the current member store closes without a request. Missing member data never
+turns an explicit reset into an unchanged-value shortcut. The member response
+reconciles the store unless the target member has a newer revision in that guild
+or the session has reset.
 Updates in other guilds do not suppress the saved nickname. `nick` validation
 errors stay in the dialog and `403` remains operation-scoped. No audit-log reason
 is sent.
