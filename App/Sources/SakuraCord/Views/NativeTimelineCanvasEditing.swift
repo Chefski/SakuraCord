@@ -749,7 +749,8 @@ extension NativeTimelineCanvasView {
         row: MessageRowPresentation,
         at index: Int
     ) {
-        guard !row.message.hasPoll, editingMessageID == nil,
+        guard !isTranscriptGliding,
+              !row.message.hasPoll, editingMessageID == nil,
               items.indices.contains(index),
               items[index].messageID == row.id,
               let model,
