@@ -203,6 +203,10 @@ extension NativeTimelineCanvasView {
     }
 
     func reconcileActionCapsule() {
+        guard !isTranscriptGliding else {
+            removeActionCapsule()
+            return
+        }
         if actionCapsuleState?.isPresentationActive == true {
             guard editingMessageID == nil,
                   let messageID = actionCapsuleMessageID,

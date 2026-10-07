@@ -199,6 +199,7 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
     var messageJumpHighlightTask: Task<Void, Never>?
     var sendTransitions: [NativeTimelineSendTransition] = []
     var transcriptGlide: NativeTimelineTranscriptGlide?
+    var transcriptGlideFinishTask: Task<Void, Never>?
     var minimumHeight: CGFloat = 1
     var bottomSpacerHeight: CGFloat = 0
     var maximumDrawDuration = 0.0
@@ -415,6 +416,7 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
             visibleMediaRequestTask?.cancel()
             historySkeletonShimmerTask?.cancel()
             messageJumpHighlightTask?.cancel()
+            transcriptGlideFinishTask?.cancel()
             for transition in sendTransitions {
                 transition.finishTask?.cancel()
                 transition.overlay.removeFromSuperview()

@@ -19,6 +19,7 @@ extension NativeTimelineCanvasView {
 
     override func updateTrackingAreas() {
         guard !suppressesHoverPresentation,
+              !isTranscriptGliding,
               !overlayBlocksInteractions
         else {
             pointer.removeTrackingAreas(from: self)
@@ -45,6 +46,7 @@ extension NativeTimelineCanvasView {
     override func resetCursorRects() {
         guard WindowModalCoordinator.allowsInput(for: self) else { return }
         guard !suppressesHoverPresentation,
+              !isTranscriptGliding,
               !overlayBlocksInteractions
         else { return }
         super.resetCursorRects()
@@ -178,6 +180,7 @@ extension NativeTimelineCanvasView {
     }
 
     override func mouseEntered(with event: NSEvent) {
+        guard !isTranscriptGliding else { return }
         guard !ComposerOverlayPointerRegion.containsPointer(in: window, at: event.locationInWindow) else {
             clearPointerHoverTargets()
             return
@@ -225,6 +228,7 @@ extension NativeTimelineCanvasView {
     }
 
     override func mouseMoved(with event: NSEvent) {
+        guard !isTranscriptGliding else { return }
         guard !ComposerOverlayPointerRegion.containsPointer(in: window, at: event.locationInWindow) else {
             clearPointerHoverTargets()
             return
@@ -1210,6 +1214,7 @@ extension NativeTimelineCanvasView {
     }
 
     func synchronizeHoverWithCurrentPointer() {
+        guard !isTranscriptGliding else { return }
         guard !ComposerOverlayPointerRegion.containsPointer(in: window) else {
             clearPointerHoverTargets()
             return

@@ -819,8 +819,16 @@ extension NativeTimelineCanvasView {
     }
 
     func cancelTranscriptGlide() {
+        transcriptGlideFinishTask?.cancel()
+        transcriptGlideFinishTask = nil
         transcriptGlide = nil
         layer?.removeAnimation(forKey: Self.transcriptGlideKey)
+    }
+
+    private func restoreHoverAfterTranscriptGlide() {
+        updateTrackingAreas()
+        window?.invalidateCursorRects(for: self)
+        synchronizeHoverWithCurrentPointer()
     }
 
     var isTranscriptGliding: Bool {
@@ -880,6 +888,7 @@ extension NativeTimelineCanvasView {
         }
         guard abs(translation) >= 0.5 else {
             cancelTranscriptGlide()
+            restoreHoverAfterTranscriptGlide()
             return
         }
         transcriptGlide = NativeTimelineTranscriptGlide(offset: translation, beganAt: now, hold: hold)
@@ -888,7 +897,10 @@ extension NativeTimelineCanvasView {
         pressedPollTarget = nil
         hoveredPollTarget = nil
         textSelectionGesture = nil
+        reactionHoverCoordinator.close()
         removeActionCapsule()
+        updateTrackingAreas()
+        window?.invalidateCursorRects(for: self)
         // Rows outside the viewport become visible during the glide.
         setNeedsDisplay(visible.insetBy(dx: 0, dy: -abs(translation)))
         let animation: CAAnimation
@@ -909,6 +921,18 @@ extension NativeTimelineCanvasView {
         }
         animation.duration = hold + Timing.duration
         layer.add(animation, forKey: Self.transcriptGlideKey)
+        transcriptGlideFinishTask?.cancel()
+        transcriptGlideFinishTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(hold + Timing.duration))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled, let self else { return }
+            self.transcriptGlideFinishTask = nil
+            self.transcriptGlide = nil
+            self.restoreHoverAfterTranscriptGlide()
+        }
     }
 
     private func scheduleSendTransitionFinish(_ transition: NativeTimelineSendTransition) {
