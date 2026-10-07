@@ -622,6 +622,7 @@ extension NativeTimelineCanvasView {
         )
         // Earlier sends keep flying; each hides only its own row.
         sendTransitions.append(transition)
+        suppressSendTransitionInteractions()
         // The canvas update already installed media at the destination.
         // Remove those overlays now that their row is held back for flight.
         reconcileAnimatedMedia()
@@ -816,6 +817,7 @@ extension NativeTimelineCanvasView {
         startVisibleInlineVideosImmediately()
         reconcileSpoilerOverlays()
         reconcileActivityIndicators()
+        restoreSendTransitionInteractions()
     }
 
     func cancelTranscriptGlide() {
@@ -825,10 +827,28 @@ extension NativeTimelineCanvasView {
         layer?.removeAnimation(forKey: Self.transcriptGlideKey)
     }
 
-    private func restoreHoverAfterTranscriptGlide() {
+    private func restoreSendTransitionInteractions() {
+        guard !sendTransitionBlocksInteractions else { return }
         updateTrackingAreas()
         window?.invalidateCursorRects(for: self)
         synchronizeHoverWithCurrentPointer()
+    }
+
+    private func suppressSendTransitionInteractions() {
+        // A press begun before the rows moved must not activate on release.
+        pointer.clearHoverAndPressTargets()
+        pressedPollTarget = nil
+        hoveredPollTarget = nil
+        textSelectionGesture = nil
+        reactionHoverCoordinator.close()
+        removeActionCapsule()
+        updateTrackingAreas()
+        window?.invalidateCursorRects(for: self)
+        setNeedsDisplay(visibleRect)
+    }
+
+    var sendTransitionBlocksInteractions: Bool {
+        !sendTransitions.isEmpty || isTranscriptGliding
     }
 
     var isTranscriptGliding: Bool {
@@ -888,19 +908,11 @@ extension NativeTimelineCanvasView {
         }
         guard abs(translation) >= 0.5 else {
             cancelTranscriptGlide()
-            restoreHoverAfterTranscriptGlide()
+            restoreSendTransitionInteractions()
             return
         }
         transcriptGlide = NativeTimelineTranscriptGlide(offset: translation, beganAt: now, hold: hold)
-        // A press begun before the rows moved must not activate on release.
-        pointer.clearHoverAndPressTargets()
-        pressedPollTarget = nil
-        hoveredPollTarget = nil
-        textSelectionGesture = nil
-        reactionHoverCoordinator.close()
-        removeActionCapsule()
-        updateTrackingAreas()
-        window?.invalidateCursorRects(for: self)
+        suppressSendTransitionInteractions()
         // Rows outside the viewport become visible during the glide.
         setNeedsDisplay(visible.insetBy(dx: 0, dy: -abs(translation)))
         let animation: CAAnimation
@@ -931,7 +943,7 @@ extension NativeTimelineCanvasView {
             guard !Task.isCancelled, let self else { return }
             self.transcriptGlideFinishTask = nil
             self.transcriptGlide = nil
-            self.restoreHoverAfterTranscriptGlide()
+            self.restoreSendTransitionInteractions()
         }
     }
 

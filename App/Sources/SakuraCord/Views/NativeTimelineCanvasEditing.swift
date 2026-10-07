@@ -203,7 +203,7 @@ extension NativeTimelineCanvasView {
     }
 
     func reconcileActionCapsule() {
-        guard !isTranscriptGliding else {
+        guard !sendTransitionBlocksInteractions else {
             removeActionCapsule()
             return
         }
@@ -749,7 +749,7 @@ extension NativeTimelineCanvasView {
         row: MessageRowPresentation,
         at index: Int
     ) {
-        guard !isTranscriptGliding,
+        guard !sendTransitionBlocksInteractions,
               !row.message.hasPoll, editingMessageID == nil,
               items.indices.contains(index),
               items[index].messageID == row.id,
@@ -1225,7 +1225,10 @@ extension NativeTimelineCanvasView {
         isDestructive: Bool = false,
         action: @escaping () -> Void
     ) -> NSMenuItem {
-        let target = NativeTimelineMenuAction(action)
+        let target = NativeTimelineMenuAction { [weak self] in
+            guard let self, !self.sendTransitionBlocksInteractions else { return }
+            action()
+        }
         let item = NSMenuItem(
             title: title,
             action: #selector(NativeTimelineMenuAction.performAction),

@@ -304,7 +304,10 @@ extension NativeTimelineCanvasView {
     ) -> NSAccessibilityElement {
         let element: NSAccessibilityElement =
             if let press {
-                NativeTimelineAccessibilityElement(press: press)
+                NativeTimelineAccessibilityElement { [weak self] in
+                    guard let self, !self.sendTransitionBlocksInteractions else { return false }
+                    return press()
+                }
             } else {
                 NSAccessibilityElement()
             }
