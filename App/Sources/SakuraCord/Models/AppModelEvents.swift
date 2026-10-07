@@ -269,7 +269,6 @@ extension AppModel {
         case .messageReactionUpdated(let update):
             applyReactionUpdate(update)
         case .messageDeleted(let channelID, let messageID):
-            invalidateMessageTranslation(messageID)
             consumeMessageDeleted(channelID: channelID, messageID: messageID)
             removeDeletedPinnedMessage(channelID: channelID, messageID: messageID)
             removeInboxMessage(messageID, mentionsOnly: false)
@@ -615,6 +614,7 @@ extension AppModel {
     }
 
     func consumeMessageDeleted(channelID: ChannelID, messageID: MessageID) {
+        invalidateMessageTranslation(messageID)
         receiveGuideResourceEvent(.messageDeleted(channelID: channelID, messageID: messageID))
         invalidateTimelineThreadPreview(channelID: channelID, messageID: messageID)
         recordConversationRefreshMutation(

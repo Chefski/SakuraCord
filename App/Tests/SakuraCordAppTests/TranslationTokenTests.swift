@@ -81,3 +81,16 @@ func `translation syntax and repeated tokens round trip without model placeholde
         #expect(try plan.restore(plan.slots) == source)
     }
 }
+
+@Test(arguments: [
+    "https://a",
+    "https://a/path_(nested_(value))/end",
+    #"https://a/path\)end "title with )""#,
+])
+func `translation preserves individual link destinations and translates intervening prose`(_ destination: String) throws {
+    let plan = TranslationTokenProtector("Hallo [een](\(destination)) wereld [twee](https://b)")
+    #expect(plan.slots.map(\.text) == ["Hallo", "een", "wereld", "twee"])
+    let translated = zip(plan.slots, ["Hello", "one", "world", "two"])
+        .map { TranslationTokenProtector.Slot(index: $0.0.index, text: $0.1) }
+    #expect(try plan.restore(translated) == "Hello [one](\(destination)) world [two](https://b)")
+}

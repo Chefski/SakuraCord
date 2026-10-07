@@ -11,6 +11,7 @@ extension AppModel {
                 messageID: message.id, channelID: message.channelID, content: content
             )
             guard isCurrentAccountSession(session) else { return }
+            invalidateMessageTranslation(updated.id, content: updated.content)
             let reconciled = reconcileVisibleOrCached(updated)
             recordAuthoritativeMessageUpsert(reconciled)
         } catch {
@@ -39,6 +40,7 @@ extension AppModel {
 
     func dismissEphemeralMessage(_ message: Message) {
         guard message.flags.contains(.ephemeral) else { return }
+        invalidateMessageTranslation(message.id)
         if message.channelID == selectedChannelID {
             mutateSelectedMessages {
                 $0.removeAll { $0.id == message.id }

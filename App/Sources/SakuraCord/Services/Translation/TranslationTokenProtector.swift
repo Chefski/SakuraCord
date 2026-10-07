@@ -32,8 +32,11 @@ nonisolated struct TranslationTokenProtector: Equatable, Sendable {
             parts.append(trimmed)
             parts.append(String(raw[range.upperBound...]))
         }
-        for match in Self.syntax.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
-            guard let range = Range(match.range, in: text) else { continue }
+        while let match = Self.syntax.firstMatch(in: text, options: .withoutAnchoringBounds, range: NSRange(cursor..., in: text)) {
+            guard var range = Range(match.range, in: text) else { break }
+            if text[range] == "](", let end = Self.linkDestinationEnd(in: text, after: range.upperBound) {
+                range = range.lowerBound ..< end
+            }
             appendProse(text[cursor ..< range.lowerBound])
             parts.append(String(text[range]))
             cursor = range.upperBound
@@ -41,6 +44,35 @@ nonisolated struct TranslationTokenProtector: Equatable, Sendable {
         appendProse(text[cursor...])
         self.parts = parts
         self.slots = slots
+    }
+
+    /// Stop at this destination's closing parenthesis, preserving escaped and
+    /// nested parentheses and quoted titles without swallowing the next link.
+    private static func linkDestinationEnd(in text: String, after start: String.Index) -> String.Index? {
+        var depth = 1
+        var escaped = false
+        var quote: Character?
+        var previous: Character = "("
+        for index in text[start...].indices {
+            let character = text[index]
+            if character.isNewline { return nil }
+            defer { previous = character }
+            if escaped { escaped = false; continue }
+            if character == "\\" { escaped = true; continue }
+            if let delimiter = quote {
+                if character == delimiter { quote = nil }
+                continue
+            }
+            if previous.isWhitespace, character == "\"" || character == "'" {
+                quote = character
+            } else if character == "(" {
+                depth += 1
+            } else if character == ")" {
+                depth -= 1
+                if depth == 0 { return text.index(after: index) }
+            }
+        }
+        return nil
     }
 
     var hasTranslatableText: Bool { !slots.isEmpty }
@@ -93,7 +125,7 @@ nonisolated struct TranslationTokenProtector: Equatable, Sendable {
         #"(?m:^[ \t]*(?:>[ \t]*)*(`{3,})(?!`)[^\n]*\n[\s\S]*?(?:^[ \t]*(?:>[ \t]*)*\1`*[ \t]*\r?$|\z))"#,
         #"(`+)(?!`)[\s\S]*?(?:(?<!`)\2(?!`)|\z)"#,
         #"\[[^\]\n]*\]\(https?://(?:cdn|media)\.discordapp\.(?:com|net)/emojis/[^\s]+?\)"#,
-        #"\]\([^\n]*\)"#,
+        #"\]\("#,
         #"<[^>\n]*>"#,
         #"@(?:everyone|here)\b"#,
         #"(?:https?://|www\.)[^\s<>]+"#,

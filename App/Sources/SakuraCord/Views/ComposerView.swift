@@ -202,7 +202,9 @@ struct ComposerView: View {
                                 canReceiveAttachments: { model.isComposerDropEligible(conversation) },
                                 onCompositionStateChange: {
                                     isComposing = $0
-                                    if $0 { model.dismissDraftTranslation(in: conversation) }
+                                    if $0, model.draftTranslation(for: conversation)?.phase == .translating {
+                                        model.dismissDraftTranslation(in: conversation)
+                                    }
                                 },
                                 capturesUnfocusedTyping: capturesUnfocusedTyping,
                                 verticalContentInset: appearance == .defaultStyle

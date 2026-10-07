@@ -105,7 +105,6 @@ extension AppModel {
         let content = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !content.isEmpty || !attachments.isEmpty else { return .rejected }
         guard validateAttachmentCount(attachments) else { return .rejected }
-        translation.resetDraft(.channel)
         let session = accountSession()
         let replyTo = replyingTo?.id
         let mentionsRepliedUser = replyMentionsAuthor
