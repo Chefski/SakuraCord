@@ -40,25 +40,6 @@ nonisolated enum BootstrapInitialGuildPolicy {
 }
 
 extension AppModel {
-    static func loadEmojiRecents(usageCounts: [String: Int]) -> [String] {
-        UserDefaults.standard.removeObject(
-            forKey: "dev.sakuracord.favorite-emojis"
-        )
-        if let stored = UserDefaults.standard.stringArray(
-            forKey: "dev.sakuracord.emoji-recents"
-        ) {
-            return stored
-        }
-        let migrated = usageCounts.sorted {
-            $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value
-        }.prefix(50).map(\.key)
-        UserDefaults.standard.set(
-            migrated,
-            forKey: "dev.sakuracord.emoji-recents"
-        )
-        return migrated
-    }
-
     var isOfflineTesting: Bool {
         launchMode == .offlineTesting
     }
@@ -249,6 +230,7 @@ extension AppModel {
         activeAccountID = handle.accountID
         didAttemptSessionRestore = true
         commandComposer.configureFrecencyScope(handle.accountID)
+        configureEmojiFrecency(scope: handle.accountID)
     }
 
     func resetAccountPresentationState() {
@@ -288,8 +270,7 @@ extension AppModel {
         soundboardState.activePlaybackTokens = [:]
         soundboardState.cardAnimations = []
         discordFavoriteEmojiKeys = []
-        discordFrequentlyUsedEmojiKeys = []
-        discordEmojiUsageScores = [:]
+        refreshEmojiFrecencyPresentation()
         discordGuildAndChannelUsageScores = [:]
         discordSyncedGuildAndChannelUsageScores = [:]
         discordGuildAndChannelUsage = [:]
@@ -419,6 +400,7 @@ extension AppModel {
         commandComposer.configureFrecencyScope(
             launchMode == .offlineTesting ? "offline" : "signed-out"
         )
+        configureEmojiFrecency(scope: launchMode == .offlineTesting ? "offline" : "signed-out")
         let signedOutProvider: any ChatProvider =
             launchMode == .offlineTesting ? MockChatProvider() : SignedOutChatProvider()
         supportedCapabilities = []
@@ -452,6 +434,7 @@ extension AppModel {
         )
         if launchMode == .normal {
             DiscordRESTProvider.removePendingStatusEdit(accountID: accountID)
+            DiscordFrecencyStore.removePendingEmojiUsage(scope: accountID)
             do {
                 try await clearCaches(accountID)
             } catch {
@@ -514,6 +497,12 @@ extension AppModel {
             commandComposer.resetForChannelChange()
             commandComposer.memberSearchCache = [:]
         }
+        emojiSettingsLoadTask?.cancel()
+        emojiSettingsLoadTask = nil
+        emojiFrecencySaveTask?.cancel()
+        emojiFrecencySaveTask = nil
+        deferredEmojiSettings = nil
+        emojiSettingsDataVersion = nil
         commandFrecencyLoadTask?.cancel()
         commandFrecencyLoadTask = nil
         commandFrecencyFlushTask?.cancel()

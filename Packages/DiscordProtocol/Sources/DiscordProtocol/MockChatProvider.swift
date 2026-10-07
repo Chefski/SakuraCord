@@ -18,6 +18,7 @@ public actor MockChatProvider: ChatProvider {
     var dismissedInboxMentions: Set<MessageID> = []
     var favoriteGIFValues: [GIFSearchResult] = []
     var favoriteEmojiKeys: [String]?
+    var savedEmojiFrecency: (messages: DiscordFrecencyHistory, reactions: DiscordFrecencyHistory)?
     var soundboardSoundsByGuild: [GuildID: [SoundboardSound]] = [:]
     var soundboardSettings = SoundboardUserSettings()
     var continuation: AsyncStream<ClientEvent>.Continuation?

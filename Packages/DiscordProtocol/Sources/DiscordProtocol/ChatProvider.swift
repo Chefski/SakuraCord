@@ -21,6 +21,21 @@ public struct PartialBulkReadAcknowledgementError: Error, Sendable {
     }
 }
 
+/// A pending emoji batch contributed to another type-2 settings save. The
+/// owner acknowledges its captured uses only after the merged response arrives.
+public struct EmojiFrecencySaveContribution: Sendable {
+    public var messages: DiscordFrecencyHistory
+    public var reactions: DiscordFrecencyHistory
+    public var complete: @Sendable (EmojiUserSettings?) async -> Void
+
+    public init(messages: DiscordFrecencyHistory, reactions: DiscordFrecencyHistory,
+                complete: @escaping @Sendable (EmojiUserSettings?) async -> Void) {
+        self.messages = messages
+        self.reactions = reactions
+        self.complete = complete
+    }
+}
+
 public protocol ChatProvider: Sendable {
     func guildGuide(in guildID: GuildID) async throws -> GuildGuide
     func guildProfile(in guildID: GuildID) async throws -> GuildProfile
@@ -82,6 +97,8 @@ public protocol ChatProvider: Sendable {
     ) async throws
     func emojis(in guildID: GuildID) async throws -> [DiscordEmoji]
     func emojiUserSettings() async throws -> EmojiUserSettings
+    func configureEmojiFrecencyPersistence(_ prepare: @escaping @Sendable () async -> EmojiFrecencySaveContribution?) async
+    func saveEmojiFrecency(_ messages: DiscordFrecencyHistory, reactions: DiscordFrecencyHistory, favoriteKey: String?, isFavorite: Bool) async throws -> EmojiUserSettings
     func setEmojiFavorite(_ key: String, isFavorite: Bool) async throws -> EmojiUserSettings
     func defaultSoundboardSounds() async throws -> [SoundboardSound]
     func soundboardSounds(in guildIDs: [GuildID]) async throws -> [GuildID: [SoundboardSound]]
@@ -184,11 +201,11 @@ public protocol ChatProvider: Sendable {
         -> StickerUserSettings
     func recordStickerUse(_ stickerID: String) async throws -> StickerUserSettings
     /// Synced slash-command usage from Discord's frecency settings.
-    func applicationCommandFrecency() async throws -> ApplicationCommandFrecencyHistory
+    func applicationCommandFrecency() async throws -> DiscordFrecencyHistory
     /// Replaces the synced command usage, as Discord's client does when it
     /// flushes pending uses. Returns what the server stored.
-    func saveApplicationCommandFrecency(_ history: ApplicationCommandFrecencyHistory) async throws
-        -> ApplicationCommandFrecencyHistory
+    func saveApplicationCommandFrecency(_ history: DiscordFrecencyHistory) async throws
+        -> DiscordFrecencyHistory
     func edit(messageID: MessageID, channelID: ChannelID, content: String) async throws -> Message
     func delete(messageID: MessageID, channelID: ChannelID) async throws
     func acknowledge(
@@ -752,12 +769,12 @@ public extension ChatProvider {
         StickerUserSettings()
     }
 
-    func applicationCommandFrecency() async throws -> ApplicationCommandFrecencyHistory {
-        ApplicationCommandFrecencyHistory()
+    func applicationCommandFrecency() async throws -> DiscordFrecencyHistory {
+        DiscordFrecencyHistory()
     }
 
-    func saveApplicationCommandFrecency(_ history: ApplicationCommandFrecencyHistory) async throws
-        -> ApplicationCommandFrecencyHistory
+    func saveApplicationCommandFrecency(_ history: DiscordFrecencyHistory) async throws
+        -> DiscordFrecencyHistory
     {
         history
     }
@@ -768,6 +785,12 @@ public extension ChatProvider {
 
     func emojiUserSettings() async throws -> EmojiUserSettings {
         EmojiUserSettings()
+    }
+
+    func configureEmojiFrecencyPersistence(_ prepare: @escaping @Sendable () async -> EmojiFrecencySaveContribution?) async {}
+
+    func saveEmojiFrecency(_ messages: DiscordFrecencyHistory, reactions: DiscordFrecencyHistory, favoriteKey: String?, isFavorite: Bool) async throws -> EmojiUserSettings {
+        throw ChatProviderError.invalidRequest("Emoji usage updates are unavailable for this provider.")
     }
 
     func setEmojiFavorite(_ key: String, isFavorite: Bool) async throws -> EmojiUserSettings {

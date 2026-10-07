@@ -212,7 +212,7 @@ import Testing
 }
 
 @MainActor
-@Test func `Local activity clears only destinations and learned emoji data`() async throws {
+@Test func `Local activity preserves pending synchronized emoji usage`() async throws {
     let model = AppModel(launchMode: .offlineTesting)
     await model.start()
     let channelID = try #require(model.selectedChannelID)
@@ -220,8 +220,8 @@ import Testing
     model.messageSearch.queryText = "private query"
     model.messageSearch.isPresented = true
     model.forwardDestinationHistory = [channelID]
-    model.emojiRecentKeys = ["wave"]
-    model.emojiUsageCounts = ["wave": 4]
+    model.recordMessageEmojiUsage("👋")
+    let pending = model.emojiFrecency.pendingUsages
     model.discordFavoriteEmojiKeys = ["wave"]
 
     try await model.clearLocalActivity()
@@ -229,8 +229,7 @@ import Testing
     #expect(model.messageSearch.queryText == "private query")
     #expect(model.messageSearch.isPresented)
     #expect(model.forwardDestinationHistory.isEmpty)
-    #expect(model.emojiRecentKeys.isEmpty)
-    #expect(model.emojiUsageCounts.isEmpty)
+    #expect(model.emojiFrecency.pendingUsages == pending)
     #expect(model.discordFavoriteEmojiKeys == ["wave"])
 }
 

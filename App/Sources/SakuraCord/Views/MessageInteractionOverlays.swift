@@ -846,7 +846,6 @@ private struct InlineMessageEditor: View {
             customValue: model.composerText(for:),
             customSource: { model.serverRailGuildsByID[$0.guildID]?.name },
             discordFavoriteKeys: Set(model.discordFavoriteEmojiKeys),
-            usageCounts: model.emojiUsageCounts,
             discordUsageScores: model.discordEmojiUsageScores,
             discordSettingsAreLoaded: model.hasLoadedDiscordEmojiSettings
         )
@@ -872,7 +871,6 @@ private struct InlineMessageEditor: View {
         selection = NSRange(
             location: context.range.location + suggestion.value.utf16.count, length: 0
         )
-        model.recordEmojiUse(suggestion.usageKey)
         isAutocompleteDismissed = true
     }
 }

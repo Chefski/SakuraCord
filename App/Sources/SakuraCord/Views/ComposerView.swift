@@ -875,7 +875,6 @@ struct ComposerView: View {
             customValue: model.composerText(for:),
             customSource: { model.serverRailGuildsByID[$0.guildID]?.name },
             discordFavoriteKeys: Set(model.discordFavoriteEmojiKeys),
-            usageCounts: model.emojiUsageCounts,
             discordUsageScores: model.discordEmojiUsageScores,
             discordSettingsAreLoaded: model.hasLoadedDiscordEmojiSettings
         )
@@ -898,7 +897,6 @@ struct ComposerView: View {
                 replacing: context.range
             )
         )
-        model.recordEmojiUse(suggestion.usageKey)
         draftSelection = selection
         autocompleteIndex = 0
         isAutocompleteDismissed = true
@@ -1122,7 +1120,6 @@ struct ComposerView: View {
             ComposerEmojiImageStore.shared.register(emoji)
         }
         let result = insertInDraft(suggestion.value, replacing: context.range)
-        model.recordEmojiUse(suggestion.usageKey)
         draftSelection = result
         autocompleteIndex = 0
         isAutocompleteDismissed = true

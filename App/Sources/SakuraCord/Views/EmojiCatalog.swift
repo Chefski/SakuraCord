@@ -77,8 +77,8 @@ struct NativeEmoji: Identifiable {
             [name, aliases] + shortcodes
                 + shortcodes.map { $0.replacingOccurrences(of: "_", with: " ") }
         ).joined(separator: " ").lowercased()
-        var discordKeys = Set(aliases.split(separator: " ").map(String.init))
-        discordKeys.formUnion(shortcodes)
+        // Search terms such as "bug" on snail are not emoji identities.
+        var discordKeys = Set(shortcodes)
         discordKeys.insert(discordKey)
         discordKeys.insert(value)
         self.discordKeys = discordKeys

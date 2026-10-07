@@ -1,10 +1,7 @@
 import Foundation
 
-/// One command's synced usage, as stored in Discord's frecency settings
-/// (`application_command_frecency`). Keys follow Discord's client: the
-/// flattened command ID (`root\0group\0sub`), suffixed `:guildID` for
-/// guild-registered commands, or a negative ID for built-ins.
-public struct ApplicationCommandFrecencyEntry: Codable, Hashable, Sendable {
+/// One entry in Discord's ordered frecency maps (emoji, reactions or commands).
+public struct DiscordFrecencyEntry: Codable, Hashable, Sendable {
     public var key: String
     public var totalUses: Int
     /// Millisecond timestamps, oldest first, at most ten.
@@ -24,10 +21,10 @@ public struct ApplicationCommandFrecencyEntry: Codable, Hashable, Sendable {
 
 /// The synced map in stored order. Order matters: Discord breaks frecency
 /// ties by insertion order.
-public struct ApplicationCommandFrecencyHistory: Codable, Hashable, Sendable {
-    public var entries: [ApplicationCommandFrecencyEntry]
+public struct DiscordFrecencyHistory: Codable, Hashable, Sendable {
+    public var entries: [DiscordFrecencyEntry]
 
-    public init(entries: [ApplicationCommandFrecencyEntry] = []) {
+    public init(entries: [DiscordFrecencyEntry] = []) {
         self.entries = entries
     }
 }

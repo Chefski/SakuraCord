@@ -102,12 +102,7 @@ public extension DiscordRESTProvider {
         if let pendingStickerFrecencyPatch {
             patch.append(pendingStickerFrecencyPatch)
         }
-        let response: UserSettingsProtoDTO = try await request(
-            "/users/@me/settings-proto/2",
-            method: "PATCH",
-            body: ["settings": .string(patch.base64EncodedString())]
-        )
-        let responseData = Data(base64Encoded: response.settings) ?? update.data
+        let responseData = try await persistFrecencySettingsPatch(patch)
         let merged: Data
         if stickerFrecencyRevision == includedFrecencyRevision {
             merged = responseData
@@ -162,14 +157,8 @@ public extension DiscordRESTProvider {
             }
         }
         do {
-            let response: UserSettingsProtoDTO = try await request(
-                "/users/@me/settings-proto/2",
-                method: "PATCH",
-                body: ["settings": .string(patch.base64EncodedString())]
-            )
-            if stickerFrecencyRevision == revision,
-               let data = Data(base64Encoded: response.settings)
-            {
+            let data = try await persistFrecencySettingsPatch(patch)
+            if stickerFrecencyRevision == revision {
                 cachedFrecencySettingsProto = data
                 let settings = DiscordSettingsProto.stickerSettings(from: data)
                 cachedStickerUserSettings = settings

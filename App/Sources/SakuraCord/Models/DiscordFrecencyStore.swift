@@ -1,14 +1,17 @@
 import Foundation
 import SakuraCordModels
 
-/// Synced slash-command usage, scored exactly as Discord's client scores it so
-/// Frequently Used and search ordering match the official app.
+/// Discord's shared recent-use scoring with feature-specific ranking.
+/// Emoji and reactions use weight 100; commands use weight 1.
 ///
 /// The synced history comes from Discord's frecency settings; uses recorded
 /// here stay pending until saved and are replayed over every newer history,
-/// as Discord's `ApplicationCommandFrecencyStore` does.
+/// as Discord's `DiscordFrecencyStore` does.
 @MainActor
-final class ApplicationCommandFrecencyStore {
+final class DiscordFrecencyStore {
+    enum Kind { case command, emoji, reaction }
+    private let kind: Kind
+    private var frequentlyLimit: Int { kind == .command ? 100 : Int.max }
     struct PendingUsage: Codable, Hashable {
         var key: String
         var timestamp: UInt64
@@ -23,7 +26,6 @@ final class ApplicationCommandFrecencyStore {
     }
 
     static let maximumSamples = 10
-    static let frequentlyLimit = 100
 
     private var keys: [String] = []
     private var entries: [String: Entry] = [:]
@@ -36,18 +38,19 @@ final class ApplicationCommandFrecencyStore {
     private var defaultsKey: String?
     private let now: () -> Date
 
-    init(now: @escaping () -> Date = Date.init) {
+    init(kind: Kind = .command, now: @escaping () -> Date = Date.init) {
+        self.kind = kind
         self.now = now
     }
 
     // MARK: Scope
 
     /// Pending uses survive relaunches per account, as Discord persists them.
-    func configure(scope: String) {
+    func configure(scope: String, persists: Bool = true) {
         let safeScope = scope.replacingOccurrences(
             of: #"[^A-Za-z0-9_.-]"#, with: "-", options: .regularExpression
         )
-        defaultsKey = "dev.sakuracord.command-frecency-pending.\(safeScope)"
+        defaultsKey = persists ? "dev.sakuracord.\(kind)-frecency-pending.\(safeScope)" : nil
         keys = []
         entries = [:]
         hasLoadedRemoteHistory = false
@@ -60,10 +63,17 @@ final class ApplicationCommandFrecencyStore {
         markDirty()
     }
 
+    static func removePendingEmojiUsage(scope: String) {
+        let safeScope = scope.replacingOccurrences(of: #"[^A-Za-z0-9_.-]"#, with: "-", options: .regularExpression)
+        for kind in ["emoji", "reaction"] {
+            UserDefaults.standard.removeObject(forKey: "dev.sakuracord.\(kind)-frecency-pending.\(safeScope)")
+        }
+    }
+
     // MARK: History
 
     /// Replaces the synced history, then replays uses not yet saved.
-    func overwrite(with history: ApplicationCommandFrecencyHistory) {
+    func overwrite(with history: DiscordFrecencyHistory) {
         keys = []
         entries = [:]
         for entry in history.entries {
@@ -77,6 +87,12 @@ final class ApplicationCommandFrecencyStore {
         }
         for usage in pendingUsages {
             track(usage.key, timestamp: usage.timestamp)
+        }
+        if kind != .command, history.entries.isEmpty, pendingUsages.isEmpty {
+            let defaults = kind == .reaction
+                ? ["100", "100", "thumbsup", "thumbsup", "thumbsdown", "thumbsdown", "heart", "point_up", "eyes", "weary", "laughing", "white_check_mark", "x"]
+                : ["thumbsup", "eyes", "laughing", "watermelon", "fork_and_knife", "yum", "weary", "tired_face", "poop", "100"]
+            for key in defaults { track(key, timestamp: nil) }
         }
         hasLoadedRemoteHistory = true
         markDirty()
@@ -102,14 +118,13 @@ final class ApplicationCommandFrecencyStore {
 
     // MARK: Scores
 
-    /// Discord's per-command score: 0.01 per weighted recent use. Picker sorts
-    /// and Frequently Used order rely on this value, not on frecency.
+    /// Weighted recent-use score for search; Frequently Used ranks by frecency.
     func score(for key: String) -> Double {
         if isDirty { compute() }
         return entries[key]?.score ?? 0
     }
 
-    /// Up to 100 keys by descending frecency, ties in stored order.
+    /// Ranked keys; emoji lookup, cutoff and tone folding belong to the picker.
     var frequently: [String] {
         if isDirty { compute() }
         return cachedFrequently
@@ -117,11 +132,11 @@ final class ApplicationCommandFrecencyStore {
 
     /// The history Discord's client would save: entries in stored order with
     /// their current frecency and rounded score.
-    func historyForSave() -> ApplicationCommandFrecencyHistory {
+    func historyForSave() -> DiscordFrecencyHistory {
         if isDirty { compute() }
-        return ApplicationCommandFrecencyHistory(entries: keys.compactMap { key in
+        return DiscordFrecencyHistory(entries: keys.compactMap { key in
             guard let entry = entries[key] else { return nil }
-            return ApplicationCommandFrecencyEntry(
+            return DiscordFrecencyEntry(
                 key: key,
                 totalUses: entry.totalUses,
                 recentUses: entry.recentUses,
@@ -158,22 +173,34 @@ final class ApplicationCommandFrecencyStore {
     }
 
     private func markDirty() {
+        // Object.keys in Discord puts canonical uint32 array-index keys first.
+        if kind != .command {
+            let indexed = keys.compactMap { key -> (String, UInt32)? in
+                guard let value = UInt32(key), value < UInt32.max, String(value) == key else { return nil }
+                return (key, value)
+            }.sorted { $0.1 < $1.1 }.map(\.0)
+            let set = Set(indexed)
+            keys = indexed + keys.filter { !set.contains($0) }
+        }
         isDirty = true
         revision &+= 1
     }
 
     private func compute() {
         let current = now()
+        let maximumUses = entries.values.map(\.totalUses).max() ?? 0
         var removed = Set<String>()
         for key in keys {
             guard var entry = entries[key], entry.frecency == -1 else { continue }
             entry.score = 0
             for (index, timestamp) in entry.recentUses.enumerated() where index < Self.maximumSamples {
-                entry.score += 0.01 * Double(Self.weight(days: Self.dayDifference(from: timestamp, to: current)))
+                entry.score += (kind == .command ? 0.01 : 1) * Double(Self.weight(days: Self.dayDifference(from: timestamp, to: current)))
             }
             if entry.score > 0 {
                 if !entry.recentUses.isEmpty {
-                    entry.frecency = (Double(entry.totalUses) * (entry.score / Double(entry.recentUses.count))).rounded(.up)
+                    entry.frecency = kind == .reaction
+                        ? (1_000 * (Double(entry.totalUses) / Double(max(1, maximumUses)) * 0.2 + entry.score / 1_000 * 0.8)).rounded(.towardZero)
+                        : (Double(entry.totalUses) * (entry.score / Double(entry.recentUses.count))).rounded(.up)
                 }
                 entries[key] = entry
             } else {
@@ -195,7 +222,7 @@ final class ApplicationCommandFrecencyStore {
         ranked.sort { lhs, rhs in
             lhs.frecency != rhs.frecency ? lhs.frecency > rhs.frecency : lhs.offset < rhs.offset
         }
-        cachedFrequently = ranked.prefix(Self.frequentlyLimit).map(\.key)
+        cachedFrequently = ranked.prefix(frequentlyLimit).map(\.key)
         isDirty = false
     }
 

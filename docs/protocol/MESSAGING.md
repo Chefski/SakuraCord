@@ -200,7 +200,7 @@ Discord's client-side built-ins last, Frequently Used as the five
 highest-scoring browse commands among the 100 most frecent, and typed search
 ranked by Discord's match tiers, then frecency score, then name, at most 20.
 [ApplicationCommandPickerEngine.swift](../../App/Sources/SakuraCord/Models/ApplicationCommandPickerEngine.swift)
-and [ApplicationCommandFrecencyStore.swift](../../App/Sources/SakuraCord/Models/ApplicationCommandFrecencyStore.swift)
+and [DiscordFrecencyStore.swift](../../App/Sources/SakuraCord/Models/DiscordFrecencyStore.swift)
 own those rules; [ApplicationCommandFrecencyTests.swift](../../App/Tests/SakuraCordAppTests/ApplicationCommandFrecencyTests.swift)
 pins them. The command list uses the emoji picker's bounded native viewport and shared
 section rail. Section headings scroll in the list, pin at the top, and are pushed
