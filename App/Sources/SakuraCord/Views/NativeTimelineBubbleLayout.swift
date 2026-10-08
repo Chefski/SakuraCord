@@ -245,18 +245,15 @@ enum NativeTimelineBubbleDrawing {
 
     static func fill(_ region: NativeTimelineBubbleRegion) {
         fillColor(for: region).setFill()
-        if region.showsTail {
-            tailPath(for: region).fill()
-        }
-        bodyPath(for: region).fill()
+        path(for: region).fill()
     }
 
+    /// The bubble's complete outline. The tail is merged into the body as a
+    /// single contour, so translucent fills and clips cover every point once.
     static func path(for region: NativeTimelineBubbleRegion) -> NSBezierPath {
-        let path = bodyPath(for: region)
-        if region.showsTail {
-            path.append(tailPath(for: region))
-        }
-        return path
+        let body = bodyPath(for: region)
+        guard region.showsTail else { return body }
+        return NSBezierPath(cgPath: body.cgPath.union(tailPath(for: region).cgPath))
     }
 
     static func bodyPath(
@@ -268,71 +265,51 @@ enum NativeTimelineBubbleDrawing {
         )
     }
 
+    /// Fills only the part of the tail that extends past the body, for
+    /// treatments that already cover the body's own bottom corner.
+    static func fillTailProtrusion(of region: NativeTimelineBubbleRegion) {
+        guard region.showsTail else { return }
+        NSGraphicsContext.saveGraphicsState()
+        let outsideBody = NSBezierPath(rect: region.frame.insetBy(
+            dx: -cornerRadius,
+            dy: -cornerRadius
+        ))
+        outsideBody.append(bodyPath(for: region))
+        outsideBody.windingRule = .evenOdd
+        outsideBody.addClip()
+        tailPath(for: region).fill()
+        NSGraphicsContext.restoreGraphicsState()
+    }
+
+    /// The tail at the bubble's bottom outer corner. Its inner points lie
+    /// inside the body so the union with the body has no seam or notch.
     static func tailPath(
         for region: NativeTimelineBubbleRegion
     ) -> NSBezierPath {
-        let path = NSBezierPath()
-        if region.isOutgoing {
-            path.move(to: CGPoint(
-                x: region.frame.maxX - InterfaceScale.metric(4),
-                y: region.frame.maxY - InterfaceScale.metric(15)
-            ))
-            path.curve(
-                to: CGPoint(x: region.frame.maxX + InterfaceScale.metric(10), y: region.frame.maxY),
-                controlPoint1: CGPoint(
-                    x: region.frame.maxX - InterfaceScale.metric(2),
-                    y: region.frame.maxY - InterfaceScale.metric(5)
-                ),
-                controlPoint2: CGPoint(
-                    x: region.frame.maxX + InterfaceScale.metric(2),
-                    y: region.frame.maxY
-                )
-            )
-            path.curve(
-                to: CGPoint(
-                    x: region.frame.maxX - InterfaceScale.metric(7),
-                    y: region.frame.maxY - InterfaceScale.metric(3)
-                ),
-                controlPoint1: CGPoint(
-                    x: region.frame.maxX + InterfaceScale.metric(4),
-                    y: region.frame.maxY
-                ),
-                controlPoint2: CGPoint(
-                    x: region.frame.maxX - InterfaceScale.metric(2),
-                    y: region.frame.maxY - 1
-                )
-            )
-        } else {
-            path.move(to: CGPoint(
-                x: region.frame.minX + InterfaceScale.metric(4),
-                y: region.frame.maxY - InterfaceScale.metric(15)
-            ))
-            path.curve(
-                to: CGPoint(x: region.frame.minX - InterfaceScale.metric(10), y: region.frame.maxY),
-                controlPoint1: CGPoint(
-                    x: region.frame.minX + InterfaceScale.metric(2),
-                    y: region.frame.maxY - InterfaceScale.metric(5)
-                ),
-                controlPoint2: CGPoint(
-                    x: region.frame.minX - InterfaceScale.metric(2),
-                    y: region.frame.maxY
-                )
-            )
-            path.curve(
-                to: CGPoint(
-                    x: region.frame.minX + InterfaceScale.metric(7),
-                    y: region.frame.maxY - InterfaceScale.metric(3)
-                ),
-                controlPoint1: CGPoint(
-                    x: region.frame.minX - InterfaceScale.metric(4),
-                    y: region.frame.maxY
-                ),
-                controlPoint2: CGPoint(
-                    x: region.frame.minX + InterfaceScale.metric(2),
-                    y: region.frame.maxY - 1
-                )
+        let frame = region.frame
+        let edgeX = region.isOutgoing ? frame.maxX : frame.minX
+        let inward: CGFloat = region.isOutgoing ? -1 : 1
+        func point(_ inset: CGFloat, _ rise: CGFloat) -> CGPoint {
+            CGPoint(
+                x: edgeX + inward * InterfaceScale.metric(inset),
+                y: frame.maxY - InterfaceScale.metric(rise)
             )
         }
+        // Start where the straight outer edge meets the bottom corner.
+        let startRise = min(18, frame.height / InterfaceScale.metric(1) / 2)
+        let path = NSBezierPath()
+        path.move(to: point(16, startRise))
+        path.line(to: point(0, startRise))
+        path.curve(
+            to: point(-6, 0),
+            controlPoint1: point(0, 6),
+            controlPoint2: point(-2.5, 0.8)
+        )
+        path.curve(
+            to: point(16, 2.2),
+            controlPoint1: point(4, 0.4),
+            controlPoint2: point(10, 1.4)
+        )
         path.close()
         return path
     }

@@ -762,12 +762,15 @@ extension NativeTimelineRowPainter {
                 height: geometry.frame.height
             ).fill()
             NSGraphicsContext.restoreGraphicsState()
+            // The rail runs along the leading edge, so it only reaches an
+            // incoming bubble's tail.
             if geometry.ownsBottomEdge,
                bubbleRegion.showsTail,
+               !bubbleRegion.isOutgoing,
                let accentColor = roleColor(accentColor)
             {
                 accentColor.setFill()
-                NativeTimelineBubbleDrawing.tailPath(for: bubbleRegion).fill()
+                NativeTimelineBubbleDrawing.fillTailProtrusion(of: bubbleRegion)
             }
         }
 
@@ -815,6 +818,10 @@ extension NativeTimelineRowPainter {
             )
             bubbleIntegratedSectionTintColor.setFill()
             geometry.path.fill()
+            // A section along the bottom edge continues into the tail.
+            if geometry.ownsBottomEdge {
+                NativeTimelineBubbleDrawing.fillTailProtrusion(of: bubbleRegion)
+            }
         }
     }
 
