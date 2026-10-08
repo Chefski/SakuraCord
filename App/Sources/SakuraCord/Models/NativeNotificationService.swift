@@ -380,6 +380,7 @@ nonisolated struct NotificationDeepLink: Codable, Equatable, Sendable {
 
 @MainActor
 protocol NativeNotificationService: Sendable {
+    func setSuppressed(_ suppressed: Bool)
     func requestAuthorization() async throws -> Bool
     func authorizationStatus() async -> UNAuthorizationStatus
     func deliver(
@@ -410,6 +411,8 @@ protocol NativeNotificationService: Sendable {
 }
 
 extension NativeNotificationService {
+    func setSuppressed(_: Bool) {}
+
     func deliverMessage(
         message: Message,
         channel: Channel?,
@@ -471,11 +474,30 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
 
     // Offline demos use real system permissions without publishing fixture alerts.
     private let deliversNotifications: Bool
+    private let preparePreviewImage: @MainActor (URL?, Int) async -> Data?
+    private let submitRequest: @MainActor (UNNotificationRequest) async throws -> Void
+    private var isSuppressed = false
     private var pendingRequests: [String: UUID] = [:]
 
-    init(deliversNotifications: Bool = true) {
+    init(
+        deliversNotifications: Bool = true,
+        preparePreviewImage: @escaping @MainActor (URL?, Int) async -> Data? = {
+            await NotificationMedia.previewImage(at: $0, maximumDimension: $1)
+        },
+        submitRequest: @escaping @MainActor (UNNotificationRequest) async throws -> Void = {
+            try await UNUserNotificationCenter.current().add($0)
+        }
+    ) {
         self.deliversNotifications = deliversNotifications
+        self.preparePreviewImage = preparePreviewImage
+        self.submitRequest = submitRequest
         super.init()
+    }
+
+    func setSuppressed(_ suppressed: Bool) {
+        isSuppressed = suppressed
+        // Invalidate image preparation even if DND ends before it completes.
+        if suppressed { pendingRequests.removeAll() }
     }
 
     func requestAuthorization() async throws -> Bool {
@@ -513,7 +535,7 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
         presentation: NotificationContentPresentation,
         preferences: NotificationPreferences
     ) async {
-        guard deliversNotifications, preferences.isEnabled else { return }
+        guard deliversNotifications, !isSuppressed, preferences.isEnabled else { return }
         let identifier = NativeNotificationIdentity.message(
             accountID: accountID, channelID: message.channelID, messageID: message.id
         )
@@ -539,8 +561,8 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
             messageID: message.id
         ).userInfo
         let attachment = NotificationMedia.imageAttachment(in: message, style: style)
-        let imageData = await NotificationMedia.previewImage(
-            at: attachment?.proxyURL ?? attachment?.url, maximumDimension: 1_280
+        let imageData = await preparePreviewImage(
+            attachment?.proxyURL ?? attachment?.url, 1_280
         )
         guard pendingRequests[identifier] == token, !Task.isCancelled,
               preferences.isEnabled, preferences.previewStyle == style
@@ -571,7 +593,7 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
         accountID: String,
         preferences: NotificationPreferences
     ) async {
-        guard deliversNotifications, preferences.isEnabled else { return }
+        guard deliversNotifications, !isSuppressed, preferences.isEnabled else { return }
         let identifier = NativeNotificationIdentity.call(accountID: accountID, channelID: call.channelID)
         let token = UUID()
         let style = preferences.previewStyle
@@ -641,12 +663,12 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
         kind: StaticString,
         preferences: NotificationPreferences
     ) async {
-        guard deliversNotifications, preferences.isEnabled,
+        guard deliversNotifications, !isSuppressed, preferences.isEnabled,
               let content = content.mutableCopy() as? UNMutableNotificationContent
         else { return }
         content.sound = preferences.playsSound ? Self.notificationSound : nil
         do {
-            try await center.add(
+            try await submitRequest(
                 UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
             )
         } catch {

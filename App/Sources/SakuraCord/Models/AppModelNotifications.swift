@@ -90,7 +90,7 @@ extension AppModel {
 
     func deliverNativeNotification(for message: Message, isMention: Bool = false) {
         // Keep synthetic performance events away from Notification Center's XPC queue.
-        guard !runsChatPerformanceBenchmark else { return }
+        guard !runsChatPerformanceBenchmark, currentStatus != .dnd else { return }
         let channel = snapshot?.channels.first { $0.id == message.channelID }
             ?? visibleChannels.first { $0.id == message.channelID }
         guard let currentUserID = snapshot?.currentUser.id else { return }
@@ -113,7 +113,9 @@ extension AppModel {
         let accountID = readState.accountID ?? "offline"
         let account = accountSession()
         startAccountChildTask(account: account) { model, account in
-            guard model.isCurrentAccountSession(account), !Task.isCancelled else { return }
+            guard model.isCurrentAccountSession(account), !Task.isCancelled,
+                  model.currentStatus != .dnd
+            else { return }
             var presented = message
             presented.author = model.privateConversationUser(message.author, in: guildID)
             let presentation = NotificationContentPresentation.make(
@@ -180,6 +182,10 @@ extension AppModel {
         guard !runsChatPerformanceBenchmark,
               let currentUserID = snapshot?.currentUser.id
         else { return }
+        guard currentStatus != .dnd else {
+            dndSuppressedIncomingCallChannelIDs.insert(call.channelID)
+            return
+        }
         guard notificationPreferences.allows(
             .incomingCall,
             isCurrentConversation: readState.isActivelyPresentedAtNewest(call.channelID)
@@ -195,7 +201,14 @@ extension AppModel {
         let accountID = readState.accountID ?? "offline"
         let account = accountSession()
         startAccountChildTask(account: account) { model, account in
-            guard model.isCurrentAccountSession(account), !Task.isCancelled else { return }
+            guard model.isCurrentAccountSession(account), !Task.isCancelled,
+                  model.privateCallsByChannel[call.channelID]?.isRinging(currentUserID) == true,
+                  model.activeVoiceChannel?.id != call.channelID
+            else { return }
+            guard model.currentStatus != .dnd else {
+                model.dndSuppressedIncomingCallChannelIDs.insert(call.channelID)
+                return
+            }
             await model.notificationService.deliverIncomingCall(
                 call: call,
                 channel: channel,
@@ -206,7 +219,20 @@ extension AppModel {
         }
     }
 
+    func resumeDNDSuppressedIncomingCalls() {
+        let channelIDs = dndSuppressedIncomingCallChannelIDs
+        dndSuppressedIncomingCallChannelIDs.removeAll()
+        guard let currentUserID = snapshot?.currentUser.id else { return }
+        for channelID in channelIDs {
+            guard let call = privateCallsByChannel[channelID], call.isRinging(currentUserID),
+                  activeVoiceChannel?.id != channelID
+            else { continue }
+            deliverIncomingCallNotification(call)
+        }
+    }
+
     func cancelIncomingCallNotification(channelID: ChannelID) {
+        dndSuppressedIncomingCallChannelIDs.remove(channelID)
         guard !runsChatPerformanceBenchmark else { return }
         let accountID = readState.accountID ?? "offline"
         let account = accountSession()

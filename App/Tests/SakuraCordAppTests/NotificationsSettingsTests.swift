@@ -210,8 +210,10 @@ import UserNotifications
 }
 
 @MainActor
-@Test(arguments: [false, true])
-func `Incoming call notifications deduplicate and cancel at the ringing boundary`(appIsActive: Bool) async throws {
+@Test(arguments: [false, true], [PresenceStatus.online, .dnd])
+func `Incoming call notifications deduplicate and cancel at the ringing boundary`(
+    appIsActive: Bool, status: PresenceStatus
+) async throws {
     let service = RecordingNotificationService()
     let sounds = RecordingAppSoundPlayer()
     let model = AppModel(
@@ -229,6 +231,7 @@ func `Incoming call notifications deduplicate and cancel at the ringing boundary
     model.selectedChannelID = channel.id
     model.mainWindowIsActive = appIsActive
     model.applicationIsActive = appIsActive
+    model.applyCurrentStatus(status)
     var call = PrivateCall(
         channelID: channel.id,
         messageID: MessageID(rawValue: 40),
@@ -237,18 +240,42 @@ func `Incoming call notifications deduplicate and cancel at the ringing boundary
         ]
     )
 
-    let expectedNotifications = appIsActive ? [] : [channel.id]
+    let expectedNotifications = appIsActive || status == .dnd ? [] : [channel.id]
     model.consumePrivateCallChanged(&call)
-    #expect(await until { service.deliveredCallChannelIDs == expectedNotifications })
-    #expect(sounds.looping[.callRinging] == appIsActive)
+    for task in Array(model.accountChildTasks.values) { await task.value }
+    #expect(service.deliveredCallChannelIDs == expectedNotifications)
+    #expect(sounds.looping[.callRinging] == (appIsActive && status != .dnd))
     model.consumePrivateCallChanged(&call)
     await Task.yield()
     #expect(service.deliveredCallChannelIDs == expectedNotifications)
 
+    model.applyCurrentStatus(.dnd)
+    #expect(sounds.looping[.callRinging] == false)
+    model.applyCurrentStatus(.online)
+    #expect(sounds.looping[.callRinging] == appIsActive)
+    for task in Array(model.accountChildTasks.values) { await task.value }
+    let resumedNotifications = appIsActive ? [] : [channel.id]
+    #expect(service.deliveredCallChannelIDs == resumedNotifications)
+    model.applyCurrentStatus(.dnd)
+    model.applyCurrentStatus(.online)
+    model.consumePrivateCallChanged(&call)
+    for task in Array(model.accountChildTasks.values) { await task.value }
+    #expect(service.deliveredCallChannelIDs == resumedNotifications)
+
+    let rings = call.ongoingRings
     call.ongoingRings = []
     model.consumePrivateCallChanged(&call)
     #expect(await until { service.cancelledCallChannelIDs == [channel.id] })
     #expect(sounds.looping[.callRinging] == false)
+
+    model.applyCurrentStatus(.dnd)
+    call.ongoingRings = rings
+    model.consumePrivateCallChanged(&call)
+    call.ongoingRings = []
+    model.consumePrivateCallChanged(&call)
+    model.applyCurrentStatus(.online)
+    for task in Array(model.accountChildTasks.values) { await task.value }
+    #expect(service.deliveredCallChannelIDs == resumedNotifications)
 }
 
 @MainActor
@@ -331,6 +358,13 @@ func `Desktop and sound delivery are independent and share message filters`(appI
             author: sender, content: "Hello", timestamp: .now
         )
         model.applicationIsActive = appIsActive
+        model.applyCurrentStatus(.dnd)
+        model.deliverNativeNotification(for: message)
+        for task in Array(model.accountChildTasks.values) { await task.value }
+        #expect(service.messageSounds.isEmpty)
+        #expect(sounds.played.isEmpty)
+
+        model.applyCurrentStatus(.online)
         let deliversDesktop = desktop && !appIsActive
         model.deliverNativeNotification(for: message)
         if deliversDesktop {
@@ -345,7 +379,59 @@ func `Desktop and sound delivery are independent and share message filters`(appI
         await Task.yield()
         #expect(service.messageSounds.count == (deliversDesktop ? 1 : 0))
         #expect(sounds.played.count == (!deliversDesktop && sound ? 1 : 0))
+
+        if deliversDesktop {
+            preferences.notifiesDirectMessages = true
+            model.deliverNativeNotification(for: message)
+            model.applyCurrentStatus(.dnd)
+            for task in Array(model.accountChildTasks.values) { await task.value }
+            #expect(service.messageSounds == [sound])
+        }
     }
+}
+
+@MainActor
+@Test(.timeLimit(.minutes(1)), arguments: [false, true])
+func `DND invalidates native notifications awaiting image preparation`(entersDND: Bool) async throws {
+    let preparing = AsyncStream<Void>.makeStream()
+    let resume = AsyncStream<Void>.makeStream()
+    var submittedIDs: [String] = []
+    let service = MacNativeNotificationService(
+        preparePreviewImage: { _, _ in
+            preparing.continuation.yield(())
+            preparing.continuation.finish()
+            for await _ in resume.stream { break }
+            return nil
+        },
+        submitRequest: { submittedIDs.append($0.identifier) }
+    )
+    let preferences = NotificationPreferences(defaults: InMemoryPreferences())
+    preferences.playsSound = false
+    let message = Message(
+        id: MessageID(rawValue: 1), channelID: ChannelID(rawValue: 2),
+        author: User(id: UserID(rawValue: 3), username: "sender", displayName: "Sender"),
+        content: "Photo", attachments: [Attachment(
+            id: "image", filename: "photo.png", url: URL(fileURLWithPath: "/tmp/dnd-photo.png"),
+            mediaType: "image/png"
+        )]
+    )
+    let delivery = Task {
+        await service.deliver(
+            message: message, channel: nil, guild: nil, accountID: "offline", preferences: preferences
+        )
+    }
+    defer { resume.continuation.finish(); delivery.cancel() }
+    for await _ in preparing.stream { break }
+    if entersDND {
+        service.setSuppressed(true)
+        service.setSuppressed(false)
+    }
+    resume.continuation.finish()
+    await cancellableValue(of: delivery)
+    let identifier = NativeNotificationIdentity.message(
+        accountID: "offline", channelID: message.channelID, messageID: message.id
+    )
+    #expect(submittedIDs == (entersDND ? [] : [identifier]))
 }
 
 @Test func `Notification previews resolve tokens and protect private image previews`() {

@@ -311,7 +311,14 @@ final class AppModel {
     var isLoadingRoleMembers = false
     var roleMemberErrorMessage: String?
     @ObservationIgnored var currentStatusRevision: UInt64 = 0
-    var currentStatus: PresenceStatus = .offline
+    var currentStatus: PresenceStatus = .offline {
+        didSet {
+            guard oldValue != currentStatus else { return }
+            notificationService.setSuppressed(currentStatus == .dnd)
+            reconcilePrivateCallSounds()
+            if oldValue == .dnd { resumeDNDSuppressedIncomingCalls() }
+        }
+    }
     var connectionState: ConnectionState = .disconnected
     var isAuthenticated = false
     var isSwitchingAccounts = false
@@ -497,6 +504,7 @@ final class AppModel {
         }
     }
     var privateCallsByChannel: [ChannelID: PrivateCall] = [:]
+    @ObservationIgnored var dndSuppressedIncomingCallChannelIDs: Set<ChannelID> = []
     var privateCallActionChannelIDs: Set<ChannelID> = []
     var mediaDevices: MediaDeviceSnapshot = .empty
     var emojisByGuild: [GuildID: [DiscordEmoji]] = [:] {
