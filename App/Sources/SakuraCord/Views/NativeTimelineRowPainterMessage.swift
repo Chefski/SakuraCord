@@ -39,12 +39,12 @@ struct NativeTimelineMessageDrawInput {
 
 extension NativeTimelineRowPainter {
     static func drawMessage(_ input: NativeTimelineMessageDrawInput) {
-        drawMessageBubbleTint(input)
         drawMessageSearchContext(input)
         drawMessageSeparators(input)
         drawMessageIdentity(input)
         drawMessageReplyAndCommand(input)
         if input.hidesMessageContent { return }
+        drawMessageBubbleTint(input)
         drawForwardedHeaderAndSystemIcon(input)
         drawMessageContent(input)
         drawMessageTranslation(input)
