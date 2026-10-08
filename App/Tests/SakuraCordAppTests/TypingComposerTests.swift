@@ -2573,11 +2573,22 @@ func `retry resends the exact failed draft through sending and confirmed states`
     #expect(model.isSendQueueFullAlertPresented)
     #expect(await provider.sendCount == 1)
 
+    // The confirmation carries a later server timestamp than the sends still
+    // queued behind it; it must settle in place rather than move below them.
+    await provider.suspendNextSend()
+    await provider.releaseSend()
+    #expect(await deliveries[0].value)
+    await provider.waitUntilSendStarts()
+    let settling = model.messages.filter { contents.contains($0.content) }
+    #expect(settling.map(\.content) == contents)
+    #expect(settling.map(\.outboxState) == [.confirmed] + Array(repeating: .sending, count: contents.count - 1))
+
     await provider.releaseSend()
     for delivery in deliveries {
         #expect(await delivery.value)
     }
     #expect(await provider.sentDrafts.map(\.content) == contents)
+    #expect(model.messages.filter { contents.contains($0.content) }.map(\.content) == contents)
 }
 
 @MainActor

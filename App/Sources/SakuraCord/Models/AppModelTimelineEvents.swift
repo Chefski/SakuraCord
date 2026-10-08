@@ -923,8 +923,13 @@ extension AppModel {
         return lowerBound
     }
 
+    /// Sends still in the outbox stay below settled messages in submission
+    /// order. A confirmation carries a later server timestamp than the local
+    /// time of the sends queued behind it, so it settles in place.
     static func messagePrecedes(_ lhs: Message, _ rhs: Message) -> Bool {
-        lhs.timestamp != rhs.timestamp ? lhs.timestamp < rhs.timestamp : lhs.id < rhs.id
+        let lhsInFlight = lhs.isOutgoingInFlight
+        if lhsInFlight != rhs.isOutgoingInFlight { return !lhsInFlight }
+        return lhs.timestamp != rhs.timestamp ? lhs.timestamp < rhs.timestamp : lhs.id < rhs.id
     }
 
     func cache(_ message: Message) {
