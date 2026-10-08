@@ -2546,6 +2546,41 @@ func `retry resends the exact failed draft through sending and confirmed states`
 }
 
 @MainActor
+@Test func `composer queues sends in order and refuses a message while the outbox is full`() async throws {
+    let provider = TypingTestProvider()
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+
+    await provider.suspendNextSend()
+    let contents = (0 ... OutgoingMessageState.maximumWaitingDeliveries).map { "queued \($0)" }
+    var deliveries: [Task<Bool, Never>] = []
+    for content in contents {
+        model.updateDraft(content)
+        // Each submission returns once queued, while the first is still in flight.
+        guard case let .enqueued(delivery) = await model.submitComposerMessage(attachments: []) else {
+            Issue.record("\(content) was not queued")
+            return
+        }
+        deliveries.append(delivery)
+        #expect(model.draft.isEmpty)
+        if deliveries.count == 1 { await provider.waitUntilSendStarts() }
+    }
+    #expect(model.messages.filter { $0.outboxState == .sending }.map(\.content) == contents)
+
+    model.updateDraft("refused")
+    #expect(!(await model.submitComposerMessage(attachments: [])).consumedComposer)
+    #expect(model.draft == "refused")
+    #expect(model.isSendQueueFullAlertPresented)
+    #expect(await provider.sendCount == 1)
+
+    await provider.releaseSend()
+    for delivery in deliveries {
+        #expect(await delivery.value)
+    }
+    #expect(await provider.sentDrafts.map(\.content) == contents)
+}
+
+@MainActor
 @Test func `optimistic message is pending until send confirmation`() async {
     let provider = TypingTestProvider()
     let model = AppModel(launchMode: .offlineTesting, provider: provider)

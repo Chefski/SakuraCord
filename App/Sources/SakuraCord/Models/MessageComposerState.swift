@@ -19,6 +19,7 @@ final class MessageComposerState {
     var threadReplyMentionsAuthor = true
     var channelAttachments: [ForumPostAttachment] = []
     var threadAttachments: [ForumPostAttachment] = []
+    var isSendQueueFullAlertPresented = false
     @ObservationIgnored var outbox = OutgoingMessageState()
     @ObservationIgnored private var draftWriteTask: Task<Void, Never>?
 
@@ -87,6 +88,7 @@ final class MessageComposerState {
         threadReplyMentionsAuthor = true
         channelAttachments = []
         threadAttachments = []
+        isSendQueueFullAlertPresented = false
         outbox.reset()
         slowmode.reset()
         await pendingWrite?.value
@@ -94,9 +96,41 @@ final class MessageComposerState {
 }
 
 struct OutgoingMessageState {
+    /// The first-party client refuses a new message while this many sends wait
+    /// behind the one in flight.
+    static let maximumWaitingDeliveries = 5
+
+    struct DeliveryTurn {
+        let previous: Task<Void, Never>?
+        let generation: UInt64
+    }
+
     var draftsByNonce: [String: SendMessageDraft] = [:]
     var stickerUploadSourceURLByNonce: [String: URL] = [:]
     private var nextOptimisticMessageRawValue = UInt64.max
+    private var deliveryTail: Task<Void, Never>?
+    private(set) var waitingDeliveryCount = 0
+    private var deliveryGeneration: UInt64 = 0
+
+    var isDeliveryQueueFull: Bool {
+        waitingDeliveryCount >= Self.maximumWaitingDeliveries
+    }
+
+    /// Reserves the next position in the account's single delivery order.
+    mutating func reserveDeliveryTurn() -> DeliveryTurn {
+        waitingDeliveryCount += 1
+        return DeliveryTurn(previous: deliveryTail, generation: deliveryGeneration)
+    }
+
+    mutating func setDeliveryTail(_ delivery: Task<Void, Never>, for turn: DeliveryTurn) {
+        guard turn.generation == deliveryGeneration else { return }
+        deliveryTail = delivery
+    }
+
+    mutating func beginDelivery(for turn: DeliveryTurn) {
+        guard turn.generation == deliveryGeneration else { return }
+        waitingDeliveryCount = max(0, waitingDeliveryCount - 1)
+    }
 
     mutating func nextOptimisticMessageID() -> MessageID {
         defer { nextOptimisticMessageRawValue &-= 1 }
@@ -107,5 +141,8 @@ struct OutgoingMessageState {
         draftsByNonce.removeAll(keepingCapacity: false)
         stickerUploadSourceURLByNonce.removeAll(keepingCapacity: false)
         nextOptimisticMessageRawValue = UInt64.max
+        deliveryTail = nil
+        waitingDeliveryCount = 0
+        deliveryGeneration &+= 1
     }
 }
