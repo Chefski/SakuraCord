@@ -807,17 +807,21 @@ extension NativeTimelineRowLayout {
                     horizontalSpacing: MessageReactionMetrics.horizontalSpacing,
                     verticalSpacing: MessageReactionMetrics.verticalSpacing
                 )
+                // Reactions follow an outgoing bubble to the trailing edge.
+                let reactionsX = isOutgoingBubble
+                    ? contentX + max(0, contentWidth - wrapping.size.width)
+                    : contentX
                 result.reactionRegions = zip(
                     presentedReactions,
                     wrapping.frames.prefix(presentedReactions.count)
                 ).map { reaction, frame in
                     NativeTimelineRowLayout.reactionRegion(
                         reaction,
-                        frame: frame.offsetBy(dx: contentX, dy: verticalOffset)
+                        frame: frame.offsetBy(dx: reactionsX, dy: verticalOffset)
                     )
                 }
                 if let frame = wrapping.frames.last {
-                    result.addReactionFrame = frame.offsetBy(dx: contentX, dy: verticalOffset)
+                    result.addReactionFrame = frame.offsetBy(dx: reactionsX, dy: verticalOffset)
                 }
                 verticalOffset += wrapping.size.height
             }
