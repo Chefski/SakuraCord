@@ -535,9 +535,13 @@ extension AppModel {
         guard creation.isPrivate ? permissions.canCreatePrivate : permissions.canCreatePublic,
               !creation.trimmedName.isEmpty, !content.isEmpty || !attachments.isEmpty,
               validateAttachmentCount(attachments),
-              allowOnboardingSubmission(in: creation.parentID),
-              allowOutgoingQueueSubmission()
+              allowOnboardingSubmission(in: creation.parentID)
         else { return .rejected }
+        guard let reservation = composer.outbox.reserveSubmission() else {
+            composer.isSendQueueFullAlertPresented = true
+            return .rejected
+        }
+        defer { composer.outbox.releaseSubmission(reservation) }
         let session = accountSession()
         let draft = CreateThreadDraft(
             channelID: creation.parentID,

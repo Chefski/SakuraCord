@@ -852,7 +852,7 @@ nonisolated enum MessageGrouping {
             && sharesAuthorIdentity(previous, message)
             && message.replyTo == nil
             && (interval >= 0 || message.isUnconfirmedLocalSend)
-            && interval < continuationInterval
+            && abs(interval) < continuationInterval
             && calendar.isDate(previous.timestamp, inSameDayAs: message.timestamp)
     }
 

@@ -112,12 +112,25 @@ struct OutgoingMessageState {
     private var deliveryTail: Task<Void, Never>?
     private var waitingNonces: Set<String> = []
     private var confirmedWaitingNonces: Set<String> = []
+    private var submissionReservations: Set<UUID> = []
     private var deliveryGeneration: UInt64 = 0
 
-    var waitingDeliveryCount: Int { waitingNonces.count }
+    var waitingDeliveryCount: Int { waitingNonces.count + submissionReservations.count }
 
     var isDeliveryQueueFull: Bool {
         waitingDeliveryCount >= Self.maximumWaitingDeliveries
+    }
+
+    /// Holds capacity while a submission prepares its destination, before it has a send nonce.
+    mutating func reserveSubmission() -> UUID? {
+        guard !isDeliveryQueueFull else { return nil }
+        let reservation = UUID()
+        submissionReservations.insert(reservation)
+        return reservation
+    }
+
+    mutating func releaseSubmission(_ reservation: UUID) {
+        submissionReservations.remove(reservation)
     }
 
     /// Reserves the next position in the account's single delivery order.
@@ -156,6 +169,7 @@ struct OutgoingMessageState {
         deliveryTail = nil
         waitingNonces.removeAll()
         confirmedWaitingNonces.removeAll()
+        submissionReservations.removeAll()
         deliveryGeneration &+= 1
     }
 }
