@@ -212,7 +212,7 @@ enum NativeTimelineBubbleLayout {
             ?? defaultFrame
     }
 
-    private static func measuredTextWidth(
+    static func measuredTextWidth(
         _ framesetter: CTFramesetter,
         length: Int,
         maximumWidth: CGFloat

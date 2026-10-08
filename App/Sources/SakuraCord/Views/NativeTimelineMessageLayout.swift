@@ -60,7 +60,49 @@ extension NativeTimelineRowLayout {
             )
         }
 
+        /// Replaces the estimated bubble width once the real content extent
+        /// is known.
+        private var fittedBubbleContentWidth: CGFloat?
+
         mutating func make() -> NativeTimelineRowLayout {
+            let unmeasured = self
+            let layout = assemble()
+            // Media bubbles start from an estimate. When the media renders
+            // narrower, lay the row out again so the bubble hugs it.
+            guard let fittedWidth = mediaBubbleContentWidth(of: layout) else { return layout }
+            self = unmeasured
+            fittedBubbleContentWidth = fittedWidth
+            return assemble()
+        }
+
+        private func mediaBubbleContentWidth(of layout: NativeTimelineRowLayout) -> CGFloat? {
+            guard usesBubbles, layout.bubbleRegion != nil,
+                  layout.pollLayout == nil, layout.pollResultFrame == nil,
+                  layout.translationRegion == nil, layout.threadFrame == nil,
+                  layout.forwardedSourceRegion == nil, layout.forwardedHeaderFrame == nil,
+                  layout.componentLayouts.isEmpty, layout.inviteRegions.isEmpty,
+                  layout.sakuraCordDeepLinkRegions.isEmpty,
+                  layout.embedRegions.allSatisfy({ $0.kind == .bareMedia })
+            else { return nil }
+            var extent = InterfaceScale.metric(28)
+            if let attributedContent = layout.attributedContent, let framesetter = layout.contentFramesetter {
+                extent = max(extent, NativeTimelineBubbleLayout.measuredTextWidth(
+                    framesetter,
+                    length: attributedContent.length,
+                    maximumWidth: contentWidth
+                ))
+            }
+            let mediaFrames = layout.linkedImageRegions.map(\.frame)
+                + layout.attachmentRegions.map(\.frame)
+                + layout.embedFrames
+                + layout.stickerFrames
+            for frame in mediaFrames {
+                extent = max(extent, ceil(frame.maxX - contentX))
+            }
+            return extent < contentWidth - 1 ? extent : nil
+        }
+
+        private mutating func assemble() -> NativeTimelineRowLayout {
             prepareColumns()
             appendPrefix()
             appendIdentity()
@@ -98,7 +140,7 @@ extension NativeTimelineRowLayout {
             translationPresentation = NativeTimelineTranslationPresentation.make(
                 row: row, model: model, isOutgoingBubble: isOutgoingBubble
             )
-            let preferredBubbleContentWidth =
+            let preferredBubbleContentWidth = fittedBubbleContentWidth ??
                 NativeTimelineBubbleLayout.preferredContentWidth(
                     for: message,
                     row: row,
