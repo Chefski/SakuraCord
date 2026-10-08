@@ -380,6 +380,7 @@ nonisolated struct NotificationDeepLink: Codable, Equatable, Sendable {
 
 @MainActor
 protocol NativeNotificationService: Sendable {
+    func setSuppressed(_ suppressed: Bool)
     func requestAuthorization() async throws -> Bool
     func authorizationStatus() async -> UNAuthorizationStatus
     func deliver(
@@ -410,6 +411,8 @@ protocol NativeNotificationService: Sendable {
 }
 
 extension NativeNotificationService {
+    func setSuppressed(_: Bool) {}
+
     func deliverMessage(
         message: Message,
         channel: Channel?,
@@ -471,11 +474,18 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
 
     // Offline demos use real system permissions without publishing fixture alerts.
     private let deliversNotifications: Bool
+    private var isSuppressed = false
     private var pendingRequests: [String: UUID] = [:]
 
     init(deliversNotifications: Bool = true) {
         self.deliversNotifications = deliversNotifications
         super.init()
+    }
+
+    func setSuppressed(_ suppressed: Bool) {
+        isSuppressed = suppressed
+        // Invalidate image preparation even if DND ends before it completes.
+        if suppressed { pendingRequests.removeAll() }
     }
 
     func requestAuthorization() async throws -> Bool {
@@ -513,7 +523,7 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
         presentation: NotificationContentPresentation,
         preferences: NotificationPreferences
     ) async {
-        guard deliversNotifications, preferences.isEnabled else { return }
+        guard deliversNotifications, !isSuppressed, preferences.isEnabled else { return }
         let identifier = NativeNotificationIdentity.message(
             accountID: accountID, channelID: message.channelID, messageID: message.id
         )
@@ -571,7 +581,7 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
         accountID: String,
         preferences: NotificationPreferences
     ) async {
-        guard deliversNotifications, preferences.isEnabled else { return }
+        guard deliversNotifications, !isSuppressed, preferences.isEnabled else { return }
         let identifier = NativeNotificationIdentity.call(accountID: accountID, channelID: call.channelID)
         let token = UUID()
         let style = preferences.previewStyle
@@ -641,7 +651,7 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
         kind: StaticString,
         preferences: NotificationPreferences
     ) async {
-        guard deliversNotifications, preferences.isEnabled,
+        guard deliversNotifications, !isSuppressed, preferences.isEnabled,
               let content = content.mutableCopy() as? UNMutableNotificationContent
         else { return }
         content.sound = preferences.playsSound ? Self.notificationSound : nil

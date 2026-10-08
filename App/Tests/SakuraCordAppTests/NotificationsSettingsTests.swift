@@ -210,8 +210,10 @@ import UserNotifications
 }
 
 @MainActor
-@Test(arguments: [false, true])
-func `Incoming call notifications deduplicate and cancel at the ringing boundary`(appIsActive: Bool) async throws {
+@Test(arguments: [false, true], [PresenceStatus.online, .dnd])
+func `Incoming call notifications deduplicate and cancel at the ringing boundary`(
+    appIsActive: Bool, status: PresenceStatus
+) async throws {
     let service = RecordingNotificationService()
     let sounds = RecordingAppSoundPlayer()
     let model = AppModel(
@@ -229,6 +231,7 @@ func `Incoming call notifications deduplicate and cancel at the ringing boundary
     model.selectedChannelID = channel.id
     model.mainWindowIsActive = appIsActive
     model.applicationIsActive = appIsActive
+    model.applyCurrentStatus(status)
     var call = PrivateCall(
         channelID: channel.id,
         messageID: MessageID(rawValue: 40),
@@ -237,13 +240,19 @@ func `Incoming call notifications deduplicate and cancel at the ringing boundary
         ]
     )
 
-    let expectedNotifications = appIsActive ? [] : [channel.id]
+    let expectedNotifications = appIsActive || status == .dnd ? [] : [channel.id]
     model.consumePrivateCallChanged(&call)
-    #expect(await until { service.deliveredCallChannelIDs == expectedNotifications })
-    #expect(sounds.looping[.callRinging] == appIsActive)
+    for task in Array(model.accountChildTasks.values) { await task.value }
+    #expect(service.deliveredCallChannelIDs == expectedNotifications)
+    #expect(sounds.looping[.callRinging] == (appIsActive && status != .dnd))
     model.consumePrivateCallChanged(&call)
     await Task.yield()
     #expect(service.deliveredCallChannelIDs == expectedNotifications)
+
+    model.applyCurrentStatus(.dnd)
+    #expect(sounds.looping[.callRinging] == false)
+    model.applyCurrentStatus(.online)
+    #expect(sounds.looping[.callRinging] == appIsActive)
 
     call.ongoingRings = []
     model.consumePrivateCallChanged(&call)
@@ -331,6 +340,13 @@ func `Desktop and sound delivery are independent and share message filters`(appI
             author: sender, content: "Hello", timestamp: .now
         )
         model.applicationIsActive = appIsActive
+        model.applyCurrentStatus(.dnd)
+        model.deliverNativeNotification(for: message)
+        for task in Array(model.accountChildTasks.values) { await task.value }
+        #expect(service.messageSounds.isEmpty)
+        #expect(sounds.played.isEmpty)
+
+        model.applyCurrentStatus(.online)
         let deliversDesktop = desktop && !appIsActive
         model.deliverNativeNotification(for: message)
         if deliversDesktop {
@@ -345,6 +361,14 @@ func `Desktop and sound delivery are independent and share message filters`(appI
         await Task.yield()
         #expect(service.messageSounds.count == (deliversDesktop ? 1 : 0))
         #expect(sounds.played.count == (!deliversDesktop && sound ? 1 : 0))
+
+        if deliversDesktop {
+            preferences.notifiesDirectMessages = true
+            model.deliverNativeNotification(for: message)
+            model.applyCurrentStatus(.dnd)
+            for task in Array(model.accountChildTasks.values) { await task.value }
+            #expect(service.messageSounds == [sound])
+        }
     }
 }
 

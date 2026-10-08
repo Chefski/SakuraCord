@@ -311,7 +311,13 @@ final class AppModel {
     var isLoadingRoleMembers = false
     var roleMemberErrorMessage: String?
     @ObservationIgnored var currentStatusRevision: UInt64 = 0
-    var currentStatus: PresenceStatus = .offline
+    var currentStatus: PresenceStatus = .offline {
+        didSet {
+            guard oldValue != currentStatus else { return }
+            notificationService.setSuppressed(currentStatus == .dnd)
+            reconcilePrivateCallSounds()
+        }
+    }
     var connectionState: ConnectionState = .disconnected
     var isAuthenticated = false
     var isSwitchingAccounts = false

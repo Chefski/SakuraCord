@@ -428,6 +428,7 @@ extension AppModel {
                 locallyStartedOutgoingPrivateCallRings
         )
         let shouldRingIncoming = state.ringsIncoming
+            && currentStatus != .dnd
             && (applicationIsActive || !notificationPreferences.isEnabled)
             && notificationPreferences.playsSound
             && privateCallsByChannel.values.contains { call in

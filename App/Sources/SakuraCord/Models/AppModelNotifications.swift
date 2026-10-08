@@ -90,7 +90,7 @@ extension AppModel {
 
     func deliverNativeNotification(for message: Message, isMention: Bool = false) {
         // Keep synthetic performance events away from Notification Center's XPC queue.
-        guard !runsChatPerformanceBenchmark else { return }
+        guard !runsChatPerformanceBenchmark, currentStatus != .dnd else { return }
         let channel = snapshot?.channels.first { $0.id == message.channelID }
             ?? visibleChannels.first { $0.id == message.channelID }
         guard let currentUserID = snapshot?.currentUser.id else { return }
@@ -113,7 +113,9 @@ extension AppModel {
         let accountID = readState.accountID ?? "offline"
         let account = accountSession()
         startAccountChildTask(account: account) { model, account in
-            guard model.isCurrentAccountSession(account), !Task.isCancelled else { return }
+            guard model.isCurrentAccountSession(account), !Task.isCancelled,
+                  model.currentStatus != .dnd
+            else { return }
             var presented = message
             presented.author = model.privateConversationUser(message.author, in: guildID)
             let presentation = NotificationContentPresentation.make(
@@ -178,6 +180,7 @@ extension AppModel {
 
     func deliverIncomingCallNotification(_ call: PrivateCall) {
         guard !runsChatPerformanceBenchmark,
+              currentStatus != .dnd,
               let currentUserID = snapshot?.currentUser.id
         else { return }
         guard notificationPreferences.allows(
@@ -195,7 +198,9 @@ extension AppModel {
         let accountID = readState.accountID ?? "offline"
         let account = accountSession()
         startAccountChildTask(account: account) { model, account in
-            guard model.isCurrentAccountSession(account), !Task.isCancelled else { return }
+            guard model.isCurrentAccountSession(account), !Task.isCancelled,
+                  model.currentStatus != .dnd
+            else { return }
             await model.notificationService.deliverIncomingCall(
                 call: call,
                 channel: channel,
