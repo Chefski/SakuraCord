@@ -324,7 +324,9 @@ final class NativeMemberListCanvasView: NSView, WindowModalInputParticipant {
             guard canActivateServerTag(at: index),
                   let frame = serverTagFrame(at: index)
             else { continue }
-            addCursorRect(frame.intersection(visibleRect), cursor: .pointingHand)
+            let cursorRect = frame.intersection(visibleRect)
+            guard !cursorRect.isNull, !cursorRect.isEmpty else { continue }
+            addCursorRect(cursorRect, cursor: .pointingHand)
         }
     }
 
