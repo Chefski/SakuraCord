@@ -119,11 +119,11 @@ extension NativeTimelineCanvasView {
             setNeedsDisplay(rowFrame(at: index))
         }
     }
-    func setHoveredEphemeralDismissMessageID(_ value: MessageID?) {
-        guard hoveredEphemeralDismissMessageID != value else { return }
-        let old = hoveredEphemeralDismissMessageID
-        hoveredEphemeralDismissMessageID = value
-        for messageID in [old, value].compactMap({ $0 }) {
+    func setHoveredFooterAction(_ value: NativeTimelineFooterActionTarget?) {
+        guard hoveredFooterAction != value else { return }
+        let old = hoveredFooterAction
+        hoveredFooterAction = value
+        for messageID in [old, value].compactMap({ $0?.messageID }) {
             guard let index = items.firstIndex(where: {
                 $0.messageID == messageID
             }) else { continue }
@@ -556,6 +556,15 @@ extension NativeTimelineCanvasView {
                 interactionFrame: frame,
                 value: value,
                 framesetter: framesetter
+            ))
+        }
+        if let translation = layout.translationRegion,
+           let frame = translation.textFrame, let value = translation.attributedText,
+           let framesetter = translation.framesetter {
+            result.append(SelectableTextRegion(
+                region: translation.regionID,
+                frame: NativeTimelineTextGeometry.messageContentDrawingFrame(frame),
+                interactionFrame: frame, value: value, framesetter: framesetter
             ))
         }
         for embed in layout.embedRegions {

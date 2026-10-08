@@ -182,6 +182,7 @@ struct NativeTimelineRowLayout {
     var pollLayout: NativeTimelinePollLayout?
     var pollResultFrame: CGRect?
     var inviteRegions: [NativeTimelineInviteLayout] = []
+    var translationRegion: TranslationRegion?
 
     static func make(
         item: NativeMessageTimelineItem,

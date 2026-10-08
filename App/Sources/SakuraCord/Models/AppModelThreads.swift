@@ -100,6 +100,7 @@ extension AppModel {
         threadDraft = ""
         threadReplyingTo = nil
         clearComposerAttachments(for: .thread)
+        translation.resetDraft(.thread)
         hasMoreThreadMessages = cachedBoundary ?? false
         beginInitialThreadLoad(thread)
     }
@@ -292,6 +293,7 @@ extension AppModel {
         threadDraft = ""
         threadReplyingTo = nil
         clearComposerAttachments(for: .thread)
+        translation.resetDraft(.thread)
         isLoadingThread = false
         hasCompletedInitialThreadLoad = false
         isLoadingEarlierThread = false
@@ -447,6 +449,7 @@ extension AppModel {
         if clearsComposer {
             threadDraft = ""
             threadReplyingTo = nil
+            translation.resetDraft(.thread)
         }
         let didSend = await performOutgoingSend(draft, isRetry: false)
         if didSend {
@@ -487,6 +490,7 @@ extension AppModel {
         threadCreation = ThreadCreationDraft(parentID: channelID, permissions: permissions)
         if !isConversationPresented(channelID) { suspendSelectedConversationPresentation() }
         if !channelDraft.isEmpty {
+            translation.resetDraft(.channel)
             updateDraft("")
             threadDraft = channelDraft
         }
@@ -524,6 +528,7 @@ extension AppModel {
             isPrivate: creation.isPrivate,
             autoArchiveDuration: selectedChannel?.defaultAutoArchiveDuration ?? 4_320
         )
+        translation.resetDraft(.thread)
         creation.isSubmitting = true
         defer { creation.isSubmitting = false }
         let thread: MessageThreadSummary

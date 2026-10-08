@@ -276,7 +276,7 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
     let accessibilityProxies =
         NativeTimelineAccessibilityProxyStore<
             NativeMessageTimelineItem.Identifier,
-            NativeMessageTimelineItem
+            NativeTimelineAccessibilityRowState
         >()
     let reactionPickerSource = StableReactionPickerSourceView()
     let reactionPickerCoordinator =
@@ -470,6 +470,7 @@ enum NativeTimelineRowPainter {
         componentButtonPressProgress: CGFloat = 0,
         isForwardedSourceHovered: Bool = false,
         isEphemeralDismissHovered: Bool = false,
+        isTranslationActionHovered: Bool = false,
         hidesMessageContent: Bool = false,
         hoveredReactionID: String? = nil,
         isAddReactionHovered: Bool = false,
@@ -542,6 +543,7 @@ enum NativeTimelineRowPainter {
                     componentButtonPressProgress,
                 isForwardedSourceHovered: isForwardedSourceHovered,
                 isEphemeralDismissHovered: isEphemeralDismissHovered,
+                isTranslationActionHovered: isTranslationActionHovered,
                 hidesMessageContent: hidesMessageContent,
                 hoveredReactionID: hoveredReactionID,
                 isAddReactionHovered: isAddReactionHovered,

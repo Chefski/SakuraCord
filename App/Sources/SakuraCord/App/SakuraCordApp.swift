@@ -100,6 +100,10 @@ struct SakuraCordApp: App {
         // every previously opened main window on the next launch.
         Window("SakuraCord", id: "main") {
             RootView(model: model)
+                .modifier(TranslationTaskHost(coordinator: model.translation.coordinator))
+                .onReceive(NotificationCenter.default.publisher(for: NSLocale.currentLocaleDidChangeNotification)) { _ in
+                    model.resetAllTranslations()
+                }
                 .focusedSceneValue(\.shortcutCommandContext, .workspace(model))
                 .windowModalInputScope()
                 .frame(

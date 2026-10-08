@@ -252,9 +252,11 @@ extension AppModel {
             consumeMessageCreated(&message, preparedTextPlan: preparedTextPlan)
             reconcileInboxMessage(message, isNew: true)
         case .messageUpdated(let incoming):
+            invalidateMessageTranslation(incoming.id, content: incoming.content)
             let reconciled = applyingPendingPinIntent(to: incoming)
             consumeMessageUpdated(reconciled, preparedTextPlan: preparedTextPlan)
         case .messagePatched(let update):
+            if let content = update.content { invalidateMessageTranslation(update.messageID, content: content) }
             reconcilePollVoteConfirmation(update)
             recordConversationRefreshMutation(.patch(update), messageID: update.messageID, channelID: update.channelID)
             if let message = applyingMessageUpdate(update) {
@@ -612,6 +614,7 @@ extension AppModel {
     }
 
     func consumeMessageDeleted(channelID: ChannelID, messageID: MessageID) {
+        invalidateMessageTranslation(messageID)
         receiveGuideResourceEvent(.messageDeleted(channelID: channelID, messageID: messageID))
         invalidateTimelineThreadPreview(channelID: channelID, messageID: messageID)
         recordConversationRefreshMutation(

@@ -145,6 +145,7 @@ extension AppModel {
     func updateDraft(_ value: String) {
         let draftByteDelta = Int64(value.utf8.count - draft.utf8.count)
         draft = value
+        reconcileDraftTranslationText(value, in: .channel)
         if value.hasPrefix("/") || commandComposer.activeCommand != nil {
             stopLocalTyping(clearThrottle: false)
         } else {
@@ -166,6 +167,7 @@ extension AppModel {
     func updateThreadDraft(_ value: String) {
         guard threadCreation?.isSubmitting != true else { return }
         threadDraft = value
+        reconcileDraftTranslationText(value, in: .thread)
         guard let thread = openThread else {
             stopLocalTyping(clearThrottle: value.isEmpty)
             return

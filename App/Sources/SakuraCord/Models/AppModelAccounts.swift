@@ -445,6 +445,7 @@ extension AppModel {
 
     func resetAccountScopedLoadsAndForumState() async {
         cancelAccountChildTasks()
+        resetAllTranslations()
         resetPendingCreatedMessages()
         resetTimelineLiveScrolling()
         clearReactionMutationState()

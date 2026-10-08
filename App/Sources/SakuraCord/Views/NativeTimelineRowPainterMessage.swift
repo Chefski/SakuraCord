@@ -25,6 +25,7 @@ struct NativeTimelineMessageDrawInput {
     let componentButtonPressProgress: CGFloat
     let isForwardedSourceHovered: Bool
     let isEphemeralDismissHovered: Bool
+    let isTranslationActionHovered: Bool
     let hidesMessageContent: Bool
     let hoveredReactionID: String?
     let isAddReactionHovered: Bool
@@ -46,6 +47,7 @@ extension NativeTimelineRowPainter {
         if input.hidesMessageContent { return }
         drawForwardedHeaderAndSystemIcon(input)
         drawMessageContent(input)
+        drawMessageTranslation(input)
         drawPoll(input)
         drawPollResult(input)
         drawMessageLinkedImages(input)

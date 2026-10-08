@@ -15,6 +15,7 @@ extension NativeTimelineRowLayout {
 
         private var result = NativeTimelineRowLayout()
         private var contentPresentation: NativeTimelineTextPresentation.Value
+        private var translationPresentation: NativeTimelineTranslationPresentation?
         private var usesBubbles = false
         private var isOutgoingBubble = false
         private var horizontalInset: CGFloat = 0
@@ -93,13 +94,17 @@ extension NativeTimelineRowLayout {
             if let status = MessageOutboxPresentation.interactionLoadingStatus(for: message, authorName: authorName) {
                 contentPresentation = NativeTimelineTextPresentation.interactionLoading(status)
             }
+            translationPresentation = NativeTimelineTranslationPresentation.make(
+                row: row, model: model, isOutgoingBubble: isOutgoingBubble
+            )
             let preferredBubbleContentWidth =
                 NativeTimelineBubbleLayout.preferredContentWidth(
                     for: message,
                     row: row,
                     content: contentPresentation,
                     availableWidth: width,
-                    isEnabled: usesBubbles
+                    isEnabled: usesBubbles,
+                    translation: translationPresentation
                 )
             let bubbleColumn = NativeTimelineBubbleLayout.column(
                 availableWidth: width,
@@ -347,6 +352,17 @@ extension NativeTimelineRowLayout {
                     ))
                 }
                 verticalOffset += textHeight
+                hasRichContent = true
+            }
+
+            if let translationPresentation {
+                if hasRichContent { verticalOffset += 4 }
+                let region = NativeTimelineRowLayout.translation(
+                    translationPresentation, messageID: message.id, isOutgoingBubble: isOutgoingBubble,
+                    origin: CGPoint(x: contentX, y: verticalOffset), width: contentWidth
+                )
+                result.translationRegion = region
+                verticalOffset = region.frame.maxY
                 hasRichContent = true
             }
 

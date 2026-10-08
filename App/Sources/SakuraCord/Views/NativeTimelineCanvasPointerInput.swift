@@ -110,6 +110,7 @@ extension NativeTimelineCanvasView {
                 installForwardedSourceCursor(at: index, rowOrigin: rowOrigin)
                 installPollCursors(at: index, rowOrigin: rowOrigin)
                 installInviteCursors(at: index, rowOrigin: rowOrigin)
+                installTranslationCursor(at: index, rowOrigin: rowOrigin)
             }
             index += 1
         }
@@ -214,7 +215,7 @@ extension NativeTimelineCanvasView {
         setHoveredForwardedSourceMessageID(
             forwardedSourcePointerHit(at: point)
         )
-        setHoveredEphemeralDismissMessageID(ephemeralDismissPointerHit(at: point))
+        setHoveredFooterAction(footerActionPointerHit(at: point))
     }
 
     override func mouseMoved(with event: NSEvent) {
@@ -248,7 +249,7 @@ extension NativeTimelineCanvasView {
         setHoveredForwardedSourceMessageID(
             forwardedSourcePointerHit(at: point)
         )
-        setHoveredEphemeralDismissMessageID(ephemeralDismissPointerHit(at: point))
+        setHoveredFooterAction(footerActionPointerHit(at: point))
         setHoveredReaction(
             reactionPointerHit(at: point),
             mouseLocationInScreen: NSEvent.mouseLocation
@@ -343,8 +344,8 @@ extension NativeTimelineCanvasView {
             }
             if let index = event.trackingArea?.userInfo?["nativeTimelineRowIndex"] as? Int,
                items.indices.contains(index),
-               items[index].messageID == hoveredEphemeralDismissMessageID {
-                setHoveredEphemeralDismissMessageID(nil)
+               items[index].messageID == hoveredFooterAction?.messageID {
+                setHoveredFooterAction(nil)
             }
             return
         }
@@ -554,14 +555,20 @@ extension NativeTimelineCanvasView {
         let local = CGPoint(x: point.x, y: point.y - displayedRowOrigin(at: index))
         return frame.contains(local) ? items[index].messageID : nil
     }
-    private func ephemeralDismissPointerHit(at point: CGPoint) -> MessageID? {
+    private func footerActionPointerHit(at point: CGPoint) -> NativeTimelineFooterActionTarget? {
         guard let index = rowIndex(at: point.y),
               items.indices.contains(index),
               layouts.indices.contains(index),
-              let frame = layouts[index].ephemeralRegion?.dismissFrame
+              let messageID = items[index].messageID
         else { return nil }
         let local = CGPoint(x: point.x, y: point.y - displayedRowOrigin(at: index))
-        return frame.contains(local) ? items[index].messageID : nil
+        if layouts[index].ephemeralRegion?.dismissFrame.contains(local) == true {
+            return .init(messageID: messageID, kind: .ephemeralDismiss)
+        }
+        if layouts[index].translationRegion?.actionFrame?.contains(local) == true {
+            return .init(messageID: messageID, kind: .translation)
+        }
+        return nil
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -760,6 +767,10 @@ extension NativeTimelineCanvasView {
            dismissFrame.contains(point)
         {
             model?.dismissEphemeralMessage(row.message)
+            return true
+        }
+        if layout.translationRegion?.actionFrame?.contains(point) == true {
+            model?.performMessageTranslationCaptionAction(row.message)
             return true
         }
         if let tag = layout.serverTagRegion, tag.frame.contains(point),
@@ -1195,7 +1206,7 @@ extension NativeTimelineCanvasView {
         setHoveredCodeBlock(nil)
         setHoveredComponentButton(nil)
         setHoveredForwardedSourceMessageID(nil)
-        setHoveredEphemeralDismissMessageID(nil)
+        setHoveredFooterAction(nil)
         setHoveredReaction(nil)
         setHoveredRow(nil)
     }
@@ -1249,8 +1260,8 @@ extension NativeTimelineCanvasView {
                 ? componentButtonPointerHit(at: point)?.target
                 : nil
         )
-        setHoveredEphemeralDismissMessageID(
-            visibleRect.contains(point) ? ephemeralDismissPointerHit(at: point) : nil
+        setHoveredFooterAction(
+            visibleRect.contains(point) ? footerActionPointerHit(at: point) : nil
         )
         setHoveredReaction(
             reactionPointerHit(at: point),
@@ -1589,6 +1600,9 @@ extension NativeTimelineCanvasView {
         let message = row.message
         if layout.ephemeralRegion?.dismissFrame.contains(point) == true {
             return .ephemeralDismiss(message.id)
+        }
+        if layout.translationRegion?.actionFrame?.contains(point) == true {
+            return .translationAction(message.id)
         }
         if let tag = layout.serverTagRegion, tag.frame.contains(point),
            let guildID = tag.presentation.identity.guildID {

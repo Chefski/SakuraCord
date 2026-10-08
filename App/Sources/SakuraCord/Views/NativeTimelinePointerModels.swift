@@ -1,6 +1,16 @@
 import Foundation
 import SakuraCordModels
 
+nonisolated struct NativeTimelineFooterActionTarget: Equatable {
+    enum Kind {
+        case ephemeralDismiss
+        case translation
+    }
+
+    let messageID: MessageID
+    let kind: Kind
+}
+
 nonisolated struct NativeTimelineMentionHover: Equatable {
     let itemIdentifier: NativeMessageTimelineItem.Identifier
     let region: NativeTimelineTextRegion
@@ -110,6 +120,7 @@ nonisolated enum NativeTimelinePointerActivationTarget: Hashable {
         rangeLocation: Int
     )
     case ephemeralDismiss(MessageID)
+    case translationAction(MessageID)
     case authorProfile(MessageID)
     case serverTag(MessageID, GuildID)
     case invocationProfile(MessageID)

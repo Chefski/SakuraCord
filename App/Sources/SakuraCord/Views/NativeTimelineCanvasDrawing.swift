@@ -404,7 +404,7 @@ extension NativeTimelineCanvasView {
         if let messageID = clearedTargets.serverTagMessageID {
             invalidateServerTag(messageID: messageID)
         }
-        if let messageID = clearedTargets.ephemeralDismissMessageID,
+        if let messageID = clearedTargets.footerAction?.messageID,
            let index = items.firstIndex(where: { $0.messageID == messageID })
         {
             setNeedsDisplay(rowFrame(at: index))
@@ -849,7 +849,7 @@ extension NativeTimelineCanvasView {
             || activeComponentChoiceTarget?.messageID == item.messageID
             || visualPressedComponentButton?.messageID == item.messageID
             || hoveredForwardedSourceMessageID == item.messageID
-            || hoveredEphemeralDismissMessageID == item.messageID
+            || hoveredFooterAction?.messageID == item.messageID
             || !reactionCountTransitions(inMessageAt: index).isEmpty
             || textSelection?.itemIdentifier == item.identifier
             || !revealState.isEmpty
@@ -881,7 +881,8 @@ extension NativeTimelineCanvasView {
             pressedComponentButton: visualPressedComponentButton?.messageID == item.messageID ? visualPressedComponentButton : nil,
             componentButtonPressProgress: visualPressedComponentButton?.messageID == item.messageID ? componentButtonPressProgress : 0,
             isForwardedSourceHovered: hoveredForwardedSourceMessageID == item.messageID,
-            isEphemeralDismissHovered: hoveredEphemeralDismissMessageID == item.messageID,
+            isEphemeralDismissHovered: hoveredFooterAction?.messageID == item.messageID && hoveredFooterAction?.kind == .ephemeralDismiss,
+            isTranslationActionHovered: hoveredFooterAction?.messageID == item.messageID && hoveredFooterAction?.kind == .translation,
             hoveredReactionID: hoveredReactionID(inMessageAt: index),
             isAddReactionHovered: isAddReactionHovered(inMessageAt: index),
             textSelection: textSelection,
@@ -1113,6 +1114,8 @@ extension NativeTimelineCanvasView {
             return nil
         case .content:
             return NativeTimelineTextSpoilerRevealKey.messageContentID
+        case let .translation(id):
+            return "translation:\(id)"
         case let .embed(embedID, textIndex):
             return "embed:\(embedID):\(textIndex)"
         case let .component(layoutIndex, textIndex):
