@@ -101,6 +101,7 @@ struct OutgoingMessageState {
     static let maximumWaitingDeliveries = 5
 
     struct DeliveryTurn {
+        let nonce: String
         let previous: Task<Void, Never>?
         let generation: UInt64
     }
@@ -109,17 +110,26 @@ struct OutgoingMessageState {
     var stickerUploadSourceURLByNonce: [String: URL] = [:]
     private var nextOptimisticMessageRawValue = UInt64.max
     private var deliveryTail: Task<Void, Never>?
-    private(set) var waitingDeliveryCount = 0
+    private var waitingNonces: Set<String> = []
+    private var confirmedWaitingNonces: Set<String> = []
     private var deliveryGeneration: UInt64 = 0
+
+    var waitingDeliveryCount: Int { waitingNonces.count }
 
     var isDeliveryQueueFull: Bool {
         waitingDeliveryCount >= Self.maximumWaitingDeliveries
     }
 
     /// Reserves the next position in the account's single delivery order.
-    mutating func reserveDeliveryTurn() -> DeliveryTurn {
-        waitingDeliveryCount += 1
-        return DeliveryTurn(previous: deliveryTail, generation: deliveryGeneration)
+    mutating func reserveDeliveryTurn(nonce: String) -> DeliveryTurn {
+        waitingNonces.insert(nonce)
+        return DeliveryTurn(nonce: nonce, previous: deliveryTail, generation: deliveryGeneration)
+    }
+
+    /// Remembers a confirmation for a send still waiting for its turn, even
+    /// when the visible history window cannot show it.
+    mutating func noteConfirmation(nonce: String) {
+        if waitingNonces.contains(nonce) { confirmedWaitingNonces.insert(nonce) }
     }
 
     mutating func setDeliveryTail(_ delivery: Task<Void, Never>, for turn: DeliveryTurn) {
@@ -127,9 +137,11 @@ struct OutgoingMessageState {
         deliveryTail = delivery
     }
 
-    mutating func beginDelivery(for turn: DeliveryTurn) {
-        guard turn.generation == deliveryGeneration else { return }
-        waitingDeliveryCount = max(0, waitingDeliveryCount - 1)
+    /// Leaves the waiting set; returns whether the send was confirmed meanwhile.
+    mutating func beginDelivery(for turn: DeliveryTurn) -> Bool {
+        guard turn.generation == deliveryGeneration else { return false }
+        waitingNonces.remove(turn.nonce)
+        return confirmedWaitingNonces.remove(turn.nonce) != nil
     }
 
     mutating func nextOptimisticMessageID() -> MessageID {
@@ -142,7 +154,8 @@ struct OutgoingMessageState {
         stickerUploadSourceURLByNonce.removeAll(keepingCapacity: false)
         nextOptimisticMessageRawValue = UInt64.max
         deliveryTail = nil
-        waitingDeliveryCount = 0
+        waitingNonces.removeAll()
+        confirmedWaitingNonces.removeAll()
         deliveryGeneration &+= 1
     }
 }

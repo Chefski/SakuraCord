@@ -249,18 +249,20 @@ extension AppModel {
         }
         let session = accountSession()
         composer.slowmode.begin(in: outgoing.channelID)
-        let turn = composer.outbox.reserveDeliveryTurn()
+        let turn = composer.outbox.reserveDeliveryTurn(nonce: outgoing.nonce)
         let delivery = Task { @MainActor [weak self] () -> Bool in
             await turn.previous?.value
             guard let self else { return false }
             defer {
                 if isCurrentAccountSession(session) { composer.slowmode.end(in: outgoing.channelID) }
             }
-            composer.outbox.beginDelivery(for: turn)
+            let confirmedWhileWaiting = composer.outbox.beginDelivery(for: turn)
             guard isCurrentAccountSession(session) else { return false }
             // A late Gateway confirmation can settle a retry while it waits;
             // sticker and poll bodies have no enforced nonce to stop a duplicate.
-            if outgoingState(nonce: outgoing.nonce, channelID: outgoing.channelID) == .confirmed {
+            if confirmedWhileWaiting
+                || outgoingState(nonce: outgoing.nonce, channelID: outgoing.channelID) == .confirmed
+            {
                 composer.outbox.draftsByNonce[outgoing.nonce] = nil
                 composer.outbox.stickerUploadSourceURLByNonce[outgoing.nonce] = nil
                 return true

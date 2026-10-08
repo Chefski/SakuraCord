@@ -2592,6 +2592,40 @@ func `retry resends the exact failed draft through sending and confirmed states`
 }
 
 @MainActor
+@Test func `queued retry confirmed outside the visible history is not sent again`() async throws {
+    let provider = TypingTestProvider()
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    await provider.timeOutNextSend()
+    model.updateDraft("ambiguous send")
+    #expect(!(await model.sendComposerMessage(attachments: [])))
+    let failed = try #require(model.messages.first { $0.content == "ambiguous send" })
+
+    await provider.suspendNextSend()
+    model.updateDraft("in flight")
+    guard case let .enqueued(inFlight) = await model.submitComposerMessage(attachments: []) else {
+        Issue.record("The blocking send was not queued")
+        return
+    }
+    await provider.waitUntilSendStarts()
+    let retry = Task { @MainActor in await model.retrySending(failed) }
+    #expect(await until { model.composer.outbox.waitingDeliveryCount == 1 })
+
+    // The timed-out original lands while an older history window is shown.
+    model.hasMoreLaterMessages = true
+    var confirmation = Message(
+        id: MessageID(rawValue: 9_000), channelID: failed.channelID, author: failed.author,
+        content: failed.content, nonce: failed.nonce
+    )
+    model.consumeMessageCreated(&confirmation, preparedTextPlan: nil)
+
+    await provider.releaseSend()
+    #expect(await inFlight.value)
+    #expect(await retry.value)
+    #expect(await provider.sentNonces.filter { $0 == failed.nonce }.count == 1)
+}
+
+@MainActor
 @Test func `optimistic message is pending until send confirmation`() async {
     let provider = TypingTestProvider()
     let model = AppModel(launchMode: .offlineTesting, provider: provider)
