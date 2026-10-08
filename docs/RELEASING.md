@@ -183,8 +183,10 @@ successful first-party `CI` pushes from `main`/`nightly` for debug output or
 release tags for optimized output, and only when the source commit is an
 ancestor of the checkout. Keys include the OS, Xcode, Swift, SDK, architecture,
 workspace path, package manifests and lockfiles, and build/workflow scripts.
-Missing, expired, incompatible, or unavailable caches fall back to building
-from source. Cache upload failure does not invalidate tests or block release.
+Restore logs the failing stage and command, and retries transient API or
+download failures up to three attempts. A failed extraction discards partial
+compiler outputs. Missing, expired, incompatible, or unavailable caches fall
+back to building from source. Cache upload failure does not invalidate tests or block release.
 Builds still run after restoration; caches never substitute for validation,
 packaging, signing, or checking the current release metadata.
 
