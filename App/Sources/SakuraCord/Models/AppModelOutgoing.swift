@@ -396,11 +396,13 @@ extension AppModel {
 }
 
 extension Message {
-    /// A local send that is neither confirmed nor failed.
-    nonisolated var isOutgoingInFlight: Bool {
+    /// A local send not yet confirmed, including a failed one awaiting retry
+    /// or discard, which keeps its place below settled messages.
+    nonisolated var isUnconfirmedLocalSend: Bool {
         switch outboxState {
         case .queued, .uploading, .sending, .awaitingReconciliation: true
-        case .confirmed, .failed: false
+        case .failed: nonce != nil
+        case .confirmed: false
         }
     }
 }

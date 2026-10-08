@@ -29,9 +29,10 @@ must not cause automatic resend. [Poll creation](#polls) has a distinct body.
 Like the first-party `MessageQueue` (stable web build `web.ae482d0492df0fb9.js`,
 observed 9 October 2026), the account's outbox delivers one send at a time in
 submission order. The composer clears as soon as a message is admitted, so later
-messages can be written and queued while earlier ones are in flight. Messages
-still in flight stay below settled ones in submission order, so each confirmation
-settles in place instead of moving by its server timestamp. While five
+messages can be written and queued while earlier ones are in flight. Unconfirmed
+sends, including failed ones awaiting retry or discard, stay below settled messages
+in submission order, so each confirmation settles in place instead of moving by
+its server timestamp. While five
 sends wait behind the one in flight, a new submission is refused before it
 consumes the draft and the "Way too spicy" alert is shown. A non-slowmode `429`
 on the message POST is a definite rejection: the transport waits for the server

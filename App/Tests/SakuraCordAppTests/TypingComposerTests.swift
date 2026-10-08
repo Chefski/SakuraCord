@@ -2595,6 +2595,25 @@ func `retry resends the exact failed draft through sending and confirmed states`
 }
 
 @MainActor
+@Test func `failed local send stays below and grouped with the confirmation above it`() {
+    let author = User(id: UserID(rawValue: 1), username: "me", displayName: "Me")
+    // The confirmation's server timestamp trails the failed send's local one.
+    let confirmed = Message(
+        id: MessageID(rawValue: 10), channelID: ChannelID(rawValue: 10), author: author,
+        content: "confirmed", timestamp: Date(timeIntervalSince1970: 10), nonce: "confirmed"
+    )
+    let failed = Message(
+        id: MessageID(rawValue: .max), channelID: ChannelID(rawValue: 10), author: author,
+        content: "failed", timestamp: Date(timeIntervalSince1970: 9), nonce: "failed", outboxState: .failed
+    )
+    #expect(AppModel.messagePrecedes(confirmed, failed))
+    #expect(MessageGrouping.continuesGroup(
+        from: confirmed, to: failed, calendar: .current,
+        continuationInterval: MessageGrouping.defaultContinuationInterval
+    ))
+}
+
+@MainActor
 @Test func `queued retry confirmed outside the visible history is not sent again`() async throws {
     let provider = TypingTestProvider()
     let model = AppModel(launchMode: .offlineTesting, provider: provider)

@@ -844,14 +844,14 @@ nonisolated enum MessageGrouping {
         calendar: Calendar,
         continuationInterval: TimeInterval
     ) -> Bool {
-        // An in-flight send always follows the row above it, but its local
-        // timestamp can trail a confirmation's server timestamp.
+        // An unconfirmed local send always follows the row above it, but its
+        // local timestamp can trail a confirmation's server timestamp.
         let interval = message.timestamp.timeIntervalSince(previous.timestamp)
         return isGroupable(previous)
             && isGroupable(message)
             && sharesAuthorIdentity(previous, message)
             && message.replyTo == nil
-            && (interval >= 0 || message.isOutgoingInFlight)
+            && (interval >= 0 || message.isUnconfirmedLocalSend)
             && interval < continuationInterval
             && calendar.isDate(previous.timestamp, inSameDayAs: message.timestamp)
     }
