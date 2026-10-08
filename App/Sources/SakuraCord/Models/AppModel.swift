@@ -578,49 +578,6 @@ final class AppModel {
         return permissions & DiscordPermissionBits.attachFiles != 0
     }
 
-    func canDeleteForumPost(_ post: ForumPost) -> Bool {
-        return Self.canDeleteForumPost(
-            ownerID: post.thread.ownerID ?? post.owner?.id,
-            currentUserID: currentUser?.id,
-            canManage: canManageForumPosts
-        )
-    }
-
-    func canArchiveForumPost(_ post: ForumPost) -> Bool {
-        if canManageForumPosts { return true }
-        guard !post.thread.isLocked else { return false }
-        let ownerID = post.thread.ownerID ?? post.owner?.id
-        return ownerID != nil && ownerID == currentUser?.id
-    }
-
-    func canEditForumPostTags(_ post: ForumPost) -> Bool {
-        if canManageForumPosts { return true }
-        guard !post.thread.isLocked else { return false }
-        let ownerID = post.thread.ownerID ?? post.owner?.id
-        return ownerID != nil && ownerID == currentUser?.id
-    }
-
-    func canToggleForumTag(_ tag: ForumTag, on post: ForumPost) -> Bool {
-        guard canEditForumPostTags(post), canManageForumPosts || !tag.isModerated else {
-            return false
-        }
-        if selectedChannel?.requiresForumTag == true,
-           post.thread.appliedTagIDs.count == 1,
-           post.thread.appliedTagIDs.contains(tag.id)
-        {
-            return false
-        }
-        return true
-    }
-
-    nonisolated static func canDeleteForumPost(
-        ownerID: UserID?,
-        currentUserID: UserID?,
-        canManage: Bool
-    ) -> Bool {
-        canManage || (ownerID != nil && ownerID == currentUserID)
-    }
-
     func currentUserRoleIDs(for guildID: GuildID?) -> Set<RoleID> {
         guard let guildID else { return [] }
         return currentUserRoleIDsByGuild[guildID] ?? []

@@ -388,6 +388,27 @@ struct ComposerTextView: NSViewRepresentable {
         return scrollView
     }
 
+    /// The interface size changed: restyle the draft without moving the caret.
+    private func restyleDraft(in textView: ComposerNSTextView) {
+        let selectedRange = textView.selectedRange()
+        textView.font = font
+        textView.plainTypingAttributes = textAttributes
+        textView.typingAttributes = textAttributes
+        textView.textStorage?.setAttributedString(
+            ComposerEmojiAttributedText.make(
+                text,
+                font: font,
+                mentionPresentations: mentionPresentations
+            )
+        )
+        let length = textView.string.utf16.count
+        let location = min(selectedRange.location, length)
+        textView.setSelectedRange(NSRange(
+            location: location,
+            length: min(selectedRange.length, length - location)
+        ))
+    }
+
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? ComposerNSTextView else { return }
         if context.coordinator.parent.conversationID != conversationID {
@@ -441,25 +462,8 @@ struct ComposerTextView: NSViewRepresentable {
         ComposerTextCheckingConfiguration.apply(generalInputSettings, to: textView)
         textView.setAccessibilityLabel(placeholder)
 
-        // The interface size changed: restyle the draft without moving the caret.
         if textView.font != font {
-            let selectedRange = textView.selectedRange()
-            textView.font = font
-            textView.plainTypingAttributes = textAttributes
-            textView.typingAttributes = textAttributes
-            textView.textStorage?.setAttributedString(
-                ComposerEmojiAttributedText.make(
-                    text,
-                    font: font,
-                    mentionPresentations: mentionPresentations
-                )
-            )
-            let length = textView.string.utf16.count
-            let location = min(selectedRange.location, length)
-            textView.setSelectedRange(NSRange(
-                location: location,
-                length: min(selectedRange.length, length - location)
-            ))
+            restyleDraft(in: textView)
         }
 
         if ComposerEmojiAttributedText.serialize(textView.attributedString()) != text
