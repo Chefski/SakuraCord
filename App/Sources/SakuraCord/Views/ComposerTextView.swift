@@ -294,6 +294,7 @@ struct ComposerTextView: NSViewRepresentable {
     var capturesUnfocusedTyping = false
     var verticalContentInset: CGFloat = 0
     var maximumHeight: CGFloat = InterfaceScale.metric(150)
+    var sendTransitionAnchor: ComposerSendTransitionAnchor?
     @Binding var selection: NSRange?
     @Binding var isFocused: Bool
 
@@ -382,6 +383,7 @@ struct ComposerTextView: NSViewRepresentable {
         scrollView.hasVerticalScroller = false
         scrollView.autohidesScrollers = true
         scrollView.scrollerStyle = .overlay
+        sendTransitionAnchor?.textView = textView
 
         return scrollView
     }
@@ -400,6 +402,7 @@ struct ComposerTextView: NSViewRepresentable {
             && translationEditID != context.coordinator.parent.translationEditID
             && conversationID == context.coordinator.parent.conversationID
         context.coordinator.parent = self
+        sendTransitionAnchor?.textView = textView
         textView.isEditable = context.environment.isEnabled
         textView.capturesUnfocusedTyping = capturesUnfocusedTyping && context.environment.isEnabled
         context.coordinator.updateCompositionState(from: textView, deferringNotification: true)
@@ -950,9 +953,8 @@ final class ComposerNSTextView: ComposerFocusReportingTextView {
         ),
            onEditLatestMessage?() == true
         {
-            if window?.firstResponder === self {
-                window?.makeFirstResponder(nil)
-            }
+            // The timeline takes focus when it actually opens an editor.
+            // Requests blocked by a send animation keep the composer focused.
             return
         }
         if KeyboardShortcutPolicy.isPlainEscape(keyCode: event.keyCode, modifierFlags: event.modifierFlags) {

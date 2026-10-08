@@ -305,6 +305,9 @@ extension AppModel {
     }
 
     func appendOutgoingMessage(_ message: Message) {
+        if let nonce = message.nonce {
+            timelineSendTransitionStore.noteLocalSend(nonce: nonce)
+        }
         if message.channelID == openThread?.id {
             var updated = threadMessages
             Self.insert(message, intoSorted: &updated)

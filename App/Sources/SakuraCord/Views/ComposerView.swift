@@ -31,6 +31,8 @@ struct ComposerView: View {
     @State private var autocompleteIndex = 0
     @State private var autocompleteKeyboardSelectionRevision = 0
     @State private var isAutocompleteDismissed = false
+    @State private var sendTransitionAnchor = ComposerSendTransitionAnchor()
+    @State private var holdsPlaceholderForSendTransition = false
 
     var body: some View {
         @Bindable var model = model
@@ -59,6 +61,7 @@ struct ComposerView: View {
                     if !hasActiveCommand, !attachments.isEmpty {
                         ComposerAttachmentTray(
                             attachments: attachments,
+                            sendTransitionAnchor: sendTransitionAnchor,
                             open: openComposerAttachment,
                             toggleSpoiler: {
                                 model.toggleComposerAttachmentSpoiler($0, in: conversation)
@@ -210,6 +213,7 @@ struct ComposerView: View {
                                 verticalContentInset: appearance == .defaultStyle
                                     ? ChatChromeMetrics.composerTextVerticalInset
                                     : 0,
+                                sendTransitionAnchor: sendTransitionAnchor,
                                 selection: $draftSelection,
                                 isFocused: Binding(
                                     get: { !hasActiveCommand && isFocused },
@@ -230,6 +234,9 @@ struct ComposerView: View {
                                         maxHeight: .infinity,
                                         alignment: .leading
                                     )
+                                    // Sent text leaves from this spot; let it go first.
+                                    .opacity(holdsPlaceholderForSendTransition ? 0 : 1)
+                                    .animation(.easeIn(duration: 0.15), value: holdsPlaceholderForSendTransition)
                             }
                             if ChatCharacterLimitPolicy.shouldShowCounter(
                                 characterCount: draft.count,
@@ -444,8 +451,13 @@ struct ComposerView: View {
         }
         .onDisappear {
             composerDropInteraction?.clear(destination: conversation)
+            if let channelID = sendTransitionAnchor.channelID {
+                model.timelineSendTransitionStore.discard(channelID)
+            }
         }
         .task(id: composerPresentationID) {
+            sendTransitionAnchor.channelID = activeConversationID
+            model.timelineSendTransitionStore.registerComposer(sendTransitionAnchor)
             draftSelection = nil
             selectionBeforeEmojiPicker = nil
             showFileImporter = false
@@ -712,6 +724,9 @@ struct ComposerView: View {
         let staged = attachments
         let conversationID = activeConversationID
         let keepsCreationDraft = isCreatingThread
+        if !keepsCreationDraft, let conversationID {
+            registerSendTransition(channelID: conversationID, attachments: staged)
+        }
         model.beginUsingOwnedPromisedFiles(staged.map(\.url))
         if !keepsCreationDraft {
             model.clearComposerAttachments(for: conversation)
@@ -733,6 +748,10 @@ struct ComposerView: View {
                 await model.submitComposerMessage(attachments: staged)
             case .thread:
                 await model.submitThreadComposerMessage(attachments: staged)
+            }
+            if !result.consumedComposer, let conversationID {
+                // Nothing will arrive to take the held message over.
+                model.timelineSendTransitionStore.discard(conversationID)
             }
             if !keepsCreationDraft, !result.consumedComposer, activeConversationID == conversationID {
                 model.restoreComposerAttachments(staged, to: conversation)
@@ -1271,6 +1290,33 @@ struct ComposerView: View {
             !activeReplyMentionsAuthor,
             in: conversation
         )
+    }
+}
+
+private extension ComposerView {
+    /// Bubble timelines animate a sent message out of the field; the
+    /// timeline consumes this when the optimistic row arrives.
+    func registerSendTransition(
+        channelID: ChannelID,
+        attachments: [ForumPostAttachment]
+    ) {
+        // A send from older history first loads the newest messages, so
+        // the field stays editable and nothing arrives to take it over yet.
+        guard model.appearanceSettings.messageAppearance == .bubbles,
+              !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+              conversation == .thread || !model.hasMoreLaterMessages,
+              let source = sendTransitionAnchor.source(
+                  channelID: channelID,
+                  content: draft.trimmingCharacters(in: .whitespacesAndNewlines),
+                  attachments: attachments
+              )
+        else { return }
+        model.timelineSendTransitionStore.register(source)
+        holdsPlaceholderForSendTransition = true
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(180))
+            holdsPlaceholderForSendTransition = false
+        }
     }
 }
 

@@ -2,8 +2,11 @@ import SakuraCordModels
 import SwiftUI
 
 struct ComposerAttachmentTray: View {
+    static var thumbnailCornerRadius: CGFloat { InterfaceScale.metric(16) }
+
     @AppStorage(PrivacySafetySettingsStore.anonymiseFileNamesKey) private var anonymisesFileNames = false
     let attachments: [ForumPostAttachment]
+    var sendTransitionAnchor: ComposerSendTransitionAnchor?
     let open: (UUID) -> Void
     let toggleSpoiler: (UUID) -> Void
     let update: (ForumPostAttachment) -> Void
@@ -111,8 +114,14 @@ struct ComposerAttachmentTray: View {
                 url: attachment.url,
                 maximumPixelDimension: 480,
                 preservesImageAspectRatio: true,
-                imageCornerRadius: 16
+                imageCornerRadius: Self.thumbnailCornerRadius,
+                onImageLoaded: { [sendTransitionAnchor] image in
+                    sendTransitionAnchor?.recordAttachmentThumbnail(image, for: attachment.id)
+                }
             )
+            .background {
+                ComposerSendTransitionAttachmentReader(anchor: sendTransitionAnchor, id: attachment.id)
+            }
             .padding(.horizontal, InterfaceScale.metric(10))
             .padding(.vertical, InterfaceScale.metric(8))
 

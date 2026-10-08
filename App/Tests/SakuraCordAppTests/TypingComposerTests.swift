@@ -185,7 +185,7 @@ func `remote typing is channel scoped cleared by message and disconnect`() async
 
     textView.keyDown(with: try upArrowKeyEvent())
     #expect(editRequestCount == 1)
-    #expect(window.firstResponder !== textView)
+    #expect(window.firstResponder === textView)
     #expect(!ComposerLatestMessageEditingPolicy.shouldRequest(
         keyCode: 126,
         modifierFlags: [],

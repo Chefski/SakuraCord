@@ -750,6 +750,8 @@ extension NativeMessageTimelineCoordinator {
                 restore(anchor)
             }
             positionViewportCanvas()
+            // A resize can move or reflow a row whose message is in flight.
+            canvas.reconcileSendTransitions()
             if reflowsWidth || previewChanged || previewNeedsRows || restoresPreview {
                 // Restore the anchor before choosing the dirty rectangle.
                 // Invalidating the old visible rect leaves the newly restored

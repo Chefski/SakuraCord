@@ -10,8 +10,16 @@ import SakuraCordModels
 import SwiftUI
 
 extension NativeTimelineCanvasView {
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let hit = super.hitTest(point)
+        // Subview controls share the canvas's presentation transform, but
+        // AppKit hit testing uses their unanimated frames as well.
+        return sendTransitionBlocksInteractions && hit != nil ? self : hit
+    }
+
     override func updateTrackingAreas() {
         guard !suppressesHoverPresentation,
+              !sendTransitionBlocksInteractions,
               !overlayBlocksInteractions
         else {
             pointer.removeTrackingAreas(from: self)
@@ -38,6 +46,7 @@ extension NativeTimelineCanvasView {
     override func resetCursorRects() {
         guard WindowModalCoordinator.allowsInput(for: self) else { return }
         guard !suppressesHoverPresentation,
+              !sendTransitionBlocksInteractions,
               !overlayBlocksInteractions
         else { return }
         super.resetCursorRects()
@@ -172,6 +181,7 @@ extension NativeTimelineCanvasView {
     }
 
     override func mouseEntered(with event: NSEvent) {
+        guard !sendTransitionBlocksInteractions else { return }
         guard !ComposerOverlayPointerRegion.containsPointer(in: window, at: event.locationInWindow) else {
             clearPointerHoverTargets()
             return
@@ -219,6 +229,7 @@ extension NativeTimelineCanvasView {
     }
 
     override func mouseMoved(with event: NSEvent) {
+        guard !sendTransitionBlocksInteractions else { return }
         guard !ComposerOverlayPointerRegion.containsPointer(in: window, at: event.locationInWindow) else {
             clearPointerHoverTargets()
             return
@@ -355,7 +366,7 @@ extension NativeTimelineCanvasView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        guard !overlayBlocksInteractions else { return }
+        guard !overlayBlocksInteractions, !sendTransitionBlocksInteractions else { return }
         window?.makeFirstResponder(self)
         guard event.buttonNumber == 0 else { return }
         let point = convert(event.locationInWindow, from: nil)
@@ -437,6 +448,7 @@ extension NativeTimelineCanvasView {
     }
 
     override func quickLook(with event: NSEvent) {
+        guard !sendTransitionBlocksInteractions else { return }
         guard WindowModalCoordinator.allowsInput(for: self),
               !overlayBlocksInteractions,
               editingMessageID == nil
@@ -572,7 +584,7 @@ extension NativeTimelineCanvasView {
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard !overlayBlocksInteractions else { return }
+        guard !overlayBlocksInteractions, !sendTransitionBlocksInteractions else { return }
         if pressedPollTarget != nil {
             setHoveredPollTarget(pollPointerHit(at: convert(event.locationInWindow, from: nil))?.target)
             return
@@ -624,7 +636,7 @@ extension NativeTimelineCanvasView {
     }
 
     override func mouseUp(with event: NSEvent) {
-        guard !overlayBlocksInteractions else { return }
+        guard !overlayBlocksInteractions, !sendTransitionBlocksInteractions else { return }
         if let pressed = pressedPollTarget {
             pressedPollTarget = nil
             setNeedsDisplay(visibleRect)
@@ -945,6 +957,7 @@ extension NativeTimelineCanvasView {
            event.charactersIgnoringModifiers?.lowercased() == "c",
            let selectedText = selectedTextValue()
         {
+            guard !sendTransitionBlocksInteractions else { return true }
             Self.copyText(selectedText)
             return true
         }
@@ -1096,6 +1109,7 @@ extension NativeTimelineCanvasView {
             guard let self,
                   event.window === self.window,
                   !self.overlayBlocksInteractions,
+                  !self.sendTransitionBlocksInteractions,
                   self.editingMessageID == nil
             else { return event }
             let point = self.convert(event.locationInWindow, from: nil)
@@ -1212,6 +1226,7 @@ extension NativeTimelineCanvasView {
     }
 
     func synchronizeHoverWithCurrentPointer() {
+        guard !sendTransitionBlocksInteractions else { return }
         guard !ComposerOverlayPointerRegion.containsPointer(in: window) else {
             clearPointerHoverTargets()
             return

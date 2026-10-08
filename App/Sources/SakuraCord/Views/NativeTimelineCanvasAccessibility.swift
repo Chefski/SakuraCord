@@ -395,7 +395,14 @@ extension NativeTimelineCanvasView {
                 row,
                 rowFrame: rowFrame,
                 rowIndex: rowIndex
-            )
+            ).map { action in
+                let handler = action.handler
+                action.handler = { [weak self] in
+                    guard let self, !self.sendTransitionBlocksInteractions else { return false }
+                    return handler?() ?? false
+                }
+                return action
+            }
         )
         var children: [Any] = []
         appendMessageBoundaryAccessibility(

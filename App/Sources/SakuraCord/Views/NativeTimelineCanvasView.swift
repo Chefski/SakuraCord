@@ -197,6 +197,9 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
     var historySkeletonShimmerTask: Task<Void, Never>?
     var messageJumpHighlight: MessageJumpHighlight?
     var messageJumpHighlightTask: Task<Void, Never>?
+    var sendTransitions: [NativeTimelineSendTransition] = []
+    var transcriptGlide: NativeTimelineTranscriptGlide?
+    var transcriptGlideFinishTask: Task<Void, Never>?
     var minimumHeight: CGFloat = 1
     var bottomSpacerHeight: CGFloat = 0
     var maximumDrawDuration = 0.0
@@ -395,6 +398,8 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
+        // In-flight copies were rendered for the previous appearance.
+        finishSendTransitions(reconcilesHeldMedia: true)
         invalidatePresentationCaches()
         reconcileBeginningSelectionOverlay()
     }
@@ -411,6 +416,11 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
             visibleMediaRequestTask?.cancel()
             historySkeletonShimmerTask?.cancel()
             messageJumpHighlightTask?.cancel()
+            transcriptGlideFinishTask?.cancel()
+            for transition in sendTransitions {
+                transition.finishTask?.cancel()
+                transition.overlay.removeFromSuperview()
+            }
             cancelReactionPreviewLoads()
             NativeTimelineMediaStore.shared.removeStaticRequests(
                 owner: visibleMediaPinOwner
@@ -455,6 +465,7 @@ enum NativeTimelineRowPainter {
         in rowFrame: CGRect,
         model: AppModel?,
         isHovered: Bool,
+        drawsBubbleBackground: Bool = true,
         showsCompactTimestamp: Bool = false,
         isAuthorHovered: Bool = false,
         isServerTagHovered: Bool = false,
@@ -498,7 +509,7 @@ enum NativeTimelineRowPainter {
             border.stroke()
         }
 
-        if let bubble = layout.bubbleRegion {
+        if drawsBubbleBackground, let bubble = layout.bubbleRegion {
             NativeTimelineBubbleDrawing.fill(bubble)
         }
 

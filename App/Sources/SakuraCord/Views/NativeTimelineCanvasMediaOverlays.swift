@@ -91,7 +91,9 @@ extension NativeTimelineCanvasView {
               displayedRowOrigin(at: index) < visibleRect.maxY,
               videoCount < Self.maximumInlineVideoOverlayCount
         {
-            guard layouts.indices.contains(index) else {
+            guard layouts.indices.contains(index),
+                  !hidesRowForSendTransition(items[index].identifier)
+            else {
                 index += 1
                 continue
             }
@@ -774,7 +776,9 @@ extension NativeTimelineCanvasView {
               displayedRowOrigin(at: index) < visibleRect.maxY,
               desired.count < Self.maximumActivityIndicatorCount
         {
-            if layouts.indices.contains(index) {
+            if layouts.indices.contains(index),
+               !hidesRowForSendTransition(items[index].identifier)
+            {
                 let origin = displayedRowOrigin(at: index)
                 for (position, indicator) in layouts[index].activityIndicators.enumerated() {
                     desired[ActivityIndicatorKey(row: items[index].identifier, index: position)] = .init(
@@ -1081,7 +1085,8 @@ extension NativeTimelineCanvasView {
               displayedRowOrigin(at: index) < visibleRect.maxY
         {
             guard layouts.indices.contains(index),
-                  case let .message(row, _, _) = items[index]
+                  case let .message(row, _, _) = items[index],
+                  !hidesRowForSendTransition(items[index].identifier)
             else {
                 index += 1
                 continue
