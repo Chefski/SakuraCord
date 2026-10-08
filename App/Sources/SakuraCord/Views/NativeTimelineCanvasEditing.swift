@@ -785,8 +785,7 @@ extension NativeTimelineCanvasView {
         componentButtonPressAnimationTask = nil
 
         let layout = layouts[index]
-        let contentOrigin = editingContentOrigin(in: layout)
-        let width = max(InterfaceScale.metric(80), bounds.width - contentOrigin.x - InterfaceScale.metric(14))
+        let (contentOrigin, width) = editingPlacement(in: layout)
         let root = NativeTimelineEditingMessageContent(
             model: model,
             message: row.message,
@@ -1120,6 +1119,31 @@ extension NativeTimelineCanvasView {
             positionSpoilerOverlays()
             needsDisplay = true
         }
+    }
+
+    /// The editor brings its own field. In a bubble row it replaces the
+    /// bubble, keeping the bubble's side, instead of filling its content
+    /// column, which for an outgoing bubble starts against the trailing edge.
+    func editingPlacement(
+        in layout: NativeTimelineRowLayout
+    ) -> (origin: CGPoint, width: CGFloat) {
+        let minimumWidth = InterfaceScale.metric(80)
+        let trailingLimit = bounds.width - MessageRowLayoutMetrics.horizontalInset
+        guard let bubble = layout.bubbleRegion?.frame else {
+            let origin = editingContentOrigin(in: layout)
+            return (origin, max(minimumWidth, trailingLimit - origin.x))
+        }
+        let leadingLimit = layout.bubbleRegion?.isOutgoing == true
+            ? MessageRowLayoutMetrics.horizontalInset + MessageRowLayoutMetrics.avatarDiameter
+            : bubble.minX
+        let width = max(
+            minimumWidth,
+            min(max(bubble.width, InterfaceScale.metric(420)), trailingLimit - leadingLimit)
+        )
+        let originX = layout.bubbleRegion?.isOutgoing == true
+            ? max(leadingLimit, bubble.maxX - width)
+            : bubble.minX
+        return (CGPoint(x: originX, y: bubble.minY), width)
     }
 
     func editingContentOrigin(

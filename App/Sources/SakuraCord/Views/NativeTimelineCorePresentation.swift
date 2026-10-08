@@ -119,6 +119,71 @@ enum NativeTimelineReplyMetrics {
         .interfacePreferredFont(forTextStyle: .caption1)
     }
 
+    static var avatarDiameter: CGFloat { InterfaceScale.metric(14) }
+
+    /// The media symbol's width and its gap from the summary.
+    static var mediaSymbolReserve: CGFloat { InterfaceScale.metric(24) }
+
+    static func summary(
+        for preview: MessageReplyPreview,
+        in message: Message,
+        model: AppModel?
+    ) -> MessageReplySummary.Prepared {
+        if let model {
+            MessageReplySummary.summary(
+                content: preview.content,
+                mentionLabel: MessageMentionResolver(model: model, message: message).label
+            )
+        } else {
+            MessageReplySummary.summary(content: preview.content)
+        }
+    }
+
+    static func mediaSymbol(for preview: MessageReplyPreview) -> String? {
+        switch preview.mediaKind {
+        case .image, .animatedImage: "photo.fill"
+        case .video: "film.fill"
+        case .audio: "waveform"
+        case .file: "paperclip"
+        case nil: nil
+        }
+    }
+
+    static var unavailableFont: NSFont {
+        let baseFont = summaryFont
+        return NSFont(
+            descriptor: baseFont.fontDescriptor.withSymbolicTraits(.italic),
+            size: baseFont.pointSize
+        ) ?? baseFont
+    }
+
+    static let unavailableText = "Message could not be loaded"
+
+    /// The natural width of a one-line reply preview, from its avatar to the
+    /// end of its summary or media symbol.
+    static func previewWidth(
+        _ preview: MessageReplyPreview?,
+        in message: Message,
+        model: AppModel?
+    ) -> CGFloat {
+        guard let preview else {
+            return textWidth(unavailableText, font: unavailableFont)
+        }
+        let presentation = model?.authorPresentation(for: preview, in: message)
+        let author = presentation?.user ?? preview.author
+        let authorFont = ProfileNameFontLoader.shared.resolvedFont(for: author, fallback: authorFont)
+        let showsIndicator = model?.accessibilitySettings.roleColorDisplay == .nextToNames
+            && presentation?.roleColorHex != nil
+        let summary = summary(for: preview, in: message, model: model).text
+        return avatarDiameter
+            + horizontalSpacing
+            + (showsIndicator ? InterfaceScale.metric(14) : 0)
+            + textWidth(author.displayName, font: authorFont)
+            + horizontalSpacing
+            + textWidth(summary, font: summaryFont)
+            + (mediaSymbol(for: preview) == nil ? 0 : mediaSymbolReserve)
+    }
+
     static func textWidth(
         _ value: String,
         font: NSFont

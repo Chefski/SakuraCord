@@ -825,7 +825,7 @@ extension NativeTimelineCanvasView {
         enqueueVisibleMediaRequests(identifier: item.identifier, keys: preparedMediaKeys)
         NativeTimelineRowPainter.draw(
             item: item, layout: layouts[index], in: rowFrame, model: model,
-            isHovered: false, hidesMessageContent: true,
+            isHovered: false, drawsBubbleBackground: false, hidesMessageContent: true,
             spoilerRevealStore: spoilerRevealStore
         )
         editingRowScrollSnapshot?.draw(
