@@ -783,12 +783,29 @@ extension NativeTimelineRowLayout {
                     minY: bubbleStartY,
                     maxY: verticalOffset,
                     isOutgoing: isOutgoingBubble,
-                    showsTail: row.endsGroup
+                    showsTail: row.endsGroup,
+                    isBare: showsBareContent
                 )
                 result.bubbleRegion = region
                 result.avatarFrame = NativeTimelineBubbleLayout.bottomAlignedAvatarFrame(result.avatarFrame, to: region)
             }
 
+        }
+
+        /// Emoji-only text and stickers read as standalone content, as in
+        /// Messages, so their bubble draws no fill.
+        private var showsBareContent: Bool {
+            let isEmojiOnlyText = result.attributedContent == nil
+                || row.textPlan.preparedText?.isEmojiOnly == true
+            return isEmojiOnlyText
+                && (result.contentFrame != nil || !result.stickerFrames.isEmpty)
+                && result.linkedImageRegions.isEmpty && result.attachmentRegions.isEmpty
+                && result.embedRegions.isEmpty && result.componentLayouts.isEmpty
+                && result.inviteRegions.isEmpty && result.sakuraCordDeepLinkRegions.isEmpty
+                && result.translationRegion == nil && result.pollLayout == nil
+                && result.pollResultFrame == nil && result.threadFrame == nil
+                && result.forwardedHeaderFrame == nil && translationPresentation == nil
+                && !message.flags.contains(.loading)
         }
 
         private mutating func appendReactions() {

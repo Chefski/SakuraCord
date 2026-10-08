@@ -6,6 +6,9 @@ struct NativeTimelineBubbleRegion {
     let frame: CGRect
     let isOutgoing: Bool
     let showsTail: Bool
+    /// Emoji and stickers stand on their own without a fill or tail, but keep
+    /// the bubble's geometry for highlights and alignment.
+    var isBare = false
 }
 
 @MainActor
@@ -177,7 +180,8 @@ enum NativeTimelineBubbleLayout {
         minY: CGFloat,
         maxY: CGFloat,
         isOutgoing: Bool,
-        showsTail: Bool
+        showsTail: Bool,
+        isBare: Bool
     ) -> NativeTimelineBubbleRegion {
         NativeTimelineBubbleRegion(
             frame: CGRect(
@@ -187,7 +191,8 @@ enum NativeTimelineBubbleLayout {
                 height: max(1, maxY - minY)
             ),
             isOutgoing: isOutgoing,
-            showsTail: showsTail
+            showsTail: showsTail && !isBare,
+            isBare: isBare
         )
     }
 
@@ -247,10 +252,12 @@ enum NativeTimelineBubbleDrawing {
     }
 
     static func fillColor(for region: NativeTimelineBubbleRegion) -> NSColor {
-        region.isOutgoing ? .sakuraCordAccentColor : incomingFillColor
+        if region.isBare { return .clear }
+        return region.isOutgoing ? .sakuraCordAccentColor : incomingFillColor
     }
 
     static func fill(_ region: NativeTimelineBubbleRegion) {
+        guard !region.isBare else { return }
         fillColor(for: region).setFill()
         path(for: region).fill()
     }
