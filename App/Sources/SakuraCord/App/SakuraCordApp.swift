@@ -107,10 +107,11 @@ struct SakuraCordApp: App {
         let notificationService = MacNativeNotificationService(
             deliversNotifications: configuration.mode != .offlineTesting
         )
+        let notificationPreferences = NotificationPreferences()
         let soundPlayer: any AppSoundPlaying =
             configuration.mode == .offlineTesting
             ? NoopAppSoundPlayer()
-            : MacAppSoundPlayer()
+            : MacAppSoundPlayer(notificationPreferences: notificationPreferences)
         let appModel = AppModel(
             launchMode: configuration.mode,
             awaitsOfflineSignIn: configuration.includesSignInFixture,
@@ -118,7 +119,8 @@ struct SakuraCordApp: App {
                 && UserDefaultsSavedAccountStore.shared.hasSavedAccounts,
             provider: provider,
             notificationService: notificationService,
-            soundPlayer: soundPlayer
+            soundPlayer: soundPlayer,
+            notificationPreferences: notificationPreferences
         )
         appModel.showInspector = GeneralWindowRestorationStore.shared.memberListIsVisible
         AppAppearanceController.shared.apply(
