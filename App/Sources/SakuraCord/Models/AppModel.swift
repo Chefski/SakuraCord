@@ -157,6 +157,7 @@ final class AppModel {
     @ObservationIgnored let serverTagCards = ServerTagCardStore()
     @ObservationIgnored let issueReports = IssueReportStore()
     @ObservationIgnored let nicknameEditor = NicknameEditorStore()
+    @ObservationIgnored let groupDirectMessageEditor = GroupDirectMessageEditorStore()
     @ObservationIgnored let voiceSidebarPresentation =
         VoiceSidebarPresentationStore()
     var serverRailGuildsByID: [GuildID: Guild] = [:] {

@@ -88,6 +88,7 @@ extension AppModel {
         serverTagCards.reset()
         issueReports.reset()
         nicknameEditor.reset()
+        groupDirectMessageEditor.reset()
         onboarding.reset()
     }
 

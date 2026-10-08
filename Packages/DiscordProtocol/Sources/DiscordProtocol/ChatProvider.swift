@@ -95,6 +95,8 @@ public protocol ChatProvider: Sendable {
     func setMemberNickname(_ nickname: String, for userID: UserID, in guildID: GuildID) async throws -> String?
     /// Sets the private nickname for a friend; nil or blank text removes it.
     func setFriendNickname(_ nickname: String?, for userID: UserID) async throws -> String?
+    /// Renames a group DM or changes its icon, returning the saved channel.
+    func editGroupDirectMessage(_ channelID: ChannelID, changes: GroupDirectMessageChanges) async throws -> Channel
     func saveProfileChanges(
         _ changes: ProfileEditChanges, in scope: ProfileEditingScope,
         didSave: @Sendable (ProfileSaveConfirmation) async -> Void
@@ -460,6 +462,10 @@ public extension ChatProvider {
 
     func setFriendNickname(_ nickname: String?, for userID: UserID) async throws -> String? {
         throw ChatProviderError.invalidRequest("Friend nicknames are unavailable for this session.")
+    }
+
+    func editGroupDirectMessage(_ channelID: ChannelID, changes: GroupDirectMessageChanges) async throws -> Channel {
+        throw ChatProviderError.invalidRequest("Group editing is unavailable for this session.")
     }
 
     func saveProfileChanges(

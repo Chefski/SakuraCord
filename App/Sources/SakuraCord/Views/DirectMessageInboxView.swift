@@ -239,6 +239,9 @@ private struct DirectMessageInboxRow: View {
                     guard channel.kind == .directMessage, let recipient = channel.recipients.first else { return [] }
                     return model.nicknameMenuActions(for: recipient, in: nil)
                 },
+                editGroup: model.canEditGroupDirectMessage(channel)
+                    ? { model.presentGroupDirectMessageEditor(for: channel.id) }
+                    : nil,
                 usesCustomSelectionBackground: true
             )
         }

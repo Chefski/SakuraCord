@@ -149,6 +149,8 @@ struct ChannelContextMenuBridge: NSViewRepresentable {
     /// Recipient actions for a direct message, such as a friend nickname.
     /// Resolved when the menu opens so rows don't observe relationship state.
     var userActions: () -> [NicknameMenuAction] = { [] }
+    /// Opens Edit Group for a group DM.
+    var editGroup: (() -> Void)?
     var usesCustomSelectionBackground = false
 
     func makeCoordinator() -> Coordinator {
@@ -198,6 +200,7 @@ struct ChannelContextMenuBridge: NSViewRepresentable {
         private var copyLink: () -> Void
         private var pinAction: ChannelPinMenuAction
         private var userActions: () -> [NicknameMenuAction]
+        private var editGroup: (() -> Void)?
 
         init(from bridge: ChannelContextMenuBridge) {
             subject = bridge.subject
@@ -215,6 +218,7 @@ struct ChannelContextMenuBridge: NSViewRepresentable {
             copyLink = bridge.copyLink
             pinAction = bridge.pinAction
             userActions = bridge.userActions
+            editGroup = bridge.editGroup
         }
 
         func update(from bridge: ChannelContextMenuBridge) {
@@ -233,6 +237,7 @@ struct ChannelContextMenuBridge: NSViewRepresentable {
             copyLink = bridge.copyLink
             pinAction = bridge.pinAction
             userActions = bridge.userActions
+            editGroup = bridge.editGroup
         }
 
         func makeMenu() -> NSMenu {
@@ -260,6 +265,8 @@ struct ChannelContextMenuBridge: NSViewRepresentable {
                 )
                 menu.addItem(.separator())
             }
+
+            addEditGroupItem(to: menu)
 
             let userItems = NicknameContextMenu.items(for: userActions())
             if !userItems.isEmpty {
@@ -337,6 +344,19 @@ struct ChannelContextMenuBridge: NSViewRepresentable {
             return menu
         }
 
+        private func addEditGroupItem(to menu: NSMenu) {
+            guard editGroup != nil else { return }
+            menu.addItem(
+                menuItem(
+                    "Edit Group",
+                    systemImage: "pencil",
+                    action: #selector(editGroupFromMenu),
+                    isEnabled: allowsMutations
+                )
+            )
+            menu.addItem(.separator())
+        }
+
         private var isDirectlyMuted: Bool {
             directOverride?.isMuted == true
                 && (directOverride?.muteConfiguration?.isActive() ?? true)
@@ -398,6 +418,10 @@ struct ChannelContextMenuBridge: NSViewRepresentable {
             if case let .available(_, toggle) = pinAction {
                 toggle()
             }
+        }
+
+        @objc private func editGroupFromMenu() {
+            editGroup?()
         }
 
         @objc private func muteFromMenu(_ sender: NSMenuItem) {
