@@ -31,11 +31,15 @@ def stabilize(work_tree):
             continue
         metadata, path = entry.split(b"\t", 1)
         mode, blob, _ = metadata.split(b" ")
+        full_path = os.path.join(os.fsencode(work_tree), path)
         if mode == b"160000":
-            continue  # Submodule commits are not files.
+            # Dependencies such as libwebp-Xcode vendor sources as submodules.
+            if os.path.exists(os.path.join(full_path, b".git")):
+                count += stabilize(os.fsdecode(full_path))
+            continue
         mtime = EPOCH + int(blob[:7], 16) % SPAN
         try:
-            os.utime(os.path.join(os.fsencode(work_tree), path), (mtime, mtime), follow_symlinks=False)
+            os.utime(full_path, (mtime, mtime), follow_symlinks=False)
             count += 1
         except FileNotFoundError:
             pass
