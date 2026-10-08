@@ -157,6 +157,15 @@ struct NativeTimelineRowLayout {
     var activityIndicators: [ActivityIndicator] = []
     var replyFrame: CGRect?
     var replyContentFrame: CGRect?
+    /// A bubble's reply or command elbow: a stem rising from the bubble's top
+    /// edge that turns toward the referenced content at `cornerY`.
+    struct ReferenceConnector {
+        let stemX: CGFloat
+        let fromY: CGFloat
+        let cornerY: CGFloat
+        let toX: CGFloat
+    }
+    var bubbleReferenceConnector: ReferenceConnector?
     var commandInvocationRegion: CommandInvocationRegion?
     var systemIconFrame: CGRect?
     var contentFrame: CGRect?

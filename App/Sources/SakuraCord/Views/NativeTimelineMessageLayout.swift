@@ -64,6 +64,7 @@ extension NativeTimelineRowLayout {
             prepareColumns()
             appendPrefix()
             appendIdentity()
+            appendBubbleReference()
             appendTextAndPoll()
             appendLinkedImages()
             appendAttachments()
@@ -161,7 +162,8 @@ extension NativeTimelineRowLayout {
                 + (searchContext == nil ? externalTopSeparation : 4)
             verticalOffset = highlightMinY + highlightInsets.top
 
-            if row.replyMessageID != nil, message.type != .pollResult {
+            // Bubbles place the reference after the author header instead.
+            if !usesBubbles, row.replyMessageID != nil, message.type != .pollResult {
                 let frame = CGRect(
                     x: horizontalInset,
                     y: verticalOffset,
@@ -178,7 +180,7 @@ extension NativeTimelineRowLayout {
                 verticalOffset += InterfaceScale.metric(20)
             }
 
-            if message.type == .chatInputCommand {
+            if !usesBubbles, message.type == .chatInputCommand {
                 result.commandInvocationRegion = NativeTimelineRowLayout.commandInvocation(
                     message,
                     origin: CGPoint(x: horizontalInset, y: verticalOffset),
@@ -230,6 +232,71 @@ extension NativeTimelineRowLayout {
                 )
             }
 
+        }
+
+        /// A bubble's reply or command sits directly above the bubble, on the
+        /// bubble's own side, and its elbow meets the bubble's top edge.
+        private mutating func appendBubbleReference() {
+            guard usesBubbles else { return }
+            let isReply = row.replyMessageID != nil && message.type != .pollResult
+            guard isReply || message.type == .chatInputCommand else { return }
+            let height = InterfaceScale.metric(20)
+            let padding = NativeTimelineBubbleLayout.horizontalPadding
+            // The stem lands where the bubble's top corner has flattened out.
+            let stemInset = InterfaceScale.metric(14)
+            let stemX = isOutgoingBubble
+                ? contentX + contentWidth + padding - stemInset
+                : contentX - padding + stemInset
+            let leadingGap = InterfaceScale.metric(4) + NativeTimelineReplyMetrics.horizontalSpacing
+            let referenceX = isOutgoingBubble ? stemX - leadingGap : stemX + leadingGap
+            let connectorEndX = isOutgoingBubble
+                ? referenceX + NativeTimelineReplyMetrics.horizontalSpacing
+                : referenceX - NativeTimelineReplyMetrics.horizontalSpacing
+            if isReply {
+                let naturalWidth = NativeTimelineReplyMetrics.previewWidth(
+                    row.replyPreview, in: message, model: model
+                )
+                // Outgoing previews grow leftward, up to the incoming avatar
+                // column, and neither side outgrows the bubble column.
+                let availableWidth = min(
+                    NativeTimelineBubbleLayout.maximumContentWidth(availableWidth: width),
+                    isOutgoingBubble
+                        ? referenceX - horizontalInset - avatarWidth
+                        : width - horizontalInset - referenceX
+                )
+                let previewWidth = max(0, min(ceil(naturalWidth), availableWidth))
+                let previewFrame = CGRect(
+                    x: isOutgoingBubble ? referenceX - previewWidth : referenceX,
+                    y: verticalOffset,
+                    width: previewWidth,
+                    height: height
+                )
+                result.replyContentFrame = previewFrame
+                result.replyFrame = previewFrame.union(CGRect(
+                    x: min(stemX, connectorEndX),
+                    y: verticalOffset,
+                    width: abs(connectorEndX - stemX),
+                    height: height
+                ))
+            } else {
+                let connectorReserve = InterfaceScale.metric(30) + 5
+                let origin = CGPoint(x: referenceX - connectorReserve, y: verticalOffset)
+                result.commandInvocationRegion = NativeTimelineRowLayout.commandInvocation(
+                    message,
+                    origin: origin,
+                    maximumWidth: width - horizontalInset - origin.x,
+                    cosmeticPolicy: model?.cosmeticPolicy ?? .init()
+                )
+            }
+            // A short gap keeps the stem legible between reference and bubble.
+            let bubbleGap = InterfaceScale.metric(3)
+            result.bubbleReferenceConnector = .init(
+                stemX: stemX,
+                fromY: verticalOffset + height + bubbleGap + 1,
+                cornerY: verticalOffset + height * 0.46,
+                toX: connectorEndX
+            )
+            verticalOffset += height + bubbleGap
         }
 
         private mutating func appendAuthorHeader() {

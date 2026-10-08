@@ -47,6 +47,14 @@ enum NativeTimelineBubbleLayout {
         )
     }
 
+    /// The widest a bubble's content column may grow in a timeline row.
+    static func maximumContentWidth(availableWidth: CGFloat) -> CGFloat {
+        max(
+            InterfaceScale.metric(28),
+            min(InterfaceScale.metric(500), availableWidth * 0.68 - horizontalPadding * 2)
+        )
+    }
+
     static func preferredContentWidth(
         for message: Message,
         row: MessageRowPresentation,
@@ -57,10 +65,7 @@ enum NativeTimelineBubbleLayout {
     ) -> CGFloat {
         guard isEnabled else { return InterfaceScale.metric(80) }
         let minimumWidth: CGFloat = InterfaceScale.metric(28)
-        let maximumWidth = max(
-            minimumWidth,
-            min(InterfaceScale.metric(500), availableWidth * 0.68 - horizontalPadding * 2)
-        )
+        let maximumWidth = maximumContentWidth(availableWidth: availableWidth)
         var preferredWidth = message.hasPoll ? min(InterfaceScale.metric(456), maximumWidth) : minimumWidth
         if let attributedContent = content.attributedContent {
             preferredWidth = max(
