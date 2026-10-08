@@ -2582,6 +2582,9 @@ func `retry resends the exact failed draft through sending and confirmed states`
     let settling = model.messages.filter { contents.contains($0.content) }
     #expect(settling.map(\.content) == contents)
     #expect(settling.map(\.outboxState) == [.confirmed] + Array(repeating: .sending, count: contents.count - 1))
+    // Only the first message carries the avatar; queued ones continue its group.
+    #expect(model.messageRows.filter { contents.contains($0.message.content) }.map(\.startsGroup)
+        == [true] + Array(repeating: false, count: contents.count - 1))
 
     await provider.releaseSend()
     for delivery in deliveries {

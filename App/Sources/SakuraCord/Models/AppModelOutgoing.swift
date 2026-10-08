@@ -397,7 +397,7 @@ extension AppModel {
 
 extension Message {
     /// A local send that is neither confirmed nor failed.
-    var isOutgoingInFlight: Bool {
+    nonisolated var isOutgoingInFlight: Bool {
         switch outboxState {
         case .queued, .uploading, .sending, .awaitingReconciliation: true
         case .confirmed, .failed: false
