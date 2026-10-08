@@ -241,9 +241,11 @@ extension NativeTimelineRowLayout {
                 && showsIncomingIdentity
                 && (usesBubbles ? row.endsGroup : row.startsGroup)
             if showsIncomingAvatar {
+                // A bubble avatar keeps its gap to the bubble's tail.
+                let diameter = usesBubbles ? NativeTimelineBubbleLayout.avatarDiameter : avatarWidth
                 result.avatarFrame = CGRect(
-                    origin: CGPoint(x: horizontalInset, y: verticalOffset),
-                    size: CGSize(width: avatarWidth, height: avatarWidth)
+                    origin: CGPoint(x: horizontalInset + avatarWidth - diameter, y: verticalOffset),
+                    size: CGSize(width: diameter, height: diameter)
                 )
             }
             if row.startsGroup, !row.isResource, !isGenerated, !isOutgoingBubble,
@@ -877,7 +879,7 @@ extension NativeTimelineRowLayout {
                     visibleContentMaxY + highlightInsets.bottom,
                     highlightMinY
                         + highlightInsets.top
-                        + (showsIncomingAvatar
+                        + (showsIncomingAvatar && !usesBubbles
                             ? MessageRowLayoutMetrics.avatarDiameter
                             : MessageRowLayoutMetrics.compactContentHeight)
                         + highlightInsets.bottom

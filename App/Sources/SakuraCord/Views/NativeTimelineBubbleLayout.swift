@@ -22,6 +22,8 @@ enum NativeTimelineBubbleLayout {
     }
 
     static var horizontalPadding: CGFloat { InterfaceScale.metric(12) }
+    /// No taller than a one-line bubble, which the avatar is bottom-aligned to.
+    static var avatarDiameter: CGFloat { InterfaceScale.metric(32) }
 
     static func context(
         for message: Message,
