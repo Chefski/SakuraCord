@@ -474,11 +474,23 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
 
     // Offline demos use real system permissions without publishing fixture alerts.
     private let deliversNotifications: Bool
+    private let preparePreviewImage: @MainActor (URL?, Int) async -> Data?
+    private let submitRequest: @MainActor (UNNotificationRequest) async throws -> Void
     private var isSuppressed = false
     private var pendingRequests: [String: UUID] = [:]
 
-    init(deliversNotifications: Bool = true) {
+    init(
+        deliversNotifications: Bool = true,
+        preparePreviewImage: @escaping @MainActor (URL?, Int) async -> Data? = {
+            await NotificationMedia.previewImage(at: $0, maximumDimension: $1)
+        },
+        submitRequest: @escaping @MainActor (UNNotificationRequest) async throws -> Void = {
+            try await UNUserNotificationCenter.current().add($0)
+        }
+    ) {
         self.deliversNotifications = deliversNotifications
+        self.preparePreviewImage = preparePreviewImage
+        self.submitRequest = submitRequest
         super.init()
     }
 
@@ -549,8 +561,8 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
             messageID: message.id
         ).userInfo
         let attachment = NotificationMedia.imageAttachment(in: message, style: style)
-        let imageData = await NotificationMedia.previewImage(
-            at: attachment?.proxyURL ?? attachment?.url, maximumDimension: 1_280
+        let imageData = await preparePreviewImage(
+            attachment?.proxyURL ?? attachment?.url, 1_280
         )
         guard pendingRequests[identifier] == token, !Task.isCancelled,
               preferences.isEnabled, preferences.previewStyle == style
@@ -656,7 +668,7 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
         else { return }
         content.sound = preferences.playsSound ? Self.notificationSound : nil
         do {
-            try await center.add(
+            try await submitRequest(
                 UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
             )
         } catch {

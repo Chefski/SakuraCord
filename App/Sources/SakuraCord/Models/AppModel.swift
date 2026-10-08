@@ -316,6 +316,7 @@ final class AppModel {
             guard oldValue != currentStatus else { return }
             notificationService.setSuppressed(currentStatus == .dnd)
             reconcilePrivateCallSounds()
+            if oldValue == .dnd { resumeDNDSuppressedIncomingCalls() }
         }
     }
     var connectionState: ConnectionState = .disconnected
@@ -503,6 +504,7 @@ final class AppModel {
         }
     }
     var privateCallsByChannel: [ChannelID: PrivateCall] = [:]
+    @ObservationIgnored var dndSuppressedIncomingCallChannelIDs: Set<ChannelID> = []
     var privateCallActionChannelIDs: Set<ChannelID> = []
     var mediaDevices: MediaDeviceSnapshot = .empty
     var emojisByGuild: [GuildID: [DiscordEmoji]] = [:] {
