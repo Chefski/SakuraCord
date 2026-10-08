@@ -870,6 +870,7 @@ extension NativeTimelineRowPainter {
             frame: bubbleConnector == nil ? frame : contentFrame,
             avatarFrame: NativeTimelineAvatarPresentation.replyAvatarFrame(in: contentFrame),
             trailingInset: bubbleConnector == nil ? 48 : 0,
+            reservesSummary: bubbleConnector != nil,
             message: message,
             model: model
         )
@@ -907,20 +908,37 @@ extension NativeTimelineRowPainter {
         frame: CGRect,
         avatarFrame: CGRect,
         trailingInset: CGFloat,
+        reservesSummary: Bool = false,
         message: Message,
         model: AppModel?
     ) {
-        let authorFrame = replyAuthor(
-            preview: preview,
-            frame: frame,
-            avatarFrame: avatarFrame,
-            message: message,
-            model: model
-        )
         let replySummary = NativeTimelineReplyMetrics.summary(for: preview, in: message, model: model)
         let summary = replySummary.text
         let mediaSymbol = NativeTimelineReplyMetrics.mediaSymbol(for: preview)
         let mediaReserve = NativeTimelineReplyMetrics.mediaSymbolReserve
+        // A preview narrower than its natural width keeps part of the line
+        // for the summary and media symbol instead of giving it all to a
+        // long author name.
+        let summaryReserve = reservesSummary
+            ? min(
+                frame.width * 0.45,
+                NativeTimelineReplyMetrics.horizontalSpacing
+                    + NativeTimelineReplyMetrics.textWidth(summary, font: NativeTimelineReplyMetrics.summaryFont)
+                    + (mediaSymbol == nil ? 0 : mediaReserve)
+            )
+            : 0
+        let authorFrame = replyAuthor(
+            preview: preview,
+            frame: CGRect(
+                x: frame.minX,
+                y: frame.minY,
+                width: max(0, frame.width - summaryReserve),
+                height: frame.height
+            ),
+            avatarFrame: avatarFrame,
+            message: message,
+            model: model
+        )
         let summaryX = authorFrame.maxX + NativeTimelineReplyMetrics.horizontalSpacing
         let summaryWidth = max(
             0,
@@ -942,10 +960,14 @@ extension NativeTimelineRowPainter {
             color: .secondaryLabelColor,
             concealedSpoilerRanges: replySummary.spoilerRanges
         )
-        if let mediaSymbol {
+        let mediaSymbolFrame = CGRect(
+            x: summaryX + summaryWidth + InterfaceScale.metric(4), y: frame.minY + 1,
+            width: InterfaceScale.metric(18), height: InterfaceScale.metric(18)
+        )
+        if let mediaSymbol, !reservesSummary || mediaSymbolFrame.maxX <= frame.maxX + 1 {
             systemSymbol(
                 mediaSymbol,
-                in: CGRect(x: summaryX + summaryWidth + InterfaceScale.metric(4), y: frame.minY + 1, width: InterfaceScale.metric(18), height: InterfaceScale.metric(18)),
+                in: mediaSymbolFrame,
                 color: .secondaryLabelColor,
                 inset: InterfaceScale.metric(2)
             )

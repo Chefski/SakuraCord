@@ -205,7 +205,7 @@ extension NativeTimelineRowLayout {
             verticalOffset = highlightMinY + highlightInsets.top
 
             // Bubbles place the reference after the author header instead.
-            if !usesBubbles, row.replyMessageID != nil, message.type != .pollResult {
+            if !usesBubbleReference, row.replyMessageID != nil, message.type != .pollResult {
                 let frame = CGRect(
                     x: horizontalInset,
                     y: verticalOffset,
@@ -222,7 +222,7 @@ extension NativeTimelineRowLayout {
                 verticalOffset += InterfaceScale.metric(20)
             }
 
-            if !usesBubbles, message.type == .chatInputCommand {
+            if !usesBubbleReference, message.type == .chatInputCommand {
                 result.commandInvocationRegion = NativeTimelineRowLayout.commandInvocation(
                     message,
                     origin: CGPoint(x: horizontalInset, y: verticalOffset),
@@ -278,12 +278,22 @@ extension NativeTimelineRowLayout {
 
         }
 
+        /// A bubble joins one reference to itself. A reply that is also a
+        /// command, or a command sent by the current user, keeps the
+        /// standard reference rows, which can show both and fit any width.
+        private var usesBubbleReference: Bool {
+            let isReply = row.replyMessageID != nil && message.type != .pollResult
+            let isCommand = message.type == .chatInputCommand
+            return usesBubbles
+                && isReply != isCommand
+                && !(isCommand && isOutgoingBubble)
+        }
+
         /// A bubble's reply or command sits directly above the bubble, on the
         /// bubble's own side, and its elbow meets the bubble's top edge.
         private mutating func appendBubbleReference() {
-            guard usesBubbles else { return }
+            guard usesBubbleReference else { return }
             let isReply = row.replyMessageID != nil && message.type != .pollResult
-            guard isReply || message.type == .chatInputCommand else { return }
             let height = InterfaceScale.metric(20)
             let padding = NativeTimelineBubbleLayout.horizontalPadding
             // The stem lands where the bubble's top corner has flattened out.
@@ -824,22 +834,24 @@ extension NativeTimelineRowLayout {
                     horizontalSpacing: MessageReactionMetrics.horizontalSpacing,
                     verticalSpacing: MessageReactionMetrics.verticalSpacing
                 )
-                // Reactions follow an outgoing bubble to the trailing edge.
-                let reactionsX = isOutgoingBubble
-                    ? contentX + max(0, contentWidth - wrapping.size.width)
-                    : contentX
+                // Each line of reactions follows an outgoing bubble to the
+                // trailing edge.
+                let lineEnds = wrapping.frames.reduce(into: [CGFloat: CGFloat]()) { ends, frame in
+                    ends[frame.minY] = max(ends[frame.minY] ?? 0, frame.maxX)
+                }
+                let frames = wrapping.frames.map { frame in
+                    let lineShift = isOutgoingBubble
+                        ? max(0, contentWidth - (lineEnds[frame.minY] ?? frame.maxX))
+                        : 0
+                    return frame.offsetBy(dx: contentX + lineShift, dy: verticalOffset)
+                }
                 result.reactionRegions = zip(
                     presentedReactions,
-                    wrapping.frames.prefix(presentedReactions.count)
+                    frames.prefix(presentedReactions.count)
                 ).map { reaction, frame in
-                    NativeTimelineRowLayout.reactionRegion(
-                        reaction,
-                        frame: frame.offsetBy(dx: reactionsX, dy: verticalOffset)
-                    )
+                    NativeTimelineRowLayout.reactionRegion(reaction, frame: frame)
                 }
-                if let frame = wrapping.frames.last {
-                    result.addReactionFrame = frame.offsetBy(dx: reactionsX, dy: verticalOffset)
-                }
+                result.addReactionFrame = frames.last
                 verticalOffset += wrapping.size.height
             }
 
