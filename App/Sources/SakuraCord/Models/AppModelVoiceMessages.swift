@@ -12,10 +12,11 @@ extension AppModel {
         }
     }
 
-    /// Whether the composer may record a voice message: Discord requires the
-    /// Send Voice Messages permission in servers, and voice messages are never
-    /// part of a thread's first message.
+    /// Whether the composer may record a voice message: the Features setting
+    /// allows it, Discord requires the Send Voice Messages permission in
+    /// servers, and voice messages are never part of a thread's first message.
     func canSendVoiceMessages(in destination: MessageComposerDestination) -> Bool {
+        guard featuresSettings.voiceMessageRecording else { return false }
         let channel: Channel?
         switch destination {
         case .channel:

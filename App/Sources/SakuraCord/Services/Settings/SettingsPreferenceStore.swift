@@ -315,6 +315,10 @@ nonisolated struct SettingsPreferenceRegistry: Sendable {
             storage: .appWide(key: "settings.features.fakeNitroStreamQuality"), defaultValue: .bool(true)
         ),
         SettingsPreferenceRegistration(
+            id: .voiceMessageRecording, page: .features,
+            storage: .appWide(key: "settings.features.voiceMessageRecording"), defaultValue: .bool(true)
+        ),
+        SettingsPreferenceRegistration(
             id: .attachmentCompactionPrompt, page: .features,
             storage: .appWide(key: "settings.attachments.attachmentCompactionPrompt"), defaultValue: .string(AttachmentHandlingPolicy.ask.rawValue)
         ),
