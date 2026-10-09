@@ -284,3 +284,115 @@ Developer ID signed and notarized transition release with the old Sparkle key
 before following Sparkle's key-rotation procedure. If the key is lost or
 compromised before that transition, stop publishing the appcast and ship a
 manual-download migration rather than weakening validation.
+
+## Pull request builds
+
+PR CI packages the **debug** app with secure credentials, all resources and
+frameworks, an ad-hoc code signature, and a matching dSYM. The downloadable
+`pr-build-<run ID>-<attempt>` Actions artifact contains `SakuraCord.app.zip`,
+`SakuraCord.dSYM.zip`, and `build.json`; Actions retains it for 90 days. CI does
+not receive release-signing credentials. A failed test or packaging step cannot
+produce a published build.
+
+The separate `Publish PR build` workflow runs only trusted default-branch
+control code on an ephemeral hosted runner. It binds the artifact digest to the
+canonical CI workflow, successful run and attempt, PR number, head SHA, base SHA,
+and built merge SHA. Both test jobs must have passed in that attempt. It reads
+ZIP entries, metadata, and Mach-O UUIDs without executing contributor code,
+rejects unsafe archive paths, checks matching dSYMs, and requires the build
+switching protocol and secure update configuration. A separate ephemeral macOS
+job, with no secrets, verifies nested code signatures and sandbox, installer,
+and recovery entitlements after validated extraction; it never launches the app.
+Only then does the Ubuntu publisher sign the archive
+and exact one-item Sparkle feed with the existing Ed25519 key. The signed feed
+uses Sparkle's standard feed-signature format; no contributor signing tool is
+executed.
+
+First-party PRs publish automatically after successful CI. Fork builds remain
+available in Actions, but require an explicit maintainer dispatch supplying the
+exact reviewed head SHA. Approval of GitHub's initial fork workflow run alone
+does **not** approve signing or distribution. A label or earlier revision's
+approval does not authorize a later commit. Review both the contributor head and
+the recorded base/merge before approving publication.
+
+Published builds live in the dedicated public
+[SakuraCordApp/Builds](https://github.com/SakuraCordApp/Builds) repository. Keeping
+these assets out of the app repository prevents PR builds from becoming the
+regular release or the website's newest nightly. Each `pr-N-run-R-attempt-A`
+release contains immutable app, symbols, `appcast.xml`, and `build.json` assets.
+A serialized publisher updates the `pr-builds` release's `catalog.json` only
+after the build's public downloads have been compared with the signed bytes.
+It also maintains a `pr-N` release with `appcast.xml` copied verbatim from that
+PR’s newest retained run/attempt. Installed PR builds use this signed feed for
+normal manual and automatic update checks, so new successful pushes appear as
+updates. Selecting an older build uses its immutable feed for that installation,
+then continues following the PR track. Retry and catalog recovery rebuild the
+track feeds from already signed artifacts, without a signing key.
+Every retained published build stays searchable; closing a PR does not remove
+its builds. The catalog is discovery metadata, while Sparkle authenticates the
+selected feed and archive before installation. Its schema and validation live
+in `script/pr_builds.mjs` and `script/pr_build_archive.py`.
+
+The publisher reads the commit subject from GitHub at the immutable PR head SHA
+for the build browser. The manifest preserves that subject and head and built
+SHA separately, plus run/attempt, PR,
+configuration, architecture, artifact provenance, version, archive and symbols
+hashes, and binary UUIDs. Reruns receive distinct identities and bundle versions.
+PR bundle versions reserve `4_000_000_000_000_000_000 + runID * 1000 + attempt`
+(with at most 13 run-ID digits and attempts 1–999), within signed 64-bit range.
+The production bundle identifier stays stable for Sparkle; PR builds use the
+app's per-PR local-data namespace, shared by updates within that PR. They retain
+normal update preferences and explicit return-to-release controls. Old PR artifacts lacking the
+switching protocol cannot be published into the catalog.
+
+### Distribution setup
+
+1. Create the public `SakuraCordApp/Builds` repository with an initial commit.
+   Install the existing SakuraCord bot GitHub App on it with **Contents: write**.
+   The publisher requests a short-lived token limited to that repository; no
+   personal access token or source-repository write grant is needed.
+2. Set source-repository **variable** `SPARKLE_ED_PUBLIC_KEY` to the same public
+   key embedded in released apps. Fork builds must read this public value, so
+   using the secret alone is insufficient. Keep `SPARKLE_ED_PRIVATE_KEY` secret.
+   Existing `SAKURACORD_BOT_APP_ID` and `SAKURACORD_BOT_PRIVATE_KEY` supply the
+   publisher's GitHub App credentials.
+3. Land the trusted publication workflow on `main` before relying on its
+   `workflow_run` trigger. PR CI must contain the packaging changes and the
+   current app/Sparkle switching protocol. Validate a fresh successful PR run,
+   inspect its public catalog entry and signed downloads, and exercise an
+   actual app switch and return before claiming live distribution verification.
+
+### Approval and recovery
+
+Dispatch from **main**, supplying the actual immutable CI run and attempt. For
+a fork, `reviewed_head_sha` must be the full reviewed 40-character head commit:
+
+```sh
+: "${pr_ci_run_id:?Set the successful PR CI run ID}"
+: "${pr_ci_attempt:?Set its successful attempt}"
+: "${reviewed_head_sha:?Set the reviewed full PR head SHA}"
+gh workflow run publish-pr-build.yml --ref main \
+  -f run_id="$pr_ci_run_id" -f run_attempt="$pr_ci_attempt" \
+  -f approved_head_sha="$reviewed_head_sha"
+```
+
+Publication queues up to 100 pending workflow runs; manually retry any run
+cancelled after exceeding that limit. Retry the same run/attempt to finish a
+partial publication. Existing draft releases are resumed. Existing immutable
+assets are compared byte-for-byte and never overwritten; mismatches stop the
+workflow. A completed build release with a missing catalog entry is recovered
+by rebuilding the catalog from published manifests, without the signing key or
+an unexpired Actions artifact:
+
+```sh
+gh workflow run publish-pr-build.yml --ref main
+```
+
+Changed catalog or PR-feed assets can briefly return 404 during replacement;
+clients retain their current list and offer retry on a failed refresh. Deleting
+a published build is a deliberate maintainer withdrawal: delete its dedicated
+release, then rebuild the catalog. If withdrawing the last build for a PR,
+also delete its `pr-N` track release. Never edit an existing build's assets to
+repair a binary; publish a fresh CI attempt instead. Published build assets have
+no automatic expiry, unlike the temporary Actions artifact. The same ad-hoc
+signing and notarization limitation described above applies to PR downloads.
