@@ -31,6 +31,9 @@ final class VoiceMessagePlaybackStore {
     /// Discord's cycle order for the speed button.
     static let speeds: [Float] = [1, 1.5, 2, 0.75]
     static let speedDefaultsKey = "VoiceMessagePlaybackSpeed"
+    static let maximumCachedPlayers = 4
+    /// Remote messages kept as playable files.
+    static let maximumPlayableFiles = 16
     /// Discord remembers where up to 25 messages were left.
     static let maximumResumePositions = 25
 
@@ -45,8 +48,9 @@ final class VoiceMessagePlaybackStore {
     @ObservationIgnored private var activeDuration: TimeInterval?
     @ObservationIgnored private var pausedPosition: TimeInterval = 0
     @ObservationIgnored private var loadTask: Task<Void, Never>?
-    /// A player readied for the message under the pointer.
-    @ObservationIgnored private var prepared: (source: Source, player: VoiceMessagePlayer)?
+    /// Players for recently played or hovered messages, oldest first, kept
+    /// open so returning to one starts at once.
+    @ObservationIgnored private var cachedPlayers: [(source: Source, player: VoiceMessagePlayer)] = []
     @ObservationIgnored private var prepareTask: Task<Void, Never>?
     @ObservationIgnored private var preparingSource: Source?
     @ObservationIgnored private var resumesAfterScrub = false
@@ -151,11 +155,12 @@ final class VoiceMessagePlaybackStore {
 
     /// Readies a message the pointer is over, so pressing play starts at
     /// once: its audio is fetched and opened, and the output device woken.
-    /// Nothing is prepared while another message plays.
     func prepare(source: Source) {
-        guard phase != .playing, activeSource != source,
-              prepared?.source != source, preparingSource != source
-        else { return }
+        guard activeSource != source, preparingSource != source else { return }
+        if let cached = cachedPlayers.first(where: { $0.source == source }) {
+            try? cached.player.prepareOutput()
+            return
+        }
         prepareTask?.cancel()
         preparingSource = source
         prepareTask = Task { [weak self] in
@@ -167,7 +172,7 @@ final class VoiceMessagePlaybackStore {
             else { return }
             player.rate = self.speed
             try? player.prepareOutput()
-            self.prepared = (source, player)
+            self.cache(player, for: source)
         }
     }
 
@@ -181,8 +186,8 @@ final class VoiceMessagePlaybackStore {
         prepareTask?.cancel()
         prepareTask = nil
         preparingSource = nil
-        prepared = nil
         cancelActive(rememberingPosition: false)
+        cachedPlayers.removeAll()
         resumePositions.removeAll()
         resumeOrder.removeAll()
     }
@@ -211,9 +216,8 @@ final class VoiceMessagePlaybackStore {
             return
         }
         guard let source = activeSource else { return }
-        if let prepared, prepared.source == source {
-            self.prepared = nil
-            adopt(prepared.player, for: id)
+        if let index = cachedPlayers.firstIndex(where: { $0.source == source }) {
+            adopt(cachedPlayers.remove(at: index).player, for: id)
             return
         }
         phase = .loading
@@ -278,6 +282,7 @@ final class VoiceMessagePlaybackStore {
     private func finish(_ id: VoiceMessagePlaybackID) {
         guard activeID == id else { return }
         if case let .attachment(attachmentID) = id { forgetResumePosition(attachmentID) }
+        if let player, let activeSource { cache(player, for: activeSource) }
         player = nil
         activeID = nil
         activeSource = nil
@@ -293,7 +298,7 @@ final class VoiceMessagePlaybackStore {
         loadTask = nil
         let position = player?.isPlaying == true ? player?.currentTime ?? pausedPosition : pausedPosition
         let duration = player?.duration ?? activeDuration ?? 0
-        player?.stop()
+        if let player, let activeSource { cache(player, for: activeSource) }
         player = nil
         if case let .attachment(attachmentID) = id {
             if rememberingPosition, position > 0.5, duration > 0, position < duration * 0.95 {
@@ -308,6 +313,23 @@ final class VoiceMessagePlaybackStore {
         pausedPosition = 0
         phase = .paused
         notify()
+    }
+
+    /// Pauses a player that is no longer active and keeps it for a remote
+    /// message; a composer preview's file is about to go away.
+    private func cache(_ player: VoiceMessagePlayer, for source: Source) {
+        player.onFinish = nil
+        player.onInterruption = nil
+        guard case .remote = source else {
+            player.stop()
+            return
+        }
+        player.pause()
+        cachedPlayers.removeAll { $0.source == source }
+        cachedPlayers.append((source, player))
+        if cachedPlayers.count > Self.maximumCachedPlayers {
+            cachedPlayers.removeFirst().player.stop()
+        }
     }
 
     private func rememberResumePosition(_ position: TimeInterval, for attachmentID: String) {
@@ -325,8 +347,8 @@ final class VoiceMessagePlaybackStore {
     }
 
     /// AVAudioFile needs a file, so remote audio is materialized in a
-    /// disposable directory that holds only the most recently played message;
-    /// the bytes themselves stay in the shared media cache and its budget.
+    /// disposable directory holding the most recently played messages; the
+    /// bytes themselves stay in the shared media cache and its budget.
     private static func playableFile(
         for source: Source,
         resolve: (@MainActor (URL) async -> URL)?
@@ -339,16 +361,32 @@ final class VoiceMessagePlaybackStore {
                 .appending(path: "SakuraCordVoicePlayback", directoryHint: .isDirectory)
             let digest = SHA256.hash(data: Data(url.path.utf8)).map { String(format: "%02x", $0) }.joined()
             let fileURL = directory.appending(path: "\(digest).ogg")
-            if FileManager.default.fileExists(atPath: fileURL.path) { return fileURL }
+            if FileManager.default.fileExists(atPath: fileURL.path) {
+                try? FileManager.default.setAttributes([.modificationDate: Date.now], ofItemAtPath: fileURL.path)
+                return fileURL
+            }
             let resolved = await resolve?(url) ?? url
             let data = try await SharedMediaDataLoader.shared.data(for: resolved)
-            // Only one message plays at a time; an open player keeps its file
-            // readable after the directory entry is removed.
             try Task.checkCancellation()
-            try? FileManager.default.removeItem(at: directory)
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             try data.write(to: fileURL, options: .atomic)
+            pruneFiles(in: directory)
             return fileURL
+        }
+    }
+
+    /// Keeps the newest files; an open player keeps its file readable after
+    /// the directory entry is removed.
+    private static func pruneFiles(in directory: URL) {
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: [.contentModificationDateKey]
+        )) ?? []
+        guard files.count > maximumPlayableFiles else { return }
+        let modified = { (url: URL) in
+            (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+        }
+        for file in files.sorted(by: { modified($0) < modified($1) }).dropLast(maximumPlayableFiles) {
+            try? FileManager.default.removeItem(at: file)
         }
     }
 }
