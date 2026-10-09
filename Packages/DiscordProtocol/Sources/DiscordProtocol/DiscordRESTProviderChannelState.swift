@@ -46,11 +46,12 @@ extension DiscordRESTProvider {
         } else {
             var channel = channel
             channel.position = (channels.lazy.map(\.position).max() ?? -1) + 1
+            channels.append(channel)
             // A newly created or reopened DM joins the activity ordering. A
             // message-less group DM ranks by its own snowflake, so it leads.
-            let activity = Self.privateChannelActivity(channel)
-            let index = channels.firstIndex { Self.privateChannelActivity($0) < activity }
-            channels.insert(channel, at: index ?? channels.endIndex)
+            // Search discoveries may leave an unsorted tail, so re-sort as
+            // READY_SUPPLEMENTAL does rather than assuming sorted input.
+            channels = Self.orderedPrivateChannels(channels)
         }
         cachedChannels[nil] = channels
         continuation?.yield(.channelsChanged(guildID: nil, channels: channels))
