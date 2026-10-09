@@ -89,12 +89,13 @@ final class VoiceMessagePlaybackStore {
         activeID == id ? player?.duration ?? activeDuration : nil
     }
 
-    /// Whether `id` is fetching, or was pressed and hasn't sounded yet.
+    /// Whether `id` was pressed and still hasn't sounded, after a moment;
+    /// a cached message opens too quickly to be worth a spinner.
     func isLoading(_ id: VoiceMessagePlaybackID) -> Bool {
-        guard activeID == id else { return false }
-        if phase == .loading { return true }
-        guard phase == .playing, player?.isRendering == false, let playRequestedAt else { return false }
-        return ContinuousClock.now - playRequestedAt > Self.startSpinnerDelay
+        guard activeID == id, let playRequestedAt,
+              ContinuousClock.now - playRequestedAt > Self.startSpinnerDelay
+        else { return false }
+        return phase == .loading || (phase == .playing && player?.isRendering == false)
     }
 
     var outputLevel: Float { phase == .playing ? player?.outputLevel ?? 0 : 0 }
@@ -207,6 +208,7 @@ final class VoiceMessagePlaybackStore {
 
     private func play() {
         guard let id = activeID else { return }
+        playRequestedAt = .now
         if let player {
             start(player)
             return
@@ -250,7 +252,6 @@ final class VoiceMessagePlaybackStore {
     private func start(_ player: VoiceMessagePlayer) {
         if pausedPosition >= player.duration - 0.05 { pausedPosition = 0 }
         player.seek(to: pausedPosition)
-        playRequestedAt = .now
         do {
             try player.play()
             phase = .playing

@@ -114,6 +114,8 @@ struct NativeTimelineVoiceMessageDrawState {
     var progress: CGFloat = 0
     var isPlaying = false
     var isLoading = false
+    /// Fetching, before the spinner appears; frames keep coming so it can.
+    var isFetching = false
     /// Seconds left while active; the full duration otherwise.
     var displayedTime: TimeInterval
     var speedLabel: String
@@ -455,7 +457,7 @@ final class NativeTimelineVoiceMessageOverlay: NSView {
 
     /// Runs a display link only while something moves.
     func updateAnimation() {
-        let animates = window != nil && (state.isPlaying || state.isLoading)
+        let animates = window != nil && (state.isPlaying || state.isLoading || state.isFetching)
         if animates, ticker.displayLink == nil {
             ticker.start(on: self) { [weak self] in self?.tick() }
         } else if !animates, ticker.displayLink != nil {
@@ -710,6 +712,7 @@ extension NativeTimelineCanvasView {
             progress: duration > 0 ? CGFloat(min(max(position / duration, 0), 1)) : 0,
             isPlaying: phase == .playing,
             isLoading: playback.isLoading(id),
+            isFetching: phase == .loading,
             displayedTime: phase == nil ? region.duration : max(0, duration - position),
             speedLabel: playback.speedLabel,
             level: CGFloat(playback.outputLevel),
