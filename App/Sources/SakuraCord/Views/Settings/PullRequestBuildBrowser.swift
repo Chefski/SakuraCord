@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Window-modal browser for published PR builds. Surfaces nest inside the modal's
-/// 16-point container shape, so every inset card and row resolves concentric corners.
+/// Window-modal browser for published PR builds. The 40-point header controls and
+/// footer capsules sit 12 points inside the modal's 32-point container shape.
 struct PullRequestBuildBrowser: View {
     @Environment(\.windowModalContext) private var dismiss
     @State private var store: PullRequestBuildStore
@@ -75,7 +75,7 @@ struct PullRequestBuildBrowser: View {
                 Spacer()
                 HStack(spacing: InterfaceScale.metric(8)) {
                     Button { Task { await store.load() } } label: {
-                        HoverActionControlLabel(diameter: InterfaceScale.metric(36)) {
+                        HoverActionControlLabel(diameter: InterfaceScale.metric(40)) {
                             Image(systemName: "arrow.clockwise")
                                 .font(.interfaceSystem(size: 14, weight: .semibold))
                                 .symbolEffect(.rotate, options: .repeat(.continuous), isActive: store.isLoading)
@@ -85,7 +85,7 @@ struct PullRequestBuildBrowser: View {
                     .disabled(store.isLoading)
                     .help("Refresh builds")
                     .accessibilityLabel("Refresh builds")
-                    HoverCloseButton(help: "Close", accessibilityIdentifier: "pr-builds-close") { dismiss?() }
+                    HoverCloseButton(help: "Close", accessibilityIdentifier: "pr-builds-close", diameter: InterfaceScale.metric(40)) { dismiss?() }
                 }
             }
             PickerSearchHeader(text: $store.search, focus: { searchIsFocused = true }, input: {
@@ -101,8 +101,7 @@ struct PullRequestBuildBrowser: View {
                 searchIsFocused = true
             }
         }
-        .padding(InterfaceScale.metric(24))
-        .padding(.bottom, -InterfaceScale.metric(8))
+        .padding(InterfaceScale.metric(12))
     }
 
     // MARK: Sidebar

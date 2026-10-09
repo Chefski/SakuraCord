@@ -100,7 +100,7 @@ struct SoftwareUpdatesSettingsPage: View {
             guard state.revealRequest?.destination.page == .softwareUpdates else { return }
             navigationPath.removeAll()
         }
-        .windowModal(isPresented: $presentsBuildBrowser) {
+        .windowModal(isPresented: $presentsBuildBrowser, cornerRadius: InterfaceScale.metric(32), cornerStyle: .circular) {
             PullRequestBuildBrowser(
                 isPreview: ProcessInfo.processInfo.arguments.contains("--offline"),
                 installedBuildID: updateController.installedPullRequestBuildID,
