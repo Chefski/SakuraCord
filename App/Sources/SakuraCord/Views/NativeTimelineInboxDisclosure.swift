@@ -163,6 +163,7 @@ extension NativeTimelineCanvasView {
         reconcileInboxHeaders()
         positionAnimatedMediaOverlays()
         positionInlineVideoOverlays()
+        reconcileVoiceMessageOverlay()
         positionLottieStickerOverlays()
         reconcileActivityIndicators()
         positionSpoilerOverlays()

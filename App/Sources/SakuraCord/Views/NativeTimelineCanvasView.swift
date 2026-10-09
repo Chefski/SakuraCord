@@ -313,6 +313,11 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
         [LottieStickerOverlayKey: NativeTimelineLottieStickerOverlay] = [:]
     var animatedMediaOverlays:
         [AnimatedMediaOverlayKey: NativeTimelineAnimatedMediaOverlay] = [:]
+    var voiceMessageOverlay: NativeTimelineVoiceMessageOverlay?
+    var voiceMessageActiveAttachmentID: String?
+    var voiceMessageSpeed: Float = 1
+    var voiceMessagePress: VoiceMessagePointerHit?
+    var hoveredVoiceMessage: VoiceMessageHover?
     struct ActivityIndicatorKey: Hashable {
         let row: NativeMessageTimelineItem.Identifier
         let index: Int
@@ -377,6 +382,8 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
                                        name: ComposerOverlayPointerRegion.changed, object: nil)
         notificationCenter.addObserver(self, selector: #selector(restoreInboxKeyboardFocus),
                                        name: NSApplication.didBecomeActiveNotification, object: nil)
+        notificationCenter.addObserver(self, selector: #selector(voiceMessagePlaybackDidChange(_:)),
+                                       name: VoiceMessagePlaybackStore.didChange, object: nil)
         NSWorkspace.shared.notificationCenter.addObserver(
             self,
             selector: #selector(mediaPlaybackVisibilityDidChange(_:)),

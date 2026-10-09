@@ -52,6 +52,7 @@ extension NativeTimelineRowPainter {
         drawPollResult(input)
         drawMessageLinkedImages(input)
         drawMessageAttachments(input)
+        drawMessageVoiceMessage(input)
         drawMessageEmbeds(input)
         drawMessageComponentsAndStickers(input)
         drawMessageFooter(input)
@@ -388,6 +389,25 @@ extension NativeTimelineRowPainter {
     }
 
     static var attachmentCornerRadius: CGFloat { InterfaceScale.metric(8) }
+
+    private static func drawMessageVoiceMessage(_ input: NativeTimelineMessageDrawInput) {
+        guard let region = input.layout.voiceMessageRegion else { return }
+        let playback = input.model?.voiceMessagePlayback
+        let opacity = CGFloat(MessageOutboxPresentation.mediaOpacity(for: input.row.message.outboxState))
+        let context = NSGraphicsContext.current?.cgContext
+        context?.saveGState()
+        defer { context?.restoreGState() }
+        if opacity < 1 {
+            context?.setAlpha(opacity)
+            context?.beginTransparencyLayer(auxiliaryInfo: nil)
+        }
+        NativeTimelineVoiceMessagePainter.drawIdle(
+            region,
+            speedLabel: playback?.speedLabel ?? "1×",
+            isActive: playback?.isActive(region.playbackID) == true
+        )
+        if opacity < 1 { context?.endTransparencyLayer() }
+    }
 
     private static func drawMessageAttachments(_ input: NativeTimelineMessageDrawInput) {
         let layout = input.layout

@@ -433,6 +433,46 @@ and [metadata fixtures](../../Packages/MediaPipeline/Tests/MediaPipelineTests/Up
 for failure/privacy boundaries. Detailed container algorithms belong beside that
 code, not in the transport-wide baseline.
 
+## Voice messages
+
+Discord's desktop client has no recorder. The send contract was observed on
+9 October 2026 (web build `web.ae482d0492df0fb9.js`) through Equicord's
+VoiceMessages plugin, which reuses Discord's uploader, and cross-checked against
+[Discord's message documentation](https://docs.discord.com/developers/resources/message#voice-messages).
+
+- **Recording.** Mono 48 kHz Ogg Opus. Apple frameworks encode Opus but write it
+  only into CAF, so [MediaPipeline](../../Packages/MediaPipeline/Sources/MediaPipeline/OggOpusWriter.swift)
+  muxes the packets itself: 312-sample pre-skip, with the final granule trimming
+  encoder padding. Never upload CAF renamed to `.ogg`. Recordings stop at
+  Discord's 20-minute limit.
+- **Waveform.** 32–256 bins, ten per second of audio: RMS scaled to 0–255, then
+  the plugin's eased peak normalization, base64-encoded as raw bytes. Follow
+  upstream Vencord's contiguous windows; the installed Equicord copy contains an
+  indexing bug.
+- **Upload.** The reservation names `voice-message.ogg` and adds
+  `original_content_type: "audio/ogg; codecs=opus"`. Storage receives the raw
+  bytes as `application/octet-stream`. The message POST sets `flags: 8192` and
+  empty `content`, plus one attachment with `filename`, `uploaded_filename`,
+  `duration_secs` and `waveform`. The attachment's `content_type` is omitted.
+- **Rules.** Guild channels require Send Voice Messages (`1 << 46`). A voice
+  message carries no text, stickers or poll, and Discord does not allow it to be
+  edited.
+- **Delivery.** Unlike the plugin's direct POST, SakuraCord sends through the
+  ordinary [outbox](#sends-and-history). It keeps the nonce, idempotency field,
+  send budget and reply reference.
+- **Receipt.** `MESSAGE_CREATE` and history carry `flags: 8192`, plus an
+  attachment with `content_type: audio/ogg`, `duration_secs` and `waveform`.
+  Preserve the returned metadata; Discord may adjust the duration (8 → 8.02
+  observed).
+- **Playback.** Audio is fetched from the attachment `url` through the shared
+  media cache, re-signing expiring links first. One message plays at a time. The
+  speed cycle is 1×, 1.5×, 2×, 0.75×, kept device-local. Up to 25 resume
+  positions between 0.5 s and 95% are kept in memory. Listening is not reported
+  to Discord.
+
+See [VoiceMessageSendContractTests](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/VoiceMessageSendContractTests.swift)
+and [VoiceMessageEncodingTests](../../Packages/MediaPipeline/Tests/MediaPipelineTests/VoiceMessageEncodingTests.swift).
+
 ## Attachment links
 
 Attachment URLs retain their ordinary full-URL presentation. An explicit

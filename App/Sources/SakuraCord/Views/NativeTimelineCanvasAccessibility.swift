@@ -823,6 +823,27 @@ extension NativeTimelineCanvasView {
             gallery.setAccessibilityChildren(attachmentChildren)
             children.append(gallery)
         }
+        if let region = layout.voiceMessageRegion {
+            children.append(voiceMessageAccessibilityElement(region, rowIndex: rowIndex, parent: parent))
+        }
+    }
+
+    private func voiceMessageAccessibilityElement(
+        _ region: NativeTimelineVoiceMessageRegion,
+        rowIndex: Int,
+        parent: Any?
+    ) -> NSAccessibilityElement {
+        accessibilityElement(
+            role: .button,
+            label: "Voice message, \(VoiceMessageDurationFormat.string(region.duration))",
+            help: "Plays or pauses the voice message",
+            frame: accessibilityChildFrame(region.frame, rowIndex: rowIndex),
+            parent: parent
+        ) { [weak self] in
+            guard let playback = self?.model?.voiceMessagePlayback else { return false }
+            playback.toggle(region.playbackID, source: region.source, duration: region.duration)
+            return true
+        }
     }
 
     private func appendMessageRichContentAccessibility(

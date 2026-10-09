@@ -244,6 +244,7 @@ extension NativeTimelineCanvasView {
         let point = convert(event.locationInWindow, from: nil)
         guard !actionCapsuleContains(point) else { return }
         setHoveredPollTarget(pollPointerHit(at: point)?.target)
+        updateVoiceMessageHover(at: point)
         synchronizeHoveredRow(at: point)
         setHoveredCompactTimestampRow(
             compactTimestampRowIndex(at: point)
@@ -371,6 +372,11 @@ extension NativeTimelineCanvasView {
         guard event.buttonNumber == 0 else { return }
         let point = convert(event.locationInWindow, from: nil)
         pressedActivationTarget = nil
+        if beginVoiceMessagePress(at: point) {
+            textSelectionGesture = nil
+            setTextSelection(nil)
+            return
+        }
         if let hit = pollPointerHit(at: point) {
             setHoveredPollTarget(hit.target)
             pressedPollTarget = hit.target
@@ -585,6 +591,7 @@ extension NativeTimelineCanvasView {
 
     override func mouseDragged(with event: NSEvent) {
         guard !overlayBlocksInteractions, !sendTransitionBlocksInteractions else { return }
+        if dragVoiceMessagePress(to: convert(event.locationInWindow, from: nil)) { return }
         if pressedPollTarget != nil {
             setHoveredPollTarget(pollPointerHit(at: convert(event.locationInWindow, from: nil))?.target)
             return
@@ -637,6 +644,7 @@ extension NativeTimelineCanvasView {
 
     override func mouseUp(with event: NSEvent) {
         guard !overlayBlocksInteractions, !sendTransitionBlocksInteractions else { return }
+        if endVoiceMessagePress(at: convert(event.locationInWindow, from: nil)) { return }
         if let pressed = pressedPollTarget {
             pressedPollTarget = nil
             setNeedsDisplay(visibleRect)

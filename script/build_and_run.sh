@@ -11,9 +11,9 @@ source "$ROOT_DIR/script/release_metadata.sh"
 source "$ROOT_DIR/script/debug_credentials_config.sh"
 
 case "$MODE" in
-  package|package-release|run|run-release|--offline|--offline-sign-in|--offline-long-server-list|--offline-forum-performance|--offline-chat-performance|--offline-chat-performance-autoscroll|--offline-chat-performance-live-autoscroll|--offline-chat-media-performance-autoscroll|--offline-pins-performance-autoscroll|--offline-incoming-private-call|--media-viewer-benchmark|--verify|--debug|--logs|--telemetry) ;;
+  package|package-release|run|run-release|--offline|--offline-sign-in|--offline-long-server-list|--offline-forum-performance|--offline-chat-performance|--offline-chat-performance-autoscroll|--offline-chat-performance-live-autoscroll|--offline-chat-media-performance-autoscroll|--offline-chat-voice-performance|--offline-chat-voice-performance-autoscroll|--offline-pins-performance-autoscroll|--offline-incoming-private-call|--media-viewer-benchmark|--verify|--debug|--logs|--telemetry) ;;
   *)
-    echo "usage: $0 [package|package-release|run|run-release|--offline|--offline-sign-in|--offline-long-server-list|--offline-forum-performance|--offline-chat-performance|--offline-chat-performance-autoscroll|--offline-chat-performance-live-autoscroll|--offline-chat-media-performance-autoscroll|--offline-pins-performance-autoscroll|--offline-incoming-private-call|--media-viewer-benchmark|--verify|--debug|--logs|--telemetry]" >&2
+    echo "usage: $0 [package|package-release|run|run-release|--offline|--offline-sign-in|--offline-long-server-list|--offline-forum-performance|--offline-chat-performance|--offline-chat-performance-autoscroll|--offline-chat-performance-live-autoscroll|--offline-chat-media-performance-autoscroll|--offline-chat-voice-performance|--offline-chat-voice-performance-autoscroll|--offline-pins-performance-autoscroll|--offline-incoming-private-call|--media-viewer-benchmark|--verify|--debug|--logs|--telemetry]" >&2
     exit 2
     ;;
 esac
@@ -221,7 +221,7 @@ cat >"$CONTENTS/Info.plist" <<PLIST
   <key>LSMinimumSystemVersion</key><string>27.0</string>
   <key>NSPrincipalClass</key><string>NSApplication</string>
   <key>NSHighResolutionCapable</key><true/>
-  <key>NSMicrophoneUsageDescription</key><string>SakuraCord uses your microphone when you join a voice call.</string>
+  <key>NSMicrophoneUsageDescription</key><string>SakuraCord uses your microphone when you join a voice call or record a voice message.</string>
   <key>NSCameraUsageDescription</key><string>SakuraCord uses your camera when you enable video in a call.</string>
   <key>NSScreenCaptureUsageDescription</key><string>SakuraCord uses screen capture only when you choose a source to share in a voice call.</string>
 </dict>
@@ -288,6 +288,10 @@ open_offline_chat_performance_live_autoscroll() {
 open_offline_chat_media_performance_autoscroll() {
   open_app --args --offline-chat-media-performance-autoscroll
 }
+open_offline_chat_voice_performance() { open_app --args --offline-chat-voice-performance; }
+open_offline_chat_voice_performance_autoscroll() {
+  open_app --args --offline-chat-voice-performance-autoscroll
+}
 open_offline_pins_performance_autoscroll() {
   open_app --args --offline-pins-performance-autoscroll
 }
@@ -329,6 +333,8 @@ case "$MODE" in
   --offline-chat-performance-autoscroll) open_offline_chat_performance_autoscroll ;;
   --offline-chat-performance-live-autoscroll) open_offline_chat_performance_live_autoscroll ;;
   --offline-chat-media-performance-autoscroll) open_offline_chat_media_performance_autoscroll ;;
+  --offline-chat-voice-performance) open_offline_chat_voice_performance ;;
+  --offline-chat-voice-performance-autoscroll) open_offline_chat_voice_performance_autoscroll ;;
   --offline-pins-performance-autoscroll) open_offline_pins_performance_autoscroll ;;
   --offline-incoming-private-call) open_offline_incoming_private_call ;;
   --media-viewer-benchmark) open_media_viewer_benchmark ;;

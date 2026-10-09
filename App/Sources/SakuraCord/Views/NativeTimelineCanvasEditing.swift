@@ -1114,6 +1114,7 @@ extension NativeTimelineCanvasView {
             positionAnimatedMediaOverlays()
             reconcileBeginningSelectionOverlay()
             positionInlineVideoOverlays()
+            reconcileVoiceMessageOverlay()
             positionLottieStickerOverlays()
             reconcileActivityIndicators()
             positionSpoilerOverlays()

@@ -234,6 +234,7 @@ extension AppModel {
     }
 
     func resetAccountPresentationState() {
+        resetVoiceMessages()
         unreadPresentationRefreshTask?.cancel()
         unreadPresentationRefreshTask = nil
         unreadPresentationPreparationTask?.cancel()

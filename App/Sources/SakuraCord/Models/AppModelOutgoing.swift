@@ -11,6 +11,7 @@ extension AppModel {
                 channelID: message.channelID
               ) == .failed
         else { return }
+        if let outgoing = composer.outbox.draftsByNonce[nonce] { discardVoiceMessageFile(for: outgoing) }
         composer.outbox.draftsByNonce[nonce] = nil
         composer.outbox.stickerUploadSourceURLByNonce[nonce] = nil
         removeOutgoingMessage(
@@ -310,6 +311,7 @@ extension AppModel {
             recordMessageEmojiUsage(outgoing.content)
             confirmSlowmodeMessage(confirmed)
             let reconciled = reconcileVisibleOrCached(confirmed)
+            discardVoiceMessageFile(for: outgoing)
             composer.outbox.draftsByNonce[outgoing.nonce] = nil
             composer.outbox.stickerUploadSourceURLByNonce[outgoing.nonce] = nil
             journalAuthoritativeMessageUpsert(reconciled)
@@ -354,7 +356,7 @@ extension AppModel {
         stickers: [MessageSticker] = []
     ) -> Message {
         let id = composer.outbox.nextOptimisticMessageID()
-        return Message(
+        var message = Message(
             id: id,
             channelID: outgoing.channelID,
             author: snapshot?.currentUser
@@ -377,6 +379,13 @@ extension AppModel {
             stickers: stickers,
             poll: outgoing.poll?.preview()
         )
+        if let voiceMessage = outgoing.voiceMessage, !message.attachments.isEmpty {
+            message.flags.insert(.voiceMessage)
+            message.attachments[0].mediaType = "audio/ogg"
+            message.attachments[0].durationSeconds = voiceMessage.durationSeconds
+            message.attachments[0].waveform = voiceMessage.waveform
+        }
+        return message
     }
 
     func appendOutgoingMessage(_ message: Message) {

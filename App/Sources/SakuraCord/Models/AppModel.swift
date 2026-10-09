@@ -433,6 +433,9 @@ final class AppModel {
             || threadErrorScope == .earlierPage
     }
     @ObservationIgnored let composer = MessageComposerState()
+    @ObservationIgnored let voiceMessagePlayback = VoiceMessagePlaybackStore()
+    @ObservationIgnored let channelVoiceMessageComposer = VoiceMessageComposerState(destination: .channel)
+    @ObservationIgnored let threadVoiceMessageComposer = VoiceMessageComposerState(destination: .thread)
     var gifResults: [GIFSearchResult] = []
     var gifCategories: [GIFPickerCategory] = []
     var gifTrendingPreviewURL: URL?
@@ -1298,6 +1301,7 @@ final class AppModel {
                 await self?.installMediaDeviceSnapshot(snapshot)
             }
         }
+        configureVoiceMessagePlayback()
     }
 }
 
