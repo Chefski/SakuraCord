@@ -264,6 +264,7 @@ extension AppModel {
             if confirmedWhileWaiting
                 || outgoingState(nonce: outgoing.nonce, channelID: outgoing.channelID) == .confirmed
             {
+                discardVoiceMessageFile(for: outgoing)
                 composer.outbox.draftsByNonce[outgoing.nonce] = nil
                 composer.outbox.stickerUploadSourceURLByNonce[outgoing.nonce] = nil
                 return true

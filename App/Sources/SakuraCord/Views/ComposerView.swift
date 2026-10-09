@@ -211,9 +211,10 @@ struct ComposerView: View {
                                     : 0,
                                 sendTransitionAnchor: sendTransitionAnchor,
                                 selection: $draftSelection,
+                                // The hidden editor takes no typing while a voice message is shown.
                                 isFocused: Binding(
-                                    get: { !hasActiveCommand && isFocused },
-                                    set: { if !hasActiveCommand { isFocused = $0 } }
+                                    get: { !hasActiveCommand && !isVoiceMessageActive && isFocused },
+                                    set: { if !hasActiveCommand, !isVoiceMessageActive { isFocused = $0 } }
                                 )
                             )
                             .frame(minHeight: ChatChromeMetrics.composerControlHeight)
@@ -441,6 +442,7 @@ struct ComposerView: View {
             updateCommandMemberSearch(current)
         }
         .onDisappear {
+            voiceMessage.discard(playback: model.voiceMessagePlayback)
             composerDropInteraction?.clear(destination: conversation)
             if let channelID = sendTransitionAnchor.channelID {
                 model.timelineSendTransitionStore.discard(channelID)
@@ -992,6 +994,10 @@ struct ComposerView: View {
     }
 
     private func submitComposer() {
+        if isVoiceMessageActive {
+            if sendSlotMode == .sendVoice { sendVoiceMessage() }
+            return
+        }
         if !hasActiveCommand, model.canPresentIssueReport,
            let command = SakuraCordBuiltInCommands.commands.first(where: {
                draft.trimmingCharacters(in: .whitespacesAndNewlines) == "/\($0.name)"
@@ -1178,6 +1184,7 @@ struct ComposerView: View {
         conversation == (model.hasThreadPane ? .thread : .channel)
             && model.threadCreation?.isSubmitting != true
             && !showEmojiPicker && !showGIFPicker && !showStickerPicker
+            && !isVoiceMessageActive
     }
 
     private var commandComposer: ApplicationCommandComposerModel {

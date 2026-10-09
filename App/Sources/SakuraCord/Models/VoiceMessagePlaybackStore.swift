@@ -278,8 +278,9 @@ final class VoiceMessagePlaybackStore {
         resumeOrder.removeAll { $0 == attachmentID }
     }
 
-    /// AVAudioFile needs a file, so remote audio is materialized once per URL
-    /// path in a disposable directory; the bytes come from the shared cache.
+    /// AVAudioFile needs a file, so remote audio is materialized in a
+    /// disposable directory that holds only the most recently played message;
+    /// the bytes themselves stay in the shared media cache and its budget.
     private static func playableFile(
         for source: Source,
         resolve: (@MainActor (URL) async -> URL)?
@@ -295,6 +296,10 @@ final class VoiceMessagePlaybackStore {
             if FileManager.default.fileExists(atPath: fileURL.path) { return fileURL }
             let resolved = await resolve?(url) ?? url
             let data = try await SharedMediaDataLoader.shared.data(for: resolved)
+            // Only one message plays at a time; an open player keeps its file
+            // readable after the directory entry is removed.
+            try Task.checkCancellation()
+            try? FileManager.default.removeItem(at: directory)
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             try data.write(to: fileURL, options: .atomic)
             return fileURL

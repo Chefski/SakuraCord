@@ -120,6 +120,8 @@ struct NativeTimelineVoiceMessageDrawState {
     var level: CGFloat = 0
     /// Animation clock in seconds.
     var clock: TimeInterval = 0
+    /// Reduce Motion keeps progress moving but stills the waveform ripple.
+    var reducesMotion = false
     var isPlayHovered = false
     var isSpeedHovered = false
 }
@@ -264,7 +266,7 @@ enum NativeTimelineVoiceMessagePainter {
         let unplayed = CGMutablePath()
         for (index, value) in region.bars.enumerated() {
             var height = metrics.minimumBarHeight + (metrics.restingBarHeight - metrics.minimumBarHeight) * CGFloat(value)
-            if state.isPlaying {
+            if state.isPlaying, !state.reducesMotion {
                 // Bars around the playhead swell with the audio being heard,
                 // in a gentle travelling ripple.
                 let distance = CGFloat(index) + 0.5 - playhead
@@ -400,7 +402,6 @@ final class NativeTimelineVoiceMessageOverlay: NSView {
     /// Runs a display link only while something moves.
     func updateAnimation() {
         let animates = window != nil && (state.isPlaying || state.isLoading)
-            && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         if animates, ticker.displayLink == nil {
             ticker.start(on: self) { [weak self] in self?.tick() }
         } else if !animates, ticker.displayLink != nil {
@@ -528,7 +529,7 @@ extension NativeTimelineCanvasView {
 
     @objc func voiceMessagePlaybackDidChange(_ notification: Notification) {
         guard let playback = model?.voiceMessagePlayback, notification.object as AnyObject === playback else { return }
-        let activeAttachmentID: String? = if case let .attachment(id) = playback.activeID { id } else { nil }
+        let activeAttachmentID = Self.activeAttachmentID(in: playback)
         if activeAttachmentID != voiceMessageActiveAttachmentID {
             let previous = voiceMessageActiveAttachmentID
             voiceMessageActiveAttachmentID = activeAttachmentID
@@ -575,8 +576,14 @@ extension NativeTimelineCanvasView {
         return nil
     }
 
+    private static func activeAttachmentID(in playback: VoiceMessagePlaybackStore) -> String? {
+        if case let .attachment(id) = playback.activeID { id } else { nil }
+    }
+
     /// Shows the overlay only while the active voice message is on screen.
     func reconcileVoiceMessageOverlay() {
+        // A timeline opened mid-playback has not seen a change notification yet.
+        if let playback = model?.voiceMessagePlayback { voiceMessageActiveAttachmentID = Self.activeAttachmentID(in: playback) }
         guard let playback = model?.voiceMessagePlayback,
               let attachmentID = voiceMessageActiveAttachmentID,
               var index = rowIndex(at: max(0, visibleRect.minY))
@@ -647,6 +654,7 @@ extension NativeTimelineCanvasView {
             displayedTime: phase == nil ? region.duration : max(0, duration - position),
             speedLabel: playback.speedLabel,
             level: CGFloat(playback.outputLevel),
+            reducesMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
             isPlayHovered: hover == .play,
             isSpeedHovered: hover == .speed
         )

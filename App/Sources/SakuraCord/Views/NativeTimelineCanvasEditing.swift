@@ -283,6 +283,7 @@ extension NativeTimelineCanvasView {
         }
         let canEdit = row.message.author.id == model.snapshot?.currentUser.id
             && !row.message.hasPoll
+            && !row.message.flags.contains(.voiceMessage)
             && MessageReplyPresentationPolicy.allowsReplyAction(
                 for: row.message
             )
@@ -759,7 +760,7 @@ extension NativeTimelineCanvasView {
         at index: Int
     ) {
         guard !sendTransitionBlocksInteractions,
-              !row.message.hasPoll, editingMessageID == nil,
+              !row.message.hasPoll, !row.message.flags.contains(.voiceMessage), editingMessageID == nil,
               items.indices.contains(index),
               items[index].messageID == row.id,
               let model,

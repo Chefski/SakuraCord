@@ -28,7 +28,7 @@ struct VoiceMessageEncodingTests {
             processor.process(buffer)
             offset += count
         }
-        let result = processor.finish()
+        let result = try processor.finish()
 
         #expect(abs(result.duration - duration) < 0.01)
         let expectedBins = min(max(Int(duration * 10), 32), 256)

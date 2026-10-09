@@ -543,6 +543,7 @@ extension AppModel {
         loadingReactionReactors = []
         failedReactionReactorLoads = [:]
         resetForumLoadAndPresentationState()
+        for outgoing in composer.outbox.draftsByNonce.values { discardVoiceMessageFile(for: outgoing) }
         await composer.reset()
     }
 }

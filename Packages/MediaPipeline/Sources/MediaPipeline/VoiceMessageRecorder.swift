@@ -33,6 +33,7 @@ public enum VoiceMessageRecorderError: Error, Equatable {
     case microphonePermissionDenied
     case inputUnavailable
     case encoderUnavailable
+    case encodingFailed
     case notRecording
 }
 
@@ -45,6 +46,8 @@ extension VoiceMessageRecorderError: LocalizedError {
             "The selected microphone is not available."
         case .encoderUnavailable:
             "Voice messages can't be encoded on this Mac."
+        case .encodingFailed:
+            "The voice message couldn't be encoded. Please record it again."
         case .notRecording:
             "No voice message is being recorded."
         }
@@ -125,7 +128,7 @@ public final class VoiceMessageRecorder {
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)
         let fileURL = directory.appending(path: VoiceMessageMetadata.filename)
         let recording = try await Task.detached(priority: .userInitiated) {
-            let result = processor.finish()
+            let result = try processor.finish()
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             try result.data.write(to: fileURL, options: .atomic)
             return VoiceMessageRecording(fileURL: fileURL, duration: result.duration, waveform: result.waveform)
@@ -169,6 +172,8 @@ final class VoiceMessageCaptureProcessor: NSObject,
     private var barPeak: Float = 0
     private var barSamples = 0
     private var isFinished = false
+    /// A dropped frame would leave a gap the waveform and duration don't show.
+    private var encodingFailed = false
 
     init(bitRate: Int = 32_000) throws {
         do {
@@ -211,12 +216,13 @@ final class VoiceMessageCaptureProcessor: NSObject,
 
     func process(_ input: AVAudioPCMBuffer) {
         lock.withLock {
-            guard !isFinished,
-                  Double(capturedSamples) / OpusCodec.sampleRate < VoiceMessageRecorder.maximumDuration,
+            let remaining = Int(VoiceMessageRecorder.maximumDuration * OpusCodec.sampleRate) - capturedSamples
+            guard !isFinished, !encodingFailed, remaining > 0,
                   let converted = convert(input),
                   let samples = converted.floatChannelData?[0]
             else { return }
-            let count = Int(converted.frameLength)
+            // The buffer that crosses the limit is trimmed to it.
+            let count = min(Int(converted.frameLength), remaining)
             let buffer = UnsafeBufferPointer(start: samples, count: count)
             accumulator.append(buffer)
             pending.append(contentsOf: buffer)
@@ -292,6 +298,7 @@ final class VoiceMessageCaptureProcessor: NSObject,
         do {
             writer.append(packet: try codec.encode(pcm), samples: Int(OpusCodec.frameSamples))
         } catch {
+            encodingFailed = true
             voiceMessageLogger.error("Voice message frame encoding failed")
         }
     }
@@ -302,13 +309,15 @@ final class VoiceMessageCaptureProcessor: NSObject,
         let waveform: [UInt8]
     }
 
-    func finish() -> Result {
-        lock.withLock {
+    func finish() throws -> Result {
+        try lock.withLock {
             isFinished = true
+            guard !encodingFailed else { throw VoiceMessageRecorderError.encodingFailed }
             // Pad the final partial frame, then push the encoder's delay out.
             if !pending.isEmpty { encode(pending[...]) }
             pending.removeAll()
             encode([])
+            guard !encodingFailed else { throw VoiceMessageRecorderError.encodingFailed }
             let data = writer.finish(sampleCount: capturedSamples)
             return Result(
                 data: data,
