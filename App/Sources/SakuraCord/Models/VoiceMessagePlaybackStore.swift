@@ -45,6 +45,10 @@ final class VoiceMessagePlaybackStore {
     @ObservationIgnored private var activeDuration: TimeInterval?
     @ObservationIgnored private var pausedPosition: TimeInterval = 0
     @ObservationIgnored private var loadTask: Task<Void, Never>?
+    /// A player readied for the message under the pointer.
+    @ObservationIgnored private var prepared: (source: Source, player: VoiceMessagePlayer)?
+    @ObservationIgnored private var prepareTask: Task<Void, Never>?
+    @ObservationIgnored private var preparingSource: Source?
     @ObservationIgnored private var resumesAfterScrub = false
     @ObservationIgnored private var resumePositions: [String: TimeInterval] = [:]
     @ObservationIgnored private var resumeOrder: [String] = []
@@ -145,6 +149,28 @@ final class VoiceMessagePlaybackStore {
         notify()
     }
 
+    /// Readies a message the pointer is over, so pressing play starts at
+    /// once: its audio is fetched and opened, and the output device woken.
+    /// Nothing is prepared while another message plays.
+    func prepare(source: Source) {
+        guard phase != .playing, activeSource != source,
+              prepared?.source != source, preparingSource != source
+        else { return }
+        prepareTask?.cancel()
+        preparingSource = source
+        prepareTask = Task { [weak self] in
+            let fileURL = try? await Self.playableFile(for: source, resolve: self?.resolveRemoteURL)
+            guard let self, !Task.isCancelled, self.preparingSource == source else { return }
+            self.preparingSource = nil
+            guard let fileURL, self.activeSource != source,
+                  let player = try? VoiceMessagePlayer(fileURL: fileURL)
+            else { return }
+            player.rate = self.speed
+            try? player.prepareOutput()
+            self.prepared = (source, player)
+        }
+    }
+
     /// Stops `id` if it is active, forgetting its position.
     func stop(_ id: VoiceMessagePlaybackID) {
         guard activeID == id else { return }
@@ -152,6 +178,10 @@ final class VoiceMessagePlaybackStore {
     }
 
     func stopAll() {
+        prepareTask?.cancel()
+        prepareTask = nil
+        preparingSource = nil
+        prepared = nil
         cancelActive(rememberingPosition: false)
         resumePositions.removeAll()
         resumeOrder.removeAll()
@@ -181,6 +211,11 @@ final class VoiceMessagePlaybackStore {
             return
         }
         guard let source = activeSource else { return }
+        if let prepared, prepared.source == source {
+            self.prepared = nil
+            adopt(prepared.player, for: id)
+            return
+        }
         phase = .loading
         notify()
         loadTask = Task { [weak self] in
@@ -188,15 +223,8 @@ final class VoiceMessagePlaybackStore {
                 let fileURL = try await Self.playableFile(for: source, resolve: self?.resolveRemoteURL)
                 try Task.checkCancellation()
                 guard let self, self.activeID == id else { return }
-                let player = try VoiceMessagePlayer(fileURL: fileURL)
-                player.rate = self.speed
-                player.onFinish = { [weak self] in self?.finish(id) }
-                player.onInterruption = { [weak self] in self?.interrupted(id) }
-                self.player = player
-                self.activeDuration = player.duration
-                if self.pausedPosition > 0 { player.seek(to: self.pausedPosition) }
                 self.loadTask = nil
-                self.start(player)
+                self.adopt(try VoiceMessagePlayer(fileURL: fileURL), for: id)
             } catch is CancellationError {
             } catch {
                 guard let self, self.activeID == id else { return }
@@ -207,6 +235,16 @@ final class VoiceMessagePlaybackStore {
                 self.onError?("This voice message couldn't be played.")
             }
         }
+    }
+
+    private func adopt(_ player: VoiceMessagePlayer, for id: VoiceMessagePlaybackID) {
+        player.rate = speed
+        player.onFinish = { [weak self] in self?.finish(id) }
+        player.onInterruption = { [weak self] in self?.interrupted(id) }
+        self.player = player
+        activeDuration = player.duration
+        if pausedPosition > 0 { player.seek(to: pausedPosition) }
+        start(player)
     }
 
     private func start(_ player: VoiceMessagePlayer) {

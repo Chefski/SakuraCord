@@ -515,8 +515,8 @@ extension NativeTimelineCanvasView {
         hoveredVoiceMessage = hovered
         if voiceMessageOverlay != nil { refreshVoiceMessageOverlay() }
         // Like Discord, hovering a player prepares its audio before it is played.
-        if let hit, hit.region.attachment.id != previousAttachmentID, case let .remote(url) = hit.region.source {
-            Task { _ = try? await SharedMediaDataLoader.shared.data(for: url, priority: .prefetch) }
+        if let hit, hit.region.attachment.id != previousAttachmentID {
+            model?.voiceMessagePlayback.prepare(source: hit.region.source)
         }
     }
 
