@@ -72,6 +72,8 @@ public final class VoiceMessageRecorder {
     /// The recording's private directory, holding the capture spool and,
     /// once stopped, the encoded message.
     private var directory: URL?
+    /// The output device and its rate before capture, when they may change.
+    private var outputBeforeCapture: (deviceID: AudioDeviceID, sampleRate: Double)?
 
     public init() {}
 
@@ -95,6 +97,12 @@ public final class VoiceMessageRecorder {
         let directory = FileManager.default.temporaryDirectory
             .appending(path: "SakuraCordVoiceMessages", directoryHint: .isDirectory)
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        if let deviceID = MediaDeviceCatalog.defaultOutputDeviceID(),
+           let sampleRate = MediaDeviceCatalog.defaultOutputSampleRate() {
+            outputBeforeCapture = (deviceID, sampleRate)
+        } else {
+            outputBeforeCapture = nil
+        }
         let processor: VoiceMessageCaptureProcessor
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -151,6 +159,7 @@ public final class VoiceMessageRecorder {
         self.processor = nil
         self.directory = nil
         await stopSession()
+        async let outputSettled: Void = waitForOutputToSettle()
         let fileURL = directory.appending(path: VoiceMessageMetadata.filename)
         let recording = try await Task.detached(priority: .userInitiated) {
             do {
@@ -162,6 +171,7 @@ public final class VoiceMessageRecorder {
                 throw error
             }
         }.value
+        await outputSettled
         voiceMessageLogger.info("Voice message recording finished duration=\(recording.duration, format: .fixed(precision: 2))")
         return recording
     }
@@ -174,6 +184,25 @@ public final class VoiceMessageRecorder {
         processor.discard()
         if let directory { try? FileManager.default.removeItem(at: directory) }
         Task { await stopSession() }
+    }
+
+    /// A Bluetooth headset lowers its output rate while its microphone is
+    /// open and restores it a moment after capture stops. That switch stops
+    /// any playback in progress, so the preview waits for it.
+    private func waitForOutputToSettle() async {
+        guard let before = outputBeforeCapture else { return }
+        outputBeforeCapture = nil
+        let start = ContinuousClock.now
+        while ContinuousClock.now < start + .seconds(3),
+              MediaDeviceCatalog.defaultOutputDeviceID() == before.deviceID,
+              let sampleRate = MediaDeviceCatalog.defaultOutputSampleRate(),
+              sampleRate != before.sampleRate {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        let waited = ContinuousClock.now - start
+        if waited > .milliseconds(50) {
+            voiceMessageLogger.info("Voice message output settled after \(waited, privacy: .public)")
+        }
     }
 
     private func stopSession() async {

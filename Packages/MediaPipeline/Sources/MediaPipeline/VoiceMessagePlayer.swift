@@ -167,7 +167,9 @@ public final class VoiceMessagePlayer {
     /// The engine has stopped itself; the output node converts to the new
     /// rate, so restarting it and rescheduling is enough.
     private func outputConfigurationChanged() {
-        guard isPlaying else { return }
+        // The notification can also arrive while the engine keeps running;
+        // restarting then would only cause a gap.
+        guard isPlaying, !engine.isRunning else { return }
         let resumeAt = lastRenderedTime
         scheduleGeneration += 1
         playerNode.stop()
