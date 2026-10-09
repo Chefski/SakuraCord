@@ -148,12 +148,20 @@ cleanup() {
 }
 trap cleanup EXIT
 
-APP_BUNDLE="$MOUNT_POINT/SakuraCord.app"
-INFO_PLIST="$APP_BUNDLE/Contents/Info.plist"
-if [[ ! -d "$APP_BUNDLE" ]]; then
-  echo "The release DMG does not contain SakuraCord.app." >&2
+# The bundle name varies by release track and app naming history, so find
+# the DMG's only app; the identity checks below still pin it down.
+APP_BUNDLES=()
+for candidate in "$MOUNT_POINT"/*.app; do
+  if [[ -d "$candidate" && ! -L "$candidate" ]]; then
+    APP_BUNDLES+=("$candidate")
+  fi
+done
+if [[ "${#APP_BUNDLES[@]}" -ne 1 ]]; then
+  echo "The release DMG must contain exactly one app bundle." >&2
   exit 1
 fi
+APP_BUNDLE="${APP_BUNDLES[0]}"
+INFO_PLIST="$APP_BUNDLE/Contents/Info.plist"
 codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
 
 assert_plist_value() {

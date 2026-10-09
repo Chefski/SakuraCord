@@ -28,6 +28,7 @@ if [[ ! -x "$DMGBUILD" ]] && ! command -v "$DMGBUILD" >/dev/null 2>&1; then
 fi
 
 "$ROOT_DIR/script/build_and_run.sh" package-release
+sakuracord_select_app_variant release "${SAKURACORD_RELEASE_TRACK:-regular}"
 codesign --verify --deep --strict --verbose=2 "$SAKURACORD_APP_BUNDLE"
 
 mkdir -p "$(dirname "$OUTPUT_PATH")"

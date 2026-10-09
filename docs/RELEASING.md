@@ -297,9 +297,13 @@ manual-download migration rather than weakening validation.
 PR CI packages the **debug** app with secure credentials, all resources and
 frameworks, an ad-hoc code signature, and a matching dSYM. The downloadable
 `pr-build-<run ID>-<attempt>` Actions artifact contains `SakuraCord.app.zip`,
-`SakuraCord.dSYM.zip`, and `build.json`; Actions retains it for 90 days. CI does
-not receive release-signing credentials. A failed test or packaging step cannot
-produce a published build.
+`SakuraCord.dSYM.zip`, and `build.json`; Actions retains it for 90 days. The app
+archive keeps that asset name but contains the debug identity,
+`SakuraCord Debug.app`. Publication validates with default-branch code, which
+also accepts archives made before that rename, so changes to the app name must
+reach `main` in the validator before PR builds use them. CI does not receive
+release-signing credentials. A failed test or packaging step cannot produce a
+published build.
 
 The separate `Publish PR build` workflow runs only trusted default-branch
 control code on an ephemeral hosted runner. It binds the artifact digest to the

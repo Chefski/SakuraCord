@@ -25,7 +25,8 @@ session:
 ./script/build_and_run.sh --offline
 ```
 
-To launch the existing `dist/SakuraCord.app` without rebuilding, use
+Debug builds are packaged as `dist/SakuraCord Debug.app`. To launch the
+existing debug app without rebuilding, use
 `./script/run.sh`, `./script/run.sh --offline`, or
 `./script/run.sh --offline-sign-in`. These are also available as
 the Codex environment actions **Run**, **Run Offline**, and **Run Offline Sign In**. These restart the

@@ -40,6 +40,12 @@ fi
 sakuracord_acquire_operation_lock
 trap sakuracord_release_operation_lock EXIT
 
+if ! grep -q '^sakuracord_select_app_variant()' "$ROOT_DIR/script/runtime.sh"; then
+  # Checkouts before per-variant app names package debug builds as the product.
+  SAKURACORD_APP_BUNDLE="$SAKURACORD_DIST_DIR/$SAKURACORD_PRODUCT_NAME.app"
+  SAKURACORD_EXECUTABLE_PATH="$SAKURACORD_APP_BUNDLE/Contents/MacOS/$SAKURACORD_PRODUCT_NAME"
+fi
+
 if [[ ! -x "$SAKURACORD_EXECUTABLE_PATH" ]]; then
   echo "No built app at $SAKURACORD_APP_BUNDLE. Run ./script/build_and_run.sh package first." >&2
   exit 1

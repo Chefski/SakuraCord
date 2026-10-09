@@ -27,6 +27,6 @@ icon_size = 128
 
 window_rect = ((160, 100), (858, 400))
 icon_locations = {
-    "SakuraCord.app": (221, 190),
+    os.path.basename(application): (221, 190),
     "Applications": (637, 190),
 }

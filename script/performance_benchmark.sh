@@ -6,7 +6,8 @@ runtime="$("$root/script/runtime.sh")"
 canonical_app="$(sed -n 's/^App:  *//p' <<<"$runtime")"
 app="${SAKURACORD_PERFORMANCE_APP_OVERRIDE:-$canonical_app}"
 bundle_id="$(sed -n 's/^Bundle ID:  *//p' <<<"$runtime")"
-executable="${SAKURACORD_PERFORMANCE_EXECUTABLE_OVERRIDE:-$app/Contents/MacOS/SakuraCord}"
+executable_name="$(plutil -extract CFBundleExecutable raw -o - "$app/Contents/Info.plist" 2>/dev/null || basename "$app" .app)"
+executable="${SAKURACORD_PERFORMANCE_EXECUTABLE_OVERRIDE:-$app/Contents/MacOS/$executable_name}"
 provenance_directory="${SAKURACORD_PERFORMANCE_PROVENANCE_DIRECTORY_OVERRIDE:-$root/.build/performance-tools/build-provenance}"
 source_root="${SAKURACORD_PERFORMANCE_SOURCE_ROOT_OVERRIDE:-$root}"
 
@@ -130,7 +131,7 @@ running_pid() {
             printf '%s\n' "$candidate"
             return 0
         fi
-    done < <(pgrep -x SakuraCord || true)
+    done < <(pgrep -x "$(basename "$executable")" || true)
     return 1
 }
 

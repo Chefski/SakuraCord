@@ -9,7 +9,13 @@ The editable Icon Composer projects remain beside the packaging system that
 consumes them:
 
 - `App/Packaging/SakuraCord.icon` — primary app icon.
+- `App/Packaging/SakuraCord Nightly.icon` — violet nightly-build app icon.
+- `App/Packaging/SakuraCord Debug.icon` — blueprint debug-build app icon.
 - `App/Packaging/SakuraCord Flower.icon` — flower-only alternate app icon.
+
+`script/build_and_run.sh` compiles the variant matching the build: debug
+builds are packaged as `SakuraCord Debug`, nightly-track release builds as
+`SakuraCord Nightly`, and regular release builds as `SakuraCord`.
 
 Do not edit a downsized PNG as the source of truth. Update the appropriate
 `.icon` project, export a new 1024 px master, and regenerate the smaller sizes.
