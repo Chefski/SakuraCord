@@ -9,6 +9,17 @@ nonisolated extension SettingsCatalog {
 
     static let softwareUpdatesControls: [SettingsControlMetadata] = [
         control(
+            .pullRequestBuilds,
+            page: .softwareUpdates,
+            section: .softwareUpdates,
+            label: "Browse Pull Request Builds",
+            help: "Install a specific PR build, or return to a release.",
+            keywords: ["PR", "debug", "preview", "commit", "experimental", "build"],
+            scope: .appWideLocal,
+            persistence: .notApplicable,
+            reset: .notApplicable
+        ),
+        control(
             .updateReleaseTrack,
             page: .softwareUpdates,
             section: .softwareUpdates,

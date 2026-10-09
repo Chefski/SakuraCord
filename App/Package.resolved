@@ -1,5 +1,5 @@
 {
-  "originHash" : "9b803043826e7becb9ce2a63a03e761675399a7e2daf10749019077fc36b1a15",
+  "originHash" : "69f4abdaee3b1decef1ece0c068958ea8fbd6bd863399255a863b5701be1dd79",
   "pins" : [
     {
       "identity" : "grdb.swift",
@@ -50,8 +50,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/SakuraCordApp/Sparkle",
       "state" : {
-        "revision" : "c64408b11634aedf8b156c96edda6879e0365f0f",
-        "version" : "2.9.6-sakuracord.2"
+        "revision" : "c7dcfd9c2683d2efb99cc577f8901e7a70ea4d91",
+        "version" : "2.9.6-sakuracord.3"
       }
     },
     {

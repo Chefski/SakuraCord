@@ -283,6 +283,7 @@ nonisolated extension SettingsControlID {
     static let updateAutomaticDownloads = Self(rawValue: "software-updates.automatic-downloads")
     static let checkForUpdates = Self(rawValue: "software-updates.check-now")
     static let updateChangelog = Self(rawValue: "software-updates.changelog")
+    static let pullRequestBuilds = Self(rawValue: "software-updates.pull-request-builds")
     static let aboutVersionInformation = Self(rawValue: "about.version-information")
     static let aboutCheckForUpdates = Self(rawValue: "about.check-for-updates")
     static let aboutChangelog = Self(rawValue: "about.changelog")

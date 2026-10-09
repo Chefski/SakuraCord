@@ -237,7 +237,7 @@ struct ServerRailView: View {
             }).first {
                 ServerFolderRailHeader(
                     entry: entry,
-                    isExpanded: UserDefaults.standard.bool(forKey: ServerFolderRailView.expansionKey(entry.folder.id)),
+                    isExpanded: PRBuildProfile.defaults.bool(forKey: ServerFolderRailView.expansionKey(entry.folder.id)),
                     contextMenuActions: contextMenuActions,
                     toggle: {}
                 )

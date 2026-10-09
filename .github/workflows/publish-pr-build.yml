@@ -1,0 +1,135 @@
+name: Publish PR build
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful CI run ID (empty to rebuild the catalog only)
+        type: string
+        required: false
+      run_attempt:
+        description: Exact successful run attempt
+        type: string
+        default: '1'
+      approved_head_sha:
+        description: Full reviewed PR head SHA (required for fork builds; approval applies only to this commit)
+        type: string
+        required: false
+
+permissions:
+  contents: read
+  actions: read
+
+# Every writer, including recovery, takes this lock. Never cancel a publication.
+concurrency:
+  group: pr-build-publication
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  inspect:
+    if: >-
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.event == 'pull_request' &&
+       github.event.workflow_run.conclusion == 'success') ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.run_id != '')
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.inspect.outputs.ready }}
+    steps:
+      # workflow_run resolves workflow_sha on the trusted default branch. Dispatch
+      # is permitted only from main. Never check out workflow_run.head_sha.
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Inspect exact successful CI artifact without executing it
+        id: inspect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_BUILD_RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.run_id }}
+          PR_BUILD_RUN_ATTEMPT: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.run_attempt || inputs.run_attempt }}
+          PR_BUILD_APPROVED_HEAD_SHA: ${{ inputs.approved_head_sha }}
+          SPARKLE_ED_PUBLIC_KEY: ${{ vars.SPARKLE_ED_PUBLIC_KEY }}
+        run: node script/pr_builds.mjs prepare
+      - name: Retain inspected publication input
+        if: steps.inspect.outputs.ready == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: inspected-pr-build
+          path: |
+            pr-publication/SakuraCord.app.zip
+            pr-publication/SakuraCord.dSYM.zip
+            pr-publication/build.json
+            pr-publication/context.json
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
+
+  verify-signatures:
+    needs: inspect
+    if: needs.inspect.outputs.ready == 'true'
+    # Standard ephemeral GitHub-hosted image, matching the build toolchain.
+    # No secrets and no launch of anything from the PR archive.
+    runs-on: xcode-27
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: inspected-pr-build
+          path: pr-publication
+      - name: Verify bundle signatures and installer entitlements without launching it
+        env:
+          SPARKLE_ED_PUBLIC_KEY: ${{ vars.SPARKLE_ED_PUBLIC_KEY }}
+        run: python3 -I script/pr_build_archive.py verify-signatures pr-publication pr-publication/context.json
+
+  publish:
+    needs: [inspect, verify-signatures]
+    if: >-
+      always() && !cancelled() &&
+      ((needs.inspect.outputs.ready == 'true' && needs.verify-signatures.result == 'success') ||
+       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.run_id == ''))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@v8
+        if: needs.inspect.outputs.ready == 'true'
+        with:
+          name: inspected-pr-build
+          path: pr-publication
+      - name: Create narrowly scoped distribution token
+        id: distribution-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.SAKURACORD_BOT_APP_ID }}
+          private-key: ${{ secrets.SAKURACORD_BOT_PRIVATE_KEY }}
+          owner: SakuraCordApp
+          repositories: Builds
+          permission-contents: write
+      - name: Sign and publish inspected build
+        if: needs.inspect.outputs.ready == 'true'
+        env:
+          PR_BUILDS_TOKEN: ${{ steps.distribution-token.outputs.token }}
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+          SPARKLE_ED_PUBLIC_KEY: ${{ vars.SPARKLE_ED_PUBLIC_KEY }}
+        run: node script/pr_builds.mjs publish
+      - name: Recover catalog from retained immutable manifests
+        if: needs.inspect.outputs.ready != 'true'
+        env:
+          PR_BUILDS_TOKEN: ${{ steps.distribution-token.outputs.token }}
+        run: node script/pr_builds.mjs rebuild-catalog

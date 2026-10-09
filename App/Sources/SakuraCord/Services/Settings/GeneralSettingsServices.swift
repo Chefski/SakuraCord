@@ -60,7 +60,7 @@ final class SettingsConversationRestorationStore {
     private let defaults: any PreferenceStoring
     private var pendingLaunchRestoration: SettingsConversationRestoration?
 
-    init(defaults: any PreferenceStoring = UserDefaults.standard) {
+    init(defaults: any PreferenceStoring = PRBuildProfile.defaults) {
         self.defaults = defaults
     }
 
@@ -107,7 +107,7 @@ final class GeneralWindowRestorationStore {
     private static let memberListVisibleKey = "settings.memberListVisible"
     private let defaults: any PreferenceStoring
 
-    init(defaults: any PreferenceStoring = UserDefaults.standard) {
+    init(defaults: any PreferenceStoring = PRBuildProfile.defaults) {
         self.defaults = defaults
     }
 

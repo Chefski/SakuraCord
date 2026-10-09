@@ -38,7 +38,7 @@ extension AppModel {
         guard snapshot?.currentUser.allowsAdultContent == true, let guildID = inbox.ageRestrictedGuildID else { return }
         inbox.acceptedAgeRestrictedGuildIDs.insert(guildID)
         if !isOfflineTesting {
-            UserDefaults.standard.set(inbox.acceptedAgeRestrictedGuildIDs.map(\.description), forKey: "dev.sakuracord.inbox-age-agreements")
+            PRBuildProfile.defaults.set(inbox.acceptedAgeRestrictedGuildIDs.map(\.description), forKey: "dev.sakuracord.inbox-age-agreements")
         }
         let action = inbox.ageRestrictedAction
         cancelInboxAgeAgreement()

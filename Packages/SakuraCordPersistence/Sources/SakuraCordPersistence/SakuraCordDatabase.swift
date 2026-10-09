@@ -113,6 +113,11 @@ public actor SakuraCordDatabase {
             appropriateFor: nil,
             create: true
         )
+        if let preview = SakuraCordStorageProfile.current.storageIdentifier {
+            return base.appending(path: "SakuraCord/Previews", directoryHint: .isDirectory)
+                .appending(path: preview, directoryHint: .isDirectory)
+                .appending(path: "Accounts", directoryHint: .isDirectory)
+        }
         return base.appending(path: "SakuraCord/Accounts", directoryHint: .isDirectory)
     }
 

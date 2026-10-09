@@ -22,7 +22,8 @@ struct ServerFolderRailView: View {
         self.expansionChanged = expansionChanged
         _isExpanded = AppStorage(
             wrappedValue: false,
-            Self.expansionKey(entry.folder.id)
+            Self.expansionKey(entry.folder.id),
+            store: PRBuildProfile.defaults
         )
     }
 

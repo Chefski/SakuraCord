@@ -4,7 +4,7 @@ import SwiftUI
 struct ComposerAttachmentTray: View {
     static var thumbnailCornerRadius: CGFloat { InterfaceScale.metric(16) }
 
-    @AppStorage(PrivacySafetySettingsStore.anonymiseFileNamesKey) private var anonymisesFileNames = false
+    @AppStorage(PrivacySafetySettingsStore.anonymiseFileNamesKey, store: PRBuildProfile.defaults) private var anonymisesFileNames = false
     let attachments: [ForumPostAttachment]
     var sendTransitionAnchor: ComposerSendTransitionAnchor?
     let open: (UUID) -> Void

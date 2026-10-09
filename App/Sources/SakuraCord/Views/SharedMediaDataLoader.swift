@@ -96,7 +96,7 @@ actor SharedMediaDataLoader {
     private var activeRemoteLoads: [URL: ActiveRemoteLoad] = [:]
 
     init() {
-        let configuredLimit = (UserDefaults.standard.object(
+        let configuredLimit = (PRBuildProfile.defaults.object(
             forKey: "mediaCacheLimit"
         ) as? NSNumber)?.int64Value ?? Self.defaultRemoteDiskCostLimit
         remoteDiskCache = try? MediaCache(

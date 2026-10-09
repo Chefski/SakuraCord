@@ -262,7 +262,7 @@ final class NotificationPreferences {
     }
     @ObservationIgnored private let defaults: any PreferenceStoring
 
-    init(defaults: any PreferenceStoring = UserDefaults.standard) {
+    init(defaults: any PreferenceStoring = PRBuildProfile.defaults) {
         self.defaults = defaults
         isEnabled = true
         previewStyle = .full

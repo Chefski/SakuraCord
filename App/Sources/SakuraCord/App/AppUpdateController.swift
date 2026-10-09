@@ -1,6 +1,8 @@
 import Combine
+import AppKit
 import Foundation
 import Sparkle
+import SakuraCordModels
 
 nonisolated enum AppUpdateUnavailabilityReason: Equatable, Sendable {
     case disabledForBuild
@@ -17,6 +19,7 @@ nonisolated enum AppUpdateUnavailabilityReason: Equatable, Sendable {
     case installerLauncherServiceNotEnabled
     case updateVerificationNotEnabled
     case signedFeedNotRequired
+    case invalidPreviewMetadata
 
     var description: String {
         switch self {
@@ -48,6 +51,8 @@ nonisolated enum AppUpdateUnavailabilityReason: Equatable, Sendable {
             "Update verification before extraction is not enabled in this build."
         case .signedFeedNotRequired:
             "This build does not require a signed update feed."
+        case .invalidPreviewMetadata:
+            "This PR build does not have valid build-switching metadata."
         }
     }
 }
@@ -71,6 +76,14 @@ nonisolated struct AppUpdateConfiguration: Equatable, Sendable {
     let nightlyFeedURL: URL?
     let installedReleaseTrack: AppUpdateReleaseTrack
     let installedBuildVersion: String?
+    let installedPullRequestBuildID: String?
+    let installedPullRequestNumber: Int?
+
+    var pullRequestFeedURL: URL? {
+        installedPullRequestNumber.flatMap {
+            URL(string: "https://github.com/SakuraCordApp/Builds/releases/download/pr-\($0)/appcast.xml")
+        }
+    }
     let publicEdKey: String?
     let unavailabilityReason: AppUpdateUnavailabilityReason?
 
@@ -79,6 +92,7 @@ nonisolated struct AppUpdateConfiguration: Equatable, Sendable {
         bundleIdentifier: String?
     ) {
         let enabled = infoDictionary[Self.enabledInfoKey] as? Bool == true
+        let preview = SakuraCordStorageProfile(infoDictionary: infoDictionary).previewIdentifier
         let feedURL = (infoDictionary["SUFeedURL"] as? String).flatMap(URL.init(string:))
         let nightlyFeedURL = (infoDictionary[Self.nightlyFeedInfoKey] as? String)
             .flatMap(URL.init(string:))
@@ -95,9 +109,16 @@ nonisolated struct AppUpdateConfiguration: Equatable, Sendable {
             storedValue: infoDictionary[Self.releaseTrackInfoKey] as? String
         )
         self.installedBuildVersion = installedBuildVersion
+        installedPullRequestBuildID = preview
+        installedPullRequestNumber = preview.flatMap { identifier in
+            identifier.split(separator: "-").dropFirst().first.flatMap { Int($0) }
+        }
         self.publicEdKey = publicEdKey
         if !enabled {
             unavailabilityReason = .disabledForBuild
+        } else if preview != nil, preview == "unrecognized-preview" || installedPullRequestNumber == nil
+            || infoDictionary["SakuraCordBuildSwitchingProtocol"] as? Int != 1 {
+            unavailabilityReason = .invalidPreviewMetadata
         } else if bundleIdentifier != Self.canonicalBundleIdentifier {
             unavailabilityReason = .noncanonicalBundle
         } else if feedURL != Self.expectedFeedURL {
@@ -216,7 +237,7 @@ nonisolated final class AppUpdateVersionDisplay: NSObject, SUVersionDisplay,
     }
 }
 
-nonisolated enum AppUpdateReleaseTrack: String, CaseIterable, Identifiable, Sendable {
+nonisolated enum AppUpdateReleaseTrack: String, Codable, CaseIterable, Identifiable, Sendable {
     case regular
     case nightly
 
@@ -250,6 +271,59 @@ nonisolated enum AppUpdateReleaseTrack: String, CaseIterable, Identifiable, Send
     }
 }
 
+/// Checkpoint a requested return before Sparkle's external installer can finish on
+/// normal Quit. Older release binaries already see the selected track; cancellation
+/// and an unchanged/recovery launch restore the previous preference.
+nonisolated struct PendingReleaseReturn: Codable, Equatable {
+    static let preferenceKey = "updates.pendingReleaseReturn"
+    let previousTrack: String?
+    let targetTrack: AppUpdateReleaseTrack
+    let targetVersion: String
+
+    static func load(from defaults: any PreferenceStoring) -> Self? {
+        defaults.data(forKey: preferenceKey).flatMap { try? JSONDecoder().decode(Self.self, from: $0) }
+    }
+
+    static func checkpoint(track: AppUpdateReleaseTrack, version: String, defaults: any PreferenceStoring) {
+        if let pending = load(from: defaults), pending.targetTrack == track, pending.targetVersion == version {
+            return
+        }
+        rollback(defaults: defaults)
+        let intent = Self(previousTrack: defaults.string(forKey: AppUpdateReleaseTrack.preferenceKey),
+                          targetTrack: track, targetVersion: version)
+        guard let data = try? JSONEncoder().encode(intent) else { return }
+        defaults.set(data, forKey: preferenceKey)
+        defaults.set(track.rawValue, forKey: AppUpdateReleaseTrack.preferenceKey)
+    }
+
+    static func rollback(defaults: any PreferenceStoring) {
+        guard let intent = load(from: defaults) else { return }
+        if defaults.string(forKey: AppUpdateReleaseTrack.preferenceKey) == intent.targetTrack.rawValue {
+            if let previousTrack = intent.previousTrack {
+                defaults.set(previousTrack, forKey: AppUpdateReleaseTrack.preferenceKey)
+            } else {
+                defaults.removeObject(forKey: AppUpdateReleaseTrack.preferenceKey)
+            }
+        }
+        defaults.removeObject(forKey: preferenceKey)
+    }
+
+    static func reconcile(configuration: AppUpdateConfiguration, defaults: any PreferenceStoring) {
+        guard let intent = load(from: defaults) else { return }
+        if configuration.isEnabled, configuration.installedPullRequestBuildID == nil,
+           let installedVersion = configuration.installedBuildVersion,
+           SUStandardVersionComparator().compareVersion(installedVersion, toVersion: intent.targetVersion) != .orderedAscending,
+           configuration.installedReleaseTrack == intent.targetTrack {
+            // An older release may have installed this target and updated again
+            // before reaching a binary that understands the checkpoint. Keep any
+            // subsequent explicit track choice made in that released app.
+            defaults.removeObject(forKey: preferenceKey)
+        } else {
+            rollback(defaults: defaults)
+        }
+    }
+}
+
 @MainActor
 final class AppUpdateController: NSObject, ObservableObject, SPUUpdaterDelegate,
     SPUStandardUserDriverDelegate
@@ -258,11 +332,38 @@ final class AppUpdateController: NSObject, ObservableObject, SPUUpdaterDelegate,
         "updates.lastSuccessfulSignedFeedCheck"
 
     @Published private(set) var canCheckForUpdates = false
+    @Published private var updateSessionInProgress = false
     @Published private(set) var automaticallyChecksForUpdates = false
     @Published private(set) var automaticallyDownloadsUpdates = false
     @Published private(set) var allowsAutomaticUpdates = false
     @Published private(set) var releaseTrack: AppUpdateReleaseTrack
     @Published private(set) var lastSuccessfulCheckDate: Date?
+    @Published var buildSwitchError: String?
+    @Published private(set) var isPreparingBuildSwitch = false
+    @Published private(set) var recoveryLocation: URL?
+
+    var installedPullRequestBuildID: String? {
+        configuration.installedPullRequestBuildID
+    }
+
+    var activeTrackTitle: String {
+        configuration.installedPullRequestNumber.map { "PR #\($0)" } ?? releaseTrack.title
+    }
+
+    var currentFeedURL: URL? {
+        if let build = selectedPullRequestBuild { return build.appcastURL }
+        if let track = explicitReturnTrack { return track.feedURL(in: configuration) }
+        return configuration.pullRequestFeedURL ?? releaseTrack.feedURL(in: configuration)
+    }
+
+    @Published private var selectedPullRequestBuild: PullRequestBuild?
+    @Published private var explicitReturnTrack: AppUpdateReleaseTrack?
+    private var returnBuildVersion: String?
+
+    var canSwitchBuilds: Bool {
+        isEnabled && canCheckForUpdates && !updateSessionInProgress && !isPreparingBuildSwitch
+            && selectedPullRequestBuild == nil && explicitReturnTrack == nil
+    }
 
     let isEnabled: Bool
 
@@ -275,7 +376,7 @@ final class AppUpdateController: NSObject, ObservableObject, SPUUpdaterDelegate,
             return unavailabilityDescription
         }
         if canCheckForUpdates {
-            return "SakuraCord is ready to check the signed \(releaseTrack.title.lowercased()) feed."
+            return "SakuraCord is ready to check the signed \(activeTrackTitle) feed."
         }
         return "An update check or installation is currently in progress."
     }
@@ -302,6 +403,7 @@ final class AppUpdateController: NSObject, ObservableObject, SPUUpdaterDelegate,
     ) {
         self.configuration = configuration
         self.defaults = defaults
+        PendingReleaseReturn.reconcile(configuration: configuration, defaults: defaults)
         let initialReleaseTrack = AppUpdateReleaseTrack(
             storedValue: defaults.string(forKey: AppUpdateReleaseTrack.preferenceKey),
             defaultingTo: configuration.installedReleaseTrack
@@ -325,6 +427,8 @@ final class AppUpdateController: NSObject, ObservableObject, SPUUpdaterDelegate,
         let updater = updaterController.updater
         updater.publisher(for: \.canCheckForUpdates)
             .assign(to: &$canCheckForUpdates)
+        updater.publisher(for: \.sessionInProgress)
+            .assign(to: &$updateSessionInProgress)
         updater.publisher(for: \.automaticallyChecksForUpdates)
             .assign(to: &$automaticallyChecksForUpdates)
         updater.publisher(for: \.automaticallyDownloadsUpdates)
@@ -348,8 +452,62 @@ final class AppUpdateController: NSObject, ObservableObject, SPUUpdaterDelegate,
     }
 
     func checkForUpdates() {
-        guard configuration.isEnabled, canCheckForUpdates else { return }
+        guard configuration.isEnabled, canCheckForUpdates,
+              !isPreparingBuildSwitch else { return }
         updaterController.checkForUpdates(nil)
+    }
+
+    func installPullRequestBuild(_ build: PullRequestBuild) async {
+        guard canSwitchBuilds else { return }
+        isPreparingBuildSwitch = true
+        defer { isPreparingBuildSwitch = false }
+        do {
+            try build.validate()
+            recoveryLocation = try await PRBuildRecovery().prepareRecovery()
+            guard canCheckForUpdates, !updateSessionInProgress else { throw PullRequestBuildError.unavailable }
+            selectedPullRequestBuild = build
+            explicitReturnTrack = nil
+            try updaterController.updater.checkForUpdates(forVersion: build.buildVersion)
+        } catch {
+            selectedPullRequestBuild = nil
+            if (error as NSError).code != NSUserCancelledError {
+                buildSwitchError = error.localizedDescription
+            }
+        }
+    }
+
+    func revealRecoveryCopy() async {
+        do {
+            let url = try await PRBuildRecovery().retainedRecoveryURL()
+            recoveryLocation = url
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } catch {
+            buildSwitchError = error.localizedDescription
+        }
+    }
+
+    func returnToRelease(_ track: AppUpdateReleaseTrack) {
+        guard canSwitchBuilds, installedPullRequestBuildID != nil else { return }
+        selectedPullRequestBuild = nil
+        explicitReturnTrack = track
+        returnBuildVersion = nil
+        versionComparator?.setAllowsInstalledVersionDowngrade(true)
+        updaterController.updater.checkForUpdateInformation()
+    }
+
+    func updater(_: SPUUpdater, mayPerform check: SPUUpdateCheck) throws {
+        if check == .updatesInBackground,
+           selectedPullRequestBuild != nil || explicitReturnTrack != nil || isPreparingBuildSwitch {
+            throw NSError(domain: "SakuraCord.BuildSwitching", code: 1)
+        }
+    }
+
+    func updater(_: SPUUpdater, shouldProceedWithUpdate item: SUAppcastItem, updateCheck _: SPUUpdateCheck) throws {
+        guard let build = selectedPullRequestBuild else { return }
+        guard item.versionString == build.buildVersion,
+              item.fileURL == build.archiveURL else {
+            throw PullRequestBuildError.invalidCatalog
+        }
     }
 
     func exportAutomaticPreference(for id: SettingsControlID) -> Bool {
@@ -380,7 +538,9 @@ final class AppUpdateController: NSObject, ObservableObject, SPUUpdaterDelegate,
     }
 
     func setReleaseTrack(_ track: AppUpdateReleaseTrack) {
-        guard configuration.isEnabled, track != releaseTrack else { return }
+        guard configuration.isEnabled, track != releaseTrack,
+              installedPullRequestBuildID == nil, !isPreparingBuildSwitch,
+              selectedPullRequestBuild == nil else { return }
         defaults.set(track.rawValue, forKey: AppUpdateReleaseTrack.preferenceKey)
         releaseTrack = track
         updateVersionDowngradeComparison(for: track)
@@ -399,7 +559,7 @@ final class AppUpdateController: NSObject, ObservableObject, SPUUpdaterDelegate,
     }
 
     func feedURLString(for _: SPUUpdater) -> String? {
-        releaseTrack.feedURL(in: configuration)?.absoluteString
+        currentFeedURL?.absoluteString
     }
 
     func versionComparator(for _: SPUUpdater) -> (any SUVersionComparison)? {
@@ -410,7 +570,10 @@ final class AppUpdateController: NSObject, ObservableObject, SPUUpdaterDelegate,
         versionDisplay
     }
 
-    func updater(_: SPUUpdater, didFindValidUpdate _: SUAppcastItem) {
+    func updater(_: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
+        if explicitReturnTrack != nil {
+            returnBuildVersion = item.versionString
+        }
         guard probingReleaseTrack == releaseTrack else { return }
         releaseTrackProbeFoundUpdate = true
     }
@@ -421,9 +584,39 @@ final class AppUpdateController: NSObject, ObservableObject, SPUUpdaterDelegate,
 
     func updater(
         _: SPUUpdater,
-        didFinishUpdateCycleFor _: SPUUpdateCheck,
-        error _: (any Error)?
+        didFinishUpdateCycleFor check: SPUUpdateCheck,
+        error: (any Error)?
     ) {
+        if error != nil, installedPullRequestBuildID != nil {
+            PendingReleaseReturn.rollback(defaults: defaults)
+        }
+        if let track = explicitReturnTrack, check == .updateInformation {
+            if let version = returnBuildVersion, error == nil {
+                Task { @MainActor [weak self] in
+                    guard let self, explicitReturnTrack == track, returnBuildVersion == version else { return }
+                    do {
+                        try updaterController.updater.checkForUpdates(forVersion: version)
+                    } catch {
+                        explicitReturnTrack = nil
+                        updateVersionDowngradeComparison(for: releaseTrack)
+                        buildSwitchError = error.localizedDescription
+                    }
+                }
+            } else {
+                explicitReturnTrack = nil
+                updateVersionDowngradeComparison(for: releaseTrack)
+                buildSwitchError = error?.localizedDescription ?? "No compatible \(track.title) release is available. You are still on \(activeTrackTitle)."
+            }
+            return
+        }
+        if selectedPullRequestBuild != nil || explicitReturnTrack != nil {
+            selectedPullRequestBuild = nil
+            explicitReturnTrack = nil
+            returnBuildVersion = nil
+            if let error { buildSwitchError = error.localizedDescription }
+            updateVersionDowngradeComparison(for: releaseTrack)
+            return
+        }
         if let probingReleaseTrack {
             let stillSelected = probingReleaseTrack == releaseTrack
             self.probingReleaseTrack = nil
@@ -435,8 +628,23 @@ final class AppUpdateController: NSObject, ObservableObject, SPUUpdaterDelegate,
         continueReleaseTrackChange()
     }
 
+    func updater(_: SPUUpdater, didExtractUpdate item: SUAppcastItem) {
+        guard let track = explicitReturnTrack, item.versionString == returnBuildVersion else { return }
+        // Sparkle invokes this before the external helper can finish on Quit.
+        // The feed item is verified; archive/installation failures still roll back.
+        PendingReleaseReturn.checkpoint(track: track, version: item.versionString, defaults: defaults)
+    }
+
+    func updater(_: SPUUpdater, userDidMake choice: SPUUserUpdateChoice, forUpdate _: SUAppcastItem, state: SPUUserUpdateState) {
+        if choice == .skip || (choice == .dismiss && state.stage != .installing) {
+            PendingReleaseReturn.rollback(defaults: defaults)
+        }
+    }
+
     private func continueReleaseTrackChange() {
-        guard hasStarted, canCheckForUpdates else { return }
+        guard hasStarted, canCheckForUpdates, installedPullRequestBuildID == nil,
+              selectedPullRequestBuild == nil, explicitReturnTrack == nil,
+              !isPreparingBuildSwitch else { return }
         let updater = updaterController.updater
         if pendingReleaseTrackCheck {
             pendingReleaseTrackCheck = false
@@ -457,7 +665,8 @@ final class AppUpdateController: NSObject, ObservableObject, SPUUpdaterDelegate,
 
     private func updateVersionDowngradeComparison(for track: AppUpdateReleaseTrack) {
         versionComparator?.setAllowsInstalledVersionDowngrade(
-            configuration.installedReleaseTrack == .nightly && track == .regular
+            configuration.installedPullRequestBuildID == nil
+                && configuration.installedReleaseTrack == .nightly && track == .regular
         )
     }
 

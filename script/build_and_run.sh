@@ -190,6 +190,7 @@ cat >"$CONTENTS/Info.plist" <<PLIST
   <key>CFBundleExecutable</key><string>$APP_NAME</string>
   <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
   <key>SakuraCordBuildConfiguration</key><string>$BUILD_CONFIGURATION</string>
+  <key>SakuraCordBuildSwitchingProtocol</key><integer>1</integer>
   <key>CFBundleName</key><string>$DISPLAY_NAME</string>
   <key>CFBundleDisplayName</key><string>$DISPLAY_NAME</string>
   <key>CFBundleIconFile</key><string>$APP_ICON_NAME</string>
@@ -252,6 +253,9 @@ if [[ "$UPDATES_ENABLED" == "1" ]]; then
   /usr/libexec/PlistBuddy -c "Add :SUEnableInstallerLauncherService bool true" "$CONTENTS/Info.plist"
   /usr/libexec/PlistBuddy -c "Add :SUVerifyUpdateBeforeExtraction bool true" "$CONTENTS/Info.plist"
   /usr/libexec/PlistBuddy -c "Add :SURequireSignedFeed bool true" "$CONTENTS/Info.plist"
+fi
+if [[ "${SAKURACORD_PR_BUILD:-0}" == "1" ]]; then
+  python3 "$ROOT_DIR/script/pr_build_archive.py" embed "$APP_BUNDLE"
 fi
 if [[ "$INSECURE_DEBUG_CREDENTIALS" == "1" ]]; then
   /usr/libexec/PlistBuddy -c \

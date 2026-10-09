@@ -115,11 +115,11 @@ public final class DiscordClientMetadata: @unchecked Sendable {
     nonisolated static let installationDefaultsKey = "dev.sakuracord.discord-installation-id"
 
     static func persistedInstallationID() -> String? {
-        UserDefaults.standard.string(forKey: installationDefaultsKey)
+        DiscordLocalPreferences.defaults.string(forKey: installationDefaultsKey)
     }
 
     static func persistInstallationID(_ installationID: String) {
-        UserDefaults.standard.set(installationID, forKey: installationDefaultsKey)
+        DiscordLocalPreferences.defaults.set(installationID, forKey: installationDefaultsKey)
     }
 
     func currentHeartbeatSession() -> DiscordHeartbeatSession {

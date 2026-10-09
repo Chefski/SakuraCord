@@ -471,7 +471,7 @@ enum NativeEmojiAutocompleteCatalog {
     static func search(_ query: String) -> [NativeEmojiAutocompleteResult] {
         let normalized = EmojiSearchMatcher.autocompleteNormalized(query)
         let tone =
-            NativeEmojiSkinTone(rawValue: UserDefaults.standard.string(forKey: "emojiSkinTone") ?? "")
+            NativeEmojiSkinTone(rawValue: PRBuildProfile.defaults.string(forKey: "emojiSkinTone") ?? "")
                 ?? .standard
         var results: [NativeEmojiAutocompleteResult] = []
         results.reserveCapacity(normalized.isEmpty ? searchEntries.count : 64)

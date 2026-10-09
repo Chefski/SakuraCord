@@ -324,7 +324,7 @@ struct EmojiPickerView: View {
     @State private var visibleGuildLoadTask: Task<Void, Never>?
     @State private var emojiLockMessage: String?
     @FocusState private var keyboardNavigationIsFocused: Bool
-    @AppStorage("emojiSkinTone") private var skinToneRawValue = NativeEmojiSkinTone.standard.rawValue
+    @AppStorage("emojiSkinTone", store: PRBuildProfile.defaults) private var skinToneRawValue = NativeEmojiSkinTone.standard.rawValue
 
     init(
         model: AppModel,

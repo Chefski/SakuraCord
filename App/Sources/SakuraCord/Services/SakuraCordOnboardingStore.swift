@@ -1,4 +1,5 @@
 import Foundation
+import SakuraCordModels
 
 enum SakuraCordOnboardingStore {
     private static let completionKey = "dev.sakuracord.onboarding-completed"
@@ -6,11 +7,11 @@ enum SakuraCordOnboardingStore {
     /// Run before startup services write preferences so an existing installation
     /// is grandfathered in, while an unfinished new installation stays pending.
     static func registerInstallation() {
-        let defaults = UserDefaults.standard
+        let defaults = PRBuildProfile.defaults
         guard defaults.object(forKey: completionKey) == nil,
               let bundleID = Bundle.main.bundleIdentifier
         else { return }
-        let existingPreferences = defaults.persistentDomain(forName: bundleID) ?? [:]
+        let existingPreferences = defaults.persistentDomain(forName: SakuraCordStorageProfile.current.preferencesSuiteName ?? bundleID) ?? [:]
         // AppKit can record system preferences even before the app delegate is
         // initialized. Those alone do not establish a previous SakuraCord run.
         let hasExistingInstallation = existingPreferences.keys.contains { key in
@@ -20,10 +21,10 @@ enum SakuraCordOnboardingStore {
     }
 
     static var needsThemeSetup: Bool {
-        !UserDefaults.standard.bool(forKey: completionKey)
+        !PRBuildProfile.defaults.bool(forKey: completionKey)
     }
 
     static func complete() {
-        UserDefaults.standard.set(true, forKey: completionKey)
+        PRBuildProfile.defaults.set(true, forKey: completionKey)
     }
 }

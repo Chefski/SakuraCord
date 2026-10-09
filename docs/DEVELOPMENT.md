@@ -32,6 +32,19 @@ the Codex environment actions **Run**, **Run Offline**, and **Run Offline Sign I
 checkout's app so the selected mode takes effect, and require a previously
 built bundle.
 
+In the `--offline` demo, **Settings → Updates → Browse Pull Request Builds**
+shows the production build browser with sample data. Search,
+PR selection, and build history work normally; installation is disabled and
+the build catalog is not fetched. Normal launches load the published catalog.
+
+To develop against an unpublished Sparkle fork, set
+`SAKURACORD_SPARKLE_PACKAGE_PATH` to a local Swift package named `Sparkle` that
+exports the built framework, then use the same guarded build and test scripts.
+The default dependency remains pinned to the distributed fork version; never
+commit a local-resolution lockfile in place of that pin. See
+[PR build publication](RELEASING.md#pull-request-builds) for the
+distribution contract and rollout prerequisites.
+
 Both launch scripts stop and wait for the checkout's app immediately before
 launching, including when another launcher reopened it during a build. They
 abort if it will not exit and avoid forcing a second instance. Wait for the
