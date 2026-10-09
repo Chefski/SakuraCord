@@ -8,7 +8,7 @@ struct VoiceMessageEncodingTests {
     /// CAF, so the muxer must produce a stream AVAudioFile reads back exactly.
     @Test(arguments: [0.4, 2.0, 30.0])
     func recordingRoundTripsThroughOggWithDiscordWaveform(duration: Double) throws {
-        let processor = try VoiceMessageCaptureProcessor()
+        let processor = try VoiceMessageCaptureProcessor(spoolURL: Self.spoolURL())
         let sampleCount = Int(duration * OpusCodec.sampleRate)
         // Capture devices deliver 44.1 kHz stereo; the recorder must downmix and resample.
         let inputFormat = try #require(AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 2))
@@ -34,7 +34,9 @@ struct VoiceMessageEncodingTests {
         let expectedBins = min(max(Int(duration * 10), 32), 256)
         #expect(result.waveform.count == min(expectedBins, Int((Double(sampleCount) / 480).rounded(.up))))
         #expect(result.waveform.first == 0)
-        #expect(result.waveform.max() ?? 0 >= 254)
+        // The tone is levelled, so its bins sit at the eased normalization of the target.
+        let target = (VoiceMessageLoudness.targetRMS * 255).rounded(.down)
+        #expect(Double(result.waveform.max() ?? 0) >= Double(target) * VoiceMessageWaveform.normalizationRatio(maximum: Double(target)) - 2)
 
         let url = FileManager.default.temporaryDirectory.appending(path: "\(UUID().uuidString).ogg")
         defer { try? FileManager.default.removeItem(at: url) }
@@ -44,6 +46,46 @@ struct VoiceMessageEncodingTests {
         #expect(file.fileFormat.sampleRate == 48_000)
         #expect(abs(Int(file.length) - sampleCount) <= Int(OpusCodec.sampleRate * 0.005))
         #expect(OggPageWalker.checksumsAreValid(result.data))
+    }
+
+    /// Microphones capture speech far below a comfortable playback level;
+    /// the recording is levelled to the target and its peaks never clip.
+    @Test(arguments: [Float(0.02), 0.2, 0.9])
+    func recordingIsLevelledToSpeechTarget(amplitude: Float) throws {
+        let processor = try VoiceMessageCaptureProcessor(spoolURL: Self.spoolURL())
+        let format = OpusCodec.pcmFormat(channels: 1)
+        let duration = 3.0
+        let frames = Int(duration * OpusCodec.sampleRate)
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frames)))
+        buffer.frameLength = AVAudioFrameCount(frames)
+        for index in 0 ..< frames {
+            let time = Float(index) / Float(OpusCodec.sampleRate)
+            // Half a second of pause between two phrases.
+            let envelope: Float = time > 1.25 && time < 1.75 ? 0 : 1
+            buffer.floatChannelData![0][index] = envelope * amplitude * sin(time * 2 * .pi * 220)
+        }
+        processor.process(buffer)
+        let result = try processor.finish()
+
+        let url = FileManager.default.temporaryDirectory.appending(path: "\(UUID().uuidString).ogg")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try result.data.write(to: url)
+        let file = try AVAudioFile(forReading: url, commonFormat: .pcmFormatFloat32, interleaved: false)
+        let decoded = try #require(AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)))
+        try file.read(into: decoded)
+        let samples = UnsafeBufferPointer(start: decoded.floatChannelData![0], count: Int(decoded.frameLength))
+        // The first phrase, clear of the encoder's start-up.
+        let phrase = samples[4_800 ..< 57_600]
+        let rms = (phrase.reduce(0) { $0 + $1 * $1 } / Float(phrase.count)).squareRoot()
+        let input = amplitude / Float(2).squareRoot()
+        let gain = min(max(VoiceMessageLoudness.targetRMS / input, VoiceMessageLoudness.minimumGain), VoiceMessageLoudness.maximumGain)
+        let expected = input * gain
+        #expect(abs(20 * log10(rms / expected)) < 1)
+        #expect(samples.allSatisfy { abs($0) <= 1 })
+    }
+
+    private static func spoolURL() -> URL {
+        FileManager.default.temporaryDirectory.appending(path: "\(UUID().uuidString).pcm")
     }
 }
 

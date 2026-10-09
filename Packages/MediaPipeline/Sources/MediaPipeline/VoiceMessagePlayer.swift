@@ -5,6 +5,11 @@ import Foundation
 ///
 /// AVAudioPlayer cannot prepare Ogg Opus, while AVAudioFile decodes it
 /// natively, so playback schedules file segments on an engine instead.
+///
+/// Starting must feel immediate. The time-pitch unit adds about 85 ms of
+/// latency even when bypassed, so it joins the graph only at other speeds,
+/// and pausing keeps the engine's output running for a while so resuming
+/// doesn't wait for the output device, which Bluetooth headsets make slow.
 @MainActor
 public final class VoiceMessagePlayer {
     public private(set) var duration: TimeInterval = 0
@@ -13,8 +18,14 @@ public final class VoiceMessagePlayer {
     public var onFinish: (@MainActor () -> Void)?
 
     public var rate: Float = 1 {
-        didSet { timePitch.rate = rate }
+        didSet {
+            timePitch.rate = rate
+            routeThroughTimePitch(rate != 1)
+        }
     }
+
+    /// How long a paused player keeps the output device running.
+    public nonisolated static let idleOutputDuration: Duration = .seconds(15)
 
     /// Recent output loudness, 0–1, for presentation.
     public var outputLevel: Float { meter.level }
@@ -24,6 +35,8 @@ public final class VoiceMessagePlayer {
     private let playerNode = AVAudioPlayerNode()
     private let timePitch = AVAudioUnitTimePitch()
     private var file: AVAudioFile?
+    private var usesTimePitch = false
+    private var idleTask: Task<Void, Never>?
     private var segmentStartFrame: AVAudioFramePosition = 0
     private var pausedTime: TimeInterval = 0
     /// Distinguishes the current segment's completion from one stopped by a seek.
@@ -37,14 +50,15 @@ public final class VoiceMessagePlayer {
         duration = Double(file.length) / file.processingFormat.sampleRate
         engine.attach(playerNode)
         engine.attach(timePitch)
-        try engine.connectNode(playerNode, to: timePitch, format: file.processingFormat)
+        try engine.connectNode(playerNode, to: engine.mainMixerNode, format: file.processingFormat)
         try engine.connectNode(timePitch, to: engine.mainMixerNode, format: file.processingFormat)
-        timePitch.installTap(onBus: 0, bufferSize: 1_024, format: nil, block: Self.meteringTap(meter))
+        engine.mainMixerNode.installTap(onBus: 0, bufferSize: 1_024, format: nil, block: Self.meteringTap(meter))
         engine.prepare()
     }
 
     isolated deinit {
-        timePitch.removeTap(onBus: 0)
+        idleTask?.cancel()
+        engine.mainMixerNode.removeTap(onBus: 0)
         playerNode.stop()
         engine.stop()
     }
@@ -61,6 +75,8 @@ public final class VoiceMessagePlayer {
 
     public func play() throws {
         guard !isPlaying else { return }
+        idleTask?.cancel()
+        idleTask = nil
         if pausedTime >= duration { pausedTime = 0 }
         if !engine.isRunning { try engine.start() }
         schedule(from: pausedTime)
@@ -75,7 +91,7 @@ public final class VoiceMessagePlayer {
         meter.reset()
         scheduleGeneration += 1
         playerNode.stop()
-        engine.pause()
+        pauseOutputWhenIdle()
     }
 
     public func seek(to time: TimeInterval) {
@@ -91,14 +107,53 @@ public final class VoiceMessagePlayer {
             try playerNode.playAudio(at: nil)
         } catch {
             isPlaying = false
-            engine.pause()
+            pauseOutputWhenIdle()
         }
     }
 
     public func stop() {
         pause()
+        idleTask?.cancel()
+        idleTask = nil
         pausedTime = 0
         engine.stop()
+    }
+
+    /// Moves the player between the direct path and the time-pitch unit,
+    /// carrying on from the same position.
+    private func routeThroughTimePitch(_ enabled: Bool) {
+        guard enabled != usesTimePitch, let file else { return }
+        let resumeAt = isPlaying ? currentTime : nil
+        if resumeAt != nil {
+            scheduleGeneration += 1
+            playerNode.stop()
+        }
+        engine.disconnectNodeOutput(playerNode)
+        do {
+            try engine.connectNode(playerNode, to: enabled ? timePitch : engine.mainMixerNode, format: file.processingFormat)
+            usesTimePitch = enabled
+        } catch {
+            // The direct path always connects; it plays at normal speed.
+            try? engine.connectNode(playerNode, to: engine.mainMixerNode, format: file.processingFormat)
+            usesTimePitch = false
+        }
+        guard let resumeAt else { return }
+        schedule(from: resumeAt)
+        do {
+            try playerNode.playAudio(at: nil)
+        } catch {
+            isPlaying = false
+            pauseOutputWhenIdle()
+        }
+    }
+
+    private func pauseOutputWhenIdle() {
+        idleTask?.cancel()
+        idleTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.idleOutputDuration)
+            guard !Task.isCancelled, let self, !self.isPlaying else { return }
+            self.engine.pause()
+        }
     }
 
     private func schedule(from time: TimeInterval) {
@@ -126,7 +181,7 @@ public final class VoiceMessagePlayer {
         isPlaying = false
         pausedTime = duration
         playerNode.stop()
-        engine.pause()
+        pauseOutputWhenIdle()
         onFinish?()
     }
 

@@ -150,15 +150,15 @@ struct ComposerVoiceMessageField: View {
                         .contentTransition(.numericText(countsDown: true))
                 }
                 .transition(.opacity)
-                Button(action: discard) {
-                    Image(systemName: "trash")
-                        .font(.interfaceSystem(size: 14, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .frame(width: InterfaceScale.metric(26), height: InterfaceScale.metric(26))
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .help("Delete voice message")
+                HoverActionButton(
+                    systemImage: "trash",
+                    help: "Delete voice message",
+                    role: .destructive,
+                    diameter: InterfaceScale.metric(26),
+                    iconFont: .interfaceSystem(size: 14, weight: .medium),
+                    tintsRoleAtRest: true,
+                    action: discard
+                )
                 .transition(.scale(scale: 0.5).combined(with: .opacity))
             }
         }
@@ -197,7 +197,7 @@ struct ComposerVoiceMessageField: View {
         let count = metrics.barCount(fitting: size.width)
         let recording = state.phase.recording
         let levels = recording.map {
-            VoiceMessageWaveform.bars($0.waveform.map { Float($0) / 255 }, count: count)
+            VoiceMessageWaveform.overview($0.waveform.map { Float($0) / 255 }, count: count)
         } ?? liveLevels(count: count)
         let shape = VoiceWaveformShape(levels: WaveformLevels(levels), metrics: metrics)
         let progress = recording.map(progress(of:)) ?? 0
@@ -235,8 +235,7 @@ struct ComposerVoiceMessageField: View {
     }
 
     private func liveLevels(count: Int) -> [Float] {
-        guard count > 0 else { return [] }
-        let recent = Array(state.liveBars.suffix(count - 1)) + [state.currentLevel]
+        let recent = state.displayedLiveLevels(count: count)
         return [Float](repeating: 0, count: max(0, count - recent.count)) + recent
     }
 
@@ -309,7 +308,9 @@ nonisolated struct VoiceWaveformShape: Shape {
         let values = levels.values
         let originX = rect.maxX - CGFloat(values.count) * metrics.step + metrics.spacing
         for (index, value) in values.enumerated() {
-            let height = max(metrics.minimumBarHeight, rect.height * CGFloat(min(max(value, 0), 1)))
+            // The timeline player's scale: silence rests at the minimum height.
+            let height = metrics.minimumBarHeight
+                + (rect.height - metrics.minimumBarHeight) * CGFloat(min(max(value, 0), 1))
             let bar = CGRect(
                 x: originX + CGFloat(index) * metrics.step,
                 y: rect.midY - height / 2,

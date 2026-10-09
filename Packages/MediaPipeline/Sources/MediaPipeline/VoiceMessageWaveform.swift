@@ -66,11 +66,26 @@ public enum VoiceMessageWaveform {
             bins[bin] = UInt8(min(max((rms * 255).rounded(.down), 0), 255))
         }
         guard let maximum = bins.max(), maximum > 0 else { return bins }
-        // Double arithmetic matches the plugin's JavaScript rounding.
-        let peak = Double(maximum) / 255
-        let easing = min(1, 100 * peak * peak * peak)
-        let ratio = 1 + (255 / Double(maximum) - 1) * easing
+        let ratio = normalizationRatio(maximum: Double(maximum))
         return bins.map { UInt8(min(255, (Double($0) * ratio).rounded(.down))) }
+    }
+
+    /// The plugin's eased peak normalization for a loudest bin of
+    /// `maximum` on the 0–255 scale. Double arithmetic matches its
+    /// JavaScript rounding.
+    static func normalizationRatio(maximum: Double) -> Double {
+        let peak = maximum / 255
+        let easing = min(1, 100 * peak * peak * peak)
+        return 1 + (255 / maximum - 1) * easing
+    }
+
+    /// Live 0–1 RMS levels normalized the way `bins` normalizes a finished
+    /// recording, so the waveform keeps its shape when recording stops.
+    public static func normalized(_ levels: [Float], peak: Float) -> [Float] {
+        let maximum = (min(max(peak, 0), 1) * 255).rounded(.down)
+        guard maximum > 0 else { return levels.map { _ in 0 } }
+        let scale = Float(normalizationRatio(maximum: Double(maximum)))
+        return levels.map { min(1, ($0 * 255).rounded(.down) * scale / 255) }
     }
 
     public static func encode(_ bins: [UInt8]) -> String {
@@ -81,6 +96,22 @@ public enum VoiceMessageWaveform {
     public static func decode(_ waveform: String?) -> [Float]? {
         guard let waveform, let data = Data(base64Encoded: waveform), !data.isEmpty else { return nil }
         return data.map { Float($0) / 255 }
+    }
+
+    /// `count` bars spanning the whole recording: Discord's reduction when
+    /// there are more values than bars, linear interpolation when fewer.
+    public static func overview(_ values: [Float], count: Int) -> [Float] {
+        guard count > 0, values.count > 1, values.count < count else {
+            return bars(values, count: count)
+        }
+        let scale = Double(values.count - 1) / Double(count - 1)
+        return (0 ..< count).map { index in
+            let position = Double(index) * scale
+            let lower = Int(position)
+            let upper = min(lower + 1, values.count - 1)
+            let fraction = Float(position - Double(lower))
+            return values[lower] + (values[upper] - values[lower]) * fraction
+        }
     }
 
     /// Discord's display reduction: contiguous averages when there are more

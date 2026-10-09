@@ -69,6 +69,9 @@ public final class VoiceMessageRecorder {
     private let session = AVCaptureSession()
     private let queue = DispatchQueue(label: "app.sakuracord.voice-message.capture", qos: .userInitiated)
     private var processor: VoiceMessageCaptureProcessor?
+    /// The recording's private directory, holding the capture spool and,
+    /// once stopped, the encoded message.
+    private var directory: URL?
 
     public init() {}
 
@@ -89,21 +92,38 @@ public final class VoiceMessageRecorder {
         guard let device, let input = try? AVCaptureDeviceInput(device: device) else {
             throw VoiceMessageRecorderError.inputUnavailable
         }
-        let processor = try VoiceMessageCaptureProcessor()
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: "SakuraCordVoiceMessages", directoryHint: .isDirectory)
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let processor: VoiceMessageCaptureProcessor
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            processor = try VoiceMessageCaptureProcessor(spoolURL: directory.appending(path: "capture.pcm"))
+        } catch {
+            try? FileManager.default.removeItem(at: directory)
+            throw error as? VoiceMessageRecorderError ?? .encodingFailed
+        }
         let output = AVCaptureAudioDataOutput()
         output.setSampleBufferDelegate(processor, queue: queue)
-        try queue.sync { [session] in
-            session.beginConfiguration()
-            defer { session.commitConfiguration() }
-            session.inputs.forEach(session.removeInput)
-            session.outputs.forEach(session.removeOutput)
-            guard session.canAddInput(input), session.canAddOutput(output) else {
-                throw VoiceMessageRecorderError.inputUnavailable
+        do {
+            try queue.sync { [session] in
+                session.beginConfiguration()
+                defer { session.commitConfiguration() }
+                session.inputs.forEach(session.removeInput)
+                session.outputs.forEach(session.removeOutput)
+                guard session.canAddInput(input), session.canAddOutput(output) else {
+                    throw VoiceMessageRecorderError.inputUnavailable
+                }
+                session.addInput(input)
+                session.addOutput(output)
             }
-            session.addInput(input)
-            session.addOutput(output)
+        } catch {
+            processor.discard()
+            try? FileManager.default.removeItem(at: directory)
+            throw error
         }
         self.processor = processor
+        self.directory = directory
         queue.async { [session] in session.startRunning() }
         voiceMessageLogger.info("Voice message recording started")
     }
@@ -116,33 +136,43 @@ public final class VoiceMessageRecorder {
     /// Capture can't continue once a frame failed to encode; stopping reports the error.
     public var hasFailed: Bool { processor?.hasFailed ?? false }
 
-    /// Live waveform bars completed since the previous call, each the peak
+    /// The gain levelling would apply if recording stopped now, so live
+    /// bars can be shown at the scale the finished waveform will have.
+    public var loudnessGain: Float { processor?.loudnessGain ?? 1 }
+
+    /// Live waveform bars completed since the previous call, each the RMS
     /// level over `liveBarInterval`, plus the level of the bar in progress.
     public func drainLevels() -> (completed: [Float], current: Float) {
         processor?.drainLevels() ?? ([], 0)
     }
 
     public func stop() async throws -> VoiceMessageRecording {
-        guard let processor else { throw VoiceMessageRecorderError.notRecording }
+        guard let processor, let directory else { throw VoiceMessageRecorderError.notRecording }
         self.processor = nil
+        self.directory = nil
         await stopSession()
-        let directory = FileManager.default.temporaryDirectory
-            .appending(path: "SakuraCordVoiceMessages", directoryHint: .isDirectory)
-            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
         let fileURL = directory.appending(path: VoiceMessageMetadata.filename)
         let recording = try await Task.detached(priority: .userInitiated) {
-            let result = try processor.finish()
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            try result.data.write(to: fileURL, options: .atomic)
-            return VoiceMessageRecording(fileURL: fileURL, duration: result.duration, waveform: result.waveform)
+            do {
+                let result = try processor.finish()
+                try result.data.write(to: fileURL, options: .atomic)
+                return VoiceMessageRecording(fileURL: fileURL, duration: result.duration, waveform: result.waveform)
+            } catch {
+                try? FileManager.default.removeItem(at: directory)
+                throw error
+            }
         }.value
         voiceMessageLogger.info("Voice message recording finished duration=\(recording.duration, format: .fixed(precision: 2))")
         return recording
     }
 
     public func cancel() {
-        guard processor != nil else { return }
-        processor = nil
+        guard let processor else { return }
+        let directory = directory
+        self.processor = nil
+        self.directory = nil
+        processor.discard()
+        if let directory { try? FileManager.default.removeItem(at: directory) }
         Task { await stopSession() }
     }
 
@@ -157,33 +187,84 @@ public final class VoiceMessageRecorder {
     }
 }
 
+/// Brings speech to a consistent playback level. Capture applies no gain,
+/// so microphones deliver speech anywhere from about −40 to −15 dBFS; a
+/// voice message is levelled as a whole once recording stops.
+enum VoiceMessageLoudness {
+    /// The speech level the gain aims for, as linear RMS (−16 dBFS, the
+    /// usual loudness target for spoken audio).
+    static let targetRMS: Float = 0.158
+    /// At most +18 dB, so a silent room isn't raised into loud hiss.
+    static let maximumGain: Float = 8
+    static let minimumGain: Float = 0.5
+    /// Windows quieter than −60 dBFS are silence.
+    static let silenceMeanSquare: Float = 1e-6
+    /// Speech is the windows within 10 dB of the average non-silent level,
+    /// so pauses between words don't lower the measurement.
+    static let relativeGate: Float = 0.1
+    /// Samples above this are compressed smoothly towards full scale.
+    static let limiterThreshold: Float = 0.8
+
+    /// The gain for a recording measured as mean squares of short windows.
+    static func gain(meanSquares: [Float]) -> Float {
+        let audible = meanSquares.filter { $0 > silenceMeanSquare }
+        guard !audible.isEmpty else { return 1 }
+        let gate = audible.reduce(0, +) / Float(audible.count) * relativeGate
+        let speech = audible.filter { $0 >= gate }
+        let rms = (speech.reduce(0, +) / Float(speech.count)).squareRoot()
+        return min(max(targetRMS / rms, minimumGain), maximumGain)
+    }
+
+    /// A soft limiter, so raised peaks round off instead of clipping.
+    static func limited(_ sample: Float) -> Float {
+        let magnitude = abs(sample)
+        guard magnitude > limiterThreshold else { return sample }
+        let knee = 1 - limiterThreshold
+        let limited = limiterThreshold + knee * tanh((magnitude - limiterThreshold) / knee)
+        return sample < 0 ? -limited : limited
+    }
+}
+
+/// Measures and spools captured audio while recording, then levels and
+/// encodes it when recording stops.
 final class VoiceMessageCaptureProcessor: NSObject,
     AVCaptureAudioDataOutputSampleBufferDelegate,
     @unchecked Sendable
 {
     static let preSkip: UInt16 = 312
     static let samplesPerBar = Int(VoiceMessageRecorder.liveBarInterval * OpusCodec.sampleRate)
+    /// About one second of audio per spool write.
+    static let spoolChunkSamples = 48_000
 
     private let lock = NSLock()
     private let codec: OpusCodec
+    private let spoolURL: URL
+    private let spool: FileHandle
+    private var spoolBuffer: [Int16] = []
     private var converter: AVAudioConverter?
-    private var writer = OggOpusWriter(channelCount: 1, preSkip: preSkip)
-    private var accumulator = VoiceMessageWaveform.Accumulator()
-    private var pending: [Float] = []
     private var capturedSamples = 0
+    /// Every completed bar's mean square, for levelling.
+    private var barMeanSquares: [Float] = []
+    /// Completed bars' RMS levels not yet drained by presentation.
     private var completedBars: [Float] = []
-    private var barPeak: Float = 0
+    private var barEnergy: Float = 0
     private var barSamples = 0
     private var isFinished = false
-    /// A dropped frame would leave a gap the waveform and duration don't show.
-    private var encodingFailed = false
+    /// A lost chunk would leave a gap the waveform and duration don't show.
+    private var captureFailed = false
 
-    init(bitRate: Int = 32_000) throws {
+    /// - Parameter spoolURL: Where captured audio waits, as 16-bit PCM, until it is encoded.
+    init(spoolURL: URL, bitRate: Int = 32_000) throws {
         do {
             codec = try OpusCodec(bitRate: bitRate, channels: 1)
         } catch {
             throw VoiceMessageRecorderError.encoderUnavailable
         }
+        guard FileManager.default.createFile(atPath: spoolURL.path, contents: nil),
+              let spool = try? FileHandle(forWritingTo: spoolURL)
+        else { throw VoiceMessageRecorderError.encodingFailed }
+        self.spoolURL = spoolURL
+        self.spool = spool
         super.init()
     }
 
@@ -192,13 +273,20 @@ final class VoiceMessageCaptureProcessor: NSObject,
     }
 
     var hasFailed: Bool {
-        lock.withLock { encodingFailed }
+        lock.withLock { captureFailed }
     }
 
+    /// The gain the recording would be levelled by if it stopped now.
+    var loudnessGain: Float {
+        lock.withLock { VoiceMessageLoudness.gain(meanSquares: barMeanSquares) }
+    }
+
+    /// Completed bars and the bar in progress, as linear RMS levels.
     func drainLevels() -> (completed: [Float], current: Float) {
         lock.withLock {
             defer { completedBars.removeAll(keepingCapacity: true) }
-            return (completedBars, barPeak)
+            let current = barSamples > 0 ? (barEnergy / Float(barSamples)).squareRoot() : 0
+            return (completedBars, current)
         }
     }
 
@@ -224,18 +312,16 @@ final class VoiceMessageCaptureProcessor: NSObject,
     func process(_ input: AVAudioPCMBuffer) {
         lock.withLock {
             let remaining = Int(VoiceMessageRecorder.maximumDuration * OpusCodec.sampleRate) - capturedSamples
-            guard !isFinished, !encodingFailed, remaining > 0,
+            guard !isFinished, !captureFailed, remaining > 0,
                   let converted = convert(input),
                   let samples = converted.floatChannelData?[0]
             else { return }
             // The buffer that crosses the limit is trimmed to it.
-            let count = min(Int(converted.frameLength), remaining)
-            let buffer = UnsafeBufferPointer(start: samples, count: count)
-            accumulator.append(buffer)
-            pending.append(contentsOf: buffer)
-            capturedSamples += count
+            let buffer = UnsafeBufferPointer(start: samples, count: min(Int(converted.frameLength), remaining))
+            capturedSamples += buffer.count
             updateLevels(buffer)
-            encodePendingFrames()
+            spoolBuffer.append(contentsOf: buffer.lazy.map { Int16(min(max($0, -1), 1) * Float(Int16.max)) })
+            if spoolBuffer.count >= Self.spoolChunkSamples { flushSpool() }
         }
     }
 
@@ -261,53 +347,31 @@ final class VoiceMessageCaptureProcessor: NSObject,
         return error == nil && output.frameLength > 0 ? output : nil
     }
 
+    /// Bars are RMS over `liveBarInterval`, the same measure as the finished
+    /// waveform's ten bins per second.
     private func updateLevels(_ samples: UnsafeBufferPointer<Float>) {
-        var offset = 0
-        while offset < samples.count {
-            let take = min(samples.count - offset, Self.samplesPerBar - barSamples)
-            var energy: Float = 0
-            for sample in samples[offset ..< offset + take] { energy += sample * sample }
-            let level = Self.normalizedLevel(rms: (energy / Float(max(take, 1))).squareRoot())
-            barPeak = max(barPeak, level)
-            barSamples += take
-            offset += take
+        for sample in samples {
+            barEnergy += sample * sample
+            barSamples += 1
             if barSamples == Self.samplesPerBar {
-                completedBars.append(barPeak)
-                barPeak = 0
+                let meanSquare = barEnergy / Float(Self.samplesPerBar)
+                barMeanSquares.append(meanSquare)
+                completedBars.append(meanSquare.squareRoot())
+                barEnergy = 0
                 barSamples = 0
             }
         }
     }
 
-    /// A perceptual 0–1 level over a 60 dB range, so a quiet room still moves.
-    static func normalizedLevel(rms: Float) -> Float {
-        guard rms > 0 else { return 0 }
-        return min(max((20 * log10(rms) + 60) / 60, 0), 1)
-    }
-
-    private func encodePendingFrames() {
-        let frame = Int(OpusCodec.frameSamples)
-        var offset = 0
-        while pending.count - offset >= frame {
-            encode(pending[offset ..< offset + frame])
-            offset += frame
-        }
-        pending.removeFirst(offset)
-    }
-
-    private func encode(_ samples: ArraySlice<Float>) {
-        guard let pcm = AVAudioPCMBuffer(pcmFormat: codec.pcmFormat, frameCapacity: OpusCodec.frameSamples),
-              let channel = pcm.floatChannelData?[0]
-        else { return }
-        pcm.frameLength = OpusCodec.frameSamples
-        for (index, sample) in samples.enumerated() { channel[index] = sample }
-        for index in samples.count ..< Int(OpusCodec.frameSamples) { channel[index] = 0 }
+    private func flushSpool() {
+        guard !spoolBuffer.isEmpty else { return }
         do {
-            writer.append(packet: try codec.encode(pcm), samples: Int(OpusCodec.frameSamples))
+            try spool.write(contentsOf: spoolBuffer.withUnsafeBytes { Data($0) })
         } catch {
-            encodingFailed = true
-            voiceMessageLogger.error("Voice message frame encoding failed")
+            captureFailed = true
+            voiceMessageLogger.error("Voice message capture couldn't be spooled")
         }
+        spoolBuffer.removeAll(keepingCapacity: true)
     }
 
     struct Result {
@@ -316,21 +380,74 @@ final class VoiceMessageCaptureProcessor: NSObject,
         let waveform: [UInt8]
     }
 
-    func finish() throws -> Result {
-        try lock.withLock {
+    /// Stops accepting audio and removes the spool.
+    func discard() {
+        lock.withLock {
             isFinished = true
-            guard !encodingFailed else { throw VoiceMessageRecorderError.encodingFailed }
-            // Pad the final partial frame, then push the encoder's delay out.
-            if !pending.isEmpty { encode(pending[...]) }
-            pending.removeAll()
-            encode([])
-            guard !encodingFailed else { throw VoiceMessageRecorderError.encodingFailed }
-            let data = writer.finish(sampleCount: capturedSamples)
-            return Result(
-                data: data,
-                duration: Double(capturedSamples) / OpusCodec.sampleRate,
-                waveform: VoiceMessageWaveform.bins(from: accumulator)
-            )
+            spoolBuffer.removeAll()
+            try? spool.close()
+        }
+        try? FileManager.default.removeItem(at: spoolURL)
+    }
+
+    /// Levels the spooled audio, then encodes it and its waveform.
+    func finish() throws -> Result {
+        let (sampleCount, gain) = try lock.withLock {
+            isFinished = true
+            flushSpool()
+            try? spool.close()
+            guard !captureFailed else { throw VoiceMessageRecorderError.encodingFailed }
+            var meanSquares = barMeanSquares
+            if barSamples > 0 { meanSquares.append(barEnergy / Float(barSamples)) }
+            return (capturedSamples, VoiceMessageLoudness.gain(meanSquares: meanSquares))
+        }
+        defer { try? FileManager.default.removeItem(at: spoolURL) }
+        let reader = try FileHandle(forReadingFrom: spoolURL)
+        defer { try? reader.close() }
+        var writer = OggOpusWriter(channelCount: 1, preSkip: Self.preSkip)
+        var accumulator = VoiceMessageWaveform.Accumulator()
+        var pending: [Float] = []
+        let frame = Int(OpusCodec.frameSamples)
+        let scale = gain / Float(Int16.max)
+        while let chunk = try reader.read(upToCount: Self.spoolChunkSamples * MemoryLayout<Int16>.size), !chunk.isEmpty {
+            let levelled = chunk.withUnsafeBytes { raw in
+                (0 ..< raw.count / MemoryLayout<Int16>.size).map { index in
+                    VoiceMessageLoudness.limited(
+                        Float(raw.loadUnaligned(fromByteOffset: index * MemoryLayout<Int16>.size, as: Int16.self)) * scale
+                    )
+                }
+            }
+            levelled.withUnsafeBufferPointer { accumulator.append($0) }
+            pending.append(contentsOf: levelled)
+            var offset = 0
+            while pending.count - offset >= frame {
+                try encode(pending[offset ..< offset + frame], into: &writer)
+                offset += frame
+            }
+            pending.removeFirst(offset)
+        }
+        // Pad the final partial frame, then push the encoder's delay out.
+        if !pending.isEmpty { try encode(pending[...], into: &writer) }
+        try encode([], into: &writer)
+        return Result(
+            data: writer.finish(sampleCount: sampleCount),
+            duration: Double(sampleCount) / OpusCodec.sampleRate,
+            waveform: VoiceMessageWaveform.bins(from: accumulator)
+        )
+    }
+
+    private func encode(_ samples: ArraySlice<Float>, into writer: inout OggOpusWriter) throws {
+        guard let pcm = AVAudioPCMBuffer(pcmFormat: codec.pcmFormat, frameCapacity: OpusCodec.frameSamples),
+              let channel = pcm.floatChannelData?[0]
+        else { throw VoiceMessageRecorderError.encodingFailed }
+        pcm.frameLength = OpusCodec.frameSamples
+        for (index, sample) in samples.enumerated() { channel[index] = sample }
+        for index in samples.count ..< Int(OpusCodec.frameSamples) { channel[index] = 0 }
+        do {
+            writer.append(packet: try codec.encode(pcm), samples: Int(OpusCodec.frameSamples))
+        } catch {
+            voiceMessageLogger.error("Voice message frame encoding failed")
+            throw VoiceMessageRecorderError.encodingFailed
         }
     }
 }

@@ -444,7 +444,9 @@ VoiceMessages plugin, which reuses Discord's uploader, and cross-checked against
   only into CAF, so [MediaPipeline](../../Packages/MediaPipeline/Sources/MediaPipeline/OggOpusWriter.swift)
   muxes the packets itself: 312-sample pre-skip, with the final granule trimming
   encoder padding. Never upload CAF renamed to `.ogg`. Recordings stop at
-  Discord's 20-minute limit.
+  Discord's 20-minute limit. Capture applies no gain, so the recording is
+  levelled once it stops: gated speech to −16 dBFS RMS, at most +18 dB, with a
+  soft limiter. The waveform is measured after levelling.
 - **Waveform.** 32–256 bins, ten per second of audio: RMS scaled to 0–255, then
   the plugin's eased peak normalization, base64-encoded as raw bytes. Follow
   upstream Vencord's contiguous windows; the installed Equicord copy contains an

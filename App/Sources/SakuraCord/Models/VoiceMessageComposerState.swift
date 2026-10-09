@@ -33,10 +33,14 @@ final class VoiceMessageComposerState {
 
     let destination: MessageComposerDestination
     private(set) var phase: Phase = .idle
-    /// Completed live bars, oldest first.
+    /// Completed live bars as RMS levels, oldest first.
     private(set) var liveBars: [Float] = []
     /// The bar still being filled.
     private(set) var currentLevel: Float = 0
+    /// The loudest bar so far, including those trimmed from `liveBars`.
+    private(set) var peakLevel: Float = 0
+    /// The gain the recording will be levelled by, as measured so far.
+    private(set) var loudnessGain: Float = 1
     private(set) var elapsed: TimeInterval = 0
     /// Bars completed since recording began, including those trimmed from `liveBars`.
     private(set) var totalBars = 0
@@ -62,6 +66,8 @@ final class VoiceMessageComposerState {
         stopRequestedWhileStarting = false
         liveBars = []
         currentLevel = 0
+        peakLevel = 0
+        loudnessGain = 1
         elapsed = 0
         totalBars = 0
         elapsedSampledAt = .now
@@ -147,8 +153,18 @@ final class VoiceMessageComposerState {
         phase = .idle
         liveBars = []
         currentLevel = 0
+        peakLevel = 0
+        loudnessGain = 1
         elapsed = 0
         totalBars = 0
+    }
+
+    /// Up to `count` of the most recent bars, the last still filling, at the
+    /// scale the finished waveform will have.
+    func displayedLiveLevels(count: Int) -> [Float] {
+        guard count > 0 else { return [] }
+        let recent = Array(liveBars.suffix(count - 1)) + [currentLevel]
+        return VoiceMessageWaveform.normalized(recent.map { $0 * loudnessGain }, peak: peakLevel * loudnessGain)
     }
 
     private func startMetering() {
@@ -167,6 +183,8 @@ final class VoiceMessageComposerState {
                     }
                 }
                 self.currentLevel = levels.current
+                self.peakLevel = max(self.peakLevel, levels.completed.max() ?? 0, levels.current)
+                self.loudnessGain = self.recorder.loudnessGain
                 if self.recorder.hasReachedMaximumDuration || self.recorder.hasFailed {
                     self.stop()
                     return
