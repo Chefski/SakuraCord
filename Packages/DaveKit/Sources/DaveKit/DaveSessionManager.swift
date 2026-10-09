@@ -56,6 +56,17 @@ public actor DaveSessionManager {
 
     // MARK: - User Management
 
+    /// A new Identify has a new authoritative participant list and MLS session.
+    /// A Gateway Resume must retain these instead.
+    public func resetForFreshSession() {
+        decryptors.removeAll()
+        preparedTransitions.removeAll()
+        lastPreparedTransitionVersion = 0
+        session.reset()
+        encryptor.setPassthroughMode(enabled: false)
+        encryptor.clearKeyRatchet()
+    }
+
     public func addUser(userId: String) {
         guard decryptors[userId] == nil else { return }
         decryptors[userId] = Decryptor()
@@ -167,6 +178,7 @@ public actor DaveSessionManager {
         )
 
         if epoch == Self.mlsNewGroupExpectedEpoch {
+            preparedTransitions.removeAll()
             session.initialize(version: protocolVersion, groupId: groupId, selfUserId: selfUserId)
             let keyPackage = session.getKeyPackage()
             daveProtocolLogger.info("DAVE key package generated; bytes=\(keyPackage.count)")
@@ -222,7 +234,7 @@ public actor DaveSessionManager {
         )
         guard welcome != nil else {
             await delegate?.mlsInvalidCommitWelcome(transitionId: transitionId)
-            await delegate?.mlsKeyPackage(keyPackage: session.getKeyPackage())
+            await selectProtocol(protocolVersion: session.getProtocolVersion())
             return
         }
 

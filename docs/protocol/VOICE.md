@@ -34,6 +34,20 @@ tear down local media without publishing a main-Gateway leave that could disconn
 another client now owning the account's voice session. Other transient closures
 use bounded resume. Device changes preserve the active session where possible.
 
+## DAVE group identity and recovery
+
+The MLS group ID is the voice channel ID, or the stream's RTC channel ID for
+screen sharing. It is not the guild or RTC server ID. This matches production web
+build `634304` (`web.843cc7edc28c426c.js`, checked 9 October 2026):
+`trueChannelId` is passed to `prepareSecureFramesEpoch` and then `mlsSession.Init`.
+Pinned Paicord and Swiftcord v1 have no DAVE implementation to corroborate.
+
+Invalid commits or welcomes regenerate the MLS group and key package and discard
+pending transitions, following the [DAVE recovery protocol](https://github.com/discord/dave-protocol/blob/main/protocol.md).
+A fresh Voice Identify also discards the old participant allowlist and encryption
+state; Resume retains them. Reinstalling the current epoch/user ratchet preserves
+its sender nonce sequence and receiver replay window.
+
 ## Private calls
 
 `CALL_CREATE`/`UPDATE`/`DELETE`, guildless voice states and `ongoing_rings` track

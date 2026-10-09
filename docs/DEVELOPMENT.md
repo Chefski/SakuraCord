@@ -172,9 +172,10 @@ proportion to its risk:
 | `./script/build_and_run.sh package` | Stage a signed debug app without launching it |
 | `./script/build_and_run.sh run-release` | Build, stage, and launch an optimized release app |
 | `./script/test.sh protocol` | Run protocol package tests |
+| `./script/test.sh dave` | Run DAVE encryption and recovery tests |
 | `./script/test.sh media` | Run media package tests |
 | `./script/test.sh app` | Run application package tests |
-| `./script/test.sh packages` | Run the six library package tests |
+| `./script/test.sh packages` | Run the seven library package tests |
 | `./script/test.sh all` | Run the configured first-party test matrix |
 | `./script/code_quality.sh check` | Run the pinned SwiftFormat and SwiftLint policy |
 | `./script/ci.sh` | Run code-quality and release checks, the full first-party test matrix, and the app build |

@@ -1,5 +1,5 @@
 {
-  "originHash" : "69f4abdaee3b1decef1ece0c068958ea8fbd6bd863399255a863b5701be1dd79",
+  "originHash" : "0f64f370aa9b90b34df74ad5dc15fff80f4e5b908aebd8b7003e64daffafd1c1",
   "pins" : [
     {
       "identity" : "grdb.swift",
@@ -41,8 +41,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/krzyzanowskim/OpenSSL-Package.git",
       "state" : {
-        "revision" : "2d180b33702e0e67fd58607d1f96d5fad0816d10",
-        "version" : "3.6.2000"
+        "revision" : "4ac3f9a68731cb3cf736a591814bad9a7a2008c8",
+        "version" : "3.6.5000"
       }
     },
     {
@@ -50,8 +50,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/SakuraCordApp/Sparkle",
       "state" : {
-        "revision" : "c7dcfd9c2683d2efb99cc577f8901e7a70ea4d91",
-        "version" : "2.9.6-sakuracord.3"
+        "revision" : "6322260c7b2fbe3f2209070ca202d60277fa0399",
+        "version" : "2.10.0-sakuracord.1"
       }
     },
     {
@@ -59,8 +59,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-log",
       "state" : {
-        "revision" : "a878e7f8f46cfc0e1125e565b5c08e7d5272dc9a",
-        "version" : "1.14.0"
+        "revision" : "4038b6a4f74a1426f47eb1dd5b4bb5628a15d597",
+        "version" : "1.16.1"
       }
     },
     {

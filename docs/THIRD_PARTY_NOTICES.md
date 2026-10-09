@@ -228,14 +228,15 @@ END OF TERMS AND CONDITIONS
 ## Sparkle
 
 SakuraCord uses the `SakuraCordApp/Sparkle` fork of the Sparkle 2 software
-update framework, pinned to version `2.9.6-sakuracord.2` and based on upstream
-Sparkle 2.9.6. The fork adds an explicit application-controlled opt-in for the
-plain installer to accept a signed update whose `CFBundleVersion` is lower; it
-otherwise preserves upstream Sparkle's verification and installation behavior.
+update framework, pinned to version `2.10.0-sakuracord.1` and based on upstream
+Sparkle 2.10.0. The fork supports explicit build selection and PR update tracks,
+including application-controlled opt-in for the plain installer to accept a
+signed update whose `CFBundleVersion` is lower. It preserves upstream signature
+verification and installation safeguards.
 
 - Fork: <https://github.com/SakuraCordApp/Sparkle>
 - Upstream project: <https://github.com/sparkle-project/Sparkle>
-- Source and license: `LICENSE` at tag `2.9.6-sakuracord.2`
+- Source and license: `LICENSE` at tag `2.10.0-sakuracord.1`
 
 Copyright (c) 2006-2013 Andy Matuschak.
 Copyright (c) 2009-2013 Elgato Systems GmbH.
@@ -640,8 +641,8 @@ SakuraCord bundles the unmodified Public Suffix List to reject wildcard trust
 rules spanning public registries or private shared-hosting namespaces.
 
 - Source: <https://publicsuffix.org/list/public_suffix_list.dat>
-- Version: `2026-10-01_23-02-52_UTC`
-- Revision: `6cd82aff889e3d64e5e03bc5c1f43da1934a960a`
+- Version: `2026-10-07_07-28-19_UTC`
+- Revision: `3929462652695bad04f0a27afb600974014a3c8b`
 - File: `App/Sources/SakuraCord/Resources/public-suffix-list.dat`
 - License: Mozilla Public License 2.0, reproduced below. The file itself is
   included in the app resource bundle as its source form.

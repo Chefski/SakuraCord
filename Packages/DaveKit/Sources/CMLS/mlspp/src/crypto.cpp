@@ -188,7 +188,7 @@ CipherSuite::get() const
       return ciphers_X448_CHACHA20POLY1305_SHA512_Ed448;
 #endif
 
-#if !defined(P256_SHA256)
+#if defined(WITH_PQ)
     case ID::MLKEM768X25519_AES256GCM_SHA384_Ed25519:
       return ciphers_MLKEM768X25519_AES256GCM_SHA384_Ed25519;
 
@@ -483,6 +483,16 @@ SignaturePrivateKey::parse(CipherSuite suite, const bytes& data)
 }
 
 SignaturePrivateKey
+SignaturePrivateKey::parse_der(CipherSuite suite, const bytes& data)
+{
+  auto priv = suite.sig().deserialize_private_der(data);
+  auto pub = priv->public_key();
+  auto pub_data = suite.sig().serialize(*pub);
+  auto priv_data = suite.sig().serialize_private(*priv);
+  return { priv_data, pub_data };
+}
+
+SignaturePrivateKey
 SignaturePrivateKey::derive(CipherSuite suite, const bytes& secret)
 {
   auto priv = suite.sig().derive_key_pair(secret);
@@ -499,19 +509,31 @@ SignaturePrivateKey::sign(const CipherSuite& suite,
 {
   auto label_plus = mls_1_0_plus(label);
   const auto content = tls::marshal(SignContent{ label_plus, message });
+
+  if (_sign_func) {
+    return _sign_func(content);
+  }
+
   const auto priv = suite.sig().deserialize_private(data);
   return suite.sig().sign(content, *priv);
 }
 
-SignaturePrivateKey::SignaturePrivateKey(bytes priv_data, bytes pub_data)
+SignaturePrivateKey::SignaturePrivateKey(bytes priv_data,
+                                         bytes pub_data,
+                                         SignerFunc func)
   : data(std::move(priv_data))
   , public_key{ std::move(pub_data) }
+  , _sign_func{ std::move(func) }
 {
 }
 
 void
 SignaturePrivateKey::set_public_key(CipherSuite suite)
 {
+  if (_sign_func) {
+    throw std::runtime_error("not implemented");
+  }
+
   const auto priv = suite.sig().deserialize_private(data);
   auto pub = priv->public_key();
   public_key.data = suite.sig().serialize(*pub);
@@ -527,9 +549,19 @@ SignaturePrivateKey::from_jwk(CipherSuite suite, const std::string& json_str)
   return { priv_data, pub_data };
 }
 
+SignaturePrivateKey
+SignaturePrivateKey::from_func(SignerFunc func, bytes pub_data)
+{
+  return { bytes(), std::move(pub_data), std::move(func) };
+}
+
 std::string
 SignaturePrivateKey::to_jwk(CipherSuite suite) const
 {
+  if (_sign_func) {
+    throw std::runtime_error("not implemented");
+  }
+
   const auto priv = suite.sig().deserialize_private(data);
   return suite.sig().export_jwk_private(*priv);
 }
