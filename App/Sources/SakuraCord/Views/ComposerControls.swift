@@ -112,6 +112,8 @@ struct ComposerActionButton: View {
     var showsHoverBackground = true
     var appearance: ComposerBarAppearance = .defaultStyle
     var cornerRadius: CGFloat?
+    /// A destructive button is tinted red, like the message delete action.
+    var role: ButtonRole?
     var onHoverChanged: ((Bool) -> Void)?
     let action: (() -> Void)?
 
@@ -122,7 +124,7 @@ struct ComposerActionButton: View {
     var body: some View {
         Group {
             if let action {
-                Button(action: action) { buttonLabel }
+                Button(role: role, action: action) { buttonLabel }
             } else {
                 buttonLabel
             }
@@ -141,9 +143,14 @@ struct ComposerActionButton: View {
         icon
             .symbolVariant(.none)
             .font(.interfaceSystem(size: iconSize, weight: iconWeight))
-            .foregroundStyle(colorScheme == .dark ? Color.white : Color.black)
+            .foregroundStyle(iconColor)
             .frame(width: size, height: size)
             .contentShape(buttonShape)
+    }
+
+    private var iconColor: Color {
+        if role == .destructive { return .red }
+        return colorScheme == .dark ? .white : .black
     }
 
     private var buttonShape: AnyShape {
@@ -167,9 +174,8 @@ struct ComposerActionButton: View {
     }
 
     private var hoverColor: Color {
-        showsHoverBackground && isHovering && isEnabled
-            ? .primary.opacity(0.14)
-            : .clear
+        guard showsHoverBackground, isHovering, isEnabled else { return .clear }
+        return role == .destructive ? .red.opacity(0.18) : .primary.opacity(0.14)
     }
 }
 

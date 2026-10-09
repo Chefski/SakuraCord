@@ -69,8 +69,6 @@ struct HoverActionButton: View {
     var isSelected: Bool?
     var diameter: CGFloat?
     var iconFont: Font = .interface(.callout).weight(.medium)
-    /// Tints a destructive icon red before it is hovered.
-    var tintsRoleAtRest = false
     var onHoverChanged: ((Bool) -> Void)?
     let action: () -> Void
 
@@ -80,7 +78,6 @@ struct HoverActionButton: View {
                 role: role,
                 isSelected: isSelected,
                 diameter: diameter ?? HoverActionPillMetrics.controlDiameter,
-                tintsRoleAtRest: tintsRoleAtRest,
                 onHoverChanged: onHoverChanged
             ) {
                 SakuraCordSystemSymbol.swiftUIImage(named: systemImage)
@@ -103,7 +100,6 @@ struct HoverActionControlLabel<Content: View>: View {
     var role: ButtonRole?
     var isSelected: Bool?
     var diameter: CGFloat = InterfaceScale.metric(28)
-    var tintsRoleAtRest = false
     var onHoverChanged: ((Bool) -> Void)?
     @ViewBuilder let content: () -> Content
     @State private var isHovering = false
@@ -122,7 +118,7 @@ struct HoverActionControlLabel<Content: View>: View {
     }
 
     private var iconColor: Color {
-        if role == .destructive, isHovering || tintsRoleAtRest { return .red }
+        if role == .destructive, isHovering { return .red }
         if isSelected == true { return SakuraCordAccentColor.color }
         return .primary
     }

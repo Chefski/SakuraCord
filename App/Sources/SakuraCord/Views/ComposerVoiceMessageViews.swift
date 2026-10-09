@@ -126,7 +126,6 @@ struct ComposerSendSlot: View {
 struct ComposerVoiceMessageField: View {
     let state: VoiceMessageComposerState
     let playback: VoiceMessagePlaybackStore
-    let discard: () -> Void
 
     @State private var isScrubbing = false
 
@@ -150,16 +149,6 @@ struct ComposerVoiceMessageField: View {
                         .contentTransition(.numericText(countsDown: true))
                 }
                 .transition(.opacity)
-                HoverActionButton(
-                    systemImage: "trash",
-                    help: "Delete voice message",
-                    role: .destructive,
-                    diameter: InterfaceScale.metric(26),
-                    iconFont: .interfaceSystem(size: 14, weight: .medium),
-                    tintsRoleAtRest: true,
-                    action: discard
-                )
-                .transition(.scale(scale: 0.5).combined(with: .opacity))
             }
         }
         .frame(maxWidth: .infinity, minHeight: ChatChromeMetrics.composerControlHeight)
@@ -181,7 +170,8 @@ struct ComposerVoiceMessageField: View {
                 .fill(.red)
                 .frame(width: InterfaceScale.metric(8), height: InterfaceScale.metric(8))
                 .phaseAnimator([1.0, 0.25]) { dot, opacity in
-                    dot.opacity(state.phase == .recording ? opacity : 1)
+                    // Pulses once the microphone delivers sound.
+                    dot.opacity(state.phase == .recording && state.elapsed > 0 ? opacity : 1)
                 } animation: { _ in .easeInOut(duration: 0.7) }
             Text(VoiceMessageDurationFormat.string(state.elapsed))
                 .font(.interfaceSystem(size: 13, weight: .medium).monospacedDigit())

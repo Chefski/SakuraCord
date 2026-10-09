@@ -235,6 +235,9 @@ final class VoiceMessageCaptureProcessor: NSObject,
     static let samplesPerBar = Int(VoiceMessageRecorder.liveBarInterval * OpusCodec.sampleRate)
     /// About one second of audio per spool write.
     static let spoolChunkSamples = 48_000
+    /// A starting microphone delivers digital silence until it is ready,
+    /// while even a quiet room measures far above −90 dBFS.
+    static let warmUpSilence: Float = 0.000_031_6
 
     private let lock = NSLock()
     private let codec: OpusCodec
@@ -250,6 +253,8 @@ final class VoiceMessageCaptureProcessor: NSObject,
     private var barEnergy: Float = 0
     private var barSamples = 0
     private var isFinished = false
+    /// Whether the microphone has delivered sound yet.
+    private var hasStarted = false
     /// A lost chunk would leave a gap the waveform and duration don't show.
     private var captureFailed = false
 
@@ -316,8 +321,19 @@ final class VoiceMessageCaptureProcessor: NSObject,
                   let converted = convert(input),
                   let samples = converted.floatChannelData?[0]
             else { return }
+            var start = 0
+            if !hasStarted {
+                // Recording begins with the first sound, not the warm-up.
+                let frames = UnsafeBufferPointer(start: samples, count: Int(converted.frameLength))
+                guard let first = frames.firstIndex(where: { abs($0) > Self.warmUpSilence }) else { return }
+                hasStarted = true
+                start = first
+            }
             // The buffer that crosses the limit is trimmed to it.
-            let buffer = UnsafeBufferPointer(start: samples, count: min(Int(converted.frameLength), remaining))
+            let buffer = UnsafeBufferPointer(
+                start: samples + start,
+                count: min(Int(converted.frameLength) - start, remaining)
+            )
             capturedSamples += buffer.count
             updateLevels(buffer)
             spoolBuffer.append(contentsOf: buffer.lazy.map { Int16(min(max($0, -1), 1) * Float(Int16.max)) })

@@ -21,8 +21,9 @@ struct VoiceMessageEncodingTests {
             for channel in 0 ..< 2 {
                 for index in 0 ..< count {
                     let time = Float(offset + index) / 44_100
-                    // Silence, then a tone, so the waveform has shape.
-                    buffer.floatChannelData![channel][index] = time < Float(duration) / 2 ? 0 : 0.4 * sin(time * 2 * .pi * 330)
+                    // A quiet room, then a tone, so the waveform has shape.
+                    let amplitude: Float = time < Float(duration) / 2 ? 0.001 : 0.4
+                    buffer.floatChannelData![channel][index] = amplitude * sin(time * 2 * .pi * 330)
                 }
             }
             processor.process(buffer)
@@ -82,6 +83,24 @@ struct VoiceMessageEncodingTests {
         let expected = input * gain
         #expect(abs(20 * log10(rms / expected)) < 1)
         #expect(samples.allSatisfy { abs($0) <= 1 })
+    }
+
+    /// A microphone that is still starting delivers digital silence; the
+    /// recording begins with its first sound.
+    @Test func recordingSkipsMicrophoneWarmUp() throws {
+        let processor = try VoiceMessageCaptureProcessor(spoolURL: Self.spoolURL())
+        let format = OpusCodec.pcmFormat(channels: 1)
+        let frames = Int(2 * OpusCodec.sampleRate)
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frames)))
+        buffer.frameLength = AVAudioFrameCount(frames)
+        for index in 0 ..< frames {
+            let time = Float(index) / Float(OpusCodec.sampleRate)
+            buffer.floatChannelData![0][index] = time < 1.5 ? 0 : 0.2 * sin(time * 2 * .pi * 220)
+        }
+        processor.process(buffer)
+        #expect(abs(processor.elapsed - 0.5) < 0.01)
+        let result = try processor.finish()
+        #expect(abs(result.duration - 0.5) < 0.01)
     }
 
     private static func spoolURL() -> URL {

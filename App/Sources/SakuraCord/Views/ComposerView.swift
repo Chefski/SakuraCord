@@ -311,7 +311,7 @@ struct ComposerView: View {
                             }
                         }
                         .transition(.scale(scale: 0.6).combined(with: .opacity))
-                    }
+                    } else if voiceMessage.phase.recording != nil { voiceMessageDiscardButton(appearance: appearance) }
                 }
                 .frame(height: ChatChromeMetrics.composerControlHeight)
                 .disabled(hasActiveCommand)
@@ -1315,11 +1315,25 @@ extension ComposerView {
         .opacity(hasComposerActions || isVoiceMessageActive ? 1 : 0.4)
     }
 
+    /// Sits where the composer icons were, tinted like the delete action.
+    func voiceMessageDiscardButton(appearance: ComposerBarAppearance) -> some View {
+        ComposerActionButton(
+            icon: Image(systemName: "trash"),
+            help: "Delete voice message",
+            iconSize: 19,
+            size: appearance.accessoryButtonSize,
+            appearance: appearance,
+            role: .destructive,
+            action: discardVoiceMessage
+        )
+        .fixedSize()
+        .transition(.scale(scale: 0.6).combined(with: .opacity))
+    }
+
     var voiceMessageField: some View {
         ComposerVoiceMessageField(
             state: voiceMessage,
-            playback: model.voiceMessagePlayback,
-            discard: discardVoiceMessage
+            playback: model.voiceMessagePlayback
         )
         .transition(
             .asymmetric(

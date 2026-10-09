@@ -16,6 +16,8 @@ public final class VoiceMessagePlayer {
     public private(set) var isPlaying = false
     /// Called once playback reaches the end of the file.
     public var onFinish: (@MainActor () -> Void)?
+    /// Called when the output device stopped playback and it couldn't resume.
+    public var onInterruption: (@MainActor () -> Void)?
 
     public var rate: Float = 1 {
         didSet {
@@ -37,6 +39,10 @@ public final class VoiceMessagePlayer {
     private var file: AVAudioFile?
     private var usesTimePitch = false
     private var idleTask: Task<Void, Never>?
+    private var configurationObserver: (any NSObjectProtocol)?
+    /// The last position read from the render clock, for resuming after the
+    /// output device stops the engine.
+    private var lastRenderedTime: TimeInterval = 0
     private var segmentStartFrame: AVAudioFramePosition = 0
     private var pausedTime: TimeInterval = 0
     /// Distinguishes the current segment's completion from one stopped by a seek.
@@ -54,9 +60,18 @@ public final class VoiceMessagePlayer {
         try engine.connectNode(timePitch, to: engine.mainMixerNode, format: file.processingFormat)
         engine.mainMixerNode.installTap(onBus: 0, bufferSize: 1_024, format: nil, block: Self.meteringTap(meter))
         engine.prepare()
+        // A headset leaving its microphone mode after a recording changes
+        // the output sample rate, which stops the engine mid-playback.
+        configurationObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: engine,
+            queue: nil,
+            using: Self.configurationChange { [weak self] in self?.outputConfigurationChanged() }
+        )
     }
 
     isolated deinit {
+        if let configurationObserver { NotificationCenter.default.removeObserver(configurationObserver) }
         idleTask?.cancel()
         engine.mainMixerNode.removeTap(onBus: 0)
         playerNode.stop()
@@ -70,7 +85,9 @@ public final class VoiceMessagePlayer {
               let playerTime = playerNode.playerTime(forNodeTime: nodeTime)
         else { return pausedTime }
         let frame = segmentStartFrame + max(0, playerTime.sampleTime)
-        return min(duration, Double(frame) / file.processingFormat.sampleRate)
+        let time = min(duration, Double(frame) / file.processingFormat.sampleRate)
+        lastRenderedTime = time
+        return time
     }
 
     public func play() throws {
@@ -147,6 +164,25 @@ public final class VoiceMessagePlayer {
         }
     }
 
+    /// The engine has stopped itself; the output node converts to the new
+    /// rate, so restarting it and rescheduling is enough.
+    private func outputConfigurationChanged() {
+        guard isPlaying else { return }
+        let resumeAt = lastRenderedTime
+        scheduleGeneration += 1
+        playerNode.stop()
+        do {
+            try engine.start()
+            schedule(from: resumeAt)
+            try playerNode.playAudio(at: nil)
+        } catch {
+            isPlaying = false
+            pausedTime = resumeAt
+            meter.reset()
+            onInterruption?()
+        }
+    }
+
     private func pauseOutputWhenIdle() {
         idleTask?.cancel()
         idleTask = Task { [weak self] in
@@ -162,6 +198,7 @@ public final class VoiceMessagePlayer {
         let start = min(AVAudioFramePosition(time * sampleRate), max(0, file.length - 1))
         segmentStartFrame = start
         pausedTime = Double(start) / sampleRate
+        lastRenderedTime = pausedTime
         scheduleGeneration += 1
         let generation = scheduleGeneration
         playerNode.scheduleSegment(
@@ -189,6 +226,12 @@ public final class VoiceMessagePlayer {
     // main-actor type would inherit its isolation and trap there.
     private nonisolated static func meteringTap(_ meter: VoiceMessageOutputMeter) -> AVAudioNodeTapBlock {
         { buffer, _ in meter.measure(buffer) }
+    }
+
+    private nonisolated static func configurationChange(
+        _ changed: @escaping @MainActor @Sendable () -> Void
+    ) -> @Sendable (Notification) -> Void {
+        { _ in Task { @MainActor in changed() } }
     }
 
     private nonisolated static func segmentCompletion(

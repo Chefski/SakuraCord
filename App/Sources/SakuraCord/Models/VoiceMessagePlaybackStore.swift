@@ -191,6 +191,7 @@ final class VoiceMessagePlaybackStore {
                 let player = try VoiceMessagePlayer(fileURL: fileURL)
                 player.rate = self.speed
                 player.onFinish = { [weak self] in self?.finish(id) }
+                player.onInterruption = { [weak self] in self?.interrupted(id) }
                 self.player = player
                 self.activeDuration = player.duration
                 if self.pausedPosition > 0 { player.seek(to: self.pausedPosition) }
@@ -224,6 +225,13 @@ final class VoiceMessagePlaybackStore {
     private func pause() {
         guard let player, phase == .playing else { return }
         player.pause()
+        pausedPosition = player.currentTime
+        phase = .paused
+        notify()
+    }
+
+    private func interrupted(_ id: VoiceMessagePlaybackID) {
+        guard activeID == id, let player, phase == .playing else { return }
         pausedPosition = player.currentTime
         phase = .paused
         notify()
