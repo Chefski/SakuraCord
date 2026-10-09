@@ -88,11 +88,17 @@ class ArchiveBoundaryTests(unittest.TestCase):
                       ('SakuraCord.app/Framework/binary', b'Versions/Current/binary', True)])
 
     def test_validates_exact_bundle_identity_and_matching_symbols(self):
+        for name in ('SakuraCord Debug', 'SakuraCord'):
+            with self.subTest(name=name):
+                self.validate_bundle_identity(name)
+
+    def validate_bundle_identity(self, name):
+        bundle = f'{name}.app'
         context = dict(schemaVersion=1, id='pr-7-run-99-attempt-2', pullRequest=7,
                        headSHA='a' * 40, baseSHA='b' * 40, builtSHA='c' * 40,
                        runID=99, runAttempt=2, configuration='debug', architecture='arm64')
         info = dict(CFBundleIdentifier='dev.sakuracord.SakuraCord',
-                    CFBundleExecutable='SakuraCord', CFBundleVersion='4000000000000099002',
+                    CFBundleExecutable=name, CFBundleVersion='4000000000000099002',
                     CFBundleShortVersionString='0.1.6', LSMinimumSystemVersion='27.0',
                     SakuraCordBuildConfiguration='debug', SakuraCordUpdatesEnabled=True,
                     SakuraCordReleaseTrack='nightly', SUAllowsVersionDowngrades=True,
@@ -111,18 +117,26 @@ class ArchiveBoundaryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, SPARKLE_ED_PUBLIC_KEY='public-test-key'):
             root = Path(directory)
             (root / 'build.json').write_text(json.dumps(context))
-            def write_app():
+            def write_app(bundle=bundle, executable_name=name):
                 with zipfile.ZipFile(root / 'SakuraCord.app.zip', 'w') as archive:
-                    archive.writestr('SakuraCord.app/Contents/Info.plist', plistlib.dumps(info))
-                    archive.writestr('SakuraCord.app/Contents/Resources/pr-build.json', json.dumps(context))
-                    archive.writestr('SakuraCord.app/Contents/MacOS/SakuraCord', executable)
-                    archive.writestr('SakuraCord.app/Contents/Frameworks/Sparkle.framework/Sparkle', b'fixture')
+                    archive.writestr(f'{bundle}/Contents/Info.plist', plistlib.dumps(info))
+                    archive.writestr(f'{bundle}/Contents/Resources/pr-build.json', json.dumps(context))
+                    archive.writestr(f'{bundle}/Contents/MacOS/{executable_name}', executable)
+                    archive.writestr(f'{bundle}/Contents/Frameworks/Sparkle.framework/Sparkle', b'fixture')
             def write_symbols(data):
                 with zipfile.ZipFile(root / 'SakuraCord.dSYM.zip', 'w') as archive:
                     archive.writestr('SakuraCord.app.dSYM/Contents/Resources/DWARF/SakuraCord', data)
             write_app()
             write_symbols(executable)
             self.assertEqual(module.validate(root, context)['buildVersion'], '4000000000000099002')
+            write_app(bundle='Other.app')
+            with self.assertRaisesRegex(ValueError, 'unexpected app archive root'):
+                module.validate(root, context)
+            other = 'SakuraCord' if name == 'SakuraCord Debug' else 'SakuraCord Debug'
+            write_app(bundle=f'{other}.app', executable_name=other)
+            with self.assertRaisesRegex(ValueError, 'CFBundleExecutable'):
+                module.validate(root, context)
+            write_app()
             write_symbols(executable[:-1] + b'x')
             with self.assertRaisesRegex(ValueError, 'symbols do not match'):
                 module.validate(root, context)

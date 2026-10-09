@@ -195,17 +195,30 @@ def unwrap(source, destination):
             (destination / name).write_bytes(data)
 
 
+# Pull request builds use the debug identity. Publication runs this validator
+# from the default branch, so it also accepts builds made before that rename.
+APP_NAMES = ('SakuraCord Debug', 'SakuraCord')
+
+
+def app_name(archive):
+    roots = {x.split('/', 1)[0] for x in archive.namelist() if not x.startswith('__MACOSX/')}
+    require(len(roots) == 1, 'unexpected app archive root')
+    root = roots.pop()
+    require(root in {f'{name}.app' for name in APP_NAMES}, 'unexpected app archive root')
+    return root.removesuffix('.app')
+
+
 def validate(directory, context):
     metadata = json.loads((directory / 'build.json').read_text())
     for key in ('schemaVersion', 'id', 'pullRequest', 'headSHA', 'baseSHA', 'builtSHA',
                 'runID', 'runAttempt', 'configuration', 'architecture'):
         require(metadata.get(key) == context[key], f'metadata mismatch: {key}')
     with inspect_zip(directory / 'SakuraCord.app.zip') as app:
-        require(all(x.startswith(('SakuraCord.app/', '__MACOSX/')) or x == 'SakuraCord.app'
-                    for x in app.namelist()), 'unexpected app archive root')
-        info = plistlib.loads(read_regular(app, 'SakuraCord.app/Contents/Info.plist', 1024**2))
+        name = app_name(app)
+        bundle = f'{name}.app'
+        info = plistlib.loads(read_regular(app, f'{bundle}/Contents/Info.plist', 1024**2))
         expected = dict(CFBundleIdentifier='dev.sakuracord.SakuraCord',
-                        CFBundleExecutable='SakuraCord',
+                        CFBundleExecutable=name,
                         CFBundleVersion=str(4000000000000000000 + context['runID'] * 1000 + context['runAttempt']),
                         SakuraCordBuildConfiguration='debug', SakuraCordUpdatesEnabled=True,
                         SakuraCordReleaseTrack='nightly', SUAllowsVersionDowngrades=True,
@@ -226,10 +239,10 @@ def validate(directory, context):
         require(not info.get('SUEnableInstallerConnectionService'), 'forwarded installer connection is unsupported')
         require(re.fullmatch(r'\d+\.\d+\.\d+', info['CFBundleShortVersionString']) is not None, 'invalid version')
         require(info['LSMinimumSystemVersion'] == '27.0', 'unexpected minimum OS')
-        embedded = json.loads(read_regular(app, 'SakuraCord.app/Contents/Resources/pr-build.json', 16384))
+        embedded = json.loads(read_regular(app, f'{bundle}/Contents/Resources/pr-build.json', 16384))
         require(embedded == metadata, 'embedded metadata differs')
         require(any('/Frameworks/Sparkle.framework/' in x for x in app.namelist()), 'Sparkle absent')
-        app_uuids = macho_uuids(read_regular(app, 'SakuraCord.app/Contents/MacOS/SakuraCord', 1024**3))
+        app_uuids = macho_uuids(read_regular(app, f'{bundle}/Contents/MacOS/{name}', 1024**3))
     with inspect_zip(directory / 'SakuraCord.dSYM.zip') as symbols:
         symbol_uuids = macho_uuids(read_regular(
             symbols, 'SakuraCord.app.dSYM/Contents/Resources/DWARF/SakuraCord', 2 * 1024**3))
@@ -242,8 +255,10 @@ def verify_signatures(directory, context):
     # The isolated extraction directory is new and contains no trusted files.
     validate(directory, context)
     with tempfile.TemporaryDirectory(prefix='sakuracord-pr-signatures-') as temporary:
+        with inspect_zip(directory / 'SakuraCord.app.zip') as app:
+            name = app_name(app)
         subprocess.run(['/usr/bin/ditto', '-x', '-k', str(directory / 'SakuraCord.app.zip'), temporary], check=True)
-        bundle = Path(temporary) / 'SakuraCord.app'
+        bundle = Path(temporary) / f'{name}.app'
         subprocess.run(['/usr/bin/codesign', '--verify', '--deep', '--strict', '--verbose=2', str(bundle)], check=True)
         result = subprocess.run(['/usr/bin/codesign', '-d', '--entitlements', ':-', str(bundle)],
                                 check=True, capture_output=True)
