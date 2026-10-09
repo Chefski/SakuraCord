@@ -229,11 +229,9 @@ struct ComposerView: View {
                                     .truncationMode(.tail)
                                     .allowsHitTesting(false)
                                     .accessibilityHidden(true)
-                                    .frame(
-                                        maxWidth: .infinity,
-                                        maxHeight: .infinity,
-                                        alignment: .leading
-                                    )
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                                    // Typing swaps it for text at once; the composer's animations don't fade it.
+                                    .transition(.identity)
                                     // Sent text leaves from this spot; let it go first.
                                     .opacity(holdsPlaceholderForSendTransition ? 0 : 1)
                                     .animation(.easeIn(duration: 0.15), value: holdsPlaceholderForSendTransition)
@@ -1311,8 +1309,9 @@ extension ComposerView {
             action: performLeadingAction
         )
         .contentTransition(.symbolEffect(.replace.magic(fallback: .downUp.byLayer)))
-        .disabled(hasActiveCommand || (!hasComposerActions && !isVoiceMessageActive))
-        .opacity(hasComposerActions || isVoiceMessageActive ? 1 : 0.4)
+        .disabled(hasActiveCommand || (!hasComposerActions && !isVoiceMessageActive) || !voiceMessage.canPreview)
+        .opacity((hasComposerActions || isVoiceMessageActive) && voiceMessage.canPreview ? 1 : 0.4)
+        .animation(.smooth(duration: 0.2), value: voiceMessage.canPreview)
     }
 
     /// Sits where the composer icons were, tinted like the delete action.
@@ -1416,6 +1415,8 @@ extension ComposerView {
         switch voiceMessage.phase {
         case .idle: "Add attachments"
         case .starting, .recording, .finishing: "Delete voice message"
+        case .recorded where !voiceMessage.canPreview:
+            "Waiting for your headset to switch back from its microphone"
         case .recorded:
             model.voiceMessagePlayback.phase(of: voiceMessage.playbackID) == .playing ? "Pause" : "Play voice message"
         }

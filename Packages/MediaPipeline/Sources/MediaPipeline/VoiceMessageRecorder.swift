@@ -159,7 +159,6 @@ public final class VoiceMessageRecorder {
         self.processor = nil
         self.directory = nil
         await stopSession()
-        async let outputSettled: Void = waitForOutputToSettle()
         let fileURL = directory.appending(path: VoiceMessageMetadata.filename)
         let recording = try await Task.detached(priority: .userInitiated) {
             do {
@@ -171,7 +170,6 @@ public final class VoiceMessageRecorder {
                 throw error
             }
         }.value
-        await outputSettled
         voiceMessageLogger.info("Voice message recording finished duration=\(recording.duration, format: .fixed(precision: 2))")
         return recording
     }
@@ -188,8 +186,8 @@ public final class VoiceMessageRecorder {
 
     /// A Bluetooth headset lowers its output rate while its microphone is
     /// open and restores it a moment after capture stops. That switch stops
-    /// any playback in progress, so the preview waits for it.
-    private func waitForOutputToSettle() async {
+    /// any playback in progress, so previews wait for this after `stop`.
+    public func waitForOutputToSettle() async {
         guard let before = outputBeforeCapture else { return }
         outputBeforeCapture = nil
         let start = ContinuousClock.now

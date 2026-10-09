@@ -47,6 +47,9 @@ final class VoiceMessageComposerState {
     /// When `elapsed` was sampled, so presentation can extrapolate between samples.
     private(set) var elapsedSampledAt = Date.now
     private(set) var errorMessage: String?
+    /// False while a headset is still leaving its microphone mode, which
+    /// would cut into a preview.
+    private(set) var canPreview = true
 
     @ObservationIgnored private let recorder = VoiceMessageRecorder()
     @ObservationIgnored private var meterTask: Task<Void, Never>?
@@ -116,6 +119,9 @@ final class VoiceMessageComposerState {
                         reset()
                     } else {
                         phase = .recorded(recording)
+                        canPreview = false
+                        await recorder.waitForOutputToSettle()
+                        if generation == startGeneration { canPreview = true }
                     }
                 } catch {
                     guard generation == startGeneration else { return }
@@ -151,6 +157,7 @@ final class VoiceMessageComposerState {
         meterTask = nil
         startGeneration += 1
         phase = .idle
+        canPreview = true
         liveBars = []
         currentLevel = 0
         peakLevel = 0

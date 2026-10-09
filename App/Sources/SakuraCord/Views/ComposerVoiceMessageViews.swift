@@ -127,7 +127,9 @@ struct ComposerVoiceMessageField: View {
     let state: VoiceMessageComposerState
     let playback: VoiceMessagePlaybackStore
 
-    @State private var isScrubbing = false
+    /// The dragged position, shown directly: a paused player's position
+    /// doesn't redraw the field.
+    @State private var scrubProgress: Double?
 
     var body: some View {
         HStack(spacing: InterfaceScale.metric(10)) {
@@ -142,7 +144,7 @@ struct ComposerVoiceMessageField: View {
             }
             .frame(height: InterfaceScale.metric(24))
             if let recording = state.phase.recording {
-                TimelineView(.animation(paused: playback.phase(of: state.playbackID) != .playing)) { _ in
+                TimelineView(.animation(paused: playback.phase(of: state.playbackID) != .playing || scrubProgress != nil)) { _ in
                     Text(VoiceMessageDurationFormat.string(remaining(of: recording)))
                         .font(.interfaceSystem(size: 13, weight: .medium).monospacedDigit())
                         .foregroundStyle(.secondary)
@@ -191,11 +193,14 @@ struct ComposerVoiceMessageField: View {
         } ?? liveLevels(count: count)
         let shape = VoiceWaveformShape(levels: WaveformLevels(levels), metrics: metrics)
         let progress = recording.map(progress(of:)) ?? 0
+        // Bars are right-aligned; progress and scrubbing span the bars only.
+        let barsWidth = CGFloat(count) * metrics.step - metrics.spacing
+        let barsMinX = size.width - barsWidth
         return ZStack(alignment: .leading) {
             shape.fill(recording == nil ? SakuraCordAccentColor.color : Color.primary.opacity(0.28))
             shape.fill(SakuraCordAccentColor.color)
                 .mask(alignment: .leading) {
-                    Rectangle().frame(width: size.width * progress)
+                    Rectangle().frame(width: max(0, barsMinX + barsWidth * progress))
                 }
         }
         .offset(x: -livePosition(now: now) * metrics.step)
@@ -213,7 +218,10 @@ struct ComposerVoiceMessageField: View {
             )
         }
         .contentShape(Rectangle())
-        .gesture(scrubGesture(width: size.width, recording: recording), isEnabled: recording != nil)
+        .gesture(
+            scrubGesture(minX: barsMinX, width: barsWidth, recording: recording),
+            isEnabled: recording != nil && state.canPreview
+        )
     }
 
     /// How far, in bars, the newest bar has scrolled in since it was completed.
@@ -230,33 +238,31 @@ struct ComposerVoiceMessageField: View {
     }
 
     private func progress(of recording: VoiceMessageRecording) -> CGFloat {
+        if let scrubProgress { return CGFloat(scrubProgress) }
         guard playback.isActive(state.playbackID), recording.duration > 0 else { return 0 }
         return CGFloat(min(max(playback.position(of: state.playbackID) / recording.duration, 0), 1))
     }
 
     private func remaining(of recording: VoiceMessageRecording) -> TimeInterval {
+        if let scrubProgress { return recording.duration * (1 - scrubProgress) }
         guard playback.isActive(state.playbackID) else { return recording.duration }
         return max(0, recording.duration - playback.position(of: state.playbackID))
     }
 
-    private func scrubGesture(width: CGFloat, recording: VoiceMessageRecording?) -> some Gesture {
+    private func scrubGesture(minX: CGFloat, width: CGFloat, recording: VoiceMessageRecording?) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
                 guard let recording else { return }
                 let source = VoiceMessagePlaybackStore.Source.local(recording.fileURL)
-                if !isScrubbing {
-                    isScrubbing = true
+                if scrubProgress == nil {
                     playback.beginScrub(state.playbackID, source: source, duration: recording.duration)
                 }
-                playback.seek(
-                    state.playbackID,
-                    source: source,
-                    duration: recording.duration,
-                    fraction: Double(value.location.x / max(width, 1))
-                )
+                let fraction = min(max(Double((value.location.x - minX) / max(width, 1)), 0), 1)
+                scrubProgress = fraction
+                playback.seek(state.playbackID, source: source, duration: recording.duration, fraction: fraction)
             }
             .onEnded { _ in
-                isScrubbing = false
+                scrubProgress = nil
                 playback.endScrub(state.playbackID)
             }
     }
