@@ -6,7 +6,7 @@ import Testing
 struct VoiceMessageEncodingTests {
     /// Discord accepts Ogg Opus only; Apple's frameworks write Opus solely in
     /// CAF, so the muxer must produce a stream AVAudioFile reads back exactly.
-    @Test(arguments: [0.4, 2.0, 30.0])
+    @Test(arguments: [0.4, 0.99, 2.0, 30.0])
     func recordingRoundTripsThroughOggWithDiscordWaveform(duration: Double) throws {
         let processor = try VoiceMessageCaptureProcessor(spoolURL: Self.spoolURL())
         let sampleCount = Int(duration * OpusCodec.sampleRate)
@@ -46,7 +46,7 @@ struct VoiceMessageEncodingTests {
         #expect(file.fileFormat.channelCount == 1)
         #expect(file.fileFormat.sampleRate == 48_000)
         #expect(abs(Int(file.length) - sampleCount) <= Int(OpusCodec.sampleRate * 0.005))
-        #expect(OggPageWalker.checksumsAreValid(result.data))
+        #expect(OggPageWalker.pagesAreValid(result.data))
     }
 
     /// Microphones capture speech far below a comfortable playback level;
@@ -109,11 +109,17 @@ struct VoiceMessageEncodingTests {
 }
 
 private enum OggPageWalker {
-    static func checksumsAreValid(_ data: Data) -> Bool {
+    static func pagesAreValid(_ data: Data) -> Bool {
         var bytes = [UInt8](data)
         var offset = 0
+        var previousGranule: UInt64 = 0
         while offset < bytes.count {
             guard offset + 27 <= bytes.count, bytes[offset ..< offset + 4].elementsEqual("OggS".utf8) else { return false }
+            let granule = bytes[offset + 6 ..< offset + 14].enumerated().reduce(UInt64(0)) {
+                $0 | UInt64($1.element) << (8 * $1.offset)
+            }
+            guard granule >= previousGranule else { return false }
+            previousGranule = granule
             let segments = Int(bytes[offset + 26])
             let bodyLength = bytes[offset + 27 ..< offset + 27 + segments].reduce(0) { $0 + Int($1) }
             let pageLength = 27 + segments + bodyLength

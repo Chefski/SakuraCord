@@ -13,7 +13,13 @@ import Foundation
 @MainActor
 public final class VoiceMessagePlayer {
     public private(set) var duration: TimeInterval = 0
-    public private(set) var isPlaying = false
+    public private(set) var isPlaying = false {
+        didSet {
+            positionTask?.cancel()
+            positionTask = nil
+            if isPlaying { trackRenderedPosition() }
+        }
+    }
     /// Called once playback reaches the end of the file.
     public var onFinish: (@MainActor () -> Void)?
     /// Called when the output device stopped playback and it couldn't resume.
@@ -39,6 +45,7 @@ public final class VoiceMessagePlayer {
     private var file: AVAudioFile?
     private var usesTimePitch = false
     private var idleTask: Task<Void, Never>?
+    private var positionTask: Task<Void, Never>?
     private var configurationObserver: (any NSObjectProtocol)?
     /// The last position read from the render clock, for resuming after the
     /// output device stops the engine.
@@ -73,6 +80,7 @@ public final class VoiceMessagePlayer {
     isolated deinit {
         if let configurationObserver { NotificationCenter.default.removeObserver(configurationObserver) }
         idleTask?.cancel()
+        positionTask?.cancel()
         engine.mainMixerNode.removeTap(onBus: 0)
         playerNode.stop()
         engine.stop()
@@ -200,6 +208,18 @@ public final class VoiceMessagePlayer {
             try? await Task.sleep(for: Self.idleOutputDuration)
             guard !Task.isCancelled, let self, !self.isPlaying else { return }
             self.engine.pause()
+        }
+    }
+
+    /// Device-change recovery must advance even when no visible waveform
+    /// is querying the render clock. Only the playing engine is sampled.
+    private func trackRenderedPosition() {
+        positionTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(50))
+                guard !Task.isCancelled, let self, self.isPlaying else { return }
+                if self.engine.isRunning { _ = self.currentTime }
+            }
         }
     }
 

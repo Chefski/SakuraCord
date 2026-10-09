@@ -833,7 +833,7 @@ extension NativeTimelineCanvasView {
         rowIndex: Int,
         parent: Any?
     ) -> NSAccessibilityElement {
-        accessibilityElement(
+        let element = accessibilityElement(
             role: .button,
             label: "Voice message, \(VoiceMessageDurationFormat.string(region.duration))",
             help: "Plays or pauses the voice message",
@@ -844,6 +844,27 @@ extension NativeTimelineCanvasView {
             playback.toggle(region.playbackID, source: region.source, duration: region.duration)
             return true
         }
+        element.setAccessibilityCustomActions([
+            NSAccessibilityCustomAction(name: "Change Playback Speed") { [weak self] in
+                guard let playback = self?.model?.voiceMessagePlayback else { return false }
+                playback.cycleSpeed()
+                return true
+            },
+        ] + [-10.0, 10.0].map { offset in
+            NSAccessibilityCustomAction(name: offset < 0 ? "Skip Back 10 Seconds" : "Skip Forward 10 Seconds") { [weak self] in
+                guard let playback = self?.model?.voiceMessagePlayback else { return false }
+                let duration = playback.duration(of: region.playbackID) ?? region.duration
+                guard duration > 0 else { return false }
+                playback.seek(
+                    region.playbackID,
+                    source: region.source,
+                    duration: duration,
+                    fraction: (playback.position(of: region.playbackID) + offset) / duration
+                )
+                return true
+            }
+        })
+        return element
     }
 
     private func appendMessageRichContentAccessibility(

@@ -18,12 +18,13 @@ struct NativeTimelineVoiceMessageRegion {
     let waveformFrame: CGRect
     let timeFrame: CGRect
     let speedFrame: CGRect
+    let messageID: MessageID
     let attachment: Attachment
     let duration: TimeInterval
     let bars: [Float]
     let style: Style
 
-    var playbackID: VoiceMessagePlaybackID { .attachment(attachment.id) }
+    var playbackID: VoiceMessagePlaybackID { .message(messageID) }
 
     var source: VoiceMessagePlaybackStore.Source {
         attachment.url.isFileURL ? .local(attachment.url) : .remote(attachment.url)
@@ -35,7 +36,7 @@ struct NativeTimelineVoiceMessageRegion {
         maximumWidth: CGFloat,
         style: Style
     ) -> Self? {
-        guard message.flags.contains(.voiceMessage),
+        guard (message.forwardedSnapshot?.flags ?? message.flags).contains(.voiceMessage),
               message.attachments.count == 1,
               let attachment = message.attachments.first,
               attachment.mediaKind == .audio
@@ -80,6 +81,7 @@ struct NativeTimelineVoiceMessageRegion {
             waveformFrame: waveformFrame,
             timeFrame: timeFrame,
             speedFrame: speedFrame,
+            messageID: message.id,
             attachment: attachment,
             duration: duration,
             bars: VoiceMessageWaveform.bars(values, count: barCount),
@@ -542,15 +544,16 @@ extension NativeTimelineCanvasView {
         guard let press = voiceMessagePress else { return false }
         voiceMessagePress = nil
         guard let playback = model?.voiceMessagePlayback else { return true }
+        let released = voiceMessagePointerHit(at: point)
         switch press.control {
         case .waveform:
             playback.endScrub(press.region.playbackID)
         case .play:
-            if voiceMessagePointerHit(at: point)?.control == .play {
+            if released?.row == press.row, released?.control == .play {
                 playback.toggle(press.region.playbackID, source: press.region.source, duration: press.region.duration)
             }
         case .speed:
-            if voiceMessagePointerHit(at: point)?.control == .speed { playback.cycleSpeed() }
+            if released?.row == press.row, released?.control == .speed { playback.cycleSpeed() }
         }
         return true
     }
@@ -565,7 +568,7 @@ extension NativeTimelineCanvasView {
 
     func updateVoiceMessageHover(at point: CGPoint?) {
         let hit = point.flatMap { voiceMessagePointerHit(at: $0) }
-        let hovered = hit.map { VoiceMessageHover(attachmentID: $0.region.attachment.id, control: $0.control) }
+        let hovered = hit.map { VoiceMessageHover(messageID: $0.region.messageID, control: $0.control) }
         guard hovered != hoveredVoiceMessage else { return }
         hoveredVoiceMessage = hovered
         if voiceMessageOverlay != nil { refreshVoiceMessageOverlay() }
@@ -582,7 +585,7 @@ extension NativeTimelineCanvasView {
     }
 
     struct VoiceMessageHover: Equatable {
-        let attachmentID: String
+        let messageID: MessageID
         let control: VoiceMessageControl
     }
 
@@ -590,19 +593,17 @@ extension NativeTimelineCanvasView {
 
     @objc func voiceMessagePlaybackDidChange(_ notification: Notification) {
         guard let playback = model?.voiceMessagePlayback, notification.object as AnyObject === playback else { return }
-        let activeAttachmentID = Self.activeAttachmentID(in: playback)
-        if activeAttachmentID != voiceMessageActiveAttachmentID {
-            let previous = voiceMessageActiveAttachmentID
-            voiceMessageActiveAttachmentID = activeAttachmentID
+        let activeMessageID = Self.activeMessageID(in: playback)
+        if activeMessageID != voiceMessageActiveMessageID {
+            let previous = voiceMessageActiveMessageID
+            voiceMessageActiveMessageID = activeMessageID
             // Row bitmaps omit the active player's content; repaint both rows.
-            for attachmentID in [previous, activeAttachmentID].compactMap({ $0 }) {
-                if let row = voiceMessageRow(forAttachmentID: attachmentID) { invalidateVoiceMessageRow(row) }
-            }
-            // Cached rows hold the speed label too.
+            invalidateVoiceMessageBitmaps(messageIDs: Set([previous, activeMessageID].compactMap { $0 }))
         }
         if voiceMessageSpeed != playback.speed {
             voiceMessageSpeed = playback.speed
-            invalidateAllVoiceMessageRows()
+            // Cached rows hold the speed label too, including other conversations.
+            invalidateVoiceMessageBitmaps()
         }
         reconcileVoiceMessageOverlay()
     }
@@ -612,18 +613,20 @@ extension NativeTimelineCanvasView {
         if let index = visibleRowIndex(of: identifier) { setNeedsDisplay(rowFrame(at: index)) }
     }
 
-    private func invalidateAllVoiceMessageRows() {
-        for (index, layout) in layouts.enumerated() where layout.voiceMessageRegion != nil && items.indices.contains(index) {
-            invalidateBitmap(items[index].identifier)
+    private func invalidateVoiceMessageBitmaps(messageIDs: Set<MessageID>? = nil) {
+        // Bitmaps survive navigation, so the current layouts alone cannot
+        // identify every row whose playback presentation has changed.
+        let identifiers = bitmapCache.compactMap { identifier, cached in
+            guard let message = cached.item.messageRow?.message,
+                  (message.forwardedSnapshot?.flags ?? message.flags).contains(.voiceMessage)
+            else { return nil as NativeMessageTimelineItem.Identifier? }
+            if let messageIDs, !messageIDs.contains(message.id) { return nil }
+            return identifier
+        }
+        for identifier in identifiers {
+            invalidateBitmap(identifier)
         }
         setNeedsDisplay(visibleRect)
-    }
-
-    private func voiceMessageRow(forAttachmentID attachmentID: String) -> NativeMessageTimelineItem.Identifier? {
-        for (index, layout) in layouts.enumerated() where layout.voiceMessageRegion?.attachment.id == attachmentID {
-            return items.indices.contains(index) ? items[index].identifier : nil
-        }
-        return nil
     }
 
     /// Searches only the rows on screen, so scrolling stays independent of
@@ -637,16 +640,16 @@ extension NativeTimelineCanvasView {
         return nil
     }
 
-    private static func activeAttachmentID(in playback: VoiceMessagePlaybackStore) -> String? {
-        if case let .attachment(id) = playback.activeID { id } else { nil }
+    private static func activeMessageID(in playback: VoiceMessagePlaybackStore) -> MessageID? {
+        if case let .message(id) = playback.activeID { id } else { nil }
     }
 
     /// Shows the overlay only while the active voice message is on screen.
     func reconcileVoiceMessageOverlay() {
         // A timeline opened mid-playback has not seen a change notification yet.
-        if let playback = model?.voiceMessagePlayback { voiceMessageActiveAttachmentID = Self.activeAttachmentID(in: playback) }
+        if let playback = model?.voiceMessagePlayback { voiceMessageActiveMessageID = Self.activeMessageID(in: playback) }
         guard let playback = model?.voiceMessagePlayback,
-              let attachmentID = voiceMessageActiveAttachmentID,
+              let messageID = voiceMessageActiveMessageID,
               var index = rowIndex(at: max(0, visibleRect.minY))
         else {
             removeVoiceMessageOverlay()
@@ -656,7 +659,7 @@ extension NativeTimelineCanvasView {
         while items.indices.contains(index), layouts.indices.contains(index),
               displayedRowOrigin(at: index) < visibleRect.maxY
         {
-            if let region = layouts[index].voiceMessageRegion, region.attachment.id == attachmentID {
+            if let region = layouts[index].voiceMessageRegion, region.messageID == messageID {
                 found = (region, displayedRowOrigin(at: index))
                 break
             }
@@ -707,7 +710,7 @@ extension NativeTimelineCanvasView {
         let duration = playback.duration(of: id) ?? region.duration
         let position = playback.position(of: id)
         let phase = playback.phase(of: id)
-        let hover = hoveredVoiceMessage?.attachmentID == region.attachment.id ? hoveredVoiceMessage?.control : nil
+        let hover = hoveredVoiceMessage?.messageID == region.messageID ? hoveredVoiceMessage?.control : nil
         return NativeTimelineVoiceMessageDrawState(
             progress: duration > 0 ? CGFloat(min(max(position / duration, 0), 1)) : 0,
             isPlaying: phase == .playing,

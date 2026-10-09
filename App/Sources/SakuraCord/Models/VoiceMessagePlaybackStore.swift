@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import MediaPipeline
 import MessageRendering
@@ -7,7 +6,7 @@ import OSLog
 import SakuraCordModels
 
 nonisolated enum VoiceMessagePlaybackID: Hashable, Sendable {
-    case attachment(String)
+    case message(MessageID)
     case composer(MessageComposerDestination)
 }
 
@@ -29,6 +28,12 @@ final class VoiceMessagePlaybackStore {
         case paused
     }
 
+    private struct CachedPlayer {
+        let source: Source
+        let player: VoiceMessagePlayer
+        let file: PlaybackFile
+    }
+
     /// Discord's cycle order for the speed button.
     static let speeds: [Float] = [1, 1.5, 2, 0.75]
     static let speedDefaultsKey = "VoiceMessagePlaybackSpeed"
@@ -46,19 +51,20 @@ final class VoiceMessagePlaybackStore {
     }
 
     @ObservationIgnored private var player: VoiceMessagePlayer?
+    @ObservationIgnored private var playerFile: PlaybackFile?
     @ObservationIgnored private var activeSource: Source?
     @ObservationIgnored private var activeDuration: TimeInterval?
     @ObservationIgnored private var pausedPosition: TimeInterval = 0
     @ObservationIgnored private var loadTask: Task<Void, Never>?
     /// Players for recently played messages, oldest first, kept
     /// open so returning to one starts at once.
-    @ObservationIgnored private var cachedPlayers: [(source: Source, player: VoiceMessagePlayer)] = []
+    @ObservationIgnored private var cachedPlayers: [CachedPlayer] = []
     @ObservationIgnored private var prefetchedURLs: Set<URL> = []
     /// When play was last pressed, to tell a slow start from a quick one.
     @ObservationIgnored private var playRequestedAt: ContinuousClock.Instant?
     @ObservationIgnored private var resumesAfterScrub = false
-    @ObservationIgnored private var resumePositions: [String: TimeInterval] = [:]
-    @ObservationIgnored private var resumeOrder: [String] = []
+    @ObservationIgnored private var resumePositions: [MessageID: TimeInterval] = [:]
+    @ObservationIgnored private var resumeOrder: [MessageID] = []
     @ObservationIgnored private let defaults: UserDefaults
     /// Re-signs an expiring Discord attachment link before it is fetched.
     @ObservationIgnored var resolveRemoteURL: (@MainActor (URL) async -> URL)?
@@ -81,7 +87,7 @@ final class VoiceMessagePlaybackStore {
     /// The live position of the active item, or a remembered position.
     func position(of id: VoiceMessagePlaybackID) -> TimeInterval {
         if activeID == id { return player?.isPlaying == true ? player?.currentTime ?? pausedPosition : pausedPosition }
-        if case let .attachment(attachmentID) = id { return resumePositions[attachmentID] ?? 0 }
+        if case let .message(messageID) = id { return resumePositions[messageID] ?? 0 }
         return 0
     }
 
@@ -202,8 +208,8 @@ final class VoiceMessagePlaybackStore {
     }
 
     private func position(ofInactive id: VoiceMessagePlaybackID) -> TimeInterval {
-        guard case let .attachment(attachmentID) = id else { return 0 }
-        return resumePositions[attachmentID] ?? 0
+        guard case let .message(messageID) = id else { return 0 }
+        return resumePositions[messageID] ?? 0
     }
 
     private func play() {
@@ -215,18 +221,19 @@ final class VoiceMessagePlaybackStore {
         }
         guard let source = activeSource else { return }
         if let index = cachedPlayers.firstIndex(where: { $0.source == source }) {
-            adopt(cachedPlayers.remove(at: index).player, for: id)
+            let cached = cachedPlayers.remove(at: index)
+            adopt(cached.player, file: cached.file, for: id)
             return
         }
         phase = .loading
         notify()
         loadTask = Task { [weak self] in
             do {
-                let fileURL = try await Self.playableFile(for: source, resolve: self?.resolveRemoteURL)
+                let file = try await Self.playableFile(for: source, resolve: self?.resolveRemoteURL)
                 try Task.checkCancellation()
                 guard let self, self.activeID == id else { return }
                 self.loadTask = nil
-                self.adopt(try VoiceMessagePlayer(fileURL: fileURL), for: id)
+                self.adopt(try VoiceMessagePlayer(fileURL: file.url), file: file, for: id)
             } catch is CancellationError {
             } catch {
                 guard let self, self.activeID == id else { return }
@@ -239,11 +246,12 @@ final class VoiceMessagePlaybackStore {
         }
     }
 
-    private func adopt(_ player: VoiceMessagePlayer, for id: VoiceMessagePlaybackID) {
+    private func adopt(_ player: VoiceMessagePlayer, file: PlaybackFile, for id: VoiceMessagePlaybackID) {
         player.rate = speed
         player.onFinish = { [weak self] in self?.finish(id) }
         player.onInterruption = { [weak self] in self?.interrupted(id) }
         self.player = player
+        playerFile = file
         activeDuration = player.duration
         if pausedPosition > 0 { player.seek(to: pausedPosition) }
         start(player)
@@ -279,9 +287,10 @@ final class VoiceMessagePlaybackStore {
 
     private func finish(_ id: VoiceMessagePlaybackID) {
         guard activeID == id else { return }
-        if case let .attachment(attachmentID) = id { forgetResumePosition(attachmentID) }
-        if let player, let activeSource { cache(player, for: activeSource) }
+        if case let .message(messageID) = id { forgetResumePosition(messageID) }
+        if let player, let playerFile, let activeSource { cache(player, file: playerFile, for: activeSource) }
         player = nil
+        playerFile = nil
         activeID = nil
         activeSource = nil
         activeDuration = nil
@@ -296,13 +305,14 @@ final class VoiceMessagePlaybackStore {
         loadTask = nil
         let position = player?.isPlaying == true ? player?.currentTime ?? pausedPosition : pausedPosition
         let duration = player?.duration ?? activeDuration ?? 0
-        if let player, let activeSource { cache(player, for: activeSource) }
+        if let player, let playerFile, let activeSource { cache(player, file: playerFile, for: activeSource) }
         player = nil
-        if case let .attachment(attachmentID) = id {
+        playerFile = nil
+        if case let .message(messageID) = id {
             if rememberingPosition, position > 0.5, duration > 0, position < duration * 0.95 {
-                rememberResumePosition(position, for: attachmentID)
+                rememberResumePosition(position, for: messageID)
             } else {
-                forgetResumePosition(attachmentID)
+                forgetResumePosition(messageID)
             }
         }
         activeID = nil
@@ -315,7 +325,7 @@ final class VoiceMessagePlaybackStore {
 
     /// Pauses a player that is no longer active and keeps it for a remote
     /// message; a composer preview's file is about to go away.
-    private func cache(_ player: VoiceMessagePlayer, for source: Source) {
+    private func cache(_ player: VoiceMessagePlayer, file: PlaybackFile, for source: Source) {
         player.onFinish = nil
         player.onInterruption = nil
         guard case .remote = source else {
@@ -324,24 +334,24 @@ final class VoiceMessagePlaybackStore {
         }
         player.pause()
         cachedPlayers.removeAll { $0.source == source }
-        cachedPlayers.append((source, player))
+        cachedPlayers.append(CachedPlayer(source: source, player: player, file: file))
         if cachedPlayers.count > Self.maximumCachedPlayers {
             cachedPlayers.removeFirst().player.stop()
         }
     }
 
-    private func rememberResumePosition(_ position: TimeInterval, for attachmentID: String) {
-        resumePositions[attachmentID] = position
-        resumeOrder.removeAll { $0 == attachmentID }
-        resumeOrder.append(attachmentID)
+    private func rememberResumePosition(_ position: TimeInterval, for messageID: MessageID) {
+        resumePositions[messageID] = position
+        resumeOrder.removeAll { $0 == messageID }
+        resumeOrder.append(messageID)
         while resumeOrder.count > Self.maximumResumePositions {
             resumePositions[resumeOrder.removeFirst()] = nil
         }
     }
 
-    private func forgetResumePosition(_ attachmentID: String) {
-        resumePositions[attachmentID] = nil
-        resumeOrder.removeAll { $0 == attachmentID }
+    private func forgetResumePosition(_ messageID: MessageID) {
+        resumePositions[messageID] = nil
+        resumeOrder.removeAll { $0 == messageID }
     }
 
     /// AVAudioFile needs a file, so remote audio plays from its file in the
@@ -349,23 +359,39 @@ final class VoiceMessagePlaybackStore {
     private static func playableFile(
         for source: Source,
         resolve: (@MainActor (URL) async -> URL)?
-    ) async throws -> URL {
+    ) async throws -> PlaybackFile {
         switch source {
         case let .local(url):
-            return url
+            return PlaybackFile(url: url)
         case let .remote(url):
             let resolved = await resolve?(url) ?? url
-            if let file = try await SharedMediaDataLoader.shared.cachedFile(for: resolved) { return file }
+            if let file = try? await SharedMediaDataLoader.shared.cachedFile(for: resolved) { return PlaybackFile(url: file) }
             // Without a disk cache, a private copy stands in.
             let data = try await SharedMediaDataLoader.shared.data(for: resolved)
             try Task.checkCancellation()
             let directory = FileManager.default.temporaryDirectory
                 .appending(path: "SakuraCordVoicePlayback", directoryHint: .isDirectory)
-            let digest = SHA256.hash(data: Data(url.path.utf8)).map { String(format: "%02x", $0) }.joined()
-            let fileURL = directory.appending(path: "\(digest).ogg")
+            let fileURL = directory.appending(path: "\(UUID().uuidString).ogg")
+            let file = PlaybackFile(url: fileURL, removesOnRelease: true)
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             try data.write(to: fileURL, options: .atomic)
-            return fileURL
+            return file
         }
+    }
+}
+
+/// A fallback copy lives only as long as its active or cached player.
+/// Dropped loads and failed player initialization release it too.
+private final class PlaybackFile {
+    let url: URL
+    private let removesOnRelease: Bool
+
+    init(url: URL, removesOnRelease: Bool = false) {
+        self.url = url
+        self.removesOnRelease = removesOnRelease
+    }
+
+    deinit {
+        if removesOnRelease { try? FileManager.default.removeItem(at: url) }
     }
 }

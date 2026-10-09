@@ -29,6 +29,23 @@ struct ComposerSendSlot: View {
     @State private var press: (mode: Mode, began: ContinuousClock.Instant)?
 
     var body: some View {
+        Group {
+            if mode == .send || mode == .sendVoice {
+                Button(action: send) { symbolView }
+                    .buttonStyle(.plain)
+            } else {
+                symbolView
+                    .gesture(pressGesture, isEnabled: isEnabled)
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAction { activateWithoutHold() }
+            }
+        }
+        .onModalHover { isHovering = appearance == .legacy && $0 }
+        .help(help)
+        .accessibilityLabel(help)
+    }
+
+    private var symbolView: some View {
         Image(systemName: symbol)
             .font(.interfaceSystem(size: 21, weight: .medium))
             .foregroundStyle(foreground)
@@ -48,13 +65,6 @@ struct ComposerSendSlot: View {
             }
             .background(hoverColor, in: shape)
             .contentShape(shape)
-            .gesture(pressGesture, isEnabled: isEnabled)
-            .onModalHover { isHovering = appearance == .legacy && $0 }
-            .help(help)
-            .accessibilityElement()
-            .accessibilityLabel(help)
-            .accessibilityAddTraits(.isButton)
-            .accessibilityAction { activateWithoutHold() }
     }
 
     private var pressGesture: some Gesture {
@@ -69,7 +79,7 @@ struct ComposerSendSlot: View {
                 self.press = nil
                 switch press.mode {
                 case .send, .sendVoice:
-                    send()
+                    break
                 case .stop:
                     stopRecording()
                 case .voice:

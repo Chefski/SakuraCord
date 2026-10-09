@@ -57,7 +57,7 @@ extension AppModel {
     /// Sends the composer's finished recording, replying if a reply is active.
     func submitVoiceMessage(from destination: MessageComposerDestination) async -> ComposerSubmissionResult {
         let state = voiceMessageComposer(for: destination)
-        guard state.phase.recording != nil, canSendVoiceMessages(in: destination) else { return .rejected }
+        guard let submittedRecording = state.phase.recording, canSendVoiceMessages(in: destination) else { return .rejected }
         let channelID: ChannelID
         let replyTo: Message?
         let mentionsRepliedUser: Bool
@@ -65,19 +65,20 @@ extension AppModel {
         case .channel:
             guard let selected = selectedChannelID else { return .rejected }
             guard allowSlowmodeSubmission(in: selected), allowOutgoingQueueSubmission() else { return .rejected }
+            replyTo = replyingTo
+            mentionsRepliedUser = replyMentionsAuthor
             guard await prepareChannelMessageSubmission(channelID: selected, account: accountSession()) else {
                 return .rejected
             }
             channelID = selected
-            replyTo = replyingTo
-            mentionsRepliedUser = replyMentionsAuthor
         case .thread:
             guard let thread = openThread, allowOnboardingSubmission(in: thread.id) else { return .rejected }
             channelID = thread.id
             replyTo = threadReplyingTo
             mentionsRepliedUser = threadReplyMentionsAuthor
         }
-        guard allowSlowmodeSubmission(in: channelID), allowOutgoingQueueSubmission(),
+        guard state.phase.recording == submittedRecording, canSendVoiceMessages(in: destination),
+              allowSlowmodeSubmission(in: channelID), allowOutgoingQueueSubmission(),
               let recording = state.takeRecording(playback: voiceMessagePlayback)
         else { return .rejected }
         let outgoing = SendMessageDraft(

@@ -181,7 +181,9 @@ public final class VoiceMessageRecorder {
         self.directory = nil
         processor.discard()
         if let directory { try? FileManager.default.removeItem(at: directory) }
-        Task { await stopSession() }
+        // Enqueue teardown before returning so a new start cannot be followed
+        // by this recording's delayed stop on the shared capture session.
+        enqueueSessionStop()
     }
 
     /// A Bluetooth headset lowers its output rate while its microphone is
@@ -205,11 +207,15 @@ public final class VoiceMessageRecorder {
 
     private func stopSession() async {
         await withCheckedContinuation { continuation in
-            queue.async { [session] in
-                session.stopRunning()
-                session.outputs.forEach { ($0 as? AVCaptureAudioDataOutput)?.setSampleBufferDelegate(nil, queue: nil) }
-                continuation.resume()
-            }
+            enqueueSessionStop { continuation.resume() }
+        }
+    }
+
+    private func enqueueSessionStop(completion: @escaping @Sendable () -> Void = {}) {
+        queue.async { [session] in
+            session.stopRunning()
+            session.outputs.forEach { ($0 as? AVCaptureAudioDataOutput)?.setSampleBufferDelegate(nil, queue: nil) }
+            completion()
         }
     }
 }
@@ -469,9 +475,11 @@ final class VoiceMessageCaptureProcessor: NSObject,
             }
             pending.removeFirst(offset)
         }
-        // Pad the final partial frame, then push the encoder's delay out.
+        // Flush the encoder's delay using the partial frame's padding first.
+        // An unnecessary extra packet can flush a page beyond the EOS granule.
+        let padding = pending.isEmpty ? 0 : frame - pending.count
         if !pending.isEmpty { try encode(pending[...], into: &writer) }
-        try encode([], into: &writer)
+        if padding < Int(Self.preSkip) { try encode([], into: &writer) }
         return Result(
             data: writer.finish(sampleCount: sampleCount),
             duration: Double(sampleCount) / OpusCodec.sampleRate,

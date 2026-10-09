@@ -530,7 +530,7 @@ extension NativeTimelineRowLayout {
         }
 
         private mutating func appendAttachments() {
-            if !usesComponentsV2, message.flags.contains(.voiceMessage) {
+            if !usesComponentsV2, (message.forwardedSnapshot?.flags ?? message.flags).contains(.voiceMessage) {
                 let style: NativeTimelineVoiceMessageRegion.Style =
                     usesBubbles ? (isOutgoingBubble ? .outgoingBubble : .incomingBubble) : .plain
                 let voiceY = verticalOffset + (hasRichContent ? InterfaceScale.metric(8) : 0)
