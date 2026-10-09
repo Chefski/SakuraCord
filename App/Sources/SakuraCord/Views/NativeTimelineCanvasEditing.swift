@@ -993,6 +993,7 @@ extension NativeTimelineCanvasView {
 #if DEBUG
     func reconcileVisibleReactionPreviewLoadsForTesting() {
         reconcileVisibleReactionPreviewLoads()
+        prefetchVisibleVoiceMessages()
     }
 
     func hasVisibleReactionPreviewLoadForTesting(

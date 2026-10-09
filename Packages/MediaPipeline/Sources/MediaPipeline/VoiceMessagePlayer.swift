@@ -78,6 +78,15 @@ public final class VoiceMessagePlayer {
         engine.stop()
     }
 
+    /// Whether audio has begun reaching the output since `play`.
+    public var isRendering: Bool {
+        guard isPlaying,
+              let nodeTime = playerNode.lastRenderTime,
+              let playerTime = playerNode.playerTime(forNodeTime: nodeTime)
+        else { return false }
+        return playerTime.sampleTime > 0
+    }
+
     public var currentTime: TimeInterval {
         guard isPlaying,
               let file,
@@ -88,14 +97,6 @@ public final class VoiceMessagePlayer {
         let time = min(duration, Double(frame) / file.processingFormat.sampleRate)
         lastRenderedTime = time
         return time
-    }
-
-    /// Starts the output ahead of `play`, so it begins without waiting for
-    /// the device. It stops again if playback doesn't follow.
-    public func prepareOutput() throws {
-        guard !isPlaying, !engine.isRunning else { return }
-        try engine.start()
-        pauseOutputWhenIdle()
     }
 
     public func play() throws {

@@ -170,6 +170,10 @@ enum NativeTimelineVoiceMessagePainter {
         drawSpeed(region, state: state, palette: palette)
     }
 
+    static func spinnerColor(for style: NativeTimelineVoiceMessageRegion.Style) -> NSColor {
+        Palette(style: style).glyph
+    }
+
     private struct Palette {
         let buttonFill: NSColor
         let glyph: NSColor
@@ -219,14 +223,9 @@ enum NativeTimelineVoiceMessagePainter {
         context.setFillColor(palette.glyph.cgColor)
         let unit = frame.width / 32
         if state.isLoading {
-            // A quarter-turn arc spinning with the animation clock.
-            let start = CGFloat(state.clock.truncatingRemainder(dividingBy: 1)) * 2 * .pi
-            context.setStrokeColor(palette.glyph.cgColor)
-            context.setLineWidth(2.2 * unit)
-            context.setLineCap(.round)
-            context.addArc(center: CGPoint(x: frame.midX, y: frame.midY), radius: 7 * unit,
-                           startAngle: start, endAngle: start + .pi * 1.4, clockwise: false)
-            context.strokePath()
+            // The overlay's spinner layer turns on the render server, so it
+            // keeps moving while the main thread is busy starting playback.
+            return
         } else if state.isPlaying {
             for offset in [-4.0, 4.0] {
                 let bar = CGRect(x: frame.midX + offset * unit - 1.75 * unit, y: frame.midY - 6.5 * unit,
@@ -364,12 +363,20 @@ private enum VoiceMessageLabelCache {
 /// animates without re-rasterizing timeline rows.
 final class NativeTimelineVoiceMessageOverlay: NSView {
     var region: NativeTimelineVoiceMessageRegion {
-        didSet { needsDisplay = true }
+        didSet {
+            needsDisplay = true
+            layoutSpinner()
+        }
     }
 
     var state: NativeTimelineVoiceMessageDrawState {
-        didSet { needsDisplay = true }
+        didSet {
+            needsDisplay = true
+            if state.isLoading != oldValue.isLoading { updateSpinner() }
+        }
     }
+
+    private let spinner = CAShapeLayer()
 
     /// Supplies the live state for each animation frame.
     var refresh: (() -> NativeTimelineVoiceMessageDrawState?)?
@@ -385,6 +392,53 @@ final class NativeTimelineVoiceMessageOverlay: NSView {
         super.init(frame: region.frame)
         wantsLayer = true
         layerContentsRedrawPolicy = .onSetNeedsDisplay
+        spinner.fillColor = nil
+        spinner.lineCap = .round
+        spinner.strokeEnd = 0.7
+        layer?.addSublayer(spinner)
+        layoutSpinner()
+        updateSpinner()
+    }
+
+    private func layoutSpinner() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+        let button = region.playFrame.offsetBy(dx: -region.frame.minX, dy: -region.frame.minY)
+        let unit = button.width / 32
+        spinner.frame = button
+        spinner.path = CGPath(
+            ellipseIn: CGRect(x: button.width / 2 - 8 * unit, y: button.height / 2 - 8 * unit, width: 16 * unit, height: 16 * unit),
+            transform: nil
+        )
+        spinner.lineWidth = 2.4 * unit
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            spinner.strokeColor = NativeTimelineVoiceMessagePainter.spinnerColor(for: region.style).cgColor
+        }
+    }
+
+    private func updateSpinner() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+        spinner.isHidden = !state.isLoading
+        guard state.isLoading else {
+            spinner.removeAnimation(forKey: "spin")
+            return
+        }
+        guard spinner.animation(forKey: "spin") == nil else { return }
+        let spin = CABasicAnimation(keyPath: "transform.rotation.z")
+        spin.fromValue = 0
+        spin.toValue = 2 * Double.pi
+        spin.duration = 0.8
+        spin.repeatCount = .infinity
+        spin.isRemovedOnCompletion = false
+        spinner.add(spin, forKey: "spin")
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        layoutSpinner()
     }
 
     @available(*, unavailable)
@@ -511,12 +565,17 @@ extension NativeTimelineCanvasView {
         let hit = point.flatMap { voiceMessagePointerHit(at: $0) }
         let hovered = hit.map { VoiceMessageHover(attachmentID: $0.region.attachment.id, control: $0.control) }
         guard hovered != hoveredVoiceMessage else { return }
-        let previousAttachmentID = hoveredVoiceMessage?.attachmentID
         hoveredVoiceMessage = hovered
         if voiceMessageOverlay != nil { refreshVoiceMessageOverlay() }
-        // Like Discord, hovering a player prepares its audio before it is played.
-        if let hit, hit.region.attachment.id != previousAttachmentID {
-            model?.voiceMessagePlayback.prepare(source: hit.region.source)
+    }
+
+    /// Fetches on-screen voice messages into the media cache, as images are.
+    func prefetchVisibleVoiceMessages() {
+        let viewport = enclosingScrollView?.documentVisibleRect ?? visibleRect
+        guard let playback = model?.voiceMessagePlayback, var index = rowIndex(at: max(0, viewport.minY)) else { return }
+        while items.indices.contains(index), layouts.indices.contains(index), displayedRowOrigin(at: index) < viewport.maxY {
+            if case let .remote(url) = layouts[index].voiceMessageRegion?.source { playback.prefetch(url) }
+            index += 1
         }
     }
 
@@ -650,7 +709,7 @@ extension NativeTimelineCanvasView {
         return NativeTimelineVoiceMessageDrawState(
             progress: duration > 0 ? CGFloat(min(max(position / duration, 0), 1)) : 0,
             isPlaying: phase == .playing,
-            isLoading: phase == .loading,
+            isLoading: playback.isLoading(id),
             displayedTime: phase == nil ? region.duration : max(0, duration - position),
             speedLabel: playback.speedLabel,
             level: CGFloat(playback.outputLevel),
