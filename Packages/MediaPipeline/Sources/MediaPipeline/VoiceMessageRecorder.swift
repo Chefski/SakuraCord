@@ -113,6 +113,9 @@ public final class VoiceMessageRecorder {
 
     public var hasReachedMaximumDuration: Bool { elapsed >= Self.maximumDuration }
 
+    /// Capture can't continue once a frame failed to encode; stopping reports the error.
+    public var hasFailed: Bool { processor?.hasFailed ?? false }
+
     /// Live waveform bars completed since the previous call, each the peak
     /// level over `liveBarInterval`, plus the level of the bar in progress.
     public func drainLevels() -> (completed: [Float], current: Float) {
@@ -186,6 +189,10 @@ final class VoiceMessageCaptureProcessor: NSObject,
 
     var elapsed: TimeInterval {
         lock.withLock { Double(capturedSamples) / OpusCodec.sampleRate }
+    }
+
+    var hasFailed: Bool {
+        lock.withLock { encodingFailed }
     }
 
     func drainLevels() -> (completed: [Float], current: Float) {

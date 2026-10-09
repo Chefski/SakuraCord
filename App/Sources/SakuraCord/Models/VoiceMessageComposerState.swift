@@ -167,7 +167,7 @@ final class VoiceMessageComposerState {
                     }
                 }
                 self.currentLevel = levels.current
-                if self.recorder.hasReachedMaximumDuration {
+                if self.recorder.hasReachedMaximumDuration || self.recorder.hasFailed {
                     self.stop()
                     return
                 }
