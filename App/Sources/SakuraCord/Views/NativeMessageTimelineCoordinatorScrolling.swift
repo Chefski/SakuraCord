@@ -435,6 +435,7 @@ extension NativeMessageTimelineCoordinator {
                 frame: geometry.frame,
                 bounds: geometry.bounds
             )
+            canvas.prefetchVisibleVoiceMessages()
         }
 
         @discardableResult

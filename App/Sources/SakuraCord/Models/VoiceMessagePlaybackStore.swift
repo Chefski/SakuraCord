@@ -229,11 +229,11 @@ final class VoiceMessagePlaybackStore {
         notify()
         loadTask = Task { [weak self] in
             do {
-                let file = try await Self.playableFile(for: source, resolve: self?.resolveRemoteURL)
+                let prepared = try await Self.preparePlayer(for: source, resolve: self?.resolveRemoteURL)
                 try Task.checkCancellation()
                 guard let self, self.activeID == id else { return }
                 self.loadTask = nil
-                self.adopt(try VoiceMessagePlayer(fileURL: file.url), file: file, for: id)
+                self.adopt(prepared.player, file: prepared.file, for: id)
             } catch is CancellationError {
             } catch {
                 guard let self, self.activeID == id else { return }
@@ -356,17 +356,24 @@ final class VoiceMessagePlaybackStore {
 
     /// AVAudioFile needs a file, so remote audio plays from its file in the
     /// shared media cache, under the same budget and Clear Cache as images.
-    private static func playableFile(
+    private static func preparePlayer(
         for source: Source,
         resolve: (@MainActor (URL) async -> URL)?
-    ) async throws -> PlaybackFile {
+    ) async throws -> (player: VoiceMessagePlayer, file: PlaybackFile) {
         switch source {
         case let .local(url):
-            return PlaybackFile(url: url)
+            return (try VoiceMessagePlayer(fileURL: url), PlaybackFile(url: url))
         case let .remote(url):
             let resolved = await resolve?(url) ?? url
-            if let file = try? await SharedMediaDataLoader.shared.cachedFile(for: resolved) { return PlaybackFile(url: file) }
-            // Without a disk cache, a private copy stands in.
+            if let file = try? await SharedMediaDataLoader.shared.cachedFile(for: resolved) {
+                try Task.checkCancellation()
+                // Cache eviction can race the open. Once open, AVAudioFile
+                // retains its reader; otherwise use an owned copy below.
+                if let player = try? VoiceMessagePlayer(fileURL: file) {
+                    return (player, PlaybackFile(url: file))
+                }
+            }
+            // Without a readable cached file, a private copy stands in.
             let data = try await SharedMediaDataLoader.shared.data(for: resolved)
             try Task.checkCancellation()
             let directory = FileManager.default.temporaryDirectory
@@ -375,7 +382,7 @@ final class VoiceMessagePlaybackStore {
             let file = PlaybackFile(url: fileURL, removesOnRelease: true)
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             try data.write(to: fileURL, options: .atomic)
-            return file
+            return (try VoiceMessagePlayer(fileURL: fileURL), file)
         }
     }
 }

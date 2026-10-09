@@ -140,8 +140,7 @@ public final class VoiceMessagePlayer {
         do {
             try playerNode.playAudio(at: nil)
         } catch {
-            isPlaying = false
-            pauseOutputWhenIdle()
+            interrupt(at: pausedTime)
         }
     }
 
@@ -176,8 +175,7 @@ public final class VoiceMessagePlayer {
         do {
             try playerNode.playAudio(at: nil)
         } catch {
-            isPlaying = false
-            pauseOutputWhenIdle()
+            interrupt(at: pausedTime)
         }
     }
 
@@ -195,11 +193,16 @@ public final class VoiceMessagePlayer {
             schedule(from: resumeAt)
             try playerNode.playAudio(at: nil)
         } catch {
-            isPlaying = false
-            pausedTime = resumeAt
-            meter.reset()
-            onInterruption?()
+            interrupt(at: resumeAt)
         }
+    }
+
+    private func interrupt(at time: TimeInterval) {
+        isPlaying = false
+        pausedTime = time
+        meter.reset()
+        pauseOutputWhenIdle()
+        onInterruption?()
     }
 
     private func pauseOutputWhenIdle() {

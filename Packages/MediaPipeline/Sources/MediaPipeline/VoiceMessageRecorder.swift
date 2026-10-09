@@ -69,6 +69,7 @@ public final class VoiceMessageRecorder {
     private let session = AVCaptureSession()
     private let queue = DispatchQueue(label: "app.sakuracord.voice-message.capture", qos: .userInitiated)
     private var processor: VoiceMessageCaptureProcessor?
+    private var captureStartedAt: ContinuousClock.Instant?
     /// The recording's private directory, holding the capture spool and,
     /// once stopped, the encoded message.
     private var directory: URL?
@@ -132,6 +133,7 @@ public final class VoiceMessageRecorder {
         }
         self.processor = processor
         self.directory = directory
+        captureStartedAt = .now
         queue.async { [session] in session.startRunning() }
         voiceMessageLogger.info("Voice message recording started")
     }
@@ -139,7 +141,12 @@ public final class VoiceMessageRecorder {
     /// Captured duration so far.
     public var elapsed: TimeInterval { processor?.elapsed ?? 0 }
 
-    public var hasReachedMaximumDuration: Bool { elapsed >= Self.maximumDuration }
+    public var hasReachedMaximumDuration: Bool {
+        if elapsed >= Self.maximumDuration { return true }
+        // Muted or stalled devices may never advance the captured sample count.
+        guard let captureStartedAt else { return false }
+        return ContinuousClock.now - captureStartedAt >= .seconds(Self.maximumDuration)
+    }
 
     /// Capture can't continue once a frame failed to encode; stopping reports the error.
     public var hasFailed: Bool { processor?.hasFailed ?? false }
@@ -158,6 +165,7 @@ public final class VoiceMessageRecorder {
         guard let processor, let directory else { throw VoiceMessageRecorderError.notRecording }
         self.processor = nil
         self.directory = nil
+        captureStartedAt = nil
         await stopSession()
         let fileURL = directory.appending(path: VoiceMessageMetadata.filename)
         let recording = try await Task.detached(priority: .userInitiated) {
@@ -179,6 +187,7 @@ public final class VoiceMessageRecorder {
         let directory = directory
         self.processor = nil
         self.directory = nil
+        captureStartedAt = nil
         processor.discard()
         if let directory { try? FileManager.default.removeItem(at: directory) }
         // Enqueue teardown before returning so a new start cannot be followed

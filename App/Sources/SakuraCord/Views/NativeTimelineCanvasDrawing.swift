@@ -434,7 +434,6 @@ extension NativeTimelineCanvasView {
         }
         refreshVisibleMediaPins()
         reconcileVisibleReactionPreviewLoads()
-        prefetchVisibleVoiceMessages()
         restoreEditingRowAfterScroll()
         reconcileAnimatedMedia()
         reconcileActivityIndicators()
@@ -761,7 +760,6 @@ extension NativeTimelineCanvasView {
         drawSuperclassContent(in: dirtyRect)
         let visibleMediaKeys = refreshVisibleMediaPins()
         reconcileVisibleReactionPreviewLoads()
-        prefetchVisibleVoiceMessages()
         // This view is transparent and layer-backed. Core Graphics does not
         // guarantee that invalidating a region clears its previous backing
         // pixels before draw(_:). Clear first so bottom-origin changes cannot
