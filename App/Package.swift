@@ -4,7 +4,7 @@ import Foundation
 
 let sparkleDependency: Package.Dependency = ProcessInfo.processInfo.environment["SAKURACORD_SPARKLE_PACKAGE_PATH"]
     .map { .package(path: $0) }
-    ?? .package(url: "https://github.com/SakuraCordApp/Sparkle", exact: "2.9.6-sakuracord.3")
+    ?? .package(url: "https://github.com/SakuraCordApp/Sparkle", exact: "2.10.0-sakuracord.1")
 
 let package = Package(
     name: "SakuraCordApp",

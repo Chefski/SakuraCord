@@ -1,9 +1,10 @@
-// swift-tools-version: 6.2
+// swift-tools-version: 6.4
 
 import PackageDescription
 
 let package = Package(
     name: "DaveKit",
+    platforms: [.macOS("27.0")],
     products: [
         .library(
             name: "DaveKit",
@@ -11,8 +12,8 @@ let package = Package(
         )
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-log", from: "1.9.0"),
-        .package(url: "https://github.com/krzyzanowskim/OpenSSL-Package.git", from: "3.6.2000")
+        .package(url: "https://github.com/apple/swift-log", from: "1.16.1"),
+        .package(url: "https://github.com/krzyzanowskim/OpenSSL-Package.git", from: "3.6.5000")
     ],
     targets: [
         .target(
@@ -110,9 +111,14 @@ let package = Package(
 
         .target(name: "CJson"),
 
+        .target(
+            name: "DaveKitTestSupport",
+            dependencies: ["CLibdave"],
+            path: "Tests/DaveKitTestSupport"
+        ),
         .testTarget(
             name: "DaveKitTests",
-            dependencies: ["DaveKit"],
+            dependencies: ["DaveKit", "DaveKitTestSupport"],
             swiftSettings: [.interoperabilityMode(.Cxx)],
             linkerSettings: [
                 .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@loader_path/../../.."])

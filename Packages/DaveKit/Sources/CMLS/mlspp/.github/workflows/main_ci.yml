@@ -34,6 +34,10 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
     - uses: dorny/paths-filter@v3
       id: filter_version
       with:
@@ -62,7 +66,7 @@ jobs:
     - name: Run clang-format style check for C/C++ programs
       uses: jidicula/clang-format-action@v4.11.0
       with:
-        clang-format-version: 16
+        clang-format-version: 19
         include-regex: '^\./(src|include|test|cmd|lib)/.*\.(cpp|h)$'
         fallback-style: 'Mozilla'
 

@@ -354,7 +354,7 @@ private struct MediaViewerTransitionImage: View {
             ZStack {
                 Image(nsImage: source.image)
                     .resizable()
-                    .aspectRatio(contentMode: .fit)
+                    .scaledToFit()
 
                 if presentsRemoteImage {
                     AnimatedRemoteImage(
