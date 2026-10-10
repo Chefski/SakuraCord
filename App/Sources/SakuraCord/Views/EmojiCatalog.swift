@@ -343,12 +343,12 @@ enum NativeEmojiPickerIndex {
     }
 
     private static let emojiByValue = Dictionary(
-        NativeEmojiCatalog.items.map { ($0.value.replacingOccurrences(of: "\u{FE0F}", with: ""), $0) },
+        NativeEmojiCatalog.items.map { (EmojiFrecencyKeys.normalized($0.value), $0) },
         uniquingKeysWith: { first, _ in first }
     )
 
     static func emoji(forValue value: String) -> NativeEmoji? {
-        emojiByValue[value.replacingOccurrences(of: "\u{FE0F}", with: "")]
+        emojiByValue[EmojiFrecencyKeys.normalized(value)]
     }
 }
 
@@ -479,9 +479,7 @@ enum NativeEmojiAutocompleteCatalog {
 
     static func search(_ query: String) -> [NativeEmojiAutocompleteResult] {
         let normalized = EmojiSearchMatcher.autocompleteNormalized(query)
-        let tone =
-            NativeEmojiSkinTone(rawValue: PRBuildProfile.defaults.string(forKey: "emojiSkinTone") ?? "")
-                ?? .standard
+        let tone = NativeEmojiSkinTone.preferred
         var results: [NativeEmojiAutocompleteResult] = []
         results.reserveCapacity(normalized.isEmpty ? searchEntries.count : 64)
         for entry in searchEntries

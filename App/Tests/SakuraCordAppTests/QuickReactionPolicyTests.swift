@@ -13,7 +13,9 @@ struct QuickReactionPolicyTests {
         guildID: GuildID?, hasNitro: Bool = false, canUseExternalEmojis: Bool = true,
         skinTone: NativeEmojiSkinTone = .standard
     ) -> QuickReactionPolicy.Context {
-        .init(guildID: guildID, hasNitro: hasNitro, canUseExternalEmojis: canUseExternalEmojis, skinTone: skinTone)
+        .init(
+            guildID: guildID, premiumType: hasNitro ? 2 : 0, canUseExternalEmojis: canUseExternalEmojis, skinTone: skinTone
+        )
     }
 
     @Test func emptyHistoryUsesDiscordsSeededReactionRanking() {

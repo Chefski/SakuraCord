@@ -2,7 +2,7 @@ import Foundation
 import SakuraCordModels
 
 /// One emoji in the message hover toolbar's quick-reaction section.
-nonisolated struct QuickReaction: Identifiable, Equatable, Sendable {
+nonisolated struct QuickReaction: Identifiable, Sendable {
     /// Tone-folded Unicode key or custom emoji ID.
     let id: String
     /// The reaction token for the shared toggle. An applied reaction keeps the
@@ -14,18 +14,16 @@ nonisolated struct QuickReaction: Identifiable, Equatable, Sendable {
 }
 
 /// Discord's message hover bar quick reactions: the reaction frecency list,
-/// resolved and tone-folded, minus emoji that are filtered or locked for a
-/// reaction in this channel. Fewer than three usable entries are topped up
-/// with a fixed fallback set before taking the first three.
+/// resolved and tone-folded, minus custom emoji that cannot be a new reaction
+/// in this channel. Fewer than three usable entries are topped up with a fixed
+/// fallback set before taking the first three.
 enum QuickReactionPolicy {
     static let limit = 3
-    static let candidateLimit = 42
-    static let fallbackKeys = ["100", "laughing", "sparkling_heart"]
 
     struct Context {
         /// The message channel's guild; nil in DMs and group DMs.
         var guildID: GuildID?
-        var hasNitro: Bool
+        var premiumType: Int
         var canUseExternalEmojis: Bool
         var roleIDsByGuild: [GuildID: Set<RoleID>] = [:]
         var skinTone: NativeEmojiSkinTone = .standard
@@ -43,6 +41,10 @@ enum QuickReactionPolicy {
         }
     }
 
+    private static let fallback = ["100", "laughing", "sparkling_heart"].compactMap {
+        resolve($0, customEmojisByID: [:])
+    }
+
     /// - Parameters:
     ///   - rankedKeys: Reaction frecency keys, highest first.
     ///   - customEmojisByID: Custom emoji the account can resolve.
@@ -54,28 +56,11 @@ enum QuickReactionPolicy {
     ) -> [QuickReaction] {
         let resolved = rankedKeys.lazy
             .compactMap { resolve($0, customEmojisByID: customEmojisByID) }
-            .prefix(candidateLimit)
+            .prefix(EmojiFrecencyKeys.frequentlyUsedCandidateLimit)
         let usable = folded(Array(resolved)).filter { isUsable($0, context: context) }
-        let fallback = fallbackKeys.compactMap { resolve($0, customEmojisByID: [:]) }
-        let selected = usable.count >= limit ? usable : folded(usable + fallback)
-        return selected.prefix(limit).map {
+        return folded(usable + fallback).prefix(limit).map {
             quickReaction(for: $0, existingReactions: existingReactions, skinTone: context.skinTone)
         }
-    }
-
-    /// Discord's `getEmojiUnavailableReason` for the reaction intention,
-    /// keeping only the filtered and premium-locked outcomes.
-    static func canReact(with emoji: DiscordEmoji, context: Context) -> Bool {
-        let isInternal = emoji.guildID == context.guildID
-        if context.guildID != nil, !isInternal, !context.canUseExternalEmojis { return false }
-        guard emoji.isAvailable else { return false }
-        if !context.hasNitro, !isInternal, !emoji.isManaged { return false }
-        if !emoji.roleIDs.isEmpty,
-           context.roleIDsByGuild[emoji.guildID]?.isDisjoint(with: emoji.roleIDs) != false
-        {
-            return false
-        }
-        return !emoji.isAnimated || context.hasNitro
     }
 
     private static func resolve(_ key: String, customEmojisByID: [String: DiscordEmoji]) -> Candidate? {
@@ -91,9 +76,19 @@ enum QuickReactionPolicy {
         return candidates.filter { seen.insert($0.foldedKey).inserted }
     }
 
+    /// SakuraCord's reaction rule, so a shown emoji passes the toggle guard,
+    /// plus Discord's channel filters: Use External Emojis in servers,
+    /// availability and role restrictions.
     private static func isUsable(_ candidate: Candidate, context: Context) -> Bool {
         guard case let .custom(emoji) = candidate else { return true }
-        return canReact(with: emoji, context: context)
+        let isExternal = context.guildID != nil && emoji.guildID != context.guildID
+        guard emoji.isAvailable, !isExternal || context.canUseExternalEmojis,
+              DiscordEmojiPermissionPolicy.canShow(
+                  emoji, for: .reaction(guildID: context.guildID), premiumType: context.premiumType
+              )
+        else { return false }
+        guard !emoji.roleIDs.isEmpty else { return true }
+        return context.roleIDsByGuild[emoji.guildID].map { !$0.isDisjoint(with: emoji.roleIDs) } ?? false
     }
 
     private static func quickReaction(
@@ -103,21 +98,16 @@ enum QuickReactionPolicy {
     ) -> QuickReaction {
         let token: String
         let name: String
-        let applied: Reaction?
         switch candidate {
         case let .native(key, value):
             token = NativeEmojiPickerIndex.emoji(forValue: value)?.value(for: skinTone) ?? value
             name = key
-            applied = existingReactions.first {
-                $0.didCurrentUserReact && $0.emojiReference.id == nil
-                    && normalized($0.emoji) == normalized(token)
-            }
         case let .custom(emoji):
             token = emoji.messageToken
             name = emoji.name
-            applied = existingReactions.first {
-                $0.didCurrentUserReact && $0.emojiReference.id == emoji.id
-            }
+        }
+        let applied = EmojiFrecencyKeys.reactionKey(token).flatMap { key in
+            existingReactions.first { $0.didCurrentUserReact && EmojiFrecencyKeys.reactionKey($0.emoji) == key }
         }
         return QuickReaction(
             id: candidate.foldedKey,
@@ -125,9 +115,5 @@ enum QuickReactionPolicy {
             name: name,
             isApplied: applied != nil
         )
-    }
-
-    private static func normalized(_ value: String) -> String {
-        value.replacingOccurrences(of: "\u{FE0F}", with: "")
     }
 }

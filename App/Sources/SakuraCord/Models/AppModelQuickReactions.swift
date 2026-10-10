@@ -2,26 +2,28 @@ import Foundation
 import SakuraCordModels
 
 extension AppModel {
-    /// The hover toolbar's quick reactions, or none where Discord's hover bar
-    /// would disable reaction creation for this message.
+    /// Whether Discord's hover bar would allow new reactions on this message.
+    func canCreateReactions(on message: Message) -> Bool {
+        reactionCreationContext(for: message) != nil
+    }
+
+    /// The hover toolbar's quick reactions, or none where reactions cannot be
+    /// created on this message.
     func quickReactions(for message: Message) -> [QuickReaction] {
-        guard let channel = quickReactionChannel(for: message) else { return [] }
-        let permissions = channel.guildID == nil ? nil : effectiveMessagePermissions(in: channel)
+        guard let context = reactionCreationContext(for: message) else { return [] }
         let rankedKeys = discordFrequentlyUsedReactionKeys
-        let customKeys = Set(rankedKeys)
-        let customEmojis = orderedCustomEmojis.filter { customKeys.contains($0.id) && canResolveFrequentlyUsedEmoji($0) }
+        let rankedKeySet = Set(rankedKeys)
+        let customEmojis = orderedCustomEmojis.filter { rankedKeySet.contains($0.id) && canResolveFrequentlyUsedEmoji($0) }
         return QuickReactionPolicy.reactions(
             rankedKeys: rankedKeys,
             customEmojisByID: Dictionary(customEmojis.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }),
             existingReactions: message.reactions,
             context: QuickReactionPolicy.Context(
-                guildID: channel.guildID,
-                hasNitro: DiscordEmojiPermissionPolicy.hasNitro(premiumType: snapshot?.currentUser.premiumType ?? 0),
-                canUseExternalEmojis: (permissions ?? 0) & DiscordPermissionBits.useExternalEmojis != 0,
+                guildID: context.channel.guildID,
+                premiumType: snapshot?.currentUser.premiumType ?? 0,
+                canUseExternalEmojis: context.permissions & DiscordPermissionBits.useExternalEmojis != 0,
                 roleIDsByGuild: currentUserRoleIDsByGuild,
-                skinTone: NativeEmojiSkinTone(
-                    rawValue: PRBuildProfile.defaults.string(forKey: "emojiSkinTone") ?? ""
-                ) ?? .standard
+                skinTone: .preferred
             )
         )
     }
@@ -29,16 +31,16 @@ extension AppModel {
     /// Discord's `disableReactionCreates`: private channels other than the
     /// system DM, or guild channels where the member can chat and has
     /// ADD_REACTIONS, and threads that are active or can be unarchived.
-    private func quickReactionChannel(for message: Message) -> Channel? {
+    private func reactionCreationContext(for message: Message) -> (channel: Channel, permissions: UInt64)? {
         guard message.outboxState == .confirmed, !message.flags.contains(.ephemeral),
-              let context = messagePermissionContext(for: message.channelID)
+              let context = messagePermissionContext(for: message.channelID),
+              let permissions = effectiveMessagePermissions(in: context.channel)
         else { return nil }
         let channel = context.channel
         guard let guildID = channel.guildID else {
-            return channel.isOfficialSystemDirectMessage ? nil : channel
+            return channel.isOfficialSystemDirectMessage ? nil : (channel, permissions)
         }
         guard !requiresOnboarding(in: guildID), onboardingMember(in: guildID)?.isPending != true,
-              let permissions = effectiveMessagePermissions(in: channel),
               permissions & DiscordPermissionBits.viewChannel != 0,
               permissions & DiscordPermissionBits.addReactions != 0
         else { return nil }
@@ -47,6 +49,6 @@ extension AppModel {
         {
             return nil
         }
-        return channel
+        return (channel, permissions)
     }
 }

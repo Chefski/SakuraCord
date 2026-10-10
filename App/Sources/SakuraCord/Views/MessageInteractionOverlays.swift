@@ -400,20 +400,7 @@ struct MessageActionCapsule: View {
                     action: copy
                 )
             } else {
-                let quickReactions = model.quickReactions(for: message)
-                if !quickReactions.isEmpty {
-                    ForEach(quickReactions) { reaction in
-                        QuickReactionButton(
-                            reaction: reaction,
-                            customEmojiURLsByID: model.customEmojiURLsByID
-                        ) {
-                            react(reaction.token)
-                        }
-                    }
-                    // One load per section; on ForEach it would run per emoji.
-                    HoverActionPillDivider()
-                        .task { await model.loadDiscordEmojiSettings() }
-                }
+                QuickReactionSection(model: model, message: message, react: react)
                 ReactionActionMenu(
                     model: model,
                     guildID: message.guildID,
@@ -479,6 +466,27 @@ struct MessageActionCapsule: View {
                 isDeleteConfirmationPresented = false
                 delete()
             }
+        }
+    }
+}
+
+/// Its own view so that only this section tracks the model state it reads.
+private struct QuickReactionSection: View {
+    let model: AppModel
+    let message: Message
+    let react: (String) -> Void
+
+    var body: some View {
+        let quickReactions = model.quickReactions(for: message)
+        if !quickReactions.isEmpty {
+            ForEach(quickReactions) { reaction in
+                QuickReactionButton(reaction: reaction, customEmojiURLsByID: model.customEmojiURLsByID) {
+                    react(reaction.token)
+                }
+            }
+            // One load per section; on ForEach it would run per emoji.
+            HoverActionPillDivider()
+                .task { await model.loadDiscordEmojiSettings() }
         }
     }
 }

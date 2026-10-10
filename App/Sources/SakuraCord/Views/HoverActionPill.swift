@@ -26,7 +26,7 @@ struct HoverActionPillDivider: View {
         Capsule()
             .fill(Color.primary.opacity(0.16))
             .frame(width: 1, height: HoverActionPillMetrics.controlDiameter * 0.6)
-            .padding(.horizontal, (HoverActionPillMetrics.dividerWidth - 1) / 2)
+            .frame(width: HoverActionPillMetrics.dividerWidth)
             .accessibilityHidden(true)
     }
 }

@@ -212,12 +212,13 @@ tests; the live comparison account had no restricted emoji in its usage history.
 The message hover toolbar's quick reactions read the same reaction ranking
 through [QuickReactionPolicy](../../App/Sources/SakuraCord/Models/QuickReactionPolicy.swift);
 they add no request of their own beyond the shared settings load. Resolve and
-fold as above, then drop custom emoji that are filtered or Nitro-locked for a
-reaction in that channel: external emoji without Use External Emojis in a
-server, unavailable emoji, other-server or DM custom emoji without Nitro
-(managed emoji excepted), animated emoji without Nitro, and role-restricted
-emoji the member lacks. If fewer than three remain, append 💯 😆 💖, fold again
-and take three. Unicode emoji use the preferred skin tone. A reaction the user
+fold as above, then drop custom emoji that cannot be a new reaction in that
+channel: external emoji without Use External Emojis in a server, unavailable
+emoji, other-server or DM custom emoji without Nitro, animated emoji without
+Nitro, and role-restricted emoji the member lacks. Discord exempts managed emoji
+from the Nitro lock; SakuraCord's reaction guard does not, so the toolbar
+follows the guard rather than offer an emoji it would reject. If fewer than
+three remain, append 💯 😆 💖, fold again and take three. Unicode emoji use the preferred skin tone. A reaction the user
 already added changes only the tooltip to “Click to remove”; clicking toggles
 it through the ordinary reaction path, which records reaction usage, so the
 ranking updates immediately and syncs with the next frecency flush. The section

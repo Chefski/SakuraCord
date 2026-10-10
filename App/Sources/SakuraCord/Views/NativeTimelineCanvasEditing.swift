@@ -351,8 +351,8 @@ extension NativeTimelineCanvasView {
         actionCapsuleState = state
         actionCapsuleHost = host
         actionCapsuleMessageID = row.id
-        let quickReactionCount = jumpToMessage == nil && row.message.outboxState != .failed
-            ? model.quickReactions(for: row.message).count : 0
+        let quickReactionCount = jumpToMessage == nil && model.canCreateReactions(on: row.message)
+            ? QuickReactionPolicy.limit : 0
         let controlCount = jumpToMessage == nil
             ? (row.message.outboxState == .failed
                 ? 2
