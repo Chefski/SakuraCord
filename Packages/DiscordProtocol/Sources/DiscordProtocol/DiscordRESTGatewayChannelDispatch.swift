@@ -133,15 +133,7 @@ extension DiscordRESTProvider {
             publishGuildChannels(guildID)
             return
         }
-        if cachedChannels[nil]?.contains(where: { $0.id == channelID }) == true {
-            privateChannelRevisions[channelID, default: 0] &+= 1
-            cachedChannels[nil]?.removeAll { $0.id == channelID }
-            lazyPrivateChannelIDs.remove(channelID)
-            continuation?.yield(
-                .channelsChanged(guildID: nil, channels: cachedChannels[nil] ?? [])
-            )
-            continuation?.yield(.privateMembersChanged(privateMembersInChannelOrder()))
-        }
+        removePrivateChannel(channelID)
     }
 
     func handleChannelPinsUpdateDispatch(

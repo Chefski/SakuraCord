@@ -85,9 +85,68 @@ struct GroupDirectMessageEditTests {
         await provider.disconnect()
     }
 
+    @Test func `leave group sends one delete with the silent flag and removes the group once`() async throws {
+        let provider = await makeProvider()
+        let events = await provider.eventStream()
+        try await provider.leaveGroupDirectMessage(groupID, silently: true)
+        #expect(await provider.privateChannel(id: groupID) == nil)
+        // Discord's CHANNEL_DELETE for the leave finds nothing left to remove.
+        await provider.handleGatewayDispatch(name: "CHANNEL_DELETE", body: .object([
+            "id": .string("401"), "type": .number(3),
+        ]))
+        await provider.continuation?.finish()
+        var privateLists: [[ChannelID]] = []
+        for await event in events {
+            if case let .channelsChanged(guildID, channels) = event, guildID == nil { privateLists.append(channels.map(\.id)) }
+        }
+        #expect(privateLists == [[ChannelID(rawValue: 402)]])
+        let requests = GroupEditURLProtocol.requests.withLock { $0 }
+        #expect(requests.count == 1)
+        #expect(requests.first?.httpMethod == "DELETE")
+        #expect(requests.first?.url?.absoluteString == "https://discord.com/api/v9/channels/401?silent=true")
+        #expect(requests.first?.httpBody == nil && requests.first?.httpBodyStream == nil)
+        await provider.disconnect()
+    }
+
+    @Test func `a rejected leave keeps the group without retrying or stopping the session`() async throws {
+        let provider = await makeProvider()
+        GroupEditURLProtocol.leaveStatus.withLock { $0 = 403 }
+        await #expect(throws: ChatProviderError.self) {
+            try await provider.leaveGroupDirectMessage(groupID, silently: false)
+        }
+        // A 1:1 DM is never left through this route.
+        await #expect(throws: ChatProviderError.self) {
+            try await provider.leaveGroupDirectMessage(ChannelID(rawValue: 402), silently: false)
+        }
+        #expect(await !provider.requestSafetyCircuitIsOpen)
+        #expect(await provider.privateChannel(id: groupID)?.name == "Friend Group")
+        let requests = GroupEditURLProtocol.requests.withLock { $0 }
+        #expect(requests.map { $0.url?.absoluteString } == ["https://discord.com/api/v9/channels/401?silent=false"])
+        await provider.disconnect()
+    }
+
+    @Test func `leave response cannot remove a group Discord re-added meanwhile`() async throws {
+        let credentials = NicknameInterleavingCredentials()
+        let provider = await makeProvider(credentials: credentials)
+        // The leave lands and a member re-adds this account before the response.
+        await credentials.interleave {
+            await provider.handleGatewayDispatch(name: "CHANNEL_DELETE", body: .object([
+                "id": .string("401"), "type": .number(3),
+            ]))
+            await provider.handleGatewayDispatch(name: "CHANNEL_CREATE", body: .object([
+                "id": .string("401"), "type": .number(3), "name": .string("Friend Group"),
+                "recipients": .array([.object(["id": .string("2"), "username": .string("friend")])]),
+            ]))
+        }
+        try await provider.leaveGroupDirectMessage(groupID, silently: false)
+        #expect(await provider.privateChannel(id: groupID)?.name == "Friend Group")
+        await provider.disconnect()
+    }
+
     private func makeProvider(credentials: any CredentialStore = TestCredentialStore()) async -> DiscordRESTProvider {
         GroupEditURLProtocol.requests.withLock { $0.removeAll() }
         GroupEditURLProtocol.bodies.withLock { $0.removeAll() }
+        GroupEditURLProtocol.leaveStatus.withLock { $0 = 200 }
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [GroupEditURLProtocol.self]
         let provider = DiscordRESTProvider(credentials: credentials,
@@ -108,6 +167,8 @@ private extension DiscordRESTProvider {
         cachedChannels[nil] = [
             Channel(id: .init(rawValue: 401), guildID: nil, name: "Friend Group", kind: .groupDirectMessage,
                     recipients: recipients),
+            Channel(id: .init(rawValue: 402), guildID: nil, name: "Friend", kind: .directMessage,
+                    recipients: [recipients[0]]),
         ]
     }
 }
@@ -115,10 +176,17 @@ private extension DiscordRESTProvider {
 private final class GroupEditURLProtocol: URLProtocol, @unchecked Sendable {
     static let requests = Mutex<[URLRequest]>([])
     static let bodies = Mutex<[JSONValue]>([])
+    static let leaveStatus = Mutex(200)
     override static func canInit(with request: URLRequest) -> Bool { true }
     override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         Self.requests.withLock { $0.append(request) }
+        if request.httpMethod == "DELETE" {
+            let status = Self.leaveStatus.withLock { $0 }
+            return respond(status: status, body: status == 200
+                ? #"{"id":"401","type":3,"name":"Friend Group","owner_id":"2"}"#
+                : #"{"code":50013,"message":"Missing Permissions"}"#)
+        }
         var body = request.httpBody ?? Data()
         if body.isEmpty, let stream = request.httpBodyStream {
             stream.open()

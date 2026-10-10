@@ -654,3 +654,41 @@ private actor ProfileEditorCacheProvider: ChatProvider {
     store.icon = .removed
     #expect(store.changes == GroupDirectMessageChanges(name: .clear, icon: .clear))
 }
+
+@MainActor
+@Test func `leave group confirms, leaves once through the provider and moves selection off the group`() async throws {
+    let provider = MockChatProvider()
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    let groupID = ChannelID(rawValue: 401)
+    let store = model.groupDirectMessageLeave
+    // A 1:1 DM never offers Leave Group.
+    model.presentLeaveGroupDirectMessage(for: ChannelID(rawValue: 400))
+    #expect(store.confirmation == nil)
+
+    model.selectedGuildID = nil
+    model.selectedChannelID = groupID
+    // `/leave silent:True` opens the same confirmation with the checkbox checked.
+    let leave = try #require(DiscordBuiltInCommands.all.first { $0.name == "leave" })
+    model.runBuiltInCommand(ApplicationCommandInvocation(command: leave, channelID: groupID, guildID: nil, values: [
+        ApplicationCommandOptionValue(optionID: "-15/silent", name: "silent", type: .boolean, argument: .boolean(true)),
+    ]))
+    let confirmation = try #require(store.confirmation)
+    #expect(confirmation.id == groupID)
+    #expect(store.leavesSilently)
+
+    model.leaveGroupDirectMessage(confirmation, silently: store.leavesSilently)
+    model.leaveGroupDirectMessage(confirmation, silently: store.leavesSilently)
+    for task in Array(model.accountChildTasks.values) { await task.value }
+    let requests = await provider.groupLeaveRequests
+    #expect(requests.map(\.channelID) == [groupID])
+    #expect(requests.map(\.silently) == [true])
+    while model.snapshot?.channels.contains(where: { $0.id == groupID }) == true, !Task.isCancelled {
+        await Task.yield()
+    }
+    let selected = try #require(model.selectedChannelID)
+    #expect(selected != groupID)
+    #expect(model.snapshot?.channels.contains { $0.id == selected && $0.guildID == nil } == true)
+    #expect(model.errorMessage == nil)
+    #expect(store.leaving.isEmpty)
+}

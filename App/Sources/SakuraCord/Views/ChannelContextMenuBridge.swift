@@ -151,6 +151,8 @@ struct ChannelContextMenuBridge: NSViewRepresentable {
     var userActions: () -> [NicknameMenuAction] = { [] }
     /// Opens Edit Group for a group DM.
     var editGroup: (() -> Void)?
+    /// Opens the Leave Group confirmation for a group DM.
+    var leaveGroup: (() -> Void)?
     var usesCustomSelectionBackground = false
 
     func makeCoordinator() -> Coordinator {
@@ -201,6 +203,7 @@ struct ChannelContextMenuBridge: NSViewRepresentable {
         private var pinAction: ChannelPinMenuAction
         private var userActions: () -> [NicknameMenuAction]
         private var editGroup: (() -> Void)?
+        private var leaveGroup: (() -> Void)?
 
         init(from bridge: ChannelContextMenuBridge) {
             subject = bridge.subject
@@ -219,6 +222,7 @@ struct ChannelContextMenuBridge: NSViewRepresentable {
             pinAction = bridge.pinAction
             userActions = bridge.userActions
             editGroup = bridge.editGroup
+            leaveGroup = bridge.leaveGroup
         }
 
         func update(from bridge: ChannelContextMenuBridge) {
@@ -238,6 +242,7 @@ struct ChannelContextMenuBridge: NSViewRepresentable {
             pinAction = bridge.pinAction
             userActions = bridge.userActions
             editGroup = bridge.editGroup
+            leaveGroup = bridge.leaveGroup
         }
 
         func makeMenu() -> NSMenu {
@@ -325,6 +330,7 @@ struct ChannelContextMenuBridge: NSViewRepresentable {
             menu.addItem(notificationItem)
 
             menu.addItem(.separator())
+            addLeaveGroupItem(to: menu)
             menu.addItem(
                 menuItem(
                     subject.copyIDTitle,
@@ -352,6 +358,20 @@ struct ChannelContextMenuBridge: NSViewRepresentable {
                     systemImage: "pencil",
                     action: #selector(editGroupFromMenu),
                     isEnabled: allowsMutations
+                )
+            )
+            menu.addItem(.separator())
+        }
+
+        private func addLeaveGroupItem(to menu: NSMenu) {
+            guard leaveGroup != nil else { return }
+            menu.addItem(
+                menuItem(
+                    "Leave Group",
+                    systemImage: "rectangle.portrait.and.arrow.right",
+                    action: #selector(leaveGroupFromMenu),
+                    isEnabled: allowsMutations,
+                    isDestructive: true
                 )
             )
             menu.addItem(.separator())
@@ -395,7 +415,8 @@ struct ChannelContextMenuBridge: NSViewRepresentable {
             _ title: String,
             systemImage: String? = nil,
             action: Selector?,
-            isEnabled: Bool = true
+            isEnabled: Bool = true,
+            isDestructive: Bool = false
         ) -> NSMenuItem {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
             item.target = action == nil ? nil : self
@@ -404,7 +425,8 @@ struct ChannelContextMenuBridge: NSViewRepresentable {
                 ContextMenuItemSupport.configure(
                     item,
                     title: title,
-                    systemImage: systemImage
+                    systemImage: systemImage,
+                    isDestructive: isDestructive
                 )
             }
             return item
@@ -422,6 +444,10 @@ struct ChannelContextMenuBridge: NSViewRepresentable {
 
         @objc private func editGroupFromMenu() {
             editGroup?()
+        }
+
+        @objc private func leaveGroupFromMenu() {
+            leaveGroup?()
         }
 
         @objc private func muteFromMenu(_ sender: NSMenuItem) {

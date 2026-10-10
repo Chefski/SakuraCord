@@ -59,4 +59,43 @@ extension AppModel {
             }
         }
     }
+
+    /// Discord offers Leave Group to every member of a group DM, never in a 1:1 DM.
+    func canLeaveGroupDirectMessage(_ channel: Channel) -> Bool {
+        channel.guildID == nil && channel.kind == .groupDirectMessage
+    }
+
+    /// Opens Discord's Leave Group confirmation. `/leave` passes its `silent`
+    /// option as the checkbox's initial state.
+    func presentLeaveGroupDirectMessage(for channelID: ChannelID, silently: Bool = false) {
+        guard let channel = snapshot?.channels.first(where: { $0.id == channelID }),
+              canLeaveGroupDirectMessage(channel)
+        else { return }
+        let store = groupDirectMessageLeave
+        store.leavesSilently = silently
+        store.confirmation = GroupDirectMessageLeaveStore.Confirmation(channel: channel)
+    }
+
+    /// Leaves a confirmed group once. The provider removes it from the DM
+    /// list, which moves a selection on it to the next conversation; failures
+    /// use the workspace error alert and keep the group.
+    func leaveGroupDirectMessage(_ confirmation: GroupDirectMessageLeaveStore.Confirmation, silently: Bool) {
+        let store = groupDirectMessageLeave
+        let channel = confirmation.channel
+        guard canLeaveGroupDirectMessage(channel), store.leaving.insert(channel.id).inserted else { return }
+        startAccountChildTask(account: accountSession()) { model, session in
+            defer {
+                if model.isCurrentAccountSession(session) { store.leaving.remove(channel.id) }
+            }
+            do {
+                try await session.provider.leaveGroupDirectMessage(channel.id, silently: silently)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard model.isCurrentAccountSession(session) else { return }
+                DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
+                model.errorMessage = "SakuraCord couldn’t leave \(channel.name). \(error.localizedDescription)"
+            }
+        }
+    }
 }

@@ -89,6 +89,7 @@ extension AppModel {
         issueReports.reset()
         nicknameEditor.reset()
         groupDirectMessageEditor.reset()
+        groupDirectMessageLeave.reset()
         onboarding.reset()
     }
 

@@ -59,4 +59,25 @@ public extension DiscordRESTProvider {
         }
         return saved
     }
+
+    /// Leave Group: one `DELETE /channels/{channel}?silent=…`, never replayed,
+    /// as Discord's confirmation sends it. A successful leave removes the group
+    /// locally unless a Gateway event or session reset changed it meanwhile;
+    /// the matching `CHANNEL_DELETE` then finds nothing left to remove.
+    func leaveGroupDirectMessage(_ channelID: ChannelID, silently: Bool) async throws {
+        guard let user = currentUser else { throw ChatProviderError.unauthenticated }
+        guard privateChannel(id: channelID)?.kind == .groupDirectMessage else {
+            throw ChatProviderError.invalidRequest("This group is no longer available.")
+        }
+        let generation = profileEditingGeneration
+        let revision = privateChannelRevisions[channelID, default: 0]
+        try await requestEmpty(
+            "/channels/\(channelID)", method: "DELETE",
+            query: [URLQueryItem(name: "silent", value: silently ? "true" : "false")]
+        )
+        guard currentUser?.id == user.id, profileEditingGeneration == generation,
+              privateChannelRevisions[channelID, default: 0] == revision
+        else { return }
+        removePrivateChannel(channelID)
+    }
 }

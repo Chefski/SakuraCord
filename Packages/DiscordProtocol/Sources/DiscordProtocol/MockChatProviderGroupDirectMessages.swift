@@ -35,4 +35,13 @@ public extension MockChatProvider {
         continuation?.yield(.channelsChanged(guildID: nil, channels: snapshot.channels.filter { $0.guildID == nil }))
         return channel
     }
+
+    func leaveGroupDirectMessage(_ channelID: ChannelID, silently: Bool) async throws {
+        guard snapshot.channels.contains(where: { $0.id == channelID && $0.kind == .groupDirectMessage }) else {
+            throw ChatProviderError.invalidRequest("That demo group is unavailable.")
+        }
+        groupLeaveRequests.append((channelID, silently))
+        snapshot.channels.removeAll { $0.id == channelID }
+        continuation?.yield(.channelsChanged(guildID: nil, channels: snapshot.channels.filter { $0.guildID == nil }))
+    }
 }

@@ -345,6 +345,7 @@ private struct ChatRootView: View {
         .modifier(ExpandedProfilePresentationModifier(model: model))
         .modifier(NicknameEditorPresentationModifier(model: model))
         .modifier(EditGroupPresentationModifier(model: model))
+        .modifier(LeaveGroupPresentationModifier(model: model))
         .modifier(ProfileGamePresentationModifier(model: model))
         .background {
             CommunicationWindowOverlays(model: model)

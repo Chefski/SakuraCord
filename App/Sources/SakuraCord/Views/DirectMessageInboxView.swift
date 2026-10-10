@@ -242,6 +242,9 @@ private struct DirectMessageInboxRow: View {
                 editGroup: model.canEditGroupDirectMessage(channel)
                     ? { model.presentGroupDirectMessageEditor(for: channel.id) }
                     : nil,
+                leaveGroup: model.canLeaveGroupDirectMessage(channel)
+                    ? { model.presentLeaveGroupDirectMessage(for: channel.id) }
+                    : nil,
                 usesCustomSelectionBackground: true
             )
         }
