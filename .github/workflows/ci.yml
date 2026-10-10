@@ -95,7 +95,8 @@ jobs:
       - name: Package downloadable pull request app and matching symbols
         if: github.event_name == 'pull_request' && matrix.suite == 'app'
         env:
-          SPARKLE_ED_PUBLIC_KEY: ${{ vars.SPARKLE_ED_PUBLIC_KEY }}
+          # Public verification key; fork PRs cannot read repository variables.
+          SPARKLE_ED_PUBLIC_KEY: 'F2ZNDWO+vOWTt4PAfz69IFPpxJXfMn0AhG85Xx8m/k0='
         run: ./script/package_pr_build.sh
       - name: Upload pull request build
         if: github.event_name == 'pull_request' && matrix.suite == 'app'
