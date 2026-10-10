@@ -259,6 +259,14 @@ nonisolated enum NativeTimelineTransientRowGeometry {
 
 @MainActor
 final class NativeTimelineActionCapsuleState: ObservableObject {
+    /// The hovered message; the canvas replaces it when the row changes so
+    /// reaction-dependent controls stay current while the capsule is shown.
+    @Published var message: Message
+
+    init(message: Message) {
+        self.message = message
+    }
+
     @Published var isReactionPickerPresented = false {
         didSet {
             guard oldValue != isReactionPickerPresented else { return }
@@ -282,9 +290,9 @@ final class NativeTimelineActionCapsuleState: ObservableObject {
 
 struct NativeTimelineActionCapsuleOverlay: View {
     let model: AppModel
-    let message: Message
     let canEdit: Bool
     let canDelete: Bool
+    let showsQuickReactions: Bool
     @ObservedObject var state: NativeTimelineActionCapsuleState
     let jumpToMessage: (() -> Void)?
     let unpinMessage: (() -> Void)?
@@ -327,9 +335,10 @@ struct NativeTimelineActionCapsuleOverlay: View {
             } else {
                 MessageActionCapsule(
                     model: model,
-                    message: message,
+                    message: state.message,
                     canEdit: canEdit,
                     canDelete: canDelete,
+                    showsQuickReactions: showsQuickReactions,
                     isReactionPickerPresented: $state.isReactionPickerPresented,
                     isDeleteConfirmationPresented:
                         $state.isDeleteConfirmationPresented,

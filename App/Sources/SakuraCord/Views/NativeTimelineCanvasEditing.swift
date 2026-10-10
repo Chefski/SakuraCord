@@ -221,6 +221,7 @@ extension NativeTimelineCanvasView {
                 removeActionCapsule()
                 return
             }
+            refreshActionCapsuleMessage(row.message)
             positionActionCapsule(at: index)
             return
         }
@@ -247,6 +248,7 @@ extension NativeTimelineCanvasView {
         }
 
         if actionCapsuleMessageID == row.id {
+            refreshActionCapsuleMessage(row.message)
             positionActionCapsule(at: index)
             return
         }
@@ -266,7 +268,7 @@ extension NativeTimelineCanvasView {
         model: AppModel,
         actions: NativeTimelineRowActions
     ) {
-        let state = NativeTimelineActionCapsuleState()
+        let state = NativeTimelineActionCapsuleState(message: row.message)
         state.presentationDidChange = { [weak self, weak state] isPresented in
             Task { @MainActor [weak self, weak state] in
                 await Task.yield()
@@ -314,11 +316,26 @@ extension NativeTimelineCanvasView {
         let openThread = row.message.thread.map { thread in
             { actions.openThread(thread) }
         }
+        let controlCount = jumpToMessage == nil
+            ? (row.message.outboxState == .failed
+                ? 2
+                : 3
+                + (retry == nil ? 0 : 1)
+                + (reply == nil ? 0 : 1)
+                + (forward == nil ? 0 : 1)
+                + (canEdit ? 1 : 0)
+                + (canDelete ? 1 : 0)
+                + (openThread == nil ? 0 : 1))
+            : 1 + (unpinMessage == nil ? 0 : 1) + (messageInteractionContext == .inboxMention ? 1 : 0)
+        // A narrow timeline drops the quick reactions rather than push actions past its edge.
+        let quickReactionCount = jumpToMessage == nil && model.canCreateReactions(on: row.message)
+            && HoverActionPillMetrics.size(controlCount: controlCount + QuickReactionPolicy.limit, dividerCount: 1).width
+            <= bounds.width - InterfaceScale.metric(16) ? QuickReactionPolicy.limit : 0
         let root = NativeTimelineActionCapsuleOverlay(
             model: model,
-            message: row.message,
             canEdit: canEdit,
             canDelete: canDelete,
+            showsQuickReactions: quickReactionCount > 0,
             state: state,
             jumpToMessage: jumpToMessage,
             unpinMessage: unpinMessage,
@@ -338,6 +355,17 @@ extension NativeTimelineCanvasView {
             openThread: openThread,
             delete: { actions.delete(row.message) }
         )
+        actionCapsuleState = state
+        actionCapsuleHost = addActionCapsuleHost(root, identifier: "message-action-capsule-\(row.id)")
+        actionCapsuleMessageID = row.id
+        actionCapsuleSize = HoverActionPillMetrics.size(
+            controlCount: controlCount + quickReactionCount,
+            dividerCount: quickReactionCount == 0 ? 0 : 1
+        )
+        positionActionCapsule(at: index)
+    }
+
+    private func addActionCapsuleHost(_ root: some View, identifier: String) -> NativeTimelineActionCapsuleHost {
         // The canvas owns the capsule's exact document-coordinate frame.
         // Nested thread timelines extend beneath their top toolbar, so this
         // host must not inherit that container's safe-area displacement.
@@ -346,29 +374,9 @@ extension NativeTimelineCanvasView {
         host.setContentHuggingPriority(.required, for: .vertical)
         host.setContentCompressionResistancePriority(.required, for: .horizontal)
         host.setContentCompressionResistancePriority(.required, for: .vertical)
-        host.setAccessibilityIdentifier("message-action-capsule-\(row.id)")
+        host.setAccessibilityIdentifier(identifier)
         addSubview(host, positioned: .above, relativeTo: nil)
-        actionCapsuleState = state
-        actionCapsuleHost = host
-        actionCapsuleMessageID = row.id
-        let quickReactionCount = jumpToMessage == nil && model.canCreateReactions(on: row.message)
-            ? QuickReactionPolicy.limit : 0
-        let controlCount = jumpToMessage == nil
-            ? (row.message.outboxState == .failed
-                ? 2
-                : 3 + quickReactionCount
-                + (retry == nil ? 0 : 1)
-                + (reply == nil ? 0 : 1)
-                + (forward == nil ? 0 : 1)
-                + (canEdit ? 1 : 0)
-                + (canDelete ? 1 : 0)
-                + (openThread == nil ? 0 : 1))
-            : 1 + (unpinMessage == nil ? 0 : 1) + (messageInteractionContext == .inboxMention ? 1 : 0)
-        actionCapsuleSize = HoverActionPillMetrics.size(
-            controlCount: controlCount,
-            dividerCount: quickReactionCount == 0 ? 0 : 1
-        )
-        positionActionCapsule(at: index)
+        return host
     }
 
     func refreshActionCapsuleSizeAndPosition(at knownIndex: Int? = nil) {
@@ -415,6 +423,13 @@ extension NativeTimelineCanvasView {
                 height: size.height
             )
         }
+    }
+
+    /// Keeps a shown capsule on the row's current message, such as after a
+    /// reaction toggles, without reinstalling it.
+    private func refreshActionCapsuleMessage(_ message: Message) {
+        guard let state = actionCapsuleState, state.message != message else { return }
+        state.message = message
     }
 
     func removeActionCapsule() {

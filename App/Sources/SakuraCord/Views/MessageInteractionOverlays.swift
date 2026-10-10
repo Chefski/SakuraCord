@@ -364,6 +364,7 @@ struct MessageActionCapsule: View {
     let message: Message
     let canEdit: Bool
     let canDelete: Bool
+    let showsQuickReactions: Bool
     @Binding var isReactionPickerPresented: Bool
     @Binding var isDeleteConfirmationPresented: Bool
     let retry: (() -> Void)?
@@ -400,7 +401,9 @@ struct MessageActionCapsule: View {
                     action: copy
                 )
             } else {
-                QuickReactionSection(model: model, message: message, react: react)
+                if showsQuickReactions {
+                    QuickReactionSection(model: model, message: message, react: react)
+                }
                 ReactionActionMenu(
                     model: model,
                     guildID: message.guildID,

@@ -224,7 +224,10 @@ it through the ordinary reaction path, which records reaction usage, so the
 ranking updates immediately and syncs with the next frecency flush. The section
 is hidden with its divider unless reaction creation is allowed: private
 channels other than the system DM, or server channels with Add Reactions where
-the member is not pending, and threads that are active or can be unarchived.
+the member is not pending, outside archived threads. Discord also offers them in
+archived threads it can reopen because its reaction path unarchives the thread
+first; SakuraCord's shared reaction path does not unarchive. A timeline too
+narrow for the wider toolbar omits the section.
 Source: web build `634304` (`web.843cc7edc28c426c.js`, chunk
 `5c04c2e4ef438cd1.js`) on 10 October 2026. The official toolbar also hides quick
 reactions while Shift expands it; SakuraCord has no expanded toolbar. Animated
