@@ -770,7 +770,7 @@ struct AccountReadStateModelTests {
         )
     }
 
-    @Test func `held backlog visit resumes live acknowledgement once the backlog is read elsewhere`() {
+    @Test func `held backlog visit resumes acknowledgement once the backlog is read elsewhere`() {
         let model = makeModel(latest: 12, acknowledged: 10)
         #expect(
             model.updatePresentation(
@@ -790,6 +790,10 @@ struct AccountReadStateModelTests {
         )))
         #expect(model.receive(message(id: 13), currentUserID: currentUser.id).accepted)
         #expect(model.updatePresentation(channelID: channelID) == MessageID(rawValue: 13))
+        // Messages missed while disconnected arrive with reloaded history
+        // rather than as live messages; the lapsed hold must not return.
+        model.observeLoadedMessages(channelID: channelID, messages: [message(id: 14)])
+        #expect(model.canAcknowledge(channelID))
     }
 
     @Test func `ready replacement preserves established timeline viewing evidence`() {

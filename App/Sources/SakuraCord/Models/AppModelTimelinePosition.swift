@@ -138,7 +138,7 @@ extension AppModel {
             hasReachedReadBoundary: hasReachedReadBoundary
         )
         if previousBoundary != hasReachedReadBoundary {
-            let eligible = readState.presentations[channelID]?.canAcknowledge == true
+            let eligible = readState.canAcknowledge(channelID)
             let channel = channelID.rawValue
             let reached = hasReachedReadBoundary
             let targetID = target?.rawValue ?? 0
@@ -169,7 +169,7 @@ extension AppModel {
             hasReachedReadBoundary: hasReachedReadBoundary,
             blocksAutomaticAcknowledgement: holdsBacklog ? true : nil
         )
-        let eligible = readState.presentations[channelID]?.canAcknowledge == true
+        let eligible = readState.canAcknowledge(channelID)
         let channel = channelID.rawValue
         let reached = hasReachedReadBoundary
         let targetID = target?.rawValue ?? 0
@@ -184,7 +184,7 @@ extension AppModel {
     /// Releases a held visit. A scroll clamped at the newest edge reports no
     /// new position, so an already visible newest message is acknowledged here.
     func reportTimelineScrollTowardNewest(channelID: ChannelID) {
-        guard readState.presentations[channelID]?.blocksAutomaticAcknowledgement == true,
+        guard readState.holdsAutomaticAcknowledgement(channelID),
               isConversationPresented(channelID),
               let target = readState.unblockAutomaticAcknowledgement(channelID: channelID)
         else { return }
