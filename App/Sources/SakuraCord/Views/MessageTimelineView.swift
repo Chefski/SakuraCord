@@ -112,9 +112,7 @@ struct MessageTimelineView: View {
                !model.messages.isEmpty
             {
                 Button {
-                    if let channelID = model.selectedChannelID {
-                        model.reportTimelineUserInteraction(channelID: channelID)
-                    }
+                    handleUserScrollTowardNewest()
                     if model.hasMoreLaterMessages {
                         Task {
                             await model.loadNewestMessageWindow()
@@ -327,13 +325,7 @@ struct MessageTimelineView: View {
         }
         model.reportTimelineInitialPosition(
             channelID: channelID,
-            hasReachedReadBoundary: hasReachedReadBoundary,
-            awaitsScrollTowardNewest:
-                TimelineReadEligibilityPolicy.awaitsScrollTowardNewest(
-                    afterOpeningAt: state,
-                    hasUnresolvedUnreadBoundary:
-                        hasUnresolvedInitialUnreadBoundary
-                )
+            hasReachedReadBoundary: hasReachedReadBoundary
         )
     }
 
@@ -447,7 +439,7 @@ struct MessageTimelineView: View {
 
     private func handleUserScrollTowardNewest() {
         if let channelID = model.selectedChannelID {
-            model.reportTimelineUserInteraction(channelID: channelID)
+            model.reportTimelineScrollTowardNewest(channelID: channelID)
         }
     }
 
@@ -599,18 +591,6 @@ nonisolated enum TimelineReadEligibilityPolicy {
     ) -> Bool {
         state.hasEstablishedInitialPosition
             && state.hasReachedNewestMessageBoundary
-    }
-
-    /// A backlog whose first unread row is not loaded opens at its oldest
-    /// loaded row. When that page already ends at the newest message, the
-    /// reader has seen only the backlog's tail, so the visit waits for a
-    /// further scroll toward the newest message. Opening higher up needs no
-    /// extra gesture: reaching the newest message is the read.
-    static func awaitsScrollTowardNewest(
-        afterOpeningAt state: TimelineScrollState,
-        hasUnresolvedUnreadBoundary: Bool
-    ) -> Bool {
-        hasUnresolvedUnreadBoundary && hasReachedReadBoundary(state)
     }
 }
 

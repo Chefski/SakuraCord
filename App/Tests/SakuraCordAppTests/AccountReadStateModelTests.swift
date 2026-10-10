@@ -2715,6 +2715,20 @@ func `guild pages do not acknowledge the hidden selected conversation`(page: Gui
     #expect(request.messageID == model.readState.entries[channelID]?.latestKnownMessageID)
 }
 
+/// The acknowledged boundary predates the loaded page and older history
+/// remains, so the backlog's first unread row is not loaded ("N+").
+@MainActor
+private func makeLowerBoundBacklog(in model: AppModel, channelID: ChannelID) {
+    model.hasMoreMessages = true
+    model.unreadDividerMessageIDs[channelID] = nil
+    #expect(model.readState.applyRemote(ChannelReadState(
+        channelID: channelID,
+        lastAcknowledgedMessageID: MessageID(rawValue: 1),
+        isManual: true
+    )))
+    #expect(model.hasUnresolvedUnreadBoundary(channelID: channelID))
+}
+
 @MainActor
 @Test func `opening a backlog at its newest message waits for a further scroll toward it`() async throws {
     let provider = MockChatProvider()
@@ -2728,11 +2742,8 @@ func `guild pages do not acknowledge the hidden selected conversation`(page: Gui
     model.selectedChannelID = channelID
     #expect(await until { !model.isLoadingMessages && model.selectedChannelID == channelID })
     model.reportMainWindowActive(true)
-    model.reportTimelineInitialPosition(
-        channelID: channelID,
-        hasReachedReadBoundary: true,
-        awaitsScrollTowardNewest: true
-    )
+    makeLowerBoundBacklog(in: model, channelID: channelID)
+    model.reportTimelineInitialPosition(channelID: channelID, hasReachedReadBoundary: true)
     // Repeated geometry at the newest edge is not a read on its own.
     model.reportTimelinePosition(channelID: channelID, hasReachedReadBoundary: true)
     #expect(model.readState.entries[channelID]?.isUnread == true)
@@ -2740,7 +2751,7 @@ func `guild pages do not acknowledge the hidden selected conversation`(page: Gui
 
     // A wheel clamped at the bottom edge reports no new position, so the
     // gesture itself must acknowledge.
-    model.reportTimelineUserInteraction(channelID: channelID)
+    model.reportTimelineScrollTowardNewest(channelID: channelID)
     #expect(await until { !model.isChannelUnread(channelID) })
     #expect(await eventually { await provider.acknowledgementRequests.count == 1 })
     let request = try #require(await provider.acknowledgementRequests.first)
@@ -2762,6 +2773,7 @@ func `guild pages do not acknowledge the hidden selected conversation`(page: Gui
     model.selectedChannelID = channelID
     #expect(await until { !model.isLoadingMessages && model.selectedChannelID == channelID })
     model.reportMainWindowActive(true)
+    makeLowerBoundBacklog(in: model, channelID: channelID)
     model.reportTimelineInitialPosition(channelID: channelID, hasReachedReadBoundary: false)
     #expect(model.readState.entries[channelID]?.isUnread == true)
     #expect(model.acknowledgementTasks[channelID] == nil)

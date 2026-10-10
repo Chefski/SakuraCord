@@ -151,24 +151,23 @@ extension AppModel {
         }
     }
 
-    /// `awaitsScrollTowardNewest` marks a visit that opens at the newest
-    /// message while earlier unread rows are still out of view. Like Discord,
-    /// that visit stays unread until the reader scrolls toward the newest
-    /// message again or chooses Mark as Read.
     func reportTimelineInitialPosition(
         channelID: ChannelID,
-        hasReachedReadBoundary: Bool,
-        awaitsScrollTowardNewest: Bool = false
+        hasReachedReadBoundary: Bool
     ) {
         guard isConversationPresented(channelID) else { return }
         preserveUnreadDividerIfNeeded(channelID: channelID)
+        // Opening a long backlog at its newest message shows only its tail.
+        // Like Discord, that visit stays unread until the reader scrolls
+        // toward the newest message again or chooses Mark as Read.
+        let holdsBacklog = hasReachedReadBoundary
+            && hasUnresolvedUnreadBoundary(channelID: channelID)
         let target = readState.updatePresentation(
             channelID: channelID,
             isPresented: true,
             initialPositionEstablished: true,
             hasReachedReadBoundary: hasReachedReadBoundary,
-            blocksAutomaticAcknowledgement:
-                awaitsScrollTowardNewest ? true : nil
+            blocksAutomaticAcknowledgement: holdsBacklog ? true : nil
         )
         let eligible = readState.presentations[channelID]?.canAcknowledge == true
         let channel = channelID.rawValue
@@ -182,10 +181,9 @@ extension AppModel {
         }
     }
 
-    /// Reports explicit movement toward the newest message. It releases a
-    /// held visit and acknowledges at once when the newest message is already
-    /// visible, because a scroll clamped at that edge reports no new position.
-    func reportTimelineUserInteraction(channelID: ChannelID) {
+    /// Releases a held visit. A scroll clamped at the newest edge reports no
+    /// new position, so an already visible newest message is acknowledged here.
+    func reportTimelineScrollTowardNewest(channelID: ChannelID) {
         guard readState.presentations[channelID]?.blocksAutomaticAcknowledgement == true,
               isConversationPresented(channelID),
               let target = readState.unblockAutomaticAcknowledgement(channelID: channelID)

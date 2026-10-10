@@ -440,9 +440,7 @@ private struct ThreadMessageTimelineView: View {
                 messageCount: model.threadMessages.count
             ), hasEstablishedInitialPosition {
                 Button {
-                    if let threadID = model.openThread?.id {
-                        model.reportTimelineUserInteraction(channelID: threadID)
-                    }
+                    handleUserScrollTowardNewest()
                     requestScroll(.bottom)
                 } label: {
                     Label("New replies", systemImage: "arrow.down")
@@ -627,13 +625,7 @@ private struct ThreadMessageTimelineView: View {
         model.reportTimelineInitialPosition(
             channelID: threadID,
             hasReachedReadBoundary:
-                TimelineReadEligibilityPolicy.hasReachedReadBoundary(state),
-            awaitsScrollTowardNewest:
-                TimelineReadEligibilityPolicy.awaitsScrollTowardNewest(
-                    afterOpeningAt: state,
-                    hasUnresolvedUnreadBoundary:
-                        hasUnresolvedInitialUnreadBoundary
-                )
+                TimelineReadEligibilityPolicy.hasReachedReadBoundary(state)
         )
     }
 
@@ -684,7 +676,7 @@ private struct ThreadMessageTimelineView: View {
 
     private func handleUserScrollTowardNewest() {
         guard let threadID = model.openThread?.id else { return }
-        model.reportTimelineUserInteraction(channelID: threadID)
+        model.reportTimelineScrollTowardNewest(channelID: threadID)
     }
 
     private func handleUserScrollEnded(_ state: TimelineScrollState) {
