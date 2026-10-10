@@ -694,13 +694,6 @@ extension AccountReadStateModel {
             pendingRollbacks[state.channelID] = nil
         }
         entries[state.channelID] = entry
-        if !entry.isUnread,
-           presentations[state.channelID]?.blocksAutomaticAcknowledgement == true
-        {
-            // A held visit concerns only the backlog it opened on. Once that
-            // backlog is read elsewhere, new arrivals follow ordinary viewing.
-            unblockAutomaticAcknowledgement(channelID: state.channelID)
-        }
         if let version = state.version {
             readStateVersion = max(readStateVersion ?? version, version)
         }
@@ -996,6 +989,14 @@ extension AccountReadStateModel {
             return MessageDisposition(accepted: true, mentionKind: .none, shouldNotify: false)
         }
 
+        if !entry.isUnread,
+           presentations[message.channelID]?.blocksAutomaticAcknowledgement == true
+        {
+            // A hold concerns only the unread run it was placed on. Checked
+            // here, where the entry is final, it releases however that run
+            // was read (remote ack, Mark as Read, or a failed Mark Unread).
+            unblockAutomaticAcknowledgement(channelID: message.channelID)
+        }
         entry.latestUnreadMessageID = maximum(entry.latestUnreadMessageID, message.id)
         entry.unreadMessageCount += 1
         let policy = effectivePolicy(for: entry, now: now)
