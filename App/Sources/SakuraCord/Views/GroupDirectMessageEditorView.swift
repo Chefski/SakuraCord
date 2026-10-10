@@ -215,8 +215,12 @@ private struct GroupDirectMessageIconEditor: View {
                     try data.write(to: local, options: [.atomic, .completeFileProtection])
                     return (decoded, local)
                 }.value
+                // A dismissed editor has already cleaned up its files.
+                guard !Task.isCancelled else {
+                    try? FileManager.default.removeItem(at: local)
+                    throw CancellationError()
+                }
                 temporaryFiles.append(local)
-                try Task.checkCancellation()
                 source = decoded; sourceURL = local; filename = url.lastPathComponent; cropping = true
             } catch is CancellationError {} catch { errorMessage = error.localizedDescription }
         }
