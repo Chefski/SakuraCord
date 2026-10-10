@@ -17,15 +17,13 @@ public extension MockChatProvider {
             channel.hasExplicitName = true
             channel.name = name
         }
-        if changes.icon.isChanged, let previous = channel.iconURL, previous.isFileURL,
-           previous.lastPathComponent.hasPrefix("demo-group-icon-")
-        {
-            try? FileManager.default.removeItem(at: previous)
+        if changes.icon.isChanged {
+            if let previous = channel.iconURL, previous.isFileURL, previous.lastPathComponent.hasPrefix("demo-group-icon-") {
+                try? FileManager.default.removeItem(at: previous)
+            }
+            channel.iconURL = nil
         }
-        switch changes.icon {
-        case .unchanged: break
-        case .clear: channel.iconURL = nil
-        case let .set(upload):
+        if case let .set(upload) = changes.icon {
             // The demo has no CDN; a temporary file stands in for the icon URL.
             let url = FileManager.default.temporaryDirectory.appending(path: "demo-group-icon-\(UUID().uuidString)")
             try upload.data.write(to: url, options: .atomic)

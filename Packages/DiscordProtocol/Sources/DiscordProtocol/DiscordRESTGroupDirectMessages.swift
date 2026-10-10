@@ -23,11 +23,7 @@ public extension DiscordRESTProvider {
             }
             body["name"] = .string(name)
         }
-        switch changes.icon {
-        case .unchanged: break
-        case .clear: body["icon"] = .null
-        case let .set(upload): body["icon"] = .string("data:\(upload.mediaType);base64,\(upload.data.base64EncodedString())")
-        }
+        body["icon"] = changes.icon.jsonValue(\.dataURI)
         guard !body.isEmpty else { return existing }
         let generation = profileEditingGeneration
         let revision = privateChannelRevisions[channelID, default: 0]

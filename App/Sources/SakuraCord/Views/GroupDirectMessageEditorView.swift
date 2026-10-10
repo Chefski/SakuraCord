@@ -121,6 +121,8 @@ private struct GroupDirectMessageIconEditor: View {
     @State private var work: Task<Void, Never>?
     @State private var errorMessage: String?
     @State private var temporaryFiles: [URL] = []
+    /// The cropped upload, decoded once for display.
+    @State private var preview: NSImage?
 
     private var size: CGFloat { InterfaceScale.metric(96) }
     private var badgeSize: CGFloat { InterfaceScale.metric(32) }
@@ -174,8 +176,8 @@ private struct GroupDirectMessageIconEditor: View {
 
     @ViewBuilder
     private var icon: some View {
-        if case let .upload(upload) = store.icon, let image = NSImage(data: upload.data) {
-            Image(nsImage: image)
+        if case .upload = store.icon, let preview {
+            Image(nsImage: preview)
                 .resizable()
                 .scaledToFill()
                 .frame(width: size, height: size)
@@ -204,13 +206,17 @@ private struct GroupDirectMessageIconEditor: View {
                 // Reject an oversized file before reading it into memory.
                 let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
                 guard size <= Self.maximumSourceBytes else { throw GroupIconError.tooLarge }
-                let data = try await Task.detached { try Data(contentsOf: url) }.value
-                guard data.count <= Self.maximumSourceBytes else { throw GroupIconError.tooLarge }
-                let decoded = try await Task.detached { try ProfileImageSource(data: data) }.value
-                try Task.checkCancellation()
-                let local = FileManager.default.temporaryDirectory.appending(path: "group-icon-source-\(UUID().uuidString)")
-                try data.write(to: local, options: [.atomic, .completeFileProtection])
+                let maximumBytes = Self.maximumSourceBytes
+                let (decoded, local) = try await Task.detached {
+                    let data = try Data(contentsOf: url)
+                    guard data.count <= maximumBytes else { throw GroupIconError.tooLarge }
+                    let decoded = try ProfileImageSource(data: data)
+                    let local = FileManager.default.temporaryDirectory.appending(path: "group-icon-source-\(UUID().uuidString)")
+                    try data.write(to: local, options: [.atomic, .completeFileProtection])
+                    return (decoded, local)
+                }.value
                 temporaryFiles.append(local)
+                try Task.checkCancellation()
                 source = decoded; sourceURL = local; filename = url.lastPathComponent; cropping = true
             } catch is CancellationError {} catch { errorMessage = error.localizedDescription }
         }
@@ -227,6 +233,7 @@ private struct GroupDirectMessageIconEditor: View {
                 let output = try await withTaskCancellationHandler { try await processing.value } onCancel: { processing.cancel() }
                 try Task.checkCancellation()
                 guard store.revision == revision else { throw CancellationError() }
+                preview = NSImage(data: output.data)
                 store.icon = .upload(ProfileImageUpload(
                     data: output.data, mediaType: output.mediaType, description: filename, isAnimated: output.isAnimated
                 ))

@@ -3,15 +3,18 @@ import Foundation
 import SakuraCordModels
 
 extension AppModel {
-    /// Discord offers Edit Group to every member of a group DM.
-    func canEditGroupDirectMessage(_ channel: Channel) -> Bool {
+    /// Discord offers Edit Group and Leave Group to every member of a group
+    /// DM, never in a 1:1 DM.
+    func offersGroupDirectMessageActions(_ channel: Channel) -> Bool {
         channel.guildID == nil && channel.kind == .groupDirectMessage
     }
 
+    private func groupDirectMessage(_ channelID: ChannelID) -> Channel? {
+        snapshot?.channels.first { $0.id == channelID && offersGroupDirectMessageActions($0) }
+    }
+
     func presentGroupDirectMessageEditor(for channelID: ChannelID) {
-        guard let channel = snapshot?.channels.first(where: { $0.id == channelID }),
-              canEditGroupDirectMessage(channel)
-        else { return }
+        guard let channel = groupDirectMessage(channelID) else { return }
         groupDirectMessageEditor.presentation = GroupDirectMessageEditorStore.Presentation(
             channel: channel,
             placeholder: groupDirectMessagePlaceholder(for: channel)
@@ -60,17 +63,10 @@ extension AppModel {
         }
     }
 
-    /// Discord offers Leave Group to every member of a group DM, never in a 1:1 DM.
-    func canLeaveGroupDirectMessage(_ channel: Channel) -> Bool {
-        channel.guildID == nil && channel.kind == .groupDirectMessage
-    }
-
     /// Opens Discord's Leave Group confirmation. `/leave` passes its `silent`
     /// option as the checkbox's initial state.
     func presentLeaveGroupDirectMessage(for channelID: ChannelID, silently: Bool = false) {
-        guard let channel = snapshot?.channels.first(where: { $0.id == channelID }),
-              canLeaveGroupDirectMessage(channel)
-        else { return }
+        guard let channel = groupDirectMessage(channelID) else { return }
         let store = groupDirectMessageLeave
         store.leavesSilently = silently
         store.confirmation = GroupDirectMessageLeaveStore.Confirmation(channel: channel)
@@ -82,7 +78,7 @@ extension AppModel {
     func leaveGroupDirectMessage(_ confirmation: GroupDirectMessageLeaveStore.Confirmation, silently: Bool) {
         let store = groupDirectMessageLeave
         let channel = confirmation.channel
-        guard canLeaveGroupDirectMessage(channel), store.leaving.insert(channel.id).inserted else { return }
+        guard store.leaving.insert(channel.id).inserted else { return }
         startAccountChildTask(account: accountSession()) { model, session in
             defer {
                 if model.isCurrentAccountSession(session) { store.leaving.remove(channel.id) }
