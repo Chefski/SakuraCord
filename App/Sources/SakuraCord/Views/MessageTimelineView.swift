@@ -76,7 +76,8 @@ struct MessageTimelineView: View {
             onScrollStateChange: handleScrollState,
             onInitialPositionEstablished: handleInitialPosition,
             onUserScrollBegan: handleUserScrollBegan,
-            onUserScrollEnded: handleUserScrollEnded
+            onUserScrollEnded: handleUserScrollEnded,
+            onUserScrollTowardNewest: handleUserScrollTowardNewest
         )
         .scrollEdgeEffectStyle(.soft, for: .top)
         .ignoresSafeArea(.container, edges: .top)
@@ -319,7 +320,6 @@ struct MessageTimelineView: View {
         latestScrollState = state
         let hasReachedReadBoundary =
             TimelineReadEligibilityPolicy.hasReachedReadBoundary(state)
-            && !hasUnresolvedInitialUnreadBoundary
         if hasReachedReadBoundary {
             scrollPolicy.didRequestBottom()
         } else {
@@ -327,7 +327,13 @@ struct MessageTimelineView: View {
         }
         model.reportTimelineInitialPosition(
             channelID: channelID,
-            hasReachedReadBoundary: hasReachedReadBoundary
+            hasReachedReadBoundary: hasReachedReadBoundary,
+            awaitsScrollTowardNewest:
+                TimelineReadEligibilityPolicy.awaitsScrollTowardNewest(
+                    afterOpeningAt: state,
+                    hasUnresolvedUnreadBoundary:
+                        hasUnresolvedInitialUnreadBoundary
+                )
         )
     }
 
@@ -388,7 +394,6 @@ struct MessageTimelineView: View {
                 channelID: channelID,
                 hasReachedReadBoundary:
                     TimelineReadEligibilityPolicy.hasReachedReadBoundary(value)
-                    && !hasUnresolvedInitialUnreadBoundary
             )
         }
     }
@@ -438,6 +443,9 @@ struct MessageTimelineView: View {
             // strands the viewport against a still-provisional boundary.
             hasEarlierHistoryScrollIntent = true
         }
+    }
+
+    private func handleUserScrollTowardNewest() {
         if let channelID = model.selectedChannelID {
             model.reportTimelineUserInteraction(channelID: channelID)
         }
@@ -591,6 +599,18 @@ nonisolated enum TimelineReadEligibilityPolicy {
     ) -> Bool {
         state.hasEstablishedInitialPosition
             && state.hasReachedNewestMessageBoundary
+    }
+
+    /// A backlog whose first unread row is not loaded opens at its oldest
+    /// loaded row. When that page already ends at the newest message, the
+    /// reader has seen only the backlog's tail, so the visit waits for a
+    /// further scroll toward the newest message. Opening higher up needs no
+    /// extra gesture: reaching the newest message is the read.
+    static func awaitsScrollTowardNewest(
+        afterOpeningAt state: TimelineScrollState,
+        hasUnresolvedUnreadBoundary: Bool
+    ) -> Bool {
+        hasUnresolvedUnreadBoundary && hasReachedReadBoundary(state)
     }
 }
 

@@ -408,7 +408,8 @@ private struct ThreadMessageTimelineView: View {
             onScrollStateChange: handleScrollState,
             onInitialPositionEstablished: handleInitialPosition,
             onUserScrollBegan: handleUserScrollBegan,
-            onUserScrollEnded: handleUserScrollEnded
+            onUserScrollEnded: handleUserScrollEnded,
+            onUserScrollTowardNewest: handleUserScrollTowardNewest
         )
         .scrollEdgeEffectStyle(.soft, for: .top)
         .ignoresSafeArea(.container, edges: .top)
@@ -626,8 +627,13 @@ private struct ThreadMessageTimelineView: View {
         model.reportTimelineInitialPosition(
             channelID: threadID,
             hasReachedReadBoundary:
-                TimelineReadEligibilityPolicy.hasReachedReadBoundary(state)
-                && !hasUnresolvedInitialUnreadBoundary
+                TimelineReadEligibilityPolicy.hasReachedReadBoundary(state),
+            awaitsScrollTowardNewest:
+                TimelineReadEligibilityPolicy.awaitsScrollTowardNewest(
+                    afterOpeningAt: state,
+                    hasUnresolvedUnreadBoundary:
+                        hasUnresolvedInitialUnreadBoundary
+                )
         )
     }
 
@@ -666,7 +672,6 @@ private struct ThreadMessageTimelineView: View {
             channelID: threadID,
             hasReachedReadBoundary:
                 TimelineReadEligibilityPolicy.hasReachedReadBoundary(state)
-                && !hasUnresolvedInitialUnreadBoundary
         )
     }
 
@@ -675,6 +680,9 @@ private struct ThreadMessageTimelineView: View {
         if hasUnresolvedInitialUnreadBoundary {
             hasEarlierHistoryScrollIntent = true
         }
+    }
+
+    private func handleUserScrollTowardNewest() {
         guard let threadID = model.openThread?.id else { return }
         model.reportTimelineUserInteraction(channelID: threadID)
     }

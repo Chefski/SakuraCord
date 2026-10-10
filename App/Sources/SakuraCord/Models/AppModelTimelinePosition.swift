@@ -151,9 +151,14 @@ extension AppModel {
         }
     }
 
+    /// `awaitsScrollTowardNewest` marks a visit that opens at the newest
+    /// message while earlier unread rows are still out of view. Like Discord,
+    /// that visit stays unread until the reader scrolls toward the newest
+    /// message again or chooses Mark as Read.
     func reportTimelineInitialPosition(
         channelID: ChannelID,
-        hasReachedReadBoundary: Bool
+        hasReachedReadBoundary: Bool,
+        awaitsScrollTowardNewest: Bool = false
     ) {
         guard isConversationPresented(channelID) else { return }
         preserveUnreadDividerIfNeeded(channelID: channelID)
@@ -161,7 +166,9 @@ extension AppModel {
             channelID: channelID,
             isPresented: true,
             initialPositionEstablished: true,
-            hasReachedReadBoundary: hasReachedReadBoundary
+            hasReachedReadBoundary: hasReachedReadBoundary,
+            blocksAutomaticAcknowledgement:
+                awaitsScrollTowardNewest ? true : nil
         )
         let eligible = readState.presentations[channelID]?.canAcknowledge == true
         let channel = channelID.rawValue
@@ -175,9 +182,15 @@ extension AppModel {
         }
     }
 
+    /// Reports explicit movement toward the newest message. It releases a
+    /// held visit and acknowledges at once when the newest message is already
+    /// visible, because a scroll clamped at that edge reports no new position.
     func reportTimelineUserInteraction(channelID: ChannelID) {
-        guard isConversationPresented(channelID) else { return }
-        readState.unblockAutomaticAcknowledgement(channelID: channelID)
+        guard readState.presentations[channelID]?.blocksAutomaticAcknowledgement == true,
+              isConversationPresented(channelID),
+              let target = readState.unblockAutomaticAcknowledgement(channelID: channelID)
+        else { return }
+        scheduleAcknowledgement(channelID: channelID, messageID: target)
     }
 
     func reportConversationHistoryLoaded(channelID: ChannelID) {

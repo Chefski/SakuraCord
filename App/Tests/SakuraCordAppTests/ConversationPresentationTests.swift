@@ -414,6 +414,48 @@ func `permission resolver ignores noncanonical numeric member ids`(_ overwriteID
     )
 }
 
+@Test func `unresolved unread backlog acknowledges at the newest edge after opening intent`() {
+    let atNewest = TimelineScrollState(
+        isNearTop: true,
+        isNearBottom: true,
+        contentFitsViewport: true,
+        hasEstablishedInitialPosition: true,
+        hasReachedNewestMessageBoundary: true
+    )
+    let aboveNewest = TimelineScrollState(
+        isNearTop: true,
+        isNearBottom: false,
+        hasEstablishedInitialPosition: true,
+        hasReachedNewestMessageBoundary: false
+    )
+    // A lower-bound backlog no longer blocks reaching the read boundary.
+    #expect(TimelineReadEligibilityPolicy.hasReachedReadBoundary(atNewest))
+    // Opening it at the newest edge shows only its tail and waits for a
+    // further scroll toward newest; opening higher up does not.
+    #expect(
+        TimelineReadEligibilityPolicy.awaitsScrollTowardNewest(
+            afterOpeningAt: atNewest,
+            hasUnresolvedUnreadBoundary: true
+        )
+    )
+    #expect(
+        !TimelineReadEligibilityPolicy.awaitsScrollTowardNewest(
+            afterOpeningAt: aboveNewest,
+            hasUnresolvedUnreadBoundary: true
+        )
+    )
+    // A loaded divider whose whole unread run is visible is read on open.
+    #expect(
+        !TimelineReadEligibilityPolicy.awaitsScrollTowardNewest(
+            afterOpeningAt: atNewest,
+            hasUnresolvedUnreadBoundary: false
+        )
+    )
+    #expect(NativeTimelineReadBoundaryPolicy.isScrollTowardNewest(deltaX: 0, deltaY: -4))
+    #expect(!NativeTimelineReadBoundaryPolicy.isScrollTowardNewest(deltaX: 0, deltaY: 4))
+    #expect(!NativeTimelineReadBoundaryPolicy.isScrollTowardNewest(deltaX: -6, deltaY: -2))
+}
+
 @Test func `read eligibility uses established newest message geometry`() {
     #expect(
         TimelineReadEligibilityPolicy.hasReachedReadBoundary(

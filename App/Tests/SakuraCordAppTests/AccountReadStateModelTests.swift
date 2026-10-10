@@ -770,6 +770,28 @@ struct AccountReadStateModelTests {
         )
     }
 
+    @Test func `held backlog visit resumes live acknowledgement once the backlog is read elsewhere`() {
+        let model = makeModel(latest: 12, acknowledged: 10)
+        #expect(
+            model.updatePresentation(
+                channelID: channelID,
+                isPresented: true,
+                initialHistoryLoaded: true,
+                initialPositionEstablished: true,
+                windowIsActive: true,
+                hasReachedReadBoundary: true,
+                blocksAutomaticAcknowledgement: true
+            ) == nil
+        )
+        // Discord acknowledges the backlog itself, e.g. after a reply is sent.
+        #expect(model.applyRemote(ChannelReadState(
+            channelID: channelID,
+            lastAcknowledgedMessageID: MessageID(rawValue: 12)
+        )))
+        #expect(model.receive(message(id: 13), currentUserID: currentUser.id).accepted)
+        #expect(model.updatePresentation(channelID: channelID) == MessageID(rawValue: 13))
+    }
+
     @Test func `ready replacement preserves established timeline viewing evidence`() {
         let model = makeModel(latest: 12, acknowledged: 10)
         #expect(
@@ -2687,6 +2709,65 @@ func `guild pages do not acknowledge the hidden selected conversation`(page: Gui
     await provider.emit(.connectionChanged(.connecting))
     await provider.emit(.connectionChanged(.ready))
 
+    #expect(await eventually { await provider.acknowledgementRequests.count == 1 })
+    let request = try #require(await provider.acknowledgementRequests.first)
+    #expect(request.channelID == channelID)
+    #expect(request.messageID == model.readState.entries[channelID]?.latestKnownMessageID)
+}
+
+@MainActor
+@Test func `opening a backlog at its newest message waits for a further scroll toward it`() async throws {
+    let provider = MockChatProvider()
+    let model = AppModel(
+        launchMode: .offlineTesting,
+        provider: provider,
+        readAcknowledgementTiming: .init(debounce: .milliseconds(10))
+    )
+    await model.start()
+    let channelID = ChannelID(rawValue: 210)
+    model.selectedChannelID = channelID
+    #expect(await until { !model.isLoadingMessages && model.selectedChannelID == channelID })
+    model.reportMainWindowActive(true)
+    model.reportTimelineInitialPosition(
+        channelID: channelID,
+        hasReachedReadBoundary: true,
+        awaitsScrollTowardNewest: true
+    )
+    // Repeated geometry at the newest edge is not a read on its own.
+    model.reportTimelinePosition(channelID: channelID, hasReachedReadBoundary: true)
+    #expect(model.readState.entries[channelID]?.isUnread == true)
+    #expect(model.acknowledgementTasks[channelID] == nil)
+
+    // A wheel clamped at the bottom edge reports no new position, so the
+    // gesture itself must acknowledge.
+    model.reportTimelineUserInteraction(channelID: channelID)
+    #expect(await until { !model.isChannelUnread(channelID) })
+    #expect(await eventually { await provider.acknowledgementRequests.count == 1 })
+    let request = try #require(await provider.acknowledgementRequests.first)
+    #expect(request.channelID == channelID)
+    #expect(request.messageID == model.readState.entries[channelID]?.latestKnownMessageID)
+    #expect(!request.manual)
+}
+
+@MainActor
+@Test func `opening above the newest message acknowledges once the reader reaches it`() async throws {
+    let provider = MockChatProvider()
+    let model = AppModel(
+        launchMode: .offlineTesting,
+        provider: provider,
+        readAcknowledgementTiming: .init(debounce: .milliseconds(10))
+    )
+    await model.start()
+    let channelID = ChannelID(rawValue: 210)
+    model.selectedChannelID = channelID
+    #expect(await until { !model.isLoadingMessages && model.selectedChannelID == channelID })
+    model.reportMainWindowActive(true)
+    model.reportTimelineInitialPosition(channelID: channelID, hasReachedReadBoundary: false)
+    #expect(model.readState.entries[channelID]?.isUnread == true)
+    #expect(model.acknowledgementTasks[channelID] == nil)
+
+    model.reportTimelinePosition(channelID: channelID, hasReachedReadBoundary: true)
+    #expect(await until { !model.isChannelUnread(channelID) })
     #expect(await eventually { await provider.acknowledgementRequests.count == 1 })
     let request = try #require(await provider.acknowledgementRequests.first)
     #expect(request.channelID == channelID)
