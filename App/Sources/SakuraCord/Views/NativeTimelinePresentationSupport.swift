@@ -263,8 +263,30 @@ final class NativeTimelineActionCapsuleState: ObservableObject {
     /// reaction-dependent controls stay current while the capsule is shown.
     @Published var message: Message
 
-    init(message: Message) {
+    let controlCount: Int
+    let allowsQuickReactions: Bool
+    @Published var showsQuickReactions = false
+
+    init(message: Message, controlCount: Int, allowsQuickReactions: Bool) {
         self.message = message
+        self.controlCount = controlCount
+        self.allowsQuickReactions = allowsQuickReactions
+    }
+
+    var actionSize: CGSize {
+        HoverActionPillMetrics.size(
+            controlCount: controlCount + (showsQuickReactions ? QuickReactionPolicy.limit : 0),
+            dividerCount: showsQuickReactions ? 1 : 0
+        )
+    }
+
+    func updateAvailableWidth(_ width: CGFloat) {
+        let showsQuickReactions = allowsQuickReactions
+            && HoverActionPillMetrics.size(controlCount: controlCount + QuickReactionPolicy.limit, dividerCount: 1).width
+            <= width - InterfaceScale.metric(16)
+        if self.showsQuickReactions != showsQuickReactions {
+            self.showsQuickReactions = showsQuickReactions
+        }
     }
 
     @Published var isReactionPickerPresented = false {
@@ -292,7 +314,6 @@ struct NativeTimelineActionCapsuleOverlay: View {
     let model: AppModel
     let canEdit: Bool
     let canDelete: Bool
-    let showsQuickReactions: Bool
     @ObservedObject var state: NativeTimelineActionCapsuleState
     let jumpToMessage: (() -> Void)?
     let unpinMessage: (() -> Void)?
@@ -338,7 +359,7 @@ struct NativeTimelineActionCapsuleOverlay: View {
                     message: state.message,
                     canEdit: canEdit,
                     canDelete: canDelete,
-                    showsQuickReactions: showsQuickReactions,
+                    showsQuickReactions: state.showsQuickReactions,
                     isReactionPickerPresented: $state.isReactionPickerPresented,
                     isDeleteConfirmationPresented:
                         $state.isDeleteConfirmationPresented,

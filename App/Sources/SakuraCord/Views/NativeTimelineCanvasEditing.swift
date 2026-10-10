@@ -268,21 +268,6 @@ extension NativeTimelineCanvasView {
         model: AppModel,
         actions: NativeTimelineRowActions
     ) {
-        let state = NativeTimelineActionCapsuleState(message: row.message)
-        state.presentationDidChange = { [weak self, weak state] isPresented in
-            Task { @MainActor [weak self, weak state] in
-                await Task.yield()
-                guard let self,
-                      let state,
-                      self.actionCapsuleState === state
-                else { return }
-                if isPresented {
-                    self.refreshActionCapsuleSizeAndPosition()
-                } else {
-                    self.reconcileActionCapsule()
-                }
-            }
-        }
         let canEdit = row.message.author.id == model.snapshot?.currentUser.id
             && !row.message.hasPoll
             && !row.message.flags.contains(.voiceMessage)
@@ -327,15 +312,30 @@ extension NativeTimelineCanvasView {
                 + (canDelete ? 1 : 0)
                 + (openThread == nil ? 0 : 1))
             : 1 + (unpinMessage == nil ? 0 : 1) + (messageInteractionContext == .inboxMention ? 1 : 0)
-        // A narrow timeline drops the quick reactions rather than push actions past its edge.
-        let quickReactionCount = jumpToMessage == nil && model.canCreateReactions(on: row.message)
-            && HoverActionPillMetrics.size(controlCount: controlCount + QuickReactionPolicy.limit, dividerCount: 1).width
-            <= bounds.width - InterfaceScale.metric(16) ? QuickReactionPolicy.limit : 0
+        let state = NativeTimelineActionCapsuleState(
+            message: row.message,
+            controlCount: controlCount,
+            allowsQuickReactions: jumpToMessage == nil && model.canCreateReactions(on: row.message)
+        )
+        state.updateAvailableWidth(bounds.width)
+        state.presentationDidChange = { [weak self, weak state] isPresented in
+            Task { @MainActor [weak self, weak state] in
+                await Task.yield()
+                guard let self,
+                      let state,
+                      self.actionCapsuleState === state
+                else { return }
+                if isPresented {
+                    self.refreshActionCapsuleSizeAndPosition()
+                } else {
+                    self.reconcileActionCapsule()
+                }
+            }
+        }
         let root = NativeTimelineActionCapsuleOverlay(
             model: model,
             canEdit: canEdit,
             canDelete: canDelete,
-            showsQuickReactions: quickReactionCount > 0,
             state: state,
             jumpToMessage: jumpToMessage,
             unpinMessage: unpinMessage,
@@ -358,10 +358,7 @@ extension NativeTimelineCanvasView {
         actionCapsuleState = state
         actionCapsuleHost = addActionCapsuleHost(root, identifier: "message-action-capsule-\(row.id)")
         actionCapsuleMessageID = row.id
-        actionCapsuleSize = HoverActionPillMetrics.size(
-            controlCount: controlCount + quickReactionCount,
-            dividerCount: quickReactionCount == 0 ? 0 : 1
-        )
+        actionCapsuleSize = state.actionSize
         positionActionCapsule(at: index)
     }
 
@@ -391,6 +388,13 @@ extension NativeTimelineCanvasView {
     }
 
     func positionActionCapsule(at knownIndex: Int? = nil) {
+        if let state = actionCapsuleState {
+            let previouslyShown = state.showsQuickReactions
+            state.updateAvailableWidth(bounds.width)
+            if state.showsQuickReactions != previouslyShown, !state.isDeleteConfirmationPresented {
+                actionCapsuleSize = state.actionSize
+            }
+        }
         guard let host = actionCapsuleHost,
               let size = actionCapsuleSize,
               let messageID = actionCapsuleMessageID,
