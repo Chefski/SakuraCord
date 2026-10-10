@@ -362,9 +362,11 @@ switching protocol cannot be published into the catalog.
    Install the existing SakuraCord bot GitHub App on it with **Contents: write**.
    The publisher requests a short-lived token limited to that repository; no
    personal access token or source-repository write grant is needed.
-2. Set source-repository **variable** `SPARKLE_ED_PUBLIC_KEY` to the same public
-   key embedded in released apps. Fork builds must read this public value, so
-   using the secret alone is insufficient. Keep `SPARKLE_ED_PRIVATE_KEY` secret.
+2. Keep the public key in the PR packaging step of `.github/workflows/ci.yml`
+   equal to the key embedded in released apps. The workflow supplies it directly
+   because fork PR workflows cannot read repository variables. Set source-repository **variable**
+   `SPARKLE_ED_PUBLIC_KEY` to the same value for the trusted publisher's independent
+   archive verification. Keep `SPARKLE_ED_PRIVATE_KEY` secret.
    Existing `SAKURACORD_BOT_APP_ID` and `SAKURACORD_BOT_PRIVATE_KEY` supply the
    publisher's GitHub App credentials.
 3. Land the trusted publication workflow on `main` before relying on its

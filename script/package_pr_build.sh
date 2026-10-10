@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 source "$ROOT_DIR/script/runtime.sh"
 : "${GITHUB_RUN_ID:?}"
 : "${GITHUB_RUN_ATTEMPT:?}"
-: "${SPARKLE_ED_PUBLIC_KEY:?Set the public repository variable SPARKLE_ED_PUBLIC_KEY}"
+: "${SPARKLE_ED_PUBLIC_KEY:?Set SPARKLE_ED_PUBLIC_KEY to the public Sparkle key}"
 export SAKURACORD_ENABLE_UPDATES=1
 export SAKURACORD_INSECURE_DEBUG_CREDENTIALS=0
 export SAKURACORD_CODE_SIGN_IDENTITY=-
