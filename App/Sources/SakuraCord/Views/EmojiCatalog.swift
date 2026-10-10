@@ -341,6 +341,15 @@ enum NativeEmojiPickerIndex {
         guard case let .native(emoji) = item else { return NativeEmojiCategory.smileys }
         return emoji.category
     }
+
+    private static let emojiByValue = Dictionary(
+        NativeEmojiCatalog.items.map { ($0.value.replacingOccurrences(of: "\u{FE0F}", with: ""), $0) },
+        uniquingKeysWith: { first, _ in first }
+    )
+
+    static func emoji(forValue value: String) -> NativeEmoji? {
+        emojiByValue[value.replacingOccurrences(of: "\u{FE0F}", with: "")]
+    }
 }
 
 enum NativeEmojiCatalogDiagnostics {

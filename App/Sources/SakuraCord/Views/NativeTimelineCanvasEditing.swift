@@ -351,10 +351,12 @@ extension NativeTimelineCanvasView {
         actionCapsuleState = state
         actionCapsuleHost = host
         actionCapsuleMessageID = row.id
+        let quickReactionCount = jumpToMessage == nil && row.message.outboxState != .failed
+            ? model.quickReactions(for: row.message).count : 0
         let controlCount = jumpToMessage == nil
             ? (row.message.outboxState == .failed
                 ? 2
-                : 3
+                : 3 + quickReactionCount
                 + (retry == nil ? 0 : 1)
                 + (reply == nil ? 0 : 1)
                 + (forward == nil ? 0 : 1)
@@ -363,7 +365,8 @@ extension NativeTimelineCanvasView {
                 + (openThread == nil ? 0 : 1))
             : 1 + (unpinMessage == nil ? 0 : 1) + (messageInteractionContext == .inboxMention ? 1 : 0)
         actionCapsuleSize = HoverActionPillMetrics.size(
-            controlCount: controlCount
+            controlCount: controlCount,
+            dividerCount: quickReactionCount == 0 ? 0 : 1
         )
         positionActionCapsule(at: index)
     }

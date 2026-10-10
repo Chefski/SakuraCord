@@ -400,6 +400,20 @@ struct MessageActionCapsule: View {
                     action: copy
                 )
             } else {
+                let quickReactions = model.quickReactions(for: message)
+                if !quickReactions.isEmpty {
+                    ForEach(quickReactions) { reaction in
+                        QuickReactionButton(
+                            reaction: reaction,
+                            customEmojiURLsByID: model.customEmojiURLsByID
+                        ) {
+                            react(reaction.token)
+                        }
+                    }
+                    // One load per section; on ForEach it would run per emoji.
+                    HoverActionPillDivider()
+                        .task { await model.loadDiscordEmojiSettings() }
+                }
                 ReactionActionMenu(
                     model: model,
                     guildID: message.guildID,
@@ -466,6 +480,32 @@ struct MessageActionCapsule: View {
                 delete()
             }
         }
+    }
+}
+
+private struct QuickReactionButton: View {
+    let reaction: QuickReaction
+    let customEmojiURLsByID: CustomEmojiImageURLs
+    let action: () -> Void
+
+    var body: some View {
+        let token = Reaction(emoji: reaction.token, count: 0)
+        Button(action: action) {
+            HoverActionControlLabel(diameter: HoverActionPillMetrics.controlDiameter) {
+                MessageReactionEmoji(
+                    reaction: token,
+                    url: MessageReactionPresentation.emojiURL(for: token, customEmojiURLsByID: customEmojiURLsByID),
+                    size: InterfaceScale.metric(20)
+                )
+            }
+        }
+        .buttonStyle(.plain)
+        // Discord marks an applied quick reaction only in its tooltip and
+        // label; clicking it removes that reaction.
+        .help(":\(reaction.name):\n\(reaction.isApplied ? "Click to remove" : "Click to react")")
+        .accessibilityLabel(
+            reaction.isApplied ? "Click to remove \(reaction.name)" : "Click to react with \(reaction.name)"
+        )
     }
 }
 
