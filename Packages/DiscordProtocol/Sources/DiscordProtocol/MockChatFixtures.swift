@@ -13,6 +13,7 @@ struct MockChatFixture {
         let videoURL: URL?
         let lottieURL: URL?
         let includesAnimatedMedia: Bool
+        let includesVoiceMessages: Bool
     }
 
     let currentUser: User
@@ -26,14 +27,50 @@ struct MockChatFixture {
         now: Date = .now,
         includesLongServerList: Bool = false,
         timelineMessageCount: Int? = nil,
-        timelineIncludesAnimatedMedia: Bool = false
+        timelineIncludesAnimatedMedia: Bool = false,
+        timelineIncludesVoiceMessages: Bool = false
     ) -> Self {
         MockFixtureAssembly(
             now: now,
             includesLongServerList: includesLongServerList,
             timelineMessageCount: timelineMessageCount,
-            timelineIncludesAnimatedMedia: timelineIncludesAnimatedMedia
+            timelineIncludesAnimatedMedia: timelineIncludesAnimatedMedia,
+            timelineIncludesVoiceMessages: timelineIncludesVoiceMessages
         ).fixture
+    }
+
+    static let demoVoiceMessageWaveform =
+        "ACo7H8wIr19qoSG+H4thAAAcpElmVE8WJ0Ic0hyxcwAAIf9dmWpSjSOHOWMETTAAABriOaiCYbMhvkSHeQA="
+
+    /// A voice message playing the bundled synthetic clip. Performance
+    /// fixtures vary `duration` and `waveform` to exercise layout widths.
+    static func voiceMessageAttachment(
+        id: String,
+        duration: Double = 6.2,
+        waveform: String = demoVoiceMessageWaveform
+    ) -> Attachment? {
+        demoResource("demo-voice-message", extension: "ogg").map {
+            Attachment(
+                id: id,
+                filename: VoiceMessageMetadata.filename,
+                url: $0,
+                mediaType: "audio/ogg",
+                size: 18_723,
+                durationSeconds: duration,
+                waveform: waveform
+            )
+        }
+    }
+
+    /// Deterministic 0–255 bins with a speech-like rhythm.
+    static func syntheticVoiceWaveform(seed: Int, duration: Double) -> String {
+        let count = min(max(Int(duration * 10), 32), 256)
+        let bins = (0 ..< count).map { index -> UInt8 in
+            let syllable = sin(Double(index) * 0.9 + Double(seed)) * 0.5 + 0.5
+            let phrase = sin(Double(index) * 0.13 + Double(seed) * 0.7) * 0.5 + 0.5
+            return UInt8(min(255, max(0, (syllable * phrase * 230 + Double((index * 31 + seed) % 25)).rounded())))
+        }
+        return Data(bins).base64EncodedString()
     }
 
     static func demoAsset(_ name: String) -> URL? {
@@ -97,6 +134,11 @@ struct MockChatFixture {
         let id = MessageID(rawValue: 5_000_000 + UInt64(index))
         let author = input.users[index % input.users.count]
         let animatedMediaKind = input.includesAnimatedMedia ? index % 12 : -1
+        if input.includesVoiceMessages, index % 5 == 2,
+           let voice = timelineVoiceMessage(input, index: index, id: id, author: author, start: start)
+        {
+            return voice
+        }
         let components = timelineComponents(index: index)
         return Message(
             id: id,
@@ -131,6 +173,35 @@ struct MockChatFixture {
                 lottieURL: input.lottieURL
             ),
             mentionedUsers: index % 8 == 4 ? [input.users[1]] : []
+        )
+    }
+
+    /// Every fifth message is a voice message of varied length, so long
+    /// timelines exercise many players and every waveform width.
+    private static func timelineVoiceMessage(
+        _ input: TimelineFixtureInput,
+        index: Int,
+        id: MessageID,
+        author: User,
+        start: Date
+    ) -> Message? {
+        let duration = 0.8 + Double((index * 7) % 70)
+        guard let attachment = voiceMessageAttachment(
+            id: "timeline-voice-\(index)",
+            duration: duration,
+            waveform: syntheticVoiceWaveform(seed: index, duration: duration)
+        ) else { return nil }
+        return Message(
+            id: id,
+            channelID: input.channelID,
+            author: author,
+            content: "",
+            timestamp: start.addingTimeInterval(Double(index) * 35),
+            replyTo: index > 0 && index.isMultiple(of: 43) ? MessageID(rawValue: id.rawValue - 1) : nil,
+            attachments: [attachment],
+            reactions: timelineReactions(index: index, users: input.users),
+            flags: [.voiceMessage],
+            guildID: input.guildID
         )
     }
 
@@ -395,6 +466,7 @@ private struct MockFixtureAssembly {
     let includesLongServerList: Bool
     let timelineMessageCount: Int?
     let timelineIncludesAnimatedMedia: Bool
+    let timelineIncludesVoiceMessages: Bool
 
     var fixture: MockChatFixture {
         let auroraID = GuildID(rawValue: 100)
@@ -405,7 +477,7 @@ private struct MockFixtureAssembly {
         let auroraVoiceCategoryID = ChannelID(rawValue: 193)
         let labCategoryID = ChannelID(rawValue: 290)
         let labVoiceCategoryID = ChannelID(rawValue: 291)
-        let textPermissions: UInt64 = (1 << 0) | (1 << 10) | (1 << 11) | (1 << 15) | (1 << 16) | (1 << 20)
+        let textPermissions: UInt64 = (1 << 0) | (1 << 10) | (1 << 11) | (1 << 15) | (1 << 16) | (1 << 20) | (1 << 46)
             | (1 << 34) | (1 << 38) | (1 << 51)
         let auroraIcon = demoAsset("guild-aurora")
         let nativeLabIcon = demoAsset("guild-native-lab")
@@ -947,8 +1019,21 @@ private struct MockFixtureAssembly {
                 animatedMediaURL: animatedFixture,
                 videoURL: videoFixture,
                 lottieURL: lottieFixture,
-                includesAnimatedMedia: timelineIncludesAnimatedMedia
+                includesAnimatedMedia: timelineIncludesAnimatedMedia,
+                includesVoiceMessages: timelineIncludesVoiceMessages
             ))
+        } else {
+            // A short exchange of voice messages for interactive checks.
+            let voiceMessages = [(maya, 2101 as UInt64, 30.0), (nova, 2102, 75.0)].compactMap { author, id, offset in
+                MockChatFixture.voiceMessageAttachment(id: "demo-voice-\(id)").map {
+                    Message(
+                        id: MessageID(rawValue: id), channelID: ChannelID(rawValue: 210), author: author,
+                        content: "", timestamp: now.addingTimeInterval(-600 + offset),
+                        attachments: [$0], flags: [.voiceMessage], guildID: auroraID
+                    )
+                }
+            }
+            messages[ChannelID(rawValue: 210), default: []].append(contentsOf: voiceMessages)
         }
         messages[ChannelID(rawValue: 402)] = [
             message(4021, 402, kai, "Sketched three icon ideas for the nickname dialog — sending them over.", base.addingTimeInterval(1240)),

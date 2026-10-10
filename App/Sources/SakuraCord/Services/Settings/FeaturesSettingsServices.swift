@@ -9,6 +9,7 @@ nonisolated struct FeaturesSettingsSnapshot: Equatable, Sendable {
     var fakeNitroStickers = true
     var fakeNitroSoundboard = true
     var fakeNitroStreamQuality = true
+    var voiceMessageRecording = true
 }
 
 @MainActor
@@ -28,6 +29,7 @@ final class FeaturesSettingsStore {
         if case let .bool(saved) = preferences.value(for: .fakeNitroStickers) { value.fakeNitroStickers = saved }
         if case let .bool(saved) = preferences.value(for: .fakeNitroSoundboard) { value.fakeNitroSoundboard = saved }
         if case let .bool(saved) = preferences.value(for: .fakeNitroStreamQuality) { value.fakeNitroStreamQuality = saved }
+        if case let .bool(saved) = preferences.value(for: .voiceMessageRecording) { value.voiceMessageRecording = saved }
         return value
     }
 
@@ -38,6 +40,7 @@ final class FeaturesSettingsStore {
         preferences.set(.bool(value.fakeNitroStickers), for: .fakeNitroStickers)
         preferences.set(.bool(value.fakeNitroSoundboard), for: .fakeNitroSoundboard)
         preferences.set(.bool(value.fakeNitroStreamQuality), for: .fakeNitroStreamQuality)
+        preferences.set(.bool(value.voiceMessageRecording), for: .voiceMessageRecording)
     }
 }
 
@@ -48,6 +51,10 @@ extension AppModel {
             onboarding.browsingChannels = false
             onboarding.channelSearch = ""
             onboarding.isChannelSearchFocused = false
+        }
+        if featuresSettings.voiceMessageRecording, !value.voiceMessageRecording {
+            channelVoiceMessageComposer.discard(playback: voiceMessagePlayback)
+            threadVoiceMessageComposer.discard(playback: voiceMessagePlayback)
         }
         featuresSettings = value
         FeaturesSettingsStore.shared.save(value)

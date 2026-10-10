@@ -3,8 +3,11 @@ import Foundation
 nonisolated extension SettingsCatalog {
     static let featuresPage = page(
         .features, group: .preferences, title: "Features", image: "square.stack.3d.up.fill",
-        help: "Manage hidden channels, FakeNitro, attachments, and on-device translation.",
-        keywords: ["channels", "hidden", "FakeNitro", "emoji", "stickers", "soundboard", "stream", "uploads", "translation", "language"]
+        help: "Manage hidden channels, FakeNitro, voice messages, attachments, and on-device translation.",
+        keywords: [
+            "channels", "hidden", "FakeNitro", "emoji", "stickers", "soundboard", "stream", "voice messages", "uploads", "translation",
+            "language",
+        ]
     )
 
     static let featuresControls: [SettingsControlMetadata] = [
@@ -52,6 +55,12 @@ nonisolated extension SettingsCatalog {
             .fakeNitroStreamQuality, page: .features, section: .featuresFakeNitro,
             label: "FakeNitro stream quality", help: "Use higher stream resolutions and frame rates without Nitro.",
             keywords: ["features", "FakeNitro"], scope: .appWideLocal
+        ),
+        control(
+            .voiceMessageRecording, page: .features, section: .featuresVoiceMessages,
+            label: "Record voice messages",
+            help: "Show the composer’s record button. Voice messages in conversations play either way.",
+            keywords: ["voice message", "record", "microphone", "audio"], scope: .appWideLocal
         ),
         control(
             .attachmentCompactionPrompt, page: .features, section: .featuresAttachments,

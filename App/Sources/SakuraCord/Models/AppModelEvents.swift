@@ -526,6 +526,8 @@ extension AppModel {
         if let nonce = message.nonce {
             enrichInteractionResponse(&message)
             composer.outbox.noteConfirmation(nonce: nonce)
+            // Discord has the upload; the recording is no longer needed.
+            if let outgoing = composer.outbox.draftsByNonce[nonce] { discardVoiceMessageFile(for: outgoing) }
             composer.outbox.draftsByNonce[nonce] = nil
             composer.outbox.stickerUploadSourceURLByNonce[nonce] = nil
             pruneOwnedPromisedAttachmentFiles()

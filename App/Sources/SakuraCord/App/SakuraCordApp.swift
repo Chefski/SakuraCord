@@ -64,6 +64,8 @@ struct SakuraCordApp: App {
                 pinnedMessageCount: configuration.includesPinsPerformanceFixture ? 5_000 : nil,
                 timelineIncludesAnimatedMedia:
                     configuration.includesChatMediaPerformanceFixture,
+                timelineIncludesVoiceMessages:
+                    configuration.includesChatVoicePerformanceFixture,
                 includesIncomingPrivateCall:
                     configuration.includesIncomingPrivateCallFixture
             )

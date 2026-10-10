@@ -47,12 +47,14 @@ public actor MockChatProvider: ChatProvider {
         pinnedMessageCount: Int? = nil,
         pinMutationFailureStatus: Int? = nil,
         timelineIncludesAnimatedMedia: Bool = false,
+        timelineIncludesVoiceMessages: Bool = false,
         includesIncomingPrivateCall: Bool = false
     ) {
         let fixture = MockChatFixture.make(
             includesLongServerList: includesLongServerList,
             timelineMessageCount: timelineMessageCount,
-            timelineIncludesAnimatedMedia: timelineIncludesAnimatedMedia
+            timelineIncludesAnimatedMedia: timelineIncludesAnimatedMedia,
+            timelineIncludesVoiceMessages: timelineIncludesVoiceMessages
         )
         currentUser = fixture.currentUser
         self.pinMutationFailureStatus = pinMutationFailureStatus

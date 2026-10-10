@@ -234,6 +234,7 @@ extension AppModel {
     }
 
     func resetAccountPresentationState() {
+        resetVoiceMessages()
         unreadPresentationRefreshTask?.cancel()
         unreadPresentationRefreshTask = nil
         unreadPresentationPreparationTask?.cancel()
@@ -542,6 +543,7 @@ extension AppModel {
         loadingReactionReactors = []
         failedReactionReactorLoads = [:]
         resetForumLoadAndPresentationState()
+        for outgoing in composer.outbox.draftsByNonce.values { discardVoiceMessageFile(for: outgoing) }
         await composer.reset()
     }
 }

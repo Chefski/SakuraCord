@@ -23,6 +23,8 @@ usage() {
 #   build
 #       Rebuild and launch the canonical authenticated debug app with the
 #       local insecure-debug credential mode required for profiling.
+#   package
+#       Stage the same debug app without launching it, for offline scenarios.
 #   record <scenario> [seconds] [template]
 #       Attach to the exact running app. Simultaneously captures the chosen
 #       Instruments template, CPU/RSS samples, macOS per-process energy and
@@ -54,6 +56,12 @@ usage() {
 #       Captures popover open, paginated loading, rendering, and scrolling without
 #       credentials, network access, acknowledgements, or account mutations.
 #       Defaults: 35 seconds.
+#   offline-chat-scroll [seconds]
+#   offline-chat-voice-scroll [seconds]
+#       Relaunch the packaged offline 5,000-message chat fixture and run the same
+#       deterministic 20-second display-link workload. The voice variant makes
+#       every fifth message a voice message of varied length, so comparing the
+#       two isolates the cost of voice-message rows. Defaults: 35 seconds.
 #   authenticated-member-list-scroll [seconds]
 #       Relaunch the authenticated debug app and run the same deterministic
 #       20-second display-link workload through the native member list. The
@@ -569,7 +577,7 @@ record_launch() (
     notification="dev.sakuracord.performance.trace-started.$$.${RANDOM}"
     mkdir -p "$output"
     case "$scenario" in
-        authenticated-scroll|offline-pins-scroll) resource_window_name="MessageTimelineAutoScrollBenchmark" ;;
+        authenticated-scroll|offline-pins-scroll|offline-chat-scroll|offline-chat-voice-scroll) resource_window_name="MessageTimelineAutoScrollBenchmark" ;;
         authenticated-member-list-scroll) resource_window_name="MemberListAutoScrollBenchmark" ;;
         authenticated-gesture-scroll) resource_window_name="AuthenticatedGestureScrollBenchmark" ;;
         authenticated-loading-scroll-overlap) resource_window_name="AuthenticatedLoadingScrollOverlapBenchmark" ;;
@@ -748,6 +756,8 @@ record_launch() (
     kill -CONT "$pid"
     if [[ ( "$scenario" == "authenticated-scroll" \
             || "$scenario" == "offline-pins-scroll" \
+            || "$scenario" == "offline-chat-scroll" \
+            || "$scenario" == "offline-chat-voice-scroll" \
             || "$scenario" == "authenticated-member-list-scroll" \
             || "$scenario" == "authenticated-gesture-scroll" \
             || "$scenario" == "authenticated-loading-scroll-overlap" \
@@ -778,6 +788,8 @@ record_launch() (
     (( trace_status == 0 )) || exit "$trace_status"
     if [[ ( "$scenario" == "authenticated-scroll" \
             || "$scenario" == "offline-pins-scroll" \
+            || "$scenario" == "offline-chat-scroll" \
+            || "$scenario" == "offline-chat-voice-scroll" \
             || "$scenario" == "authenticated-member-list-scroll" \
             || "$scenario" == "authenticated-gesture-scroll" \
             || "$scenario" == "authenticated-loading-scroll-overlap" \
@@ -832,6 +844,16 @@ record_authenticated_scroll() {
 record_offline_pins_scroll() {
     record_launch offline-pins-scroll "$1" \
         --offline-pins-performance-autoscroll
+}
+
+record_offline_chat_scroll() {
+    record_launch offline-chat-scroll "$1" \
+        --offline-chat-performance-autoscroll
+}
+
+record_offline_chat_voice_scroll() {
+    record_launch offline-chat-voice-scroll "$1" \
+        --offline-chat-voice-performance-autoscroll
 }
 
 record_authenticated_member_list_scroll() {
@@ -898,7 +920,7 @@ summarize_recording() {
         awk -F '\t' '$1 == "scenario" { print $2 }' "$output/metadata.tsv"
     )"
     case "$scenario" in
-        authenticated-scroll|offline-pins-scroll)
+        authenticated-scroll|offline-pins-scroll|offline-chat-scroll|offline-chat-voice-scroll)
             profile_interval="MessageTimelineAutoScrollBenchmark"
             ;;
         authenticated-member-list-scroll)
@@ -962,6 +984,10 @@ summarize_recording() {
             >"$output/measurement-outline-list-time-profile.txt"
         if [[ ( "$scenario" == "authenticated-scroll" \
                 || "$scenario" == "offline-pins-scroll" \
+                || "$scenario" == "offline-chat-scroll" \
+                || "$scenario" == "offline-chat-voice-scroll" \
+            || "$scenario" == "offline-chat-scroll" \
+            || "$scenario" == "offline-chat-voice-scroll" \
                 || "$scenario" == "authenticated-member-list-scroll" ) \
               && -s "$output/benchmark-result.tsv" \
               && -n "$(awk -F '\t' '$1 == "delayed_tick_samples_offset_ms_interval_ms" { print $2 }' "$output/benchmark-result.tsv")" ]]; then
@@ -1321,6 +1347,8 @@ delayed_frame_profile_sampled_ms = time_profile_sampled_milliseconds.call(
 scroll_benchmark = [
   "authenticated-scroll",
   "offline-pins-scroll",
+  "offline-chat-scroll",
+  "offline-chat-voice-scroll",
   "authenticated-member-list-scroll",
 ].include?(scenario)
 navigation_benchmark = scenario == "authenticated-navigation"
@@ -1371,7 +1399,7 @@ navigation_static_decode_overlap_ms = 0.0
 navigation_static_decode_overlap_maximum_ms = 0.0
 loading_scroll_overlap_metrics = {}
 measurement_interval = case scenario
-                       when "authenticated-scroll", "offline-pins-scroll"
+                       when "authenticated-scroll", "offline-pins-scroll", "offline-chat-scroll", "offline-chat-voice-scroll"
                          "MessageTimelineAutoScrollBenchmark"
                        when "authenticated-member-list-scroll"
                          "MemberListAutoScrollBenchmark"
@@ -2374,6 +2402,11 @@ case "$command" in
             ./script/build_and_run.sh run
         record_build_provenance
         ;;
+    package)
+        cd "$root"
+        ./script/build_and_run.sh package
+        record_build_provenance
+        ;;
     record)
         scenario="${2:-active}"
         seconds="${3:-30}"
@@ -2388,6 +2421,12 @@ case "$command" in
         ;;
     offline-pins-scroll)
         record_offline_pins_scroll "${2:-35}"
+        ;;
+    offline-chat-scroll)
+        record_offline_chat_scroll "${2:-35}"
+        ;;
+    offline-chat-voice-scroll)
+        record_offline_chat_voice_scroll "${2:-35}"
         ;;
     authenticated-member-list-scroll)
         record_authenticated_member_list_scroll "${2:-70}"

@@ -511,6 +511,8 @@ public struct SendMessageDraft: Equatable, Sendable {
     public var poll: PollDraft?
     /// Read aloud to members viewing the channel, as Discord's `/tts` sends.
     public var isTTS: Bool
+    /// Sends the single attachment as a voice message.
+    public var voiceMessage: VoiceMessageMetadata?
 
     public init(
         channelID: ChannelID, content: String, replyTo: MessageID? = nil,
@@ -518,7 +520,8 @@ public struct SendMessageDraft: Equatable, Sendable {
         attachmentURLs: [URL] = [],
         attachments: [ForumPostAttachment]? = nil,
         nonce: String = ClientNonce.make(), stickerIDs: [String] = [], poll: PollDraft? = nil,
-        isTTS: Bool = false
+        isTTS: Bool = false,
+        voiceMessage: VoiceMessageMetadata? = nil
     ) {
         self.channelID = channelID
         self.content = content
@@ -530,5 +533,21 @@ public struct SendMessageDraft: Equatable, Sendable {
         self.stickerIDs = stickerIDs
         self.poll = poll
         self.isTTS = isTTS
+        self.voiceMessage = voiceMessage
+    }
+}
+
+/// The attachment metadata Discord requires on a voice message.
+public struct VoiceMessageMetadata: Equatable, Sendable {
+    public static let filename = "voice-message.ogg"
+    public static let contentType = "audio/ogg; codecs=opus"
+
+    public var durationSeconds: Double
+    /// Base64 of 0–255 waveform bins.
+    public var waveform: String
+
+    public init(durationSeconds: Double, waveform: String) {
+        self.durationSeconds = durationSeconds
+        self.waveform = waveform
     }
 }

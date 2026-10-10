@@ -176,6 +176,7 @@ struct NativeTimelineRowLayout {
     var forwardedSourceRegion: ForwardedSourceRegion?
     var linkedImageRegions: [LinkedImageRegion] = []
     var attachmentRegions: [AttachmentRegion] = []
+    var voiceMessageRegion: NativeTimelineVoiceMessageRegion?
     var embedFrames: [CGRect] = []
     var embedRegions: [EmbedRegion] = []
     var sakuraCordDeepLinkRegions: [SakuraCordDeepLinkRegion] = []

@@ -164,6 +164,10 @@ public enum MediaDeviceCatalog {
         try? AudioHardwareSystem.shared.defaultOutputDevice?.id
     }
 
+    public static func defaultOutputSampleRate() -> Double? {
+        try? AudioHardwareSystem.shared.defaultOutputDevice?.nominalSampleRate
+    }
+
     public static func defaultInputDeviceID() -> AudioDeviceID? {
         try? AudioHardwareSystem.shared.defaultInputDevice?.id
     }

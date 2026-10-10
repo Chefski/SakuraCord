@@ -94,6 +94,7 @@ extension NativeTimelineRowLayout {
             }
             let mediaFrames = layout.linkedImageRegions.map(\.frame)
                 + layout.attachmentRegions.map(\.frame)
+                + [layout.voiceMessageRegion?.frame].compactMap { $0 }
                 + layout.embedFrames
                 + layout.stickerFrames
             for frame in mediaFrames {
@@ -529,6 +530,22 @@ extension NativeTimelineRowLayout {
         }
 
         private mutating func appendAttachments() {
+            if !usesComponentsV2, (message.forwardedSnapshot?.flags ?? message.flags).contains(.voiceMessage) {
+                let style: NativeTimelineVoiceMessageRegion.Style =
+                    usesBubbles ? (isOutgoingBubble ? .outgoingBubble : .incomingBubble) : .plain
+                let voiceY = verticalOffset + (hasRichContent ? InterfaceScale.metric(8) : 0)
+                if let region = NativeTimelineVoiceMessageRegion.make(
+                    message: message,
+                    origin: CGPoint(x: contentX, y: voiceY),
+                    maximumWidth: inlineMediaMaximumWidth,
+                    style: style
+                ) {
+                    result.voiceMessageRegion = region
+                    verticalOffset = region.frame.maxY
+                    hasRichContent = true
+                    return
+                }
+            }
             if !usesComponentsV2, !message.attachments.isEmpty {
                 if hasRichContent {
                     verticalOffset += InterfaceScale.metric(8)
@@ -810,6 +827,7 @@ extension NativeTimelineRowLayout {
             return isEmojiOnlyText
                 && (result.contentFrame != nil || !result.stickerFrames.isEmpty)
                 && result.linkedImageRegions.isEmpty && result.attachmentRegions.isEmpty
+                && result.voiceMessageRegion == nil
                 && result.embedRegions.isEmpty && result.componentLayouts.isEmpty
                 && result.inviteRegions.isEmpty && result.sakuraCordDeepLinkRegions.isEmpty
                 && result.translationRegion == nil && result.pollLayout == nil

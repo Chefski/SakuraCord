@@ -1135,9 +1135,11 @@ extension NativeTimelineCanvasView {
             rowOrigin: displayedRowOrigin(at: index),
             highlightFrame: layouts[index].highlightFrame
         ) else { return nil }
+        // Discord does not allow editing voice messages.
         let canEdit =
             row.message.author.id == model?.snapshot?.currentUser.id
                 && !row.message.hasPoll
+                && !row.message.flags.contains(.voiceMessage)
                 && MessageReplyPresentationPolicy.allowsReplyAction(
                     for: row.message
                 )

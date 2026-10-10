@@ -14,6 +14,11 @@ extension DiscordRESTProvider {
                 throw ChatProviderError.invalidRequest("Send a poll separately from text, attachments, stickers, and replies.")
             }
         }
+        if draft.voiceMessage != nil {
+            guard draft.content.isEmpty, draft.attachments.count == 1, draft.stickerIDs.isEmpty, draft.poll == nil else {
+                throw ChatProviderError.invalidRequest("A voice message must be sent on its own.")
+            }
+        }
         progress(.preparing)
         guard draft.stickerIDs.isEmpty || draft.attachmentURLs.isEmpty else {
             throw ChatProviderError.invalidRequest(
@@ -27,7 +32,7 @@ extension DiscordRESTProvider {
             "content": .string(draft.content),
             "nonce": .string(draft.nonce),
             "tts": .bool(draft.isTTS),
-            "flags": .number(0),
+            "flags": .number(draft.voiceMessage == nil ? 0 : Double(MessageFlags.voiceMessage.rawValue)),
             // Chromium reports an unknown Network Information API connection
             // type on the current macOS desktop host. The first-party send
             // action forwards that value on every ordinary message POST.
@@ -46,7 +51,16 @@ extension DiscordRESTProvider {
                 body["allowed_mentions"] = allowedMentions
             }
         }
-        if !draft.attachmentURLs.isEmpty {
+        if let voiceMessage = draft.voiceMessage, let attachment = draft.attachments.first {
+            body["attachments"] = try await .array([
+                uploadVoiceMessage(
+                    attachment,
+                    metadata: voiceMessage,
+                    channelID: draft.channelID,
+                    progress: progress
+                )
+            ])
+        } else if !draft.attachmentURLs.isEmpty {
             body["attachments"] = try await .array(
                 uploadForumAttachments(
                     draft.attachments,
@@ -79,5 +93,39 @@ extension DiscordRESTProvider {
         continuation?.yield(.messageCreated(message))
         progress(.completed(messageID: message.id))
         return message
+    }
+
+    /// Discord's voice-message upload: a fixed Ogg Opus filename, its original
+    /// MIME type on the reservation, and duration plus waveform on the message.
+    func uploadVoiceMessage(
+        _ attachment: ForumPostAttachment,
+        metadata: VoiceMessageMetadata,
+        channelID: ChannelID,
+        progress: @escaping @Sendable (MessageSendProgress) -> Void
+    ) async throws -> JSONValue {
+        let file = AttachmentUploadFile(url: attachment.url, name: VoiceMessageMetadata.filename, description: nil)
+        let descriptors = try attachmentReservationDescriptors(for: [file]).map { descriptor -> JSONValue in
+            guard case var .object(fields) = descriptor else { return descriptor }
+            fields["original_content_type"] = .string(VoiceMessageMetadata.contentType)
+            return .object(fields)
+        }
+        let reservation = try await reserveAttachmentSlots(
+            descriptors: descriptors,
+            channelID: channelID,
+            fileCount: 1,
+            progress: progress
+        )
+        guard let slot = reservation.attachments.first else {
+            throw ChatProviderError.invalidRequest("Discord did not reserve the voice message.")
+        }
+        try await uploadAttachmentFile(file, to: slot, progress: progress)
+        guard case var .object(payload) = Self.uploadedAttachmentPayload(
+            id: slot.id,
+            file: file,
+            uploadFilename: slot.uploadFilename
+        ) else { throw ChatProviderError.invalidRequest("Discord did not reserve the voice message.") }
+        payload["duration_secs"] = .number(metadata.durationSeconds)
+        payload["waveform"] = .string(metadata.waveform)
+        return .object(payload)
     }
 }

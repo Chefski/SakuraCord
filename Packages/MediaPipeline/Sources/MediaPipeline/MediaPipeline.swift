@@ -162,6 +162,26 @@ public actor MediaCache {
         return data
     }
 
+    /// The cached file for `url`, for readers that need a file rather than
+    /// bytes. A reader that opened it keeps reading if it is later evicted.
+    public func fileURL(for url: URL) async throws -> URL? {
+        guard !isRemovingAll else { return nil }
+        let generation = storageGeneration
+        let fileURL = cachedFileURL(for: url)
+        let accessDate = Date()
+        let exists = try await performFileOperation {
+            guard FileManager.default.fileExists(atPath: fileURL.path) else { return false }
+            try? FileManager.default.setAttributes([.modificationDate: accessDate], ofItemAtPath: fileURL.path)
+            return true
+        }
+        guard exists, generation == storageGeneration, !isRemovingAll else { return nil }
+        if var cachedFile = cachedFileIndex?[fileURL] {
+            cachedFile.lastAccess = accessDate
+            cachedFileIndex?[fileURL] = cachedFile
+        }
+        return fileURL
+    }
+
     public func insert(_ data: Data, for url: URL) async throws {
         guard !data.isEmpty,
               data.count <= Self.maximumEntryBytes,
