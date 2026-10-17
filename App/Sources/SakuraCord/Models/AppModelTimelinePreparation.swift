@@ -48,62 +48,101 @@ extension AppModel {
         for messages: [Message],
         priority: TaskPriority
     ) async -> [MessageRowPresentation] {
+        guard !Task.isCancelled else { return [] }
+        let sessionGeneration = accountSessionGeneration
         let rows = await AppPerformanceSignposts.measure(
             "TimelineRowGrouping"
         ) {
-            await Task.detached(priority: priority) {
-                await MessageGrouping.rowsCooperatively(
-                    for: messages
-                )
-            }.value
+            let worker = Task.detached(priority: priority) {
+                await MessageGrouping.rowsCooperatively(for: messages)
+            }
+            return await withTaskCancellationHandler {
+                await worker.value
+            } onCancel: {
+                worker.cancel()
+            }
         }
-        let preparations = rows.compactMap { row in
-            NativeTimelineTextPresentation.preparation(
+        var preparations: [NativeTimelineTextPresentation.Preparation] = []
+        var replyPreparations: [String] = []
+        var sliceStart = ProcessInfo.processInfo.systemUptime
+        for row in rows {
+            guard !Task.isCancelled, accountSessionGeneration == sessionGeneration else { return [] }
+            if let preparation = NativeTimelineTextPresentation.preparation(
                 message: row.message,
                 plan: row.textPlan,
                 model: self,
                 baseFontSize: row.message.type.hasGeneratedContent
                     ? row.textPlan.baseFontSize
                     : InterfaceScale.fontSize(InterfaceTypographyMetrics.messageTextSize)
-            )
+            ) {
+                preparations.append(preparation)
+            }
+            if let preview = row.replyPreview,
+               let preparation = MessageReplySummary.preparation(
+                   content: preview.content,
+                   mentionLabel: MessageMentionResolver(model: self, message: row.message).label
+               ) {
+                replyPreparations.append(preparation)
+            }
+            if ProcessInfo.processInfo.systemUptime - sliceStart >= 0.0015 {
+                // Yield the run loop as well as the actor, so input and drawing
+                // can run while resolving a cold page's mentions and replies.
+                do {
+                    try await Task.sleep(for: .milliseconds(1))
+                } catch {
+                    return []
+                }
+                sliceStart = ProcessInfo.processInfo.systemUptime
+            }
         }
-        let replyPreparations = rows.compactMap { row -> String? in
-            guard let preview = row.replyPreview else { return nil }
-            return MessageReplySummary.preparation(
-                content: preview.content,
-                mentionLabel: MessageMentionResolver(model: self, message: row.message).label
-            )
-        }
+        guard !Task.isCancelled, accountSessionGeneration == sessionGeneration else { return [] }
+        // The native timeline initially measures every row to establish scroll
+        // geometry. Keep its text warm rather than shifting cold CoreText work
+        // into that synchronous first layout.
         guard !preparations.isEmpty || !replyPreparations.isEmpty else { return rows }
         let preparedReplies = await AppPerformanceSignposts.measure(
             "TimelineResolvedTextPrewarming"
         ) {
-            await Task.detached(priority: priority) { () -> [MessageReplySummary.Prepared] in
-                for (index, preparation) in preparations.enumerated() {
-                    guard !Task.isCancelled else { return [] }
-                    _ = autoreleasepool {
-                        NativeTimelineTextPresentation.prewarm(preparation)
-                    }
-                    if (index + 1).isMultiple(of: 4),
-                       index + 1 < preparations.endIndex
-                    {
-                        await Task.yield()
-                    }
-                }
-                var replies: [MessageReplySummary.Prepared] = []
-                for (index, source) in replyPreparations.enumerated() {
-                    guard !Task.isCancelled else { return [] }
-                    replies.append(MessageReplySummary.prepare(source))
-                    if (index + 1).isMultiple(of: 4) {
-                        await Task.yield()
-                    }
-                }
-                return replies
-            }.value
+            let worker = Task.detached(priority: priority) { [preparations, replyPreparations] in
+                await Self.prewarmTimelineText(preparations, replies: replyPreparations)
+            }
+            return await withTaskCancellationHandler {
+                await worker.value
+            } onCancel: {
+                worker.cancel()
+            }
         }
+        guard !Task.isCancelled, accountSessionGeneration == sessionGeneration else { return [] }
         for prepared in preparedReplies {
             MessageReplySummary.install(prepared)
         }
         return rows
     }
+
+    private nonisolated static func prewarmTimelineText(
+        _ preparations: [NativeTimelineTextPresentation.Preparation],
+        replies: [String]
+    ) async -> [MessageReplySummary.Prepared] {
+        for (index, preparation) in preparations.enumerated() {
+            guard !Task.isCancelled else { return [] }
+            _ = autoreleasepool {
+                NativeTimelineTextPresentation.prewarm(preparation)
+            }
+            if (index + 1).isMultiple(of: 4),
+               index + 1 < preparations.endIndex
+            {
+                await Task.yield()
+            }
+        }
+        var preparedReplies: [MessageReplySummary.Prepared] = []
+        for (index, source) in replies.enumerated() {
+            guard !Task.isCancelled else { return [] }
+            preparedReplies.append(MessageReplySummary.prepare(source))
+            if (index + 1).isMultiple(of: 4) {
+                await Task.yield()
+            }
+        }
+        return preparedReplies
+    }
+
 }

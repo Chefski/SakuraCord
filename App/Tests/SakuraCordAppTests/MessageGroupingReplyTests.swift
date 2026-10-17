@@ -27,6 +27,26 @@ import Testing
 }
 
 @MainActor
+@Test(arguments: [false, true])
+func `cancelled history preparation does not return a partial page`(throughModel: Bool) async {
+    let fixture = replyGroupingFixture()
+    let messages = [fixture.target, fixture.reply, fixture.followUp]
+    let model = AppModel(launchMode: .offlineTesting)
+    let work = Task { @MainActor in
+        if throughModel {
+            return await model.prepareTimelineRows(for: messages, priority: .userInitiated)
+        }
+        return await MessageGrouping.rowsCooperatively(for: messages, batchSize: 1)
+    }
+    // This actor has not suspended, so cancellation precedes any preparation.
+    work.cancel()
+    let rows = await work.value
+    #expect(rows.isEmpty)
+    #expect(model.messages.isEmpty)
+    #expect(model.messageRows.isEmpty)
+}
+
+@MainActor
 @Test func `appending after a reply matches full message regrouping`() {
     let fixture = replyGroupingFixture()
     let oldMessages = [fixture.target, fixture.reply]

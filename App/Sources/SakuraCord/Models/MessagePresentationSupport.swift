@@ -407,11 +407,13 @@ nonisolated enum MessageGrouping {
         continuationInterval: TimeInterval = defaultContinuationInterval,
         batchSize: Int = 4
     ) async -> [MessageRowPresentation] {
+        guard !Task.isCancelled else { return [] }
         let messagesByID = messageLookup(for: messages)
         let batchSize = max(1, batchSize)
         var result: [MessageRowPresentation] = []
         result.reserveCapacity(messages.count)
         for index in messages.indices {
+            guard !Task.isCancelled else { return [] }
             result.append(
                 autoreleasepool {
                     row(
