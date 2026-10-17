@@ -405,7 +405,8 @@ nonisolated enum MessageGrouping {
         for messages: [Message],
         calendar: Calendar = .autoupdatingCurrent,
         continuationInterval: TimeInterval = defaultContinuationInterval,
-        batchSize: Int = 4
+        batchSize: Int = 4,
+        checkpoint: (@Sendable (Int) async -> Void)? = nil
     ) async -> [MessageRowPresentation] {
         guard !Task.isCancelled else { return [] }
         let messagesByID = messageLookup(for: messages)
@@ -425,6 +426,7 @@ nonisolated enum MessageGrouping {
                     )
                 }
             )
+            if let checkpoint { await checkpoint(index + 1) }
             if (index + 1).isMultiple(of: batchSize),
                index + 1 < messages.endIndex
             {

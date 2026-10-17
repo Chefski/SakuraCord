@@ -44,9 +44,13 @@ extension AppModel {
         messageRowsNonAppendRevision &+= 1
     }
 
+    // Per-call worker checkpoints support deterministic cancellation verification
+    // without global hooks; normal loads retain their existing batching.
     func prepareTimelineRows(
         for messages: [Message],
-        priority: TaskPriority
+        priority: TaskPriority,
+        groupingCheckpoint: (@Sendable (Int) async -> Void)? = nil,
+        prewarmingCheckpoint: (@Sendable (Int) async -> Void)? = nil
     ) async -> [MessageRowPresentation] {
         guard !Task.isCancelled else { return [] }
         let sessionGeneration = accountSessionGeneration
@@ -54,7 +58,7 @@ extension AppModel {
             "TimelineRowGrouping"
         ) {
             let worker = Task.detached(priority: priority) {
-                await MessageGrouping.rowsCooperatively(for: messages)
+                await MessageGrouping.rowsCooperatively(for: messages, checkpoint: groupingCheckpoint)
             }
             return await withTaskCancellationHandler {
                 await worker.value
@@ -104,7 +108,9 @@ extension AppModel {
             "TimelineResolvedTextPrewarming"
         ) {
             let worker = Task.detached(priority: priority) { [preparations, replyPreparations] in
-                await Self.prewarmTimelineText(preparations, replies: replyPreparations)
+                await Self.prewarmTimelineText(
+                    preparations, replies: replyPreparations, checkpoint: prewarmingCheckpoint
+                )
             }
             return await withTaskCancellationHandler {
                 await worker.value
@@ -121,13 +127,15 @@ extension AppModel {
 
     private nonisolated static func prewarmTimelineText(
         _ preparations: [NativeTimelineTextPresentation.Preparation],
-        replies: [String]
+        replies: [String],
+        checkpoint: (@Sendable (Int) async -> Void)?
     ) async -> [MessageReplySummary.Prepared] {
         for (index, preparation) in preparations.enumerated() {
             guard !Task.isCancelled else { return [] }
             _ = autoreleasepool {
                 NativeTimelineTextPresentation.prewarm(preparation)
             }
+            if let checkpoint { await checkpoint(index + 1) }
             if (index + 1).isMultiple(of: 4),
                index + 1 < preparations.endIndex
             {
@@ -138,6 +146,7 @@ extension AppModel {
         for (index, source) in replies.enumerated() {
             guard !Task.isCancelled else { return [] }
             preparedReplies.append(MessageReplySummary.prepare(source))
+            if let checkpoint { await checkpoint(preparations.count + index + 1) }
             if (index + 1).isMultiple(of: 4) {
                 await Task.yield()
             }
