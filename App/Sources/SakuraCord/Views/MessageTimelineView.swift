@@ -6,6 +6,7 @@ struct MessageTimelineView: View {
     let bottomContentInset: CGFloat
     var editRequest: MessageTimelineEditRequest?
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let runsPerformanceAutoScroll =
         AppLaunchConfiguration(arguments: ProcessInfo.processInfo.arguments)
         .runsChatPerformanceAutoScroll
@@ -124,7 +125,14 @@ struct MessageTimelineView: View {
                         requestScroll(.bottom, glides: true)
                     }
                 } label: {
-                    Label(hasUnreadMessages ? "New messages" : "Scroll to bottom", systemImage: "arrow.down")
+                    Label {
+                        Text(hasUnreadMessages ? "New messages" : "Scroll to bottom")
+                            .contentTransition(.opacity)
+                    } icon: {
+                        Image(systemName: "arrow.down")
+                            .symbolEffect(.bounce, value: hasUnreadMessages)
+                            .symbolEffectsRemoved(reduceMotion)
+                    }
                         .font(.interface(.callout).weight(.semibold))
                         .foregroundStyle(.primary)
                         .environment(\.colorScheme, hasUnreadMessages ? .dark : colorScheme)
@@ -136,6 +144,10 @@ struct MessageTimelineView: View {
                                 ? .regular.tint(SakuraCordAccentColor.color).interactive()
                                 : .regular.interactive(),
                             in: Capsule()
+                        )
+                        .animation(
+                            reduceMotion ? nil : .spring(duration: 0.35, bounce: 0.18),
+                            value: hasUnreadMessages
                         )
                 }
                 .buttonStyle(.plain)
