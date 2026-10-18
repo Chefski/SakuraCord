@@ -229,6 +229,22 @@ nonisolated enum MessageOutboxPresentation {
         }
     }
 
+    static func failureText(for message: Message) -> String {
+        guard message.outboxState == .failed,
+              case let .autoModeration(explanation) = message.sendFailure
+        else { return "Failed" }
+        let detail = explanation?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return detail.isEmpty ? "This message was blocked by AutoMod." : detail
+    }
+
+    static func accessibilityStatus(for message: Message) -> String {
+        guard message.outboxState == .failed,
+              case let .autoModeration(explanation) = message.sendFailure
+        else { return accessibilityStatus(for: message.outboxState) }
+        let detail = explanation?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return detail.isEmpty ? "Blocked by AutoMod" : "Blocked by AutoMod. \(detail)"
+    }
+
     static func accessibilityStatus(for state: OutboxState) -> String {
         switch state {
         case .queued, .uploading, .sending:
@@ -337,16 +353,17 @@ struct NativeTimelineEditingMessageContent: View {
             }
             if message.outboxState == .failed {
                 Label(
-                    "Failed",
+                    MessageOutboxPresentation.failureText(for: message),
                     systemImage: "exclamationmark.circle"
                 )
+                .accessibilityLabel(MessageOutboxPresentation.accessibilityStatus(for: message))
                 .font(.interface(.caption2))
                 .foregroundStyle(.red)
             }
         }
         .accessibilityValue(
             MessageOutboxPresentation.accessibilityStatus(
-                for: message.outboxState
+                for: message
             )
         )
     }
@@ -404,7 +421,7 @@ struct MessageActionCapsule: View {
     var body: some View {
         if message.outboxState == .failed {
             HoverActionPill {
-                if let retry {
+                if message.canRetrySending, let retry {
                     HoverActionButton(
                         systemImage: "arrow.clockwise",
                         help: "Retry send",

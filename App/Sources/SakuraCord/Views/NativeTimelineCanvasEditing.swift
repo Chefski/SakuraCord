@@ -259,7 +259,8 @@ extension NativeTimelineCanvasView {
             return
         }
 
-        if actionCapsuleMessageID == row.id {
+        if actionCapsuleMessageID == row.id,
+           actionCapsuleState?.message.canRetrySending == row.message.canRetrySending {
             refreshActionCapsuleMessage(row.message)
             positionActionCapsule(at: index)
             return
@@ -296,7 +297,7 @@ extension NativeTimelineCanvasView {
         let unpinMessage: (() -> Void)? = messageInteractionContext == .pinnedResult && canPin
             ? messageMenuHandler(action: .unpinMessage, row: row, index: index, actions: actions)
             : nil
-        let retry = isFailed
+        let retry = row.message.canRetrySending
             ? { actions.retry(row.message) }
             : nil
         let isGuildTimedOut = model.guildTimeoutUntil(
@@ -320,7 +321,7 @@ extension NativeTimelineCanvasView {
         // Copy Message ID, Copy Link and Mark Unread, plus Pin when allowed.
         let shiftActionCount = offersShiftActions ? 3 + (togglePin == nil ? 0 : 1) : 0
         let controlCount = jumpToMessage == nil
-            ? (isFailed ? 2 : 1 + (canReact ? 1 : 0) + (reply == nil ? 0 : 1) + (forward == nil ? 0 : 1) + (canEdit ? 1 : 0))
+            ? (isFailed ? 1 + (retry == nil ? 0 : 1) : 1 + (canReact ? 1 : 0) + (reply == nil ? 0 : 1) + (forward == nil ? 0 : 1) + (canEdit ? 1 : 0))
             : 1 + (unpinMessage == nil ? 0 : 1) + (messageInteractionContext == .inboxMention ? 1 : 0)
         let state = NativeTimelineActionCapsuleState(
             message: row.message,

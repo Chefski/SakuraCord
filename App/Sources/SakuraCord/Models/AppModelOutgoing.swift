@@ -216,7 +216,8 @@ extension AppModel {
 
     @discardableResult
     func retrySending(_ message: Message) async -> Bool {
-        guard message.outboxState == .failed,
+        guard message.canRetrySending,
+              retainedMessage(channelID: message.channelID, messageID: message.id)?.canRetrySending == true,
               let nonce = message.nonce,
               outgoingState(nonce: nonce, channelID: message.channelID) == .failed,
               let outgoing = composer.outbox.draftsByNonce[nonce]
@@ -349,7 +350,12 @@ extension AppModel {
             // Keep the draft and nonce for explicit retry or discard; a late
             // Gateway confirmation can still reconcile the failed message.
             let state = OutboxState.failed
-            updateOutgoingState(state, nonce: outgoing.nonce, channelID: outgoing.channelID)
+            let failure: MessageSendFailure? = if case let ChatProviderError.autoModerationBlocked(explanation) = error {
+                .autoModeration(explanation: explanation)
+            } else {
+                nil
+            }
+            updateOutgoingState(state, nonce: outgoing.nonce, channelID: outgoing.channelID, failure: failure)
             let nsError = error as NSError
             Self.messageSendLogger.error(
                 """

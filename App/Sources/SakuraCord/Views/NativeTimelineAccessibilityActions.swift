@@ -74,12 +74,12 @@ extension NativeTimelineCanvasView {
         }
         var result: [NSAccessibilityCustomAction] = []
         if message.outboxState == .failed {
-            result.append(NSAccessibilityCustomAction(
-                name: "Retry Send"
-            ) { [weak self] in
-                self?.actions?.retry(message)
-                return self != nil
-            })
+            if message.canRetrySending {
+                result.append(NSAccessibilityCustomAction(name: "Retry Send") { [weak self] in
+                    self?.actions?.retry(message)
+                    return self != nil
+                })
+            }
             result.append(NSAccessibilityCustomAction(
                 name: "Copy Text"
             ) {

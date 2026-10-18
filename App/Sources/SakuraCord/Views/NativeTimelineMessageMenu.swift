@@ -70,6 +70,7 @@ nonisolated enum NativeTimelineMessageMenuPolicy {
         canEdit: Bool,
         canDelete: Bool,
         canRetry: Bool,
+        isFailed: Bool = false,
         canReply: Bool,
         canEndPoll: Bool = false,
         canForward: Bool = false,
@@ -103,10 +104,9 @@ nonisolated enum NativeTimelineMessageMenuPolicy {
             )
         }
 
-        var entries = conversationEntries(
+        var entries = canRetry || isFailed ? failedEntries(canRetry: canRetry) : conversationEntries(
             canEdit: canEdit,
             canDelete: canDelete,
-            canRetry: canRetry,
             canReply: canReply,
             canForward: canForward,
             canPin: canPin,
@@ -115,7 +115,7 @@ nonisolated enum NativeTimelineMessageMenuPolicy {
         if canEndPoll {
             entries.insert(.action(.endPoll, title: "End Poll Now", systemImage: "stop.circle"), at: min(3, entries.count))
         }
-        if let translationTitle, !canRetry {
+        if let translationTitle, !canRetry, !isFailed {
             entries.insert(
                 .action(.toggleTranslation, title: translationTitle, systemImage: "translate"),
                 at: messageActionsEnd(in: entries)
@@ -136,38 +136,41 @@ nonisolated enum NativeTimelineMessageMenuPolicy {
         return entries[..<copyIndex].lastIndex(of: .separator) ?? copyIndex
     }
 
+    private static func failedEntries(canRetry: Bool) -> [NativeTimelineMessageMenuEntry] {
+        var entries: [NativeTimelineMessageMenuEntry] = []
+        if canRetry {
+            entries.append(.action(
+                .retrySending,
+                title: "Retry Send",
+                systemImage: "arrow.clockwise"
+            ))
+            entries.append(.separator)
+        }
+        entries += [
+            .action(
+                .copyText,
+                title: "Copy Text",
+                systemImage: "doc.on.doc"
+            ),
+            .separator,
+            .action(
+                .discardFailedMessage,
+                title: "Delete Message…",
+                systemImage: "trash",
+                isDestructive: true
+            ),
+        ]
+        return entries
+    }
+
     private static func conversationEntries(
         canEdit: Bool,
         canDelete: Bool,
-        canRetry: Bool,
         canReply: Bool,
         canForward: Bool,
         canPin: Bool,
         isPinned: Bool
     ) -> [NativeTimelineMessageMenuEntry] {
-        if canRetry {
-            return [
-                .action(
-                    .retrySending,
-                    title: "Retry Send",
-                    systemImage: "arrow.clockwise"
-                ),
-                .separator,
-                .action(
-                    .copyText,
-                    title: "Copy Text",
-                    systemImage: "doc.on.doc"
-                ),
-                .separator,
-                .action(
-                    .discardFailedMessage,
-                    title: "Delete Message…",
-                    systemImage: "trash",
-                    isDestructive: true
-                ),
-            ]
-        }
-
         var result: [NativeTimelineMessageMenuEntry] = []
         result.append(.action(
             .addReaction,

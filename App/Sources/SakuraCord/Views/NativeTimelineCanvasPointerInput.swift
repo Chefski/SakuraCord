@@ -119,11 +119,23 @@ extension NativeTimelineCanvasView {
                     addCursorRect(tag.frame.offsetBy(dx: 0, dy: rowOrigin), cursor: .pointingHand)
                 }
                 installForwardedSourceCursor(at: index, rowOrigin: rowOrigin)
+                installReactionCursors(at: index, rowOrigin: rowOrigin)
                 installPollCursors(at: index, rowOrigin: rowOrigin)
                 installInviteCursors(at: index, rowOrigin: rowOrigin)
                 installTranslationCursor(at: index, rowOrigin: rowOrigin)
             }
             index += 1
+        }
+    }
+
+    private func installReactionCursors(at index: Int, rowOrigin: CGFloat) {
+        guard case let .message(row, _, _) = items[index] else { return }
+        let cursor: NSCursor = model?.canUpdateReactions(on: row.message) == true ? .arrow : .operationNotAllowed
+        for region in layouts[index].reactionRegions {
+            addCursorRect(region.frame.offsetBy(dx: 0, dy: rowOrigin), cursor: cursor)
+        }
+        if let frame = layouts[index].addReactionFrame, model?.canCreateReactions(on: row.message) == true {
+            addCursorRect(frame.offsetBy(dx: 0, dy: rowOrigin), cursor: .arrow)
         }
     }
 
