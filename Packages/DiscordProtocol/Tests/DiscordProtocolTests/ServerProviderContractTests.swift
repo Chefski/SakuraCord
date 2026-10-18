@@ -4,27 +4,28 @@ import SakuraCordModels
 import Testing
 
 extension ProviderRequestContractTests {
-    @Test func `bulk read acknowledgement preserves the first party body and request budget`() async throws {
+    @Test func `bulk read acknowledgement preserves the first party body pacing and request budget`() async throws {
         RateLimitURLProtocol.reset()
         let provider = makeProvider()
-        let readStates = (0 ..< 101).map { offset in
+        let readStates = (0 ..< 201).map { offset in
             BulkReadStateAcknowledgement(
                 channelID: ChannelID(rawValue: UInt64(200 + offset)),
                 messageID: MessageID(rawValue: UInt64(500 + offset))
             )
         }
 
-        let elapsed = try await ContinuousClock().measure {
-            try await provider.acknowledgeBulk(readStates)
-        }
+        try await provider.acknowledgeBulk(readStates)
 
-        #expect(elapsed >= .seconds(1))
-        #expect(RateLimitURLProtocol.bulkAckRequestCount == 2)
-        #expect(RateLimitURLProtocol.bulkAckMethods == ["POST", "POST"])
+        #expect(RateLimitURLProtocol.bulkAckRequestCount == 3)
+        let requests = RateLimitURLProtocol.bulkAckRequests.withLock { $0 }
+        #expect(requests.map(\.method) == ["POST", "POST", "POST"])
+        for (previous, next) in zip(requests, requests.dropFirst()) {
+            #expect(previous.startedAt.duration(to: next.startedAt) >= .seconds(1))
+        }
         let batches = RateLimitURLProtocol.bulkAckBodies.compactMap {
             $0["read_states"] as? [[String: Any]]
         }
-        #expect(batches.map(\.count) == [100, 1])
+        #expect(batches.map(\.count) == [100, 100, 1])
         #expect(batches.first?.first?["channel_id"] as? String == "200")
         #expect(batches.first?.first?["message_id"] as? String == "500")
         #expect((batches.first?.first?["read_state_type"] as? NSNumber)?.intValue == 0)
