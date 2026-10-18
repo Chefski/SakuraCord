@@ -40,7 +40,7 @@ extension AppModel {
                 prepareInspectorProfileForPresentation()
                 withAnimation(
                     NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-                        ? nil : .smooth(duration: 0.24)
+                        ? nil : .spring(ChatChromeMetrics.sidebarSpring)
                 ) {
                     showInspector.toggle()
                 }

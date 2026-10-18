@@ -1,6 +1,7 @@
 import SwiftUI
 
 nonisolated enum ChatChromeMetrics {
+    static let sidebarSpring = Spring.smooth(duration: 0.24)
     static var controlHeight: CGFloat { InterfaceScale.metric(48) }
     static var composerControlHeight: CGFloat { InterfaceScale.metric(36) }
     static var composerCornerRadius: CGFloat { composerControlHeight / 2 }
