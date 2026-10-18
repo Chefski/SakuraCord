@@ -5,6 +5,7 @@ struct MessageTimelineView: View {
     let model: AppModel
     let bottomContentInset: CGFloat
     var editRequest: MessageTimelineEditRequest?
+    @Environment(\.colorScheme) private var colorScheme
     private let runsPerformanceAutoScroll =
         AppLaunchConfiguration(arguments: ProcessInfo.processInfo.arguments)
         .runsChatPerformanceAutoScroll
@@ -25,6 +26,7 @@ struct MessageTimelineView: View {
 
     var body: some View {
         let conversationID = model.selectedChannelID
+        let hasUnreadMessages = conversationID.map { model.isChannelUnread($0) } ?? false
         let showsLoadingSkeleton = MessageTimelineLoadingPolicy.showsInitialPlaceholder(
             isLoading: model.isLoadingMessages,
             messageCount: model.messages.count
@@ -122,15 +124,17 @@ struct MessageTimelineView: View {
                         requestScroll(.bottom, glides: true)
                     }
                 } label: {
-                    Label("New messages", systemImage: "arrow.down")
+                    Label(hasUnreadMessages ? "New messages" : "Scroll to bottom", systemImage: "arrow.down")
                         .font(.interface(.callout).weight(.semibold))
                         .foregroundStyle(.primary)
-                        .environment(\.colorScheme, .dark)
+                        .environment(\.colorScheme, hasUnreadMessages ? .dark : colorScheme)
                         .padding(.horizontal, InterfaceScale.metric(15))
                         .padding(.vertical, InterfaceScale.metric(8))
                         .contentShape(Capsule())
                         .glassEffect(
-                            .regular.tint(SakuraCordAccentColor.color).interactive(),
+                            hasUnreadMessages
+                                ? .regular.tint(SakuraCordAccentColor.color).interactive()
+                                : .regular.interactive(),
                             in: Capsule()
                         )
                 }
