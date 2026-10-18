@@ -43,13 +43,13 @@ extension AppModel {
             } catch let partial as PartialBulkReadAcknowledgementError {
                 guard let self, isCurrentAccountSession(session), generation == acknowledgementGeneration else { return }
                 resolvePartialBulkAcknowledgement(partial, targets: targets)
-                errorMessage = "Discord accepted part of the read-state update, but not the remaining updates."
+                errorMessage = "Some conversations could not be marked as read.\n\n\(partial.failureDescription)"
             } catch {
                 guard let self, isCurrentAccountSession(session), generation == acknowledgementGeneration else { return }
                 for target in targets {
                     readState.failAcknowledgement(channelID: target.channelID, messageID: target.messageID)
                 }
-                errorMessage = "Discord did not accept the read-state update."
+                errorMessage = "Conversations could not be marked as read.\n\n\(error.localizedDescription)"
             }
             guard let self, isCurrentAccountSession(session), generation == acknowledgementGeneration else { return }
             for target in targets where readState.entries[target.channelID]?.isUnread == false {

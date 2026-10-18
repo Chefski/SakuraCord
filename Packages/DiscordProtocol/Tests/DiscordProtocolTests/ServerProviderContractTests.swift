@@ -14,8 +14,11 @@ extension ProviderRequestContractTests {
             )
         }
 
-        try await provider.acknowledgeBulk(readStates)
+        let elapsed = try await ContinuousClock().measure {
+            try await provider.acknowledgeBulk(readStates)
+        }
 
+        #expect(elapsed >= .seconds(1))
         #expect(RateLimitURLProtocol.bulkAckRequestCount == 2)
         #expect(RateLimitURLProtocol.bulkAckMethods == ["POST", "POST"])
         let batches = RateLimitURLProtocol.bulkAckBodies.compactMap {
@@ -27,9 +30,10 @@ extension ProviderRequestContractTests {
         #expect((batches.first?.first?["read_state_type"] as? NSNumber)?.intValue == 0)
     }
 
-    @Test func `bulk read acknowledgement reports completed batches on later failure`() async throws {
+    @Test(arguments: [400, 429])
+    func `bulk read acknowledgement reports completed batches on later failure without replay`(status: Int) async throws {
         RateLimitURLProtocol.reset()
-        RateLimitURLProtocol.bulkAckStatuses = [204, 400]
+        RateLimitURLProtocol.bulkAckStatuses = [204, status]
         let provider = makeProvider()
         let readStates = (0 ..< 101).map { offset in
             BulkReadStateAcknowledgement(

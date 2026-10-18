@@ -1027,6 +1027,10 @@ extension DiscordRESTProvider {
         var acceptedReadStates: [BulkReadStateAcknowledgement] = []
         for batch in readStates.chunked(maximumCount: 100) {
             do {
+                if !acceptedReadStates.isEmpty {
+                    // Discord's BULK_ACK queue spaces successful batches by one second.
+                    try await Task.sleep(for: .seconds(1))
+                }
                 try await requestEmpty(
                     "/read-states/ack-bulk",
                     method: "POST",

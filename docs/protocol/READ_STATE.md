@@ -73,10 +73,14 @@ This scope follows Vencord’s
 [ReadAllNotificationsButton](https://github.com/Vendicated/Vencord/blob/32c90633ce6a95d7e56c95479efbb431bacf1eac/src/plugins/readAllNotificationsButton/index.tsx),
 which dispatches Discord’s `BULK_ACK` with channel IDs, last-message IDs and type 0.
 The [production web client](https://discord.com/assets/web.4d4b2f75fdea5470.js)
-(build 641004) maps that action to
+(stable build 641004, inspected 18 October 2026) maps that action to
 `POST /read-states/ack-bulk` with `read_states` containing `channel_id`,
-`message_id` and `read_state_type`, in batches of at most 100. SakuraCord retains
-its existing one-attempt mutation policy and partial-batch reconciliation.
+`message_id` and `read_state_type`, in batches of at most 100 with a one-second
+pause after each successful batch. SakuraCord follows that pacing between
+batches, in addition to server-provided rate-limit cooldowns. The web client's
+bulk queue retries a failed batch up to three total attempts; SakuraCord retains
+its one-attempt mutation policy and partial-batch reconciliation rather than
+replaying an ambiguous write. Read All errors include the underlying failure.
 
 Restricted groups require the applicable account eligibility and local server
 consent before exposing their contents. Mentions also gate restricted accessories.
