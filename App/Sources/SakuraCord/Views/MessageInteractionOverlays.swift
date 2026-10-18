@@ -238,7 +238,11 @@ nonisolated enum MessageOutboxPresentation {
     }
 
     static func accessibilityStatus(for message: Message) -> String {
-        message.outboxState == .failed ? failureText(for: message) : accessibilityStatus(for: message.outboxState)
+        guard message.outboxState == .failed,
+              case let .autoModeration(explanation) = message.sendFailure
+        else { return accessibilityStatus(for: message.outboxState) }
+        let detail = explanation?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return detail.isEmpty ? "Blocked by AutoMod" : "Blocked by AutoMod. \(detail)"
     }
 
     static func accessibilityStatus(for state: OutboxState) -> String {
@@ -352,6 +356,7 @@ struct NativeTimelineEditingMessageContent: View {
                     MessageOutboxPresentation.failureText(for: message),
                     systemImage: "exclamationmark.circle"
                 )
+                .accessibilityLabel(MessageOutboxPresentation.accessibilityStatus(for: message))
                 .font(.interface(.caption2))
                 .foregroundStyle(.red)
             }

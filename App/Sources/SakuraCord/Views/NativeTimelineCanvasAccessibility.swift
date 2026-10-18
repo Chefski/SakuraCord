@@ -1000,7 +1000,7 @@ extension NativeTimelineCanvasView {
         if let frame = layout.failedFrame {
             children.append(accessibilityElement(
                 role: .staticText,
-                label: MessageOutboxPresentation.failureText(for: message),
+                label: MessageOutboxPresentation.accessibilityStatus(for: message),
                 frame: accessibilityChildFrame(
                     frame,
                     rowIndex: rowIndex
