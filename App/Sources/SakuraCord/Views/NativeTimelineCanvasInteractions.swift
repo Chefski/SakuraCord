@@ -1211,7 +1211,8 @@ extension NativeTimelineCanvasView {
         for entry in NativeTimelineMessageMenuPolicy.entries(
             canEdit: canEdit,
             canDelete: canDelete,
-            canRetry: row.message.outboxState == .failed,
+            canRetry: row.message.canRetrySending,
+            isFailed: row.message.outboxState == .failed,
             canReply: actions.reply != nil
                 && model?.guildTimeoutUntil(in: row.message.channelID, guildID: row.message.guildID) == nil
                 && MessageReplyPresentationPolicy.allowsReplyAction(

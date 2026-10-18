@@ -90,9 +90,10 @@ An ordinary message POST returning HTTP `400` with Discord code `200000` is a
 timeout from this rejection, stop the account session, or replay it automatically.
 
 The outbox retains the original text, attachments, reply and nonce in the failed
-row. The existing red failure tint remains, with “Blocked by AutoMod” and the
-server explanation when supplied, including accessibility. Explicit retry clears
-the old notice; authoritative REST/Gateway confirmation replaces the failed row.
+row. The existing red failure tint remains, with the server explanation when
+supplied and a short AutoMod fallback otherwise, including accessibility. A
+blocked message offers copy and discard, without retry; ordinary failed sends
+remain retryable. Authoritative REST/Gateway confirmation replaces the failed row.
 A simultaneous [server timeout](GUILDS.md#server-timeouts) independently disables
 communication through membership state, including queued delivery and retries.
 The block explanation survives timeout expiry; later composer edits are preserved.
@@ -121,7 +122,7 @@ AutoMod notice separately from timeout state and display the response explanatio
 waiting sends in the same channel after a failure. SakuraCord deliberately keeps
 its existing queue policy: later sends recheck eligibility individually and
 unrelated conversations remain usable. It also keeps attachments/replies in the
-outbox and offers explicit retry; the observed official attachment rejection
+outbox; the observed official attachment rejection
 restored text and the attachment to the composer while dropping its reply target.
 
 Discord's [error codes](https://docs.discord.com/developers/topics/opcodes-and-status-codes)

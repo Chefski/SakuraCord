@@ -2367,7 +2367,7 @@ private func downArrowKeyEvent(
     await model.start()
     let channelID = try #require(model.selectedChannelID)
     let attachment = ForumPostAttachment(url: URL(fileURLWithPath: "/tmp/synthetic-automod.txt"))
-    await provider.blockNextSendWithAutoMod()
+    await provider.failNextSend()
     await provider.suspendNextSend()
     let delivery = try #require(model.enqueueChannelMessage(
         channelID: channelID, content: "blocked", replyTo: .init(rawValue: 42),
@@ -2377,6 +2377,10 @@ private func downArrowKeyEvent(
     model.updateDraft("New draft")
     await provider.releaseSend()
     #expect(!(await delivery.value))
+    let ordinaryFailure = try #require(model.messages.first { $0.content == "blocked" })
+    #expect(ordinaryFailure.canRetrySending)
+    await provider.blockNextSendWithAutoMod()
+    #expect(!(await model.retrySending(ordinaryFailure)))
     let failed = try #require(model.messages.first { $0.content == "blocked" })
     let nonce = try #require(failed.nonce)
     #expect(failed.outboxState == .failed)
@@ -2385,20 +2389,14 @@ private func downArrowKeyEvent(
     #expect(model.composer.outbox.draftsByNonce[nonce]?.attachments == [attachment])
     #expect(model.draft == "New draft")
     #expect(model.errorMessage == nil)
-    #expect(await provider.sendCount == 1)
+    #expect(await provider.sendCount == 2)
 
-    // An explicit retry retains the nonce and clears the old failure notice.
-    await provider.suspendNextSend()
-    let retry = Task { await model.retrySending(failed) }
-    await provider.waitUntilSendStarts()
-    #expect(model.messages.first { $0.nonce == nonce }?.sendFailure == nil)
-    await provider.releaseSend()
-    #expect(await retry.value)
-    let confirmed = try #require(model.messages.first { $0.nonce == nonce })
-    #expect(confirmed.outboxState == .confirmed)
-    #expect(confirmed.sendFailure == nil)
-    #expect(model.composer.outbox.draftsByNonce[nonce] == nil)
-    #expect(await provider.sentNonces == [nonce, nonce])
+    #expect(!failed.canRetrySending)
+    #expect(!(await model.retrySending(failed)))
+    #expect(!(await model.retrySending(ordinaryFailure)))
+    #expect(await provider.sendCount == 2)
+    #expect(model.messages.first { $0.nonce == nonce }?.sendFailure == failed.sendFailure)
+    #expect(model.composer.outbox.draftsByNonce[nonce]?.attachments == [attachment])
     #expect(model.draft == "New draft")
 }
 

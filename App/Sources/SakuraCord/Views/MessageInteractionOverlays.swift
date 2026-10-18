@@ -234,7 +234,7 @@ nonisolated enum MessageOutboxPresentation {
               case let .autoModeration(explanation) = message.sendFailure
         else { return "Failed" }
         let detail = explanation?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return detail.isEmpty ? "Blocked by AutoMod" : "Blocked by AutoMod\n\(detail)"
+        return detail.isEmpty ? "This message was blocked by AutoMod." : detail
     }
 
     static func accessibilityStatus(for message: Message) -> String {
@@ -416,7 +416,7 @@ struct MessageActionCapsule: View {
     var body: some View {
         if message.outboxState == .failed {
             HoverActionPill {
-                if let retry {
+                if message.canRetrySending, let retry {
                     HoverActionButton(
                         systemImage: "arrow.clockwise",
                         help: "Retry send",

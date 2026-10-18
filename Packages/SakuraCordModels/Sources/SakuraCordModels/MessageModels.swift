@@ -337,6 +337,7 @@ public struct Message: Identifiable, Codable, Hashable, Sendable {
     public var nonce: String?
     public var outboxState: OutboxState
     public var sendFailure: MessageSendFailure?
+    public var canRetrySending: Bool { outboxState == .failed && sendFailure == nil }
     public var type: DiscordMessageType
     public var flags: MessageFlags
     public var applicationID: ApplicationID?

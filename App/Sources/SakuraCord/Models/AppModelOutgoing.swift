@@ -216,7 +216,8 @@ extension AppModel {
 
     @discardableResult
     func retrySending(_ message: Message) async -> Bool {
-        guard message.outboxState == .failed,
+        guard message.canRetrySending,
+              retainedMessage(channelID: message.channelID, messageID: message.id)?.canRetrySending == true,
               let nonce = message.nonce,
               outgoingState(nonce: nonce, channelID: message.channelID) == .failed,
               let outgoing = composer.outbox.draftsByNonce[nonce]
