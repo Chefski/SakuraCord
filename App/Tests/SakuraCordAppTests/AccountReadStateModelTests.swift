@@ -3296,6 +3296,22 @@ func `read state completion releases a held backlog without another geometry cal
     #expect(model.unreadDividerMessageID(channelID: channelID) == originalDivider)
     #expect(await eventually { await provider.acknowledgementRequests.count == 1 })
 
+    let newestID = try #require(model.messages.last?.id)
+    let incoming = Message(
+        id: MessageID(rawValue: newestID.rawValue + 1),
+        channelID: channelID,
+        author: try #require(model.messages.first?.author),
+        content: "A new unread message after acknowledgement",
+        timestamp: .now
+    )
+    model.consumeImmediately(.messageCreated(incoming))
+    #expect(model.readState.entries[channelID]?.isUnread == true)
+    model.jumpToUnreadBoundary(channelID: channelID)
+    await model.guildActivationTask?.value
+    #expect(model.messageNavigationRequest?.messageID == incoming.id)
+    #expect(model.unreadDividerMessageID(channelID: channelID) == originalDivider)
+    #expect(await provider.acknowledgementRequests.count == 1)
+
     model.completeConversationReadingAndAdvance(channelID: channelID)
     #expect(model.unreadDividerMessageID(channelID: channelID) == nil)
     let request = try #require(model.conversationNewestRequest)

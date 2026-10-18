@@ -102,9 +102,16 @@ struct MessageTimelineView: View {
                 if let channelID = model.selectedChannelID,
                    let summary = unreadSummary
                 {
-                    UnreadMessagesBanner(summary: summary) {
-                        model.markConversationRead(channelID: channelID)
-                    }
+                    UnreadMessagesBanner(
+                        summary: summary,
+                        isLoadingHistory: model.isLoadingMessages || model.isLoadingEarlier,
+                        jumpToUnread: {
+                            model.jumpToUnreadBoundary(channelID: channelID)
+                        },
+                        markRead: {
+                            model.markConversationRead(channelID: channelID)
+                        }
+                    )
                 }
             }
             .padding(InterfaceScale.metric(8))
@@ -185,8 +192,14 @@ struct MessageTimelineView: View {
                   model.messages.contains(where: { $0.id == request.messageID })
             else { return }
             scrollPolicy.didNavigateAwayFromBottom()
-            requestScroll(.message(request.messageID, anchor: .center), glides: request.glides)
-            highlight(request.messageID)
+            requestScroll(
+                .message(request.messageID, anchor: request.isUnreadBoundary
+                    ? TimelineInitialPositionPolicy.unreadViewportAnchor : .center),
+                glides: request.glides
+            )
+            if !request.isUnreadBoundary {
+                highlight(request.messageID)
+            }
             model.completeMessageNavigation(requestID: request.requestID)
         }
         .onChange(of: model.conversationNewestRequest) { _, request in
@@ -528,27 +541,46 @@ struct NewMessagesSeparator: View {
 
 struct UnreadMessagesBanner: View {
     let summary: AccountReadStateModel.TimelineUnreadSummary
+    let isLoadingHistory: Bool
+    let jumpToUnread: () -> Void
     let markRead: () -> Void
 
     var body: some View {
-        HStack(spacing: InterfaceScale.metric(12)) {
-            Text(message)
-                .lineLimit(1)
-            Spacer(minLength: InterfaceScale.metric(8))
-            Button(action: markRead) {
-                Label("Mark as Read", systemImage: "bell.badge")
-                    .labelStyle(.titleAndIcon)
+        GlassEffectContainer(spacing: 0) {
+            HStack(spacing: InterfaceScale.metric(8)) {
+                Text(message)
+                    .lineLimit(1)
+                    .padding(.leading, InterfaceScale.metric(12))
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                Spacer(minLength: InterfaceScale.metric(8))
+                Button(action: markRead) {
+                    Label("Mark as Read", systemImage: "checkmark")
+                        .labelStyle(.titleAndIcon)
+                        .padding(.vertical, InterfaceScale.metric(2))
+                }
+                .buttonStyle(.glassProminent)
+                .buttonBorderShape(.capsule)
+                .controlSize(.regular)
+                .tint(SakuraCordAccentColor.color)
+                .fixedSize()
+                .accessibilityHint("Marks this conversation read")
             }
-            .buttonStyle(.plain)
-            .accessibilityHint("Marks this conversation read")
+            .font(.interface(.callout).weight(.semibold))
+            .padding(InterfaceScale.metric(4))
+            .background {
+                Button(action: jumpToUnread) {
+                    Capsule()
+                        .fill(.clear)
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .disabled(isLoadingHistory)
+                .accessibilityLabel(message)
+                .accessibilityHint("Jumps to the first unread message")
+            }
+            .glassEffect(.regular, in: Capsule())
         }
-        .font(.interface(.callout).weight(.semibold))
-        .padding(.horizontal, InterfaceScale.metric(14))
-        .padding(.vertical, InterfaceScale.metric(9))
-        .glassEffect(
-            .regular.interactive(),
-            in: ConcentricRectangle(cornerRadius: InterfaceScale.metric(13), style: .continuous)
-        )
         .accessibilityElement(children: .contain)
     }
 
