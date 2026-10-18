@@ -44,23 +44,14 @@ extension AppModel {
                 let messages = isThread ? model.threadMessages : model.messages
                 let summary = model.presentedUnreadSummary(channelID: channelID)
                 model.preserveUnreadDividerIfNeeded(channelID: channelID)
-                // A deleted divider row can be replaced once the read
-                // boundary is covered by the loaded history.
-                if let summary, !summary.isLowerBound,
-                   !messages.contains(where: {
-                       $0.id == model.unreadDividerMessageID(channelID: channelID)
-                   })
-                {
-                    model.unreadDividerMessageIDs[channelID] = summary.firstUnreadMessageID
-                }
-                if let messageID = model.unreadDividerMessageID(channelID: channelID),
-                   messages.contains(where: { $0.id == messageID })
-                {
+                // The visual divider survives acknowledgements. Jump to the
+                // current unread run without moving that retained divider.
+                if let summary, !summary.isLowerBound {
                     model.messageNavigationRequestID &+= 1
                     model.messageNavigationRequest = MessageNavigationRequest(
                         requestID: model.messageNavigationRequestID,
                         channelID: channelID,
-                        messageID: messageID,
+                        messageID: summary.firstUnreadMessageID,
                         glides: glides,
                         isUnreadBoundary: true
                     )
