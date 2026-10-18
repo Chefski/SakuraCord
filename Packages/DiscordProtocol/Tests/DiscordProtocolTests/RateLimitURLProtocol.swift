@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 final class RateLimitURLProtocol: URLProtocol, @unchecked Sendable {
     nonisolated(unsafe) static var totalRequestCount = 0
@@ -76,7 +77,7 @@ final class RateLimitURLProtocol: URLProtocol, @unchecked Sendable {
     nonisolated(unsafe) static var ackBody: [String: Any]?
     nonisolated(unsafe) static var ackStatus = 200
     nonisolated(unsafe) static var bulkAckRequestCount = 0
-    nonisolated(unsafe) static var bulkAckMethods: [String] = []
+    static let bulkAckRequests = Mutex<[(method: String, startedAt: ContinuousClock.Instant)]>([])
     nonisolated(unsafe) static var bulkAckBodies: [[String: Any]] = []
     nonisolated(unsafe) static var bulkAckStatuses: [Int] = []
     nonisolated(unsafe) static var guildNotificationRequestCount = 0
@@ -171,7 +172,7 @@ final class RateLimitURLProtocol: URLProtocol, @unchecked Sendable {
         ackBody = nil
         ackStatus = 200
         bulkAckRequestCount = 0
-        bulkAckMethods = []
+        bulkAckRequests.withLock { $0.removeAll() }
         bulkAckBodies = []
         bulkAckStatuses = []
         guildNotificationRequestCount = 0
@@ -393,7 +394,9 @@ final class RateLimitURLProtocol: URLProtocol, @unchecked Sendable {
                 : #"{"retry_after":0.01,"global":false}"#
         case "/api/v9/read-states/ack-bulk":
             RateLimitURLProtocol.bulkAckRequestCount += 1
-            RateLimitURLProtocol.bulkAckMethods.append(request.httpMethod ?? "")
+            RateLimitURLProtocol.bulkAckRequests.withLock {
+                $0.append((request.httpMethod ?? "", .now))
+            }
             if let body = RateLimitURLProtocol.requestBody(request),
                let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
             {
