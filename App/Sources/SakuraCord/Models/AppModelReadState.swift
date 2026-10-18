@@ -30,6 +30,60 @@ extension AppModel {
         unreadDividerMessageIDs[channelID]
     }
 
+    func jumpToUnreadBoundary(channelID: ChannelID) {
+        guard isConversationPresented(channelID) else { return }
+        let isThread = openThread?.id == channelID
+        startConversationNavigation { model, account in
+            var glides = true
+            var previousOldestID: MessageID?
+            while !Task.isCancelled,
+                  model.isCurrentAccountSession(account),
+                  model.isConversationPresented(channelID),
+                  (model.openThread?.id == channelID) == isThread
+            {
+                let messages = isThread ? model.threadMessages : model.messages
+                let summary = model.presentedUnreadSummary(channelID: channelID)
+                model.preserveUnreadDividerIfNeeded(channelID: channelID)
+                // A deleted divider row can be replaced once the read
+                // boundary is covered by the loaded history.
+                if let summary, !summary.isLowerBound,
+                   !messages.contains(where: {
+                       $0.id == model.unreadDividerMessageID(channelID: channelID)
+                   })
+                {
+                    model.unreadDividerMessageIDs[channelID] = summary.firstUnreadMessageID
+                }
+                if let messageID = model.unreadDividerMessageID(channelID: channelID),
+                   messages.contains(where: { $0.id == messageID })
+                {
+                    model.messageNavigationRequestID &+= 1
+                    model.messageNavigationRequest = MessageNavigationRequest(
+                        requestID: model.messageNavigationRequestID,
+                        channelID: channelID,
+                        messageID: messageID,
+                        glides: glides,
+                        isUnreadBoundary: true
+                    )
+                    return
+                }
+                guard summary != nil,
+                      let oldestMessageID = messages.first?.id,
+                      previousOldestID.map({ oldestMessageID < $0 }) ?? true
+                else { return }
+                previousOldestID = oldestMessageID
+                // Keep history contiguous, including in threads, which do not
+                // have a separate later-history window. Existing loaders own
+                // permissions, pagination errors and account/selection guards.
+                if isThread {
+                    await model.loadEarlierThread(account: account)
+                } else {
+                    await model.loadEarlier(account: account)
+                }
+                glides = false
+            }
+        }
+    }
+
     func completeConversationReadingAndAdvance(channelID: ChannelID) {
         guard channelID == selectedChannelID || channelID == openThread?.id else { return }
         if channelID == selectedChannelID, hasMoreLaterMessages {

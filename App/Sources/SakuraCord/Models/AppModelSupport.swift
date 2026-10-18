@@ -304,6 +304,7 @@ nonisolated struct MessageNavigationRequest: Equatable, Sendable {
     /// The message was already on hand in the open conversation, so the
     /// timeline can glide to it rather than cut.
     var glides = false
+    var isUnreadBoundary = false
 }
 
 nonisolated struct ConversationNewestRequest: Equatable, Sendable {

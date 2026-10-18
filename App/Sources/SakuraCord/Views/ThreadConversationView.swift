@@ -443,9 +443,16 @@ private struct ThreadMessageTimelineView: View {
             if let threadID = model.openThread?.id,
                let summary = unreadSummary
             {
-                UnreadMessagesBanner(summary: summary) {
-                    model.markConversationRead(channelID: threadID)
-                }
+                UnreadMessagesBanner(
+                    summary: summary,
+                    isLoadingHistory: model.isLoadingThread || model.isLoadingEarlierThread,
+                    jumpToUnread: {
+                        model.jumpToUnreadBoundary(channelID: threadID)
+                    },
+                    markRead: {
+                        model.markConversationRead(channelID: threadID)
+                    }
+                )
                 .padding(InterfaceScale.metric(8))
             }
         }
@@ -498,8 +505,14 @@ private struct ThreadMessageTimelineView: View {
                       $0.id == request.messageID
                   })
             else { return }
-            requestScroll(.message(request.messageID, anchor: .center), glides: request.glides)
-            highlight(request.messageID)
+            requestScroll(
+                .message(request.messageID, anchor: request.isUnreadBoundary
+                    ? TimelineInitialPositionPolicy.unreadViewportAnchor : .center),
+                glides: request.glides
+            )
+            if !request.isUnreadBoundary {
+                highlight(request.messageID)
+            }
             model.completeMessageNavigation(requestID: request.requestID)
         }
         .onChange(of: model.conversationNewestRequest) { _, request in
