@@ -231,6 +231,9 @@ private struct ChatRootView: View {
                     updateStatus: { await model.updateStatus($0) }
                 )
             }
+            .background {
+                NativeSidebarAnimation().frame(width: 0, height: 0)
+            }
             // Column content follows the interface size; the window toolbar
             // is system chrome and keeps its native item sizing.
             .interfaceScaleRoot()
@@ -521,7 +524,7 @@ private struct ChatRootView: View {
         ) { _ in
             withAnimation(
                 NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-                    ? nil : .smooth(duration: 0.24)
+                    ? nil : .spring(ChatChromeMetrics.sidebarSpring)
             ) {
                 columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly
             }
@@ -801,7 +804,7 @@ private struct ChatRootView: View {
                         model.prepareInspectorProfileForPresentation()
                         withAnimation(
                             NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-                                ? nil : .smooth(duration: 0.24)
+                                ? nil : .spring(ChatChromeMetrics.sidebarSpring)
                         ) {
                             model.showInspector.toggle()
                         }
