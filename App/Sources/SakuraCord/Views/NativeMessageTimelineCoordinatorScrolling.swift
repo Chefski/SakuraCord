@@ -1815,7 +1815,10 @@ extension NativeMessageTimelineCoordinator {
                     hasEstablishedInitialPosition,
                 hasReachedNewestMessageBoundary:
                     hasEstablishedInitialPosition
-                    && hasReachedNewestMessageBoundary(in: visibleRect),
+                    && hasReachedNewestMessageBoundary(
+                        in: visibleRect,
+                        isAtDocumentBottom: isAtDocumentBottom
+                    ),
                 isInProvisionalHistory:
                     parent.hasMoreMessages
                     && visibleRect.minY
@@ -1831,7 +1834,8 @@ extension NativeMessageTimelineCoordinator {
         }
 
         func hasReachedNewestMessageBoundary(
-            in visibleRect: CGRect
+            in visibleRect: CGRect,
+            isAtDocumentBottom: Bool
         ) -> Bool {
             guard !parent.hasMoreLaterMessages else { return false }
             guard let newestIndex = items.lastIndex(where: {
@@ -1842,11 +1846,7 @@ extension NativeMessageTimelineCoordinator {
                         hasMoreEarlier: parent.hasMoreMessages,
                         isLoadingEarlier: parent.isLoadingEarlier,
                         isLoadingLater: parent.isLoadingLater,
-                        isAtDocumentBottom:
-                            NativeMessageTimelineLayoutPolicy.isAtTrueBottom(
-                                documentHeight: scrollableDocumentHeight,
-                                visibleMaximumY: visibleRect.maxY
-                            )
+                        isAtDocumentBottom: isAtDocumentBottom
                     )
             }
             guard rowOrigins.indices.contains(newestIndex),
