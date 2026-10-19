@@ -10,7 +10,6 @@ struct ThreadBrowserPopoverView: View {
         @Bindable var browser = model.threadBrowser
         VStack(spacing: 0) {
             header(browser)
-            Divider()
             content(browser)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -26,7 +25,7 @@ struct ThreadBrowserPopoverView: View {
 
     private func header(_ browser: ThreadBrowserState) -> some View {
         @Bindable var browser = browser
-        return VStack(spacing: InterfaceScale.metric(10)) {
+        return VStack(spacing: InterfaceScale.metric(6)) {
             HStack {
                 Label {
                     Text("Threads")
@@ -36,21 +35,28 @@ struct ThreadBrowserPopoverView: View {
                 .font(.interface(.headline))
                 Spacer()
                 if model.canCreateThreadInSelectedChannel {
-                    Button("Create", systemImage: "plus", action: model.createThreadFromBrowser)
-                        .help("Create Thread")
+                    HoverActionButton(
+                        systemImage: "square.and.pencil", help: "Create Thread",
+                        action: model.createThreadFromBrowser
+                    )
                 }
             }
-            TextField("Search for Thread Name", text: $browser.searchText)
-                .textFieldStyle(.roundedBorder)
-                .onSubmit(model.submitThreadBrowserSearch)
-                .onChange(of: browser.searchText) { _, text in
-                    if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        model.clearThreadBrowserSearch()
-                    }
+            .padding(.horizontal, InterfaceScale.metric(4))
+            .frame(height: InterfaceScale.metric(44))
+            PickerSearchField(
+                text: $browser.searchText,
+                placeholder: "Search Threads",
+                accessibilityIdentifier: "thread-browser-search"
+            )
+            .onSubmit(model.submitThreadBrowserSearch)
+            .onChange(of: browser.searchText) { _, text in
+                if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    model.clearThreadBrowserSearch()
                 }
+            }
         }
-        .padding(.horizontal, InterfaceScale.metric(14))
-        .padding(.vertical, InterfaceScale.metric(10))
+        .padding(.horizontal, InterfaceScale.metric(10))
+        .padding(.bottom, InterfaceScale.metric(4))
     }
 
     @ViewBuilder
@@ -65,7 +71,7 @@ struct ThreadBrowserPopoverView: View {
     @ViewBuilder
     private func searchContent(_ search: ThreadBrowserSearch, browser: ThreadBrowserState) -> some View {
         if !search.hasLoaded {
-            ProgressView()
+            loading("Searching threads…")
         } else if let error = browser.searchErrorMessage {
             ContentUnavailableView {
                 Label("Couldn't Search Threads", systemImage: "exclamationmark.triangle")
@@ -79,9 +85,9 @@ struct ThreadBrowserPopoverView: View {
         } else {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    rows(model.threadBrowserSearchResults)
+                    rows(model.threadBrowserSearchResults, showsJoined: true)
                 }
-                .padding(.vertical, InterfaceScale.metric(6))
+                .padding(InterfaceScale.metric(8))
             }
             .scrollEdgeEffectStyle(.soft, for: .top)
         }
@@ -93,7 +99,7 @@ struct ThreadBrowserPopoverView: View {
         let listing = browser.listing
         let isLoadingFirstPage = listing?.hasLoadedFirstPage != true && browser.archivedErrorMessage == nil
         if sections.isEmpty, isLoadingFirstPage {
-            ProgressView()
+            loading("Loading threads…")
         } else if sections.isEmpty, listing?.hasMore == false {
             ContentUnavailableView(
                 "No Threads",
@@ -104,42 +110,48 @@ struct ThreadBrowserPopoverView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     if !sections.joined.isEmpty {
-                        sectionHeader(Self.count(sections.joined.count, "joined thread"))
-                        rows(sections.joined)
+                        sectionHeader("Joined", count: sections.joined.count)
+                        rows(sections.joined, showsJoined: false)
                     }
                     if !sections.otherActive.isEmpty {
-                        sectionHeader(Self.count(sections.otherActive.count, "other active thread"))
-                        rows(sections.otherActive)
+                        sectionHeader("Other Active", count: sections.otherActive.count)
+                        rows(sections.otherActive, showsJoined: false)
                     }
-                    sectionHeader("Older threads")
-                    rows(sections.older)
+                    sectionHeader("Older", count: nil)
+                    rows(sections.older, showsJoined: true)
                     archivedFooter(browser, sections: sections)
-                        .padding(.horizontal, InterfaceScale.metric(14))
+                        .padding(.horizontal, InterfaceScale.metric(16))
                         .padding(.vertical, InterfaceScale.metric(8))
                 }
-                .padding(.vertical, InterfaceScale.metric(6))
+                .padding(InterfaceScale.metric(8))
             }
             .scrollEdgeEffectStyle(.soft, for: .top)
         }
     }
 
-    private static func count(_ count: Int, _ noun: String) -> String {
-        "\(count) \(noun)\(count == 1 ? "" : "s")"
-    }
-
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title)
-            .font(.interface(.caption).weight(.semibold))
+    private func sectionHeader(_ title: String, count: Int?) -> some View {
+        Text(count.map { "\(title) — \($0)" } ?? title)
+            .font(.interfaceSystem(size: InterfaceTypographyMetrics.interfaceTextSize, weight: .semibold))
             .foregroundStyle(.secondary)
-            .padding(.horizontal, InterfaceScale.metric(14))
-            .padding(.top, InterfaceScale.metric(10))
+            .opacity(0.7)
+            .padding(.horizontal, InterfaceScale.metric(16))
+            .padding(.top, InterfaceScale.metric(12))
             .padding(.bottom, InterfaceScale.metric(4))
             .accessibilityAddTraits(.isHeader)
     }
 
-    private func rows(_ posts: [ForumPost]) -> some View {
+    private func loading(_ title: LocalizedStringKey) -> some View {
+        VStack(spacing: InterfaceScale.metric(10)) {
+            ProgressView()
+            Text(title)
+                .font(.interface(.caption))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func rows(_ posts: [ForumPost], showsJoined: Bool) -> some View {
         ForEach(posts) { post in
-            ThreadBrowserRow(post: post) { model.openThreadFromBrowser(post) }
+            ThreadBrowserRow(post: post, showsJoined: showsJoined) { model.openThreadFromBrowser(post) }
         }
     }
 
@@ -153,6 +165,8 @@ struct ThreadBrowserPopoverView: View {
                     .lineLimit(2)
                 Spacer()
                 Button("Try Again", action: model.loadMoreArchivedThreads)
+                    .buttonStyle(.glass)
+                    .controlSize(.small)
             }
         } else if browser.listing?.hasMore != false {
             // Reaching the end of the list loads the next page.
@@ -173,19 +187,23 @@ struct ThreadBrowserPopoverView: View {
     }
 }
 
+/// A thread row with the Forward picker's metrics: a leading tile, a medium
+/// title over a caption, and a soft rounded hover.
 private struct ThreadBrowserRow: View {
     let post: ForumPost
+    let showsJoined: Bool
     let open: () -> Void
     @State private var isHovered = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Button(action: open) {
-            HStack(spacing: InterfaceScale.metric(8)) {
+            HStack(spacing: InterfaceScale.metric(12)) {
+                tile
                 VStack(alignment: .leading, spacing: InterfaceScale.metric(2)) {
                     HStack(spacing: InterfaceScale.metric(4)) {
                         Text(post.thread.name)
-                            .font(.interface(.body))
+                            .font(.interface(.body).weight(.medium))
                             .lineLimit(1)
                         indicators
                     }
@@ -195,23 +213,16 @@ private struct ThreadBrowserRow: View {
                         .lineLimit(1)
                 }
                 Spacer(minLength: 0)
-                if isJoined {
-                    Image(systemName: "checkmark")
-                        .foregroundStyle(.secondary)
-                        .help("Joined")
-                        .accessibilityHidden(true)
-                }
             }
-            .padding(.horizontal, InterfaceScale.metric(8))
-            .padding(.vertical, InterfaceScale.metric(6))
-            .background(
-                isHovered ? Color.primary.opacity(0.07) : .clear,
-                in: .rect(cornerRadius: InterfaceScale.metric(6))
-            )
-            .contentShape(.rect)
+            .padding(.horizontal, InterfaceScale.metric(16))
+            .frame(height: InterfaceScale.metric(48))
+            .contentShape(RoundedRectangle(cornerRadius: InterfaceScale.metric(9), style: .continuous))
+            .background {
+                RoundedRectangle(cornerRadius: InterfaceScale.metric(9), style: .continuous)
+                    .fill(.primary.opacity(isHovered ? 0.075 : 0.001))
+            }
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, InterfaceScale.metric(6))
         .onHover { isHovered = $0 }
         .animation(reduceMotion ? nil : .snappy(duration: 0.14), value: isHovered)
         .accessibilityElement(children: .combine)
@@ -220,6 +231,18 @@ private struct ThreadBrowserRow: View {
     }
 
     private var isJoined: Bool { post.thread.notificationSettings != nil }
+
+    private var tile: some View {
+        ConcentricRectangle(cornerRadius: InterfaceScale.metric(9), style: .continuous)
+            .fill(Color.secondary.opacity(0.16))
+            .frame(width: InterfaceScale.metric(28), height: InterfaceScale.metric(28))
+            .overlay {
+                SakuraCordSystemSymbol.swiftUIImage(named: SakuraCordSystemSymbol.thread)
+                    .font(.interfaceSystem(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .accessibilityHidden(true)
+    }
 
     @ViewBuilder
     private var indicators: some View {
@@ -240,8 +263,9 @@ private struct ThreadBrowserRow: View {
 
     private var subtitle: String {
         let count = post.thread.messageCount
-        let messages = count == 1 ? "1 message" : "\(count) messages"
-        let activity = post.lastActivityAt.formatted(.relative(presentation: .named))
-        return "\(messages) · Last active \(activity)"
+        var parts = [count == 1 ? "1 message" : "\(count) messages"]
+        parts.append("Last active \(post.lastActivityAt.formatted(.relative(presentation: .named)))")
+        if showsJoined, isJoined { parts.insert("Joined", at: 0) }
+        return parts.joined(separator: " · ")
     }
 }
