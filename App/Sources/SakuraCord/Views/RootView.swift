@@ -192,6 +192,8 @@ private struct ChatRootView: View {
     /// Measured width the pane's toolbar actions reserve after the title,
     /// keyed by action count. It does not depend on the title's width.
     @State private var sideConversationActionReserve: [Int: CGFloat] = [:]
+    @State private var conversationTitleTrailingEdge: CGFloat = 0
+    @State private var customizationModePickerWidth: CGFloat = 260
     @State private var workspaceFrame = CGRect.zero
     @State private var sidebarWidth = ChatChromeMetrics.serverRailWidth + InterfaceScale.metric(230)
     @State private var presentsForumComposer = false
@@ -598,6 +600,11 @@ private struct ChatRootView: View {
                         transaction.animation = nil
                         transaction.disablesAnimations = true
                     }
+                    .onGeometryChange(for: CGFloat.self) { proxy in
+                        proxy.frame(in: .global).maxX
+                    } action: { trailingEdge in
+                        if trailingEdge.isFinite { conversationTitleTrailingEdge = trailingEdge }
+                    }
             }
         }
         .visibilityPriority(.high)
@@ -608,26 +615,35 @@ private struct ChatRootView: View {
             if model.isFriendsPresented {
                 FriendsToolbarSections(model: model)
             }
-            if model.guildWorkspacePage == .channelsAndRoles, model.featuresSettings.channelManagement,
-               let guildID = model.selectedGuildID, model.hasCustomizationQuestions(in: guildID) {
-                ToolbarItem(placement: .principal) {
-                    Picker("Channels & Roles", selection: Binding(
-                        get: { model.isBrowsingGuildChannels },
-                        set: { model.showGuildCustomizationChannels($0) }
-                    )) {
-                        Text("Customize").tag(false)
-                        Text("Browse Channels").tag(true)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                }
-            }
         }
     }
 
     @ToolbarContentBuilder
     private var detailToolbar: some ToolbarContent {
         ToolbarSpacer(.flexible)
+
+        if showsCustomizationModePicker {
+            // Centred in the space between the title and the trailing actions.
+            ToolbarItem(id: "customization-mode") {
+                Picker("Channels & Roles", selection: Binding(
+                    get: { model.isBrowsingGuildChannels },
+                    set: { model.showGuildCustomizationChannels($0) }
+                )) {
+                    Text("Customize").tag(false)
+                    Text("Browse Channels").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .fixedSize()
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.size.width
+                } action: { width in
+                    if width > 0 { customizationModePickerWidth = width }
+                }
+            }
+            .visibilityPriority(.low)
+
+            ToolbarSpacer(.flexible)
+        }
 
         if !model.isSwitchingAccounts {
             if let channel = selectedPrivateChannel {
@@ -1088,6 +1104,25 @@ private struct ChatRootView: View {
         ChatChromeMetrics.toolbarItemEdgeInset
             + ChatChromeMetrics.toolbarTitleActionSpacing
             + CGFloat(actionCount) * ChatChromeMetrics.toolbarIconButtonWidth
+    }
+
+    /// Customize and Browse Channels switch the Channels & Roles page. Beside
+    /// a channel preview the primary column may be too narrow for the switch;
+    /// it leaves the toolbar then, rather than pushing the preview's title
+    /// and actions out of the pane.
+    private var showsCustomizationModePicker: Bool {
+        guard !model.isSwitchingAccounts, model.guildWorkspacePage == .channelsAndRoles,
+              model.featuresSettings.channelManagement,
+              let guildID = model.selectedGuildID, model.hasCustomizationQuestions(in: guildID)
+        else { return false }
+        guard model.workspacePresentation.paneSideConversation != nil, supplementaryPaneFrame != .zero else {
+            return true
+        }
+        let inset = ChatChromeMetrics.toolbarItemEdgeInset
+        // The switch with its margins, then Inbox and its gap to the pane.
+        let required = customizationModePickerWidth + inset * 2
+            + ChatChromeMetrics.toolbarIconButtonWidth + inset * 3
+        return supplementaryPaneFrame.minX - conversationTitleTrailingEdge >= required
     }
 
     private var showsInboxToolbarItem: Bool {
