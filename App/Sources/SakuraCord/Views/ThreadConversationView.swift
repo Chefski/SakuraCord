@@ -202,7 +202,7 @@ private struct ThreadStarterMessagePreview: View {
     }
 
     private var previewText: String {
-        let content = ThreadNamePolicy.readableContent(of: message)
+        let content = model.readableThreadStarterContent(message)
         if !content.isEmpty { return content }
         if let title = message.embeds.first?.title { return title }
         if let question = message.poll?.question { return question }
