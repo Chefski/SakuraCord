@@ -655,6 +655,8 @@ nonisolated struct TimelineScrollState: Equatable, Sendable {
     let hasReachedNewestMessageBoundary: Bool
     let isInProvisionalHistory: Bool
     let isInProvisionalLaterHistory: Bool
+    /// The first message at the top of the viewport.
+    let firstVisibleMessageID: MessageID?
 
     init(
         isNearTop: Bool,
@@ -664,7 +666,8 @@ nonisolated struct TimelineScrollState: Equatable, Sendable {
         hasEstablishedInitialPosition: Bool = false,
         hasReachedNewestMessageBoundary: Bool = false,
         isInProvisionalHistory: Bool = false,
-        isInProvisionalLaterHistory: Bool = false
+        isInProvisionalLaterHistory: Bool = false,
+        firstVisibleMessageID: MessageID? = nil
     ) {
         self.isNearTop = isNearTop
         self.isNearBottom = isNearBottom
@@ -677,6 +680,7 @@ nonisolated struct TimelineScrollState: Equatable, Sendable {
         self.isInProvisionalHistory = isInProvisionalHistory
         self.isInProvisionalLaterHistory =
             isInProvisionalLaterHistory
+        self.firstVisibleMessageID = firstVisibleMessageID
     }
 
 }

@@ -1857,7 +1857,9 @@ extension NativeMessageTimelineCoordinator {
                         > materializedHistoryScrollBoundaryY(
                             .later,
                             viewportHeight: visibleRect.height
-                        ) + 0.5
+                        ) + 0.5,
+                firstVisibleMessageID:
+                    canvas?.firstVisibleMessage(in: visibleRect)?.0
             )
         }
 
