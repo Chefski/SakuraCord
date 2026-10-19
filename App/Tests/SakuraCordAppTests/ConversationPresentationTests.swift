@@ -46,6 +46,13 @@ import Testing
     let unknown = try presentation("https://discord.com/channels/\(guildID)/9341002")
     #expect(unknown.label == "unknown-channel")
     #expect(unknown.isInteractive)
+
+    let messageID = MessageID(rawValue: 9_341_003)
+    let messageLink = try presentation("https://discord.com/channels/\(guildID)/\(joined.id)/\(messageID)")
+    #expect(messageLink.label == "Joined thread ›")
+    #expect(messageLink.target == .message(guildID: guildID, channelID: joined.id, messageID: messageID))
+    let unknownMessage = try presentation("https://discord.com/channels/\(guildID)/9341002/\(messageID)")
+    #expect(unknownMessage.label == "unknown-channel ›")
 }
 
 @Test func `permission resolver applies role overwrites together then member overwrite last`() throws {

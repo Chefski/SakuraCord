@@ -185,15 +185,16 @@ struct MessageMentionResolver {
             return MentionPresentation.fallback(for: mention)
         }
         let guildID = mention.messageGuildID.flatMap(GuildID.init)
-        let channel = channel(channelID)
+        // A message in a thread or forum post is labeled with that thread.
+        let name = channel(channelID)?.name ?? model.messagePresentationThread(channelID)?.name
         let guildName = guildID.flatMap { model.serverRailGuildsByID[$0]?.name }
         let channelLabel = if crossesGuild(targetGuildID: guildID),
                               let guildName,
-                              let channel
+                              let name
         {
-            "\(guildName) / \(channel.name) ›"
+            "\(guildName) / \(name) ›"
         } else {
-            "\(channel?.name ?? "unknown-channel") ›"
+            "\(name ?? MentionPresentation.unknownChannelLinkLabel) ›"
         }
         return MentionPresentation(
             rawToken: mention.rawToken,
