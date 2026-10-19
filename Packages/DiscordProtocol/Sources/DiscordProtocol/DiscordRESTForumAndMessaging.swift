@@ -382,9 +382,20 @@ extension DiscordRESTProvider {
         guard let parentID = post.thread.parentID else {
             throw ChatProviderError.invalidRequest("The forum post has no parent channel.")
         }
+        // Edits to one thread run one at a time, so each starts from the
+        // previous one's committed record instead of being discarded as stale.
+        let previous = threadMutationTails[post.id]
+        let (done, finish) = AsyncStream<Never>.makeStream()
+        let tail = Task { for await _ in done {} }
+        threadMutationTails[post.id] = tail
+        defer {
+            finish.finish()
+            if threadMutationTails[post.id] == tail { threadMutationTails[post.id] = nil }
+        }
+        await previous?.value
         // Each completed PATCH is committed as it returns, so a completed
         // unarchive stays applied when a following change fails.
-        var working = post
+        var working = cachedForumPosts[parentID]?[post.id] ?? post
         try await applyForumPostMutation(mutation, parentID: parentID, to: &working)
         return working
     }

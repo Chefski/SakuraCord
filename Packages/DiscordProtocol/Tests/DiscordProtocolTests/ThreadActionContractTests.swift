@@ -14,7 +14,7 @@ struct ThreadActionContractTests {
     )
 
     @Test func `rename sends only the name after unarchiving and keeps a membership change made meanwhile`() async throws {
-        let provider = await makeProvider(joined: true)
+        let provider = await makeProvider(joined: true, archived: true)
         let archived = ForumPost(thread: thread(isArchived: true, joined: true))
         let gate = StatusRecoveryResponseGate()
         fixture.enqueue(threadJSON(name: "Old name", archived: false))
@@ -46,7 +46,7 @@ struct ThreadActionContractTests {
 
     @Test(arguments: [false, true])
     func `a rename answered after a deletion does not restore the thread`(succeeds: Bool) async throws {
-        let provider = await makeProvider()
+        let provider = await makeProvider(archived: true)
         let gate = StatusRecoveryResponseGate()
         fixture.enqueue(threadJSON(name: "Old name", archived: false))
         if succeeds {
@@ -277,7 +277,7 @@ struct ThreadActionContractTests {
             + #""thread_metadata":{"archived":\#(archived),"locked":false,"auto_archive_duration":1440}\#(member)}"#
     }
 
-    private func makeProvider(seedsThread: Bool = true, joined: Bool = false) async -> DiscordRESTProvider {
+    private func makeProvider(seedsThread: Bool = true, joined: Bool = false, archived: Bool = false) async -> DiscordRESTProvider {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [ThreadActionURLProtocol.self]
         let provider = DiscordRESTProvider(
@@ -286,7 +286,7 @@ struct ThreadActionContractTests {
         )
         await provider.seedForumChannelForTesting(
             parent,
-            posts: seedsThread ? [ForumPost(thread: thread(isArchived: false, joined: joined))] : [],
+            posts: seedsThread ? [ForumPost(thread: thread(isArchived: archived, joined: joined))] : [],
             currentUser: User(id: UserID(rawValue: 9), username: "me", displayName: "Me")
         )
         return provider

@@ -131,6 +131,8 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     var threadRecordEpochs: [ChannelID: UInt64] = [:]
     /// Gateway membership events and the start of each local join or leave.
     var threadMembershipEpochs: [ChannelID: UInt64] = [:]
+    /// The latest pending edit per thread; the next edit waits for it.
+    var threadMutationTails: [ChannelID: Task<Void, Never>] = [:]
     var cachedGuildNotificationSettings: [GuildID?: GuildNotificationSettings] = [:]
     var forumCatalogueTasks: [ForumCatalogueLoadKey: Task<Void, Never>] = [:]
     var forumCatalogueTaskIDs: [ForumCatalogueLoadKey: UUID] = [:]

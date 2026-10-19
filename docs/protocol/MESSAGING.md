@@ -406,7 +406,8 @@ cannot overwrite other settings with stale values. An archived thread is first
 unarchived with `{"archived":false}` and stays open, as before tag, lock and pin
 changes. The sequence is one provider operation that is never replayed; each
 completed step is committed as it returns, so a failed rename leaves the thread
-open. A PATCH result is ignored when a Gateway record or another mutation
+open. Edits to one thread run one at a time, each starting from the record the
+previous one committed. A PATCH result is ignored when a Gateway record or another mutation
 superseded it, and reports not found when the thread was deleted meanwhile. Any
 membership change meanwhile keeps the provider's membership even when the
 response carries `member`, and a response without `member` never changes it.
