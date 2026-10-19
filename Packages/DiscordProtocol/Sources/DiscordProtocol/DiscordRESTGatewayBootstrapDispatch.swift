@@ -73,6 +73,7 @@ extension DiscordRESTProvider {
                 "GatewayReadyApplication", interval
             )
         }
+        let previousForumPosts = (posts: cachedForumPosts, order: cachedForumThreadOrder)
         await resetReadySessionState(for: ready)
         // No suspension while collecting the events from this READY payload.
         let delivery = continuation
@@ -91,7 +92,10 @@ extension DiscordRESTProvider {
         schedulePendingStatusEditSave()
         let metadata = applyReadyUserAndReadState(ready)
         applyReadyPrivateChannels(ready)
-        let guildProjection = applyReadyGuildProjection(ready)
+        let guildProjection = applyReadyGuildProjection(
+            ready,
+            previousForumPosts: previousForumPosts
+        )
         applyReadyInboxEvents(body)
         finishReadyApplication(
             ready,
@@ -269,7 +273,8 @@ extension DiscordRESTProvider {
     }
 
     private func applyReadyGuildProjection(
-        _ ready: GatewayReadyGuildsDTO
+        _ ready: GatewayReadyGuildsDTO,
+        previousForumPosts: (posts: [ChannelID: [ChannelID: ForumPost]], order: [ChannelID])
     ) -> (
         voiceStateCount: Int,
         currentUserRolesByGuild: [GuildID: [RoleID]]
@@ -321,6 +326,7 @@ extension DiscordRESTProvider {
                     guild.channels, guildID: guildID
                 ) {
                     cachedChannels[guildID] = channels
+                    restoreForumPostsAfterReady(previousForumPosts, guildID: guildID)
                 }
             }
             if let guildID, !guild.roles.isEmpty {
