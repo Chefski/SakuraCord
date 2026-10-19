@@ -182,13 +182,5 @@ import SakuraCordModels
         func gatewayOpcodeIsRateLimitedForTesting(_ opcode: Int) -> Bool {
             gatewayOpcodeRateLimitDates[opcode].map { $0 > Date() } ?? false
         }
-
-        func seedPrivateCallSubscriptionForTesting(channelID: ChannelID) {
-            subscribedPrivateCallChannelIDs.insert(channelID)
-        }
-
-        func hasPrivateCallSubscriptionForTesting(channelID: ChannelID) -> Bool {
-            subscribedPrivateCallChannelIDs.contains(channelID)
-        }
     }
 #endif

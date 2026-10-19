@@ -1209,7 +1209,6 @@ final class AppModel {
         notificationPreferences: NotificationPreferences? = nil,
         voiceVideoPreferences: VoiceVideoPreferences? = nil,
         accessibilityMessageAnnouncer: AccessibilityMessageAnnouncer? = nil,
-        typingExpiry: Duration = .seconds(10),
         localTypingTiming: LocalTypingTiming = LocalTypingTiming(),
         reactionMutationTiming: ReactionMutationTiming = ReactionMutationTiming(),
         readAcknowledgementTiming: ReadAcknowledgementTiming = ReadAcknowledgementTiming(),
@@ -1251,7 +1250,7 @@ final class AppModel {
             provider
                 ?? (launchMode == .offlineTesting ? MockChatProvider() : SignedOutChatProvider())
         hasPendingLaunchWelcome = includesOfflineSignIn
-        typingState = TypingStateModel(expiry: typingExpiry)
+        typingState = TypingStateModel()
         self.localTypingTiming = localTypingTiming
         self.reactionMutationTiming = reactionMutationTiming
         self.readAcknowledgementTiming = readAcknowledgementTiming
