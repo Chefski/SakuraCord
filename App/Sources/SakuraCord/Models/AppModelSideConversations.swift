@@ -247,4 +247,21 @@ extension AppModel {
     func consumeEscapeForSupplementaryConversation() -> Bool {
         closeSideConversation()
     }
+
+    /// Escape in a conversation timeline dismisses the innermost transient
+    /// state, then the side chat, and otherwise finishes reading.
+    func handleTimelineEscape(
+        in destination: MessageComposerDestination,
+        conversationID: ChannelID?
+    ) {
+        guard !consumeEscapeForMediaViewer() else { return }
+        guard !consumeEscapeForPinnedMessages() else { return }
+        guard !consumeEscapeForUnfocusedMessageSearch() else { return }
+        guard !consumeEscapeForReply(in: destination) else { return }
+        guard !consumeEscapeForComposerAttachments(in: destination) else { return }
+        guard !consumeEscapeForSupplementaryConversation() else { return }
+        if let conversationID {
+            completeConversationReadingAndAdvance(channelID: conversationID)
+        }
+    }
 }
