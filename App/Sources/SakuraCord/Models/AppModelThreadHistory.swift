@@ -100,6 +100,24 @@ extension AppModel {
         !Task.isCancelled && ownsThreadLoad(threadID, generation: generation)
     }
 
+    /// Reads thread history. Discord omits the guild from history messages,
+    /// and the provider cannot add it for a thread it has not cached, so the
+    /// open thread supplies it for presentation that differs in servers.
+    func threadHistoryPage(
+        _ provider: any ChatProvider,
+        in threadID: ChannelID,
+        anchoredAt anchor: MessageHistoryAnchor,
+        limit: Int
+    ) async throws -> MessagePage {
+        var page = try await provider.messages(in: threadID, anchoredAt: anchor, limit: limit)
+        if openThread?.id == threadID, let guildID = openThread?.guildID ?? openThreadParentChannel?.guildID {
+            for index in page.messages.indices where page.messages[index].guildID == nil {
+                page.messages[index].guildID = guildID
+            }
+        }
+        return page
+    }
+
     /// Loads the open thread's first window: the newest page, or the page
     /// around `target`. With `preservingWindow`, the loaded window stays
     /// visible while its newest page is revalidated in the background.
@@ -141,7 +159,8 @@ extension AppModel {
                 )
             }
             do {
-                let page = try await account.provider.messages(
+                let page = try await model.threadHistoryPage(
+                    account.provider,
                     in: thread.id,
                     anchoredAt: target.map(MessageHistoryAnchor.around) ?? .newest,
                     limit: target == nil ? 100 : 50
@@ -293,7 +312,8 @@ extension AppModel {
             endThreadWindowRequest(request)
         }
         do {
-            let page = try await session.provider.messages(
+            let page = try await threadHistoryPage(
+                session.provider,
                 in: threadID,
                 anchoredAt: .around(messageID),
                 limit: 50
@@ -354,7 +374,7 @@ extension AppModel {
             endThreadWindowRequest(request)
         }
         do {
-            let page = try await session.provider.messages(in: threadID, anchoredAt: .newest, limit: 100)
+            let page = try await threadHistoryPage(session.provider, in: threadID, anchoredAt: .newest, limit: 100)
             guard isCurrentAccountSession(session), isCurrentThreadWindow(request) else { return false }
             replaceThreadWindow(
                 with: page,
@@ -405,7 +425,8 @@ extension AppModel {
             }
         }
         do {
-            let page = try await session.provider.messages(
+            let page = try await threadHistoryPage(
+                session.provider,
                 in: thread.id,
                 anchoredAt: direction == .earlier ? .before(anchorID) : .after(anchorID),
                 limit: 50
