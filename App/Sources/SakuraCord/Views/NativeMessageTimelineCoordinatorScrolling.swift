@@ -1642,6 +1642,13 @@ extension NativeMessageTimelineCoordinator {
                 let obscuredHeight = min(scrollView.scrollerInsets.top, viewportHeight)
                 proposedY = rowY - obscuredHeight
                     - (viewportHeight - obscuredHeight - rowHeight) * anchor.y
+            case let .readingPosition(messageID, offsetFromViewportTop):
+                guard let index = items.firstIndex(where: {
+                    $0.containsMessage(messageID)
+                }), rowOrigins.indices.contains(index)
+                else { return nil }
+                proposedY = contentOriginY(viewportHeight: viewportHeight)
+                    + rowOrigins[index] - offsetFromViewportTop
             }
             return clampedDocumentY(proposedY, scrollView: scrollView)
         }
@@ -1858,8 +1865,9 @@ extension NativeMessageTimelineCoordinator {
                             .later,
                             viewportHeight: visibleRect.height
                         ) + 0.5,
-                firstVisibleMessageID:
-                    canvas?.firstVisibleMessage(in: visibleRect)?.0
+                readingMessage: canvas?.firstVisibleMessage(in: visibleRect).map {
+                    TimelineScrollState.ReadingMessage(id: $0.0, offsetFromViewportTop: $0.1)
+                }
             )
         }
 

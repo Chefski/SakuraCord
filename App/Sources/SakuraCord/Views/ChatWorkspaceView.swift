@@ -55,6 +55,7 @@ struct ChatWorkspaceView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             if let conversation = presentation.paneSideConversation {
                 SideConversationView(model: model, conversation: conversation)
+                    .id(conversation.motionIdentity)
                     .transition(.move(edge: .trailing))
             }
         }

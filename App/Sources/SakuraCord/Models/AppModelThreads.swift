@@ -409,7 +409,7 @@ extension AppModel {
 
     func closeVoiceChat() {
         guard isVoiceChatOpen else { return }
-        closeSideConversations()
+        WorkspaceLayoutMotion.perform(closeSideConversations)
     }
 
     func retryThreadLoad() {

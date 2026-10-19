@@ -596,7 +596,7 @@ private struct ThreadMessageTimelineView: View {
         if state.hasEstablishedInitialPosition {
             model.threadTimelinePosition.reading = state.isNearBottom
                 ? .bottom
-                : state.firstVisibleMessageID.map { .message($0, anchor: .top) }
+                : state.readingMessage.map { .readingPosition($0.id, offsetFromViewportTop: $0.offsetFromViewportTop) }
         }
         latestScrollState = state
         let retainedPaging = historyPaging.retained(for: state)
