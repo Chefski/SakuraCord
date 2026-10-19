@@ -892,7 +892,8 @@ private actor NotificationCredentialStore: CredentialStore {
 }
 
 @MainActor
-@Test func `a late translation cannot repopulate a draft that was already sent`() async throws {
+@Test(arguments: [false, true])
+func `a late translation cannot repopulate a draft that was already sent`(completesBeforeSend: Bool) async throws {
     let provider = TypingTestProvider()
     let translator = ControlledTranslationTestService()
     let state = TranslationState(
@@ -907,11 +908,18 @@ private actor NotificationCredentialStore: CredentialStore {
     model.translateDraft(in: .channel)
     let translationTask = try #require(state.draftTasks[.channel])
     await translator.waitForRequests(1)
+    if completesBeforeSend {
+        translator.complete(0, text: "Translated")
+        await translationTask.value
+        #expect(model.draft == "Translated")
+    }
     #expect(await provider.sendCount == 0)
     #expect(await provider.editCount == 0)
     #expect(await model.send())
-    translator.complete(0, text: "Late translation")
-    await translationTask.value
+    if !completesBeforeSend {
+        translator.complete(0, text: "Late translation")
+        await translationTask.value
+    }
     #expect(model.draft.isEmpty)
     #expect(state.drafts[.channel] == nil)
     #expect(await provider.sendCount == 1)
