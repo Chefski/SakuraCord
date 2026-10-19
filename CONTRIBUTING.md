@@ -68,11 +68,11 @@ them. Run `git diff --check` and the required
 `./script/code_quality.sh check` before considering a change ready to push.
 Broad changes also need the full `./script/ci.sh` validation.
 
-Keep committed tests selective: critical behaviour, major functionality, and
-high-value regression coverage. Extend existing coverage when appropriate. A
-small fix does not automatically need a new test, and purely visual changes
-should be checked in the rendered app without adding committed UI tests.
-Remove temporary UI tests before committing.
+Most changes need no new test. When you add one, name the production failure
+it catches in the pull request, and follow
+[when to commit tests](docs/TESTING.md#when-to-commit-tests). Purely visual
+changes should be checked in the rendered app without adding committed UI
+tests. Remove temporary UI tests before committing.
 
 For documentation-only changes, check claims, local links and anchors, command
 syntax, and whitespace; an app rebuild is not needed solely for prose. Do not
@@ -111,3 +111,9 @@ A missing, pending, or outdated review does not satisfy the requirement. False
 positives may be excluded from the findings requirement, but do not waive the
 5/5 score. These requirements apply alongside the usual checks and maintainer
 review.
+
+### Required adversarial review before merging
+
+A pull request is ready to merge only after two adversarial reviews by
+GPT-6.1-Sol (high reasoning effort) both return no findings, followed by a
+`/simplify` pass.
