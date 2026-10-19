@@ -111,9 +111,3 @@ A missing, pending, or outdated review does not satisfy the requirement. False
 positives may be excluded from the findings requirement, but do not waive the
 5/5 score. These requirements apply alongside the usual checks and maintainer
 review.
-
-### Required adversarial review before merging
-
-A pull request is ready to merge only after two adversarial reviews by
-GPT-6.1-Sol (high reasoning effort) both return no findings, followed by a
-`/simplify` pass.
