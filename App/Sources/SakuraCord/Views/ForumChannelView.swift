@@ -93,6 +93,15 @@ struct ForumChannelView: View {
 private struct ForumPostCollection: View {
     let model: AppModel
     let channel: Channel
+    @State private var scrollPosition = ScrollPosition(edge: .top)
+
+    /// What selects and orders the posts shown.
+    private struct Query: Equatable {
+        let searchText: String
+        let tagIDs: Set<ForumTagID>
+        let sortOrder: ForumSortOrder
+        let layout: ForumLayout
+    }
 
     var body: some View {
         ScrollView {
@@ -102,6 +111,21 @@ private struct ForumPostCollection: View {
                 listContent
             }
         }
+        .scrollPosition($scrollPosition)
+        .onChange(of: query) {
+            // A new query starts at its first post; keeping a deep offset
+            // can leave the viewport past the end of a shorter result.
+            scrollPosition.scrollTo(edge: .top)
+        }
+    }
+
+    private var query: Query {
+        Query(
+            searchText: model.forumSearchText,
+            tagIDs: model.forumSelectedTagIDs,
+            sortOrder: model.forumSortOrder,
+            layout: model.forumLayout
+        )
     }
 
     private var listContent: some View {
