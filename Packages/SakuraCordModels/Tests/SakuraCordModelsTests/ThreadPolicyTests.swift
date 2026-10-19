@@ -35,6 +35,8 @@ struct ThreadNameCase: Sendable, CustomTestStringConvertible {
                    expected: "Release planning notes for the next"),
     ThreadNameCase("- list item\nsecond line", expected: "list item"),
     ThreadNameCase("<:sakura:123> hi <@5>, welcome", expected: ":sakura: hi @maya, welcome"),
+    ThreadNameCase("||The culprit is Alice||", expected: "<spoiler>"),
+    ThreadNameCase("Plot twist: ||Alice|| did it", expected: "Plot twist: <spoiler> did it"),
     ThreadNameCase(String(repeating: "a", count: 50), expected: String(repeating: "a", count: 40) + "..."),
     ThreadNameCase("ignored", embedTitle: "An embed title that is longer than forty characters",
                    expected: "An embed title that is longer than forty..."),

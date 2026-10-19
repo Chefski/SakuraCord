@@ -53,7 +53,8 @@ public enum ThreadNamePolicy {
     }
 
     /// Discord's unparse step: stored mention and emoji tokens become the
-    /// text a reader sees. Unknown channels and roles keep their raw token.
+    /// text a reader sees, and spoilers stay concealed as `<spoiler>`.
+    /// Unknown channels and roles keep their raw token.
     private static func readableContent(
         _ message: Message,
         channelNames: [ChannelID: String],
@@ -63,6 +64,7 @@ public enum ThreadNamePolicy {
             message.mentionedUsers.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }
         )
         return message.content
+            .replacing(#/\|\|[\s\S]+?\|\|/#, with: "<spoiler>")
             .replacing(#/<a?:(\w+):\d+>/#) { ":\($0.1):" }
             .replacing(#/<@!?(\d+)>/#) { match in
                 UInt64(match.1).flatMap { usersByID[UserID(rawValue: $0)] }

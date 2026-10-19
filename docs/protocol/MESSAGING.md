@@ -432,7 +432,8 @@ flag 32 and the user has Create Public Threads and Read Message History (forum
 parents: Send Messages). Message threads are public; messages inside threads and
 voice-channel chats never qualify. The default name is the first embed title
 (40 UTF-16 units plus `...`), else the poll question (80), else the first
-readable line without leading `#`, `-` or spaces, cut at a word boundary within 40.
+readable line without leading `#`, `-` or spaces, cut at a word boundary within 40;
+spoilers read as `<spoiler>`.
 
 The thread browser pages archived threads with
 `GET /channels/{parent}/threads/search?archived=true&sort_by=last_message_time&sort_order=desc&limit=25&tag_setting=match_some&offset=N`,
