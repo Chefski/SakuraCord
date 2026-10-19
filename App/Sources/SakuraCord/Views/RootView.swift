@@ -192,7 +192,9 @@ private struct ChatRootView: View {
     @State private var showAccountSwitcher = false
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var supplementaryPaneFrame = CGRect.zero
-    @State private var supplementaryToolbarSpacerWidth: CGFloat = 0
+    /// Measured width the pane's toolbar actions reserve after the title,
+    /// keyed by action count. It does not depend on the title's width.
+    @State private var sideConversationActionReserve: [Int: CGFloat] = [:]
     @State private var workspaceFrame = CGRect.zero
     @State private var sidebarWidth = ChatChromeMetrics.serverRailWidth + InterfaceScale.metric(230)
     @State private var presentsForumComposer = false
@@ -435,11 +437,10 @@ private struct ChatRootView: View {
         .onChange(of: hasOpenSupplementaryConversation) { _, isOpen in
             if !isOpen {
                 supplementaryPaneFrame = .zero
-                supplementaryToolbarSpacerWidth = 0
             }
         }
-        .onChange(of: toolbarPinsChannelID) { _, channelID in
-            if channelID == nil { model.dismissInbox() }
+        .onChange(of: showsInboxToolbarItem) { _, isShown in
+            if !isShown { model.dismissInbox() }
         }
         .onChange(of: model.openThread?.id) { _, threadID in
             if threadID != nil {
@@ -608,71 +609,6 @@ private struct ChatRootView: View {
                     .labelsHidden()
                 }
             }
-            if let conversation = model.workspacePresentation.paneSideConversation {
-                let label = model.sideConversationLabel(conversation)
-                let capabilities = conversation.capabilities
-                ToolbarItem {
-                    ConversationToolbarLabel(
-                        title: label.title,
-                        systemImage: label.systemImage,
-                        subtitle: nil,
-                        textSize: InterfaceTypographyMetrics.interfaceTextSize
-                    )
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .onGeometryChange(for: CGRect.self) { proxy in
-                        proxy.frame(in: .global)
-                    } action: { frame in
-                        alignSupplementaryToolbarTitle(frame)
-                    }
-                }
-                .visibilityPriority(.high)
-
-                ToolbarSpacer(.fixed)
-
-                ToolbarItem {
-                    Color.clear
-                        .frame(width: supplementaryToolbarSpacerWidth, height: 1)
-                        .accessibilityHidden(true)
-                }
-                .contentMarginsRemoved()
-                .sharedBackgroundVisibility(.hidden)
-
-                ToolbarSpacer(.fixed)
-
-                if capabilities.canAddToChannelList, let channel = model.customizationPreviewChannel,
-                   let guildID = channel.guildID, !model.isChannelSelected(channel) {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button("Add to Channel List", systemImage: "plus") {
-                            model.setChannelSelected(true, channelID: channel.id, guildID: guildID)
-                        }
-                        .labelStyle(.iconOnly)
-                        .help("Add to Channel List")
-                    }
-                }
-
-                if capabilities.canOpenFullWidth, let thread = model.openThread {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button("Open in Full View", systemImage: "arrow.up.left.and.arrow.down.right") {
-                            model.openSidebarThread(thread)
-                        }
-                        .labelStyle(.iconOnly)
-                        .help("Open thread in full view")
-                    }
-                }
-
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        model.closeSideConversation()
-                    } label: {
-                        Label("Close conversation", systemImage: "xmark")
-                            .labelStyle(.iconOnly)
-                    }
-                    .help(capabilities.closeHelp)
-                    .keyboardShortcut(model.guildWorkspacePage == .guide ? .cancelAction : nil)
-                }
-                .visibilityPriority(.high)
-            }
         }
     }
 
@@ -738,7 +674,7 @@ private struct ChatRootView: View {
                 .visibilityPriority(.high)
             }
 
-            if let pinsChannelID = toolbarPinsChannelID {
+            if showsInboxToolbarItem {
                 if hasToolbarActionBeforeInbox {
                     ToolbarSpacer(.fixed)
                 }
@@ -763,6 +699,9 @@ private struct ChatRootView: View {
                     }
                 }
                 .visibilityPriority(.high)
+            }
+
+            if let pinsChannelID = toolbarPinsChannelID {
                 ToolbarSpacer(.fixed)
 
                 ToolbarItem(id: "pinned-messages") {
@@ -791,6 +730,10 @@ private struct ChatRootView: View {
                     }
                 }
                 .visibilityPriority(.high)
+            }
+
+            if let conversation = model.workspacePresentation.paneSideConversation {
+                sideConversationToolbar(conversation)
             }
         }
 
@@ -1029,20 +972,103 @@ private struct ChatRootView: View {
                      avatarIsMobile: isDirectMessageSelected && directMessageRecipient(for: channel)?.showsMobileIndicator == true)
     }
 
-    private func alignSupplementaryToolbarTitle(_ titleFrame: CGRect) {
-        guard supplementaryPaneFrame != .zero,
-              titleFrame != .zero,
-              titleFrame.minX.isFinite
-        else { return }
+    @ToolbarContentBuilder
+    private func sideConversationToolbar(_ conversation: SideConversation) -> some ToolbarContent {
+        let label = model.sideConversationLabel(conversation)
+        let capabilities = conversation.capabilities
+        let showsAddToChannelList = capabilities.canAddToChannelList
+            && model.customizationPreviewChannel.map { !model.isChannelSelected($0) } == true
+        let showsOpenFullWidth = capabilities.canOpenFullWidth && model.openThread != nil
+        let actionCount = 1 + (showsAddToChannelList ? 1 : 0) + (showsOpenFullWidth ? 1 : 0)
+        if showsInboxToolbarItem {
+            // Keep the primary column's last action inset from the pane edge.
+            ToolbarSpacer(.fixed)
+            ToolbarSpacer(.fixed)
+        }
 
-        let targetLeadingEdge = supplementaryPaneFrame.minX
-            + ChatChromeMetrics.toolbarPaneEdgeInset
-        let correction = titleFrame.minX - targetLeadingEdge
-        guard abs(correction) > 0.5 else { return }
-        supplementaryToolbarSpacerWidth = max(
-            0,
-            supplementaryToolbarSpacerWidth + correction
-        )
+        ToolbarItem(id: "side-conversation-title") {
+            SideConversationToolbarTitle(label: label, width: sideConversationTitleWidth(actionCount: actionCount))
+                // Remeasure changed text without replacing the toolbar item.
+                .id(label.title)
+                .transition(.identity)
+                .transaction { transaction in
+                    transaction.animation = nil
+                    transaction.disablesAnimations = true
+                }
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.frame(in: .global).maxX
+                } action: { trailingEdge in
+                    recordSideConversationActionReserve(titleTrailingEdge: trailingEdge, actionCount: actionCount)
+                }
+        }
+        .sharedBackgroundVisibility(.hidden)
+        .visibilityPriority(.high)
+
+        if showsAddToChannelList, let channel = model.customizationPreviewChannel, let guildID = channel.guildID {
+            ToolbarItem(id: "side-conversation-add") {
+                Button("Add to Channel List", systemImage: "plus") {
+                    model.setChannelSelected(true, channelID: channel.id, guildID: guildID)
+                }
+                .labelStyle(.iconOnly)
+                .help("Add to Channel List")
+            }
+            .visibilityPriority(.high)
+        }
+
+        if showsOpenFullWidth, let thread = model.openThread {
+            ToolbarItem(id: "side-conversation-full-width") {
+                Button("Open in Full View", systemImage: "arrow.up.left.and.arrow.down.right") {
+                    model.openSidebarThread(thread)
+                }
+                .labelStyle(.iconOnly)
+                .help("Open thread in full view")
+            }
+            .visibilityPriority(.high)
+        }
+
+        ToolbarItem(id: "side-conversation-close") {
+            Button {
+                model.closeSideConversation()
+            } label: {
+                Label("Close conversation", systemImage: "xmark")
+                    .labelStyle(.iconOnly)
+            }
+            .help(capabilities.closeHelp)
+            .keyboardShortcut(model.guildWorkspacePage == .guide ? .cancelAction : nil)
+        }
+        .visibilityPriority(.high)
+    }
+
+    /// The pane title spans from the pane's leading inset to its actions, so
+    /// neither title length nor window width moves it. Its width depends only
+    /// on the pane's width and the actions' measured reserve, which a resize
+    /// or title change cannot invalidate.
+    private func sideConversationTitleWidth(actionCount: Int) -> CGFloat? {
+        guard supplementaryPaneFrame != .zero else { return nil }
+        let reserve = sideConversationActionReserve[actionCount]
+            ?? Self.defaultSideConversationActionReserve(actionCount)
+        return max(0, supplementaryPaneFrame.width - ChatChromeMetrics.toolbarItemEdgeInset - reserve)
+    }
+
+    private func recordSideConversationActionReserve(titleTrailingEdge: CGFloat, actionCount: Int) {
+        guard supplementaryPaneFrame != .zero, titleTrailingEdge.isFinite else { return }
+        let reserve = supplementaryPaneFrame.maxX - titleTrailingEdge
+        // An item in the overflow menu reports no meaningful frame. The
+        // reserve does not depend on the title width, so this cannot loop.
+        guard abs(reserve - Self.defaultSideConversationActionReserve(actionCount)) < 24,
+              abs(reserve - (sideConversationActionReserve[actionCount] ?? -1)) > 0.1
+        else { return }
+        sideConversationActionReserve[actionCount] = reserve
+    }
+
+    private static func defaultSideConversationActionReserve(_ actionCount: Int) -> CGFloat {
+        ChatChromeMetrics.toolbarItemEdgeInset
+            + ChatChromeMetrics.toolbarTitleActionSpacing
+            + CGFloat(actionCount) * ChatChromeMetrics.toolbarIconButtonWidth
+    }
+
+    private var showsInboxToolbarItem: Bool {
+        !model.isSwitchingAccounts && model.onboardingEntryGuildID == nil
     }
 
     private var selectedGuild: Guild? {
@@ -1370,7 +1396,7 @@ private struct ConversationToolbarPresentation {
     var avatarIsMobile = false
 }
 
-private struct ConversationToolbarLabel: View {
+struct ConversationToolbarLabel: View {
     let title: String
     let systemImage: String
     var subtitle: String?

@@ -362,6 +362,9 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
         private weak var searchField: NSSearchField?
         private weak var searchToolbarItem: NSSearchToolbarItem?
         private var originalSearchToolbarItemIsHidden: Bool?
+        /// SwiftUI precedes the search item with a flexible space. Its minimum
+        /// width would otherwise push the trailing item in from the edge.
+        private weak var hiddenSearchSpacer: NSToolbarItem?
         private var appliedSearchToolbarItemIsHidden: Bool?
         private weak var sizedSearchToolbarItem: NSSearchToolbarItem?
         private weak var sizedSearchField: NSSearchField?
@@ -454,6 +457,10 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
             guard let window else { return }
             observe(NSWindow.didResizeNotification, object: window)
             observe(NSWindow.didEndLiveResizeNotification, object: window)
+            if let toolbar = window.toolbar {
+                observe(NSToolbar.willAddItemNotification, object: toolbar)
+                observe(NSToolbar.didRemoveItemNotification, object: toolbar)
+            }
             observe(NSMenu.didBeginTrackingNotification, object: nil)
             observe(NSMenu.didEndTrackingNotification, object: nil)
             keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
@@ -607,16 +614,22 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
             let isHidden = isToolbarItemVisible
                 ? (originalSearchToolbarItemIsHidden ?? false)
                 : true
-            if item.isHidden != isHidden {
+            let spacer = searchSpacer(before: item, in: window)
+            if item.isHidden != isHidden || (spacer.map { $0.isHidden != isHidden } ?? false) {
                 // Search disappears together with the channel actions. Finish
                 // that native layout without morphing its glass into the title.
                 NSAnimationContext.runAnimationGroup { context in
                     context.duration = 0
                     context.allowsImplicitAnimation = false
                     item.isHidden = isHidden
+                    spacer?.isHidden = isHidden
                     window.contentView?.superview?.layoutSubtreeIfNeeded()
                 }
             }
+            if hiddenSearchSpacer !== spacer {
+                restoreSearchSpacerVisibility()
+            }
+            hiddenSearchSpacer = isHidden ? spacer : nil
             appliedSearchToolbarItemIsHidden = isHidden
             return true
         }
@@ -692,7 +705,21 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
             appliedSearchContainerWidth = nil
         }
 
+        private func searchSpacer(before item: NSToolbarItem, in window: NSWindow) -> NSToolbarItem? {
+            guard let items = window.toolbar?.items,
+                  let index = items.firstIndex(where: { $0 === item }), index > 0,
+                  items[index - 1].itemIdentifier == .flexibleSpace
+            else { return nil }
+            return items[index - 1]
+        }
+
+        private func restoreSearchSpacerVisibility() {
+            hiddenSearchSpacer?.isHidden = false
+            hiddenSearchSpacer = nil
+        }
+
         private func restoreSearchToolbarItemVisibility() {
+            restoreSearchSpacerVisibility()
             if let searchToolbarItem,
                let originalSearchToolbarItemIsHidden,
                let appliedSearchToolbarItemIsHidden,
