@@ -1356,10 +1356,11 @@ private struct ForumPostCardChrome<Content: View>: View {
                 .allowsHitTesting(false)
             }
             .overlay {
-                let canManage = model.canManageForumPosts
-                let canArchive = model.canArchiveForumPost(post)
-                let canEditTags = model.canEditForumPostTags(post)
-                let canDelete = model.canDeleteForumPost(post)
+                let policy = model.threadActionPolicy(post.thread)
+                let canManage = policy.canManage
+                let canArchive = policy.canChangeArchive
+                let canEditTags = policy.canEditTags
+                let canDelete = policy.canDelete
                 ForumPostContextMenuBridge(
                     tags: channel.availableTags,
                     appliedTagIDs: post.thread.appliedTagIDs,

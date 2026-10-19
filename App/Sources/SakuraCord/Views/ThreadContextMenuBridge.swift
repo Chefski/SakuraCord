@@ -50,7 +50,7 @@ struct ThreadContextMenuBridge: NSViewRepresentable {
             let pending = model.isForumNotificationMutationPending(thread.id)
             if SidebarThreadPolicy.isMuted(thread, now: .now) {
                 menu.addItem(item("Unmute \(noun)", symbol: "bell.fill", enabled: permissions.canChangeNotifications && !pending) {
-                    model.setSidebarThreadMute(thread, isMuted: false, until: nil)
+                    model.setThreadMute(thread, isMuted: false, until: nil)
                 })
             } else {
                 let mute = item("Mute \(noun)", symbol: "bell.slash.fill", enabled: permissions.canChangeNotifications && !pending)
@@ -58,7 +58,7 @@ struct ThreadContextMenuBridge: NSViewRepresentable {
                 submenu.autoenablesItems = false
                 for duration in ChannelMuteDuration.allCases {
                     submenu.addItem(item(duration.title) {
-                        model.setSidebarThreadMute(thread, isMuted: true, until: duration.endDate())
+                        model.setThreadMute(thread, isMuted: true, until: duration.endDate())
                     })
                 }
                 mute.submenu = submenu
@@ -68,7 +68,7 @@ struct ThreadContextMenuBridge: NSViewRepresentable {
             let levels = NSMenu()
             levels.autoenablesItems = false
             for level: MessageNotificationLevel in [.inherit, .allMessages, .onlyMentions, .nothing] {
-                let choice = item(level.menuTitle) { model.setSidebarThreadNotificationLevel(thread, level: level) }
+                let choice = item(level.menuTitle) { model.setThreadNotificationLevel(thread, level: level) }
                 choice.state = (thread.notificationSettings?.notificationLevel ?? .inherit) == level ? .on : .off
                 levels.addItem(choice)
             }
@@ -77,20 +77,20 @@ struct ThreadContextMenuBridge: NSViewRepresentable {
             menu.addItem(.separator())
             let joined = thread.notificationSettings != nil
             menu.addItem(item(joined ? "Leave \(noun)" : "Follow \(noun)", symbol: joined ? "rectangle.portrait.and.arrow.right" : "plus.circle", enabled: permissions.canChangeMembership) {
-                model.setSidebarThreadMembership(thread, isJoined: !joined)
+                model.setThreadMembership(thread, isJoined: !joined, surface: .channelList)
             })
             if model.canArchiveSidebarThread(thread) {
                 menu.addItem(item(thread.isArchived ? "Reopen \(noun)" : "Close \(noun)", symbol: "archivebox.fill") {
-                    model.updateSidebarThread(thread, mutation: .archived(!thread.isArchived))
+                    model.updateThread(thread, mutation: .archived(!thread.isArchived))
                 })
             }
             if model.canManageSidebarThread(thread) {
                 menu.addItem(item(thread.isLocked ? "Unlock \(noun)" : "Lock \(noun)", symbol: thread.isLocked ? "lock.open.fill" : "lock.fill") {
-                    model.updateSidebarThread(thread, mutation: .locked(!thread.isLocked))
+                    model.updateThread(thread, mutation: .locked(!thread.isLocked))
                 })
                 if isForum {
                     menu.addItem(item(thread.isPinned ? "Unpin Post" : "Pin Post", symbol: "pin.fill") {
-                        model.updateSidebarThread(thread, mutation: .pinned(!thread.isPinned))
+                        model.updateThread(thread, mutation: .pinned(!thread.isPinned))
                     })
                 }
             }

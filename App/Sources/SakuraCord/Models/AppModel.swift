@@ -159,6 +159,7 @@ final class AppModel {
     @ObservationIgnored let nicknameEditor = NicknameEditorStore()
     @ObservationIgnored let groupDirectMessageEditor = GroupDirectMessageEditorStore()
     @ObservationIgnored let groupDirectMessageLeave = GroupDirectMessageLeaveStore()
+    @ObservationIgnored let threadActions = ThreadActionStore()
     @ObservationIgnored let voiceSidebarPresentation =
         VoiceSidebarPresentationStore()
     var serverRailGuildsByID: [GuildID: Guild] = [:] {
