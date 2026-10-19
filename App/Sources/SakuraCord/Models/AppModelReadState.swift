@@ -62,9 +62,8 @@ extension AppModel {
                       previousOldestID.map({ oldestMessageID < $0 }) ?? true
                 else { return }
                 previousOldestID = oldestMessageID
-                // Keep history contiguous, including in threads, which do not
-                // have a separate later-history window. Existing loaders own
-                // permissions, pagination errors and account/selection guards.
+                // Keep history contiguous. Existing loaders own permissions,
+                // pagination errors and account/selection guards.
                 if isThread {
                     await model.loadEarlierThread(account: account)
                 } else {
@@ -88,6 +87,18 @@ extension AppModel {
             }
             return
         }
+        if channelID == openThread?.id, isThreadWindowAwayFromNewest {
+            let account = accountSession()
+            startAccountChildTask(account: account) { model, account in
+                guard await model.loadNewestThreadWindow(account: account),
+                      model.isCurrentAccountSession(account),
+                      model.openThread?.id == channelID
+                else { return }
+                model.completeConversationReadingAndAdvance(channelID: channelID)
+            }
+            return
+        }
+        if channelID == openThread?.id { supersedeThreadWindowRequests() }
         markConversationRead(channelID: channelID)
         unreadDividerMessageIDs[channelID] = nil
         conversationNewestRequestID &+= 1

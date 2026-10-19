@@ -490,6 +490,7 @@ extension AppModel {
                 // the bounded rows for immediate presentation while forcing one
                 // authoritative newest-page refresh per reopened conversation.
                 hasMoreCache.removeAll(keepingCapacity: true)
+                markHistoryGapForRetainedConversations()
             }
             stopLocalTyping(clearThrottle: true)
             typingState.clearAll()
@@ -509,6 +510,9 @@ extension AppModel {
                hasCompletedInitialMessageLoad
             {
                 refreshSelectedChannelPreservingHistory()
+            }
+            if previousState != .ready {
+                revalidateOpenThreadAfterReconnect()
             }
             if let channel = selectedChannel,
                channel.kind == .directMessage || channel.kind == .groupDirectMessage
