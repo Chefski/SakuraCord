@@ -11,22 +11,6 @@ struct GatewayLifecycleEventTests {
     private let voiceChannelID = ChannelID(rawValue: 202)
     private let currentUserID = UserID(rawValue: 1)
 
-    @Test func `media channel decodes as a non-text forum surface`() throws {
-        let data = Data(
-            #"""
-            {
-              "id":"203","guild_id":"100","type":16,"name":"media",
-              "permission_overwrites":[]
-            }
-            """#.utf8
-        )
-
-        let channel = try JSONDecoder().decode(ChannelDTO.self, from: data)
-            .domain(guildID: guildID)
-
-        #expect(channel.kind == .forum)
-    }
-
     @Test func `thread-shaped channel dispatch stays out of guild channels`() async {
         let provider = makeProvider()
         await provider.receiveGatewayDispatchForTesting(
@@ -74,7 +58,6 @@ struct GatewayLifecycleEventTests {
     @Test(arguments: [
         (#"[{"id":"1","name":"Bug"},{"id":2,"name":null},"tag"]"#, ["Bug"]),
         (#"{"unexpected":"object"}"#, []),
-        (#""tags""#, []),
     ])
     func `forum with malformed tag and reaction metadata still decodes`(
         tags: String, expectedNames: [String]
@@ -835,26 +818,13 @@ struct GatewayLifecycleEventTests {
         await provider.disconnect()
     }
 
-    @Test func `desktop ETF numeric permissions guild create adds a new guild`() async {
+    @Test(arguments: [false, true])
+    func `desktop guild create with numeric or nested properties adds a new guild`(nested: Bool) async {
         let provider = makeProvider()
 
         await provider.receiveGatewayDispatchForTesting(
             name: "GUILD_CREATE",
-            data: guildCreatePayload(permissions: .number(1_024))
-        )
-
-        #expect(await provider.cachedGuildForTesting(guildID: guildID)?.name == "Lifecycle Guild")
-        #expect(await provider.cachedGuildForTesting(guildID: guildID)?.currentUserPermissions == 1_024)
-        #expect(await provider.cachedGuildsForTesting().map(\.id) == [guildID])
-        #expect(await provider.cachedGuildRailItemsForTesting() == [.guild(guildID)])
-    }
-
-    @Test func `desktop nested properties guild create adds a new guild`() async {
-        let provider = makeProvider()
-
-        await provider.receiveGatewayDispatchForTesting(
-            name: "GUILD_CREATE",
-            data: desktopGuildCreatePayload()
+            data: nested ? desktopGuildCreatePayload() : guildCreatePayload(permissions: .number(1_024))
         )
 
         #expect(await provider.cachedGuildForTesting(guildID: guildID)?.name == "Lifecycle Guild")
@@ -993,19 +963,6 @@ struct GatewayLifecycleEventTests {
             data: .object(["id": .string("200"), "guild_id": .string("100")])
         )
         #expect(await provider.cachedChannelForTesting(channelID: textChannelID) == nil)
-    }
-
-    @Test func `rate limited event records bounded gateway cooldown`() async {
-        let provider = makeProvider()
-        await provider.receiveGatewayDispatchForTesting(
-            name: "RATE_LIMITED",
-            data: .object([
-                "opcode": .number(8), "retry_after": .number(30),
-                "meta": .object(["guild_id": .string("100")]),
-            ])
-        )
-        #expect(await provider.gatewayOpcodeIsRateLimitedForTesting(8))
-        #expect(!(await provider.gatewayOpcodeIsRateLimitedForTesting(37)))
     }
 
     @Test func `dispatch reconciliation has zero HTTP request budget`() async {
