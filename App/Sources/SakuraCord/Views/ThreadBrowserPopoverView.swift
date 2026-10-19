@@ -162,6 +162,9 @@ struct ThreadBrowserPopoverView: View {
                 Spacer()
             }
             .onAppear(perform: model.loadMoreArchivedThreads)
+            // A page can add no visible rows; a new identity per offset makes
+            // the footer request the next page again.
+            .id(browser.listing?.nextOffset)
         } else if sections.older.isEmpty {
             Text("No older threads")
                 .font(.interface(.caption))

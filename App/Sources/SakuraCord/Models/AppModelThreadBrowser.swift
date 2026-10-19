@@ -90,6 +90,10 @@ extension AppModel {
                 for post in page.posts where model.threadBrowser.records[post.id] != nil {
                     model.threadBrowser.records[post.id] = post
                 }
+                // A thread archived while the page was in flight may be absent
+                // from it; apply the current records to the loaded range.
+                let records = Array(model.threadBrowser.records.values)
+                model.threadBrowser.listings[parentID]?.reconcile(with: records)
                 model.threadBrowser.isLoadingArchived = false
             } catch is CancellationError {
                 return
