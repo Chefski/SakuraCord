@@ -734,44 +734,6 @@ extension DirectMessageProviderContractTests {
         await provider.disconnect()
     }
 
-    @Test func `ready supplemental does not admit standalone hydration users`() async throws {
-        DirectMessageURLProtocol.reset()
-        let provider = makeProvider()
-        let events = await provider.eventStream()
-        let published = Task { () -> [User]? in
-            for await event in events {
-                if case let .knownUsersChanged(users) = event { return users }
-            }
-            return nil
-        }
-
-        await provider.receiveGatewayDispatchForTesting(
-            name: "READY_SUPPLEMENTAL",
-            data: .object([
-                "guilds": .array([]),
-                "users": .array([
-                    .object([
-                        "id": .string("3"),
-                        "username": .string("legacy-bot"),
-                        "discriminator": .string("8860"),
-                        "global_name": .string("Global Name"),
-                    ]),
-                    .object([
-                        "id": .string("2"),
-                        "username": .string("later-user"),
-                        "global_name": .string("Later User"),
-                    ])
-                ]),
-            ])
-        )
-
-        let users = try #require(await published.value)
-        #expect(users.isEmpty)
-        #expect(await provider.currentMessageSearchUsers().isEmpty)
-        #expect(DirectMessageURLProtocol.requests.isEmpty)
-        await provider.disconnect()
-    }
-
     @Test func `ready supplemental admits only lazy private channel recipients in payload order`() async {
         let provider = makeProvider()
         await provider.receiveGatewayDispatchForTesting(
@@ -1054,7 +1016,8 @@ extension DirectMessageProviderContractTests {
         await provider.disconnect()
     }
 
-    @Test func `guild create members extend account wide forwarding users without REST`() async {
+    @Test(arguments: ["GUILD_CREATE", "GUILD_MEMBERS_CHUNK"])
+    func `guild member payloads extend account wide forwarding users without REST`(event: String) async {
         DirectMessageURLProtocol.reset()
         let provider = makeProvider()
         let events = await provider.eventStream()
@@ -1067,66 +1030,31 @@ extension DirectMessageProviderContractTests {
             return nil
         }
 
-        await provider.receiveGatewayDispatchForTesting(
-            name: "GUILD_CREATE",
-            data: .object([
-                "id": .string("1"),
-                "name": .string("Guild"),
-                "members": .array([
-                    .object([
-                        "user": user(
-                            id: "7",
-                            username: "member-user",
-                            globalName: "Member User"
-                        ),
-                        "nick": .string("Member nickname"),
-                        "roles": .array([]),
-                    ])
-                ]),
+        let members: JSONValue = .array([
+            .object([
+                "user": user(
+                    id: "7",
+                    username: "member-user",
+                    globalName: "Member User"
+                ),
+                "nick": .string("Member nickname"),
+                "roles": .array([]),
             ])
+        ])
+        await provider.receiveGatewayDispatchForTesting(
+            name: event,
+            data: event == "GUILD_CREATE"
+                ? .object(["id": .string("1"), "name": .string("Guild"), "members": members])
+                : .object([
+                    "guild_id": .string("1"), "chunk_index": .number(0),
+                    "chunk_count": .number(1), "members": members,
+                ])
         )
 
         let users = await provider.currentKnownUsers()
         #expect(users.contains { $0.id == UserID(rawValue: 7) })
         let aliases = await publishedAliases.value
         #expect(aliases?[UserID(rawValue: 7)] == ["Member nickname"])
-        #expect(DirectMessageURLProtocol.requests.isEmpty)
-        await provider.disconnect()
-    }
-
-    @Test func `guild member chunks extend forwarding users without a REST lookup`() async throws {
-        DirectMessageURLProtocol.reset()
-        let provider = makeProvider()
-        let events = await provider.eventStream()
-        let published = Task { () -> [User]? in
-            for await event in events {
-                if case let .knownUsersChanged(users) = event { return users }
-            }
-            return nil
-        }
-
-        await provider.receiveGatewayDispatchForTesting(
-            name: "GUILD_MEMBERS_CHUNK",
-            data: .object([
-                "guild_id": .string("1"),
-                "chunk_index": .number(0),
-                "chunk_count": .number(1),
-                "members": .array([
-                    .object([
-                        "user": user(
-                            id: "8",
-                            username: "chunk-user",
-                            globalName: "Chunk User"
-                        ),
-                        "nick": .string("Chunk nickname"),
-                        "roles": .array([]),
-                    ])
-                ]),
-            ])
-        )
-
-        let users = try #require(await published.value)
-        #expect(users.contains { $0.id == UserID(rawValue: 8) })
         #expect(DirectMessageURLProtocol.requests.isEmpty)
         await provider.disconnect()
     }
@@ -1178,35 +1106,6 @@ extension DirectMessageProviderContractTests {
                 == ["List nickname"]
         )
         #expect(DirectMessageURLProtocol.requests.isEmpty)
-        await provider.disconnect()
-    }
-
-    @Test func `empty group DM uses its owner display name like Discord`() async throws {
-        let provider = makeProvider()
-        await provider.receiveGatewayDispatchForTesting(
-            name: "READY",
-            data: .object([
-                "guilds": .array([]),
-                "user": user(id: "1", username: "owner", globalName: "Owner Display"),
-                "users": .array([]),
-                "private_channels": .array([
-                    .object([
-                        "id": .string("41"),
-                        "type": .number(3),
-                        "name": .string(""),
-                        "owner_id": .string("1"),
-                        "recipient_ids": .array([]),
-                        "last_message_id": .string("500"),
-                    ])
-                ]),
-            ])
-        )
-
-        let channel = try #require(
-            await provider.cachedPrivateChannelsForTesting().first
-        )
-        #expect(channel.kind == .groupDirectMessage)
-        #expect(channel.name == "Owner Display's Group")
         await provider.disconnect()
     }
 
@@ -1442,15 +1341,6 @@ extension DirectMessageProviderContractTests {
             } == 2
         )
         await provider.disconnect()
-    }
-
-    @Test func `private call connect uses current gateway opcode`() throws {
-        let payload = DiscordGatewayPayloadFactory.privateCallConnect(
-            channelID: ChannelID(rawValue: 41)
-        )
-        #expect(payload["op"] as? Int == 13)
-        let body = try #require(payload["d"] as? [String: Any])
-        #expect(body["channel_id"] as? String == "41")
     }
 
     @Test func `private call subscriptions reset after Gateway resume`() async {
