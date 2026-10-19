@@ -117,7 +117,33 @@ final class AccountReadStateModel {
     @ObservationIgnored private var nextNotificationPolicyExpiration: Date?
     private var overridesByGuildAndChannelID:
         [GuildID?: [ChannelID: ChannelNotificationOverride]] = [:]
-    private(set) var presentations: [ChannelID: Presentation] = [:]
+    @ObservationIgnored private var presentationsStorage: [ChannelID: Presentation] = [:]
+    private(set) var presentations: [ChannelID: Presentation] {
+        get {
+            access(keyPath: \.presentations)
+            return presentationsStorage
+        }
+        set {
+            for channelID in Set(presentationsStorage.keys).union(newValue.keys) {
+                self[presentation: channelID] = newValue[channelID]
+            }
+        }
+    }
+
+    private(set) subscript(presentation channelID: ChannelID) -> Presentation? {
+        get {
+            access(keyPath: \.[presentation: channelID])
+            return presentationsStorage[channelID]
+        }
+        set {
+            guard presentationsStorage[channelID] != newValue else { return }
+            withMutation(keyPath: \.presentations) {
+                withMutation(keyPath: \.[presentation: channelID]) {
+                    presentationsStorage[channelID] = newValue
+                }
+            }
+        }
+    }
     private(set) var acknowledgementToken: String?
     private(set) var readStateVersion: Int?
     private(set) var remoteReadStateOrder: [ChannelID] = []
@@ -537,7 +563,7 @@ extension AccountReadStateModel {
         for channelID in removedIDs {
             channelByID[channelID] = nil
             self[channelID] = nil
-            presentations[channelID] = nil
+            self[presentation: channelID] = nil
             pendingRollbacks[channelID] = nil
             forumSelectionAcknowledgementBoundary[channelID] = nil
         }
@@ -555,7 +581,7 @@ extension AccountReadStateModel {
         }
         for channelID in removedIDs {
             self[channelID] = nil
-            presentations[channelID] = nil
+            self[presentation: channelID] = nil
             pendingRollbacks[channelID] = nil
             forumPostArchivedByID[channelID] = nil
         }
@@ -571,7 +597,7 @@ extension AccountReadStateModel {
         }
         for channelID in removedEntryIDs {
             self[channelID] = nil
-            presentations[channelID] = nil
+            self[presentation: channelID] = nil
             channelByID[channelID] = nil
             pendingRollbacks[channelID] = nil
             forumSelectionAcknowledgementBoundary[channelID] = nil
@@ -1229,7 +1255,7 @@ extension AccountReadStateModel {
 
     func isUnopenedForumPost(_ post: ForumPost) -> Bool {
         self[post.id]?.hasAuthoritativeReadState != true
-            && presentations[post.id] == nil
+            && self[presentation: post.id] == nil
     }
 
     func isNewForumPost(_ post: ForumPost) -> Bool {
@@ -1273,7 +1299,7 @@ extension AccountReadStateModel {
         hasReachedReadBoundary: Bool? = nil,
         blocksAutomaticAcknowledgement: Bool? = nil
     ) -> MessageID? {
-        var value = presentations[channelID] ?? Presentation()
+        var value = self[presentation: channelID] ?? Presentation()
         if let isPresented { value.isPresented = isPresented }
         if let initialHistoryLoaded { value.initialHistoryLoaded = initialHistoryLoaded }
         if let initialPositionEstablished {
@@ -1288,17 +1314,17 @@ extension AccountReadStateModel {
                 ? self[channelID]?.latestKnownMessageID ?? MessageID(rawValue: 0)
                 : nil
         }
-        presentations[channelID] = value
+        self[presentation: channelID] = value
         return canAcknowledge(channelID) ? newestUnacknowledgedMessage(in: channelID) : nil
     }
 
     func canAcknowledge(_ channelID: ChannelID) -> Bool {
-        presentations[channelID]?.meetsViewingConditions == true
+        self[presentation: channelID]?.meetsViewingConditions == true
             && !holdsAutomaticAcknowledgement(channelID)
     }
 
     func holdsAutomaticAcknowledgement(_ channelID: ChannelID) -> Bool {
-        guard let held = presentations[channelID]?.heldThroughMessageID else { return false }
+        guard let held = self[presentation: channelID]?.heldThroughMessageID else { return false }
         guard let acknowledged = self[channelID]?.lastAcknowledgedMessageID else { return true }
         return acknowledged < held
     }
@@ -1487,6 +1513,29 @@ extension AccountReadStateModel {
         }
     }
 
+    func hasUnreadServerConversations(in guildIDs: Set<GuildID>) -> Bool {
+        let source = UnreadPresentationSource(
+            entries: entriesStorage,
+            activeJoinedThreadIDs: activeJoinedThreadIDs,
+            policy: unreadPolicySource,
+            forumPostArchivedByID: forumPostArchivedByID
+        )
+        let channelIDs = Set(channelByID.values.filter {
+            $0.guildID.map { guildIDs.contains($0) } == true
+        }.map(\.id)).union(activeJoinedThreadIDs)
+        return channelIDs.contains { channelID in
+            guard let state = self[unread: channelID],
+                  let guildID = state.guildID, guildIDs.contains(guildID),
+                  state.isAccessible, state.isUnread,
+                  let entry = entriesStorage[channelID]
+            else { return false }
+            if channelByID[channelID] == nil, let parentID = state.parentID {
+                _ = self[unread: parentID]
+            }
+            return serverAcknowledgement(for: entry, guildIDs: guildIDs, source: source) != nil
+        }
+    }
+
     func unread(channelID: ChannelID, now: Date = .now) -> Bool {
         _ = self[unread: channelID]
         guard let entry = entriesStorage[channelID], entry.isAccessible, entry.isUnread else {
@@ -1598,7 +1647,7 @@ extension AccountReadStateModel {
     }
 
     func isActivelyPresentedAtNewest(_ channelID: ChannelID) -> Bool {
-        guard let presentation = presentations[channelID] else { return false }
+        guard let presentation = self[presentation: channelID] else { return false }
         return presentation.isPresented
             && presentation.windowIsActive
             && presentation.hasReachedReadBoundary

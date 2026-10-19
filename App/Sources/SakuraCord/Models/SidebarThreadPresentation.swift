@@ -124,8 +124,8 @@ extension AppModel {
         guard !joined.isEmpty || open != nil else { return layout }
 
         let candidatesByParentID = Dictionary(
-            grouping: joined.map(sidebarThreadCandidate),
-            by: { $0.thread.parentID }
+            grouping: joined,
+            by: \.parentID
         )
         for group in channelGroups {
             let isCollapsed = group.categoryID.map {
@@ -134,7 +134,7 @@ extension AppModel {
             for channel in group.channels {
                 guard [.text, .announcement, .forum].contains(channel.kind),
                       !hiddenChannelIDs.contains(channel.id) else { continue }
-                let candidates = candidatesByParentID[channel.id] ?? []
+                let candidates = (candidatesByParentID[channel.id] ?? []).map(sidebarThreadCandidate)
                 let openCandidate = open?.parentID == channel.id
                     ? candidates.first { $0.thread.id == open?.id }
                         ?? open.map(sidebarThreadCandidate)

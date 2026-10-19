@@ -135,10 +135,7 @@ extension AppModel {
                   readState.unread(channelID: thread.id),
                   let parent = channels.first(where: { $0.id == thread.parentID }),
                   !hiddenIDs.contains(parent.id) else { continue }
-            let layout = sidebarThreadLayout(
-                guildID: thread.guildID, channelGroups: ChannelGroup.make(from: [parent]), now: .now
-            )
-            if layout.threadsByParentID[parent.id]?.contains(where: { $0.id == thread.id }) == true {
+            if thread.guildID != nil, !thread.isArchived, [.text, .announcement, .forum].contains(parent.kind) {
                 return true
             }
         }
@@ -164,10 +161,11 @@ extension AppModel {
     }
 
     private func shortcutChannelsWithThreads(groups: [ChannelGroup], guildID: GuildID?, filterSelection: Bool = false) -> [Channel] {
-        let layout = sidebarThreadLayout(guildID: guildID, channelGroups: groups, now: .now)
+        let selectedGroups = filterSelection ? channelSelectionGroups(groups, guildID: guildID) : groups
+        let layout = sidebarThreadLayout(guildID: guildID, channelGroups: selectedGroups, now: .now)
         let groups = filterSelection
-            ? selectedChannelGroups(groups, guildID: guildID, threadsByParentID: layout.threadsByParentID)
-            : groups
+            ? selectedChannelGroups(selectedGroups, guildID: guildID, threadsByParentID: layout.threadsByParentID)
+            : selectedGroups
         return groups.flatMap(\.channels).filter { $0.guildID == guildID }.flatMap { channel in
             [channel] + (layout.threadsByParentID[channel.id] ?? []).map { threadNavigationChannel($0.thread) }
         }
