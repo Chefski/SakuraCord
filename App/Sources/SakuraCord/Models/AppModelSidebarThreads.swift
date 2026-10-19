@@ -57,7 +57,9 @@ extension AppModel {
         startAccountChildTask(account: accountSession()) { model, account in
             guard model.threadActionPolicy(thread).canChangeMembership else { return }
             do {
-                try await account.provider.setThreadMembership(threadID: thread.id, isJoined: isJoined)
+                try await account.provider.setThreadMembership(
+                    threadID: thread.id, isJoined: isJoined, location: .contextMenu
+                )
             } catch {
                 guard model.isCurrentAccountSession(account) else { return }
                 model.errorMessage = error.localizedDescription
@@ -74,6 +76,7 @@ extension AppModel {
         case .pinned:
             guard canManageSidebarThread(thread),
                   snapshot?.channels.first(where: { $0.id == thread.parentID })?.kind == .forum else { return }
+        case .name: guard threadActionPolicy(thread).canRename else { return }
         case .tags: return
         }
         startAccountChildTask(account: accountSession()) { model, account in

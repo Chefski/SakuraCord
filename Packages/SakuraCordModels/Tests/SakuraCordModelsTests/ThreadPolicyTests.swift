@@ -125,6 +125,9 @@ func `thread actions follow first-party ownership, lock and archive rules`(_ val
     #expect(!ThreadActionPolicy.canCreateThread(from: starter, in: voice, permissions: createPublic))
     #expect(!ThreadActionPolicy.canCreateThread(from: threadMessage, in: text, permissions: createPublic))
 
+    let draft = CreateThreadDraft.startingFrom(starter, in: text)
+    #expect(draft.name == "Hello" && draft.autoArchiveDuration == 4_320 && draft.starterMessageID == starter.id)
+
     #expect(ThreadActionPolicy.creationPermissions(parentKind: .announcement, permissions: createPublic)
         == ThreadCreationPermissions(canCreatePublic: true, canCreatePrivate: false))
     #expect(ThreadActionPolicy.creationPermissions(

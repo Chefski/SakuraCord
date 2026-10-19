@@ -241,8 +241,7 @@ extension DiscordRESTProvider {
                 $0.id == draft.channelID && $0.kind == .forum
             })
         else { throw ChatProviderError.channelNotFound }
-        let title = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard (1 ... 100).contains(title.count) else {
+        guard let title = ThreadNamePolicy.validatedName(draft.title) else {
             throw ChatProviderError.invalidRequest(
                 "Post titles must be between 1 and 100 characters.")
         }
@@ -320,8 +319,8 @@ extension DiscordRESTProvider {
         return post
     }
 
-    /// Mirrors the first-party composer Plus Button action. The starter
-    /// message is an ordinary send to the returned thread.
+    /// Mirrors the first-party composer Plus Button and message Create Thread
+    /// actions. The starter message is an ordinary send to the returned thread.
     public func createThread(_ draft: CreateThreadDraft) async throws -> MessageThreadSummary {
         try requireGuildCommunication(in: draft.channelID)
         guard
@@ -329,30 +328,38 @@ extension DiscordRESTProvider {
                 $0.id == draft.channelID && ($0.kind == .text || $0.kind == .announcement)
             })
         else { throw ChatProviderError.channelNotFound }
-        let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard (1 ... 100).contains(name.count) else {
+        guard let name = ThreadNamePolicy.validatedName(draft.name) else {
             throw ChatProviderError.invalidRequest("Thread names must be between 1 and 100 characters.")
         }
         guard !draft.isPrivate || channel.kind == .text else {
             throw ChatProviderError.invalidRequest("Announcement channels cannot have private threads.")
+        }
+        guard !draft.isPrivate || draft.starterMessageID == nil else {
+            throw ChatProviderError.invalidRequest("Threads started from a message are public.")
         }
         guard Self.validForumAutoArchiveDurations.contains(draft.autoArchiveDuration) else {
             throw ChatProviderError.invalidRequest("The selected auto-archive duration is invalid.")
         }
         let type = draft.isPrivate ? 12 : (channel.kind == .announcement ? 10 : 11)
         let dto: ChannelDTO = try await request(
-            "/channels/\(draft.channelID)/threads",
+            Self.threadCreationPath(parentID: draft.channelID, starterMessageID: draft.starterMessageID),
             method: "POST",
             body: [
                 "name": .string(name),
                 "type": .number(Double(type)),
                 "auto_archive_duration": .number(Double(draft.autoArchiveDuration)),
-                "location": .string("Plus Button"),
+                "location": .string(draft.starterMessageID == nil ? "Plus Button" : "Message"),
             ]
         )
         let thread = try dto.forumPost(fallbackGuildID: channel.guildID).thread
         ingestForumThreads([dto], fallbackGuildID: channel.guildID)
+        attachStartedThreadToCachedStarter(thread.id)
         return thread
+    }
+
+    nonisolated static func threadCreationPath(parentID: ChannelID, starterMessageID: MessageID?) -> String {
+        starterMessageID.map { "/channels/\(parentID)/messages/\($0)/threads" }
+            ?? "/channels/\(parentID)/threads"
     }
 
     public func updateForumPost(_ post: ForumPost, mutation: ForumPostMutation) async throws
@@ -362,7 +369,44 @@ extension DiscordRESTProvider {
             throw ChatProviderError.invalidRequest("The forum post has no parent channel.")
         }
         var working = post
+        do {
+            try await applyForumPostMutation(mutation, parentID: parentID, to: &working)
+        } catch {
+            // A completed unarchive stays applied when the following change fails.
+            if working != post { storeMutatedForumPost(working, parentID: parentID) }
+            throw error
+        }
+        return storeMutatedForumPost(working, parentID: parentID)
+    }
+
+    /// Callers may pass a bare thread; keep the catalogue's previews and owner.
+    @discardableResult
+    private func storeMutatedForumPost(_ post: ForumPost, parentID: ChannelID) -> ForumPost {
+        var stored = post
+        if let existing = cachedForumPosts[parentID]?[post.id] {
+            stored = Self.mergingForumPostCatalogueMetadata(incoming: post, existing: existing)
+        }
+        cachedForumPosts[parentID, default: [:]][post.id] = stored
+        publishForumPosts(parentID: parentID)
+        return stored
+    }
+
+    private func applyForumPostMutation(
+        _ mutation: ForumPostMutation,
+        parentID: ChannelID,
+        to working: inout ForumPost
+    ) async throws {
         switch mutation {
+        case .name(let value):
+            // The first-party settings save sends its whole form; only the name
+            // changes here, so other settings cannot be overwritten with stale values.
+            guard let name = ThreadNamePolicy.validatedName(value) else {
+                throw ChatProviderError.invalidRequest("Names must be between 1 and 100 characters.")
+            }
+            if working.thread.isArchived {
+                working = try await patchForumPost(working, body: ["archived": .bool(false)])
+            }
+            working = try await patchForumPost(working, body: ["name": .string(name)])
         case .tags(let tags):
             guard
                 let channel = cachedChannels.values.lazy.flatMap(\.self).first(where: {
@@ -411,9 +455,6 @@ extension DiscordRESTProvider {
             if value, working.thread.isArchived { body["archived"] = .bool(false) }
             working = try await patchForumPost(working, body: body)
         }
-        cachedForumPosts[parentID, default: [:]][working.id] = working
-        publishForumPosts(parentID: parentID)
-        return working
     }
 
     nonisolated static func orderedUniqueForumTagIDs(
@@ -505,14 +546,19 @@ extension DiscordRESTProvider {
         return joined
     }
 
-    /// Sidebar Follow/Leave. Discord confirms through THREAD_MEMBERS_UPDATE,
-    /// which updates the joined-thread catalogue.
-    public func setThreadMembership(threadID: ChannelID, isJoined: Bool) async throws {
+    /// Join/Follow or Leave/Unfollow. Discord's THREAD_MEMBERS_UPDATE carries
+    /// the authoritative member; the confirmed response updates the catalogue first.
+    public func setThreadMembership(
+        threadID: ChannelID,
+        isJoined: Bool,
+        location: ThreadMembershipLocation
+    ) async throws {
         try await requestEmpty(
             "/channels/\(threadID)/thread-members/@me",
             method: isJoined ? "POST" : "DELETE",
-            query: [URLQueryItem(name: "location", value: "Context Menu")]
+            query: [URLQueryItem(name: "location", value: location.rawValue)]
         )
+        reconcileConfirmedThreadMembership(threadID: threadID, isJoined: isJoined)
     }
 
     func patchThreadNotificationSettings(
@@ -566,7 +612,8 @@ extension DiscordRESTProvider {
         return ForumPostPage(
             posts: posts,
             hasMore: result.hasMore && nextOffset != nil,
-            nextOffset: nextOffset
+            nextOffset: nextOffset,
+            totalResults: result.totalResults
         )
     }
 
@@ -583,7 +630,9 @@ extension DiscordRESTProvider {
             result.posts(fallbackGuildID: channel.guildID), channel: channel
         )
         posts = Self.filteredAndSortedForumPosts(posts, query: query)
-        return ForumPostPage(posts: posts, hasMore: false, nextOffset: nil)
+        return ForumPostPage(
+            posts: posts, hasMore: false, nextOffset: nil, totalResults: result.totalResults
+        )
     }
 
     func ingestForumPosts(
@@ -777,6 +826,10 @@ extension DiscordRESTProvider {
         updated.mostRecentMessage = post.mostRecentMessage
         updated.owner = post.owner
         updated.isUnread = post.isUnread
+        // The channel response omits the current member; membership is unchanged.
+        if updated.thread.notificationSettings == nil {
+            updated.thread.notificationSettings = post.thread.notificationSettings
+        }
         return updated
     }
 
