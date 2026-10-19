@@ -1291,6 +1291,46 @@ func `guild pages do not acknowledge the hidden selected conversation`(page: Gui
 }
 
 @MainActor
+@Test(arguments: [true, false])
+func `incoming message plants a new divider only when the newest edge is not on screen`(
+    isAtNewest: Bool
+) async throws {
+    let provider = MockChatProvider()
+    let model = AppModel(
+        launchMode: .offlineTesting,
+        provider: provider,
+        readAcknowledgementTiming: .init(debounce: .milliseconds(10))
+    )
+    await model.start()
+    let channelID = ChannelID(rawValue: 212)
+    model.selectedChannelID = channelID
+    #expect(await until { !model.isLoadingMessages && model.selectedChannelID == channelID })
+    model.reportMainWindowActive(true)
+    model.reportTimelineInitialPosition(
+        channelID: channelID,
+        hasReachedReadBoundary: isAtNewest
+    )
+    #expect(model.unreadDividerMessageID(channelID: channelID) == nil)
+
+    let incoming = Message(
+        id: MessageID(rawValue: UInt64.max - 4),
+        channelID: channelID,
+        author: User(id: UserID(rawValue: 2), username: "sender", displayName: "Sender"),
+        content: "arrived",
+        guildID: GuildID(rawValue: 100)
+    )
+    model.consumeImmediately(.messageCreated(incoming))
+
+    if isAtNewest {
+        #expect(model.unreadDividerMessageID(channelID: channelID) == nil)
+        #expect(model.readState.entries[channelID]?.isUnread == false)
+    } else {
+        #expect(model.unreadDividerMessageID(channelID: channelID) == incoming.id)
+        #expect(model.readState.entries[channelID]?.isUnread == true)
+    }
+}
+
+@MainActor
 @Test func `opening acknowledgement survives a gateway reconnect before transport`() async throws {
     let provider = MockChatProvider()
     let model = AppModel(
