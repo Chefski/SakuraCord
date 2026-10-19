@@ -110,12 +110,19 @@ extension AppModel {
         limit: Int
     ) async throws -> MessagePage {
         var page = try await provider.messages(in: threadID, anchoredAt: anchor, limit: limit)
-        if openThread?.id == threadID, let guildID = openThread?.guildID ?? openThreadParentChannel?.guildID {
-            for index in page.messages.indices where page.messages[index].guildID == nil {
-                page.messages[index].guildID = guildID
-            }
-        }
+        page.messages = page.messages.map(withOpenThreadGuild)
         return page
+    }
+
+    /// Supplies the open thread's guild to a message of it that omits one,
+    /// so history and live copies of a message present and compare alike.
+    func withOpenThreadGuild(_ message: Message) -> Message {
+        guard message.guildID == nil, message.channelID == openThread?.id,
+              let guildID = openThread?.guildID ?? openThreadParentChannel?.guildID
+        else { return message }
+        var message = message
+        message.guildID = guildID
+        return message
     }
 
     /// Loads the open thread's first window: the newest page, or the page
