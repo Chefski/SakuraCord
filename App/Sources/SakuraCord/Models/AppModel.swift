@@ -139,11 +139,7 @@ final class AppModel {
         var desiredCollapsed: Bool
     }
 
-    var snapshot: BootstrapSnapshot? {
-        didSet {
-            refreshSnapshotPresentation(replacing: oldValue)
-        }
-    }
+    @ObservationIgnored var snapshotStorage: BootstrapSnapshot?
     // Keep workspace chrome independent of unrelated channel and member changes.
     private(set) var currentUser: User?
     private(set) var selectedGuild: Guild?
@@ -1334,6 +1330,18 @@ extension AppModel {
         if launchMode == .offlineTesting { return OfflineCredentialStore() }
         if usesInsecureDebugCredentials { return InsecureDebugMigratingCredentialStore() }
         return KeychainCredentialStore()
+    }
+
+    var snapshot: BootstrapSnapshot? {
+        get {
+            access(keyPath: \.snapshot)
+            return snapshotStorage
+        }
+        set {
+            let previous = snapshotStorage
+            withMutation(keyPath: \.snapshot) { snapshotStorage = newValue }
+            refreshSnapshotPresentation(replacing: previous)
+        }
     }
 
     private func refreshSnapshotPresentation(replacing previous: BootstrapSnapshot?) {
