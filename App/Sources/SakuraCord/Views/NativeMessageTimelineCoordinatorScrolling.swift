@@ -1612,7 +1612,11 @@ extension NativeMessageTimelineCoordinator {
                     contentOriginY(viewportHeight: viewportHeight)
                     + rowOrigins[index]
                 let rowHeight = layouts[index].height
-                proposedY = rowY - (viewportHeight - rowHeight) * anchor.y
+                // Anchor within the part of the viewport the window toolbar
+                // leaves uncovered, so a top-anchored row is not beneath it.
+                let obscuredHeight = min(scrollView.scrollerInsets.top, viewportHeight)
+                proposedY = rowY - obscuredHeight
+                    - (viewportHeight - obscuredHeight - rowHeight) * anchor.y
             }
             return clampedDocumentY(proposedY, scrollView: scrollView)
         }
