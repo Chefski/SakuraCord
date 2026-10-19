@@ -69,6 +69,7 @@ extension AppModel {
         isMarkingAllServersRead = false
         acknowledgementTasks.values.forEach { $0.cancel() }
         acknowledgementTasks.removeAll()
+        debouncedAcknowledgementTargets.removeAll()
         acknowledgementProcessorTask?.cancel()
         acknowledgementProcessorTask = nil
         guildAcknowledgementTasks.values.forEach { $0.cancel() }

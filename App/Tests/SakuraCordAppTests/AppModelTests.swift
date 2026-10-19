@@ -4864,6 +4864,32 @@ func `a late send confirmation outside the thread window stays out of it and its
 }
 
 @MainActor
+@Test func `jumping to older thread history stops acknowledging the newest reply`() async throws {
+    let threadID = ChannelID(rawValue: 97_199)
+    let provider = ChannelLoadTestProvider(paginatedThreadID: threadID, paginatedThreadMessageCount: 300)
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    let thread = MessageThreadSummary(id: threadID, parentID: try #require(model.selectedChannelID), name: "Read")
+    model.open(thread)
+    await model.threadLoadTask?.value
+    model.reportMainWindowActive(true)
+    model.reportTimelineInitialPosition(channelID: threadID, hasReachedReadBoundary: true)
+    #expect(model.readState.canAcknowledge(threadID))
+
+    #expect(await model.loadThreadWindow(around: MessageID(rawValue: threadID.rawValue + 20), session: model.accountSession()))
+    let acknowledged = model.readState.entries[threadID]?.lastAcknowledgedMessageID
+    model.consumeImmediately(.messageCreated(Message(
+        id: MessageID(rawValue: threadID.rawValue + 300),
+        channelID: threadID,
+        author: User(id: UserID(rawValue: 91_002), username: "replier", displayName: "Replier"),
+        content: "unseen"
+    )))
+
+    #expect(model.readState.entries[threadID]?.lastAcknowledgedMessageID == acknowledged)
+    #expect(model.readState.entries[threadID]?.pendingAcknowledgementID == nil)
+}
+
+@MainActor
 @Test(arguments: [false, true])
 func `a jump to older thread history wins over an overlapping reconnect refresh`(jumpFinishesFirst: Bool) async throws {
     let threadID = ChannelID(rawValue: 98_099)

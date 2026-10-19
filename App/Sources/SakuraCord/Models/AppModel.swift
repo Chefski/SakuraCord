@@ -1158,6 +1158,8 @@ final class AppModel {
     @ObservationIgnored var credentialHandlesByAccountID: [String: CredentialHandle] = [:]
     @ObservationIgnored var didAttemptDiscordEmojiSettings = false
     @ObservationIgnored var acknowledgementTasks: [ChannelID: Task<Void, Never>] = [:]
+    /// The target each debounced acknowledgement task will send.
+    @ObservationIgnored var debouncedAcknowledgementTargets: [ChannelID: MessageID] = [:]
     @ObservationIgnored var queuedAcknowledgements: [ChannelID: ReadStateMutation] = [:]
     @ObservationIgnored var acknowledgementQueueOrder: [ChannelID] = []
     @ObservationIgnored var acknowledgementProcessorTask: Task<Void, Never>?

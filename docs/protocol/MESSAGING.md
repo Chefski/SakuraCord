@@ -67,7 +67,7 @@ messages and a jump to a message opens its `around` window. Gateway does not
 guarantee a closed thread's messages, so a cached thread reopens at once and
 always revalidates its newest page. Until a current read establishes the newest
 edge after such a reopen or a Gateway gap, the window counts as detached: sends
-load the newest messages first; a reconnect also revalidates the open
+load the newest messages first and nothing is acknowledged automatically; a reconnect also revalidates the open
 thread. Results for a
 closed instance of a side chat, including an earlier one of the same thread,
 are discarded, and of competing whole-window reads, sends and returns to the

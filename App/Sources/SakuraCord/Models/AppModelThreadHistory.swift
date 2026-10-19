@@ -244,6 +244,11 @@ extension AppModel {
         hasMoreThreadMessages = page.hasMoreBefore
         hasMoreCache[threadID] = nil
         establishThreadNewestEdge(hasMoreAfter: page.hasMoreAfter, historyEpoch: request.historyEpoch)
+        if hasMoreLaterThreadMessages {
+            // The reader no longer sees the newest message; until geometry
+            // reports otherwise, nothing may be acknowledged.
+            _ = readState.updatePresentation(channelID: threadID, hasReachedReadBoundary: false)
+        }
         threadErrorMessage = nil
         threadErrorScope = nil
         isLoadingThread = false
