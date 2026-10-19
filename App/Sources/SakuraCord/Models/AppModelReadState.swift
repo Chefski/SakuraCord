@@ -263,9 +263,10 @@ extension AppModel {
     }
 
     /// The conversation shows a window that ends before its newest message,
-    /// so viewing it cannot acknowledge the newest message.
+    /// or a thread withheld while its access is resolved, so viewing it
+    /// cannot acknowledge the newest message.
     func isDetachedFromNewest(_ channelID: ChannelID) -> Bool {
-        (channelID == openThread?.id && isThreadWindowAwayFromNewest)
+        (channelID == openThread?.id && (isThreadWindowAwayFromNewest || openThreadResolution != nil))
             || (channelID == selectedChannelID && hasMoreLaterMessages)
     }
 
