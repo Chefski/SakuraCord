@@ -13,7 +13,7 @@ and the outbox; MediaPipeline owns local media transformations.
 | --- | --- |
 | DM/history/send budgets | [DirectMessageProviderContractTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/DirectMessageProviderContractTests.swift); [ProviderRequestContractTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/ProviderRequestContractTests.swift); [MessageSendRateLimitContractTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/MessageSendRateLimitContractTests.swift) |
 | Search, forwarding and pins | [MessageSearchContractTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/MessageSearchContractTests.swift); [MessageForwardingContractTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/MessageForwardingContractTests.swift); [PinnedMessagesContractTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/PinnedMessagesContractTests.swift) |
-| Polls and threads | [PollContractTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/PollContractTests.swift); [ForumProviderContractTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/ForumProviderContractTests.swift) |
+| Polls and threads | [PollContractTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/PollContractTests.swift); [ForumProviderContractTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/ForumProviderContractTests.swift); [ThreadActionContractTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/ThreadActionContractTests.swift); [ThreadPolicyTests.swift](../../Packages/SakuraCordModels/Tests/SakuraCordModelsTests/ThreadPolicyTests.swift) |
 | Uploads | [UploadPrivacyContractTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/UploadPrivacyContractTests.swift); [AttachmentUploadURLValidationTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/AttachmentUploadURLValidationTests.swift); [UploadPrivacyPreparationTests.swift](../../App/Tests/SakuraCordAppTests/UploadPrivacyPreparationTests.swift) |
 
 ## Sends and history
@@ -362,8 +362,8 @@ inserted first. A thread open only in the side pane does not receive that except
 one of its threads is selected. Relevance and timed mute expiry re-evaluate the rows.
 Sidebar selection and channel keyboard traversal open the existing thread timeline
 as the main conversation; the hidden parent is not eligible for read acknowledgements.
-Thread menus resolve permissions against their own parent and recheck eligibility
-when invoking a mutation. Private threads additionally require membership or
+Thread menus resolve [ThreadActionPolicy](../../Packages/SakuraCordModels/Sources/SakuraCordModels/ThreadPolicies.swift)
+against their own parent and recheck eligibility when invoking a mutation. Private threads additionally require membership or
 Manage Threads to expose content or actions after leaving. Close requires Manage Threads or the unlocked thread's
 creator; reopening an unlocked thread uses the first-party send permissions,
 while reopening a locked thread requires Manage Threads. Lock/unlock and pin/unpin
@@ -376,13 +376,68 @@ These gates follow first-party modules 406704, 307623, 57907, and 375500 in the
 2026-10-06 official client. Sidebar action failures use a visible application alert,
 including when the forum browser is not presented.
 
-Follow/leave uses
-`POST`/`DELETE /channels/{id}/thread-members/@me?location=Context%20Menu` and
-reconciles membership through Gateway; notification responses also publish the
-joined-thread catalogue immediately.
 See [SidebarThreadPresentation.swift](../../App/Sources/SakuraCord/Models/SidebarThreadPresentation.swift).
 Observed in official web build `b70721f9bc10ca0b` (desktop host 0.0.411) on
 2026-10-06, where it matched 5 of 51 joined forum posts exactly.
+
+### Thread actions and browser
+
+[ThreadPolicies.swift](../../Packages/SakuraCordModels/Sources/SakuraCordModels/ThreadPolicies.swift)
+owns the action, creation and naming rules;
+[DiscordRESTThreadActions.swift](../../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordRESTThreadActions.swift)
+and [DiscordRESTForumAndMessaging.swift](../../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordRESTForumAndMessaging.swift)
+own the requests. Each mutation is attempted once. These contracts follow
+official web build 641004 (desktop host 0.0.411), observed on 2026-10-19.
+
+Rename sends `PATCH /channels/{thread}` with only `name`, trimmed to 1–100
+characters. The first-party settings page saves its whole form; the minimal body
+cannot overwrite other settings with stale values. An archived thread is first
+unarchived with `{"archived":false}` and stays open, as before tag, lock and pin
+changes. The sequence is one provider operation; if its second step fails, the
+returned unarchived state is kept and nothing is replayed. Discord then sends
+`THREAD_UPDATE`, `THREAD_MEMBER_UPDATE` and a type-4 name-change message in the
+thread; the republished catalogue renames sidebar rows, the open thread and
+starter cards. Renaming requires Manage Threads or ownership of an unlocked
+thread; an archived thread also requires the send rights that would reopen it.
+
+Join (Follow) and leave (Unfollow) are `POST` and `DELETE`
+`/channels/{thread}/thread-members/@me?location=…` without a body; joining is
+not `PUT`. `location` names the surface: `Context Menu` for channel-list and
+forum-card menus, `Sidebar Overflow` for the side-pane menu, `Toolbar Overflow`
+for the full-view menu and `Forum Toolbar` for the post header. A 204 updates
+known threads immediately. Gateway `THREAD_MEMBERS_UPDATE` `added_members` (then
+`THREAD_CREATE` with `member`) or `removed_member_ids` remains authoritative, and
+the local state never replaces a member it already delivered. Leaving keeps an
+open pane open. Notification responses also publish the joined-thread catalogue.
+
+Starting a thread from a message posts
+`POST /channels/{parent}/messages/{message}/threads` with `name`, `type` (`10`
+under an announcement parent, otherwise `11`), `auto_archive_duration` (the
+parent's `default_auto_archive_duration`, else 4320) and `location: "Message"`.
+The 201 thread has the message's ID and the creator's `member`; its first message
+is an ordinary send. Discord usually delivers, before that response, a starter
+`MESSAGE_UPDATE` carrying only `flags: 32`, a member-less `THREAD_CREATE`
+(`newly_created`), `THREAD_MEMBER_UPDATE`, and a type-21 starter reference in the
+thread; the parent receives no type-18 message. Whichever arrives first, the
+provider attaches the known thread to the starter so its card appears without a
+history reload. A confirmed message of type 0, 19, 20, 23, 26, 41, 45, 47 or 68
+posted directly in a text, announcement or forum parent qualifies when it lacks
+flag 32 and the user has Create Public Threads and Read Message History (forum
+parents: Send Messages). Message threads are public; messages inside threads and
+voice-channel chats never qualify. The default name is the first embed title
+(40 UTF-16 units plus `...`), else the poll question (80), else the first
+readable line without leading `#`, `-` or spaces, cut at a word boundary within 40.
+
+The thread browser pages archived threads with
+`GET /channels/{parent}/threads/search?archived=true&sort_by=last_message_time&sort_order=desc&limit=25&tag_setting=match_some&offset=N`,
+advancing by raw records while `has_more`. Search runs on submit with
+`?name=<query>&tag_setting=match_some` and returns active and archived matches as
+one page. Responses carry `threads`, the current user's `members`, `has_more` and
+`total_results`; text channels omit message previews. Discord did not return an
+archived private thread to a non-member without Manage Threads. Joined and other active
+threads come from local state (READY, `THREAD_LIST_SYNC`, `THREAD_CREATE`)
+without a request. Browsing requires View Channel and Read Message History on a
+text or announcement parent.
 
 Text-channel and voice-channel chats, existing threads, and existing forum posts
 support the same slash-command composer. The main conversation and supplementary
