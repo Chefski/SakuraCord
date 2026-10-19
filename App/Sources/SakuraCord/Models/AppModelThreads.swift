@@ -243,6 +243,7 @@ extension AppModel {
         threadWindow.isNewestUnverified = false
         threadWindow.failedInitialTarget = nil
         threadWindow.initialLoadTarget = nil
+        threadWindow.newestReadRevision = nil
         sideConversations.thread = nil
         openThreadStarter = nil
         openThreadStartedAt = nil

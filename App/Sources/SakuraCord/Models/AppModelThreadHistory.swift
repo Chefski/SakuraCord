@@ -33,6 +33,9 @@ struct ThreadWindowOwnership {
     /// The target of the initial load in flight when it reads around a
     /// message rather than the newest messages.
     var initialLoadTarget: MessageID?
+    /// The window revision of the newest read that set `isLoadingThread`;
+    /// only that read may clear it.
+    var newestReadRevision: Int?
     /// The oldest and newest messages REST returned for the window. Earlier
     /// and later pages continue from these, never from whatever messages
     /// the window shows, and nothing is inserted beyond a cursor while more
@@ -118,6 +121,7 @@ extension AppModel {
             reportConversationHistoryLoaded(channelID: thread.id)
         } else {
             isLoadingThread = true
+            threadWindow.newestReadRevision = nil
             hasCompletedInitialThreadLoad = false
         }
         let account = accountSession()
@@ -336,10 +340,17 @@ extension AppModel {
         threadErrorScope = nil
         isLoadingThread = true
         let request = beginThreadWindowRequest(threadID)
+        threadWindow.newestReadRevision = request.windowRevision
         let refreshRevision = beginScopedConversationRefresh(in: threadID)
         defer {
             endScopedConversationRefresh(refreshRevision)
-            if ownsThreadLoad(threadID, generation: request.generation) { isLoadingThread = false }
+            // A later newest read may own the loading state by now.
+            if ownsThreadLoad(threadID, generation: request.generation),
+               threadWindow.newestReadRevision == request.windowRevision
+            {
+                isLoadingThread = false
+                threadWindow.newestReadRevision = nil
+            }
             endThreadWindowRequest(request)
         }
         do {
