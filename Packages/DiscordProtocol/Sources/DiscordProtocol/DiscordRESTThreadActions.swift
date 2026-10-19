@@ -51,14 +51,15 @@ extension DiscordRESTProvider {
 
     /// A confirmed join or leave updates known threads at once, through the
     /// same path as a Gateway membership change. A member the Gateway already
-    /// delivered is kept; it carries Discord's join timestamp. The transition
-    /// advances the membership revision, so a read that started while the
-    /// request was pending cannot restore the old membership.
+    /// delivered is kept; it carries Discord's join timestamp. Every accepted
+    /// confirmation advances the membership revision, even when the cache
+    /// already holds its state, so a read that started while the request was
+    /// pending cannot restore the old membership.
     func reconcileConfirmedThreadMembership(threadID: ChannelID, isJoined: Bool) {
+        advanceThreadMembershipRevision(threadID, authoritative: false)
         let current = cachedForumPost(threadID: threadID).map { $0.thread.notificationSettings }
             ?? cachedJoinedThreads[threadID]?.notificationSettings
         guard isJoined != (current != nil) else { return }
-        advanceThreadMembershipRevision(threadID)
         var changedParentIDs = Set<ChannelID>()
         guard applyCurrentUserThreadMembership(
             isJoined ? ThreadNotificationSettings(joinedAt: .now) : nil,
@@ -69,6 +70,54 @@ extension DiscordRESTProvider {
             publishForumPosts(parentID: parentID)
         }
         publishActiveJoinedThreads()
+    }
+
+    /// A created thread's 201 answers the request that started at `baseline`.
+    /// A deletion meanwhile fails the operation instead of restoring the
+    /// thread; a newer record and a membership event meanwhile are kept. An
+    /// accepted response advances the revisions before it is published.
+    func commitCreatedThread(
+        _ response: ForumPost,
+        respondedMember: Bool,
+        since baseline: ThreadRevisionBaseline
+    ) throws -> MessageThreadSummary {
+        guard let parentID = response.thread.parentID else { return response.thread }
+        let id = response.id
+        let cached = cachedForumPosts[parentID]?[id]
+        let membershipIsCurrent = threadMembershipRevisions[id] == baseline.memberships[id]
+        var committed: ForumPost
+        if threadRecordRevisions[id] != baseline.records[id] {
+            // THREAD_CREATE usually precedes the response and holds its record.
+            guard let cached else { throw ChatProviderError.channelNotFound }
+            committed = cached
+        } else {
+            committed = cached.map { Self.mergingForumPostCatalogueMetadata(incoming: response, existing: $0) }
+                ?? response
+            if committed.owner == nil, let ownerID = committed.thread.ownerID,
+               let ownerDTO = cachedGatewayUsersByID[ownerID.description]
+            {
+                committed.owner = try? ownerDTO.domain()
+            }
+            advanceThreadRecordRevision(id, includesMembership: false)
+        }
+        if membershipIsCurrent, respondedMember,
+           committed.thread.notificationSettings == nil || cached?.thread.notificationSettings == nil
+        {
+            committed.thread.notificationSettings = response.thread.notificationSettings
+            advanceThreadMembershipRevision(id, authoritative: false)
+        } else if !membershipIsCurrent {
+            committed.thread.notificationSettings = cached?.thread.notificationSettings
+                ?? cachedJoinedThreads[id]?.notificationSettings
+        }
+        if committed != cached {
+            if !cachedForumThreadOrder.contains(id) { cachedForumThreadOrder.append(id) }
+            cachedForumPosts[parentID, default: [:]][id] = committed
+            reconcileJoinedThread(committed.thread)
+            cacheForumPreviewMessages(committed)
+            publishForumPosts(parentID: parentID)
+            publishActiveJoinedThreads()
+        }
+        return committed.thread
     }
 
     /// A thread started from a message shares that message's ID. Discord's

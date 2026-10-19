@@ -203,6 +203,12 @@ extension DiscordRESTProvider {
             ? response.thread.notificationSettings
             : current.thread.notificationSettings
         guard updated != current, let parentID = current.thread.parentID else { return current }
+        // A read that changes state invalidates older reads, never a pending mutation.
+        advanceThreadRecordRevision(
+            updated.id,
+            includesMembership: updated.thread.notificationSettings != current.thread.notificationSettings,
+            authoritative: false
+        )
         cachedForumPosts[parentID]?[updated.id] = updated
         let settings = updated.thread.notificationSettings
         if settings == nil {
@@ -220,16 +226,21 @@ extension DiscordRESTProvider {
         cachedForumPosts.values.lazy.compactMap { $0[threadID] }.first
     }
 
+    /// Every accepted membership change advances the revision that
+    /// invalidates reads in flight. An `authoritative` change, a Gateway
+    /// event or a local join/leave, also supersedes a pending one.
     @discardableResult
-    func advanceThreadMembershipRevision(_ threadID: ChannelID) -> UInt64 {
+    func advanceThreadMembershipRevision(_ threadID: ChannelID, authoritative: Bool = true) -> UInt64 {
         let revision = (threadMembershipRevisions[threadID] ?? 0) &+ 1
         threadMembershipRevisions[threadID] = revision
+        if authoritative { threadMembershipEpochs[threadID] = (threadMembershipEpochs[threadID] ?? 0) &+ 1 }
         return revision
     }
 
-    func advanceThreadRecordRevision(_ threadID: ChannelID, includesMembership: Bool) {
+    func advanceThreadRecordRevision(_ threadID: ChannelID, includesMembership: Bool, authoritative: Bool = true) {
         threadRecordRevisions[threadID] = (threadRecordRevisions[threadID] ?? 0) &+ 1
-        if includesMembership { advanceThreadMembershipRevision(threadID) }
+        if authoritative { threadRecordEpochs[threadID] = (threadRecordEpochs[threadID] ?? 0) &+ 1 }
+        if includesMembership { advanceThreadMembershipRevision(threadID, authoritative: authoritative) }
     }
 
     public func createForumPost(
@@ -305,6 +316,7 @@ extension DiscordRESTProvider {
             "message": .object(message),
         ]
         progress(.submitting)
+        let baseline = threadRevisionBaseline()
         let dto: ChannelDTO = try await request(
             "/channels/\(draft.channelID)/threads",
             method: "POST",
@@ -313,9 +325,8 @@ extension DiscordRESTProvider {
         )
         var post = try dto.forumPost(fallbackGuildID: channel.guildID)
         if post.owner == nil { post.owner = currentUser }
-        cachedForumPosts[draft.channelID, default: [:]][post.id] = post
-        cacheForumPreviewMessages(post)
-        publishForumPosts(parentID: draft.channelID)
+        post.thread = try commitCreatedThread(post, respondedMember: dto.member != nil, since: baseline)
+        post = cachedForumPosts[draft.channelID]?[post.id] ?? post
         progress(.completed(messageID: MessageID(rawValue: post.id.rawValue)))
         return post
     }
@@ -342,6 +353,7 @@ extension DiscordRESTProvider {
             throw ChatProviderError.invalidRequest("The selected auto-archive duration is invalid.")
         }
         let type = draft.isPrivate ? 12 : (channel.kind == .announcement ? 10 : 11)
+        let baseline = threadRevisionBaseline()
         let dto: ChannelDTO = try await request(
             Self.threadCreationPath(parentID: draft.channelID, starterMessageID: draft.starterMessageID),
             method: "POST",
@@ -352,8 +364,9 @@ extension DiscordRESTProvider {
                 "location": .string(draft.starterMessageID == nil ? "Plus Button" : "Message"),
             ]
         )
-        let thread = try dto.forumPost(fallbackGuildID: channel.guildID).thread
-        ingestForumThreads([dto], fallbackGuildID: channel.guildID)
+        let thread = try commitCreatedThread(
+            dto.forumPost(fallbackGuildID: channel.guildID), respondedMember: dto.member != nil, since: baseline
+        )
         attachStartedThreadToCachedStarter(thread.id)
         return thread
     }
@@ -538,14 +551,16 @@ extension DiscordRESTProvider {
         isJoined: Bool,
         location: ThreadMembershipLocation
     ) async throws {
-        let revision = advanceThreadMembershipRevision(threadID)
+        advanceThreadMembershipRevision(threadID)
+        let epoch = threadMembershipEpochs[threadID]
         try await requestEmpty(
             "/channels/\(threadID)/thread-members/@me",
             method: isJoined ? "POST" : "DELETE",
             query: [URLQueryItem(name: "location", value: location.rawValue)]
         )
-        // A Gateway membership change or a newer join/leave supersedes this answer.
-        guard threadMembershipRevisions[threadID] == revision else { return }
+        // A Gateway membership event or a newer join/leave supersedes this
+        // answer; an overlapping read does not.
+        guard threadMembershipEpochs[threadID] == epoch else { return }
         reconcileConfirmedThreadMembership(threadID: threadID, isJoined: isJoined)
     }
 
@@ -655,7 +670,7 @@ extension DiscordRESTProvider {
             {
                 // A returned member is the server's current membership; record
                 // it as a transition so older pending reads cannot undo it.
-                advanceThreadMembershipRevision(post.id)
+                advanceThreadMembershipRevision(post.id, authoritative: false)
                 reconcileJoinedThread(post.thread)
                 joinedThreadsChanged = true
             }
@@ -832,7 +847,7 @@ extension DiscordRESTProvider {
     func patchForumPost(_ post: ForumPost, body: [String: JSONValue]) async throws
         -> ForumPost
     {
-        let revision = threadRecordRevisions[post.id]
+        let epoch = threadRecordEpochs[post.id]
         let membershipRevision = threadMembershipRevisions[post.id]
         let dto: ChannelDTO = try await request(
             "/channels/\(post.id)", method: "PATCH", body: body
@@ -847,7 +862,7 @@ extension DiscordRESTProvider {
         // A Gateway record or deletion that arrived meanwhile is authoritative.
         // Discord sends THREAD_UPDATE before answering, so it usually holds this
         // change; a record that is gone was deleted while the request was pending.
-        guard threadRecordRevisions[post.id] == revision else {
+        guard threadRecordEpochs[post.id] == epoch else {
             guard let cached else { throw ChatProviderError.channelNotFound }
             return cached
         }
@@ -865,12 +880,16 @@ extension DiscordRESTProvider {
             updated.thread.notificationSettings = latestMembership
         } else if let respondedMembership {
             updated.thread.notificationSettings = respondedMembership
-            if respondedMembership != latestMembership { advanceThreadMembershipRevision(post.id) }
+            if respondedMembership != latestMembership {
+                advanceThreadMembershipRevision(post.id, authoritative: false)
+            }
         } else {
             // A response without `member` carries no membership.
             updated.thread.notificationSettings = cached == nil
                 ? post.thread.notificationSettings : latestMembership
         }
+        // An accepted mutation invalidates older reads before it is published.
+        advanceThreadRecordRevision(post.id, includesMembership: false)
         cachedForumPosts[parentID, default: [:]][post.id] = updated
         reconcileJoinedThread(updated.thread)
         publishForumPosts(parentID: parentID)

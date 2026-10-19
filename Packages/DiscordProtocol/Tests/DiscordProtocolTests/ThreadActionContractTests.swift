@@ -149,6 +149,51 @@ struct ThreadActionContractTests {
         await provider.disconnect()
     }
 
+    @Test func `a read during a leave cannot cancel the leave's confirmation`() async throws {
+        let provider = await makeProvider(joined: true)
+        let gate = StatusRecoveryResponseGate()
+        fixture.enqueue("", gate: gate)
+        fixture.enqueue(#"{"threads":[\#(threadJSON(name: "Old name", archived: false, joined: true))],"has_more":false}"#)
+
+        let leave = Task {
+            try await provider.setThreadMembership(threadID: ChannelID(rawValue: 42), isJoined: false, location: .sidePaneMenu)
+        }
+        #expect(await eventually { gate.didCapture })
+        // The server still reports the member, with a join time unlike the cached one.
+        _ = try await provider.threadBrowserPage(in: parent.id, query: ThreadBrowserQuery(scope: .search("Old")))
+        gate.release()
+        try await leave.value
+
+        #expect(await provider.cachedForumPostForTesting(threadID: ChannelID(rawValue: 42))?.thread.notificationSettings == nil)
+        #expect(await provider.activeJoinedThreadsForTesting().isEmpty)
+        await provider.disconnect()
+    }
+
+    @Test func `a create response after the thread was deleted fails instead of restoring it`() async throws {
+        let provider = await makeProvider(seedsThread: false)
+        let starter = Message(
+            id: MessageID(rawValue: 500), channelID: parent.id,
+            author: User(id: UserID(rawValue: 3), username: "author", displayName: "Author"),
+            content: "Release notes", guildID: parent.guildID
+        )
+        await provider.seedMessageForTesting(starter)
+        let gate = StatusRecoveryResponseGate()
+        fixture.enqueue(threadJSON(id: "500", name: "Release notes", archived: false, joined: true), gate: gate)
+
+        let create = Task { try await provider.createThread(.startingFrom(starter, in: parent)) }
+        #expect(await eventually { gate.didCapture })
+        await provider.receiveGatewayDispatchForTesting(name: "THREAD_DELETE", data: .object([
+            "id": .string("500"), "guild_id": .string("1"), "parent_id": .string("7"), "type": .number(11),
+        ]))
+        gate.release()
+
+        await #expect(throws: ChatProviderError.self) { _ = try await create.value }
+        #expect(await provider.cachedForumPostForTesting(threadID: ChannelID(rawValue: 500)) == nil)
+        #expect(await provider.cachedMessageForTesting(messageID: starter.id)?.thread == nil)
+        #expect(await provider.activeJoinedThreadsForTesting().isEmpty)
+        await provider.disconnect()
+    }
+
     @Test func `a message thread posts the first-party body and gives its starter a thread card`() async throws {
         let provider = await makeProvider(seedsThread: false)
         let starter = Message(

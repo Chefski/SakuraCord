@@ -389,18 +389,28 @@ and [DiscordRESTForumAndMessaging.swift](../../Packages/DiscordProtocol/Sources/
 own the requests. Each mutation is attempted once. These contracts follow
 official web build 641004 (desktop host 0.0.411), observed on 2026-10-19.
 
+Every REST result follows one rule, extending the [retention](#thread-retention)
+revisions. A response is reconciled against the revisions captured when its
+request started, never applied as if it were a Gateway event: a deletion
+meanwhile fails a mutation or drops a read's record, and newer cached records
+and membership are kept. Every accepted REST change, including each PATCH step,
+a created thread and a join or leave confirmation, advances the matching revision
+before it is published, so an older read still in flight cannot undo it. Gateway
+events and local mutations also advance a separate epoch per thread; only that
+epoch supersedes a pending mutation's result, so an overlapping read never
+cancels a PATCH, create or join/leave confirmation.
+
 Rename sends `PATCH /channels/{thread}` with only `name`, trimmed to 1–100
 characters. The first-party settings page saves its whole form; the minimal body
 cannot overwrite other settings with stale values. An archived thread is first
 unarchived with `{"archived":false}` and stays open, as before tag, lock and pin
 changes. The sequence is one provider operation that is never replayed; each
 completed step is committed as it returns, so a failed rename leaves the thread
-open. Mutation results follow the [retention](#thread-retention) record and
-membership revisions: a PATCH result is ignored when a thread record arrived
-while it was pending, and reports not found when the thread was deleted meanwhile.
-A membership event that arrived meanwhile keeps the provider's membership even
-when the response carries `member`, and a response without `member` never
-changes it. Discord then sends
+open. A PATCH result is ignored when a Gateway record or another mutation
+superseded it, and reports not found when the thread was deleted meanwhile. Any
+membership change meanwhile keeps the provider's membership even when the
+response carries `member`, and a response without `member` never changes it.
+Discord then sends
 `THREAD_UPDATE`, `THREAD_MEMBER_UPDATE` and a type-4 name-change message in the
 thread; the republished catalogue renames sidebar rows, the open thread and
 starter cards. Renaming requires Manage Threads or ownership of an unlocked
@@ -410,12 +420,9 @@ Join (Follow) and leave (Unfollow) are `POST` and `DELETE`
 `/channels/{thread}/thread-members/@me?location=…` without a body; joining is
 not `PUT`. `location` names the surface: `Context Menu` for channel-list and
 forum-card menus, `Sidebar Overflow` for the side-pane menu, `Toolbar Overflow`
-for the full-view menu and `Forum Toolbar` for the post header. Each join or
-leave advances the thread's membership revision, and its 204 updates known
-threads immediately only if that revision is still current, so a Gateway
-membership event or a newer join or leave wins. Applying the confirmation
-advances the revision again, so a lookup that started while the request was
-pending cannot restore the old membership. The Gateway member events listed
+for the full-view menu and `Forum Toolbar` for the post header. A 204 updates
+known threads immediately unless a Gateway membership event or a newer join or
+leave arrived while it was pending. The Gateway member events listed
 under [retention](#thread-retention) remain authoritative; a confirmation never
 replaces a member they already delivered. Notification responses also publish
 the joined-thread catalogue.
@@ -441,11 +448,9 @@ spoilers read as `<spoiler>`.
 
 The thread browser pages archived threads with
 `GET /channels/{parent}/threads/search?archived=true&sort_by=last_message_time&sort_order=desc&limit=25&tag_setting=match_some&offset=N`,
-advancing by raw records while `has_more`. Like lookups, each page answers the
-revisions captured when its request started: a thread deleted meanwhile is
-omitted from the page and the cache, a newer thread record is kept, and a
-membership event meanwhile keeps the provider's membership. This also guards the
-forum catalogue. Search runs on submit with
+advancing by raw records while `has_more`; a thread deleted meanwhile is omitted
+from both the page and the cache, which also guards the forum catalogue. Search
+runs on submit with
 `?name=<query>&tag_setting=match_some` and returns active and archived matches as
 one page. Responses carry `threads`, the current user's `members`, `has_more` and
 `total_results`; text channels omit message previews. Discord did not return an
