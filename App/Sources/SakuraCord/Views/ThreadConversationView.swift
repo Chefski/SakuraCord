@@ -22,7 +22,11 @@ nonisolated enum ThreadTimelinePresentationPolicy {
         isDetachedFromNewest: Bool = false,
         messageCount: Int
     ) -> Bool {
-        !isNearBottom && (hasUnreadReplies || isDetachedFromNewest) && messageCount > 0
+        // A detached window ends before the newest reply even when its own
+        // bottom is in view, so the way back to newest always shows.
+        (!isNearBottom || isDetachedFromNewest)
+            && (hasUnreadReplies || isDetachedFromNewest)
+            && messageCount > 0
     }
 }
 
@@ -434,7 +438,7 @@ private struct ThreadMessageTimelineView: View {
                 hasUnreadReplies: unread.summary != nil,
                 isDetachedFromNewest: model.isThreadWindowAwayFromNewest,
                 messageCount: model.threadMessages.count
-            ), hasEstablishedInitialPosition {
+            ), hasEstablishedInitialPosition || model.isThreadWindowAwayFromNewest {
                 TimelineNewestButton(
                     title: unread.summary != nil ? "New replies" : "Scroll to bottom",
                     hasUnread: unread.summary != nil,
