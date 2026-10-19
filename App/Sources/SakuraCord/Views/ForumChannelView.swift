@@ -1295,7 +1295,6 @@ private struct ForumPostCardChrome<Content: View>: View {
     let channel: Channel
     let post: ForumPost
     let content: Content
-    @State private var isDeleteConfirmationPresented = false
 
     init(
         model: AppModel,
@@ -1356,74 +1355,20 @@ private struct ForumPostCardChrome<Content: View>: View {
                 .allowsHitTesting(false)
             }
             .overlay {
-                let policy = model.threadActionPolicy(post.thread)
-                let canManage = policy.canManage
-                let canArchive = policy.canChangeArchive
-                let canEditTags = policy.canEditTags
-                let canDelete = policy.canDelete
                 ForumPostContextMenuBridge(
+                    actionsMenu: ThreadActionsMenu(
+                        model: model,
+                        thread: post.thread,
+                        surface: .forumCard,
+                        isUnread: model.isForumPostUnread(post),
+                        offersTags: true
+                    ),
                     tags: channel.availableTags,
                     appliedTagIDs: post.thread.appliedTagIDs,
                     customEmojiURLsByID: model.customEmojiURLsByID,
-                    isArchived: post.thread.isArchived,
-                    isLocked: post.thread.isLocked,
-                    isPinned: post.thread.isPinned,
-                    isUnread: model.isForumPostUnread(post),
-                    isMutationPending:
-                        model.isForumNotificationMutationPending(post.id),
-                    notificationSettings: post.thread.notificationSettings,
-                    inheritedNotificationLevel:
-                        model.inheritedForumPostNotificationLevel(post),
                     requiresTag: channel.requiresForumTag,
-                    canManage: canManage,
-                    canArchive: canArchive,
-                    canEditTags: canEditTags,
-                    canDelete: canDelete,
-                    markRead: {
-                        model.markConversationRead(channelID: post.id)
-                    },
-                    mute: { duration in
-                        model.setForumPostMute(
-                            true,
-                            until: duration.endDate(),
-                            for: post
-                        )
-                    },
-                    unmute: {
-                        model.setForumPostMute(false, until: nil, for: post)
-                    },
-                    setNotificationLevel: { level in
-                        model.setForumPostNotificationLevel(level, for: post)
-                    },
-                    copyLink: copyForumPostLink,
-                    copyThreadID: {
-                        copyToPasteboard(post.id.description)
-                    },
-                    toggleTag: toggleTag,
-                    toggleArchive: {
-                        Task {
-                            await model.updateForumPost(
-                                post, mutation: .archived(!post.thread.isArchived)
-                            )
-                        }
-                    },
-                    toggleLock: {
-                        Task {
-                            await model.updateForumPost(
-                                post, mutation: .locked(!post.thread.isLocked)
-                            )
-                        }
-                    },
-                    togglePin: {
-                        Task {
-                            await model.updateForumPost(
-                                post, mutation: .pinned(!post.thread.isPinned)
-                            )
-                        }
-                    },
-                    delete: {
-                        isDeleteConfirmationPresented = true
-                    }
+                    canManage: model.threadActionPolicy(post.thread).canManage,
+                    toggleTag: toggleTag
                 )
             }
             .contentShape(
@@ -1433,31 +1378,6 @@ private struct ForumPostCardChrome<Content: View>: View {
                 )
             )
             .accessibilityElement(children: .contain)
-            .confirmationDialog(
-                "Delete this post?",
-                isPresented: $isDeleteConfirmationPresented
-            ) {
-                Button("Delete Post", role: .destructive) {
-                    Task { await model.deleteForumPost(post) }
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("This will permanently delete the post and all of its replies.")
-            }
-    }
-
-    private func copyForumPostLink() {
-        copyToPasteboard(
-            ForumPostContextValue.link(
-                guildID: post.thread.guildID ?? channel.guildID ?? model.selectedGuildID,
-                threadID: post.id
-            )
-        )
-    }
-
-    private func copyToPasteboard(_ value: String) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(value, forType: .string)
     }
 
     private func toggleTag(_ tagID: ForumTagID) {
@@ -1471,13 +1391,6 @@ private struct ForumPostCardChrome<Content: View>: View {
             tags.insert(tagID)
         }
         Task { await model.updateForumPost(post, mutation: .tags(Array(tags))) }
-    }
-}
-
-nonisolated enum ForumPostContextValue {
-    static func link(guildID: GuildID?, threadID: ChannelID) -> String {
-        let guild = guildID?.description ?? "@me"
-        return "https://discord.com/channels/\(guild)/\(threadID)"
     }
 }
 
