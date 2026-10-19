@@ -338,7 +338,7 @@ nonisolated enum MessageSearchPresentation {
                     channelID: message.channelID,
                     sectionTitle: sectionTitle(for: channel, message: message),
                     sectionSubtitle: channel?.category,
-                    systemImage: sectionSystemImage(for: channel),
+                    systemImage: sectionSystemImage(for: channel, channelsByID: channelsByID),
                     showsSectionHeader: showsSectionHeader
                 )
             )
@@ -356,7 +356,19 @@ nonisolated enum MessageSearchPresentation {
         return channel.name
     }
 
-    private static func sectionSystemImage(for channel: Channel?) -> String {
+    private static func sectionSystemImage(
+        for channel: Channel?,
+        channelsByID: [ChannelID: Channel]
+    ) -> String {
+        // A thread's parent is a conversation channel rather than a category,
+        // and it takes the same symbol as its toolbar title.
+        if let parentID = channel?.categoryID, let parent = channelsByID[parentID] {
+            switch parent.kind {
+            case .forum: return "bubble.left.and.bubble.right.fill"
+            case .text, .announcement: return SakuraCordSystemSymbol.thread
+            case .voice, .directMessage, .groupDirectMessage, .unknown: break
+            }
+        }
         switch channel?.kind {
         case .directMessage:
             return "at"
