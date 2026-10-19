@@ -1024,6 +1024,9 @@ private struct ChatRootView: View {
         .sharedBackgroundVisibility(.hidden)
         .visibilityPriority(.high)
 
+        // The same separation as other distinct toolbar groups.
+        ToolbarSpacer(.fixed)
+
         if showsAddToChannelList, let channel = model.customizationPreviewChannel, let guildID = channel.guildID {
             ToolbarItem(id: "side-conversation-add") {
                 Button("Add to Channel List", systemImage: "plus") {

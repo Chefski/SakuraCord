@@ -48,7 +48,7 @@ nonisolated enum ChatChromeMetrics {
     static let toolbarItemEdgeInset: CGFloat = 8
     /// System toolbar metrics that bound a pane title before it is measured.
     static let toolbarIconButtonWidth: CGFloat = 37
-    static let toolbarTitleActionSpacing: CGFloat = 4
+    static let toolbarTitleActionSpacing: CGFloat = 8
     static var toolbarSearchMaximumFieldWidth: CGFloat {
         memberListWidth - (toolbarPaneEdgeInset * 2)
     }
