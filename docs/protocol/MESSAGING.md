@@ -68,7 +68,7 @@ guarantee a closed thread's messages, so a cached thread reopens at once and
 always revalidates its newest page. Until a current read establishes the newest
 edge after such a reopen or a Gateway gap, the window counts as detached: sends
 load the newest messages first and nothing is acknowledged automatically; a reconnect also revalidates the open
-thread. Results for a
+thread and a Guide resource that had reached its newest message. Results for a
 closed instance of a side chat, including an earlier one of the same thread,
 are discarded, and of competing whole-window reads, sends and returns to the
 newest message the latest wins. A read that began before a Gateway gap may

@@ -514,6 +514,7 @@ extension AppModel {
             }
             if previousState != .ready {
                 revalidateOpenThreadAfterReconnect()
+                revalidateGuideResourceAfterReconnect()
             }
             if let channel = selectedChannel,
                channel.kind == .directMessage || channel.kind == .groupDirectMessage
