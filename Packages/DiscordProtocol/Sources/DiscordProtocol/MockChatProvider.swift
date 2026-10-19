@@ -23,7 +23,6 @@ public actor MockChatProvider: ChatProvider {
     var soundboardSettings = SoundboardUserSettings()
     var continuation: AsyncStream<ClientEvent>.Continuation?
     var nextMessageID: UInt64
-    public internal(set) var typingRequests: [ChannelID] = []
     public internal(set) var pinMutationRequests: [PinMutationRequest] = []
     public internal(set) var attachmentURLRefreshRequests: [URL] = []
     public internal(set) var voiceJoinRequests: [VoiceJoinRequest] = []

@@ -61,7 +61,7 @@ private extension Message {
 extension AppModel {
     func canCreatePoll(in channelID: ChannelID) -> Bool {
         let isThread = openThread?.id == channelID
-        guard let channel = isThread ? openThreadParentChannel : snapshot?.channels.first(where: { $0.id == channelID }),
+        guard let channel = isThread ? openThreadParentChannel : messagePresentationChannelsByID[channelID],
               (isThread ? openThreadAccess : conversationAccess(for: channel)).canSend else { return false }
         guard channel.guildID != nil else { return true }
         guard let permissions = effectiveMessagePermissions(in: channel) else { return false }

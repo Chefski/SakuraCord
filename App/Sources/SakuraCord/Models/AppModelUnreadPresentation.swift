@@ -362,16 +362,12 @@ extension AppModel {
                 self.beginUnreadPresentationPreparationIfNeeded()
                 return
             }
-            self.applyPreparedUnreadPresentation(
-                prepared,
-                snapshotValue: value
-            )
+            self.applyPreparedUnreadPresentation(prepared)
         }
     }
 
     private func applyPreparedUnreadPresentation(
-        _ prepared: PreparedUnreadPresentation,
-        snapshotValue: BootstrapSnapshot
+        _ prepared: PreparedUnreadPresentation
     ) {
         let refresh = AppPerformanceSignposts.signposter.beginInterval(
             "UnreadPresentationRefresh"
@@ -388,7 +384,6 @@ extension AppModel {
             unreadCategoryIDsByGuild = prepared.unread.unreadCategoryIDsByGuild
         }
         publishUnreadPresentation(
-            snapshotValue: snapshotValue,
             channelProjection: prepared.channels,
             guildProjection: prepared.guilds,
             projectedGuildsByID: prepared.serverRailGuildsByID
@@ -397,16 +392,16 @@ extension AppModel {
     }
 
     private func publishUnreadPresentation(
-        snapshotValue: BootstrapSnapshot,
         channelProjection: UnreadChannelPresentationProjection,
         guildProjection: UnreadGuildPresentationProjection,
         projectedGuildsByID: [GuildID: Guild]
     ) {
-        var value = snapshotValue
         AppPerformanceSignposts.measureSync(
             "UnreadPresentationPublication"
         ) {
-            if channelProjection.changed || guildProjection.changed {
+            if channelProjection.changed || guildProjection.changed,
+               var value = snapshot
+            {
                 value.channels = channelProjection.channels
                 value.guilds = guildProjection.guilds
                 snapshot = value
