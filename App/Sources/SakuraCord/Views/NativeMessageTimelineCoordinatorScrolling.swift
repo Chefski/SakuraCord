@@ -1615,6 +1615,7 @@ extension NativeMessageTimelineCoordinator {
             }
             cancelGlide()
             scroll(toDocumentY: targetY, scrollView: scrollView)
+            reportScrollState(force: true)
             return true
         }
 
