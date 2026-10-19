@@ -164,9 +164,10 @@ final class ThreadBrowserState {
 
     /// Applies a parent's current thread records from the provider.
     func receive(parentID: ChannelID, records posts: [ForumPost]) {
-        recordLiveChanges(posts.map(\.id), isDeleted: false)
         listings[parentID]?.reconcile(with: posts)
         guard parentID == self.parentID else { return }
+        // A snapshot republishes every thread; only those that differ changed.
+        recordLiveChanges(posts.filter { records[$0.id] != $0 }.map(\.id), isDeleted: false)
         records = Dictionary(posts.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest })
         search?.reconcile(with: posts)
     }

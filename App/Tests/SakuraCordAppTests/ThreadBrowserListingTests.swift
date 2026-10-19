@@ -112,15 +112,24 @@ private func thread(
 @Test func `responses keep live changes made while they were in flight`() {
     let browser = ThreadBrowserState()
     browser.present(parentID: ChannelID(rawValue: 7))
-    browser.receive(parentID: ChannelID(rawValue: 7), records: [thread(1, archived: false, daysAgo: 1)])
+    browser.receive(parentID: ChannelID(rawValue: 7), records: [
+        thread(1, archived: false, daysAgo: 1), thread(4, archived: false, daysAgo: 4),
+    ])
     let since = browser.liveSequence
 
-    // While the request is in flight, thread 1 is renamed and thread 2 deleted.
-    browser.receive(parentID: ChannelID(rawValue: 7), records: [thread(1, name: "Renamed", archived: false, daysAgo: 1)])
+    // While the request is in flight, thread 1 is renamed and thread 2 deleted;
+    // thread 4 is republished unchanged by the same snapshot.
+    browser.receive(parentID: ChannelID(rawValue: 7), records: [
+        thread(1, name: "Renamed", archived: false, daysAgo: 1), thread(4, archived: false, daysAgo: 4),
+    ])
     browser.remove(threadID: ChannelID(rawValue: 2))
 
-    let response = [thread(1, archived: false, daysAgo: 1), thread(2, archived: false, daysAgo: 2), thread(3, daysAgo: 3)]
+    let response = [
+        thread(1, archived: false, daysAgo: 1), thread(2, archived: false, daysAgo: 2), thread(3, daysAgo: 3),
+        thread(4, name: "Fresh", archived: false, daysAgo: 4),
+    ]
     let reconciled = browser.reconciling(response, since: since)
-    #expect(reconciled.map(\.id.rawValue) == [1, 3])
+    #expect(reconciled.map(\.id.rawValue) == [1, 3, 4])
     #expect(reconciled.first?.thread.name == "Renamed")
+    #expect(reconciled.last?.thread.name == "Fresh")
 }
