@@ -624,29 +624,64 @@ extension AppModel {
         }
     }
 
+    /// Starting a public thread from a confirmed message posted directly in
+    /// the selected text or announcement channel, as ThreadActionPolicy allows.
+    func canCreateThread(from message: Message) -> Bool {
+        guard message.channelID == selectedChannelID, let channel = selectedChannel,
+              conversationAccess(for: channel).isReadable,
+              let permissions = effectiveMessagePermissions(in: channel)
+        else { return false }
+        return ThreadActionPolicy.canCreateThread(from: message, in: channel, permissions: permissions)
+    }
+
+    /// The message context menu's Create Thread: the creation side chat with
+    /// the starter message, an optional name and a required first message.
+    func beginThreadCreation(from message: Message) {
+        guard canCreateThread(from: message) else { return }
+        let channelNames = Dictionary(
+            (snapshot?.channels ?? []).map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first }
+        )
+        let roleNames = Dictionary(
+            guildRoles.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first }
+        )
+        let defaultName = ThreadNamePolicy.defaultName(for: message, channelNames: channelNames, roleNames: roleNames)
+        openSideConversation(.threadCreation(ThreadCreationDraft(startingFrom: message, defaultName: defaultName)))
+        dismissPinnedMessages()
+        if !isConversationPresented(message.channelID) { suspendSelectedConversationPresentation() }
+    }
+
     /// Shows required-field errors only for invalid submissions. A valid send
     /// consumes the draft while the creation pane is still visible.
     @discardableResult
     func validateThreadCreation() -> Bool {
         guard let creation = threadCreation else { return false }
-        let isValid = !creation.trimmedName.isEmpty
+        let isValid = creation.nameToCreate != nil
             && (!threadDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 || !threadComposerAttachments.isEmpty)
         creation.showsValidationErrors = !isValid
         return isValid
     }
 
-    /// Creates the thread, then sends the composed message as its first message.
+    /// Creates the thread, then sends the composed message as its first
+    /// message, as the first-party client does. A failed creation keeps the
+    /// draft with Discord's reason; once the thread exists it opens, and a
+    /// failed first message stays in its outbox for retry instead of creating
+    /// another thread.
     func submitThreadCreation(
         _ creation: ThreadCreationDraft,
         attachments: [ForumPostAttachment]
     ) async -> ComposerSubmissionResult {
         guard threadCreation === creation, !creation.isSubmitting else { return .rejected }
-        let permissions = selectedChannelThreadCreationPermissions
         let originalDraft = threadDraft
         let content = originalDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard creation.isPrivate ? permissions.canCreatePrivate : permissions.canCreatePublic,
-              !creation.trimmedName.isEmpty, !content.isEmpty || !attachments.isEmpty,
+        let isAllowed: Bool = if let starter = creation.starterMessage {
+            canCreateThread(from: starter)
+        } else {
+            creation.isPrivate
+                ? selectedChannelThreadCreationPermissions.canCreatePrivate
+                : selectedChannelThreadCreationPermissions.canCreatePublic
+        }
+        guard isAllowed, let name = creation.nameToCreate, !content.isEmpty || !attachments.isEmpty,
               validateAttachmentCount(attachments),
               allowOnboardingSubmission(in: creation.parentID)
         else { return .rejected }
@@ -658,12 +693,14 @@ extension AppModel {
         let session = accountSession()
         let draft = CreateThreadDraft(
             channelID: creation.parentID,
-            name: creation.trimmedName,
+            name: name,
             isPrivate: creation.isPrivate,
-            autoArchiveDuration: selectedChannel?.defaultAutoArchiveDuration ?? 4_320
+            autoArchiveDuration: selectedChannel?.defaultAutoArchiveDuration ?? 4_320,
+            starterMessageID: creation.starterMessage?.id
         )
         translation.resetDraft(.thread)
         creation.isSubmitting = true
+        creation.submissionError = nil
         defer { creation.isSubmitting = false }
         let thread: MessageThreadSummary
         do {
@@ -671,7 +708,9 @@ extension AppModel {
         } catch {
             guard isCurrentAccountSession(session) else { return .rejected }
             DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
-            errorMessage = error.localizedDescription
+            creation.submissionError = error is CancellationError
+                ? "The thread was not created. Try again."
+                : error.localizedDescription
             return .rejected
         }
         guard isCurrentAccountSession(session) else { return .rejected }
@@ -679,7 +718,7 @@ extension AppModel {
         if presentsCreatedThread {
             openThreadConversation(
                 thread,
-                starter: currentUser,
+                starter: creation.starterMessage?.author ?? currentUser,
                 startedAt: thread.createdAt ?? .now,
                 initialMessages: []
             )
