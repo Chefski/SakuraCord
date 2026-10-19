@@ -21,11 +21,7 @@ final class TypingStateModel {
     @ObservationIgnored private var entries: [Key: Entry] = [:]
     @ObservationIgnored private var expiryTasks: [Key: Task<Void, Never>] = [:]
     @ObservationIgnored private var nextArrival: UInt64 = 0
-    @ObservationIgnored private let expiry: Duration
-
-    init(expiry: Duration = .seconds(10)) {
-        self.expiry = expiry
-    }
+    @ObservationIgnored private let expiry: Duration = .seconds(10)
 
     func receive(channelID: ChannelID, user: User, currentUserID: UserID?) {
         guard user.id != currentUserID else { return }
@@ -103,16 +99,6 @@ final class TypingStateModel {
             return "\(users[0].displayName), \(users[1].displayName), and \(users.count - 2) other\(users.count == 3 ? "" : "s") are typing…"
         }
     }
-
-    #if DEBUG
-        func expiryGenerationForTesting(channelID: ChannelID, userID: UserID) -> UInt64? {
-            entries[Key(channelID: channelID, userID: userID)]?.generation
-        }
-
-        func applyExpiryForTesting(channelID: ChannelID, userID: UserID, generation: UInt64) {
-            expire(Key(channelID: channelID, userID: userID), generation: generation)
-        }
-    #endif
 
     private func expire(_ key: Key, generation: UInt64) {
         guard entries[key]?.generation == generation else { return }
