@@ -5,11 +5,13 @@ import SwiftUI
 struct ThreadBrowserPopoverView: View {
     let model: AppModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @FocusState private var isSearchFocused: Bool
 
     var body: some View {
         @Bindable var browser = model.threadBrowser
         VStack(spacing: 0) {
             header(browser)
+            Divider()
             content(browser)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -23,40 +25,36 @@ struct ThreadBrowserPopoverView: View {
         }
     }
 
+    /// The pickers' inline search header, with Create at its trailing end.
     private func header(_ browser: ThreadBrowserState) -> some View {
         @Bindable var browser = browser
-        return VStack(spacing: InterfaceScale.metric(6)) {
-            HStack {
-                Label {
-                    Text("Threads")
-                } icon: {
-                    SakuraCordSystemSymbol.swiftUIImage(named: SakuraCordSystemSymbol.thread)
-                }
-                .font(.interface(.headline))
-                Spacer()
-                if model.canCreateThreadInSelectedChannel {
-                    HoverActionButton(
-                        systemImage: "square.and.pencil", help: "Create Thread",
-                        action: model.createThreadFromBrowser
-                    )
-                }
-            }
-            .padding(.horizontal, InterfaceScale.metric(4))
-            .frame(height: InterfaceScale.metric(44))
-            PickerSearchField(
-                text: $browser.searchText,
-                placeholder: "Search Threads",
-                accessibilityIdentifier: "thread-browser-search"
-            )
-            .onSubmit(model.submitThreadBrowserSearch)
-            .onChange(of: browser.searchText) { _, text in
-                if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    model.clearThreadBrowserSearch()
-                }
+        return HStack(spacing: 0) {
+            PickerSearchHeader(text: $browser.searchText, focus: { isSearchFocused = true }, input: {
+                TextField("Search Threads", text: $browser.searchText)
+                    .textFieldStyle(.plain)
+                    .font(.interfaceSystem(size: ChatChromeMetrics.pickerSearchHeaderFontSize))
+                    .tint(SakuraCordAccentColor.color)
+                    .focused($isSearchFocused)
+                    .onSubmit(model.submitThreadBrowserSearch)
+                    .accessibilityIdentifier("thread-browser-search")
+            })
+            if model.canCreateThreadInSelectedChannel {
+                HoverActionButton(
+                    systemImage: "square.and.pencil", help: "Create Thread",
+                    action: model.createThreadFromBrowser
+                )
+                .padding(.trailing, InterfaceScale.metric(9))
             }
         }
-        .padding(.horizontal, InterfaceScale.metric(10))
-        .padding(.bottom, InterfaceScale.metric(4))
+        .onChange(of: browser.searchText) { _, text in
+            if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                model.clearThreadBrowserSearch()
+            }
+        }
+        .task {
+            await Task.yield()
+            isSearchFocused = true
+        }
     }
 
     @ViewBuilder
