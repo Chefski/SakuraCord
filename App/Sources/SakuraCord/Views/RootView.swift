@@ -192,7 +192,8 @@ private struct ChatRootView: View {
     /// Measured width the pane's toolbar actions reserve after the title,
     /// keyed by action count. It does not depend on the title's width.
     @State private var sideConversationActionReserve: [Int: CGFloat] = [:]
-    @State private var conversationTitleTrailingEdge: CGFloat = 0
+    @State private var detailColumnMinX: CGFloat = 0
+    @State private var conversationTitleWidth: CGFloat = 0
     @State private var customizationModePickerWidth: CGFloat = 260
     @State private var workspaceFrame = CGRect.zero
     @State private var sidebarWidth = ChatChromeMetrics.serverRailWidth + InterfaceScale.metric(230)
@@ -266,6 +267,26 @@ private struct ChatRootView: View {
                 }
             }
             .interfaceScaleRoot()
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.frame(in: .global).minX
+            } action: { minX in
+                detailColumnMinX = minX
+            }
+            .background {
+                // Measures the conversation title outside the toolbar, whose
+                // item may be narrower than the title while it lays out.
+                if let title = conversationToolbarPresentation, model.guildWorkspacePage == .channelsAndRoles {
+                    ConversationToolbarTitle(presentation: title)
+                        .fixedSize()
+                        .hidden()
+                        .accessibilityHidden(true)
+                        .onGeometryChange(for: CGFloat.self) { proxy in
+                            proxy.size.width
+                        } action: { width in
+                            conversationTitleWidth = width
+                        }
+                }
+            }
             .navigationTitle("")
             // The conversation title is a toolbar item. The window title's
             // flexible view would otherwise claim toolbar width at narrow sizes.
@@ -600,11 +621,6 @@ private struct ChatRootView: View {
                         transaction.animation = nil
                         transaction.disablesAnimations = true
                     }
-                    .onGeometryChange(for: CGFloat.self) { proxy in
-                        proxy.frame(in: .global).maxX
-                    } action: { trailingEdge in
-                        if trailingEdge.isFinite { conversationTitleTrailingEdge = trailingEdge }
-                    }
             }
         }
         .visibilityPriority(.high)
@@ -623,7 +639,8 @@ private struct ChatRootView: View {
         ToolbarSpacer(.flexible)
 
         if showsCustomizationModePicker {
-            // Centred in the space between the title and the trailing actions.
+            // Centred between the title and the trailing actions. It keeps
+            // its label, which the overflow menu shows.
             ToolbarItem(id: "customization-mode") {
                 Picker("Channels & Roles", selection: Binding(
                     get: { model.isBrowsingGuildChannels },
@@ -633,7 +650,6 @@ private struct ChatRootView: View {
                     Text("Browse Channels").tag(true)
                 }
                 .pickerStyle(.segmented)
-                .fixedSize()
                 .onGeometryChange(for: CGFloat.self) { proxy in
                     proxy.size.width
                 } action: { width in
@@ -1119,10 +1135,11 @@ private struct ChatRootView: View {
             return true
         }
         let inset = ChatChromeMetrics.toolbarItemEdgeInset
-        // The switch with its margins, then Inbox and its gap to the pane.
-        let required = customizationModePickerWidth + inset * 2
-            + ChatChromeMetrics.toolbarIconButtonWidth + inset * 3
-        return supplementaryPaneFrame.minX - conversationTitleTrailingEdge >= required
+        // The title, the switch, then Inbox and its gap to the pane, each
+        // with the toolbar's margins.
+        let required = inset + conversationTitleWidth + inset * 2 + customizationModePickerWidth
+            + inset * 2 + ChatChromeMetrics.toolbarIconButtonWidth + inset * 3
+        return supplementaryPaneFrame.minX - detailColumnMinX >= required
     }
 
     private var showsInboxToolbarItem: Bool {
