@@ -618,17 +618,27 @@ extension AppModel {
         return ThreadActionPolicy.canCreateThread(from: message, in: channel, permissions: permissions)
     }
 
+    /// A starter message's text as readers see it, with mentions named.
+    func readableThreadStarterContent(_ message: Message) -> String {
+        let names = mentionNames
+        return ThreadNamePolicy.readableContent(of: message, channelNames: names.channels, roleNames: names.roles)
+    }
+
+    private var mentionNames: (channels: [ChannelID: String], roles: [RoleID: String]) {
+        (
+            Dictionary((snapshot?.channels ?? []).map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first }),
+            Dictionary(guildRoles.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+        )
+    }
+
     /// The message context menu's Create Thread: the creation side chat with
     /// the starter message, an optional name and a required first message.
     func beginThreadCreation(from message: Message) {
         guard canCreateThread(from: message) else { return }
-        let channelNames = Dictionary(
-            (snapshot?.channels ?? []).map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first }
+        let names = mentionNames
+        let defaultName = ThreadNamePolicy.defaultName(
+            for: message, channelNames: names.channels, roleNames: names.roles
         )
-        let roleNames = Dictionary(
-            guildRoles.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first }
-        )
-        let defaultName = ThreadNamePolicy.defaultName(for: message, channelNames: channelNames, roleNames: roleNames)
         openSideConversation(.threadCreation(ThreadCreationDraft(startingFrom: message, defaultName: defaultName)))
         dismissPinnedMessages()
         if !isConversationPresented(message.channelID) { suspendSelectedConversationPresentation() }
