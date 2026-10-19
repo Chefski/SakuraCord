@@ -31,8 +31,9 @@ extension DiscordRESTProvider {
             }
             do {
                 let remotePage = try await olderForumPosts(channel: channel, query: query)
+                // Re-read the cache: Gateway events may have changed it meanwhile.
                 let page = Self.mergedForumCataloguePage(
-                    cachedPosts: cachedPosts,
+                    cachedPosts: Array(cachedForumPosts[channelID, default: [:]].values),
                     olderPage: remotePage,
                     query: query
                 )
@@ -581,6 +582,7 @@ extension DiscordRESTProvider {
         -> ForumPostPage
     {
         let items = Self.forumCatalogueQueryItems(query: query)
+        let baseline = threadRevisionBaseline()
         let result: ForumThreadCatalogueResponseDTO = try await request(
             Self.forumThreadSearchPath(channelID: channel.id), query: items
         )
@@ -592,7 +594,7 @@ extension DiscordRESTProvider {
             hasMore=\(result.hasMore) total=\(result.totalResults ?? -1)
             """
         )
-        let posts = ingestForumPosts(decodedPosts, channel: channel)
+        let posts = ingestForumPosts(decodedPosts, channel: channel, since: baseline)
         // Offsets count Discord's records, including ones that failed to decode.
         let rawCount = result.threads.count + result.skippedThreadCount
         let nextOffset = result.hasMore && rawCount > 0 ? query.offset + rawCount : nil
@@ -610,11 +612,12 @@ extension DiscordRESTProvider {
         searchText: String
     ) async throws -> ForumPostPage {
         let items = Self.forumNameSearchQueryItems(searchText: searchText, query: query)
+        let baseline = threadRevisionBaseline()
         let result: ForumThreadSearchResponseDTO = try await request(
             "/channels/\(channel.id)/threads/search", query: items
         )
         var posts = ingestForumPosts(
-            result.posts(fallbackGuildID: channel.guildID), channel: channel
+            result.posts(fallbackGuildID: channel.guildID), channel: channel, since: baseline
         )
         posts = Self.filteredAndSortedForumPosts(posts, query: query)
         return ForumPostPage(
@@ -622,26 +625,50 @@ extension DiscordRESTProvider {
         )
     }
 
+    /// Catalogue and browser records answer the request that started at
+    /// `baseline`. A thread record or deletion that arrived meanwhile wins, so
+    /// a deleted thread is omitted and a newer record is kept; a membership
+    /// event that arrived meanwhile keeps the provider's membership.
     func ingestForumPosts(
         _ incomingPosts: [ForumPost],
-        channel: Channel
+        channel: Channel,
+        since baseline: ThreadRevisionBaseline
     ) -> [ForumPost] {
-        var posts = incomingPosts
-        for index in posts.indices {
-            if let existing = cachedForumPosts[channel.id]?[posts[index].id] {
-                posts[index] = Self.mergingForumPostCatalogueMetadata(
-                    incoming: posts[index],
-                    existing: existing
-                )
+        var posts: [ForumPost] = []
+        posts.reserveCapacity(incomingPosts.count)
+        var joinedThreadsChanged = false
+        for var post in incomingPosts {
+            let existing = cachedForumPosts[channel.id]?[post.id]
+            if threadRecordRevisions[post.id] != baseline.records[post.id] {
+                if let existing { posts.append(existing) }
+                continue
             }
-            if posts[index].owner == nil, let ownerID = posts[index].thread.ownerID,
+            let respondedMembership = post.thread.notificationSettings
+            if let existing {
+                post = Self.mergingForumPostCatalogueMetadata(incoming: post, existing: existing)
+            }
+            if threadMembershipRevisions[post.id] != baseline.memberships[post.id] {
+                post.thread.notificationSettings = existing?.thread.notificationSettings
+                    ?? cachedJoinedThreads[post.id]?.notificationSettings
+            } else if let respondedMembership,
+                      respondedMembership != existing?.thread.notificationSettings
+            {
+                // A returned member is the server's current membership; record
+                // it as a transition so older pending reads cannot undo it.
+                advanceThreadMembershipRevision(post.id)
+                reconcileJoinedThread(post.thread)
+                joinedThreadsChanged = true
+            }
+            if post.owner == nil, let ownerID = post.thread.ownerID,
                let ownerDTO = cachedGatewayUsersByID[ownerID.description]
             {
-                posts[index].owner = try? ownerDTO.domain()
+                post.owner = try? ownerDTO.domain()
             }
-            cachedForumPosts[channel.id, default: [:]][posts[index].id] = posts[index]
-            cacheForumPreviewMessages(posts[index])
+            cachedForumPosts[channel.id, default: [:]][post.id] = post
+            cacheForumPreviewMessages(post)
+            posts.append(post)
         }
+        if joinedThreadsChanged { publishActiveJoinedThreads() }
         return posts
     }
 
@@ -806,6 +833,7 @@ extension DiscordRESTProvider {
         -> ForumPost
     {
         let revision = threadRecordRevisions[post.id]
+        let membershipRevision = threadMembershipRevisions[post.id]
         let dto: ChannelDTO = try await request(
             "/channels/\(post.id)", method: "PATCH", body: body
         )
@@ -823,18 +851,30 @@ extension DiscordRESTProvider {
             guard let cached else { throw ChatProviderError.channelNotFound }
             return cached
         }
+        // The provider's latest membership, including a removal; the caller's
+        // copy only for a thread the provider has never known.
+        let latestMembership = cached.map(\.thread.notificationSettings)
+            ?? cachedJoinedThreads[post.id]?.notificationSettings
+        let respondedMembership = dto.member == nil ? nil : updated.thread.notificationSettings
         if let cached {
-            // Keep the latest catalogue previews, owner and membership. A response
-            // without `member` carries no membership, so a cached removal stands.
             updated = Self.mergingForumPostCatalogueMetadata(incoming: updated, existing: cached)
-            if dto.member == nil {
-                updated.thread.notificationSettings = cached.thread.notificationSettings
-            }
-        } else if dto.member == nil {
-            updated.thread.notificationSettings = post.thread.notificationSettings
+        }
+        if threadMembershipRevisions[post.id] != membershipRevision {
+            // A membership event arrived meanwhile; whatever this response
+            // carries is older.
+            updated.thread.notificationSettings = latestMembership
+        } else if let respondedMembership {
+            updated.thread.notificationSettings = respondedMembership
+            if respondedMembership != latestMembership { advanceThreadMembershipRevision(post.id) }
+        } else {
+            // A response without `member` carries no membership.
+            updated.thread.notificationSettings = cached == nil
+                ? post.thread.notificationSettings : latestMembership
         }
         cachedForumPosts[parentID, default: [:]][post.id] = updated
+        reconcileJoinedThread(updated.thread)
         publishForumPosts(parentID: parentID)
+        publishActiveJoinedThreads()
         return updated
     }
 

@@ -18,7 +18,8 @@ struct ThreadActionContractTests {
         let archived = ForumPost(thread: thread(isArchived: true, joined: true))
         let gate = StatusRecoveryResponseGate()
         fixture.enqueue(threadJSON(name: "Old name", archived: false))
-        fixture.enqueue(threadJSON(name: "New name", archived: false), gate: gate)
+        // Discord's response still carries the member it had when it answered.
+        fixture.enqueue(threadJSON(name: "New name", archived: false, joined: true), gate: gate)
 
         let rename = Task { try await provider.updateForumPost(archived, mutation: .name("  New name ")) }
         #expect(await eventually { gate.didCapture })
@@ -94,6 +95,57 @@ struct ThreadActionContractTests {
             "POST https://discord.com/api/v9/channels/42/thread-members/@me?location=Context%20Menu",
         ])
         #expect(fixture.bodies.withLock { $0.isEmpty })
+        await provider.disconnect()
+    }
+
+    @Test func `a lookup overlapping a confirmed leave cannot restore the membership`() async throws {
+        let provider = await makeProvider(joined: true)
+        let threadID = ChannelID(rawValue: 42)
+        let leaveGate = StatusRecoveryResponseGate()
+        let lookupGate = StatusRecoveryResponseGate()
+        fixture.enqueue("", gate: leaveGate)
+        fixture.enqueue(threadJSON(name: "Old name", archived: false, joined: true), gate: lookupGate)
+
+        let leave = Task { try await provider.setThreadMembership(threadID: threadID, isJoined: false, location: .sidePaneMenu) }
+        #expect(await eventually { leaveGate.didCapture })
+        let lookup = Task { try await provider.resolveThreadAccess(threadID: threadID) }
+        #expect(await eventually { lookupGate.didCapture })
+        leaveGate.release()
+        try await leave.value
+        lookupGate.release()
+        _ = try await lookup.value
+
+        #expect(await provider.cachedForumPostForTesting(threadID: threadID)?.thread.notificationSettings == nil)
+        #expect(await provider.activeJoinedThreadsForTesting().isEmpty)
+        await provider.disconnect()
+    }
+
+    @Test func `a delayed browser page keeps deletions, newer records and membership removals`() async throws {
+        let provider = await makeProvider(joined: true)
+        let gate = StatusRecoveryResponseGate()
+        let page = #"{"threads":[\#(threadJSON(name: "Old name", archived: true, joined: true)),"#
+            + #"\#(threadJSON(id: "60", name: "Deleted", archived: true)),"#
+            + #"\#(threadJSON(id: "61", name: "Archived", archived: true))],"has_more":true,"total_results":30}"#
+        fixture.enqueue(page, gate: gate)
+
+        let browse = Task { try await provider.threadBrowserPage(in: parent.id, query: ThreadBrowserQuery()) }
+        #expect(await eventually { gate.didCapture })
+        await provider.receiveGatewayDispatchForTesting(name: "THREAD_MEMBERS_UPDATE", data: removal)
+        await provider.receiveGatewayDispatchForTesting(name: "THREAD_DELETE", data: .object([
+            "id": .string("60"), "guild_id": .string("1"), "parent_id": .string("7"), "type": .number(11),
+        ]))
+        await provider.receiveGatewayDispatchForTesting(name: "THREAD_UPDATE", data: .object([
+            "id": .string("61"), "guild_id": .string("1"), "parent_id": .string("7"), "type": .number(11),
+            "name": .string("Reopened"), "thread_metadata": .object(["archived": .bool(false)]),
+        ]))
+        gate.release()
+        let result = try await browse.value
+
+        #expect(result.posts.map(\.id) == [ChannelID(rawValue: 42), ChannelID(rawValue: 61)])
+        #expect(result.posts.first?.thread.notificationSettings == nil)
+        #expect(result.posts.last?.thread.name == "Reopened" && result.posts.last?.thread.isArchived == false)
+        #expect(await provider.cachedForumPostForTesting(threadID: ChannelID(rawValue: 60)) == nil)
+        #expect(result.nextOffset == 3)
         await provider.disconnect()
     }
 

@@ -42,13 +42,23 @@ extension DiscordRESTProvider {
             }
     }
 
+    /// The thread revisions when a REST read starts. Capturing the whole maps
+    /// also covers threads unknown at that moment: a later record or deletion
+    /// gives them a revision the baseline lacks.
+    func threadRevisionBaseline() -> ThreadRevisionBaseline {
+        ThreadRevisionBaseline(records: threadRecordRevisions, memberships: threadMembershipRevisions)
+    }
+
     /// A confirmed join or leave updates known threads at once, through the
     /// same path as a Gateway membership change. A member the Gateway already
-    /// delivered is kept; it carries Discord's join timestamp.
+    /// delivered is kept; it carries Discord's join timestamp. The transition
+    /// advances the membership revision, so a read that started while the
+    /// request was pending cannot restore the old membership.
     func reconcileConfirmedThreadMembership(threadID: ChannelID, isJoined: Bool) {
         let current = cachedForumPost(threadID: threadID).map { $0.thread.notificationSettings }
             ?? cachedJoinedThreads[threadID]?.notificationSettings
         guard isJoined != (current != nil) else { return }
+        advanceThreadMembershipRevision(threadID)
         var changedParentIDs = Set<ChannelID>()
         guard applyCurrentUserThreadMembership(
             isJoined ? ThreadNotificationSettings(joinedAt: .now) : nil,
@@ -85,4 +95,9 @@ extension DiscordRESTProvider {
         else { return }
         update.thread = .some(thread)
     }
+}
+
+struct ThreadRevisionBaseline {
+    let records: [ChannelID: UInt64]
+    let memberships: [ChannelID: UInt64]
 }
