@@ -159,7 +159,7 @@ extension AppModel {
     @discardableResult
     func closeSideConversation() -> Bool {
         if sideConversations.thread != nil {
-            closeThread()
+            dismissOpenThread()
             return true
         }
         guard presentedSideConversationContext != nil else { return false }
