@@ -714,8 +714,15 @@ extension AppModel {
         }
         for post in posts {
             threadPreviewParentIDs[post.id] = parentID
-            guard threadPreviewMessages[post.id] != post.mostRecentMessage else { continue }
-            threadPreviewMessages[post.id] = post.mostRecentMessage
+            // Catalogue previews omit the guild, which server-only system
+            // message copy such as a rename depends on.
+            var preview = post.mostRecentMessage
+            if preview?.guildID == nil {
+                preview?.guildID = post.thread.guildID
+                    ?? post.thread.parentID.flatMap(messagePresentationChannel)?.guildID
+            }
+            guard threadPreviewMessages[post.id] != preview else { continue }
+            threadPreviewMessages[post.id] = preview
             changedPreviewThreadIDs.insert(post.id)
         }
         guard parentID == selectedChannelID else { return }
