@@ -129,6 +129,13 @@ extension AppModel {
                 else { return }
                 model.threadBrowser.search?.results = page.posts
                 model.threadBrowser.search?.hasLoaded = true
+                // Results are as new as the provider's records; an active match
+                // the browser had not seen joins its sections.
+                for post in page.posts {
+                    model.threadBrowser.records[post.id] = post
+                }
+                let records = Array(model.threadBrowser.records.values)
+                model.threadBrowser.listings[parentID]?.reconcile(with: records)
             } catch is CancellationError {
                 return
             } catch {
