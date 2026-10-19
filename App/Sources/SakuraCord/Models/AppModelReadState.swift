@@ -75,13 +75,10 @@ extension AppModel {
         }
     }
 
-    /// Jumps the timeline to the newest message as soon as a send from this
-    /// client appends its local row, without waiting for Discord to confirm it.
-    /// Returns false when the timeline shows an older page, where reloading the
-    /// newest window now would replace the local row, or has not established
-    /// its initial position, where a backlog hold can still appear after
-    /// delivery. Those sends wait for `completeConversationReadingAndAdvance`.
-    @discardableResult
+    /// Jumps to the newest message as soon as a send appends its local row.
+    /// Returns false on an older page (reloading would replace the local row)
+    /// or before the initial position (a backlog hold can still appear); those
+    /// sends advance on confirmation instead.
     func advanceTimelineForLocalSend(channelID: ChannelID) -> Bool {
         guard channelID == selectedChannelID || channelID == openThread?.id,
               !(channelID == selectedChannelID && hasMoreLaterMessages),
@@ -94,11 +91,18 @@ extension AppModel {
         return true
     }
 
-    /// Confirmation for a send that already scrolled the timeline. It neither
-    /// moves the viewport nor loads history, and acknowledges only when the
-    /// reader is at the read boundary, so messages that arrived out of view
-    /// stay unread.
-    func acknowledgeConfirmedLocalSend(channelID: ChannelID) {
+    func completeConfirmedSend(channelID: ChannelID, advancedLocally: Bool) {
+        if advancedLocally {
+            acknowledgeConfirmedLocalSend(channelID: channelID)
+        } else {
+            completeConversationReadingAndAdvance(channelID: channelID)
+        }
+    }
+
+    /// A send that already jumped neither moves the viewport nor loads history
+    /// on confirmation, and acknowledges only at the read boundary, so messages
+    /// that arrived out of view stay unread.
+    private func acknowledgeConfirmedLocalSend(channelID: ChannelID) {
         guard channelID == selectedChannelID || channelID == openThread?.id,
               readState.canAcknowledge(channelID)
         else { return }

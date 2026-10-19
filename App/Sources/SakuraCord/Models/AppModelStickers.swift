@@ -331,11 +331,7 @@ extension AppModel {
         composer.outbox.draftsByNonce[draft.nonce] = draft
         let didSend = await performOutgoingSend(draft, isRetry: false)
         if didSend {
-            if advancedLocally {
-                acknowledgeConfirmedLocalSend(channelID: channelID)
-            } else {
-                completeConversationReadingAndAdvance(channelID: channelID)
-            }
+            completeConfirmedSend(channelID: channelID, advancedLocally: advancedLocally)
         }
         return didSend
     }

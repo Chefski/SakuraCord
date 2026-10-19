@@ -284,11 +284,7 @@ extension AppModel {
             if let prepare, !(await prepare()) { return false }
             let didSend = await deliverOutgoingSend(outgoing, isRetry: isRetry, session: session)
             if didSend, completesReading {
-                if advancedLocally {
-                    acknowledgeConfirmedLocalSend(channelID: outgoing.channelID)
-                } else {
-                    completeConversationReadingAndAdvance(channelID: outgoing.channelID)
-                }
+                completeConfirmedSend(channelID: outgoing.channelID, advancedLocally: advancedLocally)
             }
             return didSend
         }

@@ -1598,7 +1598,7 @@ func `read state completion releases a held backlog without another geometry cal
     model.completeConversationNewestRequest(requestID: request.requestID)
 
     // The reader scrolled away while delivery was pending.
-    model.acknowledgeConfirmedLocalSend(channelID: channelID)
+    model.completeConfirmedSend(channelID: channelID, advancedLocally: true)
     #expect(model.conversationNewestRequest == nil)
     #expect(model.isChannelUnread(channelID))
     #expect(model.unreadDividerMessageID(channelID: channelID) == divider)
@@ -1606,7 +1606,7 @@ func `read state completion releases a held backlog without another geometry cal
     // An older page keeps the local row and loads nothing before delivery.
     model.hasMoreLaterMessages = true
     #expect(!model.advanceTimelineForLocalSend(channelID: channelID))
-    model.acknowledgeConfirmedLocalSend(channelID: channelID)
+    model.completeConfirmedSend(channelID: channelID, advancedLocally: true)
     #expect(model.conversationNewestRequest == nil)
     #expect(!model.isLoadingMessages)
 }
