@@ -97,12 +97,12 @@ extension AppModel {
     }
 
     func hasGuildGuide(in guildID: GuildID) -> Bool {
-        guard let guild = snapshot?.guilds.first(where: { $0.id == guildID }),
+        guard let guild = serverRailGuildsByID[guildID],
               guild.features.isSuperset(of: ["COMMUNITY", "GUILD_ONBOARDING", "GUILD_SERVER_GUIDE"]) else { return false }
         // Official navigation uses membership age/action flags and resource
         // channel flags, not GUILD_SERVER_GUIDE alone (READY carries both).
         return hasPendingGuildGuideActions(in: guildID)
-            || snapshot?.channels.contains { $0.guildID == guildID && $0.flags & (1 << 7) != 0 } == true
+            || guildIDsWithResourceChannels.contains(guildID)
     }
 
     func hasPendingGuildGuideActions(in guildID: GuildID) -> Bool {

@@ -280,7 +280,7 @@ extension NativeTimelineRowPainter {
             )
         }
         if let frame = input.layout.systemIconFrame {
-            let currentUserID = input.model?.snapshot?.currentUser.id
+            let currentUserID = input.model?.currentUser?.id
             systemSymbol(
                 SystemMessagePresentation.systemImage(
                     for: input.row.message,

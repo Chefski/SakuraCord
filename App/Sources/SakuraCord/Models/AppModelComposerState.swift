@@ -21,11 +21,11 @@ extension AppModel {
     }
     var replyMentionsAuthor: Bool {
         composer.replyMentionsAuthorChoice
-            && (replyingTo == nil || replyingTo?.author.id != snapshot?.currentUser.id)
+            && (replyingTo == nil || replyingTo?.author.id != currentUser?.id)
     }
     var threadReplyMentionsAuthor: Bool {
         composer.replyMentionsAuthorChoice
-            && (threadReplyingTo == nil || threadReplyingTo?.author.id != snapshot?.currentUser.id)
+            && (threadReplyingTo == nil || threadReplyingTo?.author.id != currentUser?.id)
     }
     var draft: String {
         get { composer.draft }
@@ -141,7 +141,7 @@ extension AppModel {
         case .channel: replyingTo
         case .thread: threadReplyingTo
         }
-        guard let reply, reply.author.id != snapshot?.currentUser.id else { return }
+        guard let reply, reply.author.id != currentUser?.id else { return }
         composer.rememberReplyMentionsAuthor(mentionsAuthor)
     }
 
