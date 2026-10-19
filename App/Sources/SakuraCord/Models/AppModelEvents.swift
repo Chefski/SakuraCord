@@ -69,6 +69,7 @@ extension AppModel {
         isMarkingAllServersRead = false
         acknowledgementTasks.values.forEach { $0.cancel() }
         acknowledgementTasks.removeAll()
+        debouncedAcknowledgementTargets.removeAll()
         acknowledgementProcessorTask?.cancel()
         acknowledgementProcessorTask = nil
         guildAcknowledgementTasks.values.forEach { $0.cancel() }
@@ -493,6 +494,7 @@ extension AppModel {
                 // the bounded rows for immediate presentation while forcing one
                 // authoritative newest-page refresh per reopened conversation.
                 hasMoreCache.removeAll(keepingCapacity: true)
+                markHistoryGapForRetainedConversations()
             }
             stopLocalTyping(clearThrottle: true)
             typingState.clearAll()
@@ -512,6 +514,10 @@ extension AppModel {
                hasCompletedInitialMessageLoad
             {
                 refreshSelectedChannelPreservingHistory()
+            }
+            if previousState != .ready {
+                revalidateOpenThreadAfterReconnect()
+                revalidateGuideResourceAfterReconnect()
             }
             if let channel = selectedChannel,
                channel.kind == .directMessage || channel.kind == .groupDirectMessage

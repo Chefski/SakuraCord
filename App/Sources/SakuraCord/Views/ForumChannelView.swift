@@ -11,24 +11,28 @@ struct ForumChannelView: View {
 
     var body: some View {
         if let channel = model.selectedChannel {
-            VStack(spacing: 0) {
-                ForumBrowseHeader(
-                    model: model,
-                    channel: channel,
-                    searchText: $searchText,
-                    presentsComposer: $presentsComposer
-                )
-                if let error = model.forumActionError {
-                    ForumActionErrorBanner(
-                        message: error,
-                        dismiss: model.dismissForumActionError
-                    )
+            forumContent(channel: channel)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // Posts scroll beneath the header and the window toolbar, as
+                // conversation timelines do. The header's controls need the
+                // opaque edge to stay legible over moving cards.
+                .safeAreaBar(edge: .top, spacing: 0) {
+                    VStack(spacing: 0) {
+                        ForumBrowseHeader(
+                            model: model,
+                            channel: channel,
+                            searchText: $searchText,
+                            presentsComposer: $presentsComposer
+                        )
+                        if let error = model.forumActionError {
+                            ForumActionErrorBanner(
+                                message: error,
+                                dismiss: model.dismissForumActionError
+                            )
+                        }
+                    }
                 }
-                Divider()
-                forumContent(channel: channel)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .scrollEdgeEffectStyle(.hard, for: .top)
             .onChange(of: channel.id) {
                 searchText = model.forumSearchText
                 reportPresentedForum(channel.id)
@@ -93,6 +97,15 @@ struct ForumChannelView: View {
 private struct ForumPostCollection: View {
     let model: AppModel
     let channel: Channel
+    @State private var scrollPosition = ScrollPosition(edge: .top)
+
+    /// What selects and orders the posts shown.
+    private struct Query: Equatable {
+        let searchText: String
+        let tagIDs: Set<ForumTagID>
+        let sortOrder: ForumSortOrder
+        let layout: ForumLayout
+    }
 
     var body: some View {
         ScrollView {
@@ -102,6 +115,21 @@ private struct ForumPostCollection: View {
                 listContent
             }
         }
+        .scrollPosition($scrollPosition)
+        .onChange(of: query) {
+            // A new query starts at its first post; keeping a deep offset
+            // can leave the viewport past the end of a shorter result.
+            scrollPosition.scrollTo(edge: .top)
+        }
+    }
+
+    private var query: Query {
+        Query(
+            searchText: model.forumSearchText,
+            tagIDs: model.forumSelectedTagIDs,
+            sortOrder: model.forumSortOrder,
+            layout: model.forumLayout
+        )
     }
 
     private var listContent: some View {
@@ -337,6 +365,8 @@ private struct ForumSortMenu: View {
                 .font(.interface(.caption2).weight(.bold))
         }
         .font(.interface(.callout).weight(.semibold))
+        .lineLimit(1)
+        .fixedSize(horizontal: true, vertical: false)
         .padding(.horizontal, InterfaceScale.metric(10))
         .frame(height: InterfaceScale.metric(30))
         .contentShape(Capsule())
