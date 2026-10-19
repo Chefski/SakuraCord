@@ -268,6 +268,9 @@ private struct ChatRootView: View {
             }
             .interfaceScaleRoot()
             .navigationTitle("")
+            // The conversation title is a toolbar item. The window title's
+            // flexible view would otherwise claim toolbar width at narrow sizes.
+            .toolbar(removing: .title)
             .toolbar {
                 detailToolbar
             }

@@ -367,13 +367,11 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
         private weak var hiddenSearchSpacer: NSToolbarItem?
         private var appliedSearchToolbarItemIsHidden: Bool?
         private weak var sizedSearchToolbarItem: NSSearchToolbarItem?
-        private weak var sizedSearchField: NSSearchField?
         private var originalPreferredSearchFieldWidth: CGFloat?
         private var appliedPreferredSearchFieldWidth: CGFloat?
         private weak var searchContainerWidthConstraint: NSLayoutConstraint?
         private var originalSearchContainerWidth: CGFloat?
         private var appliedSearchContainerWidth: CGFloat?
-        private var searchFieldWidthConstraint: NSLayoutConstraint?
         private var observers: [NSObjectProtocol] = []
         private var searchFieldDelegateProxy: ToolbarSearchFieldDelegateProxy?
         private var retryTask: Task<Void, Never>?
@@ -645,25 +643,9 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
                     item.preferredWidthForSearchField
             }
 
-            let field = item.searchField
-            if sizedSearchField !== field {
-                searchFieldWidthConstraint?.isActive = false
-                sizedSearchField = field
-                let constraint = field.widthAnchor.constraint(
-                    equalToConstant: width
-                )
-                constraint.identifier = "SakuraCord.ToolbarSearchFieldWidth"
-                constraint.priority = NSLayoutConstraint.Priority(999)
-                constraint.isActive = true
-                searchFieldWidthConstraint = constraint
-            } else if let searchFieldWidthConstraint,
-                      abs(searchFieldWidthConstraint.constant - width) > 0.5
-            {
-                searchFieldWidthConstraint.constant = width
-            } else {
-                return false
-            }
-
+            // The native item keeps this width when the toolbar has room, then
+            // shrinks and finally collapses before titles and actions overflow.
+            guard abs(item.preferredWidthForSearchField - width) > 0.5 else { return false }
             item.preferredWidthForSearchField = width
             appliedPreferredSearchFieldWidth = width
             return true
@@ -733,9 +715,6 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
         }
 
         private func restoreSearchToolbarItemSizing() {
-            searchFieldWidthConstraint?.isActive = false
-            searchFieldWidthConstraint = nil
-            sizedSearchField = nil
             restoreSearchContainerWidth()
             if let sizedSearchToolbarItem,
                let originalPreferredSearchFieldWidth,
