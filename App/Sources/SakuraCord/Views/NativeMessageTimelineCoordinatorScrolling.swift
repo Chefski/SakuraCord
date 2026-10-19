@@ -1403,15 +1403,17 @@ extension NativeMessageTimelineCoordinator {
         }
 
         func contentOriginY(viewportHeight: CGFloat) -> CGFloat {
+            // Content scrolls beneath the window toolbar but rests below it.
+            let topPadding = ChatDetailLayoutPolicy.timelineTopPadding
+                + (scrollView?.scrollerInsets.top ?? 0)
             let topInset = if parent.conversation.alignsUnderfilledContentToTop {
-                ChatDetailLayoutPolicy.timelineTopPadding
+                topPadding
             } else {
                 NativeMessageTimelineLayoutPolicy.shortContentTopInset(
                     viewportHeight: viewportHeight,
                     contentHeight: contentHeight,
                     bottomInset: bottomInset,
-                    verticalPadding:
-                        ChatDetailLayoutPolicy.timelineTopPadding
+                    verticalPadding: topPadding
                 )
             }
             return leadingHistoryReserve
