@@ -13,6 +13,10 @@ nonisolated struct SidebarThreadRow: Identifiable, Equatable, Sendable {
 /// Discord's channel list shows a parent's active joined threads only while
 /// they are relevant. The contract lives in docs/protocol/MESSAGING.md.
 nonisolated enum SidebarThreadPolicy {
+    static func listsThreads(under kind: ChannelKindValue) -> Bool {
+        [.text, .announcement, .forum].contains(kind)
+    }
+
     struct Candidate: Sendable {
         let thread: MessageThreadSummary
         let latestMessageID: MessageID?
@@ -111,7 +115,7 @@ extension AppModel {
                 return endTime
             }.sorted() ?? []
         }
-        let joined = (snapshot?.activeJoinedThreads ?? []).filter {
+        let joined = activeJoinedThreads.filter {
             $0.guildID == guildID && !$0.isArchived
         }
         let open = (isThreadFullWidth ? openThread : nil).flatMap { thread -> MessageThreadSummary? in
@@ -124,17 +128,17 @@ extension AppModel {
         guard !joined.isEmpty || open != nil else { return layout }
 
         let candidatesByParentID = Dictionary(
-            grouping: joined.map(sidebarThreadCandidate),
-            by: { $0.thread.parentID }
+            grouping: joined,
+            by: \.parentID
         )
         for group in channelGroups {
             let isCollapsed = group.categoryID.map {
                 isCategoryCollapsed(guildID: guildID, categoryID: $0)
             } ?? false
             for channel in group.channels {
-                guard [.text, .announcement, .forum].contains(channel.kind),
+                guard SidebarThreadPolicy.listsThreads(under: channel.kind),
                       !hiddenChannelIDs.contains(channel.id) else { continue }
-                let candidates = candidatesByParentID[channel.id] ?? []
+                let candidates = (candidatesByParentID[channel.id] ?? []).map(sidebarThreadCandidate)
                 let openCandidate = open?.parentID == channel.id
                     ? candidates.first { $0.thread.id == open?.id }
                         ?? open.map(sidebarThreadCandidate)
@@ -166,7 +170,7 @@ extension AppModel {
     private func sidebarThreadCandidate(
         _ thread: MessageThreadSummary
     ) -> SidebarThreadPolicy.Candidate {
-        let entry = readState.entries[thread.id]
+        let entry = readState[thread.id]
         let latestMessageID = [entry?.latestKnownMessageID, thread.lastMessageID]
             .compactMap(\.self).max()
         return SidebarThreadPolicy.Candidate(
@@ -180,8 +184,8 @@ extension AppModel {
 
     func sidebarThread(_ id: ChannelID) -> MessageThreadSummary? {
         if let openThread, openThread.id == id { return openThread }
-        return snapshot?.activeJoinedThreads.first { $0.id == id }
-            ?? snapshot?.threads.first { $0.id == id }
+        return activeJoinedThreads.first { $0.id == id }
+            ?? threads.first { $0.id == id }
     }
 
     func threadNavigationChannel(_ thread: MessageThreadSummary) -> Channel {

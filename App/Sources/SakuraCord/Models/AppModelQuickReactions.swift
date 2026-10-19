@@ -26,7 +26,7 @@ extension AppModel {
             existingReactions: message.reactions,
             context: QuickReactionPolicy.Context(
                 guildID: context.channel.guildID,
-                premiumType: snapshot?.currentUser.premiumType ?? 0,
+                premiumType: currentUser?.premiumType ?? 0,
                 canUseExternalEmojis: context.permissions & DiscordPermissionBits.useExternalEmojis != 0,
                 roleIDsByGuild: currentUserRoleIDsByGuild,
                 skinTone: .preferred

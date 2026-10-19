@@ -109,7 +109,7 @@ extension AppModel {
     func canDeleteMessage(_ message: Message) -> Bool {
         guard message.outboxState == .confirmed, !message.flags.contains(.ephemeral) else { return false }
         if !message.type.hasGeneratedContent,
-           message.author.id == snapshot?.currentUser.id
+           message.author.id == currentUser?.id
         {
             return true
         }
@@ -147,15 +147,15 @@ extension AppModel {
         if openThread?.id == channelID, let parent = openThreadParentChannel {
             return (parent, true)
         }
-        let parentID = snapshot?.threads.first(where: { $0.id == channelID })?.parentID
-            ?? snapshot?.activeJoinedThreads.first(where: { $0.id == channelID })?.parentID
+        let parentID = threads.first(where: { $0.id == channelID })?.parentID
+            ?? activeJoinedThreads.first(where: { $0.id == channelID })?.parentID
             ?? messageSearch.page?.channels.first(where: { $0.id == channelID })?.categoryID
         guard let parentID, let parent = rootMessageChannel(parentID) else { return nil }
         return (parent, true)
     }
 
     private func rootMessageChannel(_ channelID: ChannelID) -> Channel? {
-        snapshot?.channels.first(where: { $0.id == channelID })
+        messagePresentationChannelsByID[channelID]
             ?? visibleChannels.first(where: { $0.id == channelID })
     }
 
@@ -188,8 +188,8 @@ extension AppModel {
         if rootMessageChannel(channelID) != nil {
             navigate(to: channelID)
         } else {
-            let guildID = snapshot?.threads.first(where: { $0.id == channelID })?.guildID
-                ?? snapshot?.activeJoinedThreads.first(where: { $0.id == channelID })?.guildID
+            let guildID = threads.first(where: { $0.id == channelID })?.guildID
+                ?? activeJoinedThreads.first(where: { $0.id == channelID })?.guildID
                 ?? messageSearch.page?.channels.first(where: { $0.id == channelID })?.guildID
             guard guildID != nil else { return }
             navigate(to: guildID, linkedChannelID: channelID)

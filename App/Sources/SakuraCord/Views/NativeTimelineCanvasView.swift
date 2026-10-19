@@ -650,7 +650,7 @@ enum NativeTimelineRowPainter {
                 backgroundAlpha: 0.14
             )
         } else {
-            let currentUserID = model?.snapshot?.currentUser.id
+            let currentUserID = model?.currentUser?.id
             let currentUserRoleIDs =
                 model?.currentUserRoleIDs(for: row.message.guildID) ?? []
             switch MessageRowPersistentHighlight.resolve(
