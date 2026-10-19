@@ -103,6 +103,7 @@ private struct ForumPostCollection: View {
     private struct Query: Equatable {
         let searchText: String
         let tagIDs: Set<ForumTagID>
+        let tagMatch: ForumTagMatch
         let sortOrder: ForumSortOrder
         let layout: ForumLayout
     }
@@ -127,6 +128,7 @@ private struct ForumPostCollection: View {
         Query(
             searchText: model.forumSearchText,
             tagIDs: model.forumSelectedTagIDs,
+            tagMatch: model.forumTagMatch,
             sortOrder: model.forumSortOrder,
             layout: model.forumLayout
         )

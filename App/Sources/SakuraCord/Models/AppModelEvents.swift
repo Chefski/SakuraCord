@@ -265,14 +265,15 @@ extension AppModel {
             if let content = update.content { invalidateMessageTranslation(update.messageID, content: content) }
             reconcilePollVoteConfirmation(update)
             recordConversationRefreshMutation(.patch(update), messageID: update.messageID, channelID: update.channelID)
-            if let message = applyingMessageUpdate(update) {
-                let reconciled = applyingPendingPinIntent(to: message)
+            let patched = applyingMessageUpdate(update)
+            if let patched {
+                let reconciled = applyingPendingPinIntent(to: patched)
                 consumeMessageUpdated(
                     reconciled, preparedTextPlan: preparedTextPlan,
                     recordsRefreshMutation: false, preparedTextPlanSource: preparedTextPlanSource
                 )
-                refreshThreadStarterQuotes(messageID: message.id, with: message)
             }
+            refreshThreadStarterQuotes(after: update, patched: patched)
         case .messageReactionUpdated(let update):
             applyReactionUpdate(update)
         case .messageDeleted(let channelID, let messageID):
