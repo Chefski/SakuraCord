@@ -96,8 +96,7 @@ struct RootView: View {
             ZStack {
                 MessageSearchToolbarBridge(
                     model: model,
-                    isVisible: showsMessageSearchToolbar || model.isFriendsSearchActive
-                        || (model.isBrowsingGuildChannels && model.presentedSideConversation == nil),
+                    isVisible: showsMessageSearchToolbar || model.showsLocalToolbarSearch,
                     metrics: $toolbarSearchFieldMetrics
                 )
                 ToolbarSearchFieldLoadingStyler(isActive: showsSessionLoadingChrome)
@@ -158,9 +157,7 @@ struct RootView: View {
         case .connecting:
             true
         case .workspace:
-            model.onboardingEntryGuildID == nil && model.guildWorkspacePage == nil
-                && (model.isSwitchingAccounts
-                || model.canShowMessageSearch)
+            model.showsWorkspaceMessageSearch
         case .signedOut:
             model.launchMode != .normal && !model.includesOfflineSignIn
         }
@@ -790,6 +787,12 @@ private struct ChatRootView: View {
 
             ToolbarSpacer(.fixed)
                 .contentMarginsRemoved(true)
+        }
+
+        if model.showsWorkspaceMessageSearch || model.showsLocalToolbarSearch {
+            // Search's own flexible space is hidden (see the search bridge);
+            // keep the trailing actions their usual distance from the field.
+            ToolbarSpacer(.fixed)
         }
     }
 
@@ -1563,5 +1566,18 @@ private struct FriendsToolbarSections: ToolbarContent {
         case .pending: model.incomingFriendRequestCount > 0 ? "Pending (\(model.incomingFriendRequestCount))" : "Pending"
         case .addFriend: "Add Friend"
         }
+    }
+}
+
+private extension AppModel {
+    /// The workspace shows message search in the window toolbar.
+    var showsWorkspaceMessageSearch: Bool {
+        onboardingEntryGuildID == nil && guildWorkspacePage == nil
+            && (isSwitchingAccounts || canShowMessageSearch)
+    }
+
+    /// The toolbar field searches friends or browsable channels instead.
+    var showsLocalToolbarSearch: Bool {
+        isFriendsSearchActive || (isBrowsingGuildChannels && presentedSideConversation == nil)
     }
 }

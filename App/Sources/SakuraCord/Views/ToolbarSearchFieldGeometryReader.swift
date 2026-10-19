@@ -362,8 +362,10 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
         private weak var searchField: NSSearchField?
         private weak var searchToolbarItem: NSSearchToolbarItem?
         private var originalSearchToolbarItemIsHidden: Bool?
-        /// SwiftUI precedes the search item with a flexible space. Its minimum
-        /// width would otherwise push the trailing item in from the edge.
+        /// SwiftUI precedes the search item with a flexible space. It would
+        /// share the toolbar's free width with the detail column's own leading
+        /// flexible space, centring trailing actions, and its minimum width
+        /// would push a trailing item in from the edge while search is hidden.
         private weak var hiddenSearchSpacer: NSToolbarItem?
         private var appliedSearchToolbarItemIsHidden: Bool?
         private weak var sizedSearchToolbarItem: NSSearchToolbarItem?
@@ -613,21 +615,21 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
                 ? (originalSearchToolbarItemIsHidden ?? false)
                 : true
             let spacer = searchSpacer(before: item, in: window)
-            if item.isHidden != isHidden || (spacer.map { $0.isHidden != isHidden } ?? false) {
+            if item.isHidden != isHidden || spacer?.isHidden == false {
                 // Search disappears together with the channel actions. Finish
                 // that native layout without morphing its glass into the title.
                 NSAnimationContext.runAnimationGroup { context in
                     context.duration = 0
                     context.allowsImplicitAnimation = false
                     item.isHidden = isHidden
-                    spacer?.isHidden = isHidden
+                    spacer?.isHidden = true
                     window.contentView?.superview?.layoutSubtreeIfNeeded()
                 }
             }
             if hiddenSearchSpacer !== spacer {
                 restoreSearchSpacerVisibility()
             }
-            hiddenSearchSpacer = isHidden ? spacer : nil
+            hiddenSearchSpacer = spacer
             appliedSearchToolbarItemIsHidden = isHidden
             return true
         }
