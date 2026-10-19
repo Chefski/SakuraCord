@@ -74,6 +74,11 @@ extension DiscordRESTProvider {
             )
         }
         let previousForumPosts = (posts: cachedForumPosts, order: cachedForumThreadOrder)
+        // READY clears every retained thread's membership and drops the rest,
+        // so a lookup that overlapped it cannot restore the previous member.
+        for threadID in previousForumPosts.posts.values.flatMap(\.keys) {
+            advanceThreadMembershipRevision(threadID)
+        }
         await resetReadySessionState(for: ready)
         // No suspension while collecting the events from this READY payload.
         let delivery = continuation

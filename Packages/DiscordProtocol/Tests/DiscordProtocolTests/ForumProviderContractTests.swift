@@ -839,7 +839,7 @@ private func retentionReadyPayload() -> JSONValue {
 
 /// Each case holds the Get Channel response, produced while the user was a
 /// member of the unlocked private thread, until a newer Gateway event was applied.
-@Test(arguments: ["leave", "delete", "lock"])
+@Test(arguments: ["leave", "delete", "lock", "ready"])
 func `a delayed thread lookup cannot override newer gateway evidence`(event: String) async throws {
     let fixture = ThreadLookupFixture { index in
         ThreadLookupFixture.Answer(includesMember: index == 0, isGated: index == 0)
@@ -849,12 +849,19 @@ func `a delayed thread lookup cannot override newer gateway evidence`(event: Str
         handle: CredentialHandle(accountID: "forum-lookup-\(event)"),
         session: URLSession(configuration: fixture.configuration)
     )
+    // The READY case resolves a retained public thread whose membership the
+    // fresh READY clears; the others look up an uncached thread.
     await provider.seedForumChannelForTesting(
         Channel(id: ChannelID(rawValue: 7), guildID: GuildID(rawValue: 1), name: "forum", kind: .forum),
+        posts: event == "ready" ? [retentionPost(700)] : [],
         currentUser: User(id: UserID(rawValue: 9), username: "tester", displayName: "Tester")
     )
     let threadID = "700"
-    let lookup = Task { try await provider.forumPost(threadID: ChannelID(rawValue: 700)) }
+    let lookup = Task {
+        event == "ready"
+            ? try await provider.resolveThreadAccess(threadID: ChannelID(rawValue: 700))
+            : try await provider.forumPost(threadID: ChannelID(rawValue: 700))
+    }
     await fixture.waitUntilGated()
     switch event {
     case "leave":
@@ -866,6 +873,8 @@ func `a delayed thread lookup cannot override newer gateway evidence`(event: Str
         await provider.receiveGatewayDispatchForTesting(name: "THREAD_DELETE", data: .object([
             "id": .string(threadID), "guild_id": .string("1"), "parent_id": .string("7"),
         ]))
+    case "ready":
+        await provider.receiveGatewayDispatchForTesting(name: "READY", data: retentionReadyPayload())
     default:
         await provider.receiveGatewayDispatchForTesting(
             name: "THREAD_UPDATE", data: lockedPrivateThreadUpdate(threadID)
@@ -882,6 +891,13 @@ func `a delayed thread lookup cannot override newer gateway evidence`(event: Str
     case "delete":
         await #expect(throws: ChatProviderError.channelNotFound) { try await lookup.value }
         #expect(await provider.cachedForumPostForTesting(threadID: ChannelID(rawValue: 700)) == nil)
+    case "ready":
+        // The response predates READY, which cleared the retained membership.
+        let post = try await lookup.value
+        #expect(post.thread.notificationSettings == nil)
+        #expect(await provider.cachedForumPostForTesting(threadID: ChannelID(rawValue: 700))?
+            .thread.notificationSettings == nil)
+        #expect(await provider.activeJoinedThreadsForTesting().isEmpty)
     default:
         // The newer metadata is kept, and a member-less record is no evidence
         // of leaving: the response's member still grants private access.
