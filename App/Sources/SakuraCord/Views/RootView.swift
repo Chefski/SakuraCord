@@ -910,9 +910,10 @@ private struct ChatRootView: View {
     }
 
     private func proposedComposerDestination(atX horizontalPosition: CGFloat) -> MessageComposerDestination {
+        let presentation = model.workspacePresentation
         // A full-width thread is the only visible composer.
-        if model.isThreadFullWidth { return .thread }
-        if model.workspacePresentation.paneSideConversation?.isThread == true, supplementaryPaneFrame != .zero {
+        if presentation.primary == .fullWidthThread { return .thread }
+        if presentation.paneSideConversation?.isThread == true, supplementaryPaneFrame != .zero {
             let localThreadLeadingEdge = supplementaryPaneFrame.minX - workspaceFrame.minX
             return horizontalPosition >= localThreadLeadingEdge ? .thread : .channel
         }
@@ -1238,20 +1239,18 @@ private struct ComposerFileDropOverlay: View {
 
     var body: some View {
         GeometryReader { proxy in
+            let presentation = model.workspacePresentation
             Group {
-                if let thread = model.presentedSideConversation, thread.isThread {
-                    let label = model.sideConversationLabel(thread)
-                    if thread.isFullWidth {
-                        destinationZone(.thread, label: label)
-                    } else if supplementaryPaneFrame != .zero {
-                        HStack(spacing: 0) {
-                            destinationZone(.channel, label: channelLabel)
-                                .frame(width: primaryWidth(in: proxy.size.width))
-
-                            destinationZone(.thread, label: label)
-                        }
-                    } else {
+                if presentation.primary == .fullWidthThread, let thread = model.sideConversations.thread {
+                    destinationZone(.thread, label: model.sideConversationLabel(thread))
+                } else if let thread = presentation.paneSideConversation, thread.isThread,
+                          supplementaryPaneFrame != .zero
+                {
+                    HStack(spacing: 0) {
                         destinationZone(.channel, label: channelLabel)
+                            .frame(width: primaryWidth(in: proxy.size.width))
+
+                        destinationZone(.thread, label: model.sideConversationLabel(thread))
                     }
                 } else {
                     destinationZone(.channel, label: channelLabel)
