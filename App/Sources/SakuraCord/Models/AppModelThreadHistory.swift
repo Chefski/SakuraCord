@@ -114,6 +114,16 @@ extension AppModel {
         return page
     }
 
+    /// Replays journaled live changes onto a thread page. A journaled copy
+    /// may lack the guild the page received, so the result receives it too.
+    func applyingThreadRefreshMutations(
+        _ mutations: ConversationRefreshMutations,
+        to messages: [Message],
+        within span: MessageHistorySpan
+    ) -> [Message] {
+        Self.applyingConversationRefreshMutations(mutations, to: messages, within: span).map(withOpenThreadGuild)
+    }
+
     /// Supplies the open thread's guild to a message of it that omits one,
     /// so history and live copies of a message present and compare alike.
     func withOpenThreadGuild(_ message: Message) -> Message {
@@ -215,7 +225,7 @@ extension AppModel {
     ) {
         let threadID = request.threadID
         let mutations = conversationRefreshMutations(in: threadID, revision: refreshRevision)
-        let refreshedMessages = Self.applyingConversationRefreshMutations(
+        let refreshedMessages = applyingThreadRefreshMutations(
             mutations,
             to: page.messages,
             within: MessageHistorySpan(page: page, closesNewerEdge: request.historyEpoch != historyEpoch)
@@ -258,7 +268,7 @@ extension AppModel {
         mutations: ConversationRefreshMutations
     ) {
         let threadID = request.threadID
-        let refreshedMessages = Self.applyingConversationRefreshMutations(
+        let refreshedMessages = applyingThreadRefreshMutations(
             mutations,
             to: page.messages,
             within: MessageHistorySpan(page: page, closesNewerEdge: request.historyEpoch != historyEpoch)
@@ -499,7 +509,7 @@ extension AppModel {
         // Live replies and deletions during the request reconcile here. A
         // final forward page reaches the live tail, so replies after it are
         // admitted; otherwise only messages inside the page are.
-        let refreshed = Self.applyingConversationRefreshMutations(
+        let refreshed = applyingThreadRefreshMutations(
             mutations,
             to: page.messages,
             within: direction == .earlier
