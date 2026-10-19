@@ -59,11 +59,9 @@ extension AppModel {
         initialMessages: [Message],
         fullWidth: Bool = false
     ) {
-        closeThread()
+        openSideConversation(.thread(thread, isFullWidth: fullWidth))
         AppPerformanceSignposts.beginConversationNavigation(to: thread.id)
         readState.merge(thread: thread)
-        openThread = thread
-        isThreadFullWidth = fullWidth
         if let selectedChannelID, !isConversationPresented(selectedChannelID) {
             suspendSelectedConversationPresentation()
         }
@@ -286,9 +284,7 @@ extension AppModel {
         }
         threadLoadTask?.cancel()
         threadLoadTask = nil
-        openThread = nil
-        isThreadFullWidth = false
-        threadCreation = nil
+        sideConversations.thread = nil
         openThreadStarter = nil
         openThreadStartedAt = nil
         openThreadStarterMessageID = nil
@@ -305,28 +301,21 @@ extension AppModel {
         threadErrorScope = nil
     }
 
+    /// Selecting a voice channel opens its chat; this reopens a closed one.
     func openVoiceChat(for channel: Channel) {
         guard channel.kind == .voice else { return }
         if selectedChannelID != channel.id {
             selectedChannelID = channel.id
         }
-        guard selectedChannelID == channel.id, !isVoiceChatOpen else { return }
-        isVoiceChatOpen = true
+        // Guild pages cannot show the chat.
+        guard selectedChannelID == channel.id, guildWorkspacePage == nil, !isVoiceChatOpen else { return }
+        openSideConversation(.voiceChat(channel.id))
         beginSelectedChannelLoad()
     }
 
     func closeVoiceChat() {
         guard isVoiceChatOpen else { return }
-        if let selectedChannelID {
-            cancelConversationRefresh(in: selectedChannelID)
-        }
-        channelLoadTask?.cancel()
-        channelLoadTask = nil
-        channelLoadGeneration &+= 1
-        isVoiceChatOpen = false
-        isLoadingMessages = false
-        isLoadingEarlier = false
-        messageLoadError = nil
+        closeSideConversations()
     }
 
     func loadEarlierThread(account: AppModelAccountSession? = nil) async {
@@ -505,9 +494,8 @@ extension AppModel {
         guard let channelID = selectedChannelID, permissions.canCreateAny else { return }
         // Like Discord, the channel's unsent text becomes the thread's first message.
         let channelDraft = draft
-        closeThread()
+        openSideConversation(.threadCreation(ThreadCreationDraft(parentID: channelID, permissions: permissions)))
         dismissPinnedMessages()
-        threadCreation = ThreadCreationDraft(parentID: channelID, permissions: permissions)
         if !isConversationPresented(channelID) { suspendSelectedConversationPresentation() }
         if !channelDraft.isEmpty {
             translation.resetDraft(.channel)

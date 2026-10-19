@@ -23,78 +23,42 @@ nonisolated enum ThreadTimelinePresentationPolicy {
     }
 }
 
-struct ThreadPaneFramePreferenceKey: PreferenceKey {
-    static let defaultValue = CGRect.zero
-
-    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
-        let nextFrame = nextValue()
-        if nextFrame != .zero {
-            value = nextFrame
-        }
-    }
-}
-
-struct SupplementaryConversationPane<Content: View>: View {
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        content
-            .frame(minWidth: InterfaceScale.metric(340), idealWidth: InterfaceScale.metric(400), maxWidth: InterfaceScale.metric(440), maxHeight: .infinity)
-            .background {
-                GeometryReader { proxy in
-                    Color.clear.preference(
-                        key: ThreadPaneFramePreferenceKey.self,
-                        value: proxy.frame(in: .global)
-                    )
-                }
-            }
-    }
-}
-
 struct ThreadConversationView: View {
     let model: AppModel
     @State private var floatingFooterHeight: CGFloat =
         ChatDetailLayoutPolicy.defaultFloatingFooterHeight
     @State private var editRequest: MessageTimelineEditRequest?
 
-    var body: some View {
-        if model.isThreadFullWidth {
-            conversation.frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            SupplementaryConversationPane { conversation }
-        }
-    }
-
-    @ViewBuilder private var conversation: some View {
+    @ViewBuilder var body: some View {
         if let thread = model.openThread {
-                if model.openThreadAccess == .hidden {
-                    ThreadUnavailableView()
-                } else {
-                    ThreadMessageTimelineView(
+            if model.openThreadAccess == .hidden {
+                ThreadUnavailableView()
+            } else {
+                ThreadMessageTimelineView(
+                    model: model,
+                    bottomContentInset: ChatDetailLayoutPolicy.bottomContentInset(
+                        measuredFooterHeight: floatingFooterHeight
+                    ),
+                    editRequest: editRequest
+                )
+                .overlay(alignment: .bottom) {
+                    ThreadConversationFooter(
                         model: model,
-                        bottomContentInset: ChatDetailLayoutPolicy.bottomContentInset(
-                            measuredFooterHeight: floatingFooterHeight
-                        ),
-                        editRequest: editRequest
+                        thread: thread,
+                        footerHeightChanged: { height in
+                            floatingFooterHeight = height
+                        },
+                        onEditMessage: { messageID in
+                            editRequest = MessageTimelineEditRequest(
+                                messageID: messageID
+                            )
+                        }
                     )
-                    .overlay(alignment: .bottom) {
-                        ThreadConversationFooter(
-                            model: model,
-                            thread: thread,
-                            footerHeightChanged: { height in
-                                floatingFooterHeight = height
-                            },
-                            onEditMessage: { messageID in
-                                editRequest = MessageTimelineEditRequest(
-                                    messageID: messageID
-                                )
-                            }
-                        )
-                    }
                 }
-            } else if let creation = model.threadCreation {
-                ThreadCreationView(model: model, creation: creation)
             }
+        } else if let creation = model.threadCreation {
+            ThreadCreationView(model: model, creation: creation)
+        }
     }
 }
 

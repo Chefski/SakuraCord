@@ -440,8 +440,8 @@ func `remote typing is channel scoped cleared by message and disconnect`() async
     )
     await model.start()
     model.snapshot?.currentUser.premiumType = 0
-    model.threadCreation = ThreadCreationDraft(parentID: try #require(model.selectedChannelID),
-                                              permissions: .init(canCreatePublic: true, canCreatePrivate: false))
+    model.sideConversations.thread = .threadCreation(ThreadCreationDraft(parentID: try #require(model.selectedChannelID),
+                                                                         permissions: .init(canCreatePublic: true, canCreatePrivate: false)))
 
     #expect(await model.addComposerAttachments([exact, oversized], to: .thread))
     #expect(model.threadComposerAttachments.map(\.url) == [exact])
@@ -567,8 +567,8 @@ func `account or thread draft replacement invalidates an external upload result`
     let channelID = try #require(model.selectedChannelID)
     let destination: MessageComposerDestination = resetsAccount ? .channel : .thread
     if !resetsAccount {
-        model.threadCreation = ThreadCreationDraft(parentID: channelID,
-                                                  permissions: .init(canCreatePublic: true, canCreatePrivate: false))
+        model.sideConversations.thread = .threadCreation(ThreadCreationDraft(parentID: channelID,
+                                                                             permissions: .init(canCreatePublic: true, canCreatePrivate: false)))
     }
     let prompt = OversizedAttachmentPrompt(
         fileURL: URL(fileURLWithPath: "/tmp/account-reset.bin"),
@@ -586,8 +586,8 @@ func `account or thread draft replacement invalidates an external upload result`
         await model.resetAccountScopedLoadsAndForumState()
     } else {
         model.closeThread()
-        model.threadCreation = ThreadCreationDraft(parentID: channelID,
-                                                  permissions: .init(canCreatePublic: true, canCreatePrivate: false))
+        model.sideConversations.thread = .threadCreation(ThreadCreationDraft(parentID: channelID,
+                                                                             permissions: .init(canCreatePublic: true, canCreatePrivate: false)))
     }
     await uploader.release(
         call: 1,
@@ -662,8 +662,8 @@ func compactionFitsPreservesOriginalAndSkipsFilesWithinAccountLimit(destination:
     model.attachmentSettings.compactionPolicy = .always
     model.attachmentSettings.externalUploadPolicy = .always
     if destination == .thread {
-        model.threadCreation = ThreadCreationDraft(parentID: try #require(model.selectedChannelID),
-                                                  permissions: .init(canCreatePublic: true, canCreatePrivate: false))
+        model.sideConversations.thread = .threadCreation(ThreadCreationDraft(parentID: try #require(model.selectedChannelID),
+                                                                             permissions: .init(canCreatePublic: true, canCreatePrivate: false)))
     }
     #expect(await model.addPromisedComposerAttachments(.init(directory: directory, urls: [exact, oversized]), to: destination))
     await model.attachmentCompactionTask?.value
@@ -2762,7 +2762,7 @@ func `thread creation holds queue capacity until it enqueues or fails`(fails: Bo
     let creation = ThreadCreationDraft(parentID: channelID, permissions: model.selectedChannelThreadCreationPermissions)
     try #require(creation.permissions.canCreatePublic)
     creation.name = "Thread"
-    model.threadCreation = creation
+    model.sideConversations.thread = .threadCreation(creation)
     model.threadDraft = "first message"
 
     await provider.suspendNextSend()
@@ -2813,7 +2813,7 @@ func `timeout during thread creation preserves its unsent message without replac
     let creation = ThreadCreationDraft(parentID: channelID, permissions: model.selectedChannelThreadCreationPermissions)
     try #require(creation.permissions.canCreatePublic)
     creation.name = "Thread"
-    model.threadCreation = creation
+    model.sideConversations.thread = .threadCreation(creation)
     let originalDraft = "  Keep this first message\n"
     let attachment = ForumPostAttachment(url: URL(fileURLWithPath: "/tmp/thread-timeout-draft.txt"))
     model.threadDraft = originalDraft
