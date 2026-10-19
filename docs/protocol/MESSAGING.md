@@ -324,6 +324,15 @@ it, including its last channel. READY offers no cached guild versions, so each
 available guild arrives with its complete channel list. An unloaded list or a
 guild switch in progress is not removal.
 
+Inbox, pin, search, mention and message-link navigation to a thread no local
+projection knows resolves it on demand (cache, else one Get Channel) and reports
+failures instead of waiting for background metadata; not-found and forbidden
+lookups say that the thread does not exist or is not accessible. Repeating an in-flight
+navigation destination, including the requested side-pane or full-width
+presentation, does not restart it while nothing else has replaced the side
+conversation or guild page since it started; any other destination supersedes it,
+as does directly opening another thread or closing the one it is heading to.
+
 Official Fresh host 0.0.411, web build 641004 (`web.4d4b2f75fdea5470.js`),
 observed on 19 October 2026 with a moderator and a plain member, confirmed the
 opcode-37 sync shape, member-less listing of unjoined threads, join and leave

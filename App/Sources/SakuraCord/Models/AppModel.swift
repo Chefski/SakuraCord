@@ -1091,6 +1091,11 @@ final class AppModel {
     @ObservationIgnored var pollResultRefreshJournals: [MessageID: ConversationRefreshJournal] = [:]
     @ObservationIgnored var guildActivationTask: Task<Void, Never>?
     @ObservationIgnored var openThreadResolutionTask: Task<Void, Never>?
+    @ObservationIgnored var conversationNavigationTarget: PendingConversationNavigation?
+    /// Advanced whenever the side conversation or guild page changes outside a
+    /// navigation's own work: closing, opening or creating a thread, or
+    /// opening a guild page.
+    @ObservationIgnored var sideConversationRevision: UInt64 = 0
     @ObservationIgnored var memberLoadTask: Task<Void, Never>?
     @ObservationIgnored var memberLoadGeneration: UInt64 = 0
     @ObservationIgnored var memberListViewportRequest: MemberListViewportRequest?

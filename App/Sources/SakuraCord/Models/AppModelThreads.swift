@@ -54,8 +54,11 @@ extension AppModel {
         openThread != nil && (openThreadResolution != nil || openThreadAccess == .hidden)
     }
 
+    /// Directly opening another conversation supersedes any navigation in
+    /// flight; navigation opens threads through `openThreadConversation`.
     func open(_ thread: MessageThreadSummary) {
         guard openThread?.id != thread.id else { return }
+        cancelConversationNavigation()
         let starter = messages.first { $0.thread?.id == thread.id }
         openThreadConversation(
             thread,
@@ -68,6 +71,7 @@ extension AppModel {
 
     func open(_ post: ForumPost) {
         guard openThread?.id != post.id else { return }
+        cancelConversationNavigation()
         readState.merge(forumPost: post)
         openThreadConversation(
             post.thread,
@@ -145,6 +149,19 @@ extension AppModel {
               let permissions = effectiveMessagePermissions(in: parent)
         else { return true }
         return permissions & DiscordPermissionBits.manageThreads == 0
+    }
+
+    /// The user closing the thread retires a navigation still heading to it.
+    func dismissOpenThread() {
+        if let threadID = openThread?.id {
+            switch conversationNavigationTarget?.target {
+            case .thread(threadID, _), .message(threadID, _, _):
+                cancelConversationNavigation()
+            default:
+                break
+            }
+        }
+        closeThread()
     }
 
     /// A fresh READY lists only joined active threads and the provider drops
@@ -367,6 +384,7 @@ extension AppModel {
     }
 
     func closeThread() {
+        noteSideConversationChange()
         threadVoiceMessageComposer.discard(playback: voiceMessagePlayback)
         threadCommandComposer.resetForChannelChange()
         if let threadID = openThread?.id {
