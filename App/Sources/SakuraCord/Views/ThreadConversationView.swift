@@ -244,36 +244,21 @@ private struct ThreadConversationComposer: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if let until = model.guildTimeoutUntil(in: thread.id, guildID: thread.guildID) {
-                DisabledComposerView(
-                    message: "You are timed out.",
-                    appearance: model.appearanceSettings.composerBarAppearance,
-                    timeoutUntil: until
-                )
-            } else {
-            switch model.openThreadAccess {
-            case .checking:
-                DisabledComposerView(
-                    message: "Checking thread permissions…",
-                    appearance: model.appearanceSettings.composerBarAppearance
-                )
-            case .readable(canSend: true):
+            ConversationComposerSlot(
+                access: model.openThreadAccess,
+                timeoutUntil: model.guildTimeoutUntil(in: thread.id, guildID: thread.guildID),
+                appearance: model.appearanceSettings.composerBarAppearance,
+                checkingMessage: "Checking thread permissions…",
+                // The locked-thread banner already explains why replies are unavailable.
+                readOnlyMessage: thread.isLocked
+                    ? nil : "You do not have permission to send messages in this thread."
+            ) {
                 ComposerView(
                     model: model,
                     channelName: thread.name,
                     conversation: .thread,
                     onEditMessage: onEditMessage
                 )
-            case .readable(canSend: false):
-                if !thread.isLocked {
-                    DisabledComposerView(
-                        message: "You do not have permission to send messages in this thread.",
-                        appearance: model.appearanceSettings.composerBarAppearance
-                    )
-                }
-            case .hidden:
-                EmptyView()
-            }
             }
         }
     }
