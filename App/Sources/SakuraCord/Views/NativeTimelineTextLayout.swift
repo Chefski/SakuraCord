@@ -111,7 +111,7 @@ enum NativeTimelineTextPresentation {
         let plan = if message.type.hasGeneratedContent {
             NativeTimelineTextPlan.make(
                 for: message,
-                currentUserID: model?.snapshot?.currentUser.id,
+                currentUserID: model?.currentUser?.id,
                 systemRecipient: model?.systemMessageRecipient(for: message),
                 systemActorColor: systemActorColor,
                 systemLinkColor: SakuraCordAccentColor.nsColor

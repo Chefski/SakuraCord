@@ -1193,7 +1193,7 @@ extension NativeTimelineCanvasView {
         guard MessageOutboxPresentation.interactionMode(for: row.message).allowsMessageContextMenu else { return nil }
         // Discord does not allow editing voice messages.
         let canEdit =
-            row.message.author.id == model?.snapshot?.currentUser.id
+            row.message.author.id == model?.currentUser?.id
                 && !row.message.hasPoll
                 && !row.message.flags.contains(.voiceMessage)
                 && model?.guildTimeoutUntil(in: row.message.channelID, guildID: row.message.guildID) == nil
@@ -1218,7 +1218,7 @@ extension NativeTimelineCanvasView {
                 && MessageReplyPresentationPolicy.allowsReplyAction(
                     for: row.message
                 ),
-            canEndPoll: row.message.outboxState == .confirmed && row.message.author.id == model?.snapshot?.currentUser.id && row.message.poll?.isClosed() == false,
+            canEndPoll: row.message.outboxState == .confirmed && row.message.author.id == model?.currentUser?.id && row.message.poll?.isClosed() == false,
             canForward: actions.forward != nil && model?.canForward(row.message) == true,
             threadAction: row.message.thread != nil
                 ? .viewThread

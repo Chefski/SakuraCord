@@ -128,7 +128,7 @@ struct ThreadActionsMenu {
         }
         if !management.isEmpty { sections.append(management) }
 
-        let guildID = thread.guildID ?? model.snapshot?.channels.first { $0.id == thread.parentID }?.guildID
+        let guildID = thread.guildID ?? thread.parentID.flatMap { model.messagePresentationChannelsByID[$0] }?.guildID
         sections.append([
             ThreadMenuEntry(id: "copy-link", title: "Copy Link", systemImage: "link", content: Self.guarded(model, thread, \.canRead) {
                 ChannelContextMenuValue.copy(ChannelContextMenuValue.link(guildID: guildID, channelID: thread.id))

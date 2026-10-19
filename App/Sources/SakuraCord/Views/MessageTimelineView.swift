@@ -212,8 +212,10 @@ struct MessageTimelineView: View {
     }
 
     private var beginningRulesChannelID: ChannelID? {
-        guard let channel = beginningChannel else { return nil }
-        return model.snapshot?.guilds.first { $0.id == channel.guildID }?.rulesChannelID
+        guard let channel = beginningChannel,
+              let guild = model.selectedGuild, guild.id == channel.guildID
+        else { return nil }
+        return guild.rulesChannelID
     }
 
     private func loadEarlier() {

@@ -16,7 +16,7 @@ extension AppModel {
         if let selectedChannel, selectedChannelID == parentID, selectedChannel.id == parentID {
             return selectedChannel
         }
-        return snapshot?.channels.first { $0.id == parentID }
+        return messagePresentationChannelsByID[parentID]
             ?? visibleChannels.first { $0.id == parentID }
     }
 
@@ -133,7 +133,7 @@ extension AppModel {
             // around the target replaces it rather than bridging the two.
             let pendingSends = discardCachedHistory(for: thread.id)
             let seeds = initialMessages.contains { $0.id == historyTarget } ? initialMessages : []
-            threadMessages = Self.merging(current: pendingSends, fresh: seeds)
+            threadMessages = Self.merging(current: pendingSends, fresh: seeds).map(withOpenThreadGuild)
             hasMoreThreadMessages = true
             hasMoreLaterThreadMessages = true
             beginInitialThreadLoad(thread, around: historyTarget)
@@ -154,10 +154,11 @@ extension AppModel {
         } else {
             previewMessages = initialMessages
         }
+        // A cached copy replaced by a live update may have lost the guild.
         threadMessages = Self.merging(
             current: previewMessages,
             fresh: cachedMessages
-        )
+        ).map(withOpenThreadGuild)
         hasMoreThreadMessages = cachedBoundary ?? false
         hasMoreLaterThreadMessages = false
         let storedCursors = threadWindow.cachedCursors.removeValue(forKey: thread.id)

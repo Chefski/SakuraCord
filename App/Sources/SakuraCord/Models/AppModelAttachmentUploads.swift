@@ -39,7 +39,7 @@ struct ExternalAttachmentUploadPresentation: Equatable {
 extension AppModel {
     var discordAttachmentLimit: Int64 {
         DiscordAttachmentUploadPolicy.maximumFileSize(
-            premiumType: snapshot?.currentUser.premiumType ?? 0
+            premiumType: currentUser?.premiumType ?? 0
         )
     }
 
