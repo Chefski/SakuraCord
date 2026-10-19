@@ -122,7 +122,7 @@ extension AppModel {
         // Without a usable acknowledged boundary (READY can carry a
         // non-snowflake such as -11) no scroll reaches the unread start.
         // Holding it would keep every visit unread, so nothing would ever ACK.
-        guard readState.entries[channelID]?.lastAcknowledgedMessageID != nil,
+        guard readState[channelID]?.lastAcknowledgedMessageID != nil,
               let summary = presentedUnreadSummary(channelID: channelID),
               summary.isLowerBound
         else { return false }
@@ -272,7 +272,7 @@ extension AppModel {
 
     func scheduleAcknowledgement(channelID: ChannelID, messageID: MessageID) {
         guard !runsChatPerformanceBenchmark, !isDetachedFromNewest(channelID) else { return }
-        if let pending = readState.entries[channelID]?.pendingAcknowledgementID,
+        if let pending = readState[channelID]?.pendingAcknowledgementID,
            pending >= messageID
         {
             return
@@ -333,7 +333,7 @@ extension AppModel {
         guard !runsChatPerformanceBenchmark else { return }
         #if DEBUG
             if let scope = ProcessInfo.processInfo.environment["SAKURACORD_INBOX_VERIFICATION_GUILD_ID"],
-               readState.entries[channelID]?.guildID?.description != scope { return }
+               readState[channelID]?.guildID?.description != scope { return }
         #endif
         if let queued = queuedAcknowledgements[channelID] {
             if mutation.manual || !queued.manual {
@@ -425,7 +425,7 @@ extension AppModel {
     func markConversationRead(channelID: ChannelID) {
         guard !runsChatPerformanceBenchmark else { return }
         guard readState.unread(channelID: channelID),
-              let target = readState.entries[channelID]?.latestKnownMessageID
+              let target = readState[channelID]?.latestKnownMessageID
         else { return }
         preserveUnreadDividerIfNeeded(channelID: channelID)
         acknowledgementTasks[channelID]?.cancel()

@@ -613,7 +613,7 @@ extension NativeTimelineRowLayout {
                     let region = NativeTimelineInviteLayout(reference: reference, index: index,
                         origin: CGPoint(x: contentX, y: verticalOffset + (hasRichContent ? InterfaceScale.metric(8) : 0)),
                         maximumWidth: inlineMediaMaximumWidth, model: model,
-                        isOwnMessage: message.author.id == model?.snapshot?.currentUser.id,
+                        isOwnMessage: message.author.id == model?.currentUser?.id,
                         integratesWithBubble: usesBubbles)
                     result.inviteRegions.append(region)
                     verticalOffset = region.frame.maxY
@@ -746,13 +746,11 @@ extension NativeTimelineRowLayout {
             if let snapshot = message.forwardedSnapshot,
                let reference = message.messageReference,
                let sourceChannelID = reference.channelID,
-               let sourceChannel = model?.snapshot?.channels.first(where: {
-                   $0.id == sourceChannelID
-               })
+               let sourceChannel = model?.messagePresentationChannelsByID[sourceChannelID]
             {
                 if hasRichContent { verticalOffset += InterfaceScale.metric(7) }
                 let sourceGuild = reference.guildID.flatMap { sourceGuildID in
-                    model?.snapshot?.guilds.first(where: { $0.id == sourceGuildID })
+                    model?.serverRailGuildsByID[sourceGuildID]
                 }
                 let sameGuild = message.guildID == reference.guildID
                 let sourceLabel = sameGuild

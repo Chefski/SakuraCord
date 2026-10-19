@@ -371,7 +371,7 @@ extension AppModel {
     private func acceptsLiveInboxMention(_ message: Message) -> Bool {
         !inbox.removedIDs.contains(message.id)
             && readState.isInboxMention(message, query: inbox.query)
-            && (inbox.query.guildID == nil || inbox.query.guildID == (message.guildID ?? readState.entries[message.channelID]?.guildID))
+            && (inbox.query.guildID == nil || inbox.query.guildID == (message.guildID ?? readState[message.channelID]?.guildID))
     }
 
     func reconcileInboxEligibility() {
@@ -380,7 +380,7 @@ extension AppModel {
         let eligible = Set(makeInboxUnreadGroups().map(\.id))
         inbox.groups.removeAll { !eligible.contains($0.id) }
         inbox.mentions.removeAll {
-            readState.entries[$0.channelID]?.isAccessible == false
+            readState[$0.channelID]?.isAccessible == false
         }
         publishInbox()
         if inbox.tab == .mentions, inbox.visibleMentions.isEmpty { loadMoreInbox() }
@@ -388,15 +388,15 @@ extension AppModel {
 
     func reconcileInboxReadState() {
         guard inbox.isPresented else { return }
-        for (id, group) in inbox.pendingReadGroups where readState.entries[id]?.pendingAcknowledgementID == nil {
-            if (readState.entries[id]?.lastAcknowledgedMessageID ?? MessageID(rawValue: 0)) < group.newestUnreadMessageID {
+        for (id, group) in inbox.pendingReadGroups where readState[id]?.pendingAcknowledgementID == nil {
+            if (readState[id]?.lastAcknowledgedMessageID ?? MessageID(rawValue: 0)) < group.newestUnreadMessageID {
                 restoreInboxGroup(group)
                 inbox.undoGroups.removeAll { $0.id == id }
             }
             inbox.pendingReadGroups[id] = nil
         }
         inbox.groups.removeAll { group in
-            !group.isEvents && (readState.entries[group.id]?.lastAcknowledgedMessageID ?? MessageID(rawValue: 0)) >= group.newestUnreadMessageID
+            !group.isEvents && (readState[group.id]?.lastAcknowledgedMessageID ?? MessageID(rawValue: 0)) >= group.newestUnreadMessageID
         }
         publishInbox()
     }
@@ -412,7 +412,7 @@ extension AppModel {
         let boundary = group.newestUnreadMessageID
         inbox.pendingReadGroups[channelID] = group
         let metadata = readState.acknowledgementMetadata(channelID: channelID)
-        let lastViewed = readState.entries[channelID]?.lastViewed
+        let lastViewed = readState[channelID]?.lastViewed
         acknowledgementTasks[channelID]?.cancel()
         acknowledgementTasks[channelID] = nil
         debouncedAcknowledgementTargets[channelID] = nil
@@ -421,7 +421,7 @@ extension AppModel {
             messageID: boundary, manual: false, mentionCount: nil,
             flags: metadata.flags, lastViewed: lastViewed
         ))
-        if readState.entries[channelID]?.isUnread != true {
+        if readState[channelID]?.isUnread != true {
             cancelNativeNotifications(channelID: channelID)
         }
         refreshUnreadPresentation()
@@ -436,7 +436,7 @@ extension AppModel {
             return
         }
         let metadata = readState.acknowledgementMetadata(channelID: group.id)
-        let lastViewed = readState.entries[group.id]?.lastViewed
+        let lastViewed = readState[group.id]?.lastViewed
         inbox.pendingReadGroups[group.id] = nil
         readState.markUnread(channelID: group.id, after: boundary, mentionCount: 0)
         enqueueAcknowledgement(channelID: group.id, mutation: ReadStateMutation(
