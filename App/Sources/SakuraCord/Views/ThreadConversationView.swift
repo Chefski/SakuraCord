@@ -252,9 +252,9 @@ private struct ThreadConversationComposer: View {
                 timeoutUntil: model.guildTimeoutUntil(in: thread.id, guildID: thread.guildID),
                 appearance: model.appearanceSettings.composerBarAppearance,
                 checkingMessage: "Checking thread permissions…",
-                // The locked-thread banner already explains why replies are unavailable.
-                readOnlyMessage: thread.isLocked
-                    ? nil : "You do not have permission to send messages in this thread."
+                // Like Discord, a locked thread keeps a disabled composer below
+                // the banner that explains why.
+                readOnlyMessage: "You do not have permission to send messages in this channel."
             ) {
                 ComposerView(
                     model: model,
