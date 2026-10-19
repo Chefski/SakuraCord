@@ -418,6 +418,16 @@ extension AccountReadStateModel {
         var mentionedChannelIDs: [ChannelID]
     }
 
+    nonisolated struct UnreadNavigationState: Equatable, Sendable {
+        var guildID: GuildID?
+        var parentID: ChannelID?
+        var kind: ChannelKindValue
+        var isAccessible: Bool
+        var isUnread: Bool
+        var hasMentions: Bool
+        var threadNotificationSettings: ThreadNotificationSettings?
+    }
+
     nonisolated struct Entry: Equatable, Sendable {
         var channelID: ChannelID
         var guildID: GuildID?
@@ -434,6 +444,18 @@ extension AccountReadStateModel {
         var threadNotificationSettings: ThreadNotificationSettings?
         var isAccessible: Bool
         var hasAuthoritativeReadState: Bool
+
+        var unreadNavigationState: UnreadNavigationState {
+            UnreadNavigationState(
+                guildID: guildID,
+                parentID: parentID,
+                kind: kind,
+                isAccessible: isAccessible,
+                isUnread: isUnread,
+                hasMentions: mentionCount > 0,
+                threadNotificationSettings: threadNotificationSettings
+            )
+        }
 
         var isUnread: Bool {
             guard let latestUnreadMessageID else { return false }
@@ -481,6 +503,7 @@ extension AccountReadStateModel {
         var accepted: Bool
         var mentionKind: MentionKind
         var shouldNotify: Bool
+        var requiresUnreadPresentationRefresh = false
     }
 
     struct AcknowledgementMetadata: Equatable, Sendable {

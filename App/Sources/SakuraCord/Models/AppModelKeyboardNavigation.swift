@@ -116,22 +116,22 @@ extension AppModel {
         }
         let guildIDs = serverRailPresentation.navigationGuildIDs
         let hiddenIDs = hiddenChannelIDs
-        let entries = readState.entries
         let channels = snapshot?.channels ?? []
-        let isCandidate: (AccountReadStateModel.Entry) -> Bool = { entry in
-            entry.channelID != selectedID && entry.isAccessible && entry.isUnread
-                && !hiddenIDs.contains(entry.channelID)
-                && (!mentionsOnly || entry.mentionCount > 0)
+        let isCandidate: (ChannelID) -> Bool = { channelID in
+            guard let entry = self.readState[unread: channelID] else { return false }
+            return channelID != selectedID && entry.isAccessible && entry.isUnread
+                && !hiddenIDs.contains(channelID)
+                && (!mentionsOnly || entry.hasMentions)
                 && (entry.guildID.map { guildIDs.contains($0) } ?? true)
         }
         let isDestination: (Channel) -> Bool = { channel in
-            guard let entry = entries[channel.id], isCandidate(entry),
+            guard isCandidate(channel.id),
                   channel.guildID.map({ guildIDs.contains($0) }) ?? true
             else { return false }
             return self.readState.unread(channelID: channel.id)
         }
         for thread in snapshot?.activeJoinedThreads ?? [] {
-            guard let entry = entries[thread.id], isCandidate(entry),
+            guard isCandidate(thread.id),
                   readState.unread(channelID: thread.id),
                   let parent = channels.first(where: { $0.id == thread.parentID }),
                   !hiddenIDs.contains(parent.id) else { continue }
@@ -154,9 +154,7 @@ extension AppModel {
         {
             return true
         }
-        let candidateIndex = entries.values.contains(where: isCandidate)
-            ? channels.firstIndex(where: isDestination)
-            : nil
+        let candidateIndex = channels.firstIndex(where: isDestination)
         if mentionsOnly {
             shortcutMentionNavigationCandidateIndex = candidateIndex
         } else {

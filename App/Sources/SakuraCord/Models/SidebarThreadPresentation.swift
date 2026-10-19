@@ -166,7 +166,7 @@ extension AppModel {
     private func sidebarThreadCandidate(
         _ thread: MessageThreadSummary
     ) -> SidebarThreadPolicy.Candidate {
-        let entry = readState.entries[thread.id]
+        let entry = readState[thread.id]
         let latestMessageID = [entry?.latestKnownMessageID, thread.lastMessageID]
             .compactMap(\.self).max()
         return SidebarThreadPolicy.Candidate(

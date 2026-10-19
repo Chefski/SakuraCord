@@ -52,7 +52,7 @@ extension AppModel {
                 errorMessage = "Conversations could not be marked as read.\n\n\(error.localizedDescription)"
             }
             guard let self, isCurrentAccountSession(session), generation == acknowledgementGeneration else { return }
-            for target in targets where readState.entries[target.channelID]?.isUnread == false {
+            for target in targets where readState[target.channelID]?.isUnread == false {
                 cancelNativeNotifications(channelID: target.channelID)
             }
             isMarkingAllServersRead = false

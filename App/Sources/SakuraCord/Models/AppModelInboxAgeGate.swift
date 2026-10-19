@@ -6,7 +6,7 @@ extension AppModel {
         let restricted = Set(inbox.mentions.filter { message in
             inboxRequiresAgeAgreement(
                 channelID: message.channelID,
-                guildID: message.guildID ?? readState.entries[message.channelID]?.guildID
+                guildID: message.guildID ?? readState[message.channelID]?.guildID
             )
         }.map(\.id))
         let blocked = Set(inbox.mentions.filter {
@@ -19,7 +19,7 @@ extension AppModel {
     func inboxRequiresAgeAgreement(channelID: ChannelID, guildID: GuildID?) -> Bool {
         guard let guildID else { return false }
         let channel = snapshot?.channels.first { $0.id == channelID }
-        let parentID = inbox.threads[channelID]?.parentID ?? readState.entries[channelID]?.parentID
+        let parentID = inbox.threads[channelID]?.parentID ?? readState[channelID]?.parentID
         let parent = parentID.flatMap { id in snapshot?.channels.first { $0.id == id } }
         let restricted = snapshot?.guilds.first { $0.id == guildID }?.isAgeRestricted == true
             || (channel ?? parent)?.isAgeRestricted == true

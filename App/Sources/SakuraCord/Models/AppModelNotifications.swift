@@ -51,7 +51,7 @@ extension AppModel {
     }
 
     func isForumPostUnread(_ post: ForumPost) -> Bool {
-        readState.entries[post.id]?.isUnread ?? post.isUnread
+        readState[post.id]?.isUnread ?? post.isUnread
     }
 
     func isForumNotificationMutationPending(_ postID: ChannelID) -> Bool {
