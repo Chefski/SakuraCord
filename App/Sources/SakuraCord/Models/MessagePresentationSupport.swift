@@ -316,9 +316,16 @@ nonisolated enum MessageSearchPresentation {
         channelsByID: [ChannelID: Channel]
     ) -> [MessageRowPresentation] {
         var previousChannelID: ChannelID?
+        // A server search returns the threads its results came from.
+        let threadIDs = Set(page.channels.lazy.filter {
+            $0.kind != .directMessage && $0.kind != .groupDirectMessage
+        }.map(\.id))
         return page.results.map { result in
             let message = result.hit
             let channel = channelsByID[message.channelID]
+            let isThread = threadIDs.contains(message.channelID)
+            let isForumPost = isThread
+                && channel?.categoryID.flatMap { channelsByID[$0]?.kind } == .forum
             let contextMessagesByID = Dictionary(
                 uniqueKeysWithValues: result.messages.map { ($0.id, $0) }
             )
@@ -338,7 +345,8 @@ nonisolated enum MessageSearchPresentation {
                     channelID: message.channelID,
                     sectionTitle: sectionTitle(for: channel, message: message),
                     sectionSubtitle: channel?.category,
-                    systemImage: sectionSystemImage(for: channel),
+                    systemImage: isForumPost ? "bubble.left.and.bubble.right"
+                        : isThread ? SakuraCordSystemSymbol.thread : sectionSystemImage(for: channel),
                     showsSectionHeader: showsSectionHeader
                 )
             )
@@ -352,12 +360,8 @@ nonisolated enum MessageSearchPresentation {
         guard let channel else {
             return "Channel \(message.channelID.description.suffix(6))"
         }
-        switch channel.kind {
-        case .directMessage, .groupDirectMessage:
-            return channel.name
-        default:
-            return "# \(channel.name)"
-        }
+        // The section icon identifies the kind of conversation.
+        return channel.name
     }
 
     private static func sectionSystemImage(for channel: Channel?) -> String {
