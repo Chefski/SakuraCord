@@ -652,6 +652,17 @@ private struct ChatRootView: View {
                     }
                 }
 
+                if let thread = model.openThread {
+                    if ForumPostFollowToolbarButton.isOffered(model: model, thread: thread) {
+                        ToolbarItem(placement: .primaryAction) {
+                            ForumPostFollowToolbarButton(model: model, thread: thread, surface: .forumPostHeader)
+                        }
+                    }
+                    ToolbarItem(placement: .primaryAction) {
+                        ThreadActionsToolbarMenu(model: model, thread: thread, surface: .sidePane)
+                    }
+                }
+
                 if capabilities.canOpenFullWidth, let thread = model.openThread {
                     ToolbarItem(placement: .primaryAction) {
                         Button("Open in Full View", systemImage: "arrow.up.left.and.arrow.down.right") {
@@ -737,6 +748,18 @@ private struct ChatRootView: View {
                     .help("Open voice channel chat")
                 }
                 .visibilityPriority(.high)
+            }
+
+            if model.isThreadFullWidth, let thread = model.openThread {
+                if ForumPostFollowToolbarButton.isOffered(model: model, thread: thread) {
+                    ToolbarItem {
+                        ForumPostFollowToolbarButton(model: model, thread: thread, surface: .forumPostHeader)
+                    }
+                }
+                ToolbarItem {
+                    ThreadActionsToolbarMenu(model: model, thread: thread, surface: .fullView)
+                }
+                ToolbarSpacer(.fixed)
             }
 
             if let pinsChannelID = toolbarPinsChannelID {
