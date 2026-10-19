@@ -102,6 +102,9 @@ extension AppModel {
                 try await account.provider.deleteForumPost(ForumPost(thread: thread))
                 guard model.isCurrentAccountSession(account) else { return }
                 model.consumeThreadDeleted(channelID: thread.id)
+                // A catalogue update published while the post was still open
+                // may have kept its card; the deletion is confirmed now.
+                model.removeForumPost(thread.id)
             } catch {
                 guard model.isCurrentAccountSession(account) else { return }
                 model.errorMessage = error.localizedDescription
