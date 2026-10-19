@@ -573,10 +573,12 @@ extension AppModel {
         if message.channelID == selectedChannelID || message.channelID == openThread?.id {
             preserveUnreadDividerIfNeeded(channelID: message.channelID)
         }
-        if isFlushingCreatedMessageBatch {
-            batchedUnreadPresentationNeedsRefresh = true
-        } else {
-            refreshUnreadPresentation()
+        if disposition.requiresUnreadPresentationRefresh {
+            if isFlushingCreatedMessageBatch {
+                batchedUnreadPresentationNeedsRefresh = true
+            } else {
+                refreshUnreadPresentation()
+            }
         }
         if disposition.shouldNotify {
             deliverNativeNotification(

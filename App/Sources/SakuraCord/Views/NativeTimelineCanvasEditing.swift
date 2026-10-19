@@ -281,7 +281,7 @@ extension NativeTimelineCanvasView {
         model: AppModel,
         actions: NativeTimelineRowActions
     ) {
-        let canEdit = row.message.author.id == model.snapshot?.currentUser.id
+        let canEdit = row.message.author.id == model.currentUser?.id
             && !row.message.hasPoll
             && !row.message.flags.contains(.voiceMessage)
             && model.guildTimeoutUntil(in: row.message.channelID, guildID: row.message.guildID) == nil
@@ -959,7 +959,7 @@ extension NativeTimelineCanvasView {
     @discardableResult
     func beginEditingCurrentUserMessage(_ messageID: MessageID) -> Bool {
         guard editingMessageID == nil,
-              let currentUserID = model?.snapshot?.currentUser.id,
+              let currentUserID = model?.currentUser?.id,
               let index = items.firstIndex(where: {
                   $0.messageID == messageID
               }),

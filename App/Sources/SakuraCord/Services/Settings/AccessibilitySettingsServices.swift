@@ -180,7 +180,7 @@ extension AppModel {
     }
 
     var cosmeticPolicy: ProfileCosmeticPolicy {
-        ProfileCosmeticPolicy(settings: accessibilitySettings, currentUserID: snapshot?.currentUser.id)
+        ProfileCosmeticPolicy(settings: accessibilitySettings, currentUserID: currentUser?.id)
     }
 
     func applyAccessibilitySettings(

@@ -320,6 +320,30 @@ extension AppModel {
         guildID: GuildID?,
         threadsByParentID: [ChannelID: [SidebarThreadRow]]? = nil
     ) -> [ChannelGroup] {
+        let groups = channelSelectionGroups(groups, guildID: guildID)
+        guard let guildID, presentedGuildChannelSettings(in: guildID).hideMutedChannels else { return groups }
+        let threads = threadsByParentID
+            ?? sidebarThreadLayout(guildID: guildID, channelGroups: groups, now: .now).threadsByParentID
+        let activeChannelID = guildWorkspacePage == nil ? selectedChannelID : nil
+        return groups.compactMap { group -> ChannelGroup? in
+            var group = group
+            group.channels.removeAll { channel in
+                let isFocused = channel.id == activeChannelID || channel.id == activeVoiceChannel?.id
+                    || (isThreadFullWidth && openThread?.parentID == channel.id)
+                // Discord keeps focused channels, mentions and visible joined
+                // threads discoverable. A server/category mute is not a direct
+                // channel mute and must not hide all of its children here.
+                return readState.isChannelMuted(channel) && !isFocused && channel.mentionCount == 0
+                    && threads[channel.id, default: []].isEmpty
+            }
+            return group.channels.isEmpty ? nil : group
+        }
+    }
+
+    func channelSelectionGroups(
+        _ groups: [ChannelGroup],
+        guildID: GuildID?
+    ) -> [ChannelGroup] {
         guard let guildID else { return groups }
         let guide = onboarding.guides[guildID]?.configuration
         let resources = guide?.enabled == true ? Set(guide?.resourceChannels.map(\.channelID) ?? []) : []
@@ -327,9 +351,6 @@ extension AppModel {
         let filtersSelection = !showsAllChannels(in: guildID)
         let hasGuide = filtersSelection && hasGuildGuide(in: guildID)
         let activeChannelID = guildWorkspacePage == nil ? selectedChannelID : nil
-        let threads = settings.hideMutedChannels
-            ? threadsByParentID ?? sidebarThreadLayout(guildID: guildID, channelGroups: groups, now: .now).threadsByParentID
-            : [:]
         return groups.compactMap { group -> ChannelGroup? in
             var group = group
             group.channels.removeAll { channel in
@@ -342,12 +363,7 @@ extension AppModel {
                        !(group.categoryID.map { GuildChannelSelection.isSelected($0, settings: settings) } ?? false),
                        !isFocused, channel.mentionCount == 0 { return true }
                 }
-                // Discord keeps focused channels, mentions and visible joined
-                // threads discoverable. A server/category mute is not a direct
-                // channel mute and must not hide all of its children here.
-                return settings.hideMutedChannels && readState.isChannelMuted(channel)
-                    && !isFocused && channel.mentionCount == 0
-                    && threads[channel.id, default: []].isEmpty
+                return false
             }
             return group.channels.isEmpty ? nil : group
         }
