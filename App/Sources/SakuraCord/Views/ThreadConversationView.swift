@@ -438,7 +438,9 @@ private struct ThreadMessageTimelineView: View {
                 hasUnreadReplies: unread.summary != nil,
                 isDetachedFromNewest: model.isThreadWindowAwayFromNewest,
                 messageCount: model.threadMessages.count
-            ), hasEstablishedInitialPosition || model.isThreadWindowAwayFromNewest {
+            ), hasEstablishedInitialPosition
+                || (model.isThreadWindowAwayFromNewest && model.hasCompletedInitialThreadLoad)
+            {
                 TimelineNewestButton(
                     title: unread.summary != nil ? "New replies" : "Scroll to bottom",
                     hasUnread: unread.summary != nil,
