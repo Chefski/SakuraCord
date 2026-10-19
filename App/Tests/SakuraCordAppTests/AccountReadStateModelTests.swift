@@ -1554,6 +1554,23 @@ func `read state completion releases a held backlog without another geometry cal
 }
 
 @MainActor
+@Test func `local send releases a held backlog like scrolling to the newest message`() async throws {
+    let provider = MockChatProvider()
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    let channelID = ChannelID(rawValue: 210)
+    model.selectedChannelID = channelID
+    #expect(await until { !model.isLoadingMessages && model.selectedChannelID == channelID })
+    model.reportMainWindowActive(true)
+    makeLowerBoundBacklog(in: model, channelID: channelID)
+    model.reportTimelineInitialPosition(channelID: channelID, hasReachedReadBoundary: true)
+    #expect(model.readState.holdsAutomaticAcknowledgement(channelID))
+
+    #expect(model.advanceTimelineForLocalSend(channelID: channelID))
+    #expect(!model.readState.holdsAutomaticAcknowledgement(channelID))
+}
+
+@MainActor
 @Test func `local send scrolls once and confirmation leaves unseen messages unread`() async throws {
     let provider = MockChatProvider()
     let model = AppModel(

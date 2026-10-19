@@ -85,6 +85,9 @@ extension AppModel {
         guard channelID == selectedChannelID || channelID == openThread?.id,
               !(channelID == selectedChannelID && hasMoreLaterMessages)
         else { return false }
+        // Sending is an explicit move to the newest message, so it releases a
+        // held backlog the way scrolling toward the newest message does.
+        reportTimelineScrollTowardNewest(channelID: channelID)
         requestNewestMessagePresentation(channelID: channelID)
         return true
     }
