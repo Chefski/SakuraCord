@@ -256,6 +256,13 @@ nonisolated enum SystemMessagePresentation {
                 .emphasized(recipient, action: recipientUser.map { .profile($0.id) }),
                 .secondary(" from the group."),
             ]
+        case .channelNameChange where message.guildID != nil:
+            // A renamed thread or forum post, worded as the first-party client does.
+            return [
+                actorRun(message),
+                .secondary(" changed the channel name: "),
+                .emphasized(message.content),
+            ]
         case .channelNameChange:
             let editGroup = TextRun.link("Edit Group", action: .editGroup(message.channelID))
             if message.content.isEmpty {
