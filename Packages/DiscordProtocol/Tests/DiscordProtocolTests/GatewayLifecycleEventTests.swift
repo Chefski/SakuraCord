@@ -1,6 +1,7 @@
 @testable import DiscordProtocol
 import Foundation
 import SakuraCordModels
+import Synchronization
 import Testing
 
 @Suite(.serialized)
@@ -642,7 +643,7 @@ private actor GatewayLifecycleCredentialStore: CredentialStore {
 }
 
 private final class GatewayDispatchCountingURLProtocol: URLProtocol, @unchecked Sendable {
-    nonisolated(unsafe) static var requestCount = 0
+    static let requestCount = Mutex(0)
 
     override static func canInit(with request: URLRequest) -> Bool { true }
 
@@ -651,7 +652,7 @@ private final class GatewayDispatchCountingURLProtocol: URLProtocol, @unchecked 
     }
 
     override func startLoading() {
-        Self.requestCount += 1
+        Self.requestCount.withLock { $0 += 1 }
         client?.urlProtocol(
             self,
             didFailWithError: URLError(.dataNotAllowed)
@@ -725,8 +726,44 @@ extension GatewayLifecycleEventTests {
         #expect(publishedTimeouts == [expiry, nil, expiry])
     }
 
+    @Test func `dispatch reconciliation sends no HTTP requests`() async {
+        GatewayDispatchCountingURLProtocol.requestCount.withLock { $0 = 0 }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [GatewayDispatchCountingURLProtocol.self]
+        let provider = makeProvider(session: URLSession(configuration: configuration))
+        let member = user(id: "2", username: "added", globalName: "Added")
+        let dispatches: [(name: String, data: JSONValue)] = [
+            ("READY", .object(["user": user(id: "1", username: "current", globalName: "Current"), "guilds": .array([])])),
+            ("GUILD_CREATE", guildCreatePayload()),
+            ("CHANNEL_CREATE", channel(id: "203", type: 0, name: "created")),
+            ("CHANNEL_UPDATE", channel(id: "200", type: 0, name: "renamed")),
+            ("GUILD_ROLE_CREATE", .object([
+                "guild_id": .string("100"), "role": role(id: "102", name: "New", position: 1, hoist: true),
+            ])),
+            ("GUILD_MEMBER_ADD", .object(["guild_id": .string("100"), "user": member, "roles": .array([.string("102")])])),
+            ("GUILD_MEMBER_UPDATE", .object([
+                "guild_id": .string("100"), "user": member, "roles": .array([.string("101")]),
+            ])),
+            ("GUILD_MEMBERS_CHUNK", .object([
+                "guild_id": .string("100"), "members": .array([.object(["user": member, "roles": .array([])])]),
+                "chunk_index": .number(0), "chunk_count": .number(1),
+            ])),
+            ("GUILD_MEMBER_REMOVE", .object(["guild_id": .string("100"), "user": member])),
+            ("GUILD_ROLE_DELETE", .object(["guild_id": .string("100"), "role_id": .string("102")])),
+            ("USER_UPDATE", user(id: "1", username: "current", globalName: "Renamed")),
+            ("GUILD_SCHEDULED_EVENT_UPDATE", .object(["id": .string("900"), "guild_id": .string("100")])),
+            ("GUILD_DELETE", .object(["id": .string("100")])),
+        ]
+
+        for dispatch in dispatches {
+            await provider.receiveGatewayDispatchForTesting(name: dispatch.name, data: dispatch.data)
+        }
+
+        #expect(GatewayDispatchCountingURLProtocol.requestCount.withLock { $0 } == 0)
+    }
+
     @Test func `timeout updates block sends locally and respect omission clear and expiry`() async throws {
-        GatewayDispatchCountingURLProtocol.requestCount = 0
+        GatewayDispatchCountingURLProtocol.requestCount.withLock { $0 = 0 }
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [GatewayDispatchCountingURLProtocol.self]
         let provider = makeProvider(session: URLSession(configuration: configuration))
@@ -780,7 +817,7 @@ extension GatewayLifecycleEventTests {
                 path: "/channels/250/messages/350/reactions/%F0%9F%91%8D/@me", method: "PUT", body: nil
             )
         }
-        #expect(GatewayDispatchCountingURLProtocol.requestCount == 0)
+        #expect(GatewayDispatchCountingURLProtocol.requestCount.withLock { $0 } == 0)
         // A timeout must not block acknowledging, deleting or clearing a poll vote.
         try await provider.requireGuildCommunicationForRequest(path: "/channels/200/messages/300/ack", method: "POST", body: nil)
         try await provider.requireGuildCommunicationForRequest(path: "/channels/200/messages/300", method: "DELETE", body: nil)
