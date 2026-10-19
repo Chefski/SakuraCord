@@ -792,15 +792,41 @@ extension AppModel {
     /// edits to that message; a deleted message leaves the quote unavailable.
     func refreshThreadStarterQuotes(messageID: MessageID, with message: Message?) {
         let preview = message.map(MessageReplyPreview.init(message:))
-        func quotes(_ candidate: Message) -> Bool {
-            candidate.type == .threadStarter && candidate.messageReference?.messageID == messageID
-                && candidate.replyPreview != preview
+        updateThreadStarterQuotes(quoting: messageID) { _ in preview }
+    }
+
+    /// Refreshes starter quotes after a partial edit. When the original
+    /// message is no longer retained, only the patch's content is known.
+    func refreshThreadStarterQuotes(after update: MessageUpdate, patched: Message?) {
+        if let patched {
+            refreshThreadStarterQuotes(messageID: patched.id, with: patched)
+            return
         }
-        if let index = threadMessages.firstIndex(where: quotes) {
-            threadMessages[index].replyPreview = preview
+        guard let content = update.content else { return }
+        updateThreadStarterQuotes(quoting: update.messageID) { preview in
+            guard var preview else { return nil }
+            preview.content = content
+            return preview
+        }
+    }
+
+    private func updateThreadStarterQuotes(
+        quoting messageID: MessageID,
+        _ transform: (MessageReplyPreview?) -> MessageReplyPreview?
+    ) {
+        func isQuote(_ candidate: Message) -> Bool {
+            candidate.type == .threadStarter && candidate.messageReference?.messageID == messageID
+        }
+        if let index = threadMessages.firstIndex(where: isQuote) {
+            let preview = transform(threadMessages[index].replyPreview)
+            if preview != threadMessages[index].replyPreview {
+                threadMessages[index].replyPreview = preview
+            }
         }
         for (channelID, cached) in messageCache {
-            guard let index = cached.firstIndex(where: quotes) else { continue }
+            guard let index = cached.firstIndex(where: isQuote) else { continue }
+            let preview = transform(cached[index].replyPreview)
+            guard preview != cached[index].replyPreview else { continue }
             messageCache[channelID]?[index].replyPreview = preview
             messageRowCache[channelID] = nil
             messageRowCacheOrder.removeAll { $0 == channelID }
