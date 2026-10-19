@@ -498,7 +498,6 @@ extension AppModel {
     }
 
     var messageSearchUsers: [User] {
-        _ = forwardSearchSourceRevision
         var seen = Set<UserID>()
         // Discord's queryAllUsers path reads UserStore insertion order. This
         // projection contains every live Gateway user DTO, including broad

@@ -1353,12 +1353,8 @@ extension AppModel {
         relationships = snapshot?.relationships ?? []
         blockedOrIgnoredUserIDs = snapshot?.blockedOrIgnoredUserIDs ?? []
         friendUserIDs = snapshot?.friendUserIDs ?? []
-        messageSearchSourceUsers = snapshot?.messageSearchUsers ?? []
+        refreshSearchSnapshotPresentation()
         messageSearchUserBoosterChannelIDs = snapshot?.messageSearchUserBoosterChannelIDs ?? []
-        userSearchAliasesByUserID = snapshot?.userSearchAliasesByUserID ?? [:]
-        quickSwitcherGuildMemberUserIDs = snapshot?.quickSwitcherGuildMemberUserIDs ?? [:]
-        quickSwitcherJoinedGuildMemberUserIDs = snapshot?.quickSwitcherJoinedGuildMemberUserIDs ?? [:]
-        quickSwitcherGuildMemberAliases = snapshot?.quickSwitcherGuildMemberAliases ?? [:]
         messagePresentationChannelsByID = Dictionary((snapshot?.channels ?? []).map { channel in
             var channel = channel
             channel.unreadCount = 0
@@ -1380,6 +1376,14 @@ extension AppModel {
         if previous?.currentUser != snapshot?.currentUser {
             refreshVoiceSidebarPresentation()
         }
+    }
+
+    func refreshSearchSnapshotPresentation() {
+        messageSearchSourceUsers = snapshotStorage?.messageSearchUsers ?? []
+        userSearchAliasesByUserID = snapshotStorage?.userSearchAliasesByUserID ?? [:]
+        quickSwitcherGuildMemberUserIDs = snapshotStorage?.quickSwitcherGuildMemberUserIDs ?? [:]
+        quickSwitcherJoinedGuildMemberUserIDs = snapshotStorage?.quickSwitcherJoinedGuildMemberUserIDs ?? [:]
+        quickSwitcherGuildMemberAliases = snapshotStorage?.quickSwitcherGuildMemberAliases ?? [:]
     }
 
     private func refreshSelectedGuildPresentation() {

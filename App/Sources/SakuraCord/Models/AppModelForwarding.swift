@@ -44,6 +44,7 @@ extension AppModel {
         guard var value = snapshotStorage else { return }
         update(&value)
         snapshotStorage = value
+        refreshSearchSnapshotPresentation()
         forwardSearchSourceRevision &+= 1
     }
 
