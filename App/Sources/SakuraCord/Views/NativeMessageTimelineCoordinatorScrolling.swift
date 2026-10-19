@@ -1841,7 +1841,12 @@ extension NativeMessageTimelineCoordinator {
                     .hasReachedEmptyTimelineBoundary(
                         hasMoreEarlier: parent.hasMoreMessages,
                         isLoadingEarlier: parent.isLoadingEarlier,
-                        isLoadingLater: parent.isLoadingLater
+                        isLoadingLater: parent.isLoadingLater,
+                        isAtDocumentBottom:
+                            NativeMessageTimelineLayoutPolicy.isAtTrueBottom(
+                                documentHeight: scrollableDocumentHeight,
+                                visibleMaximumY: visibleRect.maxY
+                            )
                     )
             }
             guard rowOrigins.indices.contains(newestIndex),
