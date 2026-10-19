@@ -111,7 +111,7 @@ extension AppModel {
                 return endTime
             }.sorted() ?? []
         }
-        let joined = (snapshot?.activeJoinedThreads ?? []).filter {
+        let joined = activeJoinedThreads.filter {
             $0.guildID == guildID && !$0.isArchived
         }
         let open = (isThreadFullWidth ? openThread : nil).flatMap { thread -> MessageThreadSummary? in

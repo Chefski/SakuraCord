@@ -11,7 +11,8 @@ extension AppModel {
         // must not build an account-wide channel set on every menu update.
         conversationNavigationHistory.destination(direction: direction) { id in
             !hiddenChannelIDs.contains(id)
-                && (messagePresentationChannel(id) != nil || sidebarThread(id) != nil)
+                && (channelIDs.contains(id) || visibleChannels.contains { $0.id == id }
+                    || openThread?.id == id || knownThreadIDs.contains(id))
         }
     }
 
@@ -116,7 +117,7 @@ extension AppModel {
         }
         let guildIDs = serverRailPresentation.navigationGuildIDs
         let hiddenIDs = hiddenChannelIDs
-        let channels = snapshot?.channels ?? []
+        let channels = channelIDs
         let isCandidate: (ChannelID) -> Bool = { channelID in
             guard let entry = self.readState[unread: channelID] else { return false }
             return channelID != selectedID && entry.isAccessible && entry.isUnread
@@ -124,17 +125,15 @@ extension AppModel {
                 && (!mentionsOnly || entry.hasMentions)
                 && (entry.guildID.map { guildIDs.contains($0) } ?? true)
         }
-        let isDestination: (Channel) -> Bool = { channel in
-            guard isCandidate(channel.id),
-                  channel.guildID.map({ guildIDs.contains($0) }) ?? true
-            else { return false }
-            return self.readState.unread(channelID: channel.id)
+        let isDestination: (ChannelID) -> Bool = { channelID in
+            isCandidate(channelID) && self.readState.unread(channelID: channelID)
         }
-        for thread in snapshot?.activeJoinedThreads ?? [] {
+        for thread in activeJoinedThreads {
             guard isCandidate(thread.id),
                   readState.unread(channelID: thread.id),
-                  let parent = channels.first(where: { $0.id == thread.parentID }),
-                  !hiddenIDs.contains(parent.id) else { continue }
+                  let parentID = thread.parentID, channels.contains(parentID),
+                  let parent = readState.channelByID[parentID],
+                  !hiddenIDs.contains(parentID) else { continue }
             if thread.guildID != nil, !thread.isArchived, [.text, .announcement, .forum].contains(parent.kind) {
                 return true
             }

@@ -147,6 +147,10 @@ final class AppModel {
     // Keep workspace chrome independent of unrelated channel and member changes.
     private(set) var currentUser: User?
     private(set) var selectedGuild: Guild?
+    private(set) var channelIDs: [ChannelID] = []
+    private(set) var activeJoinedThreads: [MessageThreadSummary] = []
+    private(set) var knownThreadIDs: Set<ChannelID> = []
+    private(set) var guildIDsWithResourceChannels: Set<GuildID> = []
 
     @ObservationIgnored let serverRailPresentation =
         ServerRailPresentationStore()
@@ -1338,6 +1342,12 @@ extension AppModel {
     private func refreshSnapshotPresentation(replacing previous: BootstrapSnapshot?) {
         snapshotSourceRevision &+= 1
         currentUser = snapshot?.currentUser
+        channelIDs = snapshot?.channels.map(\.id) ?? []
+        activeJoinedThreads = snapshot?.activeJoinedThreads ?? []
+        knownThreadIDs = Set((snapshot?.threads ?? []).map(\.id)).union(activeJoinedThreads.map(\.id))
+        guildIDsWithResourceChannels = Set((snapshot?.channels ?? []).compactMap { channel in
+            channel.flags & (1 << 7) != 0 ? channel.guildID : nil
+        })
         refreshServerRailDirectMessages(replacing: previous)
         refreshSelectedGuildPresentation()
         invalidateChangedSystemMessageRecipients(replacing: previous)

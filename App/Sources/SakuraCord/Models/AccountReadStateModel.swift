@@ -148,7 +148,7 @@ final class AccountReadStateModel {
     private(set) var readStateVersion: Int?
     private(set) var remoteReadStateOrder: [ChannelID] = []
     private var remoteReadStateOrderIDs: Set<ChannelID> = []
-    private var channelByID: [ChannelID: Channel] = [:]
+    private(set) var channelByID: [ChannelID: Channel] = [:]
     private var defaultNotificationLevelByGuild: [GuildID: MessageNotificationLevel] = [:]
     private var currentUserRoleIDsByGuild: [GuildID: Set<RoleID>] = [:]
     private var pendingRollbacks: [ChannelID: [MessageID: PendingRollback]] = [:]
