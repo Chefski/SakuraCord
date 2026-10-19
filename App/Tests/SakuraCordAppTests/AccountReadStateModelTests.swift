@@ -829,10 +829,75 @@ struct AccountReadStateModelTests {
         #expect(model.bulkAcknowledgements(for: categoryID, guildID: guildID).isEmpty)
     }
 
+    enum MuteScenario: CaseIterable {
+        case guildMute, channelMute, expiredChannelMute, categoryMute, expiredCategoryMute
+        case suppressedEveryone, suppressedRole, mutedDirectMessage
+    }
+
+    @Test(arguments: MuteScenario.allCases)
+    func `active mutes and suppressions silence alerts while expired mutes do not`(
+        scenario: MuteScenario
+    ) {
+        let roleID = RoleID(rawValue: 77)
+        let dmID = ChannelID(rawValue: 301)
+        var settings = GuildNotificationSettings(guildID: guildID, messageNotifications: .allMessages)
+        var incoming = message(id: 11)
+        var alerts = false
+        var badges = 0
+        switch scenario {
+        case .guildMute:
+            settings.isMuted = true
+            incoming = message(id: 11, mentionedUsers: [currentUser])
+            badges = 1
+        case .channelMute:
+            settings.channelOverrides = [ChannelNotificationOverride(channelID: channelID, isMuted: true)]
+        case .expiredChannelMute:
+            settings.channelOverrides = [ChannelNotificationOverride(
+                channelID: channelID, isMuted: true,
+                muteConfiguration: DiscordMuteConfiguration(endTime: .distantPast)
+            )]
+            alerts = true
+        case .categoryMute, .expiredCategoryMute:
+            settings.messageNotifications = .onlyMentions
+            settings.channelOverrides = [ChannelNotificationOverride(
+                channelID: categoryID, messageNotifications: .allMessages, isMuted: true,
+                muteConfiguration: DiscordMuteConfiguration(
+                    endTime: scenario == .categoryMute ? .distantFuture : .distantPast
+                )
+            )]
+            alerts = scenario == .expiredCategoryMute
+        case .suppressedEveryone:
+            settings.messageNotifications = .onlyMentions
+            settings.suppressEveryone = true
+            incoming = message(id: 11, mentionsEveryone: true)
+        case .suppressedRole:
+            settings.messageNotifications = .onlyMentions
+            settings.suppressRoles = true
+            incoming = message(id: 11, mentionedRoles: [roleID])
+        case .mutedDirectMessage:
+            settings = GuildNotificationSettings(
+                guildID: nil,
+                channelOverrides: [ChannelNotificationOverride(channelID: dmID, isMuted: true)]
+            )
+            incoming = Message(
+                id: MessageID(rawValue: 11), channelID: dmID, author: sender,
+                content: "mention", mentionedUsers: [currentUser]
+            )
+            badges = 1
+        }
+        let model = makeModel(latest: 10, acknowledged: 10, settings: settings)
+        model.merge(channels: [Channel(id: dmID, guildID: nil, name: "DM", kind: .directMessage)])
+        model.updateCurrentUserRoles([roleID], guildID: guildID)
+
+        #expect(model.receive(incoming, currentUserID: currentUser.id).shouldNotify == alerts)
+        #expect(model.mentions(channelID: incoming.channelID) == badges)
+    }
+
     private func makeModel(
         latest: UInt64,
         acknowledged: UInt64,
-        mentions: Int = 0
+        mentions: Int = 0,
+        settings: GuildNotificationSettings? = nil
     ) -> AccountReadStateModel {
         let model = AccountReadStateModel()
         model.reset(accountID: "account")
@@ -862,7 +927,7 @@ struct AccountReadStateModelTests {
                     mentionCount: mentions
                 ),
             ],
-            notificationSettings: []
+            notificationSettings: settings.map { [$0] } ?? []
         )
         return model
     }
