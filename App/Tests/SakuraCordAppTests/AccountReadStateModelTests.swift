@@ -1554,22 +1554,38 @@ func `read state completion releases a held backlog without another geometry cal
 }
 
 @MainActor
-@Test func `local send scrolls to newest once and confirmation does not scroll again`() async throws {
+@Test func `local send scrolls once and confirmation leaves unseen messages unread`() async throws {
     let provider = MockChatProvider()
-    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    let model = AppModel(
+        launchMode: .offlineTesting,
+        provider: provider,
+        readAcknowledgementTiming: .init(debounce: .milliseconds(10))
+    )
     await model.start()
     let channelID = ChannelID(rawValue: 210)
     model.selectedChannelID = channelID
     #expect(await until { !model.isLoadingMessages && model.selectedChannelID == channelID })
+    model.reportTimelinePosition(channelID: channelID, hasReachedReadBoundary: false)
+    let divider = try #require(model.unreadDividerMessageID(channelID: channelID))
     #expect(model.conversationNewestRequest == nil)
 
-    model.advanceTimelineForLocalSend(channelID: channelID)
+    #expect(model.advanceTimelineForLocalSend(channelID: channelID))
     let request = try #require(model.conversationNewestRequest)
     #expect(request.channelID == channelID)
     model.completeConversationNewestRequest(requestID: request.requestID)
 
-    model.completeConversationReadingAndAdvance(channelID: channelID, requestsScroll: false)
+    // The reader scrolled away while delivery was pending.
+    model.acknowledgeConfirmedLocalSend(channelID: channelID)
     #expect(model.conversationNewestRequest == nil)
+    #expect(model.isChannelUnread(channelID))
+    #expect(model.unreadDividerMessageID(channelID: channelID) == divider)
+
+    // An older page keeps the local row and loads nothing before delivery.
+    model.hasMoreLaterMessages = true
+    #expect(!model.advanceTimelineForLocalSend(channelID: channelID))
+    model.acknowledgeConfirmedLocalSend(channelID: channelID)
+    #expect(model.conversationNewestRequest == nil)
+    #expect(!model.isLoadingMessages)
 }
 
 @MainActor

@@ -327,14 +327,15 @@ extension AppModel {
             stickers: [presentedSticker]
         )
         appendOutgoingMessage(optimistic)
-        advanceTimelineForLocalSend(channelID: channelID)
+        let advancedLocally = advanceTimelineForLocalSend(channelID: channelID)
         composer.outbox.draftsByNonce[draft.nonce] = draft
         let didSend = await performOutgoingSend(draft, isRetry: false)
         if didSend {
-            completeConversationReadingAndAdvance(
-                channelID: channelID,
-                requestsScroll: false
-            )
+            if advancedLocally {
+                acknowledgeConfirmedLocalSend(channelID: channelID)
+            } else {
+                completeConversationReadingAndAdvance(channelID: channelID)
+            }
         }
         return didSend
     }

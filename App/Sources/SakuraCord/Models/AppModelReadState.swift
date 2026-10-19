@@ -77,24 +77,31 @@ extension AppModel {
 
     /// Jumps the timeline to the newest message as soon as a send from this
     /// client appends its local row, without waiting for Discord to confirm it.
-    func advanceTimelineForLocalSend(channelID: ChannelID) {
-        guard channelID == selectedChannelID || channelID == openThread?.id else { return }
-        if channelID == selectedChannelID, hasMoreLaterMessages {
-            let account = accountSession()
-            startAccountChildTask(account: account) { model, account in
-                _ = await model.loadNewestMessageWindow(account: account)
-            }
-            return
-        }
+    /// Returns false when the timeline shows an older page: reloading the
+    /// newest window now would replace the local row, so that case waits for
+    /// `completeConversationReadingAndAdvance` after delivery.
+    @discardableResult
+    func advanceTimelineForLocalSend(channelID: ChannelID) -> Bool {
+        guard channelID == selectedChannelID || channelID == openThread?.id,
+              !(channelID == selectedChannelID && hasMoreLaterMessages)
+        else { return false }
         requestNewestMessagePresentation(channelID: channelID)
+        return true
     }
 
-    /// Marks the conversation read and, unless `requestsScroll` is false
-    /// because the local send already scrolled, shows the newest message.
-    func completeConversationReadingAndAdvance(
-        channelID: ChannelID,
-        requestsScroll: Bool = true
-    ) {
+    /// Confirmation for a send that already scrolled the timeline. It neither
+    /// moves the viewport nor loads history, and acknowledges only when the
+    /// reader is at the read boundary, so messages that arrived out of view
+    /// stay unread.
+    func acknowledgeConfirmedLocalSend(channelID: ChannelID) {
+        guard channelID == selectedChannelID || channelID == openThread?.id,
+              readState.canAcknowledge(channelID)
+        else { return }
+        markConversationRead(channelID: channelID)
+        unreadDividerMessageIDs[channelID] = nil
+    }
+
+    func completeConversationReadingAndAdvance(channelID: ChannelID) {
         guard channelID == selectedChannelID || channelID == openThread?.id else { return }
         if channelID == selectedChannelID, hasMoreLaterMessages {
             let account = accountSession()
@@ -103,18 +110,13 @@ extension AppModel {
                       model.isCurrentAccountSession(account),
                       model.selectedChannelID == channelID
                 else { return }
-                model.completeConversationReadingAndAdvance(
-                    channelID: channelID,
-                    requestsScroll: requestsScroll
-                )
+                model.completeConversationReadingAndAdvance(channelID: channelID)
             }
             return
         }
         markConversationRead(channelID: channelID)
         unreadDividerMessageIDs[channelID] = nil
-        if requestsScroll {
-            requestNewestMessagePresentation(channelID: channelID)
-        }
+        requestNewestMessagePresentation(channelID: channelID)
     }
 
     func preserveUnreadDividerIfNeeded(channelID: ChannelID) {
