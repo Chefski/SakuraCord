@@ -107,3 +107,20 @@ private func thread(
     #expect(sections.otherActive.map(\.id.rawValue) == [7])
     #expect(sections.older.isEmpty)
 }
+
+@MainActor
+@Test func `responses keep live changes made while they were in flight`() {
+    let browser = ThreadBrowserState()
+    browser.present(parentID: ChannelID(rawValue: 7))
+    browser.receive(parentID: ChannelID(rawValue: 7), records: [thread(1, archived: false, daysAgo: 1)])
+    let since = browser.liveSequence
+
+    // While the request is in flight, thread 1 is renamed and thread 2 deleted.
+    browser.receive(parentID: ChannelID(rawValue: 7), records: [thread(1, name: "Renamed", archived: false, daysAgo: 1)])
+    browser.remove(threadID: ChannelID(rawValue: 2))
+
+    let response = [thread(1, archived: false, daysAgo: 1), thread(2, archived: false, daysAgo: 2), thread(3, daysAgo: 3)]
+    let reconciled = browser.reconciling(response, since: since)
+    #expect(reconciled.map(\.id.rawValue) == [1, 3])
+    #expect(reconciled.first?.thread.name == "Renamed")
+}

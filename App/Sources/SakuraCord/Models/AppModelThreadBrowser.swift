@@ -49,10 +49,11 @@ extension AppModel {
         else { return }
         threadBrowser.present(parentID: parentID)
         let generation = threadBrowser.generation
+        let since = threadBrowser.liveSequence
         threadBrowser.recordsTask = startAccountChildTask(account: accountSession()) { model, account in
             let active = await account.provider.activeThreads(in: parentID)
             guard !Task.isCancelled, model.threadBrowser.generation == generation else { return }
-            for post in active where model.threadBrowser.records[post.id] == nil {
+            for post in model.threadBrowser.reconciling(active, since: since) where model.threadBrowser.records[post.id] == nil {
                 model.threadBrowser.records[post.id] = post
             }
         }
@@ -76,6 +77,7 @@ extension AppModel {
         threadBrowser.isLoadingArchived = true
         threadBrowser.archivedErrorMessage = nil
         let generation = threadBrowser.generation
+        let since = threadBrowser.liveSequence
         threadBrowser.archivedTask = startAccountChildTask(account: accountSession()) { model, account in
             do {
                 let page = try await account.provider.threadBrowserPage(
@@ -83,11 +85,13 @@ extension AppModel {
                     query: ThreadBrowserQuery(scope: .archived(offset: offset))
                 )
                 guard !Task.isCancelled, model.threadBrowser.generation == generation else { return }
+                var reconciled = page
+                reconciled.posts = model.threadBrowser.reconciling(page.posts, since: since)
                 model.threadBrowser.listings[parentID, default: ThreadBrowserListing()]
-                    .append(page, requestedOffset: offset)
+                    .append(reconciled, requestedOffset: offset)
                 // Page records are as new as the provider's; a thread they show
                 // archived must leave the active sections.
-                for post in page.posts where model.threadBrowser.records[post.id] != nil {
+                for post in reconciled.posts where model.threadBrowser.records[post.id] != nil {
                     model.threadBrowser.records[post.id] = post
                 }
                 // A thread archived while the page was in flight may be absent
@@ -118,6 +122,7 @@ extension AppModel {
         }
         threadBrowser.search = ThreadBrowserSearch(query: query)
         let generation = threadBrowser.generation
+        let since = threadBrowser.liveSequence
         threadBrowser.searchTask = startAccountChildTask(account: accountSession()) { model, account in
             do {
                 let page = try await account.provider.threadBrowserPage(
@@ -127,11 +132,12 @@ extension AppModel {
                 guard !Task.isCancelled, model.threadBrowser.generation == generation,
                       model.threadBrowser.search?.query == query
                 else { return }
-                model.threadBrowser.search?.results = page.posts
+                let posts = model.threadBrowser.reconciling(page.posts, since: since)
+                model.threadBrowser.search?.results = posts
                 model.threadBrowser.search?.hasLoaded = true
                 // Results are as new as the provider's records; an active match
                 // the browser had not seen joins its sections.
-                for post in page.posts {
+                for post in posts {
                     model.threadBrowser.records[post.id] = post
                 }
                 let records = Array(model.threadBrowser.records.values)

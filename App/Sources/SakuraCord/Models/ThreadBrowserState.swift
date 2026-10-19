@@ -128,6 +128,14 @@ final class ThreadBrowserState {
     @ObservationIgnored var searchTask: Task<Void, Never>?
     @ObservationIgnored var recordsTask: Task<Void, Never>?
     @ObservationIgnored var generation: UInt64 = 0
+    /// Advances with every live change; a request records it when it begins.
+    @ObservationIgnored private(set) var liveSequence: UInt64 = 0
+    @ObservationIgnored private var liveChanges: [ChannelID: LiveChange] = [:]
+
+    private struct LiveChange {
+        var sequence: UInt64
+        var isDeleted: Bool
+    }
 
     var listing: ThreadBrowserListing? { parentID.flatMap { listings[$0] } }
 
@@ -156,6 +164,7 @@ final class ThreadBrowserState {
 
     /// Applies a parent's current thread records from the provider.
     func receive(parentID: ChannelID, records posts: [ForumPost]) {
+        recordLiveChanges(posts.map(\.id), isDeleted: false)
         listings[parentID]?.reconcile(with: posts)
         guard parentID == self.parentID else { return }
         records = Dictionary(posts.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest })
@@ -163,9 +172,27 @@ final class ThreadBrowserState {
     }
 
     func remove(threadID: ChannelID) {
+        recordLiveChanges([threadID], isDeleted: true)
         records[threadID] = nil
         for parentID in listings.keys { listings[parentID]?.remove(threadID) }
         search?.remove(threadID)
+    }
+
+    /// A response's records, corrected for live changes made after its request
+    /// began at `sequence`: a thread deleted since is dropped, and one changed
+    /// since keeps its current record.
+    func reconciling(_ posts: [ForumPost], since sequence: UInt64) -> [ForumPost] {
+        posts.compactMap { post in
+            guard let change = liveChanges[post.id], change.sequence > sequence else { return post }
+            return change.isDeleted ? nil : records[post.id] ?? post
+        }
+    }
+
+    private func recordLiveChanges(_ threadIDs: [ChannelID], isDeleted: Bool) {
+        liveSequence &+= 1
+        for threadID in threadIDs {
+            liveChanges[threadID] = LiveChange(sequence: liveSequence, isDeleted: isDeleted)
+        }
     }
 
     /// A new connection may have missed archive changes; reload on demand.
@@ -182,6 +209,7 @@ final class ThreadBrowserState {
         parentID = nil
         records = [:]
         listings = [:]
+        liveChanges = [:]
         searchText = ""
         search = nil
         archivedErrorMessage = nil
