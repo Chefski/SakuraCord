@@ -1373,6 +1373,31 @@ extension NativeMessageTimelineCoordinator {
             }
         }
 
+        /// Applies a change in the height the window toolbar covers, such
+        /// as entering or leaving full screen, without moving the reader.
+        /// The new top padding shifts every row, so the visible anchor is
+        /// captured first and restored afterwards, as a resize does.
+        func updateInsetsForToolbarObscuredHeightChange() {
+            guard let scrollView, !isApplyingUpdate,
+                  initialPositionConversation == parent.conversation
+            else {
+                updateInsets()
+                return
+            }
+            let wasNearBottom = lastReportedState?.isNearBottom ?? scrollState().isNearBottom
+            let anchor = wasNearBottom ? nil : visibleAnchor()
+            isApplyingUpdate = true
+            updateInsets()
+            if wasNearBottom {
+                scroll(toDocumentY: .greatestFiniteMagnitude, scrollView: scrollView)
+            } else if let anchor {
+                restore(anchor)
+            }
+            positionViewportCanvas()
+            isApplyingUpdate = false
+            reportScrollState(force: true)
+        }
+
         func updateInsets() {
             guard let scrollView, let canvas else { return }
             let viewportHeight = scrollView.contentView.bounds.height

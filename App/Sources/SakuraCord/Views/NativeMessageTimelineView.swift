@@ -380,7 +380,9 @@ extension NativeMessageTimelineCoordinator {
             }
             // The reader's own scrolling always wins over a jump's glide.
             scrollView.onScrollWheel = { [weak self] in self?.cancelGlide() }
-            scrollView.onToolbarObscuredHeightChange = { [weak self] in self?.updateInsets() }
+            scrollView.onToolbarObscuredHeightChange = { [weak self] in
+                self?.updateInsetsForToolbarObscuredHeightChange()
+            }
             scrollView.documentView = documentView
             scrollView.drawsBackground = false
             scrollView.borderType = .noBorder
