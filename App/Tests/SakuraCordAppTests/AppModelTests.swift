@@ -1748,6 +1748,14 @@ func `an open private thread a fresh READY omits is withheld from viewing until 
         initialPositionEstablished: true, windowIsActive: true, hasReachedReadBoundary: true
     )
     #expect(model.isConversationPresented(thread.id))
+    let newestMessageID = resolvable.firstMessage?.id
+    if !recoversThroughGateway {
+        // Its loaded window misses a message sent while disconnected, although
+        // a history boundary is cached.
+        #expect(await until { model.hasCompletedInitialThreadLoad })
+        model.threadMessages = []
+        #expect(model.hasMoreCache[thread.id] != nil)
+    }
 
     await provider.emit(.snapshotChanged(snapshot))
 
@@ -1764,6 +1772,8 @@ func `an open private thread a fresh READY omits is withheld from viewing until 
         #expect(await until { model.openThreadResolution == nil && model.openThread?.name == thread.name })
     } else {
         #expect(await until { model.openThreadResolution == nil && model.openThread?.isPrivate == false })
+        // Resolution fetched the newest page despite the cached boundary.
+        #expect(await until { model.threadMessages.contains { $0.id == newestMessageID } })
     }
     // Resolved in place: the composer keeps its work, and the recreated
     // timeline must establish its position before acknowledging.

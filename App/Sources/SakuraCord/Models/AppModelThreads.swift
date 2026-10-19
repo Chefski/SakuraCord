@@ -220,6 +220,10 @@ extension AppModel {
             windowIsActive: mainWindowIsActive,
             hasReachedReadBoundary: false
         )
+        // Messages sent while access was unknown, for example while
+        // disconnected, are missing from the loaded window. Fetch the newest
+        // page even when a boundary is cached; it reconciles with that window.
+        hasMoreCache[thread.id] = nil
         beginInitialThreadLoad(thread)
     }
 
