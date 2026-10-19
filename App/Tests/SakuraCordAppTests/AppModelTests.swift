@@ -1604,7 +1604,7 @@ func `reaction cooldown drops cancelled intent and cleared mutations`(clearMutat
 }
 
 @MainActor
-@Test func `remote forum deletion closes the open post`() async throws {
+@Test func `forum catalogue omissions keep the open post open and listed`() async throws {
     let provider = MockChatProvider()
     let model = AppModel(launchMode: .offlineTesting, provider: provider)
     await model.start()
@@ -1615,15 +1615,21 @@ func `reaction cooldown drops cancelled intent and cleared mutations`(clearMutat
     let post = try #require(model.forumPosts.first)
     model.open(post)
     #expect(model.openThread?.id == post.id)
+    let synced = ForumPost(thread: MessageThreadSummary(
+        id: ChannelID(rawValue: 999_003), guildID: forum.guildID, parentID: forum.id, name: "Synced post"
+    ))
 
+    // Omission from a catalogue is not deletion; only THREAD_DELETE closes it.
     await provider.emit(
         .forumPostsChanged(
             channelID: forum.id,
-            posts: model.forumPosts.filter { $0.id != post.id }
+            posts: model.forumPosts.filter { $0.id != post.id } + [synced]
         )
     )
 
-    #expect(await until { model.openThread == nil })
+    #expect(await until { model.forumPosts.contains { $0.id == synced.id } })
+    #expect(model.openThread?.id == post.id)
+    #expect(model.forumPosts.contains { $0.id == post.id })
 }
 
 @MainActor
@@ -1674,6 +1680,94 @@ func `reaction cooldown drops cancelled intent and cleared mutations`(clearMutat
     await Task.yield()
 
     #expect(model.openThread?.id == thread.id)
+}
+
+@MainActor
+@Test(arguments: [false, true])
+func `an open private thread a fresh READY omits is withheld from viewing until resolved`(
+    recoversThroughGateway: Bool
+) async throws {
+    let provider = MockChatProvider()
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    let snapshot = try #require(model.snapshot)
+    let guildID = try #require(model.selectedGuildID)
+    let channel = try #require(snapshot.channels.first { $0.kind == .text && $0.guildID == guildID })
+    let forum = try #require(snapshot.channels.first { $0.kind == .forum && $0.guildID == guildID })
+    // The Gateway case uses a thread the provider cannot look up; the other a
+    // thread its lookup resolves.
+    let resolvable = try #require(
+        try await provider.forumPosts(in: forum.id, query: ForumPostQuery(limit: 100)).posts.first
+    )
+    model.selectedChannelID = channel.id
+    var thread = MessageThreadSummary(
+        id: recoversThroughGateway ? ChannelID(rawValue: 999_005) : resolvable.id,
+        guildID: guildID, parentID: channel.id, name: "Private thread",
+        notificationSettings: ThreadNotificationSettings(), isPrivate: true
+    )
+    model.open(thread)
+    let author = try #require(model.currentUser)
+    let reply = Message(id: MessageID(rawValue: 999_006), channelID: thread.id, author: author, content: "Reply")
+    model.threadDraft = "Unsent draft"
+    model.threadReplyingTo = reply
+    let directory = try ComposerPromisedFileStorage.makeReceivingDirectory()
+    defer { ComposerPromisedFileStorage.removeDirectory(directory) }
+    let file = directory.appendingPathComponent("note.txt")
+    try Data("fixture".utf8).write(to: file)
+    #expect(await model.addPromisedComposerAttachments(
+        ComposerPromisedFileBatch(directory: directory, urls: [file]), to: .thread
+    ))
+    // An already-positioned thread at its read boundary in an active window.
+    _ = model.readState.updatePresentation(
+        channelID: thread.id, isPresented: true, initialHistoryLoaded: true,
+        initialPositionEstablished: true, windowIsActive: true, hasReachedReadBoundary: true
+    )
+    #expect(model.isConversationPresented(thread.id))
+
+    await provider.emit(.snapshotChanged(snapshot))
+
+    #expect(await until { model.withholdsOpenThreadContent || model.openThread?.isPrivate == false })
+    if recoversThroughGateway {
+        #expect(!model.isConversationPresented(thread.id))
+        #expect(!model.readState.canAcknowledge(thread.id))
+        // The provider cannot resolve this thread: a terminal state, not a spinner.
+        #expect(await until { model.openThreadResolution == .failed })
+        #expect(model.openThreadAccess == .hidden)
+        // A Gateway record carrying the current user's member resolves it.
+        thread.name = "Private thread renamed"
+        await provider.emit(.forumPostsChanged(channelID: channel.id, posts: [ForumPost(thread: thread)]))
+        #expect(await until { model.openThreadResolution == nil && model.openThread?.name == thread.name })
+    } else {
+        #expect(await until { model.openThreadResolution == nil && model.openThread?.isPrivate == false })
+    }
+    // Resolved in place: the composer keeps its work, and the recreated
+    // timeline must establish its position before acknowledging.
+    #expect(!model.withholdsOpenThreadContent)
+    #expect(model.isConversationPresented(thread.id))
+    #expect(model.readState.presentations[thread.id]?.initialPositionEstablished == false)
+    #expect(model.threadDraft == "Unsent draft")
+    #expect(model.threadReplyingTo?.id == reply.id)
+    #expect(model.composerAttachments(for: .thread).count == 1)
+}
+
+@MainActor
+@Test func `deleting a guild's last channel clears its selection and open thread`() async throws {
+    let provider = MockChatProvider()
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    let guildID = try #require(model.selectedGuildID)
+    let channel = try #require(model.snapshot?.channels.first {
+        $0.kind == .text && $0.guildID == guildID
+    })
+    model.selectedChannelID = channel.id
+    model.open(MessageThreadSummary(
+        id: ChannelID(rawValue: 999_004), guildID: channel.guildID, parentID: channel.id, name: "Thread"
+    ))
+
+    // An authoritative empty list is removal, unlike a guild not yet loaded.
+    await provider.emit(.channelsChanged(guildID: channel.guildID, channels: []))
+
+    #expect(await until { model.selectedChannelID == nil && model.openThread == nil })
 }
 
 @MainActor

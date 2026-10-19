@@ -287,7 +287,12 @@ REST survive it while their parent is still listed; their content follows the
 parent's permissions, so READY's records restore active membership and the rest
 show as unjoined until a member event. Private threads READY does not list are
 dropped, because their access follows membership that READY's silence cannot
-settle.
+settle. An open private thread READY does not list is withheld and not presented
+for read acknowledgements, with its timeline position reset, while one lookup
+resolves it again. Success, or a Gateway record carrying the current user's
+member, resolves it in place, keeping its composer work while the recreated
+timeline establishes its position; a failure stays unavailable until the user
+retries.
 
 A known thread is answered from the provider cache; an unknown one costs one
 Get Channel, whose thread `member` states the membership. Thread records and
@@ -299,13 +304,25 @@ record is not evidence of leaving. A lookup whose
 record was deleted meanwhile reports the thread as not found; one whose
 membership revision moved for an uncached thread asks once more. Resolving an
 open private thread's access always performs that Get Channel, even over a
-cached record, because a member-less record settles no membership.
+cached record, because a member-less record settles no membership. Opening a
+private thread whose record carries no membership, without Manage Threads,
+enters that resolution from every entry point; public threads stay cache-first.
 
 The official client instead clears thread channels on `CONNECTION_OPEN` and
 refetches the selected thread with Get Channel. Retention keeps an open post and
 the loaded catalogue across reconnection; a thread deleted during the disconnect
 can stay listed until the account session restarts. RESUMED replays missed events
 and resets nothing.
+
+The open thread or forum post closes only on `THREAD_DELETE`, removal of its
+parent or guild, or a user action; lost parent access shows it as unavailable.
+Leaving it keeps it open. A catalogue page or Gateway list that omits it keeps it
+open and listed. Automatic channel reselection happens only when the selected
+channel is gone from a loaded channel list of the selected guild or DM scope, or a
+guild's channel update or a replacement READY that still lists the guild removes
+it, including its last channel. READY offers no cached guild versions, so each
+available guild arrives with its complete channel list. An unloaded list or a
+guild switch in progress is not removal.
 
 Official Fresh host 0.0.411, web build 641004 (`web.4d4b2f75fdea5470.js`),
 observed on 19 October 2026 with a moderator and a plain member, confirmed the

@@ -382,6 +382,9 @@ final class AppModel {
     var interactionModalForm: InteractionModalFormState?
     var isVoiceChatOpen = false
     var openThread: MessageThreadSummary?
+    /// Re-resolution of the open private thread after a fresh READY did not
+    /// confirm it. Closing or reopening the conversation clears it.
+    var openThreadResolution: OpenThreadResolution?
     var isThreadFullWidth = false
     /// A thread being composed in the supplementary pane. It is mutually
     /// exclusive with `openThread` and becomes it once Discord creates the thread.
@@ -1087,6 +1090,7 @@ final class AppModel {
     @ObservationIgnored var pollVoteMutations: [MessageID: PollVoteMutationState] = [:]
     @ObservationIgnored var pollResultRefreshJournals: [MessageID: ConversationRefreshJournal] = [:]
     @ObservationIgnored var guildActivationTask: Task<Void, Never>?
+    @ObservationIgnored var openThreadResolutionTask: Task<Void, Never>?
     @ObservationIgnored var memberLoadTask: Task<Void, Never>?
     @ObservationIgnored var memberLoadGeneration: UInt64 = 0
     @ObservationIgnored var memberListViewportRequest: MemberListViewportRequest?
