@@ -396,11 +396,12 @@ extension AppModel {
         guildProjection: UnreadGuildPresentationProjection,
         projectedGuildsByID: [GuildID: Guild]
     ) {
-        guard var value = snapshot else { return }
         AppPerformanceSignposts.measureSync(
             "UnreadPresentationPublication"
         ) {
-            if channelProjection.changed || guildProjection.changed {
+            if channelProjection.changed || guildProjection.changed,
+               var value = snapshot
+            {
                 value.channels = channelProjection.channels
                 value.guilds = guildProjection.guilds
                 snapshot = value

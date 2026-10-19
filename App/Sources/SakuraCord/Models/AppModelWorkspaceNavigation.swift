@@ -569,32 +569,6 @@ extension AppModel {
         return channel.name
     }
 
-    func messageSearchGuildAliases(guildID: GuildID) -> [UserID: [String]] {
-        _ = forwardSearchSourceRevision
-        var aliases: [UserID: [String]] = [:]
-        func append(_ value: String?, for userID: UserID) {
-            guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !value.isEmpty,
-                  aliases[userID, default: []].contains(where: {
-                      $0.localizedCaseInsensitiveCompare(value) == .orderedSame
-                  }) == false
-            else { return }
-            aliases[userID, default: []].append(value)
-        }
-        for (userID, nickname) in snapshot?.quickSwitcherGuildMemberAliases[guildID] ?? [:] {
-            append(nickname, for: userID)
-        }
-        for member in membersByGuildID[guildID]?.values ?? [UserID: Member]().values {
-            append(member.globalDisplayName, for: member.id)
-            append(member.user.displayName, for: member.id)
-        }
-        for member in memberListsByGuildID[guildID] ?? [] {
-            append(member.globalDisplayName, for: member.id)
-            append(member.user.displayName, for: member.id)
-        }
-        return aliases
-    }
-
     func parsePastedMessageSearchSyntax(_ value: String) {
         let parsed = MessageSearchTokenParser.parse(
             value,
