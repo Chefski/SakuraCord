@@ -12,6 +12,31 @@ extension AppModel {
         return ThreadActionPolicy.canBrowseThreads(parentKind: channel.kind, permissions: permissions)
     }
 
+    /// The browser's sections limited to threads the user can read: a private
+    /// thread needs membership or Manage Threads. Reading the current records
+    /// and permissions makes the projection follow membership and role changes.
+    var threadBrowserSections: ThreadBrowserSections {
+        threadBrowser.sections.filtered(threadBrowserCanRead)
+    }
+
+    var threadBrowserSearchResults: [ForumPost] {
+        (threadBrowser.search?.results ?? []).filter(threadBrowserCanRead)
+    }
+
+    private var threadBrowserCanRead: (ForumPost) -> Bool {
+        guard let parentID = threadBrowser.parentID,
+              let parent = knownRootChannel(parentID),
+              let permissions = effectiveMessagePermissions(in: parent),
+              let currentUserID = currentUser?.id
+        else { return { _ in false } }
+        return { post in
+            ThreadActionPolicy(
+                thread: post.thread, currentUserID: currentUserID,
+                parentPermissions: permissions, parentKind: parent.kind
+            ).canRead
+        }
+    }
+
     func toggleThreadBrowser() {
         if threadBrowser.isPresented { dismissThreadBrowser() } else { presentThreadBrowser() }
     }

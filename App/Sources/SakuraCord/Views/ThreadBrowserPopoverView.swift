@@ -15,7 +15,7 @@ struct ThreadBrowserPopoverView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(width: InterfaceScale.metric(440), height: InterfaceScale.metric(560))
-        .animation(reduceMotion ? nil : .smooth(duration: 0.22), value: browser.sections)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.22), value: model.threadBrowserSections)
         .animation(reduceMotion ? nil : .smooth(duration: 0.22), value: browser.search)
         .onExitCommand { model.dismissThreadBrowser() }
         .onChange(of: model.selectedChannelID) { model.dismissThreadBrowser() }
@@ -74,12 +74,12 @@ struct ThreadBrowserPopoverView: View {
             } actions: {
                 Button("Try Again", action: model.submitThreadBrowserSearch)
             }
-        } else if search.results.isEmpty {
+        } else if model.threadBrowserSearchResults.isEmpty {
             ContentUnavailableView.search(text: search.query)
         } else {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    rows(search.results)
+                    rows(model.threadBrowserSearchResults)
                 }
                 .padding(.vertical, InterfaceScale.metric(6))
             }
@@ -89,7 +89,7 @@ struct ThreadBrowserPopoverView: View {
 
     @ViewBuilder
     private func sectionsContent(_ browser: ThreadBrowserState) -> some View {
-        let sections = browser.sections
+        let sections = model.threadBrowserSections
         let listing = browser.listing
         let isLoadingFirstPage = listing?.hasLoadedFirstPage != true && browser.archivedErrorMessage == nil
         if sections.isEmpty, isLoadingFirstPage {

@@ -76,6 +76,16 @@ nonisolated struct ThreadBrowserSections: Equatable, Sendable {
         )
     }
 
+    /// Keeps only the threads the user can open, so a private thread they
+    /// left or were removed from disappears.
+    func filtered(_ isReadable: (ForumPost) -> Bool) -> Self {
+        ThreadBrowserSections(
+            joined: joined.filter(isReadable),
+            otherActive: otherActive.filter(isReadable),
+            older: older.filter(isReadable)
+        )
+    }
+
     static func newestActivityFirst(_ lhs: ForumPost, _ rhs: ForumPost) -> Bool {
         lhs.lastActivityAt != rhs.lastActivityAt ? lhs.lastActivityAt > rhs.lastActivityAt : lhs.id > rhs.id
     }

@@ -81,3 +81,29 @@ private func thread(
     #expect(sections.otherActive.map(\.id.rawValue) == [3])
     #expect(sections.older.map(\.id.rawValue) == [2])
 }
+
+@Test func `private threads the user cannot read leave every section`() {
+    var left = thread(4, archived: false, daysAgo: 1)
+    left.thread.isPrivate = true
+    var joined = thread(5, archived: false, joined: true, daysAgo: 2)
+    joined.thread.isPrivate = true
+    var archivedPrivate = thread(6, daysAgo: 3)
+    archivedPrivate.thread.isPrivate = true
+    var listing = ThreadBrowserListing()
+    listing.append(ForumPostPage(posts: [archivedPrivate], hasMore: false, nextOffset: nil), requestedOffset: 0)
+    let permissions = DiscordPermissionBits.viewChannel | DiscordPermissionBits.readMessageHistory
+    let canRead = { (post: ForumPost) in
+        ThreadActionPolicy(
+            thread: post.thread, currentUserID: UserID(rawValue: 9),
+            parentPermissions: permissions, parentKind: .text
+        ).canRead
+    }
+
+    let sections = ThreadBrowserSections.make(records: [left, joined, thread(7, archived: false, daysAgo: 4)], listing: listing)
+        .filtered(canRead)
+
+    // Without Manage Threads, a private thread needs membership.
+    #expect(sections.joined.map(\.id.rawValue) == [5])
+    #expect(sections.otherActive.map(\.id.rawValue) == [7])
+    #expect(sections.older.isEmpty)
+}
