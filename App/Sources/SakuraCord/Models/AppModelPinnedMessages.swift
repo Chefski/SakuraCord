@@ -188,10 +188,11 @@ extension AppModel {
         if rootMessageChannel(channelID) != nil {
             navigate(to: channelID)
         } else {
+            // Thread resolution derives the guild from the thread's parent.
             let guildID = snapshot?.threads.first(where: { $0.id == channelID })?.guildID
                 ?? snapshot?.activeJoinedThreads.first(where: { $0.id == channelID })?.guildID
                 ?? messageSearch.page?.channels.first(where: { $0.id == channelID })?.guildID
-            guard guildID != nil else { return }
+                ?? selectedGuildID
             navigate(to: guildID, linkedChannelID: channelID)
         }
         let navigationTask = guildActivationTask

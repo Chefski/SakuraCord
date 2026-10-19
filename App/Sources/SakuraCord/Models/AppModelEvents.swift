@@ -69,6 +69,7 @@ extension AppModel {
         isMarkingAllServersRead = false
         acknowledgementTasks.values.forEach { $0.cancel() }
         acknowledgementTasks.removeAll()
+        debouncedAcknowledgementTargets.removeAll()
         acknowledgementProcessorTask?.cancel()
         acknowledgementProcessorTask = nil
         guildAcknowledgementTasks.values.forEach { $0.cancel() }
@@ -490,6 +491,7 @@ extension AppModel {
                 // the bounded rows for immediate presentation while forcing one
                 // authoritative newest-page refresh per reopened conversation.
                 hasMoreCache.removeAll(keepingCapacity: true)
+                markHistoryGapForRetainedConversations()
             }
             stopLocalTyping(clearThrottle: true)
             typingState.clearAll()
@@ -509,6 +511,10 @@ extension AppModel {
                hasCompletedInitialMessageLoad
             {
                 refreshSelectedChannelPreservingHistory()
+            }
+            if previousState != .ready {
+                revalidateOpenThreadAfterReconnect()
+                revalidateGuideResourceAfterReconnect()
             }
             if let channel = selectedChannel,
                channel.kind == .directMessage || channel.kind == .groupDirectMessage
@@ -721,8 +727,16 @@ extension AppModel {
             if let selectedChannelID {
                 if let updated = channels.first(where: { $0.id == selectedChannelID }) {
                     selectedChannel = updated
-                } else if guildID == nil {
+                } else if guildID == nil, selectedChannelIsGone(fromScopeChannels: channels) {
                     self.selectedChannelID = channels.first?.id
+                } else if guildID != nil,
+                          previousChannels.contains(where: { $0.id == selectedChannelID && $0.guildID == guildID })
+                {
+                    // The guild's authoritative list removed the selected channel,
+                    // possibly its last one. Reselection closes any open thread.
+                    self.selectedChannelID = Self.preferredInitialChannelID(
+                        in: channels.filter { conversationAccess(for: $0) != .hidden }
+                    )
                 }
             }
         }
@@ -768,13 +782,10 @@ extension AppModel {
         }
         refreshTimelineThreadCards(parentID: channelID, posts: posts)
         guard channelID == selectedChannelID, selectedChannel?.kind == .forum else { return }
+        // Omission from the provider's catalogue is not deletion; the open post
+        // closes only through `.threadDeleted`, lost access or the user.
         replaceForumCatalogue(with: posts)
         applyForumPresentation()
-        if let openThread, openThread.parentID == channelID,
-           !posts.contains(where: { $0.id == openThread.id })
-        {
-            closeThread()
-        }
     }
 
     func consumeForumPostPreviewsChanged(channelID: ChannelID, posts: [ForumPost]) {
@@ -928,10 +939,32 @@ extension AppModel {
             guildNotificationSettingsRevisions[guildID, default: 0] &+= 1
         }
         readState.replaceSnapshot(value)
+        // READY lists the joined active threads; an open private thread it
+        // does not list has unknown access until it is resolved again.
+        if let thread = openThread, thread.isPrivate,
+           !value.threads.contains(where: { $0.id == thread.id }),
+           !value.activeJoinedThreads.contains(where: { $0.id == thread.id })
+        {
+            beginOpenThreadResolution()
+        }
         composer.slowmode.updateIntervals(for: value.channels, replacing: previousSnapshot?.channels ?? [])
         visibleChannels = value.channels.filter { $0.guildID == selectedGuildID }
         if let selectedChannelID {
             selectedChannel = value.channels.first { $0.id == selectedChannelID }
+            // A replacement READY carries every available guild's complete
+            // channel list (no cached guild versions are offered), so a still
+            // listed guild without the selected channel removed it, even when
+            // that leaves the guild empty. Reselection closes any open thread.
+            if selectedChannel == nil, let selectedGuildID,
+               value.guilds.contains(where: { $0.id == selectedGuildID }),
+               previousSnapshot?.channels.contains(where: {
+                   $0.id == selectedChannelID && $0.guildID == selectedGuildID
+               }) == true
+            {
+                self.selectedChannelID = Self.preferredInitialChannelID(
+                    in: visibleChannels.filter { conversationAccess(for: $0) != .hidden }
+                )
+            }
         }
         refreshUnreadAccessAfterSnapshotChanged(
             previousSnapshot: previousSnapshot,

@@ -14,12 +14,15 @@ nonisolated enum ThreadTimelinePresentationPolicy {
         isForumPost || !hasUnreadReplies ? .newest : .firstUnread
     }
 
+    /// - Parameter isDetachedFromNewest: The loaded window ends before the
+    ///   newest reply, so scrolling alone cannot reach it.
     static func showsNewRepliesButton(
         isNearBottom: Bool,
         hasUnreadReplies: Bool,
+        isDetachedFromNewest: Bool = false,
         messageCount: Int
     ) -> Bool {
-        !isNearBottom && hasUnreadReplies && messageCount > 0
+        !isNearBottom && (hasUnreadReplies || isDetachedFromNewest) && messageCount > 0
     }
 }
 
@@ -31,8 +34,14 @@ struct ThreadConversationView: View {
 
     @ViewBuilder var body: some View {
         if let thread = model.openThread {
-            if model.openThreadAccess == .hidden {
-                ThreadUnavailableView()
+            if model.withholdsOpenThreadContent {
+                if model.openThreadResolution == .failed {
+                    ThreadUnavailableView(retry: model.retryOpenThreadResolution)
+                } else if model.openThreadAccess == .hidden {
+                    ThreadUnavailableView()
+                } else {
+                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             } else {
                 ThreadMessageTimelineView(
                     model: model,
@@ -317,12 +326,18 @@ private struct ThreadStateBanner: View {
 }
 
 private struct ThreadUnavailableView: View {
+    var retry: (() -> Void)?
+
     var body: some View {
-        ContentUnavailableView(
-            "Thread unavailable",
-            systemImage: "lock.fill",
-            description: Text("You cannot view messages in this thread.")
-        )
+        ContentUnavailableView {
+            Label("Thread unavailable", systemImage: "lock.fill")
+        } description: {
+            Text("You cannot view messages in this thread.")
+        } actions: {
+            if let retry {
+                Button("Try Again", action: retry)
+            }
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
@@ -333,7 +348,8 @@ private struct ThreadMessageTimelineView: View {
     let editRequest: MessageTimelineEditRequest?
     @State private var isNearBottom = false
     @State private var hasEstablishedInitialPosition = false
-    @State private var earlierHistoryIntent = TimelineHistoryScrollIntent()
+    @State private var historyPaging = TimelineHistoryPaging()
+    @State private var latestScrollState = TimelineScrollState(isNearTop: false, isNearBottom: false)
     @State private var highlightedMessageID: MessageID?
     @State private var scrollRequest: MessageTimelineScrollRequest?
 
@@ -346,12 +362,18 @@ private struct ThreadMessageTimelineView: View {
             beginning: beginning,
             firstMessageStartsDayOverride: firstMessageStartsDayOverride,
             hasMoreMessages: model.hasMoreThreadMessages,
+            hasMoreLaterMessages: model.hasMoreLaterThreadMessages,
             isLoadingEarlier:
                 MessageTimelineLoadingPolicy.showsEarlierIndicator(
                     isLoadingInitialPage: model.isLoadingThread,
                     messageCount: model.threadMessages.count,
                     isLoadingEarlierPage: model.isLoadingEarlierThread
                 ),
+            isLoadingLater: model.isLoadingLaterThread,
+            earlierHistoryLoadFailed:
+                model.threadErrorMessage != nil && model.threadErrorScope == .earlierPage,
+            laterHistoryLoadFailed:
+                model.threadErrorMessage != nil && model.threadErrorScope == .laterPage,
             bottomContentInset: bottomContentInset,
             unreadMessageID: unread.dividerMessageID,
             highlightedMessageID: highlightedMessageID,
@@ -361,6 +383,7 @@ private struct ThreadMessageTimelineView: View {
             editRequest: editRequest,
             runsPerformanceAutoScroll: false,
             loadEarlier: loadEarlier,
+            loadLater: loadLater,
             openReply: openReply,
             onScrollActivityChange: { isScrolling in
                 if let conversationID {
@@ -409,30 +432,22 @@ private struct ThreadMessageTimelineView: View {
             if ThreadTimelinePresentationPolicy.showsNewRepliesButton(
                 isNearBottom: isNearBottom,
                 hasUnreadReplies: unread.summary != nil,
+                isDetachedFromNewest: model.isThreadWindowAwayFromNewest,
                 messageCount: model.threadMessages.count
             ), hasEstablishedInitialPosition {
-                Button {
+                TimelineNewestButton(
+                    title: unread.summary != nil ? "New replies" : "Scroll to bottom",
+                    hasUnread: unread.summary != nil,
+                    bottomContentInset: bottomContentInset,
+                    accessibilityHint: "Scrolls to the latest reply"
+                ) {
                     handleUserScrollTowardNewest()
-                    requestScroll(.bottom, glides: true)
-                } label: {
-                    Label("New replies", systemImage: "arrow.down")
-                        .font(.interface(.callout).weight(.semibold))
-                        .padding(.horizontal, InterfaceScale.metric(15))
-                        .padding(.vertical, InterfaceScale.metric(8))
-                        .contentShape(Capsule())
-                        .glassEffect(
-                            .regular.tint(SakuraCordAccentColor.color).interactive(),
-                            in: Capsule()
-                        )
+                    if model.isThreadWindowAwayFromNewest {
+                        Task { await model.loadNewestThreadWindow() }
+                    } else {
+                        requestScroll(.bottom, glides: true)
+                    }
                 }
-                .buttonStyle(.plain)
-                .padding(
-                    .bottom,
-                    ChatDetailLayoutPolicy.newMessagesButtonBottomPadding(
-                        bottomContentInset: bottomContentInset
-                    )
-                )
-                .accessibilityHint("Scrolls to the latest reply")
             }
         }
         .onChange(of: model.openThread?.id) { oldID, _ in
@@ -444,7 +459,8 @@ private struct ThreadMessageTimelineView: View {
             }
             isNearBottom = false
             hasEstablishedInitialPosition = false
-            earlierHistoryIntent = TimelineHistoryScrollIntent()
+            historyPaging = TimelineHistoryPaging()
+            latestScrollState = TimelineScrollState(isNearTop: false, isNearBottom: false)
         }
         .onChange(of: model.messageNavigationRequest, initial: true) { _, request in
             guard let request,
@@ -526,6 +542,12 @@ private struct ThreadMessageTimelineView: View {
         }
     }
 
+    private func loadLater() {
+        Task {
+            await model.loadLaterThread()
+        }
+    }
+
     private func openReply(_ messageID: MessageID) {
         guard model.threadMessages.contains(where: { $0.id == messageID }) else {
             return
@@ -542,6 +564,7 @@ private struct ThreadMessageTimelineView: View {
             hasMoreBefore: model.hasMoreThreadMessages,
             isLoadingInitialPage: model.isLoadingThread,
             hasCompletedInitialLoad: model.hasCompletedInitialThreadLoad,
+            showsSummary: !model.hasMoreLaterThreadMessages,
             prefersNewest: { hasUnread in
                 ThreadTimelinePresentationPolicy.initialScrollTarget(
                     isForumPost: isForumPost,
@@ -569,26 +592,12 @@ private struct ThreadMessageTimelineView: View {
 
     private func handleScrollState(_ state: TimelineScrollState) {
         isNearBottom = state.isNearBottom
-        let retainedEarlierIntent = earlierHistoryIntent.retained(
-            isInProvisionalHistory: state.isInProvisionalHistory
-        )
-        if earlierHistoryIntent != retainedEarlierIntent {
-            earlierHistoryIntent = retainedEarlierIntent
+        latestScrollState = state
+        let retainedPaging = historyPaging.retained(for: state)
+        if historyPaging != retainedPaging {
+            historyPaging = retainedPaging
         }
-        if TimelineHistoryLoadingPolicy.shouldLoad(
-            isNearBoundary: state.isNearTop,
-            contentFitsViewport: state.contentFitsViewport,
-            allowsAutomaticLoading: true,
-            hasMoreMessages: model.hasMoreThreadMessages,
-            isLoading: model.isLoadingEarlierThread,
-            requiresUserScrollIntent:
-                unreadPresentation.hasUnresolvedInitialBoundary,
-            hasUserScrollIntent:
-                earlierHistoryIntent.hasIntent
-        )
-        {
-            loadEarlier()
-        }
+        loadHistoryIfNeeded(for: state)
         guard state.hasEstablishedInitialPosition else { return }
         if !hasEstablishedInitialPosition {
             handleInitialPosition(state)
@@ -602,9 +611,30 @@ private struct ThreadMessageTimelineView: View {
         )
     }
 
+    private func loadHistoryIfNeeded(for state: TimelineScrollState) {
+        let directions = historyPaging.directionsToLoad(
+            for: state,
+            allowsAutomaticLoading: true,
+            edges: TimelineHistoryEdges(
+                hasMoreEarlier: model.hasMoreThreadMessages,
+                hasMoreLater: model.hasMoreLaterThreadMessages,
+                isLoadingEarlier: model.isLoadingEarlierThread,
+                isLoadingLater: model.isLoadingLaterThread,
+                earlierRequiresIntent: unreadPresentation.hasUnresolvedInitialBoundary
+            )
+        )
+        for direction in directions {
+            switch direction {
+            case .earlier: loadEarlier()
+            case .later: loadLater()
+            }
+        }
+    }
+
     private func handleUserScrollBegan() {
-        earlierHistoryIntent.gestureBegan(
-            grantsIntent: unreadPresentation.hasUnresolvedInitialBoundary
+        historyPaging.gestureBegan(
+            grantsEarlierIntent: unreadPresentation.hasUnresolvedInitialBoundary,
+            isNearLoadedBottom: latestScrollState.isNearLoadedBottom
         )
     }
 
@@ -614,7 +644,7 @@ private struct ThreadMessageTimelineView: View {
     }
 
     private func handleUserScrollEnded(_ state: TimelineScrollState) {
-        earlierHistoryIntent.gestureEnded(isInProvisionalHistory: state.isInProvisionalHistory)
+        historyPaging.gestureEnded(state)
         isNearBottom = state.isNearBottom
         handleScrollState(state)
     }
