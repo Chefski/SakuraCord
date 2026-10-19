@@ -249,6 +249,11 @@ extension AppModel {
         completesReading: Bool = false,
         prepare: (@MainActor () async -> Bool)? = nil
     ) -> Task<Bool, Never> {
+        // The local row is already in the timeline; show it now rather than
+        // when Discord confirms it. Retries keep the user's position.
+        if completesReading, !isRetry {
+            advanceTimelineForLocalSend(channelID: outgoing.channelID)
+        }
         guard allowOnboardingSubmission(in: outgoing.channelID), allowSlowmodeSubmission(in: outgoing.channelID) else {
             updateOutgoingState(.failed, nonce: outgoing.nonce, channelID: outgoing.channelID)
             return Task { false }
@@ -280,7 +285,10 @@ extension AppModel {
             if let prepare, !(await prepare()) { return false }
             let didSend = await deliverOutgoingSend(outgoing, isRetry: isRetry, session: session)
             if didSend, completesReading {
-                completeConversationReadingAndAdvance(channelID: outgoing.channelID)
+                completeConversationReadingAndAdvance(
+                    channelID: outgoing.channelID,
+                    requestsScroll: isRetry
+                )
             }
             return didSend
         }

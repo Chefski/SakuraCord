@@ -75,7 +75,26 @@ extension AppModel {
         }
     }
 
-    func completeConversationReadingAndAdvance(channelID: ChannelID) {
+    /// Jumps the timeline to the newest message as soon as a send from this
+    /// client appends its local row, without waiting for Discord to confirm it.
+    func advanceTimelineForLocalSend(channelID: ChannelID) {
+        guard channelID == selectedChannelID || channelID == openThread?.id else { return }
+        if channelID == selectedChannelID, hasMoreLaterMessages {
+            let account = accountSession()
+            startAccountChildTask(account: account) { model, account in
+                _ = await model.loadNewestMessageWindow(account: account)
+            }
+            return
+        }
+        requestNewestMessagePresentation(channelID: channelID)
+    }
+
+    /// Marks the conversation read and, unless `requestsScroll` is false
+    /// because the local send already scrolled, shows the newest message.
+    func completeConversationReadingAndAdvance(
+        channelID: ChannelID,
+        requestsScroll: Bool = true
+    ) {
         guard channelID == selectedChannelID || channelID == openThread?.id else { return }
         if channelID == selectedChannelID, hasMoreLaterMessages {
             let account = accountSession()
@@ -84,17 +103,18 @@ extension AppModel {
                       model.isCurrentAccountSession(account),
                       model.selectedChannelID == channelID
                 else { return }
-                model.completeConversationReadingAndAdvance(channelID: channelID)
+                model.completeConversationReadingAndAdvance(
+                    channelID: channelID,
+                    requestsScroll: requestsScroll
+                )
             }
             return
         }
         markConversationRead(channelID: channelID)
         unreadDividerMessageIDs[channelID] = nil
-        conversationNewestRequestID &+= 1
-        conversationNewestRequest = ConversationNewestRequest(
-            requestID: conversationNewestRequestID,
-            channelID: channelID
-        )
+        if requestsScroll {
+            requestNewestMessagePresentation(channelID: channelID)
+        }
     }
 
     func preserveUnreadDividerIfNeeded(channelID: ChannelID) {
