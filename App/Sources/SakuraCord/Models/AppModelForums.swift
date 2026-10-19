@@ -307,7 +307,9 @@ extension AppModel {
         forumCataloguePosts = posts.map { incoming in
             readState.merge(forumPost: incoming)
             guard let previous = previousByID[incoming.id] else { return incoming }
-            return forumPostPreservingReactionPresentation(incoming, previous: previous)
+            // The provider's catalogue carries authoritative membership, so a
+            // confirmed leave is not undone by the previous card's settings.
+            return forumPostPreservingReactionPresentation(incoming, previous: previous, preservesMembership: false)
         }
         // A page or provider list that omits the open post does not delete it.
         // Deletion closes the post before its catalogue is republished.
@@ -326,7 +328,8 @@ extension AppModel {
 
     func forumPostPreservingReactionPresentation(
         _ incoming: ForumPost,
-        previous: ForumPost
+        previous: ForumPost,
+        preservesMembership: Bool = true
     ) -> ForumPost {
         var result = incoming
         if let firstMessage = incoming.firstMessage {
@@ -344,7 +347,7 @@ extension AppModel {
             result.mostRecentMessage = previous.mostRecentMessage
         }
         result.owner = incoming.owner ?? previous.owner
-        if result.thread.notificationSettings == nil {
+        if preservesMembership, result.thread.notificationSettings == nil {
             result.thread.notificationSettings = previous.thread.notificationSettings
         }
         return result
