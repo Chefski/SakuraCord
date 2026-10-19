@@ -108,6 +108,14 @@ struct RootView: View {
             if isSwitching {
                 search.isFilterModalPresented = false
                 model.dismissMessageSearch()
+            } else {
+                // The workspace was replaced during the switch, so focus fell
+                // to the toolbar's search field, its only text input. Hand it
+                // back once the new workspace and its composer are installed.
+                Task { @MainActor in
+                    await Task.yield()
+                    model.releaseToolbarSearchFocus()
+                }
             }
         }
         // System-message actions such as Edit Group are drawn in the accent

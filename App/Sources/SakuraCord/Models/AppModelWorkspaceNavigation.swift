@@ -231,6 +231,14 @@ extension AppModel {
         messageSearch.isInputFocused = false
     }
 
+    /// Releases the toolbar search field when it holds focus that the reader
+    /// did not give it.
+    func releaseToolbarSearchFocus() {
+        if messageSearch.isInputFocused { messageSearch.isInputFocused = false }
+        if friends.isSearchFocused { friends.isSearchFocused = false }
+        if onboarding.isChannelSearchFocused { onboarding.isChannelSearchFocused = false }
+    }
+
     func dismissMessageSearchIfInputIsEmpty() {
         guard messageSearch.queryText.isEmpty, messageSearch.tokens.isEmpty else { return }
         dismissMessageSearch()
