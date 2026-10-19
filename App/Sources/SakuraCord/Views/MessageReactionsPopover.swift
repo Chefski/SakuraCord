@@ -59,7 +59,7 @@ struct MessageReactionsPopover: View {
             if let id = update.reactionID { pager.invalidate(id) } else { pager.reset() }
             refreshReactions()
         }
-        .onChange(of: model.snapshot?.currentUser.id) { _, _ in dismiss() }
+        .onChange(of: model.currentUser?.id) { _, _ in dismiss() }
     }
 
     private func refreshReactions() {
@@ -72,7 +72,7 @@ struct MessageReactionsPopover: View {
     }
 
     private func displayedUsers(_ users: [User]) -> [User] {
-        guard let reaction = selectedReaction, let me = model.snapshot?.currentUser else { return users }
+        guard let reaction = selectedReaction, let me = model.currentUser else { return users }
         let others = users.filter { $0.id != me.id }
         return reaction.didCurrentUserReact || reaction.didCurrentUserBurstReact ? [me] + others : others
     }

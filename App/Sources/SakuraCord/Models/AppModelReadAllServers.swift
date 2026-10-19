@@ -4,8 +4,8 @@ import SakuraCordModels
 
 extension AppModel {
     var hasUnreadServers: Bool {
-        guard !accountTransitionIsActive, let snapshot else { return false }
-        return readState.hasUnreadServerConversations(in: Set(snapshot.guilds.filter { !$0.isUnavailable }.map(\.id)))
+        guard !accountTransitionIsActive, currentUser != nil else { return false }
+        return readState.hasUnreadServerConversations(in: Set(serverRailGuildsByID.values.filter { !$0.isUnavailable }.map(\.id)))
     }
 
     func markAllServersRead() {
@@ -53,7 +53,7 @@ extension AppModel {
                 errorMessage = "Conversations could not be marked as read.\n\n\(error.localizedDescription)"
             }
             guard let self, isCurrentAccountSession(session), generation == acknowledgementGeneration else { return }
-            for target in targets where readState.entries[target.channelID]?.isUnread == false {
+            for target in targets where readState[target.channelID]?.isUnread == false {
                 cancelNativeNotifications(channelID: target.channelID)
             }
             isMarkingAllServersRead = false

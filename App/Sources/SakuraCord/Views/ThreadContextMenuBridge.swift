@@ -38,7 +38,7 @@ struct ThreadContextMenuBridge: NSViewRepresentable {
             let row = bridge.row
             let thread = model.sidebarThread(row.id) ?? row.thread
             let permissions = model.threadActionPolicy(thread)
-            let isForum = model.snapshot?.channels.first { $0.id == thread.parentID }?.kind == .forum
+            let isForum = thread.parentID.flatMap { model.messagePresentationChannelsByID[$0] }?.kind == .forum
             let noun = isForum ? "Post" : "Thread"
             let menu = NSMenu()
             menu.autoenablesItems = false

@@ -65,7 +65,7 @@ extension NativeTimelineCanvasView {
         let message = row.message
         guard MessageOutboxPresentation.interactionMode(for: message).allowsMessageContextMenu else { return [] }
         let canEdit = !message.hasPoll && !message.flags.contains(.voiceMessage)
-            && message.author.id == model?.snapshot?.currentUser.id
+            && message.author.id == model?.currentUser?.id
             && model?.guildTimeoutUntil(in: message.channelID, guildID: message.guildID) == nil
             && MessageReplyPresentationPolicy.allowsReplyAction(for: message)
         let canDelete = model?.canDeleteMessage(message) == true
@@ -113,7 +113,7 @@ extension NativeTimelineCanvasView {
             self?.actions?.markUnread(message)
             return self != nil
         })
-        if message.outboxState == .confirmed, message.author.id == model?.snapshot?.currentUser.id, message.poll?.isClosed() == false {
+        if message.outboxState == .confirmed, message.author.id == model?.currentUser?.id, message.poll?.isClosed() == false {
             result.append(NSAccessibilityCustomAction(name: "End Poll Now") { [weak self] in
                 self?.requestEndPoll(message)
                 return self != nil
@@ -243,7 +243,7 @@ extension NativeTimelineCanvasView {
         if message.type.hasGeneratedContent {
             return SystemMessagePresentation.label(
                 for: message,
-                currentUserID: model?.snapshot?.currentUser.id,
+                currentUserID: model?.currentUser?.id,
                 recipient: model?.systemMessageRecipient(for: message)
             )
         }

@@ -234,7 +234,7 @@ extension AppModel {
                 avatarURL: member.guildAvatarURL ?? member.user.avatarURL
             )
         }
-        guard snapshot?.currentUser.id == userID, let user = snapshot?.currentUser else {
+        guard currentUser?.id == userID, let user = currentUser else {
             return nil
         }
         return ReactionReactor(user: user)

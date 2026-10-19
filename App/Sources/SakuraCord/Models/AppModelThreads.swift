@@ -16,7 +16,7 @@ extension AppModel {
         if let selectedChannel, selectedChannelID == parentID, selectedChannel.id == parentID {
             return selectedChannel
         }
-        return snapshot?.channels.first { $0.id == parentID }
+        return messagePresentationChannelsByID[parentID]
             ?? visibleChannels.first { $0.id == parentID }
     }
 
