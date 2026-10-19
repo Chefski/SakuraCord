@@ -341,6 +341,8 @@ private struct ForumSortMenu: View {
                 .font(.interface(.caption2).weight(.bold))
         }
         .font(.interface(.callout).weight(.semibold))
+        .lineLimit(1)
+        .fixedSize(horizontal: true, vertical: false)
         .padding(.horizontal, InterfaceScale.metric(10))
         .frame(height: InterfaceScale.metric(30))
         .contentShape(Capsule())
