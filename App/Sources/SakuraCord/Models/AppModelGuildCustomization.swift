@@ -17,7 +17,7 @@ extension AppModel {
 
     var customizationPreviewChannel: Channel? {
         guard guildWorkspacePage == .channelsAndRoles, let id = onboarding.previewChannelID else { return nil }
-        return snapshot?.channels.first { $0.id == id && $0.guildID == selectedGuildID }
+        return messagePresentationChannelsByID[id].flatMap { $0.guildID == selectedGuildID ? $0 : nil }
     }
 
     var hasOpenGuildSupplementaryConversation: Bool {
@@ -52,7 +52,7 @@ extension AppModel {
     func browsableChannels(in guildID: GuildID) -> [Channel] {
         let hidesResources = hasGuildGuide(in: guildID)
         let resources = Set(onboarding.guides[guildID]?.configuration?.resourceChannels.map(\.channelID) ?? [])
-        return (snapshot?.channels ?? []).filter {
+        return channelIDs.compactMap { messagePresentationChannelsByID[$0] }.filter {
             $0.guildID == guildID && (!hidesResources || ($0.flags & (1 << 7) == 0 && !resources.contains($0.id)))
                 && conversationAccess(for: $0).isReadable
         }

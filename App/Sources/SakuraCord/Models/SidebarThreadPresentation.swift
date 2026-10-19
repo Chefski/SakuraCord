@@ -180,8 +180,8 @@ extension AppModel {
 
     func sidebarThread(_ id: ChannelID) -> MessageThreadSummary? {
         if let openThread, openThread.id == id { return openThread }
-        return snapshot?.activeJoinedThreads.first { $0.id == id }
-            ?? snapshot?.threads.first { $0.id == id }
+        return activeJoinedThreads.first { $0.id == id }
+            ?? threads.first { $0.id == id }
     }
 
     func threadNavigationChannel(_ thread: MessageThreadSummary) -> Channel {

@@ -4,17 +4,17 @@ import SakuraCordModels
 
 extension AppModel {
     func slowmodeConfiguration(in channelID: ChannelID) -> (interval: Int, immune: Bool) {
-        let thread = snapshot?.threads.first { $0.id == channelID }
-            ?? snapshot?.activeJoinedThreads.first { $0.id == channelID }
+        let thread = threads.first { $0.id == channelID }
+            ?? activeJoinedThreads.first { $0.id == channelID }
             ?? (openThread?.id == channelID ? openThread : nil)
         let permissionChannelID = thread?.parentID ?? channelID
         guard let channel = (selectedChannel?.id == permissionChannelID ? selectedChannel : nil)
                 ?? visibleChannels.first(where: { $0.id == permissionChannelID })
-                ?? snapshot?.channels.first(where: { $0.id == permissionChannelID }),
+                ?? messagePresentationChannelsByID[permissionChannelID],
               let guildID = channel.guildID
         else { return (0, false) }
         let interval = max(0, thread?.rateLimitPerUser ?? channel.rateLimitPerUser)
-        if snapshot?.currentUser.isBot == true { return (interval, true) }
+        if currentUser?.isBot == true { return (interval, true) }
         guard let basis = conversationPermissionBasis(for: guildID) else { return (interval, false) }
         let permissions = ConversationPermissionResolver.effectivePermissions(
             guild: basis.guild,

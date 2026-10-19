@@ -502,7 +502,7 @@ extension AppModel {
         // Discord's queryAllUsers path reads UserStore insertion order. This
         // projection contains every live Gateway user DTO, including broad
         // READY_SUPPLEMENTAL hydration, without app-specific disk-only users.
-        var users = (snapshot?.messageSearchUsers ?? []).filter {
+        var users = messageSearchSourceUsers.filter {
             seen.insert($0.id).inserted
         }
         if let selectedGuildID {
@@ -521,7 +521,7 @@ extension AppModel {
                 uniquingKeysWith: { existing, _ in existing }
             )
             let orderedUserIDs =
-                (snapshot?.quickSwitcherGuildMemberUserIDs[selectedGuildID] ?? [])
+                (quickSwitcherGuildMemberUserIDs[selectedGuildID] ?? [])
                 + localGuildUsers.map(\.id)
             for userID in orderedUserIDs where seen.insert(userID).inserted {
                 if let user = localGuildUsersByID[userID] {
@@ -529,7 +529,7 @@ extension AppModel {
                 }
             }
         }
-        if let currentUser = snapshot?.currentUser,
+        if let currentUser,
            seen.insert(currentUser.id).inserted
         {
             users.insert(currentUser, at: 0)
@@ -538,7 +538,7 @@ extension AppModel {
     }
 
     var messageSearchChannels: [Channel] {
-        let allChannels = snapshot?.channels ?? visibleChannels
+        let allChannels = currentUser == nil ? visibleChannels : channelIDs.compactMap { messagePresentationChannelsByID[$0] }
         let eligible = allChannels.filter { channel in
             if let selectedGuildID {
                 return channel.guildID == selectedGuildID
