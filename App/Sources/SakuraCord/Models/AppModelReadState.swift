@@ -77,13 +77,15 @@ extension AppModel {
 
     /// Jumps the timeline to the newest message as soon as a send from this
     /// client appends its local row, without waiting for Discord to confirm it.
-    /// Returns false when the timeline shows an older page: reloading the
-    /// newest window now would replace the local row, so that case waits for
-    /// `completeConversationReadingAndAdvance` after delivery.
+    /// Returns false when the timeline shows an older page, where reloading the
+    /// newest window now would replace the local row, or has not established
+    /// its initial position, where a backlog hold can still appear after
+    /// delivery. Those sends wait for `completeConversationReadingAndAdvance`.
     @discardableResult
     func advanceTimelineForLocalSend(channelID: ChannelID) -> Bool {
         guard channelID == selectedChannelID || channelID == openThread?.id,
-              !(channelID == selectedChannelID && hasMoreLaterMessages)
+              !(channelID == selectedChannelID && hasMoreLaterMessages),
+              readState.presentations[channelID]?.initialPositionEstablished == true
         else { return false }
         // Sending is an explicit move to the newest message, so it releases a
         // held backlog the way scrolling toward the newest message does.

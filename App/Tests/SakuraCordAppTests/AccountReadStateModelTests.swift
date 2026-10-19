@@ -1582,6 +1582,12 @@ func `read state completion releases a held backlog without another geometry cal
     let channelID = ChannelID(rawValue: 210)
     model.selectedChannelID = channelID
     #expect(await until { !model.isLoadingMessages && model.selectedChannelID == channelID })
+    // Before the initial position exists a backlog hold can still appear, so
+    // that send takes the confirmation path instead.
+    #expect(!model.advanceTimelineForLocalSend(channelID: channelID))
+    #expect(model.conversationNewestRequest == nil)
+
+    model.reportTimelineInitialPosition(channelID: channelID, hasReachedReadBoundary: false)
     model.reportTimelinePosition(channelID: channelID, hasReachedReadBoundary: false)
     let divider = try #require(model.unreadDividerMessageID(channelID: channelID))
     #expect(model.conversationNewestRequest == nil)
