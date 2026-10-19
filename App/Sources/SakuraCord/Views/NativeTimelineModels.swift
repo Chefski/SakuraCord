@@ -753,6 +753,17 @@ nonisolated enum NativeTimelineReadBoundaryPolicy {
             && newestMessageMaximumY <= viewportMaximumY + tolerance
     }
 
+    /// A fully loaded conversation without messages has nothing above the
+    /// viewport, so its newest edge is already visible. Without this the first
+    /// message to arrive would be treated as unseen and plant a NEW divider.
+    static func hasReachedEmptyTimelineBoundary(
+        hasMoreEarlier: Bool,
+        isLoadingEarlier: Bool,
+        isLoadingLater: Bool
+    ) -> Bool {
+        !hasMoreEarlier && !isLoadingEarlier && !isLoadingLater
+    }
+
     /// AppKit reports wheel and trackpad deltas after applying the natural
     /// scrolling preference, so a negative vertical delta moves the viewport
     /// toward the newest message at the bottom of the timeline.

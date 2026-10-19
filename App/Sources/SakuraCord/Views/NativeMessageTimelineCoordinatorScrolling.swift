@@ -1836,9 +1836,16 @@ extension NativeMessageTimelineCoordinator {
             guard !parent.hasMoreLaterMessages else { return false }
             guard let newestIndex = items.lastIndex(where: {
                 $0.messageID != nil
-            }),
-                rowOrigins.indices.contains(newestIndex),
-                layouts.indices.contains(newestIndex)
+            }) else {
+                return NativeTimelineReadBoundaryPolicy
+                    .hasReachedEmptyTimelineBoundary(
+                        hasMoreEarlier: parent.hasMoreMessages,
+                        isLoadingEarlier: parent.isLoadingEarlier,
+                        isLoadingLater: parent.isLoadingLater
+                    )
+            }
+            guard rowOrigins.indices.contains(newestIndex),
+                  layouts.indices.contains(newestIndex)
             else {
                 return false
             }
