@@ -136,6 +136,7 @@ func `oversized files reach an external host only when the upload policy allows`
     await model.attachmentCompactionTask?.value
     #expect(await worker.calls == 1)
     #expect(await uploader.callCount == 0)
+    #expect(model.channelComposerAttachments.count == 2)
     #expect(model.channelComposerAttachments.first?.url == exact)
     let compacted = try #require(model.channelComposerAttachments.last?.url)
     #expect(compacted != oversized)
