@@ -149,9 +149,11 @@ struct WorkspacePresentation: Equatable {
         showsMessageSearch: Bool,
         showsInspector: Bool
     ) {
+        // Visible search keeps its results beside any channel conversation,
+        // including a full-width thread opened from a result.
         if sideConversation?.isFullWidth == true {
             primary = .fullWidthThread
-            supplementaryPane = showsInspector ? .memberInspector : nil
+            supplementaryPane = Self.trailingPane(showsMessageSearch, showsInspector)
             return
         }
         let sidePane = sideConversation.map(SupplementaryPane.sideConversation)
@@ -168,13 +170,13 @@ struct WorkspacePresentation: Equatable {
         switch channelKind {
         case .voice:
             primary = .channel(.voice)
-            supplementaryPane = sidePane
+            supplementaryPane = showsMessageSearch ? .messageSearch : sidePane
         case .forum:
             primary = .channel(.forum)
-            supplementaryPane = sidePane ?? Self.trailingPane(showsMessageSearch, showsInspector)
+            supplementaryPane = Self.channelPane(sidePane, showsMessageSearch, showsInspector)
         default:
             primary = .channel(.chat)
-            supplementaryPane = sidePane ?? Self.trailingPane(showsMessageSearch, showsInspector)
+            supplementaryPane = Self.channelPane(sidePane, showsMessageSearch, showsInspector)
         }
     }
 
@@ -182,6 +184,15 @@ struct WorkspacePresentation: Equatable {
     var paneSideConversation: SideConversation? {
         if case .sideConversation(let conversation)? = supplementaryPane { return conversation }
         return nil
+    }
+
+    private static func channelPane(
+        _ sidePane: SupplementaryPane?,
+        _ showsMessageSearch: Bool,
+        _ showsInspector: Bool
+    ) -> SupplementaryPane? {
+        if showsMessageSearch { return .messageSearch }
+        return sidePane ?? (showsInspector ? .memberInspector : nil)
     }
 
     private static func trailingPane(_ showsMessageSearch: Bool, _ showsInspector: Bool) -> SupplementaryPane? {

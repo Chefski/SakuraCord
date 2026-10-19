@@ -391,7 +391,7 @@ func `permission resolver ignores noncanonical numeric member ids`(_ overwriteID
 }
 
 @MainActor
-@Test func `workspace trailing column prefers side chats then search then members`() {
+@Test func `workspace trailing column prefers search then side chats then members`() {
     let thread = MessageThreadSummary(id: ChannelID(rawValue: 2), parentID: ChannelID(rawValue: 1), name: "Thread")
     let paneThread = SideConversation.thread(thread, isFullWidth: false)
     let preview = SideConversation.channelPreview(ChannelID(rawValue: 3), returnTo: nil)
@@ -413,7 +413,8 @@ func `permission resolver ignores noncanonical numeric member ids`(_ overwriteID
         )
     }
 
-    #expect(presentation(side: paneThread, search: true).supplementaryPane == .sideConversation(paneThread))
+    #expect(presentation(side: paneThread).supplementaryPane == .sideConversation(paneThread))
+    #expect(presentation(side: paneThread, search: true).supplementaryPane == .messageSearch)
     #expect(presentation(search: true).supplementaryPane == .messageSearch)
     #expect(presentation().supplementaryPane == .memberInspector)
     #expect(presentation(inspector: false).supplementaryPane == nil)
@@ -421,6 +422,11 @@ func `permission resolver ignores noncanonical numeric member ids`(_ overwriteID
     let fullWidth = presentation(page: .guide, side: .thread(thread, isFullWidth: true))
     #expect(fullWidth.primary == .fullWidthThread)
     #expect(fullWidth.supplementaryPane == .memberInspector)
+    // Search results stay beside a full-width thread, with or without members.
+    let fullWidthThread = SideConversation.thread(thread, isFullWidth: true)
+    #expect(presentation(side: fullWidthThread, search: true).supplementaryPane == .messageSearch)
+    #expect(presentation(side: fullWidthThread, search: true, inspector: false).supplementaryPane == .messageSearch)
+    #expect(presentation(side: fullWidthThread, inspector: false).supplementaryPane == nil)
     // Voice channels show only their chat; guild pages only their side chats.
     #expect(presentation(kind: .voice).supplementaryPane == nil)
     #expect(presentation(kind: .voice, side: .voiceChat(ChannelID(rawValue: 4))).paneSideConversation == .voiceChat(ChannelID(rawValue: 4)))
