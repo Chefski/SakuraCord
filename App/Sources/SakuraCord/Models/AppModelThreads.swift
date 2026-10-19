@@ -718,7 +718,9 @@ extension AppModel {
         if presentsCreatedThread {
             openThreadConversation(
                 thread,
-                starter: creation.starterMessage?.author ?? currentUser,
+                // The creator started the thread; the source message's author
+                // appears only in its quoted starter.
+                starter: currentUser,
                 startedAt: thread.createdAt ?? .now,
                 initialMessages: []
             )
@@ -790,6 +792,28 @@ extension AppModel {
         }
         if !redrawnMessageIDs.isEmpty {
             publishMessageRowsUpdate(changedMessageIDs: redrawnMessageIDs)
+        }
+    }
+}
+
+extension AppModel {
+    /// A thread's type-21 starter row quotes the parent message it started
+    /// from. Keep the open thread's and cached threads' quotes in step with
+    /// edits to that message; a deleted message leaves the quote unavailable.
+    func refreshThreadStarterQuotes(messageID: MessageID, with message: Message?) {
+        let preview = message.map(MessageReplyPreview.init(message:))
+        func quotes(_ candidate: Message) -> Bool {
+            candidate.type == .threadStarter && candidate.messageReference?.messageID == messageID
+                && candidate.replyPreview != preview
+        }
+        if let index = threadMessages.firstIndex(where: quotes) {
+            threadMessages[index].replyPreview = preview
+        }
+        for (channelID, cached) in messageCache {
+            guard let index = cached.firstIndex(where: quotes) else { continue }
+            messageCache[channelID]?[index].replyPreview = preview
+            messageRowCache[channelID] = nil
+            messageRowCacheOrder.removeAll { $0 == channelID }
         }
     }
 }
