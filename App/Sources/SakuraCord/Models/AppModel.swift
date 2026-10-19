@@ -386,6 +386,9 @@ final class AppModel {
     var sideConversations = SideConversationStack()
     /// The Guide resource store; it lives exactly as long as its side chat.
     var guideResource: GuildResourceState?
+    /// Re-resolution of the open private thread after a fresh READY did not
+    /// confirm it. Closing or reopening the conversation clears it.
+    var openThreadResolution: OpenThreadResolution?
     var openThreadStarter: User?
     var openThreadStartedAt: Date?
     @ObservationIgnored var openThreadStarterMessageID: MessageID?
@@ -1086,6 +1089,12 @@ final class AppModel {
     @ObservationIgnored var pollVoteMutations: [MessageID: PollVoteMutationState] = [:]
     @ObservationIgnored var pollResultRefreshJournals: [MessageID: ConversationRefreshJournal] = [:]
     @ObservationIgnored var guildActivationTask: Task<Void, Never>?
+    @ObservationIgnored var openThreadResolutionTask: Task<Void, Never>?
+    @ObservationIgnored var conversationNavigationTarget: PendingConversationNavigation?
+    /// Advanced whenever the side conversation or guild page changes outside a
+    /// navigation's own work: closing, opening or creating a thread, or
+    /// opening a guild page.
+    @ObservationIgnored var sideConversationRevision: UInt64 = 0
     @ObservationIgnored var memberLoadTask: Task<Void, Never>?
     @ObservationIgnored var memberLoadGeneration: UInt64 = 0
     @ObservationIgnored var memberListViewportRequest: MemberListViewportRequest?
