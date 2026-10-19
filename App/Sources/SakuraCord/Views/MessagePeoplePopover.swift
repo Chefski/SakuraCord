@@ -50,7 +50,7 @@ struct MessagePeoplePopover<Selection: Hashable, Header: View, Categories: View>
         .task(id: LoadIdentity(selection: selection, count: count,
                                revision: selection.flatMap { pager.revisions[$0] } ?? 0,
                                generation: pager.generation,
-                               accountID: model.snapshot?.currentUser.id)) {
+                               accountID: model.currentUser?.id)) {
             guard let selection else { return }
             let page = pager.pages[selection]
             let wasInvalidated = pager.revisions[selection] != nil || pager.generation > 0
@@ -130,7 +130,7 @@ private struct MessagePersonRow: View {
             model.membersByGuildID[guildID]?[user.id]
                 ?? (guildID == model.selectedGuildID ? model.membersByID[user.id] : nil)
         }
-        let isCurrentUser = model.snapshot?.currentUser.id == user.id
+        let isCurrentUser = model.currentUser?.id == user.id
         HStack(spacing: InterfaceScale.metric(10)) {
             AvatarView(name: user.displayName, url: member?.guildAvatarURL ?? user.avatarURL, size: InterfaceScale.metric(32))
             VStack(alignment: .leading, spacing: 1) {
