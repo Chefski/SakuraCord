@@ -22,10 +22,14 @@ public enum ThreadNamePolicy {
         channelNames: [ChannelID: String] = [:],
         roleNames: [RoleID: String] = [:]
     ) -> String {
-        if let title = message.embeds.first?.title, !title.isEmpty {
+        if let title = message.embeds.first?.title?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !title.isEmpty
+        {
             return truncated(title, limit: 40)
         }
-        if let question = message.poll?.question, !question.isEmpty {
+        if let question = message.poll?.question.trimmingCharacters(in: .whitespacesAndNewlines),
+           !question.isEmpty
+        {
             return truncated(question, limit: 80)
         }
         var line = readableContent(message, channelNames: channelNames, roleNames: roleNames)

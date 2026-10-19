@@ -41,6 +41,7 @@ struct ThreadNameCase: Sendable, CustomTestStringConvertible {
     ThreadNameCase("ignored", embedTitle: "An embed title that is longer than forty characters",
                    expected: "An embed title that is longer than forty..."),
     ThreadNameCase("ignored", pollQuestion: "Which day?", expected: "Which day?"),
+    ThreadNameCase("Release notes", embedTitle: "   ", pollQuestion: " ", expected: "Release notes"),
     ThreadNameCase("  \n  ", expected: "Thread"),
 ])
 func `default thread names follow the first-party starter-message rule`(_ value: ThreadNameCase) {
