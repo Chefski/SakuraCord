@@ -1,6 +1,7 @@
 import Foundation
 import Darwin
 import DiscordProtocol
+import Observation
 import SakuraCordModels
 import Testing
 @testable import SakuraCord
