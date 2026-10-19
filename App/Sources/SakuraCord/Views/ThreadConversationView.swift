@@ -22,7 +22,11 @@ nonisolated enum ThreadTimelinePresentationPolicy {
         isDetachedFromNewest: Bool = false,
         messageCount: Int
     ) -> Bool {
-        !isNearBottom && (hasUnreadReplies || isDetachedFromNewest) && messageCount > 0
+        // A detached window ends before the newest reply even when its own
+        // bottom is in view, so the way back to newest always shows.
+        (!isNearBottom || isDetachedFromNewest)
+            && (hasUnreadReplies || isDetachedFromNewest)
+            && messageCount > 0
     }
 }
 
@@ -378,7 +382,7 @@ private struct ThreadMessageTimelineView: View {
             unreadMessageID: unread.dividerMessageID,
             highlightedMessageID: highlightedMessageID,
             selectedMessageID: model.threadReplyingTo?.id,
-            initialScrollTarget: unread.initialScrollTarget,
+            initialScrollTarget: model.threadTimelinePosition.restore ?? unread.initialScrollTarget,
             scrollRequest: scrollRequest,
             editRequest: editRequest,
             runsPerformanceAutoScroll: false,
@@ -434,7 +438,9 @@ private struct ThreadMessageTimelineView: View {
                 hasUnreadReplies: unread.summary != nil,
                 isDetachedFromNewest: model.isThreadWindowAwayFromNewest,
                 messageCount: model.threadMessages.count
-            ), hasEstablishedInitialPosition {
+            ), hasEstablishedInitialPosition
+                || (model.isThreadWindowAwayFromNewest && model.hasCompletedInitialThreadLoad)
+            {
                 TimelineNewestButton(
                     title: unread.summary != nil ? "New replies" : "Scroll to bottom",
                     hasUnread: unread.summary != nil,
@@ -583,6 +589,7 @@ private struct ThreadMessageTimelineView: View {
         }
         hasEstablishedInitialPosition = true
         isNearBottom = state.isNearBottom
+        model.threadTimelinePosition.restore = nil
         model.reportTimelineInitialPosition(
             channelID: threadID,
             hasReachedReadBoundary:
@@ -592,6 +599,11 @@ private struct ThreadMessageTimelineView: View {
 
     private func handleScrollState(_ state: TimelineScrollState) {
         isNearBottom = state.isNearBottom
+        if state.hasEstablishedInitialPosition {
+            model.threadTimelinePosition.reading = state.isNearBottom
+                ? .bottom
+                : state.readingMessage.map { .readingPosition($0.id, offsetFromViewportTop: $0.offsetFromViewportTop) }
+        }
         latestScrollState = state
         let retainedPaging = historyPaging.retained(for: state)
         if historyPaging != retainedPaging {

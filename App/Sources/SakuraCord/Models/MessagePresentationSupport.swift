@@ -334,16 +334,9 @@ nonisolated enum MessageSearchPresentation {
         channelsByID: [ChannelID: Channel]
     ) -> [MessageRowPresentation] {
         var previousChannelID: ChannelID?
-        // A server search returns the threads its results came from.
-        let threadIDs = Set(page.channels.lazy.filter {
-            $0.kind != .directMessage && $0.kind != .groupDirectMessage
-        }.map(\.id))
         return page.results.map { result in
             let message = result.hit
             let channel = channelsByID[message.channelID]
-            let isThread = threadIDs.contains(message.channelID)
-            let isForumPost = isThread
-                && channel?.categoryID.flatMap { channelsByID[$0]?.kind } == .forum
             let contextMessagesByID = Dictionary(
                 uniqueKeysWithValues: result.messages.map { ($0.id, $0) }
             )
@@ -363,8 +356,7 @@ nonisolated enum MessageSearchPresentation {
                     channelID: message.channelID,
                     sectionTitle: sectionTitle(for: channel, message: message),
                     sectionSubtitle: channel?.category,
-                    systemImage: isForumPost ? "bubble.left.and.bubble.right"
-                        : isThread ? SakuraCordSystemSymbol.thread : sectionSystemImage(for: channel),
+                    systemImage: sectionSystemImage(for: channel, channelsByID: channelsByID),
                     showsSectionHeader: showsSectionHeader
                 )
             )
@@ -378,11 +370,23 @@ nonisolated enum MessageSearchPresentation {
         guard let channel else {
             return "Channel \(message.channelID.description.suffix(6))"
         }
-        // The section icon identifies the kind of conversation.
+        // The section symbol already identifies the channel type.
         return channel.name
     }
 
-    private static func sectionSystemImage(for channel: Channel?) -> String {
+    private static func sectionSystemImage(
+        for channel: Channel?,
+        channelsByID: [ChannelID: Channel]
+    ) -> String {
+        // A thread's parent is a conversation channel rather than a category,
+        // and it takes the same symbol as its toolbar title.
+        if let parentID = channel?.categoryID, let parent = channelsByID[parentID] {
+            switch parent.kind {
+            case .forum: return "bubble.left.and.bubble.right.fill"
+            case .text, .announcement: return SakuraCordSystemSymbol.thread
+            case .voice, .directMessage, .groupDirectMessage, .unknown: break
+            }
+        }
         switch channel?.kind {
         case .directMessage:
             return "at"
