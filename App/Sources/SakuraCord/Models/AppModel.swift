@@ -156,7 +156,7 @@ final class AppModel {
     private(set) var quickSwitcherJoinedGuildMemberUserIDs: [GuildID: [UserID]] = [:]
     private(set) var quickSwitcherGuildMemberAliases: [GuildID: [UserID: String]] = [:]
     private(set) var messagePresentationChannelsByID: [ChannelID: Channel] = [:]
-    private(set) var channelIDs: [ChannelID] = []
+    private(set) var messagePresentationChannels: [Channel] = []
     private(set) var activeJoinedThreads: [MessageThreadSummary] = []
     private(set) var knownThreadIDs: Set<ChannelID> = []
     private(set) var guildIDsWithResourceChannels: Set<GuildID> = []
@@ -1355,15 +1355,18 @@ extension AppModel {
         friendUserIDs = snapshot?.friendUserIDs ?? []
         refreshSearchSnapshotPresentation()
         messageSearchUserBoosterChannelIDs = snapshot?.messageSearchUserBoosterChannelIDs ?? []
-        messagePresentationChannelsByID = Dictionary((snapshot?.channels ?? []).map { channel in
+        messagePresentationChannels = (snapshot?.channels ?? []).map { channel in
             var channel = channel
             channel.unreadCount = 0
             channel.mentionCount = 0
-            return (channel.id, channel)
-        }, uniquingKeysWith: { _, newer in newer })
-        channelIDs = snapshot?.channels.map(\.id) ?? []
+            return channel
+        }
+        messagePresentationChannelsByID = Dictionary(
+            messagePresentationChannels.map { ($0.id, $0) },
+            uniquingKeysWith: { _, newer in newer }
+        )
         activeJoinedThreads = snapshot?.activeJoinedThreads ?? []
-        knownThreadIDs = Set((snapshot?.threads ?? []).map(\.id)).union(activeJoinedThreads.map(\.id))
+        knownThreadIDs = Set(threads.map(\.id)).union(activeJoinedThreads.map(\.id))
         guildIDsWithResourceChannels = Set((snapshot?.channels ?? []).compactMap { channel in
             channel.flags & (1 << 7) != 0 ? channel.guildID : nil
         })

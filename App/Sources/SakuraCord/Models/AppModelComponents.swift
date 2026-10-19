@@ -238,7 +238,7 @@ extension AppModel {
         in guildID: GuildID?,
         channelTypes: [Int]
     ) -> [Channel] {
-        let source = currentUser == nil ? visibleChannels : channelIDs.compactMap { messagePresentationChannelsByID[$0] }
+        let source = currentUser == nil ? visibleChannels : messagePresentationChannels
         return source.filter { channel in
             (guildID == nil || channel.guildID == guildID)
                 && (channelTypes.isEmpty

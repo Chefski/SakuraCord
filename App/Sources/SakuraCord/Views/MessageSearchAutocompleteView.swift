@@ -632,7 +632,7 @@ enum MessageSearchAutocompletePolicy {
             includesUnjoinedThreads: true,
             channelStoreOrder: channels.map(\.id),
             users: users ?? model.messageSearchUsers,
-            userBoosterChannels: model.channelIDs.compactMap { model.messagePresentationChannelsByID[$0] }.filter { channel in
+            userBoosterChannels: model.messagePresentationChannels.filter { channel in
                 model.messageSearchUserBoosterChannelIDs.contains(channel.id)
             },
             includesChannelRecipientsAsUsers: users == nil,

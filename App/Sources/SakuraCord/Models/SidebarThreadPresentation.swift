@@ -13,6 +13,10 @@ nonisolated struct SidebarThreadRow: Identifiable, Equatable, Sendable {
 /// Discord's channel list shows a parent's active joined threads only while
 /// they are relevant. The contract lives in docs/protocol/MESSAGING.md.
 nonisolated enum SidebarThreadPolicy {
+    static func listsThreads(under kind: ChannelKindValue) -> Bool {
+        [.text, .announcement, .forum].contains(kind)
+    }
+
     struct Candidate: Sendable {
         let thread: MessageThreadSummary
         let latestMessageID: MessageID?
@@ -132,7 +136,7 @@ extension AppModel {
                 isCategoryCollapsed(guildID: guildID, categoryID: $0)
             } ?? false
             for channel in group.channels {
-                guard [.text, .announcement, .forum].contains(channel.kind),
+                guard SidebarThreadPolicy.listsThreads(under: channel.kind),
                       !hiddenChannelIDs.contains(channel.id) else { continue }
                 let candidates = (candidatesByParentID[channel.id] ?? []).map(sidebarThreadCandidate)
                 let openCandidate = open?.parentID == channel.id

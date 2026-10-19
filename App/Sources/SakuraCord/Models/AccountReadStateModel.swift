@@ -75,7 +75,6 @@ final class AccountReadStateModel {
             for channelID in Set(entriesStorage.keys).union(newValue.keys) {
                 self[channelID] = newValue[channelID]
             }
-            entriesStorage = newValue
         }
     }
 

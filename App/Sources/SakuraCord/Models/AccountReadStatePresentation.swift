@@ -39,7 +39,7 @@ extension AccountReadStateModel {
                   forumPostArchivedByID[entry.channelID] != true,
                   let parentID = entry.parentID,
                   let parent = policy.channelByID[parentID],
-                  [.text, .announcement, .forum].contains(parent.kind),
+                  SidebarThreadPolicy.listsThreads(under: parent.kind),
                   entries[parentID]?.isAccessible == true,
                   let guildID = parent.guildID,
                   entry.guildID == guildID

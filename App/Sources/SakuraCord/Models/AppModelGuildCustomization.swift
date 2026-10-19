@@ -52,7 +52,7 @@ extension AppModel {
     func browsableChannels(in guildID: GuildID) -> [Channel] {
         let hidesResources = hasGuildGuide(in: guildID)
         let resources = Set(onboarding.guides[guildID]?.configuration?.resourceChannels.map(\.channelID) ?? [])
-        return channelIDs.compactMap { messagePresentationChannelsByID[$0] }.filter {
+        return messagePresentationChannels.filter {
             $0.guildID == guildID && (!hidesResources || ($0.flags & (1 << 7) == 0 && !resources.contains($0.id)))
                 && conversationAccess(for: $0).isReadable
         }

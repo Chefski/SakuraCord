@@ -538,7 +538,7 @@ extension AppModel {
     }
 
     var messageSearchChannels: [Channel] {
-        let allChannels = currentUser == nil ? visibleChannels : channelIDs.compactMap { messagePresentationChannelsByID[$0] }
+        let allChannels = currentUser == nil ? visibleChannels : messagePresentationChannels
         let eligible = allChannels.filter { channel in
             if let selectedGuildID {
                 return channel.guildID == selectedGuildID

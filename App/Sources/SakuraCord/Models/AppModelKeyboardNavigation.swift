@@ -11,7 +11,7 @@ extension AppModel {
         // must not build an account-wide channel set on every menu update.
         conversationNavigationHistory.destination(direction: direction) { id in
             !hiddenChannelIDs.contains(id)
-                && (channelIDs.contains(id) || visibleChannels.contains { $0.id == id }
+                && (messagePresentationChannelsByID[id] != nil || visibleChannels.contains { $0.id == id }
                     || openThread?.id == id || knownThreadIDs.contains(id))
         }
     }
@@ -117,7 +117,7 @@ extension AppModel {
         }
         let guildIDs = serverRailPresentation.navigationGuildIDs
         let hiddenIDs = hiddenChannelIDs
-        let channels = channelIDs
+        let channels = messagePresentationChannels
         let isCandidate: (ChannelID) -> Bool = { channelID in
             guard let entry = self.readState[unread: channelID] else { return false }
             return channelID != selectedID && entry.isAccessible && entry.isUnread
@@ -131,10 +131,10 @@ extension AppModel {
         for thread in activeJoinedThreads {
             guard isCandidate(thread.id),
                   readState.unread(channelID: thread.id),
-                  let parentID = thread.parentID, channels.contains(parentID),
+                  let parentID = thread.parentID, messagePresentationChannelsByID[parentID] != nil,
                   let parent = readState.channelByID[parentID],
                   !hiddenIDs.contains(parentID) else { continue }
-            if thread.guildID != nil, !thread.isArchived, [.text, .announcement, .forum].contains(parent.kind) {
+            if thread.guildID != nil, !thread.isArchived, SidebarThreadPolicy.listsThreads(under: parent.kind) {
                 return true
             }
         }
@@ -146,11 +146,11 @@ extension AppModel {
             ? shortcutMentionNavigationCandidateIndex
             : shortcutUnreadNavigationCandidateIndex
         if let previousIndex, channels.indices.contains(previousIndex),
-           isDestination(channels[previousIndex])
+           isDestination(channels[previousIndex].id)
         {
             return true
         }
-        let candidateIndex = channels.firstIndex(where: isDestination)
+        let candidateIndex = channels.firstIndex { isDestination($0.id) }
         if mentionsOnly {
             shortcutMentionNavigationCandidateIndex = candidateIndex
         } else {
