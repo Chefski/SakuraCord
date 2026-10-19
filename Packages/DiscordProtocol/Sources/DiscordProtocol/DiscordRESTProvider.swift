@@ -121,8 +121,8 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     /// Advanced by each authoritative thread record or deletion; a REST
     /// result is applied only when no newer record arrived meanwhile.
     var threadRecordRevisions: [ChannelID: UInt64] = [:]
-    /// Advanced by authoritative membership changes; a REST result carries
-    /// membership only when none arrived meanwhile.
+    /// Advanced by authoritative membership changes and each local join or
+    /// leave; a REST result carries membership only when none arrived meanwhile.
     var threadMembershipRevisions: [ChannelID: UInt64] = [:]
     var cachedGuildNotificationSettings: [GuildID?: GuildNotificationSettings] = [:]
     var forumCatalogueTasks: [ForumCatalogueLoadKey: Task<Void, Never>] = [:]

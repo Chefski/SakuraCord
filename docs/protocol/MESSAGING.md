@@ -393,8 +393,12 @@ Rename sends `PATCH /channels/{thread}` with only `name`, trimmed to 1–100
 characters. The first-party settings page saves its whole form; the minimal body
 cannot overwrite other settings with stale values. An archived thread is first
 unarchived with `{"archived":false}` and stays open, as before tag, lock and pin
-changes. The sequence is one provider operation; if its second step fails, the
-returned unarchived state is kept and nothing is replayed. Discord then sends
+changes. The sequence is one provider operation that is never replayed; each
+completed step is committed as it returns, so a failed rename leaves the thread
+open. Mutation results follow the [retention](#thread-retention) record and
+membership revisions: a PATCH result is ignored when a thread record arrived
+while it was pending, and reports not found when the thread was deleted meanwhile.
+A channel response without `member` never changes the cached membership. Discord then sends
 `THREAD_UPDATE`, `THREAD_MEMBER_UPDATE` and a type-4 name-change message in the
 thread; the republished catalogue renames sidebar rows, the open thread and
 starter cards. Renaming requires Manage Threads or ownership of an unlocked
@@ -404,11 +408,13 @@ Join (Follow) and leave (Unfollow) are `POST` and `DELETE`
 `/channels/{thread}/thread-members/@me?location=…` without a body; joining is
 not `PUT`. `location` names the surface: `Context Menu` for channel-list and
 forum-card menus, `Sidebar Overflow` for the side-pane menu, `Toolbar Overflow`
-for the full-view menu and `Forum Toolbar` for the post header. A 204 updates
-known threads immediately. Gateway `THREAD_MEMBERS_UPDATE` `added_members` (then
-`THREAD_CREATE` with `member`) or `removed_member_ids` remains authoritative, and
-the local state never replaces a member it already delivered. Leaving keeps an
-open pane open. Notification responses also publish the joined-thread catalogue.
+for the full-view menu and `Forum Toolbar` for the post header. Each join or
+leave advances the thread's membership revision, and its 204 updates known
+threads immediately only if that revision is still current, so a Gateway
+membership event or a newer join or leave wins. The Gateway member events listed
+under [retention](#thread-retention) remain authoritative; a confirmation never
+replaces a member they already delivered. Notification responses also publish
+the joined-thread catalogue.
 
 Starting a thread from a message posts
 `POST /channels/{parent}/messages/{message}/threads` with `name`, `type` (`10`
@@ -434,9 +440,8 @@ advancing by raw records while `has_more`. Search runs on submit with
 `?name=<query>&tag_setting=match_some` and returns active and archived matches as
 one page. Responses carry `threads`, the current user's `members`, `has_more` and
 `total_results`; text channels omit message previews. Discord did not return an
-archived private thread to a non-member without Manage Threads. Joined and other active
-threads come from local state (READY, `THREAD_LIST_SYNC`, `THREAD_CREATE`)
-without a request. Browsing requires View Channel and Read Message History on a
+archived private thread to a non-member without Manage Threads. Joined and other
+active threads come from the retained local thread state without a request. Browsing requires View Channel and Read Message History on a
 text or announcement parent.
 
 Text-channel and voice-channel chats, existing threads, and existing forum posts

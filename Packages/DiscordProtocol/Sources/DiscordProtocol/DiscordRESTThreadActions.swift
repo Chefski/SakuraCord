@@ -42,26 +42,23 @@ extension DiscordRESTProvider {
             }
     }
 
-    /// A confirmed join or leave updates known threads at once. A member the
-    /// Gateway already delivered is kept; it carries Discord's join timestamp.
+    /// A confirmed join or leave updates known threads at once, through the
+    /// same path as a Gateway membership change. A member the Gateway already
+    /// delivered is kept; it carries Discord's join timestamp.
     func reconcileConfirmedThreadMembership(threadID: ChannelID, isJoined: Bool) {
-        for (parentID, posts) in cachedForumPosts {
-            guard var post = posts[threadID] else { continue }
-            guard isJoined != (post.thread.notificationSettings != nil) else { return }
-            if isJoined {
-                post.thread.notificationSettings = ThreadNotificationSettings(joinedAt: .now)
-                cachedForumPosts[parentID]?[threadID] = post
-                reconcileJoinedThread(post.thread)
-            } else {
-                post.thread.notificationSettings = nil
-                cachedForumPosts[parentID]?[threadID] = post
-                cachedJoinedThreads[threadID] = nil
-                cachedJoinedThreadOrder.removeAll { $0 == threadID }
-            }
+        let current = cachedForumPost(threadID: threadID).map { $0.thread.notificationSettings }
+            ?? cachedJoinedThreads[threadID]?.notificationSettings
+        guard isJoined != (current != nil) else { return }
+        var changedParentIDs = Set<ChannelID>()
+        guard applyCurrentUserThreadMembership(
+            isJoined ? ThreadNotificationSettings(joinedAt: .now) : nil,
+            threadID: threadID,
+            changedParentIDs: &changedParentIDs
+        ) else { return }
+        for parentID in changedParentIDs {
             publishForumPosts(parentID: parentID)
-            publishActiveJoinedThreads()
-            return
         }
+        publishActiveJoinedThreads()
     }
 
     /// A thread started from a message shares that message's ID. Discord's

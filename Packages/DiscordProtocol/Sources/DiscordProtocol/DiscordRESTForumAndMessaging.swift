@@ -368,27 +368,11 @@ extension DiscordRESTProvider {
         guard let parentID = post.thread.parentID else {
             throw ChatProviderError.invalidRequest("The forum post has no parent channel.")
         }
+        // Each completed PATCH is committed as it returns, so a completed
+        // unarchive stays applied when a following change fails.
         var working = post
-        do {
-            try await applyForumPostMutation(mutation, parentID: parentID, to: &working)
-        } catch {
-            // A completed unarchive stays applied when the following change fails.
-            if working != post { storeMutatedForumPost(working, parentID: parentID) }
-            throw error
-        }
-        return storeMutatedForumPost(working, parentID: parentID)
-    }
-
-    /// Callers may pass a bare thread; keep the catalogue's previews and owner.
-    @discardableResult
-    private func storeMutatedForumPost(_ post: ForumPost, parentID: ChannelID) -> ForumPost {
-        var stored = post
-        if let existing = cachedForumPosts[parentID]?[post.id] {
-            stored = Self.mergingForumPostCatalogueMetadata(incoming: post, existing: existing)
-        }
-        cachedForumPosts[parentID, default: [:]][post.id] = stored
-        publishForumPosts(parentID: parentID)
-        return stored
+        try await applyForumPostMutation(mutation, parentID: parentID, to: &working)
+        return working
     }
 
     private func applyForumPostMutation(
@@ -553,11 +537,14 @@ extension DiscordRESTProvider {
         isJoined: Bool,
         location: ThreadMembershipLocation
     ) async throws {
+        let revision = advanceThreadMembershipRevision(threadID)
         try await requestEmpty(
             "/channels/\(threadID)/thread-members/@me",
             method: isJoined ? "POST" : "DELETE",
             query: [URLQueryItem(name: "location", value: location.rawValue)]
         )
+        // A Gateway membership change or a newer join/leave supersedes this answer.
+        guard threadMembershipRevisions[threadID] == revision else { return }
         reconcileConfirmedThreadMembership(threadID: threadID, isJoined: isJoined)
     }
 
@@ -606,9 +593,9 @@ extension DiscordRESTProvider {
             """
         )
         let posts = ingestForumPosts(decodedPosts, channel: channel)
-        let nextOffset = result.hasMore && !result.threads.isEmpty
-            ? query.offset + result.threads.count
-            : nil
+        // Offsets count Discord's records, including ones that failed to decode.
+        let rawCount = result.threads.count + result.skippedThreadCount
+        let nextOffset = result.hasMore && rawCount > 0 ? query.offset + rawCount : nil
         return ForumPostPage(
             posts: posts,
             hasMore: result.hasMore && nextOffset != nil,
@@ -818,6 +805,7 @@ extension DiscordRESTProvider {
     func patchForumPost(_ post: ForumPost, body: [String: JSONValue]) async throws
         -> ForumPost
     {
+        let revision = threadRecordRevisions[post.id]
         let dto: ChannelDTO = try await request(
             "/channels/\(post.id)", method: "PATCH", body: body
         )
@@ -826,10 +814,27 @@ extension DiscordRESTProvider {
         updated.mostRecentMessage = post.mostRecentMessage
         updated.owner = post.owner
         updated.isUnread = post.isUnread
-        // The channel response omits the current member; membership is unchanged.
-        if updated.thread.notificationSettings == nil {
+        guard let parentID = updated.thread.parentID ?? post.thread.parentID else { return updated }
+        let cached = cachedForumPosts[parentID]?[post.id]
+        // A Gateway record or deletion that arrived meanwhile is authoritative.
+        // Discord sends THREAD_UPDATE before answering, so it usually holds this
+        // change; a record that is gone was deleted while the request was pending.
+        guard threadRecordRevisions[post.id] == revision else {
+            guard let cached else { throw ChatProviderError.channelNotFound }
+            return cached
+        }
+        if let cached {
+            // Keep the latest catalogue previews, owner and membership. A response
+            // without `member` carries no membership, so a cached removal stands.
+            updated = Self.mergingForumPostCatalogueMetadata(incoming: updated, existing: cached)
+            if dto.member == nil {
+                updated.thread.notificationSettings = cached.thread.notificationSettings
+            }
+        } else if dto.member == nil {
             updated.thread.notificationSettings = post.thread.notificationSettings
         }
+        cachedForumPosts[parentID, default: [:]][post.id] = updated
+        publishForumPosts(parentID: parentID)
         return updated
     }
 

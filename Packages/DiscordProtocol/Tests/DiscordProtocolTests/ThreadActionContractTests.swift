@@ -13,14 +13,23 @@ struct ThreadActionContractTests {
         defaultAutoArchiveDuration: 1_440
     )
 
-    @Test func `rename sends only the name after unarchiving an archived thread`() async throws {
-        let provider = await makeProvider()
-        let archived = ForumPost(thread: thread(isArchived: true))
-        fixture.enqueue(threadJSON(name: "Old name", archived: false), threadJSON(name: "New name", archived: false))
+    @Test func `rename sends only the name after unarchiving and keeps a membership change made meanwhile`() async throws {
+        let provider = await makeProvider(joined: true)
+        let archived = ForumPost(thread: thread(isArchived: true, joined: true))
+        let gate = StatusRecoveryResponseGate()
+        fixture.enqueue(threadJSON(name: "Old name", archived: false))
+        fixture.enqueue(threadJSON(name: "New name", archived: false), gate: gate)
 
-        let renamed = try await provider.updateForumPost(archived, mutation: .name("  New name "))
+        let rename = Task { try await provider.updateForumPost(archived, mutation: .name("  New name ")) }
+        #expect(await eventually { gate.didCapture })
+        // Leaving elsewhere while the name PATCH is pending; its response has no member.
+        await provider.receiveGatewayDispatchForTesting(name: "THREAD_MEMBERS_UPDATE", data: removal)
+        gate.release()
+        let renamed = try await rename.value
 
         #expect(renamed.thread.name == "New name" && !renamed.thread.isArchived)
+        #expect(renamed.thread.notificationSettings == nil)
+        #expect(await provider.cachedForumPostForTesting(threadID: archived.id)?.thread.notificationSettings == nil)
         #expect(fixture.requests.withLock { $0.map { "\($0.httpMethod ?? "") \($0.url?.path ?? "")" } }
             == ["PATCH /api/v9/channels/42", "PATCH /api/v9/channels/42"])
         #expect(fixture.bodies.withLock { $0 } == [
@@ -34,19 +43,55 @@ struct ThreadActionContractTests {
         await provider.disconnect()
     }
 
-    @Test func `join posts and leave deletes the current member with the surface location`() async throws {
+    @Test(arguments: [false, true])
+    func `a rename answered after a deletion does not restore the thread`(succeeds: Bool) async throws {
         let provider = await makeProvider()
-        fixture.enqueue("", "")
+        let gate = StatusRecoveryResponseGate()
+        fixture.enqueue(threadJSON(name: "Old name", archived: false))
+        if succeeds {
+            fixture.enqueue(threadJSON(name: "New", archived: false), gate: gate)
+        } else {
+            fixture.enqueue(#"{"code":10003,"message":"Unknown Channel"}"#, status: 404, gate: gate)
+        }
 
-        try await provider.setThreadMembership(threadID: ChannelID(rawValue: 42), isJoined: true, location: .sidePaneMenu)
-        #expect(await provider.activeJoinedThreadsForTesting().map(\.id) == [ChannelID(rawValue: 42)])
-        try await provider.setThreadMembership(threadID: ChannelID(rawValue: 42), isJoined: false, location: .fullViewMenu)
+        let rename = Task {
+            try await provider.updateForumPost(ForumPost(thread: thread(isArchived: true)), mutation: .name("New"))
+        }
+        #expect(await eventually { gate.didCapture })
+        await provider.receiveGatewayDispatchForTesting(name: "THREAD_DELETE", data: .object([
+            "id": .string("42"), "guild_id": .string("1"), "parent_id": .string("7"), "type": .number(11),
+        ]))
+        gate.release()
+
+        await #expect(throws: ChatProviderError.self) { _ = try await rename.value }
+        #expect(await provider.cachedForumPostForTesting(threadID: ChannelID(rawValue: 42)) == nil)
+        await provider.disconnect()
+    }
+
+    @Test func `join posts, leave deletes, and a delayed leave cannot undo a newer join`() async throws {
+        let provider = await makeProvider()
+        let threadID = ChannelID(rawValue: 42)
+        let gate = StatusRecoveryResponseGate()
+        fixture.enqueue("")
+        fixture.enqueue("", gate: gate)
+        fixture.enqueue("")
+
+        try await provider.setThreadMembership(threadID: threadID, isJoined: true, location: .sidePaneMenu)
+        #expect(await provider.activeJoinedThreadsForTesting().map(\.id) == [threadID])
+        let leave = Task { try await provider.setThreadMembership(threadID: threadID, isJoined: false, location: .fullViewMenu) }
+        #expect(await eventually { gate.didCapture })
+        await provider.receiveGatewayDispatchForTesting(name: "THREAD_MEMBERS_UPDATE", data: removal)
         #expect(await provider.activeJoinedThreadsForTesting().isEmpty)
+        try await provider.setThreadMembership(threadID: threadID, isJoined: true, location: .contextMenu)
+        gate.release()
+        try await leave.value
 
+        #expect(await provider.activeJoinedThreadsForTesting().map(\.id) == [threadID])
         let requests = fixture.requests.withLock { $0 }
         #expect(requests.map { "\($0.httpMethod ?? "") \($0.url?.absoluteString ?? "")" } == [
             "POST https://discord.com/api/v9/channels/42/thread-members/@me?location=Sidebar%20Overflow",
             "DELETE https://discord.com/api/v9/channels/42/thread-members/@me?location=Toolbar%20Overflow",
+            "POST https://discord.com/api/v9/channels/42/thread-members/@me?location=Context%20Menu",
         ])
         #expect(fixture.bodies.withLock { $0.isEmpty })
         await provider.disconnect()
@@ -84,33 +129,46 @@ struct ThreadActionContractTests {
 
     @Test func `the thread browser pages archived threads and searches names with first-party queries`() async throws {
         let provider = await makeProvider(seedsThread: false)
+        let malformed = #"{"guild_id":"1","parent_id":"7","type":11,"name":"Missing identifier"}"#
         fixture.enqueue(
-            #"{"threads":[\#(threadJSON(id: "60", name: "Archived notes", archived: true)),"#
+            #"{"threads":[\#(threadJSON(id: "60", name: "Archived notes", archived: true)),\#(malformed),"#
                 + #"\#(threadJSON(id: "61", name: "Old plans", archived: true))],"#
                 + #""members":[{"id":"61","user_id":"9","join_timestamp":"2026-10-01T00:00:00+00:00","flags":1}],"#
                 + #""has_more":true,"total_results":30}"#,
+            #"{"threads":[\#(malformed)],"has_more":true,"total_results":30}"#,
             #"{"threads":[\#(threadJSON(id: "61", name: "Old plans", archived: true))],"has_more":false,"total_results":1}"#
         )
 
         let page = try await provider.threadBrowserPage(in: parent.id, query: ThreadBrowserQuery())
+        // Offsets count raw records, so an undecodable page still continues.
+        let skipped = try await provider.threadBrowserPage(in: parent.id, query: ThreadBrowserQuery(scope: .archived(offset: 3)))
         let search = try await provider.threadBrowserPage(in: parent.id, query: ThreadBrowserQuery(scope: .search(" plans ")))
 
         #expect(page.posts.map(\.thread.name) == ["Archived notes", "Old plans"])
         #expect(page.posts.map { $0.thread.notificationSettings != nil } == [false, true])
-        #expect(page.hasMore && page.nextOffset == 2 && page.totalResults == 30)
+        #expect(page.hasMore && page.nextOffset == 3 && page.totalResults == 30)
+        #expect(skipped.posts.isEmpty && skipped.hasMore && skipped.nextOffset == 4)
         #expect(search.posts.map(\.id) == [ChannelID(rawValue: 61)] && search.totalResults == 1 && !search.hasMore)
-        #expect(fixture.requests.withLock { $0.map { $0.url?.absoluteString ?? "" } } == [
-            "https://discord.com/api/v9/channels/7/threads/search?archived=true&sort_by=last_message_time"
-                + "&sort_order=desc&limit=25&tag_setting=match_some&offset=0",
+        let archived = "https://discord.com/api/v9/channels/7/threads/search?archived=true"
+            + "&sort_by=last_message_time&sort_order=desc&limit=25&tag_setting=match_some&offset="
+        let expected: [String] = [
+            archived + "0", archived + "3",
             "https://discord.com/api/v9/channels/7/threads/search?name=plans&tag_setting=match_some",
-        ])
+        ]
+        #expect(fixture.requests.withLock { $0.map { $0.url?.absoluteString ?? "" } } == expected)
         await provider.disconnect()
     }
 
-    private func thread(isArchived: Bool) -> MessageThreadSummary {
+    private let removal = JSONValue.object([
+        "id": .string("42"), "guild_id": .string("1"), "member_count": .number(0),
+        "removed_member_ids": .array([.string("9")]),
+    ])
+
+    private func thread(isArchived: Bool, joined: Bool = false) -> MessageThreadSummary {
         MessageThreadSummary(
             id: ChannelID(rawValue: 42), guildID: parent.guildID, parentID: parent.id, name: "Old name",
-            isArchived: isArchived, ownerID: UserID(rawValue: 9)
+            isArchived: isArchived, ownerID: UserID(rawValue: 9),
+            notificationSettings: joined ? ThreadNotificationSettings() : nil
         )
     }
 
@@ -122,7 +180,7 @@ struct ThreadActionContractTests {
             + #""thread_metadata":{"archived":\#(archived),"locked":false,"auto_archive_duration":1440}\#(member)}"#
     }
 
-    private func makeProvider(seedsThread: Bool = true) async -> DiscordRESTProvider {
+    private func makeProvider(seedsThread: Bool = true, joined: Bool = false) async -> DiscordRESTProvider {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [ThreadActionURLProtocol.self]
         let provider = DiscordRESTProvider(
@@ -131,7 +189,7 @@ struct ThreadActionContractTests {
         )
         await provider.seedForumChannelForTesting(
             parent,
-            posts: seedsThread ? [ForumPost(thread: thread(isArchived: false))] : [],
+            posts: seedsThread ? [ForumPost(thread: thread(isArchived: false, joined: joined))] : [],
             currentUser: User(id: UserID(rawValue: 9), username: "me", displayName: "Me")
         )
         return provider
@@ -141,10 +199,21 @@ struct ThreadActionContractTests {
 private final class ThreadActionFixture: NSObject, URLSessionTaskDelegate {
     let requests = Mutex<[URLRequest]>([])
     let bodies = Mutex<[JSONValue]>([])
-    let responses = Mutex<[String]>([])
+    struct Reply {
+        var body: String
+        var status: Int?
+        /// A gated reply is held until the test releases its gate.
+        var gate: StatusRecoveryResponseGate?
+    }
+
+    let responses = Mutex<[Reply]>([])
 
     func enqueue(_ bodies: String...) {
-        responses.withLock { $0 += bodies }
+        responses.withLock { $0 += bodies.map { Reply(body: $0) } }
+    }
+
+    func enqueue(_ body: String, status: Int? = nil, gate: StatusRecoveryResponseGate?) {
+        responses.withLock { $0.append(Reply(body: body, status: status, gate: gate)) }
     }
 
     func urlSession(_ session: URLSession, didCreateTask task: URLSessionTask) {
@@ -184,7 +253,15 @@ private final class ThreadActionURLProtocol: URLProtocol, @unchecked Sendable {
             client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
             return
         }
-        let status = next.isEmpty ? 204 : (request.httpMethod == "POST" ? 201 : 200)
+        let status = next.status ?? (next.body.isEmpty ? 204 : (request.httpMethod == "POST" ? 201 : 200))
+        if let gate = next.gate {
+            gate.capture { [self] in respond(status: status, body: next.body) }
+        } else {
+            respond(status: status, body: next.body)
+        }
+    }
+
+    private func respond(status: Int, body: String) {
         client?.urlProtocol(
             self,
             didReceive: HTTPURLResponse(
@@ -193,7 +270,7 @@ private final class ThreadActionURLProtocol: URLProtocol, @unchecked Sendable {
             )!,
             cacheStoragePolicy: .notAllowed
         )
-        client?.urlProtocol(self, didLoad: Data(next.utf8))
+        client?.urlProtocol(self, didLoad: Data(body.utf8))
         client?.urlProtocolDidFinishLoading(self)
     }
 
