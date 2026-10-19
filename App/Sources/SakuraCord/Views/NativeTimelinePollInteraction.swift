@@ -69,7 +69,7 @@ extension NativeTimelineCanvasView {
     }
 
     func reconcilePollPresentations() {
-        let accountID = model?.snapshot?.currentUser.id
+        let accountID = model?.currentUser?.id
         if pollAccountID != accountID {
             pollStates.removeAll(); pollSnapshots.removeAll(); pollAnimations.removeAll()
             pollPopover?.close(); pollPopover = nil
@@ -208,7 +208,7 @@ extension NativeTimelineCanvasView {
 
     func requestEndPoll(_ message: Message) {
         guard let model, let window, message.outboxState == .confirmed,
-              message.author.id == model.snapshot?.currentUser.id, message.poll?.isClosed() == false else { return }
+              message.author.id == model.currentUser?.id, message.poll?.isClosed() == false else { return }
         let alert = NSAlert()
         alert.messageText = "End this poll now?"
         alert.informativeText = "This will close the poll immediately and reveal the results."

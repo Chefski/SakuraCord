@@ -3,23 +3,8 @@ import SakuraCordModels
 
 extension AppModel {
     func messagePresentationChannel(_ channelID: ChannelID) -> Channel? {
-        if let channels = snapshot?.channels {
-            // Keep positions, never channel values. Revalidate the identity
-            // after every reorder or replacement and read the current value,
-            // including renamed channels and channels from a new account.
-            if let index = messagePresentationChannelPositions[channelID],
-               channels.indices.contains(index), channels[index].id == channelID {
-                return channels[index]
-            }
-            if let index = channels.firstIndex(where: { $0.id == channelID }) {
-                if messagePresentationChannelPositions.count >= 512 {
-                    messagePresentationChannelPositions.removeAll(keepingCapacity: true)
-                }
-                messagePresentationChannelPositions[channelID] = index
-                return channels[index]
-            }
-        }
-        return visibleChannels.first { $0.id == channelID }
+        messagePresentationChannelsByID[channelID]
+            ?? visibleChannels.first { $0.id == channelID }
     }
 
     /// A thread or forum post the account already knows, for presenting a

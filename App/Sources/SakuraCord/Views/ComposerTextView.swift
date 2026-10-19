@@ -96,7 +96,7 @@ extension ComposerView {
         }
         guard let messageID = ComposerLatestMessageEditingPolicy.messageID(
             in: messages,
-            currentUserID: model.snapshot?.currentUser.id
+            currentUserID: model.currentUser?.id
         ) else { return false }
         onEditMessage(messageID)
         return true

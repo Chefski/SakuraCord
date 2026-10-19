@@ -222,7 +222,6 @@ public extension MockChatProvider {
         guard channel.kind != .voice, channel.kind != .forum, channel.kind != .unknown else {
             throw ChatProviderError.invalidRequest("Typing is unavailable in this demo channel.")
         }
-        typingRequests.append(channelID)
     }
 
     func send(_ draft: SendMessageDraft) async throws -> Message {

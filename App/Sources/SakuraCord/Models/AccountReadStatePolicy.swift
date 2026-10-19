@@ -80,13 +80,6 @@ extension AccountReadStateModel {
         return unreadPolicySource.defaultNotificationLevelByGuild[guildID] ?? .onlyMentions
     }
 
-    func hasUnreadServerConversations(in guildIDs: Set<GuildID>) -> Bool {
-        let source = unreadPresentationSource()
-        return entries.values.contains {
-            serverAcknowledgement(for: $0, guildIDs: guildIDs, source: source) != nil
-        }
-    }
-
     /// Match the server-list Read All scope: current server channels and
     /// active joined threads, including muted conversations, without DMs.
     func allServerAcknowledgements(in guildIDs: Set<GuildID>) -> [BulkReadStateAcknowledgement] {
@@ -96,7 +89,7 @@ extension AccountReadStateModel {
         }.sorted { $0.channelID < $1.channelID }
     }
 
-    private func serverAcknowledgement(
+    func serverAcknowledgement(
         for entry: Entry,
         guildIDs: Set<GuildID>,
         source: UnreadPresentationSource

@@ -510,7 +510,7 @@ extension AppModel {
         // Discord's queryAllUsers path reads UserStore insertion order. This
         // projection contains every live Gateway user DTO, including broad
         // READY_SUPPLEMENTAL hydration, without app-specific disk-only users.
-        var users = (snapshot?.messageSearchUsers ?? []).filter {
+        var users = messageSearchSourceUsers.filter {
             seen.insert($0.id).inserted
         }
         if let selectedGuildID {
@@ -529,7 +529,7 @@ extension AppModel {
                 uniquingKeysWith: { existing, _ in existing }
             )
             let orderedUserIDs =
-                (snapshot?.quickSwitcherGuildMemberUserIDs[selectedGuildID] ?? [])
+                (quickSwitcherGuildMemberUserIDs[selectedGuildID] ?? [])
                 + localGuildUsers.map(\.id)
             for userID in orderedUserIDs where seen.insert(userID).inserted {
                 if let user = localGuildUsersByID[userID] {
@@ -537,7 +537,7 @@ extension AppModel {
                 }
             }
         }
-        if let currentUser = snapshot?.currentUser,
+        if let currentUser,
            seen.insert(currentUser.id).inserted
         {
             users.insert(currentUser, at: 0)
@@ -546,7 +546,7 @@ extension AppModel {
     }
 
     var messageSearchChannels: [Channel] {
-        let allChannels = snapshot?.channels ?? visibleChannels
+        let allChannels = currentUser == nil ? visibleChannels : messagePresentationChannels
         let eligible = allChannels.filter { channel in
             if let selectedGuildID {
                 return channel.guildID == selectedGuildID
@@ -574,31 +574,6 @@ extension AppModel {
             return recipient.username
         }
         return channel.name
-    }
-
-    func messageSearchGuildAliases(guildID: GuildID) -> [UserID: [String]] {
-        var aliases: [UserID: [String]] = [:]
-        func append(_ value: String?, for userID: UserID) {
-            guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !value.isEmpty,
-                  aliases[userID, default: []].contains(where: {
-                      $0.localizedCaseInsensitiveCompare(value) == .orderedSame
-                  }) == false
-            else { return }
-            aliases[userID, default: []].append(value)
-        }
-        for (userID, nickname) in snapshot?.quickSwitcherGuildMemberAliases[guildID] ?? [:] {
-            append(nickname, for: userID)
-        }
-        for member in membersByGuildID[guildID]?.values ?? [UserID: Member]().values {
-            append(member.globalDisplayName, for: member.id)
-            append(member.user.displayName, for: member.id)
-        }
-        for member in memberListsByGuildID[guildID] ?? [] {
-            append(member.globalDisplayName, for: member.id)
-            append(member.user.displayName, for: member.id)
-        }
-        return aliases
     }
 
     func parsePastedMessageSearchSyntax(_ value: String) {
