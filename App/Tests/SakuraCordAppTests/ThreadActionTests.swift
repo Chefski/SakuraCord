@@ -1,3 +1,4 @@
+import DiscordProtocol
 import Foundation
 import SakuraCordModels
 import Testing
@@ -34,4 +35,39 @@ import Testing
     #expect(entries()["mute"] != nil && entries()["notifications"] != nil)
     try invoke("rename")
     #expect(model.threadActions.renaming?.id == post.id)
+}
+
+@MainActor
+@Test func `joining from the side pane keeps it open and a rename reaches every projection`() async throws {
+    let provider = MockChatProvider()
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    model.selectGuild(GuildID(rawValue: 101))
+    await model.guildActivationTask?.value
+    model.selectedChannelID = ChannelID(rawValue: 301)
+    #expect(await eventually { !model.messages.isEmpty })
+    let parent = try #require(model.selectedChannel)
+    let starter = try #require(model.messages.last)
+    let thread = try await provider.createThread(.startingFrom(starter, in: parent, name: "Release notes"))
+    #expect(await eventually { model.messages.first { $0.id == starter.id }?.thread?.id == thread.id })
+    model.open(thread)
+    #expect(model.openThread?.id == thread.id && !model.isThreadFullWidth)
+
+    model.setThreadMembership(thread, isJoined: false, surface: .sidePane)
+    #expect(await eventually { model.snapshot?.activeJoinedThreads.contains { $0.id == thread.id } == false })
+    model.setThreadMembership(thread, isJoined: true, surface: .sidePane)
+    #expect(await eventually { model.snapshot?.activeJoinedThreads.contains { $0.id == thread.id } == true })
+    #expect(model.openThread?.id == thread.id)
+
+    model.presentThreadRename(thread)
+    #expect(model.threadActions.draftName == thread.name)
+    model.threadActions.draftName = "  Renamed thread  "
+    model.saveThreadRename()
+    #expect(await eventually { model.threadActions.renaming == nil })
+    #expect(await eventually {
+        model.presentedSideConversation.map { model.sideConversationLabel($0).title } == "Renamed thread"
+    })
+    #expect(model.openThread?.name == "Renamed thread")
+    #expect(await eventually { model.snapshot?.activeJoinedThreads.first { $0.id == thread.id }?.name == "Renamed thread" })
+    #expect(await eventually { model.messages.first { $0.id == starter.id }?.thread?.name == "Renamed thread" })
 }
