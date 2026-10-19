@@ -352,12 +352,8 @@ nonisolated enum MessageSearchPresentation {
         guard let channel else {
             return "Channel \(message.channelID.description.suffix(6))"
         }
-        switch channel.kind {
-        case .directMessage, .groupDirectMessage:
-            return channel.name
-        default:
-            return "# \(channel.name)"
-        }
+        // The section symbol already identifies the channel type.
+        return channel.name
     }
 
     private static func sectionSystemImage(for channel: Channel?) -> String {
