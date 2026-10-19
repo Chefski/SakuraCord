@@ -663,7 +663,7 @@ private final class GatewayDispatchCountingURLProtocol: URLProtocol, @unchecked 
 }
 
 extension GatewayLifecycleEventTests {
-    @Test(arguments: ["member-list", "chunk", "supplemental", "merged-supplemental"])
+    @Test(arguments: ["member-list", "chunk", "thread", "supplemental", "merged-supplemental"])
     func `sparse membership hydration preserves omitted timeout and publishes explicit changes`(source: String) async throws {
         let provider = makeProvider()
         await provider.receiveGatewayDispatchForTesting(name: "READY", data: .object([
@@ -694,6 +694,11 @@ extension GatewayLifecycleEventTests {
                     "guild_id": .string("100"), "members": .array([.object(member)]),
                     "chunk_index": .number(0), "chunk_count": .number(1),
                 ]))
+            case "thread":
+                let entry = try JSONValueDecoder().decode(ThreadMemberDTO.self, from: .object([
+                    "user_id": .string("1"), "member": .object(member),
+                ]))
+                await provider.ingestThreadMembers([entry], guildID: guildID)
             case "merged-supplemental":
                 member["user"] = nil
                 member["user_id"] = .string("1")
@@ -751,7 +756,10 @@ extension GatewayLifecycleEventTests {
             ("GUILD_MEMBER_REMOVE", .object(["guild_id": .string("100"), "user": member])),
             ("GUILD_ROLE_DELETE", .object(["guild_id": .string("100"), "role_id": .string("102")])),
             ("USER_UPDATE", user(id: "1", username: "current", globalName: "Renamed")),
-            ("GUILD_SCHEDULED_EVENT_UPDATE", .object(["id": .string("900"), "guild_id": .string("100")])),
+            ("GUILD_SCHEDULED_EVENT_UPDATE", .object([
+                "id": .string("900"), "guild_id": .string("100"), "name": .string("Event"),
+                "scheduled_start_time": .string(Date.now.addingTimeInterval(3600).ISO8601Format()), "status": .number(1),
+            ])),
             ("GUILD_DELETE", .object(["id": .string("100")])),
         ]
 
@@ -783,13 +791,26 @@ extension GatewayLifecycleEventTests {
             _ = try await provider.send(SendMessageDraft(channelID: textChannelID, content: "blocked", nonce: "timeout"))
         }
         await #expect(throws: ChatProviderError.self) {
+            try await provider.requireGuildCommunicationForRequest(path: "/channels/200/messages", method: "POST", body: nil)
+        }
+        await #expect(throws: ChatProviderError.self) {
             try await provider.setReaction("👍", reacted: false, messageID: .init(rawValue: 300), channelID: textChannelID)
         }
         await #expect(throws: ChatProviderError.self) {
             _ = try await provider.edit(messageID: .init(rawValue: 300), channelID: textChannelID, content: "blocked")
         }
         await #expect(throws: ChatProviderError.self) {
+            try await provider.requireGuildCommunicationForRequest(
+                path: "/channels/200/messages/300", method: "PATCH", body: ["content": .string("blocked")]
+            )
+        }
+        await #expect(throws: ChatProviderError.self) {
             try await provider.setPollAnswers([1], messageID: .init(rawValue: 300), channelID: textChannelID)
+        }
+        await #expect(throws: ChatProviderError.self) {
+            try await provider.requireGuildCommunicationForRequest(
+                path: "/channels/200/polls/300/answers/@me", method: "PUT", body: ["answer_ids": .array([.number(1)])]
+            )
         }
         // The shared voice boundary also covers deferred joins and later
         // voice-state changes, before any Gateway connection is required.
