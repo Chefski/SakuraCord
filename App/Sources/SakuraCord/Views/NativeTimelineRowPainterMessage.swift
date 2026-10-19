@@ -595,9 +595,10 @@ extension NativeTimelineRowPainter {
         NativeTimelineSemanticColor.opacity(.secondaryLabelColor, 0.10).setFill()
         NSBezierPath(concentricRoundedRect: frame, cornerRadius: InterfaceScale.metric(8)).fill()
         if let image = mediaImage(for: .media(region.mediaPreviewURL ?? url)) {
-            // The frame follows the video's shape; a poster with a different
-            // shape (YouTube Shorts ship a padded 16:9 thumbnail) is cropped.
-            drawImage(image, in: frame, cornerRadius: InterfaceScale.metric(8), fillsFrame: region.mediaIsVideo)
+            drawImage(
+                image, in: frame, cornerRadius: InterfaceScale.metric(8),
+                fillsFrame: region.mediaPosterFillsFrame
+            )
             if region.mediaIsVideo { mediaPlayGlyph(in: frame) }
         } else if region.mediaIsVideo {
             systemSymbol("film", in: frame, color: .secondaryLabelColor, inset: InterfaceScale.metric(30))

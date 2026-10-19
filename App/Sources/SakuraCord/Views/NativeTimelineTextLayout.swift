@@ -591,6 +591,16 @@ enum NativeTimelineEmbedLayout {
             return media
         }
 
+        /// The frame follows the video's shape only when its size is known.
+        /// A differently shaped poster (YouTube Shorts ship a padded 16:9
+        /// thumbnail) is then cropped; a fallback 16:9 frame fits it instead.
+        private var mediaPosterFillsFrame: Bool {
+            guard embed.video != nil,
+                  let width = mainMedia?.width, let height = mainMedia?.height
+            else { return false }
+            return width > 0 && height > 0
+        }
+
         private var mediaPreviewURL: URL? {
             guard embed.video != nil else { return nil }
             if let preview = embed.thumbnail ?? embed.image,
@@ -628,6 +638,7 @@ enum NativeTimelineEmbedLayout {
                 mediaPreviewURL: mediaPreviewURL,
                 mediaIsVideo: embed.video != nil,
                 mediaAutoplaysInline: embed.type?.lowercased() == "gifv",
+                mediaPosterFillsFrame: mediaPosterFillsFrame,
                 accentColor: nil,
                 drawsTopSeparator: false
             )
@@ -968,6 +979,7 @@ enum NativeTimelineEmbedLayout {
                 mediaPreviewURL: mediaPreviewURL,
                 mediaIsVideo: embed.video != nil,
                 mediaAutoplaysInline: false,
+                mediaPosterFillsFrame: mediaPosterFillsFrame,
                 accentColor: embed.color,
                 drawsTopSeparator:
                     integratesWithBubble && drawsTopSeparator
