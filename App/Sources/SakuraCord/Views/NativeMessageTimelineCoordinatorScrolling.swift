@@ -1272,6 +1272,9 @@ extension NativeMessageTimelineCoordinator {
 
         func liveScrollTrackingDidEnd() {
             liveScrollViewport = nil
+            // Scroll states compare reading positions by message only, so
+            // report the settled offset once the gesture ends.
+            defer { reportScrollState(force: true) }
             let interval = Self.performanceSignposter.beginInterval(
                 "TimelineLiveScrollEnd"
             )

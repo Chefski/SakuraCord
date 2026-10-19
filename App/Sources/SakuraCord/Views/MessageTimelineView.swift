@@ -664,6 +664,20 @@ nonisolated struct TimelineScrollState: Equatable, Sendable {
         let offsetFromViewportTop: CGFloat
     }
 
+    /// Ignores the reading offset, which changes on every scrolled frame;
+    /// the timeline reports it again when a scroll gesture settles.
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.isNearTop == rhs.isNearTop
+            && lhs.isNearBottom == rhs.isNearBottom
+            && lhs.isNearLoadedBottom == rhs.isNearLoadedBottom
+            && lhs.contentFitsViewport == rhs.contentFitsViewport
+            && lhs.hasEstablishedInitialPosition == rhs.hasEstablishedInitialPosition
+            && lhs.hasReachedNewestMessageBoundary == rhs.hasReachedNewestMessageBoundary
+            && lhs.isInProvisionalHistory == rhs.isInProvisionalHistory
+            && lhs.isInProvisionalLaterHistory == rhs.isInProvisionalLaterHistory
+            && lhs.readingMessage?.id == rhs.readingMessage?.id
+    }
+
     init(
         isNearTop: Bool,
         isNearBottom: Bool,
