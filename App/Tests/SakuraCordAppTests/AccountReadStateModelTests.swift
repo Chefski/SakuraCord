@@ -1331,6 +1331,29 @@ func `incoming message plants a new divider only when the newest edge is not on 
 }
 
 @MainActor
+@Test func `batched gateway message in an inactive window still plants a new divider`() async throws {
+    let provider = MockChatProvider()
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    let channelID = ChannelID(rawValue: 212)
+    model.selectedChannelID = channelID
+    #expect(await until { !model.isLoadingMessages && model.selectedChannelID == channelID })
+    model.reportMainWindowActive(false)
+    model.reportTimelineInitialPosition(channelID: channelID, hasReachedReadBoundary: true)
+
+    let incoming = Message(
+        id: MessageID(rawValue: UInt64.max - 3),
+        channelID: channelID,
+        author: User(id: UserID(rawValue: 2), username: "sender", displayName: "Sender"),
+        content: "arrived while away",
+        guildID: GuildID(rawValue: 100)
+    )
+    await provider.emit(.messageCreated(incoming))
+
+    #expect(await eventually { model.unreadDividerMessageID(channelID: channelID) == incoming.id })
+}
+
+@MainActor
 @Test func `opening acknowledgement survives a gateway reconnect before transport`() async throws {
     let provider = MockChatProvider()
     let model = AppModel(

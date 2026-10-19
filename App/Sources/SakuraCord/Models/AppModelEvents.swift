@@ -234,6 +234,9 @@ extension AppModel {
         let acknowledgementChannelIDs = batchedAcknowledgementChannelIDs
         batchedAcknowledgementChannelIDs.removeAll(keepingCapacity: true)
         for channelID in acknowledgementChannelIDs {
+            // Batched rows were not committed when each message was received,
+            // so the divider decision made then saw no unread row.
+            preserveUnreadDividerUnlessReadOnArrival(channelID: channelID)
             acknowledgeIfEligible(channelID: channelID)
         }
     }
@@ -564,14 +567,7 @@ extension AppModel {
         {
             accessibilityMessageAnnouncer.enqueue()
         }
-        // A message that arrives while the newest edge is on screen in the
-        // active window is read on arrival; it must not plant a NEW divider
-        // that survives the acknowledgement that follows.
-        if message.channelID == selectedChannelID || message.channelID == openThread?.id,
-           !readState.canAcknowledge(message.channelID)
-        {
-            preserveUnreadDividerIfNeeded(channelID: message.channelID)
-        }
+        preserveUnreadDividerUnlessReadOnArrival(channelID: message.channelID)
         if isFlushingCreatedMessageBatch {
             batchedUnreadPresentationNeedsRefresh = true
         } else {
