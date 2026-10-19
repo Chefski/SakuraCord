@@ -284,7 +284,7 @@ struct AccountReadStateModelTests {
         // Messages missed while disconnected arrive with reloaded history
         // rather than as live messages; the lapsed hold must not return.
         model.observeLoadedMessages(channelID: channelID, messages: [message(id: 14)])
-        #expect(model.canAcknowledge(channelID))
+        #expect(model.updatePresentation(channelID: channelID) == MessageID(rawValue: 14))
     }
 
     @Test func `stale ready replacement cannot resurrect an unread cleared by remote ack`() {
@@ -687,6 +687,16 @@ struct AccountReadStateModelTests {
         #expect(
             model.receive(notifyingReply, currentUserID: currentUser.id).mentionKind == .direct
         )
+
+        var silentMention = message(id: 17, mentionedUsers: [currentUser])
+        silentMention.flags = [.suppressNotifications]
+        let silent = model.receive(silentMention, currentUserID: currentUser.id)
+        #expect(silent.mentionKind == .direct)
+        #expect(!silent.shouldNotify)
+
+        let duplicate = model.receive(silentMention, currentUserID: currentUser.id)
+        #expect(!duplicate.accepted)
+        #expect(!duplicate.shouldNotify)
     }
 
     @Test func `account reset fully isolates state token settings and presentations`() {
@@ -831,7 +841,7 @@ struct AccountReadStateModelTests {
 
     enum MuteScenario: CaseIterable {
         case guildMute, channelMute, expiredChannelMute, categoryMute, expiredCategoryMute
-        case suppressedEveryone, suppressedRole, mutedDirectMessage
+        case suppressedEveryone, suppressedRole, mutedDirectMessage, nothingLevel, mutedThread
     }
 
     @Test(arguments: MuteScenario.allCases)
@@ -844,6 +854,7 @@ struct AccountReadStateModelTests {
         var incoming = message(id: 11)
         var alerts = false
         var badges = 0
+        var thread: MessageThreadSummary?
         switch scenario {
         case .guildMute:
             settings.isMuted = true
@@ -881,13 +892,29 @@ struct AccountReadStateModelTests {
             )
             incoming = Message(
                 id: MessageID(rawValue: 11), channelID: dmID, author: sender,
-                content: "mention", mentionedUsers: [currentUser]
+                content: "message"
             )
+        case .nothingLevel:
+            settings.messageNotifications = .nothing
+            incoming = message(id: 11, mentionedUsers: [currentUser])
             badges = 1
+        case .mutedThread:
+            let threadID = ChannelID(rawValue: 201)
+            thread = MessageThreadSummary(
+                id: threadID, guildID: guildID, parentID: channelID, name: "Post",
+                notificationSettings: ThreadNotificationSettings(
+                    flags: ThreadNotificationSettings.allMessagesFlag, isMuted: true
+                )
+            )
+            incoming = Message(
+                id: MessageID(rawValue: 11), channelID: threadID, author: sender,
+                content: "reply", guildID: guildID
+            )
         }
         let model = makeModel(latest: 10, acknowledged: 10, settings: settings)
         model.merge(channels: [Channel(id: dmID, guildID: nil, name: "DM", kind: .directMessage)])
         model.updateCurrentUserRoles([roleID], guildID: guildID)
+        if let thread { model.merge(thread: thread) }
 
         #expect(model.receive(incoming, currentUserID: currentUser.id).shouldNotify == alerts)
         #expect(model.mentions(channelID: incoming.channelID) == badges)

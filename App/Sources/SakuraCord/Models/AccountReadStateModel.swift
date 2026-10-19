@@ -1488,18 +1488,6 @@ extension AccountReadStateModel {
         guildIDs.contains { guildUnread($0, now: now) }
     }
 
-    func folderMentions(_ guildIDs: [GuildID]) -> Int {
-        let guildIDs = Set(guildIDs)
-        let policy = unreadPolicySource
-        return entries.values.reduce(0) { total, entry in
-            guard entry.guildID.map(guildIDs.contains) == true,
-                  entry.isAccessible,
-                  !policy.isGuildResourceChannel(entry)
-            else { return total }
-            return total + entry.mentionCount
-        }
-    }
-
     func directMessageUnread(now: Date = .now) -> Bool {
         entries.values.contains { entry in
             (entry.kind == .directMessage || entry.kind == .groupDirectMessage)
@@ -1527,10 +1515,6 @@ extension AccountReadStateModel {
             else { return total }
             return total + entry.mentionCount
         }
-    }
-
-    func isVisibleAtNewest(_ channelID: ChannelID) -> Bool {
-        canAcknowledge(channelID)
     }
 
     func isActivelyPresentedAtNewest(_ channelID: ChannelID) -> Bool {
