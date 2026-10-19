@@ -752,6 +752,7 @@ extension AppModel {
     }
 
     func consumeForumPostsChanged(channelID: ChannelID, posts: [ForumPost]) {
+        threadBrowser.receive(parentID: channelID, records: posts)
         reconcileInboxForumPosts(channelID: channelID, posts: posts, replacesAll: true)
         let interval = AppPerformanceSignposts.signposter.beginInterval(
             "ForumPostsChanged"
@@ -942,6 +943,7 @@ extension AppModel {
             guildNotificationSettingsRevisions[guildID, default: 0] &+= 1
         }
         readState.replaceSnapshot(value)
+        reloadThreadBrowserAfterReady()
         // READY lists the joined active threads; an open private thread it
         // does not list has unknown access until it is resolved again.
         if let thread = openThread, thread.isPrivate,
