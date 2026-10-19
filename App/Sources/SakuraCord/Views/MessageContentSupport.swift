@@ -21,7 +21,7 @@ struct MessageMentionResolver {
             ?? message?.mentionedUsers.first { $0.id == userID }
             ?? model.messages.first { $0.author.id == userID }?.author
             ?? model.threadMessages.first { $0.author.id == userID }?.author
-            ?? (model.snapshot?.currentUser.id == userID ? model.snapshot?.currentUser : nil)
+            ?? (model.currentUser?.id == userID ? model.currentUser : nil)
     }
 
     func presentation(_ mention: RenderedMention) -> MentionPresentation {
@@ -291,7 +291,7 @@ struct CustomEmojiRichText: View {
                 ?? model.knownMentionMembers[id]?.user
                 ?? model.messages.first { $0.author.id == id }?.author
                 ?? model.threadMessages.first { $0.author.id == id }?.author
-                ?? (model.snapshot?.currentUser.id == id ? model.snapshot?.currentUser : nil)
+                ?? (model.currentUser?.id == id ? model.currentUser : nil)
             guard let user else { return }
             let requestID = model.showProfile(for: user)
             presentedMention = AnchoredMentionPresentation(

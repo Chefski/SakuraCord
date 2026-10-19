@@ -11,7 +11,8 @@ extension AppModel {
         // must not build an account-wide channel set on every menu update.
         conversationNavigationHistory.destination(direction: direction) { id in
             !hiddenChannelIDs.contains(id)
-                && (messagePresentationChannel(id) != nil || sidebarThread(id) != nil)
+                && (messagePresentationChannelsByID[id] != nil || visibleChannels.contains { $0.id == id }
+                    || openThread?.id == id || knownThreadIDs.contains(id))
         }
     }
 
@@ -116,29 +117,24 @@ extension AppModel {
         }
         let guildIDs = serverRailPresentation.navigationGuildIDs
         let hiddenIDs = hiddenChannelIDs
-        let entries = readState.entries
-        let channels = snapshot?.channels ?? []
-        let isCandidate: (AccountReadStateModel.Entry) -> Bool = { entry in
-            entry.channelID != selectedID && entry.isAccessible && entry.isUnread
-                && !hiddenIDs.contains(entry.channelID)
-                && (!mentionsOnly || entry.mentionCount > 0)
+        let channels = messagePresentationChannels
+        let isCandidate: (ChannelID) -> Bool = { channelID in
+            guard let entry = self.readState[unread: channelID] else { return false }
+            return channelID != selectedID && entry.isAccessible && entry.isUnread
+                && !hiddenIDs.contains(channelID)
+                && (!mentionsOnly || entry.hasMentions)
                 && (entry.guildID.map { guildIDs.contains($0) } ?? true)
         }
-        let isDestination: (Channel) -> Bool = { channel in
-            guard let entry = entries[channel.id], isCandidate(entry),
-                  channel.guildID.map({ guildIDs.contains($0) }) ?? true
-            else { return false }
-            return self.readState.unread(channelID: channel.id)
+        let isDestination: (ChannelID) -> Bool = { channelID in
+            isCandidate(channelID) && self.readState.unread(channelID: channelID)
         }
-        for thread in snapshot?.activeJoinedThreads ?? [] {
-            guard let entry = entries[thread.id], isCandidate(entry),
+        for thread in activeJoinedThreads {
+            guard isCandidate(thread.id),
                   readState.unread(channelID: thread.id),
-                  let parent = channels.first(where: { $0.id == thread.parentID }),
-                  !hiddenIDs.contains(parent.id) else { continue }
-            let layout = sidebarThreadLayout(
-                guildID: thread.guildID, channelGroups: ChannelGroup.make(from: [parent]), now: .now
-            )
-            if layout.threadsByParentID[parent.id]?.contains(where: { $0.id == thread.id }) == true {
+                  let parentID = thread.parentID, messagePresentationChannelsByID[parentID] != nil,
+                  let parent = readState.channelByID[parentID],
+                  !hiddenIDs.contains(parentID) else { continue }
+            if thread.guildID != nil, !thread.isArchived, SidebarThreadPolicy.listsThreads(under: parent.kind) {
                 return true
             }
         }
@@ -150,13 +146,11 @@ extension AppModel {
             ? shortcutMentionNavigationCandidateIndex
             : shortcutUnreadNavigationCandidateIndex
         if let previousIndex, channels.indices.contains(previousIndex),
-           isDestination(channels[previousIndex])
+           isDestination(channels[previousIndex].id)
         {
             return true
         }
-        let candidateIndex = entries.values.contains(where: isCandidate)
-            ? channels.firstIndex(where: isDestination)
-            : nil
+        let candidateIndex = channels.firstIndex { isDestination($0.id) }
         if mentionsOnly {
             shortcutMentionNavigationCandidateIndex = candidateIndex
         } else {
@@ -166,10 +160,11 @@ extension AppModel {
     }
 
     private func shortcutChannelsWithThreads(groups: [ChannelGroup], guildID: GuildID?, filterSelection: Bool = false) -> [Channel] {
-        let layout = sidebarThreadLayout(guildID: guildID, channelGroups: groups, now: .now)
+        let selectedGroups = filterSelection ? channelSelectionGroups(groups, guildID: guildID) : groups
+        let layout = sidebarThreadLayout(guildID: guildID, channelGroups: selectedGroups, now: .now)
         let groups = filterSelection
-            ? selectedChannelGroups(groups, guildID: guildID, threadsByParentID: layout.threadsByParentID)
-            : groups
+            ? selectedChannelGroups(selectedGroups, guildID: guildID, threadsByParentID: layout.threadsByParentID)
+            : selectedGroups
         return groups.flatMap(\.channels).filter { $0.guildID == guildID }.flatMap { channel in
             [channel] + (layout.threadsByParentID[channel.id] ?? []).map { threadNavigationChannel($0.thread) }
         }

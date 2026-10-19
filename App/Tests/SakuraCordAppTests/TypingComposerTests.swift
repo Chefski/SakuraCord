@@ -85,22 +85,26 @@ func `account or thread draft replacement invalidates an external upload result`
 }
 
 @MainActor
-@Test(arguments: AttachmentHandlingPolicy.allCases)
-func `oversized files reach an external host only when the upload policy allows`(external: AttachmentHandlingPolicy) async throws {
+@Test(arguments: AttachmentHandlingPolicy.allCases, [false, true])
+func `oversized files reach an external host only when the upload policy allows`(external: AttachmentHandlingPolicy, compacts: Bool) async throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
     let file = directory.appendingPathComponent("oversized.bin")
     try createSparseFile(file, size: DiscordAttachmentUploadPolicy.baseLimit + 1)
+    let worker = AttachmentCompactionTestWorker(outputSize: DiscordAttachmentUploadPolicy.baseLimit + 1)
     let uploader = AttachmentUploadTestUploader(result: URL(string: "https://litter.catbox.moe/test.png")!)
     let model = AppModel(launchMode: .offlineTesting, provider: TypingTestProvider(),
-                         externalAttachmentUploader: uploader,
+                         externalAttachmentUploader: uploader, attachmentCompactor: worker,
                          attachmentSettingsStore: AttachmentSettingsStore(preferences: SettingsPreferenceStore(defaults: InMemoryPreferences())))
     await model.start()
     model.snapshot?.currentUser.premiumType = 0
-    model.attachmentSettings.compactionPolicy = .never
+    model.attachmentSettings.compactionPolicy = compacts ? .always : .never
     model.attachmentSettings.externalUploadPolicy = external
     #expect(await model.addComposerAttachments([file], to: .channel))
+    await model.attachmentCompactionTask?.value
+    #expect(await worker.calls == (compacts ? 1 : 0))
+    #expect(model.channelComposerAttachments.isEmpty)
     switch external {
     case .ask:
         #expect(try #require(model.oversizedAttachmentPrompt).stage == .externalUpload)
@@ -204,17 +208,14 @@ private actor AttachmentCompactionTestWorker: AttachmentCompacting {
     let model = AppModel(launchMode: .offlineTesting, provider: provider)
     await model.start()
     let staged = URL(fileURLWithPath: "/tmp/sakuracord-staged")
+    let instant = URL(fileURLWithPath: "/tmp/sakuracord-instant")
     model.updateDraft("keep editing this")
     await model.addComposerAttachments([staged], to: .channel)
 
-    #expect(
-        await model.sendAttachmentsImmediately(
-            [ForumPostAttachment(url: URL(fileURLWithPath: "/tmp/sakuracord-instant"))],
-            to: .channel
-        )
-    )
+    #expect(await model.sendAttachmentsImmediately([ForumPostAttachment(url: instant)], to: .channel))
     #expect(model.draft == "keep editing this")
     #expect(model.channelComposerAttachments.map(\.url) == [staged])
+    #expect(model.messages.last?.attachments.map(\.url) == [instant])
     #expect(await provider.sendCount == 1)
 }
 
@@ -319,7 +320,7 @@ private actor AttachmentCompactionTestWorker: AttachmentCompacting {
     await model.start()
     let channelID = try #require(model.selectedChannelID)
     let attachment = ForumPostAttachment(url: URL(fileURLWithPath: "/tmp/synthetic-automod.txt"))
-    await provider.blockNextSendWithAutoMod()
+    await provider.failNextSend()
     await provider.suspendNextSend()
     let delivery = try #require(model.enqueueChannelMessage(
         channelID: channelID, content: "blocked", replyTo: .init(rawValue: 42),
@@ -329,12 +330,17 @@ private actor AttachmentCompactionTestWorker: AttachmentCompacting {
     model.updateDraft("New draft")
     await provider.releaseSend()
     #expect(!(await delivery.value))
+    let ordinaryFailure = try #require(model.messages.first { $0.content == "blocked" })
+    await provider.blockNextSendWithAutoMod()
+    #expect(!(await model.retrySending(ordinaryFailure)))
     let failed = try #require(model.messages.first { $0.content == "blocked" })
     let nonce = try #require(failed.nonce)
     #expect(failed.sendFailure == .autoModeration(explanation: "Synthetic rule explanation"))
     #expect(!failed.canRetrySending)
+    #expect(await provider.sendCount == 2)
     #expect(!(await model.retrySending(failed)))
-    #expect(await provider.sendCount == 1)
+    #expect(!(await model.retrySending(ordinaryFailure)))
+    #expect(await provider.sendCount == 2)
     #expect(model.composer.outbox.draftsByNonce[nonce]?.attachments == [attachment])
     #expect(model.draft == "New draft")
 }
@@ -358,6 +364,8 @@ private actor AttachmentCompactionTestWorker: AttachmentCompacting {
     let drafts = await provider.sentDrafts
     #expect(drafts.count == 2)
     #expect(drafts[0] == drafts[1])
+    #expect(await model.sendProfileMessage(to: recipient.id, content: "retry privately", nonce: nonce))
+    #expect(await provider.sendCount == 2)
 }
 
 @MainActor
@@ -492,7 +500,7 @@ func `timeout during thread creation preserves its unsent message without replac
         model.threadComposerAttachments = [otherAttachment]
     }
 
-    await provider.completeThreadCreation(fails: false)
+    await provider.completeThreadCreation()
     let result = await submission.value
 
     #expect(!result.consumedComposer)
@@ -703,6 +711,7 @@ private actor TypingTestProvider: ChatProvider {
     ] }
     private var continuation: AsyncStream<ClientEvent>.Continuation?
     private(set) var sendCount = 0
+    private(set) var editCount = 0
     private(set) var sentNonces: [String] = []
     private(set) var sentDrafts: [SendMessageDraft] = []
     private var nextMessageID: UInt64 = 100
@@ -759,14 +768,10 @@ private actor TypingTestProvider: ChatProvider {
         await withCheckedContinuation { threadCreationStarted = $0 }
     }
 
-    func completeThreadCreation(fails: Bool) {
-        if fails {
-            threadCreationResponse?.resume(throwing: ChatProviderError.invalidRequest("Synthetic creation failure"))
-        } else {
-            threadCreationResponse?.resume(returning: MessageThreadSummary(
-                id: ChannelID(rawValue: 30), guildID: guild?.id, parentID: channels[0].id, name: "Thread"
-            ))
-        }
+    func completeThreadCreation() {
+        threadCreationResponse?.resume(returning: MessageThreadSummary(
+            id: ChannelID(rawValue: 30), guildID: guild?.id, parentID: channels[0].id, name: "Thread"
+        ))
         threadCreationResponse = nil
     }
 
@@ -847,6 +852,7 @@ private actor TypingTestProvider: ChatProvider {
     }
 
     func edit(messageID: MessageID, channelID: ChannelID, content: String) async throws -> Message {
+        editCount += 1
         throw ChatProviderError.invalidRequest("not used")
     }
 
@@ -886,7 +892,8 @@ private actor NotificationCredentialStore: CredentialStore {
 }
 
 @MainActor
-@Test func `a late translation cannot repopulate a draft that was already sent`() async throws {
+@Test(arguments: [false, true])
+func `a late translation cannot repopulate a draft that was already sent`(completesBeforeSend: Bool) async throws {
     let provider = TypingTestProvider()
     let translator = ControlledTranslationTestService()
     let state = TranslationState(
@@ -901,9 +908,28 @@ private actor NotificationCredentialStore: CredentialStore {
     model.translateDraft(in: .channel)
     let translationTask = try #require(state.draftTasks[.channel])
     await translator.waitForRequests(1)
+    if completesBeforeSend {
+        translator.complete(0, text: "Translated")
+        await translationTask.value
+        #expect(model.draft == "Translated")
+    }
+    #expect(await provider.sendCount == 0)
+    #expect(await provider.editCount == 0)
     #expect(await model.send())
-    translator.complete(0, text: "Late translation")
-    await translationTask.value
+    if !completesBeforeSend {
+        translator.complete(0, text: "Late translation")
+        await translationTask.value
+    }
     #expect(model.draft.isEmpty)
     #expect(state.drafts[.channel] == nil)
+    #expect(await provider.sendCount == 1)
+    let message = Message(id: MessageID(rawValue: 999), channelID: ChannelID(rawValue: 10),
+                          author: provider.otherUser, content: "Hallo")
+    model.toggleMessageTranslation(message)
+    let messageTask = try #require(state.messageTasks[message.id])
+    await translator.waitForRequests(2)
+    translator.complete(1)
+    await messageTask.value
+    #expect(await provider.sendCount == 1)
+    #expect(await provider.editCount == 0)
 }

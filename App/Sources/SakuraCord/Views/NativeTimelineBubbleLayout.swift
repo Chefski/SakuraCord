@@ -45,11 +45,11 @@ enum NativeTimelineBubbleLayout {
         let selectedChannel = model?.selectedChannel
         let channel = selectedChannel?.id == message.channelID
             ? selectedChannel
-            : model?.snapshot?.channels.first { $0.id == message.channelID }
+            : model?.messagePresentationChannelsByID[message.channelID]
         return Context(
             isEnabled: isEnabled,
             isOutgoing: isEnabled
-                && message.author.id == model?.snapshot?.currentUser.id,
+                && message.author.id == model?.currentUser?.id,
             showsAvatar: showsAvatar(in: channel)
         )
     }

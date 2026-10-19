@@ -143,7 +143,7 @@ struct GuildGuideView: View {
         VStack(alignment: .leading, spacing: InterfaceScale.metric(8)) {
             Text("Get Started").font(.interface(.title3).weight(.bold)).padding(.bottom, InterfaceScale.metric(4))
             ForEach(guide.newMemberActions) { task in
-                GuideActionRow(item: task, channelName: model.snapshot?.channels.first { $0.id == task.channelID }?.name,
+                GuideActionRow(item: task, channelName: model.messagePresentationChannelsByID[task.channelID]?.name,
                                completed: entry.progress?.isCompleted(task.channelID) == true) {
                     model.visitGuideTask(task, guildID: guildID)
                 }
