@@ -1083,9 +1083,10 @@ extension NativeMessageTimelineCoordinator {
             } else {
                 resolvedRow = row
             }
+            let isUnreadBoundary = parent.unreadMessageID == row.id
             return .message(
-                resolvedRow,
-                isUnreadBoundary: parent.unreadMessageID == row.id,
+                isUnreadBoundary ? resolvedRow.startingGroup() : resolvedRow,
+                isUnreadBoundary: isUnreadBoundary,
                 isHighlighted: parent.selectedMessageID == row.id
             )
         }
@@ -1272,6 +1273,9 @@ extension NativeMessageTimelineCoordinator {
 
         func liveScrollTrackingDidEnd() {
             liveScrollViewport = nil
+            // Scroll states compare reading positions by message only, so
+            // report the settled offset once the gesture ends.
+            defer { reportScrollState(force: true) }
             let interval = Self.performanceSignposter.beginInterval(
                 "TimelineLiveScrollEnd"
             )
@@ -1373,6 +1377,31 @@ extension NativeMessageTimelineCoordinator {
             }
         }
 
+        /// Applies a change in the height the window toolbar covers, such
+        /// as entering or leaving full screen, without moving the reader.
+        /// The new top padding shifts every row, so the visible anchor is
+        /// captured first and restored afterwards, as a resize does.
+        func updateInsetsForToolbarObscuredHeightChange() {
+            guard let scrollView, !isApplyingUpdate,
+                  initialPositionConversation == parent.conversation
+            else {
+                updateInsets()
+                return
+            }
+            let wasNearBottom = lastReportedState?.isNearBottom ?? scrollState().isNearBottom
+            let anchor = wasNearBottom ? nil : visibleAnchor()
+            isApplyingUpdate = true
+            updateInsets()
+            if wasNearBottom {
+                scroll(toDocumentY: .greatestFiniteMagnitude, scrollView: scrollView)
+            } else if let anchor {
+                restore(anchor)
+            }
+            positionViewportCanvas()
+            isApplyingUpdate = false
+            reportScrollState(force: true)
+        }
+
         func updateInsets() {
             guard let scrollView, let canvas else { return }
             let viewportHeight = scrollView.contentView.bounds.height
@@ -1403,15 +1432,17 @@ extension NativeMessageTimelineCoordinator {
         }
 
         func contentOriginY(viewportHeight: CGFloat) -> CGFloat {
+            // Content scrolls beneath the window toolbar but rests below it.
+            let topPadding = ChatDetailLayoutPolicy.timelineTopPadding
+                + (scrollView?.scrollerInsets.top ?? 0)
             let topInset = if parent.conversation.alignsUnderfilledContentToTop {
-                ChatDetailLayoutPolicy.timelineTopPadding
+                topPadding
             } else {
                 NativeMessageTimelineLayoutPolicy.shortContentTopInset(
                     viewportHeight: viewportHeight,
                     contentHeight: contentHeight,
                     bottomInset: bottomInset,
-                    verticalPadding:
-                        ChatDetailLayoutPolicy.timelineTopPadding
+                    verticalPadding: topPadding
                 )
             }
             return leadingHistoryReserve
@@ -1610,7 +1641,18 @@ extension NativeMessageTimelineCoordinator {
                     contentOriginY(viewportHeight: viewportHeight)
                     + rowOrigins[index]
                 let rowHeight = layouts[index].height
-                proposedY = rowY - (viewportHeight - rowHeight) * anchor.y
+                // Anchor within the part of the viewport the window toolbar
+                // leaves uncovered, so a top-anchored row is not beneath it.
+                let obscuredHeight = min(scrollView.scrollerInsets.top, viewportHeight)
+                proposedY = rowY - obscuredHeight
+                    - (viewportHeight - obscuredHeight - rowHeight) * anchor.y
+            case let .readingPosition(messageID, offsetFromViewportTop):
+                guard let index = items.firstIndex(where: {
+                    $0.containsMessage(messageID)
+                }), rowOrigins.indices.contains(index)
+                else { return nil }
+                proposedY = contentOriginY(viewportHeight: viewportHeight)
+                    + rowOrigins[index] - offsetFromViewportTop
             }
             return clampedDocumentY(proposedY, scrollView: scrollView)
         }
@@ -1826,7 +1868,10 @@ extension NativeMessageTimelineCoordinator {
                         > materializedHistoryScrollBoundaryY(
                             .later,
                             viewportHeight: visibleRect.height
-                        ) + 0.5
+                        ) + 0.5,
+                readingMessage: canvas?.firstVisibleMessage(in: visibleRect).map {
+                    TimelineScrollState.ReadingMessage(id: $0.0, offsetFromViewportTop: $0.1)
+                }
             )
         }
 

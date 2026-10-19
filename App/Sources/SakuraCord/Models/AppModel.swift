@@ -64,6 +64,8 @@ final class AppModel {
     enum ThreadErrorScope {
         case initialPage
         case earlierPage
+        case laterPage
+        case newestWindow
         case action
     }
 
@@ -196,6 +198,7 @@ final class AppModel {
     let inbox = InboxState()
     @ObservationIgnored var lastDirectMessageSelection: DirectMessageSidebarSelection?
     @ObservationIgnored var lastOpenedChannelIDsByGuild: [GuildID: ChannelID] = [:]
+    @ObservationIgnored var threadTimelinePosition = ThreadTimelinePosition()
     @ObservationIgnored var messages: [Message] = []
     @ObservationIgnored var messageRows: [MessageRowPresentation] = []
     @ObservationIgnored var messageRowsRevision: UInt64 = 0
@@ -426,19 +429,26 @@ final class AppModel {
         [MessageRowPresentation] = []
     @ObservationIgnored var threadMessageRowsUpdateHint:
         MessageRowsUpdateHint?
-    @ObservationIgnored let threadMessageRowsUpdateJournal =
-        MessageRowsUpdateJournal()
+    @ObservationIgnored let threadMessageRowsUpdateJournal = MessageRowsUpdateJournal()
     @ObservationIgnored var threadMessageRowsRevision: UInt64 = 0
     var isLoadingThread = false
     var hasCompletedInitialThreadLoad = false
     var isLoadingEarlierThread = false
+    var isLoadingLaterThread = false
     var hasMoreThreadMessages = false
+    /// The thread window is detached from the newest message, as after
+    /// jumping to an older message.
+    var hasMoreLaterThreadMessages = false
+    /// Identifies the open thread instance. Loads started for an earlier
+    /// instance, including one of the same thread, are discarded.
+    @ObservationIgnored var threadLoadGeneration = 0
+    @ObservationIgnored var threadWindow = ThreadWindowOwnership()
+    /// Advanced at every Gateway gap. History read in an earlier epoch cannot
+    /// prove that a window reaches the newest message.
+    @ObservationIgnored var historyEpoch = 0
     var threadErrorMessage: String?
     @ObservationIgnored var threadErrorScope: ThreadErrorScope?
-    var canRetryThreadLoad: Bool {
-        threadErrorScope == .initialPage
-            || threadErrorScope == .earlierPage
-    }
+    var canRetryThreadLoad: Bool { threadErrorScope.map { $0 != .action } ?? false }
     @ObservationIgnored let composer: MessageComposerState
     @ObservationIgnored let voiceMessagePlayback = VoiceMessagePlaybackStore()
     @ObservationIgnored let channelVoiceMessageComposer = VoiceMessageComposerState(destination: .channel)
@@ -538,8 +548,7 @@ final class AppModel {
     var discordSyncedGuildAndChannelUsageScores: [String: Int] = [:]
     var discordGuildAndChannelUsage: [String: DiscordFrecencyUsage] = [:]
     var discordGuildAndChannelUsageOrder: [String] = []
-    @ObservationIgnored var forwardDestinationHistoryDefaultsKey =
-        "dev.sakuracord.forward-destination-history.signed-out"
+    @ObservationIgnored var forwardDestinationHistoryDefaultsKey = "dev.sakuracord.forward-destination-history.signed-out"
     @ObservationIgnored var pendingDiscordFrecencyUses: [(key: String, timestamp: UInt64)] = []
     @ObservationIgnored var persistedDiscordFrecencyUsageDeltas: [String: DiscordFrecencyUsage] = [:]
     @ObservationIgnored var discordFrecencyUsageDeltasDefaultsKey =
@@ -1012,8 +1021,7 @@ final class AppModel {
     @ObservationIgnored var batchedSelectedMessages: [Message] = []
     @ObservationIgnored var batchedSelectedTextPlansByID:
         [MessageID: NativeTimelineTextPlan] = [:]
-    @ObservationIgnored var batchedUnreadPresentationNeedsRefresh =
-        false
+    @ObservationIgnored var batchedUnreadPresentationNeedsRefresh = false
     @ObservationIgnored var hasDeferredUnreadPresentationRefresh = false
     @ObservationIgnored var unreadPresentationRefreshTask: Task<Void, Never>?
     @ObservationIgnored var unreadPresentationPreparationTask: Task<Void, Never>?
@@ -1046,6 +1054,12 @@ final class AppModel {
     @ObservationIgnored var conversationRefreshJournals:
         [ChannelID: ConversationRefreshJournal] = [:]
     @ObservationIgnored var conversationRefreshJournalRevision: UInt64 = 0
+    @ObservationIgnored var scopedRefreshJournals: [UInt64: ScopedConversationRefreshJournal] = [:]
+    /// The newest message through which a conversation's retained messages
+    /// are known to be gap-free. Messages after it arrived live after a
+    /// Gateway gap or while a thread was closed, so they cannot prove that a
+    /// fresh newest page connects to the older retained history.
+    @ObservationIgnored var contiguousHistoryBoundaries: [ChannelID: MessageID] = [:]
     @ObservationIgnored var forumLoadTask: Task<Void, Never>?
     @ObservationIgnored var forumNextOffset: Int?
     @ObservationIgnored var forumLoadGeneration: UInt64 = 0
@@ -1152,6 +1166,8 @@ final class AppModel {
     @ObservationIgnored var credentialHandlesByAccountID: [String: CredentialHandle] = [:]
     @ObservationIgnored var didAttemptDiscordEmojiSettings = false
     @ObservationIgnored var acknowledgementTasks: [ChannelID: Task<Void, Never>] = [:]
+    /// The target each debounced acknowledgement task will send.
+    @ObservationIgnored var debouncedAcknowledgementTargets: [ChannelID: MessageID] = [:]
     @ObservationIgnored var queuedAcknowledgements: [ChannelID: ReadStateMutation] = [:]
     @ObservationIgnored var acknowledgementQueueOrder: [ChannelID] = []
     @ObservationIgnored var acknowledgementProcessorTask: Task<Void, Never>?

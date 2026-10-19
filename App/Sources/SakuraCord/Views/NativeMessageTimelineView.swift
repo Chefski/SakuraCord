@@ -11,6 +11,17 @@ private final class NativeTimelineInputShieldScrollView: NSScrollView {
     var onUserScrollTowardNewest: (() -> Void)?
     var onScrollWheel: (() -> Void)?
 
+    /// Called when the window toolbar starts covering a different height.
+    var onToolbarObscuredHeightChange: (() -> Void)?
+
+    override func tile() {
+        if keepScrollerBelowWindowToolbar() {
+            // Content insets follow on the next turn, outside AppKit's tiling.
+            Task { @MainActor [weak self] in self?.onToolbarObscuredHeightChange?() }
+        }
+        super.tile()
+    }
+
     override func scrollWheel(with event: NSEvent) {
         guard WindowModalCoordinator.allowsInput(for: self) else { return }
         onScrollWheel?()
@@ -369,6 +380,9 @@ extension NativeMessageTimelineCoordinator {
             }
             // The reader's own scrolling always wins over a jump's glide.
             scrollView.onScrollWheel = { [weak self] in self?.cancelGlide() }
+            scrollView.onToolbarObscuredHeightChange = { [weak self] in
+                self?.updateInsetsForToolbarObscuredHeightChange()
+            }
             scrollView.documentView = documentView
             scrollView.drawsBackground = false
             scrollView.borderType = .noBorder
@@ -1288,16 +1302,23 @@ extension NativeMessageTimelineCoordinator {
             }
 
             let delta = newRows.count - rowCount
-            if delta == 0 {
-                return applySameCountUpdate(
+            let applied = if delta == 0 {
+                applySameCountUpdate(
                     to: newParent,
                     rows: newRows,
                     oldLeadingCount: oldLeadingCount,
                     width: width
                 )
-            }
-            if delta < 0 {
-                return applyRemovalUpdate(
+            } else if delta < 0 {
+                applyRemovalUpdate(
+                    to: newParent,
+                    rows: newRows,
+                    oldLeadingCount: oldLeadingCount,
+                    delta: delta,
+                    width: width
+                )
+            } else {
+                applyInsertionUpdate(
                     to: newParent,
                     rows: newRows,
                     oldLeadingCount: oldLeadingCount,
@@ -1305,14 +1326,13 @@ extension NativeMessageTimelineCoordinator {
                     width: width
                 )
             }
-
-            return applyInsertionUpdate(
-                to: newParent,
-                rows: newRows,
-                oldLeadingCount: oldLeadingCount,
-                delta: delta,
-                width: width
-            )
+            // Row updates redraw only the rows they touch. A boundary that
+            // moved in the same update must also leave its previous row, or
+            // that row keeps drawing a stale NEW divider.
+            if applied {
+                refreshRowMarkers(from: oldParent, to: newParent, width: width)
+            }
+            return applied
         }
 
         func applyMetadataUpdate(
@@ -1330,6 +1350,17 @@ extension NativeMessageTimelineCoordinator {
             for index in leadingItems.indices where items[index] != leadingItems[index] {
                 replaceItem(at: index, with: leadingItems[index], width: width)
             }
+            refreshRowMarkers(from: oldParent, to: newParent, width: width)
+            return true
+        }
+
+        /// Redraws the rows that gain or lose the unread divider or the
+        /// selection highlight.
+        func refreshRowMarkers(
+            from oldParent: NativeMessageTimelineView,
+            to newParent: NativeMessageTimelineView,
+            width: CGFloat
+        ) {
             var affectedIDs = Set<MessageID>()
             if oldParent.unreadMessageID != newParent.unreadMessageID {
                 affectedIDs.formUnion([oldParent.unreadMessageID, newParent.unreadMessageID].compactMap { $0 })
@@ -1346,7 +1377,6 @@ extension NativeMessageTimelineCoordinator {
                     replaceItem(at: index, with: item, width: width)
                 }
             }
-            return true
         }
 
         func applySameCountUpdate(

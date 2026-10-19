@@ -235,6 +235,24 @@ final class MessageRowPresentation: Identifiable, Equatable, Sendable {
         self.pinnedAt = pinnedAt
     }
 
+    /// The row with its own author header, as after a NEW divider, which
+    /// breaks a group like Discord's.
+    nonisolated func startingGroup() -> MessageRowPresentation {
+        guard !startsGroup else { return self }
+        return MessageRowPresentation(
+            message: message,
+            startsGroup: true,
+            endsGroup: endsGroup,
+            startsDay: startsDay,
+            replyPreview: replyPreview,
+            isReplyAvailable: isReplyAvailable,
+            textPlan: textPlan,
+            searchContext: searchContext,
+            pinnedAt: pinnedAt,
+            isResource: isResource
+        )
+    }
+
     nonisolated static func == (
         lhs: MessageRowPresentation,
         rhs: MessageRowPresentation
@@ -338,7 +356,7 @@ nonisolated enum MessageSearchPresentation {
                     channelID: message.channelID,
                     sectionTitle: sectionTitle(for: channel, message: message),
                     sectionSubtitle: channel?.category,
-                    systemImage: sectionSystemImage(for: channel),
+                    systemImage: sectionSystemImage(for: channel, channelsByID: channelsByID),
                     showsSectionHeader: showsSectionHeader
                 )
             )
@@ -352,15 +370,23 @@ nonisolated enum MessageSearchPresentation {
         guard let channel else {
             return "Channel \(message.channelID.description.suffix(6))"
         }
-        switch channel.kind {
-        case .directMessage, .groupDirectMessage:
-            return channel.name
-        default:
-            return "# \(channel.name)"
-        }
+        // The section symbol already identifies the channel type.
+        return channel.name
     }
 
-    private static func sectionSystemImage(for channel: Channel?) -> String {
+    private static func sectionSystemImage(
+        for channel: Channel?,
+        channelsByID: [ChannelID: Channel]
+    ) -> String {
+        // A thread's parent is a conversation channel rather than a category,
+        // and it takes the same symbol as its toolbar title.
+        if let parentID = channel?.categoryID, let parent = channelsByID[parentID] {
+            switch parent.kind {
+            case .forum: return "bubble.left.and.bubble.right.fill"
+            case .text, .announcement: return SakuraCordSystemSymbol.thread
+            case .voice, .directMessage, .groupDirectMessage, .unknown: break
+            }
+        }
         switch channel?.kind {
         case .directMessage:
             return "at"
