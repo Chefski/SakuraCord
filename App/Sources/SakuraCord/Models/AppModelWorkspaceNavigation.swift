@@ -498,6 +498,7 @@ extension AppModel {
     }
 
     var messageSearchUsers: [User] {
+        _ = forwardSearchSourceRevision
         var seen = Set<UserID>()
         // Discord's queryAllUsers path reads UserStore insertion order. This
         // projection contains every live Gateway user DTO, including broad
@@ -569,6 +570,7 @@ extension AppModel {
     }
 
     func messageSearchGuildAliases(guildID: GuildID) -> [UserID: [String]] {
+        _ = forwardSearchSourceRevision
         var aliases: [UserID: [String]] = [:]
         func append(_ value: String?, for userID: UserID) {
             guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),

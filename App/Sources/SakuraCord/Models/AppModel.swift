@@ -139,9 +139,16 @@ final class AppModel {
         var desiredCollapsed: Bool
     }
 
+    @ObservationIgnored var snapshotStorage: BootstrapSnapshot?
     var snapshot: BootstrapSnapshot? {
-        didSet {
-            refreshSnapshotPresentation(replacing: oldValue)
+        get {
+            access(keyPath: \.snapshot)
+            return snapshotStorage
+        }
+        set {
+            let previous = snapshotStorage
+            withMutation(keyPath: \.snapshot) { snapshotStorage = newValue }
+            refreshSnapshotPresentation(replacing: previous)
         }
     }
     // Keep workspace chrome independent of unrelated channel and member changes.

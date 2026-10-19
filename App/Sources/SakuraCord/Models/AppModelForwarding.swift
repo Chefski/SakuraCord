@@ -37,12 +37,13 @@ extension AppModel {
         return true
     }
 
+    // Search caches invalidate search consumers without rebuilding workspace chrome.
     private func updateForwardSnapshot(
         _ update: (inout BootstrapSnapshot) -> Void
     ) {
-        guard var value = snapshot else { return }
+        guard var value = snapshotStorage else { return }
         update(&value)
-        snapshot = value
+        snapshotStorage = value
         forwardSearchSourceRevision &+= 1
     }
 
