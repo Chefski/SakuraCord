@@ -17,7 +17,7 @@ extension AppModel {
 
     var customizationPreviewChannel: Channel? {
         guard case .channelPreview(let channelID, _)? = presentedSideConversationContext else { return nil }
-        return snapshot?.channels.first { $0.id == channelID }
+        return messagePresentationChannelsByID[channelID]
     }
 
     func loadCustomizationProfile(in guildID: GuildID) async {
@@ -34,7 +34,7 @@ extension AppModel {
     func browsableChannels(in guildID: GuildID) -> [Channel] {
         let hidesResources = hasGuildGuide(in: guildID)
         let resources = Set(onboarding.guides[guildID]?.configuration?.resourceChannels.map(\.channelID) ?? [])
-        return (snapshot?.channels ?? []).filter {
+        return messagePresentationChannels.filter {
             $0.guildID == guildID && (!hidesResources || ($0.flags & (1 << 7) == 0 && !resources.contains($0.id)))
                 && conversationAccess(for: $0).isReadable
         }

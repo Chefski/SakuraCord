@@ -55,7 +55,7 @@ extension AppModel {
                 guard isCurrentAccountSession(session) else { return }
                 for target in targets where target.readStateType == 0 {
                     readState.completeAcknowledgement(channelID: target.channelID, messageID: target.messageID, token: nil)
-                    if readState.entries[target.channelID]?.isUnread != true {
+                    if readState[target.channelID]?.isUnread != true {
                         cancelNativeNotifications(channelID: target.channelID)
                     }
                 }
