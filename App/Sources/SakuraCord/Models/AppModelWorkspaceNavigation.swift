@@ -172,10 +172,16 @@ extension AppModel {
     var canShowMessageSearch: Bool {
         MessageSearchSurfacePolicy.showsToolbar(
             channelKind: selectedChannel?.kind,
-            // The workspace's own toolbar keeps search beside a thread pane;
-            // its results take the pane's place until they close.
-            hasOpenThread: hasThreadPane && !isThreadFullWidth && !WorkspaceColumnsHost.isEnabled
+            hasOpenThread: hasThreadPane && !isThreadFullWidth && sideConversationCover == nil
         )
+    }
+
+    /// Whether the toolbar shows the search field. The workspace's own
+    /// toolbar keeps it beside a thread pane, whose place results take
+    /// until they close.
+    var canShowMessageSearchField: Bool {
+        guard WorkspaceColumnsHost.isEnabled else { return canShowMessageSearch }
+        return MessageSearchSurfacePolicy.showsToolbar(channelKind: selectedChannel?.kind, hasOpenThread: false)
     }
 
     var isMessageSearchVisible: Bool {
@@ -194,7 +200,7 @@ extension AppModel {
         }
         guard sessionState == .workspace,
               selectedChannelID != nil,
-              canShowMessageSearch
+              canShowMessageSearchField
         else { return }
         workspaceNavigationOverlay = nil
         messageSearch.requestInputFocus()
@@ -229,7 +235,10 @@ extension AppModel {
         messageSearch.requestTask = nil
         messageSearch.isSearching = false
         messageSearch.pollRefreshJournal = nil
-        WorkspaceLayoutMotion.perform(in: self) { messageSearch.isPresented = false }
+        WorkspaceLayoutMotion.perform(in: self) {
+            messageSearch.isPresented = false
+            if sideConversationCover == .messageSearch { sideConversationCover = nil }
+        }
         messageSearch.isInputFocused = false
     }
 
@@ -429,9 +438,16 @@ extension AppModel {
     }
 
     private func presentMessageSearchResultsIfNeeded() {
-        guard !messageSearch.isPresented else { return }
+        guard !isMessageSearchVisible else { return }
         AppPerformanceSignposts.beginMessageSearchOpen()
-        WorkspaceLayoutMotion.perform(in: self) { messageSearch.isPresented = true }
+        WorkspaceLayoutMotion.perform(in: self) {
+            // Results take a thread pane's place until they close.
+            if workspacePresentation.paneSideConversation != nil {
+                threadTimelinePosition.restore = threadTimelinePosition.reading
+                sideConversationCover = .messageSearch
+            }
+            messageSearch.isPresented = true
+        }
     }
 
     func submitMessageSearchInput() {

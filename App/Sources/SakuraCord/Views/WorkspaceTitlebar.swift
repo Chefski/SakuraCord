@@ -152,6 +152,9 @@ final class WorkspaceTitlebarView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         WorkspaceColumnsGeometry.shared.observe(self)
+        // Assistive apps find the items where the toolbar's were.
+        setAccessibilityElement(true)
+        setAccessibilityRole(.toolbar)
     }
 
     @available(*, unavailable)

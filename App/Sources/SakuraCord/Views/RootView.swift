@@ -1809,7 +1809,7 @@ private extension AppModel {
     /// The workspace shows message search in the window toolbar.
     var showsWorkspaceMessageSearch: Bool {
         onboardingEntryGuildID == nil && guildWorkspacePage == nil
-            && (isSwitchingAccounts || canShowMessageSearch)
+            && (isSwitchingAccounts || canShowMessageSearchField)
     }
 
     /// The toolbar field searches friends or browsable channels instead.

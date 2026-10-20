@@ -997,10 +997,9 @@ final class AppModel {
     var attachmentCompactionPresentation: OversizedAttachmentPrompt?
     var externalAttachmentUploadPresentation: ExternalAttachmentUploadPresentation?
     var showInspector = true
-    /// The member list has taken the open side chat's place in the trailing
-    /// column; the side chat, with its draft and position, comes back when
-    /// the member list closes.
-    var isSideConversationCovered = false
+    /// What has taken the open side chat's place in the trailing column;
+    /// the side chat, with its draft and position, comes back when it closes.
+    var sideConversationCover: SideConversationCover?
     var errorMessage: String?
 
     @ObservationIgnored var provider: any ChatProvider

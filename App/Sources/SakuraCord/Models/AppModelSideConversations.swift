@@ -10,6 +10,13 @@ struct SideConversationLabel: Equatable {
 
 /// Where the open thread's timeline is read, so moving it between the pane
 /// and full width reopens it at the same place.
+/// What takes an open side chat's place in the trailing column until it
+/// closes (`AppModel.sideConversationCover`).
+enum SideConversationCover {
+    case memberList
+    case messageSearch
+}
+
 struct ThreadTimelinePosition {
     /// The latest reading position the timeline reported.
     var reading: MessageTimelineScrollRequest.Target?
@@ -51,7 +58,7 @@ extension AppModel {
             guildPage: selectedGuildID == nil ? nil : guildWorkspacePage,
             isFriendsPresented: isFriendsPresented,
             channelKind: selectedChannel?.kind,
-            sideConversation: isSideConversationCovered && presentedSideConversation?.isFullWidth != true
+            sideConversation: sideConversationCover != nil && presentedSideConversation?.isFullWidth != true
                 ? nil : presentedSideConversation,
             showsMessageSearch: isMessageSearchVisible,
             showsInspector: showInspector
@@ -150,7 +157,7 @@ extension AppModel {
     ///   set in the same change so it moves in from its first frame.
     func openSideConversation(_ conversation: SideConversation, preparing: () -> Void = {}) {
         func open() {
-            isSideConversationCovered = false
+            sideConversationCover = nil
             closeThread()
             if conversation.isThread {
                 if conversation.isFullWidth { discardSideConversationContext() }
@@ -195,15 +202,15 @@ extension AppModel {
         if workspacePresentation.paneSideConversation != nil {
             threadTimelinePosition.restore = threadTimelinePosition.reading
             WorkspaceLayoutMotion.perform(in: self) {
-                isSideConversationCovered = true
+                sideConversationCover = .memberList
                 showInspector = true
             }
             return
         }
-        if isSideConversationCovered, showInspector {
+        if sideConversationCover == .memberList, showInspector {
             WorkspaceLayoutMotion.perform(in: self) {
                 showInspector = false
-                isSideConversationCovered = false
+                sideConversationCover = nil
             }
             return
         }
@@ -274,7 +281,7 @@ extension AppModel {
     func discardSideConversationContext() {
         if case .guideResource? = sideConversations.context { guideResource = nil }
         sideConversations.context = nil
-        if sideConversations.thread == nil { isSideConversationCovered = false }
+        if sideConversations.thread == nil { sideConversationCover = nil }
     }
 
     /// Whether a selection change keeps the presented guild page without
