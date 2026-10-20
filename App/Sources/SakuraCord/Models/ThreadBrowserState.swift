@@ -19,8 +19,10 @@ nonisolated struct ThreadBrowserListing: Equatable, Sendable {
     /// Appends the page requested at `requestedOffset`. A page for another
     /// offset is stale and ignored; threads already listed are not repeated,
     /// since a thread archived meanwhile shifts Discord's offsets.
+    /// `departedCount` page records left the archive while the page was in
+    /// flight, moving later records back; the next offset follows them.
     @discardableResult
-    mutating func append(_ page: ForumPostPage, requestedOffset: Int) -> Bool {
+    mutating func append(_ page: ForumPostPage, requestedOffset: Int, departedCount: Int = 0) -> Bool {
         guard requestedOffset == nextOffset else { return false }
         var listed = Set(threads.map(\.id))
         for post in page.posts where post.thread.isArchived && listed.insert(post.id).inserted {
@@ -29,7 +31,7 @@ nonisolated struct ThreadBrowserListing: Equatable, Sendable {
         if let oldest = page.posts.map(\.lastActivityAt).min() {
             oldestPagedActivity = min(oldestPagedActivity ?? oldest, oldest)
         }
-        nextOffset = page.hasMore ? page.nextOffset : nil
+        nextOffset = page.hasMore ? page.nextOffset.map { max(requestedOffset, $0 - departedCount) } : nil
         hasLoadedFirstPage = true
         return true
     }
