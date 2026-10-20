@@ -160,6 +160,9 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
     var reusableCards: [ForumBoardCard] = []
     /// Cards fading out after a live removal, no longer in `cards`.
     var exitingCards: [ObjectIdentifier: ForumBoardCard] = [:]
+    /// Hidden new cards, by card, waiting for their group's bitmaps.
+    var revealGroups: [ObjectIdentifier: ForumBoardRevealGroup] = [:]
+    let rasterCache = ForumCardRasterCache()
     var presentations: [ChannelID: ForumCardPresentation] = [:]
     var regions: [ForumBoardItem.Identifier: ForumCardRegions] = [:]
     var excerptRenderers: [ChannelID: ForumPostPreviewTextRenderer] = [:]
@@ -272,14 +275,15 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         for (id, card) in cards { applyChrome(card, id: id, animated: false) }
-        repaintVisibleCards(fading: false)
+        // The chrome changes at once, so the content does too.
+        repaintVisibleCards(fading: false, synchronously: true)
     }
 
     override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
         let scale = window?.backingScaleFactor ?? 2
         for card in cards.values {
-            card.render(scale: scale, fading: false)
+            card.render(scale: scale, fading: false, synchronously: true)
         }
     }
 
@@ -461,16 +465,23 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         }
         var staggerIndex = 0
         var realizedNewPost = false
+        let group = ForumBoardRevealGroup()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         for entry in realized {
             let entersAnimated = !replacedPlaceholderFrames.contains { $0.intersects(entry.frame) }
-            if realize(entry, transition: entersAnimated ? transition : .none, visible: visible, staggerIndex: &staggerIndex) {
+            let realization = Realization(
+                transition: entersAnimated ? transition : .none,
+                visible: visible,
+                group: group
+            )
+            if realize(entry, realization, staggerIndex: &staggerIndex) {
                 realizedNewPost = true
             }
         }
-        retireCards(notIn: liveIDs, fades: transition == .reflow, visible: visible)
+        retireCards(notIn: liveIDs, fades: transition == .reflow, visible: visible, group: group)
         CATransaction.commit()
+        begin(group)
         let livePostIDs = Set(liveIDs.compactMap { if case let .post(id) = $0 { id } else { nil } })
         for id in excerptRenderers.keys where !livePostIDs.contains(id) {
             excerptRenderers[id]?.stopObservingReveals()
@@ -482,14 +493,22 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         scheduleSettledWork()
     }
 
+    private struct Realization {
+        let transition: ForumBoardTransition
+        let visible: CGRect
+        /// Collects new cards, which stay hidden until their bitmaps land.
+        let group: ForumBoardRevealGroup
+    }
+
     /// Brings one entry's card in line with the layout, creating it if
     /// needed. Returns whether its post content was resolved.
     private func realize(
         _ entry: ForumBoardLayout.Entry,
-        transition: ForumBoardTransition,
-        visible: CGRect,
+        _ realization: Realization,
         staggerIndex: inout Int
     ) -> Bool {
+        let transition = realization.transition
+        let visible = realization.visible
         let id = entry.item.id
         var resolved = false
         if case let .post(postID) = id {
@@ -508,32 +527,44 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         } else {
             let card = dequeueCard()
             cards[id] = card
+            card.layer.isHidden = true
             configure(card, entry: entry)
             cardsLayer.addSublayer(card.layer)
+            var entrance = ForumBoardRevealGroup.Entrance.none
             if animates, entry.frame.intersects(visible) {
-                animateEntrance(card, delay: transition == .reveal ? Double(min(staggerIndex, 10)) * 0.025 : 0)
+                entrance = .animated(delay: transition == .reveal ? Double(min(staggerIndex, 10)) * 0.025 : 0)
                 staggerIndex += 1
             } else if case .placeholder = entry.item {
-                animatePlaceholderEntrance(card)
+                entrance = .placeholder
             }
+            realization.group.add(card, entrance: entrance)
         }
         return resolved
     }
 
     /// Removes cards that left the board. Only a live removal fades; a new
-    /// query or arriving posts replace them at once, so outgoing and incoming
-    /// cards never overlap.
-    private func retireCards(notIn liveIDs: Set<ForumBoardItem.Identifier>, fades: Bool, visible: CGRect) {
+    /// query or arriving posts replace them in one frame, once the incoming
+    /// cards' bitmaps are ready, so outgoing and incoming cards never
+    /// overlap and no gap shows between them.
+    private func retireCards(
+        notIn liveIDs: Set<ForumBoardItem.Identifier>,
+        fades: Bool,
+        visible: CGRect,
+        group: ForumBoardRevealGroup
+    ) {
         for (id, card) in cards where !liveIDs.contains(id) {
             cards[id] = nil
             regions[id] = nil
             interactions[id] = nil
             paintedRelativeTimes[id] = nil
             let isPlaceholder = if case .placeholder = id { true } else { false }
-            if fades, !isPlaceholder, card.frame.intersects(visible) {
+            let isOnScreen = !card.layer.isHidden && card.frame.intersects(visible)
+            if fades, !isPlaceholder, isOnScreen {
                 animateExit(card)
+            } else if isOnScreen, group.covers(card.frame) {
+                group.keepUntilRevealed(card)
             } else {
-                recycle(card)
+                recycle(card, replacedBy: group)
             }
         }
     }
@@ -569,6 +600,7 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
     }
 
     func recycle(_ card: ForumBoardCard) {
+        leaveRevealGroup(card)
         card.layer.removeFromSuperlayer()
         card.clearContent()
         card.updateShimmer(frames: [], color: .clear, animates: false)
@@ -587,12 +619,18 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         let sizeChanged = card.frame.size != entry.frame.size || card.kind != kind
         card.configure(kind: kind, cornerRadius: metrics.cardCornerRadius)
         card.frame = entry.frame
-        card.painter = { [weak self] size in
-            self?.paint(id: id, size: size)
+        card.sceneBuilder = { [weak self] size, scale in
+            self?.scene(id: id, size: size, scale: scale) ?? ForumCardScene(size: size, scale: scale, operations: [])
         }
-        if sizeChanged || !card.hasContent {
+        card.didCommit = { [weak self, weak card] in
+            guard let self, let card else { return }
+            cardDidCommit(card, id: id)
+        }
+        if sizeChanged || !card.hasContent && !card.isRendering {
             regions[id] = nil
-            card.render(scale: backingScale, fading: false)
+            // A resized card already on screen redraws at once: its old
+            // bitmap would not fit its new frame.
+            card.render(scale: backingScale, fading: false, synchronously: card.hasContent)
         }
         applyChrome(card, id: id, animated: false)
         refreshShimmer(card, id: id)
@@ -624,10 +662,10 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         )
     }
 
-    func repaintVisibleCards(fading: Bool) {
+    func repaintVisibleCards(fading: Bool, synchronously: Bool = false) {
         for (id, card) in cards {
             regions[id] = nil
-            card.render(scale: backingScale, fading: fading)
+            card.render(scale: backingScale, fading: fading, synchronously: synchronously)
         }
         rebuildToolTips()
     }

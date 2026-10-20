@@ -286,54 +286,64 @@ enum ForumCardPainter {
         let failedMedia: Set<NativeTimelineMediaKey>
     }
 
-    static func draw(_ input: DrawInput) {
+    static func draw(_ input: DrawInput, on canvas: ForumCardCanvas) {
         let presentation = input.presentation
         let regions = input.regions
         let metrics = input.metrics
         if input.mode == .gallery {
-            drawGalleryHeader(presentation, in: regions.statusRowFrame ?? .zero)
-            drawTitle(presentation, in: regions.titleFrame, maximumLines: metrics.maximumTitleLines, metrics: metrics)
+            drawGalleryHeader(presentation, in: regions.statusRowFrame ?? .zero, on: canvas)
+            drawTitle(presentation, in: regions.titleFrame, maximumLines: metrics.maximumTitleLines, metrics: metrics, on: canvas)
             if let hero = regions.heroFrame {
-                drawHero(presentation, in: hero, excerpt: input.excerpt, failedMedia: input.failedMedia)
+                drawHero(presentation, in: hero, excerpt: input.excerpt, failedMedia: input.failedMedia, on: canvas)
             }
         } else {
             if let status = regions.statusRowFrame {
-                drawStatusRow(presentation, in: status)
+                drawStatusRow(presentation, in: status, on: canvas)
             }
             let drawnLines = max(1, Int((regions.titleFrame.height / metrics.titleLineHeight).rounded()))
-            drawTitle(presentation, in: regions.titleFrame, maximumLines: min(input.titleLines, drawnLines), metrics: metrics)
+            drawTitle(presentation, in: regions.titleFrame, maximumLines: min(input.titleLines, drawnLines), metrics: metrics, on: canvas)
             if let excerptFrame = regions.excerptFrame {
-                drawExcerpt(presentation, in: excerptFrame, renderer: input.excerpt, metrics: metrics)
+                drawExcerpt(presentation, in: excerptFrame, renderer: input.excerpt, metrics: metrics, on: canvas)
             }
             if let thumbnail = presentation.thumbnail, let frame = regions.thumbnailFrame {
-                drawMedia(thumbnail, in: frame, cornerRadius: InterfaceScale.metric(11), isCompact: true, failedMedia: input.failedMedia)
+                drawMedia(
+                    thumbnail,
+                    in: frame,
+                    style: MediaStyle(cornerRadius: InterfaceScale.metric(11), isCompact: true),
+                    failedMedia: input.failedMedia,
+                    on: canvas
+                )
             }
         }
-        drawFooter(presentation, regions: regions, interaction: input.interaction, model: input.model)
+        drawFooter(presentation, regions: regions, interaction: input.interaction, model: input.model, on: canvas)
     }
 
     /// Skeleton bars, drawn beneath the shimmer layer that animates over them.
-    static func drawSkeleton(_ frames: [CGRect]) {
-        NSColor.labelColor.withAlphaComponent(0.07).setFill()
+    static func drawSkeleton(_ frames: [CGRect], on canvas: ForumCardCanvas) {
+        let color = NSColor.labelColor.withAlphaComponent(0.07)
         for frame in frames {
-            let radius = min(InterfaceScale.metric(7), frame.height / 2)
-            NSBezierPath(roundedRect: frame, xRadius: radius, yRadius: radius).fill()
+            canvas.fill(frame, cornerRadius: min(InterfaceScale.metric(7), frame.height / 2), color: color)
         }
     }
 
-    private static func drawStatusRow(_ presentation: ForumCardPresentation, in frame: CGRect) {
+    private static func drawStatusRow(_ presentation: ForumCardPresentation, in frame: CGRect, on canvas: ForumCardCanvas) {
         var cursorX = frame.minX
         let iconSize = InterfaceScale.metric(14)
         for (shown, symbol) in [(presentation.isPinned, "pin.fill"), (presentation.isLocked, "lock.fill")] where shown {
-            drawStatusIcon(symbol, at: CGPoint(x: cursorX, y: frame.midY), size: iconSize)
+            drawStatusIcon(symbol, at: CGPoint(x: cursorX, y: frame.midY), size: iconSize, on: canvas)
             cursorX += iconSize + InterfaceScale.metric(7)
         }
-        drawTags(presentation.tags, in: CGRect(x: cursorX, y: frame.minY, width: frame.maxX - cursorX, height: frame.height), style: .standard)
+        drawTags(
+            presentation.tags,
+            in: CGRect(x: cursorX, y: frame.minY, width: frame.maxX - cursorX, height: frame.height),
+            style: .standard,
+            on: canvas
+        )
     }
 
     /// A pin or lock mark, centered vertically on `origin.y`.
-    private static func drawStatusIcon(_ symbol: String, at origin: CGPoint, size: CGFloat) {
-        NativeTimelineRowPainter.systemSymbol(
+    private static func drawStatusIcon(_ symbol: String, at origin: CGPoint, size: CGFloat, on canvas: ForumCardCanvas) {
+        canvas.symbol(
             symbol,
             in: CGRect(x: origin.x, y: origin.y - size / 2, width: size, height: size),
             color: .secondaryLabelColor,
@@ -349,7 +359,13 @@ enum ForumCardPainter {
 
     /// Fits as many tag chips as the width allows, ending with "+N" for the
     /// rest. Chips never wrap, so the status row height stays fixed.
-    static func drawTags(_ tags: [ForumCardPresentation.Tag], in frame: CGRect, style: TagStyle, maximumVisible: Int = 5) {
+    static func drawTags(
+        _ tags: [ForumCardPresentation.Tag],
+        in frame: CGRect,
+        style: TagStyle,
+        maximumVisible: Int = 5,
+        on canvas: ForumCardCanvas
+    ) {
         guard !tags.isEmpty, frame.width > 0 else { return }
         let spacing = InterfaceScale.metric(6)
         let widths = tags.map { tagWidth($0) }
@@ -365,7 +381,13 @@ enum ForumCardPainter {
         }
         var cursorX = frame.minX
         for (tag, width) in zip(tags.prefix(visible), widths) {
-            drawChip(text: tag.name, emoji: tag.emoji, frame: CGRect(x: cursorX, y: frame.minY, width: width, height: frame.height), style: style)
+            drawChip(
+                text: tag.name,
+                emoji: tag.emoji,
+                frame: CGRect(x: cursorX, y: frame.minY, width: width, height: frame.height),
+                style: style,
+                on: canvas
+            )
             cursorX += width + spacing
         }
         let hidden = tags.count - visible
@@ -373,7 +395,7 @@ enum ForumCardPainter {
             let text = "+\(hidden)"
             let width = min(chipWidth(text: text, hasEmoji: false), frame.maxX - cursorX)
             guard width > 0 else { return }
-            drawChip(text: text, emoji: nil, frame: CGRect(x: cursorX, y: frame.minY, width: width, height: frame.height), style: style)
+            drawChip(text: text, emoji: nil, frame: CGRect(x: cursorX, y: frame.minY, width: width, height: frame.height), style: style, on: canvas)
         }
     }
 
@@ -392,30 +414,27 @@ enum ForumCardPainter {
         text: String,
         emoji: ForumTagEmojiPresentation?,
         frame: CGRect,
-        style: TagStyle
+        style: TagStyle,
+        on canvas: ForumCardCanvas
     ) {
-        let shape = NSBezierPath(roundedRect: frame, xRadius: frame.height / 2, yRadius: frame.height / 2)
+        let radius = frame.height / 2
         switch style {
         case .standard:
-            NSColor.labelColor.withAlphaComponent(0.07).setFill()
-            shape.fill()
-            NSColor.labelColor.withAlphaComponent(0.1).setStroke()
-            shape.lineWidth = 1
-            shape.stroke()
+            canvas.fill(frame, cornerRadius: radius, color: NSColor.labelColor.withAlphaComponent(0.07))
+            canvas.stroke(frame, cornerRadius: radius, color: NSColor.labelColor.withAlphaComponent(0.1))
         case .overMedia:
-            NSColor.black.withAlphaComponent(0.58).setFill()
-            shape.fill()
+            canvas.fill(frame, cornerRadius: radius, color: NSColor.black.withAlphaComponent(0.58))
         }
         let padding = InterfaceScale.metric(9)
         var cursorX = frame.minX + padding
         if let emoji {
             let size = InterfaceScale.metric(14)
-            drawEmoji(emoji, in: CGRect(x: cursorX, y: frame.midY - size / 2, width: size, height: size))
+            drawEmoji(emoji, in: CGRect(x: cursorX, y: frame.midY - size / 2, width: size, height: size), on: canvas)
             cursorX += size + InterfaceScale.metric(4)
         }
         let color: NSColor = style == .overMedia ? .white : .labelColor
         let lineHeight = ForumBoardMetrics.lineHeight(of: tagFont)
-        NativeTimelineRowPainter.text(
+        canvas.text(
             text,
             in: CGRect(x: cursorX, y: frame.midY - lineHeight / 2, width: max(0, frame.maxX - padding - cursorX), height: lineHeight),
             font: tagFont,
@@ -423,21 +442,15 @@ enum ForumCardPainter {
         )
     }
 
-    static func drawEmoji(_ emoji: ForumTagEmojiPresentation, in frame: CGRect) {
+    static func drawEmoji(_ emoji: ForumTagEmojiPresentation, in frame: CGRect, on canvas: ForumCardCanvas) {
         switch emoji {
         case let .unicode(value):
-            NativeTimelineRowPainter.drawImage(
-                ComponentUnicodeEmojiRenderer.image(for: value),
-                in: frame,
-                cornerRadius: 0,
-                fillsFrame: false
-            )
+            canvas.image(ComponentUnicodeEmojiRenderer.image(for: value), in: frame, cornerRadius: 0, fillsFrame: false)
         case .custom:
             if let key = emoji.mediaKey, let image = NativeTimelineRowPainter.mediaImage(for: key) {
-                NativeTimelineRowPainter.drawImage(image, in: frame, cornerRadius: 0, fillsFrame: false)
+                canvas.image(image, in: frame, cornerRadius: 0, fillsFrame: false)
             } else {
-                NSColor.labelColor.withAlphaComponent(0.1).setFill()
-                NSBezierPath(ovalIn: frame.insetBy(dx: 1, dy: 1)).fill()
+                canvas.fillOval(frame.insetBy(dx: 1, dy: 1), color: NSColor.labelColor.withAlphaComponent(0.1))
             }
         }
     }
@@ -448,112 +461,67 @@ enum ForumCardPainter {
         _ presentation: ForumCardPresentation,
         in frame: CGRect,
         maximumLines: Int,
-        metrics: ForumBoardMetrics
+        metrics: ForumBoardMetrics,
+        on canvas: ForumCardCanvas
     ) {
         let color: NSColor = presentation.isEmphasized ? .labelColor : .secondaryLabelColor
-        let badgeSize = newBadgeSize
-        let badgeReserve = presentation.isNew ? badgeSize.width + InterfaceScale.metric(8) : 0
-        let lastLineEnd = drawLines(
+        let spacing = InterfaceScale.metric(8)
+        canvas.lines(
             presentation.title,
             font: metrics.titleFont,
             color: color,
             in: frame,
             lineHeight: metrics.titleLineHeight,
             maximumLines: max(1, maximumLines),
-            lastLineReserve: badgeReserve
-        )
-        guard presentation.isNew else { return }
-        let badgeFrame = CGRect(
-            x: lastLineEnd.x + InterfaceScale.metric(8),
-            y: lastLineEnd.y + (metrics.titleLineHeight - badgeSize.height) / 2,
-            width: badgeSize.width,
-            height: badgeSize.height
-        )
-        newBadgeFill.setFill()
-        NSBezierPath(roundedRect: badgeFrame, xRadius: badgeFrame.height / 2, yRadius: badgeFrame.height / 2).fill()
-        let lineHeight = ForumBoardMetrics.lineHeight(of: badgeFont)
-        NativeTimelineRowPainter.text(
-            "NEW",
-            in: CGRect(x: badgeFrame.minX, y: badgeFrame.midY - lineHeight / 2, width: badgeFrame.width, height: lineHeight),
-            font: badgeFont,
-            color: newBadgeText,
-            alignment: .center,
-            lineBreakMode: .byClipping
-        )
-    }
-
-    /// Breaks text into at most `maximumLines` lines, truncating the last
-    /// with an ellipsis, and returns where the last line ends (its top and
-    /// trailing edge) so a badge can follow it.
-    @discardableResult
-    static func drawLines(
-        _ text: String,
-        font: NSFont,
-        color: NSColor,
-        in frame: CGRect,
-        lineHeight: CGFloat,
-        maximumLines: Int,
-        lastLineReserve: CGFloat = 0
-    ) -> CGPoint {
-        guard let context = NSGraphicsContext.current?.cgContext, frame.width > 0 else { return frame.origin }
-        let attributed = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: color])
-        let typesetter = CTTypesetterCreateWithAttributedString(attributed)
-        let length = attributed.length
-        var location = 0
-        var lineIndex = 0
-        var end = frame.origin
-        while location < length, lineIndex < maximumLines {
-            var isLast = lineIndex == maximumLines - 1
-            var width = Double(max(1, frame.width - (isLast ? lastLineReserve : 0)))
-            var count = CTTypesetterSuggestLineBreak(typesetter, location, width)
-            if count <= 0 { break }
-            // A line that ends the text carries the trailing badge too.
-            if !isLast, lastLineReserve > 0, location + count >= length {
-                width = Double(max(1, frame.width - lastLineReserve))
-                count = CTTypesetterSuggestLineBreak(typesetter, location, width)
-                if count <= 0 { break }
-                isLast = location + count >= length
-            }
-            var line = CTTypesetterCreateLine(typesetter, CFRange(location: location, length: count))
-            if isLast, location + count < length {
-                count = length - location
-                let rest = CTTypesetterCreateLine(typesetter, CFRange(location: location, length: count))
-                let ellipsis = CTLineCreateWithAttributedString(
-                    NSAttributedString(string: "…", attributes: [.font: font, .foregroundColor: color])
+            lastLineReserve: presentation.isNew ? newBadgeSize.width + spacing : 0,
+            badge: presentation.isNew
+                ? ForumCardCanvas.Badge(
+                    size: newBadgeSize,
+                    spacing: spacing,
+                    fill: newBadgeFill,
+                    text: "NEW",
+                    font: badgeFont,
+                    textColor: newBadgeText
                 )
-                line = CTLineCreateTruncatedLine(rest, width, .end, ellipsis) ?? line
-            }
-            let lineY = frame.minY + CGFloat(lineIndex) * lineHeight
-            context.saveGState()
-            context.textMatrix = .identity
-            context.translateBy(x: frame.minX, y: lineY + font.ascender + (lineHeight - (font.ascender - font.descender)) / 2)
-            context.scaleBy(x: 1, y: -1)
-            context.textPosition = .zero
-            CTLineDraw(line, context)
-            context.restoreGState()
-            let lineWidth = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
-                - CGFloat(CTLineGetTrailingWhitespaceWidth(line))
-            end = CGPoint(x: frame.minX + ceil(lineWidth), y: lineY)
-            location += count
-            lineIndex += 1
-        }
-        return end
+                : nil
+        )
     }
 
     // MARK: Excerpt and hero
+
+    /// Bumps when the excerpt renderer's drawing changes, so its cached
+    /// bitmap is redrawn.
+    private struct ExcerptKey: Hashable {
+        let revision: Int
+        let originX: CGFloat
+        let originY: CGFloat
+    }
+
+    private static func drawExcerptText(
+        _ renderer: ForumPostPreviewTextRenderer?,
+        at origin: CGPoint,
+        clip: CGRect,
+        on canvas: ForumCardCanvas
+    ) {
+        guard let renderer else { return }
+        canvas.prerendered(key: ExcerptKey(revision: renderer.displayRevision, originX: origin.x, originY: origin.y), clip: clip) {
+            renderer.draw(at: origin)
+        }
+    }
 
     private static func drawExcerpt(
         _ presentation: ForumCardPresentation,
         in frame: CGRect,
         renderer: ForumPostPreviewTextRenderer?,
-        metrics: ForumBoardMetrics
+        metrics: ForumBoardMetrics,
+        on canvas: ForumCardCanvas
     ) {
         switch presentation.excerpt {
         case .pending:
             return
         case .empty:
             let text = presentation.thumbnail == nil ? "No message" : "Attachment"
-            NativeTimelineRowPainter.text(
+            canvas.text(
                 text,
                 in: CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: metrics.excerptLineHeight),
                 font: metrics.excerptFont,
@@ -561,10 +529,7 @@ enum ForumCardPainter {
             )
         case .message:
             // Markdown lines can be taller than body text; the slot clips.
-            NSGraphicsContext.saveGraphicsState()
-            NSBezierPath(rect: frame).addClip()
-            renderer?.draw(at: frame.origin)
-            NSGraphicsContext.restoreGraphicsState()
+            drawExcerptText(renderer, at: frame.origin, clip: frame, on: canvas)
         }
     }
 
@@ -572,32 +537,28 @@ enum ForumCardPainter {
         _ presentation: ForumCardPresentation,
         in frame: CGRect,
         excerpt: ForumPostPreviewTextRenderer?,
-        failedMedia: Set<NativeTimelineMediaKey>
+        failedMedia: Set<NativeTimelineMediaKey>,
+        on canvas: ForumCardCanvas
     ) {
         let radius = InterfaceScale.metric(12)
-        let shape = NSBezierPath(roundedRect: frame, xRadius: radius, yRadius: radius)
-        NSColor.labelColor.withAlphaComponent(0.06).setFill()
-        shape.fill()
+        canvas.fill(frame, cornerRadius: radius, color: NSColor.labelColor.withAlphaComponent(0.06))
         switch presentation.hero {
         case .pending:
             break
         case let .media(media):
-            drawMedia(media, in: frame, cornerRadius: radius, isCompact: false, failedMedia: failedMedia)
+            drawMedia(media, in: frame, style: MediaStyle(cornerRadius: radius, isCompact: false), failedMedia: failedMedia, on: canvas)
         case .text:
             // The preview stays inside the hero, above its tag row.
             let tagReserve = presentation.tags.isEmpty ? 0 : InterfaceScale.metric(34)
-            NSGraphicsContext.saveGraphicsState()
-            NSBezierPath(rect: CGRect(
-                x: frame.minX,
-                y: frame.minY,
-                width: frame.width,
-                height: frame.height - InterfaceScale.metric(14) - tagReserve
-            )).addClip()
-            excerpt?.draw(at: CGPoint(x: frame.minX + InterfaceScale.metric(16), y: frame.minY + InterfaceScale.metric(14)))
-            NSGraphicsContext.restoreGraphicsState()
+            drawExcerptText(
+                excerpt,
+                at: CGPoint(x: frame.minX + InterfaceScale.metric(16), y: frame.minY + InterfaceScale.metric(14)),
+                clip: CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: frame.height - InterfaceScale.metric(14) - tagReserve),
+                on: canvas
+            )
         case .empty:
             let size = InterfaceScale.metric(34)
-            NativeTimelineRowPainter.systemSymbol(
+            canvas.symbol(
                 "bubble.left.and.text.bubble.right",
                 in: CGRect(x: frame.midX - size / 2, y: frame.midY - size / 2, width: size, height: size),
                 color: .tertiaryLabelColor,
@@ -612,55 +573,57 @@ enum ForumCardPainter {
             presentation.tags,
             in: CGRect(x: frame.minX + inset, y: frame.maxY - inset - chipHeight, width: frame.width - inset * 2, height: chipHeight),
             style: isOverMedia ? .overMedia : .standard,
-            maximumVisible: 3
+            maximumVisible: 3,
+            on: canvas
         )
-        NSColor.separatorColor.withAlphaComponent(0.65).setStroke()
-        let border = NSBezierPath(roundedRect: frame.insetBy(dx: 0.5, dy: 0.5), xRadius: radius, yRadius: radius)
-        border.lineWidth = 1
-        border.stroke()
+        canvas.stroke(frame.insetBy(dx: 0.5, dy: 0.5), cornerRadius: radius, color: NSColor.separatorColor.withAlphaComponent(0.65))
+    }
+
+    struct MediaStyle {
+        let cornerRadius: CGFloat
+        let isCompact: Bool
     }
 
     static func drawMedia(
         _ media: ForumCardPresentation.Media,
         in frame: CGRect,
-        cornerRadius: CGFloat,
-        isCompact: Bool,
-        failedMedia: Set<NativeTimelineMediaKey>
+        style: MediaStyle,
+        failedMedia: Set<NativeTimelineMediaKey>,
+        on canvas: ForumCardCanvas
     ) {
-        let shape = NSBezierPath(roundedRect: frame, xRadius: cornerRadius, yRadius: cornerRadius)
-        NSColor.labelColor.withAlphaComponent(0.06).setFill()
-        shape.fill()
+        let cornerRadius = style.cornerRadius
+        let isCompact = style.isCompact
+        canvas.fill(frame, cornerRadius: cornerRadius, color: NSColor.labelColor.withAlphaComponent(0.06))
         switch media {
         case let .image(key):
             if let image = NativeTimelineRowPainter.mediaImage(for: key) {
-                NativeTimelineRowPainter.drawImage(image, in: frame, cornerRadius: cornerRadius, fillsFrame: true)
+                canvas.image(image, in: frame, cornerRadius: cornerRadius, fillsFrame: true)
             }
         case let .video(poster, filename):
             if let poster, let image = NativeTimelineRowPainter.mediaImage(for: poster) {
-                NativeTimelineRowPainter.drawImage(image, in: frame, cornerRadius: cornerRadius, fillsFrame: true)
+                canvas.image(image, in: frame, cornerRadius: cornerRadius, fillsFrame: true)
                 let badge = InterfaceScale.metric(34)
                 let badgeFrame = CGRect(x: frame.midX - badge / 2, y: frame.midY - badge / 2, width: badge, height: badge)
-                NSColor.black.withAlphaComponent(0.55).setFill()
-                NSBezierPath(ovalIn: badgeFrame).fill()
-                NativeTimelineRowPainter.systemSymbol("play.fill", in: badgeFrame, color: .white, inset: InterfaceScale.metric(10), weight: .semibold)
+                canvas.fillOval(badgeFrame, color: NSColor.black.withAlphaComponent(0.55))
+                canvas.symbol("play.fill", in: badgeFrame, color: .white, inset: InterfaceScale.metric(10), weight: .semibold)
             } else if poster.map(failedMedia.contains) ?? true {
-                drawFileTile(symbol: "play.rectangle.fill", filename: filename, in: frame, isCompact: isCompact)
+                drawFileTile(symbol: "play.rectangle.fill", filename: filename, in: frame, isCompact: isCompact, on: canvas)
             }
         case let .audio(filename):
-            drawFileTile(symbol: "waveform", filename: filename, in: frame, isCompact: isCompact)
+            drawFileTile(symbol: "waveform", filename: filename, in: frame, isCompact: isCompact, on: canvas)
         case let .file(filename):
-            drawFileTile(symbol: "doc.fill", filename: filename, in: frame, isCompact: isCompact)
+            drawFileTile(symbol: "doc.fill", filename: filename, in: frame, isCompact: isCompact, on: canvas)
         case .spoiler:
             let size = InterfaceScale.metric(isCompact ? 20 : 26)
             let labelHeight = ForumBoardMetrics.lineHeight(of: badgeFont)
             let total = size + InterfaceScale.metric(6) + labelHeight
-            NativeTimelineRowPainter.systemSymbol(
+            canvas.symbol(
                 "eye.slash.fill",
                 in: CGRect(x: frame.midX - size / 2, y: frame.midY - total / 2, width: size, height: size),
                 color: .secondaryLabelColor,
                 inset: 0
             )
-            NativeTimelineRowPainter.text(
+            canvas.text(
                 "SPOILER",
                 in: CGRect(x: frame.minX, y: frame.midY - total / 2 + size + InterfaceScale.metric(6), width: frame.width, height: labelHeight),
                 font: badgeFont,
@@ -669,25 +632,28 @@ enum ForumCardPainter {
                 lineBreakMode: .byClipping
             )
         }
-        NSColor.separatorColor.withAlphaComponent(0.6).setStroke()
-        let border = NSBezierPath(roundedRect: frame.insetBy(dx: 0.5, dy: 0.5), xRadius: cornerRadius, yRadius: cornerRadius)
-        border.lineWidth = 1
-        border.stroke()
+        canvas.stroke(frame.insetBy(dx: 0.5, dy: 0.5), cornerRadius: cornerRadius, color: NSColor.separatorColor.withAlphaComponent(0.6))
     }
 
-    private static func drawFileTile(symbol: String, filename: String, in frame: CGRect, isCompact: Bool) {
+    private static func drawFileTile(
+        symbol: String,
+        filename: String,
+        in frame: CGRect,
+        isCompact: Bool,
+        on canvas: ForumCardCanvas
+    ) {
         let size = InterfaceScale.metric(isCompact ? 22 : 30)
         let lineHeight = ForumBoardMetrics.lineHeight(of: captionFont)
         let total = size + InterfaceScale.metric(7) + lineHeight * 2
         let top = frame.midY - total / 2
-        NativeTimelineRowPainter.systemSymbol(
+        canvas.symbol(
             symbol,
             in: CGRect(x: frame.midX - size / 2, y: top, width: size, height: size),
             color: .secondaryLabelColor,
             inset: 0
         )
         let inset = InterfaceScale.metric(8)
-        drawLines(
+        canvas.lines(
             filename,
             font: captionFont,
             color: .secondaryLabelColor,
@@ -699,12 +665,12 @@ enum ForumCardPainter {
 
     // MARK: Header and footer
 
-    private static func drawGalleryHeader(_ presentation: ForumCardPresentation, in frame: CGRect) {
+    private static func drawGalleryHeader(_ presentation: ForumCardPresentation, in frame: CGRect, on canvas: ForumCardCanvas) {
         let iconSize = InterfaceScale.metric(12)
         var trailing = frame.maxX
         for (shown, symbol) in [(presentation.isLocked, "lock.fill"), (presentation.isPinned, "pin.fill")] where shown {
             trailing -= iconSize
-            drawStatusIcon(symbol, at: CGPoint(x: trailing, y: frame.midY), size: iconSize)
+            drawStatusIcon(symbol, at: CGPoint(x: trailing, y: frame.midY), size: iconSize, on: canvas)
             trailing -= InterfaceScale.metric(6)
         }
         let lineHeight = ForumBoardMetrics.lineHeight(of: captionFont)
@@ -719,22 +685,22 @@ enum ForumCardPainter {
             ProfileNameFontLoader.shared.request(id: author.fontID)
             if let dot = author.roleDotColor {
                 let dotSize = InterfaceScale.metric(7)
-                dot.setFill()
-                NSBezierPath(ovalIn: CGRect(x: cursorX, y: frame.midY - dotSize / 2, width: dotSize, height: dotSize)).fill()
+                canvas.fillOval(CGRect(x: cursorX, y: frame.midY - dotSize / 2, width: dotSize, height: dotSize), color: dot)
                 cursorX += dotSize + InterfaceScale.metric(4)
             }
             let nameWidth = min(available, ceil(NativeTimelineRowLayout.measuredTextWidth(author.name, font: font)) + 1)
-            NativeTimelineRowPainter.text(
+            let nameHeight = ForumBoardMetrics.lineHeight(of: font)
+            canvas.text(
                 author.name,
-                in: CGRect(x: cursorX, y: frame.midY - ForumBoardMetrics.lineHeight(of: font) / 2, width: nameWidth, height: ForumBoardMetrics.lineHeight(of: font)),
+                in: CGRect(x: cursorX, y: frame.midY - nameHeight / 2, width: nameWidth, height: nameHeight),
                 font: font,
                 color: author.color ?? .labelColor
             )
             cursorX += nameWidth
-            NativeTimelineRowPainter.text(" • ", in: CGRect(x: cursorX, y: textY, width: bulletWidth, height: lineHeight), font: captionFont, color: .tertiaryLabelColor)
+            canvas.text(" • ", in: CGRect(x: cursorX, y: textY, width: bulletWidth, height: lineHeight), font: captionFont, color: .tertiaryLabelColor)
             cursorX += bulletWidth
         }
-        NativeTimelineRowPainter.text(
+        canvas.text(
             posted,
             in: CGRect(x: cursorX, y: textY, width: max(0, min(postedWidth, trailing - cursorX)), height: lineHeight),
             font: captionFont,
@@ -742,30 +708,65 @@ enum ForumCardPainter {
         )
     }
 
+    /// Everything the shared reaction pill draws from besides its frame, so
+    /// its cached bitmap redraws when any of it changes, including when its
+    /// emoji or reactor avatars finish loading.
+    private struct ReactionPillKey: Hashable {
+        let reaction: Reaction
+        let emojiURL: URL?
+        let loadedImages: [Bool]
+        let isHovered: Bool
+        let isDisabled: Bool
+        let accent: [CGFloat]
+    }
+
+    private static func reactionPillKey(
+        _ summary: ForumCardPresentation.ReactionSummary,
+        isHovered: Bool,
+        model: AppModel?
+    ) -> ReactionPillKey {
+        let reaction = summary.reaction
+        let emojiURL = MessageReactionPresentation.emojiURL(for: reaction, customEmojiURLsByID: model?.customEmojiURLsByID ?? [:])
+        var keys: [NativeTimelineMediaKey] = emojiURL.map { [.media($0, maximumPixelDimension: 64)] } ?? []
+        keys += MessageReactionPresentation.previewPlan(for: reaction).reactors.compactMap { $0.avatarURL.map(NativeTimelineMediaKey.avatar) }
+        return ReactionPillKey(
+            reaction: reaction,
+            emojiURL: emojiURL,
+            loadedImages: keys.map { NativeTimelineRowPainter.mediaImage(for: $0) != nil },
+            isHovered: isHovered,
+            isDisabled: summary.isDisabled,
+            accent: NSColor.sakuraCordAccentColor.cgColor.components ?? []
+        )
+    }
+
     private static func drawFooter(
         _ presentation: ForumCardPresentation,
         regions: ForumCardRegions,
         interaction: ForumCardInteraction,
-        model: AppModel?
+        model: AppModel?,
+        on canvas: ForumCardCanvas
     ) {
         if let summary = presentation.reaction, let frame = regions.reactionRegionFrame {
-            NSGraphicsContext.saveGraphicsState()
-            if summary.isDisabled {
-                NSGraphicsContext.current?.cgContext.setAlpha(0.45)
+            let isHovered = interaction.isReactionHovered && !summary.isDisabled
+            // The pill comes from the timeline's AppKit painter, so it is
+            // pre-rendered here rather than on the worker.
+            canvas.prerendered(key: reactionPillKey(summary, isHovered: isHovered, model: model), clip: frame.insetBy(dx: -1, dy: -1)) {
+                if summary.isDisabled {
+                    NSGraphicsContext.current?.cgContext.setAlpha(0.45)
+                }
+                NativeTimelineRowPainter.reaction(
+                    NativeTimelineRowLayout.reactionRegion(summary.reaction, frame: frame),
+                    model: model,
+                    isHovered: isHovered,
+                    countTransition: nil,
+                    hasAnimatedEmojiOverlay: false
+                )
             }
-            NativeTimelineRowPainter.reaction(
-                NativeTimelineRowLayout.reactionRegion(summary.reaction, frame: frame),
-                model: model,
-                isHovered: interaction.isReactionHovered && !summary.isDisabled,
-                countTransition: nil,
-                hasAnimatedEmojiOverlay: false
-            )
-            NSGraphicsContext.restoreGraphicsState()
         }
         if let frame = regions.countFrame {
             let lineHeight = ForumBoardMetrics.lineHeight(of: footerFont)
             let iconSize = InterfaceScale.metric(13)
-            NativeTimelineRowPainter.systemSymbol(
+            canvas.symbol(
                 "bubble.left.fill",
                 in: CGRect(x: frame.minX, y: frame.midY - iconSize / 2, width: iconSize, height: iconSize),
                 color: .secondaryLabelColor,
@@ -773,7 +774,7 @@ enum ForumCardPainter {
             )
             var cursorX = frame.minX + InterfaceScale.metric(14) + InterfaceScale.metric(4)
             let countWidth = ceil(regions.countTextWidth) + 1
-            NativeTimelineRowPainter.text(
+            canvas.text(
                 presentation.messageCount.formatted(),
                 in: CGRect(x: cursorX, y: frame.midY - lineHeight / 2, width: countWidth, height: lineHeight),
                 font: footerFont,
@@ -781,7 +782,7 @@ enum ForumCardPainter {
             )
             cursorX += countWidth + InterfaceScale.metric(3)
             if presentation.unreadCount > 0 {
-                NativeTimelineRowPainter.text(
+                canvas.text(
                     "(\(presentation.unreadCount.formatted()) New)",
                     in: CGRect(x: cursorX, y: frame.midY - lineHeight / 2, width: max(0, frame.maxX - cursorX), height: lineHeight),
                     font: footerEmphasisFont,
@@ -791,7 +792,7 @@ enum ForumCardPainter {
         }
         if let frame = regions.timestampFrame {
             let lineHeight = ForumBoardMetrics.lineHeight(of: footerFont)
-            NativeTimelineRowPainter.text(
+            canvas.text(
                 presentation.relativeTimeText(isGallery: false),
                 in: CGRect(x: frame.minX, y: frame.midY - lineHeight / 2, width: frame.width, height: lineHeight),
                 font: footerFont,
@@ -802,10 +803,10 @@ enum ForumCardPainter {
 
     // MARK: Board chrome
 
-    static func drawSectionHeader(_ title: String, in frame: CGRect) {
+    static func drawSectionHeader(_ title: String, in frame: CGRect, on canvas: ForumCardCanvas) {
         let font = NSFont.interfaceSystemFont(ofSize: 11, weight: .bold)
         let lineHeight = ForumBoardMetrics.lineHeight(of: font)
-        NativeTimelineRowPainter.text(
+        canvas.text(
             title.uppercased(),
             in: CGRect(x: frame.minX + InterfaceScale.metric(2), y: frame.maxY - lineHeight - InterfaceScale.metric(4), width: frame.width, height: lineHeight),
             font: font,
@@ -821,12 +822,10 @@ enum ForumCardPainter {
         return CGRect(x: frame.maxX - InterfaceScale.metric(12) - width, y: frame.midY - height / 2, width: width, height: height)
     }
 
-    static func drawPaginationError(_ message: String, in frame: CGRect, isRetryHovered: Bool) {
-        let radius = InterfaceScale.metric(12)
-        NSColor.labelColor.withAlphaComponent(0.06).setFill()
-        NSBezierPath(roundedRect: frame, xRadius: radius, yRadius: radius).fill()
+    static func drawPaginationError(_ message: String, in frame: CGRect, isRetryHovered: Bool, on canvas: ForumCardCanvas) {
+        canvas.fill(frame, cornerRadius: InterfaceScale.metric(12), color: NSColor.labelColor.withAlphaComponent(0.06))
         let iconSize = InterfaceScale.metric(16)
-        NativeTimelineRowPainter.systemSymbol(
+        canvas.symbol(
             "exclamationmark.triangle.fill",
             in: CGRect(x: frame.minX + InterfaceScale.metric(12), y: frame.midY - iconSize / 2, width: iconSize, height: iconSize),
             color: .systemOrange,
@@ -838,24 +837,22 @@ enum ForumCardPainter {
         let titleHeight = ForumBoardMetrics.lineHeight(of: titleFont)
         let detailHeight = ForumBoardMetrics.lineHeight(of: captionFont)
         let top = frame.midY - (titleHeight + detailHeight) / 2
-        NativeTimelineRowPainter.text(
+        canvas.text(
             "Couldn’t load more posts",
             in: CGRect(x: textX, y: top, width: retry.minX - textX - 8, height: titleHeight),
             font: titleFont,
             color: .labelColor
         )
-        NativeTimelineRowPainter.text(
+        canvas.text(
             message,
             in: CGRect(x: textX, y: top + titleHeight, width: retry.minX - textX - 8, height: detailHeight),
             font: captionFont,
             color: .secondaryLabelColor
         )
-        let buttonShape = NSBezierPath(roundedRect: retry, xRadius: retry.height / 2, yRadius: retry.height / 2)
-        NSColor.labelColor.withAlphaComponent(isRetryHovered ? 0.16 : 0.1).setFill()
-        buttonShape.fill()
+        canvas.fill(retry, cornerRadius: retry.height / 2, color: NSColor.labelColor.withAlphaComponent(isRetryHovered ? 0.16 : 0.1))
         let font = NSFont.interfaceSystemFont(ofSize: 13, weight: .medium)
         let lineHeight = ForumBoardMetrics.lineHeight(of: font)
-        NativeTimelineRowPainter.text(
+        canvas.text(
             "Try Again",
             in: CGRect(x: retry.minX, y: retry.midY - lineHeight / 2, width: retry.width, height: lineHeight),
             font: font,

@@ -73,7 +73,19 @@ final class ForumPostPreviewTextRenderer {
     var size: CGSize = .zero {
         didSet {
             textContainer.containerSize = NSSize(width: max(1, size.width), height: .greatestFiniteMagnitude)
+            if size != oldValue { noteDisplayChange() }
         }
+    }
+
+    /// Changes whenever what `draw(at:)` produces may change, unique across
+    /// renderers, so a cached drawing of one revision is never reused for
+    /// different text.
+    private(set) var displayRevision = 0
+    private static var nextDisplayRevision = 0
+
+    private func noteDisplayChange() {
+        Self.nextDisplayRevision &+= 1
+        displayRevision = Self.nextDisplayRevision
     }
 
     init() {
@@ -204,6 +216,7 @@ final class ForumPostPreviewTextRenderer {
         }
         displayed.append(body)
         textStorage.setAttributedString(displayed)
+        noteDisplayChange()
     }
 
     /// Hides a spoiler's glyphs and inline images while keeping its
@@ -304,6 +317,7 @@ final class ForumPostPreviewTextRenderer {
     func setHoveredSpoiler(_ location: Int?) -> Bool {
         guard hoveredSpoilerLocation != location else { return false }
         hoveredSpoilerLocation = location
+        noteDisplayChange()
         return true
     }
 

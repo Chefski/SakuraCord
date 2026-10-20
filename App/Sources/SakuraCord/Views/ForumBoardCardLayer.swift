@@ -3,7 +3,8 @@ import QuartzCore
 
 /// One visible board item. Its chrome (fill, border, lift) is plain layer
 /// state, so hover, press and selection animate on the compositor; only the
-/// content bitmap is painted, and only when its presentation changes.
+/// content bitmap is drawn, off the main thread, and only when its
+/// presentation changes.
 final class ForumBoardCard {
     enum Kind: Equatable {
         case card
@@ -18,9 +19,16 @@ final class ForumBoardCard {
     private var shimmer: SkeletonShimmer?
     private let shimmerMask = CAShapeLayer()
     private(set) var kind: Kind = .card
-    /// Paints the content in flipped, top-left-origin coordinates.
-    var painter: ((CGSize) -> Void)?
+    /// Records the content for a size and scale, in flipped, top-left-origin
+    /// coordinates.
+    var sceneBuilder: ((CGSize, CGFloat) -> ForumCardScene)?
+    /// Runs after each new bitmap is on screen.
+    var didCommit: (() -> Void)?
     private(set) var hasContent = false
+    private var renderGeneration = 0
+    private var pendingScene: ForumCardScene?
+    private var isRasterizing = false
+    private var fadesNextCommit: Bool?
 
     init() {
         layer.masksToBounds = false
@@ -56,54 +64,85 @@ final class ForumBoardCard {
         chrome.isHidden = kind == .sectionHeader || kind == .paginationStatus
     }
 
-    /// Renders the content bitmap at `scale`, cross-fading from the previous
-    /// bitmap when data arrives. Painting happens here, never in `draw`.
-    func render(scale: CGFloat, fading: Bool) {
+    /// Rasterizes the content bitmap at `scale`. The scene is recorded now,
+    /// on the main thread; a worker rasterizes it and the bitmap commits on
+    /// the main thread, replacing the previous one only once complete, so a
+    /// card never shows a partly drawn bitmap. `synchronously` rasterizes
+    /// here instead, for changes the chrome shows at once (size, appearance).
+    func render(scale: CGFloat, fading: Bool, synchronously: Bool = false) {
         let size = layer.bounds.size
-        guard let painter, size.width >= 1, size.height >= 1 else {
-            content.contents = nil
-            hasContent = false
+        guard let sceneBuilder, size.width >= 1, size.height >= 1 else {
+            discardContent()
             return
         }
-        let pixelWidth = Int((size.width * scale).rounded(.up))
-        let pixelHeight = Int((size.height * scale).rounded(.up))
-        guard let context = CGContext(
-            data: nil,
-            width: pixelWidth,
-            height: pixelHeight,
-            bitsPerComponent: 8,
-            bytesPerRow: 0,
-            space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
-        ) else { return }
-        context.translateBy(x: 0, y: CGFloat(pixelHeight))
-        context.scaleBy(x: scale, y: -scale)
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
-        painter(size)
-        NSGraphicsContext.restoreGraphicsState()
-        if !fading {
-            // An instant swap also ends a fade still showing older content.
-            content.removeAnimation(forKey: Self.contentsFadeKey)
-        } else if hasContent {
+        let scene = sceneBuilder(size, scale)
+        renderGeneration &+= 1
+        // Any instant request since the last commit keeps the commit instant,
+        // so content never fades over the skeleton it replaces.
+        fadesNextCommit = (fadesNextCommit ?? true) && fading
+        if synchronously {
+            pendingScene = nil
+            commit(ForumCardRasterizer.image(for: scene), scale: scale)
+            return
+        }
+        pendingScene = scene
+        rasterizePendingScene()
+    }
+
+    /// Whether a bitmap is on its way, so a new card need not ask again.
+    var isRendering: Bool { pendingScene != nil || isRasterizing }
+
+    /// One scene rasterizes at a time per card; requests made meanwhile
+    /// collapse into the latest, and a superseded bitmap never commits.
+    private func rasterizePendingScene() {
+        guard !isRasterizing, let scene = pendingScene else { return }
+        pendingScene = nil
+        isRasterizing = true
+        let generation = renderGeneration
+        Task { [weak self] in
+            let image = await ForumCardRasterizer.rasterize(scene)
+            guard let self else { return }
+            isRasterizing = false
+            if generation == renderGeneration { commit(image, scale: scene.scale) }
+            rasterizePendingScene()
+        }
+    }
+
+    private func commit(_ image: CGImage?, scale: CGFloat) {
+        guard let image else { return }
+        let fades = fadesNextCommit == true && hasContent
+        fadesNextCommit = nil
+        if fades {
             let transition = CATransition()
             transition.type = .fade
             transition.duration = 0.2
             transition.timingFunction = CAMediaTimingFunction(name: .easeOut)
             content.add(transition, forKey: Self.contentsFadeKey)
+        } else {
+            // An instant swap also ends a fade still showing older content.
+            content.removeAnimation(forKey: Self.contentsFadeKey)
         }
         content.contentsScale = scale
-        content.contents = context.makeImage()
+        content.contents = image
         hasContent = true
+        didCommit?()
     }
 
     private static let contentsFadeKey = "contents-fade"
 
-    func clearContent() {
+    private func discardContent() {
+        renderGeneration &+= 1
+        pendingScene = nil
+        fadesNextCommit = nil
         content.removeAnimation(forKey: Self.contentsFadeKey)
         content.contents = nil
         hasContent = false
-        painter = nil
+    }
+
+    func clearContent() {
+        discardContent()
+        sceneBuilder = nil
+        didCommit = nil
     }
 
     /// Applies the card's resting, hover, pressed and selected looks. Colors

@@ -58,9 +58,8 @@ extension ForumBoardView {
             regions[id] = nil
             guard let card = cards[id] else { continue }
             applyChrome(card, id: id, animated: true)
-            refreshShimmer(card, id: id)
             // Content replaces its skeleton bars in one frame; other updates
-            // cross-fade.
+            // cross-fade. The shimmer follows when the bitmap lands.
             card.render(scale: backingScale, fading: card.hasContent && !hydratedPostIDs.contains(postID))
         }
         if !changed.isEmpty {
@@ -207,7 +206,7 @@ extension ForumBoardView {
         return ForumPostPreviewTextView.Prefix(value: value, accessibilityText: "\(author.name): ")
     }
 
-    // MARK: Painting
+    // MARK: Drawing
 
     func cardRegions(for id: ForumBoardItem.Identifier) -> ForumCardRegions? {
         if let cached = regions[id] { return cached }
@@ -239,33 +238,39 @@ extension ForumBoardView {
         return value
     }
 
-    func paint(id: ForumBoardItem.Identifier, size: CGSize) {
-        guard let entry = layoutState?.entry(for: id) else { return }
+    /// Records an item's drawing for the rasterizer.
+    func scene(id: ForumBoardItem.Identifier, size: CGSize, scale: CGFloat) -> ForumCardScene {
+        var scene = ForumCardScene(size: size, scale: scale, operations: [])
+        guard let entry = layoutState?.entry(for: id) else { return scene }
         let bounds = CGRect(origin: .zero, size: size)
         effectiveAppearance.performAsCurrentDrawingAppearance {
+            let canvas = ForumCardCanvas(size: size, scale: scale, cache: rasterCache)
             switch entry.item {
             case let .post(input):
-                paintPost(id: id, postID: input.id, titleLines: entry.titleLines)
+                paintPost(id: id, postID: input.id, titleLines: entry.titleLines, on: canvas)
             case .placeholder:
                 if let regions = cardRegions(for: id) {
-                    ForumCardPainter.drawSkeleton(regions.skeletonFrames)
+                    ForumCardPainter.drawSkeleton(regions.skeletonFrames, on: canvas)
                 }
             case .olderPostsHeader:
-                ForumCardPainter.drawSectionHeader("Older Posts", in: bounds)
+                ForumCardPainter.drawSectionHeader("Older Posts", in: bounds, on: canvas)
             case .paginationStatus:
                 ForumCardPainter.drawPaginationError(
                     snapshot?.paginationError ?? "",
                     in: bounds,
-                    isRetryHovered: interactions[id]?.isRetryHovered == true
+                    isRetryHovered: interactions[id]?.isRetryHovered == true,
+                    on: canvas
                 )
             }
+            scene = canvas.scene
         }
+        return scene
     }
 
-    private func paintPost(id: ForumBoardItem.Identifier, postID: ChannelID, titleLines: Int) {
+    private func paintPost(id: ForumBoardItem.Identifier, postID: ChannelID, titleLines: Int, on canvas: ForumCardCanvas) {
         guard let presentation = presentations[postID], let regions = cardRegions(for: id) else { return }
         if !regions.skeletonFrames.isEmpty {
-            ForumCardPainter.drawSkeleton(regions.skeletonFrames)
+            ForumCardPainter.drawSkeleton(regions.skeletonFrames, on: canvas)
         }
         let excerpt = excerptRenderers[postID]
         if let excerpt, let frame = isGallery ? regions.heroFrame : regions.excerptFrame {
@@ -282,7 +287,7 @@ extension ForumBoardView {
             model: model,
             metrics: metrics,
             failedMedia: failedMediaKeys
-        ))
+        ), on: canvas)
     }
 
     /// The 30-second tick: repaints only cards whose relative time reads
