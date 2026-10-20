@@ -34,6 +34,19 @@ private func thread(
     #expect(!listing.hasMore)
 }
 
+@Test func `records that left the archive in flight move the next page back`() {
+    var listing = ThreadBrowserListing()
+    // Two of the page's 25 raw records were deleted or reopened in flight.
+    listing.append(
+        ForumPostPage(posts: [thread(1, daysAgo: 1)], hasMore: true, nextOffset: 25),
+        requestedOffset: 0, departedCount: 2
+    )
+    #expect(listing.nextOffset == 23)
+    // It never moves back past the page it was requested from.
+    listing.append(ForumPostPage(posts: [], hasMore: true, nextOffset: 48), requestedOffset: 23, departedCount: 40)
+    #expect(listing.nextOffset == 23)
+}
+
 @Test func `live records update archived threads without treating absence as deletion`() {
     var listing = ThreadBrowserListing()
     listing.append(

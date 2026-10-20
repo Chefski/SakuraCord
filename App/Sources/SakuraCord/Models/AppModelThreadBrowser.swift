@@ -87,8 +87,12 @@ extension AppModel {
                 guard !Task.isCancelled, model.threadBrowser.generation == generation else { return }
                 var reconciled = page
                 reconciled.posts = model.threadBrowser.reconciling(page.posts, since: since)
+                // Page records deleted or reopened in flight no longer occupy
+                // Discord's archive, so later records moved back past them.
+                let stillArchived = Set(reconciled.posts.filter(\.thread.isArchived).map(\.id))
+                let departedCount = page.posts.count { $0.thread.isArchived && !stillArchived.contains($0.id) }
                 let isCurrent = model.threadBrowser.listings[parentID, default: ThreadBrowserListing()]
-                    .append(reconciled, requestedOffset: offset)
+                    .append(reconciled, requestedOffset: offset, departedCount: departedCount)
                 // Page records are as new as the provider's; a thread they show
                 // archived must leave the active sections.
                 for post in reconciled.posts where model.threadBrowser.records[post.id] != nil {
@@ -101,7 +105,11 @@ extension AppModel {
                 model.threadBrowser.isLoadingArchived = false
                 // A loaded thread left while the page was in flight, moving the
                 // next offset; request the page at the current one instead.
-                if !isCurrent { model.loadMoreArchivedThreads() }
+                // A page that advanced no further is requested again, as the
+                // footer's identity did not change.
+                if !isCurrent || model.threadBrowser.listings[parentID]?.nextOffset == offset {
+                    model.loadMoreArchivedThreads()
+                }
             } catch is CancellationError {
                 return
             } catch {
