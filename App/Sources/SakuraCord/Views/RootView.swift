@@ -596,19 +596,6 @@ private struct ChatRootView: View {
 
     @ToolbarContentBuilder
     private var conversationToolbar: some ToolbarContent {
-        if !model.isSwitchingAccounts, model.workspacePresentation.primary == .fullWidthThread {
-            ToolbarItem(id: "full-width-thread-back", placement: .navigation) {
-                Button {
-                    model.closeSideConversation()
-                } label: {
-                    Label(fullWidthThreadBackTitle, systemImage: "chevron.backward")
-                        .labelStyle(.iconOnly)
-                }
-                .help(fullWidthThreadBackTitle)
-            }
-            .visibilityPriority(.high)
-        }
-
         ToolbarItem(id: "conversation-title", placement: .navigation) {
             if model.isSwitchingAccounts {
                 SkeletonShimmerTimeline {
@@ -1039,8 +1026,7 @@ private struct ChatRootView: View {
     private var conversationToolbarPresentation: ConversationToolbarPresentation? {
         if let conversation = model.presentedSideConversation, conversation.isFullWidth {
             let label = model.sideConversationLabel(conversation)
-            return .init(title: label.title, systemImage: label.systemImage,
-                         subtitle: model.openThreadParentChannel.map(threadParentDisplayName))
+            return .init(title: label.title, systemImage: label.systemImage)
         }
         if let page = model.guildWorkspacePage {
             return .init(title: page == .guide ? "Server Guide" : model.customizationTitle(in: model.selectedGuildID),
@@ -1178,18 +1164,6 @@ private struct ChatRootView: View {
 
     private var showsInboxToolbarItem: Bool {
         !model.isSwitchingAccounts && model.onboardingEntryGuildID == nil
-    }
-
-    private var fullWidthThreadBackTitle: String {
-        guard let parent = model.openThreadParentChannel else { return "Back" }
-        return "Back to \(threadParentDisplayName(parent))"
-    }
-
-    private func threadParentDisplayName(_ channel: Channel) -> String {
-        switch channel.kind {
-        case .text, .announcement: "#\(channel.name)"
-        default: channel.name
-        }
     }
 
     private var selectedGuild: Guild? {
