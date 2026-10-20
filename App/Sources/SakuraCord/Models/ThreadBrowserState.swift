@@ -182,7 +182,9 @@ final class ThreadBrowserState {
         guard parentID == self.parentID else { return }
         // A snapshot republishes every thread; only those that differ changed.
         recordLiveChanges(posts.filter { records[$0.id] != $0 }.map(\.id), isDeleted: false)
-        records = Dictionary(posts.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest })
+        // A snapshot updates the threads it carries. One it lacks, such as an
+        // active thread a search found, stays: deletion arrives separately.
+        for post in posts { records[post.id] = post }
         search?.reconcile(with: posts)
     }
 

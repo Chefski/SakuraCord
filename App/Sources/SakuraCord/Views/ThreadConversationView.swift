@@ -235,14 +235,19 @@ private struct ThreadConversationFooter: View {
                 )
             }
             if thread.isLocked {
-                ThreadStateBanner(
-                    title: isForumPost ? "Locked post" : "Locked thread",
-                    message: "Only moderators can send messages.",
-                    systemImage: "lock.fill",
-                    actionTitle: policy.canManage ? "Unlock" : nil,
-                    actionSystemImage: "lock.open.fill",
-                    action: { model.updateThread(thread, mutation: .locked(false)) }
-                )
+                // Readers who cannot send see the lock once, in the disabled
+                // composer, as read-only channels present it.
+                // Moderators who cannot send unlock from the thread's More menu.
+                if model.openThreadAccess.canSend {
+                    ThreadStateBanner(
+                        title: isForumPost ? "Locked post" : "Locked thread",
+                        message: "Only moderators can send messages.",
+                        systemImage: "lock.fill",
+                        actionTitle: policy.canManage ? "Unlock" : nil,
+                        actionSystemImage: "lock.open.fill",
+                        action: { model.updateThread(thread, mutation: .locked(false)) }
+                    )
+                }
             } else if thread.isArchived {
                 ThreadStateBanner(
                     title: isForumPost ? "Closed post" : "Archived thread",
@@ -292,9 +297,9 @@ private struct ThreadConversationComposer: View {
                 timeoutUntil: model.guildTimeoutUntil(in: thread.id, guildID: thread.guildID),
                 appearance: model.appearanceSettings.composerBarAppearance,
                 checkingMessage: "Checking thread permissions…",
-                // Like Discord, a locked thread keeps a disabled composer below
-                // the banner that explains why.
-                readOnlyMessage: "You do not have permission to send messages in this channel."
+                readOnlyMessage: thread.isLocked
+                    ? "This \(model.openThreadParentChannel?.kind == .forum ? "post" : "thread") is locked."
+                    : "You do not have permission to send messages in this channel."
             ) {
                 ComposerView(
                     model: model,
