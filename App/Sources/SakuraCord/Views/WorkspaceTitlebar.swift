@@ -345,12 +345,12 @@ final class WorkspaceTitlebarView: NSView {
             searchField = ToolbarSearchFieldLocator.searchField(in: window)
         }
         guard let searchField, searchField.window === window else { return nil }
-        // The field's item in the toolbar, which also draws its glass.
-        var view: NSView = searchField
-        while let parent = view.superview, !String(describing: type(of: parent)).contains("ToolbarView") {
-            view = parent
+        // The field's own item in the toolbar, which also draws its glass.
+        var view: NSView? = searchField
+        while let candidate = view, !String(describing: type(of: candidate)).contains("ItemViewer") {
+            view = candidate.superview
         }
-        return view.superview == nil ? searchField : view
+        return view ?? searchField
     }
 
     /// Where the toolbar's search field starts in this view, if the toolbar

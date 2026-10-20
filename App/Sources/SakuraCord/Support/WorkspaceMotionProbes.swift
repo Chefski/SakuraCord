@@ -55,7 +55,9 @@ final class WorkspaceMotionProbes {
     func probeFrames(in window: NSWindow) -> [String: [Double]] {
         var frames: [String: [Double]] = [:]
         for (name, views) in probes {
-            guard let view = views.last(where: { $0.view?.window === window })?.view else { continue }
+            guard let view = views.last(where: {
+                $0.view?.window === window && $0.view?.isHiddenOrHasHiddenAncestor == false
+            })?.view else { continue }
             frames[name] = Self.rect(view.convert(view.bounds, to: nil))
         }
         return frames
@@ -65,6 +67,7 @@ final class WorkspaceMotionProbes {
         timelines.compactMap { timeline in
             guard let scrollView = timeline.scrollView,
                   scrollView.window === window,
+                  !scrollView.isHiddenOrHasHiddenAncestor,
                   let documentView = scrollView.documentView
             else { return nil }
             let clip = scrollView.contentView.bounds

@@ -146,6 +146,8 @@ final class WorkspaceColumnsView: NSView {
     }
 
     private var conversation: NSHostingController<AnyView>?
+    /// A side chat pane kept for the next one to open (`apply`).
+    private var pooledPane: ColumnHostingView?
     /// Back to front.
     private var islands: [Island] = []
     private var widening: SpringTrack?
@@ -251,12 +253,19 @@ final class WorkspaceColumnsView: NSView {
                 updated.append(island)
             } else {
                 let reveal = WorkspaceMotionPhase.shared.unobservedReveal[column.id] ?? 1
-                updated.append(Island(host: ColumnHostingView(content: root), column: column, reveal: SpringTrack(at: reveal)))
+                updated.append(Island(host: makeHost(for: column, root), column: column, reveal: SpringTrack(at: reveal)))
                 needsMeasurement = true
             }
         }
         for island in islands where !updated.contains(where: { $0.view === island.view }) {
-            island.view.removeFromSuperview()
+            // The last side chat pane stays, hidden, for the next one: a pane
+            // built from nothing costs most of a motion's first frame.
+            if island.column.isSideConversation, !island.column.isFullWidth, pooledPane == nil {
+                island.host.isHidden = true
+                pooledPane = island.host
+            } else {
+                island.view.removeFromSuperview()
+            }
         }
         islands = updated
         var below: NSView? = conversation?.view
@@ -289,6 +298,18 @@ final class WorkspaceColumnsView: NSView {
             layoutColumns(at: now)
         }
         if isAnimating(at: now) { startMotion() }
+    }
+
+    /// A hosting view for a column that arrives: the pooled pane, for a
+    /// side chat pane, or a new one.
+    private func makeHost(for column: WorkspaceColumnsHost.Column, _ root: AnyView) -> ColumnHostingView {
+        guard column.isSideConversation, !column.isFullWidth, let pooled = pooledPane else {
+            return ColumnHostingView(content: root, sharesExtent: column.isSideConversation)
+        }
+        pooledPane = nil
+        pooled.isHidden = false
+        pooled.setContent(root, isLeaving: false)
+        return pooled
     }
 
     func stopMotion() {
@@ -479,8 +500,12 @@ private final class ColumnHostingView: NSHostingView<AnyView> {
     /// to (`isLeavingWorkspace`) and takes no events.
     private(set) var isLeaving = false
 
-    convenience init(content: AnyView) {
+    /// - Parameter sharesExtent: Whether its widths are the same for every
+    ///   column of its kind, as a side chat pane's are, so a new one reuses
+    ///   the last one's instead of measuring its content again.
+    convenience init(content: AnyView, sharesExtent: Bool) {
         self.init(rootView: AnyView(EmptyView()))
+        extent.isShared = sharesExtent
         // This view's frame is set from outside; it never asks for one.
         sizingOptions = []
         translatesAutoresizingMaskIntoConstraints = true
@@ -510,6 +535,26 @@ nonisolated private final class ColumnExtent: @unchecked Sendable {
     var maximum: CGFloat = 0
     var height: CGFloat = 0
     var isMeasured = false
+    var isShared = false
+
+    /// The last shared measurement, which takes laying out a whole pane.
+    nonisolated(unsafe) private static var shared: ColumnExtent?
+
+    /// Takes the shared measurement for this height, if there is one.
+    func adoptShared(height: CGFloat) -> Bool {
+        guard isShared, let shared = Self.shared, shared.height == height else { return false }
+        minimum = shared.minimum
+        ideal = shared.ideal
+        maximum = shared.maximum
+        self.height = height
+        isMeasured = true
+        return true
+    }
+
+    func share() {
+        guard isShared else { return }
+        Self.shared = self
+    }
 }
 
 /// Fills its bounds with its content and records the content's widths, so
@@ -528,11 +573,13 @@ nonisolated private struct ColumnMeasuringLayout: Layout {
         // from what it shows.
         let height = bounds.height
         guard !extent.isMeasured || extent.height != height else { return }
+        if extent.adoptShared(height: height) { return }
         extent.minimum = content.sizeThatFits(ProposedViewSize(width: 0, height: height)).width
         extent.ideal = content.sizeThatFits(ProposedViewSize(width: nil, height: height)).width
         extent.maximum = content.sizeThatFits(ProposedViewSize(width: .infinity, height: height)).width
         extent.height = height
         extent.isMeasured = true
+        extent.share()
     }
 }
 
