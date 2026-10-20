@@ -683,7 +683,24 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
             return true
         }
 
+        /// Holds the field at its width when it begins and ends editing,
+        /// where AppKit otherwise widens it for a frame or two and moves
+        /// every item beside it.
+        private var searchContainerMaximumWidth: NSLayoutConstraint?
+
+        private func holdSearchContainerWidth(for field: NSSearchField, width: CGFloat) {
+            guard let container = field.superview else { return }
+            if searchContainerMaximumWidth?.firstItem as? NSView !== container {
+                searchContainerMaximumWidth?.isActive = false
+                let constraint = container.widthAnchor.constraint(lessThanOrEqualToConstant: width)
+                constraint.isActive = true
+                searchContainerMaximumWidth = constraint
+            }
+            if searchContainerMaximumWidth?.constant != width { searchContainerMaximumWidth?.constant = width }
+        }
+
         private func updateSearchContainerWidth(for field: NSSearchField, width: CGFloat) {
+            holdSearchContainerWidth(for: field, width: width)
             // AppKit caches a maximum width on the enclosing search-item view.
             // Updating the field alone leaves that initial limit in place, even
             // after intrinsic-size invalidation. Keep its limit in sync without
@@ -708,6 +725,8 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
         }
 
         private func restoreSearchContainerWidth() {
+            searchContainerMaximumWidth?.isActive = false
+            searchContainerMaximumWidth = nil
             if let searchContainerWidthConstraint,
                let originalSearchContainerWidth,
                searchContainerWidthConstraint.constant == appliedSearchContainerWidth
