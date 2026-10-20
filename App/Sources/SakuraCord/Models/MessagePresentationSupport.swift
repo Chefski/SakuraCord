@@ -195,6 +195,11 @@ final class MessageRowPresentation: Identifiable, Equatable, Sendable {
         MessageRowIdentity(message)
     }
 
+    /// A row in its own channel or thread, not a search, pin or Guide entry.
+    nonisolated var isConversationRow: Bool {
+        searchContext == nil && pinnedAt == nil && !isResource
+    }
+
     var replyMessageID: MessageID? {
         guard MessageReplyPresentationPolicy.showsPreview(for: message) else {
             return nil

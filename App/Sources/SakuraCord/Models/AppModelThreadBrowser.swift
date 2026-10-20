@@ -179,6 +179,10 @@ extension AppModel {
     /// next needed, and immediately if the browser is open.
     func reloadThreadBrowserAfterReady() {
         threadBrowser.invalidateArchivedListings()
+        // Snapshots merge into the records, so a thread the new connection no
+        // longer offers, such as a private thread left while offline, would
+        // linger. The active records are fetched again below or on presentation.
+        threadBrowser.records = [:]
         guard threadBrowser.isPresented else { return }
         presentThreadBrowser()
     }
