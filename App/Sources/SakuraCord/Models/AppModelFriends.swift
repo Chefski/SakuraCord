@@ -9,10 +9,6 @@ extension AppModel {
         selectedGuildID == nil && onboardingEntryGuildID == nil && (friends.isPresented || selectedChannelID == nil)
     }
 
-    var relationships: [Relationship] {
-        snapshot?.relationships ?? []
-    }
-
     var friendsSection: FriendsSection {
         friends.selectedSection ?? friends.initialSection
     }

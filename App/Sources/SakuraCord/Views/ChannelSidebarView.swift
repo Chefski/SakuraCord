@@ -252,7 +252,7 @@ struct ChannelSidebarView: View {
     private func threadLayout(at date: Date) -> SidebarThreadPolicy.Layout {
         voiceModel.sidebarThreadLayout(
             guildID: guild?.id,
-            channelGroups: channelGroups,
+            channelGroups: voiceModel.channelSelectionGroups(channelGroups, guildID: guild?.id),
             now: date
         )
     }

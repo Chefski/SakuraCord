@@ -131,7 +131,7 @@ extension AppModel {
         guard isConversationPresented(channelID) else { return }
         preserveUnreadDividerIfNeeded(channelID: channelID)
         let previousBoundary =
-            readState.presentations[channelID]?.hasReachedReadBoundary
+            readState[presentation: channelID]?.hasReachedReadBoundary
         let target = readState.updatePresentation(
             channelID: channelID,
             isPresented: true,

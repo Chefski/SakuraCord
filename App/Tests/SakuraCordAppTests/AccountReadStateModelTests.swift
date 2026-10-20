@@ -920,6 +920,64 @@ struct AccountReadStateModelTests {
         #expect(model.mentions(channelID: incoming.channelID) == badges)
     }
 
+    @Test func `idle messages observe only their channel and preserve unread eligibility`() async {
+        let model = makeModel(latest: 12, acknowledged: 10)
+        let otherID = ChannelID(rawValue: 201)
+        model.merge(channels: [Channel(id: otherID, guildID: guildID, name: "other")])
+        let changes = AsyncStream<String>.makeStream()
+        withObservationTracking {
+            _ = model[channelID]
+        } onChange: { changes.continuation.yield("current") }
+        withObservationTracking {
+            _ = model[otherID]
+        } onChange: { changes.continuation.yield("other") }
+        withObservationTracking {
+            _ = model[unread: channelID]
+            _ = model.unread(channelID: channelID)
+        } onChange: { changes.continuation.yield("eligibility") }
+
+        let disposition = model.receive(message(id: 13), currentUserID: currentUser.id)
+        changes.continuation.finish()
+        var invalidations: [String] = []
+        for await change in changes.stream { invalidations.append(change) }
+        #expect(invalidations == ["current"])
+        #expect(disposition.accepted)
+        #expect(!disposition.requiresUnreadPresentationRefresh)
+        #expect(model[channelID]?.latestKnownMessageID == MessageID(rawValue: 13))
+        #expect(model.unreadMessageCount(channelID: channelID) == 2)
+
+        let mention = model.receive(message(id: 14, mentionedUsers: [currentUser]), currentUserID: currentUser.id)
+        #expect(mention.requiresUnreadPresentationRefresh)
+        #expect(model.mentions(channelID: channelID) == 1)
+
+        let resets = AsyncStream<Void>.makeStream()
+        withObservationTracking {
+            _ = model[channelID]
+        } onChange: { resets.continuation.yield() }
+        model.reset(accountID: nil)
+        resets.continuation.finish()
+        var resetCount = 0
+        for await _ in resets.stream { resetCount += 1 }
+        #expect(resetCount == 1)
+        #expect(model[channelID] == nil)
+    }
+
+    @Test func `idle messages refresh unread presentation when a timed mute expires`() {
+        let expiration = Date.now.addingTimeInterval(60)
+        let settings = GuildNotificationSettings(
+            guildID: guildID,
+            isMuted: true,
+            muteConfiguration: DiscordMuteConfiguration(endTime: expiration)
+        )
+        let model = makeModel(latest: 12, acknowledged: 10, settings: settings)
+        let before = model.receive(message(id: 13), currentUserID: currentUser.id, now: expiration.addingTimeInterval(-1))
+        #expect(!before.requiresUnreadPresentationRefresh)
+        let expired = model.receive(message(id: 14), currentUserID: currentUser.id, now: expiration)
+        #expect(expired.requiresUnreadPresentationRefresh)
+        let after = model.receive(message(id: 15), currentUserID: currentUser.id, now: expiration.addingTimeInterval(1))
+        #expect(!after.requiresUnreadPresentationRefresh)
+    }
+
     private func makeModel(
         latest: UInt64,
         acknowledged: UInt64,

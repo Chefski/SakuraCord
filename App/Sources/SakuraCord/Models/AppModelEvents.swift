@@ -568,10 +568,12 @@ extension AppModel {
             accessibilityMessageAnnouncer.enqueue()
         }
         preserveUnreadDividerUnlessReadOnArrival(channelID: message.channelID)
-        if isFlushingCreatedMessageBatch {
-            batchedUnreadPresentationNeedsRefresh = true
-        } else {
-            refreshUnreadPresentation()
+        if disposition.requiresUnreadPresentationRefresh {
+            if isFlushingCreatedMessageBatch {
+                batchedUnreadPresentationNeedsRefresh = true
+            } else {
+                refreshUnreadPresentation()
+            }
         }
         if disposition.shouldNotify {
             deliverNativeNotification(
