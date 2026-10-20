@@ -5,6 +5,11 @@ public extension MockChatProvider {
     func forumPosts(in channelID: ChannelID, query: ForumPostQuery) async throws
         -> ForumPostPage
     {
+        let page = try forumPage(in: channelID, query: query)
+        return forumPreviewsHydrateLate ? hydratingPreviewsLater(page, in: channelID) : page
+    }
+
+    private func forumPage(in channelID: ChannelID, query: ForumPostQuery) throws -> ForumPostPage {
         forumQueriesByChannel[channelID, default: []].append(query)
         guard snapshot.channels.contains(where: { $0.id == channelID && $0.kind == .forum }) else {
             throw ChatProviderError.channelNotFound
@@ -40,6 +45,22 @@ public extension MockChatProvider {
             sortOrder: query.sortOrder
         )
         return ForumPostPage(posts: posts, hasMore: false, nextOffset: nil)
+    }
+
+    /// Strips a page's previews and republishes them shortly after, like the
+    /// live provider's post-data hydration, so cards first lay out without them.
+    private func hydratingPreviewsLater(_ page: ForumPostPage, in channelID: ChannelID) -> ForumPostPage {
+        var stripped = page
+        for index in stripped.posts.indices {
+            stripped.posts[index].firstMessage = nil
+            stripped.posts[index].mostRecentMessage = nil
+        }
+        let hydrated = page.posts
+        Task {
+            try? await Task.sleep(for: .milliseconds(400))
+            continuation?.yield(.forumPostPreviewsChanged(channelID: channelID, posts: hydrated))
+        }
+        return stripped
     }
 
     func forumQueries(in channelID: ChannelID) -> [ForumPostQuery] {
