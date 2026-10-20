@@ -62,7 +62,7 @@ extension NativeTimelineCanvasView {
               let preview = model?.threadPreviewMessages[thread.id]
         else { return NativeTimelineThreadCard.emptyText(for: thread) }
         let presented = MessageReplyPreview.presenting(preview)
-        let summary = NativeTimelineReplyMetrics.summary(for: presented, in: message, model: model).text
+        let summary = accessibilityResolvedText(presented.content, message: message)
         return "\(presented.author.displayName): \(summary)"
     }
 }

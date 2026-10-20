@@ -12,6 +12,7 @@ struct NativeTimelineAccessibilityRowState: Equatable {
     let item: NativeMessageTimelineItem
     let translation: MessageTranslationEntry?
     let isTranslationEnabled: Bool
+    let threadPreview: Message?
 }
 
 nonisolated enum TimelineAccessibilityWorkPolicy {
@@ -174,7 +175,8 @@ extension NativeTimelineCanvasView {
                 translation: item.messageRow.flatMap {
                     model?.messageTranslationPresentation(for: $0.message)
                 },
-                isTranslationEnabled: model?.translation.settings.isEnabled == true
+                isTranslationEnabled: model?.translation.settings.isEnabled == true,
+                threadPreview: item.messageRow?.message.thread.flatMap { model?.threadPreviewMessages[$0.id] }
             )
             let frame = rowFrame(at: index)
             desired.insert(identifier)

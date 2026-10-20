@@ -529,6 +529,10 @@ extension NativeTimelineCanvasView {
             )
             return
         }
+        if case .thread? = pressedActivationTarget {
+            setHoveredThreadMessageID(threadCardPointerHit(at: convert(event.locationInWindow, from: nil)))
+            return
+        }
         guard let gesture = textSelectionGesture else {
             super.mouseDragged(with: event)
             return
