@@ -347,8 +347,15 @@ final class NativeMemberListCanvasView: NSView, WindowModalInputParticipant {
         guard WindowModalCoordinator.allowsInput(for: self) else { return }
         guard !isScrolling, !interactionsBlocked else { return }
         let point = convert(event.locationInWindow, from: nil)
-        updateServerTagHover(at: point)
-        let newIndex = index(at: point)
+        // The list scrolls beneath the toolbar, which takes the pointer there.
+        let newIndex: Int?
+        if window?.toolbarCovers(event.locationInWindow) == true {
+            clearServerTagHover()
+            newIndex = nil
+        } else {
+            updateServerTagHover(at: point)
+            newIndex = index(at: point)
+        }
         guard newIndex != hoveredIndex else { return }
         let old = hoveredIndex
         hoveredIndex = newIndex

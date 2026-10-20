@@ -196,7 +196,7 @@ extension NativeTimelineCanvasView {
 
     override func mouseEntered(with event: NSEvent) {
         guard !sendTransitionBlocksInteractions else { return }
-        guard !ComposerOverlayPointerRegion.containsPointer(in: window, at: event.locationInWindow) else {
+        guard !isPointerCovered(at: event.locationInWindow) else {
             clearPointerHoverTargets()
             return
         }
@@ -244,7 +244,7 @@ extension NativeTimelineCanvasView {
 
     override func mouseMoved(with event: NSEvent) {
         guard !sendTransitionBlocksInteractions else { return }
-        guard !ComposerOverlayPointerRegion.containsPointer(in: window, at: event.locationInWindow) else {
+        guard !isPointerCovered(at: event.locationInWindow) else {
             clearPointerHoverTargets()
             return
         }
@@ -1133,6 +1133,16 @@ extension NativeTimelineCanvasView {
         synchronizeHoverWithCurrentPointer()
     }
 
+    /// Whether something drawn over the timeline takes the pointer: the
+    /// window toolbar, whose glass the timeline scrolls beneath, or the
+    /// composer's suggestions.
+    private func isPointerCovered(at location: NSPoint? = nil) -> Bool {
+        guard let window else { return false }
+        let point = location ?? window.convertPoint(fromScreen: NSEvent.mouseLocation)
+        return window.toolbarCovers(point)
+            || ComposerOverlayPointerRegion.containsPointer(in: window, at: point)
+    }
+
     private func clearPointerHoverTargets() {
         setHoveredPollTarget(nil)
         setHoveredCompactTimestampRow(nil)
@@ -1151,7 +1161,7 @@ extension NativeTimelineCanvasView {
 
     func synchronizeHoverWithCurrentPointer() {
         guard !sendTransitionBlocksInteractions else { return }
-        guard !ComposerOverlayPointerRegion.containsPointer(in: window) else {
+        guard !isPointerCovered() else {
             clearPointerHoverTargets()
             return
         }
