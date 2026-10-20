@@ -596,19 +596,6 @@ private struct ChatRootView: View {
 
     @ToolbarContentBuilder
     private var conversationToolbar: some ToolbarContent {
-        if !model.isSwitchingAccounts, model.workspacePresentation.primary == .fullWidthThread {
-            ToolbarItem(id: "full-width-thread-back", placement: .navigation) {
-                Button {
-                    model.closeSideConversation()
-                } label: {
-                    Label(fullWidthThreadBackTitle, systemImage: "chevron.backward")
-                        .labelStyle(.iconOnly)
-                }
-                .help(fullWidthThreadBackTitle)
-            }
-            .visibilityPriority(.high)
-        }
-
         ToolbarItem(id: "conversation-title", placement: .navigation) {
             if model.isSwitchingAccounts {
                 SkeletonShimmerTimeline {
@@ -733,11 +720,8 @@ private struct ChatRootView: View {
                     ToolbarItem {
                         ForumPostFollowToolbarButton(model: model, thread: thread, surface: .forumPostHeader)
                     }
+                    ToolbarSpacer(.fixed)
                 }
-                ToolbarItem {
-                    ThreadActionsToolbarMenu(model: model, thread: thread, surface: .fullView)
-                }
-                ToolbarSpacer(.fixed)
             }
 
             if showsInboxToolbarItem {
@@ -803,10 +787,7 @@ private struct ChatRootView: View {
             }
         }
 
-        if model.isSwitchingAccounts
-            || (model.guildWorkspacePage == nil && model.onboardingEntryGuildID == nil && !model.isFriendsPresented
-                && model.workspacePresentation.paneSideConversation == nil && selectedVoiceChannel == nil)
-        {
+        if showsMemberInspectorToolbarItem {
             if !model.isSwitchingAccounts {
                 ToolbarSpacer(.fixed)
             }
@@ -832,8 +813,12 @@ private struct ChatRootView: View {
             }
             .visibilityPriority(.high)
 
+            fullWidthThreadActions
+
             ToolbarSpacer(.fixed)
                 .contentMarginsRemoved(true)
+        } else {
+            fullWidthThreadActions
         }
 
         if model.showsWorkspaceMessageSearch || model.showsLocalToolbarSearch {
@@ -1007,6 +992,25 @@ private struct ChatRootView: View {
         return model.selectedChannel
     }
 
+    private var showsMemberInspectorToolbarItem: Bool {
+        model.isSwitchingAccounts
+            || (model.guildWorkspacePage == nil && model.onboardingEntryGuildID == nil && !model.isFriendsPresented
+                && model.workspacePresentation.paneSideConversation == nil && selectedVoiceChannel == nil)
+    }
+
+    /// A full-width thread's actions end the trailing button group, as a
+    /// toolbar's overflow item does.
+    @ToolbarContentBuilder
+    private var fullWidthThreadActions: some ToolbarContent {
+        if model.isThreadFullWidth, let thread = model.openThread {
+            ToolbarSpacer(.fixed)
+            ToolbarItem(id: "full-width-thread-actions") {
+                ThreadActionsToolbarMenu(model: model, thread: thread, surface: .fullView)
+            }
+            .visibilityPriority(.high)
+        }
+    }
+
     private var hasToolbarActionBeforeInbox: Bool {
         selectedPrivateChannel != nil
             || (selectedVoiceChannel != nil && !model.isVoiceChatOpen)
@@ -1022,8 +1026,7 @@ private struct ChatRootView: View {
     private var conversationToolbarPresentation: ConversationToolbarPresentation? {
         if let conversation = model.presentedSideConversation, conversation.isFullWidth {
             let label = model.sideConversationLabel(conversation)
-            return .init(title: label.title, systemImage: label.systemImage,
-                         subtitle: model.openThreadParentChannel.map(threadParentDisplayName))
+            return .init(title: label.title, systemImage: label.systemImage)
         }
         if let page = model.guildWorkspacePage {
             return .init(title: page == .guide ? "Server Guide" : model.customizationTitle(in: model.selectedGuildID),
@@ -1045,12 +1048,10 @@ private struct ChatRootView: View {
         let capabilities = conversation.capabilities
         let showsAddToChannelList = capabilities.canAddToChannelList
             && model.customizationPreviewChannel.map { !model.isChannelSelected($0) } == true
-        let showsOpenFullWidth = capabilities.canOpenFullWidth && model.openThread != nil
         let paneThread = conversation.isThread ? model.openThread : nil
         let showsFollow = paneThread.map { ForumPostFollowToolbarButton.isOffered(model: model, thread: $0) } ?? false
         // The Follow toggle is a text button about two icon buttons wide.
-        let actionCount = 1 + (showsAddToChannelList ? 1 : 0) + (showsOpenFullWidth ? 1 : 0)
-            + (paneThread != nil ? 1 : 0) + (showsFollow ? 2 : 0)
+        let actionCount = 1 + (showsAddToChannelList ? 1 : 0) + (paneThread != nil ? 1 : 0) + (showsFollow ? 2 : 0)
         if showsInboxToolbarItem {
             // Keep the primary column's last action inset from the pane edge.
             ToolbarSpacer(.fixed)
@@ -1098,17 +1099,6 @@ private struct ChatRootView: View {
             ToolbarItem(id: "side-conversation-thread-actions") {
                 ThreadActionsToolbarMenu(model: model, thread: paneThread, surface: .sidePane)
             }
-        }
-
-        if showsOpenFullWidth, let thread = model.openThread {
-            ToolbarItem(id: "side-conversation-full-width") {
-                Button("Open in Full View", systemImage: "arrow.up.left.and.arrow.down.right") {
-                    model.openSidebarThread(thread)
-                }
-                .labelStyle(.iconOnly)
-                .help("Open thread in full view")
-            }
-            .visibilityPriority(.high)
         }
 
         ToolbarItem(id: "side-conversation-close") {
@@ -1174,18 +1164,6 @@ private struct ChatRootView: View {
 
     private var showsInboxToolbarItem: Bool {
         !model.isSwitchingAccounts && model.onboardingEntryGuildID == nil
-    }
-
-    private var fullWidthThreadBackTitle: String {
-        guard let parent = model.openThreadParentChannel else { return "Back" }
-        return "Back to \(threadParentDisplayName(parent))"
-    }
-
-    private func threadParentDisplayName(_ channel: Channel) -> String {
-        switch channel.kind {
-        case .text, .announcement: "#\(channel.name)"
-        default: channel.name
-        }
     }
 
     private var selectedGuild: Guild? {
