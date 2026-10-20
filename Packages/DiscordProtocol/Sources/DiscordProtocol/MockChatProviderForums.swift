@@ -47,8 +47,9 @@ public extension MockChatProvider {
         return ForumPostPage(posts: posts, hasMore: false, nextOffset: nil)
     }
 
-    /// Strips a page's previews and republishes them shortly after, like the
-    /// live provider's post-data hydration, so cards first lay out without them.
+    /// Strips a page's previews and republishes them later, like the live
+    /// provider's post-data hydration, so cards first lay out without them.
+    /// The delay outlasts the first paint, so previews land on visible cards.
     private func hydratingPreviewsLater(_ page: ForumPostPage, in channelID: ChannelID) -> ForumPostPage {
         var stripped = page
         for index in stripped.posts.indices {
@@ -57,7 +58,7 @@ public extension MockChatProvider {
         }
         let hydrated = page.posts
         Task {
-            try? await Task.sleep(for: .milliseconds(400))
+            try? await Task.sleep(for: .milliseconds(1_200))
             continuation?.yield(.forumPostPreviewsChanged(channelID: channelID, posts: hydrated))
         }
         return stripped
