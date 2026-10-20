@@ -112,10 +112,15 @@ struct ChatWorkspaceView: View {
         // sliding columns cover, so it resizes live under them; a widening
         // thread grows from the pane's width.
         let covered = columns.filter { $0.id != fullWidthThread?.id }
-            .map { width(of: $0) * motion.reveal(of: $0.id) }
+            .map { width(of: $0) * motion.conversationReveal(of: $0.id) }
             .max() ?? 0
         let wideningWidth: CGFloat = if let widening = motion.widening, let fullWidthThread {
-            widening.hasArrived ? workspaceWidth - (trailing.map(width(of:)) ?? 0) : width(of: fullWidthThread)
+            if WorkspaceMotionPhase.stepsConversation {
+                width(of: fullWidthThread) + (workspaceWidth - (trailing.map(width(of:)) ?? 0) - width(of: fullWidthThread))
+                    * (widening.hasArrived ? motion.conversationProgress : 0)
+            } else {
+                widening.hasArrived ? workspaceWidth - (trailing.map(width(of:)) ?? 0) : width(of: fullWidthThread)
+            }
         } else {
             -1
         }

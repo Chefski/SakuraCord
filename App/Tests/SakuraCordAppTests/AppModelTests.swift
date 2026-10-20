@@ -8832,9 +8832,12 @@ func `resource thread permissions belong to its parent rather than the selected 
     let provider = MockChatProvider(motionThreadCount: 1, motionThreadMessageCount: 30)
     let model = AppModel(launchMode: .offlineTesting, provider: provider)
     await model.start()
-    model.selectedChannelID = ChannelID(rawValue: 210)
-    #expect(await until { model.messages.contains { $0.thread?.name.hasPrefix("Motion thread") == true } })
-    let thread = try #require(model.messages.lazy.compactMap(\.thread).first { $0.name.hasPrefix("Motion thread") })
+    let parent = try #require(model.snapshot?.channels.first { $0.id == ChannelID(rawValue: 210) })
+    model.selectedChannelID = parent.id
+    // The fixture's first motion thread, which has 30 messages in #general.
+    let thread = MessageThreadSummary(
+        id: ChannelID(rawValue: 7_100_001), guildID: parent.guildID, parentID: parent.id, name: "Motion thread 1"
+    )
     model.open(thread)
     #expect(await until { model.hasCompletedInitialThreadLoad && !model.threadMessages.isEmpty })
     model.closeSideConversation()

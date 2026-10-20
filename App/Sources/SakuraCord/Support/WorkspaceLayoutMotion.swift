@@ -110,6 +110,7 @@ enum WorkspaceLayoutMotion {
             MainActor.assumeIsolated {
                 settlesAt = .now + settling
                 withAnimation(animation, change)
+                WorkspaceMotionPhase.shared.startConversationSteps()
             }
         }
     }
@@ -141,6 +142,7 @@ enum WorkspaceLayoutMotion {
             await untilSettled()
             guard !Task.isCancelled else { return }
             // Each write invalidates the phase's readers, so skip no-ops.
+            phase.stopConversationSteps()
             withAnimation(nil) {
                 phase.isMoving = false
                 if phase.widening != nil { phase.widening = nil }
@@ -229,9 +231,50 @@ final class WorkspaceMotionPhase {
     var reveal: [String: CGFloat] = [:]
     @ObservationIgnored fileprivate var settleTask: Task<Void, Never>?
 
+    /// Experiment, off by default (`SakuraCordSteppedConversationMotion`):
+    /// the conversation follows the motion every second frame while the
+    /// columns slide on every frame, halving its relayouts.
+    static let stepsConversation = UserDefaults.standard.bool(forKey: "SakuraCordSteppedConversationMotion")
+    /// The running spring's progress as last applied to the conversation.
+    var conversationProgress: CGFloat = 1
+    @ObservationIgnored private var stepTicker: NativeTimelineDisplayLinkTicker?
+    @ObservationIgnored private var stepStart: CFTimeInterval = 0
+    @ObservationIgnored private var stepFrame = 0
+
     private init() {}
 
     func reveal(of id: String) -> CGFloat {
         reveal[id] ?? 1
+    }
+
+    /// How far a column has come in as the conversation sees it: its reveal
+    /// itself, or, when the conversation steps, the reveal at the spring's
+    /// last applied progress.
+    func conversationReveal(of id: String) -> CGFloat {
+        guard Self.stepsConversation, let target = reveal[id] else { return reveal(of: id) }
+        return target >= 1 ? conversationProgress : 1 - conversationProgress
+    }
+
+    fileprivate func startConversationSteps() {
+        guard Self.stepsConversation,
+              let view = NSApp.mainWindow?.contentView ?? NSApp.windows.first(where: \.isVisible)?.contentView
+        else { return }
+        conversationProgress = 0
+        stepStart = CACurrentMediaTime()
+        stepFrame = 0
+        let ticker = stepTicker ?? NativeTimelineDisplayLinkTicker()
+        stepTicker = ticker
+        ticker.start(on: view) { [weak self] in
+            guard let self else { return }
+            stepFrame += 1
+            guard stepFrame.isMultiple(of: 2) else { return }
+            let progress = ChatChromeMetrics.sidebarSpring.value(target: 1.0, time: CACurrentMediaTime() - stepStart)
+            conversationProgress = min(1, max(0, progress))
+        }
+    }
+
+    fileprivate func stopConversationSteps() {
+        stepTicker?.stop()
+        if conversationProgress != 1 { conversationProgress = 1 }
     }
 }
