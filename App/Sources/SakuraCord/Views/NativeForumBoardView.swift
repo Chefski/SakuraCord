@@ -540,6 +540,7 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         let postID: ChannelID? = if case let .post(value) = id { value } else { nil }
         card.applyChrome(
             isHovered: hoveredID == id || keyboardID == id,
+            isKeyboardFocused: keyboardID == id,
             isPressed: pressedID == id,
             isSelected: postID != nil && postID == model?.openThread?.id,
             appearance: effectiveAppearance,
@@ -673,6 +674,11 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         }
         for postID in changed {
             let id = ForumBoardItem.Identifier.post(postID)
+            if isReactionTooltipShown, hoveredID == id, interactions[id]?.isReactionHovered == true,
+               let summary = presentations[postID]?.reaction
+            {
+                presentReactionTooltip(postID: postID, summary: summary, event: nil)
+            }
             regions[id] = nil
             guard let card = cards[id] else { continue }
             configureExcerpt(for: postID)
@@ -1084,6 +1090,7 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         if let card = cards[pressedID] {
             card.applyChrome(
                 isHovered: isInside,
+                isKeyboardFocused: false,
                 isPressed: isInside,
                 isSelected: false,
                 appearance: effectiveAppearance,

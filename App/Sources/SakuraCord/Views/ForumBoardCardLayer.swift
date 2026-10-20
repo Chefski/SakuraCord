@@ -104,6 +104,7 @@ final class ForumBoardCard {
     /// resolve against the board's appearance.
     func applyChrome(
         isHovered: Bool,
+        isKeyboardFocused: Bool,
         isPressed: Bool,
         isSelected: Bool,
         appearance: NSAppearance,
@@ -133,12 +134,18 @@ final class ForumBoardCard {
                 break
             }
         }
+        if isKeyboardFocused, kind == .card {
+            appearance.performAsCurrentDrawingAppearance {
+                border = NSColor.keyboardFocusIndicatorColor.cgColor
+            }
+        }
         CATransaction.begin()
         CATransaction.setDisableActions(!animated)
         CATransaction.setAnimationDuration(isPressed ? 0.08 : 0.18)
         CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
         chrome.backgroundColor = fill
         chrome.borderColor = border
+        chrome.borderWidth = isKeyboardFocused && kind == .card ? 2 : 1
         chrome.shadowOpacity = shadowOpacity
         let scale: CGFloat = isPressed && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0.985 : 1
         layer.transform = CATransform3DMakeScale(scale, scale, 1)
