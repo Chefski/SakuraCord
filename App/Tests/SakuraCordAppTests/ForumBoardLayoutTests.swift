@@ -9,7 +9,7 @@ import Testing
 @Test(arguments: [ForumLayout.list, .gallery])
 func `forum board geometry ignores late post data`(mode: ForumLayout) {
     let channelID = ChannelID(rawValue: 900)
-    let author = User(id: UserID(rawValue: 1), displayName: "Ada")
+    let author = User(id: UserID(rawValue: 1), username: "ada", displayName: "Ada")
     func post(_ index: UInt64, hydrated: Bool) -> ForumPost {
         let id = ChannelID(rawValue: 1_000 + index)
         let thread = MessageThreadSummary(
