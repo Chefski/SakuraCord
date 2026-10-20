@@ -22,11 +22,6 @@ struct NativeTimelineUnreadDividerChange {
     let removed: NativeTimelineUnreadDividerSource?
     let added: NativeTimelineUnreadDividerSource?
     let addedMessageID: MessageID?
-
-    @MainActor
-    func fade(on canvas: NativeTimelineCanvasView) {
-        canvas.transitionUnreadDivider(self)
-    }
 }
 
 enum NativeTimelineUnreadDividerMotion {
@@ -101,6 +96,8 @@ final class NativeTimelineUnreadDividerOverlay: NSView {
 /// A divider that is fading in or out above its row.
 struct NativeTimelineUnreadDividerFade {
     let overlay: NativeTimelineUnreadDividerOverlay
+    /// Where the row was last seen, so finding it again is usually free.
+    var rowIndex: Int
     var frameInRow: CGRect
     var isAppearing: Bool
     var finishTask: Task<Void, Never>?
@@ -124,7 +121,7 @@ extension NativeTimelineCanvasView {
             frameInRow: frame,
             topInViewport: top - viewportMinY,
             height: layouts[index].height,
-            startGap: activeGap?.gap
+            startGap: activeGap?.frame.gap
         )
     }
 
@@ -132,12 +129,16 @@ extension NativeTimelineCanvasView {
     func unreadDividerPlacement(
         forMessageID messageID: MessageID?
     ) -> (identifier: NativeMessageTimelineItem.Identifier, frameInRow: CGRect)? {
-        guard let messageID,
-              let index = items.firstIndex(where: { $0.messageID == messageID }),
-              layouts.indices.contains(index),
-              let frame = layouts[index].unreadSeparatorFrame
+        guard let source = unreadDividerSource(forMessageID: messageID),
+              let frame = source.frameInRow
         else { return nil }
-        return (items[index].identifier, frame)
+        return (source.identifier, frame)
+    }
+
+    /// The row with this identifier. `hint` is where it last was.
+    func rowIndex(forIdentifier identifier: NativeMessageTimelineItem.Identifier, hint: Int? = nil) -> Int? {
+        if let hint, items.indices.contains(hint), items[hint].identifier == identifier { return hint }
+        return items.lastIndex { $0.identifier == identifier }
     }
 
     /// Opens or closes the divider's gap and fades the line inside it. Where
@@ -185,7 +186,7 @@ extension NativeTimelineCanvasView {
                 y: unreadDividerGapTop,
                 width: frameInRow.width,
                 height: NativeTimelineUnreadDividerGapGeometry.overlayHeight(
-                    gap: gap.gap, spaceHeight: gap.spaceHeight, dividerHeight: gap.dividerHeight
+                    gap: gap.frame.gap, spaceHeight: gap.spaceHeight, dividerHeight: gap.dividerHeight
                 )
             )
         }
@@ -198,11 +199,11 @@ extension NativeTimelineCanvasView {
         appearing: Bool,
         usesGap: Bool
     ) {
+        let existing = unreadDividerFades[identifier]
         guard window != nil,
-              let index = items.lastIndex(where: { $0.identifier == identifier })
+              let index = rowIndex(forIdentifier: identifier, hint: existing?.rowIndex)
         else { return }
         let frame = unreadDividerOverlayFrame(identifier: identifier, index: index, frameInRow: frameInRow)
-        let existing = unreadDividerFades[identifier]
         // Only a divider the reader can see is worth animating. A stale fade
         // for the same row is settled so the row simply shows its new state.
         guard usesGap || frame.intersects(visibleRect) else {
@@ -218,9 +219,11 @@ extension NativeTimelineCanvasView {
         overlay.setArtworkSize(frameInRow.size)
         // A rapid reversal continues from the opacity on screen rather than
         // snapping to either end.
-        let startOpacity = existing.map { _ in
+        let startOpacity: Float = if existing != nil {
             overlay.layer?.presentation()?.opacity ?? Float(overlay.alphaValue)
-        } ?? (appearing ? 0 : 1)
+        } else {
+            appearing ? 0 : 1
+        }
         let targetOpacity: Float = appearing ? 1 : 0
         let fullDuration = NativeTimelineUnreadDividerMotion.duration(
             appearing: appearing,
@@ -229,6 +232,7 @@ extension NativeTimelineCanvasView {
         let duration = max(0.05, fullDuration * Double(abs(targetOpacity - startOpacity)))
         unreadDividerFades[identifier] = NativeTimelineUnreadDividerFade(
             overlay: overlay,
+            rowIndex: index,
             frameInRow: frameInRow,
             isAppearing: appearing,
             // A divider moving with a gap stays on its overlay until the gap
@@ -269,9 +273,7 @@ extension NativeTimelineCanvasView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         fade.overlay.removeFromSuperview()
-        if fade.isAppearing,
-           let index = items.lastIndex(where: { $0.identifier == identifier })
-        {
+        if fade.isAppearing, let index = rowIndex(forIdentifier: identifier, hint: fade.rowIndex) {
             setNeedsDisplay(rowFrame(at: index))
             displayIfNeeded()
         }
@@ -288,14 +290,14 @@ extension NativeTimelineCanvasView {
     /// Keeps a running fade attached to its row through scrolling, relayout
     /// and row changes.
     func positionUnreadDividerFades() {
-        guard !unreadDividerFades.isEmpty else { return }
         for (identifier, fade) in unreadDividerFades {
-            guard let index = items.lastIndex(where: { $0.identifier == identifier }),
+            guard let index = rowIndex(forIdentifier: identifier, hint: fade.rowIndex),
                   layouts.indices.contains(index)
             else {
                 finishUnreadDividerFade(identifier)
                 continue
             }
+            unreadDividerFades[identifier]?.rowIndex = index
             let frameInRow = layouts[index].unreadSeparatorFrame ?? fade.frameInRow
             let frame = unreadDividerOverlayFrame(identifier: identifier, index: index, frameInRow: frameInRow)
             fade.overlay.setArtworkSize(frameInRow.size)
@@ -305,19 +307,13 @@ extension NativeTimelineCanvasView {
         }
     }
 
-    /// Whether a row's own divider is withheld because a fade is bringing it
-    /// in on its own layer.
-    func holdsUnreadDivider(_ identifier: NativeMessageTimelineItem.Identifier) -> Bool {
-        !unreadDividerFades.isEmpty && unreadDividerFades[identifier]?.isAppearing == true
-    }
-
     /// Erases the divider the row just painted while its overlay fades in.
     func clearHeldUnreadDivider(
         for item: NativeMessageTimelineItem,
         layout: NativeTimelineRowLayout,
         rowFrame: CGRect
     ) {
-        guard holdsUnreadDivider(item.identifier),
+        guard unreadDividerFades[item.identifier]?.isAppearing == true,
               let frame = layout.unreadSeparatorFrame,
               let context = NSGraphicsContext.current?.cgContext
         else { return }
@@ -339,8 +335,7 @@ extension NativeMessageTimelineCoordinator {
     ) -> NativeTimelineUnreadDividerChange? {
         let previous = parent.unreadMessageID
         let changes = previous != newParent.unreadMessageID
-        let reflowsRows = changes
-            || newParent.rowsRevision != rowsRevision
+        let reflowsRows = newParent.rowsRevision != rowsRevision
             || newParent.presentationRevision != presentationRevision
             || newParent.conversation != parent.conversation
         guard changes else {
@@ -352,7 +347,10 @@ extension NativeMessageTimelineCoordinator {
             added: canvas.unreadDividerSource(forMessageID: newParent.unreadMessageID),
             addedMessageID: newParent.unreadMessageID
         )
-        canvas.finishUnreadDividerGap(preservingFadeFor: change.added?.identifier)
+        // A divider reversing on its own row keeps its overlay and carries on
+        // from the opacity on screen; the transition drops it if no gap follows.
+        let reversingRow = change.removed?.frameInRow == nil ? change.added : change.removed
+        canvas.finishUnreadDividerGap(preservingFadeFor: reversingRow?.identifier)
         return change
     }
 }

@@ -153,7 +153,7 @@ extension NativeTimelineCanvasView {
         disclosureTicker.stop()
         resetDisclosureGeometry()
         guard let disclosure else { return }
-        if redraws { redrawForDisclosure() }
+        if redraws { redrawForRowMotion() }
         // Drops held rows from the next published item list.
         if disclosure.isCollapsing, !disclosure.isFinished { releaseHeldRows(of: disclosure) }
     }
@@ -322,7 +322,7 @@ extension NativeTimelineCanvasView {
                 rowDisclosure = disclosure
                 disclosureTicker.stop()
                 refreshDisclosureGeometry()
-                redrawForDisclosure()
+                redrawForRowMotion()
                 if case .suppressedMessages = disclosure.key { pendingDisclosureScrollAnchor = disclosure.key }
                 releaseHeldRows(of: disclosure)
             } else {
@@ -332,7 +332,7 @@ extension NativeTimelineCanvasView {
         }
         rowDisclosure = disclosure
         refreshDisclosureGeometry()
-        redrawForDisclosure()
+        redrawForRowMotion()
     }
 
     private func releaseHeldRows(of disclosure: NativeTimelineRowDisclosure) {
@@ -367,7 +367,7 @@ extension NativeTimelineCanvasView {
         disclosureRelativeClipMaxY = .greatestFiniteMagnitude
     }
 
-    func redrawForDisclosure() {
+    func redrawForRowMotion() {
         // Hover regions are cached at the rows' displaced positions.
         mentionPointerRegionCache.removeAll(keepingCapacity: true)
         codeBlockPointerRegionCache.removeAll(keepingCapacity: true)

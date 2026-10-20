@@ -865,7 +865,9 @@ extension NativeTimelineCanvasView {
             drawCodeBlockCopyControl(hoveredCodeBlock)
         }
         clearSendTransitionBubble(for: item, layout: layouts[index], rowFrame: rowFrame)
-        clearHeldUnreadDivider(for: item, layout: layouts[index], rowFrame: rowFrame)
+        if !unreadDividerFades.isEmpty {
+            clearHeldUnreadDivider(for: item, layout: layouts[index], rowFrame: rowFrame)
+        }
     }
 
     private func drawEditingTimelineRow(
