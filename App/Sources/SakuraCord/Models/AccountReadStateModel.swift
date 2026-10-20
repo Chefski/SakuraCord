@@ -893,9 +893,8 @@ extension AccountReadStateModel {
                     mutedChannelIDs.insert(entry.channelID)
                 }
             }
-            let mentionCount = presentedMentionCount(entry)
-            if mentionCount > 0 {
-                mentionsByChannelID[entry.channelID] = mentionCount
+            if entry.mentionCount > 0, countsMentions(entry) {
+                mentionsByChannelID[entry.channelID] = entry.mentionCount
             }
         }
         return QuickSwitcherProjection(
@@ -1543,11 +1542,9 @@ extension AccountReadStateModel {
         _ entry: Entry,
         parentChannel: Channel?,
         parentEntry: Entry?,
-        isActiveJoined: Bool,
-        isArchived: Bool
+        isActiveJoined: Bool
     ) -> Bool {
         guard isActiveJoined,
-              !isArchived,
               let parentChannel,
               SidebarThreadPolicy.listsThreads(under: parentChannel.kind),
               parentEntry?.isAccessible == true,
@@ -1569,13 +1566,12 @@ extension AccountReadStateModel {
             entry,
             parentChannel: entry.parentID.flatMap { channelByID[$0] },
             parentEntry: entry.parentID.flatMap { self[$0] },
-            isActiveJoined: activeJoinedThreadIDs.contains(entry.channelID),
-            isArchived: false
+            isActiveJoined: activeJoinedThreadIDs.contains(entry.channelID)
         )
     }
 
     func presentedMentionCount(_ entry: Entry) -> Int {
-        countsMentions(entry) ? entry.mentionCount : 0
+        entry.mentionCount > 0 && countsMentions(entry) ? entry.mentionCount : 0
     }
 
     func unread(channelID: ChannelID, now: Date = .now) -> Bool {

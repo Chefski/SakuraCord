@@ -34,30 +34,32 @@ extension AccountReadStateModel {
         /// Aggregate indicators must point to a current channel or a thread
         /// the sidebar can surface. Retained read history is not membership.
         func isAggregateConversation(_ entry: Entry) -> Bool {
-            if policy.channelByID[entry.channelID] != nil { return true }
-            return AccountReadStateModel.isListedThread(
-                entry,
-                parentChannel: entry.parentID.flatMap { policy.channelByID[$0] },
-                parentEntry: entry.parentID.flatMap { entries[$0] },
-                isActiveJoined: activeJoinedThreadIDs.contains(entry.channelID),
-                isArchived: forumPostArchivedByID[entry.channelID] == true
-            )
+            policy.channelByID[entry.channelID] != nil
+                || (forumPostArchivedByID[entry.channelID] != true && isListedThread(entry))
         }
 
         /// Whether the entry's mention count is presented. Discord's
         /// `ReadState.canHaveMentions` keeps a thread's count hidden until the
         /// account is a member of the active thread, so a ping in a post the
         /// user has not joined must not reach the server badge or any row.
+        /// Membership comes only from the joined catalogue, so a stale archive
+        /// flag cannot hide a joined thread.
         func countsMentions(_ entry: Entry) -> Bool {
-            guard policy.channelByID[entry.channelID] == nil,
-                  entry.guildID != nil
-            else { return true }
-            return AccountReadStateModel.isListedThread(
+            policy.channelByID[entry.channelID] != nil
+                || entry.guildID == nil
+                || isListedThread(entry)
+        }
+
+        func presentedMentionCount(_ entry: Entry) -> Int {
+            entry.mentionCount > 0 && countsMentions(entry) ? entry.mentionCount : 0
+        }
+
+        private func isListedThread(_ entry: Entry) -> Bool {
+            AccountReadStateModel.isListedThread(
                 entry,
                 parentChannel: entry.parentID.flatMap { policy.channelByID[$0] },
                 parentEntry: entry.parentID.flatMap { entries[$0] },
-                isActiveJoined: activeJoinedThreadIDs.contains(entry.channelID),
-                isArchived: false
+                isActiveJoined: activeJoinedThreadIDs.contains(entry.channelID)
             )
         }
 
@@ -151,7 +153,7 @@ extension AccountReadStateModel {
                 let channelID = entry.channelID
                 let isEligible = entry.isAccessible
                     && !policy.isGuildResourceChannel(entry)
-                let channelMentions = isEligible && countsMentions(entry) ? entry.mentionCount : 0
+                let channelMentions = isEligible ? presentedMentionCount(entry) : 0
                 var channelUnread = false
                 var contributesToGuildUnread = false
                 if isEligible,
