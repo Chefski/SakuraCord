@@ -2,7 +2,7 @@ import AppKit
 import SakuraCordModels
 import SwiftUI
 
-/// A forum post's message preview in forum lists and the Inbox. It renders
+/// A forum post's message preview in the Inbox. It renders
 /// the message's rich text, conceals hidden text spoilers like the timeline,
 /// and reveals a spoiler in place when it is clicked. Every other click passes
 /// through to the entry, which opens the post.
@@ -55,56 +55,48 @@ struct ForumPostPreviewText: NSViewRepresentable {
     }
 }
 
-final class ForumPostPreviewTextView: NSView {
-    struct Prefix: Equatable {
-        let value: NSAttributedString
-        let accessibilityText: String
-    }
-
-    struct Configuration: Equatable {
-        let messageID: MessageID
-        let source: String
-        let mentionPresentations: [String: MentionPresentation]
-        let fontSize: CGFloat
-        let emojiSize: CGFloat
-        let maximumNumberOfLines: Int
-        let isEmphasized: Bool
-        let underlinesLinks: Bool
-        let prefix: Prefix?
-    }
+/// Lays out, conceals and draws a forum post preview. The Inbox hosts it in
+/// `ForumPostPreviewTextView`; the forum board draws it straight into card
+/// layers, so both share spoiler, emoji and truncation behaviour.
+@MainActor
+final class ForumPostPreviewTextRenderer {
+    typealias Prefix = ForumPostPreviewTextView.Prefix
+    typealias Configuration = ForumPostPreviewTextView.Configuration
 
     private let textStorage = NSTextStorage()
     private let layoutManager = NSLayoutManager()
     private let textContainer = NSTextContainer()
-    private var configuration: Configuration?
+    private(set) var configuration: Configuration?
     /// The message content without concealment. Reveal keys and
     /// accessibility use it; only the displayed copy conceals spoilers.
     private(set) var content = NSAttributedString()
     private var prefixLength = 0
     private weak var revealStore: NativeTimelineSpoilerRevealStore?
     private var revealObserverID: UUID?
-    private var hiddenSpoilerRanges: [NSRange] = []
-    private var hoveredSpoilerLocation: Int?
-    private var hoverTrackingArea: NSTrackingArea?
+    private(set) var hiddenSpoilerRanges: [NSRange] = []
+    private(set) var hoveredSpoilerLocation: Int?
     private var imageLoadTask: Task<Void, Never>?
-
-    override var isFlipped: Bool { true }
+    /// Called whenever the displayed text changes without a new configuration:
+    /// a spoiler reveal, a hover change or newly loaded inline images.
+    var onDisplayChange: (() -> Void)?
+    var size: CGSize = .zero {
+        didSet {
+            textContainer.containerSize = NSSize(width: max(1, size.width), height: .greatestFiniteMagnitude)
+        }
+    }
 
     init() {
-        super.init(frame: .zero)
         textContainer.lineFragmentPadding = 0
         textContainer.lineBreakMode = .byTruncatingTail
         layoutManager.addTextContainer(textContainer)
         textStorage.addLayoutManager(layoutManager)
-        setAccessibilityElement(true)
-        setAccessibilityRole(.staticText)
     }
-
-    @available(*, unavailable)
-    required init?(coder _: NSCoder) { nil }
 
     isolated deinit {
         imageLoadTask?.cancel()
+        if let revealObserverID {
+            revealStore?.removeObserver(revealObserverID)
+        }
     }
 
     func configure(
@@ -116,7 +108,8 @@ final class ForumPostPreviewTextView: NSView {
             self.revealStore = revealStore
             revealObserverID = revealStore.observe { [weak self] messageID in
                 guard let self, messageID == self.configuration?.messageID else { return }
-                self.applySpoilerPresentation()
+                applySpoilerPresentation()
+                onDisplayChange?()
             }
         }
         guard self.configuration != configuration else { return }
@@ -146,14 +139,6 @@ final class ForumPostPreviewTextView: NSView {
         return CGSize(
             width: width ?? max(1, ceil(used.width)),
             height: max(1, ceil(used.height))
-        )
-    }
-
-    override func setFrameSize(_ newSize: NSSize) {
-        super.setFrameSize(newSize)
-        textContainer.containerSize = NSSize(
-            width: max(1, newSize.width),
-            height: .greatestFiniteMagnitude
         )
     }
 
@@ -196,7 +181,7 @@ final class ForumPostPreviewTextView: NSView {
         applySpoilerPresentation()
     }
 
-    private var revealedLocations: Set<Int> {
+    var revealedLocations: Set<Int> {
         guard let configuration, let revealStore else { return [] }
         return revealStore.revealedTextLocations(
             messageID: configuration.messageID,
@@ -228,8 +213,6 @@ final class ForumPostPreviewTextView: NSView {
         }
         displayed.append(body)
         textStorage.setAttributedString(displayed)
-        needsDisplay = true
-        window?.invalidateCursorRects(for: self)
     }
 
     /// Hides a spoiler's glyphs and inline images while keeping its
@@ -274,12 +257,13 @@ final class ForumPostPreviewTextView: NSView {
             for url in avatarURLs {
                 _ = await MentionAvatarImageStore.shared.image(for: url)
             }
-            guard !Task.isCancelled else { return }
-            self?.rebuildContent()
+            guard !Task.isCancelled, let self else { return }
+            rebuildContent()
+            onDisplayChange?()
         }
     }
 
-    // MARK: Drawing
+    // MARK: Geometry and drawing
 
     func hiddenSpoilerFrames(for range: NSRange) -> [CGRect] {
         let visibleGlyphs = layoutManager.glyphRange(for: textContainer)
@@ -296,7 +280,7 @@ final class ForumPostPreviewTextView: NSView {
         guard glyphs.length > 0 else { return [] }
         return SelectableTextSpoilerGeometry.rects(
             forGlyphRange: glyphs, manager: layoutManager,
-            container: textContainer, bounds: bounds
+            container: textContainer, bounds: CGRect(origin: .zero, size: size)
         )
     }
 
@@ -306,22 +290,124 @@ final class ForumPostPreviewTextView: NSView {
         }?.location
     }
 
-    override func draw(_: NSRect) {
+    /// Draws into the current flipped graphics context at `origin`.
+    func draw(at origin: CGPoint) {
         for range in hiddenSpoilerRanges {
             NativeTimelineSpoilerAppearance.textBackgroundColor(
                 isHovered: hoveredSpoilerLocation == range.location
             ).setFill()
             for frame in hiddenSpoilerFrames(for: range) {
                 NSBezierPath(
-                    roundedRect: frame,
+                    roundedRect: frame.offsetBy(dx: origin.x, dy: origin.y),
                     xRadius: NativeTimelineSpoilerAppearance.textCornerRadius,
                     yRadius: NativeTimelineSpoilerAppearance.textCornerRadius
                 ).fill()
             }
         }
         let glyphs = layoutManager.glyphRange(for: textContainer)
-        layoutManager.drawBackground(forGlyphRange: glyphs, at: .zero)
-        layoutManager.drawGlyphs(forGlyphRange: glyphs, at: .zero)
+        layoutManager.drawBackground(forGlyphRange: glyphs, at: origin)
+        layoutManager.drawGlyphs(forGlyphRange: glyphs, at: origin)
+    }
+
+    @discardableResult
+    func setHoveredSpoiler(_ location: Int?) -> Bool {
+        guard hoveredSpoilerLocation != location else { return false }
+        hoveredSpoilerLocation = location
+        return true
+    }
+
+    func revealSpoiler(at location: Int) {
+        guard let configuration, let revealStore else { return }
+        revealStore.revealText(NativeTimelineTextSpoilerRevealKey(
+            messageID: configuration.messageID,
+            contentID: NativeTimelineTextSpoilerRevealKey.messageContentID,
+            contentHash: content.string.hashValue,
+            rangeLocation: location
+        ))
+    }
+
+    var accessibilityText: String {
+        (configuration?.prefix?.accessibilityText ?? "")
+            + TimelineTextAccessibility.text(
+                content,
+                revealedLocations: revealedLocations
+            )
+    }
+}
+
+final class ForumPostPreviewTextView: NSView {
+    struct Prefix: Equatable {
+        let value: NSAttributedString
+        let accessibilityText: String
+    }
+
+    struct Configuration: Equatable {
+        let messageID: MessageID
+        let source: String
+        let mentionPresentations: [String: MentionPresentation]
+        let fontSize: CGFloat
+        let emojiSize: CGFloat
+        let maximumNumberOfLines: Int
+        let isEmphasized: Bool
+        let underlinesLinks: Bool
+        let prefix: Prefix?
+    }
+
+    private let renderer = ForumPostPreviewTextRenderer()
+    private var hoverTrackingArea: NSTrackingArea?
+
+    var content: NSAttributedString { renderer.content }
+
+    override var isFlipped: Bool { true }
+
+    init() {
+        super.init(frame: .zero)
+        setAccessibilityElement(true)
+        setAccessibilityRole(.staticText)
+        renderer.onDisplayChange = { [weak self] in
+            guard let self else { return }
+            needsDisplay = true
+            window?.invalidateCursorRects(for: self)
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder _: NSCoder) { nil }
+
+    func configure(
+        _ configuration: Configuration,
+        revealStore: NativeTimelineSpoilerRevealStore
+    ) {
+        let previous = renderer.configuration
+        renderer.configure(configuration, revealStore: revealStore)
+        guard previous != configuration else { return }
+        needsDisplay = true
+        window?.invalidateCursorRects(for: self)
+    }
+
+    func stopObservingReveals() {
+        renderer.stopObservingReveals()
+    }
+
+    func measuredSize(proposedWidth: CGFloat?) -> CGSize {
+        renderer.measuredSize(proposedWidth: proposedWidth)
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        renderer.size = newSize
+    }
+
+    func hiddenSpoilerFrames(for range: NSRange) -> [CGRect] {
+        renderer.hiddenSpoilerFrames(for: range)
+    }
+
+    func hiddenSpoilerLocation(at point: CGPoint) -> Int? {
+        renderer.hiddenSpoilerLocation(at: point)
+    }
+
+    override func draw(_: NSRect) {
+        renderer.draw(at: .zero)
     }
 
     // MARK: Pointer
@@ -343,7 +429,7 @@ final class ForumPostPreviewTextView: NSView {
             super.mouseDown(with: event)
             return
         }
-        revealSpoiler(at: location)
+        renderer.revealSpoiler(at: location)
     }
 
     override func updateTrackingAreas() {
@@ -369,7 +455,7 @@ final class ForumPostPreviewTextView: NSView {
     }
 
     override func resetCursorRects() {
-        for range in hiddenSpoilerRanges {
+        for range in renderer.hiddenSpoilerRanges {
             for frame in hiddenSpoilerFrames(for: range) {
                 addCursorRect(frame, cursor: .pointingHand)
             }
@@ -377,33 +463,21 @@ final class ForumPostPreviewTextView: NSView {
     }
 
     private func setHoveredSpoiler(_ location: Int?) {
-        guard hoveredSpoilerLocation != location else { return }
-        hoveredSpoilerLocation = location
-        needsDisplay = true
+        if renderer.setHoveredSpoiler(location) { needsDisplay = true }
     }
 
     func revealSpoiler(at location: Int) {
-        guard let configuration, let revealStore else { return }
-        revealStore.revealText(NativeTimelineTextSpoilerRevealKey(
-            messageID: configuration.messageID,
-            contentID: NativeTimelineTextSpoilerRevealKey.messageContentID,
-            contentHash: content.string.hashValue,
-            rangeLocation: location
-        ))
+        renderer.revealSpoiler(at: location)
     }
 
     // MARK: Accessibility
 
     override func accessibilityValue() -> Any? {
-        (configuration?.prefix?.accessibilityText ?? "")
-            + TimelineTextAccessibility.text(
-                content,
-                revealedLocations: revealedLocations
-            )
+        renderer.accessibilityText
     }
 
     override func accessibilityCustomActions() -> [NSAccessibilityCustomAction]? {
-        guard let location = hiddenSpoilerRanges.first?.location else { return nil }
+        guard let location = renderer.hiddenSpoilerRanges.first?.location else { return nil }
         return [
             NSAccessibilityCustomAction(name: "Reveal spoiler") { [weak self] in
                 self?.revealSpoiler(at: location)
