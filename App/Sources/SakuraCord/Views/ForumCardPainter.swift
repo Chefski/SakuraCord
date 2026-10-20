@@ -14,6 +14,8 @@ struct ForumCardRegions: Equatable {
     var reactionRegionFrame: CGRect?
     var timestampFrame: CGRect?
     var countFrame: CGRect?
+    /// Measured width of the message count's digits inside `countFrame`.
+    var countTextWidth: CGFloat = 0
     var footerFrame: CGRect = .zero
     /// Rounded bars the card's loading shimmer is masked to.
     var skeletonFrames: [CGRect] = []
@@ -29,11 +31,37 @@ struct ForumCardInteraction: Equatable {
 /// flipped graphics context. Card size never depends on what is drawn here.
 @MainActor
 enum ForumCardPainter {
-    private static var tagFont: NSFont { .interfaceSystemFont(ofSize: 12, weight: .semibold) }
-    private static var footerFont: NSFont { .interfaceSystemFont(ofSize: 12) }
-    private static var footerEmphasisFont: NSFont { .interfaceSystemFont(ofSize: 12, weight: .semibold) }
-    private static var captionFont: NSFont { .interfaceSystemFont(ofSize: 12) }
-    private static var badgeFont: NSFont { .interfaceSystemFont(ofSize: 10, weight: .bold) }
+    /// Fonts and the NEW badge size depend only on the interface size, so
+    /// they are built once per size instead of on every paint.
+    private struct Fonts {
+        let scale = InterfaceScale.factor
+        let regular = NSFont.interfaceSystemFont(ofSize: 12)
+        let semibold = NSFont.interfaceSystemFont(ofSize: 12, weight: .semibold)
+        let badge: NSFont
+        let newBadgeSize: CGSize
+
+        init() {
+            let badge = NSFont.interfaceSystemFont(ofSize: 10, weight: .bold)
+            self.badge = badge
+            newBadgeSize = CGSize(
+                width: ceil(NativeTimelineRowLayout.measuredTextWidth("NEW", font: badge) + InterfaceScale.metric(16)),
+                height: InterfaceScale.metric(18)
+            )
+        }
+    }
+
+    private static var cachedFonts = Fonts()
+    private static var fonts: Fonts {
+        if cachedFonts.scale != InterfaceScale.factor { cachedFonts = Fonts() }
+        return cachedFonts
+    }
+
+    private static var tagFont: NSFont { fonts.semibold }
+    private static var footerFont: NSFont { fonts.regular }
+    private static var footerEmphasisFont: NSFont { fonts.semibold }
+    private static var captionFont: NSFont { fonts.regular }
+    private static var badgeFont: NSFont { fonts.badge }
+    static var newBadgeSize: CGSize { fonts.newBadgeSize }
     static let newBadgeFill = NSColor(srgbRed: 0xC9 / 255, green: 0xD2 / 255, blue: 1, alpha: 1)
     static let newBadgeText = NSColor(srgbRed: 0x58 / 255, green: 0x65 / 255, blue: 0xF2 / 255, alpha: 1)
 
@@ -62,7 +90,7 @@ enum ForumCardPainter {
         let hasThumbnail = presentation?.thumbnail != nil
         let textMaxX = size.width - padding - (hasThumbnail ? metrics.thumbnailSize + metrics.thumbnailSpacing : 0)
         var cursorY = padding
-        let hasStatusRow = presentation?.geometry.hasStatusRow ?? true
+        let hasStatusRow = presentation?.hasStatusRow ?? true
         if hasStatusRow {
             regions.statusRowFrame = CGRect(x: padding, y: cursorY, width: textMaxX - padding, height: metrics.statusRowHeight)
             cursorY += metrics.statusRowHeight + metrics.statusRowSpacing
@@ -112,7 +140,7 @@ enum ForumCardPainter {
         reserved: Int,
         metrics: ForumBoardMetrics
     ) -> Int {
-        let badgeReserve = presentation.isNew ? newBadgeSize().width + InterfaceScale.metric(8) : 0
+        let badgeReserve = presentation.isNew ? newBadgeSize.width + InterfaceScale.metric(8) : 0
         let lines = ForumTitleLineCounter.count(
             presentation.title,
             width: max(1, width - badgeReserve),
@@ -172,12 +200,14 @@ enum ForumCardPainter {
             regions.reactionRegionFrame = CGRect(x: originX, y: footer.midY - size.height / 2, width: size.width, height: size.height)
             if !alignsReactionTrailing { cursorX += size.width + spacing }
         }
-        let countWidth = countContentWidth(presentation)
+        let countTextWidth = NativeTimelineRowLayout.measuredTextWidth(presentation.messageCount.formatted(), font: footerFont)
+        let countWidth = countContentWidth(presentation, textWidth: countTextWidth)
         regions.countFrame = CGRect(x: cursorX, y: footer.minY, width: countWidth, height: footer.height)
+        regions.countTextWidth = countTextWidth
         cursorX += countWidth + spacing
         if !alignsReactionTrailing {
-            let text = ForumTimestampPresentation.roundedRelativeText(for: presentation.lastActivityAt, relativeTo: .now)
-            let width = ceil(NativeTimelineRowPainter.measuredTextWidth(text, font: footerFont)) + 2
+            let text = presentation.relativeTimeText(isGallery: false)
+            let width = ceil(NativeTimelineRowLayout.measuredTextWidth(text, font: footerFont)) + 2
             regions.timestampFrame = CGRect(x: cursorX, y: footer.minY, width: width, height: footer.height)
         }
     }
@@ -223,13 +253,11 @@ enum ForumCardPainter {
         return bars
     }
 
-    private static func countContentWidth(_ presentation: ForumCardPresentation) -> CGFloat {
+    private static func countContentWidth(_ presentation: ForumCardPresentation, textWidth: CGFloat) -> CGFloat {
         let iconWidth = InterfaceScale.metric(14) + InterfaceScale.metric(4)
-        var width = iconWidth + NativeTimelineRowPainter.measuredTextWidth(
-            presentation.messageCount.formatted(), font: footerFont
-        )
+        var width = iconWidth + textWidth
         if presentation.unreadCount > 0 {
-            width += InterfaceScale.metric(4) + NativeTimelineRowPainter.measuredTextWidth(
+            width += InterfaceScale.metric(4) + NativeTimelineRowLayout.measuredTextWidth(
                 "(\(presentation.unreadCount.formatted()) New)", font: footerEmphasisFont
             )
         }
@@ -252,33 +280,27 @@ enum ForumCardPainter {
     static func draw(_ input: DrawInput) {
         let presentation = input.presentation
         let regions = input.regions
-        let excerpt = input.excerpt
-        let interaction = input.interaction
-        let model = input.model
         let metrics = input.metrics
-        let titleLines = input.titleLines
-        let mode = input.mode
-        if mode == .gallery {
+        if input.mode == .gallery {
             drawGalleryHeader(presentation, in: regions.statusRowFrame ?? .zero)
-            drawTitle(presentation, in: regions.titleFrame, maximumLines: 2, metrics: metrics)
+            drawTitle(presentation, in: regions.titleFrame, maximumLines: metrics.maximumTitleLines, metrics: metrics)
             if let hero = regions.heroFrame {
-                drawHero(presentation, in: hero, excerpt: excerpt)
+                drawHero(presentation, in: hero, excerpt: input.excerpt)
             }
-            drawFooter(presentation, regions: regions, interaction: interaction, model: model)
         } else {
             if let status = regions.statusRowFrame {
                 drawStatusRow(presentation, in: status)
             }
             let drawnLines = max(1, Int((regions.titleFrame.height / metrics.titleLineHeight).rounded()))
-            drawTitle(presentation, in: regions.titleFrame, maximumLines: min(titleLines, drawnLines), metrics: metrics)
+            drawTitle(presentation, in: regions.titleFrame, maximumLines: min(input.titleLines, drawnLines), metrics: metrics)
             if let excerptFrame = regions.excerptFrame {
-                drawExcerpt(presentation, in: excerptFrame, renderer: excerpt, metrics: metrics)
+                drawExcerpt(presentation, in: excerptFrame, renderer: input.excerpt, metrics: metrics)
             }
             if let thumbnail = presentation.thumbnail, let frame = regions.thumbnailFrame {
                 drawMedia(thumbnail, in: frame, cornerRadius: InterfaceScale.metric(11), isCompact: true)
             }
-            drawFooter(presentation, regions: regions, interaction: interaction, model: model)
         }
+        drawFooter(presentation, regions: regions, interaction: input.interaction, model: input.model)
     }
 
     /// Skeleton bars, drawn beneath the shimmer layer that animates over them.
@@ -294,16 +316,21 @@ enum ForumCardPainter {
         var cursorX = frame.minX
         let iconSize = InterfaceScale.metric(14)
         for (shown, symbol) in [(presentation.isPinned, "pin.fill"), (presentation.isLocked, "lock.fill")] where shown {
-            NativeTimelineRowPainter.systemSymbol(
-                symbol,
-                in: CGRect(x: cursorX, y: frame.midY - iconSize / 2, width: iconSize, height: iconSize),
-                color: .secondaryLabelColor,
-                inset: 0,
-                weight: .semibold
-            )
+            drawStatusIcon(symbol, at: CGPoint(x: cursorX, y: frame.midY), size: iconSize)
             cursorX += iconSize + InterfaceScale.metric(7)
         }
         drawTags(presentation.tags, in: CGRect(x: cursorX, y: frame.minY, width: frame.maxX - cursorX, height: frame.height), style: .standard)
+    }
+
+    /// A pin or lock mark, centered vertically on `origin.y`.
+    private static func drawStatusIcon(_ symbol: String, at origin: CGPoint, size: CGFloat) {
+        NativeTimelineRowPainter.systemSymbol(
+            symbol,
+            in: CGRect(x: origin.x, y: origin.y - size / 2, width: size, height: size),
+            color: .secondaryLabelColor,
+            inset: 0,
+            weight: .semibold
+        )
     }
 
     enum TagStyle {
@@ -348,7 +375,7 @@ enum ForumCardPainter {
     private static func chipWidth(text: String, hasEmoji: Bool) -> CGFloat {
         let padding = InterfaceScale.metric(9)
         let emoji = hasEmoji ? InterfaceScale.metric(14) + InterfaceScale.metric(4) : 0
-        let textWidth = min(NativeTimelineRowPainter.measuredTextWidth(text, font: tagFont), InterfaceScale.metric(160))
+        let textWidth = min(NativeTimelineRowLayout.measuredTextWidth(text, font: tagFont), InterfaceScale.metric(160))
         return ceil(padding * 2 + emoji + textWidth)
     }
 
@@ -415,7 +442,7 @@ enum ForumCardPainter {
         metrics: ForumBoardMetrics
     ) {
         let color: NSColor = presentation.isEmphasized ? .labelColor : .secondaryLabelColor
-        let badgeSize = newBadgeSize()
+        let badgeSize = newBadgeSize
         let badgeReserve = presentation.isNew ? badgeSize.width + InterfaceScale.metric(8) : 0
         let lastLineEnd = drawLines(
             presentation.title,
@@ -446,13 +473,6 @@ enum ForumCardPainter {
         )
     }
 
-    static func newBadgeSize() -> CGSize {
-        CGSize(
-            width: ceil(NativeTimelineRowPainter.measuredTextWidth("NEW", font: badgeFont) + InterfaceScale.metric(16)),
-            height: InterfaceScale.metric(18)
-        )
-    }
-
     /// Breaks text into at most `maximumLines` lines, truncating the last
     /// with an ellipsis, and returns where the last line ends (its top and
     /// trailing edge) so a badge can follow it.
@@ -473,9 +493,6 @@ enum ForumCardPainter {
         var location = 0
         var lineIndex = 0
         var end = frame.origin
-        let ellipsis = CTLineCreateWithAttributedString(
-            NSAttributedString(string: "…", attributes: [.font: font, .foregroundColor: color])
-        )
         while location < length, lineIndex < maximumLines {
             var isLast = lineIndex == maximumLines - 1
             var width = Double(max(1, frame.width - (isLast ? lastLineReserve : 0)))
@@ -492,6 +509,9 @@ enum ForumCardPainter {
             if isLast, location + count < length {
                 count = length - location
                 let rest = CTTypesetterCreateLine(typesetter, CFRange(location: location, length: count))
+                let ellipsis = CTLineCreateWithAttributedString(
+                    NSAttributedString(string: "…", attributes: [.font: font, .foregroundColor: color])
+                )
                 line = CTLineCreateTruncatedLine(rest, width, .end, ellipsis) ?? line
             }
             let lineY = frame.minY + CGFloat(lineIndex) * lineHeight
@@ -673,22 +693,16 @@ enum ForumCardPainter {
         var trailing = frame.maxX
         for (shown, symbol) in [(presentation.isLocked, "lock.fill"), (presentation.isPinned, "pin.fill")] where shown {
             trailing -= iconSize
-            NativeTimelineRowPainter.systemSymbol(
-                symbol,
-                in: CGRect(x: trailing, y: frame.midY - iconSize / 2, width: iconSize, height: iconSize),
-                color: .secondaryLabelColor,
-                inset: 0,
-                weight: .semibold
-            )
+            drawStatusIcon(symbol, at: CGPoint(x: trailing, y: frame.midY), size: iconSize)
             trailing -= InterfaceScale.metric(6)
         }
         let lineHeight = ForumBoardMetrics.lineHeight(of: captionFont)
         let textY = frame.midY - lineHeight / 2
         var cursorX = frame.minX
-        let posted = ForumTimestampPresentation.roundedRelativeText(for: presentation.createdAt, relativeTo: .now)
-        let postedWidth = ceil(NativeTimelineRowPainter.measuredTextWidth(posted, font: captionFont)) + 1
+        let posted = presentation.relativeTimeText(isGallery: true)
+        let postedWidth = ceil(NativeTimelineRowLayout.measuredTextWidth(posted, font: captionFont)) + 1
         if let author = presentation.galleryAuthor {
-            let bulletWidth = ceil(NativeTimelineRowPainter.measuredTextWidth(" • ", font: captionFont))
+            let bulletWidth = ceil(NativeTimelineRowLayout.measuredTextWidth(" • ", font: captionFont))
             let available = max(0, trailing - InterfaceScale.metric(6) - cursorX - postedWidth - bulletWidth)
             let font = ProfileNameFontCache.font(id: author.fontID, fallback: captionFont)
             ProfileNameFontLoader.shared.request(id: author.fontID)
@@ -698,7 +712,7 @@ enum ForumCardPainter {
                 NSBezierPath(ovalIn: CGRect(x: cursorX, y: frame.midY - dotSize / 2, width: dotSize, height: dotSize)).fill()
                 cursorX += dotSize + InterfaceScale.metric(4)
             }
-            let nameWidth = min(available, ceil(NativeTimelineRowPainter.measuredTextWidth(author.name, font: font)) + 1)
+            let nameWidth = min(available, ceil(NativeTimelineRowLayout.measuredTextWidth(author.name, font: font)) + 1)
             NativeTimelineRowPainter.text(
                 author.name,
                 in: CGRect(x: cursorX, y: frame.midY - ForumBoardMetrics.lineHeight(of: font) / 2, width: nameWidth, height: ForumBoardMetrics.lineHeight(of: font)),
@@ -747,10 +761,9 @@ enum ForumCardPainter {
                 inset: 0
             )
             var cursorX = frame.minX + InterfaceScale.metric(14) + InterfaceScale.metric(4)
-            let count = presentation.messageCount.formatted()
-            let countWidth = ceil(NativeTimelineRowPainter.measuredTextWidth(count, font: footerFont)) + 1
+            let countWidth = ceil(regions.countTextWidth) + 1
             NativeTimelineRowPainter.text(
-                count,
+                presentation.messageCount.formatted(),
                 in: CGRect(x: cursorX, y: frame.midY - lineHeight / 2, width: countWidth, height: lineHeight),
                 font: footerFont,
                 color: .secondaryLabelColor
@@ -768,7 +781,7 @@ enum ForumCardPainter {
         if let frame = regions.timestampFrame {
             let lineHeight = ForumBoardMetrics.lineHeight(of: footerFont)
             NativeTimelineRowPainter.text(
-                ForumTimestampPresentation.roundedRelativeText(for: presentation.lastActivityAt, relativeTo: .now),
+                presentation.relativeTimeText(isGallery: false),
                 in: CGRect(x: frame.minX, y: frame.midY - lineHeight / 2, width: frame.width, height: lineHeight),
                 font: footerFont,
                 color: .secondaryLabelColor
@@ -792,7 +805,7 @@ enum ForumCardPainter {
     /// The failed-page notice; returns its retry button frame.
     static func paginationRetryFrame(in frame: CGRect) -> CGRect {
         let font = NSFont.interfaceSystemFont(ofSize: 13, weight: .medium)
-        let width = ceil(NativeTimelineRowPainter.measuredTextWidth("Try Again", font: font)) + InterfaceScale.metric(24)
+        let width = ceil(NativeTimelineRowLayout.measuredTextWidth("Try Again", font: font)) + InterfaceScale.metric(24)
         let height = InterfaceScale.metric(28)
         return CGRect(x: frame.maxX - InterfaceScale.metric(12) - width, y: frame.midY - height / 2, width: width, height: height)
     }
