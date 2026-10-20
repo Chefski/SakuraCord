@@ -371,6 +371,10 @@ final class WorkspaceColumnsView: NSView {
     private func startMotion() {
         guard displayLink == nil else { return }
         let link = displayLink(target: self, selector: #selector(displayLinkDidFire(_:)))
+        // Every frame the screen can show, up to 120 Hz on ProMotion; the
+        // motion is evaluated by time, so any rate is correct.
+        let rate = Float(window?.screen?.maximumFramesPerSecond ?? 60)
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: rate / 2, maximum: rate, preferred: rate)
         link.add(to: .main, forMode: .common)
         displayLink = link
     }
