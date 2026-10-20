@@ -26,9 +26,9 @@ struct ThreadMenuEntry: Identifiable {
 
 /// The actions for one thread or forum post, defined once for the channel
 /// list, forum cards and the side chat's overflow menu. Entries only invoke
-/// AppModel actions, which recheck ThreadActionPolicy when they run. The order
-/// follows the first-party thread menus; Mute and Notification Settings
-/// appear only for a joined thread.
+/// AppModel actions, which recheck ThreadActionPolicy when they run. Sections
+/// follow the channel menu's order, with leaving and deleting last; Mute and
+/// Notification Settings appear only for a joined thread.
 @MainActor
 struct ThreadActionsMenu {
     static let tagsSlotID = "tags"
@@ -67,6 +67,13 @@ struct ThreadActionsMenu {
         let isJoined = thread.notificationSettings != nil
         var sections: [[ThreadMenuEntry]] = []
 
+        if surface == .sidePane {
+            sections.append([ThreadMenuEntry(
+                id: "full-view", title: "Open in Full View", systemImage: "arrow.up.left.and.arrow.down.right",
+                // Widening only changes the layout; opening rechecks access.
+                content: .action { model.openSidebarThread(thread) }
+            )])
+        }
         if surface == .channelList || surface == .forumCard {
             sections.append([ThreadMenuEntry(
                 id: "read", title: "Mark as Read", systemImage: "envelope.open.fill",
@@ -74,22 +81,28 @@ struct ThreadActionsMenu {
                 content: Self.guarded(model, thread, \.canRead) { model.markConversationRead(channelID: thread.id) }
             )])
         }
-        if policy.canRead {
-            let title = isJoined
-                ? (isForumPost ? "Unfollow Post" : "Leave Thread")
-                : (isForumPost ? "Follow Post" : "Join Thread")
+        if policy.canManage, isForumPost {
             sections.append([ThreadMenuEntry(
-                id: "membership", title: title,
-                systemImage: isJoined ? "rectangle.portrait.and.arrow.right" : "plus.circle",
-                isEnabled: policy.canChangeMembership,
-                content: Self.guarded(model, thread, \.canChangeMembership) {
-                    model.setThreadMembership(thread, isJoined: !isJoined, surface: surface)
+                id: "pin", title: thread.isPinned ? "Unpin Post" : "Pin Post",
+                systemImage: thread.isPinned ? "pin.slash.fill" : "pin.fill",
+                content: Self.guarded(model, thread, \.canManage) {
+                    model.updateThread(thread, mutation: .pinned(!thread.isPinned))
                 }
             )])
         }
-        if policy.canChangeNotifications {
-            sections.append(Self.notificationEntries(model: model, thread: thread, noun: noun))
-        }
+        let membership: ThreadMenuEntry? = policy.canRead ? ThreadMenuEntry(
+            id: "membership",
+            title: isJoined
+                ? (isForumPost ? "Unfollow Post" : "Leave Thread")
+                : (isForumPost ? "Follow Post" : "Join Thread"),
+            systemImage: isJoined ? "rectangle.portrait.and.arrow.right" : "plus.circle",
+            isEnabled: policy.canChangeMembership,
+            isDestructive: isJoined,
+            content: Self.guarded(model, thread, \.canChangeMembership) {
+                model.setThreadMembership(thread, isJoined: !isJoined, surface: surface)
+            }
+        ) : nil
+        if let membership, !isJoined { sections.append([membership]) }
 
         var management: [ThreadMenuEntry] = []
         if policy.canRename {
@@ -116,33 +129,32 @@ struct ThreadActionsMenu {
                 systemImage: thread.isLocked ? "lock.open.fill" : "lock.fill",
                 content: Self.guarded(model, thread, \.canLock) { model.updateThread(thread, mutation: .locked(!thread.isLocked)) }
             ))
-            if isForumPost {
-                management.append(ThreadMenuEntry(
-                    id: "pin", title: thread.isPinned ? "Unpin Post" : "Pin Post",
-                    systemImage: thread.isPinned ? "pin.slash.fill" : "pin.fill",
-                    content: Self.guarded(model, thread, \.canManage) {
-                        model.updateThread(thread, mutation: .pinned(!thread.isPinned))
-                    }
-                ))
-            }
         }
         if !management.isEmpty { sections.append(management) }
 
+        if policy.canChangeNotifications {
+            sections.append(Self.notificationEntries(model: model, thread: thread, noun: noun))
+        }
+
         let guildID = thread.guildID ?? thread.parentID.flatMap { model.messagePresentationChannelsByID[$0] }?.guildID
         sections.append([
+            ThreadMenuEntry(id: "copy-id", title: "Copy \(noun) ID", systemImage: "number.square.fill", content: Self.guarded(model, thread, \.canRead) {
+                ChannelContextMenuValue.copy(thread.id.description)
+            }),
             ThreadMenuEntry(id: "copy-link", title: "Copy Link", systemImage: "link", content: Self.guarded(model, thread, \.canRead) {
                 ChannelContextMenuValue.copy(ChannelContextMenuValue.link(guildID: guildID, channelID: thread.id))
             }),
-            ThreadMenuEntry(id: "copy-id", title: "Copy \(noun) ID", systemImage: "number", content: Self.guarded(model, thread, \.canRead) {
-                ChannelContextMenuValue.copy(thread.id.description)
-            }),
         ])
+
+        var destructive: [ThreadMenuEntry] = []
+        if let membership, isJoined { destructive.append(membership) }
         if policy.canDelete {
-            sections.append([ThreadMenuEntry(
+            destructive.append(ThreadMenuEntry(
                 id: "delete", title: "Delete \(noun)…", systemImage: "trash", isDestructive: true,
                 content: Self.guarded(model, thread, \.canDelete) { model.requestThreadDeletion(thread) }
-            )])
+            ))
         }
+        if !destructive.isEmpty { sections.append(destructive) }
         self.sections = sections
     }
 
@@ -186,7 +198,11 @@ struct ThreadActionsMenu {
             isEnabled: !isPending,
             content: .submenu(levels.map { level in
                 ThreadMenuEntry(
-                    id: "notifications-\(level.rawValue)", title: level.menuTitle,
+                    id: "notifications-\(level.rawValue)",
+                    // Named for its source with the inherited level beneath,
+                    // as the channel menu presents its default.
+                    title: level == .inherit ? "Use Channel Default" : level.menuTitle,
+                    subtitle: level == .inherit ? inherited.menuTitle : nil,
                     isCheckable: true, isChecked: configured == level,
                     content: Self.guarded(model, thread, \.canChangeNotifications) {
                         model.setThreadNotificationLevel(thread, level: level)
@@ -251,63 +267,5 @@ final class ThreadActionsMenuRenderer: NSObject {
     @objc private func invoke(_ sender: NSMenuItem) {
         guard actions.indices.contains(sender.tag) else { return }
         actions[sender.tag]()
-    }
-}
-
-/// Renders a ThreadActionsMenu inside a SwiftUI `Menu`, such as the side
-/// chat's overflow menu. Surface-specific slots are omitted.
-struct ThreadActionsMenuContent: View {
-    let actionsMenu: ThreadActionsMenu
-
-    var body: some View {
-        ForEach(Array(actionsMenu.sections.enumerated()), id: \.offset) { index, section in
-            if index > 0 { Divider() }
-            ForEach(section) { entry in
-                ThreadMenuEntryView(entry: entry)
-            }
-        }
-    }
-}
-
-private struct ThreadMenuEntryView: View {
-    let entry: ThreadMenuEntry
-
-    var body: some View {
-        switch entry.content {
-        case .action(let action):
-            if entry.isCheckable {
-                Toggle(isOn: Binding(get: { entry.isChecked }, set: { _ in action() })) {
-                    Text(entry.title)
-                }
-                .disabled(!entry.isEnabled)
-            } else {
-                Button(role: entry.isDestructive ? .destructive : nil, action: action) {
-                    label
-                }
-                .disabled(!entry.isEnabled)
-            }
-        case .submenu(let children):
-            Menu {
-                ForEach(children) { ThreadMenuEntryView(entry: $0) }
-            } label: {
-                label
-            }
-            .disabled(!entry.isEnabled)
-        case .slot:
-            EmptyView()
-        }
-    }
-
-    @ViewBuilder private var label: some View {
-        if let systemImage = entry.systemImage {
-            Label {
-                Text(entry.title)
-                if let subtitle = entry.subtitle { Text(subtitle) }
-            } icon: {
-                Image(systemName: systemImage)
-            }
-        } else {
-            Text(entry.title)
-        }
     }
 }
