@@ -53,15 +53,34 @@ public extension MockChatProvider {
     private func hydratingPreviewsLater(_ page: ForumPostPage, in channelID: ChannelID) -> ForumPostPage {
         var stripped = page
         for index in stripped.posts.indices {
+            // Like a live catalogue entry, the stripped post keeps its
+            // activity order through its last message ID.
+            if let latest = stripped.posts[index].mostRecentMessage {
+                stripped.posts[index].thread.lastMessageID = Self.snowflake(at: latest.timestamp)
+            }
             stripped.posts[index].firstMessage = nil
             stripped.posts[index].mostRecentMessage = nil
         }
-        let hydrated = page.posts
+        let postIDs = Set(page.posts.map(\.id))
         Task {
-            try? await Task.sleep(for: .milliseconds(1_200))
-            continuation?.yield(.forumPostPreviewsChanged(channelID: channelID, posts: hydrated))
+            do {
+                try await Task.sleep(for: .milliseconds(1_200))
+            } catch {
+                return
+            }
+            // Republish current records, so a post edited or deleted during
+            // the delay is not restored.
+            let current = (forumPostsByChannel[channelID] ?? []).filter { postIDs.contains($0.id) }
+            guard !current.isEmpty else { return }
+            continuation?.yield(.forumPostPreviewsChanged(channelID: channelID, posts: current))
         }
         return stripped
+    }
+
+    private static func snowflake(at date: Date) -> MessageID {
+        let discordEpochMilliseconds: Double = 1_420_070_400_000
+        let milliseconds = max(0, date.timeIntervalSince1970 * 1_000 - discordEpochMilliseconds)
+        return MessageID(rawValue: UInt64(milliseconds) << 22)
     }
 
     func forumQueries(in channelID: ChannelID) -> [ForumPostQuery] {
