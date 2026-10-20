@@ -25,6 +25,9 @@ extension ForumBoardView {
         guard let layoutState else { return nil }
         let probe = CGRect(x: point.x, y: point.y, width: 1, height: 1)
         guard let entry = layoutState.entries(intersecting: probe).first(where: { $0.frame.contains(point) }) else { return nil }
+        // A card waiting for its bitmap is not on screen yet; the card it
+        // replaces may still show there, so the pointer reaches neither.
+        guard cards[entry.item.id]?.layer.isHidden != true else { return nil }
         return Hit(entry: entry, local: CGPoint(x: point.x - entry.frame.minX, y: point.y - entry.frame.minY))
     }
 
