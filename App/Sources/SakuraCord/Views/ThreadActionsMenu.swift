@@ -70,7 +70,8 @@ struct ThreadActionsMenu {
         if surface == .sidePane {
             sections.append([ThreadMenuEntry(
                 id: "full-view", title: "Open in Full View", systemImage: "arrow.up.left.and.arrow.down.right",
-                content: Self.guarded(model, thread, \.canRead) { model.openSidebarThread(thread) }
+                // Widening only changes the layout; opening rechecks access.
+                content: .action { model.openSidebarThread(thread) }
             )])
         }
         if surface == .channelList || surface == .forumCard {
@@ -197,7 +198,11 @@ struct ThreadActionsMenu {
             isEnabled: !isPending,
             content: .submenu(levels.map { level in
                 ThreadMenuEntry(
-                    id: "notifications-\(level.rawValue)", title: level.menuTitle,
+                    id: "notifications-\(level.rawValue)",
+                    // Named for its source with the inherited level beneath,
+                    // as the channel menu presents its default.
+                    title: level == .inherit ? "Use Channel Default" : level.menuTitle,
+                    subtitle: level == .inherit ? inherited.menuTitle : nil,
                     isCheckable: true, isChecked: configured == level,
                     content: Self.guarded(model, thread, \.canChangeNotifications) {
                         model.setThreadNotificationLevel(thread, level: level)
