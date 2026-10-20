@@ -248,6 +248,8 @@ final class WorkspaceTitlebarView: NSView {
     /// Places each group on its column, as the column is now.
     func placeGroups() {
         guard window != nil else { return }
+        // In the frame that moves the groups, as the columns do.
+        defer { layoutSubtreeIfNeeded() }
         let geometry = WorkspaceColumnsGeometry.shared
         // A side chat's items leave with its column, once it has had one.
         let columnIDs = Set(geometry.columns.map(\.id))

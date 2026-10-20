@@ -288,6 +288,8 @@ extension NativeMessageTimelineCoordinator {
                 recentLayoutCacheHits += 1
                 return cached.layout
             }
+            let start = ProcessInfo.processInfo.systemUptime
+            defer { lifetimeLayoutDuration += ProcessInfo.processInfo.systemUptime - start }
             return NativeTimelineRowLayout.make(
                 item: item,
                 width: width,

@@ -470,6 +470,11 @@ final class WorkspaceColumnsView: NSView {
             conversationFrame.offsetBy(dx: -conversationFrame.width * Self.recedeDistance * recede, dy: 0)
         )
         conversation?.view.alphaValue = 1 - recede
+        // Lay the columns out now, in the frame that moves them: left to the
+        // window, a resized hosting view lays out in a later pass and shows
+        // its new layout a frame late.
+        conversation?.view.layoutSubtreeIfNeeded()
+        for island in islands { island.view.layoutSubtreeIfNeeded() }
         reportPaneFrame()
         publishGeometry(at: time)
     }

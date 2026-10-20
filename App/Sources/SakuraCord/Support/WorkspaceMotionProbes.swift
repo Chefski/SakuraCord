@@ -20,6 +20,16 @@ final class WorkspaceMotionProbes {
         let rows: Int
         /// How many times the timeline has drawn so far.
         let draws: Int
+        /// How long the timeline has spent drawing, and laying out rows, so far.
+        let drawMS: Double
+        let layoutMS: Double
+    }
+
+    struct TimelineCounts {
+        var rows: Int
+        var draws: Int
+        var drawSeconds: Double
+        var layoutSeconds: Double
     }
 
     private final class WeakView {
@@ -29,7 +39,7 @@ final class WorkspaceMotionProbes {
 
     private struct Timeline {
         weak var scrollView: NSScrollView?
-        let counts: () -> (rows: Int, draws: Int)
+        let counts: () -> TimelineCounts
     }
 
     private var probes: [String: [WeakView]] = [:]
@@ -46,7 +56,7 @@ final class WorkspaceMotionProbes {
         probes[name]?.removeAll { $0.view == nil || $0.view === view }
     }
 
-    func registerTimeline(_ scrollView: NSScrollView, counts: @escaping () -> (rows: Int, draws: Int)) {
+    func registerTimeline(_ scrollView: NSScrollView, counts: @escaping () -> TimelineCounts) {
         timelines.removeAll { $0.scrollView == nil || $0.scrollView === scrollView }
         timelines.append(Timeline(scrollView: scrollView, counts: counts))
     }
@@ -82,7 +92,9 @@ final class WorkspaceMotionProbes {
                 offsetY: clip.minY,
                 distanceFromBottom: distanceFromBottom,
                 rows: counts.rows,
-                draws: counts.draws
+                draws: counts.draws,
+                drawMS: (counts.drawSeconds * 100_000).rounded() / 100,
+                layoutMS: (counts.layoutSeconds * 100_000).rounded() / 100
             )
         }
     }
