@@ -7,7 +7,11 @@
     {
       "path": "docs/TESTING.md",
       "description": "When to commit tests, and test design rules",
-      "scope": ["**/Tests/**"]
+      "scope": [
+        "**/Tests/**",
+        "**/test_*.py",
+        "**/*.test.mjs"
+      ]
     }
   ]
 }
