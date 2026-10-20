@@ -67,7 +67,10 @@ enum ForumCardPainter {
             regions.statusRowFrame = CGRect(x: padding, y: cursorY, width: textMaxX - padding, height: metrics.statusRowHeight)
             cursorY += metrics.statusRowHeight + metrics.statusRowSpacing
         }
-        let lines = presentation == nil ? 1 : titleLines
+        // The card reserves title lines for the narrowest case (thumbnail and
+        // NEW badge). The excerpt follows the lines actually drawn; any spare
+        // reservation sits below the excerpt, above the fixed footer.
+        let lines = presentation.map { drawnTitleLines($0, width: textMaxX - padding, reserved: titleLines, metrics: metrics) } ?? 1
         regions.titleFrame = CGRect(
             x: padding, y: cursorY, width: textMaxX - padding,
             height: CGFloat(lines) * metrics.titleLineHeight
@@ -78,8 +81,12 @@ enum ForumCardPainter {
             height: CGFloat(metrics.excerptLines) * metrics.excerptLineHeight
         )
         regions.excerptFrame = excerptFrame
-        cursorY = excerptFrame.maxY + metrics.footerSpacing
-        regions.footerFrame = CGRect(x: padding, y: cursorY, width: size.width - padding * 2, height: metrics.footerHeight)
+        regions.footerFrame = CGRect(
+            x: padding,
+            y: size.height - padding - metrics.footerHeight,
+            width: size.width - padding * 2,
+            height: metrics.footerHeight
+        )
         if hasThumbnail {
             regions.thumbnailFrame = CGRect(
                 x: size.width - padding - metrics.thumbnailSize,
@@ -97,6 +104,22 @@ enum ForumCardPainter {
             regions.skeletonFrames = excerptBars(in: excerptFrame, metrics: metrics)
         }
         return regions
+    }
+
+    private static func drawnTitleLines(
+        _ presentation: ForumCardPresentation,
+        width: CGFloat,
+        reserved: Int,
+        metrics: ForumBoardMetrics
+    ) -> Int {
+        let badgeReserve = presentation.isNew ? newBadgeSize().width + InterfaceScale.metric(8) : 0
+        let lines = ForumTitleLineCounter.count(
+            presentation.title,
+            width: max(1, width - badgeReserve),
+            font: metrics.titleFont,
+            maximumLines: reserved
+        )
+        return min(max(1, reserved), lines)
     }
 
     private static func galleryRegions(
@@ -246,7 +269,8 @@ enum ForumCardPainter {
             if let status = regions.statusRowFrame {
                 drawStatusRow(presentation, in: status)
             }
-            drawTitle(presentation, in: regions.titleFrame, maximumLines: titleLines, metrics: metrics)
+            let drawnLines = max(1, Int((regions.titleFrame.height / metrics.titleLineHeight).rounded()))
+            drawTitle(presentation, in: regions.titleFrame, maximumLines: min(titleLines, drawnLines), metrics: metrics)
             if let excerptFrame = regions.excerptFrame {
                 drawExcerpt(presentation, in: excerptFrame, renderer: excerpt, metrics: metrics)
             }
