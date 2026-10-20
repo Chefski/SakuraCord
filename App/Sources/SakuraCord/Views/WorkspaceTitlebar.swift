@@ -110,22 +110,19 @@ struct WorkspaceTitlebar: NSViewRepresentable {
 final class WorkspaceTitlebarView: NSView {
     private final class Island {
         let host: NSHostingController<AnyView>
-        /// Measured when its content is set.
-        var size = CGSize.zero
+        /// The content's ideal size, which its layout reports.
+        let measurement = IslandMeasurement()
+        var size: CGSize { measurement.size }
 
         init(_ content: AnyView) {
-            host = NSHostingController(rootView: AnyView(IdealSizeLayout { content }))
+            host = NSHostingController(rootView: AnyView(EmptyView()))
             host.sizingOptions = []
             host.view.translatesAutoresizingMaskIntoConstraints = true
+            setContent(content)
         }
 
-        /// - Parameter measures: Whether to measure the content again. A
-        ///   measurement lays it out at once, which motions skip: their items
-        ///   keep their content.
-        func setContent(_ content: AnyView, measures: Bool) {
-            host.rootView = AnyView(IdealSizeLayout { content })
-            guard measures || size == .zero else { return }
-            size = host.sizeThatFits(in: CGSize(width: IdealSizeLayout.measuringWidth, height: 52))
+        func setContent(_ content: AnyView) {
+            host.rootView = AnyView(IdealSizeLayout(measurement: measurement) { content })
         }
     }
 
@@ -173,7 +170,6 @@ final class WorkspaceTitlebarView: NSView {
         // A side chat's items stay while its column is still sliding away,
         // as they were: updates within the change that closes it can come
         // before the column is listed as leaving.
-        let measures = !WorkspaceLayoutMotion.isMoving
         let ids = Set(groups.map(\.id))
         let leaving = self.order.filter { id in
             !ids.contains(id) && id != WorkspaceTitlebar.conversationID
@@ -183,22 +179,22 @@ final class WorkspaceTitlebarView: NSView {
         for group in groups {
             let views = self.groups[group.id] ?? {
                 let views = GroupViews(group)
+                for island in [views.title, views.actions] { observe(island) }
                 addSubview(views.clip)
                 self.groups[group.id] = views
                 return views
             }()
             let probe = group.id == WorkspaceTitlebar.conversationID ? "tb.conversation" : "tb.side"
             views.title.setContent(
-                AnyView(group.title.workspaceMotionProbe("\(probe).title").environment(\.self, environment)),
-                measures: measures
+                AnyView(group.title.workspaceMotionProbe("\(probe).title").environment(\.self, environment))
             )
             views.actions.setContent(
-                AnyView(group.actions.workspaceMotionProbe("\(probe).actions").environment(\.self, environment)),
-                measures: measures
+                AnyView(group.actions.workspaceMotionProbe("\(probe).actions").environment(\.self, environment))
             )
             if let fullWidthActions = group.fullWidthActions {
                 let island = views.fullWidthActions ?? {
                     let island = Island(fullWidthActions)
+                    observe(island)
                     views.clip.addSubview(island.host.view)
                     views.fullWidthActions = island
                     return island
@@ -206,8 +202,7 @@ final class WorkspaceTitlebarView: NSView {
                 island.setContent(
                     AnyView(
                         fullWidthActions.workspaceMotionProbe("tb.side.fullActions").environment(\.self, environment)
-                    ),
-                    measures: measures
+                    )
                 )
             } else if let island = views.fullWidthActions {
                 island.host.view.removeFromSuperview()
@@ -226,6 +221,11 @@ final class WorkspaceTitlebarView: NSView {
     override func layout() {
         super.layout()
         placeGroups()
+    }
+
+    /// Places the groups again once an island has measured its content.
+    private func observe(_ island: Island) {
+        island.measurement.changed = { [weak self] in self?.placeGroups() }
     }
 
     private func removeGroups(where shouldRemove: (String) -> Bool) {
@@ -288,10 +288,11 @@ final class WorkspaceTitlebarView: NSView {
             // before the search field; a pane's own actions stay at its edge.
             let searchInset = endsAtSearch ? max(0, maxX - searchLimit) : 0
             if id == WorkspaceTitlebar.conversationID { maxX -= searchInset }
-            views.clip.frame = CGRect(x: minX, y: 0, width: max(0, visibleMaxX - minX), height: bounds.height)
+            let clipX = minX.rounded(.down)
+            views.clip.frame = CGRect(x: clipX, y: 0, width: max(0, visibleMaxX - clipX), height: bounds.height)
             place(
                 views,
-                width: maxX - minX,
+                width: maxX - clipX,
                 widening: widening,
                 fullWidthInset: id == WorkspaceTitlebar.conversationID ? 0 : searchInset,
                 fills: id != WorkspaceTitlebar.conversationID
@@ -375,12 +376,15 @@ final class WorkspaceTitlebarView: NSView {
         let height = bounds.height
         let actionsWidth = views.actions.size.width * (1 - widening)
             + ((views.fullWidthActions?.size.width ?? 0) + fullWidthInset) * widening
+        let unmeasured = CGSize(width: 1, height: height)
         for (island, alpha, trailing) in [
             (views.actions, 1 - widening, 0),
             (views.fullWidthActions, widening, fullWidthInset),
         ] {
             guard let island else { continue }
-            let size = island.size
+            // Whole points wide, so its edges rest on whole points too.
+            let size = island.size == .zero
+                ? unmeasured : CGSize(width: island.size.width.rounded(.up), height: island.size.height)
             setFrame(of: island.host.view, CGRect(
                 x: width - trailing - inset - size.width,
                 y: ((height - size.height) / 2).rounded(),
@@ -393,17 +397,22 @@ final class WorkspaceTitlebarView: NSView {
         // A side chat's title fills the pane up to its actions; at full width
         // it takes only the width it needs, like the conversation's.
         let available = max(0, width - actionsWidth - inset * 3)
-        let natural = min(views.title.size.width, available)
+        let titleSize = views.title.size == .zero ? unmeasured : views.title.size
+        let natural = min(titleSize.width, available)
         let titleWidth = fills ? available * (1 - widening) + natural * widening : natural
         setFrame(of: views.title.host.view, CGRect(
             x: inset,
-            y: ((height - views.title.size.height) / 2).rounded(),
+            y: ((height - titleSize.height) / 2).rounded(),
             width: titleWidth,
-            height: views.title.size.height
+            height: titleSize.height
         ))
     }
 
+    /// On whole points, so items rest on the same pixels whatever their
+    /// column's edge, and never land between pixels as they move.
     private func setFrame(of view: NSView, _ frame: CGRect) {
+        var frame = frame
+        frame.origin.x = frame.origin.x.rounded()
         if view.frame != frame { view.frame = frame }
     }
 
@@ -435,20 +444,31 @@ private final class TitlebarClipView: NSView {
     override var isFlipped: Bool { true }
 }
 
-/// Sizes to its content's ideal size, and lays the content out in whatever
-/// frame it is given, so a title that fills its frame still measures only
-/// as wide as its text.
+/// An island's ideal size, which its layout reports as it lays out, so it is
+/// never laid out at a measuring size in view.
+nonisolated private final class IslandMeasurement: @unchecked Sendable {
+    var size = CGSize.zero
+    /// Called on the main thread after the size changes.
+    var changed: (@MainActor () -> Void)?
+}
+
+/// Lays its content out in whatever frame it is given and reports the
+/// content's ideal size, so a title that fills its frame still measures
+/// only as wide as its text.
 nonisolated private struct IdealSizeLayout: Layout {
-    /// Proposals this large measure; any other is the frame it is placed in.
-    static let measuringWidth: CGFloat = 1_000_000
+    let measurement: IslandMeasurement
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache _: inout ()) -> CGSize {
-        let ideal = subviews.first?.sizeThatFits(.unspecified) ?? .zero
-        guard let width = proposal.width, width < Self.measuringWidth else { return ideal }
-        return CGSize(width: width, height: proposal.height ?? ideal.height)
+        proposal.replacingUnspecifiedDimensions(by: subviews.first?.sizeThatFits(.unspecified) ?? .zero)
     }
 
     func placeSubviews(in bounds: CGRect, proposal _: ProposedViewSize, subviews: Subviews, cache _: inout ()) {
-        subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
+        guard let content = subviews.first else { return }
+        content.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
+        let ideal = content.sizeThatFits(.unspecified)
+        guard ideal != measurement.size else { return }
+        measurement.size = ideal
+        let measurement = measurement
+        DispatchQueue.main.async { MainActor.assumeIsolated { measurement.changed?() } }
     }
 }

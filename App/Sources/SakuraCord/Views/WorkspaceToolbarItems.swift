@@ -118,7 +118,8 @@ struct SideConversationToolbarActions: View {
 
     var body: some View {
         let capabilities = conversation.capabilities
-        HStack(spacing: ChatChromeMetrics.toolbarItemEdgeInset) {
+        // One group, as the toolbar draws adjacent items: on one capsule.
+        HStack(spacing: 0) {
             if capabilities.canAddToChannelList, let channel = model.customizationPreviewChannel,
                !model.isChannelSelected(channel), let guildID = channel.guildID
             {
@@ -141,7 +142,8 @@ struct SideConversationToolbarActions: View {
             .help(capabilities.closeHelp)
             .keyboardShortcut(model.guildWorkspacePage == .guide ? .cancelAction : nil)
         }
-        .titlebarButtons()
+        .titlebarButtons(grouped: true)
+        .glassEffect(.regular.interactive(), in: Capsule())
     }
 }
 
@@ -165,16 +167,19 @@ struct SideConversationTitlebarTitle: View {
 }
 
 extension View {
-    /// Buttons as the window toolbar draws them: icons on their own glass.
-    func titlebarButtons() -> some View {
+    /// Buttons as the window toolbar draws them: icons on their own glass,
+    /// or on their group's.
+    func titlebarButtons(grouped: Bool = false) -> some View {
         labelStyle(.iconOnly)
-            .buttonStyle(TitlebarGlassButtonStyle())
+            .buttonStyle(TitlebarGlassButtonStyle(hasOwnGlass: !grouped))
             .toggleStyle(.button)
     }
 }
 
 /// The window toolbar's icon button: a glass circle with the item's icon.
 struct TitlebarGlassButtonStyle: ButtonStyle {
+    var hasOwnGlass = true
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 15))
@@ -186,7 +191,7 @@ struct TitlebarGlassButtonStyle: ButtonStyle {
             .padding(.horizontal, 7)
             .frame(minWidth: 36, minHeight: 36)
             .contentShape(Capsule())
-            .glassEffect(.regular.interactive(), in: Capsule())
+            .glassEffect(hasOwnGlass ? .regular.interactive() : .identity, in: Capsule())
             .opacity(configuration.isPressed ? 0.75 : 1)
     }
 }
