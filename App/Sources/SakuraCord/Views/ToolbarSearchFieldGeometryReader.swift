@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 @MainActor
-private enum ToolbarSearchFieldLocator {
+enum ToolbarSearchFieldLocator {
     static func searchToolbarItem(in window: NSWindow) -> NSSearchToolbarItem? {
         window.toolbar?.items.first { $0 is NSSearchToolbarItem }
             as? NSSearchToolbarItem

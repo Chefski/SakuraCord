@@ -392,6 +392,28 @@ final class WorkspaceColumnsView: NSView {
         }
         setFrame(of: conversation?.view, CGRect(x: 0, y: 0, width: max(0, bounds.width - covered), height: bounds.height))
         reportPaneFrame()
+        publishGeometry(at: time)
+    }
+
+    /// Tells the toolbar where the columns are, so their items move with
+    /// them in the same frame.
+    private func publishGeometry(at time: CFTimeInterval) {
+        guard window != nil else { return }
+        let conversationFrame = conversation.map { convert($0.view.frame, to: nil) }
+        let widening = widening?.value(at: time) ?? 1
+        WorkspaceColumnsGeometry.shared.update(
+            conversation: conversationFrame.map { $0.minX ... $0.maxX },
+            columns: islands.map { island in
+                let frame = convert(island.view.frame, to: nil)
+                return WorkspaceColumnsGeometry.Column(
+                    id: island.column.id,
+                    minX: frame.minX,
+                    maxX: frame.maxX,
+                    isFullWidth: island.column.isFullWidth,
+                    widening: island.column.isFullWidth ? widening : 0
+                )
+            }
+        )
     }
 
     private func setFrame(of view: NSView?, _ frame: CGRect) {

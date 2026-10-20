@@ -188,6 +188,15 @@ extension AppModel {
     /// Shows or hides the member list beside the conversation.
     func toggleMemberInspector() {
         prepareInspectorProfileForPresentation()
+        // Beside a side chat, which the toolbar keeps the toggle for, the
+        // member list takes the side chat's place.
+        if workspacePresentation.paneSideConversation != nil {
+            WorkspaceLayoutMotion.perform(in: self) {
+                closeSideConversations()
+                showInspector = true
+            }
+            return
+        }
         WorkspaceLayoutMotion.perform(in: self) { showInspector.toggle() }
     }
 

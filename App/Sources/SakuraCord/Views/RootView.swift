@@ -315,6 +315,12 @@ private struct ChatRootView: View {
             .toolbar {
                 detailToolbar
             }
+            .background {
+                if usesWorkspaceTitlebar {
+                    WorkspaceTitlebar(groups: workspaceTitlebarGroups, searchReserve: workspaceTitlebarSearchReserve)
+                        .frame(width: 0, height: 0)
+                }
+            }
         }
         .toolbar {
             if model.onboardingEntryGuildID != nil {
@@ -609,6 +615,13 @@ private struct ChatRootView: View {
 
     @ToolbarContentBuilder
     private var conversationToolbar: some ToolbarContent {
+        if !usesWorkspaceTitlebar {
+            nativeConversationToolbar
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var nativeConversationToolbar: some ToolbarContent {
         ToolbarItem(id: "conversation-title", placement: .navigation) {
             if model.isSwitchingAccounts {
                 SkeletonShimmerTimeline {
@@ -643,6 +656,100 @@ private struct ChatRootView: View {
         }
     }
 
+    /// A conversation and the side chats beside it own their toolbar items
+    /// (`WorkspaceTitlebar`), which move with their columns.
+    private var usesWorkspaceTitlebar: Bool {
+        guard WorkspaceColumnsHost.isEnabled, !model.isSwitchingAccounts, model.onboardingEntryGuildID == nil,
+              model.guildWorkspacePage == nil, !model.isFriendsPresented
+        else { return false }
+        return switch model.workspacePresentation.primary {
+        case .channel, .fullWidthThread: true
+        case .guildPage, .friends: false
+        }
+    }
+
+    private var workspaceTitlebarSearchReserve: CGFloat {
+        guard model.showsWorkspaceMessageSearch || model.showsLocalToolbarSearch, toolbarSearchFieldMetrics.isValid else {
+            return 0
+        }
+        return toolbarSearchFieldMetrics.fieldWidth + toolbarSearchFieldMetrics.trailingInset
+    }
+
+    private var workspaceTitlebarGroups: [WorkspaceTitlebar.Group] {
+        let presentation = model.workspacePresentation
+        let motion = WorkspaceMotionPhase.shared
+        var groups: [WorkspaceTitlebar.Group] = []
+        // The conversation, until a widening side chat has covered it.
+        if presentation.primary != .fullWidthThread || motion.widening != nil, let title = channelToolbarPresentation {
+            groups.append(.init(
+                id: WorkspaceTitlebar.conversationID,
+                title: AnyView(
+                    ConversationToolbarTitle(presentation: title)
+                        .frame(minHeight: 36)
+                        .glassEffect(.regular, in: Capsule())
+                ),
+                actions: AnyView(conversationTitlebarActions)
+            ))
+        }
+        // As the workspace orders its columns: departing ones first.
+        let fullWidth = presentation.primary == .fullWidthThread ? model.sideConversations.thread : nil
+        let current = [fullWidth, presentation.paneSideConversation].compactMap(\.self)
+        let departing = motion.departing.compactMap { column -> SideConversation? in
+            guard case .sideConversation(let conversation) = column.content,
+                  !current.contains(where: { $0.motionIdentity == conversation.motionIdentity })
+            else { return nil }
+            return conversation
+        }
+        for conversation in departing + current {
+            var fullWidthActions: AnyView?
+            if case .thread(let thread, _) = conversation {
+                fullWidthActions = AnyView(fullWidthTitlebarActions(thread))
+            }
+            groups.append(.init(
+                id: WorkspaceTrailingColumn(.sideConversation(conversation)).id,
+                title: AnyView(
+                    SideConversationTitlebarTitle(label: model.sideConversationLabel(conversation))
+                        .workspaceMotionProbe("toolbarTitle")
+                ),
+                actions: AnyView(SideConversationToolbarActions(model: model, conversation: conversation)),
+                fullWidthActions: fullWidthActions
+            ))
+        }
+        return groups
+    }
+
+    /// The conversation's actions, which stay beside it whatever opens.
+    private var conversationTitlebarActions: some View {
+        HStack(spacing: ChatChromeMetrics.toolbarItemEdgeInset) {
+            InboxToolbarButton(model: model)
+            if model.selectedChannelSupportsPins, let channelID = model.selectedChannelID {
+                PinnedMessagesToolbarButton(model: model, channelID: channelID)
+            }
+            if model.canBrowseThreadsInSelectedChannel {
+                ThreadsToolbarButton(model: model)
+            }
+            if selectedVoiceChannel == nil {
+                MemberInspectorToolbarButton(model: model)
+            }
+        }
+        .titlebarButtons()
+    }
+
+    /// A full-width thread's actions, which replace its pane actions as it
+    /// widens.
+    private func fullWidthTitlebarActions(_ thread: MessageThreadSummary) -> some View {
+        HStack(spacing: ChatChromeMetrics.toolbarItemEdgeInset) {
+            if ForumPostFollowToolbarButton.isOffered(model: model, thread: thread) {
+                ForumPostFollowToolbarButton(model: model, thread: thread, surface: .forumPostHeader)
+            }
+            InboxToolbarButton(model: model)
+            PinnedMessagesToolbarButton(model: model, channelID: thread.id)
+            MemberInspectorToolbarButton(model: model)
+            ThreadActionsToolbarMenu(model: model, thread: thread, surface: .fullView)
+        }
+        .titlebarButtons()
+    }
+
     private var showsThreadsToolbarItem: Bool {
         model.guildWorkspacePage == nil && model.onboardingEntryGuildID == nil
             && !model.isThreadFullWidth && model.canBrowseThreadsInSelectedChannel
@@ -674,6 +781,18 @@ private struct ChatRootView: View {
 
     @ToolbarContentBuilder
     private var detailToolbar: some ToolbarContent {
+        if usesWorkspaceTitlebar {
+            ToolbarSpacer(.flexible)
+            if model.showsWorkspaceMessageSearch || model.showsLocalToolbarSearch {
+                ToolbarSpacer(.fixed)
+            }
+        } else {
+            nativeDetailToolbar
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var nativeDetailToolbar: some ToolbarContent {
         ToolbarSpacer(.flexible)
 
         if showsCustomizationModePicker {
@@ -1084,6 +1203,12 @@ private struct ChatRootView: View {
                          systemImage: page == .guide ? "signpost.right" : "slider.horizontal.3")
         }
         if model.isFriendsPresented { return .init(title: "Friends", systemImage: "person.2.fill") }
+        return channelToolbarPresentation
+    }
+
+    /// The selected channel's title, which the conversation's toolbar shows
+    /// even while a full-width side chat covers it.
+    private var channelToolbarPresentation: ConversationToolbarPresentation? {
         guard let channel = model.selectedChannel else { return nil }
         return .init(title: channel.name, systemImage: channelToolbarSymbol(channel),
                      subtitle: isDirectMessageSelected ? directMessageToolbarSubtitle(for: channel) : nil,
