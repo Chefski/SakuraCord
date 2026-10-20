@@ -240,7 +240,7 @@ final class WorkspaceColumnsView: NSView {
                 // A column marked leaving before the change stays so until
                 // it comes back in or the motion settles: updates within the
                 // change can run before the column is listed as departing.
-                let isLeaving = column.isDeparting || island.host.isLeaving && spec.isMoving
+                let isLeaving = column.isDeparting || island.host.isLeaving && WorkspaceLayoutMotion.isMoving
                 island.host.setContent(root, isLeaving: isLeaving)
                 if island.column.isDeparting != column.isDeparting
                     || island.column.isFullWidth != column.isFullWidth

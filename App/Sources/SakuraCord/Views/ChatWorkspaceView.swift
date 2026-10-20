@@ -127,6 +127,10 @@ struct ChatWorkspaceView: View {
                 isMoving: motion.isMoving,
                 supplementaryPaneFrameChanged: { supplementaryPaneFrame = $0 }
             )
+            // Spans the window's top edge, as the SwiftUI layout did, so the
+            // columns scroll under the toolbar; each column's hosting view
+            // insets its own content from the toolbar.
+            .ignoresSafeArea(.container, edges: .top)
             .preference(key: SupplementaryPaneFramePreferenceKey.self, value: supplementaryPaneFrame)
         } else {
             swiftUIColumns(presentation, columns: columns, fullWidthThread: fullWidthThread, primary: primary)
