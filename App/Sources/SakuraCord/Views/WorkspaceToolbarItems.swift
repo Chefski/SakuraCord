@@ -6,6 +6,9 @@ import SwiftUI
 
 struct InboxToolbarButton: View {
     let model: AppModel
+    /// Off for a copy of the button that is out of view, so the panel opens
+    /// from the visible one only.
+    var presentsPanel = true
 
     var body: some View {
         Button {
@@ -18,7 +21,7 @@ struct InboxToolbarButton: View {
         .help("Inbox")
         .background {
             StableAnchoredPopoverPresenter(
-                isPresented: model.inbox.isPresented,
+                isPresented: presentsPanel && model.inbox.isPresented,
                 configuration: .toolbarPanel,
                 onDismiss: model.dismissInbox,
                 onWillDismiss: model.dismissInbox
@@ -31,6 +34,7 @@ struct InboxToolbarButton: View {
 struct PinnedMessagesToolbarButton: View {
     let model: AppModel
     let channelID: ChannelID
+    var presentsPanel = true
 
     var body: some View {
         let isPresented = model.pinnedMessages.isPresented && model.pinnedMessages.channelID == channelID
@@ -48,7 +52,7 @@ struct PinnedMessagesToolbarButton: View {
         .help("Pinned Messages")
         .background {
             StableAnchoredPopoverPresenter(
-                isPresented: isPresented,
+                isPresented: presentsPanel && isPresented,
                 configuration: .toolbarPanel,
                 onDismiss: model.dismissPinnedMessages,
                 onWillDismiss: model.dismissPinnedMessages
@@ -62,6 +66,7 @@ struct PinnedMessagesToolbarButton: View {
 
 struct ThreadsToolbarButton: View {
     let model: AppModel
+    var presentsPanel = true
 
     var body: some View {
         Button(action: model.toggleThreadBrowser) {
@@ -74,7 +79,7 @@ struct ThreadsToolbarButton: View {
         .help("Threads")
         .background {
             StableAnchoredPopoverPresenter(
-                isPresented: model.threadBrowser.isPresented,
+                isPresented: presentsPanel && model.threadBrowser.isPresented,
                 configuration: .toolbarPanel,
                 onDismiss: model.dismissThreadBrowser,
                 onWillDismiss: model.dismissThreadBrowser

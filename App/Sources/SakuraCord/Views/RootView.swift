@@ -676,8 +676,11 @@ private struct ChatRootView: View {
         let presentation = model.workspacePresentation
         let motion = WorkspaceMotionPhase.shared
         var groups: [WorkspaceTitlebar.Group] = []
-        // The conversation, until a widening side chat has covered it.
-        if presentation.primary != .fullWidthThread || motion.widening != nil, let title = channelToolbarPresentation {
+        // The conversation, beneath a full-width side chat too, so its items
+        // are ready when the side chat leaves; covered, its panels open
+        // from the side chat's copies of its buttons.
+        let isCovered = presentation.primary == .fullWidthThread && motion.widening == nil
+        if let title = channelToolbarPresentation {
             groups.append(.init(
                 id: WorkspaceTitlebar.conversationID,
                 title: AnyView(
@@ -685,7 +688,7 @@ private struct ChatRootView: View {
                         .frame(minHeight: 36)
                         .glassEffect(.regular, in: Capsule())
                 ),
-                actions: AnyView(conversationTitlebarActions)
+                actions: AnyView(conversationTitlebarActions(presentsPanels: !isCovered))
             ))
         }
         // As the workspace orders its columns: departing ones first.
@@ -716,14 +719,14 @@ private struct ChatRootView: View {
     }
 
     /// The conversation's actions, which stay beside it whatever opens.
-    private var conversationTitlebarActions: some View {
+    private func conversationTitlebarActions(presentsPanels: Bool) -> some View {
         HStack(spacing: ChatChromeMetrics.toolbarItemEdgeInset) {
-            InboxToolbarButton(model: model)
+            InboxToolbarButton(model: model, presentsPanel: presentsPanels)
             if model.selectedChannelSupportsPins, let channelID = model.selectedChannelID {
-                PinnedMessagesToolbarButton(model: model, channelID: channelID)
+                PinnedMessagesToolbarButton(model: model, channelID: channelID, presentsPanel: presentsPanels)
             }
             if model.canBrowseThreadsInSelectedChannel {
-                ThreadsToolbarButton(model: model)
+                ThreadsToolbarButton(model: model, presentsPanel: presentsPanels)
             }
             if selectedVoiceChannel == nil {
                 MemberInspectorToolbarButton(model: model)

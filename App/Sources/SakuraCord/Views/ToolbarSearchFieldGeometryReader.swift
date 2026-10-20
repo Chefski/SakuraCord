@@ -550,6 +550,9 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
         }
 
         private func scheduleMeasurement() {
+            // The workspace's toolbar items move and narrow the field on
+            // every frame of a motion; it is measured again once it settles.
+            guard !(WorkspaceSearchFieldHost.isHosting && WorkspaceLayoutMotion.isMoving) else { return }
             retryTask?.cancel()
             retryTask = Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -589,6 +592,7 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
                         guard let self else { return }
                         isSearchFocused.wrappedValue = true
                         installMainMenuPatches()
+                        scheduleMeasurement()
                     },
                     didEndSearching: { [weak self] in
                         guard let self,
@@ -781,6 +785,14 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
 
         private func updateMetrics(_ metrics: ToolbarSearchFieldMetrics) {
             guard metrics != lastMetrics else { return }
+            // Moving with the workspace's toolbar items, the field's place
+            // matters only to the autocomplete, while it is editing; each
+            // change updates the whole window.
+            if WorkspaceSearchFieldHost.isHosting, lastMetrics.isValid, metrics.isValid,
+               searchField?.currentEditor() == nil
+            {
+                return
+            }
             lastMetrics = metrics
             changed(metrics)
         }

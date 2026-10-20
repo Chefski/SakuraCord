@@ -121,8 +121,12 @@ final class WorkspaceTitlebarView: NSView {
             host.view.translatesAutoresizingMaskIntoConstraints = true
         }
 
-        func setContent(_ content: AnyView) {
+        /// - Parameter measures: Whether to measure the content again. A
+        ///   measurement lays it out at once, which motions skip: their items
+        ///   keep their content.
+        func setContent(_ content: AnyView, measures: Bool) {
             host.rootView = AnyView(IdealSizeLayout { content })
+            guard measures || size == .zero else { return }
             size = host.sizeThatFits(in: CGSize(width: IdealSizeLayout.measuringWidth, height: 52))
         }
     }
@@ -173,6 +177,7 @@ final class WorkspaceTitlebarView: NSView {
         // A side chat's items stay while its column is still sliding away,
         // as they were: updates within the change that closes it can come
         // before the column is listed as leaving.
+        let measures = !WorkspaceLayoutMotion.isMoving
         let ids = Set(groups.map(\.id))
         let leaving = self.order.filter { id in
             !ids.contains(id) && id != WorkspaceTitlebar.conversationID
@@ -187,12 +192,14 @@ final class WorkspaceTitlebarView: NSView {
                 return views
             }()
             let probe = group.id == WorkspaceTitlebar.conversationID ? "tb.conversation" : "tb.side"
-            views.title.setContent(AnyView(
-                group.title.workspaceMotionProbe("\(probe).title").environment(\.self, environment)
-            ))
-            views.actions.setContent(AnyView(
-                group.actions.workspaceMotionProbe("\(probe).actions").environment(\.self, environment)
-            ))
+            views.title.setContent(
+                AnyView(group.title.workspaceMotionProbe("\(probe).title").environment(\.self, environment)),
+                measures: measures
+            )
+            views.actions.setContent(
+                AnyView(group.actions.workspaceMotionProbe("\(probe).actions").environment(\.self, environment)),
+                measures: measures
+            )
             if let fullWidthActions = group.fullWidthActions {
                 let island = views.fullWidthActions ?? {
                     let island = Island(fullWidthActions)
@@ -200,9 +207,12 @@ final class WorkspaceTitlebarView: NSView {
                     views.fullWidthActions = island
                     return island
                 }()
-                island.setContent(AnyView(
-                    fullWidthActions.workspaceMotionProbe("tb.side.fullActions").environment(\.self, environment)
-                ))
+                island.setContent(
+                    AnyView(
+                        fullWidthActions.workspaceMotionProbe("tb.side.fullActions").environment(\.self, environment)
+                    ),
+                    measures: measures
+                )
             } else if let island = views.fullWidthActions {
                 island.host.view.removeFromSuperview()
                 views.fullWidthActions = nil
