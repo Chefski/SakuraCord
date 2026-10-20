@@ -1002,7 +1002,7 @@ private struct ChatRootView: View {
     /// toolbar's overflow item does.
     @ToolbarContentBuilder
     private var fullWidthThreadActions: some ToolbarContent {
-        if model.isThreadFullWidth, let thread = model.openThread {
+        if !model.isSwitchingAccounts, model.isThreadFullWidth, let thread = model.openThread {
             ToolbarSpacer(.fixed)
             ToolbarItem(id: "full-width-thread-actions") {
                 ThreadActionsToolbarMenu(model: model, thread: thread, surface: .fullView)
