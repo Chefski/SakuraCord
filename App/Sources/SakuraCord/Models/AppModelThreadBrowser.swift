@@ -87,10 +87,12 @@ extension AppModel {
                 guard !Task.isCancelled, model.threadBrowser.generation == generation else { return }
                 var reconciled = page
                 reconciled.posts = model.threadBrowser.reconciling(page.posts, since: since)
-                // Page records deleted or reopened in flight no longer occupy
-                // Discord's archive, so later records moved back past them.
-                let stillArchived = Set(reconciled.posts.filter(\.thread.isArchived).map(\.id))
-                let departedCount = page.posts.count { $0.thread.isArchived && !stillArchived.contains($0.id) }
+                // Discord's raw page records that are no longer archived, such
+                // as threads deleted or reopened in flight (some already dropped
+                // by the provider), moved later records back past them.
+                // Counting too many only repeats a record, which append drops.
+                let rawCount = page.nextOffset.map { $0 - offset } ?? page.posts.count
+                let departedCount = max(0, rawCount - reconciled.posts.count(where: \.thread.isArchived))
                 let isCurrent = model.threadBrowser.listings[parentID, default: ThreadBrowserListing()]
                     .append(reconciled, requestedOffset: offset, departedCount: departedCount)
                 // Page records are as new as the provider's; a thread they show
