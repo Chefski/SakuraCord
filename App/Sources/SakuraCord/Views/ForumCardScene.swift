@@ -48,20 +48,23 @@ nonisolated struct ForumCardScene: @unchecked Sendable {
         case image(CGImage, destination: CGRect, clip: CGPath?)
         /// A bitmap already rasterized at the scene's scale, pixel-aligned.
         case bitmap(CGImage, frame: CGRect)
-        case saveClip(CGPath)
-        case restore
     }
 
     let size: CGSize
     let scale: CGFloat
     let operations: [Operation]
+
+    static func empty(size: CGSize, scale: CGFloat) -> ForumCardScene {
+        ForumCardScene(size: size, scale: scale, operations: [])
+    }
 }
 
 /// Rasterizes forum card scenes off the main thread.
 nonisolated enum ForumCardRasterizer {
     @concurrent
     static func rasterize(_ scene: ForumCardScene) async -> CGImage? {
-        image(for: scene)
+        guard !Task.isCancelled else { return nil }
+        return image(for: scene)
     }
 
     /// Draws `scene` into a new bitmap with a flipped, top-left origin.
@@ -119,12 +122,6 @@ nonisolated enum ForumCardRasterizer {
             context.saveGState()
             context.interpolationQuality = .none
             drawUpright(image, in: frame, context: context)
-            context.restoreGState()
-        case let .saveClip(path):
-            context.saveGState()
-            context.addPath(path)
-            context.clip()
-        case .restore:
             context.restoreGState()
         }
     }

@@ -46,14 +46,6 @@ final class ForumCardCanvas {
         return CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil)
     }
 
-    func clip(to rect: CGRect) {
-        operations.append(.saveClip(CGPath(rect: rect, transform: nil)))
-    }
-
-    func restore() {
-        operations.append(.restore)
-    }
-
     // MARK: Text
 
     func text(
@@ -262,11 +254,5 @@ final class ForumCardRasterCache {
         if images.count >= limit { images.removeAll(keepingCapacity: true) }
         images[id] = ImageEntry(image: image, cgImage: converted)
         return converted
-    }
-
-    func removeAll() {
-        prerendered.removeAll()
-        prerenderedOrder.removeAll()
-        images.removeAll()
     }
 }

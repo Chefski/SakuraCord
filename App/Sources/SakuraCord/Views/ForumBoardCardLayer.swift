@@ -29,6 +29,7 @@ final class ForumBoardCard {
     private var pendingScene: ForumCardScene?
     private var isRasterizing = false
     private var rasterizingGeneration = 0
+    private var rasterTask: Task<Void, Never>?
     private var fadesNextCommit: Bool?
 
     init() {
@@ -105,7 +106,7 @@ final class ForumBoardCard {
         isRasterizing = true
         let generation = renderGeneration
         rasterizingGeneration = generation
-        Task { [weak self] in
+        rasterTask = Task { [weak self] in
             let image = await ForumCardRasterizer.rasterize(scene)
             guard let self else { return }
             isRasterizing = false
@@ -142,6 +143,8 @@ final class ForumBoardCard {
     private static let contentsFadeKey = "contents-fade"
 
     private func discardContent() {
+        // A bitmap still queued for the old content need not be drawn.
+        rasterTask?.cancel()
         renderGeneration &+= 1
         pendingScene = nil
         fadesNextCommit = nil

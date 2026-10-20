@@ -73,10 +73,10 @@ struct ForumCardPresentation: Equatable {
         ForumTimestampPresentation.roundedRelativeText(for: isGallery ? createdAt : lastActivityAt, relativeTo: .now)
     }
 
-    /// Whether skeleton bars stand in for the field `mode` shows: the
+    /// Whether skeleton bars stand in for the field the layout shows: the
     /// excerpt in the list, the hero in the gallery.
-    func isAwaitingContent(in mode: ForumLayout) -> Bool {
-        mode == .gallery ? hero == .pending : excerpt == .pending
+    func isAwaitingContent(isGallery: Bool) -> Bool {
+        isGallery ? hero == .pending : excerpt == .pending
     }
 
     var accessibilityLabel: String {

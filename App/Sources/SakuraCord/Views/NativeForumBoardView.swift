@@ -281,9 +281,8 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
 
     override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
-        let scale = window?.backingScaleFactor ?? 2
         for card in cards.values {
-            card.render(scale: scale, fading: false, synchronously: true)
+            card.render(scale: backingScale, fading: false, synchronously: true)
         }
     }
 
@@ -561,7 +560,7 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
             let isOnScreen = !card.layer.isHidden && card.frame.intersects(visible)
             if fades, !isPlaceholder, isOnScreen {
                 animateExit(card)
-            } else if isOnScreen, group.covers(card.frame), !isCoveredByShownCard(card.frame) {
+            } else if isOnScreen, holds(card.frame, until: group) {
                 group.keepUntilRevealed(card)
             } else {
                 recycle(card, replacedBy: group)
@@ -626,7 +625,7 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         card.configure(kind: kind, cornerRadius: metrics.cardCornerRadius)
         card.frame = entry.frame
         card.sceneBuilder = { [weak self] size, scale in
-            self?.scene(id: id, size: size, scale: scale) ?? ForumCardScene(size: size, scale: scale, operations: [])
+            self?.scene(id: id, size: size, scale: scale) ?? .empty(size: size, scale: scale)
         }
         card.didCommit = { [weak self, weak card] in
             guard let self, let card else { return }

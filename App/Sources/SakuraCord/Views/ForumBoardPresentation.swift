@@ -26,13 +26,14 @@ extension ForumBoardView {
         let generation = observationGeneration
         var changed: [ChannelID] = []
         var hydratedPostIDs = Set<ChannelID>()
-        let mode: ForumLayout = isGallery ? .gallery : .list
         withObservationTracking {
             for id in cards.keys {
                 guard case let .post(postID) = id, let post = postsByID[postID] else { continue }
                 let presentation = model.forumCardPresentation(for: post, in: channel, tagsByID: tagsByID)
                 let presentationChanged = presentations[postID] != presentation
-                if presentations[postID]?.isAwaitingContent(in: mode) == true, !presentation.isAwaitingContent(in: mode) {
+                if presentations[postID]?.isAwaitingContent(isGallery: isGallery) == true,
+                   !presentation.isAwaitingContent(isGallery: isGallery)
+                {
                     hydratedPostIDs.insert(postID)
                 }
                 presentations[postID] = presentation
@@ -240,7 +241,7 @@ extension ForumBoardView {
 
     /// Records an item's drawing for the rasterizer.
     func scene(id: ForumBoardItem.Identifier, size: CGSize, scale: CGFloat) -> ForumCardScene {
-        var scene = ForumCardScene(size: size, scale: scale, operations: [])
+        var scene = ForumCardScene.empty(size: size, scale: scale)
         guard let entry = layoutState?.entry(for: id) else { return scene }
         let bounds = CGRect(origin: .zero, size: size)
         effectiveAppearance.performAsCurrentDrawingAppearance {

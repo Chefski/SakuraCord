@@ -24,6 +24,7 @@ final class ForumBoardRevealGroup {
     /// Replaced cards, recycled when the group reveals.
     fileprivate(set) var retiring: [ForumBoardCard] = []
     fileprivate var isFinished = false
+    fileprivate var timeout: Task<Void, Never>?
 
     func add(_ card: ForumBoardCard, entrance: Entrance) {
         members.append(Member(card: card, entrance: entrance))
@@ -53,8 +54,8 @@ extension ForumBoardView {
         for member in group.members {
             revealGroups[ObjectIdentifier(member.card)] = group
         }
-        Task { [weak self] in
-            try? await Task.sleep(for: Self.revealTimeout)
+        group.timeout = Task { [weak self] in
+            guard (try? await Task.sleep(for: Self.revealTimeout)) != nil else { return }
             self?.reveal(group)
         }
     }
@@ -72,12 +73,18 @@ extension ForumBoardView {
         previous.retiring.removeAll()
         recycle(card)
         for retiree in retirees {
-            if group.covers(retiree.frame), !isCoveredByShownCard(retiree.frame) {
+            if holds(retiree.frame, until: group) {
                 group.keepUntilRevealed(retiree)
             } else {
                 recycle(retiree)
             }
         }
+    }
+
+    /// Whether a replaced card at `frame` stays until `group` reveals: a
+    /// card the group adds will cover it, and no shown card already does.
+    func holds(_ frame: CGRect, until group: ForumBoardRevealGroup) -> Bool {
+        group.covers(frame) && !isCoveredByShownCard(frame)
     }
 
     /// Shows a card once its first bitmap is on screen, or its whole group
@@ -108,6 +115,7 @@ extension ForumBoardView {
     private func reveal(_ group: ForumBoardRevealGroup) {
         guard !group.isFinished else { return }
         group.isFinished = true
+        group.timeout?.cancel()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         for member in group.members {
