@@ -120,7 +120,6 @@ struct ChatWorkspaceView: View {
                         isSideConversation: isSideConversation,
                         isFullWidth: column.id == fullWidthThread?.id,
                         isDeparting: column.id != trailing?.id && column.id != fullWidthThread?.id,
-                        reveal: motion.reveal(of: column.id),
                         content: AnyView(columnContent(column))
                     )
                 },

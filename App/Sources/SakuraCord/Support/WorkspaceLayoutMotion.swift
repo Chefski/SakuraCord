@@ -21,6 +21,11 @@ enum WorkspaceLayoutMotion {
     /// Posted on the main thread as a motion begins and once it settles.
     static let didBegin = Notification.Name("SakuraCordWorkspaceMotionDidBegin")
     static let didSettle = Notification.Name("SakuraCordWorkspaceMotionDidSettle")
+    /// Posted on the main thread when columns start to move, with whether
+    /// they move animated under `animatesKey`. `WorkspaceColumnsHost` moves
+    /// the columns itself, without the view graph.
+    static let revealDidChange = Notification.Name("SakuraCordWorkspaceRevealDidChange")
+    static let animatesKey = "animates"
 
     /// When the running motion settles.
     private(set) static var settlesAt: ContinuousClock.Instant?
@@ -72,6 +77,7 @@ enum WorkspaceLayoutMotion {
         if departing != phase.departing { phase.departing = departing }
         if let arriving, phase.reveal[arriving.id] == nil {
             phase.reveal[arriving.id] = 0
+            NotificationCenter.default.post(name: revealDidChange, object: nil, userInfo: [animatesKey: false])
         }
         // Columns move from the frame that commits the change: an arriving
         // column from beyond the trailing edge, or from wherever it is if it
@@ -79,6 +85,7 @@ enum WorkspaceLayoutMotion {
         afterCommit(animation) {
             if let leaving { phase.reveal[leaving.id] = 0 }
             if let arriving { phase.reveal[arriving.id] = 1 }
+            NotificationCenter.default.post(name: revealDidChange, object: nil, userInfo: [animatesKey: true])
         }
     }
 
@@ -234,7 +241,12 @@ final class WorkspaceMotionPhase {
     var departing: [WorkspaceTrailingColumn] = []
     /// How far each moving column has come in, from 0 (beyond the trailing
     /// edge) to 1 (in place). Columns at rest are absent.
-    var reveal: [String: CGFloat] = [:]
+    var reveal: [String: CGFloat] = [:] {
+        didSet { unobservedReveal = reveal }
+    }
+    /// `reveal`, for `WorkspaceColumnsHost`: it moves the columns itself,
+    /// so reading it must not update the view graph.
+    @ObservationIgnored private(set) var unobservedReveal: [String: CGFloat] = [:]
     @ObservationIgnored fileprivate var settleTask: Task<Void, Never>?
 
     private init() {}

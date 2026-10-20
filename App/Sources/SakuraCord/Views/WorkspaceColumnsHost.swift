@@ -26,8 +26,6 @@ struct WorkspaceColumnsHost: NSViewRepresentable {
         let isFullWidth: Bool
         /// Leaving: its width is no longer measured.
         let isDeparting: Bool
-        /// Where the column is heading: 1 in place, 0 beyond the trailing edge.
-        let reveal: CGFloat
         let content: AnyView
     }
 
@@ -164,6 +162,34 @@ final class WorkspaceColumnsView: NSView {
 
     override var isFlipped: Bool { true }
 
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(revealDidChange(_:)),
+            name: WorkspaceLayoutMotion.revealDidChange,
+            object: nil
+        )
+    }
+
+    @available(*, unavailable)
+    required init?(coder _: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    /// Moves the columns toward their reveals. This bypasses the view graph:
+    /// updating it to start a motion cost several frames.
+    @objc private func revealDidChange(_ notification: Notification) {
+        let animates = notification.userInfo?[WorkspaceLayoutMotion.animatesKey] as? Bool ?? false
+        let reveal = WorkspaceMotionPhase.shared.unobservedReveal
+        let now = CACurrentMediaTime()
+        for index in islands.indices {
+            islands[index].reveal.move(to: reveal[islands[index].column.id] ?? 1, at: now, animated: animates)
+        }
+        layoutColumns(at: now)
+        if isAnimating(at: now) { startMotion() }
+    }
+
     func apply(_ spec: WorkspaceColumnsHost, environment: EnvironmentValues, animates: Bool) {
         let now = CACurrentMediaTime()
         supplementaryPaneFrameChanged = spec.supplementaryPaneFrameChanged
@@ -198,11 +224,11 @@ final class WorkspaceColumnsView: NSView {
                     needsMeasurement = true
                 }
                 island.column = column
-                island.reveal.move(to: column.reveal, at: now, animated: animates)
                 updated.append(island)
             } else {
                 let host = Self.makeHost(root)
-                updated.append(Island(host: host, column: column, reveal: SpringTrack(at: column.reveal)))
+                let reveal = WorkspaceMotionPhase.shared.unobservedReveal[column.id] ?? 1
+                updated.append(Island(host: host, column: column, reveal: SpringTrack(at: reveal)))
                 needsMeasurement = true
             }
         }
