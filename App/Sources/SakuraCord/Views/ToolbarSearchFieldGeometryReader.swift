@@ -330,7 +330,7 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
         context.coordinator.pasteCanonicalSyntax = pasteCanonicalSyntax
         context.coordinator.changed = changed
         if let window = view.window {
-            context.coordinator.applyToolbarItemVisibility(in: window)
+            context.coordinator.scheduleToolbarItemVisibility(in: window)
         }
         Task { @MainActor in
             context.coordinator.update(window: view.window, changed: changed)
@@ -354,6 +354,7 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
         var isSearchFocused: Binding<Bool>
         var isToolbarItemVisible: Bool
         var preferredFieldWidth: CGFloat
+        private var hasPendingVisibility = false
         var didUseBuiltInClear: @MainActor () -> Void
         var didEndEditing: @MainActor () -> Void
         var pasteCanonicalSyntax: @MainActor (String) -> MessageSearchTokenParser.Result
@@ -422,7 +423,22 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
             scheduleMeasurement()
         }
 
+        /// SwiftUI adds and removes the window toolbar's other items later
+        /// than this update, so search hides or shows when the toolbar next
+        /// changes its items, in the same layout pass, or on the next
+        /// run-loop turn if no item changes.
+        func scheduleToolbarItemVisibility(in window: NSWindow) {
+            hasPendingVisibility = true
+            DispatchQueue.main.async { [weak self, weak window] in
+                MainActor.assumeIsolated {
+                    guard let self, let window, self.hasPendingVisibility else { return }
+                    self.applyToolbarItemVisibility(in: window)
+                }
+            }
+        }
+
         func applyToolbarItemVisibility(in window: NSWindow) {
+            hasPendingVisibility = false
             _ = updateSearchToolbarItemVisibility(in: window)
         }
 
@@ -460,6 +476,17 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
             if let toolbar = window.toolbar {
                 observe(NSToolbar.willAddItemNotification, object: toolbar)
                 observe(NSToolbar.didRemoveItemNotification, object: toolbar)
+                for name in [NSToolbar.willAddItemNotification, NSToolbar.didRemoveItemNotification] {
+                    // Delivered synchronously, inside the toolbar's own change.
+                    observers.append(NotificationCenter.default.addObserver(
+                        forName: name, object: toolbar, queue: nil
+                    ) { [weak self, weak window] _ in
+                        MainActor.assumeIsolated {
+                            guard let self, let window, self.hasPendingVisibility else { return }
+                            self.applyToolbarItemVisibility(in: window)
+                        }
+                    })
+                }
             }
             observe(NSMenu.didBeginTrackingNotification, object: nil)
             observe(NSMenu.didEndTrackingNotification, object: nil)

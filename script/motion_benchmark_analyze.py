@@ -87,8 +87,6 @@ GROUP_METRICS: list[tuple[str, str, Callable[[float], float]]] = [
     ("max_title_drift_pt", "title drift pt", float),
     ("toolbar_changes_in_motion", "toolbar changes in motion", float),
     ("conversation_edge_jump_pt", "visible conversation edge jump pt", float),
-    ("crossfaded_edge_change_pt", "crossfaded conversation edge change pt", float),
-    ("uncrossfaded_reflows", "reflows without crossfade", float),
     ("timeline_redraw_frames", "frames with timeline redraws in motion", float),
     ("content_jumps", "content jumps", float),
     ("final_distance_from_bottom_pt", "final distance from bottom pt", abs),
@@ -106,7 +104,6 @@ class Frame:
     probes: dict[str, Rect]
     timelines: list[dict[str, Any]]
     toolbar: int | None
-    crossfades: int = 0
 
 
 @dataclass(frozen=True)
@@ -166,7 +163,6 @@ def parse_recording(data: dict[str, Any], path: str = "<memory>") -> Recording:
                 probes={k: parse_rect(v) for k, v in raw.get("probes", {}).items()},
                 timelines=list(raw.get("timelines", [])),
                 toolbar=raw.get("toolbar"),
-                crossfades=int(raw.get("crossfades", 0)),
             )
             for raw in data.get("frames", [])
         ),
@@ -667,13 +663,7 @@ def visibility_metrics(rec: Recording, loc: Location) -> dict[str, Any]:
     make too: the conversation's own edge, or the covering column's leading
     edge where a pane or the member list lies over it. Narrowing beneath an
     arrived pane or widening beneath a departing one is hidden and scores 0;
-    narrowing while the arriving pane is still offscreen does not, unless
-    the app crossfaded the workspace in that frame: such a change is a blend
-    on the render server, reported as `crossfaded_edge_change_pt`.
-
-    `uncrossfaded_reflows` counts frames where a timeline with rows changed
-    width without the app adding a reflow crossfade in that frame or the
-    one before, so its rows would visibly jump to the new layout.
+    narrowing while the arriving pane is still offscreen does not.
     """
     frames = rec.frames[loc.start - 1 if loc.start > 0 else 0 : loc.end]
 
@@ -697,8 +687,6 @@ def visibility_metrics(rec: Recording, loc: Location) -> dict[str, Any]:
         return edge if cover is None else min(edge, cover)
 
     jump = 0.0
-    crossfaded = 0.0
-    reflows = 0
     for previous, frame in zip(frames, frames[1:]):
         before, after = visible_edge(previous), visible_edge(frame)
         if before is not None and after is not None:
@@ -707,28 +695,9 @@ def visibility_metrics(rec: Recording, loc: Location) -> dict[str, Any]:
                 cover_before is not None and cover_after is not None
                 and before == cover_before and after == cover_after
             )
-            if covered:
-                pass
-            elif frame.crossfades > previous.crossfades:
-                crossfaded = max(crossfaded, abs(after - before))
-            else:
+            if not covered:
                 jump = max(jump, abs(after - before))
-        if len(previous.timelines) == len(frame.timelines):
-            for old, new in zip(
-                sorted(previous.timelines, key=lambda t: t["frame"][0]),
-                sorted(frame.timelines, key=lambda t: t["frame"][0]),
-            ):
-                if (
-                    new.get("rows", 0) > 0 and old.get("rows", 0) > 0
-                    and abs(new["frame"][2] - old["frame"][2]) >= 1
-                    and frame.crossfades == previous.crossfades
-                ):
-                    reflows += 1
-    return {
-        "conversation_edge_jump_pt": round(jump, 3),
-        "crossfaded_edge_change_pt": round(crossfaded, 3),
-        "uncrossfaded_reflows": reflows,
-    }
+    return {"conversation_edge_jump_pt": round(jump, 3)}
 
 
 def redraw_metrics(rec: Recording, loc: Location) -> dict[str, Any]:

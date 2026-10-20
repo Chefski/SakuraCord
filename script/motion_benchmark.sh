@@ -20,6 +20,10 @@ set -euo pipefail
 #   --runs N               Repeat the launch N times. Default: 1.
 #   --compare FILE         Print a before/after table against an earlier
 #                          analysis.json.
+#   --trace-schema NAME    Also export this table of the trace, for example
+#                          swiftui-updates with --trace SwiftUI. Repeatable.
+#   --app-arg ARG          Pass ARG to the app, for example
+#                          --motion-forum-cycles=0. Repeatable.
 #   --quiet-machine        Hold this checkout's operation lock while measuring,
 #                          and SAKURACORD_BENCHMARK_MACHINE_LOCK (a lock
 #                          directory that machine-wide builds respect) if set.
@@ -47,6 +51,8 @@ thread_messages=150
 runs=1
 compare=""
 quiet_machine=0
+app_arguments=()
+trace_schemas=()
 trace=""
 trace_seconds=18
 analyzer_arguments=()
@@ -62,6 +68,8 @@ while [[ $# -gt 0 ]]; do
         --runs) runs="$2"; shift ;;
         --compare) compare="$2"; shift ;;
         --quiet-machine) quiet_machine=1 ;;
+        --app-arg) app_arguments+=("$2"); shift ;;
+        --trace-schema) trace_schemas+=("$2"); shift ;;
         --trace) trace="$2"; shift ;;
         --trace-seconds) trace_seconds="$2"; shift ;;
         --) shift; analyzer_arguments=("$@"); break ;;
@@ -147,7 +155,7 @@ export_trace_tables() {
     local trace_file="$1" schema
     xcrun xctrace export --input "$trace_file" --toc \
         --output "$output/toc.xml" >/dev/null 2>&1 || true
-    for schema in os-signpost time-profile hitches; do
+    for schema in os-signpost time-profile hitches ${trace_schemas[@]+"${trace_schemas[@]}"}; do
         xcrun xctrace export --input "$trace_file" \
             --xpath "/trace-toc/run[@number=\"1\"]/data/table[@schema=\"$schema\"]" \
             --output "$output/$schema.xml" >/dev/null 2>&1 || true
@@ -231,7 +239,7 @@ for run in $(seq 1 "$runs"); do
     /usr/bin/open -n -F "$app" --args --offline-side-chat-motion \
         "--motion-cycles=$cycles" \
         "--motion-history-delay-ms=$history_delay" \
-        "--motion-thread-messages=$thread_messages"
+        "--motion-thread-messages=$thread_messages" ${app_arguments[@]+"${app_arguments[@]}"}
     if [[ -n "$trace" ]]; then
         for _ in $(seq 1 $((60 + cycles * 5))); do
             grep -q "SIDE_CHAT_MOTION_CYCLES_BEGIN" "$log" && break
@@ -245,7 +253,7 @@ for run in $(seq 1 "$runs"); do
         fi
     fi
     recording=""
-    for _ in $(seq 1 $((60 + cycles * 15))); do
+    for _ in $(seq 1 $((120 + cycles * 15))); do
         if grep -q "SIDE_CHAT_MOTION_BENCHMARK_FAILED" "$log"; then break; fi
         recording="$(sed -n 's/.*SIDE_CHAT_MOTION_BENCHMARK_DONE \(.*\)$/\1/p' "$log" | tail -1)"
         [[ -n "$recording" ]] && break

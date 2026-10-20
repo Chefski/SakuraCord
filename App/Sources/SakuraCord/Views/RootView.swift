@@ -645,7 +645,7 @@ private struct ChatRootView: View {
 
     private var showsThreadsToolbarItem: Bool {
         model.guildWorkspacePage == nil && model.onboardingEntryGuildID == nil
-            && !toolbarShowsFullWidthThread && model.canBrowseThreadsInSelectedChannel
+            && !model.isThreadFullWidth && model.canBrowseThreadsInSelectedChannel
     }
 
     @ToolbarContentBuilder
@@ -757,7 +757,7 @@ private struct ChatRootView: View {
                 .visibilityPriority(.high)
             }
 
-            if toolbarShowsFullWidthThread, let thread = model.openThread {
+            if model.isThreadFullWidth, let thread = model.openThread {
                 if ForumPostFollowToolbarButton.isOffered(model: model, thread: thread) {
                     ToolbarItem {
                         ForumPostFollowToolbarButton(model: model, thread: thread, surface: .forumPostHeader)
@@ -829,7 +829,7 @@ private struct ChatRootView: View {
                 threadsToolbarItem
             }
 
-            if let conversation = toolbarWorkspace.paneSideConversation {
+            if let conversation = model.workspacePresentation.paneSideConversation {
                 sideConversationToolbar(conversation)
             }
         }
@@ -839,8 +839,8 @@ private struct ChatRootView: View {
                 ToolbarSpacer(.fixed)
             }
 
-            // A stable identity lets the toolbar reuse the item when a side
-            // chat closes instead of inserting a new one mid-motion.
+            // A stable identity lets the toolbar keep the item when a side
+            // chat closes instead of inserting a new one.
             ToolbarItem(id: "member-inspector") {
                 ZStack {
                     Button {
@@ -1044,24 +1044,14 @@ private struct ChatRootView: View {
     private var showsMemberInspectorToolbarItem: Bool {
         model.isSwitchingAccounts
             || (model.guildWorkspacePage == nil && model.onboardingEntryGuildID == nil && !model.isFriendsPresented
-                && toolbarWorkspace.paneSideConversation == nil && selectedVoiceChannel == nil)
-    }
-
-    /// The workspace the toolbar shows. A motion's toolbar changes wait until
-    /// it settles, so the toolbar does not lay out again mid-motion.
-    private var toolbarWorkspace: WorkspacePresentation {
-        WorkspaceMotionPhase.shared.toolbarPresentation ?? model.workspacePresentation
-    }
-
-    private var toolbarShowsFullWidthThread: Bool {
-        toolbarWorkspace.primary == .fullWidthThread
+                && model.workspacePresentation.paneSideConversation == nil && selectedVoiceChannel == nil)
     }
 
     /// A full-width thread's actions end the trailing button group, as a
     /// toolbar's overflow item does.
     @ToolbarContentBuilder
     private var fullWidthThreadActions: some ToolbarContent {
-        if !model.isSwitchingAccounts, toolbarShowsFullWidthThread, let thread = model.openThread {
+        if !model.isSwitchingAccounts, model.isThreadFullWidth, let thread = model.openThread {
             ToolbarSpacer(.fixed)
             ToolbarItem(id: "full-width-thread-actions") {
                 ThreadActionsToolbarMenu(model: model, thread: thread, surface: .fullView)
@@ -1077,13 +1067,13 @@ private struct ChatRootView: View {
 
     private var toolbarPinsChannelID: ChannelID? {
         guard model.guildWorkspacePage == nil, model.onboardingEntryGuildID == nil,
-              selectedVoiceChannel == nil, toolbarWorkspace.paneSideConversation == nil
+              selectedVoiceChannel == nil, model.workspacePresentation.paneSideConversation == nil
         else { return nil }
         return model.activePinsChannelID
     }
 
     private var conversationToolbarPresentation: ConversationToolbarPresentation? {
-        if toolbarShowsFullWidthThread, let conversation = model.presentedSideConversation, conversation.isFullWidth {
+        if let conversation = model.presentedSideConversation, conversation.isFullWidth {
             // One line with the thread symbol for threads and forum posts
             // alike, as before side chats were unified.
             let label = model.sideConversationLabel(conversation)
@@ -1107,26 +1097,11 @@ private struct ChatRootView: View {
     private func sideConversationToolbar(_ conversation: SideConversation) -> some ToolbarContent {
         let label = model.sideConversationLabel(conversation)
         let capabilities = conversation.capabilities
-        // While a motion keeps the previous preview's toolbar, it offers no
-        // action on the newly previewed channel.
-        let previewChannel = model.customizationPreviewChannel.flatMap { channel -> Channel? in
-            guard case .channelPreview(let channelID, _) = conversation else { return channel }
-            return channel.id == channelID ? channel : nil
-        }
         let showsAddToChannelList = capabilities.canAddToChannelList
-            && previewChannel.map { !model.isChannelSelected($0) } == true
-        // While a motion keeps the previous side chat's toolbar, its actions
-        // keep targeting the thread its title names.
-        let paneThread: MessageThreadSummary? = if case .thread(let thread, _) = conversation {
-            model.openThread?.id == thread.id ? model.openThread : thread
-        } else if conversation.isThread {
-            model.openThread
-        } else {
-            nil
-        }
+            && model.customizationPreviewChannel.map { !model.isChannelSelected($0) } == true
+        let paneThread = conversation.isThread ? model.openThread : nil
         let showsFollow = paneThread.map { ForumPostFollowToolbarButton.isOffered(model: model, thread: $0) } ?? false
-        // The Follow toggle is a text button about two icon buttons wide.
-        let actionCount = 1 + (showsAddToChannelList ? 1 : 0) + (paneThread != nil ? 1 : 0) + (showsFollow ? 2 : 0)
+        let actionCount = 1 + (showsAddToChannelList ? 1 : 0) + (paneThread != nil ? 1 : 0) + (showsFollow ? 1 : 0)
         if showsInboxToolbarItem {
             // Keep the primary column's last action inset from the pane edge.
             ToolbarSpacer(.fixed)
@@ -1155,7 +1130,7 @@ private struct ChatRootView: View {
         // The same separation as other distinct toolbar groups.
         ToolbarSpacer(.fixed)
 
-        if showsAddToChannelList, let channel = previewChannel, let guildID = channel.guildID {
+        if showsAddToChannelList, let channel = model.customizationPreviewChannel, let guildID = channel.guildID {
             ToolbarItem(id: "side-conversation-add") {
                 Button("Add to Channel List", systemImage: "plus") {
                     model.setChannelSelected(true, channelID: channel.id, guildID: guildID)

@@ -11,28 +11,37 @@ nonisolated enum WorkspaceColumn: LayoutValueKey {
 
 /// Lays out the conversation, a side chat and the inspector in a row, like
 /// an `HStack`, except that a full-width side chat covers the conversation
-/// instead of sharing the row. The conversation can then stay beneath a side
-/// chat that widens over it, and the side chat keeps its identity, timeline
+/// instead of sharing the row. The side chat keeps its identity, timeline
 /// and scroll position when it moves between the pane and full width.
 ///
 /// The layout reads what each column should be from its parameters rather
 /// than from which subviews exist, because a column that is sliding away is
-/// still a subview until its transition ends. A departing pane keeps the
-/// pane width so it leaves without a relayout, and the conversation takes
-/// its new width at once.
+/// still a subview until it has left. While a motion runs, two animatable
+/// widths drive it on every frame: how much of the trailing edge the moving
+/// columns cover, which the conversation gives up live, and a widening side
+/// chat's width. Only the conversation and a widening side chat lay out
+/// again per frame; the columns themselves slide as offsets.
 nonisolated struct WorkspaceColumnsLayout: Layout {
     var showsSideConversation: Bool
     var sideConversationIsFullWidth: Bool
     var showsInspector: Bool
     /// The pane's width when it was last beside the conversation.
     var paneWidth: CGFloat
-    /// The conversation's current width while a motion runs. The
-    /// conversation never widens during a motion, so no column ever slides
-    /// over it: it narrows as a column starts to arrive and widens once a
-    /// leaving column is gone. Columns are translucent like the window, and
-    /// clipping the conversation beneath one on every frame cost about 80 ms
-    /// a frame.
-    var conversationWidthLimit: CGFloat?
+    /// The inspector's width when it was last measured.
+    var measuredInspectorWidth: CGFloat = 0
+    /// How much of the trailing edge moving columns cover, or a negative
+    /// value at rest.
+    var coveredWidth: CGFloat = -1
+    /// A widening side chat's width, or a negative value at rest.
+    var wideningWidth: CGFloat = -1
+
+    var animatableData: AnimatablePair<CGFloat, CGFloat> {
+        get { AnimatablePair(coveredWidth, wideningWidth) }
+        set {
+            coveredWidth = newValue.first
+            wideningWidth = newValue.second
+        }
+    }
 
     func sizeThatFits(proposal: ProposedViewSize, subviews _: Subviews, cache _: inout ()) -> CGSize {
         proposal.replacingUnspecifiedDimensions()
@@ -44,11 +53,20 @@ nonisolated struct WorkspaceColumnsLayout: Layout {
         let sideConversations = subviews.filter { $0[WorkspaceColumn.self] == .sideConversation }
         let inspectors = subviews.filter { $0[WorkspaceColumn.self] == .inspector }
 
-        let inspectorWidths = inspectors.map { $0.sizeThatFits(ProposedViewSize(width: nil, height: height)).width }
+        // While a motion runs, every frame lays the columns out again; their
+        // widths are known, and measuring them each time cost most of a frame.
+        let isMoving = coveredWidth >= 0
+        let inspectorWidths = inspectors.map {
+            isMoving && measuredInspectorWidth > 0
+                ? measuredInspectorWidth
+                : $0.sizeThatFits(ProposedViewSize(width: nil, height: height)).width
+        }
         let inspectorWidth = showsInspector ? inspectorWidths.last ?? 0 : 0
 
         var paneWidth = paneWidth
-        if showsSideConversation, !sideConversationIsFullWidth, let pane = sideConversations.last {
+        if !isMoving || paneWidth <= 0, showsSideConversation, !sideConversationIsFullWidth,
+           let pane = sideConversations.last
+        {
             let conversationMinimum = conversation.map {
                 $0.sizeThatFits(ProposedViewSize(width: 0, height: height)).width
             }.max() ?? 0
@@ -57,19 +75,23 @@ nonisolated struct WorkspaceColumnsLayout: Layout {
             let available = max(0, bounds.width - inspectorWidth - conversationMinimum)
             paneWidth = pane.sizeThatFits(ProposedViewSize(width: available, height: height)).width
         }
+        let trailingWidth = coveredWidth >= 0
+            ? coveredWidth
+            : inspectorWidth + (showsSideConversation && !sideConversationIsFullWidth ? paneWidth : 0)
 
         // A full-width side chat covers the conversation, which keeps the
-        // width it had beside the pane.
-        var conversationWidth = max(0, bounds.width - inspectorWidth - (showsSideConversation ? paneWidth : 0))
-        if let conversationWidthLimit, conversationWidthLimit > 0 {
-            conversationWidth = min(conversationWidth, conversationWidthLimit)
-        }
+        // width it had beside the pane while the side chat widens over it.
+        let conversationWidth = sideConversationIsFullWidth
+            ? max(0, bounds.width - paneWidth)
+            : max(0, bounds.width - trailingWidth)
         for view in conversation {
             place(view, minX: bounds.minX, width: conversationWidth, in: bounds)
         }
         for view in sideConversations {
             if showsSideConversation, sideConversationIsFullWidth {
-                place(view, minX: bounds.minX, width: bounds.width - inspectorWidth, in: bounds)
+                let trailingEdge = bounds.maxX - (coveredWidth >= 0 ? coveredWidth : inspectorWidth)
+                let width = wideningWidth >= 0 ? wideningWidth : trailingEdge - bounds.minX
+                place(view, minX: trailingEdge - width, width: width, in: bounds)
             } else {
                 // A pane keeps its width at the trailing edge, beneath any
                 // inspector arriving in its place as it leaves.

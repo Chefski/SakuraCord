@@ -8826,3 +8826,26 @@ func `resource thread permissions belong to its parent rather than the selected 
     #expect(model.pinnedMessages.hasReadPermission == parentAllows)
     model.dismissPinnedMessages()
 }
+
+@MainActor
+@Test func `a cached thread reopened in the pane shows its messages from the first frame`() async throws {
+    let provider = MockChatProvider(motionThreadCount: 1, motionThreadMessageCount: 30)
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    model.selectedChannelID = ChannelID(rawValue: 210)
+    #expect(await until { model.messages.contains { $0.thread?.name.hasPrefix("Motion thread") == true } })
+    let thread = try #require(model.messages.lazy.compactMap(\.thread).first { $0.name.hasPrefix("Motion thread") })
+    model.open(thread)
+    #expect(await until { model.hasCompletedInitialThreadLoad && !model.threadMessages.isEmpty })
+    model.closeSideConversation()
+
+    // Reopening slides the pane in; its cached messages are there at once,
+    // so the pane shows them rather than the loading placeholder.
+    model.open(thread)
+
+    #expect(!model.threadMessages.isEmpty)
+    #expect(!MessageTimelineLoadingPolicy.showsInitialPlaceholder(
+        isLoading: model.isLoadingThread,
+        messageCount: model.threadMessages.count
+    ))
+}

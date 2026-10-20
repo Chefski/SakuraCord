@@ -21,6 +21,13 @@ enum SideChatMotionBenchmark {
         var historyDelayMilliseconds = 0
         var threadMessageCount = 150
         var settleSeconds = 1.2
+        /// Cycles that open a forum post beside its forum, and cycles that
+        /// open a thread while the member list is shown.
+        var forumCycles = 2
+        var memberListCycles = 2
+        /// Opens a forum post and follows it, pausing for screenshots,
+        /// instead of running the cycles.
+        var showsFollowShowcase = false
 
         init(arguments: [String]) {
             func value(_ name: String) -> Int? {
@@ -32,11 +39,18 @@ enum SideChatMotionBenchmark {
             cycles = value("--motion-cycles") ?? cycles
             historyDelayMilliseconds = value("--motion-history-delay-ms") ?? historyDelayMilliseconds
             threadMessageCount = value("--motion-thread-messages") ?? threadMessageCount
+            forumCycles = value("--motion-forum-cycles") ?? forumCycles
+            memberListCycles = value("--motion-member-list-cycles") ?? memberListCycles
+            showsFollowShowcase = arguments.contains("--motion-follow-showcase")
         }
     }
 
     static func run(model: AppModel, options: Options) async {
         NSApp.activate(ignoringOtherApps: true)
+        if options.showsFollowShowcase {
+            await showFollowShowcase(model: model)
+            return
+        }
         model.selectedChannelID = ChannelID(rawValue: 210)
         guard let threads = await motionThreads(model: model, count: options.cycles + 1),
               let window = NSApp.windows.first(where: { $0.isVisible && $0.canBecomeMain }),
@@ -64,8 +78,8 @@ enum SideChatMotionBenchmark {
         await recorder.idle(seconds: 1, label: nil)
 
         logger.notice("SIDE_CHAT_MOTION_CYCLES_BEGIN")
-        for cycle in 0 ..< options.cycles {
-            for step in cycleSteps(thread: threads[cycle], variant: nil) {
+        func perform(_ steps: [Step], cycle: Int) async {
+            for step in steps {
                 recorder.recordAction(step, cycle: cycle)
                 let interval = signposter.beginInterval(
                     "SideChatMotionAction", id: signposter.makeSignpostID(),
@@ -75,6 +89,19 @@ enum SideChatMotionBenchmark {
                 try? await Task.sleep(for: .seconds(options.settleSeconds))
                 signposter.endInterval("SideChatMotionAction", interval)
             }
+        }
+        for cycle in 0 ..< options.cycles {
+            await perform(cycleSteps(thread: threads[cycle], variant: nil), cycle: cycle)
+        }
+        for cycle in 0 ..< options.memberListCycles {
+            await perform(memberListSteps(thread: threads[cycle % threads.count]), cycle: cycle)
+        }
+        if options.forumCycles > 0, let posts = await forumPosts(model: model) {
+            for cycle in 0 ..< options.forumCycles {
+                await perform(forumSteps(post: posts[cycle % posts.count]), cycle: cycle)
+            }
+            model.selectedChannelID = ChannelID(rawValue: 210)
+            try? await Task.sleep(for: .seconds(2))
         }
 
         let membersOpen = Step(name: "members-open", variant: "idle", movingProbe: "members", edge: "minX") {
@@ -134,6 +161,71 @@ enum SideChatMotionBenchmark {
         ]
     }
 
+    /// A thread opened, widened and closed while the member list is shown.
+    private static func memberListSteps(thread: MessageThreadSummary) -> [Step] {
+        [
+            Step(name: "members-open", variant: "before-pane", movingProbe: "members", edge: "minX") {
+                $0.toggleMemberInspector()
+            },
+            Step(name: "pane-open", variant: "over-members", movingProbe: "pane", edge: "minX") { $0.open(thread) },
+            Step(name: "full-width", variant: "with-members", movingProbe: "pane", edge: "minX") {
+                $0.presentOpenThreadFullWidth()
+            },
+            Step(name: "full-width-close", variant: "with-members", movingProbe: nil, edge: nil) {
+                $0.closeSideConversation()
+            },
+            Step(name: "members-close", variant: "after-pane", movingProbe: "members", edge: "minX") {
+                $0.toggleMemberInspector()
+            },
+        ]
+    }
+
+    /// A forum post opened beside its forum, widened and closed.
+    private static func forumSteps(post: ForumPost) -> [Step] {
+        [
+            Step(name: "post-open", variant: nil, movingProbe: "pane", edge: "minX") { $0.open(post) },
+            Step(name: "post-close", variant: nil, movingProbe: "pane", edge: "minX") { $0.closeSideConversation() },
+            Step(name: "post-open", variant: "again", movingProbe: "pane", edge: "minX") { $0.open(post) },
+            Step(name: "post-full-width", variant: nil, movingProbe: "pane", edge: "minX") {
+                $0.presentOpenThreadFullWidth()
+            },
+            Step(name: "post-full-width-close", variant: nil, movingProbe: nil, edge: nil) {
+                $0.closeSideConversation()
+            },
+        ]
+    }
+
+    /// A forum post in the pane, first not followed and then followed, with
+    /// a log line naming the window to capture at each step.
+    private static func showFollowShowcase(model: AppModel) async {
+        guard let post = await forumPosts(model: model)?.first,
+              let window = NSApp.windows.first(where: { $0.isVisible && $0.canBecomeMain })
+        else { return }
+        model.open(post)
+        try? await Task.sleep(for: .seconds(3))
+        logger.notice("SIDE_CHAT_MOTION_SHOWCASE unfollowed \(window.windowNumber, privacy: .public)")
+        try? await Task.sleep(for: .seconds(3))
+        model.setThreadMembership(model.currentThreadSummary(post.thread), isJoined: true, surface: .forumPostHeader)
+        try? await Task.sleep(for: .seconds(3))
+        logger.notice("SIDE_CHAT_MOTION_SHOWCASE followed \(window.windowNumber, privacy: .public)")
+        try? await Task.sleep(for: .seconds(3))
+        logger.notice("SIDE_CHAT_MOTION_SHOWCASE done")
+    }
+
+    /// The offline forum's posts, once the forum is selected and loaded.
+    private static func forumPosts(model: AppModel) async -> [ForumPost]? {
+        model.selectedChannelID = ChannelID(rawValue: 220)
+        let deadline = ContinuousClock.now + .seconds(10)
+        while ContinuousClock.now < deadline {
+            if !model.forumPosts.isEmpty {
+                try? await Task.sleep(for: .seconds(1))
+                return model.forumPosts
+            }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        return nil
+    }
+
     /// The fixture's motion threads, once their starters reached the channel.
     private static func motionThreads(model: AppModel, count: Int) async -> [MessageThreadSummary]? {
         let deadline = ContinuousClock.now + .seconds(15)
@@ -159,7 +251,9 @@ private final class SideChatMotionRecorder: NSObject {
         let probes: [String: [Double]]
         let timelines: [WorkspaceMotionProbes.TimelineSample]
         let toolbar: Int
-        let crossfades: Int
+        /// Each visible toolbar item: its index in `toolbarItemIdentifiers`
+        /// and its window frame.
+        let toolbarItems: [[Double]]
     }
 
     struct Action: Encodable {
@@ -197,6 +291,7 @@ private final class SideChatMotionRecorder: NSObject {
         let actions: [Action]
         let frames: [Frame]
         let toolbarSignatures: [String]
+        let toolbarItemIdentifiers: [String]
         let mainThreadBusy: [Busy]
         let idle: [Idle]
         let references: [String: Reference]
@@ -215,6 +310,8 @@ private final class SideChatMotionRecorder: NSObject {
     private var references: [String: Reference] = [:]
     private var toolbarSignatures: [String] = []
     private var toolbarSignatureIndex: [String: Int] = [:]
+    private var toolbarItemIdentifiers: [String] = []
+    private var toolbarItemIndex: [String: Int] = [:]
 
     init(window: NSWindow, options: SideChatMotionBenchmark.Options) {
         self.window = window
@@ -300,6 +397,7 @@ private final class SideChatMotionRecorder: NSObject {
             actions: actions,
             frames: frames,
             toolbarSignatures: toolbarSignatures,
+            toolbarItemIdentifiers: toolbarItemIdentifiers,
             mainThreadBusy: busy,
             idle: idleWindows,
             references: references
@@ -319,9 +417,32 @@ private final class SideChatMotionRecorder: NSObject {
                 probes: WorkspaceMotionProbes.shared.probeFrames(in: window),
                 timelines: WorkspaceMotionProbes.shared.timelineSamples(in: window),
                 toolbar: toolbarSignature(),
-                crossfades: WorkspaceLayoutMotion.reflowCrossfadeCount
+                toolbarItems: toolbarItemFrames()
             )
         )
+    }
+
+    /// Where each toolbar item is drawn, so the analyzer can follow items
+    /// that move, appear or disappear frame by frame.
+    private func toolbarItemFrames() -> [[Double]] {
+        (window.toolbar?.items ?? []).compactMap { item -> [Double]? in
+            guard let view = item.view, view.window === window, !view.isHiddenOrHasHiddenAncestor,
+                  view.alphaValue > 0.01
+            else { return nil }
+            let identifier = item.itemIdentifier.rawValue
+            let index: Int
+            if let known = toolbarItemIndex[identifier] {
+                index = known
+            } else {
+                index = toolbarItemIdentifiers.count
+                toolbarItemIdentifiers.append(identifier)
+                toolbarItemIndex[identifier] = index
+            }
+            let frame = view.convert(view.bounds, to: nil)
+            return [Double(index), frame.minX, frame.minY, frame.width, frame.height].map {
+                ($0 * 100).rounded() / 100
+            }
+        }
     }
 
     private func toolbarSignature() -> Int {

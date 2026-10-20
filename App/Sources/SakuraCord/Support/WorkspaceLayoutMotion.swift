@@ -5,14 +5,14 @@ import SwiftUI
 /// closing or widening a side chat, toggling the member list) with the member
 /// list's spring. Navigation changes the layout without it and appears at once.
 ///
-/// A change commits its final layout in one frame and nothing is laid out
-/// again until the motion settles: a trailing column slides in or out as an
-/// offset over the conversation, which keeps its width meanwhile, is clipped
-/// at the column's edge, and narrows once the column has arrived. Relaying
-/// out the workspace on every frame cost about 50 ms per frame on an 8 GB
-/// Mac. Work that would block the main thread for several frames (a pane's
-/// content, a thread's first page, a timeline's full reflow, toolbar item
-/// changes) waits for the motion to settle so the motion keeps every frame.
+/// A trailing column slides in or out as an offset, and on every frame the
+/// conversation gives up exactly the width the column covers, so its
+/// timeline and composer resize live (`WorkspaceColumnsLayout`). Nothing
+/// else in the workspace lays out again per frame; relaying out the whole
+/// workspace on every frame cost about 50 ms per frame on an 8 GB Mac. Work
+/// that would block the main thread for several frames (a pane's content, a
+/// thread's first page, a timeline's full reflow) waits for the motion to
+/// settle so the motion keeps every frame.
 @MainActor
 enum WorkspaceLayoutMotion {
     /// Lets the motion benchmark reach each layout's static reference.
@@ -24,8 +24,6 @@ enum WorkspaceLayoutMotion {
 
     /// When the running motion settles.
     private(set) static var settlesAt: ContinuousClock.Instant?
-    /// Reflow crossfades started so far; the motion benchmark records it.
-    private(set) static var reflowCrossfadeCount = 0
 
     static var animation: Animation? {
         NSWorkspace.shared.accessibilityDisplayShouldReduceMotion || isSuppressedForBenchmark
@@ -34,12 +32,6 @@ enum WorkspaceLayoutMotion {
 
     static var isMoving: Bool {
         settlesAt.map { ContinuousClock.now < $0 } ?? false
-    }
-
-    /// Whether a conversation that changes width now should crossfade its
-    /// reflow: during a motion and as the conversation narrows after it.
-    static var crossfadesReflow: Bool {
-        settlesAt.map { ContinuousClock.now < $0 + .milliseconds(300) } ?? false
     }
 
     /// Until the spring is within a thousandth of its target. SwiftUI keeps
@@ -54,12 +46,21 @@ enum WorkspaceLayoutMotion {
             withAnimation(nil, change)
             return
         }
-        let before = model.workspacePresentation
-        beginMotion(freezing: before)
-        let phase = WorkspaceMotionPhase.shared
-        let leaving = WorkspaceTrailingColumn(before)
+        beginMotion()
+        let leaving = WorkspaceTrailingColumn(model.workspacePresentation)
+        // The columns' motion is explicit below and starts from the layout
+        // this change commits, so the change itself is not animated.
         withAnimation(nil, change)
-        let arriving = WorkspaceTrailingColumn(model.workspacePresentation)
+        slideTrailingColumns(from: leaving, to: WorkspaceTrailingColumn(model.workspacePresentation), animation)
+    }
+
+    /// Slides the column that leaves out and the one that arrives in.
+    private static func slideTrailingColumns(
+        from leaving: WorkspaceTrailingColumn?,
+        to arriving: WorkspaceTrailingColumn?,
+        _ animation: Animation
+    ) {
+        let phase = WorkspaceMotionPhase.shared
         guard leaving?.id != arriving?.id else { return }
         // Each write to the phase invalidates its observers, so write once.
         var departing = phase.departing.filter { $0.id != leaving?.id && $0.id != arriving?.id }
@@ -81,21 +82,23 @@ enum WorkspaceLayoutMotion {
         }
     }
 
-    /// Moves the open side chat from the pane to full width. The layout
-    /// changes at once; the side chat then slides from the pane's edge over
-    /// the conversation, which stays beneath it until it is covered.
+    /// Moves the open side chat from the pane to full width: it grows from
+    /// the pane's width over the conversation, which stays beneath it until
+    /// it is covered, and the inspector slides in beside it if shown.
     static func widen(in model: AppModel, _ change: () -> Void) {
         let before = model.workspacePresentation
         guard let animation, case .channel(let channel) = before.primary else {
             withAnimation(nil, change)
             return
         }
-        beginMotion(freezing: before)
+        beginMotion()
         let phase = WorkspaceMotionPhase.shared
         withAnimation(nil) {
             phase.widening = .init(channel: channel, hasArrived: false)
             change()
         }
+        let inspector = WorkspaceTrailingColumn(model.workspacePresentation)
+        slideTrailingColumns(from: nil, to: inspector, animation)
         afterCommit(animation) { phase.widening?.hasArrived = true }
     }
 
@@ -123,53 +126,37 @@ enum WorkspaceLayoutMotion {
         }
     }
 
-    /// A render-server crossfade from a layer tree's current rendering to the
-    /// next one, so a reflow at a new width blends in instead of jumping.
-    static func reflowTransition() -> CATransition {
-        reflowCrossfadeCount &+= 1
-        let transition = CATransition()
-        transition.type = .fade
-        transition.duration = 0.18
-        transition.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        return transition
-    }
-
-    /// Crossfades the workspace window from its current rendering to the
-    /// next commit, on the render server: the conversation reflowing at a
-    /// new width, a pane's content appearing, toolbar items. Only at the
-    /// settle: while a column slides, a window-wide crossfade cost the
-    /// member list three to four late frames, so a reflow at the start blends
-    /// in the timeline alone.
-    private static func crossfadeWorkspace() {
-        let window = NSApp.mainWindow ?? NSApp.windows.first { $0.isVisible && $0.canBecomeMain }
-        window?.contentView?.layer?.add(reflowTransition(), forKey: "workspaceMotion")
-    }
-
-    private static func beginMotion(freezing presentation: WorkspacePresentation) {
+    private static func beginMotion() {
         let phase = WorkspaceMotionPhase.shared
         settlesAt = .now + settling
-        if phase.toolbarPresentation == nil { phase.toolbarPresentation = presentation }
         if !phase.isMoving {
             phase.isMoving = true
+            // Views moving under a still pointer would otherwise rebuild
+            // their cursor rectangles on every frame.
+            workspaceWindow?.disableCursorRects()
             NotificationCenter.default.post(name: didBegin, object: nil)
         }
         phase.settleTask?.cancel()
         phase.settleTask = Task {
             await untilSettled()
             guard !Task.isCancelled else { return }
-            // The conversation's new width, the pane's content and the
-            // toolbar's items arrive together; blend them in.
-            crossfadeWorkspace()
             // Each write invalidates the phase's readers, so skip no-ops.
             withAnimation(nil) {
                 phase.isMoving = false
                 if phase.widening != nil { phase.widening = nil }
-                if phase.toolbarPresentation != nil { phase.toolbarPresentation = nil }
                 if !phase.departing.isEmpty { phase.departing.removeAll() }
                 if !phase.reveal.isEmpty { phase.reveal.removeAll() }
             }
+            if let window = workspaceWindow {
+                window.enableCursorRects()
+                window.invalidateCursorRects(for: window.contentView ?? NSView())
+            }
             NotificationCenter.default.post(name: didSettle, object: nil)
         }
+    }
+
+    private static var workspaceWindow: NSWindow? {
+        NSApp.mainWindow ?? NSApp.windows.first { $0.isVisible && $0.canBecomeMain }
     }
 }
 
@@ -232,12 +219,9 @@ final class WorkspaceMotionPhase {
 
     static let shared = WorkspaceMotionPhase()
 
-    /// Whether a motion runs. The conversation keeps its width meanwhile and
-    /// narrows once a column has arrived over it.
+    /// Whether a motion runs, so the columns' widths follow it per frame.
     var isMoving = false
     var widening: Widening?
-    /// The workspace the toolbar shows until the motion settles.
-    var toolbarPresentation: WorkspacePresentation?
     /// Columns that have left the workspace but are still sliding away.
     var departing: [WorkspaceTrailingColumn] = []
     /// How far each moving column has come in, from 0 (beyond the trailing

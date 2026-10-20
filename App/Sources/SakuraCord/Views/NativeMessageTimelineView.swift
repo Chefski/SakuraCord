@@ -341,6 +341,10 @@ final class NativeMessageTimelineCoordinator: NSObject {
         var widthRelayoutTask: Task<Void, Never>?
         var pendingLayoutWidth: CGFloat?
         var previewLayoutWidth: CGFloat?
+        /// When the last width preview ran during a workspace motion, and the
+        /// preview waiting to follow it.
+        var lastMotionPreview: ContinuousClock.Instant?
+        var throttledPreviewTask: Task<Void, Never>?
         var previewedRowIdentifiers: Set<NativeMessageTimelineItem.Identifier> = []
         var rowsPreviewedAtCurrentWidth: Set<NativeMessageTimelineItem.Identifier> = []
         var widthRelayoutGeneration: UInt64 = 0

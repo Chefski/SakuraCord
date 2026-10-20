@@ -692,6 +692,7 @@ extension NativeMessageTimelineCoordinator {
             let previewNeedsRows = previewsWidth && !previewChanged
                 && previewLayoutWidth != nil && visibleRowsNeedPreview()
             let restoresPreview = !widthChanged && previewLayoutWidth != nil
+            if previewChanged, deferMotionPreview() { return false }
             if widthChanged, !reflowsWidth {
                 scheduleRelayoutForWidthChange(width)
             } else if !widthChanged, !appliesWidthImmediately {
@@ -722,11 +723,6 @@ extension NativeMessageTimelineCoordinator {
                 ? visibleAnchor() : nil
 
             isApplyingUpdate = true
-            if reflowsWidth || previewChanged, preservesEstablishedPosition, WorkspaceLayoutMotion.crossfadesReflow {
-                // A workspace motion changed this timeline's width at once;
-                // blend the reflowed rows in rather than jumping to them.
-                scrollView.layer?.add(WorkspaceLayoutMotion.reflowTransition(), forKey: "workspaceReflow")
-            }
             if reflowsWidth {
                 applyImmediateWidthRelayout(
                     width, preparedLayouts: preparedLayouts,
@@ -782,6 +778,33 @@ extension NativeMessageTimelineCoordinator {
             }
             isApplyingUpdate = false
             reportScrollState(force: true)
+            return true
+        }
+
+        /// While a workspace motion resizes the timeline on every frame, its
+        /// rows reflow every few frames rather than on each one; between
+        /// reflows the canvas keeps its rows and the clip view follows the
+        /// motion. Reflowing every frame cost most of a frame's budget.
+        /// Returns whether this width change waits for the next reflow.
+        func deferMotionPreview() -> Bool {
+            guard WorkspaceLayoutMotion.isMoving else {
+                lastMotionPreview = nil
+                return false
+            }
+            let interval = Duration.milliseconds(50)
+            let now = ContinuousClock.now
+            guard let last = lastMotionPreview, now - last < interval else {
+                lastMotionPreview = now
+                return false
+            }
+            if throttledPreviewTask == nil {
+                throttledPreviewTask = Task { @MainActor [weak self] in
+                    try? await Task.sleep(until: last + interval)
+                    guard let self, !Task.isCancelled else { return }
+                    throttledPreviewTask = nil
+                    _ = reconcileViewportGeometryIfNeeded()
+                }
+            }
             return true
         }
 

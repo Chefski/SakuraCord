@@ -5,17 +5,11 @@ struct ChatWorkspaceView: View {
     let model: AppModel
     @Binding var presentsForumComposer: Bool
     let toolbarSearchFieldMetrics: ToolbarSearchFieldMetrics
-    /// The side chat pane's width, which the conversation keeps while a
-    /// thread widens over it.
+    /// The side chat pane's width, where a widening thread starts and which
+    /// the conversation keeps beneath it.
     @State private var paneWidth: CGFloat = 0
     @State private var workspaceWidth: CGFloat = 0
-    @State private var conversationWidth: CGFloat = 0
     @State private var inspectorWidth: CGFloat = 0
-
-    /// Where the pane's leading edge was, relative to the workspace.
-    private var paneLeadingEdge: CGFloat {
-        max(0, workspaceWidth - paneWidth)
-    }
 
     @ViewBuilder var body: some View {
         let presentation = model.workspacePresentation
@@ -114,20 +108,35 @@ struct ChatWorkspaceView: View {
         let columns = motion.departing.filter { $0.id != trailing?.id && $0.id != fullWidthThread?.id }
             + [fullWidthThread, trailing].compactMap(\.self)
         let showsInspector = if case .inspector = trailing?.content { true } else { false }
+        // While a motion runs, the conversation gives up exactly what the
+        // sliding columns cover, so it resizes live under them; a widening
+        // thread grows from the pane's width.
+        let covered = columns.filter { $0.id != fullWidthThread?.id }
+            .map { width(of: $0) * motion.reveal(of: $0.id) }
+            .max() ?? 0
+        let wideningWidth: CGFloat = if let widening = motion.widening, let fullWidthThread {
+            widening.hasArrived ? workspaceWidth - (trailing.map(width(of:)) ?? 0) : width(of: fullWidthThread)
+        } else {
+            -1
+        }
         let columnsLayout = WorkspaceColumnsLayout(
             showsSideConversation: fullWidthThread != nil || presentation.paneSideConversation != nil,
             sideConversationIsFullWidth: fullWidthThread != nil,
             showsInspector: showsInspector,
             paneWidth: paneWidth,
-            conversationWidthLimit: motion.isMoving ? conversationWidth : nil
+            measuredInspectorWidth: inspectorWidth,
+            coveredWidth: motion.isMoving ? covered : -1,
+            wideningWidth: wideningWidth
         )
         return columnsLayout {
             primary()
-                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { conversationWidth = $0 }
                 .layoutValue(key: WorkspaceColumn.self, value: .conversation)
 
             ForEach(columns) { column in
                 trailingColumn(column, motion: motion)
+                    // Columns slide by offset; they neither fade nor move
+                    // with the change that adds or removes them.
+                    .transition(.identity)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -145,6 +154,10 @@ struct ChatWorkspaceView: View {
                     if !conversation.isFullWidth, !motion.departing.contains(column) { paneWidth = width }
                 }
                 .offset(x: offset(of: column, motion: motion))
+                // Reported where the pane rests, not where it slides: the
+                // toolbar needs its width and file drops its resting edge,
+                // and a frame changing on every frame re-renders the toolbar.
+                .reportsSupplementaryPaneFrame(isEnabled: !conversation.isFullWidth)
                 .layoutValue(key: WorkspaceColumn.self, value: .sideConversation)
         case .inspector(let pane):
             ChatWorkspaceSupplementaryContent(
@@ -168,12 +181,10 @@ struct ChatWorkspaceView: View {
         }
     }
 
-    /// How far a moving column sits from its place: beyond the trailing edge
-    /// as it arrives or leaves, or at the pane's edge as a thread widens.
+    /// How far a moving column sits from its place, beyond the trailing edge
+    /// as it arrives or leaves. A widening thread grows in place instead.
     private func offset(of column: WorkspaceTrailingColumn, motion: WorkspaceMotionPhase) -> CGFloat {
-        if case .sideConversation(let conversation) = column.content, conversation.isFullWidth {
-            return motion.widening?.hasArrived == false ? paneLeadingEdge : 0
-        }
+        if case .sideConversation(let conversation) = column.content, conversation.isFullWidth { return 0 }
         return width(of: column) * (1 - motion.reveal(of: column.id))
     }
 }

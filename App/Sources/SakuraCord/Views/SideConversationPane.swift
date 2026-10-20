@@ -37,37 +37,20 @@ extension View {
 struct SideConversationPane<Content: View>: View {
     var isFullWidth = false
     @ViewBuilder let content: Content
-    /// A pane that slides in builds its content once it has arrived, so
-    /// building the timeline and composer cannot take the motion's frames.
-    /// Until then it shows the timeline's loading placeholder.
-    @State private var showsContent = !WorkspaceLayoutMotion.isMoving
-
     var body: some View {
         HStack(spacing: 0) {
             if !isFullWidth {
                 Divider()
                     .ignoresSafeArea(.container, edges: .top)
             }
-            Group {
-                if showsContent {
-                    content
-                } else {
-                    // The loading state shows from the first frame.
-                    MessageTimelineLoadingSkeleton()
-                        .task {
-                            await WorkspaceLayoutMotion.untilSettled()
-                            showsContent = true
-                        }
-                }
-            }
-            .scrollEdgeEffectStyle(isFullWidth ? .automatic : .soft, for: .top)
+            content
+                .scrollEdgeEffectStyle(isFullWidth ? .automatic : .soft, for: .top)
             .frame(
                 minWidth: isFullWidth ? nil : InterfaceScale.metric(340),
                 idealWidth: isFullWidth ? nil : InterfaceScale.metric(400),
                 maxWidth: isFullWidth ? .infinity : InterfaceScale.metric(440),
                 maxHeight: .infinity
             )
-            .reportsSupplementaryPaneFrame(isEnabled: !isFullWidth)
         }
     }
 }
