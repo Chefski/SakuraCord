@@ -56,8 +56,11 @@ private func thread(
     listing.remove(ChannelID(rawValue: 4))
     #expect(listing.threads.map(\.id.rawValue) == [1])
 
+    // Reopening 2 and archiving 4 cancel out; deleting 4 moves later records back.
+    #expect(listing.nextOffset == 24)
+
     // Once the last page has arrived, every archived record belongs.
-    listing.append(ForumPostPage(posts: [], hasMore: false, nextOffset: nil), requestedOffset: 25)
+    listing.append(ForumPostPage(posts: [], hasMore: false, nextOffset: nil), requestedOffset: 24)
     listing.reconcile(with: [thread(5, daysAgo: 30)])
     #expect(listing.threads.map(\.id.rawValue) == [1, 5])
 }

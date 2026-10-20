@@ -39,21 +39,33 @@ nonisolated struct ThreadBrowserListing: Equatable, Sendable {
     mutating func reconcile(with records: [ForumPost]) {
         guard hasLoadedFirstPage else { return }
         let recordsByID = Dictionary(records.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest })
+        let loadedCount = threads.count
         threads = threads.compactMap { post in
             guard let record = recordsByID[post.id] else { return post }
             return record.thread.isArchived ? record : nil
         }
+        shiftNextOffset(by: threads.count - loadedCount)
         let oldestLoadedActivity = hasMore ? oldestPagedActivity : nil
         var listed = Set(threads.map(\.id))
         for record in records where record.thread.isArchived && listed.insert(record.id).inserted {
             if let oldestLoadedActivity, record.lastActivityAt < oldestLoadedActivity { continue }
             let index = threads.firstIndex { $0.lastActivityAt < record.lastActivityAt } ?? threads.endIndex
             threads.insert(record, at: index)
+            shiftNextOffset(by: 1)
         }
     }
 
     mutating func remove(_ threadID: ChannelID) {
+        let loadedCount = threads.count
         threads.removeAll { $0.id == threadID }
+        shiftNextOffset(by: threads.count - loadedCount)
+    }
+
+    /// A loaded thread entering or leaving Discord's archived results moves
+    /// every later record by one; the next page follows so none is skipped.
+    private mutating func shiftNextOffset(by delta: Int) {
+        guard delta != 0, let offset = nextOffset else { return }
+        nextOffset = max(0, offset + delta)
     }
 }
 
