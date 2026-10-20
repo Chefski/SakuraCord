@@ -222,7 +222,20 @@ enum ForumTagChipMetrics {
     static var spacing: CGFloat { InterfaceScale.metric(8) }
     static var horizontalPadding: CGFloat { InterfaceScale.metric(11) }
     static var emojiSize: CGFloat { InterfaceScale.metric(16) }
-    static var font: NSFont { .interfaceSystemFont(ofSize: NSFont.preferredFont(forTextStyle: .callout).pointSize, weight: .semibold) }
+    private static var cachedFont = (scale: InterfaceScale.factor, font: makeFont())
+
+    /// Rebuilt only when the interface size changes; chip widths are measured
+    /// with it for every tag on each filter bar pass.
+    static var font: NSFont {
+        if cachedFont.scale != InterfaceScale.factor {
+            cachedFont = (InterfaceScale.factor, makeFont())
+        }
+        return cachedFont.font
+    }
+
+    private static func makeFont() -> NSFont {
+        .interfaceSystemFont(ofSize: NSFont.preferredFont(forTextStyle: .callout).pointSize, weight: .semibold)
+    }
 
     static var sortChipWidth: CGFloat {
         horizontalPadding * 2 + textWidth("Sort & view") + InterfaceScale.metric(44)
@@ -237,8 +250,9 @@ enum ForumTagChipMetrics {
         ceil(horizontalPadding * 2 + textWidth("+\(hiddenCount) more") + InterfaceScale.metric(18))
     }
 
+    /// Memoized by text and font, so repeated passes over the same tags are lookups.
     static func textWidth(_ text: String) -> CGFloat {
-        ceil(NSAttributedString(string: text, attributes: [.font: font]).size().width)
+        NativeTimelineRowLayout.measuredTextWidth(text, font: font)
     }
 
     /// How many leading tags fit within `rows` wrapped rows after the sort

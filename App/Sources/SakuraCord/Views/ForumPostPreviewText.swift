@@ -19,20 +19,11 @@ struct ForumPostPreviewText: NSViewRepresentable {
     }
 
     func updateNSView(_ view: ForumPostPreviewTextView, context _: Context) {
-        let resolver = MessageMentionResolver(model: model, message: message)
-        let prepared = RichMessageAttributedText.prepare(source: message.content)
-        var mentions: [String: MentionPresentation] = [:]
-        for case let .mention(mention) in prepared.tokens {
-            mentions[mention.rawToken] = resolver.presentation(mention)
-        }
-        let fontSize = NSFont.interfacePreferredFont(forTextStyle: textStyle).pointSize
         view.configure(
             ForumPostPreviewTextView.Configuration(
-                messageID: message.id,
-                source: message.content,
-                mentionPresentations: mentions,
-                fontSize: fontSize,
-                emojiSize: (fontSize * 1.375).rounded(),
+                resolving: message,
+                model: model,
+                fontSize: NSFont.interfacePreferredFont(forTextStyle: textStyle).pointSize,
                 maximumNumberOfLines: maximumNumberOfLines,
                 isEmphasized: isEmphasized,
                 underlinesLinks: model.accessibilitySettings.underlinesLinks,
@@ -484,5 +475,36 @@ final class ForumPostPreviewTextView: NSView {
                 return true
             },
         ]
+    }
+}
+
+extension ForumPostPreviewTextView.Configuration {
+    /// Resolves the message's mentions and sizes inline emoji from the body font.
+    init(
+        resolving message: Message,
+        model: AppModel,
+        fontSize: CGFloat,
+        maximumNumberOfLines: Int,
+        isEmphasized: Bool,
+        underlinesLinks: Bool,
+        prefix: ForumPostPreviewTextView.Prefix?
+    ) {
+        let resolver = MessageMentionResolver(model: model, message: message)
+        let prepared = RichMessageAttributedText.prepare(source: message.content)
+        var mentions: [String: MentionPresentation] = [:]
+        for case let .mention(mention) in prepared.tokens {
+            mentions[mention.rawToken] = resolver.presentation(mention)
+        }
+        self.init(
+            messageID: message.id,
+            source: message.content,
+            mentionPresentations: mentions,
+            fontSize: fontSize,
+            emojiSize: (fontSize * 1.375).rounded(),
+            maximumNumberOfLines: maximumNumberOfLines,
+            isEmphasized: isEmphasized,
+            underlinesLinks: underlinesLinks,
+            prefix: prefix
+        )
     }
 }

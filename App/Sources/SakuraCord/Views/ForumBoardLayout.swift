@@ -108,20 +108,12 @@ nonisolated struct ForumCardGeometryInput: Hashable, Sendable {
     let title: String
     let hasStatusRow: Bool
 
-    init(id: ChannelID, title: String, hasStatusRow: Bool) {
-        self.id = id
-        self.title = title
-        self.hasStatusRow = hasStatusRow
-    }
-
     init(post: ForumPost) {
-        self.init(
-            id: post.id,
-            title: post.thread.name,
-            hasStatusRow: !post.thread.appliedTagIDs.isEmpty
-                || post.thread.isPinned
-                || post.thread.isLocked
-        )
+        id = post.id
+        title = post.thread.name
+        hasStatusRow = !post.thread.appliedTagIDs.isEmpty
+            || post.thread.isPinned
+            || post.thread.isLocked
     }
 }
 
@@ -329,7 +321,6 @@ nonisolated final class ForumTitleLineCounter: @unchecked Sendable {
     private struct Key: Hashable {
         let title: String
         let width: Int
-        let fontSize: CGFloat
     }
 
     private let font: NSFont
@@ -342,7 +333,7 @@ nonisolated final class ForumTitleLineCounter: @unchecked Sendable {
     }
 
     func lines(_ title: String, width: CGFloat) -> Int {
-        let key = Key(title: title, width: Int(width.rounded(.down)), fontSize: font.pointSize)
+        let key = Key(title: title, width: Int(width.rounded(.down)))
         if let cached = cache[key] { return cached }
         let value = Self.count(title, width: CGFloat(key.width), font: font, maximumLines: maximumLines)
         if cache.count > 8_192 { cache.removeAll(keepingCapacity: true) }
