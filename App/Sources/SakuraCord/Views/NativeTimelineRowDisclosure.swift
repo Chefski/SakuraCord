@@ -207,7 +207,7 @@ extension NativeTimelineCanvasView {
     func visibleRowSpan(at index: Int) -> Range<CGFloat> {
         let minY = displayedRowOrigin(at: index)
         let maxY = minY + displayedRowHeight(at: index)
-        guard disclosureRange.contains(index) else { return minY ..< maxY }
+        guard disclosureRange.contains(index) else { return unreadDividerGapSpan(at: index, minY: minY, maxY: maxY) }
         let clippedMin = min(disclosureClipMaxY, max(disclosureClipMinY, minY))
         let clippedMax = min(disclosureClipMaxY, max(disclosureClipMinY, maxY))
         return clippedMin ..< clippedMax
@@ -238,6 +238,8 @@ extension NativeTimelineCanvasView {
         isCollapsing: Bool,
         keepsHeaderPosition: Bool
     ) -> DisclosureStart? {
+        // Two row motions would fight over the same displacement.
+        finishUnreadDividerGap()
         let previous = rowDisclosure?.key == key ? rowDisclosure : nil
         // Reversing the same group continues from where it is; another group snaps to its end.
         if previous == nil { finishDisclosure() } else { rowDisclosure = nil }
@@ -340,7 +342,7 @@ extension NativeTimelineCanvasView {
         }
     }
 
-    private var viewportMinY: CGFloat {
+    var viewportMinY: CGFloat {
         enclosingScrollView?.contentView.bounds.minY ?? visibleRect.minY
     }
 
@@ -365,7 +367,7 @@ extension NativeTimelineCanvasView {
         disclosureRelativeClipMaxY = .greatestFiniteMagnitude
     }
 
-    private func redrawForDisclosure() {
+    func redrawForDisclosure() {
         invalidateVisibleContent()
         reconcileInboxHeaders()
         positionAnimatedMediaOverlays()
