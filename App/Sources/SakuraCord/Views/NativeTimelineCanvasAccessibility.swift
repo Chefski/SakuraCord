@@ -181,9 +181,10 @@ extension NativeTimelineCanvasView {
             let frame = rowFrame(at: index)
             desired.insert(identifier)
             desiredOrder.append(identifier)
-            // Translation state lives outside the immutable message item.
-            // Refresh children and actions when it changes, even if only
-            // this row's presentation was updated.
+            // Translation state and a thread card's latest-message preview
+            // live outside the immutable message item. Refresh children and
+            // actions when they change, even if only this row's
+            // presentation was updated.
             if accessibilityProxies.item(for: identifier) != state {
                 accessibilityProxies.remove(identifier)
                 let source = accessibilityRow(at: index)

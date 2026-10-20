@@ -8,12 +8,11 @@ extension NativeTimelineCanvasView {
         guard let index = rowIndex(at: point.y),
               items.indices.contains(index),
               layouts.indices.contains(index),
-              case let .message(row, _, _) = items[index],
-              row.message.thread != nil,
-              let frame = layouts[index].threadFrame
+              let frame = layouts[index].threadFrame,
+              let messageID = items[index].messageID
         else { return nil }
         let local = CGPoint(x: point.x, y: point.y - displayedRowOrigin(at: index))
-        return frame.contains(local) ? row.message.id : nil
+        return frame.contains(local) ? messageID : nil
     }
 
     func setHoveredThreadMessageID(_ value: MessageID?) {
@@ -44,23 +43,20 @@ extension NativeTimelineCanvasView {
 
     func threadCardInteraction(forMessageID messageID: MessageID?) -> NativeTimelineThreadCard.Interaction {
         guard let messageID, hoveredThreadMessageID == messageID else { return .idle }
-        var isPressed = false
-        if case let .thread(pressedID, _)? = pressedActivationTarget { isPressed = pressedID == messageID }
-        return .init(isHovered: true, isPressed: isPressed)
+        if case let .thread(pressedID, _)? = pressedActivationTarget, pressedID == messageID { return .pressed }
+        return .hovered
     }
 
     func installThreadCardCursor(at index: Int, rowOrigin: CGFloat) {
-        guard let frame = layouts[index].threadFrame, items[index].messageID != nil else { return }
+        guard let frame = layouts[index].threadFrame else { return }
         addCursorRect(frame.offsetBy(dx: 0, dy: rowOrigin), cursor: .pointingHand)
     }
-}
 
-extension NativeTimelineCanvasView {
     /// What the card shows beneath its name, for VoiceOver.
     func threadLastMessageSummary(_ thread: MessageThreadSummary, in message: Message) -> String {
-        guard !thread.isArchived, thread.messageCount > 0,
-              let preview = model?.threadPreviewMessages[thread.id]
-        else { return NativeTimelineThreadCard.emptyText(for: thread) }
+        guard let preview = NativeTimelineThreadCard.shownPreview(
+            for: thread, from: model?.threadPreviewMessages[thread.id]
+        ) else { return NativeTimelineThreadCard.emptyText(for: thread) }
         let presented = MessageReplyPreview.presenting(preview)
         let summary = accessibilityResolvedText(presented.content, message: message)
         return "\(presented.author.displayName): \(summary)"

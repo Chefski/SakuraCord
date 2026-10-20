@@ -6,15 +6,28 @@ extension NativeTimelineThreadCard {
     enum Interaction {
         case idle, hovered, pressed
 
-        init(isHovered: Bool, isPressed: Bool) {
-            self = isHovered ? (isPressed ? .pressed : .hovered) : .idle
+        /// How far the label colour lifts the card's fill.
+        var overlayAlpha: CGFloat {
+            switch self {
+            case .idle: 0
+            case .hovered: 0.07
+            case .pressed: 0.12
+            }
+        }
+
+        var borderAlpha: CGFloat {
+            switch self {
+            case .idle: 0.10
+            case .hovered: 0.22
+            case .pressed: 0.28
+            }
         }
     }
 
-    static var cornerRadius: CGFloat { InterfaceScale.metric(10) }
-    static var horizontalPadding: CGFloat { InterfaceScale.metric(12) }
+    fileprivate static var cornerRadius: CGFloat { InterfaceScale.metric(10) }
+    fileprivate static var horizontalPadding: CGFloat { InterfaceScale.metric(12) }
     /// Below this width the activity time gives way to the message preview.
-    static var minimumWidthForActivity: CGFloat { InterfaceScale.metric(280) }
+    private static var minimumWidthForActivity: CGFloat { InterfaceScale.metric(280) }
     private static var chevronNudge: CGFloat { InterfaceScale.metric(2) }
 
     static func glyphName(for thread: MessageThreadSummary) -> String {
@@ -23,24 +36,9 @@ extension NativeTimelineThreadCard {
         return SakuraCordSystemSymbol.thread
     }
 
-    static var nameFont: NSFont { .interfaceSystemFont(ofSize: 13, weight: .semibold) }
-    static var countFont: NSFont { .interfaceSystemFont(ofSize: 12, weight: .semibold) }
-    static var activityFont: NSFont { .interfaceSystemFont(ofSize: 11) }
-
-    /// Measured widths, so a hover redraw does not typeset the strings again.
-    private static let widthCache: NSCache<NSString, NSNumber> = {
-        let cache = NSCache<NSString, NSNumber>()
-        cache.countLimit = 512
-        return cache
-    }()
-
-    static func width(of value: String, font: NSFont) -> CGFloat {
-        let key = "\(font.fontName)|\(font.pointSize)|\(value)" as NSString
-        if let cached = widthCache.object(forKey: key) { return CGFloat(cached.doubleValue) }
-        let width = NativeTimelineReplyMetrics.textWidth(value, font: font)
-        widthCache.setObject(NSNumber(value: Double(width)), forKey: key)
-        return width
-    }
+    fileprivate static var nameFont: NSFont { .interfaceSystemFont(ofSize: 13, weight: .semibold) }
+    fileprivate static var countFont: NSFont { .interfaceSystemFont(ofSize: 12, weight: .semibold) }
+    fileprivate static var activityFont: NSFont { .interfaceSystemFont(ofSize: 11) }
 
     /// Where each part of the card sits, in the same space as `frame`.
     struct Geometry {
@@ -81,7 +79,7 @@ extension NativeTimelineThreadCard {
         let nameX = glyphFrame.maxX + InterfaceScale.metric(6)
         let room = max(0, countRight - nameX)
         let gap = InterfaceScale.metric(10)
-        let nameWidth = width(of: thread.name, font: nameFont)
+        let nameWidth = NativeTimelineReplyMetrics.textWidth(thread.name, font: nameFont)
 
         // The count keeps its full label while the name still gets a useful
         // share; otherwise it shrinks to the number, then yields entirely.
@@ -92,7 +90,7 @@ extension NativeTimelineThreadCard {
             (NativeTimelineThreadCard.compactCountText(thread), 0.4),
         ] {
             guard let candidate else { continue }
-            let candidateWidth = width(of: candidate, font: countFont)
+            let candidateWidth = NativeTimelineReplyMetrics.textWidth(candidate, font: countFont)
             if room - candidateWidth - gap >= min(nameWidth, room * share) {
                 countText = candidate
                 countWidth = candidateWidth
@@ -116,7 +114,7 @@ extension NativeTimelineThreadCard {
         var activityFrame: CGRect?
         var previewWidth = row2.width
         if frame.width >= minimumWidthForActivity {
-            let activityWidth = width(of: activity, font: activityFont)
+            let activityWidth = NativeTimelineReplyMetrics.textWidth(activity, font: activityFont)
             activityFrame = CGRect(
                 x: row2.maxX - activityWidth, y: row2.minY + 1, width: activityWidth,
                 height: InterfaceScale.metric(18)
@@ -132,6 +130,12 @@ extension NativeTimelineThreadCard {
             activityFrame: activityFrame,
             previewFrame: CGRect(x: row2.minX, y: row2.minY, width: previewWidth, height: row2.height)
         )
+    }
+
+    /// The message the card previews, or nil when it shows the empty state
+    /// instead (an archived thread, no messages, or none loaded).
+    static func shownPreview(for thread: MessageThreadSummary, from preview: Message?) -> Message? {
+        thread.isArchived || thread.messageCount == 0 ? nil : preview
     }
 
     static func emptyText(for thread: MessageThreadSummary) -> String {
@@ -210,7 +214,7 @@ extension NativeTimelineRowPainter {
                 color: isOutgoing ? secondary : .tertiaryLabelColor
             )
         }
-        guard !thread.isArchived, thread.messageCount > 0, let preview else {
+        guard let preview = NativeTimelineThreadCard.shownPreview(for: thread, from: preview) else {
             text(
                 NativeTimelineThreadCard.emptyText(for: thread),
                 in: layout.previewFrame,
@@ -236,19 +240,15 @@ extension NativeTimelineRowPainter {
         bubbleRegion: NativeTimelineBubbleRegion?,
         interaction: NativeTimelineThreadCard.Interaction
     ) {
-        let overlayAlpha: CGFloat = switch interaction {
-        case .idle: 0
-        case .hovered: 0.07
-        case .pressed: 0.12
-        }
         if let bubbleRegion {
             bubbleIntegratedSection(
                 frame, bubbleRegion: bubbleRegion, accentColor: nil,
                 drawsTopSeparator: frame.minY - bubbleRegion.frame.minY > 8.5, drawsNeutralRail: false
             )
-            guard overlayAlpha > 0 else { return }
-            NativeTimelineBubbleDrawing.foregroundColor(for: bubbleRegion)
-                .withAlphaComponent(overlayAlpha).setFill()
+            guard interaction != .idle else { return }
+            NativeTimelineSemanticColor.opacity(
+                NativeTimelineBubbleDrawing.foregroundColor(for: bubbleRegion), interaction.overlayAlpha
+            ).setFill()
             NSBezierPath(
                 concentricRoundedRect: frame.insetBy(dx: 0, dy: InterfaceScale.metric(1)),
                 cornerRadius: bubbleConcentricCornerRadius(
@@ -258,18 +258,14 @@ extension NativeTimelineRowPainter {
             return
         }
         let radius = NativeTimelineThreadCard.cornerRadius
+        let surface = NSBezierPath(roundedRect: frame, xRadius: radius, yRadius: radius)
         NSColor.controlBackgroundColor.setFill()
-        NSBezierPath(roundedRect: frame, xRadius: radius, yRadius: radius).fill()
-        if overlayAlpha > 0 {
-            NSColor.labelColor.withAlphaComponent(overlayAlpha).setFill()
-            NSBezierPath(roundedRect: frame, xRadius: radius, yRadius: radius).fill()
+        surface.fill()
+        if interaction != .idle {
+            NativeTimelineSemanticColor.opacity(.labelColor, interaction.overlayAlpha).setFill()
+            surface.fill()
         }
-        let borderAlpha: CGFloat = switch interaction {
-        case .idle: 0.10
-        case .hovered: 0.22
-        case .pressed: 0.28
-        }
-        NSColor.labelColor.withAlphaComponent(borderAlpha).setStroke()
+        NativeTimelineSemanticColor.opacity(.labelColor, interaction.borderAlpha).setStroke()
         let border = NSBezierPath(
             roundedRect: frame.insetBy(dx: 0.5, dy: 0.5), xRadius: radius - 0.5, yRadius: radius - 0.5
         )
