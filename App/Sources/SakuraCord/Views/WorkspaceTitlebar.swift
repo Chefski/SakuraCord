@@ -243,6 +243,7 @@ final class WorkspaceTitlebarView: NSView {
         placedColumnIDs.formIntersection(groups.keys)
         // A full-width side chat covers the conversation from its leading
         // edge as it widens.
+        let leadingLimit = leadingControlsMaxX
         let fullWidth = geometry.columns.last(where: \.isFullWidth)
         let fullWidthViews = fullWidth.flatMap { groups[$0.id] }
         let conversationViews = groups[WorkspaceTitlebar.conversationID]
@@ -269,7 +270,9 @@ final class WorkspaceTitlebarView: NSView {
                 visibleMaxX = span.upperBound
                 if column.isFullWidth { widening = column.widening }
             }
-            let minX = convert(CGPoint(x: span.lowerBound, y: 0), from: nil).x
+            // Clear of the window's controls and the sidebar button, which
+            // the column reaches when the sidebar is hidden.
+            let minX = max(convert(CGPoint(x: span.lowerBound, y: 0), from: nil).x, leadingLimit)
             let maxX = min(convert(CGPoint(x: span.upperBound, y: 0), from: nil).x, bounds.maxX)
             visibleMaxX = min(convert(CGPoint(x: visibleMaxX, y: 0), from: nil).x, bounds.maxX)
             views.clip.frame = CGRect(x: minX, y: 0, width: max(0, visibleMaxX - minX), height: bounds.height)
@@ -299,6 +302,25 @@ final class WorkspaceTitlebarView: NSView {
     let searchHost = WorkspaceSearchFieldHost()
     private var showsSearch = false
     private var searchWidth: CGFloat = 0
+
+    /// Where the window's own leading controls end in this view: its
+    /// buttons and the toolbar's leading items, such as the sidebar button.
+    private var leadingControlsMaxX: CGFloat {
+        guard let window else { return 0 }
+        var maxX: CGFloat = 0
+        for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+            if let view = window.standardWindowButton(button), !view.isHiddenOrHasHiddenAncestor {
+                maxX = max(maxX, convert(view.bounds, from: view).maxX)
+            }
+        }
+        for item in window.toolbar?.items ?? [] where !(item is NSSearchToolbarItem) {
+            guard let view = item.view, view.window === window, !view.isHiddenOrHasHiddenAncestor else { continue }
+            let frame = convert(view.bounds, from: view)
+            // Only items at the leading edge, before the workspace's.
+            if frame.minX < bounds.midX / 2 { maxX = max(maxX, frame.maxX) }
+        }
+        return maxX > 0 ? maxX + ChatChromeMetrics.toolbarItemEdgeInset : 0
+    }
 
     /// A window x in this view, within it.
     private func localX(_ windowX: CGFloat) -> CGFloat {
