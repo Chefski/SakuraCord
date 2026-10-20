@@ -31,9 +31,10 @@ final class ForumBoardRevealGroup {
         if card.isRendering { waiting.insert(ObjectIdentifier(card)) }
     }
 
-    /// Whether a card arriving in this group will cover `frame`.
+    /// Whether a card this group has yet to show will cover `frame`,
+    /// including one whose bitmap is ready but waits for the rest.
     func covers(_ frame: CGRect) -> Bool {
-        members.contains { waiting.contains(ObjectIdentifier($0.card)) && $0.card.frame.intersects(frame) }
+        !isFinished && members.contains { $0.card.layer.isHidden && $0.card.frame.intersects(frame) }
     }
 
     func keepUntilRevealed(_ card: ForumBoardCard) {
@@ -74,7 +75,7 @@ extension ForumBoardView {
         recycle(card)
         for retiree in retirees {
             // Cards the earlier group still owes keep covering their spots.
-            if !previous.isFinished, holds(retiree.frame, until: previous) {
+            if holds(retiree.frame, until: previous) {
                 previous.keepUntilRevealed(retiree)
             } else if holds(retiree.frame, until: group) {
                 group.keepUntilRevealed(retiree)
