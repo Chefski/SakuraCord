@@ -130,6 +130,16 @@ extension ForumCardPresentation.Media {
         }
     }
 
+    var accessibilityDescription: String {
+        switch self {
+        case .image: "Image attachment"
+        case let .video(_, filename): "Video attachment, \(filename)"
+        case let .audio(filename): "Audio attachment, \(filename)"
+        case let .file(filename): "File attachment, \(filename)"
+        case .spoiler: "Spoiler attachment hidden"
+        }
+    }
+
     var mediaKey: NativeTimelineMediaKey? {
         switch self {
         case let .image(key): key

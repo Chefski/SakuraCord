@@ -1512,7 +1512,11 @@ final class ForumBoardAccessibilityProxyView: NSView {
         setAccessibilityLabel(presentation.accessibilityLabel)
         var value = [presentation.isEmphasized ? "Unread" : "Read"]
         if let excerpt, !excerpt.isEmpty { value.append(excerpt) }
+        if let attachment = presentation.thumbnail?.accessibilityDescription { value.append(attachment) }
         if let author = presentation.galleryAuthor { value.append("Posted by \(author.name)") }
+        if let reaction = presentation.reaction {
+            value.append(MessageReactionPresentation.accessibilityLabel(for: reaction.reaction))
+        }
         value.append("Posted \(presentation.createdAt.formatted(date: .abbreviated, time: .shortened))")
         value.append(presentation.messageCountAccessibilityText)
         value.append("Last activity \(presentation.lastActivityAt.formatted(date: .abbreviated, time: .shortened))")
