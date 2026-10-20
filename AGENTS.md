@@ -70,7 +70,7 @@ would and remove what does not need to exist.
 - Search for an existing helper, extension, type, or pattern before adding one.
   Reuse or extend it instead of adding a near-duplicate beside it.
 - Write the smallest change that fully solves the problem. Do not add
-  protocols, wrappers, options, or generality that only one caller needs.
+  protocols, wrappers, options, or generality without a concrete need.
 - Do not add defensive code for states the types or the owner already rule
   out, such as redundant optional checks, fallback values that hide failures,
   empty or log-only `catch` blocks, or unexplained retries.
@@ -81,9 +81,9 @@ would and remove what does not need to exist.
 - Treat a SwiftLint length or complexity violation as a design signal. First
   shorten the code itself by removing duplication, redundant steps, and
   unnecessary branches. If it is still over the limit, move a cohesive
-  responsibility to the extension or type that owns it. Do not satisfy the
-  limit by extracting a single-use helper, moving a block to another file
-  unchanged, or compressing code.
+  responsibility to the extension or type that owns it; that split is fine
+  even when the result has a single caller. Do not extract helpers or move
+  code solely to get under the limit, and do not compress code to fit.
 
 ## Tests
 
