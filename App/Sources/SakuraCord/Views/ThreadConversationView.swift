@@ -196,7 +196,8 @@ private struct ThreadConversationFooter: View {
             if thread.isLocked {
                 // Readers who cannot send see the lock once, in the disabled
                 // composer, as read-only channels present it.
-                if model.openThreadAccess.canSend || policy.canManage {
+                // Moderators who cannot send unlock from the thread's More menu.
+                if model.openThreadAccess.canSend {
                     ThreadStateBanner(
                         title: isForumPost ? "Locked post" : "Locked thread",
                         message: "Only moderators can send messages.",
@@ -256,7 +257,7 @@ private struct ThreadConversationComposer: View {
                 appearance: model.appearanceSettings.composerBarAppearance,
                 checkingMessage: "Checking thread permissions…",
                 readOnlyMessage: thread.isLocked
-                    ? "This \(model.openThreadParentChannel?.kind == .forum ? "post" : "thread") is locked. Only moderators can send messages."
+                    ? "This \(model.openThreadParentChannel?.kind == .forum ? "post" : "thread") is locked."
                     : "You do not have permission to send messages in this channel."
             ) {
                 ComposerView(
