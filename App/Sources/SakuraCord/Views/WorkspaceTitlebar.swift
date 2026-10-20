@@ -257,9 +257,10 @@ final class WorkspaceTitlebarView: NSView {
         // as it leaves or widens.
         let searchAlpha = searchVisibility(geometry)
         _ = searchItemView
-        let searchMinX = searchAlpha > 0 ? searchFieldMinX : nil
-        let holdsSearch = searchMinX != nil
-        let searchLimit = (searchMinX ?? bounds.maxX) - inset
+        // Items stop before the field while it shows, or will once a pane
+        // leaves; they never pass it to come back.
+        let searchMinX = showsSearch || searchAlpha > 0 ? searchFieldMinX : nil
+        let searchLimit = (searchMinX ?? bounds.maxX + inset) - inset
         for id in order {
             guard let views = groups[id] else { continue }
             // In window coordinates.
@@ -283,13 +284,18 @@ final class WorkspaceTitlebarView: NSView {
             let minX = max(convert(CGPoint(x: span.lowerBound, y: 0), from: nil).x, leadingLimit)
             var maxX = min(convert(CGPoint(x: span.upperBound, y: 0), from: nil).x, bounds.maxX)
             visibleMaxX = min(convert(CGPoint(x: visibleMaxX, y: 0), from: nil).x, bounds.maxX)
-            // The conversation's and a full-width side chat's items end
-            // before the search field, as far as it shows.
-            if holdsSearch, endsAtSearch, maxX > searchLimit {
-                maxX -= (maxX - searchLimit) * searchAlpha
-            }
+            // The conversation's items, and a full-width side chat's, end
+            // before the search field; a pane's own actions stay at its edge.
+            let searchInset = endsAtSearch ? max(0, maxX - searchLimit) : 0
+            if id == WorkspaceTitlebar.conversationID { maxX -= searchInset }
             views.clip.frame = CGRect(x: minX, y: 0, width: max(0, visibleMaxX - minX), height: bounds.height)
-            place(views, width: maxX - minX, widening: widening, fills: id != WorkspaceTitlebar.conversationID)
+            place(
+                views,
+                width: maxX - minX,
+                widening: widening,
+                fullWidthInset: id == WorkspaceTitlebar.conversationID ? 0 : searchInset,
+                fills: id != WorkspaceTitlebar.conversationID
+            )
         }
         fadeSearch(searchAlpha)
     }
@@ -347,10 +353,10 @@ final class WorkspaceTitlebarView: NSView {
         return view.superview == nil ? searchField : view
     }
 
-    /// Where the toolbar's search field starts in this view, if it shows.
+    /// Where the toolbar's search field starts in this view, if the toolbar
+    /// has it, shown or faded out.
     private var searchFieldMinX: CGFloat? {
-        guard let searchField, searchField.window === window, searchField.superview?.isHidden == false
-        else { return nil }
+        guard let searchField, searchField.window === window else { return nil }
         return convert(searchField.bounds, from: searchField).minX
     }
 
@@ -362,16 +368,21 @@ final class WorkspaceTitlebarView: NSView {
 
     /// Places a group's title at its column's leading edge and its actions
     /// at the trailing edge, within its clip view.
-    private func place(_ views: GroupViews, width: CGFloat, widening: CGFloat, fills: Bool) {
+    /// - Parameter fullWidthInset: How far before the trailing edge a
+    ///   full-width side chat's actions end, at the search field.
+    private func place(_ views: GroupViews, width: CGFloat, widening: CGFloat, fullWidthInset: CGFloat, fills: Bool) {
         let inset = ChatChromeMetrics.toolbarItemEdgeInset
         let height = bounds.height
         let actionsWidth = views.actions.size.width * (1 - widening)
-            + (views.fullWidthActions?.size.width ?? 0) * widening
-        for (island, alpha) in [(views.actions, 1 - widening), (views.fullWidthActions, widening)] {
+            + ((views.fullWidthActions?.size.width ?? 0) + fullWidthInset) * widening
+        for (island, alpha, trailing) in [
+            (views.actions, 1 - widening, 0),
+            (views.fullWidthActions, widening, fullWidthInset),
+        ] {
             guard let island else { continue }
             let size = island.size
             setFrame(of: island.host.view, CGRect(
-                x: width - inset - size.width,
+                x: width - trailing - inset - size.width,
                 y: ((height - size.height) / 2).rounded(),
                 width: size.width,
                 height: size.height
