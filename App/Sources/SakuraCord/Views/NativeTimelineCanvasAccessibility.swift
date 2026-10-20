@@ -920,6 +920,7 @@ extension NativeTimelineCanvasView {
                 role: .button,
                 label: NativeTimelineAccessibilityPresentation
                     .threadLabel(thread),
+                value: threadLastMessageSummary(thread, in: message),
                 help: "Open thread",
                 frame: accessibilityChildFrame(frame, rowIndex: rowIndex),
                 parent: parent

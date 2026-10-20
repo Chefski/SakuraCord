@@ -119,6 +119,7 @@ extension NativeTimelineCanvasView {
                     addCursorRect(tag.frame.offsetBy(dx: 0, dy: rowOrigin), cursor: .pointingHand)
                 }
                 installForwardedSourceCursor(at: index, rowOrigin: rowOrigin)
+                installThreadCardCursor(at: index, rowOrigin: rowOrigin)
                 installReactionCursors(at: index, rowOrigin: rowOrigin)
                 installPollCursors(at: index, rowOrigin: rowOrigin)
                 installInviteCursors(at: index, rowOrigin: rowOrigin)
@@ -239,6 +240,7 @@ extension NativeTimelineCanvasView {
         setHoveredForwardedSourceMessageID(
             forwardedSourcePointerHit(at: point)
         )
+        setHoveredThreadMessageID(threadCardPointerHit(at: point))
         setHoveredFooterAction(footerActionPointerHit(at: point))
     }
 
@@ -275,6 +277,7 @@ extension NativeTimelineCanvasView {
         setHoveredForwardedSourceMessageID(
             forwardedSourcePointerHit(at: point)
         )
+        setHoveredThreadMessageID(threadCardPointerHit(at: point))
         setHoveredFooterAction(footerActionPointerHit(at: point))
         setHoveredReaction(
             reactionPointerHit(at: point),
@@ -367,6 +370,11 @@ extension NativeTimelineCanvasView {
                items[index].messageID == hoveredForwardedSourceMessageID
             {
                 setHoveredForwardedSourceMessageID(nil)
+            }
+            if let index = event.trackingArea?.userInfo?["nativeTimelineRowIndex"] as? Int,
+               items.indices.contains(index),
+               items[index].messageID == hoveredThreadMessageID {
+                setHoveredThreadMessageID(nil)
             }
             if let index = event.trackingArea?.userInfo?["nativeTimelineRowIndex"] as? Int,
                items.indices.contains(index),
@@ -1144,6 +1152,7 @@ extension NativeTimelineCanvasView {
         setHoveredCodeBlock(nil)
         setHoveredComponentButton(nil)
         setHoveredForwardedSourceMessageID(nil)
+        setHoveredThreadMessageID(nil)
         setHoveredFooterAction(nil)
         setHoveredReaction(nil)
         setHoveredRow(nil)
@@ -1199,6 +1208,7 @@ extension NativeTimelineCanvasView {
                 ? componentButtonPointerHit(at: point)?.target
                 : nil
         )
+        setHoveredThreadMessageID(visibleRect.contains(point) ? threadCardPointerHit(at: point) : nil)
         setHoveredFooterAction(
             visibleRect.contains(point) ? footerActionPointerHit(at: point) : nil
         )
