@@ -21,7 +21,7 @@ extension AppModel {
 
     func sidebarThreadPermissions(_ thread: MessageThreadSummary) -> SidebarThreadPermissions {
         let thread = sidebarThread(thread.id) ?? thread
-        guard let parent = snapshot?.channels.first(where: { $0.id == thread.parentID }),
+        guard let parent = thread.parentID.flatMap({ messagePresentationChannelsByID[$0] }),
               conversationAccess(for: parent).isReadable,
               let permissions = effectiveMessagePermissions(in: parent),
               let currentUserID = currentUser?.id else { return .init() }
@@ -71,7 +71,7 @@ extension AppModel {
         case .locked: guard canManageSidebarThread(thread) else { return }
         case .pinned:
             guard canManageSidebarThread(thread),
-                  snapshot?.channels.first(where: { $0.id == thread.parentID })?.kind == .forum else { return }
+                  thread.parentID.flatMap({ messagePresentationChannelsByID[$0] })?.kind == .forum else { return }
         case .tags: return
         }
         startAccountChildTask(account: accountSession()) { model, account in

@@ -50,12 +50,12 @@ struct PollVotersView: View {
         .onReceive(NotificationCenter.default.publisher(for: .sakuracordMessageRowsDidChange, object: model)) { _ in
             pollSnapshot = model.retainedMessage(channelID: message.channelID, messageID: message.id)?.poll
         }
-        .onChange(of: model.snapshot?.currentUser.id) { _, _ in dismiss() }
+        .onChange(of: model.currentUser?.id) { _, _ in dismiss() }
     }
 
     /// The current user's pending vote is shown before Discord lists it.
     private func displayedUsers(_ users: [User]) -> [User] {
-        guard let poll, poll.results != nil, let me = model.snapshot?.currentUser else { return users }
+        guard let poll, poll.results != nil, let me = model.currentUser else { return users }
         let others = users.filter { $0.id != me.id }
         return poll.selectedAnswerIDs.contains(selectedAnswerID) ? [me] + others : others
     }

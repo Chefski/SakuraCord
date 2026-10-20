@@ -140,20 +140,26 @@ final class AppModel {
     }
 
     @ObservationIgnored var snapshotStorage: BootstrapSnapshot?
-    var snapshot: BootstrapSnapshot? {
-        get {
-            access(keyPath: \.snapshot)
-            return snapshotStorage
-        }
-        set {
-            let previous = snapshotStorage
-            withMutation(keyPath: \.snapshot) { snapshotStorage = newValue }
-            refreshSnapshotPresentation(replacing: previous)
-        }
-    }
     // Keep workspace chrome independent of unrelated channel and member changes.
     private(set) var currentUser: User?
     private(set) var selectedGuild: Guild?
+    private(set) var guildIDs: [GuildID] = []
+    private(set) var threads: [MessageThreadSummary] = []
+    private(set) var relationshipNicknamesByUserID: [UserID: String] = [:]
+    private(set) var relationships: [Relationship] = []
+    private(set) var blockedOrIgnoredUserIDs: Set<UserID> = []
+    private(set) var friendUserIDs: Set<UserID> = []
+    private(set) var messageSearchSourceUsers: [User] = []
+    private(set) var messageSearchUserBoosterChannelIDs: Set<ChannelID> = []
+    private(set) var userSearchAliasesByUserID: [UserID: [String]] = [:]
+    private(set) var quickSwitcherGuildMemberUserIDs: [GuildID: [UserID]] = [:]
+    private(set) var quickSwitcherJoinedGuildMemberUserIDs: [GuildID: [UserID]] = [:]
+    private(set) var quickSwitcherGuildMemberAliases: [GuildID: [UserID: String]] = [:]
+    private(set) var messagePresentationChannelsByID: [ChannelID: Channel] = [:]
+    private(set) var messagePresentationChannels: [Channel] = []
+    private(set) var activeJoinedThreads: [MessageThreadSummary] = []
+    private(set) var knownThreadIDs: Set<ChannelID> = []
+    private(set) var guildIDsWithResourceChannels: Set<GuildID> = []
 
     @ObservationIgnored let serverRailPresentation =
         ServerRailPresentationStore()
@@ -185,7 +191,7 @@ final class AppModel {
     }
     var visibleChannelGroups: [ChannelGroup] = []
     var pinnedDirectMessageIDs: Set<ChannelID> {
-        guard let settings = snapshot?.notificationSettings.first(where: { $0.guildID == nil })
+        guard let settings = readState.settingsByGuild[nil]
         else { return [] }
         return Set(settings.channelOverrides.filter(\.isPinnedDirectMessage).map(\.channelID))
     }
@@ -701,29 +707,14 @@ final class AppModel {
         guard supportedCapabilities.contains(.messageForwarding),
               message.isForwardable
         else { return false }
-        guard let channel = snapshot?.channels.first(where: { $0.id == message.channelID })
+        guard let channel = messagePresentationChannelsByID[message.channelID]
                 ?? visibleChannels.first(where: { $0.id == message.channelID })
         else { return true }
-        guard channel.guildID != nil else { return true }
-
-        let guildID = channel.guildID
-        guard let guildID,
-              let guild = serverRailGuildsByID[guildID],
-              let currentUserID = currentUser?.id
+        guard let guildID = channel.guildID else { return true }
+        guard let guild = serverRailGuildsByID[guildID],
+              !guild.features.contains("FORWARDING_DISABLED"),
+              let permissions = effectiveMessagePermissions(in: channel)
         else { return false }
-        guard !guild.features.contains("FORWARDING_DISABLED") else { return false }
-        let member = onboardingMember(in: guildID)
-        let roles =
-            guildRolesByGuildID[guildID]
-            ?? (guildID == selectedGuildID ? guildRoles : [])
-        guard let permissions = ConversationPermissionResolver.effectivePermissions(
-            guild: guild,
-            channel: channel,
-            currentUserID: currentUserID,
-            currentMember: member,
-            roles: roles,
-            currentRoleIDs: currentUserRoleIDsByGuild[guildID]
-        ) else { return false }
         return permissions & DiscordPermissionBits.readMessageHistory != 0
     }
 
@@ -1029,7 +1020,6 @@ final class AppModel {
     @ObservationIgnored var unreadAccessProjectionGeneration: UInt64 = 0
     @ObservationIgnored var snapshotSourceRevision: UInt64 = 0
     @ObservationIgnored var shortcutUnreadNavigationCandidateIndex: Int?
-    @ObservationIgnored var messagePresentationChannelPositions: [ChannelID: Int] = [:]
     @ObservationIgnored var shortcutMentionNavigationCandidateIndex: Int?
     @ObservationIgnored var batchedAcknowledgementChannelIDs:
         Set<ChannelID> = []
@@ -1342,9 +1332,44 @@ extension AppModel {
         return KeychainCredentialStore()
     }
 
+    var snapshot: BootstrapSnapshot? {
+        get {
+            access(keyPath: \.snapshot)
+            return snapshotStorage
+        }
+        set {
+            let previous = snapshotStorage
+            withMutation(keyPath: \.snapshot) { snapshotStorage = newValue }
+            refreshSnapshotPresentation(replacing: previous)
+        }
+    }
+
     private func refreshSnapshotPresentation(replacing previous: BootstrapSnapshot?) {
         snapshotSourceRevision &+= 1
         currentUser = snapshot?.currentUser
+        guildIDs = snapshot?.guilds.map(\.id) ?? []
+        threads = snapshot?.threads ?? []
+        relationshipNicknamesByUserID = snapshot?.relationshipNicknamesByUserID ?? [:]
+        relationships = snapshot?.relationships ?? []
+        blockedOrIgnoredUserIDs = snapshot?.blockedOrIgnoredUserIDs ?? []
+        friendUserIDs = snapshot?.friendUserIDs ?? []
+        refreshSearchSnapshotPresentation()
+        messageSearchUserBoosterChannelIDs = snapshot?.messageSearchUserBoosterChannelIDs ?? []
+        messagePresentationChannels = (snapshot?.channels ?? []).map { channel in
+            var channel = channel
+            channel.unreadCount = 0
+            channel.mentionCount = 0
+            return channel
+        }
+        messagePresentationChannelsByID = Dictionary(
+            messagePresentationChannels.map { ($0.id, $0) },
+            uniquingKeysWith: { _, newer in newer }
+        )
+        activeJoinedThreads = snapshot?.activeJoinedThreads ?? []
+        knownThreadIDs = Set(threads.map(\.id)).union(activeJoinedThreads.map(\.id))
+        guildIDsWithResourceChannels = Set((snapshot?.channels ?? []).compactMap { channel in
+            channel.flags & (1 << 7) != 0 ? channel.guildID : nil
+        })
         refreshServerRailDirectMessages(replacing: previous)
         refreshSelectedGuildPresentation()
         invalidateChangedSystemMessageRecipients(replacing: previous)
@@ -1354,6 +1379,14 @@ extension AppModel {
         if previous?.currentUser != snapshot?.currentUser {
             refreshVoiceSidebarPresentation()
         }
+    }
+
+    func refreshSearchSnapshotPresentation() {
+        messageSearchSourceUsers = snapshotStorage?.messageSearchUsers ?? []
+        userSearchAliasesByUserID = snapshotStorage?.userSearchAliasesByUserID ?? [:]
+        quickSwitcherGuildMemberUserIDs = snapshotStorage?.quickSwitcherGuildMemberUserIDs ?? [:]
+        quickSwitcherJoinedGuildMemberUserIDs = snapshotStorage?.quickSwitcherJoinedGuildMemberUserIDs ?? [:]
+        quickSwitcherGuildMemberAliases = snapshotStorage?.quickSwitcherGuildMemberAliases ?? [:]
     }
 
     private func refreshSelectedGuildPresentation() {

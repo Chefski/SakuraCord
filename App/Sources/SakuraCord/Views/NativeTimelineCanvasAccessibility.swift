@@ -489,7 +489,7 @@ extension NativeTimelineCanvasView {
         )
         let generatedLabel = SystemMessagePresentation.label(
             for: message,
-            currentUserID: model?.snapshot?.currentUser.id,
+            currentUserID: model?.currentUser?.id,
             recipient: model?.systemMessageRecipient(for: message)
         )
         let baseLabel = message.type.hasGeneratedContent

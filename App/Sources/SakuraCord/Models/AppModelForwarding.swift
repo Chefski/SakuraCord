@@ -18,7 +18,11 @@ extension AppModel {
         case .quickSwitcherUserIDsChanged(let userIDs):
             updateForwardSnapshot { $0.quickSwitcherUserIDs = userIDs }
         case .messageSearchUsersChanged(let users):
-            updateForwardSnapshot { $0.messageSearchUsers = users }
+            // Only message search reads this cache, so the forwarding and quick
+            // switcher index revision stays put.
+            guard snapshotStorage != nil else { break }
+            snapshotStorage?.messageSearchUsers = users
+            refreshSearchSnapshotPresentation()
         case .userSearchAliasesChanged(let aliases):
             updateForwardSnapshot { $0.userSearchAliasesByUserID = aliases }
         case .quickSwitcherGuildMemberUserIDsChanged(let userIDsByGuildID):
@@ -44,6 +48,7 @@ extension AppModel {
         guard var value = snapshotStorage else { return }
         update(&value)
         snapshotStorage = value
+        refreshSearchSnapshotPresentation()
         forwardSearchSourceRevision &+= 1
     }
 

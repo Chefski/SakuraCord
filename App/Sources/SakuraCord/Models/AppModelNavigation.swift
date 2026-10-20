@@ -211,7 +211,7 @@ extension AppModel {
             from: DirectMessageMemberResolver.members(
                 for: channel,
                 knownMembers: members,
-                currentUser: snapshot?.currentUser,
+                currentUser: currentUser,
                 currentStatus: currentStatus
             )
         )

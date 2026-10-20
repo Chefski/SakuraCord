@@ -6,7 +6,7 @@ extension AppModel {
     var openThreadParentChannel: Channel? {
         guard let parentID = openThread?.parentID else { return nil }
         if let selectedChannel, selectedChannel.id == parentID { return selectedChannel }
-        return snapshot?.channels.first { $0.id == parentID }
+        return messagePresentationChannelsByID[parentID]
             ?? visibleChannels.first { $0.id == parentID }
     }
 

@@ -142,7 +142,7 @@ extension AppModel {
         StickerSendPolicy.route(
             for: sticker,
             currentGuildID: selectedGuildID,
-            premiumType: snapshot?.currentUser.premiumType ?? 0,
+            premiumType: currentUser?.premiumType ?? 0,
             fakeNitroEnabled: featuresSettings.fakeNitroStickers
         )
     }
