@@ -15,12 +15,15 @@ struct SupplementaryPaneFramePreferenceKey: PreferenceKey {
 }
 
 extension View {
-    func reportsSupplementaryPaneFrame() -> some View {
+    /// - Parameter isEnabled: Whether this view is in the trailing column.
+    ///   A full-width side chat is not, but keeps the modifier so its
+    ///   identity survives moving there.
+    func reportsSupplementaryPaneFrame(isEnabled: Bool = true) -> some View {
         background {
             GeometryReader { proxy in
                 Color.clear.preference(
                     key: SupplementaryPaneFramePreferenceKey.self,
-                    value: proxy.frame(in: .global)
+                    value: isEnabled ? proxy.frame(in: .global) : .zero
                 )
             }
         }
@@ -29,22 +32,42 @@ extension View {
 
 /// The shell shared by every side chat in the trailing column: its divider,
 /// width, scroll-edge treatment and frame report. Kinds supply only content.
+/// A full-width thread keeps this shell, without the divider and width
+/// limits, so moving between the pane and full width keeps its timeline.
 struct SideConversationPane<Content: View>: View {
+    var isFullWidth = false
     @ViewBuilder let content: Content
+    /// A pane that slides in builds its content once it has arrived, so
+    /// building the timeline and composer cannot take the motion's frames.
+    /// Until then it shows the timeline's loading placeholder.
+    @State private var showsContent = !WorkspaceLayoutMotion.isMoving
 
     var body: some View {
         HStack(spacing: 0) {
-            Divider()
-                .ignoresSafeArea(.container, edges: .top)
-            content
-                .scrollEdgeEffectStyle(.soft, for: .top)
-                .frame(
-                    minWidth: InterfaceScale.metric(340),
-                    idealWidth: InterfaceScale.metric(400),
-                    maxWidth: InterfaceScale.metric(440),
-                    maxHeight: .infinity
-                )
-                .reportsSupplementaryPaneFrame()
+            if !isFullWidth {
+                Divider()
+                    .ignoresSafeArea(.container, edges: .top)
+            }
+            Group {
+                if showsContent {
+                    content
+                } else {
+                    // The loading state shows from the first frame.
+                    MessageTimelineLoadingSkeleton()
+                        .task {
+                            await WorkspaceLayoutMotion.untilSettled()
+                            showsContent = true
+                        }
+                }
+            }
+            .scrollEdgeEffectStyle(isFullWidth ? .automatic : .soft, for: .top)
+            .frame(
+                minWidth: isFullWidth ? nil : InterfaceScale.metric(340),
+                idealWidth: isFullWidth ? nil : InterfaceScale.metric(400),
+                maxWidth: isFullWidth ? .infinity : InterfaceScale.metric(440),
+                maxHeight: .infinity
+            )
+            .reportsSupplementaryPaneFrame(isEnabled: !isFullWidth)
         }
     }
 }
@@ -56,7 +79,7 @@ struct SideConversationView: View {
     let conversation: SideConversation
 
     var body: some View {
-        SideConversationPane {
+        SideConversationPane(isFullWidth: conversation.isFullWidth) {
             switch conversation {
             case .thread, .threadCreation:
                 ThreadConversationView(model: model)

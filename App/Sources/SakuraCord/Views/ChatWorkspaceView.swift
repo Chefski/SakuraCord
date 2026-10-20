@@ -5,6 +5,17 @@ struct ChatWorkspaceView: View {
     let model: AppModel
     @Binding var presentsForumComposer: Bool
     let toolbarSearchFieldMetrics: ToolbarSearchFieldMetrics
+    /// The side chat pane's width, which the conversation keeps while a
+    /// thread widens over it.
+    @State private var paneWidth: CGFloat = 0
+    @State private var workspaceWidth: CGFloat = 0
+    @State private var conversationWidth: CGFloat = 0
+    @State private var inspectorWidth: CGFloat = 0
+
+    /// Where the pane's leading edge was, relative to the workspace.
+    private var paneLeadingEdge: CGFloat {
+        max(0, workspaceWidth - paneWidth)
+    }
 
     @ViewBuilder var body: some View {
         let presentation = model.workspacePresentation
@@ -55,6 +66,7 @@ struct ChatWorkspaceView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             if let conversation = presentation.paneSideConversation {
                 SideConversationView(model: model, conversation: conversation)
+                    .workspaceMotionProbe("pane")
                     .id(conversation.motionIdentity)
                     .transition(.move(edge: .trailing))
             }
@@ -63,32 +75,50 @@ struct ChatWorkspaceView: View {
     }
 
     private func conversation(_ presentation: WorkspacePresentation) -> some View {
-        HStack(spacing: 0) {
-            if case .channel(let content) = presentation.primary {
+        let motion = WorkspaceMotionPhase.shared
+        let widening = motion.widening
+        let channelContent: WorkspacePresentation.ChannelContent? =
+            if case .channel(let content) = presentation.primary { content } else { widening?.channel }
+        // A thread keeps one view, and its timeline, between the pane and
+        // full width.
+        let fullWidthThread = presentation.primary == .fullWidthThread
+            ? model.sideConversations.thread.map { WorkspaceTrailingColumn(.sideConversation($0)) }
+            : nil
+        let trailing = WorkspaceTrailingColumn(presentation)
+        // Departing columns come first, so a column that arrives covers them.
+        let columns = motion.departing.filter { $0.id != trailing?.id && $0.id != fullWidthThread?.id }
+            + [fullWidthThread, trailing].compactMap(\.self)
+        let showsInspector = if case .inspector = trailing?.content { true } else { false }
+        let columnsLayout = WorkspaceColumnsLayout(
+            showsSideConversation: fullWidthThread != nil || presentation.paneSideConversation != nil,
+            sideConversationIsFullWidth: fullWidthThread != nil,
+            showsInspector: showsInspector,
+            paneWidth: paneWidth,
+            conversationWidthLimit: motion.isMoving ? conversationWidth : nil
+        )
+        return columnsLayout {
+            if let channelContent {
                 ChatWorkspacePrimaryContent(
                     model: model,
-                    content: content,
+                    content: channelContent,
                     presentsForumComposer: $presentsForumComposer
                 )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ThreadConversationView(model: model)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .workspaceMotionProbe("primary")
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { conversationWidth = $0 }
+                // A widening thread slides over the conversation, which is
+                // gone by the time it is covered.
+                .opacity(widening?.hasArrived == true ? 0 : 1)
+                .animation(.easeOut(duration: 0.12), value: widening?.hasArrived)
+                .layoutValue(key: WorkspaceColumn.self, value: .conversation)
             }
 
-            if let pane = presentation.supplementaryPane {
-                ChatWorkspaceSupplementaryContent(
-                    model: model,
-                    pane: pane,
-                    toolbarSearchFieldMetrics: toolbarSearchFieldMetrics
-                )
-                // Swapping what the column shows slides the old content out
-                // and the new content in, as opening and closing do.
-                .id(pane.motionIdentity)
-                .transition(.move(edge: .trailing))
+            ForEach(columns) { column in
+                trailingColumn(column, motion: motion)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { workspaceWidth = $0 }
         .onChange(of: model.selectedChannelID) { _, channelID in
             guard let channelID else {
                 AppPerformanceSignposts.cancelConversationNavigation()
@@ -98,6 +128,49 @@ struct ChatWorkspaceView: View {
                 to: channelID
             )
         }
+    }
+
+    @ViewBuilder
+    private func trailingColumn(_ column: WorkspaceTrailingColumn, motion: WorkspaceMotionPhase) -> some View {
+        switch column.content {
+        case .sideConversation(let conversation):
+            SideConversationView(model: model, conversation: conversation)
+                .workspaceMotionProbe("pane")
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+                    // A leaving pane loses its content and shrinks to its divider.
+                    if !conversation.isFullWidth, !motion.departing.contains(column) { paneWidth = width }
+                }
+                .offset(x: offset(of: column, motion: motion))
+                .layoutValue(key: WorkspaceColumn.self, value: .sideConversation)
+        case .inspector(let pane):
+            ChatWorkspaceSupplementaryContent(
+                model: model,
+                pane: pane,
+                toolbarSearchFieldMetrics: toolbarSearchFieldMetrics
+            )
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+                if !motion.departing.contains(column) { inspectorWidth = width }
+            }
+            .workspaceMotionProbe(pane.motionProbeName)
+            .offset(x: offset(of: column, motion: motion))
+            .layoutValue(key: WorkspaceColumn.self, value: .inspector)
+        }
+    }
+
+    private func width(of column: WorkspaceTrailingColumn) -> CGFloat {
+        switch column.content {
+        case .sideConversation: max(paneWidth, InterfaceScale.metric(340))
+        case .inspector: max(inspectorWidth, ChatChromeMetrics.memberListWidth)
+        }
+    }
+
+    /// How far a moving column sits from its place: beyond the trailing edge
+    /// as it arrives or leaves, or at the pane's edge as a thread widens.
+    private func offset(of column: WorkspaceTrailingColumn, motion: WorkspaceMotionPhase) -> CGFloat {
+        if case .sideConversation(let conversation) = column.content, conversation.isFullWidth {
+            return motion.widening?.hasArrived == false ? paneLeadingEdge : 0
+        }
+        return width(of: column) * (1 - motion.reveal(of: column.id))
     }
 }
 
@@ -267,24 +340,11 @@ private struct DirectMessageProfileInspector: View {
 }
 
 private extension SupplementaryPane {
-    /// Which content the trailing column shows, ignoring changes to it.
-    var motionIdentity: String {
+    var motionProbeName: String {
         switch self {
-        case .sideConversation(let conversation): "side-\(conversation.motionIdentity)"
+        case .sideConversation: "pane"
         case .memberInspector: "members"
         case .messageSearch: "search"
-        }
-    }
-}
-
-private extension SideConversation {
-    var motionIdentity: String {
-        switch self {
-        case .thread(let thread, _): "thread-\(thread.id)"
-        case .threadCreation: "thread-creation"
-        case .voiceChat(let channelID): "voice-\(channelID)"
-        case .guideResource(_, let channelID): "resource-\(channelID)"
-        case .channelPreview(let channelID, _): "preview-\(channelID)"
         }
     }
 }

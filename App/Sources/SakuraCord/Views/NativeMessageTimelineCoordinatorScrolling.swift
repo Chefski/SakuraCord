@@ -722,6 +722,11 @@ extension NativeMessageTimelineCoordinator {
                 ? visibleAnchor() : nil
 
             isApplyingUpdate = true
+            if reflowsWidth || previewChanged, preservesEstablishedPosition, WorkspaceLayoutMotion.crossfadesReflow {
+                // A workspace motion changed this timeline's width at once;
+                // blend the reflowed rows in rather than jumping to them.
+                scrollView.layer?.add(WorkspaceLayoutMotion.reflowTransition(), forKey: "workspaceReflow")
+            }
             if reflowsWidth {
                 applyImmediateWidthRelayout(
                     width, preparedLayouts: preparedLayouts,
@@ -895,6 +900,9 @@ extension NativeMessageTimelineCoordinator {
                 } catch {
                     return
                 }
+                // A width change from a workspace motion reflows every row;
+                // wait until the motion has its frames.
+                await WorkspaceLayoutMotion.untilSettled()
                 guard let self,
                       self.pendingLayoutWidth == width,
                       self.widthRelayoutGeneration == generation
@@ -1091,6 +1099,22 @@ extension NativeMessageTimelineCoordinator {
             )
         }
 
+        /// A timeline that moves under a still pointer would otherwise redraw
+        /// its hovered row on every frame of a workspace motion.
+        func workspaceMotionObservations(_ center: NotificationCenter) -> [NSObjectProtocol] {
+            [
+                center.addObserver(forName: WorkspaceLayoutMotion.didBegin, object: nil, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.canvas?.dismissHoverPresentationForScroll() }
+                },
+                center.addObserver(forName: WorkspaceLayoutMotion.didSettle, object: nil, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated {
+                        guard let self, self.scrollIdleTask == nil else { return }
+                        self.canvas?.allowHoverPresentationAfterScroll()
+                    }
+                },
+            ]
+        }
+
         func beginObserving(_ scrollView: NSScrollView) {
             stopObserving()
             let center = NotificationCenter.default
@@ -1180,7 +1204,7 @@ extension NativeMessageTimelineCoordinator {
                         self?.canvas?.invalidatePresentationCaches()
                     }
                 },
-            ]
+            ] + workspaceMotionObservations(center)
             observations += [.NSCalendarDayChanged, NSApplication.didBecomeActiveNotification].map { name in
                 center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                     MainActor.assumeIsolated {

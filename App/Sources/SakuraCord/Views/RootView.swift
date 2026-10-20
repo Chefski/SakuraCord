@@ -645,7 +645,7 @@ private struct ChatRootView: View {
 
     private var showsThreadsToolbarItem: Bool {
         model.guildWorkspacePage == nil && model.onboardingEntryGuildID == nil
-            && !model.isThreadFullWidth && model.canBrowseThreadsInSelectedChannel
+            && toolbarWorkspace.primary != .fullWidthThread && model.canBrowseThreadsInSelectedChannel
     }
 
     @ToolbarContentBuilder
@@ -757,7 +757,7 @@ private struct ChatRootView: View {
                 .visibilityPriority(.high)
             }
 
-            if model.isThreadFullWidth, let thread = model.openThread {
+            if toolbarWorkspace.primary == .fullWidthThread, let thread = model.openThread {
                 if ForumPostFollowToolbarButton.isOffered(model: model, thread: thread) {
                     ToolbarItem {
                         ForumPostFollowToolbarButton(model: model, thread: thread, surface: .forumPostHeader)
@@ -829,7 +829,7 @@ private struct ChatRootView: View {
                 threadsToolbarItem
             }
 
-            if let conversation = model.workspacePresentation.paneSideConversation {
+            if let conversation = toolbarWorkspace.paneSideConversation {
                 sideConversationToolbar(conversation)
             }
         }
@@ -839,7 +839,9 @@ private struct ChatRootView: View {
                 ToolbarSpacer(.fixed)
             }
 
-            ToolbarItem {
+            // A stable identity lets the toolbar reuse the item when a side
+            // chat closes instead of inserting a new one mid-motion.
+            ToolbarItem(id: "member-inspector") {
                 ZStack {
                     Button {
                         model.toggleMemberInspector()
@@ -1042,14 +1044,20 @@ private struct ChatRootView: View {
     private var showsMemberInspectorToolbarItem: Bool {
         model.isSwitchingAccounts
             || (model.guildWorkspacePage == nil && model.onboardingEntryGuildID == nil && !model.isFriendsPresented
-                && model.workspacePresentation.paneSideConversation == nil && selectedVoiceChannel == nil)
+                && toolbarWorkspace.paneSideConversation == nil && selectedVoiceChannel == nil)
+    }
+
+    /// The workspace the toolbar shows. A motion's toolbar changes wait until
+    /// it settles, so the toolbar does not lay out again mid-motion.
+    private var toolbarWorkspace: WorkspacePresentation {
+        WorkspaceMotionPhase.shared.toolbarPresentation ?? model.workspacePresentation
     }
 
     /// A full-width thread's actions end the trailing button group, as a
     /// toolbar's overflow item does.
     @ToolbarContentBuilder
     private var fullWidthThreadActions: some ToolbarContent {
-        if !model.isSwitchingAccounts, model.isThreadFullWidth, let thread = model.openThread {
+        if !model.isSwitchingAccounts, toolbarWorkspace.primary == .fullWidthThread, let thread = model.openThread {
             ToolbarSpacer(.fixed)
             ToolbarItem(id: "full-width-thread-actions") {
                 ThreadActionsToolbarMenu(model: model, thread: thread, surface: .fullView)
@@ -1065,13 +1073,15 @@ private struct ChatRootView: View {
 
     private var toolbarPinsChannelID: ChannelID? {
         guard model.guildWorkspacePage == nil, model.onboardingEntryGuildID == nil,
-              selectedVoiceChannel == nil, model.workspacePresentation.paneSideConversation == nil
+              selectedVoiceChannel == nil, toolbarWorkspace.paneSideConversation == nil
         else { return nil }
         return model.activePinsChannelID
     }
 
     private var conversationToolbarPresentation: ConversationToolbarPresentation? {
-        if let conversation = model.presentedSideConversation, conversation.isFullWidth {
+        if toolbarWorkspace.primary == .fullWidthThread, let conversation = model.presentedSideConversation,
+           conversation.isFullWidth
+        {
             // One line with the thread symbol for threads and forum posts
             // alike, as before side chats were unified.
             let label = model.sideConversationLabel(conversation)
@@ -1109,6 +1119,7 @@ private struct ChatRootView: View {
 
         ToolbarItem(id: "side-conversation-title") {
             SideConversationToolbarTitle(label: label, width: sideConversationTitleWidth(actionCount: actionCount))
+                .workspaceMotionProbe("toolbarTitle")
                 // Remeasure changed text without replacing the toolbar item.
                 .id(label.title)
                 .transition(.identity)

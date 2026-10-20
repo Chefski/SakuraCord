@@ -420,7 +420,7 @@ extension AppModel {
 
     func closeVoiceChat() {
         guard isVoiceChatOpen else { return }
-        WorkspaceLayoutMotion.perform(closeSideConversations)
+        WorkspaceLayoutMotion.perform(in: self, closeSideConversations)
     }
 
     func retryThreadLoad() {

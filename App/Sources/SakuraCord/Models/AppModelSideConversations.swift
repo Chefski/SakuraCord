@@ -158,14 +158,14 @@ extension AppModel {
         }
         // A thread opened straight into full width replaces the workspace,
         // as navigation does; a pane slides in beside its conversation.
-        if conversation.isFullWidth { open() } else { WorkspaceLayoutMotion.perform(open) }
+        if conversation.isFullWidth { open() } else { WorkspaceLayoutMotion.perform(in: self, open) }
     }
 
     /// Moves the open pane thread into the primary column.
     func presentOpenThreadFullWidth() {
         guard let thread = openThread else { return }
         threadTimelinePosition.restore = threadTimelinePosition.reading
-        WorkspaceLayoutMotion.perform {
+        WorkspaceLayoutMotion.widen(in: self) {
             discardSideConversationContext()
             sideConversations.thread = .thread(thread, isFullWidth: true)
         }
@@ -175,7 +175,7 @@ extension AppModel {
     /// Shows or hides the member list beside the conversation.
     func toggleMemberInspector() {
         prepareInspectorProfileForPresentation()
-        WorkspaceLayoutMotion.perform { showInspector.toggle() }
+        WorkspaceLayoutMotion.perform(in: self) { showInspector.toggle() }
     }
 
     /// Closes the side chat on top, as Escape and the pane's close button do.
@@ -184,11 +184,11 @@ extension AppModel {
         if sideConversations.thread != nil {
             // Leaving a full-width thread returns to its parent, as
             // navigation does; a pane slides away beside its conversation.
-            if isThreadFullWidth { dismissOpenThread() } else { WorkspaceLayoutMotion.perform(dismissOpenThread) }
+            if isThreadFullWidth { dismissOpenThread() } else { WorkspaceLayoutMotion.perform(in: self, dismissOpenThread) }
             return true
         }
         guard presentedSideConversationContext != nil else { return false }
-        WorkspaceLayoutMotion.perform(closeSideConversations)
+        WorkspaceLayoutMotion.perform(in: self, closeSideConversations)
         return true
     }
 
