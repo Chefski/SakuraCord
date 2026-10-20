@@ -67,6 +67,12 @@ struct ThreadActionsMenu {
         let isJoined = thread.notificationSettings != nil
         var sections: [[ThreadMenuEntry]] = []
 
+        if surface == .sidePane {
+            sections.append([ThreadMenuEntry(
+                id: "full-view", title: "Open in Full View", systemImage: "arrow.up.left.and.arrow.down.right",
+                content: Self.guarded(model, thread, \.canRead) { model.openSidebarThread(thread) }
+            )])
+        }
         if surface == .channelList || surface == .forumCard {
             sections.append([ThreadMenuEntry(
                 id: "read", title: "Mark as Read", systemImage: "envelope.open.fill",
