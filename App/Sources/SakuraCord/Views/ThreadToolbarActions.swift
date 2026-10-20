@@ -36,7 +36,7 @@ final class ThreadActionsMenuPresenter {
     }
 }
 
-private struct ThreadActionsMenuAnchor: NSViewRepresentable {
+struct ThreadActionsMenuAnchor: NSViewRepresentable {
     let presenter: ThreadActionsMenuPresenter
 
     func makeNSView(context: Context) -> NSView {

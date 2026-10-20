@@ -19,15 +19,23 @@ struct InboxToolbarButton: View {
                 .animation(.smooth(duration: 0.24), value: model.inbox.isPresented)
         }
         .help("Inbox")
-        .background {
-            StableAnchoredPopoverPresenter(
-                isPresented: presentsPanel && model.inbox.isPresented,
-                configuration: .toolbarPanel,
-                onDismiss: model.dismissInbox,
-                onWillDismiss: model.dismissInbox
-            ) { InboxPopoverView(model: model) }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
+        .background { InboxPanelPresenter(model: model, isEnabled: presentsPanel) }
+    }
+}
+
+/// The Inbox panel, opening from the view it backs.
+private struct InboxPanelPresenter: View {
+    let model: AppModel
+    let isEnabled: Bool
+
+    var body: some View {
+        StableAnchoredPopoverPresenter(
+            isPresented: isEnabled && model.inbox.isPresented,
+            configuration: .toolbarPanel,
+            onDismiss: model.dismissInbox,
+            onWillDismiss: model.dismissInbox
+        ) { InboxPopoverView(model: model) }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -50,17 +58,26 @@ struct PinnedMessagesToolbarButton: View {
                 .animation(.smooth(duration: 0.24), value: isPresented)
         }
         .help("Pinned Messages")
-        .background {
-            StableAnchoredPopoverPresenter(
-                isPresented: presentsPanel && isPresented,
-                configuration: .toolbarPanel,
-                onDismiss: model.dismissPinnedMessages,
-                onWillDismiss: model.dismissPinnedMessages
-            ) {
-                PinnedMessagesPopoverView(model: model)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background { PinnedMessagesPanelPresenter(model: model, channelID: channelID, isEnabled: presentsPanel) }
+    }
+}
+
+/// The pinned messages panel for a channel, opening from the view it backs.
+private struct PinnedMessagesPanelPresenter: View {
+    let model: AppModel
+    let channelID: ChannelID
+    let isEnabled: Bool
+
+    var body: some View {
+        StableAnchoredPopoverPresenter(
+            isPresented: isEnabled && model.pinnedMessages.isPresented && model.pinnedMessages.channelID == channelID,
+            configuration: .toolbarPanel,
+            onDismiss: model.dismissPinnedMessages,
+            onWillDismiss: model.dismissPinnedMessages
+        ) {
+            PinnedMessagesPopoverView(model: model)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -77,15 +94,72 @@ struct ThreadsToolbarButton: View {
             }
         }
         .help("Threads")
-        .background {
-            StableAnchoredPopoverPresenter(
-                isPresented: presentsPanel && model.threadBrowser.isPresented,
-                configuration: .toolbarPanel,
-                onDismiss: model.dismissThreadBrowser,
-                onWillDismiss: model.dismissThreadBrowser
-            ) { ThreadBrowserPopoverView(model: model) }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background { ThreadBrowserPanelPresenter(model: model, isEnabled: presentsPanel) }
+    }
+}
+
+/// The thread browser panel, opening from the view it backs.
+private struct ThreadBrowserPanelPresenter: View {
+    let model: AppModel
+    let isEnabled: Bool
+
+    var body: some View {
+        StableAnchoredPopoverPresenter(
+            isPresented: isEnabled && model.threadBrowser.isPresented,
+            configuration: .toolbarPanel,
+            onDismiss: model.dismissThreadBrowser,
+            onWillDismiss: model.dismissThreadBrowser
+        ) { ThreadBrowserPopoverView(model: model) }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// Inbox, Pinned Messages and Threads in one menu, for a conversation too
+/// narrow for their buttons. Their panels open from this button.
+struct ConversationOverflowToolbarMenu: View {
+    let model: AppModel
+    /// The channel whose pins the menu offers, if it has any.
+    let pinsChannelID: ChannelID?
+    let offersThreads: Bool
+    var presentsPanels = true
+    @State private var presenter = ThreadActionsMenuPresenter()
+
+    var body: some View {
+        Button {
+            presenter.show(menu)
+        } label: {
+            Label("More", systemImage: "chevron.right.2")
         }
+        .help("More")
+        .background {
+            ThreadActionsMenuAnchor(presenter: presenter)
+            InboxPanelPresenter(model: model, isEnabled: presentsPanels)
+            if let pinsChannelID {
+                PinnedMessagesPanelPresenter(model: model, channelID: pinsChannelID, isEnabled: presentsPanels)
+            }
+            if offersThreads {
+                ThreadBrowserPanelPresenter(model: model, isEnabled: presentsPanels)
+            }
+        }
+    }
+
+    private var menu: ThreadActionsMenu {
+        var entries = [
+            ThreadMenuEntry(id: "inbox", title: "Inbox", systemImage: "tray", content: .action(model.presentInbox)),
+        ]
+        if let pinsChannelID {
+            entries.append(ThreadMenuEntry(
+                id: "pins", title: "Pinned Messages", systemImage: "pin",
+                content: .action { [model] in model.presentPinnedMessages(channelID: pinsChannelID) }
+            ))
+        }
+        if offersThreads {
+            entries.append(ThreadMenuEntry(
+                id: "threads", title: "Threads", systemImage: SakuraCordSystemSymbol.thread,
+                content: .action(model.toggleThreadBrowser)
+            ))
+        }
+        return ThreadActionsMenu(sections: [entries])
     }
 }
 

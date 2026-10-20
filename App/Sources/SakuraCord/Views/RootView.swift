@@ -720,16 +720,32 @@ private struct ChatRootView: View {
 
     /// The conversation's actions, which stay beside it whatever opens.
     private func conversationTitlebarActions(presentsPanels: Bool) -> some View {
-        HStack(spacing: ChatChromeMetrics.toolbarItemEdgeInset) {
-            InboxToolbarButton(model: model, presentsPanel: presentsPanels)
-            if model.selectedChannelSupportsPins, let channelID = model.selectedChannelID {
-                PinnedMessagesToolbarButton(model: model, channelID: channelID, presentsPanel: presentsPanels)
+        let pinsChannelID = model.selectedChannelSupportsPins ? model.selectedChannelID : nil
+        let offersThreads = model.canBrowseThreadsInSelectedChannel
+        // A narrow conversation keeps Members and gathers the rest into "»".
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: ChatChromeMetrics.toolbarItemEdgeInset) {
+                InboxToolbarButton(model: model, presentsPanel: presentsPanels)
+                if let pinsChannelID {
+                    PinnedMessagesToolbarButton(model: model, channelID: pinsChannelID, presentsPanel: presentsPanels)
+                }
+                if offersThreads {
+                    ThreadsToolbarButton(model: model, presentsPanel: presentsPanels)
+                }
+                if selectedVoiceChannel == nil {
+                    MemberInspectorToolbarButton(model: model)
+                }
             }
-            if model.canBrowseThreadsInSelectedChannel {
-                ThreadsToolbarButton(model: model, presentsPanel: presentsPanels)
-            }
-            if selectedVoiceChannel == nil {
-                MemberInspectorToolbarButton(model: model)
+            HStack(spacing: ChatChromeMetrics.toolbarItemEdgeInset) {
+                ConversationOverflowToolbarMenu(
+                    model: model,
+                    pinsChannelID: pinsChannelID,
+                    offersThreads: offersThreads,
+                    presentsPanels: presentsPanels
+                )
+                if selectedVoiceChannel == nil {
+                    MemberInspectorToolbarButton(model: model)
+                }
             }
         }
         .titlebarButtons()
