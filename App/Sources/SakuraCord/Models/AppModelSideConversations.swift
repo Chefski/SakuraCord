@@ -169,8 +169,13 @@ extension AppModel {
             preparing()
         }
         // A thread opened straight into full width replaces the workspace,
-        // as navigation does; a pane slides in beside its conversation.
-        if conversation.isFullWidth { open() } else { WorkspaceLayoutMotion.perform(in: self, open) }
+        // as navigation does, and one side chat replaces another in the same
+        // pane; a pane slides in beside its conversation.
+        if conversation.isFullWidth || workspacePresentation.paneSideConversation != nil {
+            open()
+        } else {
+            WorkspaceLayoutMotion.perform(in: self, open)
+        }
     }
 
     /// Moves the open pane thread into the primary column.

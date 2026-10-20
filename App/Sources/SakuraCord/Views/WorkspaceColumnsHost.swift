@@ -230,6 +230,20 @@ final class WorkspaceColumnsView: NSView {
         }
 
         var updated: [Island] = []
+        // Columns that have gone first, so a side chat that replaces another
+        // in place takes over its pane.
+        let ids = Set(spec.columns.map(\.id))
+        for island in islands where !ids.contains(island.column.id) {
+            // The last side chat pane stays, hidden, for the next one: a pane
+            // built from nothing costs most of a motion's first frame.
+            if island.column.isSideConversation, !island.column.isFullWidth, pooledPane == nil {
+                island.host.isHidden = true
+                pooledPane = island.host
+            } else {
+                island.view.removeFromSuperview()
+            }
+        }
+        islands.removeAll { !ids.contains($0.column.id) }
         for column in spec.columns {
             let root = AnyView(
                 column.content
@@ -255,16 +269,6 @@ final class WorkspaceColumnsView: NSView {
                 let reveal = WorkspaceMotionPhase.shared.unobservedReveal[column.id] ?? 1
                 updated.append(Island(host: makeHost(for: column, root), column: column, reveal: SpringTrack(at: reveal)))
                 needsMeasurement = true
-            }
-        }
-        for island in islands where !updated.contains(where: { $0.view === island.view }) {
-            // The last side chat pane stays, hidden, for the next one: a pane
-            // built from nothing costs most of a motion's first frame.
-            if island.column.isSideConversation, !island.column.isFullWidth, pooledPane == nil {
-                island.host.isHidden = true
-                pooledPane = island.host
-            } else {
-                island.view.removeFromSuperview()
             }
         }
         islands = updated

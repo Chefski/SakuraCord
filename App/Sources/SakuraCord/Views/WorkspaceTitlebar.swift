@@ -171,12 +171,20 @@ final class WorkspaceTitlebarView: NSView {
         // as they were: updates within the change that closes it can come
         // before the column is listed as leaving.
         let ids = Set(groups.map(\.id))
-        let leaving = self.order.filter { id in
-            !ids.contains(id) && id != WorkspaceTitlebar.conversationID
-                && WorkspaceColumnsGeometry.shared.columns.contains { $0.id == id }
-        }
-        removeGroups { !ids.contains($0) && !leaving.contains($0) }
+        let gone = self.order.filter { !ids.contains($0) && $0 != WorkspaceTitlebar.conversationID }
+        // Without a motion, one side chat replaced another in the same pane:
+        // its items take over the old ones in place.
+        var replaced = WorkspaceLayoutMotion.isMoving ? [] : gone
+        let leaving = replaced.isEmpty
+            ? gone.filter { id in WorkspaceColumnsGeometry.shared.columns.contains { $0.id == id } }
+            : []
+        removeGroups { !ids.contains($0) && !leaving.contains($0) && !replaced.contains($0) }
         for group in groups {
+            if self.groups[group.id] == nil, group.id != WorkspaceTitlebar.conversationID,
+               let old = replaced.popLast(), let views = self.groups.removeValue(forKey: old)
+            {
+                self.groups[group.id] = views
+            }
             let views = self.groups[group.id] ?? {
                 let views = GroupViews(group)
                 for island in [views.title, views.actions] { observe(island) }
@@ -209,6 +217,7 @@ final class WorkspaceTitlebarView: NSView {
                 views.fullWidthActions = nil
             }
         }
+        removeGroups { replaced.contains($0) }
         // Later groups are in front: a side chat covers the conversation and
         // one arriving covers one leaving.
         order = leaving + groups.map(\.id)
@@ -282,8 +291,10 @@ final class WorkspaceTitlebarView: NSView {
             // Clear of the window's controls and the sidebar button, which
             // the column reaches when the sidebar is hidden.
             let minX = max(convert(CGPoint(x: span.lowerBound, y: 0), from: nil).x, leadingLimit)
-            var maxX = min(convert(CGPoint(x: span.upperBound, y: 0), from: nil).x, bounds.maxX)
-            visibleMaxX = min(convert(CGPoint(x: visibleMaxX, y: 0), from: nil).x, bounds.maxX)
+            // A pane beyond the window's edge keeps its items with it.
+            var maxX = convert(CGPoint(x: span.upperBound, y: 0), from: nil).x
+            if !endsAtSearch { visibleMaxX = maxX } else { maxX = min(maxX, bounds.maxX) }
+            visibleMaxX = convert(CGPoint(x: visibleMaxX, y: 0), from: nil).x
             // The conversation's items, and a full-width side chat's, end
             // before the search field; a pane's own actions stay at its edge.
             let searchInset = endsAtSearch ? max(0, maxX - searchLimit) : 0
@@ -346,12 +357,17 @@ final class WorkspaceTitlebarView: NSView {
             searchField = ToolbarSearchFieldLocator.searchField(in: window)
         }
         guard let searchField, searchField.window === window else { return nil }
-        // The field's own item in the toolbar, which also draws its glass.
+        // The field's item with the glass platter the toolbar draws behind
+        // it, so neither shows while the field is faded out.
         var view: NSView? = searchField
-        while let candidate = view, !String(describing: type(of: candidate)).contains("ItemViewer") {
+        var itemViewer: NSView?
+        while let candidate = view {
+            let name = String(describing: type(of: candidate))
+            if name.contains("Platter") { return candidate }
+            if itemViewer == nil, name.contains("ItemViewer") { itemViewer = candidate }
             view = candidate.superview
         }
-        return view ?? searchField
+        return itemViewer ?? searchField
     }
 
     /// Where the toolbar's search field starts in this view, if the toolbar

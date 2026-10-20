@@ -28,6 +28,9 @@ enum SideChatMotionBenchmark {
         /// Opens a forum post and follows it, pausing for screenshots,
         /// instead of running the cycles.
         var showsFollowShowcase = false
+        /// Opens the first fixture thread in the pane and leaves the window
+        /// to the tester, for checks driven from outside.
+        var holdsPane = false
 
         init(arguments: [String]) {
             func value(_ name: String) -> Int? {
@@ -42,6 +45,7 @@ enum SideChatMotionBenchmark {
             forumCycles = value("--motion-forum-cycles") ?? forumCycles
             memberListCycles = value("--motion-member-list-cycles") ?? memberListCycles
             showsFollowShowcase = arguments.contains("--motion-follow-showcase")
+            holdsPane = arguments.contains("--motion-hold-pane")
         }
     }
 
@@ -52,6 +56,12 @@ enum SideChatMotionBenchmark {
             return
         }
         model.selectedChannelID = ChannelID(rawValue: 210)
+        if options.holdsPane, let thread = await motionThreads(model: model, count: 1)?.first {
+            model.showInspector = false
+            model.open(thread)
+            logger.notice("SIDE_CHAT_MOTION_HOLDING_PANE")
+            return
+        }
         guard let threads = await motionThreads(model: model, count: options.cycles + 1),
               let window = NSApp.windows.first(where: { $0.isVisible && $0.canBecomeMain }),
               let contentView = window.contentView
@@ -101,6 +111,9 @@ enum SideChatMotionBenchmark {
         }
         for cycle in 0 ..< options.memberListCycles {
             await perform(memberListSteps(thread: threads[cycle % threads.count]), cycle: cycle)
+        }
+        if threads.count > 1 {
+            await perform(swapSteps(threads[0], threads[1]), cycle: 0)
         }
         if options.forumCycles > 0, let posts = await forumPosts(model: model) {
             for cycle in 0 ..< options.forumCycles {
@@ -162,6 +175,18 @@ enum SideChatMotionBenchmark {
                 $0.presentOpenThreadFullWidth()
             },
             Step(name: "full-width-close", variant: variant, movingProbe: nil, edge: nil) {
+                $0.closeSideConversation()
+            },
+        ]
+    }
+
+    /// One thread replacing another in the open pane, in place.
+    private static func swapSteps(_ first: MessageThreadSummary, _ second: MessageThreadSummary) -> [Step] {
+        [
+            Step(name: "pane-open", variant: "before-swap", movingProbe: "pane", edge: "minX") { $0.open(first) },
+            Step(name: "pane-swap", variant: nil, movingProbe: nil, edge: nil) { $0.open(second) },
+            Step(name: "pane-swap", variant: "back", movingProbe: nil, edge: nil) { $0.open(first) },
+            Step(name: "pane-close", variant: "after-swap", movingProbe: "pane", edge: "minX") {
                 $0.closeSideConversation()
             },
         ]
