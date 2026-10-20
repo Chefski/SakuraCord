@@ -62,8 +62,8 @@ extension ForumBoardView {
 
     /// Recycles a card the current pass replaces. A hidden card that never
     /// appeared hands the cards it was replacing to `group`, so they stay on
-    /// screen until something does, except where recycling it revealed the
-    /// rest of its own group over them.
+    /// screen until something does: its own group's remaining cards, or the
+    /// new group's. Where a shown card now covers them, they go.
     func recycle(_ card: ForumBoardCard, replacedBy group: ForumBoardRevealGroup) {
         guard let previous = revealGroups[ObjectIdentifier(card)], previous !== group, !group.waiting.isEmpty else {
             recycle(card)
@@ -73,7 +73,10 @@ extension ForumBoardView {
         previous.retiring.removeAll()
         recycle(card)
         for retiree in retirees {
-            if holds(retiree.frame, until: group) {
+            // Cards the earlier group still owes keep covering their spots.
+            if !previous.isFinished, holds(retiree.frame, until: previous) {
+                previous.keepUntilRevealed(retiree)
+            } else if holds(retiree.frame, until: group) {
                 group.keepUntilRevealed(retiree)
             } else {
                 recycle(retiree)
@@ -100,6 +103,7 @@ extension ForumBoardView {
             CATransaction.setDisableActions(true)
             card.layer.isHidden = false
             CATransaction.commit()
+            refreshHover(over: [card])
         }
     }
 
@@ -118,6 +122,7 @@ extension ForumBoardView {
         group.timeout?.cancel()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
+        var shown: [ForumBoardCard] = []
         for member in group.members {
             let card = member.card
             let key = ObjectIdentifier(card)
@@ -125,6 +130,7 @@ extension ForumBoardView {
             // A card still without a bitmap stays hidden until its own lands.
             guard card.hasContent else { continue }
             card.layer.isHidden = false
+            shown.append(card)
             switch member.entrance {
             case .none:
                 break
@@ -138,5 +144,15 @@ extension ForumBoardView {
         group.retiring.removeAll()
         for card in retiring { recycle(card) }
         CATransaction.commit()
+        refreshHover(over: shown)
+    }
+
+    /// Hover ignores hidden cards, so a card that appears under a resting
+    /// pointer picks up its hover now rather than on the next mouse move.
+    private func refreshHover(over shownCards: [ForumBoardCard]) {
+        guard let window, !shownCards.isEmpty else { return }
+        let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        guard shownCards.contains(where: { $0.frame.contains(point) }) else { return }
+        updateHoverFromCurrentPointer()
     }
 }
