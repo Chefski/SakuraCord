@@ -25,11 +25,15 @@ extension ForumBoardView {
         observationGeneration &+= 1
         let generation = observationGeneration
         var changed: [ChannelID] = []
+        var hydratedPostIDs = Set<ChannelID>()
         withObservationTracking {
             for id in cards.keys {
                 guard case let .post(postID) = id, let post = postsByID[postID] else { continue }
                 let presentation = model.forumCardPresentation(for: post, in: channel, tagsByID: tagsByID)
                 let presentationChanged = presentations[postID] != presentation
+                if presentations[postID]?.isAwaitingContent == true, !presentation.isAwaitingContent {
+                    hydratedPostIDs.insert(postID)
+                }
                 presentations[postID] = presentation
                 // Excerpts also depend on mention resolution, which the
                 // presentation omits; configuring here observes it too.
@@ -54,7 +58,9 @@ extension ForumBoardView {
             guard let card = cards[id] else { continue }
             applyChrome(card, id: id, animated: true)
             refreshShimmer(card, id: id)
-            card.render(scale: backingScale, fading: card.hasContent)
+            // Content replaces its skeleton bars in one frame; other updates
+            // cross-fade.
+            card.render(scale: backingScale, fading: card.hasContent && !hydratedPostIDs.contains(postID))
         }
         if !changed.isEmpty {
             refreshMedia()

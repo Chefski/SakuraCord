@@ -322,8 +322,10 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         // message in gallery. Reconfigure before cards repaint.
         if modeChanged { reconfigureRealizedExcerpts() }
         if structureChanged || layoutState == nil {
-            let isFirstPopulation = previousSnapshot == nil || channelChanged
-            let isReveal = wasShowingPlaceholders || queryChanged
+            // Posts replace loading placeholders in one frame: fading one
+            // into the other would briefly show two misaligned boards.
+            let isFirstPopulation = previousSnapshot == nil || channelChanged || wasShowingPlaceholders
+            let isReveal = queryChanged
             if modeChanged, !isFirstPopulation, !isReveal { crossFadeBoard() }
             let transition: ForumBoardTransition =
                 isFirstPopulation ? .none
@@ -444,18 +446,24 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         // Scrolling within the same entries changes nothing.
         guard transition != .none || realized.indices != realizedRange else { return }
         realizedRange = realized.indices
-        var liveIDs = Set<ForumBoardItem.Identifier>()
+        let liveIDs = Set(realized.map(\.item.id))
+        // A post taking a placeholder's place appears there at once, so a
+        // skeleton never shows beneath arriving content.
+        let replacedPlaceholderFrames = cards.compactMap { id, card -> CGRect? in
+            guard case .placeholder = id, !liveIDs.contains(id) else { return nil }
+            return card.frame
+        }
         var staggerIndex = 0
         var realizedNewPost = false
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         for entry in realized {
-            liveIDs.insert(entry.item.id)
-            if realize(entry, transition: transition, visible: visible, staggerIndex: &staggerIndex) {
+            let entersAnimated = !replacedPlaceholderFrames.contains { $0.intersects(entry.frame) }
+            if realize(entry, transition: entersAnimated ? transition : .none, visible: visible, staggerIndex: &staggerIndex) {
                 realizedNewPost = true
             }
         }
-        retireCards(notIn: liveIDs, animates: transition != .none, visible: visible)
+        retireCards(notIn: liveIDs, fades: transition == .reflow, visible: visible)
         CATransaction.commit()
         let livePostIDs = Set(liveIDs.compactMap { if case let .post(id) = $0 { id } else { nil } })
         for id in excerptRenderers.keys where !livePostIDs.contains(id) {
@@ -506,13 +514,17 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         return resolved
     }
 
-    private func retireCards(notIn liveIDs: Set<ForumBoardItem.Identifier>, animates: Bool, visible: CGRect) {
+    /// Removes cards that left the board. Only a live removal fades; a new
+    /// query or arriving posts replace them at once, so outgoing and incoming
+    /// cards never overlap.
+    private func retireCards(notIn liveIDs: Set<ForumBoardItem.Identifier>, fades: Bool, visible: CGRect) {
         for (id, card) in cards where !liveIDs.contains(id) {
             cards[id] = nil
             regions[id] = nil
             interactions[id] = nil
             paintedRelativeTimes[id] = nil
-            if animates, card.frame.intersects(visible) {
+            let isPlaceholder = if case .placeholder = id { true } else { false }
+            if fades, !isPlaceholder, card.frame.intersects(visible) {
                 animateExit(card)
             } else {
                 recycle(card)
