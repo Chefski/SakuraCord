@@ -521,7 +521,7 @@ struct AccountReadStateModelTests {
         }
         #expect(model.entries[threadID]?.pendingAcknowledgementID == nil)
         #expect(model.entries[threadID]?.lastAcknowledgedMessageID == MessageID(rawValue: acknowledgementSucceeds ? 30 : 20))
-        #expect(model.mentions(channelID: threadID) == (acknowledgementSucceeds ? 0 : 1))
+        #expect(model.entries[threadID]?.mentionCount == (acknowledgementSucceeds ? 0 : 1))
         #expect(model.unread(channelID: threadID) == !acknowledgementSucceeds)
     }
 
@@ -829,6 +829,48 @@ struct AccountReadStateModelTests {
         let projection = model.unreadPresentationProjection()
         #expect(projection.unreadByGuildID[guildID] != true)
         #expect(projection.unreadConversationCount == 0)
+    }
+
+    @Test func `a thread mention surfaces only while its post is a joined active thread`() {
+        let model = makeModel(latest: 10, acknowledged: 10)
+        model.merge(channels: [Channel(id: channelID, guildID: guildID, name: "Forum", kind: .forum)])
+        let threadID = ChannelID(rawValue: 260)
+        var thread = MessageThreadSummary(
+            id: threadID,
+            parentID: channelID,
+            name: "Post",
+            lastMessageID: MessageID(rawValue: 265)
+        )
+        model.merge(thread: thread)
+        var ping = message(id: 270, mentionsEveryone: true)
+        ping.channelID = threadID
+        #expect(model.receive(ping, currentUserID: currentUser.id).mentionKind == .everyone)
+
+        func presentedMentions() -> [Int] {
+            [
+                model.mentions(channelID: threadID),
+                model.guildMentions(guildID),
+                model.totalMentions,
+                model.unreadPresentationProjection().mentionsByGuildID[guildID, default: 0],
+            ]
+        }
+        // Discord keeps the raw count but hides it until the account joins.
+        #expect(model.entries[threadID]?.mentionCount == 1)
+        #expect(presentedMentions() == [0, 0, 0, 0])
+
+        model.replaceActiveJoinedThreads([thread])
+        #expect(presentedMentions() == [1, 1, 1, 1])
+        #expect(model.unreadPresentationProjection().mentionsByChannelID[threadID] == 1)
+
+        thread.isArchived = true
+        model.merge(thread: thread)
+        #expect(presentedMentions() == [0, 0, 0, 0])
+
+        thread.isArchived = false
+        model.merge(thread: thread)
+        #expect(presentedMentions() == [1, 1, 1, 1])
+        model.replaceActiveJoinedThreads([])
+        #expect(presentedMentions() == [0, 0, 0, 0])
     }
 
     @Test func `inaccessible channels are excluded from bulk acknowledgements`() {

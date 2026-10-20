@@ -893,8 +893,9 @@ extension AccountReadStateModel {
                     mutedChannelIDs.insert(entry.channelID)
                 }
             }
-            if entry.mentionCount > 0 {
-                mentionsByChannelID[entry.channelID] = entry.mentionCount
+            let mentionCount = presentedMentionCount(entry)
+            if mentionCount > 0 {
+                mentionsByChannelID[entry.channelID] = mentionCount
             }
         }
         return QuickSwitcherProjection(
@@ -1535,6 +1536,47 @@ extension AccountReadStateModel {
         }
     }
 
+    /// Whether a thread is one the sidebar can surface: an active thread the
+    /// account has joined, under a parent that lists threads. Retained read
+    /// history is not membership.
+    nonisolated static func isListedThread(
+        _ entry: Entry,
+        parentChannel: Channel?,
+        parentEntry: Entry?,
+        isActiveJoined: Bool,
+        isArchived: Bool
+    ) -> Bool {
+        guard isActiveJoined,
+              !isArchived,
+              let parentChannel,
+              SidebarThreadPolicy.listsThreads(under: parentChannel.kind),
+              parentEntry?.isAccessible == true,
+              let guildID = parentChannel.guildID,
+              entry.guildID == guildID
+        else { return false }
+        return true
+    }
+
+    /// Discord's `ReadState.canHaveMentions`: a thread's mention count stays
+    /// hidden until the account has joined the active thread. The raw count is
+    /// still tracked, so it surfaces if a later mention or role ping joins it.
+    func countsMentions(_ entry: Entry) -> Bool {
+        guard channelByID[entry.channelID] == nil,
+              let parentID = entry.parentID
+        else { return true }
+        return Self.isListedThread(
+            entry,
+            parentChannel: channelByID[parentID],
+            parentEntry: self[parentID],
+            isActiveJoined: activeJoinedThreadIDs.contains(entry.channelID),
+            isArchived: forumPostArchivedByID[entry.channelID] == true
+        )
+    }
+
+    func presentedMentionCount(_ entry: Entry) -> Int {
+        countsMentions(entry) ? entry.mentionCount : 0
+    }
+
     func unread(channelID: ChannelID, now: Date = .now) -> Bool {
         _ = self[unread: channelID]
         guard let entry = entriesStorage[channelID], entry.isAccessible, entry.isUnread else {
@@ -1556,7 +1598,7 @@ extension AccountReadStateModel {
               entry.isAccessible,
               !isGuildResourceChannel(entry)
         else { return 0 }
-        return entry.mentionCount
+        return presentedMentionCount(entry)
     }
 
     func unreadMessageCount(channelID: ChannelID) -> Int {
@@ -1608,7 +1650,7 @@ extension AccountReadStateModel {
                   entry.isAccessible,
                   !policy.isGuildResourceChannel(entry)
             else { return total }
-            return total + entry.mentionCount
+            return total + presentedMentionCount(entry)
         }
     }
 
@@ -1631,7 +1673,7 @@ extension AccountReadStateModel {
                   entry.isAccessible,
                   !policy.isGuildResourceChannel(entry)
             else { return total }
-            return total + entry.mentionCount
+            return total + presentedMentionCount(entry)
         }
     }
 
@@ -1641,7 +1683,7 @@ extension AccountReadStateModel {
             guard entry.isAccessible,
                   !policy.isGuildResourceChannel(entry)
             else { return total }
-            return total + entry.mentionCount
+            return total + presentedMentionCount(entry)
         }
     }
 
