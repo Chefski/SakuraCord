@@ -1002,7 +1002,7 @@ private struct ChatRootView: View {
     /// toolbar's overflow item does.
     @ToolbarContentBuilder
     private var fullWidthThreadActions: some ToolbarContent {
-        if model.isThreadFullWidth, let thread = model.openThread {
+        if !model.isSwitchingAccounts, model.isThreadFullWidth, let thread = model.openThread {
             ToolbarSpacer(.fixed)
             ToolbarItem(id: "full-width-thread-actions") {
                 ThreadActionsToolbarMenu(model: model, thread: thread, surface: .fullView)
@@ -1025,8 +1025,10 @@ private struct ChatRootView: View {
 
     private var conversationToolbarPresentation: ConversationToolbarPresentation? {
         if let conversation = model.presentedSideConversation, conversation.isFullWidth {
+            // One line with the thread symbol for threads and forum posts
+            // alike, as before side chats were unified.
             let label = model.sideConversationLabel(conversation)
-            return .init(title: label.title, systemImage: label.systemImage)
+            return .init(title: label.title, systemImage: SakuraCordSystemSymbol.thread)
         }
         if let page = model.guildWorkspacePage {
             return .init(title: page == .guide ? "Server Guide" : model.customizationTitle(in: model.selectedGuildID),
