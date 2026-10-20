@@ -623,9 +623,9 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
                     context.allowsImplicitAnimation = false
                     item.isHidden = isHidden
                     spacer?.isHidden = true
-                    // Lay out only the toolbar. Laying out the whole window
+                    // Lay out only the titlebar. Laying out the whole window
                     // here also laid out the workspace a second time, mid-update.
-                    (toolbarView(containing: item.searchField) ?? window.contentView?.superview)?
+                    (titlebarView(containing: item.searchField, in: window) ?? window.contentView?.superview)?
                         .layoutSubtreeIfNeeded()
                 }
             }
@@ -692,13 +692,15 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
             appliedSearchContainerWidth = nil
         }
 
-        private func toolbarView(containing view: NSView) -> NSView? {
-            var ancestor = view.superview
-            while let candidate = ancestor {
-                if String(describing: type(of: candidate)) == "NSToolbarView" { return candidate }
-                ancestor = candidate.superview
+        /// The outermost ancestor of a toolbar view that does not also hold
+        /// the window's content.
+        private func titlebarView(containing view: NSView, in window: NSWindow) -> NSView? {
+            guard let contentView = window.contentView else { return nil }
+            var titlebar = view
+            while let parent = titlebar.superview, !contentView.isDescendant(of: parent) {
+                titlebar = parent
             }
-            return nil
+            return titlebar === view ? nil : titlebar
         }
 
         private func searchSpacer(before item: NSToolbarItem, in window: NSWindow) -> NSToolbarItem? {

@@ -169,7 +169,17 @@ extension AppModel {
             discardSideConversationContext()
             sideConversations.thread = .thread(thread, isFullWidth: true)
         }
-        suspendSelectedConversationPresentation()
+        guard WorkspaceMotionPhase.shared.widening != nil else {
+            suspendSelectedConversationPresentation()
+            return
+        }
+        // The conversation stays beneath the widening thread until it is
+        // covered. If the reader returns before then, it was never hidden.
+        Task { [weak self] in
+            await WorkspaceLayoutMotion.untilSettled()
+            guard let self, isThreadFullWidth, openThread?.id == thread.id else { return }
+            suspendSelectedConversationPresentation()
+        }
     }
 
     /// Shows or hides the member list beside the conversation.

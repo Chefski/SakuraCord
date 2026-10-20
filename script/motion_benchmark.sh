@@ -20,7 +20,9 @@ set -euo pipefail
 #   --runs N               Repeat the launch N times. Default: 1.
 #   --compare FILE         Print a before/after table against an earlier
 #                          analysis.json.
-#   --quiet-machine        Hold the machine-wide build lock while measuring.
+#   --quiet-machine        Hold this checkout's operation lock while measuring,
+#                          and SAKURACORD_BENCHMARK_MACHINE_LOCK (a lock
+#                          directory that machine-wide builds respect) if set.
 #   --trace TEMPLATE       Attach xctrace (for example "Time Profiler" or
 #                          "Animation Hitches") once the animated cycles
 #                          begin. Forces --runs 1. Exports the os-signpost,
@@ -86,6 +88,8 @@ executable="$app/Contents/MacOS/$executable_name"
 label="${label:-$configuration}"
 output="$root/.build/performance/motion/$label-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$output"
+trace_marker=""
+trace_pid=""
 if [[ -n "$trace" ]]; then
     if pgrep -x xctrace >/dev/null; then
         echo "Another xctrace process is active; refusing an ambiguous trace." >&2
@@ -95,13 +99,20 @@ if [[ -n "$trace" ]]; then
     touch "$trace_marker"
 fi
 
-lock="$HOME/.sakuracord-build.lock"
+# A machine-wide build lock directory, when the machine has one, that builds
+# wait for while it exists. --quiet-machine holds it with a process of its own.
+machine_lock="${SAKURACORD_BENCHMARK_MACHINE_LOCK:-}"
 holder=""
+holds_operation_lock=0
 release_machine() {
     if [[ -n "$holder" ]]; then
         kill "$holder" 2>/dev/null || true
-        rm -rf "$lock"
+        rm -rf "$machine_lock"
         holder=""
+    fi
+    if [[ "$holds_operation_lock" == 1 ]]; then
+        sakuracord_release_operation_lock
+        holds_operation_lock=0
     fi
 }
 stop_app() {
@@ -116,8 +127,6 @@ stop_app() {
     echo "The benchmark app did not exit." >&2
     return 1
 }
-trace_marker=""
-trace_pid=""
 # Remove the trace bundle and any Instruments temporary files this run created
 # (files newer than the marker made before recording).
 discard_trace_files() {
@@ -189,15 +198,21 @@ cleanup() {
 trap cleanup EXIT
 
 if [[ "$quiet_machine" == 1 ]]; then
-    # Wait for running builds to finish, then hold the build slot with a
-    # process of our own so no build starts during the measurement.
-    until mkdir "$lock" 2>/dev/null; do
-        echo "Waiting for the build slot…" >&2
+    # No build or test of this checkout starts while measuring.
+    until sakuracord_acquire_operation_lock 2>/dev/null; do
+        echo "Waiting for this checkout's build or test…" >&2
         sleep 30
     done
-    sleep 900 &
-    holder=$!
-    echo "$holder" > "$lock/pid"
+    holds_operation_lock=1
+    if [[ -n "$machine_lock" ]]; then
+        until mkdir "$machine_lock" 2>/dev/null; do
+            echo "Waiting for the machine's build lock…" >&2
+            sleep 30
+        done
+        sleep 900 &
+        holder=$!
+        echo "$holder" > "$machine_lock/pid"
+    fi
 fi
 
 for run in $(seq 1 "$runs"); do

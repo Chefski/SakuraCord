@@ -903,7 +903,7 @@ extension NativeMessageTimelineCoordinator {
                 // A width change from a workspace motion reflows every row;
                 // wait until the motion has its frames.
                 await WorkspaceLayoutMotion.untilSettled()
-                guard let self,
+                guard !Task.isCancelled, let self,
                       self.pendingLayoutWidth == width,
                       self.widthRelayoutGeneration == generation
                 else { return }

@@ -44,15 +44,14 @@ nonisolated struct WorkspaceColumnsLayout: Layout {
         let sideConversations = subviews.filter { $0[WorkspaceColumn.self] == .sideConversation }
         let inspectors = subviews.filter { $0[WorkspaceColumn.self] == .inspector }
 
-        let inspectorWidth = showsInspector
-            ? inspectors.last.map { $0.sizeThatFits(ProposedViewSize(width: nil, height: height)).width } ?? 0
-            : 0
-        let conversationMinimum = conversation.map {
-            $0.sizeThatFits(ProposedViewSize(width: 0, height: height)).width
-        }.max() ?? 0
+        let inspectorWidths = inspectors.map { $0.sizeThatFits(ProposedViewSize(width: nil, height: height)).width }
+        let inspectorWidth = showsInspector ? inspectorWidths.last ?? 0 : 0
 
         var paneWidth = paneWidth
         if showsSideConversation, !sideConversationIsFullWidth, let pane = sideConversations.last {
+            let conversationMinimum = conversation.map {
+                $0.sizeThatFits(ProposedViewSize(width: 0, height: height)).width
+            }.max() ?? 0
             // As an HStack does, give the pane its widest size the
             // conversation's minimum width leaves room for.
             let available = max(0, bounds.width - inspectorWidth - conversationMinimum)
@@ -76,8 +75,7 @@ nonisolated struct WorkspaceColumnsLayout: Layout {
                 place(view, minX: bounds.maxX - inspectorWidth - paneWidth, width: paneWidth, in: bounds)
             }
         }
-        for view in inspectors {
-            let width = view.sizeThatFits(ProposedViewSize(width: nil, height: height)).width
+        for (view, width) in zip(inspectors, inspectorWidths) {
             place(view, minX: bounds.maxX - width, width: width, in: bounds)
         }
     }

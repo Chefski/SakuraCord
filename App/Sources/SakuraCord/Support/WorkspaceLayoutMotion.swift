@@ -76,14 +76,9 @@ enum WorkspaceLayoutMotion {
         // Columns move from the frame that commits the change: an arriving
         // column from beyond the trailing edge, or from wherever it is if it
         // was still leaving.
-        DispatchQueue.main.async {
-            MainActor.assumeIsolated {
-                restartSettling()
-                withAnimation(animation) {
-                    if let leaving { phase.reveal[leaving.id] = 0 }
-                    if let arriving { phase.reveal[arriving.id] = 1 }
-                }
-            }
+        afterCommit(animation) {
+            if let leaving { phase.reveal[leaving.id] = 0 }
+            if let arriving { phase.reveal[arriving.id] = 1 }
         }
     }
 
@@ -102,24 +97,30 @@ enum WorkspaceLayoutMotion {
             phase.widening = .init(channel: channel, hasArrived: false)
             change()
         }
+        afterCommit(animation) { phase.widening?.hasArrived = true }
+    }
+
+    /// Animates `change` once the frame that commits the layout has been
+    /// laid out, which can take a while; the motion settles a spring's
+    /// duration after that.
+    private static func afterCommit(_ animation: Animation, _ change: @escaping () -> Void) {
         DispatchQueue.main.async {
             MainActor.assumeIsolated {
-                restartSettling()
-                withAnimation(animation) { phase.widening?.hasArrived = true }
+                settlesAt = .now + settling
+                withAnimation(animation, change)
             }
         }
     }
 
-    /// The spring starts after the frame that commits the change, which can
-    /// take a while to lay out; count its duration from there.
-    private static func restartSettling() {
-        settlesAt = .now + settling
-    }
-
     /// Returns once no motion is running.
+    /// Returns early if the waiting task is cancelled.
     static func untilSettled() async {
         while let settlesAt, ContinuousClock.now < settlesAt {
-            try? await Task.sleep(until: settlesAt)
+            do {
+                try await Task.sleep(until: settlesAt)
+            } catch {
+                return
+            }
         }
     }
 
@@ -144,7 +145,6 @@ enum WorkspaceLayoutMotion {
 
     private static func beginMotion(freezing presentation: WorkspacePresentation) {
         let phase = WorkspaceMotionPhase.shared
-        let settling = settling
         settlesAt = .now + settling
         if phase.toolbarPresentation == nil { phase.toolbarPresentation = presentation }
         if !phase.isMoving {
@@ -158,12 +158,13 @@ enum WorkspaceLayoutMotion {
             // The conversation's new width, the pane's content and the
             // toolbar's items arrive together; blend them in.
             crossfadeWorkspace()
+            // Each write invalidates the phase's readers, so skip no-ops.
             withAnimation(nil) {
                 phase.isMoving = false
-                phase.widening = nil
-                phase.toolbarPresentation = nil
-                phase.departing.removeAll()
-                phase.reveal.removeAll()
+                if phase.widening != nil { phase.widening = nil }
+                if phase.toolbarPresentation != nil { phase.toolbarPresentation = nil }
+                if !phase.departing.isEmpty { phase.departing.removeAll() }
+                if !phase.reveal.isEmpty { phase.reveal.removeAll() }
             }
             NotificationCenter.default.post(name: didSettle, object: nil)
         }
@@ -179,28 +180,26 @@ struct WorkspaceTrailingColumn: Identifiable, Equatable {
     }
 
     let content: Content
-
     /// Which content the column shows, ignoring changes to it.
-    var id: String {
-        switch content {
-        case .sideConversation(let conversation): "side-\(conversation.motionIdentity)"
-        case .inspector(.memberInspector): "members"
-        case .inspector: "search"
-        }
-    }
+    let id: String
 
     /// The column at the trailing edge of a workspace, if any. A full-width
     /// thread is not one; the inspector beside it is.
     init?(_ presentation: WorkspacePresentation) {
         switch presentation.supplementaryPane {
-        case .sideConversation(let conversation)?: content = .sideConversation(conversation)
-        case let pane?: content = .inspector(pane)
+        case .sideConversation(let conversation)?: self.init(.sideConversation(conversation))
+        case let pane?: self.init(.inspector(pane))
         case nil: return nil
         }
     }
 
     init(_ content: Content) {
         self.content = content
+        id = switch content {
+        case .sideConversation(let conversation): "side-\(conversation.motionIdentity)"
+        case .inspector(.memberInspector): "members"
+        case .inspector: "search"
+        }
     }
 }
 

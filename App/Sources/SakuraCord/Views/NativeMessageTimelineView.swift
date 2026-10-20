@@ -375,8 +375,10 @@ extension NativeMessageTimelineCoordinator {
 
             let scrollView = NativeTimelineInputShieldScrollView()
             scrollView.inputPerformanceProbe.install(on: scrollView)
-            WorkspaceMotionProbes.shared.registerTimeline(scrollView) { [weak self, weak canvas] in
-                (self?.items.count ?? 0, canvas?.drawCount ?? 0)
+            if WorkspaceMotionProbes.isEnabled {
+                WorkspaceMotionProbes.shared.registerTimeline(scrollView) { [weak self, weak canvas] in
+                    (self?.items.count ?? 0, canvas?.drawCount ?? 0)
+                }
             }
             scrollView.onUserScrollTowardNewest = { [weak self] in
                 self?.parent.onUserScrollTowardNewest()

@@ -645,7 +645,7 @@ private struct ChatRootView: View {
 
     private var showsThreadsToolbarItem: Bool {
         model.guildWorkspacePage == nil && model.onboardingEntryGuildID == nil
-            && toolbarWorkspace.primary != .fullWidthThread && model.canBrowseThreadsInSelectedChannel
+            && !toolbarShowsFullWidthThread && model.canBrowseThreadsInSelectedChannel
     }
 
     @ToolbarContentBuilder
@@ -757,7 +757,7 @@ private struct ChatRootView: View {
                 .visibilityPriority(.high)
             }
 
-            if toolbarWorkspace.primary == .fullWidthThread, let thread = model.openThread {
+            if toolbarShowsFullWidthThread, let thread = model.openThread {
                 if ForumPostFollowToolbarButton.isOffered(model: model, thread: thread) {
                     ToolbarItem {
                         ForumPostFollowToolbarButton(model: model, thread: thread, surface: .forumPostHeader)
@@ -1053,11 +1053,15 @@ private struct ChatRootView: View {
         WorkspaceMotionPhase.shared.toolbarPresentation ?? model.workspacePresentation
     }
 
+    private var toolbarShowsFullWidthThread: Bool {
+        toolbarWorkspace.primary == .fullWidthThread
+    }
+
     /// A full-width thread's actions end the trailing button group, as a
     /// toolbar's overflow item does.
     @ToolbarContentBuilder
     private var fullWidthThreadActions: some ToolbarContent {
-        if !model.isSwitchingAccounts, toolbarWorkspace.primary == .fullWidthThread, let thread = model.openThread {
+        if !model.isSwitchingAccounts, toolbarShowsFullWidthThread, let thread = model.openThread {
             ToolbarSpacer(.fixed)
             ToolbarItem(id: "full-width-thread-actions") {
                 ThreadActionsToolbarMenu(model: model, thread: thread, surface: .fullView)
@@ -1079,9 +1083,7 @@ private struct ChatRootView: View {
     }
 
     private var conversationToolbarPresentation: ConversationToolbarPresentation? {
-        if toolbarWorkspace.primary == .fullWidthThread, let conversation = model.presentedSideConversation,
-           conversation.isFullWidth
-        {
+        if toolbarShowsFullWidthThread, let conversation = model.presentedSideConversation, conversation.isFullWidth {
             // One line with the thread symbol for threads and forum posts
             // alike, as before side chats were unified.
             let label = model.sideConversationLabel(conversation)
@@ -1107,7 +1109,15 @@ private struct ChatRootView: View {
         let capabilities = conversation.capabilities
         let showsAddToChannelList = capabilities.canAddToChannelList
             && model.customizationPreviewChannel.map { !model.isChannelSelected($0) } == true
-        let paneThread = conversation.isThread ? model.openThread : nil
+        // While a motion keeps the previous side chat's toolbar, its actions
+        // keep targeting the thread its title names.
+        let paneThread: MessageThreadSummary? = if case .thread(let thread, _) = conversation {
+            model.openThread?.id == thread.id ? model.openThread : thread
+        } else if conversation.isThread {
+            model.openThread
+        } else {
+            nil
+        }
         let showsFollow = paneThread.map { ForumPostFollowToolbarButton.isOffered(model: model, thread: $0) } ?? false
         // The Follow toggle is a text button about two icon buttons wide.
         let actionCount = 1 + (showsAddToChannelList ? 1 : 0) + (paneThread != nil ? 1 : 0) + (showsFollow ? 2 : 0)

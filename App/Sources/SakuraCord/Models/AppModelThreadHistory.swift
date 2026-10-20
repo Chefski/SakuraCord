@@ -185,6 +185,7 @@ extension AppModel {
                 // Laying out the first page takes several frames; let the
                 // pane finish sliding in first.
                 await WorkspaceLayoutMotion.untilSettled()
+                try Task.checkCancellation()
                 guard model.isCurrentAccountSession(account),
                       model.isCurrentThreadWindow(request)
                 else { return }

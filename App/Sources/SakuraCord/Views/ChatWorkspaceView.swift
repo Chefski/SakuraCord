@@ -54,7 +54,7 @@ struct ChatWorkspaceView: View {
         guildID: GuildID,
         presentation: WorkspacePresentation
     ) -> some View {
-        HStack(spacing: 0) {
+        workspaceColumns(presentation) {
             Group {
                 switch page {
                 case .channelsAndRoles: GuildCustomizationView(model: model, guildID: guildID)
@@ -64,21 +64,46 @@ struct ChatWorkspaceView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            if let conversation = presentation.paneSideConversation {
-                SideConversationView(model: model, conversation: conversation)
-                    .workspaceMotionProbe("pane")
-                    .id(conversation.motionIdentity)
-                    .transition(.move(edge: .trailing))
-            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func conversation(_ presentation: WorkspacePresentation) -> some View {
-        let motion = WorkspaceMotionPhase.shared
-        let widening = motion.widening
+        let widening = WorkspaceMotionPhase.shared.widening
         let channelContent: WorkspacePresentation.ChannelContent? =
             if case .channel(let content) = presentation.primary { content } else { widening?.channel }
+        return workspaceColumns(presentation) {
+            if let channelContent {
+                ChatWorkspacePrimaryContent(
+                    model: model,
+                    content: channelContent,
+                    presentsForumComposer: $presentsForumComposer
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .workspaceMotionProbe("primary")
+                // A widening thread slides over the conversation, which is
+                // gone by the time it is covered.
+                .opacity(presentation.primary == .fullWidthThread && widening?.hasArrived == true ? 0 : 1)
+                .animation(.easeOut(duration: 0.12), value: widening?.hasArrived)
+            }
+        }
+        .onChange(of: model.selectedChannelID) { _, channelID in
+            guard let channelID else {
+                AppPerformanceSignposts.cancelConversationNavigation()
+                return
+            }
+            AppPerformanceSignposts.ensureConversationNavigation(
+                to: channelID
+            )
+        }
+    }
+
+    /// The primary content, a side chat (in the pane or at full width) and
+    /// the inspector, moved by `WorkspaceLayoutMotion`.
+    private func workspaceColumns(
+        _ presentation: WorkspacePresentation,
+        @ViewBuilder primary: () -> some View
+    ) -> some View {
+        let motion = WorkspaceMotionPhase.shared
         // A thread keeps one view, and its timeline, between the pane and
         // full width.
         let fullWidthThread = presentation.primary == .fullWidthThread
@@ -97,21 +122,9 @@ struct ChatWorkspaceView: View {
             conversationWidthLimit: motion.isMoving ? conversationWidth : nil
         )
         return columnsLayout {
-            if let channelContent {
-                ChatWorkspacePrimaryContent(
-                    model: model,
-                    content: channelContent,
-                    presentsForumComposer: $presentsForumComposer
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .workspaceMotionProbe("primary")
+            primary()
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { conversationWidth = $0 }
-                // A widening thread slides over the conversation, which is
-                // gone by the time it is covered.
-                .opacity(widening?.hasArrived == true ? 0 : 1)
-                .animation(.easeOut(duration: 0.12), value: widening?.hasArrived)
                 .layoutValue(key: WorkspaceColumn.self, value: .conversation)
-            }
 
             ForEach(columns) { column in
                 trailingColumn(column, motion: motion)
@@ -119,15 +132,6 @@ struct ChatWorkspaceView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { workspaceWidth = $0 }
-        .onChange(of: model.selectedChannelID) { _, channelID in
-            guard let channelID else {
-                AppPerformanceSignposts.cancelConversationNavigation()
-                return
-            }
-            AppPerformanceSignposts.ensureConversationNavigation(
-                to: channelID
-            )
-        }
     }
 
     @ViewBuilder
@@ -151,7 +155,7 @@ struct ChatWorkspaceView: View {
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
                 if !motion.departing.contains(column) { inspectorWidth = width }
             }
-            .workspaceMotionProbe(pane.motionProbeName)
+            .workspaceMotionProbe(column.id)
             .offset(x: offset(of: column, motion: motion))
             .layoutValue(key: WorkspaceColumn.self, value: .inspector)
         }
@@ -335,16 +339,6 @@ private struct DirectMessageProfileInspector: View {
             if model.inspectorProfilePresentation?.member.id != recipient.id {
                 model.showInspectorProfile(for: recipient)
             }
-        }
-    }
-}
-
-private extension SupplementaryPane {
-    var motionProbeName: String {
-        switch self {
-        case .sideConversation: "pane"
-        case .memberInspector: "members"
-        case .messageSearch: "search"
         }
     }
 }

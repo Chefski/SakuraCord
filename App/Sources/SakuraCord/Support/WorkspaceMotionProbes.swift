@@ -47,7 +47,6 @@ final class WorkspaceMotionProbes {
     }
 
     func registerTimeline(_ scrollView: NSScrollView, counts: @escaping () -> (rows: Int, draws: Int)) {
-        guard Self.isEnabled else { return }
         timelines.removeAll { $0.scrollView == nil || $0.scrollView === scrollView }
         timelines.append(Timeline(scrollView: scrollView, counts: counts))
     }
