@@ -267,7 +267,7 @@ private struct ThreadConversationComposer: View {
                 appearance: model.appearanceSettings.composerBarAppearance,
                 checkingMessage: "Checking thread permissions…",
                 readOnlyMessage: thread.isLocked
-                    ? "This \(model.openThreadParentChannel?.kind == .forum ? "post" : "thread") is locked. Only moderators can send messages."
+                    ? "This \(model.openThreadParentChannel?.kind == .forum ? "post" : "thread") is locked."
                     : "You do not have permission to send messages in this channel."
             ) {
                 ComposerView(
