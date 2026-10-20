@@ -76,8 +76,7 @@ would and remove what does not need to exist.
   empty or log-only `catch` blocks, or unexplained retries.
 - Delete what you replace. Superseded paths, unused parameters, dead helpers,
   and stale comments go in the same change.
-- Comments explain why, not what. Do not restate the code or describe the
-  change itself.
+- Comments explain why, not what, and do not describe the change itself.
 - Treat a SwiftLint length or complexity violation as a design signal. First
   shorten the code itself by removing duplication, redundant steps, and
   unnecessary branches. If it is still over the limit, move a cohesive

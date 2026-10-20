@@ -1,9 +1,16 @@
 {
-  "instructions": "Besides bugs, review for code that works but should not exist or is larger than the behavior needs. The repository rules are in the context files. For lean-change findings, name the existing symbol to reuse or show the smaller equivalent.",
+  "instructions": "Besides bugs, review for code that works but should not exist or is larger than the behavior needs. The repository rules are in the context files.",
   "rules": [
     {
       "id": "lean-changes",
-      "rule": "Flag violations of the \"Keep changes lean\" section of AGENTS.md.",
+      "rule": "Flag violations of the \"Keep changes lean\" section of AGENTS.md, and name the existing symbol to reuse or show the smaller equivalent.",
+      "scope": [
+        "App/**",
+        "Packages/**/*.swift",
+        "script/**",
+        ".github/**",
+        ".githooks/**"
+      ],
       "severity": "medium"
     },
     {
