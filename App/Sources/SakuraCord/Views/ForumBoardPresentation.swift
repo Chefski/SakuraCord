@@ -48,7 +48,7 @@ extension ForumBoardView {
             if reactionTooltipPostID == postID, hoveredID == id, interactions[id]?.isReactionHovered == true,
                let summary = presentations[postID]?.reaction
             {
-                presentReactionTooltip(postID: postID, summary: summary, isRefreshing: true)
+                presentReactionTooltip(postID: postID, summary: summary)
             }
             regions[id] = nil
             guard let card = cards[id] else { continue }

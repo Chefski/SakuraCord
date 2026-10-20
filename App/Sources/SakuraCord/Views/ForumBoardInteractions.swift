@@ -57,15 +57,12 @@ extension ForumBoardView {
 
     // MARK: Reaction tooltip
 
-    /// Shows the reactors popover for a post's reaction. A repeat call for the
-    /// post already shown does nothing unless `isRefreshing`, which a data
-    /// change uses to update the content in place.
+    /// Shows or updates the reactors popover for a post's reaction. Each call
+    /// re-resolves its content, so a late emoji catalogue still updates it.
     func presentReactionTooltip(
         postID: ChannelID,
-        summary: ForumCardPresentation.ReactionSummary,
-        isRefreshing: Bool = false
+        summary: ForumCardPresentation.ReactionSummary
     ) {
-        if !isRefreshing, reactionTooltipPostID == postID { return }
         guard let model, let window else { return }
         let anchor = StablePopoverAnchor(sourceView: self) { [weak self] in
             guard let self, let entry = layoutState?.entry(for: .post(postID)),
