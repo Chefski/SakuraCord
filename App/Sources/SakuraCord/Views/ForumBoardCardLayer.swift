@@ -112,6 +112,11 @@ final class ForumBoardCard {
         guard let image else { return }
         let fades = fadesNextCommit == true && hasContent
         fadesNextCommit = nil
+        // Bitmaps land outside the board's transactions; nothing about the
+        // swap may animate implicitly (a fresh layer's scale would zoom).
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
         if fades {
             let transition = CATransition()
             transition.type = .fade
