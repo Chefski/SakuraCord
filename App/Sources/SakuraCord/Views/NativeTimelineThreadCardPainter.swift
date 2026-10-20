@@ -247,12 +247,14 @@ extension NativeTimelineRowPainter {
                 drawsTopSeparator: frame.minY - bubbleRegion.frame.minY > 8.5, drawsNeutralRail: false
             )
             guard overlayAlpha > 0 else { return }
-            NSGraphicsContext.saveGraphicsState()
-            NativeTimelineBubbleDrawing.bodyPath(for: bubbleRegion).addClip()
             NativeTimelineBubbleDrawing.foregroundColor(for: bubbleRegion)
                 .withAlphaComponent(overlayAlpha).setFill()
-            frame.fill()
-            NSGraphicsContext.restoreGraphicsState()
+            NSBezierPath(
+                concentricRoundedRect: frame.insetBy(dx: 0, dy: InterfaceScale.metric(1)),
+                cornerRadius: bubbleConcentricCornerRadius(
+                    for: frame, in: bubbleRegion, fallback: NativeTimelineThreadCard.cornerRadius
+                )
+            ).fill()
             return
         }
         let radius = NativeTimelineThreadCard.cornerRadius

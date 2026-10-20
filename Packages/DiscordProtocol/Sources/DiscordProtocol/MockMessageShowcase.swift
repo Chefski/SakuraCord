@@ -5,7 +5,7 @@ extension MockMessageFixtureBuilder {
     func messageShowcase() -> [Message] {
         showcaseText() + showcaseMedia() + showcaseEmbeds()
             + showcaseComponents() + showcaseReferencesAndStates() + showcasePolls()
-            + showcaseSystemMessages() + showcaseThreadCards() + showcaseBubbleGroups()
+            + showcaseSystemMessages() + showcaseBubbleGroups() + showcaseThreadCards()
     }
 
     var showcaseThread: MessageThreadSummary {
