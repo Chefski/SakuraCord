@@ -50,7 +50,7 @@ extension AccountReadStateModel {
         /// user has not joined must not reach the server badge or any row.
         func countsMentions(_ entry: Entry) -> Bool {
             guard policy.channelByID[entry.channelID] == nil,
-                  entry.parentID != nil
+                  entry.guildID != nil
             else { return true }
             return isAggregateConversation(entry)
         }

@@ -1561,13 +1561,11 @@ extension AccountReadStateModel {
     /// hidden until the account has joined the active thread. The raw count is
     /// still tracked, so it surfaces if a later mention or role ping joins it.
     func countsMentions(_ entry: Entry) -> Bool {
-        guard channelByID[entry.channelID] == nil,
-              let parentID = entry.parentID
-        else { return true }
+        guard channelByID[entry.channelID] == nil, entry.guildID != nil else { return true }
         return Self.isListedThread(
             entry,
-            parentChannel: channelByID[parentID],
-            parentEntry: self[parentID],
+            parentChannel: entry.parentID.flatMap { channelByID[$0] },
+            parentEntry: entry.parentID.flatMap { self[$0] },
             isActiveJoined: activeJoinedThreadIDs.contains(entry.channelID),
             isArchived: forumPostArchivedByID[entry.channelID] == true
         )

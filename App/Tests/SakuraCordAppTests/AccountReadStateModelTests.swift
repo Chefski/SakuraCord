@@ -871,6 +871,20 @@ struct AccountReadStateModelTests {
         #expect(presentedMentions() == [1, 1, 1, 1])
         model.replaceActiveJoinedThreads([])
         #expect(presentedMentions() == [0, 0, 0, 0])
+
+        // A ping can outrun the thread's metadata: the parentless guild entry
+        // must stay hidden until the thread is known and joined.
+        let earlyID = ChannelID(rawValue: 261)
+        var early = message(id: 280, mentionsEveryone: true)
+        early.channelID = earlyID
+        _ = model.receive(early, currentUserID: currentUser.id)
+        #expect(model.mentions(channelID: earlyID) == 0)
+        #expect(model.guildMentions(guildID) == 0)
+        let earlyThread = MessageThreadSummary(
+            id: earlyID, parentID: channelID, name: "Early", lastMessageID: MessageID(rawValue: 280)
+        )
+        model.replaceActiveJoinedThreads([earlyThread])
+        #expect(model.mentions(channelID: earlyID) == 1)
     }
 
     @Test func `inaccessible channels are excluded from bulk acknowledgements`() {
