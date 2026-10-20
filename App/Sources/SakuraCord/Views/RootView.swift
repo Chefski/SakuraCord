@@ -108,7 +108,8 @@ struct RootView: View {
             ZStack {
                 MessageSearchToolbarBridge(
                     model: model,
-                    isVisible: showsMessageSearchToolbar || model.showsLocalToolbarSearch,
+                    isVisible: showsMessageSearchToolbar || model.showsLocalToolbarSearch
+                        || model.keepsMessageSearchFieldInPlace,
                     metrics: $toolbarSearchFieldMetrics
                 )
                 ToolbarSearchFieldLoadingStyler(isActive: showsSessionLoadingChrome)
@@ -319,8 +320,7 @@ private struct ChatRootView: View {
                 if usesWorkspaceTitlebar {
                     WorkspaceTitlebar(
                         groups: workspaceTitlebarGroups,
-                        showsSearch: model.showsWorkspaceMessageSearch || model.showsLocalToolbarSearch,
-                        searchWidth: ChatChromeMetrics.toolbarSearchMaximumFieldWidth
+                        showsSearch: model.showsWorkspaceMessageSearch || model.showsLocalToolbarSearch
                     )
                         .frame(width: 0, height: 0)
                 }
@@ -1812,7 +1812,7 @@ private extension AppModel {
     /// The workspace shows message search in the window toolbar.
     var showsWorkspaceMessageSearch: Bool {
         onboardingEntryGuildID == nil && guildWorkspacePage == nil
-            && (isSwitchingAccounts || canShowMessageSearchField)
+            && (isSwitchingAccounts || canShowMessageSearch)
     }
 
     /// The toolbar field searches friends or browsable channels instead.

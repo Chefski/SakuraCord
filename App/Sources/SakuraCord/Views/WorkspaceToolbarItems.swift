@@ -178,10 +178,15 @@ struct TitlebarGlassButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 15))
-            .imageScale(.large)
-            .frame(width: ChatChromeMetrics.toolbarIconButtonWidth - 1, height: 36)
-            .contentShape(Circle())
-            .glassEffect(.regular.interactive(), in: Circle())
+            .imageScale(.medium)
+            // The toolbar draws its icons slightly translucent, over glass.
+            .foregroundStyle(.primary.opacity(0.88))
+            // As wide as the toolbar's own: its icon's width, inset, at least
+            // a circle.
+            .padding(.horizontal, 7)
+            .frame(minWidth: 36, minHeight: 36)
+            .contentShape(Capsule())
+            .glassEffect(.regular.interactive(), in: Capsule())
             .opacity(configuration.isPressed ? 0.75 : 1)
     }
 }

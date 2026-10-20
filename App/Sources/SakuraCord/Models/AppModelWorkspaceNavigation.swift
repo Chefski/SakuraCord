@@ -176,12 +176,13 @@ extension AppModel {
         )
     }
 
-    /// Whether the toolbar shows the search field. The workspace's own
-    /// toolbar keeps it beside a thread pane, whose place results take
-    /// until they close.
-    var canShowMessageSearchField: Bool {
-        guard WorkspaceColumnsHost.isEnabled else { return canShowMessageSearch }
-        return MessageSearchSurfacePolicy.showsToolbar(channelKind: selectedChannel?.kind, hasOpenThread: false)
+    /// The workspace's own toolbar (`WorkspaceTitlebar`) keeps the search
+    /// field in place beside a thread pane, where it fades out instead of
+    /// leaving the toolbar.
+    var keepsMessageSearchFieldInPlace: Bool {
+        WorkspaceColumnsHost.isEnabled && sessionState == .workspace && onboardingEntryGuildID == nil
+            && guildWorkspacePage == nil && !isFriendsPresented
+            && MessageSearchSurfacePolicy.showsToolbar(channelKind: selectedChannel?.kind, hasOpenThread: false)
     }
 
     var isMessageSearchVisible: Bool {
@@ -200,7 +201,7 @@ extension AppModel {
         }
         guard sessionState == .workspace,
               selectedChannelID != nil,
-              canShowMessageSearchField
+              canShowMessageSearch
         else { return }
         workspaceNavigationOverlay = nil
         messageSearch.requestInputFocus()

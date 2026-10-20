@@ -488,10 +488,6 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
                     })
                 }
             }
-            // The field moves with the workspace's toolbar items; its place,
-            // which the autocomplete follows, changes after a motion.
-            observe(WorkspaceSearchFieldHost.didChange, object: nil)
-            observe(WorkspaceLayoutMotion.didSettle, object: nil)
             observe(NSMenu.didBeginTrackingNotification, object: nil)
             observe(NSMenu.didEndTrackingNotification, object: nil)
             keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
@@ -550,9 +546,6 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
         }
 
         private func scheduleMeasurement() {
-            // The workspace's toolbar items move and narrow the field on
-            // every frame of a motion; it is measured again once it settles.
-            guard !(WorkspaceSearchFieldHost.isHosting && WorkspaceLayoutMotion.isMoving) else { return }
             retryTask?.cancel()
             retryTask = Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -592,7 +585,6 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
                         guard let self else { return }
                         isSearchFocused.wrappedValue = true
                         installMainMenuPatches()
-                        scheduleMeasurement()
                     },
                     didEndSearching: { [weak self] in
                         guard let self,
@@ -646,9 +638,7 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
             // constraint too, so AppKit reflows the adjacent toolbar items.
             _ = updateSearchToolbarItemSizing(item, width: preferredFieldWidth)
             updateSearchContainerWidth(for: item.searchField, width: preferredFieldWidth)
-            // The workspace's toolbar items can hold the field itself, with
-            // the item kept hidden in the toolbar.
-            let isHidden = isToolbarItemVisible && !WorkspaceSearchFieldHost.isHosting
+            let isHidden = isToolbarItemVisible
                 ? (originalSearchToolbarItemIsHidden ?? false)
                 : true
             let spacer = searchSpacer(before: item, in: window)
@@ -785,14 +775,6 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
 
         private func updateMetrics(_ metrics: ToolbarSearchFieldMetrics) {
             guard metrics != lastMetrics else { return }
-            // Moving with the workspace's toolbar items, the field's place
-            // matters only to the autocomplete, while it is editing; each
-            // change updates the whole window.
-            if WorkspaceSearchFieldHost.isHosting, lastMetrics.isValid, metrics.isValid,
-               searchField?.currentEditor() == nil
-            {
-                return
-            }
             lastMetrics = metrics
             changed(metrics)
         }
