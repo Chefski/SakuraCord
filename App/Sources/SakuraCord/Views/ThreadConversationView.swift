@@ -196,7 +196,7 @@ private struct ThreadConversationFooter: View {
             if thread.isLocked {
                 // Readers who cannot send see the lock once, in the disabled
                 // composer, as read-only channels present it.
-                if model.openThreadAccess.canSend {
+                if model.openThreadAccess.canSend || (canUpdateForumPost && model.canManageForumPosts) {
                     ThreadStateBanner(
                         title: isForumPost ? "Locked post" : "Locked thread",
                         message: "Only moderators can send messages.",
