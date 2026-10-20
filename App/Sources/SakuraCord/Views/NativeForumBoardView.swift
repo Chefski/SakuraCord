@@ -170,7 +170,7 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
     private var menuCoordinator: ForumPostContextMenuBridge.Coordinator?
     private var isReactionTooltipShown = false
     private let reactionTooltip = StableAnchoredPopoverPresenter<MessageReactionTooltip>.Coordinator()
-    private var accessibilityProxies: [ChannelID: ForumBoardAccessibilityProxyView] = [:]
+    private var accessibilityProxies: [ForumBoardItem.Identifier: ForumBoardAccessibilityProxyView] = [:]
     private var lastPaginationRequestCount = -1
     private var realizedIDs = Set<ForumBoardItem.Identifier>()
     private var settledWorkTask: Task<Void, Never>?
@@ -266,7 +266,13 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         }
     }
 
-    @objc private func fontsDidLoad() { repaintVisibleCards(fading: false) }
+    @objc private func fontsDidLoad() {
+        // Author prefixes captured fallback fonts; rebuild them.
+        for id in cards.keys {
+            if case let .post(postID) = id { configureExcerpt(for: postID) }
+        }
+        repaintVisibleCards(fading: false)
+    }
 
     @objc private func displayOptionsDidChange() {
         for (id, card) in cards { refreshShimmer(card, id: id) }
@@ -291,9 +297,14 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         let newItems = snapshot.items
         let structureChanged = newItems != items || modeChanged
         items = newItems
-        if queryChanged || channelChanged {
-            presentations.removeAll()
-            lastPaginationRequestCount = -1
+        if channelChanged { presentations.removeAll() }
+        if queryChanged || channelChanged { lastPaginationRequestCount = -1 }
+        if modeChanged {
+            // Excerpts depend on the layout: the starter in list, the latest
+            // message in gallery. Reconfigure before cards repaint.
+            for id in cards.keys {
+                if case let .post(postID) = id { configureExcerpt(for: postID) }
+            }
         }
         if structureChanged || layoutState == nil {
             let transition: ForumBoardTransition =
@@ -419,7 +430,13 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         for entry in realized {
             let id = entry.item.id
             liveIDs.insert(id)
+            var resolvedContent = false
+            if case let .post(postID) = id, ensureContent(for: postID) {
+                realizedNewPost = true
+                resolvedContent = true
+            }
             if let card = cards[id] {
+                if resolvedContent { card.render(scale: backingScale, fading: false) }
                 let oldFrame = card.frame
                 // Scrolling leaves realized cards untouched.
                 guard oldFrame != entry.frame || transition != .none else { continue }
@@ -430,12 +447,6 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
             } else {
                 let card = dequeueCard()
                 cards[id] = card
-                if case let .post(postID) = id, presentations[postID] == nil {
-                    // Resolve before the first paint, so a card scrolled into
-                    // view never shows an empty frame for a turn.
-                    resolvePresentation(for: postID)
-                    realizedNewPost = true
-                }
                 configure(card, entry: entry)
                 cardsLayer.addSublayer(card.layer)
                 if animates, entry.frame.intersects(visible) {
@@ -490,10 +501,28 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         }
     }
 
-    private func resolvePresentation(for postID: ChannelID) {
-        guard let model, let channel, let post = postsByID[postID] else { return }
-        presentations[postID] = model.forumCardPresentation(for: post, in: channel)
+    /// Resolves a realized post's presentation and excerpt renderer before
+    /// its first paint, so a card scrolled into view is never blank for a
+    /// turn. Returns whether anything had to be resolved.
+    private func ensureContent(for postID: ChannelID) -> Bool {
+        if presentations[postID] == nil {
+            guard let model, let channel, let post = postsByID[postID] else { return false }
+            presentations[postID] = model.forumCardPresentation(for: post, in: channel)
+        } else if excerptRenderers[postID] != nil || !needsExcerptRenderer(postID) {
+            return false
+        }
         configureExcerpt(for: postID)
+        return true
+    }
+
+    private func needsExcerptRenderer(_ postID: ChannelID) -> Bool {
+        guard let presentation = presentations[postID] else { return false }
+        if snapshot?.mode == .gallery {
+            if case .text = presentation.hero { return true }
+            return false
+        }
+        if case .message = presentation.excerpt { return true }
+        return false
     }
 
     private func dequeueCard() -> ForumBoardCard {
@@ -624,9 +653,15 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
 
     private func animateExit(_ card: ForumBoardCard) {
         CATransaction.begin()
-        CATransaction.setCompletionBlock { [weak self, weak card] in
-            guard let card else { return }
-            MainActor.assumeIsolated { self?.recycle(card) }
+        CATransaction.setCompletionBlock { [weak self] in
+            MainActor.assumeIsolated {
+                // The card owns its layer until the fade ends.
+                guard let self else {
+                    card.layer.removeFromSuperlayer()
+                    return
+                }
+                self.recycle(card)
+            }
         }
         let fade = CABasicAnimation(keyPath: "opacity")
         fade.fromValue = card.layer.presentation()?.opacity ?? 1
@@ -721,6 +756,7 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
             renderer.onDisplayChange = { [weak self] in
                 guard let self, let card = cards[.post(postID)] else { return }
                 card.render(scale: backingScale, fading: false)
+                updateAccessibilityChildren()
             }
             excerptRenderers[postID] = renderer
             return renderer
@@ -1129,7 +1165,7 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
             }
             model.open(post)
         case .paginationStatus:
-            Task { await model.loadMoreForumPosts() }
+            retryPagination()
         case .placeholder, .olderPostsHeader:
             break
         }
@@ -1146,7 +1182,11 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
 
     override func keyDown(with event: NSEvent) {
         guard let layoutState else { return super.keyDown(with: event) }
-        let posts = layoutState.entries.filter { $0.item.postID != nil }
+        // Posts and a failed page's retry notice take keyboard focus.
+        let posts = layoutState.entries.filter {
+            if case .paginationStatus = $0.item { return true }
+            return $0.item.postID != nil
+        }
         guard !posts.isEmpty else { return super.keyDown(with: event) }
         let currentIndex = keyboardID.flatMap { id in posts.firstIndex { $0.item.id == id } }
         let columns = max(1, posts.prefix(while: { $0.frame.minY == posts[0].frame.minY }).count)
@@ -1158,15 +1198,11 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         case .rightArrow where layoutState.mode == .gallery: next = currentIndex.map { min(posts.count - 1, $0 + 1) } ?? 0
         case .leftArrow where layoutState.mode == .gallery: next = currentIndex.map { max(0, $0 - 1) } ?? 0
         case .carriageReturn, .enter:
-            if let currentIndex, let postID = posts[currentIndex].item.postID, let post = postsByID[postID] {
-                model?.open(post)
-            }
+            if let currentIndex { activateKeyboardItem(posts[currentIndex].item) }
             return
         default:
-            if event.charactersIgnoringModifiers == " ", let currentIndex,
-               let postID = posts[currentIndex].item.postID, let post = postsByID[postID]
-            {
-                model?.open(post)
+            if event.charactersIgnoringModifiers == " ", let currentIndex {
+                activateKeyboardItem(posts[currentIndex].item)
                 return
             }
             return super.keyDown(with: event)
@@ -1178,6 +1214,17 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
             if let card = cards[id] { applyChrome(card, id: id, animated: true) }
         }
         scrollToVisible(posts[next].frame.insetBy(dx: 0, dy: -metrics.cardSpacing))
+    }
+
+    private func activateKeyboardItem(_ item: ForumBoardItem) {
+        switch item {
+        case let .post(input):
+            if let post = postsByID[input.id] { model?.open(post) }
+        case .paginationStatus:
+            retryPagination()
+        case .placeholder, .olderPostsHeader:
+            break
+        }
     }
 
     override func resignFirstResponder() -> Bool {
@@ -1266,27 +1313,64 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
     /// read and activate cards that are only painted into layers.
     private func updateAccessibilityChildren() {
         guard let layoutState else { return }
-        var live: [ChannelID: ForumBoardAccessibilityProxyView] = [:]
+        var live: [ForumBoardItem.Identifier: ForumBoardAccessibilityProxyView] = [:]
         for entry in layoutState.entries(intersecting: realizationRect) {
-            guard let postID = entry.item.postID, let presentation = presentations[postID] else { continue }
-            let proxy = accessibilityProxies.removeValue(forKey: postID) ?? {
-                let proxy = ForumBoardAccessibilityProxyView(
+            let id = entry.item.id
+            switch entry.item {
+            case let .post(input):
+                guard let presentation = presentations[input.id] else { continue }
+                let postID = input.id
+                let proxy = accessibilityProxies.removeValue(forKey: id) ?? makeProxy(
                     press: { [weak self] in self?.accessibilityOpen(postID) ?? false },
                     showMenu: { [weak self] in self?.accessibilityShowMenu(postID) ?? false }
                 )
-                addSubview(proxy)
-                return proxy
-            }()
-            proxy.frame = entry.frame
-            proxy.update(
-                presentation: presentation,
-                excerpt: excerptRenderers[postID]?.accessibilityText,
-                toggleReaction: { [weak self] in self?.accessibilityToggleReaction(postID) ?? false }
-            )
-            live[postID] = proxy
+                proxy.frame = entry.frame
+                let renderer = excerptRenderers[postID]
+                var revealSpoiler: (@MainActor () -> Bool)?
+                if let renderer, let location = renderer.hiddenSpoilerRanges.first?.location {
+                    revealSpoiler = { [weak renderer] in
+                        renderer?.revealSpoiler(at: location)
+                        return renderer != nil
+                    }
+                }
+                proxy.update(
+                    presentation: presentation,
+                    excerpt: renderer?.accessibilityText,
+                    toggleReaction: { [weak self] in self?.accessibilityToggleReaction(postID) ?? false },
+                    revealSpoiler: revealSpoiler
+                )
+                live[id] = proxy
+            case .paginationStatus:
+                guard let message = snapshot?.paginationError else { continue }
+                let proxy = accessibilityProxies.removeValue(forKey: id) ?? makeProxy(
+                    press: { [weak self] in self?.retryPagination() ?? false },
+                    showMenu: { false }
+                )
+                proxy.frame = entry.frame
+                proxy.updateRetry(message: message)
+                live[id] = proxy
+            case .placeholder, .olderPostsHeader:
+                continue
+            }
         }
         for proxy in accessibilityProxies.values { proxy.removeFromSuperview() }
         accessibilityProxies = live
+    }
+
+    private func makeProxy(
+        press: @escaping @MainActor @Sendable () -> Bool,
+        showMenu: @escaping @MainActor @Sendable () -> Bool
+    ) -> ForumBoardAccessibilityProxyView {
+        let proxy = ForumBoardAccessibilityProxyView(press: press, showMenu: showMenu)
+        addSubview(proxy)
+        return proxy
+    }
+
+    @discardableResult
+    fileprivate func retryPagination() -> Bool {
+        guard let model, snapshot?.paginationError != nil else { return false }
+        Task { await model.loadMoreForumPosts() }
+        return true
     }
 
     fileprivate func accessibilityOpen(_ postID: ChannelID) -> Bool {
@@ -1355,8 +1439,6 @@ final class ForumBoardAccessibilityProxyView: NSView {
         self.press = press
         self.showMenu = showMenu
         super.init(frame: .zero)
-        setAccessibilityRole(.button)
-        setAccessibilityHelp("Opens this post as a thread")
     }
 
     @available(*, unavailable)
@@ -1371,8 +1453,11 @@ final class ForumBoardAccessibilityProxyView: NSView {
     func update(
         presentation: ForumCardPresentation,
         excerpt: String?,
-        toggleReaction: @escaping @MainActor () -> Bool
+        toggleReaction: @escaping @MainActor () -> Bool,
+        revealSpoiler: (@MainActor () -> Bool)?
     ) {
+        setAccessibilityRole(.button)
+        setAccessibilityHelp("Opens this post as a thread")
         setAccessibilityLabel(presentation.accessibilityLabel)
         var value = [presentation.isEmphasized ? "Unread" : "Read"]
         if let excerpt, !excerpt.isEmpty { value.append(excerpt) }
@@ -1387,7 +1472,19 @@ final class ForumBoardAccessibilityProxyView: NSView {
                 toggleReaction()
             })
         }
+        if let revealSpoiler {
+            actions.append(NSAccessibilityCustomAction(name: "Reveal spoiler") { revealSpoiler() })
+        }
         setAccessibilityCustomActions(actions)
+    }
+
+    /// The failed-page notice: its press retries.
+    func updateRetry(message: String) {
+        setAccessibilityRole(.button)
+        setAccessibilityLabel("Couldn’t load more posts. Try Again")
+        setAccessibilityValue(message)
+        setAccessibilityHelp("Loads the next page of posts again")
+        setAccessibilityCustomActions([])
     }
 
     nonisolated override func accessibilityPerformPress() -> Bool {
