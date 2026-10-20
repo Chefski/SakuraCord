@@ -8,6 +8,17 @@ struct RootView: View {
     @State private var toolbarSearchFieldMetrics = ToolbarSearchFieldMetrics.zero
     @State private var automaticSearchFocusGuard = AutomaticSearchFocusGuard()
 
+    /// Toolbar search focus is the reader's unless a switch armed the guard
+    /// and no input of theirs preceded it; their focus disarms the guard.
+    private func acceptsToolbarSearchFocus() -> Bool {
+        guard automaticSearchFocusGuard.isArmed else { return true }
+        if automaticSearchFocusGuard.focusFollowsReaderInput {
+            automaticSearchFocusGuard.disarm()
+            return true
+        }
+        automaticSearchFocusGuard.releaseToolbarSearchFieldFocus()
+        return false
+    }
     var body: some View {
         @Bindable var model = model
         @Bindable var search = model.messageSearch
@@ -115,9 +126,13 @@ struct RootView: View {
         // Focus the reader did not give the toolbar search field after a switch
         // is released, closing the suggestions it would open.
         .onChange(of: search.isInputFocused) { _, isFocused in
-            guard isFocused, automaticSearchFocusGuard.isArmed else { return }
-            search.isInputFocused = false
-            automaticSearchFocusGuard.releaseSearchFieldFocus()
+            if isFocused, !acceptsToolbarSearchFocus() { search.isInputFocused = false }
+        }
+        .onChange(of: model.friends.isSearchFocused) { _, isFocused in
+            if isFocused, !acceptsToolbarSearchFocus() { model.friends.isSearchFocused = false }
+        }
+        .onChange(of: model.onboarding.isChannelSearchFocused) { _, isFocused in
+            if isFocused, !acceptsToolbarSearchFocus() { model.onboarding.isChannelSearchFocused = false }
         }
         // System-message actions such as Edit Group are drawn in the accent
         // color, which depends on the whole committed theme.
