@@ -561,12 +561,18 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
             let isOnScreen = !card.layer.isHidden && card.frame.intersects(visible)
             if fades, !isPlaceholder, isOnScreen {
                 animateExit(card)
-            } else if isOnScreen, group.covers(card.frame) {
+            } else if isOnScreen, group.covers(card.frame), !isCoveredByShownCard(card.frame) {
                 group.keepUntilRevealed(card)
             } else {
                 recycle(card, replacedBy: group)
             }
         }
+    }
+
+    /// Whether a card already on screen now occupies `frame`; a replaced
+    /// card there would overlap it while waiting.
+    private func isCoveredByShownCard(_ frame: CGRect) -> Bool {
+        cards.values.contains { !$0.layer.isHidden && $0.frame.intersects(frame) }
     }
 
     /// Tooltips, accessibility proxies and observation of newly realized
