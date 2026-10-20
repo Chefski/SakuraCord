@@ -6,6 +6,7 @@ import SwiftUI
 struct RootView: View {
     let model: AppModel
     @State private var toolbarSearchFieldMetrics = ToolbarSearchFieldMetrics.zero
+    @State private var automaticSearchFocusGuard = AutomaticSearchFocusGuard()
 
     var body: some View {
         @Bindable var model = model
@@ -108,7 +109,15 @@ struct RootView: View {
             if isSwitching {
                 search.isFilterModalPresented = false
                 model.dismissMessageSearch()
+                automaticSearchFocusGuard.arm()
             }
+        }
+        // Focus the reader did not give the toolbar search field after a switch
+        // is released, closing the suggestions it would open.
+        .onChange(of: search.isInputFocused) { _, isFocused in
+            guard isFocused, automaticSearchFocusGuard.isArmed else { return }
+            search.isInputFocused = false
+            automaticSearchFocusGuard.releaseSearchFieldFocus()
         }
         // System-message actions such as Edit Group are drawn in the accent
         // color, which depends on the whole committed theme.
