@@ -172,6 +172,9 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
     private let reactionTooltip = StableAnchoredPopoverPresenter<MessageReactionTooltip>.Coordinator()
     private var accessibilityProxies: [ChannelID: ForumBoardAccessibilityProxyView] = [:]
     private var lastPaginationRequestCount = -1
+    private var realizedIDs = Set<ForumBoardItem.Identifier>()
+    private var settledWorkTask: Task<Void, Never>?
+    private var needsObservationRefresh = false
 
     override var isFlipped: Bool { true }
 
@@ -208,6 +211,7 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
     }
 
     func tearDown() {
+        settledWorkTask?.cancel()
         minuteTimer?.invalidate()
         minuteTimer = nil
         reactionTooltip.close()
@@ -366,6 +370,8 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         } else if let anchor {
             restore(anchor)
         }
+        // Geometry changed under the same cards: rebuild settled state too.
+        realizedIDs = []
         refreshVisibleCards(transition: transition)
         window?.invalidateCursorRects(for: self)
     }
@@ -415,6 +421,8 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
             liveIDs.insert(id)
             if let card = cards[id] {
                 let oldFrame = card.frame
+                // Scrolling leaves realized cards untouched.
+                guard oldFrame != entry.frame || transition != .none else { continue }
                 configure(card, entry: entry)
                 if animates, oldFrame != entry.frame, oldFrame.intersects(visible) || entry.frame.intersects(visible) {
                     animateMove(card, from: oldFrame)
@@ -454,11 +462,32 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
             excerptRenderers[id]?.stopObservingReveals()
             excerptRenderers[id] = nil
         }
-        refreshMedia()
-        rebuildToolTips()
-        updateAccessibilityChildren()
-        if realizedNewPost { schedulePresentationRefresh() }
         reportStability()
+        guard liveIDs != realizedIDs || transition != .none else { return }
+        realizedIDs = liveIDs
+        refreshMedia()
+        if realizedNewPost { needsObservationRefresh = true }
+        scheduleSettledWork()
+    }
+
+    /// Tooltips, accessibility proxies and observation of newly realized
+    /// cards wait until scrolling pauses; cards are already painted, so
+    /// this keeps per-frame work to realizing and positioning layers.
+    private func scheduleSettledWork() {
+        settledWorkTask?.cancel()
+        let assistiveTechnology = NSWorkspace.shared.isVoiceOverEnabled || NSWorkspace.shared.isSwitchControlEnabled
+        if assistiveTechnology { updateAccessibilityChildren() }
+        settledWorkTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(120))
+            guard let self, !Task.isCancelled else { return }
+            rebuildToolTips()
+            if !assistiveTechnology { updateAccessibilityChildren() }
+            window?.invalidateCursorRects(for: self)
+            if needsObservationRefresh {
+                needsObservationRefresh = false
+                schedulePresentationRefresh()
+            }
+        }
     }
 
     private func resolvePresentation(for postID: ChannelID) {
