@@ -103,6 +103,17 @@ struct ForumFrameTimingSampler {
     }
 }
 
+/// Resumes a benchmark run exactly once, from its last frame or its deadline.
+@MainActor
+private final class ForumBenchmarkCompletion {
+    var continuation: CheckedContinuation<Void, Never>?
+
+    func finish() {
+        continuation?.resume()
+        continuation = nil
+    }
+}
+
 /// Offline forum benchmark: after the first page loads, scrolls the board at a
 /// steady speed on the display link, then writes frame timing and layout
 /// stability. A board that is not SwiftUI registers its scroll view with
@@ -151,7 +162,11 @@ enum ForumBoardBenchmark {
         let deadline = ProcessInfo.processInfo.systemUptime + seconds
         while !condition() {
             guard ProcessInfo.processInfo.systemUptime < deadline else { return false }
-            try? await Task.sleep(for: .milliseconds(100))
+            do {
+                try await Task.sleep(for: .milliseconds(100))
+            } catch {
+                return false
+            }
         }
         return true
     }
@@ -191,7 +206,16 @@ enum ForumBoardBenchmark {
         var framesAtEnd = 0
         let start = ProcessInfo.processInfo.systemUptime
         var previous = start
+        let completion = ForumBenchmarkCompletion()
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            completion.continuation = continuation
+            // The display link stops firing if the board leaves the window,
+            // so a wall-clock deadline also ends the run.
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(scrollDuration + 5))
+                ticker.stop()
+                completion.finish()
+            }
             ticker.start(on: scrollView) {
                 let now = ProcessInfo.processInfo.systemUptime
                 let interval = now - previous
@@ -213,7 +237,7 @@ enum ForumBoardBenchmark {
                 scrollView.reflectScrolledClipView(clip)
                 if now - start >= scrollDuration {
                     ticker.stop()
-                    continuation.resume()
+                    completion.finish()
                 }
             }
         }
