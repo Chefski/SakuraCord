@@ -37,6 +37,19 @@ private final class NativeTimelineInputShieldScrollView: NSScrollView {
     }
 }
 
+/// Keeps the timeline's horizontal scroll position at zero. A trackpad's
+/// sideways movement otherwise moved a side chat's timeline by fractions of a
+/// point, after AppKit aligned its bounds to the pixel grid at a column's
+/// fractional position, and the timeline held off redrawing until the
+/// gesture ended.
+final class NativeTimelineClipView: NSClipView {
+    override func constrainBoundsRect(_ proposedBounds: NSRect) -> NSRect {
+        var bounds = super.constrainBoundsRect(proposedBounds)
+        bounds.origin.x = 0
+        return bounds
+    }
+}
+
 struct NativeMessageTimelineView: NSViewRepresentable {
     @Environment(\.openSettings) var openSettings
     let model: AppModel
@@ -380,6 +393,8 @@ extension NativeMessageTimelineCoordinator {
             documentView.addSubview(canvas)
 
             let scrollView = NativeTimelineInputShieldScrollView()
+            // The timeline only scrolls vertically, wherever it is placed.
+            scrollView.contentView = NativeTimelineClipView()
             scrollView.inputPerformanceProbe.install(on: scrollView)
             if WorkspaceMotionProbes.isEnabled {
                 WorkspaceMotionProbes.shared.registerTimeline(scrollView) { [weak self, weak canvas] in

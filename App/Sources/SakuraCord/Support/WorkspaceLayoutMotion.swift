@@ -175,7 +175,9 @@ enum WorkspaceLayoutMotion {
     }
 
     private static var workspaceWindow: NSWindow? {
-        NSApp.mainWindow ?? NSApp.windows.first { $0.isVisible && $0.canBecomeMain }
+        // No application object exists in unit tests.
+        guard let app = NSApp else { return nil }
+        return app.mainWindow ?? app.windows.first { $0.isVisible && $0.canBecomeMain }
     }
 }
 

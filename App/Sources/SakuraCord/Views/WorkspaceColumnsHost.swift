@@ -441,9 +441,12 @@ final class WorkspaceColumnsView: NSView {
         )
     }
 
+    /// On the pixel grid: a column between pixels blurs, and its scroll
+    /// views align their bounds to the grid in ways they are not built for.
     private func setFrame(of view: NSView?, _ frame: CGRect) {
-        guard let view, view.frame != frame else { return }
-        view.frame = frame
+        guard let view else { return }
+        let frame = backingAlignedRect(frame, options: .alignAllEdgesNearest)
+        if view.frame != frame { view.frame = frame }
     }
 
     private func columnReported(_ frame: CGRect, id: String) {
