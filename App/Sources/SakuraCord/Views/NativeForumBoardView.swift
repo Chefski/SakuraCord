@@ -175,6 +175,7 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
     private var realizedIDs = Set<ForumBoardItem.Identifier>()
     private var settledWorkTask: Task<Void, Never>?
     private var needsObservationRefresh = false
+    private var authorPrefixes: [AuthorPrefixKey: ForumPostPreviewTextView.Prefix] = [:]
 
     override var isFlipped: Bool { true }
 
@@ -353,6 +354,10 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
             titleCounter = ForumTitleLineCounter(font: metrics.titleFont, maximumLines: metrics.maximumTitleLines)
             lastScale = InterfaceScale.factor
             regions.removeAll()
+            // Excerpt fonts and emoji sizes follow the interface size.
+            for id in cards.keys {
+                if case let .post(postID) = id { configureExcerpt(for: postID) }
+            }
         }
         let anchor = transition == .none && !scrollsToTop ? scrollAnchor() : nil
         let counter = titleCounter
@@ -430,13 +435,10 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         for entry in realized {
             let id = entry.item.id
             liveIDs.insert(id)
-            var resolvedContent = false
-            if case let .post(postID) = id, ensureContent(for: postID) {
-                realizedNewPost = true
-                resolvedContent = true
-            }
+            let resolvedContent = prepareContent(for: id)
+            if resolvedContent != .unchanged { realizedNewPost = true }
             if let card = cards[id] {
-                if resolvedContent { card.render(scale: backingScale, fading: false) }
+                if resolvedContent == .resolvedForExistingCard { card.render(scale: backingScale, fading: false) }
                 let oldFrame = card.frame
                 // Scrolling leaves realized cards untouched.
                 guard oldFrame != entry.frame || transition != .none else { continue }
@@ -499,6 +501,29 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
                 schedulePresentationRefresh()
             }
         }
+    }
+
+    private enum ContentPreparation {
+        case unchanged
+        case resolvedForNewCard
+        case resolvedForExistingCard
+    }
+
+    /// A card entering the realized range re-resolves, since its post may
+    /// have changed while it was unobserved off screen.
+    private func prepareContent(for id: ForumBoardItem.Identifier) -> ContentPreparation {
+        guard case let .post(postID) = id else { return .unchanged }
+        if cards[id] == nil {
+            resolvePresentation(for: postID)
+            return .resolvedForNewCard
+        }
+        return ensureContent(for: postID) ? .resolvedForExistingCard : .unchanged
+    }
+
+    private func resolvePresentation(for postID: ChannelID) {
+        guard let model, let channel, let post = postsByID[postID] else { return }
+        presentations[postID] = model.forumCardPresentation(for: post, in: channel)
+        configureExcerpt(for: postID)
     }
 
     /// Resolves a realized post's presentation and excerpt renderer before
@@ -695,10 +720,12 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
             for id in cards.keys {
                 guard case let .post(postID) = id, let post = postsByID[postID] else { continue }
                 let presentation = model.forumCardPresentation(for: post, in: channel)
-                if presentations[postID] != presentation {
-                    changed.append(postID)
-                    presentations[postID] = presentation
-                }
+                let presentationChanged = presentations[postID] != presentation
+                presentations[postID] = presentation
+                // Excerpts also depend on mention resolution, which the
+                // presentation omits; configuring here observes it too.
+                let excerptChanged = configureExcerpt(for: postID)
+                if presentationChanged || excerptChanged { changed.append(postID) }
             }
             _ = model.openThread?.id
         } onChange: { [weak self] in
@@ -716,7 +743,6 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
             }
             regions[id] = nil
             guard let card = cards[id] else { continue }
-            configureExcerpt(for: postID)
             applyChrome(card, id: id, animated: true)
             refreshShimmer(card, id: id)
             card.render(scale: backingScale, fading: card.hasContent)
@@ -728,29 +754,30 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         }
     }
 
-    private func configureExcerpt(for postID: ChannelID) {
-        guard let model, let presentation = presentations[postID] else { return }
+    /// Configures a post's excerpt renderer for the current mode, metrics and
+    /// mentions; returns whether its displayed text changed.
+    @discardableResult
+    private func configureExcerpt(for postID: ChannelID) -> Bool {
+        guard let model, let presentation = presentations[postID] else { return false }
         let message: Message?
         let lines: Int
         var prefix: ForumPostPreviewTextView.Prefix?
         if snapshot?.mode == .gallery {
             guard case let .text(value) = presentation.hero else {
-                excerptRenderers[postID] = nil
-                return
+                return excerptRenderers.removeValue(forKey: postID) != nil
             }
             message = value
             let tagReserve = presentation.tags.isEmpty ? 0 : InterfaceScale.metric(34)
             lines = max(1, Int((metrics.galleryHeroHeight - InterfaceScale.metric(28) - tagReserve) / metrics.excerptLineHeight))
         } else {
             guard case let .message(value, author) = presentation.excerpt else {
-                excerptRenderers[postID] = nil
-                return
+                return excerptRenderers.removeValue(forKey: postID) != nil
             }
             message = value
             lines = metrics.excerptLines
             prefix = authorPrefix(author)
         }
-        guard let message else { return }
+        guard let message else { return false }
         let renderer = excerptRenderers[postID] ?? {
             let renderer = ForumPostPreviewTextRenderer()
             renderer.onDisplayChange = { [weak self] in
@@ -768,6 +795,7 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
             mentions[mention.rawToken] = resolver.presentation(mention)
         }
         let fontSize = metrics.excerptFont.pointSize
+        let previous = renderer.configuration
         renderer.configure(
             ForumPostPreviewTextView.Configuration(
                 messageID: message.id,
@@ -782,10 +810,35 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
             ),
             revealStore: model.timelineSpoilerRevealStore
         )
+        return renderer.configuration != previous
     }
 
+    private struct AuthorPrefixKey: Hashable {
+        let author: ForumCardPresentation.Author
+        let fontName: String
+        let fontSize: CGFloat
+    }
+
+    /// Prefixes are cached so an unchanged author keeps an identical value,
+    /// letting excerpt configuration compare equal and skip a rebuild.
     private func authorPrefix(_ author: ForumCardPresentation.Author) -> ForumPostPreviewTextView.Prefix {
         let bodySize = metrics.excerptFont.pointSize
+        let fallback = NSFont.interfaceSystemFont(ofSize: bodySize, weight: .semibold)
+        ProfileNameFontLoader.shared.request(id: author.fontID)
+        let font = ProfileNameFontCache.font(id: author.fontID, fallback: fallback)
+        let key = AuthorPrefixKey(author: author, fontName: font.fontName, fontSize: font.pointSize)
+        if let cached = authorPrefixes[key] { return cached }
+        let prefix = makeAuthorPrefix(author, font: font, bodySize: bodySize)
+        if authorPrefixes.count > 512 { authorPrefixes.removeAll(keepingCapacity: true) }
+        authorPrefixes[key] = prefix
+        return prefix
+    }
+
+    private func makeAuthorPrefix(
+        _ author: ForumCardPresentation.Author,
+        font: NSFont,
+        bodySize: CGFloat
+    ) -> ForumPostPreviewTextView.Prefix {
         let value = NSMutableAttributedString()
         if let dotColor = author.roleDotColor,
            let dot = NSImage(systemSymbolName: "circle.fill", accessibilityDescription: nil)?
@@ -800,12 +853,10 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
             value.append(NSAttributedString(attachment: attachment))
             value.append(NSAttributedString(string: " "))
         }
-        let fallback = NSFont.interfaceSystemFont(ofSize: bodySize, weight: .semibold)
-        ProfileNameFontLoader.shared.request(id: author.fontID)
         value.append(NSAttributedString(
             string: author.name,
             attributes: [
-                .font: ProfileNameFontCache.font(id: author.fontID, fallback: fallback),
+                .font: font,
                 .foregroundColor: author.color ?? NSColor.labelColor,
             ]
         ))
@@ -1461,6 +1512,8 @@ final class ForumBoardAccessibilityProxyView: NSView {
         setAccessibilityLabel(presentation.accessibilityLabel)
         var value = [presentation.isEmphasized ? "Unread" : "Read"]
         if let excerpt, !excerpt.isEmpty { value.append(excerpt) }
+        if let author = presentation.galleryAuthor { value.append("Posted by \(author.name)") }
+        value.append("Posted \(presentation.createdAt.formatted(date: .abbreviated, time: .shortened))")
         value.append(presentation.messageCountAccessibilityText)
         value.append("Last activity \(presentation.lastActivityAt.formatted(date: .abbreviated, time: .shortened))")
         setAccessibilityValue(value.joined(separator: ", "))

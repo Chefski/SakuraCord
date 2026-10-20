@@ -531,7 +531,11 @@ enum ForumCardPainter {
                 color: .tertiaryLabelColor
             )
         case .message:
+            // Markdown lines can be taller than body text; the slot clips.
+            NSGraphicsContext.saveGraphicsState()
+            NSBezierPath(rect: frame).addClip()
             renderer?.draw(at: frame.origin)
+            NSGraphicsContext.restoreGraphicsState()
         }
     }
 
@@ -550,7 +554,17 @@ enum ForumCardPainter {
         case let .media(media):
             drawMedia(media, in: frame, cornerRadius: radius, isCompact: false)
         case .text:
+            // The preview stays inside the hero, above its tag row.
+            let tagReserve = presentation.tags.isEmpty ? 0 : InterfaceScale.metric(34)
+            NSGraphicsContext.saveGraphicsState()
+            NSBezierPath(rect: CGRect(
+                x: frame.minX,
+                y: frame.minY,
+                width: frame.width,
+                height: frame.height - InterfaceScale.metric(14) - tagReserve
+            )).addClip()
             excerpt?.draw(at: CGPoint(x: frame.minX + InterfaceScale.metric(16), y: frame.minY + InterfaceScale.metric(14)))
+            NSGraphicsContext.restoreGraphicsState()
         case .empty:
             let size = InterfaceScale.metric(34)
             NativeTimelineRowPainter.systemSymbol(

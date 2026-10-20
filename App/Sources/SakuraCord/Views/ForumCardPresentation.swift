@@ -11,7 +11,7 @@ struct ForumCardPresentation: Equatable {
         let emoji: ForumTagEmojiPresentation?
     }
 
-    struct Author: Equatable {
+    struct Author: Hashable {
         let name: String
         let fontID: Int?
         let color: NSColor?
