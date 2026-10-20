@@ -153,6 +153,7 @@ private struct ForumBrowseHeader: View {
                     presentsComposer = true
                 }
                 .disabled(!model.canCreateForumPosts)
+                .pointerStyle(model.canCreateForumPosts ? .link : nil)
                 .padding(.trailing, InterfaceScale.metric(9))
             }
             Divider()
@@ -374,7 +375,8 @@ private struct ForumSortMenu: View {
                 selectSortOrder: selectSort,
                 selectLayout: { model.forumLayout = $0 },
                 selectTagMatch: selectTagMatch,
-                reset: resetToDefault
+                reset: resetToDefault,
+                onHover: { isHovered = $0 }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -410,6 +412,7 @@ private struct NativeForumSortMenuButton: NSViewRepresentable {
     let selectLayout: (ForumLayout) -> Void
     let selectTagMatch: (ForumTagMatch) -> Void
     let reset: () -> Void
+    let onHover: (Bool) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
@@ -423,12 +426,13 @@ private struct NativeForumSortMenuButton: NSViewRepresentable {
         )
     }
 
-    func makeNSView(context: Context) -> NSButton {
-        let button = NSButton(
+    func makeNSView(context: Context) -> ForumSortMenuNSButton {
+        let button = ForumSortMenuNSButton(
             title: "",
             target: context.coordinator,
             action: #selector(Coordinator.showMenu(_:))
         )
+        button.onHover = onHover
         button.isBordered = false
         button.isTransparent = true
         button.focusRingType = .none
@@ -438,7 +442,8 @@ private struct NativeForumSortMenuButton: NSViewRepresentable {
         return button
     }
 
-    func updateNSView(_ nsView: NSButton, context: Context) {
+    func updateNSView(_ nsView: ForumSortMenuNSButton, context: Context) {
+        nsView.onHover = onHover
         context.coordinator.update(
             sortOrder: sortOrder,
             layout: layout,
@@ -640,6 +645,39 @@ private struct NativeForumSortMenuButton: NSViewRepresentable {
         @objc private func resetOptions() {
             reset()
         }
+    }
+}
+
+/// The sort menu's click target sits over the SwiftUI chip, so it reports
+/// hover back to the chip and shows the pointing hand itself.
+final class ForumSortMenuNSButton: NSButton {
+    var onHover: ((Bool) -> Void)?
+    private var hoverArea: NSTrackingArea?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverArea { removeTrackingArea(hoverArea) }
+        let area = NSTrackingArea(
+            rect: .zero,
+            options: [.activeInKeyWindow, .inVisibleRect, .mouseEnteredAndExited],
+            owner: self
+        )
+        addTrackingArea(area)
+        hoverArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        onHover?(true)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        onHover?(false)
+    }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .pointingHand)
     }
 }
 
