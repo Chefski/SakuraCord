@@ -71,8 +71,10 @@ nonisolated struct WorkspaceColumnsLayout: Layout {
             if showsSideConversation, sideConversationIsFullWidth {
                 place(view, minX: bounds.minX, width: bounds.width - inspectorWidth, in: bounds)
             } else {
-                // A departing pane keeps its width at the trailing edge.
-                place(view, minX: bounds.maxX - inspectorWidth - paneWidth, width: paneWidth, in: bounds)
+                // A pane keeps its width at the trailing edge, beneath any
+                // inspector arriving in its place as it leaves.
+                let trailingEdge = showsSideConversation ? bounds.maxX - inspectorWidth : bounds.maxX
+                place(view, minX: trailingEdge - paneWidth, width: paneWidth, in: bounds)
             }
         }
         for (view, width) in zip(inspectors, inspectorWidths) {

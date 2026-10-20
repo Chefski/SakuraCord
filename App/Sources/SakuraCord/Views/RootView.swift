@@ -1107,8 +1107,14 @@ private struct ChatRootView: View {
     private func sideConversationToolbar(_ conversation: SideConversation) -> some ToolbarContent {
         let label = model.sideConversationLabel(conversation)
         let capabilities = conversation.capabilities
+        // While a motion keeps the previous preview's toolbar, it offers no
+        // action on the newly previewed channel.
+        let previewChannel = model.customizationPreviewChannel.flatMap { channel -> Channel? in
+            guard case .channelPreview(let channelID, _) = conversation else { return channel }
+            return channel.id == channelID ? channel : nil
+        }
         let showsAddToChannelList = capabilities.canAddToChannelList
-            && model.customizationPreviewChannel.map { !model.isChannelSelected($0) } == true
+            && previewChannel.map { !model.isChannelSelected($0) } == true
         // While a motion keeps the previous side chat's toolbar, its actions
         // keep targeting the thread its title names.
         let paneThread: MessageThreadSummary? = if case .thread(let thread, _) = conversation {
@@ -1149,7 +1155,7 @@ private struct ChatRootView: View {
         // The same separation as other distinct toolbar groups.
         ToolbarSpacer(.fixed)
 
-        if showsAddToChannelList, let channel = model.customizationPreviewChannel, let guildID = channel.guildID {
+        if showsAddToChannelList, let channel = previewChannel, let guildID = channel.guildID {
             ToolbarItem(id: "side-conversation-add") {
                 Button("Add to Channel List", systemImage: "plus") {
                     model.setChannelSelected(true, channelID: channel.id, guildID: guildID)

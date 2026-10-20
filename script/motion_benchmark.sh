@@ -90,6 +90,7 @@ output="$root/.build/performance/motion/$label-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$output"
 trace_marker=""
 trace_pid=""
+trace_recorded=0
 if [[ -n "$trace" ]]; then
     if pgrep -x xctrace >/dev/null; then
         echo "Another xctrace process is active; refusing an ambiguous trace." >&2
@@ -130,8 +131,11 @@ stop_app() {
 # Remove the trace bundle and any Instruments temporary files this run created
 # (files newer than the marker made before recording).
 discard_trace_files() {
-    [[ -n "$trace_marker" ]] || return 0
+    [[ "$trace_recorded" == 1 ]] || return 0
     rm -rf "$output/trace.trace"
+    # Temporary files can only be attributed to this run while no other
+    # recording is active.
+    pgrep -x xctrace >/dev/null && return 0
     local directory
     for directory in /private/var/folders/*/*/T "${TMPDIR:-/tmp}"; do
         [[ -d "$directory" ]] || continue
@@ -172,6 +176,7 @@ record_trace() {
         --time-limit "${trace_seconds}s" --output "$output/trace.trace" \
         > "$output/xctrace.log" 2>&1 &
     trace_pid=$!
+    trace_recorded=1
     wait "$trace_pid" || echo "xctrace exited with an error; see $output/xctrace.log" >&2
     trace_pid=""
     [[ -d "$output/trace.trace" ]] || return 1

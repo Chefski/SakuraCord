@@ -145,7 +145,9 @@ extension AppModel {
     /// the open thread and keeps its context, unless it takes over the
     /// workspace at full width. Any other side chat replaces the context and
     /// the thread above it. Kind-specific entry points prepare the store.
-    func openSideConversation(_ conversation: SideConversation) {
+    /// - Parameter preparing: State the side chat needs to be presented,
+    ///   set in the same change so it moves in from its first frame.
+    func openSideConversation(_ conversation: SideConversation, preparing: () -> Void = {}) {
         func open() {
             closeThread()
             if conversation.isThread {
@@ -155,6 +157,7 @@ extension AppModel {
                 discardSideConversationContext()
                 sideConversations.context = conversation
             }
+            preparing()
         }
         // A thread opened straight into full width replaces the workspace,
         // as navigation does; a pane slides in beside its conversation.

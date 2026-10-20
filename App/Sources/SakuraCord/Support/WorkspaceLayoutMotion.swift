@@ -58,7 +58,6 @@ enum WorkspaceLayoutMotion {
         beginMotion(freezing: before)
         let phase = WorkspaceMotionPhase.shared
         let leaving = WorkspaceTrailingColumn(before)
-        crossfadeWorkspace()
         withAnimation(nil, change)
         let arriving = WorkspaceTrailingColumn(model.workspacePresentation)
         guard leaving?.id != arriving?.id else { return }
@@ -137,7 +136,10 @@ enum WorkspaceLayoutMotion {
 
     /// Crossfades the workspace window from its current rendering to the
     /// next commit, on the render server: the conversation reflowing at a
-    /// new width, a pane's content appearing or leaving, toolbar items.
+    /// new width, a pane's content appearing, toolbar items. Only at the
+    /// settle: while a column slides, a window-wide crossfade cost the
+    /// member list three to four late frames, so a reflow at the start blends
+    /// in the timeline alone.
     private static func crossfadeWorkspace() {
         let window = NSApp.mainWindow ?? NSApp.windows.first { $0.isVisible && $0.canBecomeMain }
         window?.contentView?.layer?.add(reflowTransition(), forKey: "workspaceMotion")
