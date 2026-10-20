@@ -19,8 +19,9 @@ nonisolated struct ThreadBrowserListing: Equatable, Sendable {
     /// Appends the page requested at `requestedOffset`. A page for another
     /// offset is stale and ignored; threads already listed are not repeated,
     /// since a thread archived meanwhile shifts Discord's offsets.
-    mutating func append(_ page: ForumPostPage, requestedOffset: Int) {
-        guard requestedOffset == nextOffset else { return }
+    @discardableResult
+    mutating func append(_ page: ForumPostPage, requestedOffset: Int) -> Bool {
+        guard requestedOffset == nextOffset else { return false }
         var listed = Set(threads.map(\.id))
         for post in page.posts where post.thread.isArchived && listed.insert(post.id).inserted {
             threads.append(post)
@@ -30,6 +31,7 @@ nonisolated struct ThreadBrowserListing: Equatable, Sendable {
         }
         nextOffset = page.hasMore ? page.nextOffset : nil
         hasLoadedFirstPage = true
+        return true
     }
 
     /// Applies the parent's current thread records. A record replaces its row,
@@ -51,7 +53,6 @@ nonisolated struct ThreadBrowserListing: Equatable, Sendable {
             if let oldestLoadedActivity, record.lastActivityAt < oldestLoadedActivity { continue }
             let index = threads.firstIndex { $0.lastActivityAt < record.lastActivityAt } ?? threads.endIndex
             threads.insert(record, at: index)
-            shiftNextOffset(by: 1)
         }
     }
 
@@ -61,10 +62,11 @@ nonisolated struct ThreadBrowserListing: Equatable, Sendable {
         shiftNextOffset(by: threads.count - loadedCount)
     }
 
-    /// A loaded thread entering or leaving Discord's archived results moves
-    /// every later record by one; the next page follows so none is skipped.
+    /// A loaded thread leaving Discord's archived results moves every later
+    /// record back by one; the next page follows so none is skipped. A thread
+    /// entering them only repeats a record, which `append` drops.
     private mutating func shiftNextOffset(by delta: Int) {
-        guard delta != 0, let offset = nextOffset else { return }
+        guard delta < 0, let offset = nextOffset else { return }
         nextOffset = max(0, offset + delta)
     }
 }

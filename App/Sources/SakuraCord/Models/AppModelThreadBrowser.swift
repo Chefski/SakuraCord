@@ -87,7 +87,7 @@ extension AppModel {
                 guard !Task.isCancelled, model.threadBrowser.generation == generation else { return }
                 var reconciled = page
                 reconciled.posts = model.threadBrowser.reconciling(page.posts, since: since)
-                model.threadBrowser.listings[parentID, default: ThreadBrowserListing()]
+                let isCurrent = model.threadBrowser.listings[parentID, default: ThreadBrowserListing()]
                     .append(reconciled, requestedOffset: offset)
                 // Page records are as new as the provider's; a thread they show
                 // archived must leave the active sections.
@@ -99,6 +99,9 @@ extension AppModel {
                 let records = Array(model.threadBrowser.records.values)
                 model.threadBrowser.listings[parentID]?.reconcile(with: records)
                 model.threadBrowser.isLoadingArchived = false
+                // A loaded thread left while the page was in flight, moving the
+                // next offset; request the page at the current one instead.
+                if !isCurrent { model.loadMoreArchivedThreads() }
             } catch is CancellationError {
                 return
             } catch {
