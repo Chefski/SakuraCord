@@ -231,7 +231,9 @@ extension NativeTimelineCanvasView {
             overlay: overlay,
             frameInRow: frameInRow,
             isAppearing: appearing,
-            finishTask: Task { @MainActor [weak self] in
+            // A divider moving with a gap stays on its overlay until the gap
+            // settles, so the row never repaints it at another height.
+            finishTask: usesGap ? nil : Task { @MainActor [weak self] in
                 do {
                     try await Task.sleep(for: .seconds(duration + 0.03))
                 } catch {
@@ -350,7 +352,7 @@ extension NativeMessageTimelineCoordinator {
             added: canvas.unreadDividerSource(forMessageID: newParent.unreadMessageID),
             addedMessageID: newParent.unreadMessageID
         )
-        canvas.finishUnreadDividerGap()
+        canvas.finishUnreadDividerGap(preservingFadeFor: change.added?.identifier)
         return change
     }
 }

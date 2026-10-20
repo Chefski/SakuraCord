@@ -368,6 +368,14 @@ extension NativeTimelineCanvasView {
     }
 
     func redrawForDisclosure() {
+        // Hover regions are cached at the rows' displaced positions.
+        mentionPointerRegionCache.removeAll(keepingCapacity: true)
+        codeBlockPointerRegionCache.removeAll(keepingCapacity: true)
+        if rowDisclosure?.isFinished ?? true, unreadDividerGap == nil, !suppressesHoverPresentation {
+            // The motion has landed: tracking areas and cursor rects follow the rows.
+            updateTrackingAreas()
+            window?.invalidateCursorRects(for: self)
+        }
         invalidateVisibleContent()
         reconcileInboxHeaders()
         positionAnimatedMediaOverlays()

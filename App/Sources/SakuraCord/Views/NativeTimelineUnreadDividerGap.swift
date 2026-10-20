@@ -228,11 +228,17 @@ extension NativeTimelineCanvasView {
         }
     }
 
-    /// Lands on the static layout.
-    func finishUnreadDividerGap() {
+    /// Lands on the static layout. The divider on the gap's overlay goes with
+    /// it: the row paints it again once it opens, and a fading one has
+    /// nowhere left to be. Not when it is about to return on `identifier`,
+    /// where it carries on from its current opacity.
+    func finishUnreadDividerGap(preservingFadeFor identifier: NativeMessageTimelineItem.Identifier? = nil) {
         unreadDividerGapTicker.stop()
-        guard unreadDividerGap != nil else { return }
+        guard let gap = unreadDividerGap else { return }
         unreadDividerGap = nil
+        if gap.identifier != identifier {
+            finishUnreadDividerFade(gap.identifier)
+        }
         redrawForDisclosure()
     }
 }
