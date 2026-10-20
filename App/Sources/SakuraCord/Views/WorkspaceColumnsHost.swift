@@ -151,6 +151,14 @@ final class WorkspaceColumnsView: NSView {
     /// Back to front.
     private var islands: [Island] = []
     private var widening: SpringTrack?
+    /// Between `WorkspaceLayoutMotion.willChangeColumns` and the end of
+    /// the change's turn of the run loop.
+    private var columnsAreChanging = false
+    /// The conversation's frame beside the columns, before it recedes.
+    private var conversationFrame = CGRect.zero
+    /// How far, as a share of its width, the conversation drifts as a
+    /// widening side chat covers it.
+    private static let recedeDistance: CGFloat = 0.25
     private var isMoving = false
     private var supplementaryPaneFrameChanged: (CGRect) -> Void = { _ in }
     private var reportedPaneFrame = CGRect.zero
@@ -189,6 +197,10 @@ final class WorkspaceColumnsView: NSView {
         for island in islands where !island.column.isFullWidth {
             island.host.setContent(island.host.content, isLeaving: true)
         }
+        // Updates within the change can add the arriving column before its
+        // reveal is set; it starts out of view, not in place.
+        columnsAreChanging = true
+        DispatchQueue.main.async { [weak self] in self?.columnsAreChanging = false }
     }
 
     @available(*, unavailable)
@@ -229,11 +241,28 @@ final class WorkspaceColumnsView: NSView {
             conversation = host
         }
 
-        var updated: [Island] = []
+        let ids = Set(spec.columns.map(\.id))
+        // A column marked leaving before the change stays, behind the rest:
+        // updates within the change can run before it is listed as
+        // departing, and removing it then rebuilt its content from nothing.
+        var updated = islands.filter { island in
+            !ids.contains(island.column.id) && !island.column.isFullWidth && island.host.isLeaving
+                && WorkspaceLayoutMotion.isMoving
+        }.map { island in
+            var island = island
+            island.column = WorkspaceColumnsHost.Column(
+                id: island.column.id,
+                isSideConversation: island.column.isSideConversation,
+                isFullWidth: false,
+                isDeparting: true,
+                content: island.column.content
+            )
+            return island
+        }
+        let heldIDs = Set(updated.map(\.column.id))
         // Columns that have gone first, so a side chat that replaces another
         // in place takes over its pane.
-        let ids = Set(spec.columns.map(\.id))
-        for island in islands where !ids.contains(island.column.id) {
+        for island in islands where !ids.contains(island.column.id) && !heldIDs.contains(island.column.id) {
             // The last side chat pane stays, hidden, for the next one: a pane
             // built from nothing costs most of a motion's first frame.
             if island.column.isSideConversation, !island.column.isFullWidth, pooledPane == nil {
@@ -243,7 +272,7 @@ final class WorkspaceColumnsView: NSView {
                 island.view.removeFromSuperview()
             }
         }
-        islands.removeAll { !ids.contains($0.column.id) }
+        islands.removeAll { !ids.contains($0.column.id) && !heldIDs.contains($0.column.id) }
         for column in spec.columns {
             let root = AnyView(
                 column.content
@@ -266,7 +295,7 @@ final class WorkspaceColumnsView: NSView {
                 island.column = column
                 updated.append(island)
             } else {
-                let reveal = WorkspaceMotionPhase.shared.unobservedReveal[column.id] ?? 1
+                let reveal = WorkspaceMotionPhase.shared.unobservedReveal[column.id] ?? (columnsAreChanging ? 0 : 1)
                 updated.append(Island(host: makeHost(for: column, root), column: column, reveal: SpringTrack(at: reveal)))
                 needsMeasurement = true
             }
@@ -406,16 +435,35 @@ final class WorkspaceColumnsView: NSView {
             if !island.column.isSideConversation { inspectorCovered = max(inspectorCovered, shown) }
             setFrame(of: island.view, CGRect(x: bounds.maxX - shown, y: 0, width: width, height: bounds.height))
         }
+        // Columns are translucent, so a column that leaves beneath one that
+        // arrives fades as the arriving one comes in, rather than showing
+        // through it.
+        var arriving: CGFloat = 0
+        for island in islands.reversed() where !island.column.isFullWidth {
+            island.view.alphaValue = island.column.isDeparting ? 1 - arriving : 1
+            if !island.column.isDeparting { arriving = max(arriving, island.reveal.value(at: time)) }
+        }
+        // How far a widening side chat has covered the conversation.
+        var recede: CGFloat = 0
         if let fullWidth = islands.last(where: \.column.isFullWidth) {
             let paneWidth = max(paneWidth, InterfaceScale.metric(340))
             let trailingEdge = bounds.maxX - inspectorCovered
-            let width = widening.map { paneWidth + (trailingEdge - paneWidth) * $0.value(at: time) } ?? trailingEdge
+            recede = widening?.value(at: time) ?? 1
+            let width = paneWidth + (trailingEdge - paneWidth) * recede
             setFrame(of: fullWidth.view, CGRect(x: trailingEdge - width, y: 0, width: width, height: bounds.height))
             // The conversation keeps the width it had beside the pane while
             // the side chat widens over it.
             covered = paneWidth
         }
-        setFrame(of: conversation?.view, CGRect(x: 0, y: 0, width: max(0, bounds.width - covered), height: bounds.height))
+        conversationFrame = CGRect(x: 0, y: 0, width: max(0, bounds.width - covered), height: bounds.height)
+        // Beneath a widening side chat, the conversation recedes: it drifts
+        // toward the leading edge and fades as it is covered, rather than
+        // vanishing at once. Moving it changes no size, so it lays nothing out.
+        setFrame(
+            of: conversation?.view,
+            conversationFrame.offsetBy(dx: -conversationFrame.width * Self.recedeDistance * recede, dy: 0)
+        )
+        conversation?.view.alphaValue = 1 - recede
         reportPaneFrame()
         publishGeometry(at: time)
     }
@@ -424,7 +472,8 @@ final class WorkspaceColumnsView: NSView {
     /// them in the same frame.
     private func publishGeometry(at time: CFTimeInterval) {
         guard window != nil else { return }
-        let conversationFrame = conversation.map { convert($0.view.frame, to: nil) }
+        // Where the conversation rests: its items do not recede with it.
+        let conversationFrame = conversation.map { _ in convert(conversationFrame, to: nil) }
         let widening = widening?.value(at: time) ?? 1
         WorkspaceColumnsGeometry.shared.update(
             conversation: conversationFrame.map { $0.minX ... $0.maxX },

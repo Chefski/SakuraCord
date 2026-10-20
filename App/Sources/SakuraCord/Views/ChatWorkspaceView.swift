@@ -77,8 +77,12 @@ struct ChatWorkspaceView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .workspaceMotionProbe("primary")
                 // A widening thread slides over the conversation, which is
-                // gone by the time it is covered.
-                .opacity(presentation.primary == .fullWidthThread && widening?.hasArrived == true ? 0 : 1)
+                // gone by the time it is covered. The column host fades it
+                // as it is covered instead.
+                .opacity(
+                    !WorkspaceColumnsHost.isEnabled && presentation.primary == .fullWidthThread
+                        && widening?.hasArrived == true ? 0 : 1
+                )
                 .animation(.easeOut(duration: 0.12), value: widening?.hasArrived)
             }
         }
