@@ -158,6 +158,8 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
     let cardsLayer = CALayer()
     var cards: [ForumBoardItem.Identifier: ForumBoardCard] = [:]
     var reusableCards: [ForumBoardCard] = []
+    /// Cards fading out after a live removal, no longer in `cards`.
+    var exitingCards: [ObjectIdentifier: ForumBoardCard] = [:]
     var presentations: [ChannelID: ForumCardPresentation] = [:]
     var regions: [ForumBoardItem.Identifier: ForumCardRegions] = [:]
     var excerptRenderers: [ChannelID: ForumPostPreviewTextRenderer] = [:]
@@ -336,7 +338,10 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         } else {
             // A new query starts at its first post even when it selects the
             // same cards, as the previous view did.
-            if queryChanged { scrollToTop() }
+            if queryChanged {
+                cancelExits()
+                scrollToTop()
+            }
             refreshVisibleCards(transition: .none)
         }
         schedulePresentationRefresh()
@@ -401,6 +406,7 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         } else if let anchor {
             restore(anchor)
         }
+        if transition != .reflow { cancelExits() }
         // Geometry changed under the same cards: rebuild settled state too.
         realizedRange = nil
         refreshVisibleCards(transition: transition)

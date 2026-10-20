@@ -71,14 +71,17 @@ extension ForumBoardView {
     }
 
     func animateExit(_ card: ForumBoardCard) {
+        exitingCards[ObjectIdentifier(card)] = card
         CATransaction.begin()
         CATransaction.setCompletionBlock { [weak self] in
             MainActor.assumeIsolated {
-                // The card owns its layer until the fade ends.
+                // The card owns its layer until the fade ends, unless the
+                // board already recycled it.
                 guard let self else {
                     card.layer.removeFromSuperlayer()
                     return
                 }
+                guard self.exitingCards.removeValue(forKey: ObjectIdentifier(card)) != nil else { return }
                 self.recycle(card)
             }
         }
@@ -89,5 +92,13 @@ extension ForumBoardView {
         card.layer.opacity = 0
         card.layer.add(fade, forKey: "exit")
         CATransaction.commit()
+    }
+
+    /// Ends exit fades at once, so a new query or layout never draws over
+    /// cards still leaving the old one.
+    func cancelExits() {
+        let exiting = exitingCards.values
+        exitingCards.removeAll()
+        for card in exiting { recycle(card) }
     }
 }

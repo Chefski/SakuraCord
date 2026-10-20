@@ -82,19 +82,25 @@ final class ForumBoardCard {
         NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
         painter(size)
         NSGraphicsContext.restoreGraphicsState()
-        if fading, hasContent {
+        if !fading {
+            // An instant swap also ends a fade still showing older content.
+            content.removeAnimation(forKey: Self.contentsFadeKey)
+        } else if hasContent {
             let transition = CATransition()
             transition.type = .fade
             transition.duration = 0.2
             transition.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            content.add(transition, forKey: "contents-fade")
+            content.add(transition, forKey: Self.contentsFadeKey)
         }
         content.contentsScale = scale
         content.contents = context.makeImage()
         hasContent = true
     }
 
+    private static let contentsFadeKey = "contents-fade"
+
     func clearContent() {
+        content.removeAnimation(forKey: Self.contentsFadeKey)
         content.contents = nil
         hasContent = false
         painter = nil

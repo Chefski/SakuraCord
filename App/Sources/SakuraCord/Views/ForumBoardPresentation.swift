@@ -26,12 +26,13 @@ extension ForumBoardView {
         let generation = observationGeneration
         var changed: [ChannelID] = []
         var hydratedPostIDs = Set<ChannelID>()
+        let mode: ForumLayout = isGallery ? .gallery : .list
         withObservationTracking {
             for id in cards.keys {
                 guard case let .post(postID) = id, let post = postsByID[postID] else { continue }
                 let presentation = model.forumCardPresentation(for: post, in: channel, tagsByID: tagsByID)
                 let presentationChanged = presentations[postID] != presentation
-                if presentations[postID]?.isAwaitingContent == true, !presentation.isAwaitingContent {
+                if presentations[postID]?.isAwaitingContent(in: mode) == true, !presentation.isAwaitingContent(in: mode) {
                     hydratedPostIDs.insert(postID)
                 }
                 presentations[postID] = presentation
