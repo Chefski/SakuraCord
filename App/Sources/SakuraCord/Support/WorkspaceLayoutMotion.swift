@@ -114,6 +114,14 @@ enum WorkspaceLayoutMotion {
         }
     }
 
+    /// Keeps the running motion from settling until a spring's duration
+    /// from now, for a column whose motion started late
+    /// (`WorkspaceColumnsHost`).
+    static func extendSettling() {
+        guard isMoving else { return }
+        settlesAt = .now + settling
+    }
+
     /// Returns once no motion is running.
     /// Returns early if the waiting task is cancelled.
     static func untilSettled() async {

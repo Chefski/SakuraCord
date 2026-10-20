@@ -10,6 +10,8 @@ struct ChatWorkspaceView: View {
     @State private var paneWidth: CGFloat = 0
     @State private var workspaceWidth: CGFloat = 0
     @State private var inspectorWidth: CGFloat = 0
+    /// The trailing column's frame, reported by `WorkspaceColumnsHost`.
+    @State private var supplementaryPaneFrame = CGRect.zero
 
     @ViewBuilder var body: some View {
         let presentation = model.workspacePresentation
@@ -93,6 +95,7 @@ struct ChatWorkspaceView: View {
 
     /// The primary content, a side chat (in the pane or at full width) and
     /// the inspector, moved by `WorkspaceLayoutMotion`.
+    @ViewBuilder
     private func workspaceColumns(
         _ presentation: WorkspacePresentation,
         @ViewBuilder primary: () -> some View
@@ -107,6 +110,39 @@ struct ChatWorkspaceView: View {
         // Departing columns come first, so a column that arrives covers them.
         let columns = motion.departing.filter { $0.id != trailing?.id && $0.id != fullWidthThread?.id }
             + [fullWidthThread, trailing].compactMap(\.self)
+        if WorkspaceColumnsHost.isEnabled {
+            WorkspaceColumnsHost(
+                conversation: AnyView(primary()),
+                columns: columns.map { column in
+                    let isSideConversation = if case .sideConversation = column.content { true } else { false }
+                    return WorkspaceColumnsHost.Column(
+                        id: column.id,
+                        isSideConversation: isSideConversation,
+                        isFullWidth: column.id == fullWidthThread?.id,
+                        isDeparting: column.id != trailing?.id && column.id != fullWidthThread?.id,
+                        reveal: motion.reveal(of: column.id),
+                        content: AnyView(columnContent(column))
+                    )
+                },
+                widening: fullWidthThread == nil ? nil : motion.widening.map { $0.hasArrived ? .arriving : .starting },
+                isMoving: motion.isMoving,
+                supplementaryPaneFrameChanged: { supplementaryPaneFrame = $0 }
+            )
+            .preference(key: SupplementaryPaneFramePreferenceKey.self, value: supplementaryPaneFrame)
+        } else {
+            swiftUIColumns(presentation, columns: columns, fullWidthThread: fullWidthThread, primary: primary)
+        }
+    }
+
+    /// The SwiftUI layout `WorkspaceColumnsHost` replaced, kept for comparison.
+    private func swiftUIColumns(
+        _ presentation: WorkspacePresentation,
+        columns: [WorkspaceTrailingColumn],
+        fullWidthThread: WorkspaceTrailingColumn?,
+        @ViewBuilder primary: () -> some View
+    ) -> some View {
+        let motion = WorkspaceMotionPhase.shared
+        let trailing = WorkspaceTrailingColumn(presentation)
         let showsInspector = if case .inspector = trailing?.content { true } else { false }
         // While a motion runs, the conversation gives up exactly what the
         // sliding columns cover, so it resizes live under them; a widening
@@ -141,6 +177,24 @@ struct ChatWorkspaceView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { workspaceWidth = $0 }
+    }
+
+    /// A trailing column as `WorkspaceColumnsHost` hosts it.
+    @ViewBuilder
+    private func columnContent(_ column: WorkspaceTrailingColumn) -> some View {
+        switch column.content {
+        case .sideConversation(let conversation):
+            SideConversationView(model: model, conversation: conversation)
+                .workspaceMotionProbe("pane")
+                .reportsSupplementaryPaneFrame(isEnabled: !conversation.isFullWidth)
+        case .inspector(let pane):
+            ChatWorkspaceSupplementaryContent(
+                model: model,
+                pane: pane,
+                toolbarSearchFieldMetrics: toolbarSearchFieldMetrics
+            )
+            .workspaceMotionProbe(column.id)
+        }
     }
 
     @ViewBuilder
