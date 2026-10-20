@@ -627,7 +627,7 @@ extension AppModel {
 
     private var mentionNames: (channels: [ChannelID: String], roles: [RoleID: String]) {
         (
-            Dictionary((snapshot?.channels ?? []).map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first }),
+            messagePresentationChannelsByID.mapValues(\.name),
             Dictionary(guildRoles.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
         )
     }
