@@ -34,32 +34,38 @@ final class ForumLayoutStabilityProbe {
 
     private var measurements: [ChannelID: Measurement] = [:]
     private var jumpedPostIDs: Set<ChannelID> = []
-    private var summaryValue = Summary()
+    private var layoutJumps = 0
+    private var maxHeightDelta: CGFloat = 0
 
-    var summary: Summary { summaryValue }
+    var summary: Summary {
+        Summary(
+            cardsMeasured: measurements.count,
+            layoutJumps: layoutJumps,
+            cardsThatJumped: jumpedPostIDs.count,
+            maxHeightDelta: Double(maxHeightDelta)
+        )
+    }
 
     func record(postID: ChannelID, size: CGSize, containerWidth: CGFloat) {
         guard isEnabled else { return }
         guard let previous = measurements.updateValue(
             Measurement(size: size, containerWidth: containerWidth), forKey: postID
-        ) else {
-            summaryValue.cardsMeasured += 1
-            return
-        }
+        ) else { return }
         // A new board width legitimately reflows every card.
         guard previous.containerWidth == containerWidth else { return }
         let heightDelta = abs(size.height - previous.size.height)
         guard heightDelta > Self.tolerance || abs(size.width - previous.size.width) > Self.tolerance
         else { return }
-        summaryValue.layoutJumps += 1
-        summaryValue.maxHeightDelta = max(summaryValue.maxHeightDelta, Double(heightDelta))
-        if jumpedPostIDs.insert(postID).inserted { summaryValue.cardsThatJumped += 1 }
+        layoutJumps += 1
+        maxHeightDelta = max(maxHeightDelta, heightDelta)
+        jumpedPostIDs.insert(postID)
     }
 
     func reset() {
         measurements.removeAll()
         jumpedPostIDs.removeAll()
-        summaryValue = Summary()
+        layoutJumps = 0
+        maxHeightDelta = 0
     }
 }
 
@@ -107,8 +113,11 @@ struct ForumFrameTimingSampler {
 @MainActor
 private final class ForumBenchmarkCompletion {
     var continuation: CheckedContinuation<Void, Never>?
+    var deadline: Task<Void, Never>?
 
     func finish() {
+        deadline?.cancel()
+        deadline = nil
         continuation?.resume()
         continuation = nil
     }
@@ -211,8 +220,8 @@ enum ForumBoardBenchmark {
             completion.continuation = continuation
             // The display link stops firing if the board leaves the window,
             // so a wall-clock deadline also ends the run.
-            Task { @MainActor in
-                try? await Task.sleep(for: .seconds(scrollDuration + 5))
+            completion.deadline = Task { @MainActor in
+                guard (try? await Task.sleep(for: .seconds(scrollDuration + 5))) != nil else { return }
                 ticker.stop()
                 completion.finish()
             }
@@ -253,7 +262,7 @@ enum ForumBoardBenchmark {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = (try? encoder.encode(result)) ?? Data()
         // The sandboxed app can only write beneath its own container, so
-        // scripts pass a path under it, as performance_benchmark.sh does.
+        // scripts pass a path under it, as the other offline benchmarks do.
         let path = ProcessInfo.processInfo.environment["SAKURACORD_PERFORMANCE_RESULT_PATH"]
             ?? FileManager.default.temporaryDirectory
             .appendingPathComponent("sakuracord-forum-benchmark.json").path

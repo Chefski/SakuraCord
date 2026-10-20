@@ -56,7 +56,7 @@ public extension MockChatProvider {
             // Like a live catalogue entry, the stripped post keeps its
             // activity order through its last message ID.
             if let latest = stripped.posts[index].mostRecentMessage {
-                stripped.posts[index].thread.lastMessageID = Self.snowflake(at: latest.timestamp)
+                stripped.posts[index].thread.lastMessageID = .messageSearchBoundary(at: latest.timestamp)
             }
             stripped.posts[index].firstMessage = nil
             stripped.posts[index].mostRecentMessage = nil
@@ -75,12 +75,6 @@ public extension MockChatProvider {
             continuation?.yield(.forumPostPreviewsChanged(channelID: channelID, posts: current))
         }
         return stripped
-    }
-
-    private static func snowflake(at date: Date) -> MessageID {
-        let discordEpochMilliseconds: Double = 1_420_070_400_000
-        let milliseconds = max(0, date.timeIntervalSince1970 * 1_000 - discordEpochMilliseconds)
-        return MessageID(rawValue: UInt64(milliseconds) << 22)
     }
 
     func forumQueries(in channelID: ChannelID) -> [ForumPostQuery] {
