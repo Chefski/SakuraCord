@@ -60,10 +60,19 @@ extension AppModel {
         guard openThread?.id != thread.id else { return }
         cancelConversationNavigation()
         let starter = messages.first { $0.thread?.id == thread.id }
+        // The thread's creator started it, who may not have written the
+        // message it was started from. An unknown creator shows no credit.
+        let creator: User? = if let ownerID = thread.ownerID {
+            starter?.author.id == ownerID ? starter?.author
+                : ownerID == currentUser?.id ? currentUser
+                : membersByID[ownerID]?.user
+        } else {
+            starter?.author
+        }
         openThreadConversation(
             thread,
-            starter: starter?.author,
-            startedAt: starter?.timestamp,
+            starter: creator,
+            startedAt: thread.createdAt ?? starter?.timestamp,
             starterMessageID: nil,
             initialMessages: []
         )
