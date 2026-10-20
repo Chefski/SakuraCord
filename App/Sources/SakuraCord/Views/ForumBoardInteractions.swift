@@ -29,6 +29,8 @@ extension ForumBoardView {
         }
         let store = NativeTimelineMediaStore.shared
         store.retainVisibleImages(for: keys, owner: mediaOwner)
+        // Media that leaves view may load next time, as the store retries it.
+        failedMediaKeys.formIntersection(keys)
         for (postID, postKeys) in keysByPost {
             for key in postKeys where store.image(for: key) == nil && !failedMediaKeys.contains(key) {
                 // The store keys subscribers by timeline item; a forum post is
