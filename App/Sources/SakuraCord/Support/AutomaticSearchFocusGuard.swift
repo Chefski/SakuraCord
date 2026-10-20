@@ -36,6 +36,10 @@ final class AutomaticSearchFocusGuard {
         }
     }
 
+    isolated deinit {
+        disarm()
+    }
+
     func disarm() {
         isArmed = false
         if let monitor { NSEvent.removeMonitor(monitor) }
