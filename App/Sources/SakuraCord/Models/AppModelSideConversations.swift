@@ -21,7 +21,7 @@ extension AppModel {
                   selectedChannel?.kind == .voice else { return nil }
         case .channelPreview(let channelID, _):
             guard guildWorkspacePage == .channelsAndRoles, selectedChannelID == channelID,
-                  snapshot?.channels.contains(where: { $0.id == channelID && $0.guildID == selectedGuildID }) == true
+                  let channel = messagePresentationChannelsByID[channelID], channel.guildID == selectedGuildID
             else { return nil }
         case .guideResource(let guildID, let channelID):
             guard guildWorkspacePage == .guide, selectedGuildID == guildID,
@@ -109,7 +109,7 @@ extension AppModel {
         case .voiceChat:
             SideConversationLabel(title: selectedChannel?.name ?? "", systemImage: "bubble.left.fill")
         case .channelPreview(let channelID, _):
-            if let channel = snapshot?.channels.first(where: { $0.id == channelID }) {
+            if let channel = messagePresentationChannelsByID[channelID] {
                 SideConversationLabel(
                     title: channel.name,
                     systemImage: ChannelIconPresentation.systemImage(
