@@ -52,7 +52,13 @@ extension AccountReadStateModel {
             guard policy.channelByID[entry.channelID] == nil,
                   entry.guildID != nil
             else { return true }
-            return isAggregateConversation(entry)
+            return AccountReadStateModel.isListedThread(
+                entry,
+                parentChannel: entry.parentID.flatMap { policy.channelByID[$0] },
+                parentEntry: entry.parentID.flatMap { entries[$0] },
+                isActiveJoined: activeJoinedThreadIDs.contains(entry.channelID),
+                isArchived: false
+            )
         }
 
         func unreadGuildID(for entry: Entry) -> GuildID? {

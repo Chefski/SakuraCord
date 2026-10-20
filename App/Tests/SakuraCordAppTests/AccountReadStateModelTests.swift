@@ -862,12 +862,18 @@ struct AccountReadStateModelTests {
         #expect(presentedMentions() == [1, 1, 1, 1])
         #expect(model.unreadPresentationProjection().mentionsByChannelID[threadID] == 1)
 
+        // A stale archived flag from a delayed catalogue page does not hide a
+        // thread the active joined catalogue still lists.
         thread.isArchived = true
         model.merge(thread: thread)
+        #expect(presentedMentions() == [1, 1, 1, 1])
+
+        // Archiving through the joined catalogue removes membership.
+        model.replaceActiveJoinedThreads([thread])
         #expect(presentedMentions() == [0, 0, 0, 0])
 
         thread.isArchived = false
-        model.merge(thread: thread)
+        model.replaceActiveJoinedThreads([thread])
         #expect(presentedMentions() == [1, 1, 1, 1])
         model.replaceActiveJoinedThreads([])
         #expect(presentedMentions() == [0, 0, 0, 0])

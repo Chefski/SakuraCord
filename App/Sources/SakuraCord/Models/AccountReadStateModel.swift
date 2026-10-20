@@ -1560,6 +1560,9 @@ extension AccountReadStateModel {
     /// Discord's `ReadState.canHaveMentions`: a thread's mention count stays
     /// hidden until the account has joined the active thread. The raw count is
     /// still tracked, so it surfaces if a later mention or role ping joins it.
+    /// Membership comes only from the active joined catalogue (which already
+    /// excludes archived threads), so a stale archive flag from a delayed
+    /// catalogue response cannot hide a joined thread's badge.
     func countsMentions(_ entry: Entry) -> Bool {
         guard channelByID[entry.channelID] == nil, entry.guildID != nil else { return true }
         return Self.isListedThread(
@@ -1567,7 +1570,7 @@ extension AccountReadStateModel {
             parentChannel: entry.parentID.flatMap { channelByID[$0] },
             parentEntry: entry.parentID.flatMap { self[$0] },
             isActiveJoined: activeJoinedThreadIDs.contains(entry.channelID),
-            isArchived: forumPostArchivedByID[entry.channelID] == true
+            isArchived: false
         )
     }
 
