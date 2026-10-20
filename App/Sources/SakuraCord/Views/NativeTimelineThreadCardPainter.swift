@@ -1,6 +1,7 @@
 import AppKit
 import SakuraCordModels
 
+@MainActor
 extension NativeTimelineThreadCard {
     enum Interaction {
         case idle, hovered, pressed
@@ -27,7 +28,7 @@ extension NativeTimelineThreadCard {
     static var activityFont: NSFont { .interfaceSystemFont(ofSize: 11) }
 
     /// Measured widths, so a hover redraw does not typeset the strings again.
-    private nonisolated static let widthCache: NSCache<NSString, NSNumber> = {
+    private static let widthCache: NSCache<NSString, NSNumber> = {
         let cache = NSCache<NSString, NSNumber>()
         cache.countLimit = 512
         return cache
