@@ -913,6 +913,7 @@ nonisolated enum MessageGrouping {
         let interval = message.timestamp.timeIntervalSince(previous.timestamp)
         return isGroupable(previous)
             && isGroupable(message)
+            && !previous.isPostStarter
             && sharesAuthorIdentity(previous, message)
             && message.replyTo == nil
             && (interval >= 0 || message.isUnconfirmedLocalSend)
@@ -1205,5 +1206,12 @@ nonisolated enum MessageGrouping {
             replyPreview: replyPreview,
             isReplyAvailable: replyPreview.map { messagesByID[$0.messageID] != nil } ?? false
         )
+    }
+}
+
+nonisolated extension Message {
+    /// A forum or media post's original message, which shares its thread's ID.
+    var isPostStarter: Bool {
+        id.rawValue == channelID.rawValue
     }
 }
