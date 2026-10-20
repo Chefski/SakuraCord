@@ -70,19 +70,22 @@ struct WorkspaceTitlebar: NSViewRepresentable {
     static let conversationID = "conversation"
 
     let groups: [Group]
-    /// The width the toolbar's search field takes at the window's trailing
-    /// edge, or 0 without it.
-    let searchReserve: CGFloat
+    /// Whether the conversation ends with the toolbar's search field, which
+    /// moves into it from the window toolbar (`WorkspaceSearchFieldHost`).
+    let showsSearch: Bool
+    /// The search field's width when the conversation has room for it.
+    let searchWidth: CGFloat
 
     func makeNSView(context _: Context) -> Anchor {
         Anchor()
     }
 
     func updateNSView(_ anchor: Anchor, context: Context) {
-        anchor.overlay.apply(groups, searchReserve: searchReserve, environment: context.environment)
+        anchor.overlay.apply(groups, showsSearch: showsSearch, searchWidth: searchWidth, environment: context.environment)
     }
 
     static func dismantleNSView(_ anchor: Anchor, coordinator _: ()) {
+        anchor.overlay.searchHost.release()
         anchor.overlay.removeFromSuperview()
     }
 
@@ -156,8 +159,14 @@ final class WorkspaceTitlebarView: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
-    func apply(_ groups: [WorkspaceTitlebar.Group], searchReserve: CGFloat, environment: EnvironmentValues) {
-        updateSearchReserve(searchReserve)
+    func apply(
+        _ groups: [WorkspaceTitlebar.Group],
+        showsSearch: Bool,
+        searchWidth: CGFloat,
+        environment: EnvironmentValues
+    ) {
+        self.showsSearch = showsSearch
+        self.searchWidth = searchWidth
         // A side chat's items stay while its column is still sliding away,
         // as they were: updates within the change that closes it can come
         // before the column is listed as leaving.
@@ -229,15 +238,18 @@ final class WorkspaceTitlebarView: NSView {
         }
         placedColumnIDs.formUnion(columnIDs.intersection(groups.keys))
         placedColumnIDs.formIntersection(groups.keys)
-        let inset = ChatChromeMetrics.toolbarItemEdgeInset
         // A full-width side chat covers the conversation from its leading
         // edge as it widens.
-        let fullWidthMinX = geometry.columns.first(where: \.isFullWidth)?.minX
-        // The toolbar's search field ends the conversation's and a full-width
-        // side chat's actions.
-        let searchMinX = searchReserve > 0
-            ? convert(CGPoint(x: bounds.maxX - searchReserve - inset, y: 0), to: nil).x
-            : .infinity
+        let fullWidth = geometry.columns.last(where: \.isFullWidth)
+        let fullWidthViews = fullWidth.flatMap { groups[$0.id] }
+        let conversationViews = groups[WorkspaceTitlebar.conversationID]
+        // Search ends the conversation's items, then a full-width side
+        // chat's, moving between them as it widens.
+        let searchWeight = fullWidthViews == nil ? 0 : conversationViews == nil ? 1 : fullWidth?.widening ?? 0
+        var conversationSearch: CGFloat = 0
+        var fullWidthSearch: CGFloat = 0
+        let holdsSearch = showsSearch && (conversationViews != nil || fullWidthViews != nil)
+        if !holdsSearch { searchHost.release() }
         for id in order {
             guard let views = groups[id] else { continue }
             // In window coordinates.
@@ -246,56 +258,103 @@ final class WorkspaceTitlebarView: NSView {
             var widening: CGFloat = 0
             if id == WorkspaceTitlebar.conversationID {
                 guard let conversation = geometry.conversation else { continue }
-                span = conversation.lowerBound ... max(conversation.lowerBound, min(conversation.upperBound, searchMinX))
-                visibleMaxX = min(span.upperBound, fullWidthMinX ?? .infinity)
+                span = conversation
+                visibleMaxX = min(span.upperBound, fullWidth?.minX ?? .infinity)
             } else {
                 guard let column = geometry.columns.first(where: { $0.id == id }) else { continue }
-                let maxX = column.isFullWidth ? min(column.maxX, searchMinX) : column.maxX
-                span = column.minX ... max(column.minX, maxX)
+                span = column.minX ... column.maxX
                 visibleMaxX = span.upperBound
                 if column.isFullWidth { widening = column.widening }
             }
-            // In this view's coordinates; it ends before the toolbar's
-            // trailing items.
             let minX = convert(CGPoint(x: span.lowerBound, y: 0), from: nil).x
             let maxX = min(convert(CGPoint(x: span.upperBound, y: 0), from: nil).x, bounds.maxX)
             visibleMaxX = min(convert(CGPoint(x: visibleMaxX, y: 0), from: nil).x, bounds.maxX)
             views.clip.frame = CGRect(x: minX, y: 0, width: max(0, visibleMaxX - minX), height: bounds.height)
-            place(views, width: maxX - minX, widening: widening, fills: id != WorkspaceTitlebar.conversationID)
+            var reserve: (actions: CGFloat, fullWidthActions: CGFloat) = (0, 0)
+            if holdsSearch, views === conversationViews {
+                conversationSearch = searchWidth(beside: views.title.size.width + views.actions.size.width, in: maxX - minX)
+                reserve.actions = conversationSearch + ChatChromeMetrics.toolbarItemEdgeInset
+            } else if holdsSearch, views === fullWidthViews {
+                let actions = views.fullWidthActions?.size.width ?? views.actions.size.width
+                fullWidthSearch = searchWidth(beside: views.title.size.width + actions, in: maxX - minX)
+                reserve.fullWidthActions = fullWidthSearch + ChatChromeMetrics.toolbarItemEdgeInset
+            }
+            place(views, width: maxX - minX, widening: widening, reserve: reserve,
+                  fills: id != WorkspaceTitlebar.conversationID)
+        }
+        if holdsSearch, let window {
+            placeSearch(
+                width: conversationSearch * (1 - searchWeight) + fullWidthSearch * searchWeight,
+                trailingEdge: localX(geometry.conversation?.upperBound ?? 0),
+                fullWidthTrailingEdge: fullWidth.map { localX($0.maxX) },
+                weight: searchWeight,
+                window: window
+            )
         }
     }
 
-    private var searchReserve: CGFloat = 0
-    private var pendingSearchReserve: Task<Void, Never>?
+    let searchHost = WorkspaceSearchFieldHost()
+    private var showsSearch = false
+    private var searchWidth: CGFloat = 0
 
-    /// A search field that leaves as a side chat opens leaves room only once
-    /// the conversation has made way, so its actions do not jump into it.
-    private func updateSearchReserve(_ reserve: CGFloat) {
-        pendingSearchReserve?.cancel()
-        guard reserve < searchReserve, WorkspaceLayoutMotion.isMoving else {
-            searchReserve = reserve
-            return
-        }
-        pendingSearchReserve = Task { [weak self] in
-            await WorkspaceLayoutMotion.untilSettled()
-            guard let self, !Task.isCancelled else { return }
-            searchReserve = reserve
-            placeGroups()
-        }
+    /// A window x in this view, within it.
+    private func localX(_ windowX: CGFloat) -> CGFloat {
+        min(convert(CGPoint(x: windowX, y: 0), from: nil).x, bounds.maxX)
+    }
+
+    /// The search field narrows as its column does, once the column's title
+    /// and actions need the room, down to its magnifier.
+    private func searchWidth(beside others: CGFloat, in width: CGFloat) -> CGFloat {
+        let inset = ChatChromeMetrics.toolbarItemEdgeInset
+        return min(searchWidth, max(36, width - others - inset * 5))
+    }
+
+    /// Places the search field at the trailing edge of the conversation, or
+    /// of a full-width side chat as `weight` goes to 1.
+    private func placeSearch(
+        width: CGFloat,
+        trailingEdge: CGFloat,
+        fullWidthTrailingEdge: CGFloat?,
+        weight: CGFloat,
+        window: NSWindow
+    ) {
+        guard let holder = searchHost.hold(in: window) else { return }
+        if holder.superview !== self { addSubview(holder) }
+        let inset = ChatChromeMetrics.toolbarItemEdgeInset
+        let edge = trailingEdge * (1 - weight) + (fullWidthTrailingEdge ?? trailingEdge) * weight
+        // It fades across the widening side chat's items rather than over
+        // them.
+        holder.alphaValue = abs(1 - 2 * weight)
+        let height: CGFloat = 36
+        setFrame(of: holder, CGRect(
+            x: edge - inset - width,
+            y: ((bounds.height - height) / 2).rounded(),
+            width: width,
+            height: height
+        ))
     }
 
     /// Places a group's title at its column's leading edge and its actions
     /// at the trailing edge, within its clip view.
-    private func place(_ views: GroupViews, width: CGFloat, widening: CGFloat, fills: Bool) {
+    private func place(
+        _ views: GroupViews,
+        width: CGFloat,
+        widening: CGFloat,
+        reserve: (actions: CGFloat, fullWidthActions: CGFloat),
+        fills: Bool
+    ) {
         let inset = ChatChromeMetrics.toolbarItemEdgeInset
         let height = bounds.height
-        let actionsWidth = views.actions.size.width * (1 - widening)
-            + (views.fullWidthActions?.size.width ?? 0) * widening
-        for (island, alpha) in [(views.actions, 1 - widening), (views.fullWidthActions, widening)] {
+        let actionsWidth = (views.actions.size.width + reserve.actions) * (1 - widening)
+            + ((views.fullWidthActions?.size.width ?? 0) + reserve.fullWidthActions) * widening
+        for (island, alpha, trailing) in [
+            (views.actions, 1 - widening, reserve.actions),
+            (views.fullWidthActions, widening, reserve.fullWidthActions),
+        ] {
             guard let island else { continue }
             let size = island.size
             setFrame(of: island.host.view, CGRect(
-                x: width - inset - size.width,
+                x: width - trailing - inset - size.width,
                 y: ((height - size.height) / 2).rounded(),
                 width: size.width,
                 height: size.height
@@ -323,8 +382,13 @@ final class WorkspaceTitlebarView: NSView {
     /// Empty space between the items moves the window, as the toolbar's own
     /// does.
     override func hitTest(_ point: NSPoint) -> NSView? {
-        let view = super.hitTest(point)
-        return view === self || view is TitlebarClipView ? nil : view
+        let local = convert(point, from: superview)
+        guard bounds.contains(local) else { return nil }
+        // Items in front first; a group's empty clip view takes nothing.
+        for view in subviews.reversed() where !view.isHidden {
+            if let hit = view.hitTest(local), !(hit is TitlebarClipView) { return hit }
+        }
+        return nil
     }
 }
 
@@ -358,5 +422,84 @@ nonisolated private struct IdealSizeLayout: Layout {
 
     func placeSubviews(in bounds: CGRect, proposal _: ProposedViewSize, subviews: Subviews, cache _: inout ()) {
         subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
+    }
+}
+
+/// Moves the window toolbar's search field into the conversation's toolbar
+/// items and back. It is SwiftUI's own field, with its delegate, tokens and
+/// editor, so search works as it does in the toolbar; only its place
+/// changes. Its toolbar item stays, hidden (`ToolbarSearchFieldGeometryReader`).
+@MainActor
+final class WorkspaceSearchFieldHost {
+    /// Posted when the field moves out of or back into the toolbar.
+    static let didChange = Notification.Name("SakuraCordWorkspaceSearchFieldHostDidChange")
+    private(set) static var isHosting = false
+
+    private let holder = SearchFieldHolder()
+    private weak var field: NSSearchField?
+    private weak var originalSuperview: NSView?
+    private var originalConstraints: [NSLayoutConstraint] = []
+    private var originalTranslatesAutoresizingMask = false
+
+    /// The view holding the field, taking it from the toolbar if needed.
+    func hold(in window: NSWindow) -> NSView? {
+        if let field, field.superview === holder.contentView, field.window === window {
+            // The toolbar hides a field it has collapsed for lack of room;
+            // here it has its own.
+            if field.isHidden { field.isHidden = false }
+            return holder
+        }
+        guard let field = ToolbarSearchFieldLocator.searchField(in: window) else { return nil }
+        release()
+        originalSuperview = field.superview
+        originalConstraints = field.superview?.constraints.filter {
+            $0.firstItem === field || $0.secondItem === field
+        } ?? []
+        originalTranslatesAutoresizingMask = field.translatesAutoresizingMaskIntoConstraints
+        field.removeFromSuperview()
+        field.translatesAutoresizingMaskIntoConstraints = true
+        field.autoresizingMask = [.width, .height]
+        field.frame = holder.contentView?.bounds ?? holder.bounds
+        field.isHidden = false
+        holder.contentView?.addSubview(field)
+        self.field = field
+        Self.isHosting = true
+        NotificationCenter.default.post(name: Self.didChange, object: nil)
+        return holder
+    }
+
+    /// Returns the field to the toolbar.
+    func release() {
+        guard let field else { return }
+        self.field = nil
+        field.removeFromSuperview()
+        field.translatesAutoresizingMaskIntoConstraints = originalTranslatesAutoresizingMask
+        if let originalSuperview {
+            originalSuperview.addSubview(field)
+            NSLayoutConstraint.activate(originalConstraints)
+        }
+        originalSuperview = nil
+        originalConstraints = []
+        holder.removeFromSuperview()
+        Self.isHosting = false
+        NotificationCenter.default.post(name: Self.didChange, object: nil)
+    }
+}
+
+/// The search field's glass, as the toolbar draws behind its items.
+private final class SearchFieldHolder: NSGlassEffectView {
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        cornerRadius = 18
+        contentView = FlippedView()
+    }
+
+    @available(*, unavailable)
+    required init?(coder _: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    private final class FlippedView: NSView {
+        override var isFlipped: Bool { true }
     }
 }

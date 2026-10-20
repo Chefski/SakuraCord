@@ -51,7 +51,8 @@ extension AppModel {
             guildPage: selectedGuildID == nil ? nil : guildWorkspacePage,
             isFriendsPresented: isFriendsPresented,
             channelKind: selectedChannel?.kind,
-            sideConversation: presentedSideConversation,
+            sideConversation: isSideConversationCovered && presentedSideConversation?.isFullWidth != true
+                ? nil : presentedSideConversation,
             showsMessageSearch: isMessageSearchVisible,
             showsInspector: showInspector
         )
@@ -149,6 +150,7 @@ extension AppModel {
     ///   set in the same change so it moves in from its first frame.
     func openSideConversation(_ conversation: SideConversation, preparing: () -> Void = {}) {
         func open() {
+            isSideConversationCovered = false
             closeThread()
             if conversation.isThread {
                 if conversation.isFullWidth { discardSideConversationContext() }
@@ -189,11 +191,19 @@ extension AppModel {
     func toggleMemberInspector() {
         prepareInspectorProfileForPresentation()
         // Beside a side chat, which the toolbar keeps the toggle for, the
-        // member list takes the side chat's place.
+        // member list takes the side chat's place until it closes again.
         if workspacePresentation.paneSideConversation != nil {
+            threadTimelinePosition.restore = threadTimelinePosition.reading
             WorkspaceLayoutMotion.perform(in: self) {
-                closeSideConversations()
+                isSideConversationCovered = true
                 showInspector = true
+            }
+            return
+        }
+        if isSideConversationCovered, showInspector {
+            WorkspaceLayoutMotion.perform(in: self) {
+                showInspector = false
+                isSideConversationCovered = false
             }
             return
         }
@@ -203,6 +213,12 @@ extension AppModel {
     /// Closes the side chat on top, as Escape and the pane's close button do.
     @discardableResult
     func closeSideConversation() -> Bool {
+        // A side chat the member list or search results cover stays until
+        // they close.
+        let presentation = workspacePresentation
+        guard presentation.paneSideConversation != nil || presentation.primary == .fullWidthThread
+            || guildWorkspacePage != nil
+        else { return false }
         if sideConversations.thread != nil {
             // Leaving a full-width thread returns to its parent, as
             // navigation does; a pane slides away beside its conversation.
@@ -258,6 +274,7 @@ extension AppModel {
     func discardSideConversationContext() {
         if case .guideResource? = sideConversations.context { guideResource = nil }
         sideConversations.context = nil
+        if sideConversations.thread == nil { isSideConversationCovered = false }
     }
 
     /// Whether a selection change keeps the presented guild page without

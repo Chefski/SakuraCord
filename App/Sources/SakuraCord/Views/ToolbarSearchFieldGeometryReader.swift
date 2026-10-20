@@ -488,6 +488,10 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
                     })
                 }
             }
+            // The field moves with the workspace's toolbar items; its place,
+            // which the autocomplete follows, changes after a motion.
+            observe(WorkspaceSearchFieldHost.didChange, object: nil)
+            observe(WorkspaceLayoutMotion.didSettle, object: nil)
             observe(NSMenu.didBeginTrackingNotification, object: nil)
             observe(NSMenu.didEndTrackingNotification, object: nil)
             keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
@@ -638,7 +642,9 @@ struct ToolbarSearchFieldGeometryReader: NSViewRepresentable {
             // constraint too, so AppKit reflows the adjacent toolbar items.
             _ = updateSearchToolbarItemSizing(item, width: preferredFieldWidth)
             updateSearchContainerWidth(for: item.searchField, width: preferredFieldWidth)
-            let isHidden = isToolbarItemVisible
+            // The workspace's toolbar items can hold the field itself, with
+            // the item kept hidden in the toolbar.
+            let isHidden = isToolbarItemVisible && !WorkspaceSearchFieldHost.isHosting
                 ? (originalSearchToolbarItemIsHidden ?? false)
                 : true
             let spacer = searchSpacer(before: item, in: window)

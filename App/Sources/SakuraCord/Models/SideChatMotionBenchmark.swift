@@ -60,6 +60,12 @@ enum SideChatMotionBenchmark {
             return
         }
         model.showInspector = false
+        // Every run measures the same layout, whatever size the window was
+        // restored to.
+        if let screen = window.screen?.visibleFrame {
+            let size = CGSize(width: min(1440, screen.width), height: min(794, screen.height))
+            window.setFrame(CGRect(origin: CGPoint(x: screen.minX, y: screen.maxY - size.height), size: size), display: true)
+        }
         try? await Task.sleep(for: .seconds(2))
 
         let recorder = SideChatMotionRecorder(window: window, options: options)

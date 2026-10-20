@@ -541,6 +541,7 @@ private struct ThreadMessageTimelineView: View {
                     conversationID: conversationID
                 )
             }
+            model.suspendOpenThreadPresentation()
         }
         .onExitCommand {
             model.handleTimelineEscape(in: .thread, conversationID: conversationID)

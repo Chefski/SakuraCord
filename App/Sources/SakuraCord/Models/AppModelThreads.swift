@@ -341,6 +341,8 @@ extension AppModel {
 
     func closeThread() {
         noteSideConversationChange()
+        // Nothing is left for the member list to give back.
+        if sideConversations.context == nil { isSideConversationCovered = false }
         threadTimelinePosition = ThreadTimelinePosition()
         threadVoiceMessageComposer.discard(playback: voiceMessagePlayback)
         threadCommandComposer.resetForChannelChange()

@@ -172,7 +172,9 @@ extension AppModel {
     var canShowMessageSearch: Bool {
         MessageSearchSurfacePolicy.showsToolbar(
             channelKind: selectedChannel?.kind,
-            hasOpenThread: hasThreadPane && !isThreadFullWidth
+            // The workspace's own toolbar keeps search beside a thread pane;
+            // its results take the pane's place until they close.
+            hasOpenThread: hasThreadPane && !isThreadFullWidth && !WorkspaceColumnsHost.isEnabled
         )
     }
 

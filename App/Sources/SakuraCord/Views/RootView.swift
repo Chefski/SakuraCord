@@ -317,7 +317,11 @@ private struct ChatRootView: View {
             }
             .background {
                 if usesWorkspaceTitlebar {
-                    WorkspaceTitlebar(groups: workspaceTitlebarGroups, searchReserve: workspaceTitlebarSearchReserve)
+                    WorkspaceTitlebar(
+                        groups: workspaceTitlebarGroups,
+                        showsSearch: model.showsWorkspaceMessageSearch || model.showsLocalToolbarSearch,
+                        searchWidth: ChatChromeMetrics.toolbarSearchMaximumFieldWidth
+                    )
                         .frame(width: 0, height: 0)
                 }
             }
@@ -666,13 +670,6 @@ private struct ChatRootView: View {
         case .channel, .fullWidthThread: true
         case .guildPage, .friends: false
         }
-    }
-
-    private var workspaceTitlebarSearchReserve: CGFloat {
-        guard model.showsWorkspaceMessageSearch || model.showsLocalToolbarSearch, toolbarSearchFieldMetrics.isValid else {
-            return 0
-        }
-        return toolbarSearchFieldMetrics.fieldWidth + toolbarSearchFieldMetrics.trailingInset
     }
 
     private var workspaceTitlebarGroups: [WorkspaceTitlebar.Group] {
