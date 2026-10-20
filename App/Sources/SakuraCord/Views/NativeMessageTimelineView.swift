@@ -153,6 +153,8 @@ struct NativeMessageTimelineView: NSViewRepresentable {
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        // A closed side chat keeps its rows as it slides away.
+        guard !context.environment.isLeavingWorkspace else { return }
         context.coordinator.update(parent: self, scrollView: scrollView)
     }
 

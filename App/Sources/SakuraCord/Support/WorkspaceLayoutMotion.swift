@@ -26,6 +26,9 @@ enum WorkspaceLayoutMotion {
     /// the columns itself, without the view graph.
     static let revealDidChange = Notification.Name("SakuraCordWorkspaceRevealDidChange")
     static let animatesKey = "animates"
+    /// Posted on the main thread just before a change that may close a
+    /// trailing column, while the columns still show their content.
+    static let willChangeColumns = Notification.Name("SakuraCordWorkspaceWillChangeColumns")
 
     /// When the running motion settles.
     private(set) static var settlesAt: ContinuousClock.Instant?
@@ -53,6 +56,7 @@ enum WorkspaceLayoutMotion {
         }
         beginMotion()
         let leaving = WorkspaceTrailingColumn(model.workspacePresentation)
+        NotificationCenter.default.post(name: willChangeColumns, object: nil)
         // The columns' motion is explicit below and starts from the layout
         // this change commits, so the change itself is not animated.
         withAnimation(nil, change)

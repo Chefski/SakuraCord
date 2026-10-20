@@ -136,8 +136,8 @@ private struct SpringTrack {
 
 final class WorkspaceColumnsView: NSView {
     private struct Island {
-        let host: NSHostingController<AnyView>
-        var view: NSView { host.view }
+        let host: ColumnHostingView
+        var view: NSView { host }
         var column: WorkspaceColumnsHost.Column
         var reveal: SpringTrack
         /// What the column reports with `SupplementaryPaneFramePreferenceKey`,
@@ -158,6 +158,8 @@ final class WorkspaceColumnsView: NSView {
     /// frame of a motion.
     private var paneWidth: CGFloat = 0
     private var inspectorWidth: CGFloat = 0
+    private var conversationMinimum: CGFloat = 0
+    /// Whether the conversation's minimum width needs measuring again.
     private var needsMeasurement = true
 
     override var isFlipped: Bool { true }
@@ -170,6 +172,21 @@ final class WorkspaceColumnsView: NSView {
             name: WorkspaceLayoutMotion.revealDidChange,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(columnsWillChange),
+            name: WorkspaceLayoutMotion.willChangeColumns,
+            object: nil
+        )
+    }
+
+    /// Marks the trailing column leaving before a change that may close it,
+    /// so it keeps what it shows: a closed column's content is gone by the
+    /// time it starts to leave.
+    @objc private func columnsWillChange() {
+        for island in islands where !island.column.isFullWidth {
+            island.host.setContent(island.host.content, isLeaving: true)
+        }
     }
 
     @available(*, unavailable)
@@ -184,7 +201,10 @@ final class WorkspaceColumnsView: NSView {
         let reveal = WorkspaceMotionPhase.shared.unobservedReveal
         let now = CACurrentMediaTime()
         for index in islands.indices {
-            islands[index].reveal.move(to: reveal[islands[index].column.id] ?? 1, at: now, animated: animates)
+            let target = reveal[islands[index].column.id] ?? 1
+            islands[index].reveal.move(to: target, at: now, animated: animates)
+            let host = islands[index].host
+            if animates, target == 1, host.isLeaving { host.setContent(host.content, isLeaving: false) }
         }
         layoutColumns(at: now)
         if isAnimating(at: now) { startMotion() }
@@ -217,7 +237,11 @@ final class WorkspaceColumnsView: NSView {
                     }
             )
             if var island = islands.first(where: { $0.column.id == column.id }) {
-                island.host.rootView = root
+                // A column marked leaving before the change stays so until
+                // it comes back in or the motion settles: updates within the
+                // change can run before the column is listed as departing.
+                let isLeaving = column.isDeparting || island.host.isLeaving && spec.isMoving
+                island.host.setContent(root, isLeaving: isLeaving)
                 if island.column.isDeparting != column.isDeparting
                     || island.column.isFullWidth != column.isFullWidth
                 {
@@ -226,9 +250,8 @@ final class WorkspaceColumnsView: NSView {
                 island.column = column
                 updated.append(island)
             } else {
-                let host = Self.makeHost(root)
                 let reveal = WorkspaceMotionPhase.shared.unobservedReveal[column.id] ?? 1
-                updated.append(Island(host: host, column: column, reveal: SpringTrack(at: reveal)))
+                updated.append(Island(host: ColumnHostingView(content: root), column: column, reveal: SpringTrack(at: reveal)))
                 needsMeasurement = true
             }
         }
@@ -257,6 +280,14 @@ final class WorkspaceColumnsView: NSView {
         }
 
         layoutColumns(at: now)
+        // A column that arrives builds and measures its content now, out of
+        // view, rather than on the motion's first frame.
+        let arriving = islands.filter { !$0.host.extent.isMeasured }
+        if !arriving.isEmpty {
+            for island in arriving { island.host.layoutSubtreeIfNeeded() }
+            needsMeasurement = true
+            layoutColumns(at: now)
+        }
         if isAnimating(at: now) { startMotion() }
     }
 
@@ -308,24 +339,24 @@ final class WorkspaceColumnsView: NSView {
         islands.contains { !$0.reveal.isSettled(at: time) } || widening.map { !$0.isSettled(at: time) } ?? false
     }
 
-    private func measureIfNeeded() {
-        guard needsMeasurement, bounds.width > 0 else { return }
-        needsMeasurement = false
+    /// Reads the columns' widths from their last layout.
+    private func measureColumns() {
         let height = bounds.height
-        let inspector = islands.last { !$0.column.isSideConversation && !$0.column.isDeparting }?.host
-        if let inspector {
-            // Inspectors have a fixed width.
-            inspectorWidth = inspector.sizeThatFits(in: bounds.size).width
+        let inspector = islands.last { !$0.column.isSideConversation && !$0.column.isDeparting }?.host.extent
+        if let inspector, inspector.isMeasured {
+            inspectorWidth = inspector.ideal
         }
-        if let pane = islands.last(where: {
+        guard let pane = islands.last(where: {
             $0.column.isSideConversation && !$0.column.isFullWidth && !$0.column.isDeparting
-        })?.host {
-            let conversationMinimum = conversation?.sizeThatFits(in: CGSize(width: 0, height: height)).width ?? 0
-            // As an HStack does, give the pane its widest size the
-            // conversation's minimum width leaves room for.
-            let available = max(0, bounds.width - (inspector == nil ? 0 : inspectorWidth) - conversationMinimum)
-            paneWidth = pane.sizeThatFits(in: CGSize(width: available, height: height)).width
+        })?.host.extent, pane.isMeasured, bounds.width > 0 else { return }
+        if needsMeasurement {
+            needsMeasurement = false
+            conversationMinimum = conversation?.sizeThatFits(in: CGSize(width: 0, height: height)).width ?? 0
         }
+        // As an HStack does, give the pane its widest size the
+        // conversation's minimum width leaves room for.
+        let available = max(0, bounds.width - (inspector == nil ? 0 : inspectorWidth) - conversationMinimum)
+        paneWidth = min(max(available, pane.minimum), pane.maximum)
     }
 
     private func width(of column: WorkspaceColumnsHost.Column) -> CGFloat {
@@ -336,7 +367,7 @@ final class WorkspaceColumnsView: NSView {
 
     /// Places every island where the motion has it at `time`.
     private func layoutColumns(at time: CFTimeInterval) {
-        measureIfNeeded()
+        measureColumns()
         let bounds = bounds
         // How much of the trailing edge the columns cover, which the
         // conversation gives up, and how much of it inspectors cover, which
@@ -414,4 +445,78 @@ final class WorkspaceColumnsView: NSView {
             supplementaryPaneFrameChanged(frame)
         }
     }
+}
+
+/// A column's hosting view.
+private final class ColumnHostingView: NSHostingView<AnyView> {
+    /// The widths the column's content takes, measured as it lays out.
+    let extent = ColumnExtent()
+    /// The column's content, without how this view presents it.
+    private(set) var content = AnyView(EmptyView())
+    /// Whether the column is leaving: it shows what it showed when it began
+    /// to (`isLeavingWorkspace`) and takes no events.
+    private(set) var isLeaving = false
+
+    convenience init(content: AnyView) {
+        self.init(rootView: AnyView(EmptyView()))
+        // This view's frame is set from outside; it never asks for one.
+        sizingOptions = []
+        translatesAutoresizingMaskIntoConstraints = true
+        setContent(content, isLeaving: false)
+    }
+
+    func setContent(_ content: AnyView, isLeaving: Bool) {
+        self.content = content
+        self.isLeaving = isLeaving
+        rootView = AnyView(
+            ColumnMeasuringLayout(extent: extent) {
+                content.environment(\.isLeavingWorkspace, isLeaving)
+            }
+        )
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        isLeaving ? nil : super.hitTest(point)
+    }
+}
+
+/// How wide a column's content can be: at least `minimum`, ideally `ideal`
+/// and at most `maximum`.
+nonisolated private final class ColumnExtent: @unchecked Sendable {
+    var minimum: CGFloat = 0
+    var ideal: CGFloat = 0
+    var maximum: CGFloat = 0
+    var height: CGFloat = 0
+    var isMeasured = false
+}
+
+/// Fills its bounds with its content and records the content's widths, so
+/// the column's width is known without measuring it separately.
+nonisolated private struct ColumnMeasuringLayout: Layout {
+    let extent: ColumnExtent
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews _: Subviews, cache _: inout ()) -> CGSize {
+        proposal.replacingUnspecifiedDimensions()
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal _: ProposedViewSize, subviews: Subviews, cache _: inout ()) {
+        guard let content = subviews.first else { return }
+        content.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
+        // Once per height: the widths come from the column's frame, not
+        // from what it shows.
+        let height = bounds.height
+        guard !extent.isMeasured || extent.height != height else { return }
+        extent.minimum = content.sizeThatFits(ProposedViewSize(width: 0, height: height)).width
+        extent.ideal = content.sizeThatFits(ProposedViewSize(width: nil, height: height)).width
+        extent.maximum = content.sizeThatFits(ProposedViewSize(width: .infinity, height: height)).width
+        extent.height = height
+        extent.isMeasured = true
+    }
+}
+
+extension EnvironmentValues {
+    /// Whether this view is in a workspace column that is sliding away
+    /// (`WorkspaceColumnsHost`). Until it is out of view it keeps showing
+    /// what it showed, though the model has closed it.
+    @Entry var isLeavingWorkspace = false
 }

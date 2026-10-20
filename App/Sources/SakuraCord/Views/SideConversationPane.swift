@@ -64,7 +64,9 @@ struct SideConversationView: View {
     var body: some View {
         SideConversationPane(isFullWidth: conversation.isFullWidth) {
             switch conversation {
-            case .thread, .threadCreation:
+            case .thread(let thread, _):
+                ThreadConversationView(model: model, leavingThread: thread)
+            case .threadCreation:
                 ThreadConversationView(model: model)
             case .voiceChat, .channelPreview:
                 ChatDetailView(model: model)
