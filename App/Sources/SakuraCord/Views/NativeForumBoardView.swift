@@ -179,7 +179,10 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
     var reactionTooltipPostID: ChannelID?
     let reactionTooltip = StableAnchoredPopoverPresenter<MessageReactionTooltip>.Coordinator()
     var accessibilityProxies: [ForumBoardItem.Identifier: ForumBoardAccessibilityProxyView] = [:]
-    var lastPaginationRequestCount = -1
+    /// A page request is in flight from this board; the model also guards.
+    var isRequestingPage = false
+    /// Media whose last request failed, so painters can show a fallback.
+    var failedMediaKeys = Set<NativeTimelineMediaKey>()
     /// The entry indices realized last time; nil forces the next refresh to
     /// reconcile every card and rebuild settled state.
     private var realizedRange: Range<Int>?
@@ -315,7 +318,6 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         let structureChanged = newItems != items || modeChanged
         items = newItems
         if channelChanged { presentations.removeAll() }
-        if queryChanged || channelChanged { lastPaginationRequestCount = -1 }
         // Excerpts depend on the layout: the starter in list, the latest
         // message in gallery. Reconfigure before cards repaint.
         if modeChanged { reconfigureRealizedExcerpts() }
@@ -330,9 +332,18 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
                     : .reflow
             relayout(transition: transition, scrollsToTop: queryChanged || channelChanged)
         } else {
+            // A new query starts at its first post even when it selects the
+            // same cards, as the previous view did.
+            if queryChanged { scrollToTop() }
             refreshVisibleCards(transition: .none)
         }
         schedulePresentationRefresh()
+    }
+
+    func scrollToTop() {
+        guard let scrollView = enclosingScrollView else { return }
+        scrollView.contentView.scroll(to: NSPoint(x: 0, y: -scrollView.contentInsets.top))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
     }
 
     func viewportDidResize() {
@@ -384,8 +395,7 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         cardsLayer.frame = CGRect(origin: .zero, size: CGSize(width: width, height: height))
         CATransaction.commit()
         if scrollsToTop {
-            scrollView.contentView.scroll(to: NSPoint(x: 0, y: -scrollView.contentInsets.top))
-            scrollView.reflectScrolledClipView(scrollView.contentView)
+            scrollToTop()
         } else if let anchor {
             restore(anchor)
         }
@@ -393,6 +403,8 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         realizedRange = nil
         refreshVisibleCards(transition: transition)
         window?.invalidateCursorRects(for: self)
+        // A page that leaves the end of the board on screen asks for the next.
+        requestNextPageIfNeeded()
     }
 
     private struct ScrollAnchor {

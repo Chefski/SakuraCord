@@ -271,6 +271,9 @@ enum ForumTagChipMetrics {
                 fitted += 1
             } else if row < rows {
                 row += 1
+                // The last row also has to hold the overflow chip.
+                let lastRowReserve = remaining > 0 && row == rows ? spacing + overflowWidth(hiddenCount: remaining) : 0
+                guard chip + lastRowReserve <= width else { return fitted }
                 cursorX = chip
                 fitted += 1
             } else {

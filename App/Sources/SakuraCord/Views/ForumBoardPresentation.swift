@@ -273,7 +273,8 @@ extension ForumBoardView {
             excerpt: excerpt,
             interaction: interactions[id] ?? ForumCardInteraction(),
             model: model,
-            metrics: metrics
+            metrics: metrics,
+            failedMedia: failedMediaKeys
         ))
     }
 

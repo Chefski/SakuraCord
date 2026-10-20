@@ -13,6 +13,9 @@ struct ForumCardRegions: Equatable {
     var heroFrame: CGRect?
     var reactionRegionFrame: CGRect?
     var timestampFrame: CGRect?
+    /// Where hovering shows the exact date: last activity in list, the
+    /// posted time row in gallery.
+    var exactDateFrame: CGRect?
     var countFrame: CGRect?
     /// Measured width of the message count's digits inside `countFrame`.
     var countTextWidth: CGFloat = 0
@@ -159,6 +162,8 @@ enum ForumCardPainter {
         let padding = metrics.cardPadding
         let innerWidth = size.width - padding * 2
         regions.statusRowFrame = CGRect(x: padding, y: padding, width: innerWidth, height: metrics.galleryHeaderHeight)
+        // The author and posted time row shows the exact posting date on hover.
+        regions.exactDateFrame = regions.statusRowFrame
         var cursorY = padding + metrics.galleryHeaderHeight + metrics.statusRowSpacing
         regions.titleFrame = CGRect(x: padding, y: cursorY, width: innerWidth, height: metrics.galleryTitleHeight)
         cursorY = regions.titleFrame.maxY + metrics.statusRowSpacing
@@ -209,6 +214,7 @@ enum ForumCardPainter {
             let text = presentation.relativeTimeText(isGallery: false)
             let width = ceil(NativeTimelineRowLayout.measuredTextWidth(text, font: footerFont)) + 2
             regions.timestampFrame = CGRect(x: cursorX, y: footer.minY, width: width, height: footer.height)
+            regions.exactDateFrame = regions.timestampFrame
         }
     }
 
@@ -275,6 +281,9 @@ enum ForumCardPainter {
         let interaction: ForumCardInteraction
         let model: AppModel?
         let metrics: ForumBoardMetrics
+        /// Media whose download failed; a failed video poster falls back to
+        /// the file tile.
+        let failedMedia: Set<NativeTimelineMediaKey>
     }
 
     static func draw(_ input: DrawInput) {
@@ -285,7 +294,7 @@ enum ForumCardPainter {
             drawGalleryHeader(presentation, in: regions.statusRowFrame ?? .zero)
             drawTitle(presentation, in: regions.titleFrame, maximumLines: metrics.maximumTitleLines, metrics: metrics)
             if let hero = regions.heroFrame {
-                drawHero(presentation, in: hero, excerpt: input.excerpt)
+                drawHero(presentation, in: hero, excerpt: input.excerpt, failedMedia: input.failedMedia)
             }
         } else {
             if let status = regions.statusRowFrame {
@@ -297,7 +306,7 @@ enum ForumCardPainter {
                 drawExcerpt(presentation, in: excerptFrame, renderer: input.excerpt, metrics: metrics)
             }
             if let thumbnail = presentation.thumbnail, let frame = regions.thumbnailFrame {
-                drawMedia(thumbnail, in: frame, cornerRadius: InterfaceScale.metric(11), isCompact: true)
+                drawMedia(thumbnail, in: frame, cornerRadius: InterfaceScale.metric(11), isCompact: true, failedMedia: input.failedMedia)
             }
         }
         drawFooter(presentation, regions: regions, interaction: input.interaction, model: input.model)
@@ -562,7 +571,8 @@ enum ForumCardPainter {
     private static func drawHero(
         _ presentation: ForumCardPresentation,
         in frame: CGRect,
-        excerpt: ForumPostPreviewTextRenderer?
+        excerpt: ForumPostPreviewTextRenderer?,
+        failedMedia: Set<NativeTimelineMediaKey>
     ) {
         let radius = InterfaceScale.metric(12)
         let shape = NSBezierPath(roundedRect: frame, xRadius: radius, yRadius: radius)
@@ -572,7 +582,7 @@ enum ForumCardPainter {
         case .pending:
             break
         case let .media(media):
-            drawMedia(media, in: frame, cornerRadius: radius, isCompact: false)
+            drawMedia(media, in: frame, cornerRadius: radius, isCompact: false, failedMedia: failedMedia)
         case .text:
             // The preview stays inside the hero, above its tag row.
             let tagReserve = presentation.tags.isEmpty ? 0 : InterfaceScale.metric(34)
@@ -614,7 +624,8 @@ enum ForumCardPainter {
         _ media: ForumCardPresentation.Media,
         in frame: CGRect,
         cornerRadius: CGFloat,
-        isCompact: Bool
+        isCompact: Bool,
+        failedMedia: Set<NativeTimelineMediaKey>
     ) {
         let shape = NSBezierPath(roundedRect: frame, xRadius: cornerRadius, yRadius: cornerRadius)
         NSColor.labelColor.withAlphaComponent(0.06).setFill()
@@ -632,7 +643,7 @@ enum ForumCardPainter {
                 NSColor.black.withAlphaComponent(0.55).setFill()
                 NSBezierPath(ovalIn: badgeFrame).fill()
                 NativeTimelineRowPainter.systemSymbol("play.fill", in: badgeFrame, color: .white, inset: InterfaceScale.metric(10), weight: .semibold)
-            } else if poster == nil {
+            } else if poster.map(failedMedia.contains) ?? true {
                 drawFileTile(symbol: "play.rectangle.fill", filename: filename, in: frame, isCompact: isCompact)
             }
         case let .audio(filename):

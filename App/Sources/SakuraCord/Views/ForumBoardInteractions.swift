@@ -30,12 +30,13 @@ extension ForumBoardView {
         let store = NativeTimelineMediaStore.shared
         store.retainVisibleImages(for: keys, owner: mediaOwner)
         for (postID, postKeys) in keysByPost {
-            for key in postKeys where store.image(for: key) == nil {
+            for key in postKeys where store.image(for: key) == nil && !failedMediaKeys.contains(key) {
                 // The store keys subscribers by timeline item; a forum post is
                 // the same post identity the Inbox uses.
                 store.request(key, owner: mediaOwner, subscriber: .inboxForumPost(postID)) { [weak self] outcome in
-                    guard outcome == .ready, let self else { return }
-                    cards[.post(postID)]?.render(scale: backingScale, fading: true)
+                    guard let self, outcome != .cancelled else { return }
+                    if outcome == .failed { failedMediaKeys.insert(key) }
+                    cards[.post(postID)]?.render(scale: backingScale, fading: outcome == .ready)
                 }
             }
         }
@@ -50,9 +51,14 @@ extension ForumBoardView {
         else { return }
         let visible = visibleRect
         guard visible.maxY > frame.height - visible.height * 1.5 else { return }
-        guard lastPaginationRequestCount != snapshot.posts.count else { return }
-        lastPaginationRequestCount = snapshot.posts.count
-        Task { await model.loadMoreForumPosts() }
+        // A page can add no visible posts (filtered or undecodable records)
+        // while more remain, so each completed request allows the next.
+        guard !isRequestingPage else { return }
+        isRequestingPage = true
+        Task { [weak self] in
+            await model.loadMoreForumPosts()
+            self?.isRequestingPage = false
+        }
     }
 
     // MARK: Reaction tooltip
@@ -109,7 +115,7 @@ extension ForumBoardView {
         removeAllToolTips()
         for (id, _) in cards {
             guard case .post = id, let entry = layoutState?.entry(for: id),
-                  let frame = cardRegions(for: id)?.timestampFrame
+                  let frame = cardRegions(for: id)?.exactDateFrame
             else { continue }
             addToolTip(frame.offsetBy(dx: entry.frame.minX, dy: entry.frame.minY), owner: self, userData: nil)
         }
@@ -117,7 +123,9 @@ extension ForumBoardView {
 
     func view(_: NSView, stringForToolTip _: NSView.ToolTipTag, point: NSPoint, userData _: UnsafeMutableRawPointer?) -> String {
         guard let hit = hit(at: point), let postID = hit.entry.item.postID, let presentation = presentations[postID] else { return "" }
-        return "Last activity \(presentation.lastActivityAt.formatted(date: .complete, time: .shortened))"
+        return isGallery
+            ? "Posted \(presentation.createdAt.formatted(date: .complete, time: .shortened))"
+            : "Last activity \(presentation.lastActivityAt.formatted(date: .complete, time: .shortened))"
     }
 
     // MARK: Context menu
