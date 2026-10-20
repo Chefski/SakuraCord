@@ -28,6 +28,7 @@ final class ForumBoardCard {
     private var renderGeneration = 0
     private var pendingScene: ForumCardScene?
     private var isRasterizing = false
+    private var rasterizingGeneration = 0
     private var fadesNextCommit: Bool?
 
     init() {
@@ -89,8 +90,12 @@ final class ForumBoardCard {
         rasterizePendingScene()
     }
 
-    /// Whether a bitmap is on its way, so a new card need not ask again.
-    var isRendering: Bool { pendingScene != nil || isRasterizing }
+    /// Whether a bitmap for the current content is on its way, so a card
+    /// need not ask again. A rasterization started before the card was
+    /// cleared or reused does not count: its bitmap never commits.
+    var isRendering: Bool {
+        pendingScene != nil || isRasterizing && rasterizingGeneration == renderGeneration
+    }
 
     /// One scene rasterizes at a time per card; requests made meanwhile
     /// collapse into the latest, and a superseded bitmap never commits.
@@ -99,6 +104,7 @@ final class ForumBoardCard {
         pendingScene = nil
         isRasterizing = true
         let generation = renderGeneration
+        rasterizingGeneration = generation
         Task { [weak self] in
             let image = await ForumCardRasterizer.rasterize(scene)
             guard let self else { return }

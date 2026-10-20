@@ -571,7 +571,7 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
 
     /// Whether a card already on screen now occupies `frame`; a replaced
     /// card there would overlap it while waiting.
-    private func isCoveredByShownCard(_ frame: CGRect) -> Bool {
+    func isCoveredByShownCard(_ frame: CGRect) -> Bool {
         cards.values.contains { !$0.layer.isHidden && $0.frame.intersects(frame) }
     }
 

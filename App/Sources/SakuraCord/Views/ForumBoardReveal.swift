@@ -61,13 +61,23 @@ extension ForumBoardView {
 
     /// Recycles a card the current pass replaces. A hidden card that never
     /// appeared hands the cards it was replacing to `group`, so they stay on
-    /// screen until something does.
+    /// screen until something does, except where recycling it revealed the
+    /// rest of its own group over them.
     func recycle(_ card: ForumBoardCard, replacedBy group: ForumBoardRevealGroup) {
-        if let previous = revealGroups[ObjectIdentifier(card)], previous !== group, !group.waiting.isEmpty {
-            group.retiring += previous.retiring
-            previous.retiring.removeAll()
+        guard let previous = revealGroups[ObjectIdentifier(card)], previous !== group, !group.waiting.isEmpty else {
+            recycle(card)
+            return
         }
+        let retirees = previous.retiring
+        previous.retiring.removeAll()
         recycle(card)
+        for retiree in retirees {
+            if group.covers(retiree.frame), !isCoveredByShownCard(retiree.frame) {
+                group.keepUntilRevealed(retiree)
+            } else {
+                recycle(retiree)
+            }
+        }
     }
 
     /// Shows a card once its first bitmap is on screen, or its whole group
