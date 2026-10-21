@@ -1664,6 +1664,26 @@ func `reaction cooldown drops cancelled intent and cleared mutations`(clearMutat
 }
 
 @MainActor
+@Test func `a forum's sort and view survive a relaunch until reset`() throws {
+    let suiteName = "forum-view-memory-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let forum = ChannelID(rawValue: 20)
+
+    ForumViewMemory(defaults: defaults)
+        .remember(sortOrder: .creationDate, layout: .gallery, tagMatch: .matchAll, for: forum)
+
+    let relaunched = ForumViewMemory(defaults: defaults)
+    let saved = try #require(relaunched.preferences(for: forum))
+    #expect(saved.sortOrder == .creationDate)
+    #expect(saved.layout == .gallery)
+    #expect(saved.tagMatch == .matchAll)
+
+    relaunched.forget(forum)
+    #expect(ForumViewMemory(defaults: defaults).preferences(for: forum) == nil)
+}
+
+@MainActor
 @Test func `ordinary linked channels load their guild before forum resolution`() async {
     let provider = LinkedChannelNavigationTestProvider()
     let model = AppModel(launchMode: .offlineTesting, provider: provider)
