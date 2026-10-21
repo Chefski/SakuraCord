@@ -7,6 +7,7 @@ extension ForumBoardView {
     func updateAccessibilityChildren() {
         guard let layoutState else { return }
         var live: [ForumBoardItem.Identifier: ForumBoardAccessibilityProxyView] = [:]
+        var ordered: [ForumBoardAccessibilityProxyView] = []
         for entry in layoutState.entries(intersecting: realizationRect(for: visibleRect)) {
             let id = entry.item.id
             let item = entry.item
@@ -34,6 +35,7 @@ extension ForumBoardView {
                     revealSpoiler: revealSpoiler
                 )
                 live[id] = proxy
+                ordered.append(proxy)
             case .paginationStatus:
                 guard let message = snapshot?.paginationError else { continue }
                 let proxy = accessibilityProxies.removeValue(forKey: id) ?? makeProxy(
@@ -43,12 +45,19 @@ extension ForumBoardView {
                 proxy.frame = entry.frame
                 proxy.updateRetry(message: message)
                 live[id] = proxy
+                ordered.append(proxy)
             case .placeholder, .olderPostsHeader:
                 continue
             }
         }
         for proxy in accessibilityProxies.values { proxy.removeFromSuperview() }
         accessibilityProxies = live
+        // VoiceOver reads proxies in subview order; a reused proxy keeps its
+        // old place, so a reordered board reorders them to match.
+        let current = subviews.compactMap { $0 as? ForumBoardAccessibilityProxyView }
+        if !current.elementsEqual(ordered, by: ===) {
+            subviews = subviews.filter { !($0 is ForumBoardAccessibilityProxyView) } + ordered
+        }
     }
 
     private func makeProxy(
