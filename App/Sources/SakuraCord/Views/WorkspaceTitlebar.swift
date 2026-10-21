@@ -272,6 +272,8 @@ final class WorkspaceTitlebarView: NSView {
         // leaves; they never pass it to come back.
         let searchMinX = showsSearch || searchAlpha > 0 ? searchFieldMinX : nil
         let searchLimit = (searchMinX ?? bounds.maxX + inset) - inset
+        let hasSideConversation = geometry.columns.contains { $0.id.hasPrefix("side-") }
+        let windowMaxX = convert(CGPoint(x: bounds.maxX, y: 0), to: nil).x
         for id in order {
             guard let views = groups[id] else { continue }
             // In window coordinates.
@@ -280,7 +282,14 @@ final class WorkspaceTitlebarView: NSView {
             var widening: CGFloat = 0
             var endsAtSearch = true
             if id == WorkspaceTitlebar.conversationID {
-                guard let conversation = geometry.conversation else { continue }
+                guard var conversation = geometry.conversation else { continue }
+                // Beside the member list or search results, which the field
+                // sits over, the conversation's items end at the field, as
+                // the window toolbar's do: the list starts a point before it,
+                // and items that followed its edge moved as it opened.
+                if searchMinX != nil, searchAlpha >= 1, !hasSideConversation {
+                    conversation = conversation.lowerBound ... max(conversation.upperBound, windowMaxX)
+                }
                 span = conversation
                 visibleMaxX = min(span.upperBound, fullWidth?.minX ?? .infinity)
             } else {

@@ -14,8 +14,12 @@ struct InboxToolbarButton: View {
         Button {
             if model.inbox.isPresented { model.dismissInbox() } else { model.presentInbox() }
         } label: {
-            Label("Inbox", systemImage: model.inbox.isPresented ? "tray.fill" : "tray")
-                .symbolVariant(.none)
+            Label {
+                Text("Inbox")
+            } icon: {
+                ToggleSymbol(off: "tray", on: "tray.fill", isOn: model.inbox.isPresented)
+            }
+            .symbolVariant(.none)
                 .animation(.smooth(duration: 0.24), value: model.inbox.isPresented)
         }
         .help("Inbox")
@@ -53,8 +57,12 @@ struct PinnedMessagesToolbarButton: View {
                 model.presentPinnedMessages(channelID: channelID)
             }
         } label: {
-            Label("Pinned Messages", systemImage: isPresented ? "pin.fill" : "pin")
-                .symbolVariant(.none)
+            Label {
+                Text("Pinned Messages")
+            } icon: {
+                ToggleSymbol(off: "pin", on: "pin.fill", isOn: isPresented)
+            }
+            .symbolVariant(.none)
                 .animation(.smooth(duration: 0.24), value: isPresented)
         }
         .help("Pinned Messages")
@@ -173,14 +181,34 @@ struct MemberInspectorToolbarButton: View {
         Button {
             model.toggleMemberInspector()
         } label: {
-            Label(
-                isDirectMessage || isGroup ? "People" : "Members",
-                systemImage: isDirectMessage
-                    ? (isShown ? "person.fill" : "person")
-                    : (isShown ? "person.2.fill" : "person.2")
-            )
+            Label {
+                Text(isDirectMessage || isGroup ? "People" : "Members")
+            } icon: {
+                ToggleSymbol(
+                    off: isDirectMessage ? "person" : "person.2",
+                    on: isDirectMessage ? "person.fill" : "person.2.fill",
+                    isOn: isShown
+                )
+            }
             .symbolVariant(.none)
             .animation(.smooth(duration: 0.24), value: isShown)
+        }
+    }
+}
+
+/// A toggle's symbol, as wide in either state: the toolbar measures its
+/// items' widths, so a filled symbol half a point narrower than its outline
+/// moved every item beside it.
+private struct ToggleSymbol: View {
+    let off: String
+    let on: String
+    let isOn: Bool
+
+    var body: some View {
+        ZStack {
+            Image(systemName: off).hidden()
+            Image(systemName: on).hidden()
+            Image(systemName: isOn ? on : off)
         }
     }
 }
