@@ -41,10 +41,18 @@ nonisolated enum NativeTimelineUnreadDividerGapGeometry {
         topInViewport + viewportMinY - staticTop
     }
 
+    /// The most the divider's row may change by and still be described by the
+    /// motion: the divider plus the author header the row gains or loses with
+    /// it, since a divider breaks a message group.
+    static func maximumSpace(dividerHeight: CGFloat) -> CGFloat {
+        dividerHeight * 3
+    }
+
     /// The space the divider opens or closes: how much its row grew or shrank.
     /// That is less than the divider itself when the divider replaces the
-    /// spacing a message normally has above it. Nil when the row changed in
-    /// any other way, so the motion would not describe the update.
+    /// spacing a message normally has above it, and more when the row also
+    /// gains an author header. Nil when the row changed in any other way, so
+    /// the motion would not describe the update.
     static func spaceHeight(
         isAppearing: Bool,
         dividerHeight: CGFloat,
@@ -52,7 +60,13 @@ nonisolated enum NativeTimelineUnreadDividerGapGeometry {
         heightAfter: CGFloat
     ) -> CGFloat? {
         let change = (heightAfter - heightBefore) * (isAppearing ? 1 : -1)
-        return change > 0.5 && change <= dividerHeight + 0.5 ? change : nil
+        return change > 0.5 && change <= maximumSpace(dividerHeight: dividerHeight) + 0.5 ? change : nil
+    }
+
+    /// Whether the space holds more than the divider: an author header that
+    /// the row on the other side of the update does not have.
+    static func includesHeader(spaceHeight: CGFloat, dividerHeight: CGFloat) -> Bool {
+        spaceHeight > dividerHeight + 0.5
     }
 
     /// The update must not have scrolled the timeline by more than the space.
@@ -62,9 +76,16 @@ nonisolated enum NativeTimelineUnreadDividerGapGeometry {
 
     /// The part of the divider that may show: from the top of the gap down to
     /// the top of the message below, which sits `dividerHeight - spaceHeight`
-    /// under the open gap.
-    static func overlayHeight(gap: CGFloat, spaceHeight: CGFloat, dividerHeight: CGFloat) -> CGFloat {
-        min(dividerHeight, max(0, gap + dividerHeight - spaceHeight))
+    /// under the open gap. A closing divider that took its header with it is a
+    /// picture of the whole space, which fills the open gap.
+    static func overlayHeight(
+        gap: CGFloat,
+        spaceHeight: CGFloat,
+        dividerHeight: CGFloat,
+        showsSpaceSnapshot: Bool = false
+    ) -> CGFloat {
+        if showsSpaceSnapshot { return min(spaceHeight, max(0, gap)) }
+        return min(dividerHeight, max(0, gap + dividerHeight - spaceHeight))
     }
 }
 
@@ -76,6 +97,9 @@ struct NativeTimelineUnreadDividerGap {
     let dividerHeight: CGFloat
     let startGap: CGFloat
     let startBeforeShift: CGFloat
+    /// The divider and header that are closing, as they were on screen, when
+    /// the space holds a header the row no longer paints.
+    let snapshot: NativeTimelineUnreadDividerSnapshot?
     var rowIndex: Int
     var startUptime: TimeInterval?
     var frame: NativeTimelineUnreadDividerGapGeometry.Frame
@@ -155,6 +179,15 @@ extension NativeTimelineCanvasView {
             heightBefore: source.height,
             heightAfter: layout.height
         ) else { return false }
+        // A header that goes with the divider is no longer in the row, so
+        // its picture from before the update closes with the divider.
+        var snapshot: NativeTimelineUnreadDividerSnapshot?
+        if !appearing, NativeTimelineUnreadDividerGapGeometry.includesHeader(
+            spaceHeight: space, dividerHeight: frame.height
+        ) {
+            guard let image = source.topSnapshot?.top(space) else { return false }
+            snapshot = image
+        }
         let startGap = source.startGap ?? (appearing ? 0 : space)
         let staticTop = contentOriginY + rowOrigins[index]
         let startShift = NativeTimelineUnreadDividerGapGeometry.startBeforeShift(
@@ -179,6 +212,7 @@ extension NativeTimelineCanvasView {
             dividerHeight: frame.height,
             startGap: startGap,
             startBeforeShift: startShift,
+            snapshot: snapshot,
             rowIndex: index,
             frame: start
         )

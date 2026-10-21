@@ -38,18 +38,19 @@ private struct UnreadDividerMotionHarness {
     let window: NSWindow
     let messages: [Message]
 
-    init(reducesMotion: Bool = false) {
+    /// `startsGroup` puts the unread message at the start of its own group.
+    /// Otherwise it continues the group above, so a divider above it also
+    /// gives it an author header on builds that break a group at the divider.
+    init(reducesMotion: Bool = false, startsGroup: Bool = true) {
         let readers = [
             User(id: UserID(rawValue: 99_501), username: "reader", displayName: "Reader"),
             User(id: UserID(rawValue: 99_502), username: "writer", displayName: "Writer"),
         ]
         let channelID = channelID
-        // The unread message starts its own group whether or not a divider is
-        // above it, so the divider is the only thing its row gains or loses.
         messages = (0 ..< 6).map {
             Message(
                 id: MessageID(rawValue: UInt64(200_000 + $0)),
-                channelID: channelID, author: readers[$0 < 4 ? 0 : 1],
+                channelID: channelID, author: readers[$0 < 4 || !startsGroup ? 0 : 1],
                 content: "Message \($0)"
             )
         }
@@ -147,6 +148,25 @@ func `a divider that arrives while the reader is looking at a settled conversati
     #expect(!harness.dividerIsMoving)
     harness.show(unread: nil)
     #expect(harness.dividerIsMoving)
+    harness.coordinator.stopObserving()
+}
+
+@MainActor @Test(arguments: [true, false])
+func `a live divider opens and closes its gap whether or not its row also gains a header`(
+    startsGroup: Bool
+) {
+    let harness = UnreadDividerMotionHarness(startsGroup: startsGroup)
+    harness.show(unread: nil)
+
+    harness.show(unread: harness.unread)
+    #expect(harness.dividerIsMoving)
+    #expect(harness.gapIsOpening)
+
+    harness.coordinator.canvas?.finishUnreadDividerFades()
+    #expect(!harness.dividerIsMoving)
+    harness.show(unread: nil)
+    #expect(harness.dividerIsMoving)
+    #expect(harness.gapIsOpening)
     harness.coordinator.stopObserving()
 }
 

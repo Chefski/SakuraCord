@@ -72,9 +72,17 @@ func `a divider gap starts on the picture before the update and lands on the sta
     #expect(UnreadDividerGapGeometry.spaceHeight(
         isAppearing: true, dividerHeight: 29, heightBefore: 60, heightAfter: 89
     ) == 29)
+    // A divider breaks a message group, so the row may also gain an author
+    // header, and the space holds that too.
+    #expect(UnreadDividerGapGeometry.spaceHeight(
+        isAppearing: true, dividerHeight: 29, heightBefore: 40, heightAfter: 90
+    ) == 50)
+    #expect(UnreadDividerGapGeometry.spaceHeight(
+        isAppearing: false, dividerHeight: 29, heightBefore: 90, heightAfter: 40
+    ) == 50)
     // The row changed some other way, or in the wrong direction.
     #expect(UnreadDividerGapGeometry.spaceHeight(
-        isAppearing: true, dividerHeight: 29, heightBefore: 60, heightAfter: 120
+        isAppearing: true, dividerHeight: 29, heightBefore: 60, heightAfter: 200
     ) == nil)
     #expect(UnreadDividerGapGeometry.spaceHeight(
         isAppearing: true, dividerHeight: 29, heightBefore: 60, heightAfter: 60
@@ -94,6 +102,22 @@ func `a divider gap starts on the picture before the update and lands on the sta
     #expect(UnreadDividerGapGeometry.overlayHeight(gap: 0, spaceHeight: 21, dividerHeight: 29) == 8)
     #expect(UnreadDividerGapGeometry.overlayHeight(gap: 21, spaceHeight: 21, dividerHeight: 29) == 29)
     #expect(UnreadDividerGapGeometry.overlayHeight(gap: 10, spaceHeight: 29, dividerHeight: 29) == 10)
+}
+
+@MainActor @Test func `a closing divider that took its header is a picture of the whole gap`() {
+    // The space is a 29 point divider and a 21 point header.
+    #expect(UnreadDividerGapGeometry.includesHeader(spaceHeight: 50, dividerHeight: 29))
+    #expect(!UnreadDividerGapGeometry.includesHeader(spaceHeight: 29, dividerHeight: 29))
+    #expect(!UnreadDividerGapGeometry.includesHeader(spaceHeight: 21, dividerHeight: 29))
+    for gap in stride(from: CGFloat(0), through: 50, by: 10) {
+        #expect(UnreadDividerGapGeometry.overlayHeight(
+            gap: gap, spaceHeight: 50, dividerHeight: 29, showsSpaceSnapshot: true
+        ) == gap)
+    }
+    // An opening divider shows only down to the header, which the row paints.
+    #expect(UnreadDividerGapGeometry.overlayHeight(gap: 10, spaceHeight: 50, dividerHeight: 29) == 0)
+    #expect(UnreadDividerGapGeometry.overlayHeight(gap: 40, spaceHeight: 50, dividerHeight: 29) == 19)
+    #expect(UnreadDividerGapGeometry.overlayHeight(gap: 50, spaceHeight: 50, dividerHeight: 29) == 29)
 }
 
 @MainActor @Test func `rows before the divider start where they were on screen`() {
