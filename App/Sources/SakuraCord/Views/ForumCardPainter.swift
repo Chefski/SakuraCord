@@ -320,7 +320,8 @@ enum ForumCardPainter {
 
     /// Skeleton bars, drawn beneath the shimmer layer that animates over them.
     static func drawSkeleton(_ frames: [CGRect], on canvas: ForumCardCanvas) {
-        let color = NSColor.labelColor.withAlphaComponent(0.07)
+        // Matches the shared skeleton style's resting fill.
+        let color = NSColor.labelColor.withAlphaComponent(0.09)
         for frame in frames {
             canvas.fill(frame, cornerRadius: min(InterfaceScale.metric(7), frame.height / 2), color: color)
         }
