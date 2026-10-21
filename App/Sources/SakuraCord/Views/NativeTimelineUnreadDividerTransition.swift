@@ -363,8 +363,9 @@ extension NativeMessageTimelineCoordinator {
         to newParent: NativeMessageTimelineView,
         canvas: NativeTimelineCanvasView
     ) -> NativeTimelineUnreadDividerChange? {
+        let conversationChanged = newParent.conversation != parent.conversation
         guard NativeTimelineUnreadDividerMotion.animates(
-            conversationChanged: newParent.conversation != parent.conversation,
+            conversationChanged: conversationChanged,
             // Read before this update can establish the position or bring in
             // the first rows, so a divider that arrives with either stays
             // still. An empty timeline can hold a position, for instance
@@ -381,7 +382,7 @@ extension NativeMessageTimelineCoordinator {
         let changes = previous != newParent.unreadMessageID
         let reflowsRows = newParent.rowsRevision != rowsRevision
             || newParent.presentationRevision != presentationRevision
-            || newParent.conversation != parent.conversation
+            || conversationChanged
         guard changes else {
             if reflowsRows { canvas.finishUnreadDividerGap() }
             return nil
