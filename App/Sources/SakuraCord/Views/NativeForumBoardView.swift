@@ -349,8 +349,7 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         defer { drawsArrivalsNow = false }
         if structureChanged || layoutState == nil {
             let transition: ForumBoardTransition = isFirstPopulation || swapsBoard ? .none : .reflow
-            let restoring = takeScrollRestore()
-            relayout(transition: transition, scrollsToTop: (queryChanged || channelChanged) && restoring == nil, restoring: restoring)
+            relayout(transition: transition, scrollsToTop: queryChanged || channelChanged)
         } else {
             // A new query starts at its first post even when it selects the
             // same cards, as the previous view did.
@@ -414,10 +413,14 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         model.forumViewMemory.rememberScrollPosition(position, for: channel.id)
     }
 
-    private func relayout(transition: ForumBoardTransition, scrollsToTop: Bool, restoring: ScrollAnchor? = nil) {
+    private func relayout(transition: ForumBoardTransition, scrollsToTop: Bool) {
         guard let scrollView = enclosingScrollView else { return }
         let width = scrollView.contentView.bounds.width
         guard width > 0 else { return }
+        // The first layout of a visit with posts restores where it was left,
+        // whether an update or the board's first sizing runs it.
+        let restoring = takeScrollRestore()
+        let scrollsToTop = scrollsToTop && restoring == nil
         if metrics.scale != InterfaceScale.factor {
             metrics = ForumBoardMetrics.current()
             titleCounter = ForumTitleLineCounter(font: metrics.titleFont, maximumLines: metrics.maximumTitleLines)
@@ -446,7 +449,7 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         setFrameSize(NSSize(width: width, height: height))
         cardsLayer.frame = CGRect(origin: .zero, size: CGSize(width: width, height: height))
         CATransaction.commit()
-        if scrollsToTop, restoring == nil {
+        if scrollsToTop {
             scrollToTop()
         } else if let anchor {
             restore(anchor)
@@ -458,6 +461,8 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         window?.invalidateCursorRects(for: self)
         // A page that leaves the end of the board on screen asks for the next.
         requestNextPageIfNeeded()
+        // A live reorder can change the first visible post without scrolling.
+        rememberScrollPosition()
     }
 
     private struct ScrollAnchor {
