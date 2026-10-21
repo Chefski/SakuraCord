@@ -1400,8 +1400,19 @@ extension NativeTimelineRowPainter {
         case .none, .systemImage, .text: nil
         }
         guard let url else { return nil }
-        if url.isFileURL { return NSImage(contentsOf: url) }
+        if url.isFileURL { return fileImage(at: url) }
         return mediaImage(for: .media(url, maximumPixelDimension: 64))
+    }
+
+    /// Loaded once per file: rows draw their selects on every redraw, and
+    /// reading the file each time held up the motions that redraw them.
+    private static let fileImages = NSCache<NSURL, NSImage>()
+
+    private static func fileImage(at url: URL) -> NSImage? {
+        if let image = fileImages.object(forKey: url as NSURL) { return image }
+        guard let image = NSImage(contentsOf: url) else { return nil }
+        fileImages.setObject(image, forKey: url as NSURL)
+        return image
     }
 
     static func componentFile(

@@ -10,8 +10,10 @@ nonisolated enum NativeTimelineViewportWindowPolicy {
     static func geometry(
         viewport: CGRect,
         documentSize: CGSize,
-        currentFrame: CGRect
+        currentFrame: CGRect,
+        overscan: CGFloat = Self.overscan
     ) -> (frame: CGRect, bounds: CGRect) {
+        let minimumRetainedBuffer = min(Self.minimumRetainedBuffer, overscan)
         let documentHeight = max(1, documentSize.height)
         let viewportWidth = max(1, viewport.width)
         let canvasHeight = min(
@@ -428,10 +430,16 @@ extension NativeMessageTimelineCoordinator {
                 // old-width canvas without presenting distorted text.
                 viewport.size.width = layoutWidth
             }
+            // While a workspace motion re-wraps the rows, each preview
+            // redraws the canvas; drawing only what shows halves what the
+            // render server takes in on those frames. The overscan comes
+            // back once the motion settles and the rows lay out for good.
+            let previewsInMotion = previewLayoutWidth != nil && WorkspaceLayoutMotion.isMoving
             let geometry = NativeTimelineViewportWindowPolicy.geometry(
                 viewport: viewport,
                 documentSize: documentView.frame.size,
-                currentFrame: canvas.frame
+                currentFrame: canvas.frame,
+                overscan: previewsInMotion ? 0 : NativeTimelineViewportWindowPolicy.overscan
             )
             canvas.installViewportGeometry(
                 frame: geometry.frame,
@@ -795,6 +803,9 @@ extension NativeMessageTimelineCoordinator {
             }
             let interval = Duration.milliseconds(50)
             let now = ContinuousClock.now
+            // The first reflow waits an interval too, so the columns are
+            // already moving when its cost lands.
+            if lastMotionPreview == nil { lastMotionPreview = now }
             guard let last = lastMotionPreview, now - last < interval else {
                 lastMotionPreview = now
                 return false
@@ -919,11 +930,17 @@ extension NativeMessageTimelineCoordinator {
             widthRelayoutGeneration &+= 1
             let generation = widthRelayoutGeneration
             widthRelayoutTask?.cancel()
+            // A workspace motion reschedules this on every frame, so only its
+            // final width ever runs, as soon as the motion settles; the pause
+            // is for live window resizes, which end without notice.
+            let debounces = !WorkspaceLayoutMotion.isMoving
             widthRelayoutTask = Task { @MainActor [weak self] in
-                do {
-                    try await Task.sleep(for: .milliseconds(120))
-                } catch {
-                    return
+                if debounces {
+                    do {
+                        try await Task.sleep(for: .milliseconds(120))
+                    } catch {
+                        return
+                    }
                 }
                 // A width change from a workspace motion reflows every row;
                 // wait until the motion has its frames.
