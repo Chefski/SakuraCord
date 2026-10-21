@@ -220,7 +220,10 @@ private struct ChatRootView: View {
     @State private var detailColumnMinX: CGFloat = 0
     @State private var conversationTitleWidth: CGFloat = 0
     @State private var customizationModePickerWidth: CGFloat = 260
-    @State private var workspaceFrame = CGRect.zero
+    /// Where the workspace starts in the window. Only its leading edge, so a
+    /// window resize, which moves the trailing one, does not update the
+    /// whole workspace on every step.
+    @State private var workspaceMinX: CGFloat?
     @State private var sidebarWidth = ChatChromeMetrics.serverRailWidth + InterfaceScale.metric(230)
     @State private var presentsForumComposer = false
     @State private var isFileDropTargeted = false
@@ -454,7 +457,7 @@ private struct ChatRootView: View {
             if showsFileDropEffect {
                 ComposerFileDropOverlay(
                     model: model,
-                    workspaceFrame: workspaceFrame,
+                    workspaceMinX: workspaceMinX,
                     supplementaryPaneFrame: supplementaryPaneFrame,
                     hoveredDestination: effectiveFileDropDestination,
                     isInstantUpload: effectiveInstantUpload
@@ -470,10 +473,10 @@ private struct ChatRootView: View {
     var body: some View {
         @Bindable var model = model
         workspace
-        .onGeometryChange(for: CGRect.self) { proxy in
-            proxy.frame(in: .global)
-        } action: { frame in
-            workspaceFrame = frame
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.frame(in: .global).minX
+        } action: { minX in
+            workspaceMinX = minX
         }
         .overlay { fileDropBridge }
         .onChange(of: showsFileDropEffect) { _, isShown in
@@ -1092,7 +1095,7 @@ private struct ChatRootView: View {
         // A full-width thread is the only visible composer.
         if presentation.primary == .fullWidthThread { return .thread }
         if presentation.paneSideConversation?.isThread == true, supplementaryPaneFrame != .zero {
-            let localThreadLeadingEdge = supplementaryPaneFrame.minX - workspaceFrame.minX
+            let localThreadLeadingEdge = supplementaryPaneFrame.minX - (workspaceMinX ?? 0)
             return horizontalPosition >= localThreadLeadingEdge ? .thread : .channel
         }
         return .channel
@@ -1545,7 +1548,7 @@ private struct MessageSearchToolbarModifier: ViewModifier {
 private struct ComposerFileDropOverlay: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let model: AppModel
-    let workspaceFrame: CGRect
+    let workspaceMinX: CGFloat?
     let supplementaryPaneFrame: CGRect
     let hoveredDestination: MessageComposerDestination?
     let isInstantUpload: Bool
@@ -1668,8 +1671,8 @@ private struct ComposerFileDropOverlay: View {
     }
 
     private func primaryWidth(in totalWidth: CGFloat) -> CGFloat {
-        guard workspaceFrame != .zero else { return totalWidth / 2 }
-        return max(0, min(totalWidth, supplementaryPaneFrame.minX - workspaceFrame.minX))
+        guard let workspaceMinX else { return totalWidth / 2 }
+        return max(0, min(totalWidth, supplementaryPaneFrame.minX - workspaceMinX))
     }
 }
 
