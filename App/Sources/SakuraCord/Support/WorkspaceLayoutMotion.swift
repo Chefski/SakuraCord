@@ -105,12 +105,16 @@ enum WorkspaceLayoutMotion {
         beginMotion()
         let phase = WorkspaceMotionPhase.shared
         withAnimation(nil) {
-            phase.widening = .init(channel: channel, hasArrived: false)
+            phase.widening = .init(channel: channel)
+            phase.wideningHasArrived = false
             change()
         }
         let inspector = WorkspaceTrailingColumn(model.workspacePresentation)
         slideTrailingColumns(from: nil, to: inspector, animation)
-        afterCommit(animation) { phase.widening?.hasArrived = true }
+        afterCommit(animation) {
+            phase.wideningHasArrived = true
+            NotificationCenter.default.post(name: revealDidChange, object: nil, userInfo: [animatesKey: true])
+        }
     }
 
     /// Animates `change` once the frame that commits the layout has been
@@ -163,6 +167,7 @@ enum WorkspaceLayoutMotion {
             withAnimation(nil) {
                 phase.isMoving = false
                 if phase.widening != nil { phase.widening = nil }
+                if phase.wideningHasArrived { phase.wideningHasArrived = false }
                 if !phase.departing.isEmpty { phase.departing.removeAll() }
                 if !phase.reveal.isEmpty { phase.reveal.removeAll() }
             }
@@ -234,8 +239,6 @@ final class WorkspaceMotionPhase {
     struct Widening {
         /// The conversation kept beneath the widening side chat.
         let channel: WorkspacePresentation.ChannelContent
-        /// Whether the side chat is sliding to the leading edge yet.
-        var hasArrived: Bool
     }
 
     static let shared = WorkspaceMotionPhase()
@@ -243,6 +246,13 @@ final class WorkspaceMotionPhase {
     /// Whether a motion runs, so the columns' widths follow it per frame.
     var isMoving = false
     var widening: Widening?
+    /// Whether the widening side chat is sliding to the leading edge yet.
+    /// `WorkspaceColumnsHost` reads it unobserved, on `revealDidChange`,
+    /// so its start updates no view.
+    var wideningHasArrived = false {
+        didSet { unobservedWideningHasArrived = wideningHasArrived }
+    }
+    @ObservationIgnored private(set) var unobservedWideningHasArrived = false
     /// Columns that have left the workspace but are still sliding away.
     var departing: [WorkspaceTrailingColumn] = []
     /// How far each moving column has come in, from 0 (beyond the trailing

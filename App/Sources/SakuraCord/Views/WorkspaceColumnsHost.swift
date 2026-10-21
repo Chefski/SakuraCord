@@ -42,7 +42,6 @@ struct WorkspaceColumnsHost: NSViewRepresentable {
     /// Back to front: departing columns first, so an arriving one covers them.
     let columns: [Column]
     let widening: Widening?
-    let isMoving: Bool
     /// Receives the frame the columns report with
     /// `SupplementaryPaneFramePreferenceKey`, where the column rests, in
     /// the window's SwiftUI global coordinates. Preferences do not leave a
@@ -159,7 +158,8 @@ final class WorkspaceColumnsView: NSView {
     /// How far, as a share of its width, the conversation drifts as a
     /// widening side chat covers it.
     private static let recedeDistance: CGFloat = 0.25
-    private var isMoving = false
+    /// The columns the workspace last listed; others are leaving.
+    private var listedColumnIDs: Set<String> = []
     private var supplementaryPaneFrameChanged: (CGRect) -> Void = { _ in }
     private var reportedPaneFrame = CGRect.zero
     private var displayLink: CADisplayLink?
@@ -188,6 +188,12 @@ final class WorkspaceColumnsView: NSView {
             name: WorkspaceLayoutMotion.willChangeColumns,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(motionDidBegin), name: WorkspaceLayoutMotion.didBegin, object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(motionDidSettle), name: WorkspaceLayoutMotion.didSettle, object: nil
+        )
     }
 
     /// Marks the trailing column leaving before a change that may close it,
@@ -208,6 +214,37 @@ final class WorkspaceColumnsView: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
+    @objc private func motionDidBegin() {
+        needsMeasurement = true
+    }
+
+    /// Lets go of the columns that left, and lets the ones that stayed
+    /// update again. The workspace lists only the columns that remain, and
+    /// does not update when a motion settles.
+    @objc private func motionDidSettle() {
+        needsMeasurement = true
+        for island in islands where !listedColumnIDs.contains(island.column.id) {
+            remove(island)
+        }
+        islands.removeAll { !listedColumnIDs.contains($0.column.id) }
+        for island in islands where island.host.isLeaving {
+            island.host.setContent(island.host.content, isLeaving: false)
+        }
+        layoutColumns(at: CACurrentMediaTime())
+    }
+
+    /// Takes a column out. The last side chat pane stays, hidden, for the
+    /// next one: a pane built from nothing costs most of a motion's first
+    /// frame.
+    private func remove(_ island: Island) {
+        if island.column.isSideConversation, !island.column.isFullWidth, pooledPane == nil {
+            island.host.isHidden = true
+            pooledPane = island.host
+        } else {
+            island.view.removeFromSuperview()
+        }
+    }
+
     /// Moves the columns toward their reveals. This bypasses the view graph:
     /// updating it to start a motion cost several frames.
     @objc private func revealDidChange(_ notification: Notification) {
@@ -220,6 +257,11 @@ final class WorkspaceColumnsView: NSView {
             let host = islands[index].host
             if animates, target == 1, host.isLeaving { host.setContent(host.content, isLeaving: false) }
         }
+        // A widening side chat starts to grow once its first layout is in.
+        if var track = widening, WorkspaceMotionPhase.shared.unobservedWideningHasArrived {
+            track.move(to: 1, at: now, animated: animates)
+            widening = track
+        }
         layoutColumns(at: now)
         if isAnimating(at: now) { startMotion() }
     }
@@ -227,10 +269,6 @@ final class WorkspaceColumnsView: NSView {
     func apply(_ spec: WorkspaceColumnsHost, environment: EnvironmentValues, animates: Bool) {
         let now = CACurrentMediaTime()
         supplementaryPaneFrameChanged = spec.supplementaryPaneFrameChanged
-        if isMoving != spec.isMoving {
-            isMoving = spec.isMoving
-            needsMeasurement = true
-        }
 
         let conversationRoot = AnyView(spec.conversation.environment(\.self, environment))
         if let conversation {
@@ -263,16 +301,10 @@ final class WorkspaceColumnsView: NSView {
         // Columns that have gone first, so a side chat that replaces another
         // in place takes over its pane.
         for island in islands where !ids.contains(island.column.id) && !heldIDs.contains(island.column.id) {
-            // The last side chat pane stays, hidden, for the next one: a pane
-            // built from nothing costs most of a motion's first frame.
-            if island.column.isSideConversation, !island.column.isFullWidth, pooledPane == nil {
-                island.host.isHidden = true
-                pooledPane = island.host
-            } else {
-                island.view.removeFromSuperview()
-            }
+            remove(island)
         }
         islands.removeAll { !ids.contains($0.column.id) && !heldIDs.contains($0.column.id) }
+        listedColumnIDs = ids
         for column in spec.columns {
             let root = AnyView(
                 column.content

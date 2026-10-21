@@ -1,7 +1,19 @@
 import SakuraCordModels
 import SwiftUI
 
-struct ChatWorkspaceView: View {
+/// Equatable on its inputs: a binding never compares equal, so each update of
+/// the window's root view updated the workspace again, and with it every
+/// column, mid-motion. What the workspace reads from the model still updates
+/// it.
+struct ChatWorkspaceView: View, Equatable {
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+        MainActor.assumeIsolated {
+            lhs.model === rhs.model
+                && lhs.presentsForumComposer == rhs.presentsForumComposer
+                && lhs.toolbarSearchFieldMetrics == rhs.toolbarSearchFieldMetrics
+        }
+    }
+
     let model: AppModel
     @Binding var presentsForumComposer: Bool
     let toolbarSearchFieldMetrics: ToolbarSearchFieldMetrics
@@ -81,9 +93,12 @@ struct ChatWorkspaceView: View {
                 // as it is covered instead.
                 .opacity(
                     !WorkspaceColumnsHost.isEnabled && presentation.primary == .fullWidthThread
-                        && widening?.hasArrived == true ? 0 : 1
+                        && WorkspaceMotionPhase.shared.wideningHasArrived ? 0 : 1
                 )
-                .animation(.easeOut(duration: 0.12), value: widening?.hasArrived)
+                .animation(
+                    .easeOut(duration: 0.12),
+                    value: !WorkspaceColumnsHost.isEnabled && WorkspaceMotionPhase.shared.wideningHasArrived
+                )
             }
         }
         .onChange(of: model.selectedChannelID) { _, channelID in
@@ -112,7 +127,10 @@ struct ChatWorkspaceView: View {
             : nil
         let trailing = WorkspaceTrailingColumn(presentation)
         // Departing columns come first, so a column that arrives covers them.
-        let columns = motion.departing.filter { $0.id != trailing?.id && $0.id != fullWidthThread?.id }
+        // The column host keeps them itself while they leave, so a motion
+        // updates no view after the change that starts it.
+        let departing = WorkspaceColumnsHost.isEnabled ? [] : motion.departing
+        let columns = departing.filter { $0.id != trailing?.id && $0.id != fullWidthThread?.id }
             + [fullWidthThread, trailing].compactMap(\.self)
         if WorkspaceColumnsHost.isEnabled {
             WorkspaceColumnsHost(
@@ -127,8 +145,8 @@ struct ChatWorkspaceView: View {
                         content: AnyView(columnContent(column))
                     )
                 },
-                widening: fullWidthThread == nil ? nil : motion.widening.map { $0.hasArrived ? .arriving : .starting },
-                isMoving: motion.isMoving,
+                widening: fullWidthThread == nil || motion.widening == nil
+                    ? nil : motion.unobservedWideningHasArrived ? .arriving : .starting,
                 supplementaryPaneFrameChanged: { supplementaryPaneFrame = $0 }
             )
             // Spans the window's top edge, as the SwiftUI layout did, so the
@@ -157,8 +175,8 @@ struct ChatWorkspaceView: View {
         let covered = columns.filter { $0.id != fullWidthThread?.id }
             .map { width(of: $0) * motion.reveal(of: $0.id) }
             .max() ?? 0
-        let wideningWidth: CGFloat = if let widening = motion.widening, let fullWidthThread {
-            widening.hasArrived ? workspaceWidth - (trailing.map(width(of:)) ?? 0) : width(of: fullWidthThread)
+        let wideningWidth: CGFloat = if motion.widening != nil, let fullWidthThread {
+            motion.wideningHasArrived ? workspaceWidth - (trailing.map(width(of:)) ?? 0) : width(of: fullWidthThread)
         } else {
             -1
         }

@@ -292,6 +292,7 @@ private struct ChatRootView: View {
                         presentsForumComposer: $presentsForumComposer,
                         toolbarSearchFieldMetrics: toolbarSearchFieldMetrics
                     )
+                    .equatable()
                 }
             }
             .interfaceScaleRoot()
@@ -697,7 +698,9 @@ private struct ChatRootView: View {
         // As the workspace orders its columns: departing ones first.
         let fullWidth = presentation.primary == .fullWidthThread ? model.sideConversations.thread : nil
         let current = [fullWidth, presentation.paneSideConversation].compactMap(\.self)
-        let departing = motion.departing.compactMap { column -> SideConversation? in
+        // The toolbar keeps a leaving side chat's items itself while its
+        // column slides away (`WorkspaceTitlebarView.apply`).
+        let departing = WorkspaceColumnsHost.isEnabled ? [] : motion.departing.compactMap { column -> SideConversation? in
             guard case .sideConversation(let conversation) = column.content,
                   !current.contains(where: { $0.motionIdentity == conversation.motionIdentity })
             else { return nil }
