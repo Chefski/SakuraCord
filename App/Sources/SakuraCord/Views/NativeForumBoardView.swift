@@ -402,13 +402,9 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
               !model.forumViewMemory.hasPendingRestore(for: channel.id)
         else { return }
         // Anchored on the first visible post, past any section header.
-        let visible = visibleRect
-        let entry = visible.minY > 1
-            ? layoutState?.entries(intersecting: visible).first { $0.frame.maxY > visible.minY && $0.item.postID != nil }
-            : nil
-        let position = entry.flatMap { entry -> ForumViewMemory.ScrollPosition? in
-            guard let postID = entry.item.postID else { return nil }
-            return ForumViewMemory.ScrollPosition(postID: postID, offset: entry.frame.minY - visible.minY)
+        let position = scrollAnchor(postsOnly: true).flatMap { anchor -> ForumViewMemory.ScrollPosition? in
+            guard case let .post(postID) = anchor.id else { return nil }
+            return ForumViewMemory.ScrollPosition(postID: postID, offset: anchor.offset)
         }
         model.forumViewMemory.rememberScrollPosition(position, for: channel.id)
     }
@@ -470,11 +466,15 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         let offset: CGFloat
     }
 
-    private func scrollAnchor() -> ScrollAnchor? {
+    /// The first entry at the top of the view and how far it sits below the
+    /// view's top; nil at the very top, where nothing needs keeping.
+    private func scrollAnchor(postsOnly: Bool = false) -> ScrollAnchor? {
         guard let layoutState else { return nil }
         let visible = visibleRect
         guard visible.minY > 1,
-              let entry = layoutState.entries(intersecting: visible).first(where: { $0.frame.maxY > visible.minY })
+              let entry = layoutState.entries(intersecting: visible).first(where: {
+                  $0.frame.maxY > visible.minY && (!postsOnly || $0.item.postID != nil)
+              })
         else { return nil }
         return ScrollAnchor(id: entry.item.id, offset: entry.frame.minY - visible.minY)
     }

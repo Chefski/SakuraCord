@@ -23,25 +23,29 @@ final class ForumViewMemory {
     private static let key = "forum.viewPreferences"
     /// Enough for every forum someone visits; the least recently changed go.
     private static let limit = 256
-    private let defaults: UserDefaults?
+    private let defaults: (any PreferenceStoring)?
     private var preferences: [String: Preferences]
     private var scrollPositions: [ChannelID: ScrollPosition] = [:]
     /// The position to restore on the current visit, once its posts arrive.
     private var pendingRestore: (channelID: ChannelID, position: ScrollPosition)?
 
     /// `defaults` nil keeps everything in memory (offline and test sessions).
-    init(defaults: UserDefaults?) {
+    init(defaults: (any PreferenceStoring)?) {
         self.defaults = defaults
         preferences = defaults?.data(forKey: Self.key)
             .flatMap { try? JSONDecoder().decode([String: Preferences].self, from: $0) } ?? [:]
     }
 
+    private static func key(_ channelID: ChannelID) -> String {
+        String(channelID.rawValue)
+    }
+
     func preferences(for channelID: ChannelID) -> Preferences? {
-        preferences[String(channelID.rawValue)]
+        preferences[Self.key(channelID)]
     }
 
     func remember(sortOrder: ForumSortOrder, layout: ForumLayout, tagMatch: ForumTagMatch, for channelID: ChannelID) {
-        preferences[String(channelID.rawValue)] = Preferences(
+        preferences[Self.key(channelID)] = Preferences(
             sortOrder: sortOrder,
             layout: layout,
             tagMatch: tagMatch,
@@ -57,14 +61,10 @@ final class ForumViewMemory {
 
     /// Back to the forum's own defaults.
     func forget(_ channelID: ChannelID) {
-        preferences[String(channelID.rawValue)] = nil
+        preferences[Self.key(channelID)] = nil
         scrollPositions[channelID] = nil
         cancelPendingRestore()
         save()
-    }
-
-    func scrollPosition(for channelID: ChannelID) -> ScrollPosition? {
-        scrollPositions[channelID]
     }
 
     func rememberScrollPosition(_ position: ScrollPosition?, for channelID: ChannelID) {

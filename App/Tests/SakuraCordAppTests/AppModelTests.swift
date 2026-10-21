@@ -1658,7 +1658,9 @@ func `reaction cooldown drops cancelled intent and cleared mutations`(clearMutat
     memory.beginVisit(forum)
     memory.forget(forum)
     #expect(memory.takePendingRestore(for: forum) == nil)
-    #expect(memory.scrollPosition(for: forum) == nil)
+    // Forgetting drops the position itself, not just this visit's restore.
+    memory.beginVisit(forum)
+    #expect(memory.takePendingRestore(for: forum) == nil)
 }
 
 @MainActor
