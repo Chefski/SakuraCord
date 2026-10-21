@@ -64,23 +64,31 @@ private struct UnreadDividerMotionHarness {
         model: AppModel,
         channelID: ChannelID,
         unread: MessageID?,
-        target: MessageTimelineScrollRequest.Target?
+        target: MessageTimelineScrollRequest.Target?,
+        scrollRequest: MessageTimelineScrollRequest? = nil
     ) -> NativeMessageTimelineView {
         NativeMessageTimelineView(
             model: model, conversation: .channel(channelID), beginning: nil,
             firstMessageStartsDayOverride: nil, hasMoreMessages: false,
             isLoadingEarlier: false, bottomContentInset: 0,
             unreadMessageID: unread, highlightedMessageID: nil,
-            initialScrollTarget: target, scrollRequest: nil,
+            initialScrollTarget: target, scrollRequest: scrollRequest,
             runsPerformanceAutoScroll: false, loadEarlier: {}, openReply: { _ in },
             onScrollActivityChange: { _ in }, onScrollStateChange: { _ in },
             onUserScrollBegan: {}, onUserScrollEnded: { _ in }
         )
     }
 
-    func show(unread: MessageID?, target: MessageTimelineScrollRequest.Target? = .bottom) {
+    func show(
+        unread: MessageID?,
+        target: MessageTimelineScrollRequest.Target? = .bottom,
+        scrollRequest: MessageTimelineScrollRequest? = nil
+    ) {
         coordinator.update(
-            parent: Self.timeline(model: model, channelID: channelID, unread: unread, target: target),
+            parent: Self.timeline(
+                model: model, channelID: channelID, unread: unread, target: target,
+                scrollRequest: scrollRequest
+            ),
             scrollView: scrollView
         )
         coordinator.reconcileViewportGeometryForTesting()
@@ -160,6 +168,21 @@ func `jumping to the unread boundary settles a divider that is still moving`() {
         glides: true, isUnreadBoundary: true
     )
     harness.show(unread: harness.unread)
+    #expect(!harness.dividerIsMoving)
+    harness.coordinator.stopObserving()
+}
+
+@MainActor @Test
+func `a divider that arrives with an unread jump already turned into a scroll request is simply there`() {
+    let harness = UnreadDividerMotionHarness()
+    harness.show(unread: nil)
+
+    // The view has already cleared the model's request by now.
+    let jump = MessageTimelineScrollRequest(
+        target: .message(harness.unread, anchor: TimelineInitialPositionPolicy.unreadViewportAnchor),
+        isAnimated: true
+    )
+    harness.show(unread: harness.unread, scrollRequest: jump)
     #expect(!harness.dividerIsMoving)
     harness.coordinator.stopObserving()
 }

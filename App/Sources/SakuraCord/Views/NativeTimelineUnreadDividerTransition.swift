@@ -340,6 +340,21 @@ extension NativeTimelineCanvasView {
 }
 
 extension NativeMessageTimelineCoordinator {
+    /// A jump to the unread boundary is on its way: the model's request, which
+    /// the view clears once it has turned it into a scroll request, or that
+    /// scroll request until the timeline has applied it.
+    private func isJumpingToUnreadBoundary(in newParent: NativeMessageTimelineView) -> Bool {
+        let navigation = newParent.model.messageNavigationRequest
+        if navigation?.isUnreadBoundary == true, navigation?.channelID == newParent.conversation.id {
+            return true
+        }
+        guard let request = newParent.scrollRequest,
+              request.id != lastScrollRequestID,
+              case let .message(_, anchor) = request.target
+        else { return false }
+        return anchor == TimelineInitialPositionPolicy.unreadViewportAnchor
+    }
+
     /// Reads the divider an update is about to move while rows still show it,
     /// so the motion starts from that picture. A running gap is settled first
     /// when the update could reflow rows under it. Nil when the divider does
@@ -348,7 +363,6 @@ extension NativeMessageTimelineCoordinator {
         to newParent: NativeMessageTimelineView,
         canvas: NativeTimelineCanvasView
     ) -> NativeTimelineUnreadDividerChange? {
-        let navigation = newParent.model.messageNavigationRequest
         guard NativeTimelineUnreadDividerMotion.animates(
             conversationChanged: newParent.conversation != parent.conversation,
             // Read before this update can establish the position or bring in
@@ -357,8 +371,7 @@ extension NativeMessageTimelineCoordinator {
             // after a failed first load that is then retried.
             hadInitialPosition: initialPositionConversation == parent.conversation,
             hadMessages: items.contains { $0.messageID != nil },
-            isJumpingToUnreadBoundary: navigation?.isUnreadBoundary == true
-                && navigation?.channelID == newParent.conversation.id
+            isJumpingToUnreadBoundary: isJumpingToUnreadBoundary(in: newParent)
         ) else {
             // Includes a motion already running when the reader jumps.
             canvas.finishUnreadDividerFades()
