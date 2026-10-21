@@ -16,8 +16,8 @@ nonisolated enum SkeletonShimmerStyle {
     static let highlightOpacities: [CGFloat] = [0, 0.016, 0.083, 0.016, 0]
     static let highlightLocations: [CGFloat] = [0, 0.25, 0.5, 0.75, 1]
 
-    static func baseColor(_ color: NSColor = .labelColor, scale: CGFloat = 1) -> NSColor {
-        color.withAlphaComponent(baseOpacity * scale)
+    static func baseColor(scale: CGFloat = 1) -> NSColor {
+        NSColor.labelColor.withAlphaComponent(baseOpacity * scale)
     }
 
     static func highlightColors(_ color: NSColor = .labelColor, scale: CGFloat = 1) -> [CGColor] {
