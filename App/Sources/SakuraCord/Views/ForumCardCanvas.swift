@@ -10,18 +10,20 @@ import AppKit
 final class ForumCardCanvas {
     let size: CGSize
     let scale: CGFloat
+    let colorSpace: CGColorSpace
     private let cache: ForumCardRasterCache
     private let appearance = NSAppearance.currentDrawing().name
     private var operations: [ForumCardScene.Operation] = []
 
-    init(size: CGSize, scale: CGFloat, cache: ForumCardRasterCache) {
+    init(size: CGSize, scale: CGFloat, colorSpace: CGColorSpace, cache: ForumCardRasterCache) {
         self.size = size
         self.scale = scale
+        self.colorSpace = colorSpace
         self.cache = cache
     }
 
     var scene: ForumCardScene {
-        ForumCardScene(size: size, scale: scale, operations: operations)
+        ForumCardScene(size: size, scale: scale, colorSpace: colorSpace, operations: operations)
     }
 
     // MARK: Shapes
@@ -186,7 +188,7 @@ final class ForumCardCanvas {
             operations.append(.bitmap(image, frame: frame))
             return
         }
-        guard let context = ForumCardRasterizer.makeContext(width: pixelWidth, height: pixelHeight) else { return }
+        guard let context = ForumCardRasterizer.makeContext(width: pixelWidth, height: pixelHeight, colorSpace: colorSpace) else { return }
         context.translateBy(x: 0, y: CGFloat(pixelHeight))
         context.scaleBy(x: scale, y: -scale)
         context.translateBy(x: -frame.minX, y: -frame.minY)

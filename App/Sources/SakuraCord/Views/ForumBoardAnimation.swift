@@ -2,13 +2,13 @@ import AppKit
 import QuartzCore
 
 extension ForumBoardView {
-    /// List and gallery cards differ too much to glide between; the whole
-    /// board cross-fades, then tiles settle in.
+    /// Boards that differ wholesale (list and gallery, or two queries'
+    /// results) cross-fade rather than glide. A fade is also what Reduce
+    /// Motion asks for, so it always runs.
     func crossFadeBoard() {
-        guard !reducesMotion else { return }
         let fade = CATransition()
         fade.type = .fade
-        fade.duration = 0.22
+        fade.duration = 0.2
         cardsLayer.add(fade, forKey: "morph")
     }
 
@@ -39,7 +39,8 @@ extension ForumBoardView {
         card.layer.add(spring, forKey: "move")
     }
 
-    func animateEntrance(_ card: ForumBoardCard, delay: CFTimeInterval) {
+    /// A card inserted live rises into place.
+    func animateEntrance(_ card: ForumBoardCard) {
         let group = CAAnimationGroup()
         let fade = CABasicAnimation(keyPath: "opacity")
         fade.fromValue = 0
@@ -53,8 +54,6 @@ extension ForumBoardView {
         group.animations = reducesMotion ? [fade] : [fade, lift]
         group.duration = 0.28
         group.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)
-        group.beginTime = CACurrentMediaTime() + delay
-        group.fillMode = .backwards
         card.layer.add(group, forKey: "entrance")
     }
 

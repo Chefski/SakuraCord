@@ -9,7 +9,7 @@ import QuartzCore
 final class ForumBoardRevealGroup {
     enum Entrance {
         case none
-        case animated(delay: CFTimeInterval)
+        case animated
         /// The delayed fade-in that keeps fast loads from flashing skeletons.
         case placeholder
     }
@@ -58,6 +58,20 @@ extension ForumBoardView {
         group.timeout = Task { [weak self] in
             guard (try? await Task.sleep(for: Self.revealTimeout)) != nil else { return }
             self?.reveal(group)
+        }
+    }
+
+    /// Cards arriving on screen wait for their bitmaps only where replaced
+    /// cards hold their place. When any would leave a blank spot instead
+    /// (after a jump, or a card inserted into a gap), or the board swaps
+    /// under a cross-fade, the whole group draws now and appears in one frame.
+    func drawArrivals(of group: ForumBoardRevealGroup) {
+        let pending = group.members.map(\.card).filter { !$0.hasContent && $0.isRendering }
+        guard drawsArrivalsNow
+            || pending.contains(where: { card in !group.retiring.contains { $0.frame.intersects(card.frame) } })
+        else { return }
+        for card in pending {
+            card.render(scale: backingScale, fading: false, synchronously: true)
         }
     }
 
@@ -135,8 +149,8 @@ extension ForumBoardView {
             switch member.entrance {
             case .none:
                 break
-            case let .animated(delay):
-                animateEntrance(card, delay: delay)
+            case .animated:
+                animateEntrance(card)
             case .placeholder:
                 animatePlaceholderEntrance(card)
             }

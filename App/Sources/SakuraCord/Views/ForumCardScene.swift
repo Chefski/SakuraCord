@@ -52,10 +52,13 @@ nonisolated struct ForumCardScene: @unchecked Sendable {
 
     let size: CGSize
     let scale: CGFloat
+    /// The display's color space: Core Animation shows a bitmap in it as is,
+    /// where any other would be converted on the main thread at commit.
+    let colorSpace: CGColorSpace
     let operations: [Operation]
 
-    static func empty(size: CGSize, scale: CGFloat) -> ForumCardScene {
-        ForumCardScene(size: size, scale: scale, operations: [])
+    static func empty(size: CGSize, scale: CGFloat, colorSpace: CGColorSpace) -> ForumCardScene {
+        ForumCardScene(size: size, scale: scale, colorSpace: colorSpace, operations: [])
     }
 }
 
@@ -71,7 +74,7 @@ nonisolated enum ForumCardRasterizer {
     static func image(for scene: ForumCardScene) -> CGImage? {
         let pixelWidth = Int((scene.size.width * scene.scale).rounded(.up))
         let pixelHeight = Int((scene.size.height * scene.scale).rounded(.up))
-        guard pixelWidth > 0, pixelHeight > 0, let context = makeContext(width: pixelWidth, height: pixelHeight) else {
+        guard pixelWidth > 0, pixelHeight > 0, let context = makeContext(width: pixelWidth, height: pixelHeight, colorSpace: scene.colorSpace) else {
             return nil
         }
         context.translateBy(x: 0, y: CGFloat(pixelHeight))
@@ -83,14 +86,16 @@ nonisolated enum ForumCardRasterizer {
         return context.makeImage()
     }
 
-    static func makeContext(width: Int, height: Int) -> CGContext? {
+    static let defaultColorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+
+    static func makeContext(width: Int, height: Int, colorSpace: CGColorSpace) -> CGContext? {
         CGContext(
             data: nil,
             width: width,
             height: height,
             bitsPerComponent: 8,
             bytesPerRow: 0,
-            space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
+            space: colorSpace,
             bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
         )
     }
