@@ -33,8 +33,10 @@ enum WorkspaceLayoutMotion {
     /// When the running motion settles.
     private(set) static var settlesAt: ContinuousClock.Instant?
 
+    /// Nil without a running app, as in unit tests: a motion's state is
+    /// shared, and one test's motion held another's width relayout back.
     static var animation: Animation? {
-        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion || isSuppressedForBenchmark
+        NSApp == nil || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion || isSuppressedForBenchmark
             ? nil : .spring(ChatChromeMetrics.sidebarSpring)
     }
 
