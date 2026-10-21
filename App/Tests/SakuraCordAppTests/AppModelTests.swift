@@ -1639,6 +1639,29 @@ func `reaction cooldown drops cancelled intent and cleared mutations`(clearMutat
 }
 
 @MainActor
+@Test func `a forum restores its scroll position once per visit unless the query changes`() {
+    let memory = ForumViewMemory(defaults: nil)
+    let forum = ChannelID(rawValue: 10)
+    let position = ForumViewMemory.ScrollPosition(postID: ChannelID(rawValue: 11), offset: 24)
+    memory.rememberScrollPosition(position, for: forum)
+
+    memory.beginVisit(forum)
+    #expect(memory.takePendingRestore(for: ChannelID(rawValue: 12)) == nil)
+    #expect(memory.takePendingRestore(for: forum) == position)
+    // A board rebuilt later in the same visit restores nothing.
+    #expect(memory.takePendingRestore(for: forum) == nil)
+
+    memory.beginVisit(forum)
+    memory.cancelPendingRestore()
+    #expect(memory.takePendingRestore(for: forum) == nil)
+
+    memory.beginVisit(forum)
+    memory.forget(forum)
+    #expect(memory.takePendingRestore(for: forum) == nil)
+    #expect(memory.scrollPosition(for: forum) == nil)
+}
+
+@MainActor
 @Test func `ordinary linked channels load their guild before forum resolution`() async {
     let provider = LinkedChannelNavigationTestProvider()
     let model = AppModel(launchMode: .offlineTesting, provider: provider)

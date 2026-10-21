@@ -165,9 +165,6 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
     /// Set while the board swaps under a cross-fade, so every card arriving
     /// on screen is drawn before the fade captures the new board.
     var drawsArrivalsNow = false
-    /// Where this forum was left earlier in the session, restored once its
-    /// first posts arrive.
-    private var pendingScrollRestore: ForumViewMemory.ScrollPosition?
     let rasterCache = ForumCardRasterCache()
     var presentations: [ChannelID: ForumCardPresentation] = [:]
     var regions: [ForumBoardItem.Identifier: ForumCardRegions] = [:]
@@ -314,9 +311,6 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         }
         self.model = model
         self.channel = channel
-        if channelChanged {
-            pendingScrollRestore = model.forumViewMemory.scrollPosition(for: channel.id)
-        }
         guard previousSnapshot != snapshot || channelChanged else {
             // Observation covers model reads; the channel's tags and default
             // reaction arrive as a value, so only a change to it re-resolves.
@@ -384,22 +378,30 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         rememberScrollPosition()
     }
 
-    /// The remembered position, once the first posts are in; if its post is
-    /// not among them, the forum starts at the top.
+    /// The visit's remembered position, once the first posts are in; if its
+    /// post is not among them, the forum starts at the top.
     private func takeScrollRestore() -> ScrollAnchor? {
-        guard let position = pendingScrollRestore, snapshot?.posts.isEmpty == false else { return nil }
-        pendingScrollRestore = nil
-        guard postsByID[position.postID] != nil else { return nil }
+        guard let model, let channel, snapshot?.posts.isEmpty == false,
+              let position = model.forumViewMemory.takePendingRestore(for: channel.id),
+              postsByID[position.postID] != nil
+        else { return nil }
         return ScrollAnchor(id: .post(position.postID), offset: position.offset)
     }
 
     /// Keeps where this forum is scrolled, so coming back to it later in the
     /// session shows the same posts.
     private func rememberScrollPosition() {
-        guard let model, let channel, snapshot?.posts.isEmpty == false, pendingScrollRestore == nil else { return }
-        let position = scrollAnchor().flatMap { anchor -> ForumViewMemory.ScrollPosition? in
-            guard case let .post(postID) = anchor.id else { return nil }
-            return ForumViewMemory.ScrollPosition(postID: postID, offset: anchor.offset)
+        guard let model, let channel, snapshot?.posts.isEmpty == false,
+              !model.forumViewMemory.hasPendingRestore(for: channel.id)
+        else { return }
+        // Anchored on the first visible post, past any section header.
+        let visible = visibleRect
+        let entry = visible.minY > 1
+            ? layoutState?.entries(intersecting: visible).first { $0.frame.maxY > visible.minY && $0.item.postID != nil }
+            : nil
+        let position = entry.flatMap { entry -> ForumViewMemory.ScrollPosition? in
+            guard let postID = entry.item.postID else { return nil }
+            return ForumViewMemory.ScrollPosition(postID: postID, offset: entry.frame.minY - visible.minY)
         }
         model.forumViewMemory.rememberScrollPosition(position, for: channel.id)
     }

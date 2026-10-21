@@ -26,6 +26,8 @@ final class ForumViewMemory {
     private let defaults: UserDefaults?
     private var preferences: [String: Preferences]
     private var scrollPositions: [ChannelID: ScrollPosition] = [:]
+    /// The position to restore on the current visit, once its posts arrive.
+    private var pendingRestore: (channelID: ChannelID, position: ScrollPosition)?
 
     /// `defaults` nil keeps everything in memory (offline and test sessions).
     init(defaults: UserDefaults?) {
@@ -57,6 +59,7 @@ final class ForumViewMemory {
     func forget(_ channelID: ChannelID) {
         preferences[String(channelID.rawValue)] = nil
         scrollPositions[channelID] = nil
+        cancelPendingRestore()
         save()
     }
 
@@ -66,6 +69,27 @@ final class ForumViewMemory {
 
     func rememberScrollPosition(_ position: ScrollPosition?, for channelID: ChannelID) {
         scrollPositions[channelID] = position
+    }
+
+    /// Opening a forum arms one restore of where it was left; a board
+    /// rebuilt later in the same visit finds nothing to restore.
+    func beginVisit(_ channelID: ChannelID) {
+        pendingRestore = scrollPositions[channelID].map { (channelID, $0) }
+    }
+
+    /// A new query starts at its first post, so it drops a pending restore.
+    func cancelPendingRestore() {
+        pendingRestore = nil
+    }
+
+    func hasPendingRestore(for channelID: ChannelID) -> Bool {
+        pendingRestore?.channelID == channelID
+    }
+
+    func takePendingRestore(for channelID: ChannelID) -> ScrollPosition? {
+        guard let pendingRestore, pendingRestore.channelID == channelID else { return nil }
+        self.pendingRestore = nil
+        return pendingRestore.position
     }
 
     private func save() {

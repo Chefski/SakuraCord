@@ -72,6 +72,7 @@ extension AppModel {
         hasMoreLaterMessages = false
         if let channel = selectedChannel {
             // Returning to a forum shows it as it was left.
+            forumViewMemory.beginVisit(channel.id)
             let saved = forumViewMemory.preferences(for: channel.id)
             forumSortOrder = saved?.sortOrder ?? channel.defaultSortOrder ?? .latestActivity
             forumLayout = saved?.layout
@@ -89,6 +90,7 @@ extension AppModel {
     func setForumSortOrder(_ value: ForumSortOrder) {
         guard forumSortOrder != value else { return }
         forumSortOrder = value
+        forumViewMemory.cancelPendingRestore()
         rememberForumView()
         reloadForumPosts()
     }
@@ -102,6 +104,7 @@ extension AppModel {
     func setForumTagMatch(_ value: ForumTagMatch) {
         guard forumTagMatch != value else { return }
         forumTagMatch = value
+        forumViewMemory.cancelPendingRestore()
         rememberForumView()
         reloadForumPosts()
     }
@@ -112,6 +115,7 @@ extension AppModel {
         } else {
             forumSelectedTagIDs.insert(tagID)
         }
+        forumViewMemory.cancelPendingRestore()
         reloadForumPosts()
     }
 
@@ -146,6 +150,7 @@ extension AppModel {
     }
 
     func updateForumSearch(_ text: String) {
+        if text != forumSearchText { forumViewMemory.cancelPendingRestore() }
         let previousSearch = forumSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
         let nextSearch = text.trimmingCharacters(in: .whitespacesAndNewlines)
         forumSearchText = text
