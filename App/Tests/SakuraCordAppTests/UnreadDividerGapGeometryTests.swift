@@ -120,6 +120,29 @@ func `a divider gap starts on the picture before the update and lands on the sta
     #expect(UnreadDividerGapGeometry.overlayHeight(gap: 50, spaceHeight: 50, dividerHeight: 29) == 29)
 }
 
+@MainActor @Test func `a closing avatar hangs below the picture of the space`() throws {
+    let context = try #require(CGContext(
+        data: nil, width: 200, height: 400, bitsPerComponent: 8, bytesPerRow: 0,
+        space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    ))
+    let picture = NativeTimelineUnreadDividerSnapshot(
+        image: try #require(context.makeImage()), scale: 2,
+        // A 38 point avatar that starts under a 29 point divider.
+        avatarExtent: CGSize(width: 50, height: 67)
+    )
+    let space = try #require(picture.top(50))
+    #expect(space.height == 50)
+    #expect(space.image.width == 200)
+    let tail = try #require(picture.avatarTail(below: 50))
+    #expect(tail.height == 17)
+    #expect(tail.image.width == 100)
+    // A header-only space with no avatar below it has no tail.
+    #expect(picture.avatarTail(below: 70) == nil)
+    #expect(UnreadDividerGapGeometry.overlayHeight(
+        gap: 20, spaceHeight: 50, dividerHeight: 29, showsSpaceSnapshot: true, snapshotTailHeight: 17
+    ) == 37)
+}
+
 @MainActor @Test func `rows before the divider start where they were on screen`() {
     let shift = UnreadDividerGapGeometry.startBeforeShift(topInViewport: 120, viewportMinY: 1000, staticTop: 1091)
     #expect(shift == 29)

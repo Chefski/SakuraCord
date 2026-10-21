@@ -82,9 +82,10 @@ nonisolated enum NativeTimelineUnreadDividerGapGeometry {
         gap: CGFloat,
         spaceHeight: CGFloat,
         dividerHeight: CGFloat,
-        showsSpaceSnapshot: Bool = false
+        showsSpaceSnapshot: Bool = false,
+        snapshotTailHeight: CGFloat = 0
     ) -> CGFloat {
-        if showsSpaceSnapshot { return min(spaceHeight, max(0, gap)) }
+        if showsSpaceSnapshot { return min(spaceHeight, max(0, gap)) + snapshotTailHeight }
         return min(dividerHeight, max(0, gap + dividerHeight - spaceHeight))
     }
 }
@@ -100,6 +101,8 @@ struct NativeTimelineUnreadDividerGap {
     /// The divider and header that are closing, as they were on screen, when
     /// the space holds a header the row no longer paints.
     let snapshot: NativeTimelineUnreadDividerSnapshot?
+    /// The closing author avatar's part below `snapshot`.
+    let snapshotTail: NativeTimelineUnreadDividerSnapshot?
     var rowIndex: Int
     var startUptime: TimeInterval?
     var frame: NativeTimelineUnreadDividerGapGeometry.Frame
@@ -182,11 +185,13 @@ extension NativeTimelineCanvasView {
         // A header that goes with the divider is no longer in the row, so
         // its picture from before the update closes with the divider.
         var snapshot: NativeTimelineUnreadDividerSnapshot?
+        var snapshotTail: NativeTimelineUnreadDividerSnapshot?
         if !appearing, NativeTimelineUnreadDividerGapGeometry.includesHeader(
             spaceHeight: space, dividerHeight: frame.height
         ) {
-            guard let image = source.topSnapshot?.top(space) else { return false }
+            guard let picture = source.topSnapshot, let image = picture.top(space) else { return false }
             snapshot = image
+            snapshotTail = picture.avatarTail(below: space)
         }
         let startGap = source.startGap ?? (appearing ? 0 : space)
         let staticTop = contentOriginY + rowOrigins[index]
@@ -213,6 +218,7 @@ extension NativeTimelineCanvasView {
             startGap: startGap,
             startBeforeShift: startShift,
             snapshot: snapshot,
+            snapshotTail: snapshotTail,
             rowIndex: index,
             frame: start
         )

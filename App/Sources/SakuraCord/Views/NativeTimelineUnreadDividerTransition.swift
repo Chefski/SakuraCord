@@ -24,16 +24,39 @@ struct NativeTimelineUnreadDividerSource {
 struct NativeTimelineUnreadDividerSnapshot {
     let image: CGImage
     let scale: CGFloat
+    /// How far the row's author avatar reaches, in points from the row's top
+    /// and left. The avatar sits beside the message body, so it extends below
+    /// the divider and header that go with it.
+    var avatarExtent: CGSize?
 
     var height: CGFloat { CGFloat(image.height) / scale }
 
     /// The top `points` of the picture, or nil if it is not that tall.
     func top(_ points: CGFloat) -> Self? {
-        let pixels = Int(ceil(points * scale))
+        let pixels = pixelRows(for: points)
         guard pixels > 0, pixels <= image.height,
               let cropped = image.cropping(to: CGRect(x: 0, y: 0, width: image.width, height: pixels))
         else { return nil }
-        return Self(image: cropped, scale: scale)
+        return Self(image: cropped, scale: scale, avatarExtent: nil)
+    }
+
+    /// The avatar below the top `points`, which the row that remains has no
+    /// avatar to paint.
+    func avatarTail(below points: CGFloat) -> Self? {
+        guard let avatarExtent else { return nil }
+        let firstRow = pixelRows(for: points)
+        let lastRow = min(image.height, pixelRows(for: avatarExtent.height))
+        let width = min(image.width, pixelRows(for: avatarExtent.width))
+        guard lastRow > firstRow, width > 0,
+              let cropped = image.cropping(
+                  to: CGRect(x: 0, y: firstRow, width: width, height: lastRow - firstRow)
+              )
+        else { return nil }
+        return Self(image: cropped, scale: scale, avatarExtent: nil)
+    }
+
+    private func pixelRows(for points: CGFloat) -> Int {
+        Int(ceil(points * scale))
     }
 }
 
@@ -106,7 +129,9 @@ final class NativeTimelineUnreadDividerOverlay: NSView {
     /// A closing divider that took its author header with it is shown as the
     /// picture it was, riding the bottom of the open gap.
     private let snapshotView = NSView(frame: .zero)
+    private let tailView = NSView(frame: .zero)
     private var snapshotHeight: CGFloat = 0
+    private var tailSize: CGSize = .zero
 
     override var isFlipped: Bool { true }
     override var isOpaque: Bool { false }
@@ -116,9 +141,11 @@ final class NativeTimelineUnreadDividerOverlay: NSView {
         wantsLayer = true
         layer?.masksToBounds = true
         addSubview(artwork)
-        snapshotView.wantsLayer = true
-        snapshotView.isHidden = true
-        addSubview(snapshotView)
+        for view in [snapshotView, tailView] {
+            view.wantsLayer = true
+            view.isHidden = true
+            addSubview(view)
+        }
         setAccessibilityElement(false)
     }
 
@@ -134,12 +161,22 @@ final class NativeTimelineUnreadDividerOverlay: NSView {
         artwork.frame = CGRect(origin: .zero, size: size)
     }
 
-    func setSnapshot(_ snapshot: NativeTimelineUnreadDividerSnapshot?) {
+    /// `tail` is the part of the closing author avatar that hangs below the
+    /// snapshot, next to the message body that stays.
+    func setSnapshot(
+        _ snapshot: NativeTimelineUnreadDividerSnapshot?,
+        tail: NativeTimelineUnreadDividerSnapshot? = nil
+    ) {
         snapshotView.isHidden = snapshot == nil
         artwork.isHidden = snapshot != nil
         snapshotView.layer?.contents = snapshot?.image
         snapshotView.layer?.contentsScale = snapshot?.scale ?? 1
         snapshotHeight = snapshot?.height ?? 0
+        let tail = snapshot == nil ? nil : tail
+        tailView.isHidden = tail == nil
+        tailView.layer?.contents = tail?.image
+        tailView.layer?.contentsScale = tail?.scale ?? 1
+        tailSize = tail.map { CGSize(width: CGFloat($0.image.width) / $0.scale, height: $0.height) } ?? .zero
         positionSnapshot()
     }
 
@@ -150,7 +187,9 @@ final class NativeTimelineUnreadDividerOverlay: NSView {
 
     private func positionSnapshot() {
         guard !snapshotView.isHidden else { return }
-        snapshotView.frame = CGRect(x: 0, y: bounds.height - snapshotHeight, width: bounds.width, height: snapshotHeight)
+        let snapshotBottom = bounds.height - tailSize.height
+        snapshotView.frame = CGRect(x: 0, y: snapshotBottom - snapshotHeight, width: bounds.width, height: snapshotHeight)
+        tailView.frame = CGRect(origin: CGPoint(x: 0, y: snapshotBottom), size: tailSize)
     }
 }
 
@@ -213,12 +252,18 @@ extension NativeTimelineCanvasView {
         guard image.size.height > 0,
               let cgImage = image.cgImage(forProposedRect: &proposed, context: nil, hints: nil)
         else { return nil }
-        let snapshot = NativeTimelineUnreadDividerSnapshot(
+        var snapshot = NativeTimelineUnreadDividerSnapshot(
             image: cgImage, scale: CGFloat(cgImage.height) / image.size.height
         )
-        return snapshot.top(
-            min(snapshot.height, NativeTimelineUnreadDividerGapGeometry.maximumSpace(dividerHeight: dividerHeight))
-        )
+        let avatar = layout.avatarFrame
+        snapshot.avatarExtent = avatar.map { CGSize(width: $0.maxX, height: $0.maxY) }
+        let maximumSpace = NativeTimelineUnreadDividerGapGeometry.maximumSpace(dividerHeight: dividerHeight)
+        guard let cropped = snapshot.top(min(snapshot.height, max(maximumSpace, avatar?.maxY ?? 0))) else {
+            return nil
+        }
+        var result = cropped
+        result.avatarExtent = snapshot.avatarExtent
+        return result
     }
 
     /// The divider's placement in the row that now has it.
@@ -286,7 +331,8 @@ extension NativeTimelineCanvasView {
                 width: showsSnapshot ? row.width : frameInRow.width,
                 height: NativeTimelineUnreadDividerGapGeometry.overlayHeight(
                     gap: gap.frame.gap, spaceHeight: gap.spaceHeight, dividerHeight: gap.dividerHeight,
-                    showsSpaceSnapshot: showsSnapshot
+                    showsSpaceSnapshot: showsSnapshot,
+                    snapshotTailHeight: gap.snapshotTail?.height ?? 0
                 )
             )
         }
@@ -318,7 +364,7 @@ extension NativeTimelineCanvasView {
         }()
         overlay.setArtworkSize(frameInRow.size)
         if let gap = unreadDividerGap, gap.identifier == identifier, !appearing {
-            overlay.setSnapshot(gap.snapshot)
+            overlay.setSnapshot(gap.snapshot, tail: gap.snapshotTail)
         } else {
             overlay.setSnapshot(nil)
         }
