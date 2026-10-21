@@ -8,7 +8,7 @@ nonisolated func coreTextLine(_ value: Any) -> CTLine {
     return unsafeDowncast(object, to: CTLine.self)
 }
 
-enum NativeTimelineSemanticColor {
+nonisolated enum NativeTimelineSemanticColor {
     static func opacity(
         _ color: NSColor,
         _ multiplier: CGFloat
@@ -29,7 +29,7 @@ nonisolated enum TimelineInlineVideoPolicy {
     }
 }
 
-enum NativeTimelineDateSeparatorMetrics {
+nonisolated enum NativeTimelineDateSeparatorMetrics {
     static var rowHeight: CGFloat { InterfaceScale.metric(37) }
     static var verticalPadding: CGFloat { InterfaceScale.metric(12) }
     static var lineSpacing: CGFloat { InterfaceScale.metric(10) }
@@ -64,7 +64,7 @@ enum NativeTimelineDateSeparatorMetrics {
     }
 }
 
-enum NativeTimelineUnreadSeparatorMetrics {
+nonisolated enum NativeTimelineUnreadSeparatorMetrics {
     static var rowHeight: CGFloat { InterfaceScale.metric(29) }
     static var capsuleHeight: CGFloat { InterfaceScale.metric(19) }
     static var verticalPadding: CGFloat { InterfaceScale.metric(5) }
@@ -103,7 +103,7 @@ nonisolated enum NativeTimelineThreadCard {
     }
 }
 
-enum NativeTimelineReplyMetrics {
+nonisolated enum NativeTimelineReplyMetrics {
     nonisolated static var lineHeight: CGFloat { InterfaceScale.metric(24) }
     static var horizontalSpacing: CGFloat { InterfaceScale.metric(5) }
 
@@ -125,7 +125,7 @@ enum NativeTimelineReplyMetrics {
     /// The media symbol's width and its gap from the summary.
     static var mediaSymbolReserve: CGFloat { InterfaceScale.metric(26) }
 
-    static func summary(
+    @MainActor static func summary(
         for preview: MessageReplyPreview,
         in message: Message,
         model: AppModel?
@@ -167,7 +167,7 @@ enum NativeTimelineReplyMetrics {
 
     /// The natural width of a one-line reply preview, from its avatar to the
     /// end of its summary or media symbol.
-    static func previewWidth(
+    @MainActor static func previewWidth(
         _ preview: MessageReplyPreview?,
         in message: Message,
         model: AppModel?

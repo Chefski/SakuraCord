@@ -1,4 +1,5 @@
 import AppKit
+import Synchronization
 import Foundation
 import Observation
 import SwiftUI
@@ -656,7 +657,12 @@ final class SakuraCordThemeStore {
     static let randomizationDuration: Duration = .seconds(randomizationDurationSeconds)
 
     private(set) var activeTheme: SakuraCordGradientTheme
-    private(set) var committedTheme: SakuraCordGradientTheme
+    private(set) var committedTheme: SakuraCordGradientTheme {
+        didSet { Self.committedThemeSnapshot.withLock { $0 = committedTheme } }
+    }
+    /// `committedTheme`, readable from any thread: timeline rows paint off
+    /// the main thread with the accent and role colors it derives.
+    nonisolated static let committedThemeSnapshot = Mutex(SakuraCordGradientTheme.defaultTheme)
 
     @ObservationIgnored private let persistence: SakuraCordThemeSettingsStore
     @ObservationIgnored private var deferredPersistenceTask: Task<Void, Never>?
@@ -667,6 +673,7 @@ final class SakuraCordThemeStore {
         let initial = persistence.load()
         activeTheme = initial
         committedTheme = initial
+        Self.committedThemeSnapshot.withLock { $0 = initial }
     }
 
     isolated deinit {
@@ -789,7 +796,10 @@ final class SakuraCordThemeStore {
     }
 
     func accentNSColor() -> NSColor {
-        let theme = committedTheme
+        Self.accentNSColor(theme: committedTheme)
+    }
+
+    nonisolated static func accentNSColor(theme: SakuraCordGradientTheme) -> NSColor {
         let accentColor = theme.activeColors.first ?? SakuraCordGradientTheme.defaultTheme.colors[0]
         return NSColor(name: nil) { appearance in
             let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
@@ -804,12 +814,15 @@ final class SakuraCordThemeStore {
     }
 
     func roleNSColor(for colorHex: UInt32) -> NSColor {
+        Self.roleNSColor(for: colorHex, theme: committedTheme)
+    }
+
+    nonisolated static func roleNSColor(for colorHex: UInt32, theme: SakuraCordGradientTheme) -> NSColor {
         let source = SakuraCordThemeRGB(
             red: Double((colorHex >> 16) & 0xFF) / 255,
             green: Double((colorHex >> 8) & 0xFF) / 255,
             blue: Double(colorHex & 0xFF) / 255
         )
-        let theme = committedTheme
         return NSColor(name: nil) { appearance in
             let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             let themeAppearance: SakuraCordThemeAppearance = isDark ? .dark : .light
@@ -818,11 +831,15 @@ final class SakuraCordThemeStore {
     }
 
     func textSelectionNSColor() -> NSColor {
+        Self.textSelectionNSColor(theme: committedTheme)
+    }
+
+    nonisolated static func textSelectionNSColor(theme: SakuraCordGradientTheme) -> NSColor {
+        let accentColor = accentNSColor(theme: theme)
         return NSColor(name: nil) { appearance in
             var result = NSColor.selectedTextBackgroundColor
             appearance.performAsCurrentDrawingAppearance {
-                let accent = self.accentNSColor().usingColorSpace(.sRGB)
-                    ?? self.accentNSColor()
+                let accent = accentColor.usingColorSpace(.sRGB) ?? accentColor
                 let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
                 result = accent.blended(
                     withFraction: isDark ? 0.38 : 0.70,

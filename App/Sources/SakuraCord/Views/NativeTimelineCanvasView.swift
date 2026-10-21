@@ -475,8 +475,7 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
     }
 }
 
-@MainActor
-enum NativeTimelineRowPainter {
+nonisolated enum NativeTimelineRowPainter {
     static func selectionOverlayImage(
         _ box: NativeTimelineAttributedTextBox,
         size: CGSize,
@@ -529,6 +528,32 @@ enum NativeTimelineRowPainter {
         pollPresentation: NativeTimelinePollPresentation = .init(),
         animatedReactionIDs: Set<String> = []
     ) {
+        // Main-thread callers that set no context get one from their model.
+        if NativeTimelineRowPaintContext.current == nil, let model, Thread.isMainThread {
+            let context = MainActor.assumeIsolated { NativeTimelineRowPaintContext(model: model, items: [item]) }
+            NativeTimelineRowPaintContext.$current.withValue(context) {
+                draw(
+                    item: item, layout: layout, in: rowFrame, model: nil, isHovered: isHovered,
+                    drawsBubbleBackground: drawsBubbleBackground, showsCompactTimestamp: showsCompactTimestamp,
+                    isAuthorHovered: isAuthorHovered, isServerTagHovered: isServerTagHovered,
+                    hoveredMention: hoveredMention, hoveredTextLink: hoveredTextLink,
+                    hoveredTextSpoiler: hoveredTextSpoiler, hoveredComponentButton: hoveredComponentButton,
+                    activeComponentChoiceTarget: activeComponentChoiceTarget,
+                    pressedComponentButton: pressedComponentButton,
+                    componentButtonPressProgress: componentButtonPressProgress,
+                    isForwardedSourceHovered: isForwardedSourceHovered,
+                    isEphemeralDismissHovered: isEphemeralDismissHovered,
+                    isTranslationActionHovered: isTranslationActionHovered,
+                    isSuppressedToggleHovered: isSuppressedToggleHovered,
+                    hidesMessageContent: hidesMessageContent, hoveredReactionID: hoveredReactionID,
+                    isAddReactionHovered: isAddReactionHovered, textSelection: textSelection,
+                    revealedTextSpoilerState: revealedTextSpoilerState, spoilerRevealStore: spoilerRevealStore,
+                    reactionCountTransitions: reactionCountTransitions, pollPresentation: pollPresentation,
+                    animatedReactionIDs: animatedReactionIDs
+                )
+            }
+            return
+        }
         NSGraphicsContext.saveGraphicsState()
         let transform = NSAffineTransform()
         transform.translateX(by: rowFrame.minX, yBy: rowFrame.minY)
@@ -652,9 +677,9 @@ enum NativeTimelineRowPainter {
                 backgroundAlpha: 0.14
             )
         } else {
-            let currentUserID = model?.currentUser?.id
-            let currentUserRoleIDs =
-                model?.currentUserRoleIDs(for: row.message.guildID) ?? []
+            let context = NativeTimelineRowPaintContext.current
+            let currentUserID = context?.currentUserID
+            let currentUserRoleIDs = context?.currentUserRoleIDs(for: row.message.guildID) ?? []
             switch MessageRowPersistentHighlight.resolve(
                 message: row.message,
                 currentUserID: currentUserID,

@@ -8,7 +8,7 @@ import QuartzCore
 import SakuraCordModels
 import SwiftUI
 
-struct NativeTimelineMessageDrawInput {
+nonisolated struct NativeTimelineMessageDrawInput {
     let row: MessageRowPresentation
     let layout: NativeTimelineRowLayout
     let model: AppModel?
@@ -37,7 +37,7 @@ struct NativeTimelineMessageDrawInput {
     let reactionCountTransitions: [String: NativeTimelineReactionCountTransition]
 }
 
-extension NativeTimelineRowPainter {
+nonisolated extension NativeTimelineRowPainter {
     static func drawMessage(_ input: NativeTimelineMessageDrawInput) {
         drawMessageSearchContext(input)
         drawMessageSeparators(input)
@@ -118,7 +118,7 @@ extension NativeTimelineRowPainter {
 
     private static func drawMessageIdentity(_ input: NativeTimelineMessageDrawInput) {
         let message = input.row.message
-        let author = input.model?.authorPresentation(for: message)
+        let author = NativeTimelineRowPaintContext.current?.authorPresentation(for: message)
         if let frame = input.layout.avatarFrame {
             let presentedAuthor =
                 author?.user
@@ -148,12 +148,12 @@ extension NativeTimelineRowPainter {
                     in: frame,
                     color: presentedAuthor.isBot
                         ? .sakuraCordAccentColor
-                        : input.model?.accessibilitySettings.roleColorDisplay != .inNames
+                        : NativeTimelineRowPaintContext.current?.roleColorDisplay != .inNames
                         ? .labelColor : roleColor(author?.roleColorHex) ?? .labelColor,
                     context: context, isUnderlined: input.isAuthorHovered
                 )
             }
-            if input.model?.accessibilitySettings.roleColorDisplay == .nextToNames,
+            if NativeTimelineRowPaintContext.current?.roleColorDisplay == .nextToNames,
                let color = roleColor(author?.roleColorHex) {
                 color.setFill()
                 NSBezierPath(ovalIn: CGRect(
@@ -188,13 +188,13 @@ extension NativeTimelineRowPainter {
            let context = NSGraphicsContext.current?.cgContext {
             input.layout.timestampText?.draw(in: frame, color: .secondaryLabelColor, context: context)
         }
-        if input.showsCompactTimestamp || input.model?.interfaceSettings.alwaysShowsTimestamps == true,
+        if input.showsCompactTimestamp || NativeTimelineRowPaintContext.current?.interfaceSettings.alwaysShowsTimestamps == true,
            let frame = input.layout.compactTimestampFrame
         {
             text(
                 NativeTimelineTimestamp.text(
                     for: input.row.message.timestamp,
-                    settings: input.model?.interfaceSettings ?? .defaults
+                    settings: NativeTimelineRowPaintContext.current?.interfaceSettings ?? .defaults
                 ),
                 in: frame,
                 font: NativeTimelineCompactTimestampMetrics.font,
@@ -248,7 +248,7 @@ extension NativeTimelineRowPainter {
                 region,
                 bubbleConnector: input.layout.bubbleReferenceConnector,
                 message: input.row.message,
-                cosmeticPolicy: input.model?.cosmeticPolicy ?? .init()
+                cosmeticPolicy: NativeTimelineRowPaintContext.current?.cosmeticPolicy ?? .init()
             )
         }
     }
@@ -280,7 +280,7 @@ extension NativeTimelineRowPainter {
             )
         }
         if let frame = input.layout.systemIconFrame {
-            let currentUserID = input.model?.currentUser?.id
+            let currentUserID = NativeTimelineRowPaintContext.current?.currentUserID
             systemSymbol(
                 SystemMessagePresentation.systemImage(
                     for: input.row.message,
@@ -395,7 +395,7 @@ extension NativeTimelineRowPainter {
 
     private static func drawMessageVoiceMessage(_ input: NativeTimelineMessageDrawInput) {
         guard let region = input.layout.voiceMessageRegion else { return }
-        let playback = input.model?.voiceMessagePlayback
+        let playback = NativeTimelineRowPaintContext.current
         let opacity = CGFloat(MessageOutboxPresentation.mediaOpacity(for: input.row.message.outboxState))
         let context = NSGraphicsContext.current?.cgContext
         context?.saveGState()
@@ -406,8 +406,8 @@ extension NativeTimelineRowPainter {
         }
         NativeTimelineVoiceMessagePainter.drawIdle(
             region,
-            speedLabel: playback?.speedLabel ?? "1×",
-            isActive: playback?.isActive(region.playbackID) == true
+            speedLabel: playback?.voiceSpeedLabel ?? "1×",
+            isActive: playback?.isVoiceMessageActive(region.playbackID) == true
         )
         if opacity < 1 { context?.endTransparencyLayer() }
     }
@@ -726,7 +726,7 @@ extension NativeTimelineRowPainter {
             }
             threadSummary(
                 thread,
-                preview: model?.threadPreviewMessages[thread.id],
+                preview: NativeTimelineRowPaintContext.current?.threadPreviewMessage(for: thread.id),
                 message: message,
                 model: model,
                 in: frame,
@@ -743,14 +743,14 @@ extension NativeTimelineRowPainter {
             reaction(
                 region,
                 model: model,
-                isHovered: model?.canUpdateReactions(on: message) != false && hoveredReactionID == region.reaction.id,
+                isHovered: NativeTimelineRowPaintContext.current?.canUpdateReactions(on: message) != false && hoveredReactionID == region.reaction.id,
                 countTransition: reactionCountTransitions[
                     region.reaction.id
                 ],
                 hasAnimatedEmojiOverlay: input.animatedReactionIDs.contains(region.reaction.id)
             )
         }
-        if let frame = layout.addReactionFrame, model?.canCreateReactions(on: message) != false {
+        if let frame = layout.addReactionFrame, NativeTimelineRowPaintContext.current?.canCreateReactions(on: message) != false {
             reactionAddControl(
                 in: frame,
                 isHovered: isAddReactionHovered
@@ -1038,7 +1038,7 @@ extension NativeTimelineRowPainter {
         model: AppModel?,
         foregroundColor: NSColor? = nil
     ) -> CGRect {
-        let presentation = model?.authorPresentation(for: preview, in: message)
+        let presentation = NativeTimelineRowPaintContext.current?.authorPresentation(forReplyIn: message)
         let author = presentation?.user ?? preview.author
         avatar(
             name: author.displayName,
@@ -1054,7 +1054,7 @@ extension NativeTimelineRowPainter {
             font: font
         )
         let roleColor = roleColor(presentation?.roleColorHex)
-        let showsIndicator = model?.accessibilitySettings.roleColorDisplay == .nextToNames && roleColor != nil
+        let showsIndicator = NativeTimelineRowPaintContext.current?.roleColorDisplay == .nextToNames && roleColor != nil
         let indicatorWidth: CGFloat = showsIndicator ? InterfaceScale.metric(16) : 0
         let authorFrame = CGRect(
             x: avatarFrame.maxX
@@ -1076,7 +1076,7 @@ extension NativeTimelineRowPainter {
             font: font,
             color: foregroundColor ?? (author.isBot
                 ? .sakuraCordAccentColor
-                : model?.accessibilitySettings.roleColorDisplay == .inNames ? roleColor ?? .labelColor : .labelColor)
+                : NativeTimelineRowPaintContext.current?.roleColorDisplay == .inNames ? roleColor ?? .labelColor : .labelColor)
         )
         if showsIndicator, let roleColor {
             roleColor.setFill()

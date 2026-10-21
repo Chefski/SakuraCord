@@ -40,7 +40,7 @@ struct NativeTimelineTextSpoilerHitRegion {
     let frame: CGRect
 }
 
-enum NativeTimelineTextGeometry {
+nonisolated enum NativeTimelineTextGeometry {
     static func messageContentDrawingFrame(_ frame: CGRect) -> CGRect {
         var drawingFrame = frame
         drawingFrame.size.height = max(drawingFrame.height + 1, 20)

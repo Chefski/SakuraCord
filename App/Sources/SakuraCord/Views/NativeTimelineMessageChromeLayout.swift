@@ -119,7 +119,7 @@ extension NativeTimelineRowLayout {
         )
     }
 
-    private struct CommandPillRegion {
+    nonisolated private struct CommandPillRegion {
         let frame: CGRect
         let symbol: CGRect
         let text: CGRect

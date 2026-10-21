@@ -1,6 +1,6 @@
 import AppKit
 
-enum NativeTimelineCompactTimestampMetrics {
+nonisolated enum NativeTimelineCompactTimestampMetrics {
     static var font: NSFont {
         .interfaceSystemFont(ofSize: NSFont.preferredFont(forTextStyle: .caption2).pointSize)
     }

@@ -14,7 +14,7 @@ enum NativeTimelineTextPresentation {
         let mentions: [String: MentionPresentation]
     }
 
-    struct Value {
+    nonisolated struct Value {
         let attributedContent: NSAttributedString?
         let framesetter: CTFramesetter
         let linkedImages: [LinkedImageReference]
@@ -253,7 +253,7 @@ enum NativeTimelineTextPresentation {
 }
 
 nonisolated final class NativeTimelineResolvedTextCache: Sendable {
-    struct Key: Hashable, Sendable {
+    nonisolated struct Key: Hashable, Sendable {
         let messageID: MessageID
         let scope: String
         let prepared: RichMessageAttributedText.Prepared
@@ -266,7 +266,7 @@ nonisolated final class NativeTimelineResolvedTextCache: Sendable {
 
     static let shared = NativeTimelineResolvedTextCache()
 
-    private struct State: Sendable {
+    nonisolated private struct State: Sendable {
         var entries: [Key: NativeTimelineAttributedTextBox] = [:]
         var insertionOrder: [Key] = []
         var evictionIndex = 0
@@ -566,7 +566,7 @@ nonisolated enum NativeTimelineCoreText {
 }
 
 enum NativeTimelineEmbedLayout {
-    private struct PreparedField {
+    nonisolated private struct PreparedField {
         let field: MessageEmbedField
         let name: NativeTimelineAttributedTextBox
         let value: NativeTimelineAttributedTextBox
@@ -1577,7 +1577,7 @@ nonisolated enum NativeTimelineRunDelegate {
 }
 
 extension NativeTimelineRowLayout {
-    static func measuredTextHeight(
+    nonisolated static func measuredTextHeight(
         _ framesetter: CTFramesetter,
         value: NSAttributedString,
         length: Int,
@@ -1605,7 +1605,7 @@ extension NativeTimelineRowLayout {
 
     /// A single layout pass shares its font resolution and timestamp gutter.
     /// Recreate this snapshot for each pass so preference changes stay live.
-    struct Metrics {
+    nonisolated struct Metrics {
         let authorFont: NSFont
         let timestampFont: NSFont
         let editedFont: NSFont
@@ -1619,23 +1619,26 @@ extension NativeTimelineRowLayout {
         }
     }
 
-    private struct TextWidthKey: Hashable {
+    nonisolated private struct TextWidthKey: Hashable {
         let text: String
         let font: NSFont
     }
-    private static var measuredTextWidths: [TextWidthKey: CGFloat] = [:]
+    /// Thread-safe: rows lay out on main and paint on worker threads.
+    nonisolated private static let measuredTextWidths = Mutex([TextWidthKey: CGFloat]())
 
-    static func measuredTextWidth(_ text: String, font: NSFont) -> CGFloat {
+    nonisolated static func measuredTextWidth(_ text: String, font: NSFont) -> CGFloat {
         let key = TextWidthKey(text: text, font: font)
-        if let width = measuredTextWidths[key] { return width }
+        if let width = measuredTextWidths.withLock({ $0[key] }) { return width }
         let attributed = NSAttributedString(
             string: text,
             attributes: [.font: font]
         )
         let line = CTLineCreateWithAttributedString(attributed)
         let width = ceil(CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil)))
-        if measuredTextWidths.count >= 4_096 { measuredTextWidths.removeAll(keepingCapacity: true) }
-        measuredTextWidths[key] = width
+        measuredTextWidths.withLock { widths in
+            if widths.count >= 4_096 { widths.removeAll(keepingCapacity: true) }
+            widths[key] = width
+        }
         return width
     }
 

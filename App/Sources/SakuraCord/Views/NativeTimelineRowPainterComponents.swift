@@ -7,9 +7,10 @@ import Lottie
 import QuartzCore
 import SakuraCordModels
 import SwiftUI
+import Synchronization
 
-@MainActor
-enum NativeTimelineSystemSymbolCache {
+/// Thread-safe: rows paint on worker threads while a column moves.
+nonisolated enum NativeTimelineSystemSymbolCache {
     private struct ConfiguredKey: Hashable {
         let name: String
         let pointSize: CGFloat
@@ -26,18 +27,22 @@ enum NativeTimelineSystemSymbolCache {
         let scaleQuarter: Int
     }
 
+    private struct Images {
+        var images: [String: NSImage] = [:]
+        var configured: [ConfiguredKey: NSImage] = [:]
+        var rasterized: [RasterizedKey: NSImage] = [:]
+        var rasterizedOrder: [RasterizedKey] = []
+    }
+
     private static let configuredImageLimit = 256
     private static let rasterizedImageLimit = 1_024
-    private static var images: [String: NSImage] = [:]
-    private static var configuredImages: [ConfiguredKey: NSImage] = [:]
-    private static var rasterizedImages: [RasterizedKey: NSImage] = [:]
-    private static var rasterizedImageOrder: [RasterizedKey] = []
-    private static var postFirstFramePrewarmTask: Task<Void, Never>?
-    private static var postFirstFramePrewarmGeneration: UInt64 = 0
-    private static var didPrewarmPostFirstFrameSymbols = false
+    private static let cache = Mutex(Images())
+    @MainActor private static var postFirstFramePrewarmTask: Task<Void, Never>?
+    @MainActor private static var postFirstFramePrewarmGeneration: UInt64 = 0
+    @MainActor private static var didPrewarmPostFirstFrameSymbols = false
 
     static func image(named name: String) -> NSImage? {
-        if let image = images[name] { return image }
+        if let image = cache.withLock({ $0.images[name] }) { return image }
         let interval = AppPerformanceSignposts.signposter.beginInterval(
             "TimelineSystemSymbolCacheMiss"
         )
@@ -48,7 +53,7 @@ enum NativeTimelineSystemSymbolCache {
             )
         }
         guard let image = SakuraCordSystemSymbol.image(named: name) else { return nil }
-        images[name] = image
+        cache.withLock { $0.images[name] = image }
         return image
     }
 
@@ -96,7 +101,7 @@ enum NativeTimelineSystemSymbolCache {
             configured: configuredKey,
             scaleQuarter: scaleQuarter
         )
-        if let image = rasterizedImages[rasterizedKey] { return image }
+        if let image = cache.withLock({ $0.rasterized[rasterizedKey] }) { return image }
         let interval = AppPerformanceSignposts.signposter.beginInterval(
             "TimelineSystemSymbolRasterCacheMiss"
         )
@@ -115,14 +120,15 @@ enum NativeTimelineSystemSymbolCache {
             scale: CGFloat(scaleQuarter) / 4,
             appearance: appearance
         ) else { return nil }
-        if rasterizedImages.count >= rasterizedImageLimit,
-           let oldest = rasterizedImageOrder.first
-        {
-            rasterizedImageOrder.removeFirst()
-            rasterizedImages[oldest] = nil
+        cache.withLock { images in
+            guard images.rasterized[rasterizedKey] == nil else { return }
+            if images.rasterized.count >= rasterizedImageLimit, let oldest = images.rasterizedOrder.first {
+                images.rasterizedOrder.removeFirst()
+                images.rasterized[oldest] = nil
+            }
+            images.rasterizedOrder.append(rasterizedKey)
+            images.rasterized[rasterizedKey] = rasterized
         }
-        rasterizedImageOrder.append(rasterizedKey)
-        rasterizedImages[rasterizedKey] = rasterized
         return rasterized
     }
 
@@ -160,7 +166,7 @@ enum NativeTimelineSystemSymbolCache {
         weight: NSFont.Weight,
         resolvedColor: NSColor
     ) -> NSImage? {
-        if let image = configuredImages[key] { return image }
+        if let image = cache.withLock({ $0.configured[key] }) { return image }
         let interval = AppPerformanceSignposts.signposter.beginInterval(
             "TimelineSystemSymbolConfiguredCacheMiss"
         )
@@ -179,10 +185,12 @@ enum NativeTimelineSystemSymbolCache {
         guard let image = image(named: key.name)?
             .withSymbolConfiguration(configuration)
         else { return nil }
-        if configuredImages.count >= configuredImageLimit {
-            configuredImages.remove(at: configuredImages.startIndex)
+        cache.withLock { images in
+            if images.configured.count >= configuredImageLimit {
+                images.configured.remove(at: images.configured.startIndex)
+            }
+            images.configured[key] = image
         }
-        configuredImages[key] = image
         return image
     }
 
@@ -235,7 +243,7 @@ enum NativeTimelineSystemSymbolCache {
         return rasterized
     }
 
-    static func schedulePostFirstFramePrewarm(
+    @MainActor static func schedulePostFirstFramePrewarm(
         appearance: NSAppearance
     ) {
         guard !didPrewarmPostFirstFrameSymbols else { return }
@@ -310,7 +318,7 @@ enum NativeTimelineSystemSymbolCache {
         }
     }
 
-    private static func prewarmConfiguredImage(
+    @MainActor private static func prewarmConfiguredImage(
         named name: String,
         pointSize: CGFloat,
         weight: NSFont.Weight,
@@ -355,7 +363,7 @@ enum NativeTimelineSystemSymbolCache {
     }
 }
 
-struct NativeTimelineComponentsDrawInput {
+nonisolated struct NativeTimelineComponentsDrawInput {
     let layout: NativeTimelineComponentLayout
     let bubbleRegion: NativeTimelineBubbleRegion?
     let model: AppModel?
@@ -374,7 +382,7 @@ struct NativeTimelineComponentsDrawInput {
     let componentButtonPressProgress: CGFloat
 }
 
-extension NativeTimelineRowPainter {
+nonisolated extension NativeTimelineRowPainter {
     private struct BubbleIntegratedSectionGeometry {
         let frame: CGRect
         let cornerRadius: CGFloat
@@ -1041,7 +1049,7 @@ extension NativeTimelineRowPainter {
     ) {
         let reference = region.reaction.emojiReference
         if let id = reference.id {
-            if let url = model?.customEmojiURLsByID[id]
+            if let url = NativeTimelineRowPaintContext.current?.customEmojiURLsByID[id]
                     ?? reference.imageURL(size: 64),
                let image = mediaImage(
                    for: .media(url, maximumPixelDimension: 64)

@@ -270,8 +270,7 @@ enum NativeTimelineBubbleLayout {
     }
 }
 
-@MainActor
-enum NativeTimelineBubbleDrawing {
+nonisolated enum NativeTimelineBubbleDrawing {
     static var cornerRadius: CGFloat { InterfaceScale.metric(18) }
 
     static func foregroundColor(for region: NativeTimelineBubbleRegion?) -> NSColor {

@@ -3,7 +3,7 @@ import SakuraCordModels
 import SwiftUI
 
 extension NativeTimelineCanvasView {
-    struct ServerTagCardPresentation {
+    nonisolated struct ServerTagCardPresentation {
         let requestID: UUID
         let messageID: MessageID
         let identity: PrimaryGuildIdentity
