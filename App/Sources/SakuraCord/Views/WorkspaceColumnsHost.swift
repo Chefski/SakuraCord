@@ -147,6 +147,10 @@ final class WorkspaceColumnsView: NSView {
     private var conversation: NSHostingController<AnyView>?
     /// A side chat pane kept for the next one to open (`apply`).
     private var pooledPane: ColumnHostingView?
+    /// The member list and search results, kept hidden after they leave
+    /// for the next time they open: built from nothing, their first frames
+    /// held up the motion while the render server drew every row anew.
+    private var pooledInspectors: [String: ColumnHostingView] = [:]
     /// Back to front.
     private var islands: [Island] = []
     private var widening: SpringTrack?
@@ -240,6 +244,10 @@ final class WorkspaceColumnsView: NSView {
         if island.column.isSideConversation, !island.column.isFullWidth, pooledPane == nil {
             island.host.isHidden = true
             pooledPane = island.host
+        } else if !island.column.isSideConversation {
+            island.host.isHidden = true
+            pooledInspectors[island.column.id]?.removeFromSuperview()
+            pooledInspectors[island.column.id] = island.host
         } else {
             island.view.removeFromSuperview()
         }
@@ -368,6 +376,11 @@ final class WorkspaceColumnsView: NSView {
     /// A hosting view for a column that arrives: the pooled pane, for a
     /// side chat pane, or a new one.
     private func makeHost(for column: WorkspaceColumnsHost.Column, _ root: AnyView) -> ColumnHostingView {
+        if !column.isSideConversation, let pooled = pooledInspectors.removeValue(forKey: column.id) {
+            pooled.isHidden = false
+            pooled.setContent(root, isLeaving: false)
+            return pooled
+        }
         guard column.isSideConversation, !column.isFullWidth, let pooled = pooledPane else {
             return ColumnHostingView(content: root, sharesExtent: column.isSideConversation)
         }
