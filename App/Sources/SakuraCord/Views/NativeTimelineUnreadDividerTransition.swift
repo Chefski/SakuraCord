@@ -41,9 +41,10 @@ enum NativeTimelineUnreadDividerMotion {
     static func animates(
         conversationChanged: Bool,
         hadInitialPosition: Bool,
+        hadMessages: Bool,
         isJumpingToUnreadBoundary: Bool
     ) -> Bool {
-        !conversationChanged && hadInitialPosition && !isJumpingToUnreadBoundary
+        !conversationChanged && hadInitialPosition && hadMessages && !isJumpingToUnreadBoundary
     }
 
     static func duration(appearing: Bool, reducesMotion: Bool) -> CFTimeInterval {
@@ -347,6 +348,22 @@ extension NativeMessageTimelineCoordinator {
         to newParent: NativeMessageTimelineView,
         canvas: NativeTimelineCanvasView
     ) -> NativeTimelineUnreadDividerChange? {
+        let navigation = newParent.model.messageNavigationRequest
+        guard NativeTimelineUnreadDividerMotion.animates(
+            conversationChanged: newParent.conversation != parent.conversation,
+            // Read before this update can establish the position or bring in
+            // the first rows, so a divider that arrives with either stays
+            // still. An empty timeline can hold a position, for instance
+            // after a failed first load that is then retried.
+            hadInitialPosition: initialPositionConversation == parent.conversation,
+            hadMessages: items.contains { $0.messageID != nil },
+            isJumpingToUnreadBoundary: navigation?.isUnreadBoundary == true
+                && navigation?.channelID == newParent.conversation.id
+        ) else {
+            // Includes a motion already running when the reader jumps.
+            canvas.finishUnreadDividerFades()
+            return nil
+        }
         let previous = parent.unreadMessageID
         let changes = previous != newParent.unreadMessageID
         let reflowsRows = newParent.rowsRevision != rowsRevision
@@ -354,18 +371,6 @@ extension NativeMessageTimelineCoordinator {
             || newParent.conversation != parent.conversation
         guard changes else {
             if reflowsRows { canvas.finishUnreadDividerGap() }
-            return nil
-        }
-        let navigation = newParent.model.messageNavigationRequest
-        guard NativeTimelineUnreadDividerMotion.animates(
-            conversationChanged: newParent.conversation != parent.conversation,
-            // Read before this update can establish the position, so a
-            // divider that arrives with the first placement stays still.
-            hadInitialPosition: initialPositionConversation == parent.conversation,
-            isJumpingToUnreadBoundary: navigation?.isUnreadBoundary == true
-                && navigation?.channelID == newParent.conversation.id
-        ) else {
-            canvas.finishUnreadDividerFades()
             return nil
         }
         let change = NativeTimelineUnreadDividerChange(

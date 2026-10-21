@@ -4,14 +4,16 @@ import SakuraCordModels
 import Testing
 
 @MainActor @Test(arguments: [
-    (false, true, false, true),
-    (true, true, false, false),
-    (false, false, false, false),
-    (false, true, true, false),
+    (false, true, true, false, true),
+    (true, true, true, false, false),
+    (false, false, true, false, false),
+    (false, true, false, false, false),
+    (false, true, true, true, false),
 ])
 func `the divider animates only for a live change in a settled conversation`(
     conversationChanged: Bool,
     hadInitialPosition: Bool,
+    hadMessages: Bool,
     isJumping: Bool,
     animates: Bool
 ) {
@@ -19,6 +21,7 @@ func `the divider animates only for a live change in a settled conversation`(
         NativeTimelineUnreadDividerMotion.animates(
             conversationChanged: conversationChanged,
             hadInitialPosition: hadInitialPosition,
+            hadMessages: hadMessages,
             isJumpingToUnreadBoundary: isJumping
         ) == animates
     )
@@ -128,6 +131,36 @@ func `a divider that arrives while the reader is looking at a settled conversati
     #expect(!harness.dividerIsMoving)
     harness.show(unread: nil)
     #expect(harness.dividerIsMoving)
+    harness.coordinator.stopObserving()
+}
+
+@MainActor @Test
+func `a divider that arrives with the history of a retried first load is simply there`() {
+    let harness = UnreadDividerMotionHarness()
+    // The first load failed, so the empty timeline already holds its position.
+    harness.model.replaceSelectedMessages(with: [])
+    harness.show(unread: nil)
+    #expect(harness.coordinator.hasAppliedInitialPositionForTesting)
+
+    harness.model.replaceSelectedMessages(with: harness.messages)
+    harness.show(unread: harness.unread)
+    #expect(!harness.dividerIsMoving)
+    harness.coordinator.stopObserving()
+}
+
+@MainActor @Test
+func `jumping to the unread boundary settles a divider that is still moving`() {
+    let harness = UnreadDividerMotionHarness()
+    harness.show(unread: nil)
+    harness.show(unread: harness.unread)
+    #expect(harness.dividerIsMoving)
+
+    harness.model.messageNavigationRequest = MessageNavigationRequest(
+        requestID: 1, channelID: harness.channelID, messageID: harness.unread,
+        glides: true, isUnreadBoundary: true
+    )
+    harness.show(unread: harness.unread)
+    #expect(!harness.dividerIsMoving)
     harness.coordinator.stopObserving()
 }
 
