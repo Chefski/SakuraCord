@@ -17,6 +17,8 @@ struct ForumCardRegions: Equatable {
     /// posted time row in gallery.
     var exactDateFrame: CGRect?
     var countFrame: CGRect?
+    /// The "•" between the message count and the last activity in list.
+    var footerSeparatorFrame: CGRect?
     /// Measured width of the message count's digits inside `countFrame`.
     var countTextWidth: CGFloat = 0
     var footerFrame: CGRect = .zero
@@ -209,8 +211,11 @@ enum ForumCardPainter {
         let countWidth = countContentWidth(presentation, textWidth: countTextWidth)
         regions.countFrame = CGRect(x: cursorX, y: footer.minY, width: countWidth, height: footer.height)
         regions.countTextWidth = countTextWidth
-        cursorX += countWidth + spacing
         if !alignsReactionTrailing {
+            cursorX += countWidth
+            let separatorWidth = ceil(NativeTimelineRowLayout.measuredTextWidth(" • ", font: footerFont))
+            regions.footerSeparatorFrame = CGRect(x: cursorX, y: footer.minY, width: separatorWidth, height: footer.height)
+            cursorX += separatorWidth
             let text = presentation.relativeTimeText(isGallery: false)
             let width = ceil(NativeTimelineRowLayout.measuredTextWidth(text, font: footerFont)) + 2
             regions.timestampFrame = CGRect(x: cursorX, y: footer.minY, width: width, height: footer.height)
@@ -790,6 +795,17 @@ enum ForumCardPainter {
                     color: .sakuraCordAccentColor
                 )
             }
+        }
+        if let frame = regions.footerSeparatorFrame {
+            let lineHeight = ForumBoardMetrics.lineHeight(of: footerFont)
+            canvas.text(
+                " • ",
+                in: CGRect(x: frame.minX, y: frame.midY - lineHeight / 2, width: frame.width, height: lineHeight),
+                font: footerFont,
+                color: .tertiaryLabelColor,
+                alignment: .center,
+                lineBreakMode: .byClipping
+            )
         }
         if let frame = regions.timestampFrame {
             let lineHeight = ForumBoardMetrics.lineHeight(of: footerFont)
