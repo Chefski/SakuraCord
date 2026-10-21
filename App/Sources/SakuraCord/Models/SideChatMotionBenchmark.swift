@@ -31,6 +31,12 @@ enum SideChatMotionBenchmark {
         /// Opens the first fixture thread in the pane and leaves the window
         /// to the tester, for checks driven from outside.
         var holdsPane = false
+        /// Cycles that resize the window on every frame: bare, beside the
+        /// member list and beside a thread pane.
+        var windowResizeCycles = 0
+        /// Seconds to record after the cycles while the window is resized
+        /// from outside, as a pointer drag of its corner does.
+        var liveResizeSeconds = 0
 
         init(arguments: [String]) {
             func value(_ name: String) -> Int? {
@@ -46,6 +52,8 @@ enum SideChatMotionBenchmark {
             memberListCycles = value("--motion-member-list-cycles") ?? memberListCycles
             showsFollowShowcase = arguments.contains("--motion-follow-showcase")
             holdsPane = arguments.contains("--motion-hold-pane")
+            windowResizeCycles = value("--motion-window-resize-cycles") ?? windowResizeCycles
+            liveResizeSeconds = value("--motion-live-resize-seconds") ?? liveResizeSeconds
         }
     }
 
@@ -123,6 +131,8 @@ enum SideChatMotionBenchmark {
             try? await Task.sleep(for: .seconds(2))
         }
 
+        await runWindowResize(model: model, thread: threads[0], window: window, recorder: recorder, options: options)
+
         let membersOpen = Step(name: "members-open", variant: "idle", movingProbe: "members", edge: "minX") {
             $0.toggleMemberInspector()
         }
@@ -150,6 +160,49 @@ enum SideChatMotionBenchmark {
         let movingProbe: String?
         let edge: String?
         let perform: (AppModel) -> Void
+    }
+
+    /// Window resizes: on every frame by the benchmark, then by hand or by
+    /// a script dragging the window's corner.
+    private static func runWindowResize(
+        model: AppModel,
+        thread: MessageThreadSummary,
+        window: NSWindow,
+        recorder: SideChatMotionRecorder,
+        options: Options
+    ) async {
+        for cycle in 0 ..< options.windowResizeCycles {
+            for variant in ["bare", "members", "pane"] {
+                WorkspaceLayoutMotion.isSuppressedForBenchmark = true
+                model.closeSideConversations()
+                model.showInspector = variant == "members"
+                if variant == "pane" { model.open(thread) }
+                WorkspaceLayoutMotion.isSuppressedForBenchmark = false
+                try? await Task.sleep(for: .seconds(options.settleSeconds))
+                let step = Step(name: "window-resize", variant: variant, movingProbe: nil, edge: nil) { _ in }
+                recorder.recordAction(step, cycle: cycle)
+                let interval = signposter.beginInterval(
+                    "SideChatMotionAction", id: signposter.makeSignpostID(),
+                    "window-resize \(variant, privacy: .public) \(cycle, privacy: .public)"
+                )
+                await WindowResizeDriver(window: window).run(narrowing: 440, seconds: 1.6)
+                signposter.endInterval("SideChatMotionAction", interval)
+                try? await Task.sleep(for: .seconds(options.settleSeconds))
+            }
+        }
+        if options.windowResizeCycles > 0 {
+            WorkspaceLayoutMotion.isSuppressedForBenchmark = true
+            model.closeSideConversations()
+            model.showInspector = false
+            WorkspaceLayoutMotion.isSuppressedForBenchmark = false
+            try? await Task.sleep(for: .seconds(options.settleSeconds))
+        }
+        if options.liveResizeSeconds > 0 {
+            logger.notice("SIDE_CHAT_MOTION_LIVE_RESIZE_BEGIN")
+            recorder.recordsLiveResize = true
+            await recorder.idle(seconds: Double(options.liveResizeSeconds), label: nil)
+            recorder.recordsLiveResize = false
+        }
     }
 
     /// One cycle: the member list as the reference motion, a cold and a warm
@@ -285,6 +338,7 @@ private final class SideChatMotionRecorder: NSObject {
         /// Each visible toolbar item: its index in `toolbarItemIdentifiers`
         /// and its window frame.
         let toolbarItems: [[Double]]
+        let windowWidth: Double
     }
 
     struct Action: Encodable {
@@ -343,6 +397,31 @@ private final class SideChatMotionRecorder: NSObject {
     private var toolbarSignatureIndex: [String: Int] = [:]
     private var toolbarItemIdentifiers: [String] = []
     private var toolbarItemIndex: [String: Int] = [:]
+
+    /// Records each live resize of the window, as a pointer drag makes, as
+    /// a "window-drag" action.
+    var recordsLiveResize = false {
+        didSet {
+            if recordsLiveResize {
+                liveResizeObserver = NotificationCenter.default.addObserver(
+                    forName: NSWindow.willStartLiveResizeNotification, object: window, queue: .main
+                ) { [weak self] _ in
+                    MainActor.assumeIsolated {
+                        guard let self else { return }
+                        self.recordAction(
+                            .init(name: "window-drag", variant: nil, movingProbe: nil, edge: nil) { _ in },
+                            cycle: 0
+                        )
+                    }
+                }
+            } else if let liveResizeObserver {
+                NotificationCenter.default.removeObserver(liveResizeObserver)
+                self.liveResizeObserver = nil
+            }
+        }
+    }
+
+    private var liveResizeObserver: NSObjectProtocol?
 
     init(window: NSWindow, options: SideChatMotionBenchmark.Options) {
         self.window = window
@@ -448,7 +527,8 @@ private final class SideChatMotionRecorder: NSObject {
                 probes: WorkspaceMotionProbes.shared.probeFrames(in: window),
                 timelines: WorkspaceMotionProbes.shared.timelineSamples(in: window),
                 toolbar: toolbarSignature(),
-                toolbarItems: toolbarItemFrames()
+                toolbarItems: toolbarItemFrames(),
+                windowWidth: window.frame.width
             )
         )
     }
@@ -494,5 +574,53 @@ private final class SideChatMotionRecorder: NSObject {
             let duration = (now - start) * 1_000
             if duration >= 4 { busy.append(Busy(start: start, durationMS: duration)) }
         }
+    }
+}
+
+/// Resizes a window on every display frame, narrowing it and widening it
+/// back with its top-left corner fixed, as dragging its trailing edge does.
+@MainActor
+private final class WindowResizeDriver: NSObject {
+    private let window: NSWindow
+    private var link: CADisplayLink?
+    private var start: CFTimeInterval?
+    private var narrowing: CGFloat = 0
+    private var duration: CFTimeInterval = 1
+    private var origin = CGRect.zero
+    private var finished: CheckedContinuation<Void, Never>?
+
+    init(window: NSWindow) {
+        self.window = window
+    }
+
+    func run(narrowing: CGFloat, seconds: CFTimeInterval) async {
+        guard let view = window.contentView else { return }
+        self.narrowing = narrowing
+        duration = seconds
+        origin = window.frame
+        await withCheckedContinuation { continuation in
+            finished = continuation
+            let link = view.displayLink(target: self, selector: #selector(step(_:)))
+            link.add(to: .main, forMode: .common)
+            self.link = link
+        }
+    }
+
+    @objc private func step(_ link: CADisplayLink) {
+        let start = start ?? link.timestamp
+        self.start = start
+        let progress = min(1, (link.targetTimestamp - start) / duration)
+        // Narrows over the first half and widens back over the second.
+        let fraction = progress < 0.5 ? progress * 2 : (1 - progress) * 2
+        let width = (origin.width - narrowing * fraction).rounded()
+        window.setFrame(
+            CGRect(x: origin.minX, y: origin.maxY - origin.height, width: width, height: origin.height),
+            display: true
+        )
+        guard progress >= 1 else { return }
+        link.invalidate()
+        self.link = nil
+        finished?.resume()
+        finished = nil
     }
 }
