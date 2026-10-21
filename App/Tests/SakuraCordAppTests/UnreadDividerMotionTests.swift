@@ -39,12 +39,17 @@ private struct UnreadDividerMotionHarness {
     let messages: [Message]
 
     init(reducesMotion: Bool = false) {
-        let author = User(id: UserID(rawValue: 99_501), username: "reader", displayName: "Reader")
+        let readers = [
+            User(id: UserID(rawValue: 99_501), username: "reader", displayName: "Reader"),
+            User(id: UserID(rawValue: 99_502), username: "writer", displayName: "Writer"),
+        ]
         let channelID = channelID
+        // The unread message starts its own group whether or not a divider is
+        // above it, so the divider is the only thing its row gains or loses.
         messages = (0 ..< 6).map {
             Message(
                 id: MessageID(rawValue: UInt64(200_000 + $0)),
-                channelID: channelID, author: author,
+                channelID: channelID, author: readers[$0 < 4 ? 0 : 1],
                 content: "Message \($0)"
             )
         }
