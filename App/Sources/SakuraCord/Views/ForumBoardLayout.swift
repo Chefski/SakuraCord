@@ -326,6 +326,9 @@ nonisolated final class ForumTitleLineCounter: @unchecked Sendable {
     private let font: NSFont
     private let maximumLines: Int
     private var cache: [Key: Int] = [:]
+    /// Each title's width on one line, which does not depend on the board
+    /// width, so a resize re-measures no titles; NaN when it has none.
+    private var singleLineWidths: [String: CGFloat] = [:]
 
     init(font: NSFont, maximumLines: Int) {
         self.font = font
@@ -333,11 +336,36 @@ nonisolated final class ForumTitleLineCounter: @unchecked Sendable {
     }
 
     func lines(_ title: String, width: CGFloat) -> Int {
-        let key = Key(title: title, width: Int(width.rounded(.down)))
+        let width = width.rounded(.down)
+        if let count = fastCount(title, width: width) { return count }
+        let key = Key(title: title, width: Int(width))
         if let cached = cache[key] { return cached }
-        let value = Self.count(title, width: CGFloat(key.width), font: font, maximumLines: maximumLines)
+        let value = Self.count(title, width: width, font: font, maximumLines: maximumLines)
         if cache.count > 8_192 { cache.removeAll(keepingCapacity: true) }
         cache[key] = value
+        return value
+    }
+
+    /// With at most two lines, a title takes one line when it fits on one
+    /// and two otherwise. Widths too close to call, and titles with line
+    /// breaks (measured as NaN), take the typesetter's answer.
+    private func fastCount(_ title: String, width: CGFloat) -> Int? {
+        guard maximumLines <= 2 else { return nil }
+        let singleLineWidth = singleLineWidths[title] ?? measureSingleLine(title)
+        guard !singleLineWidth.isNaN else { return nil }
+        if singleLineWidth <= max(1, width) - 0.5 { return 1 }
+        if singleLineWidth > max(1, width) + 0.5 { return maximumLines }
+        return nil
+    }
+
+    private func measureSingleLine(_ title: String) -> CGFloat {
+        var value = CGFloat.nan
+        if !title.isEmpty, !title.contains(where: \.isNewline) {
+            let line = CTLineCreateWithAttributedString(NSAttributedString(string: title, attributes: [.font: font]))
+            value = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil)) - CGFloat(CTLineGetTrailingWhitespaceWidth(line))
+        }
+        if singleLineWidths.count > 8_192 { singleLineWidths.removeAll(keepingCapacity: true) }
+        singleLineWidths[title] = value
         return value
     }
 

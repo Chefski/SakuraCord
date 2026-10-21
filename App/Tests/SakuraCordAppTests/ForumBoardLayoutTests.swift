@@ -53,3 +53,26 @@ func `forum board geometry ignores late post data`(mode: ForumLayout) {
         #expect(layout(hydrated: false, width: width) == layout(hydrated: true, width: width))
     }
 }
+
+/// Card heights come from title line counts; the width-independent fast path
+/// must agree with the typesetter at every width, or a card could change
+/// height when the board resizes.
+@MainActor
+@Test
+func `forum title line counts match the typesetter at every width`() {
+    let font = ForumBoardMetrics.current().titleFont
+    let counter = ForumTitleLineCounter(font: font, maximumLines: 2)
+    let titles = [
+        "Short title",
+        "A long forum post title that wraps onto a second line at narrow widths",
+        "Supercalifragilisticexpialidocious-without-any-break-opportunities-at-all",
+        "Trailing spaces stay out of the measurement   ",
+        "Emoji 🎉 and CJK 日本語のタイトル mixed in",
+    ]
+    for title in titles {
+        for width in stride(from: 40, through: 900, by: 7) {
+            let expected = ForumTitleLineCounter.count(title, width: CGFloat(width), font: font, maximumLines: 2)
+            #expect(counter.lines(title, width: CGFloat(width)) == expected, "\(title) at \(width)")
+        }
+    }
+}
