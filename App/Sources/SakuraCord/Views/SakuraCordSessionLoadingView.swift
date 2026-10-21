@@ -367,6 +367,6 @@ struct SkeletonShape: View {
     var body: some View {
         shape
             .fill(.primary.opacity(SkeletonShimmerStyle.baseOpacity))
-            .skeletonShimmer()
+            .skeletonShimmer(mask: shape)
     }
 }

@@ -11,8 +11,9 @@ nonisolated enum SkeletonShimmerStyle {
     static let travelFraction = 1.58
     /// The resting fill of every placeholder shape, as an opacity of the label color.
     static let baseOpacity: CGFloat = 0.09
-    /// The highlight band's opacity at each of `highlightLocations`.
-    static let highlightOpacities: [CGFloat] = [0, 0.04, 0.2, 0.04, 0]
+    /// The highlight band's opacity over an opaque shape at each of
+    /// `highlightLocations`: the old 0 / 18 / 92 / 18 / 0% band scaled by `baseOpacity`.
+    static let highlightOpacities: [CGFloat] = [0, 0.016, 0.083, 0.016, 0]
     static let highlightLocations: [CGFloat] = [0, 0.25, 0.5, 0.75, 1]
 
     static func baseColor(_ color: NSColor = .labelColor, scale: CGFloat = 1) -> NSColor {
@@ -169,14 +170,15 @@ private final class SkeletonShimmerView: NSView {
     }
 }
 
-private struct SkeletonShimmerModifier: ViewModifier {
+private struct SkeletonShimmerModifier<Mask: Shape>: ViewModifier {
     @Environment(\.skeletonShimmerEnabled) private var enabled
+    let mask: Mask
 
     func body(content: Content) -> some View {
         content.overlay {
             if enabled {
                 SkeletonShimmerOverlay()
-                    .mask(content)
+                    .mask(mask)
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
             }
@@ -185,7 +187,9 @@ private struct SkeletonShimmerModifier: ViewModifier {
 }
 
 extension View {
-    func skeletonShimmer() -> some View {
-        modifier(SkeletonShimmerModifier())
+    /// Sweeps the shimmer across `mask`. The mask is opaque, so the highlight is
+    /// not attenuated by the translucent resting fill underneath.
+    func skeletonShimmer(mask: some Shape) -> some View {
+        modifier(SkeletonShimmerModifier(mask: mask))
     }
 }
