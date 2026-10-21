@@ -481,7 +481,7 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         for entry in realized {
             let entersAnimated = !replacedPlaceholderFrames.contains { $0.intersects(entry.frame) }
             let realization = Realization(
-                transition: entersAnimated ? transition : .none,
+                animates: entersAnimated && transition == .reflow,
                 visible: visible,
                 group: group
             )
@@ -489,7 +489,7 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
                 realizedNewPost = true
             }
         }
-        retireCards(notIn: liveIDs, transition: transition, visible: visible, group: group)
+        retireCards(notIn: liveIDs, fades: transition == .reflow, visible: visible, group: group)
         CATransaction.commit()
         begin(group)
         drawArrivals(of: group)
@@ -505,7 +505,8 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
     }
 
     private struct Realization {
-        let transition: ForumBoardTransition
+        /// Moves and entrances play for a live reflow.
+        let animates: Bool
         let visible: CGRect
         /// Collects new cards, which stay hidden until their bitmaps land.
         let group: ForumBoardRevealGroup
@@ -517,37 +518,37 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         _ entry: ForumBoardLayout.Entry,
         _ realization: Realization
     ) -> Bool {
-        let transition = realization.transition
+        let animates = realization.animates
         let visible = realization.visible
+        let isVisible = entry.frame.intersects(visible)
         let id = entry.item.id
         var resolved = false
         if case let .post(postID) = id {
             resolved = resolveContent(for: postID, isNewCard: cards[id] == nil)
         }
-        let animates = transition != .none
         if let card = cards[id] {
             if resolved { card.render(scale: backingScale, fading: false) }
             let oldFrame = card.frame
             // Scrolling leaves realized cards untouched.
             guard oldFrame != entry.frame || animates else { return resolved }
-            configure(card, entry: entry, isVisible: entry.frame.intersects(visible))
-            if animates, oldFrame != entry.frame, oldFrame.intersects(visible) || entry.frame.intersects(visible) {
+            configure(card, entry: entry, isVisible: isVisible)
+            if animates, oldFrame != entry.frame, oldFrame.intersects(visible) || isVisible {
                 animateMove(card, from: oldFrame)
             }
         } else {
             let card = dequeueCard()
             cards[id] = card
             card.layer.isHidden = true
-            configure(card, entry: entry, isVisible: entry.frame.intersects(visible))
+            configure(card, entry: entry, isVisible: isVisible)
             cardsLayer.addSublayer(card.layer)
-            var entrance = ForumBoardRevealGroup.Entrance.none
-            if animates, entry.frame.intersects(visible) {
-                entrance = .animated
-            } else if case .placeholder = entry.item {
-                entrance = .placeholder
-            }
             // A card arriving off screen just appears once its bitmap lands.
-            if entry.frame.intersects(visible) {
+            if isVisible {
+                var entrance = ForumBoardRevealGroup.Entrance.none
+                if animates {
+                    entrance = .animated
+                } else if case .placeholder = entry.item {
+                    entrance = .placeholder
+                }
                 realization.group.add(card, entrance: entrance)
             }
         }
@@ -560,7 +561,7 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
     /// overlap and no gap shows between them.
     private func retireCards(
         notIn liveIDs: Set<ForumBoardItem.Identifier>,
-        transition: ForumBoardTransition,
+        fades: Bool,
         visible: CGRect,
         group: ForumBoardRevealGroup
     ) {
@@ -571,7 +572,7 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
             paintedRelativeTimes[id] = nil
             let isPlaceholder = if case .placeholder = id { true } else { false }
             let isOnScreen = !card.layer.isHidden && card.frame.intersects(visible)
-            if transition == .reflow, !isPlaceholder, isOnScreen {
+            if fades, !isPlaceholder, isOnScreen {
                 animateExit(card)
             } else if isOnScreen, holds(card.frame, until: group) {
                 group.keepUntilRevealed(card)
@@ -638,7 +639,7 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         card.configure(kind: kind, cornerRadius: metrics.cardCornerRadius)
         card.frame = entry.frame
         card.sceneBuilder = { [weak self] size, scale in
-            self?.scene(id: id, size: size, scale: scale) ?? .empty(size: size, scale: scale, colorSpace: ForumCardRasterizer.defaultColorSpace)
+            self?.scene(id: id, size: size, scale: scale) ?? .empty(size: size, scale: scale)
         }
         card.didCommit = { [weak self, weak card] in
             guard let self, let card else { return }
@@ -648,7 +649,8 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
             regions[id] = nil
             // A resized card on screen redraws at once: its old bitmap would
             // not fit its new frame. Off screen, it redraws in the background.
-            card.render(scale: backingScale, fading: false, synchronously: card.hasContent && isVisible)
+            // A card arriving during a board swap is drawn for the cross-fade.
+            card.render(scale: backingScale, fading: false, synchronously: (card.hasContent || drawsArrivalsNow) && isVisible)
         }
         applyChrome(card, id: id, animated: false)
         refreshShimmer(card, id: id)
@@ -670,7 +672,7 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         let frames = cardRegions(for: id)?.skeletonFrames ?? []
         var color = NSColor.white
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            color = NSColor.labelColor.withAlphaComponent(0.09)
+            color = ForumCardPainter.skeletonFill
         }
         card.updateShimmer(
             frames: frames,

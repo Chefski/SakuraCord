@@ -67,6 +67,10 @@ enum ForumCardPainter {
     private static var captionFont: NSFont { fonts.regular }
     private static var badgeFont: NSFont { fonts.badge }
     static var newBadgeSize: CGSize { fonts.newBadgeSize }
+    /// Matches the shared skeleton style's resting fill; the shimmer above
+    /// the bars uses it too.
+    static let skeletonFill = NSColor.labelColor.withAlphaComponent(0.09)
+    private static let bullet = " • "
     static let newBadgeFill = NSColor(srgbRed: 0xC9 / 255, green: 0xD2 / 255, blue: 1, alpha: 1)
     static let newBadgeText = NSColor(srgbRed: 0x58 / 255, green: 0x65 / 255, blue: 0xF2 / 255, alpha: 1)
 
@@ -213,7 +217,7 @@ enum ForumCardPainter {
         regions.countTextWidth = countTextWidth
         if !alignsReactionTrailing {
             cursorX += countWidth
-            let separatorWidth = ceil(NativeTimelineRowLayout.measuredTextWidth(" • ", font: footerFont))
+            let separatorWidth = ceil(NativeTimelineRowLayout.measuredTextWidth(bullet, font: footerFont))
             regions.footerSeparatorFrame = CGRect(x: cursorX, y: footer.minY, width: separatorWidth, height: footer.height)
             cursorX += separatorWidth
             let text = presentation.relativeTimeText(isGallery: false)
@@ -325,10 +329,8 @@ enum ForumCardPainter {
 
     /// Skeleton bars, drawn beneath the shimmer layer that animates over them.
     static func drawSkeleton(_ frames: [CGRect], on canvas: ForumCardCanvas) {
-        // Matches the shared skeleton style's resting fill.
-        let color = NSColor.labelColor.withAlphaComponent(0.09)
         for frame in frames {
-            canvas.fill(frame, cornerRadius: min(InterfaceScale.metric(7), frame.height / 2), color: color)
+            canvas.fill(frame, cornerRadius: min(InterfaceScale.metric(7), frame.height / 2), color: skeletonFill)
         }
     }
 
@@ -685,7 +687,7 @@ enum ForumCardPainter {
         let posted = presentation.relativeTimeText(isGallery: true)
         let postedWidth = ceil(NativeTimelineRowLayout.measuredTextWidth(posted, font: captionFont)) + 1
         if let author = presentation.galleryAuthor {
-            let bulletWidth = ceil(NativeTimelineRowLayout.measuredTextWidth(" • ", font: captionFont))
+            let bulletWidth = ceil(NativeTimelineRowLayout.measuredTextWidth(bullet, font: captionFont))
             let available = max(0, trailing - InterfaceScale.metric(6) - cursorX - postedWidth - bulletWidth)
             let font = ProfileNameFontCache.font(id: author.fontID, fallback: captionFont)
             ProfileNameFontLoader.shared.request(id: author.fontID)
@@ -703,7 +705,7 @@ enum ForumCardPainter {
                 color: author.color ?? .labelColor
             )
             cursorX += nameWidth
-            canvas.text(" • ", in: CGRect(x: cursorX, y: textY, width: bulletWidth, height: lineHeight), font: captionFont, color: .tertiaryLabelColor)
+            canvas.text(bullet, in: CGRect(x: cursorX, y: textY, width: bulletWidth, height: lineHeight), font: captionFont, color: .tertiaryLabelColor)
             cursorX += bulletWidth
         }
         canvas.text(
@@ -799,7 +801,7 @@ enum ForumCardPainter {
         if let frame = regions.footerSeparatorFrame {
             let lineHeight = ForumBoardMetrics.lineHeight(of: footerFont)
             canvas.text(
-                " • ",
+                bullet,
                 in: CGRect(x: frame.minX, y: frame.midY - lineHeight / 2, width: frame.width, height: lineHeight),
                 font: footerFont,
                 color: .tertiaryLabelColor,
