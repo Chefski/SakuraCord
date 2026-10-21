@@ -68,9 +68,11 @@ func `forum title line counts match the typesetter at every width`() {
         "Supercalifragilisticexpialidocious-without-any-break-opportunities-at-all",
         "Trailing spaces stay out of the measurement   ",
         "Emoji 🎉 and CJK 日本語のタイトル mixed in",
+        "W",
+        "Hi",
     ]
     for title in titles {
-        for width in stride(from: 40, through: 900, by: 7) {
+        for width in [1, 2, 5, 10, 20] + Array(stride(from: 40, through: 900, by: 7)) {
             let expected = ForumTitleLineCounter.count(title, width: CGFloat(width), font: font, maximumLines: 2)
             #expect(counter.lines(title, width: CGFloat(width)) == expected, "\(title) at \(width)")
         }

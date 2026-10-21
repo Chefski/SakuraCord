@@ -348,7 +348,8 @@ nonisolated final class ForumTitleLineCounter: @unchecked Sendable {
 
     /// With at most two lines, a title takes one line when it fits on one
     /// and two otherwise. Widths too close to call, and titles with line
-    /// breaks (measured as NaN), take the typesetter's answer.
+    /// breaks or a single character (measured as NaN), take the
+    /// typesetter's answer.
     private func fastCount(_ title: String, width: CGFloat) -> Int? {
         guard maximumLines <= 2 else { return nil }
         let singleLineWidth = singleLineWidths[title] ?? measureSingleLine(title)
@@ -360,7 +361,8 @@ nonisolated final class ForumTitleLineCounter: @unchecked Sendable {
 
     private func measureSingleLine(_ title: String) -> CGFloat {
         var value = CGFloat.nan
-        if !title.isEmpty, !title.contains(where: \.isNewline) {
+        // One character never wraps, however narrow the width.
+        if title.count > 1, !title.contains(where: \.isNewline) {
             let line = CTLineCreateWithAttributedString(NSAttributedString(string: title, attributes: [.font: font]))
             value = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil)) - CGFloat(CTLineGetTrailingWhitespaceWidth(line))
         }

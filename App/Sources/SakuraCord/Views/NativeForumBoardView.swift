@@ -336,7 +336,15 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         // every arriving card drawn for it; cards gliding between the two
         // boards would cross each other.
         let swapsBoard = !isFirstPopulation && (queryChanged || modeChanged)
-        if swapsBoard { crossFadeBoard() }
+        if swapsBoard {
+            crossFadeBoard()
+            // A move or entrance still running from a live update would carry
+            // its card across the new board after the fade.
+            for card in cards.values {
+                card.layer.removeAnimation(forKey: "move")
+                card.layer.removeAnimation(forKey: "entrance")
+            }
+        }
         drawsArrivalsNow = swapsBoard
         defer { drawsArrivalsNow = false }
         if structureChanged || layoutState == nil {
