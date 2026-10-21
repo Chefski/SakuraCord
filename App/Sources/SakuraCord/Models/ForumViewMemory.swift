@@ -1,0 +1,79 @@
+import Foundation
+import SakuraCordModels
+
+/// What a person last chose in each forum, so returning to it shows the
+/// same board. Sort, layout and tag matching persist across launches; the
+/// scroll position lasts for the session. Search and tag filters do not
+/// carry over: a forum opens unfiltered.
+@MainActor
+final class ForumViewMemory {
+    struct Preferences: Codable, Equatable {
+        var sortOrder: ForumSortOrder
+        var layout: ForumLayout
+        var tagMatch: ForumTagMatch
+        var updatedAt: Date
+    }
+
+    /// The first visible post and how far its top sits below the board's top.
+    struct ScrollPosition: Equatable {
+        let postID: ChannelID
+        let offset: Double
+    }
+
+    private static let key = "forum.viewPreferences"
+    /// Enough for every forum someone visits; the least recently changed go.
+    private static let limit = 256
+    private let defaults: UserDefaults?
+    private var preferences: [String: Preferences]
+    private var scrollPositions: [ChannelID: ScrollPosition] = [:]
+
+    /// `defaults` nil keeps everything in memory (offline and test sessions).
+    init(defaults: UserDefaults?) {
+        self.defaults = defaults
+        preferences = defaults?.data(forKey: Self.key)
+            .flatMap { try? JSONDecoder().decode([String: Preferences].self, from: $0) } ?? [:]
+    }
+
+    func preferences(for channelID: ChannelID) -> Preferences? {
+        preferences[String(channelID.rawValue)]
+    }
+
+    func remember(sortOrder: ForumSortOrder, layout: ForumLayout, tagMatch: ForumTagMatch, for channelID: ChannelID) {
+        preferences[String(channelID.rawValue)] = Preferences(
+            sortOrder: sortOrder,
+            layout: layout,
+            tagMatch: tagMatch,
+            updatedAt: .now
+        )
+        if preferences.count > Self.limit,
+           let oldest = preferences.min(by: { $0.value.updatedAt < $1.value.updatedAt })?.key
+        {
+            preferences[oldest] = nil
+        }
+        save()
+    }
+
+    /// Back to the forum's own defaults.
+    func forget(_ channelID: ChannelID) {
+        preferences[String(channelID.rawValue)] = nil
+        scrollPositions[channelID] = nil
+        save()
+    }
+
+    func scrollPosition(for channelID: ChannelID) -> ScrollPosition? {
+        scrollPositions[channelID]
+    }
+
+    func rememberScrollPosition(_ position: ScrollPosition?, for channelID: ChannelID) {
+        scrollPositions[channelID] = position
+    }
+
+    private func save() {
+        guard let defaults else { return }
+        if preferences.isEmpty {
+            defaults.removeObject(forKey: Self.key)
+        } else if let data = try? JSONEncoder().encode(preferences) {
+            defaults.set(data, forKey: Self.key)
+        }
+    }
+}

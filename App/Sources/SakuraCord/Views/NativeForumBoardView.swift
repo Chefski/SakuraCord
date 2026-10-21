@@ -165,6 +165,9 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
     /// Set while the board swaps under a cross-fade, so every card arriving
     /// on screen is drawn before the fade captures the new board.
     var drawsArrivalsNow = false
+    /// Where this forum was left earlier in the session, restored once its
+    /// first posts arrive.
+    private var pendingScrollRestore: ForumViewMemory.ScrollPosition?
     let rasterCache = ForumCardRasterCache()
     var presentations: [ChannelID: ForumCardPresentation] = [:]
     var regions: [ForumBoardItem.Identifier: ForumCardRegions] = [:]
@@ -311,6 +314,9 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         }
         self.model = model
         self.channel = channel
+        if channelChanged {
+            pendingScrollRestore = model.forumViewMemory.scrollPosition(for: channel.id)
+        }
         guard previousSnapshot != snapshot || channelChanged else {
             // Observation covers model reads; the channel's tags and default
             // reaction arrive as a value, so only a change to it re-resolves.
@@ -341,7 +347,8 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         defer { drawsArrivalsNow = false }
         if structureChanged || layoutState == nil {
             let transition: ForumBoardTransition = isFirstPopulation || swapsBoard ? .none : .reflow
-            relayout(transition: transition, scrollsToTop: queryChanged || channelChanged)
+            let restoring = takeScrollRestore()
+            relayout(transition: transition, scrollsToTop: (queryChanged || channelChanged) && restoring == nil, restoring: restoring)
         } else {
             // A new query starts at its first post even when it selects the
             // same cards, as the previous view did.
@@ -374,9 +381,30 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         refreshVisibleCards(transition: .none)
         updateHoverFromCurrentPointer()
         requestNextPageIfNeeded()
+        rememberScrollPosition()
     }
 
-    private func relayout(transition: ForumBoardTransition, scrollsToTop: Bool) {
+    /// The remembered position, once the first posts are in; if its post is
+    /// not among them, the forum starts at the top.
+    private func takeScrollRestore() -> ScrollAnchor? {
+        guard let position = pendingScrollRestore, snapshot?.posts.isEmpty == false else { return nil }
+        pendingScrollRestore = nil
+        guard postsByID[position.postID] != nil else { return nil }
+        return ScrollAnchor(id: .post(position.postID), offset: position.offset)
+    }
+
+    /// Keeps where this forum is scrolled, so coming back to it later in the
+    /// session shows the same posts.
+    private func rememberScrollPosition() {
+        guard let model, let channel, snapshot?.posts.isEmpty == false, pendingScrollRestore == nil else { return }
+        let position = scrollAnchor().flatMap { anchor -> ForumViewMemory.ScrollPosition? in
+            guard case let .post(postID) = anchor.id else { return nil }
+            return ForumViewMemory.ScrollPosition(postID: postID, offset: anchor.offset)
+        }
+        model.forumViewMemory.rememberScrollPosition(position, for: channel.id)
+    }
+
+    private func relayout(transition: ForumBoardTransition, scrollsToTop: Bool, restoring: ScrollAnchor? = nil) {
         guard let scrollView = enclosingScrollView else { return }
         let width = scrollView.contentView.bounds.width
         guard width > 0 else { return }
@@ -387,7 +415,7 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
             // Excerpt fonts and emoji sizes follow the interface size.
             reconfigureRealizedExcerpts()
         }
-        let anchor = transition == .none && !scrollsToTop ? scrollAnchor() : nil
+        let anchor = restoring ?? (transition == .none && !scrollsToTop ? scrollAnchor() : nil)
         let counter = titleCounter
         let signpost = AppPerformanceSignposts.signposter.beginInterval("ForumBoardLayout")
         let newLayout = ForumBoardLayout.make(
@@ -408,7 +436,7 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         setFrameSize(NSSize(width: width, height: height))
         cardsLayer.frame = CGRect(origin: .zero, size: CGSize(width: width, height: height))
         CATransaction.commit()
-        if scrollsToTop {
+        if scrollsToTop, restoring == nil {
             scrollToTop()
         } else if let anchor {
             restore(anchor)

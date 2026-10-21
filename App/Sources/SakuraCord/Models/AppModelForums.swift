@@ -71,15 +71,65 @@ extension AppModel {
         hasMoreMessages = false
         hasMoreLaterMessages = false
         if let channel = selectedChannel {
-            forumSortOrder = channel.defaultSortOrder ?? .latestActivity
-            forumLayout =
-                channel.defaultForumLayout == .defaultLayout ? .list : channel.defaultForumLayout
-            forumTagMatch = channel.defaultTagMatch
+            // Returning to a forum shows it as it was left.
+            let saved = forumViewMemory.preferences(for: channel.id)
+            forumSortOrder = saved?.sortOrder ?? channel.defaultSortOrder ?? .latestActivity
+            forumLayout = saved?.layout
+                ?? (channel.defaultForumLayout == .defaultLayout ? .list : channel.defaultForumLayout)
+            forumTagMatch = saved?.tagMatch ?? channel.defaultTagMatch
         }
         guard selectedConversationAccess.isReadable else { return }
         forumLoadTask = Task { [weak self] in
             await self?.loadForumPosts(reset: true)
         }
+    }
+
+    // MARK: Sort & view
+
+    func setForumSortOrder(_ value: ForumSortOrder) {
+        guard forumSortOrder != value else { return }
+        forumSortOrder = value
+        rememberForumView()
+        reloadForumPosts()
+    }
+
+    func setForumLayout(_ value: ForumLayout) {
+        guard forumLayout != value else { return }
+        forumLayout = value
+        rememberForumView()
+    }
+
+    func setForumTagMatch(_ value: ForumTagMatch) {
+        guard forumTagMatch != value else { return }
+        forumTagMatch = value
+        rememberForumView()
+        reloadForumPosts()
+    }
+
+    func toggleForumFilterTag(_ tagID: ForumTagID) {
+        if forumSelectedTagIDs.contains(tagID) {
+            forumSelectedTagIDs.remove(tagID)
+        } else {
+            forumSelectedTagIDs.insert(tagID)
+        }
+        reloadForumPosts()
+    }
+
+    /// Returns to the forum's own defaults and forgets what was remembered.
+    func resetForumView() {
+        let channel = selectedChannel
+        forumSortOrder = channel?.defaultSortOrder ?? .latestActivity
+        let layout = channel?.defaultForumLayout ?? .list
+        forumLayout = layout == .defaultLayout ? .list : layout
+        forumTagMatch = channel?.defaultTagMatch ?? .matchSome
+        forumSelectedTagIDs = []
+        if let channel { forumViewMemory.forget(channel.id) }
+        reloadForumPosts()
+    }
+
+    private func rememberForumView() {
+        guard let channel = selectedChannel, channel.kind == .forum else { return }
+        forumViewMemory.remember(sortOrder: forumSortOrder, layout: forumLayout, tagMatch: forumTagMatch, for: channel.id)
     }
 
     func reloadForumPosts() {
