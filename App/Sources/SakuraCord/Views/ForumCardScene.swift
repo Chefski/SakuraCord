@@ -57,7 +57,11 @@ nonisolated struct ForumCardScene: @unchecked Sendable {
     let colorSpace: CGColorSpace
     let operations: [Operation]
 
-    static func empty(size: CGSize, scale: CGFloat, colorSpace: CGColorSpace) -> ForumCardScene {
+    static func empty(
+        size: CGSize,
+        scale: CGFloat,
+        colorSpace: CGColorSpace = ForumCardRasterizer.defaultColorSpace
+    ) -> ForumCardScene {
         ForumCardScene(size: size, scale: scale, colorSpace: colorSpace, operations: [])
     }
 }

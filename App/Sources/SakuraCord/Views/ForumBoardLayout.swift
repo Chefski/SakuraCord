@@ -327,8 +327,9 @@ nonisolated final class ForumTitleLineCounter: @unchecked Sendable {
     private let maximumLines: Int
     private var cache: [Key: Int] = [:]
     /// Each title's width on one line, which does not depend on the board
-    /// width, so a resize re-measures no titles; NaN when it has none.
-    private var singleLineWidths: [String: CGFloat] = [:]
+    /// width, so a resize re-measures no titles; nil when only the
+    /// typesetter can count it.
+    private var singleLineWidths: [String: CGFloat?] = [:]
 
     init(font: NSFont, maximumLines: Int) {
         self.font = font
@@ -348,19 +349,19 @@ nonisolated final class ForumTitleLineCounter: @unchecked Sendable {
 
     /// With at most two lines, a title takes one line when it fits on one
     /// and two otherwise. Widths too close to call, and titles with line
-    /// breaks or a single character (measured as NaN), take the
-    /// typesetter's answer.
+    /// breaks or a single character, take the typesetter's answer.
     private func fastCount(_ title: String, width: CGFloat) -> Int? {
-        guard maximumLines <= 2 else { return nil }
-        let singleLineWidth = singleLineWidths[title] ?? measureSingleLine(title)
-        guard !singleLineWidth.isNaN else { return nil }
-        if singleLineWidth <= max(1, width) - 0.5 { return 1 }
-        if singleLineWidth > max(1, width) + 0.5 { return maximumLines }
+        guard maximumLines <= 2,
+              let singleLineWidth = singleLineWidths[title] ?? measureSingleLine(title)
+        else { return nil }
+        let width = max(1, width)
+        if singleLineWidth <= width - 0.5 { return 1 }
+        if singleLineWidth > width + 0.5 { return maximumLines }
         return nil
     }
 
-    private func measureSingleLine(_ title: String) -> CGFloat {
-        var value = CGFloat.nan
+    private func measureSingleLine(_ title: String) -> CGFloat? {
+        var value: CGFloat?
         // One character never wraps, however narrow the width.
         if title.count > 1, !title.contains(where: \.isNewline) {
             let line = CTLineCreateWithAttributedString(NSAttributedString(string: title, attributes: [.font: font]))
