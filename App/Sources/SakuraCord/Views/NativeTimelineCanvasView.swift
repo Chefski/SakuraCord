@@ -529,31 +529,8 @@ nonisolated enum NativeTimelineRowPainter {
         animatedReactionIDs: Set<String> = []
     ) {
         // Main-thread callers that set no context get one from their model.
-        if NativeTimelineRowPaintContext.current == nil, let model, Thread.isMainThread {
-            let context = MainActor.assumeIsolated { NativeTimelineRowPaintContext(model: model, items: [item]) }
-            NativeTimelineRowPaintContext.$current.withValue(context) {
-                draw(
-                    item: item, layout: layout, in: rowFrame, model: nil, isHovered: isHovered,
-                    drawsBubbleBackground: drawsBubbleBackground, showsCompactTimestamp: showsCompactTimestamp,
-                    isAuthorHovered: isAuthorHovered, isServerTagHovered: isServerTagHovered,
-                    hoveredMention: hoveredMention, hoveredTextLink: hoveredTextLink,
-                    hoveredTextSpoiler: hoveredTextSpoiler, hoveredComponentButton: hoveredComponentButton,
-                    activeComponentChoiceTarget: activeComponentChoiceTarget,
-                    pressedComponentButton: pressedComponentButton,
-                    componentButtonPressProgress: componentButtonPressProgress,
-                    isForwardedSourceHovered: isForwardedSourceHovered,
-                    isEphemeralDismissHovered: isEphemeralDismissHovered,
-                    isTranslationActionHovered: isTranslationActionHovered,
-                    isSuppressedToggleHovered: isSuppressedToggleHovered,
-                    hidesMessageContent: hidesMessageContent, hoveredReactionID: hoveredReactionID,
-                    isAddReactionHovered: isAddReactionHovered, textSelection: textSelection,
-                    revealedTextSpoilerState: revealedTextSpoilerState, spoilerRevealStore: spoilerRevealStore,
-                    reactionCountTransitions: reactionCountTransitions, pollPresentation: pollPresentation,
-                    animatedReactionIDs: animatedReactionIDs
-                )
-            }
-            return
-        }
+        let context = NativeTimelineRowPaintContext.fallback(model: model, item: item)
+        NativeTimelineRowPaintContext.$current.withValue(context) {
         NSGraphicsContext.saveGraphicsState()
         let transform = NSAffineTransform()
         transform.translateX(by: rowFrame.minX, yBy: rowFrame.minY)
@@ -634,6 +611,7 @@ nonisolated enum NativeTimelineRowPainter {
             ))
         }
         NSGraphicsContext.restoreGraphicsState()
+        }
     }
 
     static func drawStripedHighlight(

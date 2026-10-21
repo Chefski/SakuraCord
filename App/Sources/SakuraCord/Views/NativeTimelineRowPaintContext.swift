@@ -12,7 +12,7 @@ nonisolated final class NativeTimelineRowPaintContext: @unchecked Sendable {
 
     let currentUserID: UserID?
     let underlinesLinks: Bool
-    let roleColorDisplay: AccessibilitySettingsSnapshot.RoleColorDisplay
+    let roleColorDisplay: RoleColorDisplay
     let interfaceSettings: InterfaceSettingsSnapshot
     let cosmeticPolicy: ProfileCosmeticPolicy
     let customEmojiURLsByID: CustomEmojiImageURLs
@@ -22,14 +22,23 @@ nonisolated final class NativeTimelineRowPaintContext: @unchecked Sendable {
     private let roleIDsByGuild: [GuildID: Set<RoleID>]
     private let authors: [MessageID: MessageAuthorPresentation]
     private let replyAuthors: [MessageID: MessageAuthorPresentation]
+    private let replySummaries: [MessageID: MessageReplySummary.Prepared]
     private let threadPreviews: [ChannelID: Message]
     private let reactionUpdates: Set<MessageID>
     private let reactionCreations: Set<MessageID>
     private let pollVotes: Set<MessageID>
     private let pollVoteRemovals: Set<MessageID>
+    /// The loaded images the rows show, for a paint on a worker thread,
+    /// which cannot read the media store.
+    private let mediaImages: [NativeTimelineMediaKey: NSImage]
 
     @MainActor
-    init(model: AppModel, items: some Sequence<NativeMessageTimelineItem>) {
+    init(
+        model: AppModel,
+        items: some Sequence<NativeMessageTimelineItem>,
+        mediaImages: [NativeTimelineMediaKey: NSImage] = [:]
+    ) {
+        self.mediaImages = mediaImages
         currentUserID = model.currentUser?.id
         underlinesLinks = model.accessibilitySettings.underlinesLinks
         roleColorDisplay = model.accessibilitySettings.roleColorDisplay
@@ -42,6 +51,7 @@ nonisolated final class NativeTimelineRowPaintContext: @unchecked Sendable {
         var roleIDsByGuild: [GuildID: Set<RoleID>] = [:]
         var authors: [MessageID: MessageAuthorPresentation] = [:]
         var replyAuthors: [MessageID: MessageAuthorPresentation] = [:]
+        var replySummaries: [MessageID: MessageReplySummary.Prepared] = [:]
         var threadPreviews: [ChannelID: Message] = [:]
         var reactionUpdates: Set<MessageID> = []
         var reactionCreations: Set<MessageID> = []
@@ -56,6 +66,7 @@ nonisolated final class NativeTimelineRowPaintContext: @unchecked Sendable {
             authors[message.id] = model.authorPresentation(for: message)
             if let preview = row.replyPreview {
                 replyAuthors[message.id] = model.authorPresentation(for: preview, in: message)
+                replySummaries[message.id] = NativeTimelineReplyMetrics.summary(for: preview, in: message, model: model)
             }
             if let thread = message.thread, let preview = model.threadPreviewMessages[thread.id] {
                 threadPreviews[thread.id] = preview
@@ -70,11 +81,20 @@ nonisolated final class NativeTimelineRowPaintContext: @unchecked Sendable {
         self.roleIDsByGuild = roleIDsByGuild
         self.authors = authors
         self.replyAuthors = replyAuthors
+        self.replySummaries = replySummaries
         self.threadPreviews = threadPreviews
         self.reactionUpdates = reactionUpdates
         self.reactionCreations = reactionCreations
         self.pollVotes = pollVotes
         self.pollVoteRemovals = pollVoteRemovals
+    }
+
+    /// The context set around this paint, or, on the main thread, one built
+    /// from the caller's model.
+    static func fallback(model: AppModel?, item: NativeMessageTimelineItem) -> NativeTimelineRowPaintContext? {
+        if let current { return current }
+        guard let model, Thread.isMainThread else { return nil }
+        return MainActor.assumeIsolated { NativeTimelineRowPaintContext(model: model, items: [item]) }
     }
 
     func currentUserRoleIDs(for guildID: GuildID?) -> Set<RoleID> {
@@ -87,6 +107,10 @@ nonisolated final class NativeTimelineRowPaintContext: @unchecked Sendable {
 
     func authorPresentation(forReplyIn message: Message) -> MessageAuthorPresentation? {
         replyAuthors[message.id]
+    }
+
+    func replySummary(for preview: MessageReplyPreview, in message: Message) -> MessageReplySummary.Prepared {
+        replySummaries[message.id] ?? MessageReplySummary.prepare(preview.content)
     }
 
     func threadPreviewMessage(for threadID: ChannelID) -> Message? {
@@ -103,6 +127,10 @@ nonisolated final class NativeTimelineRowPaintContext: @unchecked Sendable {
 
     func canUpdatePollVote(on message: Message, removing: Bool = false) -> Bool {
         (removing ? pollVoteRemovals : pollVotes).contains(message.id)
+    }
+
+    func mediaImage(for key: NativeTimelineMediaKey) -> NSImage? {
+        mediaImages[key]
     }
 
     func isVoiceMessageActive(_ id: VoiceMessagePlaybackID) -> Bool {

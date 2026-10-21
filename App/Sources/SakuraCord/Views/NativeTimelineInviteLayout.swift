@@ -38,7 +38,7 @@ struct NativeServerCardContent {
     }
 }
 
-struct NativeTimelineInviteLayout {
+nonisolated struct NativeTimelineInviteLayout {
     static var cornerRadius: CGFloat { InterfaceScale.metric(28) }
 
     struct Label {
@@ -96,6 +96,7 @@ struct NativeTimelineInviteLayout {
         (labels.map(\.text) + (content?.traits.map(\.label) ?? [])).joined(separator: ". ")
     }
 
+    @MainActor
     init(reference: ServerInviteReference? = nil, index: Int, origin: CGPoint, maximumWidth: CGFloat,
          model: AppModel?, isOwnMessage: Bool, fillsWidth: Bool = false, preview: NativeServerCardContent? = nil,
          integratesWithBubble: Bool = false) {
@@ -242,7 +243,7 @@ struct NativeTimelineInviteLayout {
         cursor += InterfaceScale.metric(20)
     }
 
-    private static func action(for invite: ServerInvite?, entry: ServerInvitePresentationStore.Entry?, model: AppModel?)
+    @MainActor private static func action(for invite: ServerInvite?, entry: ServerInvitePresentationStore.Entry?, model: AppModel?)
         -> (String, Bool) {
         if let invite, model?.serverInvites.leaving.contains(invite.guildID) == true { return ("Leaving…", true) }
         if let invite, model?.serverInvites.joining.contains(invite.guildID) == true { return ("Joining…", true) }

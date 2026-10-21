@@ -1,14 +1,27 @@
 import AppKit
 import OSLog
 
-// SPIKE (temporary, never shipped): can the existing row painter run off the
-// main thread? Paints each visible row on main and on a worker thread, while
-// main waits, and logs timings and pixel differences. Enabled only with the
-// `--timeline-raster-spike` launch argument.
+// SPIKE (temporary, never shipped): can timeline rows paint off the main
+// thread, pixel for pixel, fast enough to follow a motion? Enabled only with
+// the `--timeline-raster-spike` launch argument; the rows phase also needs
+// `--timeline-raster-spike-rows`. Results go to the log under "SPIKE".
+//
+// Findings so far: one worker painting while main draws is pixel-exact; a
+// wide fan-out across all cores is not (Core Graphics bleeds colour between
+// contexts drawn at once), so rows paint on one serial queue.
+private struct SpikePaint: @unchecked Sendable {
+    let index: Int
+    let width: CGFloat
+    let height: CGFloat
+    let paint: @Sendable () -> Void
+    let main: [UInt8]
+}
+
 extension NativeTimelineCanvasView {
     private static let rasterSpikeEnabled = ProcessInfo.processInfo.arguments.contains("--timeline-raster-spike")
     private static var rasterSpikeScheduled: Set<ObjectIdentifier> = []
     private static let spikeLog = Logger(subsystem: "dev.sakuracord.SakuraCord", category: "SideChatMotionBenchmark")
+    nonisolated private static let spikeQueue = DispatchQueue(label: "dev.sakuracord.timeline-raster-spike", qos: .userInteractive)
 
     func scheduleRasterSpikeIfNeeded() {
         guard Self.rasterSpikeEnabled, window != nil,
@@ -22,128 +35,213 @@ extension NativeTimelineCanvasView {
     }
 
     private func runRasterSpike() {
-        runAppKitPrimitiveSpike()
         guard ProcessInfo.processInfo.arguments.contains("--timeline-raster-spike-rows") else { return }
-        var rows: [Int] = []
-        forEachDisplayedRow(in: visibleRect) { rows.append($0) }
         let scale = window?.backingScaleFactor ?? 2
         let appearance = effectiveAppearance
-        Self.spikeLog.notice("SPIKE begin rows=\(rows.count) scale=\(Double(scale))")
-        var paints: [(index: Int, width: CGFloat, height: CGFloat, paint: @Sendable () -> Void, main: [UInt8])] = []
+        let rows = Array(items.indices.prefix(400))
+        var visible: [Int] = []
+        forEachDisplayedRow(in: visibleRect) { visible.append($0) }
+        Self.spikeLog.notice("SPIKE begin rows=\(rows.count) visible=\(visible.count) width=\(Double(self.bounds.width)) scale=\(Double(scale))")
+
+        let contextStart = ProcessInfo.processInfo.systemUptime
+        let context = paintContext(for: rows)
+        Self.spikeLog.notice("SPIKE context build=\(Self.milliseconds(since: contextStart))")
+
+        // Each row on main (the production path) and on the serial worker.
+        var paints: [SpikePaint] = []
+        var mainTotal = 0.0
         for index in rows {
-            let item = items[index]
             let layout = layouts[index]
             let width = rowFrame(at: index).width
-            let height = layout.height
-            guard width > 1, height > 1 else { continue }
-            let model = model
-            let store = spoilerRevealStore
-            let animated = animatedReactionIDs(for: item.identifier)
-            let paint: @MainActor () -> Void = {
+            guard width > 1, layout.height > 1 else { continue }
+            let mainPaint = rowPaint(index: index, layout: layout, width: width, context: nil, appearance: appearance)
+            let start = ProcessInfo.processInfo.systemUptime
+            let main = Self.spikeRaster(width: width, height: layout.height, scale: scale, paint: mainPaint)
+            mainTotal += Self.milliseconds(since: start)
+            let workerPaint = rowPaint(index: index, layout: layout, width: width, context: context, appearance: appearance)
+            paints.append(SpikePaint(index: index, width: width, height: layout.height, paint: workerPaint, main: main))
+        }
+        for pass in 0 ..< 3 {
+            let results = Self.paintSerially(paints, scale: scale)
+            let differing = zip(paints, results).filter { Self.spikeDiff($0.main, $1.bytes).differing != 0 }.map(\.0.index)
+            let total = results.reduce(0) { $0 + $1.milliseconds }
+            let slowest = results.map(\.milliseconds).max() ?? 0
+            Self.spikeLog.notice(
+                "SPIKE serial pass=\(pass) rows=\(paints.count) workerTotal=\(total) mainTotal=\(mainTotal) slowestRow=\(slowest) differingRows=\(differing.description, privacy: .public)"
+            )
+        }
+        runWidthSweep(visible: visible, context: context, appearance: appearance, scale: scale)
+        runStress(paints, appearance: appearance, scale: scale)
+    }
+
+    /// The motion's width path: per frame, layouts on main at the new width,
+    /// then the visible rows painted on the worker.
+    private func runWidthSweep(
+        visible: [Int], context: NativeTimelineRowPaintContext?, appearance: NSAppearance, scale: CGFloat
+    ) {
+        let startWidth = bounds.width
+        let frames = 40
+        var layoutTimes: [Double] = []
+        var paintTimes: [Double] = []
+        var differingFrames = 0
+        for frame in 0 ..< frames {
+            let width = (startWidth - 320 * CGFloat(frame) / CGFloat(frames - 1)).rounded()
+            let layoutStart = ProcessInfo.processInfo.systemUptime
+            let frameLayouts = visible.map { NativeTimelineRowLayout.make(item: items[$0], width: width, model: model) }
+            layoutTimes.append(Self.milliseconds(since: layoutStart))
+            let paints = zip(visible, frameLayouts).map { index, layout in
+                SpikePaint(
+                    index: index, width: width, height: layout.height,
+                    paint: rowPaint(index: index, layout: layout, width: width, context: context, appearance: appearance),
+                    main: []
+                )
+            }
+            let results = Self.paintSerially(paints, scale: scale)
+            paintTimes.append(results.reduce(0) { $0 + $1.milliseconds })
+            // Every tenth frame, the same rows painted on main must match.
+            if frame.isMultiple(of: 10) {
+                let mismatch = zip(zip(visible, frameLayouts), results).contains { pair, result in
+                    let mainPaint = rowPaint(index: pair.0, layout: pair.1, width: width, context: nil, appearance: appearance)
+                    let main = Self.spikeRaster(width: width, height: pair.1.height, scale: scale, paint: mainPaint)
+                    return Self.spikeDiff(main, result.bytes).differing != 0
+                }
+                if mismatch { differingFrames += 1 }
+            }
+        }
+        Self.spikeLog.notice(
+            """
+            SPIKE sweep frames=\(frames) rows=\(visible.count) \
+            layoutMain p50=\(Self.percentile(layoutTimes, 0.5)) p95=\(Self.percentile(layoutTimes, 0.95)) max=\(layoutTimes.max() ?? 0) \
+            paintWorker p50=\(Self.percentile(paintTimes, 0.5)) p95=\(Self.percentile(paintTimes, 0.95)) max=\(paintTimes.max() ?? 0) \
+            parityFramesDiffering=\(differingFrames) of \(frames / 10)
+            """
+        )
+    }
+
+    /// The parity harness's stress checks: the serial worker while main
+    /// draws, and the fan-out the renderer must not use.
+    private func runStress(_ paints: [SpikePaint], appearance: NSAppearance, scale: CGFloat) {
+        let mainLoad = Self.spikeWrap({
+            guard let context = NSGraphicsContext.current?.cgContext else { return }
+            for index in 0 ..< 20 {
+                let path = CGPath(
+                    roundedRect: CGRect(x: index * 20, y: 4, width: 40, height: 20),
+                    cornerWidth: 9, cornerHeight: 9, transform: nil
+                )
+                context.setFillColor(CGColor(red: 0.9, green: 0.4, blue: 0.6, alpha: 0.16))
+                context.addPath(path)
+                context.fillPath()
+                context.setFillColor(CGColor(red: 0.9, green: 0.4, blue: 0.6, alpha: 0.3))
+                context.addPath(path)
+                context.fillPath()
+            }
+        }, appearance: appearance)
+        // Serial worker, five passes over every row, while main draws.
+        nonisolated(unsafe) var serialDiffering = 0
+        nonisolated(unsafe) var finished = false
+        let lock = NSLock()
+        Self.spikeQueue.async {
+            for _ in 0 ..< 5 {
+                for entry in paints {
+                    let bytes = Self.spikeRaster(width: entry.width, height: entry.height, scale: scale, paint: entry.paint)
+                    if Self.spikeDiff(entry.main, bytes).differing != 0 { serialDiffering += 1 }
+                }
+            }
+            lock.withLock { finished = true }
+        }
+        var mainDraws = 0
+        while !lock.withLock({ finished }) {
+            _ = Self.spikeRaster(width: 440, height: 30, scale: scale, paint: mainLoad)
+            mainDraws += 1
+        }
+        Self.spikeLog.notice("SPIKE stress serialWhileMainDraws paints=\(paints.count * 5) differing=\(serialDiffering) mainDraws=\(mainDraws)")
+
+        // Fan-out across every core, for the record.
+        let copies = paints.count * 4
+        let results = UnsafeMutableBufferPointer<[UInt8]>.allocate(capacity: copies)
+        results.initialize(repeating: [])
+        DispatchQueue.concurrentPerform(iterations: copies) { job in
+            let entry = paints[job % paints.count]
+            results[job] = Self.spikeRaster(width: entry.width, height: entry.height, scale: scale, paint: entry.paint)
+        }
+        let fanOutDiffering = (0 ..< copies).filter {
+            Self.spikeDiff(paints[$0 % paints.count].main, results[$0]).differing != 0
+        }.count
+        results.deinitialize()
+        results.deallocate()
+        Self.spikeLog.notice("SPIKE stress fanOut paints=\(copies) differing=\(fanOutDiffering)")
+    }
+
+    /// The rows' app state and loaded images, gathered on main.
+    private func paintContext(for rows: [Int]) -> NativeTimelineRowPaintContext? {
+        var mediaImages: [NativeTimelineMediaKey: NSImage] = [:]
+        for index in rows {
+            for key in mediaKeys(for: items[index], at: index) {
+                if let image = NativeTimelineMediaStore.shared.firstAnimatedFrame(for: key)
+                    ?? NativeTimelineMediaStore.shared.image(for: key)
+                {
+                    mediaImages[key] = image
+                }
+            }
+        }
+        return model.map {
+            NativeTimelineRowPaintContext(model: $0, items: rows.map { items[$0] }, mediaImages: mediaImages)
+        }
+    }
+
+    /// One row's paint; without a context it reads the app on main, as the
+    /// canvas does.
+    private func rowPaint(
+        index: Int, layout: NativeTimelineRowLayout, width: CGFloat,
+        context: NativeTimelineRowPaintContext?, appearance: NSAppearance
+    ) -> @Sendable () -> Void {
+        nonisolated(unsafe) let item = items[index]
+        nonisolated(unsafe) let layout = layout
+        nonisolated(unsafe) let model = model
+        nonisolated(unsafe) let store = spoilerRevealStore
+        nonisolated(unsafe) let context = context
+        let animated = animatedReactionIDs(for: item.identifier)
+        let paint: @Sendable () -> Void = {
+            let draw = {
                 NativeTimelineRowPainter.draw(
                     item: item, layout: layout,
-                    in: CGRect(x: 0, y: 0, width: width, height: height),
+                    in: CGRect(x: 0, y: 0, width: width, height: layout.height),
                     model: model, isHovered: false,
                     spoilerRevealStore: store, animatedReactionIDs: animated
                 )
             }
-            // Spike only: calls the main-actor painter from a worker while
-            // main is blocked waiting for it.
-            let unsafePaint = Self.spikeWrap(unsafeBitCast(paint, to: (@Sendable () -> Void).self), appearance: appearance)
-            let mainStart = ProcessInfo.processInfo.systemUptime
-            let mainBytes = Self.spikeRaster(width: width, height: height, scale: scale, paint: unsafePaint)
-            let mainMS = (ProcessInfo.processInfo.systemUptime - mainStart) * 1_000
-            var offBytes: [UInt8] = []
-            var offMS = 0.0
-            let done = DispatchSemaphore(value: 0)
-            DispatchQueue.global(qos: .userInitiated).async {
-                let start = ProcessInfo.processInfo.systemUptime
-                offBytes = Self.spikeRaster(width: width, height: height, scale: scale, paint: unsafePaint)
-                offMS = (ProcessInfo.processInfo.systemUptime - start) * 1_000
-                done.signal()
+            if let context {
+                NativeTimelineRowPaintContext.$current.withValue(context, operation: draw)
+            } else {
+                draw()
             }
-            done.wait()
-            let (differing, maximum) = Self.spikeDiff(mainBytes, offBytes)
-            let kind = String(describing: item).prefix(28)
-            Self.spikeLog.notice("SPIKE row \(index) \(kind, privacy: .public) w=\(Double(width)) h=\(Double(height)) main=\(mainMS) off=\(offMS) differingPixels=\(differing) maxDelta=\(maximum)")
-            paints.append((index, width, height, unsafePaint, mainBytes))
         }
-        // All rows at once on workers, as the renderer would.
-        let results = UnsafeMutableBufferPointer<[UInt8]>.allocate(capacity: paints.count)
-        results.initialize(repeating: [])
-        let parallelStart = ProcessInfo.processInfo.systemUptime
-        let jobs = paints.map { ($0.width, $0.height, $0.paint) }
-        DispatchQueue.concurrentPerform(iterations: jobs.count) { job in
-            let (width, height, paint) = jobs[job]
-            results[job] = Self.spikeRaster(width: width, height: height, scale: scale, paint: paint)
-        }
-        let parallelMS = (ProcessInfo.processInfo.systemUptime - parallelStart) * 1_000
-        var worst = 0
-        for (offset, entry) in paints.enumerated() {
-            worst = max(worst, Self.spikeDiff(entry.main, results[offset]).differing)
-        }
-        results.deinitialize()
-        results.deallocate()
-        Self.spikeLog.notice("SPIKE parallel rows=\(paints.count) wall=\(parallelMS) worstDifferingPixels=\(worst)")
+        return Self.spikeWrap(paint, appearance: appearance)
     }
 
-    /// The AppKit primitives the row painter uses, drawn from nonisolated
-    /// code on main and on a worker, compared pixel for pixel.
-    private func runAppKitPrimitiveSpike() {
-        let appearance = effectiveAppearance
-        nonisolated(unsafe) let symbol = NSImage(systemSymbolName: "person.2.fill", accessibilityDescription: nil)!
-        nonisolated(unsafe) let bitmap: NSImage = {
-            let image = NSImage(size: NSSize(width: 40, height: 40))
-            image.lockFocus(); NSColor.systemPink.setFill(); NSBezierPath(ovalIn: NSRect(x: 4, y: 4, width: 32, height: 32)).fill(); image.unlockFocus()
-            return image
-        }()
-        let paint: @Sendable () -> Void = { Self.primitivePaint(symbol: symbol, bitmap: bitmap) }
-        let wrapped = Self.spikeWrap(paint, appearance: appearance)
-        for iteration in 0 ..< 3 {
-            let mainStart = ProcessInfo.processInfo.systemUptime
-            let mainBytes = Self.spikeRaster(width: 600, height: 120, scale: 2, paint: wrapped)
-            let mainMS = (ProcessInfo.processInfo.systemUptime - mainStart) * 1_000
-            var offBytes: [UInt8] = []
-            var offMS = 0.0
-            let done = DispatchSemaphore(value: 0)
-            DispatchQueue.global(qos: .userInitiated).async {
+    /// Paints in order on the serial worker while main waits.
+    nonisolated private static func paintSerially(
+        _ paints: [SpikePaint], scale: CGFloat
+    ) -> [(bytes: [UInt8], milliseconds: Double)] {
+        nonisolated(unsafe) var results: [(bytes: [UInt8], milliseconds: Double)] = []
+        spikeQueue.sync {
+            for entry in paints {
                 let start = ProcessInfo.processInfo.systemUptime
-                offBytes = Self.spikeRaster(width: 600, height: 120, scale: 2, paint: wrapped)
-                offMS = (ProcessInfo.processInfo.systemUptime - start) * 1_000
-                done.signal()
+                let bytes = spikeRaster(width: entry.width, height: entry.height, scale: scale, paint: entry.paint)
+                results.append((bytes, milliseconds(since: start)))
             }
-            done.wait()
-            let (differing, maximum) = Self.spikeDiff(mainBytes, offBytes)
-            Self.spikeLog.notice("SPIKE primitives #\(iteration) main=\(mainMS) off=\(offMS) differingPixels=\(differing) maxDelta=\(maximum) nonEmpty=\(mainBytes.contains { $0 != 0 })")
         }
+        return results
     }
 
-    nonisolated private static func primitivePaint(symbol: NSImage, bitmap: NSImage) {
-        NSColor.windowBackgroundColor.setFill()
-        NSBezierPath(rect: NSRect(x: 0, y: 0, width: 600, height: 120)).fill()
-        NSColor.labelColor.setFill()
-        NSBezierPath(roundedRect: NSRect(x: 10, y: 10, width: 120, height: 40), xRadius: 12, yRadius: 12).fill()
-        NSColor.separatorColor.setStroke()
-        let path = NSBezierPath(roundedRect: NSRect(x: 140, y: 10, width: 120, height: 40), xRadius: 8, yRadius: 8)
-        path.lineWidth = 2
-        path.stroke()
-        NSGradient(starting: .systemBlue, ending: .controlAccentColor)?.draw(in: NSRect(x: 270, y: 10, width: 100, height: 40), angle: 90)
-        symbol.draw(in: NSRect(x: 380, y: 10, width: 30, height: 24))
-        bitmap.draw(in: NSRect(x: 420, y: 10, width: 40, height: 40), from: .zero, operation: .sourceOver, fraction: 1)
-        let font = NSFont.systemFont(ofSize: 14) as CTFont
-        let attributes: [NSAttributedString.Key: Any] = [
-            NSAttributedString.Key(kCTFontAttributeName as String): font,
-            NSAttributedString.Key(kCTForegroundColorAttributeName as String): NSColor.secondaryLabelColor.cgColor,
-        ]
-        let line = CTLineCreateWithAttributedString(NSAttributedString(string: "Live re-wrap off the main thread", attributes: attributes))
-        if let context = NSGraphicsContext.current?.cgContext {
-            context.saveGState()
-            context.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
-            context.textPosition = CGPoint(x: 10, y: 90)
-            CTLineDraw(line, context)
-            context.restoreGState()
-        }
-        ("NSString draw" as NSString).draw(at: NSPoint(x: 300, y: 70), withAttributes: [.font: NSFont.boldSystemFont(ofSize: 13), .foregroundColor: NSColor.labelColor])
+    nonisolated private static func milliseconds(since start: TimeInterval) -> Double {
+        (ProcessInfo.processInfo.systemUptime - start) * 1_000
+    }
+
+    nonisolated private static func percentile(_ values: [Double], _ fraction: Double) -> Double {
+        guard !values.isEmpty else { return 0 }
+        let sorted = values.sorted()
+        return sorted[min(sorted.count - 1, Int(Double(sorted.count - 1) * fraction))]
     }
 
     /// Appearance applied from a nonisolated block: a main-actor closure
@@ -181,6 +279,10 @@ extension NativeTimelineCanvasView {
 
     nonisolated private static func spikeDiff(_ lhs: [UInt8], _ rhs: [UInt8]) -> (differing: Int, maximum: Int) {
         guard lhs.count == rhs.count, !lhs.isEmpty else { return (-1, -1) }
+        let equal = lhs.withUnsafeBytes { lhs in
+            rhs.withUnsafeBytes { rhs in memcmp(lhs.baseAddress!, rhs.baseAddress!, lhs.count) == 0 }
+        }
+        if equal { return (0, 0) }
         var differing = 0
         var maximum = 0
         var index = 0

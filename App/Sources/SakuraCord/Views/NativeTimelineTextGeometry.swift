@@ -48,7 +48,7 @@ nonisolated enum NativeTimelineTextGeometry {
     }
 }
 
-enum NativeTimelineLinkAppearance {
+nonisolated enum NativeTimelineLinkAppearance {
     static let hoverUnderlineStyle = NSUnderlineStyle.single.rawValue
 
     static func applyHover(
@@ -83,7 +83,7 @@ enum NativeTimelineLinkAppearance {
     }
 }
 
-enum NativeTimelineBeginningText {
+nonisolated enum NativeTimelineBeginningText {
     static func title(
         _ beginning: NativeTimelineBeginning
     ) -> NativeTimelineAttributedTextBox {

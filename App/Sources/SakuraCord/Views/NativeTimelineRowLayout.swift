@@ -198,7 +198,7 @@ nonisolated struct NativeTimelineRowLayout {
     var inviteRegions: [NativeTimelineInviteLayout] = []
     var translationRegion: TranslationRegion?
 
-    static func make(
+    @MainActor static func make(
         item: NativeMessageTimelineItem,
         width proposedWidth: CGFloat,
         model: AppModel? = nil,

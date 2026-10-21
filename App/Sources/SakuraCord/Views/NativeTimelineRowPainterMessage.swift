@@ -945,7 +945,8 @@ nonisolated extension NativeTimelineRowPainter {
         model: AppModel?,
         foregroundColor: NSColor? = nil
     ) {
-        let replySummary = NativeTimelineReplyMetrics.summary(for: preview, in: message, model: model)
+        let replySummary = NativeTimelineRowPaintContext.current?.replySummary(for: preview, in: message)
+            ?? MessageReplySummary.prepare(preview.content)
         let summary = replySummary.text
         let mediaSymbol = NativeTimelineReplyMetrics.mediaSymbol(for: preview)
         let mediaReserve = NativeTimelineReplyMetrics.mediaSymbolReserve
@@ -1045,7 +1046,7 @@ nonisolated extension NativeTimelineRowPainter {
             url: author.avatarURL,
             in: avatarFrame
         )
-        let font = ProfileNameFontLoader.shared.resolvedFont(for: author, fallback: NativeTimelineReplyMetrics.authorFont)
+        let font = ProfileNameFontCache.font(id: author.displayNameStyle?.fontID, fallback: NativeTimelineReplyMetrics.authorFont)
         let displayName = showsReplyMention
             ? NativeTimelineReplyMetrics.authorDisplayName(author, in: message)
             : author.displayName
@@ -1153,7 +1154,7 @@ nonisolated extension NativeTimelineRowPainter {
         text(
             user?.displayName ?? "Someone",
             in: region.userFrame,
-            font: ProfileNameFontLoader.shared.resolvedFont(for: user, fallback: .interfaceSystemFont(
+            font: ProfileNameFontCache.font(id: user?.displayNameStyle?.fontID, fallback: .interfaceSystemFont(
                 ofSize: NSFont.preferredFont(
                     forTextStyle: .caption2
                 ).pointSize,

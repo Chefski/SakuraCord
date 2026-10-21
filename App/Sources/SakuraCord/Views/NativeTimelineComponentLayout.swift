@@ -2,7 +2,7 @@ import AppKit
 import CoreText
 import SakuraCordModels
 
-enum NativeTimelineComponentButtonMetrics {
+nonisolated enum NativeTimelineComponentButtonMetrics {
     static var height: CGFloat { InterfaceScale.metric(32) }
     /// Shared by measurement, painting and the animated-emoji overlay.
     static var horizontalPadding: CGFloat { InterfaceScale.metric(12) }
@@ -39,7 +39,7 @@ enum NativeTimelineComponentSelectPolicy {
     }
 }
 
-struct NativeTimelineComponentLayout {
+nonisolated struct NativeTimelineComponentLayout {
     struct ContainerRegion {
         enum Chrome: Equatable {
             case bubbleSection
@@ -144,7 +144,7 @@ struct NativeTimelineComponentLayout {
     let unsupported: [UnsupportedRegion]
     let drawsTopSeparator: Bool
 
-    static func make(
+    @MainActor static func make(
         message: Message,
         components embedComponents: [MessageComponent]? = nil,
         model: AppModel?,

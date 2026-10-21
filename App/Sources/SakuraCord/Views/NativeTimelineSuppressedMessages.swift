@@ -99,7 +99,7 @@ nonisolated extension NativeTimelineRowPainter {
     }
 }
 
-nonisolated extension NativeMessageTimelineCoordinator {
+extension NativeMessageTimelineCoordinator {
     func messageItems(_ rows: [MessageRowPresentation], from parent: NativeMessageTimelineView) -> [NativeMessageTimelineItem] {
         let model = parent.model
         let state = model.ignoredUsers
@@ -174,7 +174,7 @@ nonisolated extension NativeMessageTimelineCoordinator {
     }
 }
 
-nonisolated extension MessageRowPresentation {
+extension MessageRowPresentation {
     func adjusted(
         startsGroup: Bool? = nil,
         endsGroup: Bool? = nil,

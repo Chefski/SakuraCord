@@ -397,7 +397,7 @@ nonisolated extension NativeTimelineRowPainter {
         }
     }
 
-    static func schedulePostFirstFrameSymbolPrewarm(
+    @MainActor static func schedulePostFirstFrameSymbolPrewarm(
         appearance: NSAppearance
     ) {
         NativeTimelineSystemSymbolCache.schedulePostFirstFramePrewarm(
@@ -1414,7 +1414,7 @@ nonisolated extension NativeTimelineRowPainter {
 
     /// Loaded once per file: rows draw their selects on every redraw, and
     /// reading the file each time held up the motions that redraw them.
-    private static let fileImages = NSCache<NSURL, NSImage>()
+    nonisolated(unsafe) private static let fileImages = NSCache<NSURL, NSImage>()
 
     private static func fileImage(at url: URL) -> NSImage? {
         if let image = fileImages.object(forKey: url as NSURL) { return image }
@@ -1559,11 +1559,20 @@ nonisolated extension NativeTimelineRowPainter {
             .fill()
     }
 
+    /// On the main thread, from the media store; on a worker, from the
+    /// images the paint context resolved before the paint.
     static func mediaImage(
         for key: NativeTimelineMediaKey
     ) -> NSImage? {
-        NativeTimelineMediaStore.shared.firstAnimatedFrame(for: key)
-            ?? NativeTimelineMediaStore.shared.image(for: key)
+        guard Thread.isMainThread else {
+            return NativeTimelineRowPaintContext.current?.mediaImage(for: key)
+        }
+        nonisolated(unsafe) var image: NSImage?
+        MainActor.assumeIsolated {
+            image = NativeTimelineMediaStore.shared.firstAnimatedFrame(for: key)
+                ?? NativeTimelineMediaStore.shared.image(for: key)
+        }
+        return image
     }
 
     static func drawImage(

@@ -1474,7 +1474,7 @@ nonisolated enum NativeTimelineMarkdownChromeMetrics {
     }
 }
 
-enum NativeTimelineTimestamp {
+nonisolated enum NativeTimelineTimestamp {
     static func headerText(
         for date: Date,
         settings: InterfaceSettingsSnapshot = .defaults
@@ -1619,15 +1619,16 @@ extension NativeTimelineRowLayout {
         }
     }
 
-    nonisolated private struct TextWidthKey: Hashable {
+    nonisolated private struct TextWidthKey: Hashable, Sendable {
         let text: String
-        let font: NSFont
+        let fontName: String
+        let pointSize: CGFloat
     }
     /// Thread-safe: rows lay out on main and paint on worker threads.
     nonisolated private static let measuredTextWidths = Mutex([TextWidthKey: CGFloat]())
 
     nonisolated static func measuredTextWidth(_ text: String, font: NSFont) -> CGFloat {
-        let key = TextWidthKey(text: text, font: font)
+        let key = TextWidthKey(text: text, fontName: font.fontName, pointSize: font.pointSize)
         if let width = measuredTextWidths.withLock({ $0[key] }) { return width }
         let attributed = NSAttributedString(
             string: text,
