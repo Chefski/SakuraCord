@@ -132,7 +132,7 @@ extension NativeTimelineCanvasView {
         from source: NativeTimelineUnreadDividerSource,
         appearing: Bool
     ) -> Bool {
-        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+        guard !unreadDividerReducesMotion,
               window != nil,
               rowDisclosure == nil,
               sendTransitions.isEmpty,

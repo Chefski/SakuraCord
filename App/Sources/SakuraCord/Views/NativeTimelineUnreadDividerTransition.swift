@@ -119,6 +119,10 @@ struct NativeTimelineUnreadDividerFade {
 }
 
 extension NativeTimelineCanvasView {
+    var unreadDividerReducesMotion: Bool {
+        unreadDividerReducesMotionOverride ?? NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
     /// The divider's row as laid out now, whether or not it has one.
     func unreadDividerSource(
         forMessageID messageID: MessageID?
@@ -242,7 +246,7 @@ extension NativeTimelineCanvasView {
         let targetOpacity: Float = appearing ? 1 : 0
         let fullDuration = NativeTimelineUnreadDividerMotion.duration(
             appearing: appearing,
-            reducesMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            reducesMotion: unreadDividerReducesMotion
         )
         let duration = max(0.05, fullDuration * Double(abs(targetOpacity - startOpacity)))
         unreadDividerFades[identifier] = NativeTimelineUnreadDividerFade(

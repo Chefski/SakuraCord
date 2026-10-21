@@ -38,7 +38,7 @@ private struct UnreadDividerMotionHarness {
     let window: NSWindow
     let messages: [Message]
 
-    init() {
+    init(reducesMotion: Bool = false) {
         let author = User(id: UserID(rawValue: 99_501), username: "reader", displayName: "Reader")
         let channelID = channelID
         messages = (0 ..< 6).map {
@@ -58,6 +58,7 @@ private struct UnreadDividerMotionHarness {
         )
         window.contentView = scrollView
         scrollView.layoutSubtreeIfNeeded()
+        coordinator.canvas?.unreadDividerReducesMotionOverride = reducesMotion
     }
 
     static func timeline(
@@ -99,6 +100,8 @@ private struct UnreadDividerMotionHarness {
         return !canvas.unreadDividerFades.isEmpty || canvas.unreadDividerGap != nil
     }
 
+    var gapIsOpening: Bool { coordinator.canvas?.unreadDividerGap != nil }
+
     var unread: MessageID { messages[4].id }
 }
 
@@ -139,6 +142,21 @@ func `a divider that arrives while the reader is looking at a settled conversati
     #expect(!harness.dividerIsMoving)
     harness.show(unread: nil)
     #expect(harness.dividerIsMoving)
+    harness.coordinator.stopObserving()
+}
+
+@MainActor @Test
+func `with Reduce Motion a live divider fades in without a gap and disappears at once`() {
+    let harness = UnreadDividerMotionHarness(reducesMotion: true)
+    harness.show(unread: nil)
+
+    harness.show(unread: harness.unread)
+    #expect(harness.dividerIsMoving)
+    #expect(!harness.gapIsOpening)
+
+    harness.coordinator.canvas?.finishUnreadDividerFades()
+    harness.show(unread: nil)
+    #expect(!harness.dividerIsMoving)
     harness.coordinator.stopObserving()
 }
 
