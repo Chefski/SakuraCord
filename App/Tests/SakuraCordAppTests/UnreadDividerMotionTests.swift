@@ -1,0 +1,146 @@
+@testable import SakuraCord
+import AppKit
+import SakuraCordModels
+import Testing
+
+@MainActor @Test(arguments: [
+    (false, true, false, true),
+    (true, true, false, false),
+    (false, false, false, false),
+    (false, true, true, false),
+])
+func `the divider animates only for a live change in a settled conversation`(
+    conversationChanged: Bool,
+    hadInitialPosition: Bool,
+    isJumping: Bool,
+    animates: Bool
+) {
+    #expect(
+        NativeTimelineUnreadDividerMotion.animates(
+            conversationChanged: conversationChanged,
+            hadInitialPosition: hadInitialPosition,
+            isJumpingToUnreadBoundary: isJumping
+        ) == animates
+    )
+}
+
+/// A timeline in a window, so a divider that is allowed to move has somewhere
+/// to start.
+@MainActor
+private struct UnreadDividerMotionHarness {
+    let model = AppModel(launchMode: .offlineTesting)
+    let channelID = ChannelID(rawValue: 99_500)
+    let coordinator: NativeMessageTimelineView.Coordinator
+    let scrollView: NSScrollView
+    let window: NSWindow
+    let messages: [Message]
+
+    init() {
+        let author = User(id: UserID(rawValue: 99_501), username: "reader", displayName: "Reader")
+        let channelID = channelID
+        messages = (0 ..< 6).map {
+            Message(
+                id: MessageID(rawValue: UInt64(200_000 + $0)),
+                channelID: channelID, author: author,
+                content: "Message \($0)"
+            )
+        }
+        model.replaceSelectedMessages(with: messages)
+        coordinator = Self.timeline(model: model, channelID: channelID, unread: nil, target: nil)
+            .makeCoordinator()
+        scrollView = coordinator.makeScrollView()
+        scrollView.frame = CGRect(x: 0, y: 0, width: 820, height: 700)
+        window = NSWindow(
+            contentRect: scrollView.frame, styleMask: .borderless, backing: .buffered, defer: false
+        )
+        window.contentView = scrollView
+        scrollView.layoutSubtreeIfNeeded()
+    }
+
+    static func timeline(
+        model: AppModel,
+        channelID: ChannelID,
+        unread: MessageID?,
+        target: MessageTimelineScrollRequest.Target?
+    ) -> NativeMessageTimelineView {
+        NativeMessageTimelineView(
+            model: model, conversation: .channel(channelID), beginning: nil,
+            firstMessageStartsDayOverride: nil, hasMoreMessages: false,
+            isLoadingEarlier: false, bottomContentInset: 0,
+            unreadMessageID: unread, highlightedMessageID: nil,
+            initialScrollTarget: target, scrollRequest: nil,
+            runsPerformanceAutoScroll: false, loadEarlier: {}, openReply: { _ in },
+            onScrollActivityChange: { _ in }, onScrollStateChange: { _ in },
+            onUserScrollBegan: {}, onUserScrollEnded: { _ in }
+        )
+    }
+
+    func show(unread: MessageID?, target: MessageTimelineScrollRequest.Target? = .bottom) {
+        coordinator.update(
+            parent: Self.timeline(model: model, channelID: channelID, unread: unread, target: target),
+            scrollView: scrollView
+        )
+        coordinator.reconcileViewportGeometryForTesting()
+    }
+
+    var dividerIsMoving: Bool {
+        guard let canvas = coordinator.canvas else { return false }
+        return !canvas.unreadDividerFades.isEmpty || canvas.unreadDividerGap != nil
+    }
+
+    var unread: MessageID { messages[4].id }
+}
+
+@MainActor @Test
+func `a divider that arrives with the first placement of a conversation is simply there`() {
+    let harness = UnreadDividerMotionHarness()
+    harness.show(unread: nil, target: nil)
+    #expect(!harness.coordinator.hasAppliedInitialPositionForTesting)
+
+    // The history, its placement and the divider all land in one update.
+    harness.show(unread: harness.unread)
+    #expect(harness.coordinator.hasAppliedInitialPositionForTesting)
+    #expect(!harness.dividerIsMoving)
+    harness.coordinator.stopObserving()
+}
+
+@MainActor @Test
+func `a divider that arrives before the first placement is simply there`() {
+    let harness = UnreadDividerMotionHarness()
+    harness.show(unread: nil, target: nil)
+    harness.show(unread: harness.unread, target: nil)
+    #expect(!harness.coordinator.hasAppliedInitialPositionForTesting)
+    #expect(!harness.dividerIsMoving)
+    harness.coordinator.stopObserving()
+}
+
+@MainActor @Test
+func `a divider that arrives while the reader is looking at a settled conversation animates`() {
+    let harness = UnreadDividerMotionHarness()
+    harness.show(unread: nil)
+    #expect(harness.coordinator.hasAppliedInitialPositionForTesting)
+
+    harness.show(unread: harness.unread)
+    #expect(harness.dividerIsMoving)
+
+    // Acknowledging it animates out the same way.
+    harness.coordinator.canvas?.finishUnreadDividerFades()
+    #expect(!harness.dividerIsMoving)
+    harness.show(unread: nil)
+    #expect(harness.dividerIsMoving)
+    harness.coordinator.stopObserving()
+}
+
+@MainActor @Test
+func `a divider that arrives with a jump to the unread boundary is simply there`() {
+    let harness = UnreadDividerMotionHarness()
+    harness.show(unread: nil)
+    harness.model.messageNavigationRequest = MessageNavigationRequest(
+        requestID: 1, channelID: harness.channelID, messageID: harness.unread,
+        glides: true, isUnreadBoundary: true
+    )
+
+    harness.show(unread: harness.unread)
+    #expect(!harness.dividerIsMoving)
+    harness.coordinator.stopObserving()
+}

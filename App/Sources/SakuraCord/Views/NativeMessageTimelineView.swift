@@ -490,7 +490,7 @@ extension NativeMessageTimelineCoordinator {
                 preparation: preparation,
                 transcriptAnchor: sendTransitionAnchor
             )
-            if !conversationChanged, let unreadDivider { canvas.transitionUnreadDivider(unreadDivider) }
+            if let unreadDivider { canvas.transitionUnreadDivider(unreadDivider) }
             Self.performanceSignposter.endInterval(
                 "MessageTimelineReload",
                 measurement.signpost
