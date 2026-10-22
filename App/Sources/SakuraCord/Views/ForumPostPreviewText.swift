@@ -297,20 +297,29 @@ final class ForumPostPreviewTextRenderer {
     private struct WorkerTextCache {
         let revision: Int
         let appearance: NSAppearance.Name
+        let scale: CGFloat
         let text: ForumCardScene.ExcerptText
     }
 
+    /// An image's bitmap copies, one per appearance and scale: inline
+    /// images such as mentions draw appearance-dependent colors.
+    private final class AttachmentBitmaps {
+        var byVariant: [String: NSImage] = [:]
+    }
+
     private var workerTextCache: WorkerTextCache?
-    private static var attachmentBitmaps = NSMapTable<NSImage, NSImage>.weakToStrongObjects()
+    private static let attachmentBitmaps = NSMapTable<NSImage, AttachmentBitmaps>.weakToStrongObjects()
 
     /// The displayed text for laying out and drawing on a worker thread,
     /// with colors resolved for the current drawing appearance and inline
     /// images as bitmaps (their own drawing runs on the main thread). Nil
     /// while spoilers are hidden: their covers need main-thread geometry.
-    func workerText() -> ForumCardScene.ExcerptText? {
+    func workerText(scale: CGFloat) -> ForumCardScene.ExcerptText? {
         guard hiddenSpoilerRanges.isEmpty, let configuration else { return nil }
         let appearance = NSAppearance.currentDrawing().name
-        if let cached = workerTextCache, cached.revision == displayRevision, cached.appearance == appearance {
+        if let cached = workerTextCache, cached.revision == displayRevision,
+           cached.appearance == appearance, cached.scale == scale
+        {
             return cached.text
         }
         let text = NSMutableAttributedString(attributedString: textStorage)
@@ -324,21 +333,28 @@ final class ForumPostPreviewTextRenderer {
         text.enumerateAttribute(.attachment, in: whole) { value, range, _ in
             guard let attachment = value as? NSTextAttachment, let image = attachment.image else { return }
             let copy = NSTextAttachment()
-            copy.image = Self.bitmap(of: image)
+            copy.image = Self.bitmap(of: image, appearance: appearance, scale: scale)
             copy.bounds = attachment.bounds
             text.addAttribute(.attachment, value: copy, range: range)
         }
         let result = ForumCardScene.ExcerptText(text: text, maximumLines: configuration.maximumNumberOfLines)
-        workerTextCache = WorkerTextCache(revision: displayRevision, appearance: appearance, text: result)
+        workerTextCache = WorkerTextCache(revision: displayRevision, appearance: appearance, scale: scale, text: result)
         return result
     }
 
-    /// A bitmap copy of an image drawn at twice its size, cached per image.
-    private static func bitmap(of image: NSImage) -> NSImage {
-        if let cached = attachmentBitmaps.object(forKey: image) { return cached }
+    /// A bitmap copy of an image at the display's scale, drawn under the
+    /// current appearance, cached per image, appearance and scale.
+    private static func bitmap(of image: NSImage, appearance: NSAppearance.Name, scale: CGFloat) -> NSImage {
+        let variant = "\(appearance.rawValue)@\(scale)"
+        let bitmaps = attachmentBitmaps.object(forKey: image) ?? {
+            let value = AttachmentBitmaps()
+            attachmentBitmaps.setObject(value, forKey: image)
+            return value
+        }()
+        if let cached = bitmaps.byVariant[variant] { return cached }
         let size = image.size
-        let width = max(1, Int(ceil(size.width * 2)))
-        let height = max(1, Int(ceil(size.height * 2)))
+        let width = max(1, Int(ceil(size.width * scale)))
+        let height = max(1, Int(ceil(size.height * scale)))
         guard let representation = NSBitmapImageRep(
             bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height, bitsPerSample: 8,
             samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
@@ -352,7 +368,7 @@ final class ForumPostPreviewTextRenderer {
         NSGraphicsContext.restoreGraphicsState()
         let copy = NSImage(size: size)
         copy.addRepresentation(representation)
-        attachmentBitmaps.setObject(copy, forKey: image)
+        bitmaps.byVariant[variant] = copy
         return copy
     }
 

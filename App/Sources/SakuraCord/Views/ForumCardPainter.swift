@@ -512,7 +512,7 @@ enum ForumCardPainter {
         on canvas: ForumCardCanvas
     ) {
         guard let renderer else { return }
-        if canvas.laysOutExcerptsOffMain, let text = renderer.workerText() {
+        if canvas.laysOutExcerptsOffMain, let text = renderer.workerText(scale: canvas.scale) {
             canvas.excerpt(text, at: origin, width: renderer.size.width, clippedTo: clip)
             return
         }
