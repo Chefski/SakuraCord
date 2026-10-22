@@ -2,29 +2,25 @@ import AppKit
 import OSLog
 import QuartzCore
 
-/// Shows the timeline's visible rows while a workspace motion or a live
-/// window resize changes its width, re-wrapped for the exact width of every
-/// frame, in the frame the column edge moves.
+/// Shows the timeline's visible rows while a live window resize changes its
+/// width, re-wrapped for the width of every frame.
 ///
 /// Each visible row is its own layer. Rows are laid out on the main thread
 /// for the frame's width; their bitmaps are painted off the main thread, one
 /// row at a time, by `NativeTimelineRowRasterizer`, from a snapshot of what
-/// they read. During a workspace motion the worker paints ahead along the
-/// columns' spring (`WorkspaceConversationWidthPath`), so a frame's bitmaps
-/// are usually ready before it. A row whose exact bitmap is late shows the
-/// nearest painted width for that frame and counts as inexact.
+/// they read, ahead along the drag's direction. The rows show only at the
+/// exact width they were painted for: while a visible row's bitmap is late,
+/// the canvas re-wraps its visible rows for that frame instead, as it does
+/// during workspace motions, and the frame counts as late (`Stats`).
 ///
-/// Replaces re-wrapping the canvas on the main thread every few frames,
-/// which held each frame's main thread for 30–70 ms on #general and let the
-/// text trail the column edge. When the motion settles, the bitmaps for the
-/// final width seed the canvas's row cache and the canvas takes over.
+/// Re-wrapping the canvas on the main thread for every frame of a drag cost
+/// more than the drag's frames allowed. When the resize ends, the bitmaps
+/// for the final width seed the canvas's row cache and the canvas takes
+/// over. Workspace motions (the member list, search results) re-wrap the
+/// canvas's visible rows instead, as the timeline always has: their hand-over
+/// cost more than it saved.
 @MainActor
 final class NativeTimelineMotionPresenter {
-    enum Reason: String {
-        case workspaceMotion
-        case liveResize
-    }
-
     private struct Row {
         let index: Int
         let item: NativeMessageTimelineItem
@@ -43,12 +39,9 @@ final class NativeTimelineMotionPresenter {
     /// One motion's sync and cost, for the benchmark and the log.
     struct Stats {
         var frames = 0
-        /// Frames in which a visible row showed a bitmap painted for
-        /// another width, and the largest such difference.
-        var inexactFrames = 0
-        var maximumLagPoints: CGFloat = 0
-        /// Frames in which a visible row had no bitmap at all.
-        var missingFrames = 0
+        /// Frames the canvas showed because a visible row's bitmap for the
+        /// frame's width was late.
+        var lateFrames = 0
         var maximumPresentMS = 0.0
         var totalPresentMS = 0.0
         var workerPaints = 0
@@ -56,21 +49,15 @@ final class NativeTimelineMotionPresenter {
         var maximumWorkerMS = 0.0
         var reusedConversions = 0
         var activationMS = 0.0
-        var pathNoticesBeforeFirstFrame = 0
-        var firstFrameLag: CGFloat = 0
+        var firstFrameIsLate = false
         /// The presented frame by which the first worker bitmap arrived.
         var firstWorkerBitmapFrame: Int?
     }
 
     static let isEnabled = !ProcessInfo.processInfo.arguments.contains("--timeline-canvas-motion")
-    /// Experiment: `--timeline-motion-side-chats` presents side chat motions too.
-    static let presentsSideConversationMotions = ProcessInfo.processInfo.arguments.contains("--timeline-motion-side-chats")
     private static let log = Logger(subsystem: "dev.sakuracord.SakuraCord", category: "TimelineMotionPresenter")
-    /// Frames painted ahead of the one on screen during a workspace motion:
-    /// most of the columns' spring, from the click on.
-    private static let framesAhead = 16
     /// Main-thread time per call for laying out rows at coming widths: more
-    /// while the change that starts a motion holds the main thread anyway.
+    /// as the resize starts.
     private static let layoutBudgetMS = 3.0
     private static let startLayoutBudgetMS = 10.0
 
@@ -88,23 +75,17 @@ final class NativeTimelineMotionPresenter {
     private var scale: CGFloat = 2
     private var displayColorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
     private var metrics: NativeTimelineRowLayout.Metrics?
-    private var reason: Reason?
-    /// A workspace motion that may yet change this timeline's width.
-    private var armedReason: Reason?
+    private(set) var isActive = false
     private var isShowing = false
     private var lastWidths: [CGFloat] = []
     private(set) var stats = Stats()
-    /// Where the motion's width is going.
+    /// Where the resize's width is going.
     private var targetWidth: CGFloat = 0
-    private var pathObservation: NSObjectProtocol?
     /// The rows last shown, for asking the worker for coming frames.
     private var lastVisible: [Int] = []
-    /// The width the visible rows were last presented at, and how far the
-    /// furthest visible row's bitmap was from it.
+    /// The width the visible rows were last presented at; nil while the
+    /// canvas shows them.
     private(set) var presentedWidth: CGFloat?
-    private(set) var presentedLagPoints: CGFloat = 0
-
-    var isActive: Bool { reason != nil }
 
     init(coordinator: NativeMessageTimelineCoordinator) {
         self.coordinator = coordinator
@@ -112,59 +93,14 @@ final class NativeTimelineMotionPresenter {
 
     // MARK: Session
 
-    /// Starts presenting rows for a motion. Rows stay on the canvas until
-    /// the width first changes.
-    ///
-    /// A workspace motion only arms the presenter: most motions leave most
-    /// timelines' widths alone, and the click that starts one holds the main
-    /// thread already. It starts once the columns' path shows this
-    /// timeline's width will change, or once it does.
+    /// Starts presenting rows as a live resize begins. Rows stay on the
+    /// canvas until the width first changes.
     /// - Returns: Whether the timeline can be presented this way; if not,
     ///   the canvas re-wraps as before.
     @discardableResult
-    func begin(_ reason: Reason) -> Bool {
+    func begin() -> Bool {
         guard Self.isEnabled else { return false }
-        if self.reason != nil {
-            if reason == .workspaceMotion { self.reason = reason }
-            return true
-        }
-        guard reason == .workspaceMotion else { return activate(reason) }
-        armedReason = reason
-        if pathObservation == nil {
-            pathObservation = NotificationCenter.default.addObserver(
-                forName: WorkspaceConversationWidthPath.didStartMoving, object: nil, queue: .main
-            ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.pathDidChange() }
-            }
-        }
-        return true
-    }
-
-    /// Whether a motion is under way for this timeline, started or not.
-    var isEngaged: Bool { reason != nil || armedReason != nil }
-
-    private func pathDidChange() {
-        if !isActive, let armedReason {
-            guard let scrollView = coordinator?.scrollView,
-                  let now = WorkspaceConversationWidthPath.shared.width(of: scrollView, framesAhead: 0),
-                  let later = WorkspaceConversationWidthPath.shared.width(of: scrollView, framesAhead: Self.framesAhead),
-                  abs(later - now) >= 1
-            else { return }
-            guard activate(armedReason) else { return }
-        }
-        guard isActive, let width = presentedWidth ?? coordinator?.layoutWidth else { return }
-        requestBitmaps(currentWidth: width, visible: lastVisible, layoutBudgetMS: Self.startLayoutBudgetMS)
-        if stats.frames == 0 { stats.pathNoticesBeforeFirstFrame += 1 }
-    }
-
-    private func activate(_ reason: Reason) -> Bool {
-        armedReason = nil
-        // Side chat motions keep the canvas for now: there the layers'
-        // compositing cost more frames than the canvas's re-wrapping every
-        // few frames (measured on the motion benchmark).
-        if reason == .workspaceMotion, WorkspaceLayoutMotion.movesSideConversation, !Self.presentsSideConversationMotions {
-            return false
-        }
+        guard !isActive else { return true }
         let activationStart = ProcessInfo.processInfo.systemUptime
         defer { stats.activationMS = (ProcessInfo.processInfo.systemUptime - activationStart) * 1_000 }
         guard let coordinator, let canvas = coordinator.canvas, let scrollView = coordinator.scrollView,
@@ -177,7 +113,7 @@ final class NativeTimelineMotionPresenter {
         }
         self.canvas = canvas
         self.scrollView = scrollView
-        self.reason = reason
+        isActive = true
         scale = window.backingScaleFactor
         displayColorSpace = canvas.backingColorSpace
             ?? window.colorSpace?.cgColorSpace
@@ -240,7 +176,7 @@ final class NativeTimelineMotionPresenter {
             rows[index] = row
         }
         lastVisible = Array(visible)
-        Self.log.notice("Motion presenter began (\(reason.rawValue, privacy: .public)) rows=\(self.rowRange.count) width=\(Double(width))")
+        Self.log.notice("Motion presenter began rows=\(self.rowRange.count) width=\(Double(width))")
         // Paint the coming frames before the first of them.
         requestBitmaps(currentWidth: width, visible: Array(visible), layoutBudgetMS: Self.startLayoutBudgetMS)
         return true
@@ -250,7 +186,6 @@ final class NativeTimelineMotionPresenter {
     /// - Returns: Whether the rows are presented; if not, the canvas
     ///   handles the width as before.
     func present(width: CGFloat) -> Bool {
-        if !isActive, let armedReason, !activate(armedReason) { return false }
         guard isActive, let canvas, let scrollView, let overlay else { return false }
         let start = ProcessInfo.processInfo.systemUptime
         collectFinished()
@@ -267,20 +202,18 @@ final class NativeTimelineMotionPresenter {
         }
         let visible = placed.filter { $0.minY + $0.layout.height > 0 && $0.minY < viewportHeight }
 
-        // Every visible row needs a bitmap to show; until then the canvas
-        // keeps showing them.
-        var lag: CGFloat = 0
-        var choices: [Int: NativeTimelineRowRasterizer.Bitmap] = [:]
-        for row in visible {
-            guard let bitmap = bestBitmap(for: row.index, pixelWidth: pixelWidth) else { continue }
-            choices[row.index] = bitmap
-            lag = max(lag, abs(bitmap.width - width))
+        // Every visible row needs its bitmap for this width; until then the
+        // canvas re-wraps the rows for this frame.
+        let bitmaps = visible.reduce(into: [Int: NativeTimelineRowRasterizer.Bitmap]()) { bitmaps, row in
+            bitmaps[row.index] = rows[row.index]?.bitmaps[pixelWidth]
         }
-        let missing = choices.count < visible.count
-        if !missing {
-            showRows(visible, bitmaps: choices, width: width, viewportHeight: viewportHeight, overlay: overlay, canvas: canvas)
+        let isLate = bitmaps.count < visible.count
+        if isLate {
+            showCanvas(canvas, overlay: overlay)
+        } else {
+            showRows(visible, bitmaps: bitmaps, width: width, viewportHeight: viewportHeight, overlay: overlay, canvas: canvas)
         }
-        record(width: width, lag: lag, missing: missing)
+        record(width: width, isLate: isLate)
         lastVisible = visible.map(\.index)
         let upcoming = budgeted(upcomingWidths(after: width))
         requestBitmaps(currentWidth: width, visible: lastVisible, upcoming: upcoming)
@@ -288,7 +221,7 @@ final class NativeTimelineMotionPresenter {
         let presentMS = (ProcessInfo.processInfo.systemUptime - start) * 1_000
         stats.totalPresentMS += presentMS
         stats.maximumPresentMS = max(stats.maximumPresentMS, presentMS)
-        return true
+        return !isLate
     }
 
     private struct PlacedRow {
@@ -371,14 +304,23 @@ final class NativeTimelineMotionPresenter {
         CATransaction.commit()
     }
 
-    private func record(width: CGFloat, lag: CGFloat, missing: Bool) {
-        if stats.frames == 0 { stats.firstFrameLag = missing ? -1 : lag }
-        presentedWidth = missing ? nil : width
-        presentedLagPoints = missing ? .infinity : lag
+    /// The canvas shows the rows again, mid-resize, for a frame whose
+    /// bitmaps are late.
+    private func showCanvas(_ canvas: NativeTimelineCanvasView, overlay: NativeTimelineMotionOverlayView) {
+        guard isShowing else { return }
+        isShowing = false
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        overlay.isHidden = true
+        canvas.isHidden = false
+        CATransaction.commit()
+    }
+
+    private func record(width: CGFloat, isLate: Bool) {
+        if stats.frames == 0 { stats.firstFrameIsLate = isLate }
+        presentedWidth = isLate ? nil : width
         stats.frames += 1
-        if missing { stats.missingFrames += 1 }
-        if lag >= 0.5 { stats.inexactFrames += 1 }
-        stats.maximumLagPoints = max(stats.maximumLagPoints, missing ? 0 : lag)
+        if isLate { stats.lateFrames += 1 }
         lastWidths.append(width)
         if lastWidths.count > 3 { lastWidths.removeFirst() }
     }
@@ -409,25 +351,18 @@ final class NativeTimelineMotionPresenter {
 
     /// Hands the rows back to the canvas, in the same frame.
     func end() {
-        armedReason = nil
-        guard isActive else {
-            if let pathObservation { NotificationCenter.default.removeObserver(pathObservation) }
-            pathObservation = nil
-            return
-        }
+        guard isActive else { return }
         rasterizer.reset()
         let paintLock = NativeTimelinePaintLock.currentStats
         Self.log.notice(
             """
-            Motion presenter ended (\(self.reason?.rawValue ?? "", privacy: .public)) frames=\(self.stats.frames) \
-            inexact=\(self.stats.inexactFrames) missing=\(self.stats.missingFrames) \
-            maxLagPt=\(Double(self.stats.maximumLagPoints)) presentMax=\(self.stats.maximumPresentMS) \
+            Motion presenter ended frames=\(self.stats.frames) \
+            late=\(self.stats.lateFrames) presentMax=\(self.stats.maximumPresentMS) \
             presentAvg=\(self.stats.totalPresentMS / Double(max(1, self.stats.frames))) \
             workerPaints=\(self.stats.workerPaints) reused=\(self.stats.reusedConversions) activationMS=\(self.stats.activationMS) \
-            pathNotices=\(self.stats.pathNoticesBeforeFirstFrame) firstFrameLag=\(Double(self.stats.firstFrameLag)) \
+            firstFrameIsLate=\(self.stats.firstFrameIsLate) \
             workerAvg=\(self.stats.workerMS / Double(max(1, self.stats.workerPaints))) \
             workerMax=\(self.stats.maximumWorkerMS) workerLockWaitMS=\(paintLock.workerWaitMS) longestWorkerLockWaitMS=\(paintLock.longestWorkerWaitMS) \
-            exactFrames=\(self.stats.frames - self.stats.inexactFrames - self.stats.missingFrames) \
             firstWorkerBitmapFrame=\(self.stats.firstWorkerBitmapFrame ?? -1) \
             mainLockWaits=\(paintLock.mainWaits) longMainLockWaits=\(paintLock.longMainWaits) \
             longestMainLockWaitMS=\(paintLock.longestMainWaitMS)
@@ -441,12 +376,9 @@ final class NativeTimelineMotionPresenter {
         overlay = nil
         rows = [:]
         context = nil
-        if let pathObservation { NotificationCenter.default.removeObserver(pathObservation) }
-        pathObservation = nil
-        reason = nil
+        isActive = false
         isShowing = false
         presentedWidth = nil
-        presentedLagPoints = 0
     }
 
     var isWorkerIdle: Bool { rasterizer.isIdle }
@@ -474,21 +406,6 @@ final class NativeTimelineMotionPresenter {
     }
 
     /// The exact bitmap, or the one painted for the nearest width.
-    private func bestBitmap(for index: Int, pixelWidth: Int) -> NativeTimelineRowRasterizer.Bitmap? {
-        guard let row = rows[index] else { return nil }
-        if let exact = row.bitmaps[pixelWidth] { return exact }
-        // Late: the nearest width toward where the motion goes, which the
-        // next frames reach, rather than one it has left behind.
-        let target = Self.pixelWidth(targetWidth, scale: scale)
-        if target != pixelWidth,
-           let ahead = row.bitmaps.filter({ (target > pixelWidth) == ($0.key > pixelWidth) })
-           .min(by: { abs($0.key - pixelWidth) < abs($1.key - pixelWidth) })?.value
-        {
-            return ahead
-        }
-        return row.bitmaps.min { abs($0.key - pixelWidth) < abs($1.key - pixelWidth) }?.value
-    }
-
     private func collectFinished() {
         for bitmap in rasterizer.takeFinished() {
             if stats.firstWorkerBitmapFrame == nil { stats.firstWorkerBitmapFrame = stats.frames }
@@ -503,26 +420,11 @@ final class NativeTimelineMotionPresenter {
         }
     }
 
-    /// The widths the next frames will show: along the columns' spring in
-    /// a workspace motion, or continuing the drag in a live resize.
+    /// The width the next frame will show, continuing the drag.
     private func upcomingWidths(after width: CGFloat) -> [CGFloat] {
-        guard let scrollView else { return [] }
-        switch reason {
-        case .workspaceMotion?:
-            let path = WorkspaceConversationWidthPath.shared
-            guard let columnNow = path.width(of: scrollView, framesAhead: 0) else { return [] }
-            // The timeline's width differs from its column's by fixed chrome.
-            let offset = columnNow - scrollView.contentView.bounds.width
-            return (1 ... Self.framesAhead).compactMap { frames in
-                path.width(of: scrollView, framesAhead: frames).map { ($0 - offset).rounded() }
-            }
-        case .liveResize?:
-            guard lastWidths.count >= 2 else { return [] }
-            let step = lastWidths[lastWidths.count - 1] - lastWidths[lastWidths.count - 2]
-            return step == 0 ? [] : [(width + step).rounded()]
-        case nil:
-            return []
-        }
+        guard isActive, lastWidths.count >= 2 else { return [] }
+        let step = lastWidths[lastWidths.count - 1] - lastWidths[lastWidths.count - 2]
+        return step == 0 ? [] : [(width + step).rounded()]
     }
 
     /// Asks the worker for this frame's missing bitmaps, then the next
@@ -532,11 +434,7 @@ final class NativeTimelineMotionPresenter {
         layoutBudgetMS: Double = NativeTimelineMotionPresenter.layoutBudgetMS
     ) {
         let deadline = ProcessInfo.processInfo.systemUptime + layoutBudgetMS / 1_000
-        // In a workspace motion the frame being built is already on its way,
-        // so the worker paints the next frames' widths, then this one in case
-        // the motion holds still. Before the rows show, this width comes
-        // first: the next frames mostly wrap as it does and reuse its pixels.
-        // A live resize has no path to follow.
+        // This frame's width first, then where the drag is heading.
         var widths: [CGFloat] = []
         let upcoming = upcoming ?? budgeted(upcomingWidths(after: currentWidth))
         for width in upcoming where !widths.contains(width) {
@@ -544,11 +442,7 @@ final class NativeTimelineMotionPresenter {
         }
         targetWidth = upcoming.last ?? currentWidth
         if !widths.contains(currentWidth) {
-            if reason == .liveResize || !isShowing {
-                widths.insert(currentWidth, at: 0)
-            } else {
-                widths.append(currentWidth)
-            }
+            widths.insert(currentWidth, at: 0)
         }
         // Rows re-wrapping shorter, as the timeline widens, bring rows beyond
         // the anchored edge's far side into view; those come after the

@@ -23,11 +23,9 @@ final class WorkspaceMotionProbes {
         /// How long the timeline has spent drawing, and laying out rows, so far.
         let drawMS: Double
         let layoutMS: Double
-        /// The width the frame's rows are laid out at, how far the furthest
-        /// visible row's bitmap is from it (motion presenter), and whether
-        /// the presenter shows the rows.
+        /// The width the frame's rows are laid out at, and whether the
+        /// motion presenter shows the rows.
         let contentWidth: Double
-        let bitmapLag: Double
         let presenter: Bool
         /// Main-thread waits for the timeline paint lock so far.
         let mainLockWaits: Int
@@ -40,7 +38,6 @@ final class WorkspaceMotionProbes {
         var drawSeconds: Double
         var layoutSeconds: Double
         var contentWidth: CGFloat = 0
-        var bitmapLag: CGFloat = 0
         var presenter = false
     }
 
@@ -108,7 +105,6 @@ final class WorkspaceMotionProbes {
                 drawMS: (counts.drawSeconds * 100_000).rounded() / 100,
                 layoutMS: (counts.layoutSeconds * 100_000).rounded() / 100,
                 contentWidth: Double(counts.contentWidth),
-                bitmapLag: counts.bitmapLag.isFinite ? Double(counts.bitmapLag) : -1,
                 presenter: counts.presenter,
                 mainLockWaits: NativeTimelinePaintLock.currentStats.mainWaits,
                 longestMainLockWaitMS: NativeTimelinePaintLock.currentStats.longestMainWaitMS

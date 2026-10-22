@@ -708,7 +708,6 @@ extension NativeMessageTimelineCoordinator {
             ) {
                 return true
             }
-            if previewChanged, deferMotionPreview() { return false }
             if widthChanged, !reflowsWidth {
                 scheduleRelayoutForWidthChange(width)
             } else if !widthChanged, !appliesWidthImmediately {

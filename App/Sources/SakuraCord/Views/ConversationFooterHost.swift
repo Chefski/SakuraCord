@@ -91,7 +91,10 @@ final class ConversationFooterContainerView: NSView {
         needsLayout = true
     }
 
-    func fittingHeight(width: CGFloat) -> CGFloat {
+    /// The footer's height in a conversation `width` wide, at the width a
+    /// sliding column leaves it.
+    func fittingHeight(width proposed: CGFloat) -> CGFloat {
+        let width = max(0, proposed - WorkspaceConversationCover.shared.trailingInset)
         // A resizing conversation asks on every frame; the composer is
         // measured again only at a new width or after its content changed.
         if let measured, abs(measured.width - width) < 0.5 {
@@ -118,26 +121,18 @@ final class ConversationFooterContainerView: NSView {
         let inset = WorkspaceConversationCover.shared.trailingInset
         let frame = CGRect(x: 0, y: 0, width: max(0, bounds.width - inset), height: bounds.height)
         guard host.view.frame != frame else { return }
-        let wasCovered = host.view.frame.width < bounds.width
         host.view.frame = frame
+        // A line that wraps differently at the new width reports the
+        // footer's new height (`contentHeightDidChange`).
         host.view.layoutSubtreeIfNeeded()
-        // Uncovered again: a line that wrapped differently under the column
-        // may have changed the footer's height.
-        if inset == 0, wasCovered, let reportedHeight,
-           abs(fittingHeight(width: bounds.width) - reportedHeight) >= 0.5
-        {
-            heightDidChange()
-        }
     }
 
-    /// Once nothing covers the footer, a new height goes to the enclosing
-    /// layout. Under a sliding column it waits for the column to settle.
+    /// A new height goes to the enclosing layout, under a sliding column
+    /// too: the timeline above keeps clear of a draft that wraps a line.
     private func contentHeightDidChange(_ height: CGFloat) {
         // Laid out at its own width, the content's height is its measure.
         measured = (host.view.frame.width, height)
-        guard WorkspaceConversationCover.shared.trailingInset == 0,
-              let reportedHeight, abs(height - reportedHeight) >= 0.5
-        else { return }
+        guard let reportedHeight, abs(height - reportedHeight) >= 0.5 else { return }
         self.reportedHeight = height
         heightDidChange()
     }

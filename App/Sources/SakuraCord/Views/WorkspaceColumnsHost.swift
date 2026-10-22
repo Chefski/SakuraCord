@@ -384,7 +384,7 @@ final class WorkspaceColumnsView: NSView {
             needsMeasurement = true
             layoutColumns(at: now)
         }
-        if isAnimating(at: now) { startMotion() } else { publishPredictedPath(at: now) }
+        if isAnimating(at: now) { startMotion() }
     }
 
     /// A hosting view for a column that arrives: the pooled pane, for a
@@ -543,48 +543,10 @@ final class WorkspaceColumnsView: NSView {
         )
     }
 
-    /// Once a change has placed its columns, and before they start to move
-    /// (`WorkspaceLayoutMotion` moves them a turn of the run loop later,
-    /// after the change has laid out), where they will go: an arriving
-    /// column comes in, a departing one leaves, and a widening side chat
-    /// grows. Lets timelines paint the motion's first frames while the
-    /// change still holds the main thread.
-    private func publishPredictedPath(at time: CFTimeInterval) {
-        guard WorkspaceLayoutMotion.isMoving else { return }
-        var tracks = currentTracks
-        var moves = false
-        for island in islands {
-            let target: CGFloat = island.column.isDeparting ? 0 : 1
-            guard var track = tracks.reveals[island.column.id], track.target != target else { continue }
-            track.move(to: target, at: time, animated: true)
-            tracks.reveals[island.column.id] = track
-            moves = true
-        }
-        if var track = tracks.widening, track.target != 1 {
-            track.move(to: 1, at: time, animated: true)
-            tracks.widening = track
-            moves = true
-        }
-        guard moves else { return }
-        let path = WorkspaceConversationWidthPath.shared
-        let predicted = tracks
-        path.predict(frameTime: time, frameDuration: path.frameDuration) { [weak self] view, future in
-            self?.columnWidth(of: view, at: future, provisionalStart: time, tracks: predicted)
-        }
-    }
-
-    /// Lets the timeline paint ahead for the frames the motion will show.
+    /// Lets a timeline that a column slides over follow the column.
     private func publishWidthPath(at time: CFTimeInterval) {
-        let frameDuration = displayLink.map { $0.targetTimestamp - $0.timestamp } ?? 1.0 / 60
-        // A motion still waiting for its first frame starts with it: its
-        // first frame shows it one frame in, as `framesAhead: 1` asks.
-        let provisionalStart = time
-        WorkspaceConversationWidthPath.shared.update(
-            frameTime: time,
-            frameDuration: frameDuration > 0 ? frameDuration : 1.0 / 60,
-            isMoving: isAnimating(at: time)
-        ) { [weak self] view, future in
-            self?.columnWidth(of: view, at: future, provisionalStart: provisionalStart)
+        WorkspaceConversationWidthPath.shared.update(frameTime: time, isMoving: isAnimating(at: time)) { [weak self] view, time in
+            self?.columnWidth(of: view, at: time, provisionalStart: time)
         }
     }
 
@@ -915,21 +877,17 @@ final class WorkspaceConversationCover {
     }
 }
 
-/// How wide the workspace's columns will be on the coming frames of a
-/// motion, so a timeline can paint rows ahead for the widths it will pass
-/// through (`NativeTimelineMotionPresenter`).
+/// How wide the workspace's columns are on each frame of a motion, so a
+/// timeline that a column slides over re-wraps for the width it shows.
 @MainActor
 final class WorkspaceConversationWidthPath {
     static let shared = WorkspaceConversationWidthPath()
-    /// Posted on the main thread when the columns start to move.
-    static let didStartMoving = Notification.Name("SakuraCordWorkspaceWidthPathDidStartMoving")
     /// Posted on the main thread for each frame the columns are placed for
     /// while they move, and once as they stop.
     static let didAdvance = Notification.Name("SakuraCordWorkspaceWidthPathDidAdvance")
 
     /// The frame time the columns were last placed for.
     private(set) var frameTime: CFTimeInterval = 0
-    private(set) var frameDuration: CFTimeInterval = 1.0 / 60
     private(set) var isMoving = false
     private var width: (NSView, CFTimeInterval) -> CGFloat? = { _, _ in nil }
     /// Timelines that follow the path rather than their frame.
@@ -948,38 +906,19 @@ final class WorkspaceConversationWidthPath {
         followers.allObjects.contains { $0.window != nil && $0.isDescendant(of: container) }
     }
 
-    func update(
-        frameTime: CFTimeInterval,
-        frameDuration: CFTimeInterval,
-        isMoving: Bool,
-        width: @escaping (NSView, CFTimeInterval) -> CGFloat?
-    ) {
-        let starts = isMoving && !self.isMoving
+    func update(frameTime: CFTimeInterval, isMoving: Bool, width: @escaping (NSView, CFTimeInterval) -> CGFloat?) {
         let stops = !isMoving && self.isMoving
         self.frameTime = frameTime
-        self.frameDuration = frameDuration
         self.isMoving = isMoving
         self.width = width
-        // Before the motion's first frame, so timelines paint it in time.
-        if starts { NotificationCenter.default.post(name: Self.didStartMoving, object: self) }
         // Before the columns are placed for this frame: a timeline whose
         // column covers it rather than resizing it follows from here.
         if isMoving || stops { NotificationCenter.default.post(name: Self.didAdvance, object: self) }
     }
 
-    /// Publishes where the columns will go before they start to move. The
-    /// motion's first frame comes one frame after it starts, as
-    /// `framesAhead: 1` asks.
-    func predict(frameTime: CFTimeInterval, frameDuration: CFTimeInterval, width: @escaping (NSView, CFTimeInterval) -> CGFloat?) {
-        self.frameTime = frameTime
-        self.frameDuration = frameDuration
-        self.width = width
-        NotificationCenter.default.post(name: Self.didStartMoving, object: self)
-    }
-
-    /// The width of the column holding `view`, `frames` frames after the
-    /// last placed one; nil if the motion does not change it.
-    func width(of view: NSView, framesAhead frames: Int) -> CGFloat? {
-        width(view, frameTime + Double(frames) * frameDuration)
+    /// The width of the column holding `view` on the last placed frame;
+    /// nil if the motion does not change it.
+    func width(of view: NSView) -> CGFloat? {
+        width(view, frameTime)
     }
 }
