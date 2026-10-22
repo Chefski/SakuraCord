@@ -497,8 +497,8 @@ enum ForumCardPainter {
 
     // MARK: Excerpt and hero
 
-    /// Bumps when the excerpt renderer's drawing changes, so its cached
-    /// bitmap is redrawn.
+    /// Bumps when the excerpt renderer's drawing changes; the origin is
+    /// relative to the clip, so a moving excerpt keeps its bitmap.
     private struct ExcerptKey: Hashable {
         let revision: Int
         let originX: CGFloat
@@ -512,7 +512,11 @@ enum ForumCardPainter {
         on canvas: ForumCardCanvas
     ) {
         guard let renderer else { return }
-        canvas.prerendered(key: ExcerptKey(revision: renderer.displayRevision, originX: origin.x, originY: origin.y), clip: clip) {
+        if canvas.laysOutExcerptsOffMain, let text = renderer.workerText(scale: canvas.scale) {
+            canvas.excerpt(text, at: origin, width: renderer.size.width, clippedTo: clip)
+            return
+        }
+        canvas.prerendered(key: ExcerptKey(revision: renderer.displayRevision, originX: origin.x - clip.minX, originY: origin.y - clip.minY), clip: clip) {
             renderer.draw(at: origin)
         }
     }

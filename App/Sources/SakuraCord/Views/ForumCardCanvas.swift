@@ -14,6 +14,9 @@ final class ForumCardCanvas {
     private let cache: ForumCardRasterCache
     private let appearance = NSAppearance.currentDrawing().name
     private var operations: [ForumCardScene.Operation] = []
+    /// While the board follows a width change, excerpts are laid out on the
+    /// worker at each width rather than drawn here.
+    var laysOutExcerptsOffMain = false
 
     init(size: CGSize, scale: CGFloat, colorSpace: CGColorSpace, cache: ForumCardRasterCache) {
         self.size = size
@@ -158,9 +161,15 @@ final class ForumCardCanvas {
         operations.append(.image(cgImage, destination: destination, clip: clip))
     }
 
+    func excerpt(_ excerpt: ForumCardScene.ExcerptText, at origin: CGPoint, width: CGFloat, clippedTo clip: CGRect) {
+        guard clip.width > 0, clip.height > 0 else { return }
+        operations.append(.excerpt(excerpt, origin: origin, width: width, clip: clip))
+    }
+
     /// Draws AppKit content into a cached bitmap covering `clip`, aligned to
     /// device pixels. `key` must identify everything the drawing depends on
-    /// besides its frame, scale and appearance; nil skips the cache.
+    /// besides its size, pixel phase, scale and appearance, including any
+    /// position relative to `clip`; nil skips the cache.
     func prerendered(key: AnyHashable?, clip: CGRect, draw: () -> Void) {
         guard clip.width > 0, clip.height > 0 else { return }
         let pixelMinX = floor(clip.minX * scale)
@@ -176,8 +185,8 @@ final class ForumCardCanvas {
         let cacheKey = key.map {
             ForumCardRasterCache.PrerenderKey(
                 content: $0,
-                minX: clip.minX,
-                minY: clip.minY,
+                phaseX: clip.minX * scale - floor(clip.minX * scale),
+                phaseY: clip.minY * scale - floor(clip.minY * scale),
                 width: clip.width,
                 height: clip.height,
                 scale: scale,
@@ -206,10 +215,12 @@ final class ForumCardCanvas {
 /// Main-thread caches behind `ForumCardCanvas`: CGImages for AppKit images
 /// and pre-rendered excerpt and reaction bitmaps.
 final class ForumCardRasterCache {
+    /// A drawing's identity apart from where it sits: the same content at
+    /// the same pixel phase reuses one bitmap wherever the clip moves.
     struct PrerenderKey: Hashable {
         let content: AnyHashable
-        let minX: CGFloat
-        let minY: CGFloat
+        let phaseX: CGFloat
+        let phaseY: CGFloat
         let width: CGFloat
         let height: CGFloat
         let scale: CGFloat

@@ -81,6 +81,9 @@ final class ForumPostPreviewTextRenderer {
     /// renderers, so a cached drawing of one revision is never reused for
     /// different text.
     private(set) var displayRevision = 0
+    /// Changes only when the displayed text does, unlike `displayRevision`,
+    /// which a new size also changes.
+    private var textRevision = 0
     private static var nextDisplayRevision = 0
 
     private func noteDisplayChange() {
@@ -216,6 +219,7 @@ final class ForumPostPreviewTextRenderer {
         }
         displayed.append(body)
         textStorage.setAttributedString(displayed)
+        textRevision &+= 1
         noteDisplayChange()
     }
 
@@ -292,6 +296,96 @@ final class ForumPostPreviewTextRenderer {
         hiddenSpoilerRanges.first { range in
             hiddenSpoilerFrames(for: range).contains { $0.contains(point) }
         }?.location
+    }
+
+    private struct WorkerTextCache {
+        let textRevision: Int
+        let appearance: NSAppearance.Name
+        let scale: CGFloat
+        let text: ForumCardScene.ExcerptText
+    }
+
+    private struct AttachmentVariant: Hashable {
+        let appearance: NSAppearance.Name
+        let scale: CGFloat
+    }
+
+    /// An image's bitmap copies, one per appearance and scale: inline
+    /// images such as mentions draw appearance-dependent colors.
+    private final class AttachmentBitmaps {
+        var byVariant: [AttachmentVariant: NSImage] = [:]
+    }
+
+    private var workerTextCache: WorkerTextCache?
+    private static let attachmentBitmaps = NSMapTable<NSImage, AttachmentBitmaps>.weakToStrongObjects()
+
+    /// Whether `workerText` can describe this text: hidden spoilers need
+    /// main-thread geometry for their covers.
+    var supportsWorkerText: Bool {
+        hiddenSpoilerRanges.isEmpty && configuration != nil
+    }
+
+    /// The displayed text for laying out and drawing on a worker thread,
+    /// with colors resolved for the current drawing appearance and inline
+    /// images as bitmaps (their own drawing runs on the main thread). Nil
+    /// while spoilers are hidden: their covers need main-thread geometry.
+    func workerText(scale: CGFloat) -> ForumCardScene.ExcerptText? {
+        guard supportsWorkerText, let configuration else { return nil }
+        let appearance = NSAppearance.currentDrawing().name
+        if let cached = workerTextCache, cached.textRevision == textRevision,
+           cached.appearance == appearance, cached.scale == scale
+        {
+            return cached.text
+        }
+        let text = NSMutableAttributedString(attributedString: textStorage)
+        let whole = NSRange(location: 0, length: text.length)
+        for key in [NSAttributedString.Key.foregroundColor, .backgroundColor, .underlineColor, .strikethroughColor] {
+            text.enumerateAttribute(key, in: whole) { value, range, _ in
+                guard let color = value as? NSColor, let resolved = NSColor(cgColor: color.cgColor) else { return }
+                text.addAttribute(key, value: resolved, range: range)
+            }
+        }
+        text.enumerateAttribute(.attachment, in: whole) { value, range, _ in
+            guard let attachment = value as? NSTextAttachment, let image = attachment.image else { return }
+            let copy = NSTextAttachment()
+            copy.image = Self.bitmap(of: image, appearance: appearance, scale: scale)
+            copy.bounds = attachment.bounds
+            text.addAttribute(.attachment, value: copy, range: range)
+        }
+        let result = ForumCardScene.ExcerptText(text: text, maximumLines: configuration.maximumNumberOfLines)
+        workerTextCache = WorkerTextCache(textRevision: textRevision, appearance: appearance, scale: scale, text: result)
+        return result
+    }
+
+    /// A bitmap copy of an image at the display's scale, drawn under the
+    /// current appearance, cached per image, appearance and scale.
+    private static func bitmap(of image: NSImage, appearance: NSAppearance.Name, scale: CGFloat) -> NSImage {
+        let variant = AttachmentVariant(appearance: appearance, scale: scale)
+        let bitmaps = attachmentBitmaps.object(forKey: image) ?? {
+            let value = AttachmentBitmaps()
+            attachmentBitmaps.setObject(value, forKey: image)
+            return value
+        }()
+        if let cached = bitmaps.byVariant[variant] { return cached }
+        let size = image.size
+        guard size.width > 0, size.height > 0, size.width.isFinite, size.height.isFinite else { return image }
+        let width = max(1, Int(ceil(size.width * scale)))
+        let height = max(1, Int(ceil(size.height * scale)))
+        guard let representation = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height, bitsPerSample: 8,
+            samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+            bytesPerRow: 0, bitsPerPixel: 0
+        ), let graphics = NSGraphicsContext(bitmapImageRep: representation) else { return image }
+        representation.size = size
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = graphics
+        image.draw(in: CGRect(origin: .zero, size: size), from: .zero, operation: .copy, fraction: 1)
+        graphics.flushGraphics()
+        NSGraphicsContext.restoreGraphicsState()
+        let copy = NSImage(size: size)
+        copy.addRepresentation(representation)
+        bitmaps.byVariant[variant] = copy
+        return copy
     }
 
     /// Draws into the current flipped graphics context at `origin`.
