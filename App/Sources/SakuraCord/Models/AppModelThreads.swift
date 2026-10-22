@@ -57,7 +57,7 @@ extension AppModel {
     /// Directly opening another conversation supersedes any navigation in
     /// flight; navigation opens threads through `openThreadConversation`.
     func open(_ thread: MessageThreadSummary) {
-        guard openThread?.id != thread.id else { return }
+        guard openThread?.id != thread.id else { return revealCoveredSideConversation() }
         cancelConversationNavigation()
         let starter = messages.first { $0.thread?.id == thread.id }
         // The thread's creator started it, who may not have written the
@@ -79,7 +79,7 @@ extension AppModel {
     }
 
     func open(_ post: ForumPost) {
-        guard openThread?.id != post.id else { return }
+        guard openThread?.id != post.id else { return revealCoveredSideConversation() }
         cancelConversationNavigation()
         readState.merge(forumPost: post)
         openThreadConversation(

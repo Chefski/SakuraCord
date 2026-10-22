@@ -394,7 +394,8 @@ final class NativeTimelineMotionPresenter {
         var seeded = 0
         for row in rows.values {
             guard let bitmap = row.bitmaps[pixelWidth], let deviceImage = bitmap.deviceImage,
-                  canvas.cachedBitmap(for: row.item, width: width) == nil
+                  canvas.cachedBitmap(for: row.item, width: width) == nil,
+                  canvas.animatedReactionIDs(for: row.item.identifier).isEmpty
             else { continue }
             let image = NSImage(cgImage: deviceImage, size: NSSize(width: bitmap.width, height: bitmap.height))
             let mediaKeys = canvas.mediaKeys(for: row.item, at: row.index)
@@ -592,14 +593,17 @@ final class NativeTimelineMotionPresenter {
 
     private func job(for index: Int, width: CGFloat, pixelWidth: Int) -> NativeTimelineRowRasterizer.Job? {
         guard let coordinator, let row = rows[index], row.bitmaps[pixelWidth] == nil,
-              let layout = layout(at: index, pixelWidth: pixelWidth, width: width)
+              let layout = layout(at: index, pixelWidth: pixelWidth, width: width),
+              Self.bitmapBytes(height: layout.height, width: width, scale: scale) <= Self.maximumRowBitmapBytes
         else { return nil }
         return .init(
             key: .init(identifier: row.item.identifier, pixelWidth: pixelWidth),
             item: row.item, layout: layout, width: width, scale: scale,
             appearance: appearance, context: context, model: coordinator.parent.model,
             spoilerRevealStore: spoilerRevealStore,
-            animatedReactionIDs: canvas?.animatedReactionIDs(for: row.item.identifier) ?? [],
+            // The canvas's animated reactions hide with it: the rows show
+            // their first frames, and are not seeded (`seedCanvas`).
+            animatedReactionIDs: [],
             displayColorSpace: displayColorSpace
         )
     }
@@ -630,6 +634,10 @@ final class NativeTimelineMotionPresenter {
         if canvas.messageJumpHighlight != nil { return "jump highlight" }
         if !canvas.disclosureRange.isEmpty { return "disclosure" }
         if canvas.historySkeleton != nil { return "history skeleton" }
+        // Shown by views over the canvas, which hide with it; the rows'
+        // bitmaps leave their place empty.
+        if !canvas.lottieStickerOverlays.isEmpty { return "Lottie sticker" }
+        if canvas.voiceMessageOverlay != nil { return "voice message player" }
         let items = coordinator.items
         let range = max(0, visible.lowerBound - 6) ..< min(items.count, visible.upperBound + 6)
         let scale = canvas.window?.backingScaleFactor ?? 2

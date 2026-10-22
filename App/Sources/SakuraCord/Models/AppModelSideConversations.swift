@@ -222,6 +222,8 @@ extension AppModel {
             WorkspaceLayoutMotion.perform(in: self) {
                 sideConversationCover = .memberList
                 showInspector = true
+                // Search results the side chat hid would take precedence.
+                messageSearch.isPresented = false
             }
             return
         }
@@ -233,6 +235,22 @@ extension AppModel {
             return
         }
         WorkspaceLayoutMotion.perform(in: self) { showInspector.toggle() }
+    }
+
+    /// Shows the side chat Members or search results cover, as opening it
+    /// again does.
+    func revealCoveredSideConversation() {
+        switch sideConversationCover {
+        case .memberList:
+            WorkspaceLayoutMotion.perform(in: self) {
+                showInspector = false
+                sideConversationCover = nil
+            }
+        case .messageSearch:
+            dismissMessageSearch()
+        case nil:
+            break
+        }
     }
 
     /// Closes the side chat on top, as Escape and the pane's close button do.
