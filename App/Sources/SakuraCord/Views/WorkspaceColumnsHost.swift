@@ -605,12 +605,13 @@ final class WorkspaceColumnsView: NSView {
         // toward the leading edge and fades as it is covered, rather than
         // vanishing at once. Moving it changes no size, so it lays nothing out.
         var hostFrame = conversationFrame.offsetBy(dx: -conversationFrame.width * Self.recedeDistance * recede, dy: 0)
-        // While only the member list or search results move, the
-        // conversation keeps the wider of its widths and the column slides
-        // over it: laying the conversation out again on every frame took
-        // most of each frame. Its timeline follows the uncovered width
-        // (`WorkspaceConversationWidthPath`) and re-wraps live.
-        if let host = conversation?.view, movesOnlyInspectors(at: time),
+        // While columns slide beside it (the member list, search results, a
+        // side chat's pane), the conversation keeps the wider of its widths
+        // and the column slides over it: laying the conversation out again
+        // on every frame took most of each frame. Its timeline follows the
+        // uncovered width (`WorkspaceConversationWidthPath`) and re-wraps
+        // live.
+        if let host = conversation?.view, columnsSlideOverConversation(at: time),
            WorkspaceConversationWidthPath.shared.hasFollower(in: host)
         {
             let settled = conversationWidth(at: time + 60, provisionalStart: time, tracks: currentTracks)
@@ -633,17 +634,13 @@ final class WorkspaceColumnsView: NSView {
         publishGeometry(at: time)
     }
 
-    /// Whether the only columns in motion are inspectors (the member list,
-    /// search results), which cover the conversation without a side chat
-    /// changing.
-    private func movesOnlyInspectors(at time: CFTimeInterval) -> Bool {
-        guard widening.map({ $0.isSettled(at: time) }) ?? true else { return false }
-        var moves = false
-        for island in islands where !island.reveal.isSettled(at: time) {
-            guard !island.column.isSideConversation, !island.column.isFullWidth else { return false }
-            moves = true
-        }
-        return moves
+    /// Whether columns slide in or out beside the conversation, with no
+    /// side chat at full width or widening to it.
+    private func columnsSlideOverConversation(at time: CFTimeInterval) -> Bool {
+        guard widening.map({ $0.isSettled(at: time) }) ?? true,
+              !islands.contains(where: \.column.isFullWidth)
+        else { return false }
+        return islands.contains { !$0.reveal.isSettled(at: time) }
     }
 
     /// Tells the toolbar where the columns are, so their items move with

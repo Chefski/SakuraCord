@@ -5,8 +5,8 @@ import SwiftUI
 /// own, so a column sliding over the conversation narrows it on every frame
 /// without laying the conversation out again.
 ///
-/// While the member list or search results slide over the conversation,
-/// the conversation keeps its wider width (`WorkspaceColumnsView`). The
+/// While a column (the member list, search results, a side chat's pane)
+/// slides over the conversation, the conversation keeps its wider width (`WorkspaceColumnsView`). The
 /// footer's own hosting view follows the column's edge
 /// (`WorkspaceConversationCover`): its trailing controls move with the edge
 /// and its text wraps for the width it has, from frame to frame. Laying

@@ -96,7 +96,10 @@ extension AppModel {
         }
     }
 
-    var isThreadFullWidth: Bool { sideConversations.thread?.isFullWidth == true }
+    func sideConversationsDidChange() {
+        let isFullWidth = sideConversations.thread?.isFullWidth == true
+        if isThreadFullWidth != isFullWidth { isThreadFullWidth = isFullWidth }
+    }
 
     /// A thread being composed. It becomes `openThread` once Discord creates it.
     var threadCreation: ThreadCreationDraft? {

@@ -401,7 +401,12 @@ final class AppModel {
     /// The open side chats: the single source of truth for threads, voice
     /// chat, Guide resources and channel previews beside the primary
     /// conversation. Change it through AppModelSideConversations.swift.
-    var sideConversations = SideConversationStack()
+    var sideConversations = SideConversationStack() { didSet { sideConversationsDidChange() } }
+    /// Whether the open thread shows at full width. Stored, so what reads
+    /// it updates only when it changes, not whenever a side chat opens or
+    /// closes: every menu command's enabled state reads it. Follows
+    /// `sideConversations`.
+    var isThreadFullWidth = false
     /// The Guide resource store; it lives exactly as long as its side chat.
     var guideResource: GuildResourceState?
     /// Re-resolution of the open private thread after a fresh READY did not
