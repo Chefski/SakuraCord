@@ -221,6 +221,7 @@ final class NativeTimelineMotionPresenter {
         spoilerRevealStore.revealedText = canvas.spoilerRevealStore.revealedText
 
         let overlay = NativeTimelineMotionOverlayView(frame: scrollView.contentView.frame)
+        overlay.translatesAutoresizingMaskIntoConstraints = false
         overlay.isHidden = true
         scrollView.addSubview(overlay, positioned: .above, relativeTo: scrollView.contentView)
         self.overlay = overlay

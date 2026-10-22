@@ -126,7 +126,9 @@ extension NativeMessageTimelineCoordinator {
         /// motion. Reflowing every frame cost most of a frame's budget.
         /// Returns whether this width change waits for the next reflow.
         func deferMotionPreview() -> Bool {
-            guard WorkspaceLayoutMotion.isMoving else {
+            guard WorkspaceLayoutMotion.isMoving,
+                  !ProcessInfo.processInfo.arguments.contains("--timeline-preview-every-frame") // TEMP experiment
+            else {
                 lastMotionPreview = nil
                 return false
             }

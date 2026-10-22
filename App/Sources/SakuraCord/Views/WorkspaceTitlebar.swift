@@ -122,7 +122,11 @@ final class WorkspaceTitlebarView: NSView {
         init(_ content: AnyView, isTrailing: Bool = false) {
             host = NSHostingController(rootView: AnyView(EmptyView()))
             host.sizingOptions = []
-            host.view.translatesAutoresizingMaskIntoConstraints = true
+            // Placed by frame, without autoresizing constraints: every change
+            // to those reached the window's SwiftUI layouts as the columns
+            // moved.
+            host.view.translatesAutoresizingMaskIntoConstraints = false
+            container.translatesAutoresizingMaskIntoConstraints = false
             container.addSubview(host.view)
             self.isTrailing = isTrailing
             setContent(content)
@@ -145,6 +149,7 @@ final class WorkspaceTitlebarView: NSView {
         init(_ group: WorkspaceTitlebar.Group) {
             title = Island(group.title)
             actions = Island(group.actions, isTrailing: true)
+            clip.translatesAutoresizingMaskIntoConstraints = false
             clip.addSubview(title.container)
             clip.addSubview(actions.container)
         }

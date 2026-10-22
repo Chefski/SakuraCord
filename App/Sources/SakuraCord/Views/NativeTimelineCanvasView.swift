@@ -402,6 +402,9 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
         addSubview(beginningSelectionOverlay)
         addSubview(reactionPickerSource)
         mediaViewerHost.frame = .zero
+        // Placed by frame: as autoresizing constraints, its updates reached
+        // the enclosing SwiftUI layouts on every frame of a column's motion.
+        mediaViewerHost.translatesAutoresizingMaskIntoConstraints = false
         addSubview(mediaViewerHost)
         let notificationCenter = NotificationCenter.default
         notificationCenter.addObserver(self, selector: #selector(composerOverlayDidChange(_:)),
