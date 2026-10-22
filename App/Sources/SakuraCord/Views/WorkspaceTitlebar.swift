@@ -371,7 +371,18 @@ final class WorkspaceTitlebarView: NSView {
 
     /// Where the window's own leading controls end in this view: its
     /// buttons and the toolbar's leading items, such as the sidebar button.
+    /// A workspace motion moves none of them, so its frames reuse the first
+    /// frame's.
     private var leadingControlsMaxX: CGFloat {
+        if WorkspaceLayoutMotion.isMoving, let cachedLeadingControlsMaxX { return cachedLeadingControlsMaxX }
+        let maxX = measuredLeadingControlsMaxX
+        cachedLeadingControlsMaxX = maxX
+        return maxX
+    }
+
+    private var cachedLeadingControlsMaxX: CGFloat?
+
+    private var measuredLeadingControlsMaxX: CGFloat {
         guard let window else { return 0 }
         var maxX: CGFloat = 0
         for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
@@ -395,18 +406,28 @@ final class WorkspaceTitlebarView: NSView {
             searchField = ToolbarSearchFieldLocator.searchField(in: window)
         }
         guard let searchField, searchField.window === window else { return nil }
+        // Found once per glass the toolbar hosts the field in.
+        if let searchGlass, searchGlass.window === window, searchField.isDescendant(of: searchGlass) {
+            return searchGlass
+        }
         // The field's item with the glass platter the toolbar draws behind
         // it, so neither shows while the field is faded out.
         var view: NSView? = searchField
         var itemViewer: NSView?
         while let candidate = view {
             let name = String(describing: type(of: candidate))
-            if name.contains("Platter") { return candidate }
+            if name.contains("Platter") {
+                searchGlass = candidate
+                return candidate
+            }
             if itemViewer == nil, name.contains("ItemViewer") { itemViewer = candidate }
             view = candidate.superview
         }
+        searchGlass = itemViewer
         return itemViewer ?? searchField
     }
+
+    private weak var searchGlass: NSView?
 
     /// Where the toolbar's search field starts in this view, if the toolbar
     /// has it, shown or faded out.
