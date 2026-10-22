@@ -702,20 +702,10 @@ extension NativeMessageTimelineCoordinator {
             let previewNeedsRows = previewsWidth && !previewChanged
                 && previewLayoutWidth != nil && visibleRowsNeedPreview()
             let restoresPreview = !widthChanged && previewLayoutWidth != nil
-            if motionPresenter.isActive, !reflowsWidth,
-               widthChanged || sizeChanged || motionPresenter.presentedWidth.map({ abs($0 - width) >= 0.5 }) == true,
-               motionPresenter.present(width: width)
-            {
-                // The rows move as layers until the width settles; the
-                // canvas lays out once, for the final width.
-                lastViewportSize = viewportSize
-                if widthChanged {
-                    scheduleRelayoutForWidthChange(width)
-                } else {
-                    widthRelayoutTask?.cancel()
-                    widthRelayoutTask = nil
-                    pendingLayoutWidth = nil
-                }
+            if presentMotionFrame(
+                width: width, viewportSize: viewportSize, widthChanged: widthChanged,
+                sizeChanged: sizeChanged, reflowsWidth: reflowsWidth
+            ) {
                 return true
             }
             if previewChanged, deferMotionPreview() { return false }
@@ -749,8 +739,9 @@ extension NativeMessageTimelineCoordinator {
                 ? visibleAnchor() : nil
 
             isApplyingUpdate = true
-            let endsMotionPresentation = motionPresenter.isActive && (reflowsWidth || restoresPreview)
-            if endsMotionPresentation, reflowsWidth { motionPresenter.seedCanvas(width: width) }
+            let endsMotionPresentation = prepareMotionPresenterForSettle(
+                width: width, reflowsWidth: reflowsWidth, restoresPreview: restoresPreview
+            )
             if reflowsWidth {
                 applyImmediateWidthRelayout(
                     width, preparedLayouts: preparedLayouts,
@@ -798,7 +789,7 @@ extension NativeMessageTimelineCoordinator {
                 }
             }
             // The canvas shows the settled rows in the frame the layers leave.
-            if endsMotionPresentation { motionPresenter.end() }
+            endMotionPresentation(endsMotionPresentation)
             let establishedInitialPosition =
                 applyInitialPositionIfNeeded()
             applyScrollRequestIfNeeded()
@@ -808,36 +799,6 @@ extension NativeMessageTimelineCoordinator {
             }
             isApplyingUpdate = false
             reportScrollState(force: true)
-            return true
-        }
-
-        /// While a workspace motion resizes the timeline on every frame, its
-        /// rows reflow every few frames rather than on each one; between
-        /// reflows the canvas keeps its rows and the clip view follows the
-        /// motion. Reflowing every frame cost most of a frame's budget.
-        /// Returns whether this width change waits for the next reflow.
-        func deferMotionPreview() -> Bool {
-            guard WorkspaceLayoutMotion.isMoving else {
-                lastMotionPreview = nil
-                return false
-            }
-            let interval = Duration.milliseconds(50)
-            let now = ContinuousClock.now
-            // The first reflow waits an interval too, so the columns are
-            // already moving when its cost lands.
-            if lastMotionPreview == nil { lastMotionPreview = now }
-            guard let last = lastMotionPreview, now - last < interval else {
-                lastMotionPreview = now
-                return false
-            }
-            if throttledPreviewTask == nil {
-                throttledPreviewTask = Task { @MainActor [weak self] in
-                    try? await Task.sleep(until: last + interval)
-                    guard let self, !Task.isCancelled else { return }
-                    throttledPreviewTask = nil
-                    _ = reconcileViewportGeometryIfNeeded()
-                }
-            }
             return true
         }
 
@@ -1169,55 +1130,6 @@ extension NativeMessageTimelineCoordinator {
 
         /// A timeline that moves under a still pointer would otherwise redraw
         /// its hovered row on every frame of a workspace motion.
-        func workspaceMotionObservations(_ center: NotificationCenter) -> [NSObjectProtocol] {
-            [
-                center.addObserver(forName: WorkspaceLayoutMotion.didBegin, object: nil, queue: .main) { [weak self] _ in
-                    MainActor.assumeIsolated {
-                        self?.canvas?.dismissHoverPresentationForScroll()
-                        self?.motionPresenter.begin(.workspaceMotion)
-                    }
-                },
-                center.addObserver(forName: WorkspaceLayoutMotion.didSettle, object: nil, queue: .main) { [weak self] _ in
-                    MainActor.assumeIsolated {
-                        guard let self else { return }
-                        self.motionPresenterDidFinishMotion()
-                        guard self.scrollIdleTask == nil else { return }
-                        self.canvas?.allowHoverPresentationAfterScroll()
-                    }
-                },
-                center.addObserver(forName: NSWindow.willStartLiveResizeNotification, object: nil, queue: .main) { [weak self] notification in
-                    let window = notification.object as? NSWindow
-                    MainActor.assumeIsolated {
-                        guard let self, window != nil, window === self.scrollView?.window else { return }
-                        self.motionPresenter.begin(.liveResize)
-                    }
-                },
-                center.addObserver(forName: NSWindow.didEndLiveResizeNotification, object: nil, queue: .main) { [weak self] notification in
-                    let window = notification.object as? NSWindow
-                    MainActor.assumeIsolated {
-                        guard let self, window != nil, window === self.scrollView?.window else { return }
-                        self.motionPresenterDidFinishMotion()
-                    }
-                },
-            ]
-        }
-
-        /// Once the width stops changing, the canvas lays out for it and
-        /// takes the rows back from the motion presenter.
-        func motionPresenterDidFinishMotion() {
-            guard motionPresenter.isActive, !WorkspaceLayoutMotion.isMoving,
-                  scrollView?.window?.inLiveResize != true
-            else { return }
-            guard pendingLayoutWidth != nil else {
-                motionPresenter.end()
-                return
-            }
-            // A live resize ends without a motion to wait for.
-            widthRelayoutTask?.cancel()
-            widthRelayoutTask = nil
-            applyPendingWidthRelayout()
-        }
-
         func beginObserving(_ scrollView: NSScrollView) {
             stopObserving()
             let center = NotificationCenter.default

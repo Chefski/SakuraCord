@@ -201,95 +201,113 @@ final class NativeTimelineMotionPresenter {
     /// - Returns: Whether the rows are presented; if not, the canvas
     ///   handles the width as before.
     func present(width: CGFloat) -> Bool {
-        guard isActive, let coordinator, let canvas, let scrollView, let overlay else { return false }
+        guard isActive, let canvas, let scrollView, let overlay else { return false }
         let start = ProcessInfo.processInfo.systemUptime
         collectFinished()
         let pixelWidth = Self.pixelWidth(width, scale: scale)
         overlay.frame = scrollView.contentView.frame
         let viewportHeight = overlay.bounds.height
-
-        // Lay out the rows from the anchor outward until they cover the
-        // viewport, at this frame's width.
-        var placed: [(index: Int, minY: CGFloat, layout: NativeTimelineRowLayout)] = []
-        switch anchor {
-        case let .bottom(anchorIndex, gap):
-            var maxY = viewportHeight - gap
-            var index = anchorIndex
-            while index >= rowRange.lowerBound, maxY > 0 {
-                guard let layout = layout(at: index, pixelWidth: pixelWidth, width: width) else { break }
-                placed.append((index, maxY - layout.height, layout))
-                maxY -= layout.height
-                index -= 1
-            }
-            var minY = viewportHeight - gap
-            index = anchorIndex + 1
-            while index < rowRange.upperBound, minY < viewportHeight {
-                guard let layout = layout(at: index, pixelWidth: pixelWidth, width: width) else { break }
-                placed.append((index, minY, layout))
-                minY += layout.height
-                index += 1
-            }
-        case let .top(anchorIndex, offset):
-            var minY = offset
-            var index = anchorIndex
-            while index < rowRange.upperBound, minY < viewportHeight {
-                guard let layout = layout(at: index, pixelWidth: pixelWidth, width: width) else { break }
-                placed.append((index, minY, layout))
-                minY += layout.height
-                index += 1
-            }
-            var maxY = offset
-            index = anchorIndex - 1
-            while index >= rowRange.lowerBound, maxY > 0 {
-                guard let layout = layout(at: index, pixelWidth: pixelWidth, width: width) else { break }
-                placed.append((index, maxY - layout.height, layout))
-                maxY -= layout.height
-                index -= 1
-            }
-        }
-        let visible = placed.filter { $0.minY + $0.layout.height > 0 && $0.minY < viewportHeight }
+        let visible = placeRows(width: width, pixelWidth: pixelWidth, viewportHeight: viewportHeight)
+            .filter { $0.minY + $0.layout.height > 0 && $0.minY < viewportHeight }
 
         // Every visible row needs a bitmap to show; until then the canvas
         // keeps showing them.
         var lag: CGFloat = 0
-        var missing = false
         var choices: [Int: NativeTimelineRowRasterizer.Bitmap] = [:]
-        for entry in visible {
-            guard let bitmap = bestBitmap(for: entry.index, pixelWidth: pixelWidth) else {
-                missing = true
-                continue
-            }
-            choices[entry.index] = bitmap
+        for row in visible {
+            guard let bitmap = bestBitmap(for: row.index, pixelWidth: pixelWidth) else { continue }
+            choices[row.index] = bitmap
             lag = max(lag, abs(bitmap.width - width))
         }
-
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
+        let missing = choices.count < visible.count
         if !missing {
-            let shown = Set(visible.map(\.index))
-            for (index, row) in rows {
-                guard shown.contains(index), let entry = visible.first(where: { $0.index == index }),
-                      let bitmap = choices[index]
-                else {
-                    row.layer.isHidden = true
-                    continue
-                }
-                // The overlay's root layer is not flipped.
-                row.layer.frame = CGRect(
-                    x: 0, y: viewportHeight - entry.minY - entry.layout.height,
-                    width: width, height: entry.layout.height
-                )
-                if row.layer.contents as AnyObject? !== bitmap.image { row.layer.contents = bitmap.image }
-                row.layer.isHidden = false
-            }
-            if !isShowing {
-                isShowing = true
-                overlay.isHidden = false
-                canvas.isHidden = true
+            showRows(visible, bitmaps: choices, width: width, viewportHeight: viewportHeight, overlay: overlay, canvas: canvas)
+        }
+        record(width: width, lag: lag, missing: missing)
+        lastVisible = visible.map(\.index)
+        requestBitmaps(currentWidth: width, visible: lastVisible)
+        pruneBitmaps(keeping: pixelWidth)
+        let presentMS = (ProcessInfo.processInfo.systemUptime - start) * 1_000
+        stats.totalPresentMS += presentMS
+        stats.maximumPresentMS = max(stats.maximumPresentMS, presentMS)
+        return true
+    }
+
+    private struct PlacedRow {
+        let index: Int
+        /// From the viewport's top.
+        let minY: CGFloat
+        let layout: NativeTimelineRowLayout
+    }
+
+    /// Lays out the rows from the anchor outward, at this frame's width,
+    /// until they cover the viewport.
+    private func placeRows(width: CGFloat, pixelWidth: Int, viewportHeight: CGFloat) -> [PlacedRow] {
+        var placed: [PlacedRow] = []
+        func stackUp(from index: Int, bottom: CGFloat) {
+            var maxY = bottom
+            var index = index
+            while index >= rowRange.lowerBound, maxY > 0,
+                  let layout = layout(at: index, pixelWidth: pixelWidth, width: width)
+            {
+                placed.append(PlacedRow(index: index, minY: maxY - layout.height, layout: layout))
+                maxY -= layout.height
+                index -= 1
             }
         }
-        CATransaction.commit()
+        func stackDown(from index: Int, top: CGFloat) {
+            var minY = top
+            var index = index
+            while index < rowRange.upperBound, minY < viewportHeight,
+                  let layout = layout(at: index, pixelWidth: pixelWidth, width: width)
+            {
+                placed.append(PlacedRow(index: index, minY: minY, layout: layout))
+                minY += layout.height
+                index += 1
+            }
+        }
+        switch anchor {
+        case let .bottom(anchorIndex, gap):
+            stackUp(from: anchorIndex, bottom: viewportHeight - gap)
+            stackDown(from: anchorIndex + 1, top: viewportHeight - gap)
+        case let .top(anchorIndex, offset):
+            stackDown(from: anchorIndex, top: offset)
+            stackUp(from: anchorIndex - 1, bottom: offset)
+        }
+        return placed
+    }
 
+    /// Moves the row layers to this frame, in one transaction, and hands
+    /// the rows from the canvas to the layers the first time.
+    private func showRows(
+        _ visible: [PlacedRow], bitmaps: [Int: NativeTimelineRowRasterizer.Bitmap], width: CGFloat,
+        viewportHeight: CGFloat, overlay: NativeTimelineMotionOverlayView, canvas: NativeTimelineCanvasView
+    ) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        let placed = Dictionary(uniqueKeysWithValues: visible.map { ($0.index, $0) })
+        for (index, row) in rows {
+            guard let entry = placed[index], let bitmap = bitmaps[index] else {
+                row.layer.isHidden = true
+                continue
+            }
+            // The overlay's root layer is not flipped.
+            row.layer.frame = CGRect(
+                x: 0, y: viewportHeight - entry.minY - entry.layout.height,
+                width: width, height: entry.layout.height
+            )
+            if row.layer.contents as AnyObject? !== bitmap.image { row.layer.contents = bitmap.image }
+            row.layer.isHidden = false
+        }
+        if !isShowing {
+            isShowing = true
+            overlay.isHidden = false
+            canvas.isHidden = true
+        }
+        CATransaction.commit()
+    }
+
+    private func record(width: CGFloat, lag: CGFloat, missing: Bool) {
         if stats.frames == 0 { stats.firstFrameLag = missing ? -1 : lag }
         presentedWidth = missing ? nil : width
         presentedLagPoints = missing ? .infinity : lag
@@ -299,14 +317,6 @@ final class NativeTimelineMotionPresenter {
         stats.maximumLagPoints = max(stats.maximumLagPoints, missing ? 0 : lag)
         lastWidths.append(width)
         if lastWidths.count > 3 { lastWidths.removeFirst() }
-        lastVisible = visible.map(\.index)
-        requestBitmaps(currentWidth: width, visible: lastVisible)
-        pruneBitmaps(keeping: pixelWidth)
-        let presentMS = (ProcessInfo.processInfo.systemUptime - start) * 1_000
-        stats.totalPresentMS += presentMS
-        stats.maximumPresentMS = max(stats.maximumPresentMS, presentMS)
-        _ = coordinator
-        return true
     }
 
     /// Puts the bitmaps for the width the rows settle at into the canvas's
@@ -340,9 +350,13 @@ final class NativeTimelineMotionPresenter {
             inexact=\(self.stats.inexactFrames) missing=\(self.stats.missingFrames) \
             maxLagPt=\(Double(self.stats.maximumLagPoints)) presentMax=\(self.stats.maximumPresentMS) \
             presentAvg=\(self.stats.totalPresentMS / Double(max(1, self.stats.frames))) \
-            workerPaints=\(self.stats.workerPaints) reused=\(self.stats.reusedConversions) pathNotices=\(self.stats.pathNoticesBeforeFirstFrame) firstFrameLag=\(Double(self.stats.firstFrameLag)) workerAvg=\(self.stats.workerMS / Double(max(1, self.stats.workerPaints))) \
+            workerPaints=\(self.stats.workerPaints) reused=\(self.stats.reusedConversions) \
+            pathNotices=\(self.stats.pathNoticesBeforeFirstFrame) firstFrameLag=\(Double(self.stats.firstFrameLag)) \
+            workerAvg=\(self.stats.workerMS / Double(max(1, self.stats.workerPaints))) \
             workerMax=\(self.stats.maximumWorkerMS) workerLockWaitMS=\(paintLock.workerWaitMS) longestWorkerLockWaitMS=\(paintLock.longestWorkerWaitMS) \
-            exactFrames=\(self.stats.frames - self.stats.inexactFrames - self.stats.missingFrames) firstWorkerBitmapFrame=\(self.stats.firstWorkerBitmapFrame ?? -1) mainLockWaits=\(paintLock.mainWaits) longMainLockWaits=\(paintLock.longMainWaits) \
+            exactFrames=\(self.stats.frames - self.stats.inexactFrames - self.stats.missingFrames) \
+            firstWorkerBitmapFrame=\(self.stats.firstWorkerBitmapFrame ?? -1) \
+            mainLockWaits=\(paintLock.mainWaits) longMainLockWaits=\(paintLock.longMainWaits) \
             longestMainLockWaitMS=\(paintLock.longestMainWaitMS)
             """
         )

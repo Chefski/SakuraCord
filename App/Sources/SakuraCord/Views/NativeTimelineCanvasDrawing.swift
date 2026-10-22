@@ -783,7 +783,6 @@ extension NativeTimelineCanvasView {
             )
         }
         drawSuperclassContent(in: dirtyRect)
-        scheduleRasterSpikeIfNeeded() // SPIKE (temporary)
         let visibleMediaKeys = refreshVisibleMediaPins()
         reconcileVisibleReactionPreviewLoads()
         // This view is transparent and layer-backed. Core Graphics does not

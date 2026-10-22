@@ -652,28 +652,34 @@ final class SakuraCordThemeSettingsStore {
 @MainActor
 @Observable
 final class SakuraCordThemeStore {
-    static let shared = SakuraCordThemeStore()
+    static let shared = SakuraCordThemeStore(publishesCommittedTheme: true)
     static let randomizationDurationSeconds = 0.22
     static let randomizationDuration: Duration = .seconds(randomizationDurationSeconds)
 
     private(set) var activeTheme: SakuraCordGradientTheme
     private(set) var committedTheme: SakuraCordGradientTheme {
-        didSet { Self.committedThemeSnapshot.withLock { $0 = committedTheme } }
+        didSet {
+            if publishesCommittedTheme { Self.committedThemeSnapshot.withLock { $0 = committedTheme } }
+        }
     }
-    /// `committedTheme`, readable from any thread: timeline rows paint off
-    /// the main thread with the accent and role colors it derives.
+    /// The shared store's `committedTheme`, readable from any thread:
+    /// timeline rows paint off the main thread with the accent and role
+    /// colors it derives.
     nonisolated static let committedThemeSnapshot = Mutex(SakuraCordGradientTheme.defaultTheme)
+    /// Whether this is the shared store, whose theme the app's accent follows.
+    @ObservationIgnored private let publishesCommittedTheme: Bool
 
     @ObservationIgnored private let persistence: SakuraCordThemeSettingsStore
     @ObservationIgnored private var deferredPersistenceTask: Task<Void, Never>?
     @ObservationIgnored private var interactionGeneration: UInt64 = 0
 
-    init(persistence: SakuraCordThemeSettingsStore = .shared) {
+    init(persistence: SakuraCordThemeSettingsStore = .shared, publishesCommittedTheme: Bool = false) {
         self.persistence = persistence
+        self.publishesCommittedTheme = publishesCommittedTheme
         let initial = persistence.load()
         activeTheme = initial
         committedTheme = initial
-        Self.committedThemeSnapshot.withLock { $0 = initial }
+        if publishesCommittedTheme { Self.committedThemeSnapshot.withLock { $0 = initial } }
     }
 
     isolated deinit {
