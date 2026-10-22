@@ -78,3 +78,23 @@ func `forum title line counts match the typesetter at every width`() {
         }
     }
 }
+
+@Test
+func `gallery arrow keys follow rows across sections with different column counts`() {
+    let width: CGFloat = 100
+    // One recent card, then an Older Posts section of three columns.
+    let frames = [
+        CGRect(x: 0, y: 0, width: 3 * width, height: 50),
+        CGRect(x: 0, y: 100, width: width, height: 50),
+        CGRect(x: width, y: 100, width: width, height: 50),
+        CGRect(x: 2 * width, y: 100, width: width, height: 50),
+        CGRect(x: 0, y: 200, width: width, height: 50),
+        CGRect(x: width, y: 200, width: width, height: 50)
+    ]
+    #expect(ForumBoardLayout.adjacentRowIndex(from: 0, down: true, in: frames) == 2)
+    #expect(ForumBoardLayout.adjacentRowIndex(from: 3, down: true, in: frames) == 5)
+    #expect(ForumBoardLayout.adjacentRowIndex(from: 5, down: false, in: frames) == 2)
+    #expect(ForumBoardLayout.adjacentRowIndex(from: 3, down: false, in: frames) == 0)
+    #expect(ForumBoardLayout.adjacentRowIndex(from: 4, down: true, in: frames) == 5)
+    #expect(ForumBoardLayout.adjacentRowIndex(from: 0, down: false, in: frames) == 0)
+}

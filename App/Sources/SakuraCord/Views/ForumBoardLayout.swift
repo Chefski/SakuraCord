@@ -173,6 +173,21 @@ struct ForumBoardLayout {
         let firstIndex: Int
     }
 
+    /// The index of the entry in the row above or below `index`'s whose centre
+    /// is nearest to it, or the first or last entry when no such row exists.
+    static func adjacentRowIndex(from index: Int, down: Bool, in frames: [CGRect]) -> Int {
+        let current = frames[index]
+        let candidates = frames.indices.filter {
+            down ? frames[$0].minY > current.minY : frames[$0].minY < current.minY
+        }
+        guard let rowY = down
+            ? candidates.map({ frames[$0].minY }).min()
+            : candidates.map({ frames[$0].minY }).max()
+        else { return down ? frames.count - 1 : 0 }
+        return candidates.filter { frames[$0].minY == rowY }
+            .min { abs(frames[$0].midX - current.midX) < abs(frames[$1].midX - current.midX) } ?? index
+    }
+
     func entry(for id: ForumBoardItem.Identifier) -> Entry? {
         indexByID[id].map { entries[$0] }
     }
