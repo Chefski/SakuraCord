@@ -22,7 +22,10 @@ nonisolated enum MessageEmbedPresentation {
     static func visibleEmbeds(
         for message: Message
     ) -> [MessageEmbed] {
-        guard !message.flags.contains(.suppressEmbeds), message.type != .pollResult else { return [] }
+        // The content scans below only filter embeds: a row re-laid out for
+        // every frame of a resize paid for them with none to filter.
+        guard !message.embeds.isEmpty, !message.flags.contains(.suppressEmbeds), message.type != .pollResult
+        else { return [] }
         let linkedEmojiURLs =
             LinkedImagePresentation(content: message.content)
                 .matchedEmojiURLs

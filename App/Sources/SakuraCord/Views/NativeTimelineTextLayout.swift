@@ -1475,15 +1475,47 @@ nonisolated enum NativeTimelineMarkdownChromeMetrics {
 }
 
 nonisolated enum NativeTimelineTimestamp {
+    /// Header texts by everything they depend on, including the day they
+    /// are read on: a row laid out again at another width, as on every
+    /// frame of a resize, reuses its timestamp's text.
+    private static let headerTexts = Mutex<[HeaderKey: String]>([:])
+
+    private struct HeaderKey: Hashable {
+        let date: Date
+        let format: InterfaceTimestampFormat
+        let includesSeconds: Bool
+        let today: Date
+        /// The current locale with the user's overrides, such as the hour cycle.
+        let locale: Locale
+        let timeZone: String
+    }
+
     static func headerText(
         for date: Date,
         settings: InterfaceSettingsSnapshot = .defaults
     ) -> String {
-        InterfaceTimestampFormatter.messageText(
+        let timeZone = TimeZone.autoupdatingCurrent
+        var calendar = Calendar.autoupdatingCurrent
+        calendar.timeZone = timeZone
+        let key = HeaderKey(
+            date: date,
+            format: settings.timestampFormat,
+            includesSeconds: settings.includesTimestampSeconds,
+            today: calendar.startOfDay(for: .now),
+            locale: Locale.current,
+            timeZone: timeZone.identifier
+        )
+        if let text = headerTexts.withLock({ $0[key] }) { return text }
+        let text = InterfaceTimestampFormatter.messageText(
             for: date,
             format: settings.timestampFormat,
             includesSeconds: settings.includesTimestampSeconds
         )
+        headerTexts.withLock { texts in
+            if texts.count >= 4_096 { texts.removeAll(keepingCapacity: true) }
+            texts[key] = text
+        }
+        return text
     }
 
     static func text(
