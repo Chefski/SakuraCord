@@ -635,12 +635,20 @@ final class WorkspaceColumnsView: NSView {
     }
 
     /// Whether columns slide in or out beside the conversation, with no
-    /// side chat at full width or widening to it.
+    /// side chat at full width or widening to it. A side chat's pane that
+    /// leaves uncovers the conversation as it goes, which lays out for its
+    /// new width with the pane's first frames instead: kept wide while the
+    /// pane left, the uncovered conversation showed its old wrapping.
     private func columnsSlideOverConversation(at time: CFTimeInterval) -> Bool {
         guard widening.map({ $0.isSettled(at: time) }) ?? true,
               !islands.contains(where: \.column.isFullWidth)
         else { return false }
-        return islands.contains { !$0.reveal.isSettled(at: time) }
+        var moves = false
+        for island in islands where !island.reveal.isSettled(at: time) {
+            if island.column.isSideConversation, island.column.isDeparting { return false }
+            moves = true
+        }
+        return moves
     }
 
     /// Tells the toolbar where the columns are, so their items move with
@@ -934,7 +942,9 @@ final class WorkspaceConversationWidthPath {
 
     /// Whether `container` shows a timeline that follows the path.
     func hasFollower(in container: NSView) -> Bool {
-        followers.allObjects.contains { $0.window != nil && $0.isDescendant(of: container) }
+        followers.allObjects.contains {
+            $0.window != nil && !$0.isHiddenOrHasHiddenAncestor && $0.bounds.width > 0 && $0.isDescendant(of: container)
+        }
     }
 
     func update(frameTime: CFTimeInterval, isMoving: Bool, width: @escaping (NSView, CFTimeInterval) -> CGFloat?) {
