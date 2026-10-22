@@ -247,6 +247,7 @@ extension ForumBoardView {
         let bounds = CGRect(origin: .zero, size: size)
         effectiveAppearance.performAsCurrentDrawingAppearance {
             let canvas = ForumCardCanvas(size: size, scale: scale, colorSpace: colorSpace, cache: rasterCache)
+            canvas.laysOutExcerptsOffMain = laysOutExcerptsOffMain
             switch entry.item {
             case let .post(input):
                 paintPost(id: id, postID: input.id, titleLines: entry.titleLines, on: canvas)

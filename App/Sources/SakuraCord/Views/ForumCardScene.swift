@@ -1,3 +1,4 @@
+import AppKit
 import CoreGraphics
 import CoreText
 import Foundation
@@ -48,6 +49,16 @@ nonisolated struct ForumCardScene: @unchecked Sendable {
         case image(CGImage, destination: CGRect, clip: CGPath?)
         /// A bitmap already rasterized at the scene's scale, pixel-aligned.
         case bitmap(CGImage, frame: CGRect)
+        /// Excerpt text laid out with TextKit on the worker, at `width`,
+        /// clipped to `clip`.
+        case excerpt(ExcerptText, origin: CGPoint, width: CGFloat, clip: CGRect)
+    }
+
+    /// An excerpt's displayed text, made safe to lay out and draw off the
+    /// main thread: colors are resolved and inline images are bitmaps.
+    struct ExcerptText {
+        let text: NSAttributedString
+        let maximumLines: Int
     }
 
     let size: CGSize
@@ -132,7 +143,37 @@ nonisolated enum ForumCardRasterizer {
             context.interpolationQuality = .none
             drawUpright(image, in: frame, context: context)
             context.restoreGState()
+        case let .excerpt(excerpt, origin, width, clip):
+            draw(excerpt, at: origin, width: width, clippedTo: clip, in: context)
         }
+    }
+
+    /// Lays out and draws an excerpt the way its main-thread renderer does,
+    /// with a TextKit stack confined to this call.
+    private static func draw(
+        _ excerpt: ForumCardScene.ExcerptText,
+        at origin: CGPoint,
+        width: CGFloat,
+        clippedTo clip: CGRect,
+        in context: CGContext
+    ) {
+        let storage = NSTextStorage(attributedString: excerpt.text)
+        let manager = NSLayoutManager()
+        let container = NSTextContainer(size: CGSize(width: max(1, width), height: .greatestFiniteMagnitude))
+        container.lineFragmentPadding = 0
+        container.lineBreakMode = .byTruncatingTail
+        container.maximumNumberOfLines = excerpt.maximumLines
+        manager.addTextContainer(container)
+        storage.addLayoutManager(manager)
+        context.saveGState()
+        context.clip(to: clip)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
+        let glyphs = manager.glyphRange(for: container)
+        manager.drawBackground(forGlyphRange: glyphs, at: origin)
+        manager.drawGlyphs(forGlyphRange: glyphs, at: origin)
+        NSGraphicsContext.restoreGraphicsState()
+        context.restoreGState()
     }
 
     /// Images draw right side up in the flipped context.

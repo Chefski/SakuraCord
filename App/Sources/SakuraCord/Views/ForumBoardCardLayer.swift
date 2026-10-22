@@ -41,6 +41,9 @@ final class ForumBoardCard {
         chrome.shadowOffset = CGSize(width: 0, height: -3)
         layer.addSublayer(chrome)
         content.contentsGravity = .topLeft
+        // While a card resizes, its previous bitmap stays pinned to the top
+        // left, clipped to the card, until the redrawn one lands.
+        content.masksToBounds = true
         // Content changes cross-fade only when the board asks for it.
         content.actions = ["contents": NSNull(), "bounds": NSNull(), "position": NSNull()]
         layer.addSublayer(content)

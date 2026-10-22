@@ -165,6 +165,15 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
     /// Set while the board swaps under a cross-fade, so every card arriving
     /// on screen is drawn before the fade captures the new board.
     var drawsArrivalsNow = false
+    /// Set while the board follows a width change in progress (a pane
+    /// sliding, the window resizing): resized cards reflow off the main
+    /// thread, excerpts included, and redraw once more through the usual
+    /// path when the width settles.
+    private var followsLiveResize = false
+    /// Read by `scene` while a live resize redraws a card.
+    var laysOutExcerptsOffMain = false
+    private var liveResizedIDs = Set<ForumBoardItem.Identifier>()
+    private var resizeSettleTask: Task<Void, Never>?
     let rasterCache = ForumCardRasterCache()
     var presentations: [ChannelID: ForumCardPresentation] = [:]
     var regions: [ForumBoardItem.Identifier: ForumCardRegions] = [:]
@@ -235,6 +244,7 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
 
     func tearDown() {
         settledWorkTask?.cancel()
+        resizeSettleTask?.cancel()
         minuteTimer?.invalidate()
         minuteTimer = nil
         reactionTooltip.close()
@@ -375,7 +385,26 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
             refreshVisibleCards(transition: .none)
             return
         }
+        // An interface size change redraws at once; its fonts differ.
+        followsLiveResize = InterfaceScale.factor == metrics.scale
         relayout(transition: .none, scrollsToTop: false)
+        followsLiveResize = false
+        scheduleResizeSettle()
+    }
+
+    /// Once the width has held for a moment, cards reflowed during the change
+    /// redraw once more through the usual path (the same layout, so nothing
+    /// moves); each keeps its bitmap until the new one lands.
+    private func scheduleResizeSettle() {
+        resizeSettleTask?.cancel()
+        resizeSettleTask = Task { @MainActor [weak self] in
+            guard (try? await Task.sleep(for: .milliseconds(80))) != nil, let self else { return }
+            let ids = liveResizedIDs
+            liveResizedIDs.removeAll()
+            for id in ids {
+                cards[id]?.render(scale: backingScale, fading: false)
+            }
+        }
     }
 
     @objc func clipViewBoundsDidChange(_: Notification) {
@@ -647,10 +676,19 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         }
         if sizeChanged || !card.hasContent && !card.isRendering {
             regions[id] = nil
-            // A resized card on screen redraws at once: its old bitmap would
-            // not fit its new frame. Off screen, it redraws in the background.
-            // A card arriving during a board swap is drawn for the cross-fade.
-            card.render(scale: backingScale, fading: false, synchronously: (card.hasContent || drawsArrivalsNow) && isVisible)
+            if sizeChanged, card.hasContent, followsLiveResize {
+                // A width change in progress reflows off the main thread.
+                liveResizedIDs.insert(id)
+                laysOutExcerptsOffMain = true
+                card.render(scale: backingScale, fading: false)
+                laysOutExcerptsOffMain = false
+            } else {
+                // A resized card on screen redraws at once: its old bitmap
+                // would not fit its new frame. Off screen, it redraws in the
+                // background. A card arriving during a board swap is drawn for
+                // the cross-fade.
+                card.render(scale: backingScale, fading: false, synchronously: (card.hasContent || drawsArrivalsNow) && isVisible)
+            }
         }
         applyChrome(card, id: id, animated: false)
         refreshShimmer(card, id: id)

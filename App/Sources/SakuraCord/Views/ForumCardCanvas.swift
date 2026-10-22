@@ -14,6 +14,9 @@ final class ForumCardCanvas {
     private let cache: ForumCardRasterCache
     private let appearance = NSAppearance.currentDrawing().name
     private var operations: [ForumCardScene.Operation] = []
+    /// While the board follows a width change, excerpts are laid out on the
+    /// worker at each width rather than drawn here.
+    var laysOutExcerptsOffMain = false
 
     init(size: CGSize, scale: CGFloat, colorSpace: CGColorSpace, cache: ForumCardRasterCache) {
         self.size = size
@@ -156,6 +159,11 @@ final class ForumCardCanvas {
         )
         let clip = NSBezierPath(concentricRoundedRect: frame, cornerRadius: cornerRadius).cgPath
         operations.append(.image(cgImage, destination: destination, clip: clip))
+    }
+
+    func excerpt(_ excerpt: ForumCardScene.ExcerptText, at origin: CGPoint, width: CGFloat, clippedTo clip: CGRect) {
+        guard clip.width > 0, clip.height > 0 else { return }
+        operations.append(.excerpt(excerpt, origin: origin, width: width, clip: clip))
     }
 
     /// Draws AppKit content into a cached bitmap covering `clip`, aligned to
