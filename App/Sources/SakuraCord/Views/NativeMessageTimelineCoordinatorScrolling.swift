@@ -1414,7 +1414,10 @@ extension NativeMessageTimelineCoordinator {
             scrollIdleTask?.cancel()
             scrollIdleTask = nil
             publishScrollActivity(false)
-            if let canvas {
+            // A workspace motion keeps hover off until it settles
+            // (`workspaceMotionObservations`): rows re-wrapping under a
+            // still pointer hit-tested their text on every frame.
+            if let canvas, !WorkspaceLayoutMotion.isMoving {
                 canvas.allowHoverPresentationAfterScroll()
             }
         }
