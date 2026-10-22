@@ -80,7 +80,7 @@ extension ForumBoardView {
             interaction.isReactionHovered = isOnReaction
             if isOnReaction, let summary = presentations[input.id]?.reaction {
                 presentReactionTooltip(postID: input.id, summary: summary)
-            } else if !isOnReaction, previous.isReactionHovered {
+            } else if !isOnReaction {
                 closeReactionTooltip()
             }
             if let renderer = excerptRenderers[input.id], let excerptOrigin = excerptOrigin(for: id) {
@@ -233,12 +233,12 @@ extension ForumBoardView {
         }
         guard !posts.isEmpty else { return super.keyDown(with: event) }
         let currentIndex = keyboardID.flatMap { id in posts.firstIndex { $0.item.id == id } }
-        let columns = max(1, posts.prefix(while: { $0.frame.minY == posts[0].frame.minY }).count)
-        let step = isGallery ? columns : 1
         var next: Int?
         switch event.specialKey {
-        case .downArrow: next = currentIndex.map { min(posts.count - 1, $0 + step) } ?? 0
-        case .upArrow: next = currentIndex.map { max(0, $0 - step) } ?? 0
+        case .downArrow:
+            next = currentIndex.map { verticalStep(from: $0, down: true, in: posts) } ?? 0
+        case .upArrow:
+            next = currentIndex.map { verticalStep(from: $0, down: false, in: posts) } ?? 0
         case .rightArrow where isGallery: next = currentIndex.map { min(posts.count - 1, $0 + 1) } ?? 0
         case .leftArrow where isGallery: next = currentIndex.map { max(0, $0 - 1) } ?? 0
         case .carriageReturn, .enter:
@@ -258,6 +258,14 @@ extension ForumBoardView {
             if let card = cards[id] { applyChrome(card, id: id, animated: true) }
         }
         scrollToVisible(posts[next].frame.insetBy(dx: 0, dy: -metrics.cardSpacing))
+    }
+
+    /// The entry Up or Down moves to: one entry in a list, and in a gallery the
+    /// entry of the adjacent row nearest the current one's horizontal position,
+    /// so rows of different sections may have different column counts.
+    private func verticalStep(from index: Int, down: Bool, in posts: [ForumBoardLayout.Entry]) -> Int {
+        guard isGallery else { return down ? min(posts.count - 1, index + 1) : max(0, index - 1) }
+        return ForumBoardLayout.adjacentRowIndex(from: index, down: down, in: posts.map(\.frame))
     }
 
     override func resignFirstResponder() -> Bool {
