@@ -26,6 +26,10 @@ final class NativeMemberForegroundOverlayView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        NativeTimelinePaintLock.withLock { drawForeground() }
+    }
+
+    private func drawForeground() {
         guard let canvas,
               canvas.items.indices.contains(itemIndex),
               case .member(let member, _) = canvas.items[itemIndex],

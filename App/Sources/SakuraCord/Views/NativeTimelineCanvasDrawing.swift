@@ -1026,7 +1026,7 @@ extension NativeTimelineCanvasView {
 
     override func draw(_ dirtyRect: NSRect) {
         AppPerformanceSignposts.measureSync("TimelineCanvasDraw") {
-            drawTimeline(in: dirtyRect)
+            NativeTimelinePaintLock.withLock { drawTimeline(in: dirtyRect) }
         }
         if let presentedConversationID,
            AppPerformanceSignposts.reportConversationFirstFrame(
@@ -1356,53 +1356,48 @@ extension NativeTimelineCanvasView {
                 ?? NSScreen.main?.backingScaleFactor
                 ?? 2
         )
-        let pixelWidth = max(1, Int(ceil(width * scale)))
-        let pixelHeight = max(1, Int(ceil(size.height * scale)))
-        guard let representation = NSBitmapImageRep(
-            bitmapDataPlanes: nil,
-            pixelsWide: pixelWidth,
-            pixelsHigh: pixelHeight,
-            bitsPerSample: 8,
-            samplesPerPixel: 4,
-            hasAlpha: true,
-            isPlanar: false,
-            colorSpaceName: .deviceRGB,
-            bytesPerRow: 0,
-            bitsPerPixel: 0
-        ), let graphics = NSGraphicsContext(bitmapImageRep: representation)
-        else {
+        let model = model
+        let spoilerRevealStore = spoilerRevealStore
+        let animatedReactionIDs = animatedReactionIDs(for: item.identifier)
+        guard let representation = NativeTimelineRowPainter.rasterize(
+            width: width, height: size.height, scale: scale, tileOrigin: tileOrigin, paint: {
+            AppPerformanceSignposts.measureSync("TimelineRowRaster") {
+                NativeTimelineRowPainter.draw(
+                    item: item,
+                    layout: layout,
+                    in: CGRect(x: 0, y: 0, width: width, height: layout.height),
+                    model: model,
+                    isHovered: false,
+                    spoilerRevealStore: spoilerRevealStore,
+                    animatedReactionIDs: animatedReactionIDs
+                )
+            }
+        }) else {
             return NSImage(size: size)
         }
-        NSGraphicsContext.saveGraphicsState()
-        graphics.cgContext.scaleBy(x: scale, y: scale)
-        graphics.cgContext.translateBy(x: 0, y: size.height)
-        graphics.cgContext.scaleBy(x: 1, y: -1)
-        graphics.cgContext.translateBy(x: 0, y: -tileOrigin)
-        let flippedGraphics = NSGraphicsContext(
-            cgContext: graphics.cgContext,
-            flipped: true
-        )
-        NSGraphicsContext.current = flippedGraphics
-        AppPerformanceSignposts.measureSync("TimelineRowRaster") {
-            NativeTimelineRowPainter.draw(
-                item: item,
-                layout: layout,
-                in: CGRect(x: 0, y: 0, width: width, height: layout.height),
-                model: model,
-                isHovered: false,
-                spoilerRevealStore: spoilerRevealStore,
-                animatedReactionIDs: animatedReactionIDs(for: item.identifier)
-            )
-        }
-        flippedGraphics.flushGraphics()
-        NSGraphicsContext.restoreGraphicsState()
-        representation.size = size
         let image = NSImage(size: size)
         image.addRepresentation(representation)
         let rasterDuration =
             ProcessInfo.processInfo.systemUptime - rasterStart
         recordRowRaster(duration: rasterDuration, height: size.height)
+        storeBitmap(
+            image, for: item, width: width, appearanceName: appearanceName,
+            preparedMediaKeys: preparedMediaKeys, scale: scale, tileIndex: tileIndex
+        )
+        return image
+    }
 
+    /// Adds a row bitmap to the cache, as painted here or by the motion
+    /// presenter's raster worker for the width the rows settle at.
+    func storeBitmap(
+        _ image: NSImage,
+        for item: NativeMessageTimelineItem,
+        width: CGFloat,
+        appearanceName: NSAppearance.Name,
+        preparedMediaKeys: Set<NativeTimelineMediaKey>,
+        scale: CGFloat,
+        tileIndex: Int = -1
+    ) {
         var entry = bitmapCache[item.identifier]
         if let previous = entry,
            previous.item != item || abs(previous.width - width) >= 0.5
@@ -1417,7 +1412,7 @@ extension NativeTimelineCanvasView {
         )
         let cost = Self.estimatedBitmapCost(
             width: width,
-            height: size.height,
+            height: image.size.height,
             scale: scale
         )
         bitmapInsertionOrder.removeAll { $0 == item.identifier }
@@ -1438,7 +1433,6 @@ extension NativeTimelineCanvasView {
         bitmapCache[item.identifier] = updated
         bitmapCost += cost
         evictBitmapsIfNeeded()
-        return image
     }
 
     private func recordRowRaster(duration: TimeInterval, height: CGFloat) {

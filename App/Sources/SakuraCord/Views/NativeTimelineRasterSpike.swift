@@ -70,8 +70,110 @@ extension NativeTimelineCanvasView {
                 "SPIKE serial pass=\(pass) rows=\(paints.count) workerTotal=\(total) mainTotal=\(mainTotal) slowestRow=\(slowest) differingRows=\(differing.description, privacy: .public)"
             )
         }
+        runDisplaySpaceParity(rows: rows, context: context, appearance: appearance, scale: scale)
         runWidthSweep(visible: visible, context: context, appearance: appearance, scale: scale)
         runStress(paints, appearance: appearance, scale: scale)
+    }
+
+    /// The presenter's bitmaps (painted in the display's colour space on the
+    /// worker) against the canvas's (painted in device RGB on main, then
+    /// converted as Core Animation would), pixel for pixel.
+    private func runDisplaySpaceParity(
+        rows: [Int], context: NativeTimelineRowPaintContext?, appearance: NSAppearance, scale: CGFloat
+    ) {
+        guard let colorSpace = window?.colorSpace?.cgColorSpace else { return }
+        var differingRows: [Int] = []
+        var worstPixels = 0
+        var worstDelta = 0
+        for index in rows {
+            let layout = layouts[index]
+            let width = rowFrame(at: index).width
+            guard width > 1, layout.height > 1 else { continue }
+            let canvasPaint = rowPaint(index: index, layout: layout, width: width, context: nil, appearance: appearance)
+            let workerPaint = rowPaint(index: index, layout: layout, width: width, context: context, appearance: appearance)
+            guard let canvasRep = NativeTimelineRowPainter.rasterize(width: width, height: layout.height, scale: scale, paint: { canvasPaint() }),
+                  let canvasSource = canvasRep.cgImage,
+                  let canvasImage = NativeTimelineRowRasterizer.displayImage(canvasSource, colorSpace: colorSpace)
+            else { continue }
+            nonisolated(unsafe) var workerImage: CGImage?
+            Self.spikeQueue.sync {
+                workerImage = NativeTimelineRowPainter.rasterizeForDisplay(
+                    width: width, height: layout.height, scale: scale, colorSpace: colorSpace, paint: { workerPaint() }
+                )
+            }
+            guard let workerImage else { continue }
+            let (differing, maximum) = Self.spikeDiff(Self.bytes(of: canvasImage), Self.bytes(of: workerImage))
+            if differing != 0 { differingRows.append(index) }
+            worstPixels = max(worstPixels, differing)
+            worstDelta = max(worstDelta, maximum)
+        }
+        // The exact pipeline's two halves, timed on the worker: paint in
+        // device RGB into a plain context, then convert for display.
+        var paintMS = 0.0
+        var convertMS = 0.0
+        var exactRows = 0
+        for index in rows {
+            let layout = layouts[index]
+            let width = rowFrame(at: index).width
+            guard width > 1, layout.height > 1 else { continue }
+            let canvasPaint = rowPaint(index: index, layout: layout, width: width, context: nil, appearance: appearance)
+            let workerPaint = rowPaint(index: index, layout: layout, width: width, context: context, appearance: appearance)
+            guard let canvasRep = NativeTimelineRowPainter.rasterize(width: width, height: layout.height, scale: scale, paint: { canvasPaint() }),
+                  let canvasSource = canvasRep.cgImage,
+                  let canvasImage = NativeTimelineRowRasterizer.displayImage(canvasSource, colorSpace: colorSpace)
+            else { continue }
+            nonisolated(unsafe) var converted: CGImage?
+            nonisolated(unsafe) var timings = (0.0, 0.0)
+            Self.spikeQueue.sync {
+                let start = ProcessInfo.processInfo.systemUptime
+                let device = NativeTimelineRowPainter.rasterizeForDisplay(
+                    width: width, height: layout.height, scale: scale,
+                    colorSpace: CGColorSpaceCreateDeviceRGB(), paint: { workerPaint() }
+                )
+                let middle = ProcessInfo.processInfo.systemUptime
+                converted = device.flatMap {
+                    NativeTimelineRowRasterizer.displayImage($0, colorSpace: colorSpace, croppingTransparentEdge: true)
+                }
+                timings = ((middle - start) * 1_000, (ProcessInfo.processInfo.systemUptime - middle) * 1_000)
+            }
+            paintMS += timings.0
+            convertMS += timings.1
+            if let converted, Self.croppedMatches(full: canvasImage, cropped: converted) { exactRows += 1 }
+        }
+        Self.spikeLog.notice("SPIKE devicePipeline rows=\(rows.count) exactRows=\(exactRows) paintMS=\(paintMS) convertMS=\(convertMS)")
+        Self.spikeLog.notice(
+            "SPIKE displayParity rows=\(rows.count) differingRows=\(differingRows.description, privacy: .public) worstPixels=\(worstPixels) worstDelta=\(worstDelta)"
+        )
+    }
+
+    /// Whether `cropped` is `full`'s left columns, with nothing but fully
+    /// transparent pixels right of them.
+    nonisolated private static func croppedMatches(full: CGImage, cropped: CGImage) -> Bool {
+        let fullBytes = bytes(of: full)
+        let croppedBytes = bytes(of: cropped)
+        guard full.height == cropped.height, cropped.width <= full.width else { return false }
+        for row in 0 ..< full.height {
+            let fullRow = row * full.width * 4
+            let croppedRow = row * cropped.width * 4
+            for index in 0 ..< cropped.width * 4 where fullBytes[fullRow + index] != croppedBytes[croppedRow + index] {
+                return false
+            }
+            for index in cropped.width * 4 ..< full.width * 4 where fullBytes[fullRow + index] != 0 {
+                return false
+            }
+        }
+        return true
+    }
+
+    nonisolated private static func bytes(of image: CGImage) -> [UInt8] {
+        guard let data = image.dataProvider?.data, let pointer = CFDataGetBytePtr(data) else { return [] }
+        var result: [UInt8] = []
+        result.reserveCapacity(image.width * image.height * 4)
+        for row in 0 ..< image.height {
+            let start = pointer + row * image.bytesPerRow
+            result.append(contentsOf: UnsafeBufferPointer(start: start, count: image.width * 4))
+        }
+        return result
     }
 
     /// The motion's width path: per frame, layouts on main at the new width,
@@ -155,6 +257,90 @@ extension NativeTimelineCanvasView {
             mainDraws += 1
         }
         Self.spikeLog.notice("SPIKE stress serialWhileMainDraws paints=\(paints.count * 5) differing=\(serialDiffering) mainDraws=\(mainDraws)")
+
+        // The serial worker while main paints real rows (the heaviest
+        // drawing main could do at the same time).
+        do {
+            nonisolated(unsafe) var heavyDiffering = 0
+            nonisolated(unsafe) var heavyFinished = false
+            let heavyLock = NSLock()
+            Self.spikeQueue.async {
+                for _ in 0 ..< 10 {
+                    for entry in paints {
+                        let bytes = Self.spikeRaster(width: entry.width, height: entry.height, scale: scale, paint: entry.paint)
+                        if Self.spikeDiff(entry.main, bytes).differing != 0 { heavyDiffering += 1 }
+                    }
+                }
+                heavyLock.withLock { heavyFinished = true }
+            }
+            var heavyMainDraws = 0
+            var mainDiffering = 0
+            while !heavyLock.withLock({ heavyFinished }) {
+                let entry = paints[(heavyMainDraws * 7) % paints.count]
+                let bytes = Self.spikeRaster(width: entry.width, height: entry.height, scale: scale, paint: entry.paint)
+                if Self.spikeDiff(entry.main, bytes).differing != 0 { mainDiffering += 1 }
+                heavyMainDraws += 1
+            }
+            Self.spikeLog.notice("SPIKE stress serialWhileMainPaintsRows paints=\(paints.count * 10) differing=\(heavyDiffering) mainPaints=\(heavyMainDraws) mainDiffering=\(mainDiffering)")
+        }
+
+        // The serial worker, under the paint lock as in production, while
+        // main renders the whole window: composer, sidebar, member list and
+        // the timeline itself.
+        if let contentView = window?.contentView {
+            nonisolated(unsafe) var chromeDiffering = 0
+            nonisolated(unsafe) var chromeFinished = false
+            let chromeLock = NSLock()
+            Self.spikeQueue.async {
+                for _ in 0 ..< 10 {
+                    for entry in paints {
+                        let bytes = NativeTimelinePaintLock.withLock {
+                            Self.spikeRaster(width: entry.width, height: entry.height, scale: scale, paint: entry.paint)
+                        }
+                        if Self.spikeDiff(entry.main, bytes).differing != 0 { chromeDiffering += 1 }
+                    }
+                }
+                chromeLock.withLock { chromeFinished = true }
+            }
+            var windowRenders = 0
+            while !chromeLock.withLock({ chromeFinished }) {
+                if let rep = contentView.bitmapImageRepForCachingDisplay(in: contentView.bounds) {
+                    contentView.cacheDisplay(in: contentView.bounds, to: rep)
+                }
+                windowRenders += 1
+            }
+            Self.spikeLog.notice("SPIKE stress serialWhileMainRendersWindow paints=\(paints.count * 10) differing=\(chromeDiffering) windowRenders=\(windowRenders)")
+        }
+
+        // Two workers, each on its own rows, while main draws.
+        for workers in [2, 3] {
+            nonisolated(unsafe) var pairDiffering = 0
+            nonisolated(unsafe) var pairPaints = 0
+            let pairLock = NSLock()
+            let group = DispatchGroup()
+            for worker in 0 ..< workers {
+                let queue = DispatchQueue(label: "dev.sakuracord.timeline-raster-spike.\(worker)", qos: .userInteractive)
+                let own = paints.enumerated().filter { $0.offset % workers == worker }.map(\.element)
+                queue.async(group: group) {
+                    for _ in 0 ..< 20 {
+                        for entry in own {
+                            let bytes = Self.spikeRaster(width: entry.width, height: entry.height, scale: scale, paint: entry.paint)
+                            let differs = Self.spikeDiff(entry.main, bytes).differing != 0
+                            pairLock.withLock {
+                                pairPaints += 1
+                                if differs { pairDiffering += 1 }
+                            }
+                        }
+                    }
+                }
+            }
+            var pairMainDraws = 0
+            while group.wait(timeout: .now()) == .timedOut {
+                _ = Self.spikeRaster(width: 440, height: 30, scale: scale, paint: mainLoad)
+                pairMainDraws += 1
+            }
+            Self.spikeLog.notice("SPIKE stress workers=\(workers) differentRows paints=\(pairPaints) differing=\(pairDiffering) mainDraws=\(pairMainDraws)")
+        }
 
         // Fan-out across every core, for the record.
         let copies = paints.count * 4

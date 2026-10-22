@@ -358,6 +358,9 @@ final class NativeMessageTimelineCoordinator: NSObject {
         var widthRelayoutTask: Task<Void, Never>?
         var pendingLayoutWidth: CGFloat?
         var previewLayoutWidth: CGFloat?
+        /// Shows the visible rows while a motion or live resize changes the
+        /// timeline's width.
+        lazy var motionPresenter = NativeTimelineMotionPresenter(coordinator: self)
         /// When the last width preview ran during a workspace motion, and the
         /// preview waiting to follow it.
         var lastMotionPreview: ContinuousClock.Instant?
@@ -404,7 +407,12 @@ extension NativeMessageTimelineCoordinator {
                         rows: self?.items.count ?? 0,
                         draws: canvas?.drawCount ?? 0,
                         drawSeconds: canvas?.lifetimeDrawDuration ?? 0,
-                        layoutSeconds: self?.lifetimeLayoutDuration ?? 0
+                        layoutSeconds: self?.lifetimeLayoutDuration ?? 0,
+                        contentWidth: self.map {
+                            $0.motionPresenter.presentedWidth ?? $0.previewLayoutWidth ?? $0.layoutWidth
+                        } ?? 0,
+                        bitmapLag: self?.motionPresenter.presentedLagPoints ?? 0,
+                        presenter: self?.motionPresenter.presentedWidth != nil
                     )
                 }
             }

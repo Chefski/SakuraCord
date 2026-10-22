@@ -702,6 +702,22 @@ extension NativeMessageTimelineCoordinator {
             let previewNeedsRows = previewsWidth && !previewChanged
                 && previewLayoutWidth != nil && visibleRowsNeedPreview()
             let restoresPreview = !widthChanged && previewLayoutWidth != nil
+            if motionPresenter.isActive, !reflowsWidth,
+               widthChanged || sizeChanged || motionPresenter.presentedWidth.map({ abs($0 - width) >= 0.5 }) == true,
+               motionPresenter.present(width: width)
+            {
+                // The rows move as layers until the width settles; the
+                // canvas lays out once, for the final width.
+                lastViewportSize = viewportSize
+                if widthChanged {
+                    scheduleRelayoutForWidthChange(width)
+                } else {
+                    widthRelayoutTask?.cancel()
+                    widthRelayoutTask = nil
+                    pendingLayoutWidth = nil
+                }
+                return true
+            }
             if previewChanged, deferMotionPreview() { return false }
             if widthChanged, !reflowsWidth {
                 scheduleRelayoutForWidthChange(width)
@@ -733,6 +749,8 @@ extension NativeMessageTimelineCoordinator {
                 ? visibleAnchor() : nil
 
             isApplyingUpdate = true
+            let endsMotionPresentation = motionPresenter.isActive && (reflowsWidth || restoresPreview)
+            if endsMotionPresentation, reflowsWidth { motionPresenter.seedCanvas(width: width) }
             if reflowsWidth {
                 applyImmediateWidthRelayout(
                     width, preparedLayouts: preparedLayouts,
@@ -779,6 +797,8 @@ extension NativeMessageTimelineCoordinator {
                     canvas.display()
                 }
             }
+            // The canvas shows the settled rows in the frame the layers leave.
+            if endsMotionPresentation { motionPresenter.end() }
             let establishedInitialPosition =
                 applyInitialPositionIfNeeded()
             applyScrollRequestIfNeeded()
@@ -956,6 +976,12 @@ extension NativeMessageTimelineCoordinator {
 
         func applyPendingWidthRelayout() {
             guard let width = pendingLayoutWidth else { return }
+            // The canvas paints the settled rows; let the raster worker
+            // finish its row first so the main thread never waits for it.
+            if motionPresenter.isActive, !motionPresenter.isWorkerIdle {
+                motionPresenter.whenWorkerIdle { [weak self] in self?.applyPendingWidthRelayout() }
+                return
+            }
             widthRelayoutTask = nil
             guard items.count >= NativeTimelineWidthRelayoutPolicy
                 .asynchronousRowThreshold
@@ -1146,15 +1172,50 @@ extension NativeMessageTimelineCoordinator {
         func workspaceMotionObservations(_ center: NotificationCenter) -> [NSObjectProtocol] {
             [
                 center.addObserver(forName: WorkspaceLayoutMotion.didBegin, object: nil, queue: .main) { [weak self] _ in
-                    MainActor.assumeIsolated { self?.canvas?.dismissHoverPresentationForScroll() }
+                    MainActor.assumeIsolated {
+                        self?.canvas?.dismissHoverPresentationForScroll()
+                        self?.motionPresenter.begin(.workspaceMotion)
+                    }
                 },
                 center.addObserver(forName: WorkspaceLayoutMotion.didSettle, object: nil, queue: .main) { [weak self] _ in
                     MainActor.assumeIsolated {
-                        guard let self, self.scrollIdleTask == nil else { return }
+                        guard let self else { return }
+                        self.motionPresenterDidFinishMotion()
+                        guard self.scrollIdleTask == nil else { return }
                         self.canvas?.allowHoverPresentationAfterScroll()
                     }
                 },
+                center.addObserver(forName: NSWindow.willStartLiveResizeNotification, object: nil, queue: .main) { [weak self] notification in
+                    let window = notification.object as? NSWindow
+                    MainActor.assumeIsolated {
+                        guard let self, window != nil, window === self.scrollView?.window else { return }
+                        self.motionPresenter.begin(.liveResize)
+                    }
+                },
+                center.addObserver(forName: NSWindow.didEndLiveResizeNotification, object: nil, queue: .main) { [weak self] notification in
+                    let window = notification.object as? NSWindow
+                    MainActor.assumeIsolated {
+                        guard let self, window != nil, window === self.scrollView?.window else { return }
+                        self.motionPresenterDidFinishMotion()
+                    }
+                },
             ]
+        }
+
+        /// Once the width stops changing, the canvas lays out for it and
+        /// takes the rows back from the motion presenter.
+        func motionPresenterDidFinishMotion() {
+            guard motionPresenter.isActive, !WorkspaceLayoutMotion.isMoving,
+                  scrollView?.window?.inLiveResize != true
+            else { return }
+            guard pendingLayoutWidth != nil else {
+                motionPresenter.end()
+                return
+            }
+            // A live resize ends without a motion to wait for.
+            widthRelayoutTask?.cancel()
+            widthRelayoutTask = nil
+            applyPendingWidthRelayout()
         }
 
         func beginObserving(_ scrollView: NSScrollView) {

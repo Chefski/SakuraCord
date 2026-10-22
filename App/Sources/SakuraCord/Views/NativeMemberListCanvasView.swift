@@ -295,6 +295,11 @@ final class NativeMemberListCanvasView: NSView, WindowModalInputParticipant {
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        // Never alongside the timeline's raster worker (`NativeTimelinePaintLock`).
+        NativeTimelinePaintLock.withLock { drawMembers(dirtyRect) }
+    }
+
+    private func drawMembers(_ dirtyRect: NSRect) {
         AppPerformanceSignposts.measureSync("MemberListCanvasDraw") {
             guard let context = NSGraphicsContext.current?.cgContext else {
                 return
