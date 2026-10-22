@@ -677,8 +677,11 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         if sizeChanged || !card.hasContent && !card.isRendering {
             regions[id] = nil
             if sizeChanged, card.hasContent, followsLiveResize {
-                // A width change in progress reflows off the main thread.
-                liveResizedIDs.insert(id)
+                // A width change in progress reflows off the main thread;
+                // a worker-drawn excerpt redraws once more when it settles.
+                if case let .post(postID) = id, excerptRenderers[postID]?.supportsWorkerText == true {
+                    liveResizedIDs.insert(id)
+                }
                 laysOutExcerptsOffMain = true
                 card.render(scale: backingScale, fading: false)
                 laysOutExcerptsOffMain = false
