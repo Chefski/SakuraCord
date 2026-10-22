@@ -709,7 +709,9 @@ private struct ChatRootView: View {
         for conversation in departing + current {
             var fullWidthActions: AnyView?
             if case .thread(let thread, _) = conversation {
-                fullWidthActions = AnyView(fullWidthTitlebarActions(thread))
+                // Hidden until the thread is full width; only then, past the
+                // widening crossfade, do its buttons open panels.
+                fullWidthActions = AnyView(fullWidthTitlebarActions(thread, presentsPanels: isCovered && conversation == fullWidth))
             }
             groups.append(.init(
                 id: WorkspaceTrailingColumn(.sideConversation(conversation)).id,
@@ -731,6 +733,7 @@ private struct ChatRootView: View {
         // A narrow conversation keeps Members and gathers the rest into "»".
         return ViewThatFits(in: .horizontal) {
             HStack(spacing: ChatChromeMetrics.toolbarItemEdgeInset) {
+                conversationCallActions
                 InboxToolbarButton(model: model, presentsPanel: presentsPanels)
                 if let pinsChannelID {
                     PinnedMessagesToolbarButton(model: model, channelID: pinsChannelID, presentsPanel: presentsPanels)
@@ -743,6 +746,7 @@ private struct ChatRootView: View {
                 }
             }
             HStack(spacing: ChatChromeMetrics.toolbarItemEdgeInset) {
+                conversationCallActions
                 ConversationOverflowToolbarMenu(
                     model: model,
                     pinsChannelID: pinsChannelID,
@@ -757,15 +761,79 @@ private struct ChatRootView: View {
         .titlebarButtons()
     }
 
+    /// A DM's or group DM's call buttons, or a voice channel's Open Chat.
+    @ViewBuilder
+    private var conversationCallActions: some View {
+        if let channel = selectedPrivateChannel {
+            privateCallButtons(channel)
+        } else if let channel = selectedVoiceChannel, !model.isVoiceChatOpen {
+            openVoiceChatButton(channel)
+        }
+    }
+
+    @ViewBuilder
+    private func privateCallButtons(_ channel: Channel) -> some View {
+        Button {
+            Task {
+                if model.joinablePrivateCall(in: channel.id) != nil {
+                    await model.joinPrivateCall(in: channel)
+                } else {
+                    await model.startPrivateCall(in: channel)
+                }
+            }
+        } label: {
+            Label(
+                model.joinablePrivateCall(in: channel.id) == nil
+                    ? "Start Voice Call" : "Join Voice Call",
+                systemImage: "phone.fill"
+            )
+        }
+        .disabled(
+            model.activeVoiceChannel?.id == channel.id
+                || model.isPrivateCallActionInFlight(in: channel.id)
+        )
+        .help(
+            model.joinablePrivateCall(in: channel.id) == nil
+                ? "Start Voice Call" : "Join Ongoing Call"
+        )
+
+        Button {
+            Task {
+                if model.joinablePrivateCall(in: channel.id) != nil {
+                    await model.joinPrivateCall(in: channel, withVideo: true)
+                } else {
+                    await model.startPrivateCall(in: channel, withVideo: true)
+                }
+            }
+        } label: {
+            Label("Start Video Call", systemImage: "video.fill")
+        }
+        .disabled(
+            model.activeVoiceChannel?.id == channel.id
+                || model.isPrivateCallActionInFlight(in: channel.id)
+        )
+        .help(
+            model.joinablePrivateCall(in: channel.id) == nil
+                ? "Start Video Call" : "Join Ongoing Call with Video"
+        )
+    }
+
+    private func openVoiceChatButton(_ channel: Channel) -> some View {
+        Button { model.openVoiceChat(for: channel) } label: {
+            Label("Open Chat", systemImage: "bubble.left.fill")
+        }
+        .help("Open voice channel chat")
+    }
+
     /// A full-width thread's actions, which replace its pane actions as it
     /// widens.
-    private func fullWidthTitlebarActions(_ thread: MessageThreadSummary) -> some View {
+    private func fullWidthTitlebarActions(_ thread: MessageThreadSummary, presentsPanels: Bool) -> some View {
         HStack(spacing: ChatChromeMetrics.toolbarItemEdgeInset) {
             if ForumPostFollowToolbarButton.isOffered(model: model, thread: thread) {
                 ForumPostFollowToolbarButton(model: model, thread: thread, surface: .forumPostHeader)
             }
-            InboxToolbarButton(model: model)
-            PinnedMessagesToolbarButton(model: model, channelID: thread.id)
+            InboxToolbarButton(model: model, presentsPanel: presentsPanels)
+            PinnedMessagesToolbarButton(model: model, channelID: thread.id, presentsPanel: presentsPanels)
             MemberInspectorToolbarButton(model: model)
             ThreadActionsToolbarMenu(model: model, thread: thread, surface: .fullView)
         }
@@ -842,60 +910,11 @@ private struct ChatRootView: View {
 
         if !model.isSwitchingAccounts {
             if let channel = selectedPrivateChannel {
-                ToolbarItemGroup {
-                    Button {
-                        Task {
-                            if model.joinablePrivateCall(in: channel.id) != nil {
-                                await model.joinPrivateCall(in: channel)
-                            } else {
-                                await model.startPrivateCall(in: channel)
-                            }
-                        }
-                    } label: {
-                        Label(
-                            model.joinablePrivateCall(in: channel.id) == nil
-                                ? "Start Voice Call" : "Join Voice Call",
-                            systemImage: "phone.fill"
-                        )
-                    }
-                    .disabled(
-                        model.activeVoiceChannel?.id == channel.id
-                            || model.isPrivateCallActionInFlight(in: channel.id)
-                    )
-                    .help(
-                        model.joinablePrivateCall(in: channel.id) == nil
-                            ? "Start Voice Call" : "Join Ongoing Call"
-                    )
-
-                    Button {
-                        Task {
-                            if model.joinablePrivateCall(in: channel.id) != nil {
-                                await model.joinPrivateCall(in: channel, withVideo: true)
-                            } else {
-                                await model.startPrivateCall(in: channel, withVideo: true)
-                            }
-                        }
-                    } label: {
-                        Label("Start Video Call", systemImage: "video.fill")
-                    }
-                    .disabled(
-                        model.activeVoiceChannel?.id == channel.id
-                            || model.isPrivateCallActionInFlight(in: channel.id)
-                    )
-                    .help(
-                        model.joinablePrivateCall(in: channel.id) == nil
-                            ? "Start Video Call" : "Join Ongoing Call with Video"
-                    )
-                }
-                .visibilityPriority(.high)
+                ToolbarItemGroup { privateCallButtons(channel) }
+                    .visibilityPriority(.high)
             } else if model.guildWorkspacePage == nil, model.onboardingEntryGuildID == nil, let channel = selectedVoiceChannel, !model.isVoiceChatOpen {
-                ToolbarItem {
-                    Button { model.openVoiceChat(for: channel) } label: {
-                        Label("Open Chat", systemImage: "bubble.left.fill")
-                    }
-                    .help("Open voice channel chat")
-                }
-                .visibilityPriority(.high)
+                ToolbarItem { openVoiceChatButton(channel) }
+                    .visibilityPriority(.high)
             }
 
             if model.isThreadFullWidth, let thread = model.openThread {

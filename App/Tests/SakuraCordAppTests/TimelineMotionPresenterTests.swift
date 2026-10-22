@@ -43,9 +43,11 @@ func `the motion presenter hands the rows back to the canvas with nothing left o
     let presenter = coordinator.motionPresenter
     #expect(presenter.begin(.liveResize))
     // The worker paints the rows for the new width; until then the canvas
-    // keeps showing them.
-    let deadline = ContinuousClock.now + .seconds(10)
+    // keeps showing them. Workspace motions in tests running alongside end
+    // presenters as they settle: this window is never in a live resize.
+    let deadline = ContinuousClock.now + .seconds(30)
     while presenter.presentedWidth != 700, ContinuousClock.now < deadline {
+        if !presenter.isActive { _ = presenter.begin(.liveResize) }
         _ = presenter.present(width: 700)
         try await Task.sleep(for: .milliseconds(20))
     }

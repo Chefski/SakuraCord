@@ -274,12 +274,7 @@ nonisolated final class NativeTimelineRowRasterizer: @unchecked Sendable {
 
     private func paint(_ job: Job) -> Bitmap? {
         let start = ProcessInfo.processInfo.systemUptime
-        var layout = job.layout
-        // Core Text layout objects are not shared between threads: the
-        // layout's framesetter is cached for the main thread.
-        if let content = layout.attributedContent {
-            layout.contentFramesetter = CTFramesetterCreateWithAttributedString(content)
-        }
+        let layout = job.layout
         nonisolated(unsafe) let model = job.model
         // Painted in device RGB as the canvas paints, then converted as Core
         // Animation would convert the canvas's: pixel for pixel what the

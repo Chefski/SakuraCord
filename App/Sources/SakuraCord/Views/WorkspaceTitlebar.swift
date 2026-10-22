@@ -237,6 +237,13 @@ final class WorkspaceTitlebarView: NSView {
         placeGroups()
     }
 
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        // The toolbar's search field outlives the workspace: it shows again
+        // wherever the window goes next.
+        if newWindow !== window { fadeSearch(1) }
+        super.viewWillMove(toWindow: newWindow)
+    }
+
     override func layout() {
         super.layout()
         placeGroups()

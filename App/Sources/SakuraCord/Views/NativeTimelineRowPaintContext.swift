@@ -70,6 +70,10 @@ nonisolated final class NativeTimelineRowPaintContext: @unchecked Sendable {
             }
             if let thread = message.thread, let preview = model.threadPreviewMessages[thread.id] {
                 threadPreviews[thread.id] = preview
+                // The thread card shows its preview as a reply line of its own.
+                let line = MessageReplyPreview.presenting(preview)
+                replyAuthors[preview.id] = model.authorPresentation(for: line, in: preview)
+                replySummaries[preview.id] = NativeTimelineReplyMetrics.summary(for: line, in: preview, model: model)
             }
             if model.canUpdateReactions(on: message) { reactionUpdates.insert(message.id) }
             if model.canCreateReactions(on: message) { reactionCreations.insert(message.id) }

@@ -53,13 +53,19 @@ extension AppModel {
         sideConversations.thread ?? presentedSideConversationContext
     }
 
+    /// The side chat the workspace shows: Members or search results cover
+    /// a pane, though not a full-width side chat.
+    var visibleSideConversation: SideConversation? {
+        sideConversationCover != nil && presentedSideConversation?.isFullWidth != true
+            ? nil : presentedSideConversation
+    }
+
     var workspacePresentation: WorkspacePresentation {
         WorkspacePresentation(
             guildPage: selectedGuildID == nil ? nil : guildWorkspacePage,
             isFriendsPresented: isFriendsPresented,
             channelKind: selectedChannel?.kind,
-            sideConversation: sideConversationCover != nil && presentedSideConversation?.isFullWidth != true
-                ? nil : presentedSideConversation,
+            sideConversation: visibleSideConversation,
             showsMessageSearch: isMessageSearchVisible,
             showsInspector: showInspector
         )
@@ -110,7 +116,7 @@ extension AppModel {
 
     /// The composer that typing and file drops reach when no pane is targeted.
     var activeComposerDestination: MessageComposerDestination {
-        presentedSideConversation?.capabilities.composerDestination ?? .channel
+        visibleSideConversation?.capabilities.composerDestination ?? .channel
     }
 
     func sideConversationLabel(_ conversation: SideConversation) -> SideConversationLabel {

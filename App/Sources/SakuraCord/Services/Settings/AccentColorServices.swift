@@ -10,8 +10,14 @@ nonisolated enum SakuraCordAccentColor {
         SakuraCordThemeStore.accentNSColor(theme: committedTheme)
     }
 
+    /// On main, the shared store's theme, so SwiftUI views reading an accent
+    /// observe theme changes; off main, as the row painter reads it, its
+    /// snapshot.
     private static var committedTheme: SakuraCordGradientTheme {
-        SakuraCordThemeStore.committedThemeSnapshot.withLock { $0 }
+        guard Thread.isMainThread else {
+            return SakuraCordThemeStore.committedThemeSnapshot.withLock { $0 }
+        }
+        return MainActor.assumeIsolated { SakuraCordThemeStore.shared.committedTheme }
     }
 
     static var textSelectionNSColor: NSColor {

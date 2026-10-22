@@ -375,6 +375,11 @@ def opposite_name(name: str) -> str:
     return "-".join(OPPOSITE_TOKENS.get(token, token) for token in name.split("-"))
 
 
+def reference_for(rec: Recording, action: Action) -> dict[str, Rect] | None:
+    """The action's static reference: its variant's own, if captured."""
+    return rec.references.get(action.group) or rec.references.get(action.name)
+
+
 def estimate_start_edge(
     rec: Recording, index: int, content_max: float | None
 ) -> tuple[float | None, str]:
@@ -383,7 +388,7 @@ def estimate_start_edge(
     probe, edge = action.moving_probe, action.edge
     candidates = [rec.references.get(opposite_name(action.name))]
     if index > 0:
-        candidates.append(rec.references.get(rec.actions[index - 1].name))
+        candidates.append(reference_for(rec, rec.actions[index - 1]))
     for reference in candidates:
         if reference and probe in reference:
             return edge_of(reference[probe], edge), "reference"
@@ -584,12 +589,12 @@ def reference_metrics(rec: Recording, index: int, loc: Location) -> dict[str, An
         "start_reference_mismatch_pt": None,
     }
     if loc.settled is not None:
-        reference = rec.references.get(action.name)
+        reference = reference_for(rec, action)
         if reference is not None:
             worst, presence = max_rect_difference(rec.frames[loc.settled].probes, reference)
             result["reference_mismatch_pt"] = round_or_none(worst if worst is not None else 0.0)
             result["reference_presence_mismatches"] = presence
-    previous = rec.references.get(rec.actions[index - 1].name) if index > 0 else None
+    previous = reference_for(rec, rec.actions[index - 1]) if index > 0 else None
     if previous is not None and loc.pre is not None:
         worst, _ = max_rect_difference(rec.frames[loc.pre].probes, previous)
         result["start_reference_mismatch_pt"] = round_or_none(worst if worst is not None else 0.0)

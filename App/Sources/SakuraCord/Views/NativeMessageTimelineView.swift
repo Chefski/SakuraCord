@@ -166,7 +166,9 @@ struct NativeMessageTimelineView: NSViewRepresentable {
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        // A closed side chat keeps its rows as it slides away.
+        // A closed side chat keeps its rows as it slides away, from model
+        // notifications too.
+        context.coordinator.isLeavingWorkspace = context.environment.isLeavingWorkspace
         guard !context.environment.isLeavingWorkspace else { return }
         context.coordinator.update(parent: self, scrollView: scrollView)
     }
@@ -290,6 +292,8 @@ final class NativeMessageTimelineCoordinator: NSObject {
         var firstRowID: MessageID?
         var lastRowID: MessageID?
         var rowsRevision: UInt64 = 0
+        /// A closed side chat's timeline, sliding away, keeps its rows.
+        var isLeavingWorkspace = false
         var presentationRevision: UInt64 = 0
         var layoutWidth: CGFloat = 0
         var didMutateItems = false
@@ -420,7 +424,11 @@ extension NativeMessageTimelineCoordinator {
                 self?.parent.onUserScrollTowardNewest()
             }
             // The reader's own scrolling always wins over a jump's glide.
-            scrollView.onScrollWheel = { [weak self] in self?.cancelGlide() }
+            scrollView.onScrollWheel = { [weak self] in
+                self?.cancelGlide()
+                // The presenter's rows hold still; the canvas scrolls.
+                self?.motionPresenter.end()
+            }
             scrollView.onToolbarObscuredHeightChange = { [weak self] in
                 self?.updateInsetsForToolbarObscuredHeightChange()
             }
@@ -991,6 +999,15 @@ extension NativeMessageTimelineCoordinator {
                 mediaViewerHighlightedMessageID:
                     parent.model.mediaViewerPresentation?.messageID
             )
+            // The motion presenter shows a snapshot of the rows: new rows or
+            // another conversation go back to the canvas first.
+            if motionPresenter.isEngaged,
+               parent.conversation != self.parent.conversation
+                || parent.rowsRevision != rowsRevision
+                || parent.presentationRevision != presentationRevision
+            {
+                motionPresenter.end()
+            }
             guard !prepareLayoutsIfNeeded(parent: parent, scrollView: scrollView) else {
                 return
             }
@@ -1011,6 +1028,7 @@ extension NativeMessageTimelineCoordinator {
                 await Task.yield()
                 guard !Task.isCancelled, let self else { return }
                 self.pendingModelRowsUpdateTask = nil
+                guard !self.isLeavingWorkspace else { return }
                 guard !self.isApplyingUpdate,
                       let scrollView = self.scrollView
                 else {

@@ -50,7 +50,10 @@ extension NativeMessageTimelineCoordinator {
                 return
             }
             guard pendingLayoutWidth != nil else {
+                // The height may have changed alone: the canvas catches up
+                // with the viewport it skipped.
                 motionPresenter.end()
+                _ = reconcileViewportGeometryIfNeeded()
                 return
             }
             // A live resize ends without a motion to wait for.
@@ -82,7 +85,8 @@ extension NativeMessageTimelineCoordinator {
                   widthChanged || sizeChanged || motionPresenter.presentedWidth.map({ abs($0 - width) >= 0.5 }) == true,
                   motionPresenter.present(width: width)
             else { return false }
-            lastViewportSize = viewportSize
+            // `lastViewportSize` stays the canvas's, which lays out for the
+            // viewport once the presenter hands back.
             if widthChanged {
                 scheduleRelayoutForWidthChange(width)
             } else {

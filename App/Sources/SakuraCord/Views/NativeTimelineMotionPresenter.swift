@@ -260,8 +260,12 @@ final class NativeTimelineMotionPresenter {
         let pixelWidth = Self.pixelWidth(width, scale: scale)
         overlay.frame = scrollView.contentView.frame
         let viewportHeight = overlay.bounds.height
-        let visible = placeRows(width: width, pixelWidth: pixelWidth, viewportHeight: viewportHeight)
-            .filter { $0.minY + $0.layout.height > 0 && $0.minY < viewportHeight }
+        guard let placed = placeRows(width: width, pixelWidth: pixelWidth, viewportHeight: viewportHeight) else {
+            // The viewport grew past the rows taken at the start.
+            end()
+            return false
+        }
+        let visible = placed.filter { $0.minY + $0.layout.height > 0 && $0.minY < viewportHeight }
 
         // Every visible row needs a bitmap to show; until then the canvas
         // keeps showing them.
@@ -295,8 +299,12 @@ final class NativeTimelineMotionPresenter {
 
     /// Lays out the rows from the anchor outward, at this frame's width,
     /// until they cover the viewport.
-    private func placeRows(width: CGFloat, pixelWidth: Int, viewportHeight: CGFloat) -> [PlacedRow] {
+    /// - Returns: Nil if the rows taken at the start leave part of the
+    ///   viewport empty where the timeline has more.
+    private func placeRows(width: CGFloat, pixelWidth: Int, viewportHeight: CGFloat) -> [PlacedRow]? {
         var placed: [PlacedRow] = []
+        let itemCount = coordinator?.items.count ?? 0
+        var covers = true
         func stackUp(from index: Int, bottom: CGFloat) {
             var maxY = bottom
             var index = index
@@ -307,6 +315,7 @@ final class NativeTimelineMotionPresenter {
                 maxY -= layout.height
                 index -= 1
             }
+            if maxY > 0, index >= 0, index < rowRange.lowerBound { covers = false }
         }
         func stackDown(from index: Int, top: CGFloat) {
             var minY = top
@@ -318,6 +327,7 @@ final class NativeTimelineMotionPresenter {
                 minY += layout.height
                 index += 1
             }
+            if minY < viewportHeight, index < itemCount, index >= rowRange.upperBound { covers = false }
         }
         switch anchor {
         case let .bottom(anchorIndex, gap):
@@ -327,7 +337,7 @@ final class NativeTimelineMotionPresenter {
             stackDown(from: anchorIndex, top: offset)
             stackUp(from: anchorIndex - 1, bottom: offset)
         }
-        return placed
+        return covers ? placed : nil
     }
 
     /// Moves the row layers to this frame, in one transaction, and hands
@@ -384,9 +394,11 @@ final class NativeTimelineMotionPresenter {
                   canvas.cachedBitmap(for: row.item, width: width) == nil
             else { continue }
             let image = NSImage(cgImage: deviceImage, size: NSSize(width: bitmap.width, height: bitmap.height))
+            let mediaKeys = canvas.mediaKeys(for: row.item, at: row.index)
             canvas.storeBitmap(
                 image, for: row.item, width: width, appearanceName: appearance.name,
-                preparedMediaKeys: canvas.mediaKeys(for: row.item, at: row.index), scale: scale
+                preparedMediaKeys: mediaKeys, scale: scale,
+                missingMediaKeys: mediaKeys.filter { context?.mediaImage(for: $0) == nil }
             )
             seeded += 1
         }
@@ -617,7 +629,12 @@ final class NativeTimelineMotionPresenter {
         if canvas.historySkeleton != nil { return "history skeleton" }
         let items = coordinator.items
         let range = max(0, visible.lowerBound - 6) ..< min(items.count, visible.upperBound + 6)
+        let scale = canvas.window?.backingScaleFactor ?? 2
         for index in range {
+            // The worker paints whole rows, where the canvas paints a tall
+            // row's visible tiles; a bitmap per width would take gigabytes.
+            let bytes = coordinator.layouts[index].height * coordinator.layoutWidth * scale * scale * 4
+            if bytes > Self.maximumRowBitmapBytes { return "tall row" }
             switch items[index] {
             case .inboxGroup, .inboxEvent, .inboxForumPost: return "inbox rows"
             case .suppressedMessages: return "suppressed messages"
@@ -627,6 +644,8 @@ final class NativeTimelineMotionPresenter {
         }
         return nil
     }
+
+    private static let maximumRowBitmapBytes: CGFloat = 24 * 1_024 * 1_024
 
     private static func pixelWidth(_ width: CGFloat, scale: CGFloat) -> Int {
         Int((width * scale).rounded())

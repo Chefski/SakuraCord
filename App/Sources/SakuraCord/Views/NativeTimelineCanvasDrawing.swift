@@ -1411,7 +1411,8 @@ extension NativeTimelineCanvasView {
         appearanceName: NSAppearance.Name,
         preparedMediaKeys: Set<NativeTimelineMediaKey>,
         scale: CGFloat,
-        tileIndex: Int = -1
+        tileIndex: Int = -1,
+        missingMediaKeys: Set<NativeTimelineMediaKey>? = nil
     ) {
         var entry = bitmapCache[item.identifier]
         if let previous = entry,
@@ -1439,7 +1440,9 @@ extension NativeTimelineCanvasView {
             images: [:],
             cost: 0,
             mediaPinOwner: mediaPinOwner,
-            missingMediaKeys: preparedMediaKeys.filter {
+            // Images painted from a snapshot are missing if they were missing
+            // there, though they may have loaded since.
+            missingMediaKeys: missingMediaKeys ?? preparedMediaKeys.filter {
                 NativeTimelineRowPainter.mediaImage(for: $0) == nil
             }
         )

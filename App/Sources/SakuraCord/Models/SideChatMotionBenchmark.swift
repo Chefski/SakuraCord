@@ -98,6 +98,13 @@ enum SideChatMotionBenchmark {
             try? await Task.sleep(for: .seconds(options.settleSeconds))
             recorder.captureReference(for: step.name)
         }
+        // With the member list shown, the same names settle elsewhere: these
+        // are kept under their variant too, as "name [variant]".
+        for step in memberListSteps(thread: referenceThread) {
+            step.perform(model)
+            try? await Task.sleep(for: .seconds(options.settleSeconds))
+            recorder.captureReference(for: step.variant.map { "\(step.name) [\($0)]" } ?? step.name)
+        }
         WorkspaceLayoutMotion.isSuppressedForBenchmark = false
         await recorder.idle(seconds: 1, label: nil)
 

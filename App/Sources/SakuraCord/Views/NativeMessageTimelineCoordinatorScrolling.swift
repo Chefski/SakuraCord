@@ -1356,6 +1356,7 @@ extension NativeMessageTimelineCoordinator {
         }
 
         func liveScrollTrackingWillBegin() {
+            motionPresenter.end()
             let interval = Self.performanceSignposter.beginInterval(
                 "TimelineLiveScrollStart"
             )

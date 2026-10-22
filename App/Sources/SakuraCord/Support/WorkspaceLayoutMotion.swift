@@ -167,7 +167,8 @@ enum WorkspaceLayoutMotion {
             phase.isMoving = true
             // Views moving under a still pointer would otherwise rebuild
             // their cursor rectangles on every frame.
-            workspaceWindow?.disableCursorRects()
+            movingWindow = workspaceWindow
+            movingWindow?.disableCursorRects()
             NotificationCenter.default.post(name: didBegin, object: nil)
         }
         phase.settleTask?.cancel()
@@ -182,13 +183,17 @@ enum WorkspaceLayoutMotion {
                 if !phase.departing.isEmpty { phase.departing.removeAll() }
                 if !phase.reveal.isEmpty { phase.reveal.removeAll() }
             }
-            if let window = workspaceWindow {
+            // The window the motion began in, though another may be main now.
+            if let window = movingWindow {
+                movingWindow = nil
                 window.enableCursorRects()
                 window.invalidateCursorRects(for: window.contentView ?? NSView())
             }
             NotificationCenter.default.post(name: didSettle, object: nil)
         }
     }
+
+    private static weak var movingWindow: NSWindow?
 
     private static var workspaceWindow: NSWindow? {
         // No application object exists in unit tests.
