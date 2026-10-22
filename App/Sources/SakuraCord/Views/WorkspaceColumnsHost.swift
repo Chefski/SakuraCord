@@ -413,8 +413,15 @@ final class WorkspaceColumnsView: NSView {
 
     override func layout() {
         super.layout()
+        // While the display link places the columns, a layout pass between
+        // its frames has nothing to move, and placed them for now rather
+        // than for the frame's display time: a step back.
+        if displayLink != nil, placedBounds == bounds { return }
         layoutColumns(at: CACurrentMediaTime())
     }
+
+    /// The bounds the columns were last placed in.
+    private var placedBounds: CGRect?
 
     override func setFrameSize(_ newSize: NSSize) {
         if newSize != frame.size { needsMeasurement = true }
@@ -552,6 +559,7 @@ final class WorkspaceColumnsView: NSView {
 
     /// Places every island where the motion has it at `time`.
     private func layoutColumns(at time: CFTimeInterval) {
+        placedBounds = bounds
         publishWidthPath(at: time)
         measureColumns()
         let bounds = bounds

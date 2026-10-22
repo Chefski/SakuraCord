@@ -277,8 +277,12 @@ final class WorkspaceTitlebarView: NSView {
     /// Places each group on its column, as the column is now.
     func placeGroups() {
         guard window != nil else { return }
-        // In the frame that moves the groups, as the columns do.
-        defer { layoutSubtreeIfNeeded() }
+        // In the frame that moves the groups, as the columns do. Moving an
+        // item lays nothing out; only those resized have layouts to update.
+        defer {
+            for view in resizedItems { view.layoutSubtreeIfNeeded() }
+            resizedItems.removeAll()
+        }
         let geometry = WorkspaceColumnsGeometry.shared
         // A side chat's items leave with its column, once it has had one.
         let columnIDs = Set(geometry.columns.map(\.id))
@@ -515,8 +519,13 @@ final class WorkspaceTitlebarView: NSView {
     private func setFrame(of view: NSView, _ frame: CGRect) {
         var frame = frame
         frame.origin.x = frame.origin.x.rounded()
-        if view.frame != frame { view.frame = frame }
+        guard view.frame != frame else { return }
+        if view.frame.size != frame.size { resizedItems.append(view) }
+        view.frame = frame
     }
+
+    /// Items `placeGroups` resized, which it lays out before it returns.
+    private var resizedItems: [NSView] = []
 
     /// Empty space between the items moves the window, as the toolbar's own
     /// does.

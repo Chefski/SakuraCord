@@ -217,13 +217,13 @@ private struct ChatRootView: View {
     /// Measured width the pane's toolbar actions reserve after the title,
     /// keyed by action count. It does not depend on the title's width.
     @State private var sideConversationActionReserve: [Int: CGFloat] = [:]
-    @State private var detailColumnMinX: CGFloat = 0
+    /// Advances when the detail column's leading edge moves the
+    /// customization switch in or out of the toolbar.
+    @State private var customizationPickerRevision = 0
     @State private var conversationTitleWidth: CGFloat = 0
     @State private var customizationModePickerWidth: CGFloat = 260
-    /// Where the workspace starts in the window. Only its leading edge, so a
-    /// window resize, which moves the trailing one, does not update the
-    /// whole workspace on every step.
-    @State private var workspaceMinX: CGFloat?
+    /// Where the workspace and the detail column start in the window.
+    @State private var columnEdges = ColumnEdges()
     @State private var sidebarWidth = ChatChromeMetrics.serverRailWidth + InterfaceScale.metric(230)
     @State private var presentsForumComposer = false
     @State private var isFileDropTargeted = false
@@ -299,7 +299,9 @@ private struct ChatRootView: View {
             .onGeometryChange(for: CGFloat.self) { proxy in
                 proxy.frame(in: .global).minX
             } action: { minX in
-                detailColumnMinX = minX
+                let showedPicker = showsCustomizationModePicker
+                columnEdges.detailMinX = minX
+                if showsCustomizationModePicker != showedPicker { customizationPickerRevision &+= 1 }
             }
             .background {
                 // Measures the conversation title outside the toolbar, whose
@@ -458,7 +460,7 @@ private struct ChatRootView: View {
             if showsFileDropEffect {
                 ComposerFileDropOverlay(
                     model: model,
-                    workspaceMinX: workspaceMinX,
+                    workspaceMinX: columnEdges.workspaceMinX,
                     supplementaryPaneFrame: supplementaryPaneFrame,
                     hoveredDestination: effectiveFileDropDestination,
                     isInstantUpload: effectiveInstantUpload
@@ -477,7 +479,7 @@ private struct ChatRootView: View {
         .onGeometryChange(for: CGFloat.self) { proxy in
             proxy.frame(in: .global).minX
         } action: { minX in
-            workspaceMinX = minX
+            columnEdges.workspaceMinX = minX
         }
         .overlay { fileDropBridge }
         .onChange(of: showsFileDropEffect) { _, isShown in
@@ -1117,7 +1119,7 @@ private struct ChatRootView: View {
         // A full-width thread is the only visible composer.
         if presentation.primary == .fullWidthThread { return .thread }
         if presentation.paneSideConversation?.isThread == true, supplementaryPaneFrame != .zero {
-            let localThreadLeadingEdge = supplementaryPaneFrame.minX - (workspaceMinX ?? 0)
+            let localThreadLeadingEdge = supplementaryPaneFrame.minX - (columnEdges.workspaceMinX ?? 0)
             return horizontalPosition >= localThreadLeadingEdge ? .thread : .channel
         }
         return .channel
@@ -1376,7 +1378,8 @@ private struct ChatRootView: View {
         // with the toolbar's margins.
         let required = inset + conversationTitleWidth + inset * 2 + customizationModePickerWidth
             + inset * 2 + ChatChromeMetrics.toolbarIconButtonWidth + inset * 3
-        return supplementaryPaneFrame.minX - detailColumnMinX >= required
+        _ = customizationPickerRevision
+        return supplementaryPaneFrame.minX - columnEdges.detailMinX >= required
     }
 
     private var showsInboxToolbarItem: Bool {
@@ -1565,6 +1568,16 @@ private struct MessageSearchToolbarModifier: ViewModifier {
                 if !local { model.submitMessageSearchInput() }
             }
     }
+}
+
+/// Where the workspace and the detail column start in the window. Their
+/// leading edges move on every frame the sidebar shows or hides; held
+/// unobserved, those frames update no view. Views read them where they
+/// use them.
+@MainActor
+private final class ColumnEdges {
+    var workspaceMinX: CGFloat?
+    var detailMinX: CGFloat = 0
 }
 
 private struct ComposerFileDropOverlay: View {

@@ -276,6 +276,12 @@ final class NativeMemberListCanvasView: NSView, WindowModalInputParticipant {
     }
 
     override func updateTrackingAreas() {
+        // The area follows the visible rect by itself. AppKit asks again on
+        // every frame a column moves the list, which changes nothing here.
+        if !interactionsBlocked, let trackingArea, trackingAreas.contains(trackingArea) {
+            super.updateTrackingAreas()
+            return
+        }
         if let trackingArea { removeTrackingArea(trackingArea) }
         guard !interactionsBlocked else {
             trackingArea = nil
