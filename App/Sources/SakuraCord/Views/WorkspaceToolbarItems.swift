@@ -205,10 +205,13 @@ private struct ToggleSymbol: View {
     let isOn: Bool
 
     var body: some View {
+        // Both symbols stay, and the state fades one into the other: a
+        // changing symbol is redrawn on every frame of its transition, and
+        // in the workspace's titlebar each redraw waited for the frame
+        // before it to reach the screen, while the member list moved.
         ZStack {
-            Image(systemName: off).hidden()
-            Image(systemName: on).hidden()
-            Image(systemName: isOn ? on : off)
+            Image(systemName: off).opacity(isOn ? 0 : 1)
+            Image(systemName: on).opacity(isOn ? 1 : 0)
         }
     }
 }
