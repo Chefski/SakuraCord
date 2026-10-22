@@ -53,12 +53,12 @@ extension NativeTimelineCanvasView {
     }
 
     /// What the card shows beneath its name, for VoiceOver.
-    func threadLastMessageSummary(_ thread: MessageThreadSummary, in message: Message) -> String {
+    func threadLastMessageSummary(_ thread: MessageThreadSummary) -> String {
         guard let preview = NativeTimelineThreadCard.shownPreview(
             for: thread, from: model?.threadPreviewMessages[thread.id]
         ) else { return NativeTimelineThreadCard.emptyText(for: thread) }
         let presented = MessageReplyPreview.presenting(preview)
-        let summary = accessibilityResolvedText(presented.content, message: message)
+        let summary = accessibilityResolvedText(presented.content, message: preview)
         return "\(presented.author.displayName): \(summary)"
     }
 }

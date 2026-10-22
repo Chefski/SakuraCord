@@ -229,7 +229,7 @@ extension NativeTimelineRowPainter {
             avatarFrame: NativeTimelineAvatarPresentation.replyAvatarFrame(in: layout.previewFrame),
             trailingInset: 0,
             showsReplyMention: false,
-            message: message,
+            message: preview,
             model: model,
             foregroundColor: isOutgoing ? foreground : nil
         )
