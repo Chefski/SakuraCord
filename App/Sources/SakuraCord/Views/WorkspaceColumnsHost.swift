@@ -152,6 +152,10 @@ final class WorkspaceColumnsView: NSView {
     }
 
     private var conversation: NSHostingController<AnyView>?
+    /// Shows the conversation as far as the columns leave it. While a column
+    /// slides over the wider conversation, nothing of the conversation shows
+    /// beneath the translucent column, as beside it at rest.
+    private let conversationClip = ConversationClipView()
     /// A side chat pane kept for the next one to open (`apply`).
     private var pooledPane: ColumnHostingView?
     /// The member list and search results, kept hidden after they leave
@@ -296,7 +300,8 @@ final class WorkspaceColumnsView: NSView {
             conversation.rootView = conversationRoot
         } else {
             let host = Self.makeHost(conversationRoot)
-            addSubview(host.view, positioned: .below, relativeTo: nil)
+            conversationClip.addSubview(host.view)
+            addSubview(conversationClip, positioned: .below, relativeTo: nil)
             conversation = host
         }
 
@@ -355,7 +360,7 @@ final class WorkspaceColumnsView: NSView {
             }
         }
         islands = updated
-        var below: NSView? = conversation?.view
+        var below: NSView? = conversation.map { _ in conversationClip }
         for island in islands {
             let view = island.view
             if view.superview !== self
@@ -611,7 +616,10 @@ final class WorkspaceColumnsView: NSView {
             let settled = conversationWidth(at: time + 60, provisionalStart: time, tracks: currentTracks)
             hostFrame.size.width = min(bounds.width, max(hostFrame.width, settled, host.frame.width))
         }
-        setFrame(of: conversation?.view, hostFrame)
+        setFrame(of: conversationClip, CGRect(
+            x: hostFrame.minX, y: 0, width: min(hostFrame.width, conversationFrame.width), height: bounds.height
+        ))
+        setFrame(of: conversation?.view, CGRect(origin: .zero, size: hostFrame.size))
         WorkspaceConversationCover.shared.update(
             trailingInset: max(0, (conversation?.view.frame.width ?? 0) - conversationFrame.width)
         )
@@ -719,6 +727,24 @@ final class WorkspaceColumnsView: NSView {
 /// Holds a hosting view and moves it: a hosting view that moves updates its
 /// view graph, as anything in it may depend on where it is in the window,
 /// on every frame of a motion. Its subviews fill it.
+/// Clips the conversation without resizing it (`WorkspaceColumnsView`).
+private final class ConversationClipView: NSView {
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        translatesAutoresizingMaskIntoConstraints = false
+        autoresizesSubviews = false
+        wantsLayer = true
+        layer?.masksToBounds = true
+    }
+
+    @available(*, unavailable)
+    required init?(coder _: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override var isFlipped: Bool { true }
+}
+
 final class MovingHostContainerView: NSView {
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
