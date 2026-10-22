@@ -229,6 +229,8 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
     var liveScrollDirectPaintCount = 0
     var contentOriginInvalidationCount = 0
     var synchronousShortContentRedrawCount = 0
+    /// See `draw(_:)`.
+    var backingColorSpace: CGColorSpace?
     var bitmapCache:
         [NativeMessageTimelineItem.Identifier: CachedRowBitmap] = [:]
     var bitmapInsertionOrder: [NativeMessageTimelineItem.Identifier] = []

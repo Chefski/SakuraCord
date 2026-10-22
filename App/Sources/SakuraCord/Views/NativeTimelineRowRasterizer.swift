@@ -1,5 +1,6 @@
 import AppKit
 import CoreText
+import IOSurface
 import OSLog
 import Synchronization
 
@@ -166,9 +167,12 @@ nonisolated final class NativeTimelineRowRasterizer: @unchecked Sendable {
         let key: Key
         let width: CGFloat
         let height: CGFloat
-        /// In the display's colour space and pixel format, cropped to the
-        /// painted columns: for a layer whose contents sit at its top left.
-        let image: CGImage
+        /// Layer contents in the display's colour space and pixel format,
+        /// cropped to the painted columns, for a layer whose contents sit at
+        /// its top left: an `IOSurface` Core Animation shares without
+        /// copying, or a `CGImage` it copies on the main thread as it
+        /// commits (`--timeline-motion-image-contents`).
+        let image: AnyObject
         /// The full row in device RGB, as the canvas caches it; dropped once
         /// it cannot seed the canvas.
         private(set) var deviceImage: CGImage?
@@ -197,10 +201,18 @@ nonisolated final class NativeTimelineRowRasterizer: @unchecked Sendable {
         let bytesPerRow: Int
         let height: Int
         let paintedWidth: Int
-        let image: CGImage
+        let image: AnyObject
     }
 
-    private let queue = DispatchQueue(label: "dev.sakuracord.timeline-row-rasterizer", qos: .userInteractive)
+    private let queue = DispatchQueue(label: "dev.sakuracord.timeline-row-rasterizer", qos: NativeTimelineRowRasterizer.qos)
+
+    /// Experiment: `--timeline-motion-worker-qos=initiated|utility`.
+    private static var qos: DispatchQoS {
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("--timeline-motion-worker-qos=utility") { return .utility }
+        if arguments.contains("--timeline-motion-worker-qos=initiated") { return .userInitiated }
+        return .userInteractive
+    }
     /// Touched only on `queue`.
     nonisolated(unsafe) private var lastPaints: [NativeMessageTimelineItem.Identifier: LastPaint] = [:]
     private let state = Mutex(State())
@@ -292,7 +304,7 @@ nonisolated final class NativeTimelineRowRasterizer: @unchecked Sendable {
         }
         guard let deviceImage, let device = deviceImage.dataProvider?.data else { return nil }
         let paintedWidth = Self.paintedWidth(of: deviceImage) ?? deviceImage.width
-        let image: CGImage
+        let image: AnyObject
         let reused: Bool
         if let last = lastPaints[job.key.identifier],
            Self.samePixels(last, device: device, bytesPerRow: deviceImage.bytesPerRow,
@@ -301,9 +313,10 @@ nonisolated final class NativeTimelineRowRasterizer: @unchecked Sendable {
             image = last.image
             reused = true
         } else {
-            guard let converted = Self.displayImage(
-                deviceImage, colorSpace: job.displayColorSpace, paintedWidth: paintedWidth
-            ) else { return nil }
+            let converted: AnyObject? = Self.usesSurfaces
+                ? Self.displaySurface(deviceImage, colorSpace: job.displayColorSpace, paintedWidth: paintedWidth)
+                : Self.displayImage(deviceImage, colorSpace: job.displayColorSpace, paintedWidth: paintedWidth)
+            guard let converted else { return nil }
             image = converted
             reused = false
         }
@@ -354,6 +367,45 @@ nonisolated final class NativeTimelineRowRasterizer: @unchecked Sendable {
         context.interpolationQuality = .none
         context.draw(source, in: CGRect(x: 0, y: 0, width: source.width, height: source.height))
         return context.makeImage()
+    }
+
+    static let usesSurfaces = !ProcessInfo.processInfo.arguments.contains("--timeline-motion-image-contents")
+
+    /// `displayImage`, into an `IOSurface` tagged with the colour space, so
+    /// a layer shows it without Core Animation copying it as it commits.
+    static func displaySurface(_ source: CGImage, colorSpace: CGColorSpace, paintedWidth: Int?) -> IOSurface? {
+        var source = source
+        if let paintedWidth, paintedWidth < source.width,
+           let cropped = source.cropping(to: CGRect(x: 0, y: 0, width: max(1, paintedWidth), height: source.height))
+        {
+            source = cropped
+        }
+        let width = source.width
+        let height = source.height
+        guard let surface = IOSurface(properties: [
+            .width: width,
+            .height: height,
+            .bytesPerElement: 4,
+            .bytesPerRow: IOSurfaceAlignProperty(kIOSurfaceBytesPerRow, width * 4),
+            .pixelFormat: 0x4247_5241, // 'BGRA'
+        ]) else { return nil }
+        surface.lock(options: [], seed: nil)
+        defer { surface.unlock(options: [], seed: nil) }
+        guard let context = CGContext(
+            data: surface.baseAddress, width: width, height: height,
+            bitsPerComponent: 8, bytesPerRow: surface.bytesPerRow, space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
+        ) else { return nil }
+        context.clear(CGRect(x: 0, y: 0, width: width, height: height))
+        context.interpolationQuality = .none
+        context.draw(source, in: CGRect(x: 0, y: 0, width: width, height: height))
+        // Experiment: `--timeline-motion-tag-surfaces` tags the surface with its colour space.
+        if ProcessInfo.processInfo.arguments.contains("--timeline-motion-tag-surfaces"),
+           let properties = colorSpace.copyPropertyList()
+        {
+            IOSurfaceSetValue(surface, kIOSurfaceColorSpace, properties)
+        }
+        return surface
     }
 
     /// The columns up to the rightmost pixel that is not fully transparent,

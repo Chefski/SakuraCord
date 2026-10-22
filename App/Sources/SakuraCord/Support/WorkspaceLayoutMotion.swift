@@ -62,8 +62,16 @@ enum WorkspaceLayoutMotion {
         // The columns' motion is explicit below and starts from the layout
         // this change commits, so the change itself is not animated.
         withAnimation(nil, change)
-        slideTrailingColumns(from: leaving, to: WorkspaceTrailingColumn(model.workspacePresentation), animation)
+        let arriving = WorkspaceTrailingColumn(model.workspacePresentation)
+        movesSideConversation = [leaving, arriving].contains { column in
+            if case .sideConversation = column?.content { true } else { false }
+        }
+        slideTrailingColumns(from: leaving, to: arriving, animation)
     }
+
+    /// Whether the running motion moves a side chat: opening, closing,
+    /// swapping or widening one, rather than the member list or search.
+    private(set) static var movesSideConversation = false
 
     /// Slides the column that leaves out and the one that arrives in.
     private static func slideTrailingColumns(
@@ -105,6 +113,7 @@ enum WorkspaceLayoutMotion {
             return
         }
         beginMotion()
+        movesSideConversation = true
         let phase = WorkspaceMotionPhase.shared
         withAnimation(nil) {
             phase.widening = .init(channel: channel)

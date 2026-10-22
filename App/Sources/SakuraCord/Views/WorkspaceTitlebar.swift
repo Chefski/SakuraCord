@@ -153,6 +153,14 @@ final class WorkspaceTitlebarView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         WorkspaceColumnsGeometry.shared.observe(self)
+        // The toolbar re-hosts its search field, in fresh glass, whenever
+        // its items change, as they do when a side chat shows or hides the
+        // field: fade the new glass before it draws.
+        for name in [NSToolbar.willAddItemNotification, NSToolbar.didRemoveItemNotification] {
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(toolbarItemsDidChange(_:)), name: name, object: nil
+            )
+        }
         // Assistive apps find the items where the toolbar's were.
         setAccessibilityElement(true)
         setAccessibilityRole(.toolbar)
@@ -394,9 +402,21 @@ final class WorkspaceTitlebarView: NSView {
     }
 
     private func fadeSearch(_ alpha: CGFloat) {
-        guard let view = searchItemView, view.alphaValue != alpha else { return }
-        view.alphaValue = alpha
-        view.isHidden = alpha < 0.01
+        // The field fades too: it keeps its alpha when the toolbar moves it
+        // into new glass.
+        for view in [searchItemView, searchField].compactMap(\.self) where view.alphaValue != alpha {
+            view.alphaValue = alpha
+            view.isHidden = alpha < 0.01
+        }
+    }
+
+    @objc private func toolbarItemsDidChange(_ notification: Notification) {
+        guard let toolbar = notification.object as? NSToolbar, toolbar === window?.toolbar else { return }
+        placeGroups()
+        // The added item's view arrives after this notification.
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated { self?.placeGroups() }
+        }
     }
 
     /// Places a group's title at its column's leading edge and its actions

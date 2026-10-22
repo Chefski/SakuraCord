@@ -63,10 +63,17 @@ final class NativeTimelineMotionPresenter {
     }
 
     static let isEnabled = !ProcessInfo.processInfo.arguments.contains("--timeline-canvas-motion")
+    /// Experiment: `--timeline-motion-side-chats` presents side chat motions too.
+    static let presentsSideConversationMotions = ProcessInfo.processInfo.arguments.contains("--timeline-motion-side-chats")
     private static let log = Logger(subsystem: "dev.sakuracord.SakuraCord", category: "TimelineMotionPresenter")
     /// Frames painted ahead of the one on screen during a workspace motion:
     /// most of the columns' spring, from the click on.
-    private static let framesAhead = 16
+    private static let framesAhead: Int = {
+        // Experiment: `--timeline-motion-horizon=N`.
+        let prefix = "--timeline-motion-horizon="
+        return ProcessInfo.processInfo.arguments.first { $0.hasPrefix(prefix) }
+            .flatMap { Int($0.dropFirst(prefix.count)) } ?? 16
+    }()
     /// Main-thread time per call for laying out rows at coming widths: more
     /// while the change that starts a motion holds the main thread anyway.
     private static let layoutBudgetMS = 3.0
@@ -156,6 +163,12 @@ final class NativeTimelineMotionPresenter {
 
     private func activate(_ reason: Reason) -> Bool {
         armedReason = nil
+        // Side chat motions keep the canvas for now: there the layers'
+        // compositing cost more frames than the canvas's re-wrapping every
+        // few frames (measured on the motion benchmark).
+        if reason == .workspaceMotion, WorkspaceLayoutMotion.movesSideConversation, !Self.presentsSideConversationMotions {
+            return false
+        }
         let activationStart = ProcessInfo.processInfo.systemUptime
         defer { stats.activationMS = (ProcessInfo.processInfo.systemUptime - activationStart) * 1_000 }
         guard let coordinator, let canvas = coordinator.canvas, let scrollView = coordinator.scrollView,
@@ -170,7 +183,8 @@ final class NativeTimelineMotionPresenter {
         self.scrollView = scrollView
         self.reason = reason
         scale = window.backingScaleFactor
-        displayColorSpace = window.colorSpace?.cgColorSpace
+        displayColorSpace = canvas.backingColorSpace
+            ?? window.colorSpace?.cgColorSpace
             ?? window.screen?.colorSpace?.cgColorSpace
             ?? CGColorSpace(name: CGColorSpace.sRGB)!
         appearance = canvas.effectiveAppearance
@@ -379,8 +393,28 @@ final class NativeTimelineMotionPresenter {
         Self.log.notice("Motion presenter seeded \(seeded) row bitmaps at width \(Double(width))")
     }
 
+    /// Diagnostics: the rows' layers stay on screen for two seconds after a
+    /// motion settles, so screenshots can compare them with the canvas's.
+    private static let holdsAtSettle = ProcessInfo.processInfo.arguments.contains("--timeline-motion-settle-hold")
+    private var isHolding = false
+    private var hasHeld = false
+
     /// Hands the rows back to the canvas, in the same frame.
     func end() {
+        if Self.holdsAtSettle, isShowing, !isHolding, !hasHeld {
+            isHolding = true
+            hasHeld = true
+            Self.log.notice("Motion presenter holding its layers at settle")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                MainActor.assumeIsolated {
+                    self?.isHolding = false
+                    self?.end()
+                }
+            }
+            return
+        }
+        guard !isHolding else { return }
+        hasHeld = false
         armedReason = nil
         guard isActive else {
             if let pathObservation { NotificationCenter.default.removeObserver(pathObservation) }

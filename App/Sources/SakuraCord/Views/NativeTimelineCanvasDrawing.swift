@@ -1,4 +1,5 @@
 import AppKit
+import OSLog
 import AVFoundation
 import Combine
 import CoreText
@@ -1036,6 +1037,9 @@ extension NativeTimelineCanvasView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        // The colour space this canvas's backing store draws in: the
+        // motion presenter converts its rows into it to show the same pixels.
+        if let space = NSGraphicsContext.current?.cgContext.colorSpace { backingColorSpace = space }
         AppPerformanceSignposts.measureSync("TimelineCanvasDraw") {
             NativeTimelinePaintLock.withLock { drawTimeline(in: dirtyRect) }
         }
