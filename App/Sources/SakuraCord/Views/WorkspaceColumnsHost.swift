@@ -376,7 +376,7 @@ final class WorkspaceColumnsView: NSView {
             needsMeasurement = true
             layoutColumns(at: now)
         }
-        if isAnimating(at: now) { startMotion() }
+        if isAnimating(at: now) { startMotion() } else { publishPredictedPath(at: now) }
     }
 
     /// A hosting view for a column that arrives: the pooled pane, for a
@@ -479,20 +479,24 @@ final class WorkspaceColumnsView: NSView {
     /// The width at `time` of the column that holds `view`, on the pixel
     /// grid, as `layoutColumns` will place it; nil for a column whose width
     /// the motion does not change.
-    private func columnWidth(of view: NSView, at time: CFTimeInterval, provisionalStart: CFTimeInterval) -> CGFloat? {
+    private func columnWidth(
+        of view: NSView, at time: CFTimeInterval, provisionalStart: CFTimeInterval, tracks: Tracks? = nil
+    ) -> CGFloat? {
+        let tracks = tracks ?? currentTracks
         if let conversation = conversation?.view, view.isDescendant(of: conversation) {
-            return conversationWidth(at: time, provisionalStart: provisionalStart)
+            return conversationWidth(at: time, provisionalStart: provisionalStart, tracks: tracks)
         }
         guard let fullWidth = islands.last(where: \.column.isFullWidth), view.isDescendant(of: fullWidth.view)
         else { return nil }
         let paneWidth = max(paneWidth, InterfaceScale.metric(340))
         var inspectorCovered: CGFloat = 0
         for island in islands where !island.column.isFullWidth && !island.column.isSideConversation {
-            let shown = width(of: island.column) * island.reveal.value(at: time, provisionalStart: provisionalStart)
+            let reveal = tracks.reveals[island.column.id] ?? island.reveal
+            let shown = width(of: island.column) * reveal.value(at: time, provisionalStart: provisionalStart)
             inspectorCovered = max(inspectorCovered, shown)
         }
         let trailingEdge = bounds.maxX - inspectorCovered
-        let recede = widening?.value(at: time, provisionalStart: provisionalStart) ?? 1
+        let recede = tracks.widening?.value(at: time, provisionalStart: provisionalStart) ?? 1
         let width = paneWidth + (trailingEdge - paneWidth) * recede
         return backingAlignedRect(
             CGRect(x: trailingEdge - width, y: 0, width: width, height: bounds.height), options: .alignAllEdgesNearest
@@ -501,18 +505,62 @@ final class WorkspaceColumnsView: NSView {
 
     /// The conversation's width at `time`, on the pixel grid, as
     /// `layoutColumns` will place it.
-    private func conversationWidth(at time: CFTimeInterval, provisionalStart: CFTimeInterval) -> CGFloat {
+    private func conversationWidth(at time: CFTimeInterval, provisionalStart: CFTimeInterval, tracks: Tracks) -> CGFloat {
         var covered: CGFloat = 0
         if islands.contains(where: \.column.isFullWidth) {
             covered = max(paneWidth, InterfaceScale.metric(340))
         } else {
             for island in islands {
-                let shown = width(of: island.column) * island.reveal.value(at: time, provisionalStart: provisionalStart)
+                let reveal = tracks.reveals[island.column.id] ?? island.reveal
+                let shown = width(of: island.column) * reveal.value(at: time, provisionalStart: provisionalStart)
                 covered = max(covered, shown)
             }
         }
         let frame = CGRect(x: 0, y: 0, width: max(0, bounds.width - covered), height: bounds.height)
         return backingAlignedRect(frame, options: .alignAllEdgesNearest).width
+    }
+
+    /// The columns' motions, or ones they are about to make.
+    private struct Tracks {
+        var reveals: [String: SpringTrack] = [:]
+        var widening: SpringTrack?
+    }
+
+    private var currentTracks: Tracks {
+        Tracks(
+            reveals: Dictionary(islands.map { ($0.column.id, $0.reveal) }, uniquingKeysWith: { _, last in last }),
+            widening: widening
+        )
+    }
+
+    /// Once a change has placed its columns, and before they start to move
+    /// (`WorkspaceLayoutMotion` moves them a turn of the run loop later,
+    /// after the change has laid out), where they will go: an arriving
+    /// column comes in, a departing one leaves, and a widening side chat
+    /// grows. Lets timelines paint the motion's first frames while the
+    /// change still holds the main thread.
+    private func publishPredictedPath(at time: CFTimeInterval) {
+        guard WorkspaceLayoutMotion.isMoving else { return }
+        var tracks = currentTracks
+        var moves = false
+        for island in islands {
+            let target: CGFloat = island.column.isDeparting ? 0 : 1
+            guard var track = tracks.reveals[island.column.id], track.target != target else { continue }
+            track.move(to: target, at: time, animated: true)
+            tracks.reveals[island.column.id] = track
+            moves = true
+        }
+        if var track = tracks.widening, track.target != 1 {
+            track.move(to: 1, at: time, animated: true)
+            tracks.widening = track
+            moves = true
+        }
+        guard moves else { return }
+        let path = WorkspaceConversationWidthPath.shared
+        let predicted = tracks
+        path.predict(frameTime: time, frameDuration: path.frameDuration) { [weak self] view, future in
+            self?.columnWidth(of: view, at: future, provisionalStart: time, tracks: predicted)
+        }
     }
 
     /// Lets the timeline paint ahead for the frames the motion will show.
@@ -793,6 +841,16 @@ final class WorkspaceConversationWidthPath {
         self.width = width
         // Before the motion's first frame, so timelines paint it in time.
         if starts { NotificationCenter.default.post(name: Self.didStartMoving, object: self) }
+    }
+
+    /// Publishes where the columns will go before they start to move. The
+    /// motion's first frame comes one frame after it starts, as
+    /// `framesAhead: 1` asks.
+    func predict(frameTime: CFTimeInterval, frameDuration: CFTimeInterval, width: @escaping (NSView, CFTimeInterval) -> CGFloat?) {
+        self.frameTime = frameTime
+        self.frameDuration = frameDuration
+        self.width = width
+        NotificationCenter.default.post(name: Self.didStartMoving, object: self)
     }
 
     /// The width of the column holding `view`, `frames` frames after the

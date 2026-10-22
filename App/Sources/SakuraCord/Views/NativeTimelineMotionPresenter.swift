@@ -55,6 +55,8 @@ final class NativeTimelineMotionPresenter {
         var workerMS = 0.0
         var maximumWorkerMS = 0.0
         var reusedConversions = 0
+        var pathNoticesBeforeFirstFrame = 0
+        var firstFrameLag: CGFloat = 0
         /// The presented frame by which the first worker bitmap arrived.
         var firstWorkerBitmapFrame: Int?
     }
@@ -62,7 +64,7 @@ final class NativeTimelineMotionPresenter {
     static let isEnabled = !ProcessInfo.processInfo.arguments.contains("--timeline-canvas-motion")
     private static let log = Logger(subsystem: "dev.sakuracord.SakuraCord", category: "TimelineMotionPresenter")
     /// Frames painted ahead of the one on screen during a workspace motion.
-    private static let framesAhead = 3
+    private static let framesAhead = 6
 
     private weak var coordinator: NativeMessageTimelineCoordinator?
     private weak var canvas: NativeTimelineCanvasView?
@@ -185,6 +187,7 @@ final class NativeTimelineMotionPresenter {
             MainActor.assumeIsolated {
                 guard let self, self.isActive, let width = self.presentedWidth ?? self.coordinator?.layoutWidth else { return }
                 self.requestBitmaps(currentWidth: width, visible: self.lastVisible)
+                if self.stats.frames == 0 { self.stats.pathNoticesBeforeFirstFrame += 1 }
             }
         }
         lastVisible = Array(visible)
@@ -287,6 +290,7 @@ final class NativeTimelineMotionPresenter {
         }
         CATransaction.commit()
 
+        if stats.frames == 0 { stats.firstFrameLag = missing ? -1 : lag }
         presentedWidth = missing ? nil : width
         presentedLagPoints = missing ? .infinity : lag
         stats.frames += 1
@@ -336,7 +340,7 @@ final class NativeTimelineMotionPresenter {
             inexact=\(self.stats.inexactFrames) missing=\(self.stats.missingFrames) \
             maxLagPt=\(Double(self.stats.maximumLagPoints)) presentMax=\(self.stats.maximumPresentMS) \
             presentAvg=\(self.stats.totalPresentMS / Double(max(1, self.stats.frames))) \
-            workerPaints=\(self.stats.workerPaints) reused=\(self.stats.reusedConversions) workerAvg=\(self.stats.workerMS / Double(max(1, self.stats.workerPaints))) \
+            workerPaints=\(self.stats.workerPaints) reused=\(self.stats.reusedConversions) pathNotices=\(self.stats.pathNoticesBeforeFirstFrame) firstFrameLag=\(Double(self.stats.firstFrameLag)) workerAvg=\(self.stats.workerMS / Double(max(1, self.stats.workerPaints))) \
             workerMax=\(self.stats.maximumWorkerMS) workerLockWaitMS=\(paintLock.workerWaitMS) longestWorkerLockWaitMS=\(paintLock.longestWorkerWaitMS) \
             exactFrames=\(self.stats.frames - self.stats.inexactFrames - self.stats.missingFrames) firstWorkerBitmapFrame=\(self.stats.firstWorkerBitmapFrame ?? -1) mainLockWaits=\(paintLock.mainWaits) longMainLockWaits=\(paintLock.longMainWaits) \
             longestMainLockWaitMS=\(paintLock.longestMainWaitMS)
@@ -420,40 +424,56 @@ final class NativeTimelineMotionPresenter {
     /// Asks the worker for this frame's missing bitmaps, then the next
     /// frames', in that order.
     private func requestBitmaps(currentWidth: CGFloat, visible: [Int]) {
-        guard let coordinator else { return }
-        var jobs: [NativeTimelineRowRasterizer.Job] = []
-        // The frame being built is already on its way: in a workspace motion
-        // the worker paints the next frames' widths, then this one in case
-        // the motion holds still. A live resize has no path to follow.
+        // In a workspace motion the frame being built is already on its way,
+        // so the worker paints the next frames' widths, then this one in case
+        // the motion holds still. Before the rows show, this width comes
+        // first: the next frames mostly wrap as it does and reuse its pixels.
+        // A live resize has no path to follow.
         var widths: [CGFloat] = []
         for width in upcomingWidths(after: currentWidth) where !widths.contains(width) {
             widths.append(width)
         }
         if !widths.contains(currentWidth) {
-            if reason == .liveResize { widths.insert(currentWidth, at: 0) } else { widths.append(currentWidth) }
+            if reason == .liveResize || !isShowing {
+                widths.insert(currentWidth, at: 0)
+            } else {
+                widths.append(currentWidth)
+            }
         }
-        // Rows re-wrapping shorter bring the ones beyond the edges into view.
-        var candidates = visible
-        if let first = visible.min(), let last = visible.max() {
-            candidates += [first - 2, first - 1, last + 1, last + 2].filter { rowRange.contains($0) }
+        // Rows re-wrapping shorter, as the timeline widens, bring rows beyond
+        // the anchored edge's far side into view; those come after the
+        // visible rows of every width.
+        var beyond: [Int] = []
+        if let first = visible.min(), let last = visible.max(), widths.contains(where: { $0 > currentWidth }) {
+            switch anchor {
+            case .bottom: beyond = [first - 1, first - 2].filter { rowRange.contains($0) }
+            case .top: beyond = [last + 1, last + 2].filter { rowRange.contains($0) }
+            }
         }
-        for width in widths {
-            let pixelWidth = Self.pixelWidth(width, scale: scale)
-            for index in candidates {
-                guard let row = rows[index], row.bitmaps[pixelWidth] == nil,
-                      let layout = layout(at: index, pixelWidth: pixelWidth, width: width)
-                else { continue }
-                jobs.append(.init(
-                    key: .init(identifier: row.item.identifier, pixelWidth: pixelWidth),
-                    item: row.item, layout: layout, width: width, scale: scale,
-                    appearance: appearance, context: context, model: coordinator.parent.model,
-                    spoilerRevealStore: spoilerRevealStore,
-                    animatedReactionIDs: canvas?.animatedReactionIDs(for: row.item.identifier) ?? [],
-                    displayColorSpace: displayColorSpace
-                ))
+        var jobs: [NativeTimelineRowRasterizer.Job] = []
+        for indexes in [visible, beyond] {
+            for width in widths {
+                let pixelWidth = Self.pixelWidth(width, scale: scale)
+                for index in indexes {
+                    if let job = job(for: index, width: width, pixelWidth: pixelWidth) { jobs.append(job) }
+                }
             }
         }
         rasterizer.submit(jobs)
+    }
+
+    private func job(for index: Int, width: CGFloat, pixelWidth: Int) -> NativeTimelineRowRasterizer.Job? {
+        guard let coordinator, let row = rows[index], row.bitmaps[pixelWidth] == nil,
+              let layout = layout(at: index, pixelWidth: pixelWidth, width: width)
+        else { return nil }
+        return .init(
+            key: .init(identifier: row.item.identifier, pixelWidth: pixelWidth),
+            item: row.item, layout: layout, width: width, scale: scale,
+            appearance: appearance, context: context, model: coordinator.parent.model,
+            spoilerRevealStore: spoilerRevealStore,
+            animatedReactionIDs: canvas?.animatedReactionIDs(for: row.item.identifier) ?? [],
+            displayColorSpace: displayColorSpace
+        )
     }
 
     /// Keeps each row's bitmaps for this width and the coming ones, and the
