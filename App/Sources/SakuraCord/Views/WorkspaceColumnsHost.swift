@@ -142,7 +142,8 @@ private struct SpringTrack {
 final class WorkspaceColumnsView: NSView {
     private struct Island {
         let host: ColumnHostingView
-        var view: NSView { host }
+        /// What moves: the hosting view sits still inside it.
+        var view: NSView { host.container }
         var column: WorkspaceColumnsHost.Column
         var reveal: SpringTrack
         /// What the column reports with `SupplementaryPaneFramePreferenceKey`,
@@ -254,7 +255,7 @@ final class WorkspaceColumnsView: NSView {
             pooledPane = island.host
         } else if !island.column.isSideConversation {
             island.host.isHidden = true
-            pooledInspectors[island.column.id]?.removeFromSuperview()
+            pooledInspectors[island.column.id]?.container.removeFromSuperview()
             pooledInspectors[island.column.id] = island.host
         } else {
             island.view.removeFromSuperview()
@@ -424,7 +425,7 @@ final class WorkspaceColumnsView: NSView {
         let host = NSHostingController(rootView: root)
         // This view sets every frame; the hosting view never asks for one.
         host.sizingOptions = []
-        host.view.translatesAutoresizingMaskIntoConstraints = true
+        host.view.translatesAutoresizingMaskIntoConstraints = false
         return host
     }
 
@@ -628,9 +629,21 @@ final class WorkspaceColumnsView: NSView {
         // Beneath a widening side chat, the conversation recedes: it drifts
         // toward the leading edge and fades as it is covered, rather than
         // vanishing at once. Moving it changes no size, so it lays nothing out.
-        setFrame(
-            of: conversation?.view,
-            conversationFrame.offsetBy(dx: -conversationFrame.width * Self.recedeDistance * recede, dy: 0)
+        var hostFrame = conversationFrame.offsetBy(dx: -conversationFrame.width * Self.recedeDistance * recede, dy: 0)
+        // While only the member list or search results move, the
+        // conversation keeps the wider of its widths and the column slides
+        // over it: laying the conversation out again on every frame took
+        // most of each frame. Its timeline follows the uncovered width
+        // (`WorkspaceConversationWidthPath`) and re-wraps live.
+        if let host = conversation?.view, movesOnlyInspectors(at: time),
+           WorkspaceConversationWidthPath.shared.hasFollower(in: host)
+        {
+            let settled = conversationWidth(at: time + 60, provisionalStart: time, tracks: currentTracks)
+            hostFrame.size.width = min(bounds.width, max(hostFrame.width, settled, host.frame.width))
+        }
+        setFrame(of: conversation?.view, hostFrame)
+        WorkspaceConversationCover.shared.update(
+            trailingInset: max(0, (conversation?.view.frame.width ?? 0) - conversationFrame.width)
         )
         conversation?.view.alphaValue = 1 - recede
         // Lay the columns out now, in the frame that moves them: left to the
@@ -640,6 +653,19 @@ final class WorkspaceColumnsView: NSView {
         for island in islands { island.view.layoutSubtreeIfNeeded() }
         reportPaneFrame()
         publishGeometry(at: time)
+    }
+
+    /// Whether the only columns in motion are inspectors (the member list,
+    /// search results), which cover the conversation without a side chat
+    /// changing.
+    private func movesOnlyInspectors(at time: CFTimeInterval) -> Bool {
+        guard widening.map({ $0.isSettled(at: time) }) ?? true else { return false }
+        var moves = false
+        for island in islands where !island.reveal.isSettled(at: time) {
+            guard !island.column.isSideConversation, !island.column.isFullWidth else { return false }
+            moves = true
+        }
+        return moves
     }
 
     /// Tells the toolbar where the columns are, so their items move with
@@ -720,8 +746,22 @@ final class WorkspaceColumnsView: NSView {
     }
 }
 
+/// Holds a hosting view and moves it: a hosting view that moves updates its
+/// view graph, as anything in it may depend on where it is in the window,
+/// on every frame of a motion. Its subviews fill it.
+final class MovingHostContainerView: NSView {
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        for subview in subviews where subview.frame.size != newSize {
+            subview.frame = CGRect(origin: .zero, size: newSize)
+        }
+    }
+}
+
 /// A column's hosting view.
 private final class ColumnHostingView: NSHostingView<AnyView> {
+    let container = MovingHostContainerView()
+
     /// The widths the column's content takes, measured as it lays out.
     let extent = ColumnExtent()
     /// The column's content, without how this view presents it.
@@ -738,7 +778,9 @@ private final class ColumnHostingView: NSHostingView<AnyView> {
         extent.isShared = sharesExtent
         // This view's frame is set from outside; it never asks for one.
         sizingOptions = []
-        translatesAutoresizingMaskIntoConstraints = true
+        translatesAutoresizingMaskIntoConstraints = false
+        container.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(self)
         setContent(content, isLeaving: false)
     }
 
@@ -765,7 +807,7 @@ private final class ColumnHostingView: NSHostingView<AnyView> {
         super.layout()
         // Measured again, as after an Interface Size change: the workspace
         // places its columns for the new widths.
-        if widths != (extent.minimum, extent.ideal, extent.maximum) { superview?.needsLayout = true }
+        if widths != (extent.minimum, extent.ideal, extent.maximum) { container.superview?.needsLayout = true }
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
@@ -853,6 +895,26 @@ extension EnvironmentValues {
     @Entry var isLeavingWorkspace = false
 }
 
+/// How much of the conversation's trailing edge a column slides over
+/// while the conversation keeps its wider width (`WorkspaceColumnsView`).
+/// Views at the conversation's trailing edge, such as the composer
+/// (`ConversationFooterHost`), stay clear of it on every frame, outside
+/// the conversation's view graph.
+final class WorkspaceConversationCover {
+    static let shared = WorkspaceConversationCover()
+    /// Posted on the main thread, in the frame that moves the columns.
+    static let didChange = Notification.Name("SakuraCordWorkspaceConversationCoverDidChange")
+    private(set) var trailingInset: CGFloat = 0
+
+    private init() {}
+
+    func update(trailingInset: CGFloat) {
+        guard trailingInset != self.trailingInset else { return }
+        self.trailingInset = trailingInset
+        NotificationCenter.default.post(name: Self.didChange, object: self)
+    }
+}
+
 /// How wide the workspace's columns will be on the coming frames of a
 /// motion, so a timeline can paint rows ahead for the widths it will pass
 /// through (`NativeTimelineMotionPresenter`).
@@ -861,14 +923,30 @@ final class WorkspaceConversationWidthPath {
     static let shared = WorkspaceConversationWidthPath()
     /// Posted on the main thread when the columns start to move.
     static let didStartMoving = Notification.Name("SakuraCordWorkspaceWidthPathDidStartMoving")
+    /// Posted on the main thread for each frame the columns are placed for
+    /// while they move, and once as they stop.
+    static let didAdvance = Notification.Name("SakuraCordWorkspaceWidthPathDidAdvance")
 
     /// The frame time the columns were last placed for.
     private(set) var frameTime: CFTimeInterval = 0
     private(set) var frameDuration: CFTimeInterval = 1.0 / 60
     private(set) var isMoving = false
     private var width: (NSView, CFTimeInterval) -> CGFloat? = { _, _ in nil }
+    /// Timelines that follow the path rather than their frame.
+    private let followers = NSHashTable<NSView>.weakObjects()
 
     private init() {}
+
+    /// Registers a timeline that re-wraps for the width the path gives it
+    /// (`didAdvance`), so a column may slide over it rather than resize it.
+    func follow(_ view: NSView) {
+        followers.add(view)
+    }
+
+    /// Whether `container` shows a timeline that follows the path.
+    func hasFollower(in container: NSView) -> Bool {
+        followers.allObjects.contains { $0.window != nil && $0.isDescendant(of: container) }
+    }
 
     func update(
         frameTime: CFTimeInterval,
@@ -877,12 +955,16 @@ final class WorkspaceConversationWidthPath {
         width: @escaping (NSView, CFTimeInterval) -> CGFloat?
     ) {
         let starts = isMoving && !self.isMoving
+        let stops = !isMoving && self.isMoving
         self.frameTime = frameTime
         self.frameDuration = frameDuration
         self.isMoving = isMoving
         self.width = width
         // Before the motion's first frame, so timelines paint it in time.
         if starts { NotificationCenter.default.post(name: Self.didStartMoving, object: self) }
+        // Before the columns are placed for this frame: a timeline whose
+        // column covers it rather than resizing it follows from here.
+        if isMoving || stops { NotificationCenter.default.post(name: Self.didAdvance, object: self) }
     }
 
     /// Publishes where the columns will go before they start to move. The

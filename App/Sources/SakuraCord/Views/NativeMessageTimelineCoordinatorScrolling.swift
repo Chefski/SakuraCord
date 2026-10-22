@@ -688,7 +688,7 @@ extension NativeMessageTimelineCoordinator {
             let viewportSize = scrollView.contentView.bounds.size
             let width = max(
                 220,
-                (proposedWidth ?? viewportSize.width).rounded()
+                (proposedWidth ?? motionWidth(of: scrollView) ?? viewportSize.width).rounded()
             )
             let sizeChanged =
                 abs(viewportSize.width - lastViewportSize.width) >= 0.5
@@ -984,7 +984,9 @@ extension NativeMessageTimelineCoordinator {
                           self.pendingLayoutWidth == width,
                           self.parent.conversation == sourceConversation
                     else { return }
-                    prepared[index] = self.layout(for: sourceItems[index], width: width, metrics: metrics)
+                    prepared[index] = self.motionPresenter.preparedLayout(
+                        for: sourceItems[index], at: index, width: width
+                    ) ?? self.layout(for: sourceItems[index], width: width, metrics: metrics)
                     if ProcessInfo.processInfo.systemUptime - sliceStart >= 0.0015 {
                         // Give AppKit a run-loop turn to draw. Task.yield() can
                         // immediately resume this main-actor job instead.
@@ -1132,6 +1134,7 @@ extension NativeMessageTimelineCoordinator {
         /// its hovered row on every frame of a workspace motion.
         func beginObserving(_ scrollView: NSScrollView) {
             stopObserving()
+            WorkspaceConversationWidthPath.shared.follow(scrollView)
             let center = NotificationCenter.default
             observations = [
                 center.addObserver(forName: ServerInvitePresentationStore.changed, object: nil, queue: .main) { [weak self] notification in

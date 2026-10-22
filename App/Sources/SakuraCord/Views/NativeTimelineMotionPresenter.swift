@@ -281,7 +281,7 @@ final class NativeTimelineMotionPresenter {
         }
         record(width: width, lag: lag, missing: missing)
         lastVisible = visible.map(\.index)
-        let upcoming = upcomingWidths(after: width)
+        let upcoming = budgeted(upcomingWidths(after: width))
         requestBitmaps(currentWidth: width, visible: lastVisible, upcoming: upcoming)
         pruneBitmaps(keeping: pixelWidth, upcoming: upcoming)
         let presentMS = (ProcessInfo.processInfo.systemUptime - start) * 1_000
@@ -465,6 +465,13 @@ final class NativeTimelineMotionPresenter {
         return layout
     }
 
+    /// The layout the motion made for `item` at `width`, which the canvas
+    /// reuses as it lays the rows out for the width they settle at.
+    func preparedLayout(for item: NativeMessageTimelineItem, at index: Int, width: CGFloat) -> NativeTimelineRowLayout? {
+        guard let row = rows[index], row.item == item else { return nil }
+        return row.layouts[Self.pixelWidth(width, scale: scale)]
+    }
+
     /// The exact bitmap, or the one painted for the nearest width.
     private func bestBitmap(for index: Int, pixelWidth: Int) -> NativeTimelineRowRasterizer.Bitmap? {
         guard let row = rows[index] else { return nil }
@@ -530,7 +537,7 @@ final class NativeTimelineMotionPresenter {
         // first: the next frames mostly wrap as it does and reuse its pixels.
         // A live resize has no path to follow.
         var widths: [CGFloat] = []
-        let upcoming = upcoming ?? upcomingWidths(after: currentWidth)
+        let upcoming = upcoming ?? budgeted(upcomingWidths(after: currentWidth))
         for width in upcoming where !widths.contains(width) {
             widths.append(width)
         }
@@ -587,6 +594,21 @@ final class NativeTimelineMotionPresenter {
 
     /// Keeps each row's bitmaps for this width and the coming ones, and the
     /// nearest older one in case the next frame's is late.
+    /// Painted rows for every coming width took hundreds of megabytes on
+    /// long rows: only the nearest coming widths that fit the budget, for
+    /// every row, are painted and kept.
+    private static let bitmapBudgetBytes = 64 * 1_024 * 1_024
+
+    private func budgeted(_ upcoming: [CGFloat]) -> [CGFloat] {
+        let bytesPerWidth = rows.values.reduce(0) { total, row in
+            total + (row.bitmaps.values.first.map { bitmap in
+                Int(bitmap.width * scale) * Int(bitmap.height * scale) * 4 * (bitmap.deviceImage == nil ? 1 : 2)
+            } ?? 0)
+        }
+        guard bytesPerWidth > 0 else { return upcoming }
+        return Array(upcoming.prefix(max(2, Self.bitmapBudgetBytes / bytesPerWidth - 2)))
+    }
+
     private func pruneBitmaps(keeping pixelWidth: Int, upcoming: [CGFloat]) {
         let upcoming = Set(upcoming.map { Self.pixelWidth($0, scale: scale) })
         for index in Array(rows.keys) {

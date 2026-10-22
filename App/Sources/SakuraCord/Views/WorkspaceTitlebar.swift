@@ -110,6 +110,8 @@ struct WorkspaceTitlebar: NSViewRepresentable {
 final class WorkspaceTitlebarView: NSView {
     private final class Island {
         let host: NSHostingController<AnyView>
+        /// What moves with the column; the hosting view sits still in it.
+        let container = MovingHostContainerView()
         /// The content's ideal size, which its layout reports.
         let measurement = IslandMeasurement()
         var size: CGSize { measurement.size }
@@ -121,6 +123,7 @@ final class WorkspaceTitlebarView: NSView {
             host = NSHostingController(rootView: AnyView(EmptyView()))
             host.sizingOptions = []
             host.view.translatesAutoresizingMaskIntoConstraints = true
+            container.addSubview(host.view)
             self.isTrailing = isTrailing
             setContent(content)
         }
@@ -142,8 +145,8 @@ final class WorkspaceTitlebarView: NSView {
         init(_ group: WorkspaceTitlebar.Group) {
             title = Island(group.title)
             actions = Island(group.actions, isTrailing: true)
-            clip.addSubview(title.host.view)
-            clip.addSubview(actions.host.view)
+            clip.addSubview(title.container)
+            clip.addSubview(actions.container)
         }
     }
 
@@ -217,7 +220,7 @@ final class WorkspaceTitlebarView: NSView {
                 let island = views.fullWidthActions ?? {
                     let island = Island(fullWidthActions, isTrailing: true)
                     observe(island)
-                    views.clip.addSubview(island.host.view)
+                    views.clip.addSubview(island.container)
                     views.fullWidthActions = island
                     return island
                 }()
@@ -227,7 +230,7 @@ final class WorkspaceTitlebarView: NSView {
                     )
                 )
             } else if let island = views.fullWidthActions {
-                island.host.view.removeFromSuperview()
+                island.container.removeFromSuperview()
                 views.fullWidthActions = nil
             }
         }
@@ -454,14 +457,14 @@ final class WorkspaceTitlebarView: NSView {
             let size = island.size == .zero
                 ? unmeasured
                 : CGSize(width: min(island.size.width.rounded(.up), actionsLimit.rounded()), height: island.size.height)
-            setFrame(of: island.host.view, CGRect(
+            setFrame(of: island.container, CGRect(
                 x: width - trailing - inset - size.width,
                 y: ((height - size.height) / 2).rounded(),
                 width: size.width,
                 height: size.height
             ))
-            island.host.view.alphaValue = alpha
-            island.host.view.isHidden = alpha < 0.01
+            island.container.alphaValue = alpha
+            island.container.isHidden = alpha < 0.01
         }
         // A side chat's title fills the pane up to its actions; at full width
         // it takes only the width it needs, like the conversation's.
@@ -473,7 +476,7 @@ final class WorkspaceTitlebarView: NSView {
         if !isFullWidth { views.paneTitleWidth = available }
         let filled = isFullWidth ? min(available, views.paneTitleWidth ?? available) : available
         let titleWidth = fills ? filled * (1 - widening) + natural * widening : natural
-        setFrame(of: views.title.host.view, CGRect(
+        setFrame(of: views.title.container, CGRect(
             x: inset,
             y: ((height - titleSize.height) / 2).rounded(),
             width: titleWidth,
