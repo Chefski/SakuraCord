@@ -181,6 +181,8 @@ final class WorkspaceColumnsView: NSView {
     private var conversationMinimum: CGFloat = 0
     /// Whether the conversation's minimum width needs measuring again.
     private var needsMeasurement = true
+    /// The Interface Size the conversation's minimum width was measured at.
+    private var measuredScale = InterfaceScale.factor
 
     override var isFlipped: Bool { true }
 
@@ -284,6 +286,10 @@ final class WorkspaceColumnsView: NSView {
         let now = CACurrentMediaTime()
         supplementaryPaneFrameChanged = spec.supplementaryPaneFrameChanged
 
+        if measuredScale != InterfaceScale.factor {
+            measuredScale = InterfaceScale.factor
+            needsMeasurement = true
+        }
         let conversationRoot = AnyView(spec.conversation.environment(\.self, environment))
         if let conversation {
             conversation.rootView = conversationRoot
@@ -754,6 +760,14 @@ private final class ColumnHostingView: NSHostingView<AnyView> {
         )
     }
 
+    override func layout() {
+        let widths = (extent.minimum, extent.ideal, extent.maximum)
+        super.layout()
+        // Measured again, as after an Interface Size change: the workspace
+        // places its columns for the new widths.
+        if widths != (extent.minimum, extent.ideal, extent.maximum) { superview?.needsLayout = true }
+    }
+
     override func hitTest(_ point: NSPoint) -> NSView? {
         isLeaving ? nil : super.hitTest(point)
     }
@@ -766,6 +780,8 @@ nonisolated private final class ColumnExtent: @unchecked Sendable {
     var ideal: CGFloat = 0
     var maximum: CGFloat = 0
     var height: CGFloat = 0
+    /// The Interface Size the widths were measured at.
+    var scale: CGFloat = 0
     var isMeasured = false
     var isShared = false
     /// Measures nothing while set (`ColumnHostingView.showsFullWidth`).
@@ -774,13 +790,15 @@ nonisolated private final class ColumnExtent: @unchecked Sendable {
     /// The last shared measurement, which takes laying out a whole pane.
     nonisolated(unsafe) private static var shared: ColumnExtent?
 
-    /// Takes the shared measurement for this height, if there is one.
-    func adoptShared(height: CGFloat) -> Bool {
-        guard isShared, let shared = Self.shared, shared.height == height else { return false }
+    /// Takes the shared measurement for this height and Interface Size, if
+    /// there is one.
+    func adoptShared(height: CGFloat, scale: CGFloat) -> Bool {
+        guard isShared, let shared = Self.shared, shared.height == height, shared.scale == scale else { return false }
         minimum = shared.minimum
         ideal = shared.ideal
         maximum = shared.maximum
         self.height = height
+        self.scale = scale
         isMeasured = true
         return true
     }
@@ -794,6 +812,7 @@ nonisolated private final class ColumnExtent: @unchecked Sendable {
         copy.ideal = ideal
         copy.maximum = maximum
         copy.height = height
+        copy.scale = scale
         copy.isMeasured = true
         Self.shared = copy
     }
@@ -811,15 +830,17 @@ nonisolated private struct ColumnMeasuringLayout: Layout {
     func placeSubviews(in bounds: CGRect, proposal _: ProposedViewSize, subviews: Subviews, cache _: inout ()) {
         guard let content = subviews.first else { return }
         content.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
-        // Once per height: the widths come from the column's frame, not
-        // from what it shows.
+        // Once per height and Interface Size: the widths come from the
+        // column's frame, not from what it shows.
         let height = bounds.height
-        guard !extent.isPaused, !extent.isMeasured || extent.height != height else { return }
-        if extent.adoptShared(height: height) { return }
+        let scale = InterfaceScale.factor
+        guard !extent.isPaused, !extent.isMeasured || extent.height != height || extent.scale != scale else { return }
+        if extent.adoptShared(height: height, scale: scale) { return }
         extent.minimum = content.sizeThatFits(ProposedViewSize(width: 0, height: height)).width
         extent.ideal = content.sizeThatFits(ProposedViewSize(width: nil, height: height)).width
         extent.maximum = content.sizeThatFits(ProposedViewSize(width: .infinity, height: height)).width
         extent.height = height
+        extent.scale = scale
         extent.isMeasured = true
         extent.share()
     }

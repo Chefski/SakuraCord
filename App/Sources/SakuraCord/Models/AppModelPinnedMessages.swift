@@ -77,7 +77,7 @@ final class PinnedMessagesState {
 @MainActor
 extension AppModel {
     var activePinsChannelID: ChannelID? {
-        if let thread = openThread { return thread.id }
+        if let thread = visibleThread { return thread.id }
         guard selectedChannelSupportsPins else { return nil }
         return selectedChannelID
     }

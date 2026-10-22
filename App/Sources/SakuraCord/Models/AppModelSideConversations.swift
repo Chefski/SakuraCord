@@ -60,6 +60,13 @@ extension AppModel {
             ? nil : presentedSideConversation
     }
 
+    /// The thread the workspace shows, in its pane or at full width; not one
+    /// that Members or search results cover.
+    var visibleThread: MessageThreadSummary? {
+        if case .thread(let thread, _)? = visibleSideConversation { return thread }
+        return nil
+    }
+
     var workspacePresentation: WorkspacePresentation {
         WorkspacePresentation(
             guildPage: selectedGuildID == nil ? nil : guildWorkspacePage,

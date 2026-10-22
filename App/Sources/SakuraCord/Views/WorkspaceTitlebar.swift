@@ -113,16 +113,20 @@ final class WorkspaceTitlebarView: NSView {
         /// The content's ideal size, which its layout reports.
         let measurement = IslandMeasurement()
         var size: CGSize { measurement.size }
+        /// Actions end at the island's trailing edge: given less than their
+        /// ideal width, they take a narrower variant there.
+        let isTrailing: Bool
 
-        init(_ content: AnyView) {
+        init(_ content: AnyView, isTrailing: Bool = false) {
             host = NSHostingController(rootView: AnyView(EmptyView()))
             host.sizingOptions = []
             host.view.translatesAutoresizingMaskIntoConstraints = true
+            self.isTrailing = isTrailing
             setContent(content)
         }
 
         func setContent(_ content: AnyView) {
-            host.rootView = AnyView(IdealSizeLayout(measurement: measurement) { content })
+            host.rootView = AnyView(IdealSizeLayout(measurement: measurement, isTrailing: isTrailing) { content })
         }
     }
 
@@ -137,7 +141,7 @@ final class WorkspaceTitlebarView: NSView {
 
         init(_ group: WorkspaceTitlebar.Group) {
             title = Island(group.title)
-            actions = Island(group.actions)
+            actions = Island(group.actions, isTrailing: true)
             clip.addSubview(title.host.view)
             clip.addSubview(actions.host.view)
         }
@@ -211,7 +215,7 @@ final class WorkspaceTitlebarView: NSView {
             )
             if let fullWidthActions = group.fullWidthActions {
                 let island = views.fullWidthActions ?? {
-                    let island = Island(fullWidthActions)
+                    let island = Island(fullWidthActions, isTrailing: true)
                     observe(island)
                     views.clip.addSubview(island.host.view)
                     views.fullWidthActions = island
@@ -435,8 +439,11 @@ final class WorkspaceTitlebarView: NSView {
     ) {
         let inset = ChatChromeMetrics.toolbarItemEdgeInset
         let height = bounds.height
-        let actionsWidth = views.actions.size.width * (1 - widening)
-            + ((views.fullWidthActions?.size.width ?? 0) + fullWidthInset) * widening
+        // A narrow column keeps room for its title; its actions gather into
+        // their overflow menu instead (`conversationTitlebarActions`).
+        let actionsLimit = max(0, width - inset * 3 - InterfaceScale.metric(96))
+        let actionsWidth = min(views.actions.size.width, actionsLimit) * (1 - widening)
+            + (min(views.fullWidthActions?.size.width ?? 0, actionsLimit) + fullWidthInset) * widening
         let unmeasured = CGSize(width: 1, height: height)
         for (island, alpha, trailing) in [
             (views.actions, 1 - widening, 0),
@@ -445,7 +452,8 @@ final class WorkspaceTitlebarView: NSView {
             guard let island else { continue }
             // Whole points wide, so its edges rest on whole points too.
             let size = island.size == .zero
-                ? unmeasured : CGSize(width: island.size.width.rounded(.up), height: island.size.height)
+                ? unmeasured
+                : CGSize(width: min(island.size.width.rounded(.up), actionsLimit.rounded()), height: island.size.height)
             setFrame(of: island.host.view, CGRect(
                 x: width - trailing - inset - size.width,
                 y: ((height - size.height) / 2).rounded(),
@@ -522,6 +530,7 @@ nonisolated private final class IslandMeasurement: @unchecked Sendable {
 /// only as wide as its text.
 nonisolated private struct IdealSizeLayout: Layout {
     let measurement: IslandMeasurement
+    let isTrailing: Bool
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache _: inout ()) -> CGSize {
         proposal.replacingUnspecifiedDimensions(by: subviews.first?.sizeThatFits(.unspecified) ?? .zero)
@@ -529,7 +538,9 @@ nonisolated private struct IdealSizeLayout: Layout {
 
     func placeSubviews(in bounds: CGRect, proposal _: ProposedViewSize, subviews: Subviews, cache _: inout ()) {
         guard let content = subviews.first else { return }
-        content.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
+        let proposal = ProposedViewSize(bounds.size)
+        let minX = isTrailing ? bounds.maxX - content.sizeThatFits(proposal).width : bounds.minX
+        content.place(at: CGPoint(x: minX, y: bounds.minY), proposal: proposal)
         let ideal = content.sizeThatFits(.unspecified)
         guard ideal != measurement.size else { return }
         measurement.size = ideal

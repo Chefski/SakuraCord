@@ -192,6 +192,9 @@ nonisolated final class NativeTimelineRowRasterizer: @unchecked Sendable {
         var pending: [Job] = []
         var finished: [Bitmap] = []
         var isDraining = false
+        /// Advances on `reset()`: a paint under way then finishes for a
+        /// motion that is over, and is dropped.
+        var generation = 0
     }
 
     /// A row's last paint, to skip converting it again when a new width
@@ -234,9 +237,12 @@ nonisolated final class NativeTimelineRowRasterizer: @unchecked Sendable {
 
     /// Drops what the worker keeps between paints, once a motion is over.
     func reset() {
-        cancelPending()
+        state.withLock { state in
+            state.pending.removeAll()
+            state.finished.removeAll()
+            state.generation += 1
+        }
         queue.async { self.lastPaints.removeAll() }
-        _ = takeFinished()
     }
 
     /// The bitmaps painted since the last call.
@@ -260,15 +266,17 @@ nonisolated final class NativeTimelineRowRasterizer: @unchecked Sendable {
     }
 
     private func drain() {
-        while let job = state.withLock({ state -> Job? in
+        while let (job, generation) = state.withLock({ state -> (Job, Int)? in
             guard !state.pending.isEmpty else {
                 state.isDraining = false
                 return nil
             }
-            return state.pending.removeFirst()
+            return (state.pending.removeFirst(), state.generation)
         }) {
             guard let bitmap = paint(job) else { continue }
-            state.withLock { $0.finished.append(bitmap) }
+            state.withLock { state in
+                if state.generation == generation { state.finished.append(bitmap) }
+            }
         }
     }
 

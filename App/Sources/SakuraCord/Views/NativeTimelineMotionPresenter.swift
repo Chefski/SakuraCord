@@ -260,8 +260,11 @@ final class NativeTimelineMotionPresenter {
         let pixelWidth = Self.pixelWidth(width, scale: scale)
         overlay.frame = scrollView.contentView.frame
         let viewportHeight = overlay.bounds.height
-        guard let placed = placeRows(width: width, pixelWidth: pixelWidth, viewportHeight: viewportHeight) else {
-            // The viewport grew past the rows taken at the start.
+        guard let placed = placeRows(width: width, pixelWidth: pixelWidth, viewportHeight: viewportHeight),
+              !placed.contains(where: { Self.bitmapBytes(height: $0.layout.height, width: width, scale: scale) > Self.maximumRowBitmapBytes })
+        else {
+            // The viewport grew past the rows taken at the start, or a row
+            // grew past what a bitmap may take.
             end()
             return false
         }
@@ -633,7 +636,7 @@ final class NativeTimelineMotionPresenter {
         for index in range {
             // The worker paints whole rows, where the canvas paints a tall
             // row's visible tiles; a bitmap per width would take gigabytes.
-            let bytes = coordinator.layouts[index].height * coordinator.layoutWidth * scale * scale * 4
+            let bytes = Self.bitmapBytes(height: coordinator.layouts[index].height, width: coordinator.layoutWidth, scale: scale)
             if bytes > Self.maximumRowBitmapBytes { return "tall row" }
             switch items[index] {
             case .inboxGroup, .inboxEvent, .inboxForumPost: return "inbox rows"
@@ -646,6 +649,10 @@ final class NativeTimelineMotionPresenter {
     }
 
     private static let maximumRowBitmapBytes: CGFloat = 24 * 1_024 * 1_024
+
+    private static func bitmapBytes(height: CGFloat, width: CGFloat, scale: CGFloat) -> CGFloat {
+        height * width * scale * scale * 4
+    }
 
     private static func pixelWidth(_ width: CGFloat, scale: CGFloat) -> Int {
         Int((width * scale).rounded())
