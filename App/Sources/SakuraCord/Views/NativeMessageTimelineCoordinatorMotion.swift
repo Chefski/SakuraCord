@@ -71,6 +71,8 @@ extension NativeMessageTimelineCoordinator {
             return true
         }
 
+        /// Kept apart from `reconcileViewportGeometryIfNeeded`, which is at
+        /// its complexity limit.
         func endMotionPresentation(_ ends: Bool) {
             if ends { motionPresenter.end() }
         }

@@ -68,12 +68,7 @@ final class NativeTimelineMotionPresenter {
     private static let log = Logger(subsystem: "dev.sakuracord.SakuraCord", category: "TimelineMotionPresenter")
     /// Frames painted ahead of the one on screen during a workspace motion:
     /// most of the columns' spring, from the click on.
-    private static let framesAhead: Int = {
-        // Experiment: `--timeline-motion-horizon=N`.
-        let prefix = "--timeline-motion-horizon="
-        return ProcessInfo.processInfo.arguments.first { $0.hasPrefix(prefix) }
-            .flatMap { Int($0.dropFirst(prefix.count)) } ?? 16
-    }()
+    private static let framesAhead = 16
     /// Main-thread time per call for laying out rows at coming widths: more
     /// while the change that starts a motion holds the main thread anyway.
     private static let layoutBudgetMS = 3.0
@@ -119,12 +114,13 @@ final class NativeTimelineMotionPresenter {
 
     /// Starts presenting rows for a motion. Rows stay on the canvas until
     /// the width first changes.
-    /// - Returns: Whether the timeline can be presented this way now; if
-    ///   not, the canvas re-wraps as before.
+    ///
     /// A workspace motion only arms the presenter: most motions leave most
     /// timelines' widths alone, and the click that starts one holds the main
     /// thread already. It starts once the columns' path shows this
     /// timeline's width will change, or once it does.
+    /// - Returns: Whether the timeline can be presented this way; if not,
+    ///   the canvas re-wraps as before.
     @discardableResult
     func begin(_ reason: Reason) -> Bool {
         guard Self.isEnabled else { return false }
@@ -261,7 +257,7 @@ final class NativeTimelineMotionPresenter {
         overlay.frame = scrollView.contentView.frame
         let viewportHeight = overlay.bounds.height
         guard let placed = placeRows(width: width, pixelWidth: pixelWidth, viewportHeight: viewportHeight),
-              !placed.contains(where: { Self.bitmapBytes(height: $0.layout.height, width: width, scale: scale) > Self.maximumRowBitmapBytes })
+              placed.allSatisfy({ fitsBitmapBudget($0.layout, width: width) })
         else {
             // The viewport grew past the rows taken at the start, or a row
             // grew past what a bitmap may take.
@@ -285,8 +281,9 @@ final class NativeTimelineMotionPresenter {
         }
         record(width: width, lag: lag, missing: missing)
         lastVisible = visible.map(\.index)
-        requestBitmaps(currentWidth: width, visible: lastVisible)
-        pruneBitmaps(keeping: pixelWidth)
+        let upcoming = upcomingWidths(after: width)
+        requestBitmaps(currentWidth: width, visible: lastVisible, upcoming: upcoming)
+        pruneBitmaps(keeping: pixelWidth, upcoming: upcoming)
         let presentMS = (ProcessInfo.processInfo.systemUptime - start) * 1_000
         stats.totalPresentMS += presentMS
         stats.maximumPresentMS = max(stats.maximumPresentMS, presentMS)
@@ -409,28 +406,8 @@ final class NativeTimelineMotionPresenter {
         Self.log.notice("Motion presenter seeded \(seeded) row bitmaps at width \(Double(width))")
     }
 
-    /// Diagnostics: the rows' layers stay on screen for two seconds after a
-    /// motion settles, so screenshots can compare them with the canvas's.
-    private static let holdsAtSettle = ProcessInfo.processInfo.arguments.contains("--timeline-motion-settle-hold")
-    private var isHolding = false
-    private var hasHeld = false
-
     /// Hands the rows back to the canvas, in the same frame.
     func end() {
-        if Self.holdsAtSettle, isShowing, !isHolding, !hasHeld {
-            isHolding = true
-            hasHeld = true
-            Self.log.notice("Motion presenter holding its layers at settle")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
-                MainActor.assumeIsolated {
-                    self?.isHolding = false
-                    self?.end()
-                }
-            }
-            return
-        }
-        guard !isHolding else { return }
-        hasHeld = false
         armedReason = nil
         guard isActive else {
             if let pathObservation { NotificationCenter.default.removeObserver(pathObservation) }
@@ -481,11 +458,10 @@ final class NativeTimelineMotionPresenter {
     // MARK: Rows
 
     private func layout(at index: Int, pixelWidth: Int, width: CGFloat) -> NativeTimelineRowLayout? {
-        guard var row = rows[index], let coordinator else { return nil }
+        guard let row = rows[index], let coordinator else { return nil }
         if let layout = row.layouts[pixelWidth] { return layout }
         let layout = coordinator.layout(for: row.item, width: width, metrics: metrics)
-        row.layouts[pixelWidth] = layout
-        rows[index] = row
+        rows[index]?.layouts[pixelWidth] = layout
         return layout
     }
 
@@ -544,7 +520,8 @@ final class NativeTimelineMotionPresenter {
     /// Asks the worker for this frame's missing bitmaps, then the next
     /// frames', in that order.
     private func requestBitmaps(
-        currentWidth: CGFloat, visible: [Int], layoutBudgetMS: Double = NativeTimelineMotionPresenter.layoutBudgetMS
+        currentWidth: CGFloat, visible: [Int], upcoming: [CGFloat]? = nil,
+        layoutBudgetMS: Double = NativeTimelineMotionPresenter.layoutBudgetMS
     ) {
         let deadline = ProcessInfo.processInfo.systemUptime + layoutBudgetMS / 1_000
         // In a workspace motion the frame being built is already on its way,
@@ -553,7 +530,7 @@ final class NativeTimelineMotionPresenter {
         // first: the next frames mostly wrap as it does and reuse its pixels.
         // A live resize has no path to follow.
         var widths: [CGFloat] = []
-        let upcoming = upcomingWidths(after: currentWidth)
+        let upcoming = upcoming ?? upcomingWidths(after: currentWidth)
         for width in upcoming where !widths.contains(width) {
             widths.append(width)
         }
@@ -594,7 +571,7 @@ final class NativeTimelineMotionPresenter {
     private func job(for index: Int, width: CGFloat, pixelWidth: Int) -> NativeTimelineRowRasterizer.Job? {
         guard let coordinator, let row = rows[index], row.bitmaps[pixelWidth] == nil,
               let layout = layout(at: index, pixelWidth: pixelWidth, width: width),
-              Self.bitmapBytes(height: layout.height, width: width, scale: scale) <= Self.maximumRowBitmapBytes
+              fitsBitmapBudget(layout, width: width)
         else { return nil }
         return .init(
             key: .init(identifier: row.item.identifier, pixelWidth: pixelWidth),
@@ -610,9 +587,10 @@ final class NativeTimelineMotionPresenter {
 
     /// Keeps each row's bitmaps for this width and the coming ones, and the
     /// nearest older one in case the next frame's is late.
-    private func pruneBitmaps(keeping pixelWidth: Int) {
-        let upcoming = Set(upcomingWidths(after: CGFloat(pixelWidth) / scale).map { Self.pixelWidth($0, scale: scale) })
-        for (index, row) in rows where row.bitmaps.count > 4 {
+    private func pruneBitmaps(keeping pixelWidth: Int, upcoming: [CGFloat]) {
+        let upcoming = Set(upcoming.map { Self.pixelWidth($0, scale: scale) })
+        for index in Array(rows.keys) {
+            guard let row = rows[index], row.bitmaps.count > 4 else { continue }
             let nearest = row.bitmaps.keys.min { abs($0 - pixelWidth) < abs($1 - pixelWidth) }
             rows[index]?.bitmaps = row.bitmaps.filter { key, _ in
                 key == pixelWidth || key == nearest || upcoming.contains(key)
@@ -640,12 +618,7 @@ final class NativeTimelineMotionPresenter {
         if canvas.voiceMessageOverlay != nil { return "voice message player" }
         let items = coordinator.items
         let range = max(0, visible.lowerBound - 6) ..< min(items.count, visible.upperBound + 6)
-        let scale = canvas.window?.backingScaleFactor ?? 2
         for index in range {
-            // The worker paints whole rows, where the canvas paints a tall
-            // row's visible tiles; a bitmap per width would take gigabytes.
-            let bytes = Self.bitmapBytes(height: coordinator.layouts[index].height, width: coordinator.layoutWidth, scale: scale)
-            if bytes > Self.maximumRowBitmapBytes { return "tall row" }
             switch items[index] {
             case .inboxGroup, .inboxEvent, .inboxForumPost: return "inbox rows"
             case .suppressedMessages: return "suppressed messages"
@@ -656,10 +629,11 @@ final class NativeTimelineMotionPresenter {
         return nil
     }
 
-    private static let maximumRowBitmapBytes: CGFloat = 24 * 1_024 * 1_024
-
-    private static func bitmapBytes(height: CGFloat, width: CGFloat, scale: CGFloat) -> CGFloat {
-        height * width * scale * scale * 4
+    /// The worker paints whole rows, where the canvas paints a tall row's
+    /// visible tiles; a bitmap per width would take gigabytes. A row past
+    /// this is not painted, and hands the rows back once it shows.
+    private func fitsBitmapBudget(_ layout: NativeTimelineRowLayout, width: CGFloat) -> Bool {
+        NativeTimelineCanvasView.estimatedBitmapCost(width: width, height: layout.height, scale: scale) <= 24 * 1_024 * 1_024
     }
 
     private static func pixelWidth(_ width: CGFloat, scale: CGFloat) -> Int {

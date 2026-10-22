@@ -1043,6 +1043,8 @@ extension NativeMessageTimelineCoordinator {
         }
 
         func stopObserving() {
+            // Removes its overlay and its observer of the columns' path.
+            motionPresenter.end()
             liveScrollViewport = nil
             cancelGlide()
             cancelLayoutPreparation()

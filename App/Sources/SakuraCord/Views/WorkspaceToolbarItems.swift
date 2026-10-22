@@ -1,8 +1,8 @@
 import SakuraCordModels
 import SwiftUI
 
-// The workspace's toolbar actions, shared by the window toolbar and the
-// column-owned toolbar (`WorkspaceTitlebar`).
+// The workspace's toolbar actions, as the column-owned toolbar
+// (`WorkspaceTitlebar`) shows them.
 
 struct InboxToolbarButton: View {
     let model: AppModel

@@ -255,7 +255,7 @@ struct ChatWorkspaceView: View, Equatable {
 
     private func width(of column: WorkspaceTrailingColumn) -> CGFloat {
         switch column.content {
-        case .sideConversation: max(paneWidth, InterfaceScale.metric(340))
+        case .sideConversation: max(paneWidth, ChatChromeMetrics.sideConversationMinimumWidth)
         case .inspector: max(inspectorWidth, ChatChromeMetrics.memberListWidth)
         }
     }

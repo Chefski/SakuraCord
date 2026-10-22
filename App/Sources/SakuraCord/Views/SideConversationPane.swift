@@ -46,7 +46,7 @@ struct SideConversationPane<Content: View>: View {
             content
                 .scrollEdgeEffectStyle(isFullWidth ? .automatic : .soft, for: .top)
             .frame(
-                minWidth: isFullWidth ? nil : InterfaceScale.metric(340),
+                minWidth: isFullWidth ? nil : ChatChromeMetrics.sideConversationMinimumWidth,
                 idealWidth: isFullWidth ? nil : InterfaceScale.metric(400),
                 maxWidth: isFullWidth ? .infinity : InterfaceScale.metric(440),
                 maxHeight: .infinity

@@ -192,6 +192,8 @@ nonisolated final class NativeTimelineRowRasterizer: @unchecked Sendable {
         var pending: [Job] = []
         var finished: [Bitmap] = []
         var isDraining = false
+        /// The job the worker is painting, which a new submission skips.
+        var painting: Key?
         /// Advances on `reset()`: a paint under way then finishes for a
         /// motion that is over, and is dropped.
         var generation = 0
@@ -207,15 +209,8 @@ nonisolated final class NativeTimelineRowRasterizer: @unchecked Sendable {
         let image: AnyObject
     }
 
-    private let queue = DispatchQueue(label: "dev.sakuracord.timeline-row-rasterizer", qos: NativeTimelineRowRasterizer.qos)
+    private let queue = DispatchQueue(label: "dev.sakuracord.timeline-row-rasterizer", qos: .userInteractive)
 
-    /// Experiment: `--timeline-motion-worker-qos=initiated|utility`.
-    private static var qos: DispatchQoS {
-        let arguments = ProcessInfo.processInfo.arguments
-        if arguments.contains("--timeline-motion-worker-qos=utility") { return .utility }
-        if arguments.contains("--timeline-motion-worker-qos=initiated") { return .userInitiated }
-        return .userInteractive
-    }
     /// Touched only on `queue`.
     nonisolated(unsafe) private var lastPaints: [NativeMessageTimelineItem.Identifier: LastPaint] = [:]
     private let state = Mutex(State())
@@ -223,7 +218,7 @@ nonisolated final class NativeTimelineRowRasterizer: @unchecked Sendable {
     /// Replaces the jobs waiting to be painted.
     func submit(_ jobs: [Job]) {
         let starts = state.withLock { state in
-            state.pending = jobs
+            state.pending = jobs.filter { $0.key != state.painting }
             guard !state.isDraining, !jobs.isEmpty else { return false }
             state.isDraining = true
             return true
@@ -231,15 +226,12 @@ nonisolated final class NativeTimelineRowRasterizer: @unchecked Sendable {
         if starts { queue.async { self.drain() } }
     }
 
-    func cancelPending() {
-        state.withLock { $0.pending.removeAll() }
-    }
-
     /// Drops what the worker keeps between paints, once a motion is over.
     func reset() {
         state.withLock { state in
             state.pending.removeAll()
             state.finished.removeAll()
+            state.painting = nil
             state.generation += 1
         }
         queue.async { self.lastPaints.removeAll() }
@@ -259,7 +251,7 @@ nonisolated final class NativeTimelineRowRasterizer: @unchecked Sendable {
 
     /// Calls `body` on the main thread once no row is being painted.
     func whenIdle(_ body: @escaping @MainActor @Sendable () -> Void) {
-        cancelPending()
+        state.withLock { $0.pending.removeAll() }
         queue.async {
             DispatchQueue.main.async { MainActor.assumeIsolated(body) }
         }
@@ -269,13 +261,17 @@ nonisolated final class NativeTimelineRowRasterizer: @unchecked Sendable {
         while let (job, generation) = state.withLock({ state -> (Job, Int)? in
             guard !state.pending.isEmpty else {
                 state.isDraining = false
+                state.painting = nil
                 return nil
             }
-            return (state.pending.removeFirst(), state.generation)
+            let job = state.pending.removeFirst()
+            state.painting = job.key
+            return (job, state.generation)
         }) {
-            guard let bitmap = paint(job) else { continue }
+            let bitmap = paint(job)
             state.withLock { state in
-                if state.generation == generation { state.finished.append(bitmap) }
+                state.painting = nil
+                if let bitmap, state.generation == generation { state.finished.append(bitmap) }
             }
         }
     }
@@ -350,18 +346,8 @@ nonisolated final class NativeTimelineRowRasterizer: @unchecked Sendable {
     /// The conversion Core Animation would otherwise make as it commits:
     /// the image drawn into a context of the display's colour space and
     /// native pixel format.
-    static func displayImage(
-        _ source: CGImage, colorSpace: CGColorSpace, croppingTransparentEdge: Bool = false, paintedWidth: Int? = nil
-    ) -> CGImage? {
-        // Conversion maps transparent pixels to transparent ones, so the
-        // columns right of the painted ones need none.
-        var source = source
-        let painted = paintedWidth ?? (croppingTransparentEdge ? Self.paintedWidth(of: source) : nil)
-        if let painted, painted < source.width,
-           let cropped = source.cropping(to: CGRect(x: 0, y: 0, width: max(1, painted), height: source.height))
-        {
-            source = cropped
-        }
+    static func displayImage(_ source: CGImage, colorSpace: CGColorSpace, paintedWidth: Int?) -> CGImage? {
+        let source = cropped(source, toPaintedWidth: paintedWidth)
         guard let context = CGContext(
             data: nil, width: source.width, height: source.height,
             bitsPerComponent: 8, bytesPerRow: 0, space: colorSpace,
@@ -374,15 +360,10 @@ nonisolated final class NativeTimelineRowRasterizer: @unchecked Sendable {
 
     static let usesSurfaces = !ProcessInfo.processInfo.arguments.contains("--timeline-motion-image-contents")
 
-    /// `displayImage`, into an `IOSurface` tagged with the colour space, so
-    /// a layer shows it without Core Animation copying it as it commits.
+    /// `displayImage`, into an `IOSurface`, so a layer shows it without
+    /// Core Animation copying it as it commits.
     static func displaySurface(_ source: CGImage, colorSpace: CGColorSpace, paintedWidth: Int?) -> IOSurface? {
-        var source = source
-        if let paintedWidth, paintedWidth < source.width,
-           let cropped = source.cropping(to: CGRect(x: 0, y: 0, width: max(1, paintedWidth), height: source.height))
-        {
-            source = cropped
-        }
+        let source = cropped(source, toPaintedWidth: paintedWidth)
         let width = source.width
         let height = source.height
         guard let surface = IOSurface(properties: [
@@ -402,13 +383,16 @@ nonisolated final class NativeTimelineRowRasterizer: @unchecked Sendable {
         context.clear(CGRect(x: 0, y: 0, width: width, height: height))
         context.interpolationQuality = .none
         context.draw(source, in: CGRect(x: 0, y: 0, width: width, height: height))
-        // Experiment: `--timeline-motion-tag-surfaces` tags the surface with its colour space.
-        if ProcessInfo.processInfo.arguments.contains("--timeline-motion-tag-surfaces"),
-           let properties = colorSpace.copyPropertyList()
-        {
-            IOSurfaceSetValue(surface, kIOSurfaceColorSpace, properties)
-        }
         return surface
+    }
+
+    /// Conversion maps transparent pixels to transparent ones, so the
+    /// columns right of the painted ones need none.
+    private static func cropped(_ source: CGImage, toPaintedWidth paintedWidth: Int?) -> CGImage {
+        guard let paintedWidth, paintedWidth < source.width,
+              let cropped = source.cropping(to: CGRect(x: 0, y: 0, width: max(1, paintedWidth), height: source.height))
+        else { return source }
+        return cropped
     }
 
     /// The columns up to the rightmost pixel that is not fully transparent,

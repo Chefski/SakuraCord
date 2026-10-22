@@ -481,7 +481,7 @@ final class WorkspaceColumnsView: NSView {
 
     private func width(of column: WorkspaceColumnsHost.Column) -> CGFloat {
         column.isSideConversation
-            ? max(paneWidth, InterfaceScale.metric(340))
+            ? max(paneWidth, ChatChromeMetrics.sideConversationMinimumWidth)
             : max(inspectorWidth, ChatChromeMetrics.memberListWidth)
     }
 
@@ -497,7 +497,7 @@ final class WorkspaceColumnsView: NSView {
         }
         guard let fullWidth = islands.last(where: \.column.isFullWidth), view.isDescendant(of: fullWidth.view)
         else { return nil }
-        let paneWidth = max(paneWidth, InterfaceScale.metric(340))
+        let paneWidth = max(paneWidth, ChatChromeMetrics.sideConversationMinimumWidth)
         var inspectorCovered: CGFloat = 0
         for island in islands where !island.column.isFullWidth && !island.column.isSideConversation {
             let reveal = tracks.reveals[island.column.id] ?? island.reveal
@@ -517,7 +517,7 @@ final class WorkspaceColumnsView: NSView {
     private func conversationWidth(at time: CFTimeInterval, provisionalStart: CFTimeInterval, tracks: Tracks) -> CGFloat {
         var covered: CGFloat = 0
         if islands.contains(where: \.column.isFullWidth) {
-            covered = max(paneWidth, InterfaceScale.metric(340))
+            covered = max(paneWidth, ChatChromeMetrics.sideConversationMinimumWidth)
         } else {
             for island in islands {
                 let reveal = tracks.reveals[island.column.id] ?? island.reveal
@@ -615,7 +615,7 @@ final class WorkspaceColumnsView: NSView {
         // How far a widening side chat has covered the conversation.
         var recede: CGFloat = 0
         if let fullWidth = islands.last(where: \.column.isFullWidth) {
-            let paneWidth = max(paneWidth, InterfaceScale.metric(340))
+            let paneWidth = max(paneWidth, ChatChromeMetrics.sideConversationMinimumWidth)
             let trailingEdge = bounds.maxX - inspectorCovered
             recede = widening?.value(at: time) ?? 1
             let width = paneWidth + (trailingEdge - paneWidth) * recede
