@@ -29,17 +29,17 @@ nonisolated enum TimelineInlineVideoPolicy {
     }
 }
 
-nonisolated enum NativeTimelineDateSeparatorMetrics {
-    static var rowHeight: CGFloat { InterfaceScale.metric(37) }
-    static var verticalPadding: CGFloat { InterfaceScale.metric(12) }
-    static var lineSpacing: CGFloat { InterfaceScale.metric(10) }
-    static var labelHeight: CGFloat { InterfaceScale.metric(13) }
+enum NativeTimelineDateSeparatorMetrics {
+    nonisolated static var rowHeight: CGFloat { InterfaceScale.metric(37) }
+    nonisolated static var verticalPadding: CGFloat { InterfaceScale.metric(12) }
+    nonisolated static var lineSpacing: CGFloat { InterfaceScale.metric(10) }
+    nonisolated static var labelHeight: CGFloat { InterfaceScale.metric(13) }
 
-    static var font: NSFont {
+    nonisolated static var font: NSFont {
         .interfaceSystemFont(ofSize: 10, weight: .semibold)
     }
 
-    static func labelWidth(_ label: String) -> CGFloat {
+    nonisolated static func labelWidth(_ label: String) -> CGFloat {
         let attributed = NSAttributedString(
             string: label,
             attributes: [.font: font]
@@ -50,7 +50,7 @@ nonisolated enum NativeTimelineDateSeparatorMetrics {
         )
     }
 
-    static func labelFrame(
+    nonisolated static func labelFrame(
         for label: String,
         in frame: CGRect
     ) -> CGRect {
