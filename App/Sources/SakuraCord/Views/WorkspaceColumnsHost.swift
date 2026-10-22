@@ -338,6 +338,7 @@ final class WorkspaceColumnsView: NSView {
                 {
                     needsMeasurement = true
                 }
+                island.host.showsFullWidth(column.isSideConversation && column.isFullWidth)
                 island.column = column
                 updated.append(island)
             } else {
@@ -388,7 +389,9 @@ final class WorkspaceColumnsView: NSView {
             return pooled
         }
         guard column.isSideConversation, !column.isFullWidth, let pooled = pooledPane else {
-            return ColumnHostingView(content: root, sharesExtent: column.isSideConversation)
+            let host = ColumnHostingView(content: root, sharesExtent: column.isSideConversation)
+            host.showsFullWidth(column.isSideConversation && column.isFullWidth)
+            return host
         }
         pooledPane = nil
         pooled.isHidden = false
@@ -733,6 +736,14 @@ private final class ColumnHostingView: NSHostingView<AnyView> {
         setContent(content, isLeaving: false)
     }
 
+    /// While a side chat shows at full width, its column measures no widths:
+    /// it has none of its own, and shared with the next pane they made that
+    /// pane as wide as the window. It keeps its pane's widths for when it
+    /// returns to the pane.
+    func showsFullWidth(_ isFullWidth: Bool) {
+        extent.isPaused = isFullWidth
+    }
+
     func setContent(_ content: AnyView, isLeaving: Bool) {
         self.content = content
         self.isLeaving = isLeaving
@@ -757,6 +768,8 @@ nonisolated private final class ColumnExtent: @unchecked Sendable {
     var height: CGFloat = 0
     var isMeasured = false
     var isShared = false
+    /// Measures nothing while set (`ColumnHostingView.showsFullWidth`).
+    var isPaused = false
 
     /// The last shared measurement, which takes laying out a whole pane.
     nonisolated(unsafe) private static var shared: ColumnExtent?
@@ -772,9 +785,17 @@ nonisolated private final class ColumnExtent: @unchecked Sendable {
         return true
     }
 
+    /// Shares a copy: this column can go on to measure other widths, for
+    /// one when it shows a side chat at full width.
     func share() {
-        guard isShared else { return }
-        Self.shared = self
+        guard isShared, maximum.isFinite else { return }
+        let copy = ColumnExtent()
+        copy.minimum = minimum
+        copy.ideal = ideal
+        copy.maximum = maximum
+        copy.height = height
+        copy.isMeasured = true
+        Self.shared = copy
     }
 }
 
@@ -793,7 +814,7 @@ nonisolated private struct ColumnMeasuringLayout: Layout {
         // Once per height: the widths come from the column's frame, not
         // from what it shows.
         let height = bounds.height
-        guard !extent.isMeasured || extent.height != height else { return }
+        guard !extent.isPaused, !extent.isMeasured || extent.height != height else { return }
         if extent.adoptShared(height: height) { return }
         extent.minimum = content.sizeThatFits(ProposedViewSize(width: 0, height: height)).width
         extent.ideal = content.sizeThatFits(ProposedViewSize(width: nil, height: height)).width
