@@ -298,6 +298,7 @@ extension NativeTimelineCanvasView {
         cancelMessageJumpHighlight()
         finishSendTransitions()
         cancelTranscriptGlide()
+        finishUnreadDividerFades()
         animatedMediaReconcileTask?.cancel()
         animatedMediaReconcileTask = nil
         visibleMediaRequestTask?.cancel()
@@ -551,6 +552,7 @@ extension NativeTimelineCanvasView {
             clearDisclosure(redraws: false)
             finishSendTransitions()
             cancelTranscriptGlide()
+            finishUnreadDividerFades()
             cancelReactionPreviewLoads()
             mediaInvalidationTask?.cancel()
             mediaInvalidationTask = nil
@@ -798,7 +800,9 @@ extension NativeTimelineCanvasView {
             let rowFrame = rowFrame(at: index)
             guard rowFrame.intersects(dirtyRect) else { continue }
             guard disclosureRange.contains(index) else {
-                drawTimelineRow(at: index, rowFrame: rowFrame, dirtyRect: dirtyRect, visibleMediaKeys: visibleMediaKeys)
+                drawTimelineRowClippedToUnreadDividerGap(
+                    at: index, rowFrame: rowFrame, dirtyRect: dirtyRect, visibleMediaKeys: visibleMediaKeys
+                )
                 continue
             }
             // An animating group is clipped to its revealed height.
@@ -829,7 +833,7 @@ extension NativeTimelineCanvasView {
         }
     }
 
-    private func drawTimelineRow(
+    func drawTimelineRow(
         at index: Int,
         rowFrame: CGRect,
         dirtyRect: CGRect,
@@ -863,6 +867,9 @@ extension NativeTimelineCanvasView {
             drawCodeBlockCopyControl(hoveredCodeBlock)
         }
         clearSendTransitionBubble(for: item, layout: layouts[index], rowFrame: rowFrame)
+        if !unreadDividerFades.isEmpty {
+            clearHeldUnreadDivider(for: item, layout: layouts[index], rowFrame: rowFrame)
+        }
     }
 
     private func drawEditingTimelineRow(

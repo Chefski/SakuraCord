@@ -1281,7 +1281,7 @@ nonisolated extension NativeTimelineRowPainter {
             width: labelWidth,
             height: NativeTimelineUnreadSeparatorMetrics.capsuleHeight
         )
-        NSColor.systemRed.setFill()
+        MentionRed.nsColor.setFill()
         CGRect(
             x: frame.minX,
             y: frame.midY,
