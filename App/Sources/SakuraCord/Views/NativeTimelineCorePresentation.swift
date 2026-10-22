@@ -137,12 +137,12 @@ nonisolated enum NativeTimelineReplyMetrics {
     @MainActor static func summary(
         for preview: MessageReplyPreview,
         in message: Message,
-        model: AppModel?
+        model source: (any NativeTimelineLayoutSource)?
     ) -> MessageReplySummary.Prepared {
-        if let model {
+        if let source {
             MessageReplySummary.summary(
                 content: preview.content,
-                mentionLabel: MessageMentionResolver(model: model, message: message).label
+                mentionLabel: MessageMentionResolver(source: source, message: message).label
             )
         } else {
             MessageReplySummary.summary(content: preview.content)
@@ -179,17 +179,17 @@ nonisolated enum NativeTimelineReplyMetrics {
     @MainActor static func previewWidth(
         _ preview: MessageReplyPreview?,
         in message: Message,
-        model: AppModel?
+        source: (any NativeTimelineLayoutSource)?
     ) -> CGFloat {
         guard let preview else {
             return textWidth(unavailableText, font: unavailableFont)
         }
-        let presentation = model?.authorPresentation(for: preview, in: message)
+        let presentation = source?.authorPresentation(for: preview, in: message)
         let author = presentation?.user ?? preview.author
         let authorFont = ProfileNameFontLoader.shared.resolvedFont(for: author, fallback: authorFont)
-        let showsIndicator = model?.accessibilitySettings.roleColorDisplay == .nextToNames
+        let showsIndicator = source?.roleColorDisplay == .nextToNames
             && presentation?.roleColorHex != nil
-        let summary = summary(for: preview, in: message, model: model).text
+        let summary = summary(for: preview, in: message, model: source).text
         return avatarDiameter
             + horizontalSpacing
             + (showsIndicator ? InterfaceScale.metric(16) : 0)

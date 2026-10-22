@@ -286,7 +286,7 @@ extension NativeMessageTimelineCoordinator {
                let cached = preparation.layouts[item.identifier],
                cached.item == item,
                cached.layout.fontRevision == ProfileNameFontCache.revision,
-               cached.layout.matchesAuthorPrimaryGuild(for: item, model: parent.model) {
+               cached.layout.matchesAuthorPrimaryGuild(for: item, source: parent.model) {
                 recentLayoutCacheHits += 1
                 return cached.layout
             }
@@ -295,7 +295,7 @@ extension NativeMessageTimelineCoordinator {
             return NativeTimelineRowLayout.make(
                 item: item,
                 width: width,
-                model: parent.model,
+                source: parent.model,
                 metrics: metrics
             )
         }
@@ -810,7 +810,7 @@ extension NativeMessageTimelineCoordinator {
             previewLayoutWidth = nil
             previewedRowIdentifiers.removeAll()
             rowsPreviewedAtCurrentWidth.removeAll()
-            let metrics = NativeTimelineRowLayout.Metrics(settings: parent.model.interfaceSettings)
+            let metrics = NativeTimelineRowLayout.Metrics(source: parent.model)
             layouts = preparedLayouts ?? items.map { layout(for: $0, width: width, metrics: metrics) }
             layoutWidth = width
             rowHeights = layouts.map(\.height)
@@ -846,7 +846,7 @@ extension NativeMessageTimelineCoordinator {
 
         func previewVisibleRows(at width: CGFloat) {
             guard let range = visiblePreviewRange() else { return }
-            let metrics = NativeTimelineRowLayout.Metrics(settings: parent.model.interfaceSettings)
+            let metrics = NativeTimelineRowLayout.Metrics(source: parent.model)
             var didReflow = false
             for index in range {
                 let identifier = items[index].identifier
@@ -958,7 +958,7 @@ extension NativeMessageTimelineCoordinator {
 
         func beginBatchedWidthRelayout(_ width: CGFloat) {
             let sourceItems = items
-            let metrics = NativeTimelineRowLayout.Metrics(settings: parent.model.interfaceSettings)
+            let metrics = NativeTimelineRowLayout.Metrics(source: parent.model)
             let sourceConversation = parent.conversation
             let sourceTimestampDay = timestampDay
             let sourcePresentationRevision = parent.presentationRevision

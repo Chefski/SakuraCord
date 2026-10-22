@@ -92,13 +92,13 @@ enum NativeTimelineTextPresentation {
 
     static func make(
         row: MessageRowPresentation,
-        model: AppModel?
+        source: (any NativeTimelineLayoutSource)?
     ) -> Value {
         let message = row.message
         guard !message.flags.contains(.isComponentsV2) else {
             return empty
         }
-        let systemActorColor = model?.accessibilitySettings.roleColorDisplay == .inNames ? model?.authorPresentation(for: message)
+        let systemActorColor = source?.roleColorDisplay == .inNames ? source?.authorPresentation(for: message)
             .roleColorHex.flatMap { value -> NSColor? in
                 guard value != 0 else { return nil }
                 return NSColor(
@@ -111,21 +111,21 @@ enum NativeTimelineTextPresentation {
         let plan = if message.type.hasGeneratedContent {
             NativeTimelineTextPlan.make(
                 for: message,
-                currentUserID: model?.currentUser?.id,
-                systemRecipient: model?.systemMessageRecipient(for: message),
+                currentUserID: source?.currentUserID,
+                systemRecipient: source?.systemMessageRecipient(for: message),
                 systemActorColor: systemActorColor,
                 systemLinkColor: SakuraCordAccentColor.nsColor
             )
         } else {
             row.textPlan
         }
-        return make(message: message, plan: plan, model: model)
+        return make(message: message, plan: plan, source: source)
     }
 
     static func make(
         message: Message,
         plan: NativeTimelineTextPlan,
-        model: AppModel?
+        source: (any NativeTimelineLayoutSource)?
     ) -> Value {
         guard plan.preparedText != nil else {
             return Value(
@@ -138,7 +138,7 @@ enum NativeTimelineTextPresentation {
         }
 
         let preservesCompactSystemStyle = message.type.hasGeneratedContent
-            && model?.messageAppearance(for: message.channelID) != .bubbles
+            && source?.messageAppearance(for: message.channelID) != .bubbles
         let resolvedBaseFontSize = InterfaceScale.fontSize(
             preservesCompactSystemStyle
                 ? plan.baseFontSize
@@ -168,7 +168,7 @@ enum NativeTimelineTextPresentation {
         guard let preparation = preparation(
             message: message,
             plan: plan,
-            model: model,
+            source: source,
             baseFontSize: resolvedBaseFontSize
         ) else {
             return Value(
@@ -190,7 +190,7 @@ enum NativeTimelineTextPresentation {
     static func preparation(
         message: Message,
         plan: NativeTimelineTextPlan,
-        model: AppModel?,
+        source: (any NativeTimelineLayoutSource)?,
         baseFontSize: CGFloat? = nil
     ) -> Preparation? {
         let resolvedBaseFontSize = baseFontSize ?? plan.baseFontSize
@@ -200,7 +200,7 @@ enum NativeTimelineTextPresentation {
             return nil
         }
         guard let prepared = plan.preparedText else { return nil }
-        let resolver = model.map { MessageMentionResolver(model: $0, message: message) }
+        let resolver = source.map { MessageMentionResolver(source: $0, message: message) }
         let mentions = prepared.tokens.reduce(into: [String: MentionPresentation]()) { values, token in
             guard case let .mention(mention) = token else { return }
             values[mention.rawToken] =
@@ -575,7 +575,7 @@ enum NativeTimelineEmbedLayout {
     private struct Builder {
         let embed: MessageEmbed
         let message: Message
-        let model: AppModel?
+        let source: (any NativeTimelineLayoutSource)?
         let attachments: [Attachment]
         let origin: CGPoint
         let maximumWidth: CGFloat
@@ -669,7 +669,7 @@ enum NativeTimelineEmbedLayout {
                     emojiSize: 18,
                     embed: embed,
                     message: message,
-                    model: model
+                    source: source
                 )
             }
             let fields = embed.fields.enumerated().map { index, field in
@@ -688,7 +688,7 @@ enum NativeTimelineEmbedLayout {
                         emojiSize: 16,
                         embed: embed,
                         message: message,
-                        model: model
+                        source: source
                     )
                 )
             }
@@ -991,7 +991,7 @@ enum NativeTimelineEmbedLayout {
             emojiSize: CGFloat,
             embed: MessageEmbed,
             message: Message,
-            model: AppModel?
+            source: (any NativeTimelineLayoutSource)?
         ) -> NativeTimelineAttributedTextBox {
             NativeTimelineEmbedLayout.resolvedTextBox(
                 prepared: prepared,
@@ -999,7 +999,7 @@ enum NativeTimelineEmbedLayout {
                 emojiSize: emojiSize,
                 embed: embed,
                 message: message,
-                model: model
+                source: source
             )
         }
 
@@ -1098,7 +1098,7 @@ enum NativeTimelineEmbedLayout {
     static func make(
         embed: MessageEmbed,
         message: Message,
-        model: AppModel?,
+        source: (any NativeTimelineLayoutSource)?,
         attachments: [Attachment],
         origin: CGPoint,
         maximumWidth: CGFloat,
@@ -1108,7 +1108,7 @@ enum NativeTimelineEmbedLayout {
         Builder(
             embed: embed,
             message: message,
-            model: model,
+            source: source,
             attachments: attachments,
             origin: origin,
             maximumWidth: maximumWidth,
@@ -1123,10 +1123,10 @@ enum NativeTimelineEmbedLayout {
         emojiSize: CGFloat,
         embed: MessageEmbed,
         message: Message,
-        model: AppModel?
+        source: (any NativeTimelineLayoutSource)?
     ) -> NativeTimelineAttributedTextBox {
-        let resolver = model.map {
-            MessageMentionResolver(model: $0, message: message)
+        let resolver = source.map {
+            MessageMentionResolver(source: $0, message: message)
         }
         let mentions = prepared.tokens.reduce(
             into: [String: MentionPresentation]()
@@ -1610,6 +1610,10 @@ extension NativeTimelineRowLayout {
         let timestampFont: NSFont
         let editedFont: NSFont
         let timestampGutterWidth: CGFloat
+
+        @MainActor init(source: (any NativeTimelineLayoutSource)?) {
+            self.init(settings: source?.interfaceSettings ?? .defaults)
+        }
 
         init(settings: InterfaceSettingsSnapshot) {
             authorFont = .interfaceSystemFont(ofSize: NSFont.preferredFont(forTextStyle: .headline).pointSize + 1, weight: .medium)

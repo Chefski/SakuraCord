@@ -158,7 +158,7 @@ func `concealed spoiler policy gates loading animation and nested containers unt
     let nestedLayout = try #require(
         NativeTimelineComponentLayout.make(
             message: nestedMessage,
-            model: nil,
+            source: nil,
             origin: .zero,
             maximumWidth: 480
         )
@@ -2396,7 +2396,7 @@ func `timeline mention text prewarms off main without changing its resolved pres
         NativeTimelineTextPresentation.preparation(
             message: message,
             plan: plan,
-            model: nil
+            source: nil
         )
     )
 
@@ -2406,7 +2406,7 @@ func `timeline mention text prewarms off main without changing its resolved pres
     let presentation = NativeTimelineTextPresentation.make(
         message: message,
         plan: plan,
-        model: nil
+        source: nil
     )
 
     #expect(presentation.attributedContent === prewarmed.value)

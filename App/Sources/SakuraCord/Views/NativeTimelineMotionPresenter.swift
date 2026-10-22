@@ -120,7 +120,7 @@ final class NativeTimelineMotionPresenter {
             ?? window.screen?.colorSpace?.cgColorSpace
             ?? CGColorSpace(name: CGColorSpace.sRGB)!
         appearance = canvas.effectiveAppearance
-        metrics = NativeTimelineRowLayout.Metrics(settings: coordinator.parent.model.interfaceSettings)
+        metrics = NativeTimelineRowLayout.Metrics(source: coordinator.parent.model)
         stats = Stats()
         lastWidths = []
 
