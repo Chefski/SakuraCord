@@ -79,6 +79,7 @@ func `forum title line counts match the typesetter at every width`() {
     }
 }
 
+@MainActor
 @Test
 func `gallery arrow keys follow rows across sections with different column counts`() {
     let width: CGFloat = 100
