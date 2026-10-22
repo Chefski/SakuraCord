@@ -132,6 +132,8 @@ final class WorkspaceTitlebarView: NSView {
         let title: Island
         let actions: Island
         var fullWidthActions: Island?
+        /// The title's width when its side chat was last in the pane.
+        var paneTitleWidth: CGFloat?
 
         init(_ group: WorkspaceTitlebar.Group) {
             title = Island(group.title)
@@ -280,6 +282,7 @@ final class WorkspaceTitlebarView: NSView {
             let span: ClosedRange<CGFloat>
             var visibleMaxX: CGFloat
             var widening: CGFloat = 0
+            var isFullWidth = false
             var endsAtSearch = true
             if id == WorkspaceTitlebar.conversationID {
                 guard var conversation = geometry.conversation else { continue }
@@ -297,6 +300,7 @@ final class WorkspaceTitlebarView: NSView {
                 span = column.minX ... column.maxX
                 visibleMaxX = span.upperBound
                 if column.isFullWidth { widening = column.widening }
+                isFullWidth = column.isFullWidth
                 endsAtSearch = column.isFullWidth
             }
             // Clear of the window's controls and the sidebar button, which
@@ -317,7 +321,8 @@ final class WorkspaceTitlebarView: NSView {
                 width: maxX - clipX,
                 widening: widening,
                 fullWidthInset: id == WorkspaceTitlebar.conversationID ? 0 : searchInset,
-                fills: id != WorkspaceTitlebar.conversationID
+                fills: id != WorkspaceTitlebar.conversationID,
+                isFullWidth: isFullWidth
             )
         }
         fadeSearch(searchAlpha)
@@ -398,7 +403,9 @@ final class WorkspaceTitlebarView: NSView {
     /// at the trailing edge, within its clip view.
     /// - Parameter fullWidthInset: How far before the trailing edge a
     ///   full-width side chat's actions end, at the search field.
-    private func place(_ views: GroupViews, width: CGFloat, widening: CGFloat, fullWidthInset: CGFloat, fills: Bool) {
+    private func place(
+        _ views: GroupViews, width: CGFloat, widening: CGFloat, fullWidthInset: CGFloat, fills: Bool, isFullWidth: Bool
+    ) {
         let inset = ChatChromeMetrics.toolbarItemEdgeInset
         let height = bounds.height
         let actionsWidth = views.actions.size.width * (1 - widening)
@@ -426,7 +433,11 @@ final class WorkspaceTitlebarView: NSView {
         let available = max(0, width - actionsWidth - inset * 3)
         let titleSize = views.title.size == .zero ? unmeasured : views.title.size
         let natural = min(titleSize.width, available)
-        let titleWidth = fills ? available * (1 - widening) + natural * widening : natural
+        // As the side chat widens, the title goes from the pane's width to
+        // its own; it never first grows with the column.
+        if !isFullWidth { views.paneTitleWidth = available }
+        let filled = isFullWidth ? min(available, views.paneTitleWidth ?? available) : available
+        let titleWidth = fills ? filled * (1 - widening) + natural * widening : natural
         setFrame(of: views.title.host.view, CGRect(
             x: inset,
             y: ((height - titleSize.height) / 2).rounded(),

@@ -169,12 +169,19 @@ nonisolated final class NativeTimelineRowRasterizer: @unchecked Sendable {
         /// In the display's colour space and pixel format, cropped to the
         /// painted columns: for a layer whose contents sit at its top left.
         let image: CGImage
-        /// The full row in device RGB, as the canvas caches it.
-        let deviceImage: CGImage
+        /// The full row in device RGB, as the canvas caches it; dropped once
+        /// it cannot seed the canvas.
+        private(set) var deviceImage: CGImage?
         /// Whether the row painted the same pixels as at its last width,
         /// so its converted image was reused.
         let reusedConversion: Bool
         let milliseconds: Double
+
+        func droppingDeviceImage() -> Bitmap {
+            var copy = self
+            copy.deviceImage = nil
+            return copy
+        }
     }
 
     private struct State {

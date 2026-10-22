@@ -51,12 +51,12 @@ func `raster worker paints timeline rows exactly as the main thread does`() asyn
 
     #expect(bitmaps.count == jobs.count * 2)
     for bitmap in bitmaps {
-        let actual = pixels(of: bitmap.deviceImage)
+        let actual = bitmap.deviceImage.map(pixels(of:)) ?? []
         let expected = references[bitmap.key] ?? []
         let first = zip(actual, expected).enumerated().first { $0.element.0 != $0.element.1 }?.offset
         #expect(
             actual == expected,
-            "row \(bitmap.key) sizes \(actual.count)/\(expected.count) first difference at byte \(first ?? -1) of row width \(bitmap.deviceImage.width)"
+            "row \(bitmap.key) sizes \(actual.count)/\(expected.count) first difference at byte \(first ?? -1) of row width \(bitmap.deviceImage?.width ?? 0)"
         )
     }
 }

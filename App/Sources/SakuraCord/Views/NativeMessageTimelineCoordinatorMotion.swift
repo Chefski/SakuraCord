@@ -41,9 +41,14 @@ extension NativeMessageTimelineCoordinator {
         /// Once the width stops changing, the canvas lays out for it and
         /// takes the rows back from the motion presenter.
         func motionPresenterDidFinishMotion() {
-            guard motionPresenter.isActive, !WorkspaceLayoutMotion.isMoving,
+            guard motionPresenter.isEngaged, !WorkspaceLayoutMotion.isMoving,
                   scrollView?.window?.inLiveResize != true
             else { return }
+            // Armed for a motion that left this timeline's width alone.
+            guard motionPresenter.isActive else {
+                motionPresenter.end()
+                return
+            }
             guard pendingLayoutWidth != nil else {
                 motionPresenter.end()
                 return
@@ -73,7 +78,7 @@ extension NativeMessageTimelineCoordinator {
         func presentMotionFrame(
             width: CGFloat, viewportSize: CGSize, widthChanged: Bool, sizeChanged: Bool, reflowsWidth: Bool
         ) -> Bool {
-            guard motionPresenter.isActive, !reflowsWidth,
+            guard motionPresenter.isEngaged, !reflowsWidth,
                   widthChanged || sizeChanged || motionPresenter.presentedWidth.map({ abs($0 - width) >= 0.5 }) == true,
                   motionPresenter.present(width: width)
             else { return false }
