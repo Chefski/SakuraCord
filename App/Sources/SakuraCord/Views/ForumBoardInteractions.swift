@@ -89,7 +89,7 @@ extension ForumBoardView {
         }
         let reaction = summary.reaction
         let emojiURL = MessageReactionPresentation.emojiURL(for: reaction, customEmojiURLsByID: model.customEmojiURLsByID)
-        let wasShown = reactionTooltipPostID != nil
+        let wasShown = reactionTooltipPostID == postID
         reactionTooltipPostID = postID
         reactionTooltip.update(
             anchor: anchor,
