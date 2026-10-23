@@ -1174,7 +1174,7 @@ extension NativeMessageTimelineCoordinator {
                     if let index = reusableLayouts[item.identifier],
                        oldItems[index] == item,
                        oldLayouts[index].fontRevision == ProfileNameFontCache.revision,
-                       oldLayouts[index].matchesAuthorPrimaryGuild(for: item, model: parent.model) {
+                       oldLayouts[index].matchesAuthorPrimaryGuild(for: item, source: parent.model) {
                         // Retained live rows are not reads from a layout cache.
                         return oldLayouts[index]
                     }
@@ -1275,7 +1275,7 @@ extension NativeMessageTimelineCoordinator {
             guard let cached = cachedItemLayouts[key],
                   cached.item == item,
                   cached.layout.fontRevision == ProfileNameFontCache.revision,
-                  cached.layout.matchesAuthorPrimaryGuild(for: item, model: parent.model)
+                  cached.layout.matchesAuthorPrimaryGuild(for: item, source: parent.model)
             else { return nil }
             return cached.layout
         }
