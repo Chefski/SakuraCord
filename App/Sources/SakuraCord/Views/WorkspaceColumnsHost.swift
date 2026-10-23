@@ -616,11 +616,12 @@ final class WorkspaceColumnsView: NSView {
             trailingInset: max(0, (conversation?.view.frame.width ?? 0) - conversationFrame.width)
         )
         conversation?.view.alphaValue = 1 - recede
-        // Lay the columns out now, in the frame that moves them: left to the
-        // window, a resized hosting view lays out in a later pass and shows
-        // its new layout a frame late.
-        conversation?.view.layoutSubtreeIfNeeded()
-        for island in islands { island.view.layoutSubtreeIfNeeded() }
+        // Lay the resized columns out now, in the frame that moves them: left
+        // to the window, a resized hosting view lays out in a later pass and
+        // shows its new layout a frame late. A column that only moves has
+        // nothing to lay out; asking laid its hosting view out on every frame.
+        for view in resizedViews { view.layoutSubtreeIfNeeded() }
+        resizedViews.removeAll()
         reportPaneFrame()
         publishGeometry(at: time)
     }
@@ -665,8 +666,13 @@ final class WorkspaceColumnsView: NSView {
     private func setFrame(of view: NSView?, _ frame: CGRect) {
         guard let view else { return }
         let frame = backingAlignedRect(frame, options: .alignAllEdgesNearest)
-        if view.frame != frame { view.frame = frame }
+        guard view.frame != frame else { return }
+        if view.frame.size != frame.size { resizedViews.append(view) }
+        view.frame = frame
     }
+
+    /// Views `layoutColumns` resized, which it lays out before it returns.
+    private var resizedViews: [NSView] = []
 
     private func columnReported(_ frame: CGRect, id: String) {
         guard let index = islands.firstIndex(where: { $0.column.id == id }) else { return }
