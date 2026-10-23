@@ -1,8 +1,10 @@
 import SakuraCordModels
 import SwiftUI
 
-/// The global frame of the workspace's trailing column. The window toolbar
-/// aligns the side chat title to it and file drops split at its edge.
+/// The frame of the workspace's trailing column: global, or in its column's
+/// own space when the column host places it (`paneFrameIsColumnLocal`).
+/// The window toolbar aligns the side chat title to it and file drops
+/// split at its edge.
 struct SupplementaryPaneFramePreferenceKey: PreferenceKey {
     static let defaultValue = CGRect.zero
 
@@ -14,16 +16,34 @@ struct SupplementaryPaneFramePreferenceKey: PreferenceKey {
     }
 }
 
+extension EnvironmentValues {
+    /// Whether a pane reports its frame in its column's own coordinate
+    /// space (`WorkspaceColumnsHost.columnSpace`). Its global frame changed
+    /// on every frame its column slid, laying the column out again.
+    @Entry var paneFrameIsColumnLocal = false
+}
+
 extension View {
     /// - Parameter isEnabled: Whether this view is in the trailing column.
     ///   A full-width side chat is not, but keeps the modifier so its
     ///   identity survives moving there.
     func reportsSupplementaryPaneFrame(isEnabled: Bool = true) -> some View {
-        background {
+        modifier(SupplementaryPaneFrameReporter(isEnabled: isEnabled))
+    }
+}
+
+private struct SupplementaryPaneFrameReporter: ViewModifier {
+    let isEnabled: Bool
+    @Environment(\.paneFrameIsColumnLocal) private var isColumnLocal
+
+    func body(content: Content) -> some View {
+        content.background {
             GeometryReader { proxy in
                 Color.clear.preference(
                     key: SupplementaryPaneFramePreferenceKey.self,
-                    value: isEnabled ? proxy.frame(in: .global) : .zero
+                    value: isEnabled
+                        ? proxy.frame(in: isColumnLocal ? .named(WorkspaceColumnsHost.columnSpace) : .global)
+                        : .zero
                 )
             }
         }

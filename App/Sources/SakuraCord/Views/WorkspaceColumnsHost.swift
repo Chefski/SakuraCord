@@ -37,6 +37,8 @@ struct WorkspaceColumnsHost: NSViewRepresentable {
     }
 
     static let isEnabled = !UserDefaults.standard.bool(forKey: "SakuraCordSwiftUIWorkspaceColumns")
+    /// Each column's own coordinate space, which moves with its island.
+    static let columnSpace = "SakuraCordWorkspaceColumn"
 
     let conversation: AnyView
     /// Back to front: departing columns first, so an arriving one covers them.
@@ -340,7 +342,9 @@ final class WorkspaceColumnsView: NSView {
         for column in spec.columns {
             let root = AnyView(
                 column.content
+                    .environment(\.paneFrameIsColumnLocal, true)
                     .environment(\.self, environment)
+                    .coordinateSpace(.named(WorkspaceColumnsHost.columnSpace))
                     .onPreferenceChange(SupplementaryPaneFramePreferenceKey.self) { [weak self] frame in
                         MainActor.assumeIsolated { self?.columnReported(frame, id: column.id) }
                     }
@@ -666,10 +670,8 @@ final class WorkspaceColumnsView: NSView {
 
     private func columnReported(_ frame: CGRect, id: String) {
         guard let index = islands.firstIndex(where: { $0.column.id == id }) else { return }
-        // Global coordinates are the window's, so they follow the island as
-        // it slides; keep the frame relative to the island.
-        let origin = rootOrigin(of: islands[index].view.frame.origin) ?? .zero
-        islands[index].paneFrame = frame == .zero ? .zero : frame.offsetBy(dx: -origin.x, dy: -origin.y)
+        // In the column's own space, which slides with the island.
+        islands[index].paneFrame = frame
         reportPaneFrame()
     }
 
