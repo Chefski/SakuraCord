@@ -231,6 +231,12 @@ final class WorkspaceColumnsView: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
+    isolated deinit {
+        for island in islands { island.host.discard() }
+        pooledPane?.discard()
+        for host in pooledInspectors.values { host.discard() }
+    }
+
     @objc private func motionDidBegin() {
         needsMeasurement = true
     }
@@ -259,10 +265,10 @@ final class WorkspaceColumnsView: NSView {
             pooledPane = island.host
         } else if !island.column.isSideConversation {
             island.host.isHidden = true
-            pooledInspectors[island.column.id]?.container.removeFromSuperview()
+            pooledInspectors[island.column.id]?.discard()
             pooledInspectors[island.column.id] = island.host
         } else {
-            island.view.removeFromSuperview()
+            island.host.discard()
         }
     }
 
@@ -786,6 +792,14 @@ private final class ColumnHostingView: NSHostingView<AnyView> {
     /// returns to the pane.
     func showsFullWidth(_ isFullWidth: Bool) {
         extent.isPaused = isFullWidth
+    }
+
+    /// Takes the column out of the window. The container holds this view
+    /// as its subview while this view owns the container; leaving it breaks
+    /// that cycle.
+    func discard() {
+        container.removeFromSuperview()
+        removeFromSuperview()
     }
 
     func setContent(_ content: AnyView, isLeaving: Bool) {

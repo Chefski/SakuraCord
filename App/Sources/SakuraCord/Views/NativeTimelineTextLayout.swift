@@ -1480,8 +1480,8 @@ nonisolated enum NativeTimelineTimestamp {
     /// frame of a resize, reuses its timestamp's text.
     private static let headerTexts = Mutex<[HeaderKey: String]>([:])
     /// The day, locale and time zone texts are read in, looked up at most
-    /// once a second.
-    private static let headerContext = Mutex<(context: HeaderContext, expires: TimeInterval)?>(nil)
+    /// once a second of wall-clock time, which a sleeping Mac also passes.
+    private static let headerContext = Mutex<(context: HeaderContext, expires: Date)?>(nil)
 
     private struct HeaderContext: Hashable {
         let today: Date
@@ -1498,18 +1498,17 @@ nonisolated enum NativeTimelineTimestamp {
     }
 
     private static var currentHeaderContext: HeaderContext {
-        let now = ProcessInfo.processInfo.systemUptime
+        let now = Date.now
         return headerContext.withLock { cached in
             if let cached, cached.expires > now { return cached.context }
             let timeZone = TimeZone.current
             var calendar = Calendar.current
             calendar.timeZone = timeZone
-            let date = Date.now
-            let today = calendar.startOfDay(for: date)
+            let today = calendar.startOfDay(for: now)
             let context = HeaderContext(today: today, locale: .current, timeZone: timeZone)
             // Never past midnight, when today's texts become yesterday's.
-            let untilTomorrow = calendar.date(byAdding: .day, value: 1, to: today).map { $0.timeIntervalSince(date) } ?? 0
-            cached = (context, now + min(1, max(0, untilTomorrow)))
+            let tomorrow = calendar.date(byAdding: .day, value: 1, to: today) ?? now
+            cached = (context, min(now.addingTimeInterval(1), tomorrow))
             return context
         }
     }

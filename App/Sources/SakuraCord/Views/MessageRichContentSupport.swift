@@ -42,19 +42,22 @@ nonisolated enum MessageEmbedPresentation {
 
     /// What the content links to, by content: a row laid out again at
     /// another width, as on every frame of a resize, scanned it each time.
-    private static let contentLinkCache = Mutex<[String: ContentLinks]>([:])
+    /// Keyed by the content's exact bytes: equal strings can differ in
+    /// Unicode scalars, which the link parsers tell apart.
+    private static let contentLinkCache = Mutex<[Data: ContentLinks]>([:])
 
     private typealias ContentLinks = (emojiURLs: Set<URL>, deepLinkActions: Set<SakuraCordDeepLinkAction>)
 
     private static func contentLinks(in content: String) -> ContentLinks {
-        if let links = contentLinkCache.withLock({ $0[content] }) { return links }
+        let key = Data(content.utf8)
+        if let links = contentLinkCache.withLock({ $0[key] }) { return links }
         let links: ContentLinks = (
             LinkedImagePresentation(content: content).matchedEmojiURLs,
             Set(SakuraCordDeepLinkPresentation.all(in: content).map(\.action))
         )
         contentLinkCache.withLock { cache in
             if cache.count >= 2_048 { cache.removeAll(keepingCapacity: true) }
-            cache[content] = links
+            cache[key] = links
         }
         return links
     }
