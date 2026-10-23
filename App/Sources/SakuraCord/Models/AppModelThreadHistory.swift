@@ -182,11 +182,6 @@ extension AppModel {
                     anchoredAt: target.map(MessageHistoryAnchor.around) ?? .newest,
                     limit: target == nil ? 100 : 50
                 )
-                // Laying out the first page takes several frames; let the
-                // pane finish sliding in first. Measured, installing it
-                // mid-slide cost the slide hitches and showed no more of the
-                // page in its first frame.
-                await WorkspaceLayoutMotion.untilSettled()
                 try Task.checkCancellation()
                 guard model.isCurrentAccountSession(account),
                       model.isCurrentThreadWindow(request)
