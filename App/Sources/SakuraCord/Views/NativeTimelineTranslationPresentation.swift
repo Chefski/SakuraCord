@@ -18,11 +18,11 @@ nonisolated struct NativeTimelineTranslationPresentation {
 
     @MainActor static func make(
         row: MessageRowPresentation,
-        source: (any NativeTimelineLayoutSource)?,
+        source model: (any NativeTimelineLayoutSource)?,
         isOutgoingBubble: Bool
     ) -> Self? {
         guard row.searchContext == nil, row.pinnedAt == nil, !row.isResource,
-              let entry = source?.messageTranslationPresentation(for: row.message)
+              let entry = model?.messageTranslationPresentation(for: row.message)
         else { return nil }
         switch entry.status {
         case .loading:
@@ -39,7 +39,7 @@ nonisolated struct NativeTimelineTranslationPresentation {
                 attributedText: nil,
                 baseFontSize: 15
             )
-            let value = NativeTimelineTextPresentation.make(message: row.message, plan: plan, source: source)
+            let value = NativeTimelineTextPresentation.make(message: row.message, plan: plan, source: model)
             return Self(
                 requestID: entry.requestID,
                 kind: .translated,
