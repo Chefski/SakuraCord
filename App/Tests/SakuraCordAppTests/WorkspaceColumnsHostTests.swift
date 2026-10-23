@@ -44,27 +44,68 @@ func `a side chat pane keeps its own width after a full-width side chat`(flipsIn
     #expect(conversation?.frame.width == host.bounds.width - paneWidth)
 }
 
+/// A side chat pane reused from the pool reports the same frame in its
+/// column's space as before, which is no change to report. Without its last
+/// report, the reopened pane had no frame: a file dropped over it went to
+/// the parent channel.
+@MainActor
+@Test
+func `a reopened side chat pane reports its frame again`() async throws {
+    // A height no other test uses: measured widths are shared per height.
+    let host = WorkspaceColumnsView(frame: NSRect(x: 0, y: 0, width: 1440, height: 737))
+    let window = NSWindow(
+        contentRect: host.frame, styleMask: [.titled], backing: .buffered, defer: false
+    )
+    window.contentView = host
+    defer { window.contentView = nil }
+    let reported = ReportedFrame()
+    func show(_ columns: [WorkspaceColumnsHost.Column]) async throws {
+        host.apply(
+            spec(columns) { reported.frame = $0 }, environment: EnvironmentValues(), animates: false
+        )
+        host.layoutSubtreeIfNeeded()
+        // Frames are reported on the next turn of the main queue.
+        try await Task.sleep(for: .milliseconds(50))
+    }
+
+    try await show([column(fullWidth: false, reportsFrame: true)])
+    #expect(reported.frame.width == paneWidth)
+    try await show([])
+    try await show([column(fullWidth: false, reportsFrame: true)])
+    #expect(reported.frame.width == paneWidth, "reopened pane \(reported.frame)")
+    #expect(reported.frame.maxX == host.bounds.maxX)
+}
+
+@MainActor
+private final class ReportedFrame {
+    var frame = CGRect.zero
+}
+
 private let paneWidth: CGFloat = 440
 
 @MainActor
-private func spec(_ columns: [WorkspaceColumnsHost.Column]) -> WorkspaceColumnsHost {
+private func spec(
+    _ columns: [WorkspaceColumnsHost.Column],
+    paneFrameChanged: @escaping (CGRect) -> Void = { _ in }
+) -> WorkspaceColumnsHost {
     WorkspaceColumnsHost(
         conversation: AnyView(Color.clear.frame(minWidth: 400, maxWidth: .infinity, maxHeight: .infinity)),
         columns: columns,
         widening: nil,
-        supplementaryPaneFrameChanged: { _ in }
+        supplementaryPaneFrameChanged: paneFrameChanged
     )
 }
 
 @MainActor
-private func column(fullWidth: Bool) -> WorkspaceColumnsHost.Column {
-    WorkspaceColumnsHost.Column(
+private func column(fullWidth: Bool, reportsFrame: Bool = false) -> WorkspaceColumnsHost.Column {
+    let pane = Color.clear.frame(minWidth: 340, idealWidth: paneWidth, maxWidth: paneWidth, maxHeight: .infinity)
+    return WorkspaceColumnsHost.Column(
         id: "side-thread-regression",
         isSideConversation: true,
         isFullWidth: fullWidth,
         isDeparting: false,
         content: fullWidth
             ? AnyView(Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity))
-            : AnyView(Color.clear.frame(minWidth: 340, idealWidth: paneWidth, maxWidth: paneWidth, maxHeight: .infinity))
+            : reportsFrame ? AnyView(pane.reportsSupplementaryPaneFrame()) : AnyView(pane)
     )
 }

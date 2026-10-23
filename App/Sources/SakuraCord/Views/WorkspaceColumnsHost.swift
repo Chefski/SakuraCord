@@ -148,9 +148,6 @@ final class WorkspaceColumnsView: NSView {
         var view: NSView { host.container }
         var column: WorkspaceColumnsHost.Column
         var reveal: SpringTrack
-        /// What the column reports with `SupplementaryPaneFramePreferenceKey`,
-        /// in its hosting view.
-        var paneFrame = CGRect.zero
     }
 
     private var conversation: NSHostingController<AnyView>?
@@ -677,7 +674,7 @@ final class WorkspaceColumnsView: NSView {
     private func columnReported(_ frame: CGRect, id: String) {
         guard let index = islands.firstIndex(where: { $0.column.id == id }) else { return }
         // In the column's own space, which slides with the island.
-        islands[index].paneFrame = frame
+        islands[index].host.paneFrame = frame
         reportPaneFrame()
     }
 
@@ -693,7 +690,7 @@ final class WorkspaceColumnsView: NSView {
     /// the SwiftUI layout did, so the toolbar does not follow the motion.
     private func reportPaneFrame() {
         var frame = CGRect.zero
-        if let island = islands.last(where: { $0.paneFrame != .zero }),
+        if let island = islands.last(where: { $0.host.paneFrame != .zero }),
            let origin = rootOrigin(of: CGPoint(
                x: island.column.isFullWidth ? 0 : bounds.maxX - width(of: island.column),
                y: 0
@@ -702,7 +699,7 @@ final class WorkspaceColumnsView: NSView {
             // On the pixel grid: the frame picks up rounding error as the
             // column moves, and the toolbar lays out again for any change.
             let scale = window?.backingScaleFactor ?? 2
-            let resting = island.paneFrame.offsetBy(dx: origin.x, dy: origin.y)
+            let resting = island.host.paneFrame.offsetBy(dx: origin.x, dy: origin.y)
             frame = CGRect(
                 x: (resting.minX * scale).rounded() / scale,
                 y: (resting.minY * scale).rounded() / scale,
@@ -761,6 +758,11 @@ private final class ColumnHostingView: NSHostingView<AnyView> {
     /// Whether the column is leaving: it shows what it showed when it began
     /// to (`isLeavingWorkspace`) and takes no events.
     private(set) var isLeaving = false
+    /// What the column last reported with `SupplementaryPaneFramePreferenceKey`,
+    /// in its own space. It stays with a pooled host: reused at the same
+    /// size, the column reports the same frame, which is no change and so
+    /// no new report.
+    var paneFrame = CGRect.zero
 
     /// - Parameter sharesExtent: Whether its widths are the same for every
     ///   column of its kind, as a side chat pane's are, so a new one reuses
