@@ -702,12 +702,6 @@ extension NativeMessageTimelineCoordinator {
             let previewNeedsRows = previewsWidth && !previewChanged
                 && previewLayoutWidth != nil && visibleRowsNeedPreview()
             let restoresPreview = !widthChanged && previewLayoutWidth != nil
-            if presentMotionFrame(
-                width: width, viewportSize: viewportSize, widthChanged: widthChanged,
-                sizeChanged: sizeChanged, reflowsWidth: reflowsWidth
-            ) {
-                return true
-            }
             if widthChanged, !reflowsWidth {
                 scheduleRelayoutForWidthChange(width)
             } else if !widthChanged, !appliesWidthImmediately {
@@ -738,9 +732,6 @@ extension NativeMessageTimelineCoordinator {
                 ? visibleAnchor() : nil
 
             isApplyingUpdate = true
-            let endsMotionPresentation = prepareMotionPresenterForSettle(
-                width: width, reflowsWidth: reflowsWidth, restoresPreview: restoresPreview
-            )
             if reflowsWidth {
                 applyImmediateWidthRelayout(
                     width, preparedLayouts: preparedLayouts,
@@ -787,8 +778,6 @@ extension NativeMessageTimelineCoordinator {
                     canvas.display()
                 }
             }
-            // The canvas shows the settled rows in the frame the layers leave.
-            endMotionPresentation(endsMotionPresentation)
             let establishedInitialPosition =
                 applyInitialPositionIfNeeded()
             applyScrollRequestIfNeeded()
@@ -936,12 +925,6 @@ extension NativeMessageTimelineCoordinator {
 
         func applyPendingWidthRelayout() {
             guard let width = pendingLayoutWidth else { return }
-            // The canvas paints the settled rows; let the raster worker
-            // finish its row first so the main thread never waits for it.
-            if motionPresenter.isActive, !motionPresenter.isWorkerIdle {
-                motionPresenter.whenWorkerIdle { [weak self] in self?.applyPendingWidthRelayout() }
-                return
-            }
             widthRelayoutTask = nil
             guard items.count >= NativeTimelineWidthRelayoutPolicy
                 .asynchronousRowThreshold
@@ -983,9 +966,7 @@ extension NativeMessageTimelineCoordinator {
                           self.pendingLayoutWidth == width,
                           self.parent.conversation == sourceConversation
                     else { return }
-                    prepared[index] = self.motionPresenter.preparedLayout(
-                        for: sourceItems[index], at: index, width: width
-                    ) ?? self.layout(for: sourceItems[index], width: width, metrics: metrics)
+                    prepared[index] = self.layout(for: sourceItems[index], width: width, metrics: metrics)
                     if ProcessInfo.processInfo.systemUptime - sliceStart >= 0.0015 {
                         // Give AppKit a run-loop turn to draw. Task.yield() can
                         // immediately resume this main-actor job instead.
@@ -1358,7 +1339,6 @@ extension NativeMessageTimelineCoordinator {
         }
 
         func liveScrollTrackingWillBegin() {
-            motionPresenter.end()
             let interval = Self.performanceSignposter.beginInterval(
                 "TimelineLiveScrollStart"
             )

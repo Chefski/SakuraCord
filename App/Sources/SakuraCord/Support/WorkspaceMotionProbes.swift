@@ -23,13 +23,8 @@ final class WorkspaceMotionProbes {
         /// How long the timeline has spent drawing, and laying out rows, so far.
         let drawMS: Double
         let layoutMS: Double
-        /// The width the frame's rows are laid out at, and whether the
-        /// motion presenter shows the rows.
+        /// The width the frame's rows are laid out at.
         let contentWidth: Double
-        let presenter: Bool
-        /// Main-thread waits for the timeline paint lock so far.
-        let mainLockWaits: Int
-        let longestMainLockWaitMS: Double
     }
 
     struct TimelineCounts {
@@ -38,7 +33,6 @@ final class WorkspaceMotionProbes {
         var drawSeconds: Double
         var layoutSeconds: Double
         var contentWidth: CGFloat = 0
-        var presenter = false
     }
 
     private final class WeakView {
@@ -104,10 +98,7 @@ final class WorkspaceMotionProbes {
                 draws: counts.draws,
                 drawMS: (counts.drawSeconds * 100_000).rounded() / 100,
                 layoutMS: (counts.layoutSeconds * 100_000).rounded() / 100,
-                contentWidth: Double(counts.contentWidth),
-                presenter: counts.presenter,
-                mainLockWaits: NativeTimelinePaintLock.currentStats.mainWaits,
-                longestMainLockWaitMS: NativeTimelinePaintLock.currentStats.longestMainWaitMS
+                contentWidth: Double(counts.contentWidth)
             )
         }
     }

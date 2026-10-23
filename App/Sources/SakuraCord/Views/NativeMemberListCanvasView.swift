@@ -301,8 +301,7 @@ final class NativeMemberListCanvasView: NSView, WindowModalInputParticipant {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        // Never alongside the timeline's raster worker (`NativeTimelinePaintLock`).
-        NativeTimelinePaintLock.withLock { drawMembers(dirtyRect) }
+        drawMembers(dirtyRect)
     }
 
     private func drawMembers(_ dirtyRect: NSRect) {

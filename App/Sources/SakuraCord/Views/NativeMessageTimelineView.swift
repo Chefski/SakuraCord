@@ -362,9 +362,6 @@ final class NativeMessageTimelineCoordinator: NSObject {
         var widthRelayoutTask: Task<Void, Never>?
         var pendingLayoutWidth: CGFloat?
         var previewLayoutWidth: CGFloat?
-        /// Shows the visible rows while a live resize changes the timeline's
-        /// width.
-        lazy var motionPresenter = NativeTimelineMotionPresenter(coordinator: self)
         var previewedRowIdentifiers: Set<NativeMessageTimelineItem.Identifier> = []
         var rowsPreviewedAtCurrentWidth: Set<NativeMessageTimelineItem.Identifier> = []
         var widthRelayoutGeneration: UInt64 = 0
@@ -408,10 +405,7 @@ extension NativeMessageTimelineCoordinator {
                         draws: canvas?.drawCount ?? 0,
                         drawSeconds: canvas?.lifetimeDrawDuration ?? 0,
                         layoutSeconds: self?.lifetimeLayoutDuration ?? 0,
-                        contentWidth: self.map {
-                            $0.motionPresenter.presentedWidth ?? $0.previewLayoutWidth ?? $0.layoutWidth
-                        } ?? 0,
-                        presenter: self?.motionPresenter.presentedWidth != nil
+                        contentWidth: self.map { $0.previewLayoutWidth ?? $0.layoutWidth } ?? 0
                     )
                 }
             }
@@ -421,8 +415,6 @@ extension NativeMessageTimelineCoordinator {
             // The reader's own scrolling always wins over a jump's glide.
             scrollView.onScrollWheel = { [weak self] in
                 self?.cancelGlide()
-                // The presenter's rows hold still; the canvas scrolls.
-                self?.motionPresenter.end()
             }
             scrollView.onToolbarObscuredHeightChange = { [weak self] in
                 self?.updateInsetsForToolbarObscuredHeightChange()
@@ -994,15 +986,6 @@ extension NativeMessageTimelineCoordinator {
                 mediaViewerHighlightedMessageID:
                     parent.model.mediaViewerPresentation?.messageID
             )
-            // The motion presenter shows a snapshot of the rows: new rows or
-            // another conversation go back to the canvas first.
-            if motionPresenter.isActive,
-               parent.conversation != self.parent.conversation
-                || parent.rowsRevision != rowsRevision
-                || parent.presentationRevision != presentationRevision
-            {
-                motionPresenter.end()
-            }
             guard !prepareLayoutsIfNeeded(parent: parent, scrollView: scrollView) else {
                 return
             }
@@ -1038,8 +1021,6 @@ extension NativeMessageTimelineCoordinator {
         }
 
         func stopObserving() {
-            // Removes its overlay and its observer of the columns' path.
-            motionPresenter.end()
             liveScrollViewport = nil
             cancelGlide()
             cancelLayoutPreparation()

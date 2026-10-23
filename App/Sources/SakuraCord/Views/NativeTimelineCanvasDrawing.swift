@@ -1037,11 +1037,8 @@ extension NativeTimelineCanvasView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        // The colour space this canvas's backing store draws in: the
-        // motion presenter converts its rows into it to show the same pixels.
-        if let space = NSGraphicsContext.current?.cgContext.colorSpace { backingColorSpace = space }
         AppPerformanceSignposts.measureSync("TimelineCanvasDraw") {
-            NativeTimelinePaintLock.withLock { drawTimeline(in: dirtyRect) }
+            drawTimeline(in: dirtyRect)
         }
         if let presentedConversationID,
            AppPerformanceSignposts.reportConversationFirstFrame(
@@ -1527,4 +1524,44 @@ extension NativeTimelineCanvasView {
         bitmapCost = 0
     }
 
+}
+
+nonisolated extension NativeTimelineRowPainter {
+    /// Paints a row, or a tile of it, into a new bitmap exactly as the
+    /// timeline canvas caches it.
+    static func rasterize(
+        width: CGFloat,
+        height: CGFloat,
+        scale: CGFloat,
+        tileOrigin: CGFloat = 0,
+        paint: () -> Void
+    ) -> NSBitmapImageRep? {
+        let pixelWidth = max(1, Int(ceil(width * scale)))
+        let pixelHeight = max(1, Int(ceil(height * scale)))
+        guard let representation = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: pixelWidth,
+            pixelsHigh: pixelHeight,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ), let graphics = NSGraphicsContext(bitmapImageRep: representation)
+        else { return nil }
+        NSGraphicsContext.saveGraphicsState()
+        graphics.cgContext.scaleBy(x: scale, y: scale)
+        graphics.cgContext.translateBy(x: 0, y: height)
+        graphics.cgContext.scaleBy(x: 1, y: -1)
+        graphics.cgContext.translateBy(x: 0, y: -tileOrigin)
+        let flippedGraphics = NSGraphicsContext(cgContext: graphics.cgContext, flipped: true)
+        NSGraphicsContext.current = flippedGraphics
+        paint()
+        flippedGraphics.flushGraphics()
+        NSGraphicsContext.restoreGraphicsState()
+        representation.size = NSSize(width: width, height: height)
+        return representation
+    }
 }

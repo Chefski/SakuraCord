@@ -26,7 +26,7 @@ final class NativeMemberForegroundOverlayView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        NativeTimelinePaintLock.withLock { drawForeground() }
+        drawForeground()
     }
 
     private func drawForeground() {
