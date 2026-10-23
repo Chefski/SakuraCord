@@ -1,6 +1,7 @@
 import AppKit
 import MessageRendering
 import SakuraCordModels
+import Synchronization
 
 nonisolated enum DiscordRichMessageMetrics {
     static var maximumWidth: CGFloat { InterfaceScale.metric(520) }
@@ -26,13 +27,7 @@ nonisolated enum MessageEmbedPresentation {
         // every frame of a resize paid for them with none to filter.
         guard !message.embeds.isEmpty, !message.flags.contains(.suppressEmbeds), message.type != .pollResult
         else { return [] }
-        let linkedEmojiURLs =
-            LinkedImagePresentation(content: message.content)
-                .matchedEmojiURLs
-        let sakuraCordDeepLinkActions = Set(
-            SakuraCordDeepLinkPresentation.all(in: message.content)
-                .map(\.action)
-        )
+        let (linkedEmojiURLs, sakuraCordDeepLinkActions) = contentLinks(in: message.content)
         return message.embeds.filter { embed in
             if let url = embed.url,
                let action = SakuraCordDeepLinkPresentation.action(for: url),
@@ -43,6 +38,25 @@ nonisolated enum MessageEmbedPresentation {
             return !(kind(for: embed) == .bareMedia
                 && embed.url.map(linkedEmojiURLs.contains) == true)
         }
+    }
+
+    /// What the content links to, by content: a row laid out again at
+    /// another width, as on every frame of a resize, scanned it each time.
+    private static let contentLinkCache = Mutex<[String: ContentLinks]>([:])
+
+    private typealias ContentLinks = (emojiURLs: Set<URL>, deepLinkActions: Set<SakuraCordDeepLinkAction>)
+
+    private static func contentLinks(in content: String) -> ContentLinks {
+        if let links = contentLinkCache.withLock({ $0[content] }) { return links }
+        let links: ContentLinks = (
+            LinkedImagePresentation(content: content).matchedEmojiURLs,
+            Set(SakuraCordDeepLinkPresentation.all(in: content).map(\.action))
+        )
+        contentLinkCache.withLock { cache in
+            if cache.count >= 2_048 { cache.removeAll(keepingCapacity: true) }
+            cache[content] = links
+        }
+        return links
     }
 
     static func visibleMessageContent(

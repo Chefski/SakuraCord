@@ -1479,31 +1479,50 @@ nonisolated enum NativeTimelineTimestamp {
     /// are read on: a row laid out again at another width, as on every
     /// frame of a resize, reuses its timestamp's text.
     private static let headerTexts = Mutex<[HeaderKey: String]>([:])
+    /// The day, locale and time zone texts are read in, looked up at most
+    /// once a second.
+    private static let headerContext = Mutex<(context: HeaderContext, expires: TimeInterval)?>(nil)
+
+    private struct HeaderContext: Hashable {
+        let today: Date
+        /// The current locale with the user's overrides, such as the hour cycle.
+        let locale: Locale
+        let timeZone: TimeZone
+    }
 
     private struct HeaderKey: Hashable {
         let date: Date
         let format: InterfaceTimestampFormat
         let includesSeconds: Bool
-        let today: Date
-        /// The current locale with the user's overrides, such as the hour cycle.
-        let locale: Locale
-        let timeZone: String
+        let context: HeaderContext
+    }
+
+    private static var currentHeaderContext: HeaderContext {
+        let now = ProcessInfo.processInfo.systemUptime
+        return headerContext.withLock { cached in
+            if let cached, cached.expires > now { return cached.context }
+            let timeZone = TimeZone.current
+            var calendar = Calendar.current
+            calendar.timeZone = timeZone
+            let date = Date.now
+            let today = calendar.startOfDay(for: date)
+            let context = HeaderContext(today: today, locale: .current, timeZone: timeZone)
+            // Never past midnight, when today's texts become yesterday's.
+            let untilTomorrow = calendar.date(byAdding: .day, value: 1, to: today).map { $0.timeIntervalSince(date) } ?? 0
+            cached = (context, now + min(1, max(0, untilTomorrow)))
+            return context
+        }
     }
 
     static func headerText(
         for date: Date,
         settings: InterfaceSettingsSnapshot = .defaults
     ) -> String {
-        let timeZone = TimeZone.autoupdatingCurrent
-        var calendar = Calendar.autoupdatingCurrent
-        calendar.timeZone = timeZone
         let key = HeaderKey(
             date: date,
             format: settings.timestampFormat,
             includesSeconds: settings.includesTimestampSeconds,
-            today: calendar.startOfDay(for: .now),
-            locale: Locale.current,
-            timeZone: timeZone.identifier
+            context: currentHeaderContext
         )
         if let text = headerTexts.withLock({ $0[key] }) { return text }
         let text = InterfaceTimestampFormatter.messageText(

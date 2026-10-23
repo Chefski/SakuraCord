@@ -16,8 +16,15 @@ extension NativeTimelineCanvasView {
         return sendTransitionBlocksInteractions && hit != nil ? self : hit
     }
 
+    /// Whether the pointer's hover is followed: not while scrolling, nor
+    /// while a workspace motion moves the rows under a still pointer, which
+    /// hit-tested their text on every frame. Each resumes hover once done.
+    var tracksHover: Bool {
+        !suppressesHoverPresentation && !WorkspaceLayoutMotion.isMoving
+    }
+
     override func updateTrackingAreas() {
-        guard !suppressesHoverPresentation,
+        guard tracksHover,
               !sendTransitionBlocksInteractions,
               !overlayBlocksInteractions
         else {
@@ -202,7 +209,7 @@ extension NativeTimelineCanvasView {
             return
         }
         guard WindowModalCoordinator.allowsInput(for: self) else { return }
-        guard !suppressesHoverPresentation,
+        guard tracksHover,
               !overlayBlocksInteractions,
               editingMessageID == nil,
               event.trackingArea?.userInfo?["nativeTimelineTrackingKind"]
@@ -251,7 +258,7 @@ extension NativeTimelineCanvasView {
             return
         }
         guard WindowModalCoordinator.allowsInput(for: self) else { return }
-        guard !suppressesHoverPresentation,
+        guard tracksHover,
               !overlayBlocksInteractions,
               editingMessageID == nil
         else {
@@ -1178,7 +1185,7 @@ extension NativeTimelineCanvasView {
             clearPointerHoverTargets()
             return
         }
-        guard WindowModalCoordinator.allowsInput(for: self), !overlayBlocksInteractions, !suppressesHoverPresentation,
+        guard WindowModalCoordinator.allowsInput(for: self), !overlayBlocksInteractions, tracksHover,
               editingMessageID == nil,
               window?.isKeyWindow == true
         else { return }
