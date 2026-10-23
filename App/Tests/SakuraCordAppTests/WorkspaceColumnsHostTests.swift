@@ -59,26 +59,34 @@ func `a reopened side chat pane reports its frame again`() async throws {
     window.contentView = host
     defer { window.contentView = nil }
     let reported = ReportedFrame()
-    func show(_ columns: [WorkspaceColumnsHost.Column]) async throws {
+    func show(_ columns: [WorkspaceColumnsHost.Column]) {
         host.apply(
             spec(columns) { reported.frame = $0 }, environment: EnvironmentValues(), animates: false
         )
         host.layoutSubtreeIfNeeded()
-        // Frames are reported on the next turn of the main queue.
-        try await Task.sleep(for: .milliseconds(50))
     }
 
-    try await show([column(fullWidth: false, reportsFrame: true)])
-    #expect(reported.frame.width == paneWidth)
-    try await show([])
-    try await show([column(fullWidth: false, reportsFrame: true)])
-    #expect(reported.frame.width == paneWidth, "reopened pane \(reported.frame)")
-    #expect(reported.frame.maxX == host.bounds.maxX)
+    show([column(fullWidth: false, reportsFrame: true)])
+    #expect(await reported.becomes { $0.width == paneWidth })
+    show([])
+    #expect(await reported.becomes { $0 == .zero })
+    show([column(fullWidth: false, reportsFrame: true)])
+    #expect(await reported.becomes { $0.width == paneWidth && $0.maxX == host.bounds.maxX }, "\(reported.frame)")
 }
 
 @MainActor
 private final class ReportedFrame {
     var frame = CGRect.zero
+
+    /// Whether the reported frame comes to satisfy `condition`: reports
+    /// arrive on a later turn of the main queue.
+    func becomes(_ condition: (CGRect) -> Bool) async -> Bool {
+        for _ in 0 ..< 200 {
+            if condition(frame) { return true }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        return condition(frame)
+    }
 }
 
 private let paneWidth: CGFloat = 440

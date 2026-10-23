@@ -342,9 +342,6 @@ final class WorkspaceColumnsView: NSView {
                     .environment(\.paneFrameIsColumnLocal, true)
                     .environment(\.self, environment)
                     .coordinateSpace(.named(WorkspaceColumnsHost.columnSpace))
-                    .onPreferenceChange(SupplementaryPaneFramePreferenceKey.self) { [weak self] frame in
-                        MainActor.assumeIsolated { self?.columnReported(frame, id: column.id) }
-                    }
             )
             if var island = islands.first(where: { $0.column.id == column.id }) {
                 // A column marked leaving before the change stays so until
@@ -367,6 +364,9 @@ final class WorkspaceColumnsView: NSView {
             }
         }
         islands = updated
+        for island in islands {
+            island.host.paneFrameChanged = { [weak self] host in self?.columnReported(by: host) }
+        }
         var below: NSView? = conversation.map { _ in conversationClip }
         for island in islands {
             let view = island.view
@@ -671,10 +671,10 @@ final class WorkspaceColumnsView: NSView {
     /// Views `layoutColumns` resized, which it lays out before it returns.
     private var resizedViews: [NSView] = []
 
-    private func columnReported(_ frame: CGRect, id: String) {
-        guard let index = islands.firstIndex(where: { $0.column.id == id }) else { return }
-        // In the column's own space, which slides with the island.
-        islands[index].host.paneFrame = frame
+    /// A pooled column keeps its report for when it returns, but only a
+    /// placed one reports to the toolbar.
+    private func columnReported(by host: ColumnHostingView) {
+        guard islands.contains(where: { $0.host === host }) else { return }
         reportPaneFrame()
     }
 
@@ -759,10 +759,11 @@ private final class ColumnHostingView: NSHostingView<AnyView> {
     /// to (`isLeavingWorkspace`) and takes no events.
     private(set) var isLeaving = false
     /// What the column last reported with `SupplementaryPaneFramePreferenceKey`,
-    /// in its own space. It stays with a pooled host: reused at the same
-    /// size, the column reports the same frame, which is no change and so
-    /// no new report.
-    var paneFrame = CGRect.zero
+    /// in its own space, kept while it is pooled too: reused at the size it
+    /// reported last, the column reports no change, and so nothing new.
+    private(set) var paneFrame = CGRect.zero
+    /// Called after `paneFrame` changes.
+    var paneFrameChanged: ((ColumnHostingView) -> Void)?
 
     /// - Parameter sharesExtent: Whether its widths are the same for every
     ///   column of its kind, as a side chat pane's are, so a new one reuses
@@ -799,7 +800,15 @@ private final class ColumnHostingView: NSHostingView<AnyView> {
         self.isLeaving = isLeaving
         rootView = AnyView(
             ColumnMeasuringLayout(extent: extent) {
-                content.environment(\.isLeavingWorkspace, isLeaving)
+                content
+                    .environment(\.isLeavingWorkspace, isLeaving)
+                    .onPreferenceChange(SupplementaryPaneFramePreferenceKey.self) { [weak self] frame in
+                        MainActor.assumeIsolated {
+                            guard let self else { return }
+                            self.paneFrame = frame
+                            self.paneFrameChanged?(self)
+                        }
+                    }
             }
         )
     }
