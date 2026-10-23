@@ -1481,7 +1481,14 @@ nonisolated enum NativeTimelineTimestamp {
     private static let headerTexts = Mutex<[HeaderKey: String]>([:])
     /// The day, locale and time zone texts are read in, looked up at most
     /// once a second of wall-clock time, which a sleeping Mac also passes.
-    private static let headerContext = Mutex<(context: HeaderContext, expires: Date)?>(nil)
+    private static let headerContext = Mutex<HeaderContextLookup?>(nil)
+
+    private struct HeaderContextLookup {
+        let context: HeaderContext
+        /// When it was looked up, and when it is looked up again.
+        let created: Date
+        let expires: Date
+    }
 
     private struct HeaderContext: Hashable {
         let today: Date
@@ -1500,7 +1507,8 @@ nonisolated enum NativeTimelineTimestamp {
     private static var currentHeaderContext: HeaderContext {
         let now = Date.now
         return headerContext.withLock { cached in
-            if let cached, cached.expires > now { return cached.context }
+            // A clock set back leaves the window too.
+            if let cached, cached.created <= now, now < cached.expires { return cached.context }
             let timeZone = TimeZone.current
             var calendar = Calendar.current
             calendar.timeZone = timeZone
@@ -1508,7 +1516,7 @@ nonisolated enum NativeTimelineTimestamp {
             let context = HeaderContext(today: today, locale: .current, timeZone: timeZone)
             // Never past midnight, when today's texts become yesterday's.
             let tomorrow = calendar.date(byAdding: .day, value: 1, to: today) ?? now
-            cached = (context, min(now.addingTimeInterval(1), tomorrow))
+            cached = HeaderContextLookup(context: context, created: now, expires: min(now.addingTimeInterval(1), tomorrow))
             return context
         }
     }
@@ -1678,7 +1686,7 @@ extension NativeTimelineRowLayout {
         let fontName: String
         let pointSize: CGFloat
     }
-    /// Thread-safe: rows lay out on main and paint on worker threads.
+    /// Thread-safe, as the layouts that measure with it are `nonisolated`.
     nonisolated private static let measuredTextWidths = Mutex([TextWidthKey: CGFloat]())
 
     nonisolated static func measuredTextWidth(_ text: String, font: NSFont) -> CGFloat {

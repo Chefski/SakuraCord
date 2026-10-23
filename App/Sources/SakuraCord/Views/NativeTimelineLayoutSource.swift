@@ -340,8 +340,4 @@ private struct AppModelMentionResolver {
         guard let targetGuildID, let sourceGuildID else { return false }
         return targetGuildID != sourceGuildID
     }
-
-    func label(_ mention: RenderedMention) -> String {
-        presentation(mention).label
-    }
 }

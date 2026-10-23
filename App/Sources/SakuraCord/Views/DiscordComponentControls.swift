@@ -196,8 +196,7 @@ nonisolated enum ComponentUnicodeEmojiBatchGenerator {
     }
 }
 
-/// Thread-safe: rows paint on worker threads while a column moves; one
-/// lock covers the cache and its rendering.
+/// Thread-safe: one lock covers the cache and its rendering.
 nonisolated enum ComponentUnicodeEmojiRenderer {
     private static let lock = NSRecursiveLock()
     nonisolated(unsafe) private static var cache: [String: NSImage] = [:]

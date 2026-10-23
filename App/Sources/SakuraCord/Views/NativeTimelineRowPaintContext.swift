@@ -2,7 +2,7 @@ import AppKit
 import SakuraCordModels
 
 /// What timeline rows read from the app while they paint, gathered on the
-/// main thread so rows can also paint on worker threads.
+/// main thread.
 ///
 /// The row painter reads `current` wherever it once read `AppModel`. Callers
 /// that rasterize rows set it around the paint; a caller on the main thread
@@ -28,17 +28,12 @@ nonisolated final class NativeTimelineRowPaintContext: @unchecked Sendable {
     private let reactionCreations: Set<MessageID>
     private let pollVotes: Set<MessageID>
     private let pollVoteRemovals: Set<MessageID>
-    /// The loaded images the rows show, for a paint on a worker thread,
-    /// which cannot read the media store.
-    private let mediaImages: [NativeTimelineMediaKey: NSImage]
 
     @MainActor
     init(
         model: AppModel,
-        items: some Sequence<NativeMessageTimelineItem>,
-        mediaImages: [NativeTimelineMediaKey: NSImage] = [:]
+        items: some Sequence<NativeMessageTimelineItem>
     ) {
-        self.mediaImages = mediaImages
         currentUserID = model.currentUser?.id
         underlinesLinks = model.accessibilitySettings.underlinesLinks
         roleColorDisplay = model.accessibilitySettings.roleColorDisplay
@@ -131,10 +126,6 @@ nonisolated final class NativeTimelineRowPaintContext: @unchecked Sendable {
 
     func canUpdatePollVote(on message: Message, removing: Bool = false) -> Bool {
         (removing ? pollVoteRemovals : pollVotes).contains(message.id)
-    }
-
-    func mediaImage(for key: NativeTimelineMediaKey) -> NSImage? {
-        mediaImages[key]
     }
 
     func isVoiceMessageActive(_ id: VoiceMessagePlaybackID) -> Bool {

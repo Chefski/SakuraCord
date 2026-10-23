@@ -336,10 +336,6 @@ nonisolated extension NativeTimelineRowPainter {
         guard frame.width > 0, frame.height > 0,
               let context = NSGraphicsContext.current?.cgContext
         else { return }
-        // Core Text layout objects stay on one thread: the layouts'
-        // framesetters are cached for the main thread's, and the motion
-        // presenter's worker paints rows with its own.
-        let framesetter = Thread.isMainThread ? framesetter : CTFramesetterCreateWithAttributedString(value)
         let (drawingValue, drawingFramesetter) = preparedDrawingText(
             value,
             framesetter: framesetter,

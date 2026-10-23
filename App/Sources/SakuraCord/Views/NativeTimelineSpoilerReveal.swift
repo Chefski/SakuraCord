@@ -89,7 +89,7 @@ nonisolated struct NativeTimelineTextSpoilerRevealKey: Hashable {
     let rangeLocation: Int
 }
 
-/// Changed only on the main thread; a worker paints from a `snapshot()`.
+/// Changed only on the main thread.
 nonisolated final class NativeTimelineSpoilerRevealStore: @unchecked Sendable {
     var revealedMedia: Set<NativeTimelineComponentRevealKey> = []
     var revealedText: Set<NativeTimelineTextSpoilerRevealKey> = []

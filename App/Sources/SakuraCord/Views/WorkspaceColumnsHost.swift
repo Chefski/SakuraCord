@@ -507,24 +507,20 @@ final class WorkspaceColumnsView: NSView {
     /// The width at `time` of the column that holds `view`, on the pixel
     /// grid, as `layoutColumns` will place it; nil for a column whose width
     /// the motion does not change.
-    private func columnWidth(
-        of view: NSView, at time: CFTimeInterval, provisionalStart: CFTimeInterval, tracks: Tracks? = nil
-    ) -> CGFloat? {
-        let tracks = tracks ?? currentTracks
+    private func columnWidth(of view: NSView, at time: CFTimeInterval) -> CGFloat? {
         if let conversation = conversation?.view, view.isDescendant(of: conversation) {
-            return conversationWidth(at: time, provisionalStart: provisionalStart, tracks: tracks)
+            return conversationWidth(at: time, provisionalStart: time)
         }
         guard let fullWidth = islands.last(where: \.column.isFullWidth), view.isDescendant(of: fullWidth.view)
         else { return nil }
         let paneWidth = max(paneWidth, ChatChromeMetrics.sideConversationMinimumWidth)
         var inspectorCovered: CGFloat = 0
         for island in islands where !island.column.isFullWidth && !island.column.isSideConversation {
-            let reveal = tracks.reveals[island.column.id] ?? island.reveal
-            let shown = width(of: island.column) * reveal.value(at: time, provisionalStart: provisionalStart)
+            let shown = width(of: island.column) * island.reveal.value(at: time, provisionalStart: time)
             inspectorCovered = max(inspectorCovered, shown)
         }
         let trailingEdge = bounds.maxX - inspectorCovered
-        let recede = tracks.widening?.value(at: time, provisionalStart: provisionalStart) ?? 1
+        let recede = widening?.value(at: time, provisionalStart: time) ?? 1
         let width = paneWidth + (trailingEdge - paneWidth) * recede
         return backingAlignedRect(
             CGRect(x: trailingEdge - width, y: 0, width: width, height: bounds.height), options: .alignAllEdgesNearest
@@ -533,14 +529,13 @@ final class WorkspaceColumnsView: NSView {
 
     /// The conversation's width at `time`, on the pixel grid, as
     /// `layoutColumns` will place it.
-    private func conversationWidth(at time: CFTimeInterval, provisionalStart: CFTimeInterval, tracks: Tracks) -> CGFloat {
+    private func conversationWidth(at time: CFTimeInterval, provisionalStart: CFTimeInterval) -> CGFloat {
         var covered: CGFloat = 0
         if islands.contains(where: \.column.isFullWidth) {
             covered = max(paneWidth, ChatChromeMetrics.sideConversationMinimumWidth)
         } else {
             for island in islands {
-                let reveal = tracks.reveals[island.column.id] ?? island.reveal
-                let shown = width(of: island.column) * reveal.value(at: time, provisionalStart: provisionalStart)
+                let shown = width(of: island.column) * island.reveal.value(at: time, provisionalStart: provisionalStart)
                 covered = max(covered, shown)
             }
         }
@@ -548,23 +543,10 @@ final class WorkspaceColumnsView: NSView {
         return backingAlignedRect(frame, options: .alignAllEdgesNearest).width
     }
 
-    /// The columns' motions, or ones they are about to make.
-    private struct Tracks {
-        var reveals: [String: SpringTrack] = [:]
-        var widening: SpringTrack?
-    }
-
-    private var currentTracks: Tracks {
-        Tracks(
-            reveals: Dictionary(islands.map { ($0.column.id, $0.reveal) }, uniquingKeysWith: { _, last in last }),
-            widening: widening
-        )
-    }
-
     /// Lets a timeline that a column slides over follow the column.
     private func publishWidthPath(at time: CFTimeInterval) {
-        WorkspaceConversationWidthPath.shared.update(frameTime: time, isMoving: isAnimating(at: time)) { [weak self] view, time in
-            self?.columnWidth(of: view, at: time, provisionalStart: time)
+        WorkspaceConversationWidthPath.shared.update(isMoving: isAnimating(at: time)) { [weak self] view in
+            self?.columnWidth(of: view, at: time)
         }
     }
 
@@ -619,7 +601,7 @@ final class WorkspaceColumnsView: NSView {
         if let host = conversation?.view, movesOnlyInspectors(at: time),
            WorkspaceConversationWidthPath.shared.hasFollower(in: host)
         {
-            let settled = conversationWidth(at: time + 60, provisionalStart: time, tracks: currentTracks)
+            let settled = conversationWidth(at: time + 60, provisionalStart: time)
             hostFrame.size.width = min(bounds.width, max(hostFrame.width, settled, host.frame.width))
         }
         setFrame(of: conversationClip, CGRect(
@@ -730,9 +712,6 @@ final class WorkspaceColumnsView: NSView {
     }
 }
 
-/// Holds a hosting view and moves it: a hosting view that moves updates its
-/// view graph, as anything in it may depend on where it is in the window,
-/// on every frame of a motion. Its subviews fill it.
 /// Clips the conversation without resizing it (`WorkspaceColumnsView`).
 private final class ConversationClipView: NSView {
     override init(frame: NSRect) {
@@ -751,6 +730,9 @@ private final class ConversationClipView: NSView {
     override var isFlipped: Bool { true }
 }
 
+/// Holds a hosting view and moves it: a hosting view that moves updates its
+/// view graph, as anything in it may depend on where it is in the window,
+/// on every frame of a motion. Its subviews fill it.
 final class MovingHostContainerView: NSView {
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
@@ -934,10 +916,9 @@ final class WorkspaceConversationWidthPath {
     /// while they move, and once as they stop.
     static let didAdvance = Notification.Name("SakuraCordWorkspaceWidthPathDidAdvance")
 
-    /// The frame time the columns were last placed for.
-    private(set) var frameTime: CFTimeInterval = 0
     private(set) var isMoving = false
-    private var width: (NSView, CFTimeInterval) -> CGFloat? = { _, _ in nil }
+    /// The width, on the last placed frame, of the column holding a view.
+    private var width: (NSView) -> CGFloat? = { _ in nil }
     /// Timelines that follow the path rather than their frame.
     private let followers = NSHashTable<NSView>.weakObjects()
 
@@ -956,9 +937,8 @@ final class WorkspaceConversationWidthPath {
         }
     }
 
-    func update(frameTime: CFTimeInterval, isMoving: Bool, width: @escaping (NSView, CFTimeInterval) -> CGFloat?) {
+    func update(isMoving: Bool, width: @escaping (NSView) -> CGFloat?) {
         let stops = !isMoving && self.isMoving
-        self.frameTime = frameTime
         self.isMoving = isMoving
         self.width = width
         // Before the columns are placed for this frame: a timeline whose
@@ -969,6 +949,6 @@ final class WorkspaceConversationWidthPath {
     /// The width of the column holding `view` on the last placed frame;
     /// nil if the motion does not change it.
     func width(of view: NSView) -> CGFloat? {
-        width(view, frameTime)
+        width(view)
     }
 }

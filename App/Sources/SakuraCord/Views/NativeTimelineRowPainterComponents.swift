@@ -9,7 +9,7 @@ import SakuraCordModels
 import SwiftUI
 import Synchronization
 
-/// Thread-safe: rows paint on worker threads while a column moves.
+/// Thread-safe, as the painters that read it are `nonisolated`.
 nonisolated enum NativeTimelineSystemSymbolCache {
     private struct ConfiguredKey: Hashable {
         let name: String
@@ -1470,20 +1470,14 @@ nonisolated extension NativeTimelineRowPainter {
             .fill()
     }
 
-    /// On the main thread, from the media store; on a worker, from the
-    /// images the paint context resolved before the paint.
+    /// From the media store; rows paint on the main thread.
     static func mediaImage(
         for key: NativeTimelineMediaKey
     ) -> NSImage? {
-        guard Thread.isMainThread else {
-            return NativeTimelineRowPaintContext.current?.mediaImage(for: key)
-        }
-        nonisolated(unsafe) var image: NSImage?
         MainActor.assumeIsolated {
-            image = NativeTimelineMediaStore.shared.firstAnimatedFrame(for: key)
+            NativeTimelineMediaStore.shared.firstAnimatedFrame(for: key)
                 ?? NativeTimelineMediaStore.shared.image(for: key)
         }
-        return image
     }
 
     static func drawImage(
