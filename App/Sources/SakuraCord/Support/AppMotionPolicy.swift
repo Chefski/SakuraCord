@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 
 /// The app-owned motion the reader can turn off in Settings > Accessibility.
 nonisolated enum AppMotionCategory: Sendable {
@@ -54,8 +55,6 @@ extension AccessibilitySettingsSnapshot {
         }
     }
 }
-
-import SwiftUI
 
 extension EnvironmentValues {
     /// Whether the reader turned off sidebar motion, or all motion, in the
