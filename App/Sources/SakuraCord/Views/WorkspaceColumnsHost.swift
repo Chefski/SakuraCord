@@ -609,8 +609,9 @@ final class WorkspaceColumnsView: NSView {
         }
         // The host's width jumps only where this optimization begins (a
         // closing list widens it at once) or ends (it contracts on the
-        // settling frame); every other frame of a motion moves it by its path.
-        let handsOffHost = (retainsHost || retainsHostWidth)
+        // settling frame). While it lasts, the host may still follow the
+        // window or sidebar, which stays an ordinary deferred resize.
+        let handsOffHost = retainsHost != retainsHostWidth
             && abs((conversation?.view.frame.width ?? 0) - hostFrame.width) >= 0.5
         retainsHostWidth = retainsHost
         setFrame(of: conversationClip, CGRect(
