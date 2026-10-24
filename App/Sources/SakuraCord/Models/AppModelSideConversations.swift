@@ -218,9 +218,18 @@ extension AppModel {
 
     /// The motion categories of opening, closing or widening a side chat: the
     /// member list or search results it takes the place of, or returns, move
-    /// too.
+    /// too: only where this page shows one beside a conversation without the
+    /// side chat, which is what the pane covers or gives back.
     var sideChatMotionCategories: [AppMotionCategory] {
-        showInspector || isMessageSearchVisible ? [.sideChats, .sidebar] : [.sideChats]
+        let withoutSideChat = WorkspacePresentation(
+            guildPage: selectedGuildID == nil ? nil : guildWorkspacePage,
+            isFriendsPresented: isFriendsPresented,
+            channelKind: selectedChannel?.kind,
+            sideConversation: nil,
+            showsMessageSearch: isMessageSearchVisible,
+            showsInspector: showInspector
+        )
+        return withoutSideChat.supplementaryPane == nil ? [.sideChats] : [.sideChats, .sidebar]
     }
 
     /// The motion categories of showing or hiding the member list or search

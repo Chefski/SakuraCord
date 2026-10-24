@@ -243,7 +243,7 @@ extension NativeTimelineCanvasView {
         let previous = rowDisclosure?.key == key ? rowDisclosure : nil
         // Reversing the same group continues from where it is; another group snaps to its end.
         if previous == nil { finishDisclosure() } else { rowDisclosure = nil }
-        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+        guard AppMotionPolicy.animatesUncategorized,
               let headerIndex = disclosureHeaderIndex(for: key),
               displayedRowOrigin(at: headerIndex) < visibleRect.maxY,
               displayedRowOrigin(at: headerIndex) + layouts[headerIndex].height > visibleRect.minY
