@@ -146,7 +146,7 @@ struct WorkspacePresentation: Equatable {
         // including a full-width thread opened from a result.
         if sideConversation?.isFullWidth == true {
             primary = .fullWidthThread
-            supplementaryPane = Self.trailingPane(showsMessageSearch, showsInspector)
+            supplementaryPane = Self.channelPane(nil, showsMessageSearch, showsInspector)
             return
         }
         let sidePane = sideConversation.map(SupplementaryPane.sideConversation)
@@ -186,10 +186,5 @@ struct WorkspacePresentation: Equatable {
     ) -> SupplementaryPane? {
         if showsMessageSearch { return .messageSearch }
         return sidePane ?? (showsInspector ? .memberInspector : nil)
-    }
-
-    private static func trailingPane(_ showsMessageSearch: Bool, _ showsInspector: Bool) -> SupplementaryPane? {
-        if showsMessageSearch { return .messageSearch }
-        return showsInspector ? .memberInspector : nil
     }
 }
