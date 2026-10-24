@@ -203,9 +203,11 @@ write_test_plist 1 release
 sakuracord_verify_development_launch >/dev/null
 write_test_plist 1 release 1
 assert_launch_refused "update-enabled release bundle with insecure credentials"
+write_test_plist 1 release 0
 SAKURACORD_INSECURE_DEBUG_CREDENTIALS=1
 assert_launch_refused "release bundle with explicit insecure environment override"
 unset SAKURACORD_INSECURE_DEBUG_CREDENTIALS
+write_test_plist 1 release 0
 sakuracord_set_persistent_debug_credentials false
 assert_launch_refused "release bundle with insecure credentials while machine preference is off"
 
