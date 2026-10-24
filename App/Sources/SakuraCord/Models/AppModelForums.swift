@@ -617,27 +617,6 @@ extension AppModel {
         return true
     }
 
-    func deleteForumPost(_ post: ForumPost) async {
-        guard threadActionPolicy(post.thread).canDelete else {
-            forumActionError = "You do not have permission to delete this post."
-            return
-        }
-        forumActionError = nil
-        let session = accountSession()
-        do {
-            try await session.provider.deleteForumPost(post)
-            guard isCurrentAccountSession(session) else { return }
-            removeForumPost(post.id)
-            if openThread?.id == post.id {
-                closeThread()
-            }
-            forumActionError = nil
-        } catch {
-            guard isCurrentAccountSession(session) else { return }
-            forumActionError = error.localizedDescription
-        }
-    }
-
     func dismissForumActionError() {
         forumActionError = nil
     }
