@@ -58,7 +58,7 @@ struct ThreadPolicyCase: Sendable, CustomTestStringConvertible {
     var isLocked = false
     var permissions: UInt64
     var kind = ChannelKindValue.text
-    /// read, rename, close, reopen, delete, membership, notifications, lock
+    /// read, rename, close, reopen, delete, membership, notifications, manage
     var expected: [Bool]
 }
 
@@ -100,7 +100,7 @@ func `thread actions follow first-party ownership, lock and archive rules`(_ val
     )
     #expect([
         policy.canRead, policy.canRename, policy.canClose, policy.canReopen,
-        policy.canDelete, policy.canChangeMembership, policy.canChangeNotifications, policy.canLock,
+        policy.canDelete, policy.canChangeMembership, policy.canChangeNotifications, policy.canManage,
     ] == value.expected)
 }
 

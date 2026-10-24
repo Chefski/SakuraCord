@@ -126,7 +126,7 @@ struct ThreadActionsMenu {
             management.append(ThreadMenuEntry(
                 id: "lock", title: thread.isLocked ? "Unlock \(noun)" : "Lock \(noun)",
                 systemImage: thread.isLocked ? "lock.open.fill" : "lock.fill",
-                content: Self.guarded(model, thread, \.canLock) { model.updateThread(thread, mutation: .locked(!thread.isLocked)) }
+                content: Self.guarded(model, thread, \.canManage) { model.updateThread(thread, mutation: .locked(!thread.isLocked)) }
             ))
         }
         if !management.isEmpty { sections.append(management) }

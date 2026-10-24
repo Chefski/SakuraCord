@@ -126,7 +126,6 @@ public struct ThreadActionPolicy: Equatable, Sendable {
     public var canChangeMembership = false
     public var canChangeNotifications = false
 
-    public var canLock: Bool { canManage }
     /// Close for an open thread, Reopen for an archived one.
     public var canChangeArchive: Bool { isArchived ? canReopen : canClose }
 
@@ -184,7 +183,7 @@ public struct ThreadActionPolicy: Equatable, Sendable {
     }
 
     /// User-authored message types that can start a thread.
-    public static let threadStarterMessageTypes: Set<Int> = [0, 19, 20, 23, 26, 41, 45, 47, 68]
+    private static let threadStarterMessageTypes: Set<Int> = [0, 19, 20, 23, 26, 41, 45, 47, 68]
 
     /// Starting a public thread from a confirmed message posted directly in
     /// `parent`. Messages inside threads or voice-channel chats never qualify,
