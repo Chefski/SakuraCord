@@ -215,18 +215,21 @@ final class WorkspaceTitlebarView: NSView {
                 self.groups[group.id] = views
                 return views
             }()
-            let probe = group.id == WorkspaceTitlebar.conversationID ? "tb.conversation" : "tb.side"
             views.title.setContent(
                 AnyView(
                     group.title
-                        .workspaceMotionProbe("\(probe).title")
+                        .workspaceMotionProbe(
+                            (group.id == WorkspaceTitlebar.conversationID ? "tb.conversation" : "tb.side") + ".title"
+                        )
                         .environment(\.self, environment)
                 )
             )
             views.actions.setContent(
                 AnyView(
                     group.actions
-                        .workspaceMotionProbe("\(probe).actions")
+                        .workspaceMotionProbe(
+                            (group.id == WorkspaceTitlebar.conversationID ? "tb.conversation" : "tb.side") + ".actions"
+                        )
                         .environment(\.self, environment)
                 )
             )
