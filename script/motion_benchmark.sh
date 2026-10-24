@@ -118,7 +118,7 @@ fi
 label="${label:-$configuration}"
 output="$root/.build/performance/motion/$label-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$output"
-trace_marker=""
+trace_scratch=""
 trace_pid=""
 trace_recorded=0
 if [[ -n "$trace" ]]; then
@@ -126,8 +126,6 @@ if [[ -n "$trace" ]]; then
         echo "Another xctrace process is active; refusing an ambiguous trace." >&2
         exit 3
     fi
-    trace_marker="$output/.trace-start"
-    touch "$trace_marker"
 fi
 
 # A machine-wide build lock directory, when the machine has one, that builds
@@ -158,20 +156,13 @@ stop_app() {
     echo "The benchmark app did not exit." >&2
     return 1
 }
-# Remove the trace bundle and any Instruments temporary files this run created
-# (files newer than the marker made before recording).
+# Remove the trace bundle and the private scratch folder xctrace used as its
+# temporary directory. Nothing outside this run's output folder is touched.
 discard_trace_files() {
     [[ "$trace_recorded" == 1 ]] || return 0
     rm -rf "$output/trace.trace"
-    # Temporary files can only be attributed to this run while no other
-    # recording is active.
-    pgrep -x xctrace >/dev/null && return 0
-    local directory
-    for directory in /private/var/folders/*/*/T "${TMPDIR:-/tmp}"; do
-        [[ -d "$directory" ]] || continue
-        find "$directory" -maxdepth 1 -type f -name 'instruments*.ktrace' \
-            -newer "$trace_marker" -delete 2>/dev/null || true
-    done
+    [[ -n "$trace_scratch" ]] && rm -rf "$trace_scratch"
+    return 0
 }
 export_trace_tables() {
     local trace_file="$1" schema
@@ -202,7 +193,10 @@ record_trace() {
         return 1
     fi
     echo "Tracing $executable_name ($pid) with $trace for ${trace_seconds}s…"
-    xcrun xctrace record --template "$trace" --attach "$pid" \
+    trace_scratch="$output/xctrace-scratch"
+    rm -rf "$trace_scratch"
+    mkdir -p "$trace_scratch"
+    TMPDIR="$trace_scratch/" xcrun xctrace record --template "$trace" --attach "$pid" \
         --time-limit "${trace_seconds}s" --output "$output/trace.trace" \
         > "$output/xctrace.log" 2>&1 &
     trace_pid=$!
