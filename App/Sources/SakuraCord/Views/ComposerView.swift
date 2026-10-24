@@ -1533,7 +1533,7 @@ private extension ComposerView {
     }
 
     var animatesChromeResize: Bool {
-        !reduceMotion && !isClearingForSend
+        !reduceMotion && model.animates([]) && !isClearingForSend
     }
 
     /// The timeline animates a sent message out of the field, as a bubble or

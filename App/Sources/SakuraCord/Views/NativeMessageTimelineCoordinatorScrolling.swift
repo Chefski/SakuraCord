@@ -1623,7 +1623,7 @@ extension NativeMessageTimelineCoordinator {
             else { return }
             let glides = request.isAnimated
                 && initialPositionConversation == parent.conversation
-                && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+                && AppMotionPolicy.animatesUncategorized
             let didScroll = glides
                 ? glide(to: request.target, in: scrollView)
                 : scroll(to: request.target, in: scrollView)

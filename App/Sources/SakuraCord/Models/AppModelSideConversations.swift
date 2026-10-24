@@ -216,6 +216,13 @@ extension AppModel {
         }
     }
 
+    /// The motion categories of opening, closing or widening a side chat: the
+    /// member list or search results it takes the place of, or returns, move
+    /// too.
+    var sideChatMotionCategories: [AppMotionCategory] {
+        showInspector || isMessageSearchVisible ? [.sideChats, .sidebar] : [.sideChats]
+    }
+
     /// The motion categories of showing or hiding the member list or search
     /// results: a side chat they take the place of, or return, moves too.
     var inspectorMotionCategories: [AppMotionCategory] {

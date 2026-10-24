@@ -26,6 +26,12 @@ enum AppMotionPolicy {
         animates([category], settings: settings)
     }
 
+    /// Whether motion that belongs to no category plays: only macOS Reduce
+    /// Motion and the master switch turn it off.
+    static var animatesUncategorized: Bool {
+        animates([], settings: settings)
+    }
+
     /// Whether every one of `categories` plays under `settings`.
     static func animates(
         _ categories: [AppMotionCategory],

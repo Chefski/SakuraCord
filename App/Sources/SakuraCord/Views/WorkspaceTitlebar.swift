@@ -193,6 +193,7 @@ final class WorkspaceTitlebarView: NSView {
         // as they were: updates within the change that closes it can come
         // before the column is listed as leaving.
         let ids = Set(groups.map(\.id))
+        presentedGroupIDs = ids
         let gone = self.order.filter { !ids.contains($0) && $0 != WorkspaceTitlebar.conversationID }
         // Without a motion, one side chat replaced another in the same pane:
         // its items take over the old ones in place.
@@ -360,9 +361,17 @@ final class WorkspaceTitlebarView: NSView {
     }
 
     /// How much of the search field shows: none beside a thread pane, which
-    /// hides it, and in between while the pane moves or widens.
+    /// hides it, and in between while the pane moves or widens, unless the
+    /// reader turned off overlay motion: it then shows as the presentation
+    /// leaves it, whatever the columns do.
     private func searchVisibility(_ geometry: WorkspaceColumnsGeometry) -> CGFloat {
         guard showsSearch || WorkspaceLayoutMotion.isMoving else { return 0 }
+        guard AppMotionPolicy.animates(.overlays) else {
+            let hidden = geometry.columns.contains {
+                $0.id.hasPrefix("side-thread") && !$0.isFullWidth && presentedGroupIDs.contains($0.id)
+            }
+            return hidden ? 0 : 1
+        }
         let windowMaxX = convert(CGPoint(x: bounds.maxX, y: 0), to: nil).x
         var covered: CGFloat = 0
         for column in geometry.columns where column.id.hasPrefix("side-thread") {
@@ -376,6 +385,8 @@ final class WorkspaceTitlebarView: NSView {
     }
 
     private var showsSearch = false
+    /// The groups the workspace lists now, not those still sliding away.
+    private var presentedGroupIDs: Set<String> = []
     private weak var searchField: NSSearchField?
 
     /// Where the window's own leading controls end in this view: its
