@@ -53,14 +53,15 @@ enum WorkspaceLayoutMotion {
     }
 
     /// Opens, closes or swaps the workspace's trailing column. The change
-    /// moves only if every one of `categories` does: a side chat, by default,
-    /// and the member list or search results for `.sidebar`.
+    /// moves only if every one of `categories` does: by default those of a
+    /// side chat, and of the member list or search results it takes the place
+    /// of or returns.
     static func perform(
         in model: AppModel,
-        categories: [AppMotionCategory] = [.sideChats],
+        categories: [AppMotionCategory]? = nil,
         _ change: () -> Void
     ) {
-        guard let animation = springAnimation(for: categories, in: model) else {
+        guard let animation = springAnimation(for: categories ?? model.sideChatMotionCategories, in: model) else {
             withAnimation(nil, change)
             return
         }
@@ -116,7 +117,7 @@ enum WorkspaceLayoutMotion {
     /// it is covered, and the inspector slides in beside it if shown.
     static func widen(in model: AppModel, _ change: () -> Void) {
         let before = model.workspacePresentation
-        guard let animation = springAnimation(for: [.sideChats], in: model), case .channel(let channel) = before.primary else {
+        guard let animation = springAnimation(for: model.sideChatMotionCategories, in: model), case .channel(let channel) = before.primary else {
             withAnimation(nil, change)
             return
         }

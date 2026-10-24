@@ -205,7 +205,7 @@ struct NativeTimelineUnreadDividerFade {
 
 extension NativeTimelineCanvasView {
     var unreadDividerReducesMotion: Bool {
-        unreadDividerReducesMotionOverride ?? NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        unreadDividerReducesMotionOverride ?? !AppMotionPolicy.animatesUncategorized
     }
 
     /// The divider's row as laid out now, whether or not it has one.
