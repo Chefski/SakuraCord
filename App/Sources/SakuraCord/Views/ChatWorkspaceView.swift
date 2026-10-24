@@ -82,9 +82,7 @@ struct ChatWorkspaceView: View, Equatable {
                     presentsForumComposer: $presentsForumComposer
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-#if SAKURACORD_MOTION_BENCHMARK
                 .workspaceMotionProbe("primary")
-#endif
             }
         }
         .onChange(of: model.selectedChannelID) { _, channelID in
@@ -142,9 +140,7 @@ struct ChatWorkspaceView: View, Equatable {
         switch column.content {
         case .sideConversation(let conversation):
             SideConversationView(model: model, conversation: conversation)
-#if SAKURACORD_MOTION_BENCHMARK
                 .workspaceMotionProbe("pane")
-#endif
                 .reportsSupplementaryPaneFrame(isEnabled: !conversation.isFullWidth)
         case .inspector(let pane):
             ChatWorkspaceSupplementaryContent(
@@ -152,9 +148,7 @@ struct ChatWorkspaceView: View, Equatable {
                 pane: pane,
                 toolbarSearchFieldMetrics: toolbarSearchFieldMetrics
             )
-#if SAKURACORD_MOTION_BENCHMARK
             .workspaceMotionProbe(column.id)
-#endif
         }
     }
 }

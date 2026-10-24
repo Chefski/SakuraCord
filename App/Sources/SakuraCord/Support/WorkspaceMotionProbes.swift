@@ -111,9 +111,9 @@ final class WorkspaceMotionProbes {
 
 extension View {
     /// Reports this view's window frame to the motion benchmark under `name`.
-    @ViewBuilder func workspaceMotionProbe(_ name: String) -> some View {
+    @ViewBuilder func workspaceMotionProbe(_ name: @autoclosure () -> String) -> some View {
         if WorkspaceMotionProbes.isEnabled {
-            background(WorkspaceMotionProbe(name: name))
+            background(WorkspaceMotionProbe(name: name()))
         } else {
             self
         }
@@ -159,5 +159,12 @@ private struct WorkspaceMotionProbe: NSViewRepresentable {
             }
         }
     }
+}
+#else
+import SwiftUI
+
+extension View {
+    /// Benchmark probes compile to nothing outside motion benchmark builds.
+    func workspaceMotionProbe(_: @autoclosure () -> String) -> some View { self }
 }
 #endif

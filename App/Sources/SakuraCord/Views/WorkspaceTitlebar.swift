@@ -215,24 +215,18 @@ final class WorkspaceTitlebarView: NSView {
                 self.groups[group.id] = views
                 return views
             }()
-#if SAKURACORD_MOTION_BENCHMARK
             let probe = group.id == WorkspaceTitlebar.conversationID ? "tb.conversation" : "tb.side"
-#endif
             views.title.setContent(
                 AnyView(
                     group.title
-#if SAKURACORD_MOTION_BENCHMARK
                         .workspaceMotionProbe("\(probe).title")
-#endif
                         .environment(\.self, environment)
                 )
             )
             views.actions.setContent(
                 AnyView(
                     group.actions
-#if SAKURACORD_MOTION_BENCHMARK
                         .workspaceMotionProbe("\(probe).actions")
-#endif
                         .environment(\.self, environment)
                 )
             )
@@ -247,9 +241,7 @@ final class WorkspaceTitlebarView: NSView {
                 island.setContent(
                     AnyView(
                         fullWidthActions
-#if SAKURACORD_MOTION_BENCHMARK
                             .workspaceMotionProbe("tb.side.fullActions")
-#endif
                             .environment(\.self, environment)
                     )
                 )
