@@ -427,6 +427,14 @@ extension NativeMessageTimelineCoordinator {
                 // them. The clip view can temporarily crop or reveal the
                 // old-width canvas without presenting distorted text.
                 viewport.size.width = layoutWidth
+            } else if layoutWidth > 0, WorkspaceConversationWidthPath.shared.isMoving {
+                // A workspace motion can change the real viewport width
+                // before any row is previewed (a closing member list widens
+                // its host at once). The rows still describe `layoutWidth`,
+                // so the backing view keeps that width rather than showing
+                // them stretched across the new one; the next preview takes
+                // it from here.
+                viewport.size.width = layoutWidth
             }
             // While a workspace motion re-wraps the rows, each preview
             // redraws the canvas; drawing only what shows halves what the
@@ -715,6 +723,11 @@ extension NativeMessageTimelineCoordinator {
                 || previewNeedsRows || restoresPreview else {
                 return false
             }
+            // The real viewport changing width while the rows keep following
+            // another width (a workspace motion's end points) is not a
+            // preview tick, so it paints now rather than a frame late.
+            let handsOffViewportWidth = !previewChanged
+                && abs(viewportSize.width - lastViewportSize.width) >= 0.5
             lastViewportSize = viewportSize
             guard !isApplyingUpdate else { return true }
 
@@ -761,7 +774,9 @@ extension NativeMessageTimelineCoordinator {
             positionViewportCanvas()
             // A resize can move or reflow a row whose message is in flight.
             canvas.reconcileSendTransitions()
-            if reflowsWidth || previewChanged || previewNeedsRows || restoresPreview {
+            if reflowsWidth || previewChanged || previewNeedsRows || restoresPreview
+                || handsOffViewportWidth
+            {
                 // Restore the anchor before choosing the dirty rectangle.
                 // Invalidating the old visible rect leaves the newly restored
                 // viewport backed by stretched Core Animation contents until
@@ -772,7 +787,7 @@ extension NativeMessageTimelineCoordinator {
                 // backing layer before leaving the width update.
                 canvas.needsDisplay = true
                 canvas.layer?.setNeedsDisplay()
-                if reflowsWidth || restoresPreview {
+                if reflowsWidth || restoresPreview || handsOffViewportWidth {
                     canvas.display()
                 }
             }

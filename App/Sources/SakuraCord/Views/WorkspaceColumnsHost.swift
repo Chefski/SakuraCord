@@ -539,8 +539,8 @@ final class WorkspaceColumnsView: NSView {
     }
 
     /// Lets a timeline that a column slides over follow the column.
-    private func publishWidthPath(at time: CFTimeInterval) {
-        WorkspaceConversationWidthPath.shared.update(isMoving: isAnimating(at: time)) { [weak self] view in
+    private func publishWidthPath(at time: CFTimeInterval, isMoving: Bool) {
+        WorkspaceConversationWidthPath.shared.update(isMoving: isMoving) { [weak self] view in
             self?.columnWidth(of: view, at: time)
         }
     }
@@ -548,7 +548,13 @@ final class WorkspaceColumnsView: NSView {
     /// Places every island where the motion has it at `time`.
     private func layoutColumns(at time: CFTimeInterval) {
         placedBounds = bounds
-        publishWidthPath(at: time)
+        // The path stays active through the placement below, and its stop is
+        // announced only once the columns are where they settle. Announced
+        // earlier, a timeline whose host is about to contract would drop the
+        // narrow width it follows and re-wrap for the host's old wide one.
+        let animating = isAnimating(at: time)
+        let stopsPath = !animating && WorkspaceConversationWidthPath.shared.isMoving
+        publishWidthPath(at: time, isMoving: animating || stopsPath)
         measureColumns()
         let bounds = bounds
         // How much of the trailing edge the columns cover, which the
@@ -613,6 +619,7 @@ final class WorkspaceColumnsView: NSView {
         // nothing to lay out; asking laid its hosting view out on every frame.
         for view in resizedViews { view.layoutSubtreeIfNeeded() }
         resizedViews.removeAll()
+        if stopsPath { publishWidthPath(at: time, isMoving: false) }
         reportPaneFrame()
         publishGeometry(at: time)
     }
@@ -959,7 +966,7 @@ final class WorkspaceConversationWidthPath {
         let stops = !isMoving && self.isMoving
         self.isMoving = isMoving
         self.width = width
-        // Before the columns are placed for this frame: a timeline whose
+        // As the columns are placed for this frame: a timeline whose
         // column covers it rather than resizing it follows from here.
         if isMoving || stops { NotificationCenter.default.post(name: Self.didAdvance, object: self) }
     }
