@@ -211,8 +211,6 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
     var transcriptGlideFinishTask: Task<Void, Never>?
     var unreadDividerFades: [NativeMessageTimelineItem.Identifier: NativeTimelineUnreadDividerFade] = [:]
     var unreadDividerGap: NativeTimelineUnreadDividerGap?
-    /// Pins the NEW divider's Reduce Motion setting; nil follows the system.
-    var unreadDividerReducesMotionOverride: Bool?
     let unreadDividerGapTicker = NativeTimelineDisplayLinkTicker()
     var minimumHeight: CGFloat = 1
     var bottomSpacerHeight: CGFloat = 0
