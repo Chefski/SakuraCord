@@ -408,6 +408,7 @@ final class WorkspaceColumnsView: NSView {
     /// side chat pane, or a new one.
     private func makeHost(for column: WorkspaceColumnsHost.Column, _ root: AnyView) -> ColumnHostingView {
         if !column.isSideConversation, let pooled = pooledInspectors.removeValue(forKey: column.id) {
+            pooled.presentation += 1
             pooled.setContent(root, isLeaving: false)
             return pooled
         }
@@ -417,6 +418,7 @@ final class WorkspaceColumnsView: NSView {
             return host
         }
         pooledPane = nil
+        pooled.presentation += 1
         pooled.setContent(root, isLeaving: false)
         return pooled
     }
@@ -798,6 +800,10 @@ private final class ColumnHostingView: NSHostingView<AnyView> {
         removeFromSuperview()
     }
 
+    /// Advances each time the pool hands this view out again, so its
+    /// content presents as a newly opened pane does.
+    var presentation = 0
+
     func setContent(_ content: AnyView, isLeaving: Bool) {
         self.content = content
         self.isLeaving = isLeaving
@@ -805,6 +811,7 @@ private final class ColumnHostingView: NSHostingView<AnyView> {
             ColumnMeasuringLayout(extent: extent) {
                 content
                     .environment(\.isLeavingWorkspace, isLeaving)
+                    .environment(\.columnPresentation, presentation)
                     .onPreferenceChange(SupplementaryPaneFramePreferenceKey.self) { [weak self] frame in
                         MainActor.assumeIsolated {
                             guard let self else { return }
@@ -973,4 +980,11 @@ final class WorkspaceConversationWidthPath {
     func width(of view: NSView) -> CGFloat? {
         width(view)
     }
+}
+
+extension EnvironmentValues {
+    /// Which presentation of a pooled column this is (`ColumnHostingView`):
+    /// a pane reused for a conversation it showed before presents it anew,
+    /// as one built for it would, focusing its composer.
+    @Entry var columnPresentation = 0
 }
