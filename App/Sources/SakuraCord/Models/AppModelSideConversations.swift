@@ -68,11 +68,15 @@ extension AppModel {
     }
 
     var workspacePresentation: WorkspacePresentation {
+        makeWorkspacePresentation(sideConversation: visibleSideConversation)
+    }
+
+    private func makeWorkspacePresentation(sideConversation: SideConversation?) -> WorkspacePresentation {
         WorkspacePresentation(
             guildPage: selectedGuildID == nil ? nil : guildWorkspacePage,
             isFriendsPresented: isFriendsPresented,
             channelKind: selectedChannel?.kind,
-            sideConversation: visibleSideConversation,
+            sideConversation: sideConversation,
             showsMessageSearch: isMessageSearchVisible,
             showsInspector: showInspector
         )
@@ -221,14 +225,7 @@ extension AppModel {
     /// too, but only where this page shows one beside a conversation without
     /// the side chat.
     var sideChatMotionCategories: [AppMotionCategory] {
-        let withoutSideChat = WorkspacePresentation(
-            guildPage: selectedGuildID == nil ? nil : guildWorkspacePage,
-            isFriendsPresented: isFriendsPresented,
-            channelKind: selectedChannel?.kind,
-            sideConversation: nil,
-            showsMessageSearch: isMessageSearchVisible,
-            showsInspector: showInspector
-        )
+        let withoutSideChat = makeWorkspacePresentation(sideConversation: nil)
         return withoutSideChat.supplementaryPane == nil ? [.sideChats] : [.sideChats, .sidebar]
     }
 
