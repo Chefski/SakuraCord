@@ -16,9 +16,6 @@ import SwiftUI
 /// The columns follow `WorkspaceMotionPhase`: each column's reveal and the
 /// widening are targets this view springs toward with the workspace spring,
 /// or jumps to when the update that sets them is not animated.
-///
-/// Setting `SakuraCordSwiftUIWorkspaceColumns` switches back to the SwiftUI
-/// layout (`WorkspaceColumnsLayout`) for comparison.
 struct WorkspaceColumnsHost: NSViewRepresentable {
     struct Column {
         let id: String
@@ -36,12 +33,11 @@ struct WorkspaceColumnsHost: NSViewRepresentable {
         case arriving
     }
 
-    static let isEnabled = !UserDefaults.standard.bool(forKey: "SakuraCordSwiftUIWorkspaceColumns")
     /// Each column's own coordinate space, which moves with its island.
     static let columnSpace = "SakuraCordWorkspaceColumn"
 
     let conversation: AnyView
-    /// Back to front: departing columns first, so an arriving one covers them.
+    /// Back to front. The host keeps a column that leaves the list while it slides away.
     let columns: [Column]
     let widening: Widening?
     /// Receives the frame the columns report with
@@ -276,7 +272,7 @@ final class WorkspaceColumnsView: NSView {
     /// updating it to start a motion cost several frames.
     @objc private func revealDidChange(_ notification: Notification) {
         let animates = notification.userInfo?[WorkspaceLayoutMotion.animatesKey] as? Bool ?? false
-        let reveal = WorkspaceMotionPhase.shared.unobservedReveal
+        let reveal = WorkspaceMotionPhase.shared.reveal
         let now = CACurrentMediaTime()
         for index in islands.indices {
             let target = reveal[islands[index].column.id] ?? 1
@@ -285,7 +281,7 @@ final class WorkspaceColumnsView: NSView {
             if animates, target == 1, host.isLeaving { host.setContent(host.content, isLeaving: false) }
         }
         // A widening side chat starts to grow once its first layout is in.
-        if var track = widening, WorkspaceMotionPhase.shared.unobservedWideningHasArrived {
+        if var track = widening, WorkspaceMotionPhase.shared.wideningHasArrived {
             track.move(to: 1, at: now, animated: animates)
             widening = track
         }
@@ -338,7 +334,6 @@ final class WorkspaceColumnsView: NSView {
         for column in spec.columns {
             let root = AnyView(
                 column.content
-                    .environment(\.paneFrameIsColumnLocal, true)
                     .environment(\.self, environment)
                     .coordinateSpace(.named(WorkspaceColumnsHost.columnSpace))
             )
@@ -357,7 +352,7 @@ final class WorkspaceColumnsView: NSView {
                 island.column = column
                 updated.append(island)
             } else {
-                let reveal = WorkspaceMotionPhase.shared.unobservedReveal[column.id] ?? (columnsAreChanging ? 0 : 1)
+                let reveal = WorkspaceMotionPhase.shared.reveal[column.id] ?? (columnsAreChanging ? 0 : 1)
                 updated.append(Island(host: makeHost(for: column, root), column: column, reveal: SpringTrack(at: reveal)))
                 needsMeasurement = true
             }
@@ -685,8 +680,8 @@ final class WorkspaceColumnsView: NSView {
         return origin
     }
 
-    /// Reports the frontmost column's pane frame where its column rests, as
-    /// the SwiftUI layout did, so the toolbar does not follow the motion.
+    /// Reports the frontmost column's pane frame where its column rests, so
+    /// the toolbar does not follow the motion.
     private func reportPaneFrame() {
         var frame = CGRect.zero
         if let island = islands.last(where: { $0.host.paneFrame != .zero }),

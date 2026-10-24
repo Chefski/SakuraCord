@@ -5,9 +5,9 @@ import SwiftUI
 /// closing or widening a side chat, toggling the member list) with the member
 /// list's spring. Navigation changes the layout without it and appears at once.
 ///
-/// A trailing column slides in or out as an offset, and on every frame the
-/// conversation gives up exactly the width the column covers, so its
-/// timeline and composer resize live (`WorkspaceColumnsLayout`). Nothing
+/// A trailing column slides in or out, and on every frame the conversation
+/// gives up exactly the width the column covers, so its timeline and
+/// composer resize live (`WorkspaceColumnsHost`). Nothing
 /// else in the workspace lays out again per frame; relaying out the whole
 /// workspace on every frame cost about 50 ms per frame on an 8 GB Mac. Work
 /// that would block the main thread for several frames (a pane's content, a
@@ -80,14 +80,6 @@ enum WorkspaceLayoutMotion {
     ) {
         let phase = WorkspaceMotionPhase.shared
         guard leaving?.id != arriving?.id else { return }
-        // Each write to the phase invalidates its observers, so write once.
-        var departing = phase.departing.filter { $0.id != leaving?.id && $0.id != arriving?.id }
-        if let leaving {
-            // The column that leaves stays until it is out of view, beneath
-            // any column that arrives.
-            departing.append(leaving)
-        }
-        if departing != phase.departing { phase.departing = departing }
         if let arriving, phase.reveal[arriving.id] == nil {
             phase.reveal[arriving.id] = 0
             NotificationCenter.default.post(name: revealDidChange, object: nil, userInfo: [animatesKey: false])
@@ -178,7 +170,6 @@ enum WorkspaceLayoutMotion {
                 phase.isMoving = false
                 if phase.widening != nil { phase.widening = nil }
                 if phase.wideningHasArrived { phase.wideningHasArrived = false }
-                if !phase.departing.isEmpty { phase.departing.removeAll() }
                 if !phase.reveal.isEmpty { phase.reveal.removeAll() }
             }
             // The window the motion began in, though another may be main now.
@@ -257,31 +248,19 @@ final class WorkspaceMotionPhase {
 
     static let shared = WorkspaceMotionPhase()
 
-    /// Whether a motion runs, so the columns' widths follow it per frame.
+    /// Whether a motion runs.
     var isMoving = false
     var widening: Widening?
     /// Whether the widening side chat is sliding to the leading edge yet.
-    /// `WorkspaceColumnsHost` reads it unobserved, on `revealDidChange`,
-    /// so its start updates no view.
-    var wideningHasArrived = false {
-        didSet { unobservedWideningHasArrived = wideningHasArrived }
-    }
-    @ObservationIgnored private(set) var unobservedWideningHasArrived = false
-    /// Columns that have left the workspace but are still sliding away.
-    var departing: [WorkspaceTrailingColumn] = []
+    /// `WorkspaceColumnsHost` reads it on `revealDidChange`, so its start
+    /// updates no view.
+    @ObservationIgnored var wideningHasArrived = false
     /// How far each moving column has come in, from 0 (beyond the trailing
     /// edge) to 1 (in place). Columns at rest are absent.
-    var reveal: [String: CGFloat] = [:] {
-        didSet { unobservedReveal = reveal }
-    }
-    /// `reveal`, for `WorkspaceColumnsHost`: it moves the columns itself,
-    /// so reading it must not update the view graph.
-    @ObservationIgnored private(set) var unobservedReveal: [String: CGFloat] = [:]
+    /// `WorkspaceColumnsHost` moves the columns itself, so reading it must
+    /// not update the view graph.
+    @ObservationIgnored var reveal: [String: CGFloat] = [:]
     @ObservationIgnored fileprivate var settleTask: Task<Void, Never>?
 
     private init() {}
-
-    func reveal(of id: String) -> CGFloat {
-        reveal[id] ?? 1
-    }
 }
