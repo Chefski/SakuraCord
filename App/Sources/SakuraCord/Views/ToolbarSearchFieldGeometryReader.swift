@@ -84,11 +84,9 @@ private final class ToolbarSearchFieldSkeletonOverlay: NSView {
     override func layout() {
         super.layout()
         shimmerLayer.frame = bounds.insetBy(dx: -bounds.width, dy: 0)
-        guard AppMotionPolicy.animates(.overlays) else {
-            shimmerLayer.removeAnimation(forKey: "skeletonShimmer")
-            return
-        }
-        guard shimmerLayer.animation(forKey: "skeletonShimmer") == nil else { return }
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+              shimmerLayer.animation(forKey: "skeletonShimmer") == nil
+        else { return }
         let animation = CABasicAnimation(keyPath: "transform.translation.x")
         animation.fromValue = -bounds.width
         animation.toValue = bounds.width

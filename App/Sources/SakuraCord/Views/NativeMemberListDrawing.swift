@@ -75,7 +75,8 @@ extension NativeMemberListCanvasView {
     }
 
     func skeletonDrawingStyle() -> SkeletonDrawingStyle {
-        let reducesMotion = !AppMotionPolicy.animates(.sidebar)
+        let reducesMotion = NSWorkspace.shared
+            .accessibilityDisplayShouldReduceMotion
         return SkeletonDrawingStyle(
             phase: reducesMotion ? nil : SkeletonShimmerStyle.phase(at: Date()),
             fullOpacityGradient: reducesMotion

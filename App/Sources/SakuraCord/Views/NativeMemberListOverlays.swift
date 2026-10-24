@@ -55,7 +55,9 @@ extension NativeMemberListCanvasView {
     func reconcilePlaceholderShimmer() {
         placeholderShimmerTask?.cancel()
         placeholderShimmerTask = nil
-        guard hasLoadingPlaceholders, AppMotionPolicy.animates(.sidebar) else { return }
+        guard hasLoadingPlaceholders,
+              !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        else { return }
         placeholderShimmerTask = Task { @MainActor [weak self] in
             var interval = SkeletonShimmerStyle.minimumFrameInterval
             while !Task.isCancelled {
@@ -65,11 +67,6 @@ extension NativeMemberListCanvasView {
                     return
                 }
                 guard let self, self.hasLoadingPlaceholders else { return }
-                // Turned off while it ran: draw the placeholders still.
-                guard AppMotionPolicy.animates(.sidebar) else {
-                    if let rect = self.visiblePlaceholderInvalidationRect() { self.setNeedsDisplay(rect) }
-                    return
-                }
                 // Large guilds keep placeholder rows for unrequested ranges
                 // indefinitely, so only animate at frame rate while one is on
                 // screen in a visible window; otherwise poll slowly.
