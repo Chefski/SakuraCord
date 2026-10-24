@@ -41,10 +41,6 @@ public actor MockChatProvider: ChatProvider {
     var forumQueriesByChannel: [ChannelID: [ForumPostQuery]] = [:]
     var relationshipPresences: [UserID: UserPresence]?
     var presenceChurnTask: Task<Void, Never>?
-    /// Threads seeded for the side-chat animation benchmark, and the latency
-    /// simulated before their history is served.
-    var motionThreadIDs: Set<ChannelID> = []
-    var motionThreadHistoryDelay: Duration = .zero
 
     public init(
         includesLongServerList: Bool = false,
@@ -55,10 +51,7 @@ public actor MockChatProvider: ChatProvider {
         timelineIncludesAnimatedMedia: Bool = false,
         timelineIncludesVoiceMessages: Bool = false,
         includesIncomingPrivateCall: Bool = false,
-        friendCount: Int? = nil,
-        motionThreadCount: Int? = nil,
-        motionThreadMessageCount: Int = 150,
-        motionThreadHistoryDelay: Duration = .zero
+        friendCount: Int? = nil
     ) {
         let fixture = MockChatFixture.make(
             includesLongServerList: includesLongServerList,
@@ -115,18 +108,10 @@ public actor MockChatProvider: ChatProvider {
                 messagesByChannel[post.id] = [message]
             }
         }
-        if let motionThreadCount {
-            motionThreadIDs = Self.seedMotionThreads(
-                count: motionThreadCount, messageCount: motionThreadMessageCount,
-                authors: guildAuthors, now: .now, guildID: GuildID(rawValue: 100), messages: &messagesByChannel
-            )
-            self.motionThreadHistoryDelay = motionThreadHistoryDelay
-        }
         Self.seedThreadCatalogue(
             forumPosts: &forumPostsByChannel, messages: &messagesByChannel,
             channels: fixture.snapshot.channels, owner: fixture.currentUser
         )
-        Self.completeMotionThreadPosts(motionThreadIDs, forumPosts: &forumPostsByChannel, messages: messagesByChannel)
         profilesByUser = fixture.profilesByUser
         if let friendCount {
             let fixture = Self.performanceRelationships(friendCount: friendCount)
