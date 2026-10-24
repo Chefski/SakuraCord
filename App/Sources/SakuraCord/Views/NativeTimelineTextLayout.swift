@@ -200,7 +200,7 @@ enum NativeTimelineTextPresentation {
             return nil
         }
         guard let prepared = plan.preparedText else { return nil }
-        let resolver = source.map { MessageMentionResolver(source: $0, message: message) }
+        let resolver = source.map { MessageMentionResolver(model: $0, message: message) }
         let mentions = prepared.tokens.reduce(into: [String: MentionPresentation]()) { values, token in
             guard case let .mention(mention) = token else { return }
             values[mention.rawToken] =
@@ -1126,7 +1126,7 @@ enum NativeTimelineEmbedLayout {
         source: (any NativeTimelineLayoutSource)?
     ) -> NativeTimelineAttributedTextBox {
         let resolver = source.map {
-            MessageMentionResolver(source: $0, message: message)
+            MessageMentionResolver(model: $0, message: message)
         }
         let mentions = prepared.tokens.reduce(
             into: [String: MentionPresentation]()

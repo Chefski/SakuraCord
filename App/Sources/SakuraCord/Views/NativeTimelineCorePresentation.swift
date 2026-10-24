@@ -142,7 +142,7 @@ nonisolated enum NativeTimelineReplyMetrics {
         if let source {
             MessageReplySummary.summary(
                 content: preview.content,
-                mentionLabel: MessageMentionResolver(source: source, message: message).label
+                mentionLabel: MessageMentionResolver(model: source, message: message).label
             )
         } else {
             MessageReplySummary.summary(content: preview.content)

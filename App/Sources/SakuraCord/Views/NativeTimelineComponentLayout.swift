@@ -1151,7 +1151,7 @@ private enum NodeBuilder {
     ) -> NativeTimelineAttributedTextBox {
         let prepared = RichMessageAttributedText.prepare(source: content)
         let resolver = source.map {
-            MessageMentionResolver(source: $0, message: message)
+            MessageMentionResolver(model: $0, message: message)
         }
         let mentions = prepared.tokens.reduce(
             into: [String: MentionPresentation]()

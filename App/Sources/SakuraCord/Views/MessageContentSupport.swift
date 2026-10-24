@@ -7,14 +7,9 @@ struct MessageMentionResolver {
     let source: any NativeTimelineLayoutSource
     let message: Message?
 
-    init(source: any NativeTimelineLayoutSource, message: Message? = nil) {
-        self.source = source
-        self.message = message
-    }
-
-    // Shared rich-text and interaction callers keep their existing argument label.
     init(model: any NativeTimelineLayoutSource, message: Message? = nil) {
-        self.init(source: model, message: message)
+        source = model
+        self.message = message
     }
 
     func user(_ userID: UserID) -> User? {
