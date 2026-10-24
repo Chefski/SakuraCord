@@ -122,8 +122,6 @@ public struct ThreadActionPolicy: Equatable, Sendable {
     public var canClose = false
     /// The explicit Reopen action.
     public var canReopen = false
-    /// The implicit unarchive that precedes edits to an archived thread.
-    public var canUnarchive = false
     public var canDelete = false
     public var canChangeMembership = false
     public var canChangeNotifications = false
@@ -156,7 +154,6 @@ public struct ThreadActionPolicy: Equatable, Sendable {
         canClose = canEdit
         canEditTags = canEdit
         canReopen = thread.isLocked ? managesThreads : canSend
-        canUnarchive = managesThreads || !thread.isLocked
         // An archived thread is edited only after an unarchive the user may
         // perform by sending; Discord offers no edit for an archived locked thread.
         canRename = canEdit && (!thread.isArchived || (!thread.isLocked && canSend))
