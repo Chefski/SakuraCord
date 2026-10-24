@@ -136,7 +136,7 @@ struct ComponentChoicePicker: View {
     }
 }
 
-nonisolated enum ComponentChoiceOptionPresentation {
+enum ComponentChoiceOptionPresentation {
     static func fieldOption(
         _ option: ComponentSelectOption,
         selectKind: ComponentSelectKind

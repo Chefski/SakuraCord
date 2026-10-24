@@ -4,10 +4,10 @@ import MessageRendering
 import SakuraCordModels
 
 /// Geometry shared by rendering, hit testing, selection and accessibility.
-nonisolated struct NativeTimelineRowLayout {
+struct NativeTimelineRowLayout {
     var fontRevision = ProfileNameFontCache.revision
 
-    nonisolated struct EphemeralRegion {
+    struct EphemeralRegion {
         let frame: CGRect
         let eyeFrame: CGRect
         let visibilityFrame: CGRect
@@ -15,7 +15,7 @@ nonisolated struct NativeTimelineRowLayout {
         let dismissFrame: CGRect
     }
 
-    nonisolated struct AttachmentRegion {
+    struct AttachmentRegion {
         let frame: CGRect
         let attachment: Attachment
         /// The still image drawn in the region: the image itself, or a
@@ -23,7 +23,7 @@ nonisolated struct NativeTimelineRowLayout {
         let previewKey: NativeTimelineMediaKey?
     }
 
-    nonisolated struct ReactionRegion {
+    struct ReactionRegion {
         struct AvatarRegion {
             let frame: CGRect
             let reactor: ReactionReactor
@@ -37,12 +37,12 @@ nonisolated struct NativeTimelineRowLayout {
         let placeholderAvatarFrames: [CGRect]
     }
 
-    nonisolated struct LinkedImageRegion {
+    struct LinkedImageRegion {
         let frame: CGRect
         let reference: LinkedImageReference
     }
 
-    nonisolated struct EmbedRegion {
+    struct EmbedRegion {
         enum Kind: Equatable {
             case bareMedia
             case bubbleIntegratedCard
@@ -78,7 +78,7 @@ nonisolated struct NativeTimelineRowLayout {
         let drawsTopSeparator: Bool
     }
 
-    nonisolated struct SakuraCordDeepLinkRegion {
+    struct SakuraCordDeepLinkRegion {
         let action: SakuraCordDeepLinkAction
         let componentID: String
         let frame: CGRect
@@ -90,14 +90,14 @@ nonisolated struct NativeTimelineRowLayout {
         let buttonFrame: CGRect
     }
 
-    nonisolated struct SearchSectionRegion {
+    struct SearchSectionRegion {
         let frame: CGRect
         let iconFrame: CGRect
         let titleFrame: CGRect
         let subtitleFrame: CGRect?
     }
 
-    nonisolated struct ForwardedSourceRegion {
+    struct ForwardedSourceRegion {
         let frame: CGRect
         let label: String
         let iconURL: URL?
@@ -109,7 +109,7 @@ nonisolated struct NativeTimelineRowLayout {
 
     /// An animated progress mark hosted as a layer-backed canvas overlay, so
     /// its animation never repaints the row.
-    nonisolated struct ActivityIndicator: Equatable {
+    struct ActivityIndicator: Equatable {
         enum Style: Equatable {
             case spinner
             case dots(InteractionLoadingDots.Tone)
@@ -119,7 +119,7 @@ nonisolated struct NativeTimelineRowLayout {
         let style: Style
     }
 
-    nonisolated struct CommandInvocationRegion {
+    struct CommandInvocationRegion {
         let frame: CGRect
         let connectorFrame: CGRect
         let avatarFrame: CGRect?
@@ -146,7 +146,7 @@ nonisolated struct NativeTimelineRowLayout {
     var authorFrame: CGRect?
     var authorText: NativeIdentityTextPresentation?
     var authorPrimaryGuild: PrimaryGuildIdentity?
-    nonisolated struct ServerTagRegion {
+    struct ServerTagRegion {
         let frame: CGRect
         let presentation: NativeServerTagPresentation
     }
@@ -162,7 +162,7 @@ nonisolated struct NativeTimelineRowLayout {
     var replyContentFrame: CGRect?
     /// A bubble's reply or command elbow: a stem rising from the bubble's top
     /// edge that turns toward the referenced content at `cornerY`.
-    nonisolated struct ReferenceConnector {
+    struct ReferenceConnector {
         let stemX: CGFloat
         let fromY: CGFloat
         let cornerY: CGFloat
@@ -198,7 +198,7 @@ nonisolated struct NativeTimelineRowLayout {
     var inviteRegions: [NativeTimelineInviteLayout] = []
     var translationRegion: TranslationRegion?
 
-    @MainActor static func make(
+    static func make(
         item: NativeMessageTimelineItem,
         width proposedWidth: CGFloat,
         source: AppModel? = nil,

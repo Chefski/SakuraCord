@@ -14,7 +14,7 @@ enum NativeTimelineTextPresentation {
         let mentions: [String: MentionPresentation]
     }
 
-    nonisolated struct Value {
+    struct Value {
         let attributedContent: NSAttributedString?
         let framesetter: CTFramesetter
         let linkedImages: [LinkedImageReference]
@@ -253,7 +253,7 @@ enum NativeTimelineTextPresentation {
 }
 
 nonisolated final class NativeTimelineResolvedTextCache: Sendable {
-    nonisolated struct Key: Hashable, Sendable {
+    struct Key: Hashable, Sendable {
         let messageID: MessageID
         let scope: String
         let prepared: RichMessageAttributedText.Prepared
@@ -266,7 +266,7 @@ nonisolated final class NativeTimelineResolvedTextCache: Sendable {
 
     static let shared = NativeTimelineResolvedTextCache()
 
-    nonisolated private struct State: Sendable {
+    private struct State: Sendable {
         var entries: [Key: NativeTimelineAttributedTextBox] = [:]
         var insertionOrder: [Key] = []
         var evictionIndex = 0
@@ -566,7 +566,7 @@ nonisolated enum NativeTimelineCoreText {
 }
 
 enum NativeTimelineEmbedLayout {
-    nonisolated private struct PreparedField {
+    private struct PreparedField {
         let field: MessageEmbedField
         let name: NativeTimelineAttributedTextBox
         let value: NativeTimelineAttributedTextBox
@@ -1635,7 +1635,7 @@ nonisolated enum NativeTimelineRunDelegate {
 }
 
 extension NativeTimelineRowLayout {
-    nonisolated static func measuredTextHeight(
+    static func measuredTextHeight(
         _ framesetter: CTFramesetter,
         value: NSAttributedString,
         length: Int,
@@ -1663,13 +1663,13 @@ extension NativeTimelineRowLayout {
 
     /// A single layout pass shares its font resolution and timestamp gutter.
     /// Recreate this snapshot for each pass so preference changes stay live.
-    nonisolated struct Metrics {
+    struct Metrics {
         let authorFont: NSFont
         let timestampFont: NSFont
         let editedFont: NSFont
         let timestampGutterWidth: CGFloat
 
-        @MainActor init(source: AppModel?) {
+        init(source: AppModel?) {
             self.init(settings: source?.interfaceSettings ?? .defaults)
         }
 

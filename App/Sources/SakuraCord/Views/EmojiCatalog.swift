@@ -37,7 +37,7 @@ enum NativeEmojiCategory: String, CaseIterable, Identifiable {
     }
 }
 
-nonisolated struct NativeEmoji: Identifiable {
+struct NativeEmoji: Identifiable {
     private static let discordKeySeparatorExpression = RegularExpressionFactory.make("[^a-z0-9]+")
 
     let value: String
@@ -93,7 +93,7 @@ nonisolated struct NativeEmoji: Identifiable {
     }
 }
 
-nonisolated private enum NativeEmojiCatalog {
+private enum NativeEmojiCatalog {
     private struct CatalogFile: Decodable {
         let formatVersion: Int
         let unicodeVersion: String
@@ -413,7 +413,7 @@ enum NativeEmojiCatalogDiagnostics {
     }
 }
 
-nonisolated enum NativeEmojiCatalogMetadata {
+enum NativeEmojiCatalogMetadata {
     private static let valuesByShortcode = Dictionary(
         NativeEmojiCatalog.items.flatMap { emoji in emoji.shortcodes.map { ($0, emoji.value) } },
         uniquingKeysWith: { first, _ in first }

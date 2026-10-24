@@ -2,7 +2,7 @@ import AppKit
 import CoreText
 import SakuraCordModels
 
-nonisolated struct NativeTimelinePollLayout {
+struct NativeTimelinePollLayout {
     struct Answer {
         let id: Int
         let frame: CGRect
@@ -95,7 +95,7 @@ nonisolated struct NativeTimelinePollLayout {
     }
 }
 
-nonisolated struct NativeTimelinePollPresentation {
+struct NativeTimelinePollPresentation {
     static let voteAnimationDuration: TimeInterval = 0.48
     var selected: Set<Int> = []
     var revealsResults = false
@@ -108,7 +108,7 @@ nonisolated struct NativeTimelinePollPresentation {
     }
 }
 
-nonisolated struct NativeTimelinePollTarget: Equatable {
+struct NativeTimelinePollTarget: Equatable {
     enum Control: Equatable { case answer(Int), votes, reveal, submit, original }
     let messageID: MessageID
     let control: Control

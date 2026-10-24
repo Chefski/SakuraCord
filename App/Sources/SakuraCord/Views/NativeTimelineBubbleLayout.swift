@@ -10,7 +10,7 @@ struct NativeTimelineBubbleRegion {
 
 @MainActor
 enum NativeTimelineBubbleLayout {
-    nonisolated struct Context: Sendable {
+    struct Context {
         let isEnabled: Bool
         let isOutgoing: Bool
         let showsAvatar: Bool
@@ -254,7 +254,8 @@ enum NativeTimelineBubbleLayout {
     }
 }
 
-nonisolated enum NativeTimelineBubbleDrawing {
+@MainActor
+enum NativeTimelineBubbleDrawing {
     static var cornerRadius: CGFloat { InterfaceScale.metric(18) }
 
     static func foregroundColor(for region: NativeTimelineBubbleRegion?) -> NSColor {

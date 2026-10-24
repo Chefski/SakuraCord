@@ -9,7 +9,7 @@ import SwiftUI
 /// Core Animation runs the loop in the render server, so a visible indicator
 /// never redraws the timeline or wakes the main thread.
 final class InteractionLoadingDots: NSView {
-    nonisolated enum Tone: Equatable, Sendable {
+    enum Tone: Equatable {
         /// Inline with message text.
         case content
         /// On a filled button background.

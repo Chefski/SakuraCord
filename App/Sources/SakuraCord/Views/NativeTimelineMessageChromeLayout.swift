@@ -2,28 +2,28 @@ import AppKit
 import CoreText
 import MessageRendering
 import SakuraCordModels
-import Synchronization
 
-nonisolated enum NativeTimelineReactionFonts {
-    private static let cachedCount = Mutex<(pointSize: CGFloat, font: NSFont)?>(nil)
+@MainActor
+enum NativeTimelineReactionFonts {
+    private static var cachedCount: (pointSize: CGFloat, font: NSFont)?
 
     static var count: NSFont {
         let pointSize = InterfaceScale.fontSize(
             NSFont.preferredFont(forTextStyle: .caption1).pointSize + 3
         )
-        return cachedCount.withLock { cached in
-            if let cached, cached.pointSize == pointSize { return cached.font }
-            let font = AppPerformanceSignposts.measureSync(
-                "TimelineReactionCountFontCacheMiss"
-            ) {
-                NSFont.systemFont(
-                    ofSize: pointSize,
-                    weight: .medium
-                )
-            }
-            cached = (pointSize, font)
-            return font
+        if let cachedCount, cachedCount.pointSize == pointSize {
+            return cachedCount.font
         }
+        let font = AppPerformanceSignposts.measureSync(
+            "TimelineReactionCountFontCacheMiss"
+        ) {
+            NSFont.systemFont(
+                ofSize: pointSize,
+                weight: .medium
+            )
+        }
+        cachedCount = (pointSize, font)
+        return font
     }
 }
 
@@ -119,7 +119,7 @@ extension NativeTimelineRowLayout {
         )
     }
 
-    nonisolated private struct CommandPillRegion {
+    private struct CommandPillRegion {
         let frame: CGRect
         let symbol: CGRect
         let text: CGRect

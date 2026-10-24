@@ -19,6 +19,7 @@ nonisolated enum NativeAppBadgePresentation {
 
     static var width: CGFloat { text.width + ServerTagAppearance.horizontalPadding * 2 }
 
+    @MainActor
     static func draw(in frame: CGRect, color: NSColor, context: CGContext, text: NativeIdentityTextPresentation? = nil) {
         context.saveGState()
         context.setFillColor(color.cgColor)
@@ -102,6 +103,7 @@ nonisolated struct NativeIdentityTextPresentation: @unchecked Sendable {
         height / 2 + glyphBounds.midY
     }
 
+    @MainActor
     func draw(in frame: CGRect, color: NSColor, context: CGContext, isUnderlined: Bool = false) {
         guard frame.width > 0, frame.height > 0 else { return }
         context.saveGState()
@@ -168,6 +170,7 @@ nonisolated struct NativeServerTagPresentation: @unchecked Sendable {
         )
     }
 
+    @MainActor
     func draw(in frame: CGRect, badgeImage: CGImage?, isHighlighted: Bool, context: CGContext) {
         context.saveGState()
         let shape = CGPath(roundedRect: frame, cornerWidth: ServerTagAppearance.cornerRadius, cornerHeight: ServerTagAppearance.cornerRadius, transform: nil)
