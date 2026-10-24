@@ -728,7 +728,6 @@ extension NativeTimelineRowPainter {
             threadCard(
                 thread,
                 preview: model?.threadPreviewMessages[thread.id],
-                message: message,
                 model: model,
                 in: frame,
                 bubbleRegion: layout.bubbleRegion,

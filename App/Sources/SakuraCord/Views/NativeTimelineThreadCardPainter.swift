@@ -153,7 +153,6 @@ extension NativeTimelineRowPainter {
     static func threadCard(
         _ thread: MessageThreadSummary,
         preview: Message?,
-        message: Message,
         model: AppModel?,
         in frame: CGRect,
         bubbleRegion: NativeTimelineBubbleRegion? = nil,
