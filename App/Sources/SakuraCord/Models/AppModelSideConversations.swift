@@ -255,10 +255,7 @@ extension AppModel {
             return
         }
         if sideConversationCover == .memberList, showInspector {
-            WorkspaceLayoutMotion.perform(in: self, categories: inspectorMotionCategories) {
-                showInspector = false
-                sideConversationCover = nil
-            }
+            revealCoveredSideConversation()
             return
         }
         WorkspaceLayoutMotion.perform(in: self, categories: inspectorMotionCategories) { showInspector.toggle() }
