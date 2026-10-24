@@ -1,7 +1,7 @@
 import AppKit
 import SakuraCordModels
 
-nonisolated extension NativeTimelineRowPainter {
+extension NativeTimelineRowPainter {
     private static let unavailableInviteSymbol = NSImage(systemSymbolName: "envelope.fill", accessibilityDescription: nil)?
         .withSymbolConfiguration(.init(paletteColors: [.systemRed]))
 
@@ -34,7 +34,7 @@ nonisolated extension NativeTimelineRowPainter {
         }
         for label in card.labels {
             let color: NSColor = card.isUnavailable && label.bold && !outgoing ? .systemRed : label.secondary ? secondary : foreground
-            attributedText(label.attributedText(color: color), in: label.frame)
+            attributedText(label.attributedText(color: color), in: label.frame, model: nil)
         }
         for (index, dot) in card.countDots.enumerated() {
             (index == 0 && card.content?.onlineCount != nil ? NSColor.systemGreen : secondary).setFill()

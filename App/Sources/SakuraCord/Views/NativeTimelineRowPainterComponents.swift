@@ -363,9 +363,10 @@ nonisolated enum NativeTimelineSystemSymbolCache {
     }
 }
 
-nonisolated struct NativeTimelineComponentsDrawInput {
+struct NativeTimelineComponentsDrawInput {
     let layout: NativeTimelineComponentLayout
     let bubbleRegion: NativeTimelineBubbleRegion?
+    let model: AppModel?
     let messageID: MessageID
     let itemIdentifier: NativeMessageTimelineItem.Identifier
     let layoutIndex: Int
@@ -381,7 +382,7 @@ nonisolated struct NativeTimelineComponentsDrawInput {
     let componentButtonPressProgress: CGFloat
 }
 
-nonisolated extension NativeTimelineRowPainter {
+extension NativeTimelineRowPainter {
     private struct BubbleIntegratedSectionGeometry {
         let frame: CGRect
         let cornerRadius: CGFloat
@@ -511,6 +512,7 @@ nonisolated extension NativeTimelineRowPainter {
             attributedText(
                 region.text,
                 in: region.frame,
+                model: input.model,
                 selectionRange:
                     input.textSelection?.itemIdentifier == input.itemIdentifier
                         && input.textSelection?.region == textRegion
@@ -958,7 +960,7 @@ nonisolated extension NativeTimelineRowPainter {
     ) {
         let reference = region.reaction.emojiReference
         if let id = reference.id {
-            if let url = NativeTimelineRowPaintContext.current?.customEmojiURLsByID[id]
+            if let url = model?.customEmojiURLsByID[id]
                     ?? reference.imageURL(size: 64),
                let image = mediaImage(
                    for: .media(url, maximumPixelDimension: 64)

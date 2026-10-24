@@ -484,7 +484,8 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
     }
 }
 
-nonisolated enum NativeTimelineRowPainter {
+@MainActor
+enum NativeTimelineRowPainter {
     static func selectionOverlayImage(
         _ box: NativeTimelineAttributedTextBox,
         size: CGSize,
@@ -494,6 +495,7 @@ nonisolated enum NativeTimelineRowPainter {
             attributedText(
                 box,
                 in: frame,
+                model: nil,
                 selectionRange: selectionRange
             )
             return true
@@ -537,9 +539,6 @@ nonisolated enum NativeTimelineRowPainter {
         pollPresentation: NativeTimelinePollPresentation = .init(),
         animatedReactionIDs: Set<String> = []
     ) {
-        // Main-thread callers that set no context get one from their model.
-        let context = NativeTimelineRowPaintContext.fallback(model: model, item: item)
-        NativeTimelineRowPaintContext.$current.withValue(context) {
         NSGraphicsContext.saveGraphicsState()
         let transform = NSAffineTransform()
         transform.translateX(by: rowFrame.minX, yBy: rowFrame.minY)
@@ -563,6 +562,7 @@ nonisolated enum NativeTimelineRowPainter {
             for: item,
             in: layout.highlightFrame,
             bubbleRegion: layout.bubbleRegion,
+            model: model,
             isHovered: isHovered
         )
         switch item {
@@ -620,7 +620,6 @@ nonisolated enum NativeTimelineRowPainter {
             ))
         }
         NSGraphicsContext.restoreGraphicsState()
-        }
     }
 
     static func drawStripedHighlight(
@@ -643,6 +642,7 @@ nonisolated enum NativeTimelineRowPainter {
         for item: NativeMessageTimelineItem,
         in frame: CGRect?,
         bubbleRegion: NativeTimelineBubbleRegion?,
+        model: AppModel?,
         isHovered: Bool
     ) {
         guard case let .message(row, _, isHighlighted) = item,
@@ -663,9 +663,9 @@ nonisolated enum NativeTimelineRowPainter {
                 backgroundAlpha: 0.14
             )
         } else {
-            let context = NativeTimelineRowPaintContext.current
-            let currentUserID = context?.currentUserID
-            let currentUserRoleIDs = context?.currentUserRoleIDs(for: row.message.guildID) ?? []
+            let currentUserID = model?.currentUser?.id
+            let currentUserRoleIDs =
+                model?.currentUserRoleIDs(for: row.message.guildID) ?? []
             switch MessageRowPersistentHighlight.resolve(
                 message: row.message,
                 currentUserID: currentUserID,
@@ -750,6 +750,7 @@ nonisolated enum NativeTimelineRowPainter {
             attributedText(
                 NativeTimelineBeginningText.title(beginning),
                 in: layout.titleFrame,
+                model: nil,
                 selectionRange: selectionRange
             )
         } else {
@@ -772,6 +773,7 @@ nonisolated enum NativeTimelineRowPainter {
             attributedText(
                 NativeTimelineBeginningText.description(beginning),
                 in: layout.descriptionFrame,
+                model: nil,
                 selectionRange: selectionRange
             )
         } else {

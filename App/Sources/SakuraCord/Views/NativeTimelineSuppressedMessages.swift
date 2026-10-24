@@ -78,7 +78,7 @@ nonisolated struct NativeTimelineSuppressedHeaderLayout: Equatable {
     }
 }
 
-nonisolated extension NativeTimelineRowPainter {
+extension NativeTimelineRowPainter {
     static func drawSuppressedHeader(
         _ group: SuppressedMessageGroup,
         layout: NativeTimelineSuppressedHeaderLayout,

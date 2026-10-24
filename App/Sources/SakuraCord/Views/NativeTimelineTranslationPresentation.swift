@@ -141,7 +141,7 @@ extension NativeTimelineRowLayout {
     }
 }
 
-nonisolated extension NativeTimelineRowPainter {
+extension NativeTimelineRowPainter {
     static func drawMessageTranslation(_ input: NativeTimelineMessageDrawInput) {
         guard let region = input.layout.translationRegion else { return }
         let font = NativeTimelineRowLayout.translationCaptionFont
@@ -164,6 +164,7 @@ nonisolated extension NativeTimelineRowPainter {
             attributed,
             framesetter: framesetter,
             in: NativeTimelineTextGeometry.messageContentDrawingFrame(textFrame),
+            model: input.model,
             selectionRange: input.textSelection?.itemIdentifier == .message(input.row.identity)
                 && input.textSelection?.region == region.regionID ? input.textSelection?.range : nil,
             hoveredMentionCharacterIndex: input.hoveredMention?.itemIdentifier == .message(input.row.identity)

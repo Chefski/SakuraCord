@@ -8,7 +8,7 @@ import QuartzCore
 import SakuraCordModels
 import SwiftUI
 
-nonisolated extension NativeTimelineRowPainter {
+extension NativeTimelineRowPainter {
     private struct SingleLineTextInput {
         let sourceLine: CTLine
         let sourceWidth: CGFloat
@@ -283,6 +283,7 @@ nonisolated extension NativeTimelineRowPainter {
     static func attributedText(
         _ box: NativeTimelineAttributedTextBox,
         in frame: CGRect,
+        model: AppModel?,
         selectionRange: NSRange? = nil,
         hoveredMentionCharacterIndex: Int? = nil,
         hoveredLinkCharacterIndex: Int? = nil,
@@ -295,6 +296,7 @@ nonisolated extension NativeTimelineRowPainter {
             box.value,
             framesetter: box.framesetter,
             in: drawingFrame,
+            model: model,
             selectionRange: selectionRange,
             hoveredMentionCharacterIndex:
                 hoveredMentionCharacterIndex,
@@ -308,12 +310,14 @@ nonisolated extension NativeTimelineRowPainter {
 
     static func attributedText(
         _ value: NSAttributedString,
-        in frame: CGRect
+        in frame: CGRect,
+        model: AppModel?
     ) {
         attributedText(
             value,
             framesetter: CTFramesetterCreateWithAttributedString(value),
-            in: frame
+            in: frame,
+            model: model
         )
     }
 
@@ -321,6 +325,7 @@ nonisolated extension NativeTimelineRowPainter {
         _ value: NSAttributedString,
         framesetter: CTFramesetter,
         in frame: CGRect,
+        model: AppModel?,
         isOutgoingBubble: Bool = false,
         selectionRange: NSRange? = nil,
         hoveredMentionCharacterIndex: Int? = nil,
@@ -335,7 +340,7 @@ nonisolated extension NativeTimelineRowPainter {
             value,
             framesetter: framesetter,
             hoveredLinkCharacterIndex: hoveredLinkCharacterIndex,
-            underlinesLinks: NativeTimelineRowPaintContext.current?.underlinesLinks == true,
+            underlinesLinks: model?.accessibilitySettings.underlinesLinks == true,
             revealedSpoilerLocations: revealedSpoilerLocations
         )
         let path = CGPath(rect: CGRect(origin: .zero, size: frame.size), transform: nil)
@@ -367,6 +372,7 @@ nonisolated extension NativeTimelineRowPainter {
             in: textFrame,
             outerFrame: frame,
             attributedText: drawingValue,
+            model: model,
             isOutgoingBubble: isOutgoingBubble,
             selectionRange: selectionRange,
             hoveredMentionCharacterIndex: hoveredMentionCharacterIndex
@@ -693,6 +699,7 @@ nonisolated extension NativeTimelineRowPainter {
         let textFrame: CTFrame
         let outerFrame: CGRect
         let attributedText: NSAttributedString
+        let model: AppModel?
         let selectionRange: NSRange?
     }
 
@@ -700,6 +707,7 @@ nonisolated extension NativeTimelineRowPainter {
         in textFrame: CTFrame,
         outerFrame: CGRect,
         attributedText: NSAttributedString,
+        model: AppModel?,
         isOutgoingBubble: Bool = false,
         selectionRange: NSRange?,
         hoveredMentionCharacterIndex: Int?
@@ -708,6 +716,7 @@ nonisolated extension NativeTimelineRowPainter {
             in: textFrame,
             outerFrame: outerFrame,
             attributedText: attributedText,
+            model: model,
             selectionRange: selectionRange
         )
         for draw in draws {
@@ -723,6 +732,7 @@ nonisolated extension NativeTimelineRowPainter {
         in textFrame: CTFrame,
         outerFrame: CGRect,
         attributedText: NSAttributedString,
+        model: AppModel?,
         selectionRange: NSRange?
     ) -> [InlineAttachmentDraw] {
         let lines = CTFrameGetLines(textFrame) as NSArray
@@ -739,6 +749,7 @@ nonisolated extension NativeTimelineRowPainter {
             textFrame: textFrame,
             outerFrame: outerFrame,
             attributedText: attributedText,
+            model: model,
             selectionRange: selectionRange
         )
 
@@ -769,6 +780,7 @@ nonisolated extension NativeTimelineRowPainter {
         let textFrame = context.textFrame
         let outerFrame = context.outerFrame
         let attributedText = context.attributedText
+        let model = context.model
         let selectionRange = context.selectionRange
         let range = CTRunGetStringRange(run)
         guard range.location >= 0, range.location < attributedText.length else { return nil }
@@ -815,7 +827,7 @@ nonisolated extension NativeTimelineRowPainter {
             )
         }
         guard let emojiToken,
-              let image = inlineEmojiImage(token: emojiToken)
+              let image = inlineEmojiImage(token: emojiToken, model: model)
         else { return .emojiFallback(frame, selectionFrame: selectionFrame) }
         return .image(image, frame, selectionFrame: selectionFrame)
     }
@@ -970,11 +982,12 @@ nonisolated extension NativeTimelineRowPainter {
     }
 
     static func inlineEmojiImage(
-        token: String
+        token: String,
+        model: AppModel?
     ) -> NSImage? {
         let reference = EmojiReference(rawToken: token)
         if let url =
-            reference.id.flatMap({ NativeTimelineRowPaintContext.current?.customEmojiURLsByID[$0] })
+            reference.id.flatMap({ model?.customEmojiURLsByID[$0] })
                 ?? reference.imageURL(size: 64),
            let image = mediaImage(
                for: .media(url, maximumPixelDimension: 64)

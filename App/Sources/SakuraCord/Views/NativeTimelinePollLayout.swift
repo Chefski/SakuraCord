@@ -114,7 +114,7 @@ nonisolated struct NativeTimelinePollTarget: Equatable {
     let control: Control
 }
 
-nonisolated extension NativeTimelineRowPainter {
+extension NativeTimelineRowPainter {
     static func pollSurface(in frame: CGRect, cornerRadius radius: CGFloat) {
         NativeTimelineSemanticColor.opacity(.controlBackgroundColor, 0.45).setFill()
         NSBezierPath(concentricRoundedRect: frame, cornerRadius: radius).fill()
@@ -154,7 +154,7 @@ nonisolated extension NativeTimelineRowPainter {
         }
         drawPollFooter(poll, layout: layout, state: state,
                        isConfirmed: input.row.message.outboxState == .confirmed,
-                       canVote: NativeTimelineRowPaintContext.current?.canUpdatePollVote(on: input.row.message, removing: !poll.selectedAnswerIDs.isEmpty) != false, bubbleRegion: bubble)
+                       canVote: input.model?.canUpdatePollVote(on: input.row.message, removing: !poll.selectedAnswerIDs.isEmpty) != false, bubbleRegion: bubble)
     }
 
     private static func drawPollAnswer(_ answer: PollAnswer, region: NativeTimelinePollLayout.Answer,

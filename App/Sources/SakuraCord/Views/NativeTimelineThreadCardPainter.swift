@@ -1,7 +1,8 @@
 import AppKit
 import SakuraCordModels
 
-nonisolated extension NativeTimelineThreadCard {
+@MainActor
+extension NativeTimelineThreadCard {
     enum Interaction {
         case idle, hovered, pressed
 
@@ -144,7 +145,7 @@ nonisolated extension NativeTimelineThreadCard {
     }
 }
 
-nonisolated extension NativeTimelineRowPainter {
+extension NativeTimelineRowPainter {
     /// Discord's thread card: the name and message count, then the thread's
     /// latest message or an empty state. It is a button, so it reacts to the
     /// pointer; inside a bubble it tints the bubble section instead of
@@ -152,6 +153,8 @@ nonisolated extension NativeTimelineRowPainter {
     static func threadCard(
         _ thread: MessageThreadSummary,
         preview: Message?,
+        message: Message,
+        model: AppModel?,
         in frame: CGRect,
         bubbleRegion: NativeTimelineBubbleRegion? = nil,
         interaction: NativeTimelineThreadCard.Interaction = .idle
@@ -227,6 +230,7 @@ nonisolated extension NativeTimelineRowPainter {
             trailingInset: 0,
             showsReplyMention: false,
             message: preview,
+            model: model,
             foregroundColor: isOutgoing ? foreground : nil
         )
     }
