@@ -53,12 +53,7 @@ enum SideConversation: Equatable {
 
     var capabilities: SideConversationCapabilities {
         switch self {
-        case .thread:
-            SideConversationCapabilities(
-                composerDestination: .thread,
-                closeHelp: "Close thread"
-            )
-        case .threadCreation:
+        case .thread, .threadCreation:
             SideConversationCapabilities(
                 composerDestination: .thread,
                 closeHelp: "Close thread"
