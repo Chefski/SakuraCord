@@ -745,7 +745,7 @@ extension NativeTimelineRowPainter {
             reaction(
                 region,
                 model: model,
-                isHovered: model?.canUpdateReactions(on: message) != false && hoveredReactionID == region.reaction.id,
+                isHovered: hoveredReactionID == region.reaction.id && model?.canUpdateReactions(on: message) != false,
                 countTransition: reactionCountTransitions[
                     region.reaction.id
                 ],
