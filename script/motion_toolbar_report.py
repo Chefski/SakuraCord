@@ -42,7 +42,8 @@ def analyze(recording: dict, jump_pt: float, late_ms: float) -> list[tuple[dict,
     for index, action in enumerate(actions):
         start = action["time"]
         end = actions[index + 1]["time"] if index + 1 < len(actions) else frames[-1]["time"] + 1
-        window = [f for f in frames if start - 0.02 <= f["time"] < end]
+        before = [f for f in frames if f["time"] < start]
+        window = before[-1:] + [f for f in frames if start <= f["time"] < end]
         if len(window) < 2:
             continue
         tracks: dict[int, ItemTrack] = {}
