@@ -237,6 +237,7 @@ private struct ChatRootView: View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             HStack(spacing: 0) {
                 ServerRailContainer(model: model, sidebarWidth: sidebarWidth)
+                .environment(\.reducesSidebarMotion, !model.animates(.sidebar))
                 .zIndex(200)
                 ChannelSidebarView(
                     voiceModel: model,

@@ -17,7 +17,7 @@ extension NativeTimelineCanvasView {
         let snapshotAnchor = source.installSnapshotAnchor(in: window)
         if followsTimelineScroll { reactionDetailsPopoverAnchor = snapshotAnchor }
         source.removeFromSuperview()
-        let popover = MessagePeoplePopover()
+        let popover = OverlayMotionPopover()
         popover.behavior = .transient
         popover.animates = AppMotionPolicy.animates(.overlays)
         let controller = StablePopoverHostingController(
@@ -47,7 +47,7 @@ extension NativeTimelineCanvasView {
 
 /// The voters and reaction users popover, whose open and close animation
 /// follows the reader's overlay motion setting at the time it plays.
-private final class MessagePeoplePopover: NSPopover {
+private final class OverlayMotionPopover: NSPopover {
     override func close() {
         animates = animates && AppMotionPolicy.animates(.overlays)
         super.close()
