@@ -91,8 +91,8 @@ normal use. Use explicit scoped fixtures for mutations and local tests for
 bulk actions that would otherwise affect unrelated conversations.
 
 Use `./script/build_and_run.sh run-release` to build the optimized release
-configuration, apply the release credential restrictions, and launch the
-staged app bundle.
+configuration and launch the staged app bundle. It uses Keychain unless the
+machine credential preference is enabled (see Local credential mode).
 
 ## Settings cards in chat
 
@@ -137,8 +137,11 @@ clones and worktrees use the same mode. Inspect or disable it with:
 
 An explicit `SAKURACORD_INSECURE_DEBUG_CREDENTIALS=0` or `1` overrides the
 machine setting for one invocation. Existing checkout-local settings are read
-only when no machine preference exists. Release and update-enabled packages
-always use Keychain and reject an explicit insecure override.
+only when no machine preference exists. `run-release` on this machine honours
+the machine preference, so rebuilt local Releases do not trigger a Keychain
+prompt each time. `package-release` and update-enabled packages always use
+Keychain, and every release mode rejects an explicit
+`SAKURACORD_INSECURE_DEBUG_CREDENTIALS=1`.
 
 Both Run and Build & Run verify the packaged credential mode and signature
 before launch. A stale bundle with a different credential mode is refused.

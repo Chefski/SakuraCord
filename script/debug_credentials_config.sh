@@ -84,6 +84,16 @@ sakuracord_apply_secure_release_credential_policy() {
     return 2
   fi
 
+  # A local run-release is a developer build launched on this machine, so it
+  # honours the machine preference. Packages for distribution and anything with
+  # updates enabled always stay on Keychain.
+  if [[ "$mode" == "run-release" && "$updates_enabled" != "1" \
+    && "$SAKURACORD_RESOLVED_INSECURE_DEBUG_CREDENTIALS" == "1" \
+    && "$SAKURACORD_INSECURE_DEBUG_CREDENTIALS_SOURCE" == "machine config" ]]; then
+    SAKURACORD_INSECURE_DEBUG_CREDENTIALS_SOURCE="machine config (local release)"
+    return 0
+  fi
+
   SAKURACORD_RESOLVED_INSECURE_DEBUG_CREDENTIALS=0
   SAKURACORD_INSECURE_DEBUG_CREDENTIALS_SOURCE="release safety override"
 }
