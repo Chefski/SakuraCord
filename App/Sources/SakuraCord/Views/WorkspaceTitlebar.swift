@@ -215,8 +215,27 @@ final class WorkspaceTitlebarView: NSView {
                 self.groups[group.id] = views
                 return views
             }()
-            views.title.setContent(AnyView(group.title.environment(\.self, environment)))
-            views.actions.setContent(AnyView(group.actions.environment(\.self, environment)))
+#if SAKURACORD_MOTION_BENCHMARK
+            let probe = group.id == WorkspaceTitlebar.conversationID ? "tb.conversation" : "tb.side"
+#endif
+            views.title.setContent(
+                AnyView(
+                    group.title
+#if SAKURACORD_MOTION_BENCHMARK
+                        .workspaceMotionProbe("\(probe).title")
+#endif
+                        .environment(\.self, environment)
+                )
+            )
+            views.actions.setContent(
+                AnyView(
+                    group.actions
+#if SAKURACORD_MOTION_BENCHMARK
+                        .workspaceMotionProbe("\(probe).actions")
+#endif
+                        .environment(\.self, environment)
+                )
+            )
             if let fullWidthActions = group.fullWidthActions {
                 let island = views.fullWidthActions ?? {
                     let island = Island(fullWidthActions, isTrailing: true)
@@ -225,7 +244,15 @@ final class WorkspaceTitlebarView: NSView {
                     views.fullWidthActions = island
                     return island
                 }()
-                island.setContent(AnyView(fullWidthActions.environment(\.self, environment)))
+                island.setContent(
+                    AnyView(
+                        fullWidthActions
+#if SAKURACORD_MOTION_BENCHMARK
+                            .workspaceMotionProbe("tb.side.fullActions")
+#endif
+                            .environment(\.self, environment)
+                    )
+                )
             } else if let island = views.fullWidthActions {
                 island.container.removeFromSuperview()
                 views.fullWidthActions = nil

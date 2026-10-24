@@ -216,6 +216,10 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
     var bottomSpacerHeight: CGFloat = 0
     var maximumDrawDuration = 0.0
     var totalDrawDuration = 0.0
+#if SAKURACORD_MOTION_BENCHMARK
+    /// Like `totalDrawDuration`, but never reset (motion benchmark).
+    var lifetimeDrawDuration = 0.0
+#endif
     var drawCount = 0
     var maximumRowRasterDuration = 0.0
     var maximumRowRasterHeight: CGFloat = 0

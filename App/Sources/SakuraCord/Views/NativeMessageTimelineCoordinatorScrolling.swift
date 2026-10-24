@@ -290,6 +290,12 @@ extension NativeMessageTimelineCoordinator {
                 recentLayoutCacheHits += 1
                 return cached.layout
             }
+#if SAKURACORD_MOTION_BENCHMARK
+            let start = WorkspaceMotionProbes.isEnabled ? ProcessInfo.processInfo.systemUptime : nil
+            defer {
+                if let start { lifetimeLayoutDuration += ProcessInfo.processInfo.systemUptime - start }
+            }
+#endif
             return NativeTimelineRowLayout.make(
                 item: item,
                 width: width,
