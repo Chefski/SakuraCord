@@ -148,10 +148,12 @@ enum SideChatMotionBenchmark {
         membersOpen.perform(model)
         try? await Task.sleep(for: .seconds(options.settleSeconds))
         await recorder.idle(seconds: 4, label: "members-shown")
+        // Stop recording before the restoring close, so it is not counted as
+        // part of the "members-open" action.
+        recorder.stop()
         model.toggleMemberInspector()
         try? await Task.sleep(for: .seconds(options.settleSeconds))
 
-        recorder.stop()
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("sakuracord-motion-benchmark.json")
         do {
