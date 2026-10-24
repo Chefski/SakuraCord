@@ -39,8 +39,6 @@ final class ForumPostMenuBuilder: NSObject {
         canManage: Bool
     ) -> NSMenuItem {
         let tagsItem = NSMenuItem(title: "Tags", action: nil, keyEquivalent: "")
-        tagsItem.target = nil
-        tagsItem.isEnabled = true
         ContextMenuItemSupport.configure(tagsItem, title: "Tags", systemImage: "tag.fill")
         let tagsMenu = NSMenu(title: "Tags")
         tagsMenu.autoenablesItems = false
