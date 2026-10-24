@@ -288,7 +288,11 @@ final class WorkspaceColumnsView: NSView {
             track.move(to: 1, at: now, animated: animates)
             widening = track
         }
-        layoutColumns(at: now)
+        // Posted inside the motion's `withAnimation`, which this view's own
+        // spring replaces: a column resized in it, such as the conversation
+        // the member list uncovers, had SwiftUI animate its content to the
+        // new size and lay it out again on every frame.
+        withTransaction(Transaction(animation: nil)) { layoutColumns(at: now) }
         if isAnimating(at: now) { startMotion() }
     }
 
