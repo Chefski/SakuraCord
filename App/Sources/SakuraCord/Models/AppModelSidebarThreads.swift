@@ -33,14 +33,6 @@ extension AppModel {
         )
     }
 
-    func canManageSidebarThread(_ thread: MessageThreadSummary) -> Bool {
-        threadActionPolicy(thread).canManage
-    }
-
-    func canArchiveSidebarThread(_ thread: MessageThreadSummary) -> Bool {
-        threadActionPolicy(thread).canChangeArchive
-    }
-
     func setThreadMute(_ thread: MessageThreadSummary, isMuted: Bool, until: Date?) {
         guard threadActionPolicy(thread).canChangeNotifications else { return }
         setForumPostMute(isMuted, until: until, for: ForumPost(thread: thread), reportErrorInAlert: true)
