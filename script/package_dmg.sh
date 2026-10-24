@@ -38,8 +38,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Package a private copy: a local run-release may rebuild the shared bundle
-# with the machine's local credential mode, which must never ship.
+# Package a private copy, since a local run-release may rebuild the shared bundle.
 APP_COPY="$DMG_TEMP_DIR/app/$(basename "$SAKURACORD_APP_BUNDLE")"
 mkdir -p "$(dirname "$APP_COPY")"
 sakuracord_acquire_operation_lock
