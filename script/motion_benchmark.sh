@@ -92,7 +92,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$app" ]]; then
-    sakuracord_select_app_variant "$configuration"
+    sakuracord_select_app_variant "$configuration" "${SAKURACORD_RELEASE_TRACK:-regular}"
     app="$SAKURACORD_APP_BUNDLE"
 fi
 if [[ "$build" == 1 ]]; then
@@ -112,8 +112,8 @@ fi
 executable_name="$(plutil -extract CFBundleExecutable raw -o - "$app/Contents/Info.plist")"
 executable="$app/Contents/MacOS/$executable_name"
 if ! grep -rqa SIDE_CHAT_MOTION_BENCHMARK_DONE "$app/Contents/MacOS" "$app/Contents/Frameworks" 2>/dev/null; then
-    echo "Warning: $app does not look like a benchmark build" \
-        "(built with SAKURACORD_MOTION_BENCHMARK=1); it will not record." >&2
+    echo "$app is not a benchmark build (build it with SAKURACORD_MOTION_BENCHMARK=1)." >&2
+    exit 2
 fi
 label="${label:-$configuration}"
 output="$root/.build/performance/motion/$label-$(date +%Y%m%d-%H%M%S)"
