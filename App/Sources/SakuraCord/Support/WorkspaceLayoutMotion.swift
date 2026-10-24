@@ -33,10 +33,12 @@ enum WorkspaceLayoutMotion {
     /// When the running motion settles.
     private(set) static var settlesAt: ContinuousClock.Instant?
 
-    /// Nil without a running app, as in unit tests: a motion's state is
-    /// shared, and one test's motion held another's width relayout back.
-    static var animation: Animation? {
-        NSApp == nil || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion || isSuppressedForBenchmark
+    /// Nil, so the change snaps, under Reduce Motion or when the reader
+    /// turned off any of `categories`, and without a running app, as in unit
+    /// tests: a motion's state is shared, and one test's motion held
+    /// another's width relayout back.
+    static func springAnimation(for categories: [AppMotionCategory], in model: AppModel) -> Animation? {
+        NSApp == nil || isSuppressedForBenchmark || !model.animates(categories)
             ? nil : .spring(ChatChromeMetrics.sidebarSpring)
     }
 
@@ -50,9 +52,15 @@ enum WorkspaceLayoutMotion {
         .seconds(9.3 * ChatChromeMetrics.sidebarSpring.duration / (2 * .pi))
     }
 
-    /// Opens, closes or swaps the workspace's trailing column.
-    static func perform(in model: AppModel, _ change: () -> Void) {
-        guard let animation else {
+    /// Opens, closes or swaps the workspace's trailing column. The change
+    /// moves only if every one of `categories` does: a side chat, by default,
+    /// and the member list or search results for `.sidebar`.
+    static func perform(
+        in model: AppModel,
+        categories: [AppMotionCategory] = [.sideChats],
+        _ change: () -> Void
+    ) {
+        guard let animation = springAnimation(for: categories, in: model) else {
             withAnimation(nil, change)
             return
         }
@@ -108,7 +116,7 @@ enum WorkspaceLayoutMotion {
     /// it is covered, and the inspector slides in beside it if shown.
     static func widen(in model: AppModel, _ change: () -> Void) {
         let before = model.workspacePresentation
-        guard let animation, case .channel(let channel) = before.primary else {
+        guard let animation = springAnimation(for: [.sideChats], in: model), case .channel(let channel) = before.primary else {
             withAnimation(nil, change)
             return
         }

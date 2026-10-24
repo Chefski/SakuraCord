@@ -1265,7 +1265,8 @@ final class AppModel {
         self.attachmentSettingsStore = resolvedAttachmentStore
         attachmentSettings = resolvedAttachmentStore.load()
         self.attachmentCompactor = attachmentCompactor
-        accessibilitySettings = AccessibilitySettingsStore.shared.load()
+        AppMotionPolicy.settings = AccessibilitySettingsStore.shared.load()
+        accessibilitySettings = AppMotionPolicy.settings
         self.notificationService =
             notificationService ?? NoopNativeNotificationService()
         self.soundPlayer = soundPlayer ?? NoopAppSoundPlayer()

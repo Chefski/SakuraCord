@@ -216,6 +216,13 @@ extension AppModel {
         }
     }
 
+    /// The motion categories of showing or hiding the member list or search
+    /// results: a side chat they take the place of, or return, moves too.
+    var inspectorMotionCategories: [AppMotionCategory] {
+        workspacePresentation.paneSideConversation != nil || sideConversationCover != nil
+            ? [.sidebar, .sideChats] : [.sidebar]
+    }
+
     /// Shows or hides the member list beside the conversation.
     func toggleMemberInspector() {
         prepareInspectorProfileForPresentation()
@@ -223,7 +230,7 @@ extension AppModel {
         // member list takes the side chat's place until it closes again.
         if workspacePresentation.paneSideConversation != nil {
             threadTimelinePosition.restore = threadTimelinePosition.reading
-            WorkspaceLayoutMotion.perform(in: self) {
+            WorkspaceLayoutMotion.perform(in: self, categories: inspectorMotionCategories) {
                 sideConversationCover = .memberList
                 showInspector = true
                 // Search results the side chat hid would take precedence.
@@ -232,13 +239,13 @@ extension AppModel {
             return
         }
         if sideConversationCover == .memberList, showInspector {
-            WorkspaceLayoutMotion.perform(in: self) {
+            WorkspaceLayoutMotion.perform(in: self, categories: inspectorMotionCategories) {
                 showInspector = false
                 sideConversationCover = nil
             }
             return
         }
-        WorkspaceLayoutMotion.perform(in: self) { showInspector.toggle() }
+        WorkspaceLayoutMotion.perform(in: self, categories: inspectorMotionCategories) { showInspector.toggle() }
     }
 
     /// Shows the side chat Members or search results cover, as opening it
@@ -246,7 +253,7 @@ extension AppModel {
     func revealCoveredSideConversation() {
         switch sideConversationCover {
         case .memberList:
-            WorkspaceLayoutMotion.perform(in: self) {
+            WorkspaceLayoutMotion.perform(in: self, categories: inspectorMotionCategories) {
                 showInspector = false
                 sideConversationCover = nil
             }

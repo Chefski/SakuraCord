@@ -236,7 +236,7 @@ extension AppModel {
         messageSearch.requestTask = nil
         messageSearch.isSearching = false
         messageSearch.pollRefreshJournal = nil
-        WorkspaceLayoutMotion.perform(in: self) {
+        WorkspaceLayoutMotion.perform(in: self, categories: inspectorMotionCategories) {
             messageSearch.isPresented = false
             if sideConversationCover == .messageSearch { sideConversationCover = nil }
         }
@@ -441,7 +441,7 @@ extension AppModel {
     private func presentMessageSearchResultsIfNeeded() {
         guard !isMessageSearchVisible else { return }
         AppPerformanceSignposts.beginMessageSearchOpen()
-        WorkspaceLayoutMotion.perform(in: self) {
+        WorkspaceLayoutMotion.perform(in: self, categories: inspectorMotionCategories) {
             // Results take a thread pane's place until they close.
             if workspacePresentation.paneSideConversation != nil {
                 threadTimelinePosition.restore = threadTimelinePosition.reading
