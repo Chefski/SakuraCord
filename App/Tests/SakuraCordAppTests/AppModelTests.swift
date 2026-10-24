@@ -8827,14 +8827,12 @@ func `resource thread permissions belong to its parent rather than the selected 
     model.dismissPinnedMessages()
 }
 
-/// A thread under `parent` whose history already holds a few messages.
+/// A thread under `parent` whose history already holds a message.
 private func threadWithHistory(in parent: Channel, provider: MockChatProvider) async throws -> MessageThreadSummary {
     let thread = MessageThreadSummary(
         id: ChannelID(rawValue: 999_101), guildID: parent.guildID, parentID: parent.id, name: "Seeded thread"
     )
-    for index in 0 ..< 5 {
-        _ = try await provider.send(SendMessageDraft(channelID: thread.id, content: "Seeded message \(index)"))
-    }
+    _ = try await provider.send(SendMessageDraft(channelID: thread.id, content: "Seeded message"))
     return thread
 }
 

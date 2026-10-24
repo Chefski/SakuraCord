@@ -94,11 +94,19 @@ public actor MockChatProvider: ChatProvider {
                 messages.filter(\.isPinned).map { ($0.id, $0.timestamp) }
             }
         )
-        let guildAuthors = fixture.membersByGuild[GuildID(rawValue: 100)]?.map(\.user) ?? [fixture.currentUser]
         let forumFixture = Self.makeForumPosts(
-            channelID: ChannelID(rawValue: 220), authors: guildAuthors, count: forumPostCount ?? 6
+            channelID: ChannelID(rawValue: 220),
+            authors: fixture.membersByGuild[GuildID(rawValue: 100)]?.map(\.user) ?? [
+                fixture.currentUser
+            ],
+            count: forumPostCount ?? 6
         )
-        let bugForumFixture = Self.makeForumPosts(channelID: ChannelID(rawValue: 221), authors: guildAuthors)
+        let bugForumFixture = Self.makeForumPosts(
+            channelID: ChannelID(rawValue: 221),
+            authors: fixture.membersByGuild[GuildID(rawValue: 100)]?.map(\.user) ?? [
+                fixture.currentUser
+            ]
+        )
         forumPostsByChannel = [
             ChannelID(rawValue: 220): forumFixture,
             ChannelID(rawValue: 221): bugForumFixture,
