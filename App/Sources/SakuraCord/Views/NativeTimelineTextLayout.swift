@@ -92,7 +92,7 @@ enum NativeTimelineTextPresentation {
 
     static func make(
         row: MessageRowPresentation,
-        source: (any NativeTimelineLayoutSource)?
+        source: AppModel?
     ) -> Value {
         let message = row.message
         guard !message.flags.contains(.isComponentsV2) else {
@@ -125,7 +125,7 @@ enum NativeTimelineTextPresentation {
     static func make(
         message: Message,
         plan: NativeTimelineTextPlan,
-        source: (any NativeTimelineLayoutSource)?
+        source: AppModel?
     ) -> Value {
         guard plan.preparedText != nil else {
             return Value(
@@ -190,7 +190,7 @@ enum NativeTimelineTextPresentation {
     static func preparation(
         message: Message,
         plan: NativeTimelineTextPlan,
-        source: (any NativeTimelineLayoutSource)?,
+        source: AppModel?,
         baseFontSize: CGFloat? = nil
     ) -> Preparation? {
         let resolvedBaseFontSize = baseFontSize ?? plan.baseFontSize
@@ -575,7 +575,7 @@ enum NativeTimelineEmbedLayout {
     private struct Builder {
         let embed: MessageEmbed
         let message: Message
-        let source: (any NativeTimelineLayoutSource)?
+        let source: AppModel?
         let attachments: [Attachment]
         let origin: CGPoint
         let maximumWidth: CGFloat
@@ -991,7 +991,7 @@ enum NativeTimelineEmbedLayout {
             emojiSize: CGFloat,
             embed: MessageEmbed,
             message: Message,
-            source: (any NativeTimelineLayoutSource)?
+            source: AppModel?
         ) -> NativeTimelineAttributedTextBox {
             NativeTimelineEmbedLayout.resolvedTextBox(
                 prepared: prepared,
@@ -1098,7 +1098,7 @@ enum NativeTimelineEmbedLayout {
     static func make(
         embed: MessageEmbed,
         message: Message,
-        source: (any NativeTimelineLayoutSource)?,
+        source: AppModel?,
         attachments: [Attachment],
         origin: CGPoint,
         maximumWidth: CGFloat,
@@ -1123,7 +1123,7 @@ enum NativeTimelineEmbedLayout {
         emojiSize: CGFloat,
         embed: MessageEmbed,
         message: Message,
-        source: (any NativeTimelineLayoutSource)?
+        source: AppModel?
     ) -> NativeTimelineAttributedTextBox {
         let resolver = source.map {
             MessageMentionResolver(model: $0, message: message)
@@ -1669,7 +1669,7 @@ extension NativeTimelineRowLayout {
         let editedFont: NSFont
         let timestampGutterWidth: CGFloat
 
-        @MainActor init(source: (any NativeTimelineLayoutSource)?) {
+        @MainActor init(source: AppModel?) {
             self.init(settings: source?.interfaceSettings ?? .defaults)
         }
 

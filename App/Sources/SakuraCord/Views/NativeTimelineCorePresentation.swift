@@ -137,7 +137,7 @@ nonisolated enum NativeTimelineReplyMetrics {
     @MainActor static func summary(
         for preview: MessageReplyPreview,
         in message: Message,
-        model source: (any NativeTimelineLayoutSource)?
+        model source: AppModel?
     ) -> MessageReplySummary.Prepared {
         if let source {
             MessageReplySummary.summary(
@@ -179,7 +179,7 @@ nonisolated enum NativeTimelineReplyMetrics {
     @MainActor static func previewWidth(
         _ preview: MessageReplyPreview?,
         in message: Message,
-        source: (any NativeTimelineLayoutSource)?
+        source: AppModel?
     ) -> CGFloat {
         guard let preview else {
             return textWidth(unavailableText, font: unavailableFont)

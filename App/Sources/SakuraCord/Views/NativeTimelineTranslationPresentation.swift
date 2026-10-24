@@ -18,7 +18,7 @@ nonisolated struct NativeTimelineTranslationPresentation {
 
     @MainActor static func make(
         row: MessageRowPresentation,
-        source model: (any NativeTimelineLayoutSource)?,
+        source model: AppModel?,
         isOutgoingBubble: Bool
     ) -> Self? {
         guard row.searchContext == nil, row.pinnedAt == nil, !row.isResource,

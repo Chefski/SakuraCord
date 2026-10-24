@@ -4,10 +4,10 @@ import SwiftUI
 
 /// Resolves message metadata through the same source used by row layout.
 struct MessageMentionResolver {
-    let source: any NativeTimelineLayoutSource
+    let source: AppModel
     let message: Message?
 
-    init(model: any NativeTimelineLayoutSource, message: Message? = nil) {
+    init(model: AppModel, message: Message? = nil) {
         source = model
         self.message = message
     }
