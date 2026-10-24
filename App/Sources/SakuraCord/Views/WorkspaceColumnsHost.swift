@@ -22,7 +22,7 @@ struct WorkspaceColumnsHost: NSViewRepresentable {
         let isSideConversation: Bool
         let isFullWidth: Bool
         /// Leaving: its width is no longer measured.
-        var isDeparting: Bool
+        var isDeparting = false
         let content: AnyView
     }
 

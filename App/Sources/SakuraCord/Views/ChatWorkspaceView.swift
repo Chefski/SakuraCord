@@ -120,7 +120,6 @@ struct ChatWorkspaceView: View, Equatable {
                     id: column.id,
                     isSideConversation: isSideConversation,
                     isFullWidth: column.id == fullWidthThread?.id,
-                    isDeparting: false,
                     content: AnyView(columnContent(column))
                 )
             },

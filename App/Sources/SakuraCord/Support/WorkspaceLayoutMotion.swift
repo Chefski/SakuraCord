@@ -165,12 +165,12 @@ enum WorkspaceLayoutMotion {
         phase.settleTask = Task {
             await untilSettled()
             guard !Task.isCancelled else { return }
-            // Each write invalidates the phase's readers, so skip no-ops.
+            phase.isMoving = false
+            phase.wideningHasArrived = false
+            phase.reveal.removeAll()
+            // Writing `widening` invalidates its readers, so skip a no-op.
             withAnimation(nil) {
-                phase.isMoving = false
                 if phase.widening != nil { phase.widening = nil }
-                if phase.wideningHasArrived { phase.wideningHasArrived = false }
-                if !phase.reveal.isEmpty { phase.reveal.removeAll() }
             }
             // The window the motion began in, though another may be main now.
             if let window = movingWindow {
@@ -248,8 +248,8 @@ final class WorkspaceMotionPhase {
 
     static let shared = WorkspaceMotionPhase()
 
-    /// Whether a motion runs.
-    var isMoving = false
+    /// Whether a motion runs. Only the motion itself reads it.
+    @ObservationIgnored var isMoving = false
     var widening: Widening?
     /// Whether the widening side chat is sliding to the leading edge yet.
     /// `WorkspaceColumnsHost` reads it on `revealDidChange`, so its start
