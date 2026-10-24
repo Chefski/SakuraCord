@@ -20,7 +20,7 @@ struct InboxToolbarButton: View {
                 ToggleSymbol(off: "tray", on: "tray.fill", isOn: model.inbox.isPresented)
             }
             .symbolVariant(.none)
-                .animation(.smooth(duration: 0.24), value: model.inbox.isPresented)
+                .animation(model.animates(.overlays) ? .smooth(duration: 0.24) : nil, value: model.inbox.isPresented)
         }
         .help("Inbox")
         .background { InboxPanelPresenter(model: model, isEnabled: presentsPanel) }
@@ -63,7 +63,7 @@ struct PinnedMessagesToolbarButton: View {
                 ToggleSymbol(off: "pin", on: "pin.fill", isOn: isPresented)
             }
             .symbolVariant(.none)
-                .animation(.smooth(duration: 0.24), value: isPresented)
+                .animation(model.animates(.overlays) ? .smooth(duration: 0.24) : nil, value: isPresented)
         }
         .help("Pinned Messages")
         .background { PinnedMessagesPanelPresenter(model: model, channelID: channelID, isEnabled: presentsPanel) }
@@ -191,7 +191,7 @@ struct MemberInspectorToolbarButton: View {
                 )
             }
             .symbolVariant(.none)
-            .animation(.smooth(duration: 0.24), value: isShown)
+            .animation(model.animates(.sidebar) ? .smooth(duration: 0.24) : nil, value: isShown)
         }
     }
 }

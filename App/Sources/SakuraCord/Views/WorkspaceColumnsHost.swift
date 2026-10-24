@@ -255,15 +255,16 @@ final class WorkspaceColumnsView: NSView {
         layoutColumns(at: CACurrentMediaTime())
     }
 
-    /// Takes a column out. The last side chat pane stays, hidden, for the
-    /// next one: a pane built from nothing costs most of a motion's first
-    /// frame.
+    /// Takes a column out. The last side chat pane stays, out of the window,
+    /// for the next one: a pane built from nothing costs most of a motion's
+    /// first frame. Out of the window, as a closed pane was before pooling,
+    /// it takes no events and plays no media; `apply` puts it back.
     private func remove(_ island: Island) {
         if island.column.isSideConversation, !island.column.isFullWidth, pooledPane == nil {
-            island.host.isHidden = true
+            island.view.removeFromSuperview()
             pooledPane = island.host
         } else if !island.column.isSideConversation {
-            island.host.isHidden = true
+            island.view.removeFromSuperview()
             pooledInspectors[island.column.id]?.discard()
             pooledInspectors[island.column.id] = island.host
         } else {
@@ -407,7 +408,6 @@ final class WorkspaceColumnsView: NSView {
     /// side chat pane, or a new one.
     private func makeHost(for column: WorkspaceColumnsHost.Column, _ root: AnyView) -> ColumnHostingView {
         if !column.isSideConversation, let pooled = pooledInspectors.removeValue(forKey: column.id) {
-            pooled.isHidden = false
             pooled.setContent(root, isLeaving: false)
             return pooled
         }
@@ -417,7 +417,6 @@ final class WorkspaceColumnsView: NSView {
             return host
         }
         pooledPane = nil
-        pooled.isHidden = false
         pooled.setContent(root, isLeaving: false)
         return pooled
     }
