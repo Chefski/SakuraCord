@@ -1,7 +1,8 @@
 import AppKit
 import SwiftUI
 
-nonisolated enum RoleColorIndicatorRenderer {
+@MainActor
+enum RoleColorIndicatorRenderer {
     static func draw(colorHex: UInt32?, in rect: CGRect) {
         let color = SakuraCordAccentColor.nsColor(
             forRoleColorHex: colorHex

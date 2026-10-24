@@ -1,5 +1,4 @@
 import AppKit
-import Synchronization
 import Foundation
 import Observation
 import SwiftUI
@@ -652,34 +651,22 @@ final class SakuraCordThemeSettingsStore {
 @MainActor
 @Observable
 final class SakuraCordThemeStore {
-    static let shared = SakuraCordThemeStore(publishesCommittedTheme: true)
+    static let shared = SakuraCordThemeStore()
     static let randomizationDurationSeconds = 0.22
     static let randomizationDuration: Duration = .seconds(randomizationDurationSeconds)
 
     private(set) var activeTheme: SakuraCordGradientTheme
-    private(set) var committedTheme: SakuraCordGradientTheme {
-        didSet {
-            if publishesCommittedTheme { Self.committedThemeSnapshot.withLock { $0 = committedTheme } }
-        }
-    }
-    /// The shared store's `committedTheme`, readable from any thread:
-    /// timeline rows paint off the main thread with the accent and role
-    /// colors it derives.
-    nonisolated static let committedThemeSnapshot = Mutex(SakuraCordGradientTheme.defaultTheme)
-    /// Whether this is the shared store, whose theme the app's accent follows.
-    @ObservationIgnored private let publishesCommittedTheme: Bool
+    private(set) var committedTheme: SakuraCordGradientTheme
 
     @ObservationIgnored private let persistence: SakuraCordThemeSettingsStore
     @ObservationIgnored private var deferredPersistenceTask: Task<Void, Never>?
     @ObservationIgnored private var interactionGeneration: UInt64 = 0
 
-    init(persistence: SakuraCordThemeSettingsStore = .shared, publishesCommittedTheme: Bool = false) {
+    init(persistence: SakuraCordThemeSettingsStore = .shared) {
         self.persistence = persistence
-        self.publishesCommittedTheme = publishesCommittedTheme
         let initial = persistence.load()
         activeTheme = initial
         committedTheme = initial
-        if publishesCommittedTheme { Self.committedThemeSnapshot.withLock { $0 = initial } }
     }
 
     isolated deinit {
@@ -802,10 +789,7 @@ final class SakuraCordThemeStore {
     }
 
     func accentNSColor() -> NSColor {
-        Self.accentNSColor(theme: committedTheme)
-    }
-
-    nonisolated static func accentNSColor(theme: SakuraCordGradientTheme) -> NSColor {
+        let theme = committedTheme
         let accentColor = theme.activeColors.first ?? SakuraCordGradientTheme.defaultTheme.colors[0]
         return NSColor(name: nil) { appearance in
             let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
@@ -819,12 +803,13 @@ final class SakuraCordThemeStore {
         }
     }
 
-    nonisolated static func roleNSColor(for colorHex: UInt32, theme: SakuraCordGradientTheme) -> NSColor {
+    func roleNSColor(for colorHex: UInt32) -> NSColor {
         let source = SakuraCordThemeRGB(
             red: Double((colorHex >> 16) & 0xFF) / 255,
             green: Double((colorHex >> 8) & 0xFF) / 255,
             blue: Double(colorHex & 0xFF) / 255
         )
+        let theme = committedTheme
         return NSColor(name: nil) { appearance in
             let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             let themeAppearance: SakuraCordThemeAppearance = isDark ? .dark : .light
@@ -832,12 +817,12 @@ final class SakuraCordThemeStore {
         }
     }
 
-    nonisolated static func textSelectionNSColor(theme: SakuraCordGradientTheme) -> NSColor {
-        let accentColor = accentNSColor(theme: theme)
+    func textSelectionNSColor() -> NSColor {
         return NSColor(name: nil) { appearance in
             var result = NSColor.selectedTextBackgroundColor
             appearance.performAsCurrentDrawingAppearance {
-                let accent = accentColor.usingColorSpace(.sRGB) ?? accentColor
+                let accent = self.accentNSColor().usingColorSpace(.sRGB)
+                    ?? self.accentNSColor()
                 let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
                 result = accent.blended(
                     withFraction: isDark ? 0.38 : 0.70,
