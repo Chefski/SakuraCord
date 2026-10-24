@@ -723,10 +723,10 @@ extension NativeMessageTimelineCoordinator {
                 || previewNeedsRows || restoresPreview else {
                 return false
             }
-            // The real viewport changing width while the rows keep following
-            // another width (a workspace motion's end points) is not a
-            // preview tick, so it paints now rather than a frame late.
-            let handsOffViewportWidth = !previewChanged
+            // The columns resizing the host they retained across an inspector's
+            // motion change the real viewport width at once, which paints now
+            // rather than a frame late. No other width change signals it.
+            let handsOffViewportWidth = WorkspaceConversationWidthPath.shared.isHostHandoff
                 && abs(viewportSize.width - lastViewportSize.width) >= 0.5
             lastViewportSize = viewportSize
             guard !isApplyingUpdate else { return true }

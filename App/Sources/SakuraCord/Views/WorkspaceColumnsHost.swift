@@ -599,16 +599,29 @@ final class WorkspaceColumnsView: NSView {
         // over it: laying the conversation out again on every frame took
         // most of each frame. Its timeline follows the uncovered width
         // (`WorkspaceConversationWidthPath`) and re-wraps live.
+        var retainsHost = false
         if let host = conversation?.view, movesOnlyInspectors(at: time),
            WorkspaceConversationWidthPath.shared.hasFollower(in: host)
         {
             let settled = conversationWidth(at: time + 60, provisionalStart: time)
             hostFrame.size.width = min(bounds.width, max(hostFrame.width, settled, host.frame.width))
+            retainsHost = true
         }
+        // The host's width jumps only where this optimization begins (a
+        // closing list widens it at once) or ends (it contracts on the
+        // settling frame); every other frame of a motion moves it by its path.
+        let handsOffHost = (retainsHost || retainsHostWidth)
+            && abs((conversation?.view.frame.width ?? 0) - hostFrame.width) >= 0.5
+        retainsHostWidth = retainsHost
         setFrame(of: conversationClip, CGRect(
             x: hostFrame.minX, y: 0, width: min(hostFrame.width, conversationFrame.width), height: bounds.height
         ))
+        // The timeline inside sees the handoff only while the host changes
+        // size and lays out, so it can paint that width change at once.
+        WorkspaceConversationWidthPath.shared.setHostHandoff(handsOffHost)
         setFrame(of: conversation?.view, CGRect(origin: .zero, size: hostFrame.size))
+        if handsOffHost { conversation?.view.layoutSubtreeIfNeeded() }
+        WorkspaceConversationWidthPath.shared.setHostHandoff(false)
         WorkspaceConversationCover.shared.update(
             trailingInset: max(0, (conversation?.view.frame.width ?? 0) - conversationFrame.width)
         )
@@ -668,6 +681,10 @@ final class WorkspaceColumnsView: NSView {
         if view.frame.size != frame.size { resizedViews.append(view) }
         view.frame = frame
     }
+
+    /// Whether the last placement kept the conversation's host at its wider
+    /// width while an inspector moved.
+    private var retainsHostWidth = false
 
     /// Views `layoutColumns` resized, which it lays out before it returns.
     private var resizedViews: [NSView] = []
@@ -942,6 +959,11 @@ final class WorkspaceConversationWidthPath {
     static let didAdvance = Notification.Name("SakuraCordWorkspaceWidthPathDidAdvance")
 
     private(set) var isMoving = false
+    /// Whether the conversation's host is changing width as `layoutColumns`
+    /// hands off the width it retained during an inspector's motion. True only
+    /// while that one resize and its layout run, so the timeline can tell it
+    /// from the width changes of an ordinary frame.
+    private(set) var isHostHandoff = false
     /// The width, on the last placed frame, of the column holding a view.
     private var width: (NSView) -> CGFloat? = { _ in nil }
     /// Timelines that follow the path rather than their frame.
@@ -960,6 +982,10 @@ final class WorkspaceConversationWidthPath {
         followers.allObjects.contains {
             $0.window != nil && !$0.isHiddenOrHasHiddenAncestor && $0.bounds.width > 0 && $0.isDescendant(of: container)
         }
+    }
+
+    func setHostHandoff(_ isHostHandoff: Bool) {
+        self.isHostHandoff = isHostHandoff
     }
 
     func update(isMoving: Bool, width: @escaping (NSView) -> CGFloat?) {
