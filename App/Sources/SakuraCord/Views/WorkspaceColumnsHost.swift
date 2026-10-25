@@ -619,10 +619,10 @@ final class WorkspaceColumnsView: NSView {
         ))
         // The timeline inside sees the handoff only while the host changes
         // size and lays out, so it can paint that width change at once.
-        WorkspaceConversationWidthPath.shared.setHostHandoff(handsOffHost)
-        setFrame(of: conversation?.view, CGRect(origin: .zero, size: hostFrame.size))
-        if handsOffHost { conversation?.view.layoutSubtreeIfNeeded() }
-        WorkspaceConversationWidthPath.shared.setHostHandoff(false)
+        WorkspaceConversationWidthPath.shared.handOffHost(handsOffHost) {
+            setFrame(of: conversation?.view, CGRect(origin: .zero, size: hostFrame.size))
+            if handsOffHost { conversation?.view.layoutSubtreeIfNeeded() }
+        }
         WorkspaceConversationCover.shared.update(
             trailingInset: max(0, (conversation?.view.frame.width ?? 0) - conversationFrame.width)
         )
@@ -985,8 +985,11 @@ final class WorkspaceConversationWidthPath {
         }
     }
 
-    func setHostHandoff(_ isHostHandoff: Bool) {
-        self.isHostHandoff = isHostHandoff
+    /// Runs `resize` with `isHostHandoff` set to `handsOff`.
+    func handOffHost(_ handsOff: Bool, _ resize: () -> Void) {
+        isHostHandoff = handsOff
+        defer { isHostHandoff = false }
+        resize()
     }
 
     func update(isMoving: Bool, width: @escaping (NSView) -> CGFloat?) {
