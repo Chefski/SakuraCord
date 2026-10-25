@@ -147,7 +147,7 @@ extension DiscordRESTProvider {
         try await relationshipMutation(
             "/users/@me/relationships", method: "POST", body: body, location: "Add Friend",
             captchaHandler: captchaHandler, explainsEveryFailure: true,
-            failure: { $0 == 80013 ? nil : Self.friendRequestFailureMessage(code: $0, status: $1, discordTag: tag) }
+            failure: { Self.friendRequestFailureMessage(code: $0, status: $1, discordTag: tag) }
         )
     }
 
@@ -160,7 +160,7 @@ extension DiscordRESTProvider {
         try await relationshipMutation(
             "/users/@me/relationships/\(user.id)", method: "PUT", body: [:], location: location.rawValue,
             captchaHandler: captchaHandler, explainsEveryFailure: true,
-            failure: { $0 == 80013 ? nil : Self.friendRequestFailureMessage(code: $0, status: $1, discordTag: user.tag) }
+            failure: { Self.friendRequestFailureMessage(code: $0, status: $1, discordTag: user.tag) }
         )
     }
 
@@ -265,9 +265,11 @@ extension DiscordRESTProvider {
     }
 
     // Official stable633029 module395422 `vU` and module717398 HTTP 429 copy.
-    static func friendRequestFailureMessage(code: Int?, status: Int, discordTag: String) -> String {
+    /// Nil for the stranger-confirmation response (80013).
+    static func friendRequestFailureMessage(code: Int?, status: Int, discordTag: String) -> String? {
         if status == 429 { return "You’re sending friend requests too quickly!" }
         return switch code {
+        case 80013: nil
         case 80000: "\(discordTag) is not accepting friend requests. They’ll have to add you to become friends."
         case 30002: "You’ve maxed out your friend list. Welcome to the elite 1,000 friends club!"
         case 80007: "You’re already friends with that user!"
