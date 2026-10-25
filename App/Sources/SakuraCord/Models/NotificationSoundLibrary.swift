@@ -64,19 +64,6 @@ nonisolated enum NotificationSoundLibrary {
     static let systemAlertSoundNames: [String] =
         systemAlertSounds.map { ($0 as NSString).deletingPathExtension }
 
-    static func displayName(soundID: String, customName: String) -> String {
-        if soundID == bundledID {
-            return "Default"
-        }
-        if soundID.hasPrefix(systemPrefix) {
-            return String(soundID.dropFirst(systemPrefix.count))
-        }
-        if soundID == customID {
-            return customName.isEmpty ? "Custom file" : customName
-        }
-        return "Default"
-    }
-
     static func defaultURL(kind: NotificationSoundKind) -> URL {
         kind.defaultEffect.resourceURL
             ?? URL(fileURLWithPath: systemSoundsDirectory).appendingPathComponent("Glass.aiff")
@@ -95,7 +82,7 @@ nonisolated enum NotificationSoundLibrary {
                     isStaleBookmark: false
                 )
             }
-        } else if choice.soundID == customID, let bookmark = choice.bookmark, !bookmark.isEmpty {
+        } else if choice.soundID == customID, let bookmark = choice.bookmark {
             var isStale = false
             if let url = try? URL(
                 resolvingBookmarkData: bookmark,

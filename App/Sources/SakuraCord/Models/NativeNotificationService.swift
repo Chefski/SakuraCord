@@ -291,6 +291,30 @@ final class NotificationPreferences {
         case .call: .init(soundID: callRingtoneID, bookmark: callRingtoneBookmark)
         }
     }
+    func soundName(for kind: NotificationSoundKind) -> String {
+        switch kind {
+        case .message: messageSoundName
+        case .call: callRingtoneName
+        }
+    }
+    func setSoundID(_ soundID: String, for kind: NotificationSoundKind) {
+        switch kind {
+        case .message: messageSoundID = soundID
+        case .call: callRingtoneID = soundID
+        }
+    }
+    func setCustomSound(bookmark: Data, name: String, for kind: NotificationSoundKind) {
+        switch kind {
+        case .message:
+            messageSoundBookmark = bookmark
+            messageSoundName = name
+            messageSoundID = NotificationSoundLibrary.customID
+        case .call:
+            callRingtoneBookmark = bookmark
+            callRingtoneName = name
+            callRingtoneID = NotificationSoundLibrary.customID
+        }
+    }
     var suppressesCurrentConversation: Bool {
         didSet {
             defaults.set(suppressesCurrentConversation, forKey: Key.suppressCurrentConversation)

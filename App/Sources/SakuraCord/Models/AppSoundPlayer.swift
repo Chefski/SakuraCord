@@ -174,10 +174,11 @@ final class MacAppSoundPlayer: AppSoundPlaying {
                   )
         {
             choice.bookmark = refreshed
-            switch kind {
-            case .message: notificationPreferences.messageSoundBookmark = refreshed
-            case .call: notificationPreferences.callRingtoneBookmark = refreshed
-            }
+            notificationPreferences.setCustomSound(
+                bookmark: refreshed,
+                name: notificationPreferences.soundName(for: kind),
+                for: kind
+            )
         }
         guard let player else {
             scopedURL?.stopAccessingSecurityScopedResource()

@@ -7,97 +7,63 @@ struct NotificationSoundSettingsSection: View {
     let soundPlayer: any AppSoundPlaying
     let state: SettingsViewState
 
-    @State private var messageSelection = NotificationSoundLibrary.bundledID
-    @State private var ringtoneSelection = NotificationSoundLibrary.bundledID
-    @State private var systemSounds = NotificationSoundLibrary.systemAlertSoundNames
+    @State private var selections: [NotificationSoundKind: String] = [:]
     @State private var previewingEffect: AppSoundEffect?
     @State private var previewResetTask: Task<Void, Never>?
+    private let systemSounds = NotificationSoundLibrary.systemAlertSoundNames
 
     var body: some View {
         Section {
-            HStack {
-                Picker("Message sound", selection: $messageSelection) {
-                    Text("Default").tag(NotificationSoundLibrary.bundledID)
-                    ForEach(systemSounds, id: \.self) { name in
-                        Text(name).tag(NotificationSoundLibrary.systemID(for: name))
-                    }
-                    if preferences.messageSoundBookmark != nil {
-                        Text(
-                            NotificationSoundLibrary.displayName(
-                                soundID: NotificationSoundLibrary.customID,
-                                customName: preferences.messageSoundName
-                            )
-                        )
-                        .tag(NotificationSoundLibrary.customID)
-                    }
-                    Text("Choose File…").tag(NotificationSoundLibrary.chooseFileID)
-                }
-                previewButton(.message, help: "message sound")
-            }
-            .settingsControlAnchor(.notificationMessageSound, state: state)
-            .onChange(of: messageSelection) { _, newValue in
-                guard newValue != preferences.messageSoundID else { return }
-                if newValue == NotificationSoundLibrary.chooseFileID {
-                    chooseFile(for: .message)
-                } else {
-                    preferences.messageSoundID = newValue
-                }
-            }
-
-            HStack {
-                Picker("Call ringtone", selection: $ringtoneSelection) {
-                    Text("Default").tag(NotificationSoundLibrary.bundledID)
-                    ForEach(systemSounds, id: \.self) { name in
-                        Text(name).tag(NotificationSoundLibrary.systemID(for: name))
-                    }
-                    if preferences.callRingtoneBookmark != nil {
-                        Text(
-                            NotificationSoundLibrary.displayName(
-                                soundID: NotificationSoundLibrary.customID,
-                                customName: preferences.callRingtoneName
-                            )
-                        )
-                        .tag(NotificationSoundLibrary.customID)
-                    }
-                    Text("Choose File…").tag(NotificationSoundLibrary.chooseFileID)
-                }
-                previewButton(.callRinging, help: "call ringtone")
-            }
-            .settingsControlAnchor(.notificationCallRingtone, state: state)
-            .onChange(of: ringtoneSelection) { _, newValue in
-                guard newValue != preferences.callRingtoneID else { return }
-                if newValue == NotificationSoundLibrary.chooseFileID {
-                    chooseFile(for: .call)
-                } else {
-                    preferences.callRingtoneID = newValue
-                }
-            }
+            soundPicker(.message, title: "Message sound", help: "message sound", control: .notificationMessageSound)
+            soundPicker(.call, title: "Call ringtone", help: "call ringtone", control: .notificationCallRingtone)
         } header: {
             Text("Sounds", bundle: #bundle)
         }
         .disabled(!preferences.playsSound)
         .onAppear {
-            messageSelection = displayTag(
-                stored: preferences.messageSoundID,
-                bookmark: preferences.messageSoundBookmark
-            )
-            ringtoneSelection = displayTag(
-                stored: preferences.callRingtoneID,
-                bookmark: preferences.callRingtoneBookmark
-            )
+            for kind in NotificationSoundKind.allCases { syncSelection(kind) }
         }
         .onChange(of: preferences.playsSound) { _, playsSound in
             if !playsSound { stopPreview() }
         }
         .onDisappear { stopPreview() }
-        .onChange(of: preferences.messageSoundID) { _, newValue in
-            let tag = displayTag(stored: newValue, bookmark: preferences.messageSoundBookmark)
-            if messageSelection != tag { messageSelection = tag }
+        .onChange(of: preferences.messageSoundID) { syncSelection(.message) }
+        .onChange(of: preferences.callRingtoneID) { syncSelection(.call) }
+    }
+
+    private func soundPicker(
+        _ kind: NotificationSoundKind,
+        title: LocalizedStringKey,
+        help: String,
+        control: SettingsControlID
+    ) -> some View {
+        let selection = Binding(
+            get: { selections[kind] ?? NotificationSoundLibrary.bundledID },
+            set: { newValue in
+                selections[kind] = newValue
+                if newValue == NotificationSoundLibrary.chooseFileID {
+                    chooseFile(for: kind)
+                } else {
+                    preferences.setSoundID(newValue, for: kind)
+                }
+            }
+        )
+        let customName = preferences.soundName(for: kind)
+        return HStack {
+            Picker(title, selection: selection) {
+                Text("Default").tag(NotificationSoundLibrary.bundledID)
+                ForEach(systemSounds, id: \.self) { name in
+                    Text(name).tag(NotificationSoundLibrary.systemID(for: name))
+                }
+                if preferences.soundChoice(for: kind).bookmark != nil {
+                    Text(customName.isEmpty ? "Custom file" : customName)
+                        .tag(NotificationSoundLibrary.customID)
+                }
+                Text("Choose File…").tag(NotificationSoundLibrary.chooseFileID)
+            }
+            previewButton(kind.defaultEffect, help: help)
         }
-        .onChange(of: preferences.callRingtoneID) { _, newValue in
-            let tag = displayTag(stored: newValue, bookmark: preferences.callRingtoneBookmark)
-            if ringtoneSelection != tag { ringtoneSelection = tag }
-        }
+        .settingsControlAnchor(control, state: state)
     }
 
     private func previewButton(_ effect: AppSoundEffect, help: String) -> some View {
@@ -131,32 +97,14 @@ struct NotificationSoundSettingsSection: View {
         previewingEffect = nil
     }
 
-    private func displayTag(stored: String, bookmark: Data?) -> String {
-        if stored == NotificationSoundLibrary.bundledID {
-            return stored
-        }
-        if stored == NotificationSoundLibrary.customID, bookmark != nil {
-            return stored
-        }
-        if systemSounds.contains(where: { NotificationSoundLibrary.systemID(for: $0) == stored }) {
-            return stored
-        }
-        return NotificationSoundLibrary.bundledID
-    }
-
-    private func revertSelection(for kind: NotificationSoundKind) {
-        switch kind {
-        case .message:
-            messageSelection = displayTag(
-                stored: preferences.messageSoundID,
-                bookmark: preferences.messageSoundBookmark
-            )
-        case .call:
-            ringtoneSelection = displayTag(
-                stored: preferences.callRingtoneID,
-                bookmark: preferences.callRingtoneBookmark
-            )
-        }
+    /// Points the picker at the stored choice, or Default when the picker has no row for it.
+    private func syncSelection(_ kind: NotificationSoundKind) {
+        let choice = preferences.soundChoice(for: kind)
+        let hasRow =
+            choice.soundID == NotificationSoundLibrary.bundledID
+            || (choice.soundID == NotificationSoundLibrary.customID && choice.bookmark != nil)
+            || systemSounds.contains { NotificationSoundLibrary.systemID(for: $0) == choice.soundID }
+        selections[kind] = hasRow ? choice.soundID : NotificationSoundLibrary.bundledID
     }
 
     private func chooseFile(for kind: NotificationSoundKind) {
@@ -168,34 +116,16 @@ struct NotificationSoundSettingsSection: View {
             panel.allowedContentTypes = [.audio]
             panel.canChooseFiles = true
             panel.canChooseDirectories = false
-            let response = await withCheckedContinuation { continuation in
-                panel.begin { continuation.resume(returning: $0) }
-            }
-            guard response == .OK, let url = panel.url else {
-                revertSelection(for: kind)
-                return
-            }
-            do {
-                let bookmark = try url.bookmarkData(
+            if await panel.begin() == .OK, let url = panel.url,
+                let bookmark = try? url.bookmarkData(
                     options: .withSecurityScope,
                     includingResourceValuesForKeys: nil,
                     relativeTo: nil
                 )
-                switch kind {
-                case .message:
-                    preferences.messageSoundBookmark = bookmark
-                    preferences.messageSoundName = url.lastPathComponent
-                    preferences.messageSoundID = NotificationSoundLibrary.customID
-                    messageSelection = NotificationSoundLibrary.customID
-                case .call:
-                    preferences.callRingtoneBookmark = bookmark
-                    preferences.callRingtoneName = url.lastPathComponent
-                    preferences.callRingtoneID = NotificationSoundLibrary.customID
-                    ringtoneSelection = NotificationSoundLibrary.customID
-                }
-            } catch {
-                revertSelection(for: kind)
+            {
+                preferences.setCustomSound(bookmark: bookmark, name: url.lastPathComponent, for: kind)
             }
+            syncSelection(kind)
         }
     }
 }
