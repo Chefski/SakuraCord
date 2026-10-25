@@ -341,27 +341,28 @@ struct ChannelContextMenuBridge: NSViewRepresentable {
             personItems.filter { $0.identifier?.rawValue == copyIdentifier }.forEach(menu.addItem)
             appendChannelCopyItems(to: menu)
             let destructiveItems = personItems.filter { $0.identifier?.rawValue == destructiveIdentifier }
-                + conversationLeavingItems()
-            UserContextMenu.append(destructiveItems, to: menu)
+            UserContextMenu.append(conversationLeavingItems(around: destructiveItems), to: menu)
             return menu
         }
 
-        /// Leave Group for a group DM, Close DM for a 1:1 DM.
-        private func conversationLeavingItems() -> [NSMenuItem] {
-            var items: [NSMenuItem] = []
+        /// Close DM leads a 1:1 DM's last group, above the person's destructive
+        /// actions; Leave Group follows them for a group DM.
+        private func conversationLeavingItems(around destructiveItems: [NSMenuItem]) -> [NSMenuItem] {
+            var items = destructiveItems
+            if closeDirectMessage != nil {
+                items.insert(
+                    menuItem(
+                        "Close DM", systemImage: "xmark",
+                        action: #selector(closeDirectMessageFromMenu), isEnabled: allowsMutations
+                    ),
+                    at: 0
+                )
+            }
             if groupActions != nil {
                 items.append(
                     menuItem(
                         "Leave Group", systemImage: "rectangle.portrait.and.arrow.right",
                         action: #selector(leaveGroupFromMenu), isEnabled: allowsMutations, isDestructive: true
-                    )
-                )
-            }
-            if closeDirectMessage != nil {
-                items.append(
-                    menuItem(
-                        "Close DM", systemImage: "xmark.circle.fill",
-                        action: #selector(closeDirectMessageFromMenu), isEnabled: allowsMutations, isDestructive: true
                     )
                 )
             }

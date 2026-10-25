@@ -209,8 +209,8 @@ leaving account through the ordinary Invite to Group DM UI.
 
 ## Closing a 1:1 DM
 
-A 1:1 DM's context menu has **Close DM** in its destructive section; group DMs
-offer Leave Group instead. There is no confirmation. Close DM sends one bodyless
+A 1:1 DM's context menu has an untinted **Close DM** at the top of its last
+section, above Remove Friend; group DMs offer Leave Group instead. There is no confirmation. Close DM sends one bodyless
 `DELETE /channels/{channel}` without `silent`, shares Leave Group's provider
 path, and is never replayed. It hides the DM without deleting messages. After a
 successful response the provider removes the DM from the list unless a Gateway
