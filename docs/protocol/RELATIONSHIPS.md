@@ -48,7 +48,8 @@ without a body and Gateway often arrives first, so responses never write records
 
 | Action | Request | `X-Context-Properties` location |
 | --- | --- | --- |
-| Send request | `POST /users/@me/relationships` `{"username":…,"discriminator":null}` (legacy tag: number), optional `note` | Add Friend |
+| Send request (Add Friend form) | `POST /users/@me/relationships` `{"username":…,"discriminator":null}` (legacy tag: number), optional `note` | Add Friend |
+| Send request (profile, DM or user menu) | `PUT /users/@me/relationships/{user}` `{}` | initiating surface, as for Ignore |
 | Accept | `PUT /users/@me/relationships/{user}` `{"confirm_stranger_request":false}` | Friends |
 | Remove, cancel, decline | `DELETE /users/@me/relationships/{user}` | Friends |
 | Block | `PUT /users/@me/relationships/{user}` `{"type":2}` | ContextMenu |
@@ -57,10 +58,15 @@ without a body and Gateway often arrives first, so responses never write records
 | Unignore | `DELETE /users/@me/relationships/{user}/ignore`, omitted body | initiating surface |
 
 Each is one attempt. Code 80013 on accept asks the user to confirm; only that
-confirmation repeats it with `true`. Codes 80000–80007, 80013, 30002, 30059 and
-30078 show Discord's copy and stay operation-scoped. Account restrictions such as
-40002 and 40068 also fail the action without stopping unrelated traffic. A 404
-DELETE means another session already removed it. Bulk pending clears, game relationships and
+confirmation repeats it with `true`. Codes 80000–80007, 30002, 30059 and
+30078 show Discord's copy and stay operation-scoped. Code 80013 on a send is
+silent. Account restrictions also fail the action without stopping unrelated
+traffic: 40002 asks the user to claim the account and verify their email, and
+40068 or any 4xx code in 340000–349999 reads “Your account has limited access”.
+On a send, every other failed status, including 404 and 5xx, shows the generic
+“Double check that the username is correct” copy instead of a transport error.
+A failed send shows an alert titled “Friend request failed” beside any inline
+text. A 404 DELETE means another session already removed it. Bulk pending clears, game relationships and
 suggestions are not implemented.
 
 Add Friend trims, drops one leading `@` from an untagged name and accepts
@@ -85,7 +91,7 @@ and clear on account teardown.
 
 A 400 with `captcha_key` and a supported `captcha_service` (hCaptcha, reCAPTCHA,
 reCAPTCHA Enterprise with `user_flow` as its action, Turnstile) on a send,
-accept or block route is presented for human completion. The identical request
+accept, block, cancel or Ignore route is presented for human completion. The identical request
 and context is replayed once with `X-Captcha-Key`, plus the original
 `captcha_rqtoken` and `captcha_session_id` as `X-Captcha-Rqtoken` and
 `X-Captcha-Session-Id`. Cancellation, an empty solution, an account change or a

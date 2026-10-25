@@ -146,7 +146,21 @@ extension DiscordRESTProvider {
         if let note = try FriendRequestNote.normalized(note) { body["note"] = .string(note) }
         try await relationshipMutation(
             "/users/@me/relationships", method: "POST", body: body, location: "Add Friend",
-            captchaHandler: captchaHandler, failure: { Self.friendRequestFailureMessage(code: $0, status: $1, discordTag: tag) }
+            captchaHandler: captchaHandler, explainsEveryFailure: true,
+            failure: { $0 == 80013 ? nil : Self.friendRequestFailureMessage(code: $0, status: $1, discordTag: tag) }
+        )
+    }
+
+    /// Sends a request to a known user from a profile, DM or user menu. The
+    /// empty body and the surface as context match the official client; only
+    /// the Add Friend form and Group DM add flow send by tag.
+    public func sendFriendRequest(
+        to user: User, location: IgnoreActionLocation, captchaHandler: DiscordCaptchaHandler?
+    ) async throws {
+        try await relationshipMutation(
+            "/users/@me/relationships/\(user.id)", method: "PUT", body: [:], location: location.rawValue,
+            captchaHandler: captchaHandler, explainsEveryFailure: true,
+            failure: { $0 == 80013 ? nil : Self.friendRequestFailureMessage(code: $0, status: $1, discordTag: user.tag) }
         )
     }
 
@@ -167,10 +181,12 @@ extension DiscordRESTProvider {
 
     /// Removes a friend, cancels or declines a request, or unblocks. Each is
     /// one DELETE of the per-user relationship.
-    public func removeRelationship(with userID: UserID, as removal: RelationshipRemoval) async throws {
+    public func removeRelationship(
+        with userID: UserID, as removal: RelationshipRemoval, captchaHandler: DiscordCaptchaHandler? = nil
+    ) async throws {
         try await relationshipMutation(
             "/users/@me/relationships/\(userID)", method: "DELETE", body: nil,
-            location: removal == .unblock ? nil : "Friends", captchaHandler: nil,
+            location: removal == .unblock ? nil : "Friends", captchaHandler: captchaHandler,
             failure: { Self.relationshipUpdateFailureMessage(code: $0, status: $1) }
         )
     }
@@ -186,13 +202,15 @@ extension DiscordRESTProvider {
 
     /// Ignore is independent of friendship, pending requests, and blocking.
     /// Stable634304 sends an omitted body and reconciles through Gateway.
-    public func setUserIgnored(_ userID: UserID, ignored: Bool, location: IgnoreActionLocation) async throws {
+    public func setUserIgnored(
+        _ userID: UserID, ignored: Bool, location: IgnoreActionLocation, captchaHandler: DiscordCaptchaHandler? = nil
+    ) async throws {
         guard userID != currentUser?.id else {
             throw ChatProviderError.invalidRequest("You can’t ignore yourself.")
         }
         try await relationshipMutation(
             "/users/@me/relationships/\(userID)/ignore", method: ignored ? "PUT" : "DELETE",
-            body: nil, location: location.rawValue, captchaHandler: nil,
+            body: nil, location: location.rawValue, captchaHandler: captchaHandler,
             failure: { _, status in
                 status == 429 ? "Discord is limiting relationship changes. Wait a moment before trying again."
                     : "Discord couldn’t update Ignore. Try again."
@@ -200,10 +218,12 @@ extension DiscordRESTProvider {
         )
     }
 
-    /// `failure` returns nil for the stranger-confirmation response.
+    /// `failure` returns nil for the stranger-confirmation response (80013), which
+    /// accept turns into a prompt and send leaves to its caller. Sending
+    /// explains every failed status; other routes only explain 400, 403 and 429.
     private func relationshipMutation(
         _ path: String, method: String, body: [String: JSONValue]?, location: String?,
-        captchaHandler: DiscordCaptchaHandler?, failure: (Int?, Int) -> String?
+        captchaHandler: DiscordCaptchaHandler?, explainsEveryFailure: Bool = false, failure: (Int?, Int) -> String?
     ) async throws {
         guard let account = currentUser?.id else { throw ChatProviderError.unauthenticated }
         var headers: [String: String] = [:]
@@ -233,7 +253,7 @@ extension DiscordRESTProvider {
             throw RelationshipActionError.failed(FriendRequestNote.validationMessage)
         }
         let code = Self.discordErrorCode(from: data)
-        if response.statusCode == 400 || response.statusCode == 429 || response.statusCode == 403 {
+        if explainsEveryFailure || [400, 403, 429].contains(response.statusCode) {
             guard let message = failure(code, response.statusCode) else {
                 throw RelationshipActionError.strangerConfirmationRequired
             }
@@ -253,6 +273,9 @@ extension DiscordRESTProvider {
         case 80007: "You’re already friends with that user!"
         case 30059: "You’ve maxed out your block list."
         case 30078: "You’ve maxed out your pending outgoing friend requests."
+        case 40002: "You need to claim your account and verify your email before you can send friend requests."
+        case let code? where code == 40068 || ((340_000 ... 349_999).contains(code) && (400 ..< 500).contains(status)):
+            "Your account has limited access"
         default: "Hm, didn’t work. Double check that the username is correct."
         }
     }
