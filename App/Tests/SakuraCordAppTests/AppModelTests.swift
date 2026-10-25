@@ -5337,6 +5337,30 @@ func `a jump to older thread history wins over an overlapping reconnect refresh`
 }
 
 @MainActor
+@Test func `reading a channel mid-scroll clears its indicators before scrolling ends`() async throws {
+    let model = AppModel(launchMode: .offlineTesting, provider: StartupUnreadTestProvider())
+    await model.start()
+    let channelID = try #require(model.visibleChannels.first).id
+    let guildID = GuildID(rawValue: 77_000)
+    let cleared = {
+        model.visibleChannels.first?.unreadCount == 0
+            && model.visibleChannels.first?.mentionCount == 0
+            && model.serverRailGuildsByID[guildID]?.unreadCount == 0
+            && model.serverRailGuildsByID[guildID]?.mentionCount == 0
+    }
+
+    model.reportTimelineLiveScrolling(true, conversationID: channelID)
+    model.markConversationRead(channelID: channelID)
+    #expect(cleared())
+    #expect(model.hasDeferredUnreadPresentationRefresh)
+
+    // The full projection reconciles once scrolling ends, without reverting.
+    model.reportTimelineLiveScrolling(false, conversationID: channelID)
+    await model.waitForUnreadPresentationPreparation()
+    #expect(cleared())
+}
+
+@MainActor
 @Test func `permission revocation applies while unread publication is deferred`() async {
     let model = AppModel(launchMode: .offlineTesting)
     await model.start()
