@@ -450,9 +450,12 @@ final class WorkspaceTitlebarView: NSView {
     private func fadeSearch(_ alpha: CGFloat) {
         // The field fades too: it keeps its alpha when the toolbar moves it
         // into new glass.
-        for view in [searchItemView, searchField].compactMap(\.self) where view.alphaValue != alpha {
-            view.alphaValue = alpha
-            view.isHidden = alpha < 0.01
+        // Hidden is reconciled on its own: the toolbar can show the view again
+        // without touching its alpha, and a matching alpha must not skip that.
+        let hidden = alpha < 0.01
+        for view in [searchItemView, searchField].compactMap(\.self) {
+            if view.alphaValue != alpha { view.alphaValue = alpha }
+            if view.isHidden != hidden { view.isHidden = hidden }
         }
     }
 

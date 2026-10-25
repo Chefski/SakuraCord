@@ -286,17 +286,70 @@ struct TitlebarGlassButtonStyle: ButtonStyle {
     var hasOwnGlass = true
 
     func makeBody(configuration: Configuration) -> some View {
+        TitlebarGlassButton(configuration: configuration, hasOwnGlass: hasOwnGlass)
+    }
+}
+
+private struct TitlebarGlassButton: View {
+    let configuration: ButtonStyle.Configuration
+    let hasOwnGlass: Bool
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var isHovered = false
+
+    private var hoverOpacity: Double {
+        hasOwnGlass
+            ? TitlebarButtonMetrics.hoverOpacity(colorScheme)
+            : TitlebarButtonMetrics.groupedHoverOpacity(colorScheme)
+    }
+
+    var body: some View {
+        let ink: Color = colorScheme == .dark ? .white : .black
         configuration.label
-            .font(.system(size: 15))
+            .font(.system(size: TitlebarButtonMetrics.iconSize))
             .imageScale(.medium)
-            // The toolbar draws its icons slightly translucent, over glass.
-            .foregroundStyle(.primary.opacity(0.88))
+            // The toolbar draws its icons in a plain translucent ink: as
+            // `.primary` over glass they took on its vibrancy and drew
+            // lighter in light mode. Disabled icons keep the dimmed primary.
+            .foregroundStyle(
+                isEnabled
+                    ? AnyShapeStyle(ink.opacity(TitlebarButtonMetrics.iconOpacity))
+                    : AnyShapeStyle(.primary.opacity(TitlebarButtonMetrics.iconOpacity))
+            )
             // As wide as the toolbar's own: its icon's width, inset, at least
             // a circle.
-            .padding(.horizontal, 7)
+            .padding(.horizontal, 5.75)
             .frame(minWidth: 36, minHeight: 36)
             .contentShape(Capsule())
             .glassEffect(hasOwnGlass ? .regular.interactive() : .identity, in: Capsule())
+            // The toolbar tints the item under the pointer, icon and all; in
+            // a group, a smaller capsule inset within the group's glass.
+            .overlay {
+                Capsule()
+                    .fill(.primary.opacity(isHovered && isEnabled ? hoverOpacity : 0))
+                    .padding(.horizontal, hasOwnGlass ? 0 : TitlebarButtonMetrics.groupedHoverInset.width)
+                    .padding(.vertical, hasOwnGlass ? 0 : TitlebarButtonMetrics.groupedHoverInset.height)
+                    .allowsHitTesting(false)
+            }
             .opacity(configuration.isPressed ? 0.75 : 1)
+            .onHover { isHovered = $0 }
+    }
+}
+
+/// Measured against the window toolbar's own items.
+enum TitlebarButtonMetrics {
+    static let iconSize: CGFloat = 17
+    static let iconOpacity = 0.877
+
+    static let groupedHoverInset = CGSize(width: 2.75, height: 4)
+
+    static func hoverOpacity(_ colorScheme: ColorScheme) -> Double {
+        colorScheme == .dark ? 0.055 : 0.07
+    }
+
+    /// Stronger than a standalone item's: the group's glass mutes what its
+    /// buttons draw.
+    static func groupedHoverOpacity(_ colorScheme: ColorScheme) -> Double {
+        colorScheme == .dark ? 0.2 : 0.24
     }
 }
