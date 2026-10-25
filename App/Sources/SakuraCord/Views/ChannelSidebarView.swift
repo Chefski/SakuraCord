@@ -1302,6 +1302,12 @@ private struct AccountSelectionPopover: View {
             guard switchingAccountID == nil,
                   account.accountID != activeAccountID
             else { return }
+            guard !account.requiresSignIn else {
+                // Switching would end the current session and then fail.
+                dismiss()
+                manageAccounts()
+                return
+            }
             switchingAccountID = account.accountID
             Task {
                 let switched = await switchAccount(account.accountID)
