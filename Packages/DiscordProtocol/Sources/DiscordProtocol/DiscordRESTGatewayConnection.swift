@@ -193,6 +193,8 @@ extension DiscordRESTProvider {
     }
 
     public func disconnect() async {
+        // Teardown flushes below must fail rather than wait on a human.
+        captchaHandler = nil
         resetMemberListSubscriptionWork()
         await finishGuildFoldersEdits()
         currentAccountDetails = nil

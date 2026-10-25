@@ -1,4 +1,5 @@
 import Foundation
+import SakuraCordModels
 
 /// Ephemeral challenge data shared by authentication and every authenticated
 /// REST route. Never logged or persisted.
@@ -84,17 +85,20 @@ public typealias DiscordCaptchaHandler = @Sendable (DiscordCaptchaChallenge) asy
 
 extension DiscordRESTProvider {
     /// A human's solution, or nil when the challenge was dismissed or failed.
-    /// Throws instead when the account or Gateway session changed meanwhile:
-    /// a solution is never replayed against another one.
-    func humanSolution(for challenge: DiscordCaptchaChallenge) async throws -> String? {
+    /// Throws instead when the request's account, or the Gateway session its
+    /// body carries, is no longer current: a solution is never replayed against
+    /// another one.
+    func humanSolution(
+        for challenge: DiscordCaptchaChallenge, account: UserID?, body: [String: JSONValue]?
+    ) async throws -> String? {
         guard let captchaHandler, !requestSafetyCircuitIsOpen else { return nil }
-        let account = currentUser?.id
-        let gatewaySessionID = await gatewaySession?.snapshot().sessionID
         let solution = await captchaHandler(challenge)
         try Task.checkCancellation()
         guard let solution, !solution.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-        guard !requestSafetyCircuitIsOpen, currentUser?.id == account,
-              await gatewaySession?.snapshot().sessionID == gatewaySessionID else { throw CancellationError() }
+        guard !requestSafetyCircuitIsOpen, currentUser?.id == account else { throw CancellationError() }
+        if case let .string(sessionID)? = body?["session_id"], await gatewaySession?.snapshot().sessionID != sessionID {
+            throw CancellationError()
+        }
         return solution
     }
 }

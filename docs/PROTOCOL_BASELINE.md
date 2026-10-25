@@ -88,12 +88,12 @@ replayed once, with one attempt, adding `X-Captcha-Key` plus the challenge's
 A dismissed or failed widget, an empty solution, a second challenge or no open
 window returns the challenged response to the route's own failure handling. A
 route without its own copy reads “Couldn’t complete the security check.”, never
-the raw HTTP status. An
-account, provider or Gateway session change while the challenge is open cancels
-the request rather than replaying it. Unknown services fail the route without
-replay. hCaptcha uses its SDK; other services render their vendor's explicit
-widget in an ephemeral discord.com-origin web view that never receives
-credentials. Password and QR login run before a provider exists, so they share
+the raw HTTP status. A change of the request's account, or of the Gateway
+session named by its body's `session_id`, cancels the request rather than
+replaying it. A provider being torn down or replaced presents nothing, so its
+teardown flushes fail instead. Unknown services fail the route without replay.
+hCaptcha uses its SDK; other services render their vendor's explicit widget in
+an ephemeral discord.com-origin web view that never receives credentials. Password and QR login run before a provider exists, so they share
 the challenge parsing and replay headers but keep the sign-in window's own
 step-based presentation.
 

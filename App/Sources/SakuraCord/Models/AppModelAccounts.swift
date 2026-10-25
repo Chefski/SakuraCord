@@ -114,7 +114,7 @@ extension AppModel {
             authenticatedProviderFactory(handle, installationID)
         }
         await nextProvider.updateClientAppState(isFocused: applicationIsActive)
-        await nextProvider.setCaptchaHandler { [captcha] in await captcha.solution(for: $0) }
+        await nextProvider.setCaptchaHandler { [weak self] in await self?.solveCaptcha($0) }
         do {
             // Enumerating Keychain item attributes reveals the account handle
             // without necessarily authorizing access to its secret. Preparing

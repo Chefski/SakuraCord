@@ -24,8 +24,8 @@ cannot use it. `GUILD_DELETE unavailable:true` is an outage, not a leave.
 
 Invite and discoverable-server joins follow the shared
 [Human CAPTCHA](../PROTOCOL_BASELINE.md#human-captcha) contract. The replay keeps
-the body, including its Gateway `session_id`, and context, so a Gateway session
-change while the challenge is open cancels it. Ambiguous failure is never
+the body, including its Gateway `session_id`, and context, and is cancelled if
+that session is no longer current. Ambiguous failure is never
 replayed. Unsupported/malformed challenges and account restrictions report a
 join error without stopping unrelated account traffic.
 
