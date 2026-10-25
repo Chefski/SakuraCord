@@ -59,10 +59,11 @@ without a body and Gateway often arrives first, so responses never write records
 
 Each is one attempt. Code 80013 on accept asks the user to confirm; only that
 confirmation repeats it with `true`. Codes 80000–80007, 30002, 30059 and
-30078 show Discord's copy and stay operation-scoped. Code 80013 on a send is
-silent. Account restrictions also fail the action without stopping unrelated
-traffic: 40002 asks the user to claim the account and verify their email, and
-40068 or any 4xx code in 340000–349999 reads “Your account has limited access”.
+30078 show Discord's copy and stay operation-scoped. Code 80013 on a send
+shows no alert: the Add Friend form shows the generic username error inline,
+and profile, DM and menu sends stay silent. Account restrictions also fail the
+action without stopping unrelated traffic: 40002 asks the user to claim the
+account and verify their email, and 40068 or any 4xx code in 340000–349999 reads “Your account has limited access”.
 On a send, every other failed status, including 404 and 5xx, shows the generic
 “Double check that the username is correct” copy instead of a transport error.
 A failed send shows an alert titled “Friend request failed” beside any inline
