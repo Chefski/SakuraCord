@@ -276,7 +276,7 @@ extension AppModel {
               let target = Self.forumAcknowledgementBoundary(at: now)
         else { return }
         readState.markAcknowledgementPending(channelID: channelID, messageID: target)
-        refreshUnreadPresentation()
+        refreshUnreadPresentation(acknowledgedChannelID: channelID)
         cancelNativeNotifications(channelID: channelID)
         enqueueAcknowledgement(
             channelID: channelID,
@@ -332,7 +332,7 @@ extension AppModel {
         Self.unreadDiagnosticsLogger.info(
             "Read acknowledgement scheduled; channel=\(channelID.rawValue, privacy: .public), target=\(messageID.rawValue, privacy: .public)"
         )
-        refreshUnreadPresentation()
+        refreshUnreadPresentation(acknowledgedChannelID: channelID)
         cancelNativeNotifications(channelID: channelID)
         let debounce = readAcknowledgementTiming.debounce
         acknowledgementTasks[channelID] = Task { [weak self] in
@@ -475,7 +475,7 @@ extension AppModel {
         discardPendingAcknowledgement(for: channelID)
         readState.unblockAutomaticAcknowledgement(channelID: channelID)
         readState.markAcknowledgementPending(channelID: channelID, messageID: target)
-        refreshUnreadPresentation()
+        refreshUnreadPresentation(acknowledgedChannelID: channelID)
         cancelNativeNotifications(channelID: channelID)
         enqueueAcknowledgement(
             channelID: channelID,

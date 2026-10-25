@@ -130,6 +130,33 @@ extension AccountReadStateModel {
             cancelsCooperatively: Bool = false,
             cancellationCheck: @Sendable () -> Bool = { Task.isCancelled }
         ) -> UnreadPresentationProjection? {
+            projection(
+                of: entries.values,
+                now: now,
+                cancelsCooperatively: cancelsCooperatively,
+                cancellationCheck: cancellationCheck
+            )
+        }
+
+        /// The projection of one server's conversations, or of direct
+        /// messages for `nil`. Every value it holds for that scope equals the
+        /// full projection's; account-wide totals cover only the scope.
+        func projection(
+            scope guildID: GuildID?,
+            now: Date = .now
+        ) -> UnreadPresentationProjection? {
+            projection(
+                of: entries.values.lazy.filter { $0.guildID == guildID },
+                now: now
+            )
+        }
+
+        private func projection(
+            of scope: some Sequence<Entry>,
+            now: Date,
+            cancelsCooperatively: Bool = false,
+            cancellationCheck: @Sendable () -> Bool = { Task.isCancelled }
+        ) -> UnreadPresentationProjection? {
             var unreadConversationIDs: Set<ChannelID> = []
             var unreadByChannelID: [ChannelID: Bool] = [:]
             var mentionsByChannelID: [ChannelID: Int] = [:]
@@ -140,10 +167,10 @@ extension AccountReadStateModel {
             var directMessageUnread = false
             var directMessageMentions = 0
             var totalMentions = 0
-            unreadByChannelID.reserveCapacity(entries.count)
-            mentionsByChannelID.reserveCapacity(entries.count)
+            unreadByChannelID.reserveCapacity(scope.underestimatedCount)
+            mentionsByChannelID.reserveCapacity(scope.underestimatedCount)
 
-            for (offset, entry) in entries.values.enumerated() {
+            for (offset, entry) in scope.enumerated() {
                 if cancelsCooperatively,
                    offset.isMultiple(of: 64),
                    cancellationCheck()
