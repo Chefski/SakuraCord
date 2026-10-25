@@ -425,13 +425,15 @@ extension NativeMessageTimelineCoordinator {
             var viewport = scrollView.contentView.bounds
             if let previewLayoutWidth {
                 viewport.size.width = previewLayoutWidth
-            } else if pendingLayoutWidth != nil, layoutWidth > 0 {
-                // A settled width relayout is pending. Keep the backing view
-                // at the width its row layouts and cached bitmaps describe;
-                // resizing that layer early stretches the previous pixels
-                // until an unrelated invalidation (such as hover) repaints
-                // them. The clip view can temporarily crop or reveal the
-                // old-width canvas without presenting distorted text.
+            } else if layoutWidth > 0, pendingLayoutWidth != nil || WorkspaceConversationWidthPath.shared.isMoving {
+                // A settled width relayout is pending, or a workspace motion
+                // changed the real viewport width before any row was previewed
+                // (a closing member list widens its host at once). Keep the
+                // backing view at the width its row layouts and cached bitmaps
+                // describe; resizing that layer early stretches the previous
+                // pixels until an unrelated invalidation (such as hover)
+                // repaints them. The clip view can temporarily crop or reveal
+                // the old-width canvas without presenting distorted text.
                 viewport.size.width = layoutWidth
             }
             // While a workspace motion re-wraps the rows, each preview
@@ -694,8 +696,8 @@ extension NativeMessageTimelineCoordinator {
                 220,
                 (proposedWidth ?? motionWidth(of: scrollView) ?? viewportSize.width).rounded()
             )
-            let sizeChanged =
-                abs(viewportSize.width - lastViewportSize.width) >= 0.5
+            let viewportWidthChanged = abs(viewportSize.width - lastViewportSize.width) >= 0.5
+            let sizeChanged = viewportWidthChanged
                 || abs(viewportSize.height - lastViewportSize.height) >= 0.5
             let widthChanged = abs(width - layoutWidth) >= 1
             let reflowsWidth = widthChanged
@@ -721,6 +723,10 @@ extension NativeMessageTimelineCoordinator {
                 || previewNeedsRows || restoresPreview else {
                 return false
             }
+            // The columns resizing the host they retained across an inspector's
+            // motion change the real viewport width at once, which paints now
+            // rather than a frame late. No other width change signals it.
+            let handsOffViewportWidth = WorkspaceConversationWidthPath.shared.isHostHandoff && viewportWidthChanged
             lastViewportSize = viewportSize
             guard !isApplyingUpdate else { return true }
 
@@ -767,7 +773,9 @@ extension NativeMessageTimelineCoordinator {
             positionViewportCanvas()
             // A resize can move or reflow a row whose message is in flight.
             canvas.reconcileSendTransitions()
-            if reflowsWidth || previewChanged || previewNeedsRows || restoresPreview {
+            if reflowsWidth || previewChanged || previewNeedsRows || restoresPreview
+                || handsOffViewportWidth
+            {
                 // Restore the anchor before choosing the dirty rectangle.
                 // Invalidating the old visible rect leaves the newly restored
                 // viewport backed by stretched Core Animation contents until
@@ -778,7 +786,7 @@ extension NativeMessageTimelineCoordinator {
                 // backing layer before leaving the width update.
                 canvas.needsDisplay = true
                 canvas.layer?.setNeedsDisplay()
-                if reflowsWidth || restoresPreview {
+                if reflowsWidth || restoresPreview || handsOffViewportWidth {
                     canvas.display()
                 }
             }

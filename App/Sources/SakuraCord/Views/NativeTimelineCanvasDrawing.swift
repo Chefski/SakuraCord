@@ -515,6 +515,14 @@ extension NativeTimelineCanvasView {
             // event repaired the stale launch geometry, making the content
             // visibly jump into place.
             self.frame = frame
+            // Setting the frame after a bounds change of a different size
+            // leaves the two sizes at different scales, which AppKit keeps
+            // through the resize and shows as stretched contents. Settle them
+            // together unless the callback installed newer geometry.
+            if self.frame == frame, self.bounds != bounds {
+                self.bounds = bounds
+                needsDisplay = true
+            }
         }
         reconcileHistorySkeletonShimmer()
         // Supplementary Inbox rows are content, not hover presentation. Keep
