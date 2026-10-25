@@ -18,8 +18,6 @@ struct SakuraCordApp: App {
     private let opensChatPerformanceFixture: Bool
     private let opensPinsPerformanceFixture: Bool
     private let runsFriendsPerformanceBenchmark: Bool
-    /// Set when the launch runs the side chat motion benchmark.
-    private let sideChatMotionOptions: SideChatMotionBenchmark.Options?
     private let runsChatLiveArrivalStress: Bool
     private let runsAuthenticatedNavigationBenchmark: Bool
     private let runsAuthenticatedAccountSwitchBenchmark: Bool
@@ -45,11 +43,6 @@ struct SakuraCordApp: App {
         opensChatPerformanceFixture = configuration.includesChatPerformanceFixture
         opensPinsPerformanceFixture = configuration.includesPinsPerformanceFixture
         runsFriendsPerformanceBenchmark = configuration.runsFriendsPerformanceBenchmark
-        let motionOptions = configuration.runsSideChatMotionBenchmark
-            ? SideChatMotionBenchmark.Options(arguments: ProcessInfo.processInfo.arguments)
-            : nil
-        sideChatMotionOptions = motionOptions
-        WorkspaceMotionProbes.isEnabled = motionOptions != nil
         runsChatLiveArrivalStress = configuration.runsChatLiveArrivalStress
         runsAuthenticatedNavigationBenchmark =
             configuration.runsAuthenticatedNavigationBenchmark
@@ -88,10 +81,7 @@ struct SakuraCordApp: App {
                     configuration.includesChatVoicePerformanceFixture,
                 includesIncomingPrivateCall:
                     configuration.includesIncomingPrivateCallFixture,
-                friendCount: configuration.runsFriendsPerformanceBenchmark ? 1_000 : nil,
-                motionThreadCount: motionOptions.map { $0.cycles + 1 },
-                motionThreadMessageCount: motionOptions?.threadMessageCount ?? 150,
-                motionThreadHistoryDelay: .milliseconds(motionOptions?.historyDelayMilliseconds ?? 0)
+                friendCount: configuration.runsFriendsPerformanceBenchmark ? 1_000 : nil
             )
             : nil
         performanceMockProvider = mockProvider
@@ -189,9 +179,6 @@ struct SakuraCordApp: App {
 #endif
                     if runsFriendsPerformanceBenchmark {
                         await FriendsPerformanceBenchmark.run(model: model, provider: performanceMockProvider)
-                    }
-                    if let sideChatMotionOptions {
-                        await SideChatMotionBenchmark.run(model: model, options: sideChatMotionOptions)
                     }
                     if opensPinsPerformanceFixture {
                         await model.channelLoadTask?.value
