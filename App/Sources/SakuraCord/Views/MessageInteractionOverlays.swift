@@ -554,7 +554,7 @@ private struct QuickReactionButton: View {
                 MessageReactionEmoji(
                     reaction: token,
                     url: MessageReactionPresentation.emojiURL(for: token, customEmojiURLsByID: customEmojiURLsByID),
-                    size: InterfaceScale.metric(20)
+                    size: InterfaceScale.metric(18)
                 )
             }
         }
