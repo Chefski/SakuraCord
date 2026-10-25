@@ -211,11 +211,12 @@ extension AppModel {
         }
     }
 
-    /// - Parameter acknowledgedChannelID: A conversation the user just read.
-    ///   While scrolling defers the full projection, its indicators are
-    ///   published at once.
+    /// - Parameter readChangedChannelID: A conversation whose read state the
+    ///   user's reading just changed, including an acknowledgement that was
+    ///   dropped or rejected. While scrolling defers the full projection, its
+    ///   indicators are published at once.
     func refreshUnreadPresentation(
-        acknowledgedChannelID: ChannelID? = nil,
+        readChangedChannelID: ChannelID? = nil,
         appliesAccessImmediately: Bool = false,
         accessAffectedGuildIDs: Set<GuildID>? = nil,
         accessAffectedChannelIDs: Set<ChannelID> = [],
@@ -266,8 +267,8 @@ extension AppModel {
             // not land after scrolling ends and revert the published values.
             unreadPresentationPreparationGeneration &+= 1
             requestCoalescedUnreadPresentationRefresh()
-            if let acknowledgedChannelID {
-                publishAcknowledgedUnreadPresentation(channelID: acknowledgedChannelID)
+            if let readChangedChannelID {
+                publishReadChangedUnreadPresentation(channelID: readChangedChannelID)
             }
             return
         }
@@ -388,13 +389,13 @@ extension AppModel {
         }
     }
 
-    /// An acknowledgement changes only its conversation's row, its forum's
+    /// A read change touches only its conversation's row, its forum's
     /// new-post count, its server's rail entry and category dots, and the
     /// Dock badge. Projecting that one server with the shared rules gives
     /// the values the deferred full projection will reconcile to. The
     /// snapshot itself waits for that projection: replacing it mid-gesture
     /// refreshes every snapshot-derived presentation.
-    private func publishAcknowledgedUnreadPresentation(channelID: ChannelID) {
+    private func publishReadChangedUnreadPresentation(channelID: ChannelID) {
         guard let entry = readState[channelID] else { return }
         let guildID = entry.guildID
         let unread = AppPerformanceSignposts.measureSync(
@@ -428,7 +429,11 @@ extension AppModel {
         } else {
             refreshServerRailDirectMessages()
         }
-        refreshDockBadge()
+        // Counting unread conversations walks the whole account, so that
+        // badge style catches up when the deferred projection lands.
+        if notificationPreferences.dockBadgeStyle != .unreadConversations {
+            refreshDockBadge()
+        }
     }
 
     private func applyPreparedUnreadPresentation(
