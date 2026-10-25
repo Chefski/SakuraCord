@@ -1426,7 +1426,9 @@ private struct ChannelRow: View {
         .overlay {
             ChannelContextMenuBridge(
                 isSelected: isSelected,
-                isUnread: channel.unreadCount > 0,
+                isUnread: channel.kind == .forum
+                    ? model.canMarkConversationRead(channelID: channel.id)
+                    : channel.unreadCount > 0,
                 isMutationPending:
                     model.isChannelNotificationMutationPending(channel.id),
                 allowsMutations: !isChecking,

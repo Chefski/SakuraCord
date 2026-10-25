@@ -466,11 +466,20 @@ extension AppModel {
         }
     }
 
+    /// Discord enables a forum's own Mark as Read only for its unread posts,
+    /// never for its new-post count, and acknowledges the forum up to now.
+    func canMarkConversationRead(channelID: ChannelID) -> Bool {
+        readState[channelID]?.kind == .forum
+            ? readState.hasUnreadForumPosts(channelID: channelID)
+            : readState.unread(channelID: channelID)
+    }
+
     func markConversationRead(channelID: ChannelID) {
         guard !runsChatPerformanceBenchmark else { return }
-        guard readState.unread(channelID: channelID)
-                || readState.forumNewPostCount(channelID: channelID) > 0,
-              let target = readState[channelID]?.latestKnownMessageID
+        guard canMarkConversationRead(channelID: channelID),
+              let target = readState[channelID]?.kind == .forum
+                ? MessageID(timestamp: .now)
+                : readState[channelID]?.latestKnownMessageID
         else { return }
         preserveUnreadDividerIfNeeded(channelID: channelID)
         discardPendingAcknowledgement(for: channelID)

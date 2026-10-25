@@ -1320,6 +1320,27 @@ extension AccountReadStateModel {
         }.count
     }
 
+    /// Discord's forum unread count, which alone enables a forum's own Mark as
+    /// Read: active unread posts, joined or opened, whose newest message is past
+    /// the forum's tracked acknowledgement. A never-acknowledged forum has none,
+    /// whatever its new-post count.
+    func hasUnreadForumPosts(channelID: ChannelID, now: Date = .now) -> Bool {
+        guard let forum = self[channelID], forum.kind == .forum,
+              let acknowledged = forum.trackedAcknowledgedMessageID
+        else { return false }
+        return entries.values.contains { entry in
+            guard entry.parentID == channelID,
+                  forumPostArchivedByID[entry.channelID] != true,
+                  let latest = entry.latestKnownMessageID, latest > acknowledged
+            else { return false }
+            guard activeJoinedThreadIDs.contains(entry.channelID) else { return entry.isUnread }
+            let settings = entry.threadNotificationSettings
+            let isMuted = settings?.isMuted == true
+                && (settings?.muteConfiguration?.isActive(at: now) ?? true)
+            return entry.mentionCount > 0 || (entry.isUnread && !isMuted)
+        }
+    }
+
     func shouldAcknowledgeForumVisit(channelID: ChannelID) -> Bool {
         guard let entry = self[channelID], entry.kind == .forum else { return false }
         return entry.isUnread || forumNewPostCount(channelID: channelID) > 0

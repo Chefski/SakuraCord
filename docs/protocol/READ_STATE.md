@@ -148,9 +148,11 @@ never-acknowledged channel shows Discord's separate "NEW" channel pill instead,
 which SakuraCord does not implement. Server, category and Read All
 acknowledgements include a forum with counted posts even when its own boundary
 is seeded, so they clear a never-read forum's count, and a completed local
-acknowledgement is tracked before its Gateway echo. Discord's channel menu
-enables Mark as Read on a forum only for unread joined posts; SakuraCord's row
-also offers it while posts are counted. Labels, counts and server Mark as Read
+acknowledgement is tracked before its Gateway echo. A forum's own Mark as Read
+is enabled only by Discord's forum unread count: active unread posts, joined or
+opened, newer than the forum's tracked acknowledgement, so it is unavailable on
+a never-read forum whatever its new-post count. It acknowledges the forum up to
+the current time. Labels, counts and server Mark as Read
 were compared live in web build 649389 and SakuraCord on 25 and 26 October
 2026, with the official client's acknowledgements blocked so both read the
 same server state.

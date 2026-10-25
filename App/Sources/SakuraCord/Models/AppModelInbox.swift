@@ -228,9 +228,7 @@ extension AppModel {
                 : age > 10 * 86_400 ? 8 : age > 2 * 86_400 ? 6
                 : policy.level == .nothing ? 7 : policy.level == .allMessages ? 4 : 5
             let guild = snapshot.guilds.first { $0.id == entry.guildID }
-            let boundary = entry.lastAcknowledgedMessageID ?? guild?.joinedAt.map {
-                MessageID(rawValue: UInt64(max(0, $0.timeIntervalSince1970 * 1_000 - 1_420_070_400_000)) << 22)
-            }
+            let boundary = entry.lastAcknowledgedMessageID ?? guild?.joinedAt.map(MessageID.init(timestamp:))
             guard let boundary, boundary < newest else { continue }
             let restricted = inboxRequiresAgeAgreement(channelID: entry.channelID, guildID: entry.guildID)
             let group = InboxUnreadGroup(
