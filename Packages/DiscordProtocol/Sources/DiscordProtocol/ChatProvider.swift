@@ -99,6 +99,8 @@ public protocol ChatProvider: Sendable {
     func editGroupDirectMessage(_ channelID: ChannelID, changes: GroupDirectMessageChanges) async throws -> Channel
     /// Leaves a group DM, optionally without notifying the other members.
     func leaveGroupDirectMessage(_ channelID: ChannelID, silently: Bool) async throws
+    /// Closes a 1:1 DM, hiding it from the list without deleting its messages.
+    func closeDirectMessage(_ channelID: ChannelID) async throws
     /// Reads every relationship at most once per Gateway connection.
     func loadRelationships() async throws
     func setUserIgnored(_ userID: UserID, ignored: Bool, location: IgnoreActionLocation, captchaHandler: DiscordCaptchaHandler?) async throws
@@ -496,6 +498,10 @@ public extension ChatProvider {
 
     func leaveGroupDirectMessage(_ channelID: ChannelID, silently: Bool) async throws {
         throw ChatProviderError.invalidRequest("Leaving groups is unavailable for this session.")
+    }
+
+    func closeDirectMessage(_ channelID: ChannelID) async throws {
+        throw ChatProviderError.invalidRequest("Closing direct messages is unavailable for this session.")
     }
 
     func loadRelationships() async throws {}
