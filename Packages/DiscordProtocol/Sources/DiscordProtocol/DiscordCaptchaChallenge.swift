@@ -56,12 +56,17 @@ public struct DiscordCaptchaChallenge: Equatable, Identifiable, Sendable {
             && segments[2] == "members" && segments[3] == "@me"
     }
 
-    /// Sending a request by username, or accepting or blocking one user.
+    /// Sending a request, accepting, blocking, cancelling or ignoring one user.
     static func isRelationshipRequestRoute(method: String, path: String) -> Bool {
         let segments = path.split(separator: "/")
         guard segments.count >= 3, segments[0] == "users", segments[1] == "@me", segments[2] == "relationships" else { return false }
         if segments.count == 3 { return method == "POST" }
-        return segments.count == 4 && method == "PUT" && UInt64(segments[3]) != nil
+        guard UInt64(segments[3]) != nil else { return false }
+        return switch segments.count {
+        case 4: method == "PUT" || method == "DELETE"
+        case 5: segments[4] == "ignore" && (method == "PUT" || method == "DELETE")
+        default: false
+        }
     }
 
     private struct Payload: Decodable {
