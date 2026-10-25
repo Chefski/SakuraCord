@@ -51,11 +51,6 @@ extension ForumBoardView {
         }
         for postID in changed {
             let id = ForumBoardItem.Identifier.post(postID)
-            if reactionTooltipPostID == postID, hoveredID == id, interactions[id]?.isReactionHovered == true,
-               let summary = presentations[postID]?.reaction
-            {
-                presentReactionTooltip(postID: postID, summary: summary)
-            }
             regions[id] = nil
             guard let card = cards[id] else { continue }
             applyChrome(card, id: id, animated: true)

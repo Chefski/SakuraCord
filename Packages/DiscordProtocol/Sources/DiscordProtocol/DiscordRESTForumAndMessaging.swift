@@ -707,20 +707,8 @@ extension DiscordRESTProvider {
         existing: ForumPost
     ) -> ForumPost {
         var merged = incoming
-        if let firstMessage = incoming.firstMessage {
-            merged.firstMessage = firstMessage.preservingReactionReactors(
-                from: existing.firstMessage ?? firstMessage
-            )
-        } else {
-            merged.firstMessage = existing.firstMessage
-        }
-        if let mostRecentMessage = incoming.mostRecentMessage {
-            merged.mostRecentMessage = mostRecentMessage.preservingReactionReactors(
-                from: existing.mostRecentMessage ?? mostRecentMessage
-            )
-        } else {
-            merged.mostRecentMessage = existing.mostRecentMessage
-        }
+        merged.firstMessage = incoming.firstMessage ?? existing.firstMessage
+        merged.mostRecentMessage = incoming.mostRecentMessage ?? existing.mostRecentMessage
         merged.thread.lastNonMessageActivityAt = incoming.thread.lastNonMessageActivityAt
             ?? existing.thread.lastNonMessageActivityAt
         merged.owner = incoming.owner ?? existing.owner
@@ -837,14 +825,10 @@ extension DiscordRESTProvider {
                       var post = cachedForumPosts[parentID]?[channelID]
                 else { continue }
                 if let message = try? data.firstMessage?.domain() {
-                    post.firstMessage = message.preservingReactionReactors(
-                        from: post.firstMessage ?? message
-                    )
+                    post.firstMessage = message
                 }
                 if let message = try? data.mostRecentMessage?.domain() {
-                    post.mostRecentMessage = message.preservingReactionReactors(
-                        from: post.mostRecentMessage ?? message
-                    )
+                    post.mostRecentMessage = message
                 }
                 cachedForumPosts[parentID, default: [:]][channelID] = post
                 cacheForumPreviewMessages(post)
