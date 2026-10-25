@@ -13,6 +13,11 @@ struct HumanCaptchaPresentation: ViewModifier {
                 .id(challenge.id)
             })
         }
+        .onAppear { store.isPresentable = true }
+        .onDisappear {
+            store.isPresentable = false
+            store.cancel()
+        }
     }
 }
 

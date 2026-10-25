@@ -74,6 +74,8 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     let usesDesktopHeartbeat: Bool
     let clientMetadata: DiscordClientMetadata
     let apiDiagnostics: DiscordAPIDiagnosticStore
+    /// The app's human-solving presentation, shared by every REST route.
+    var captchaHandler: DiscordCaptchaHandler?
     let usesEmojiDiskCache: Bool
     let usesForwardSearchPeopleDiskCache: Bool
     let persistsResolvedInstallationID: Bool
@@ -400,6 +402,10 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
                 nextIndex = 0
             }
         }
+    }
+
+    public func setCaptchaHandler(_ handler: @escaping DiscordCaptchaHandler) async {
+        captchaHandler = handler
     }
 
     public func updateClientAppState(isFocused: Bool) async {

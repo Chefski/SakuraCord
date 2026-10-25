@@ -7,7 +7,6 @@
 | Contract | Source | Representative checks |
 | --- | --- | --- |
 | Records, full read, mutations | [DiscordRESTRelationships.swift](../../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordRESTRelationships.swift) | [RelationshipContractTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/RelationshipContractTests.swift) |
-| Human CAPTCHA replay | [DiscordCaptchaChallenge.swift](../../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordCaptchaChallenge.swift); [HumanCaptchaStore.swift](../../App/Sources/SakuraCord/Models/HumanCaptchaStore.swift) | [RelationshipContractTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/RelationshipContractTests.swift); [HumanCaptchaTests.swift](../../App/Tests/SakuraCordAppTests/HumanCaptchaTests.swift) |
 | Friends projection | [FriendsState.swift](../../App/Sources/SakuraCord/Models/FriendsState.swift); [AppModelFriends.swift](../../App/Sources/SakuraCord/Models/AppModelFriends.swift) | [FriendsListPolicyTests.swift](../../App/Tests/SakuraCordAppTests/FriendsListPolicyTests.swift) |
 | Ignore presentation and group warning | [IgnoredUsersState.swift](../../App/Sources/SakuraCord/Models/IgnoredUsersState.swift); [DiscordRESTProviderChannelState.swift](../../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordRESTProviderChannelState.swift) | [IgnoredUsersTests.swift](../../App/Tests/SakuraCordAppTests/IgnoredUsersTests.swift); [RelationshipContractTests.swift](../../Packages/DiscordProtocol/Tests/DiscordProtocolTests/RelationshipContractTests.swift) |
 
@@ -90,17 +89,10 @@ and clear on account teardown.
 
 ## CAPTCHA
 
-A 400 with `captcha_key` and a supported `captcha_service` (hCaptcha, reCAPTCHA,
-reCAPTCHA Enterprise with `user_flow` as its action, Turnstile) on a send,
-accept, block, cancel or Ignore route is presented for human completion. The identical request
-and context is replayed once with `X-Captcha-Key`, plus the original
-`captcha_rqtoken` and `captcha_session_id` as `X-Captcha-Rqtoken` and
-`X-Captcha-Session-Id`. Cancellation, an empty solution, an account change or a
-second challenge ends the attempt. Unknown services fail the action without replay.
-hCaptcha uses its SDK; other services render their vendor's explicit widget in
-an ephemeral discord.com-origin web view that never receives credentials.
-Mocked transport tests cover every service; no live challenge has been served,
-so live widget compatibility for each service remains unverified.
+Send, accept, block, cancel and Ignore are challenged most often and follow the
+shared [Human CAPTCHA](../PROTOCOL_BASELINE.md#human-captcha) contract. The
+replay keeps the request's surface context and note. A dismissed or repeated
+challenge shows that action's usual failure copy.
 
 ## Ignore
 

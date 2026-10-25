@@ -64,13 +64,41 @@ and each topic's contract tests before changing them.
 | Password/MFA | Original plus at most two bounded retries for the documented transient status set above. |
 | Report-service OAuth2 authorization | One ordinary read of the consent details, then one authorizing POST that is never replayed. See [report-service sign-in](protocol/SESSION.md#report-service-sign-in). |
 | Remote-auth ticket exchange | Original plus at most three bounded transient-status retries. |
-| User-completed login, server-join or relationship CAPTCHA | At most one challenged-request replay after human completion; a second challenge terminates the attempt. |
+| User-completed CAPTCHA on any route, including login | At most one single-attempt replay of the challenged request after human completion; a second challenge terminates the attempt. See [Human CAPTCHA](#human-captcha). |
 | Full relationship read | At most once per Gateway connection, on the ordinary read budget. |
 | Selected member-list refresh | One deferred attempt after a known opcode-37 cooldown per invalidation; no background retry loop. See [member lists](protocol/GUILDS.md#guild-and-member-lifecycle). |
 
 A later explicit user action is distinct from automatic retry. Message retry
 retains its nonce; operation-specific exceptions must be documented beside their
 contract and linked from this table.
+
+### Human CAPTCHA
+
+Discord can answer any authenticated route with a 400 carrying `captcha_key` and
+a supported `captcha_service`: hCaptcha, reCAPTCHA, reCAPTCHA Enterprise with
+`user_flow` as its action, or Turnstile. Like the official client's global HTTP
+interceptor, the [central transport](../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordCaptchaChallenge.swift)
+hands it to the app's one [presentation](../App/Sources/SakuraCord/Models/HumanCaptchaStore.swift);
+concurrent challenges wait their turn instead of stacking. After completion the
+identical request (method, path, query, body and headers, including context) is
+replayed once, with one attempt, adding `X-Captcha-Key` plus the challenge's
+`captcha_rqtoken` and `captcha_session_id` as `X-Captcha-Rqtoken` and
+`X-Captcha-Session-Id`.
+
+A dismissed or failed widget, an empty solution, a second challenge or no open
+window returns the challenged response to the route's own failure handling. An
+account, provider or Gateway session change while the challenge is open cancels
+the request rather than replaying it. Unknown services fail the route without
+replay. hCaptcha uses its SDK; other services render their vendor's explicit
+widget in an ephemeral discord.com-origin web view that never receives
+credentials. Password and QR login run before a provider exists, so they share
+the challenge parsing and replay headers but keep the sign-in window's own
+step-based presentation.
+
+[CaptchaReplayContractTests.swift](../Packages/DiscordProtocol/Tests/DiscordProtocolTests/CaptchaReplayContractTests.swift)
+covers an arbitrary route; relationship and join tests cover every service and
+the stale-session cases. No live challenge has been exercised, so live widget
+compatibility for each service remains unverified.
 
 ## Capability gates
 

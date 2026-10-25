@@ -698,8 +698,17 @@ extension DiscordRESTProvider {
         maximumAttempts requestedMaximumAttempts: Int? = nil,
         statusSave: StatusSettingsSaveContext? = nil
     ) async throws -> (Data, HTTPURLResponse) {
-        try await requestPerformance(
+        let response = try await requestPerformance(
             path, method, query, body, headers, requestedMaximumAttempts, statusSave: statusSave
+        )
+        // Discord can challenge any route. The identical request is replayed
+        // once; a dismissed or repeated challenge reaches the route's own
+        // failure mapping.
+        guard let challenge = DiscordCaptchaChallenge(data: response.0, status: response.1.statusCode),
+              let solution = try await humanSolution(for: challenge) else { return response }
+        return try await requestPerformance(
+            path, method, query, body, headers.merging(challenge.replayHeaders(solution: solution)) { $1 }, 1,
+            statusSave: statusSave
         )
     }
     @discardableResult

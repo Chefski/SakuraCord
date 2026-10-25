@@ -29,6 +29,7 @@ extension AppModel {
             pendingAuthenticatedProviderFactory(credential, installationID)
         }
         await nextProvider.updateClientAppState(isFocused: mainWindowIsActive)
+        await nextProvider.setCaptchaHandler { [captcha] in await captcha.solution(for: $0) }
         do {
             try await nextProvider.prepareAuthentication()
         } catch {
