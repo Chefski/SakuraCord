@@ -297,12 +297,6 @@ private struct TitlebarGlassButton: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var isHovered = false
 
-    private var hoverOpacity: Double {
-        hasOwnGlass
-            ? TitlebarButtonMetrics.hoverOpacity(colorScheme)
-            : TitlebarButtonMetrics.groupedHoverOpacity(colorScheme)
-    }
-
     var body: some View {
         let ink: Color = colorScheme == .dark ? .white : .black
         configuration.label
@@ -326,9 +320,11 @@ private struct TitlebarGlassButton: View {
             // a group, a smaller capsule inset within the group's glass.
             .overlay {
                 Capsule()
-                    .fill(.primary.opacity(isHovered && isEnabled ? hoverOpacity : 0))
-                    .padding(.horizontal, hasOwnGlass ? 0 : TitlebarButtonMetrics.groupedHoverInset.width)
-                    .padding(.vertical, hasOwnGlass ? 0 : TitlebarButtonMetrics.groupedHoverInset.height)
+                    .fill(.primary.opacity(
+                        isHovered && isEnabled
+                            ? TitlebarButtonMetrics.hoverOpacity(grouped: !hasOwnGlass, colorScheme) : 0
+                    ))
+                    .padding(hasOwnGlass ? EdgeInsets() : TitlebarButtonMetrics.groupedHoverInset)
                     .allowsHitTesting(false)
             }
             .opacity(configuration.isPressed ? 0.75 : 1)
@@ -341,15 +337,16 @@ enum TitlebarButtonMetrics {
     static let iconSize: CGFloat = 17
     static let iconOpacity = 0.877
 
-    static let groupedHoverInset = CGSize(width: 2.75, height: 4)
+    static let groupedHoverInset = EdgeInsets(top: 4, leading: 2.75, bottom: 4, trailing: 2.75)
 
-    static func hoverOpacity(_ colorScheme: ColorScheme) -> Double {
-        colorScheme == .dark ? 0.055 : 0.07
-    }
-
-    /// Stronger than a standalone item's: the group's glass mutes what its
+    /// A grouped item's is stronger: the group's glass mutes what its
     /// buttons draw.
-    static func groupedHoverOpacity(_ colorScheme: ColorScheme) -> Double {
-        colorScheme == .dark ? 0.2 : 0.24
+    static func hoverOpacity(grouped: Bool, _ colorScheme: ColorScheme) -> Double {
+        switch (grouped, colorScheme == .dark) {
+        case (false, true): 0.055
+        case (false, false): 0.07
+        case (true, true): 0.2
+        case (true, false): 0.24
+        }
     }
 }
