@@ -18,6 +18,10 @@ struct SakuraCordApp: App {
     private let opensChatPerformanceFixture: Bool
     private let opensPinsPerformanceFixture: Bool
     private let runsFriendsPerformanceBenchmark: Bool
+#if SAKURACORD_MOTION_BENCHMARK
+    /// Set when the launch runs the side chat motion benchmark.
+    private let sideChatMotionOptions: SideChatMotionBenchmark.Options?
+#endif
     private let runsChatLiveArrivalStress: Bool
     private let runsAuthenticatedNavigationBenchmark: Bool
     private let runsAuthenticatedAccountSwitchBenchmark: Bool
@@ -43,6 +47,20 @@ struct SakuraCordApp: App {
         opensChatPerformanceFixture = configuration.includesChatPerformanceFixture
         opensPinsPerformanceFixture = configuration.includesPinsPerformanceFixture
         runsFriendsPerformanceBenchmark = configuration.runsFriendsPerformanceBenchmark
+#if SAKURACORD_MOTION_BENCHMARK
+        let motionOptions = configuration.runsSideChatMotionBenchmark
+            ? SideChatMotionBenchmark.Options(arguments: ProcessInfo.processInfo.arguments)
+            : nil
+        sideChatMotionOptions = motionOptions
+        WorkspaceMotionProbes.isEnabled = motionOptions != nil
+        MockChatProvider.motionFixture = motionOptions.map {
+            MockChatProvider.MotionFixture(
+                threadCount: $0.cycles + 1,
+                messageCount: $0.threadMessageCount,
+                historyDelay: .milliseconds($0.historyDelayMilliseconds)
+            )
+        }
+#endif
         runsChatLiveArrivalStress = configuration.runsChatLiveArrivalStress
         runsAuthenticatedNavigationBenchmark =
             configuration.runsAuthenticatedNavigationBenchmark
@@ -180,6 +198,11 @@ struct SakuraCordApp: App {
                     if runsFriendsPerformanceBenchmark {
                         await FriendsPerformanceBenchmark.run(model: model, provider: performanceMockProvider)
                     }
+#if SAKURACORD_MOTION_BENCHMARK
+                    if let sideChatMotionOptions {
+                        await SideChatMotionBenchmark.run(model: model, options: sideChatMotionOptions)
+                    }
+#endif
                     if opensPinsPerformanceFixture {
                         await model.channelLoadTask?.value
                         model.presentPinnedMessages(channelID: ChannelID(rawValue: 210))

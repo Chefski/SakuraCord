@@ -44,6 +44,12 @@ public actor MockChatProvider: ChatProvider {
     var forumQueriesByChannel: [ChannelID: [ForumPostQuery]] = [:]
     var relationshipPresences: [UserID: UserPresence]?
     var presenceChurnTask: Task<Void, Never>?
+#if SAKURACORD_MOTION_BENCHMARK
+    /// Threads seeded for the side-chat animation benchmark, and the latency
+    /// simulated before their history is served.
+    var motionThreadIDs: Set<ChannelID> = []
+    var motionThreadHistoryDelay: Duration = .zero
+#endif
 
     public init(
         includesLongServerList: Bool = false,
@@ -99,19 +105,11 @@ public actor MockChatProvider: ChatProvider {
                 messages.filter(\.isPinned).map { ($0.id, $0.timestamp) }
             }
         )
+        let guildAuthors = fixture.membersByGuild[GuildID(rawValue: 100)]?.map(\.user) ?? [fixture.currentUser]
         let forumFixture = Self.makeForumPosts(
-            channelID: ChannelID(rawValue: 220),
-            authors: fixture.membersByGuild[GuildID(rawValue: 100)]?.map(\.user) ?? [
-                fixture.currentUser
-            ],
-            count: forumPostCount ?? 6
+            channelID: ChannelID(rawValue: 220), authors: guildAuthors, count: forumPostCount ?? 6
         )
-        let bugForumFixture = Self.makeForumPosts(
-            channelID: ChannelID(rawValue: 221),
-            authors: fixture.membersByGuild[GuildID(rawValue: 100)]?.map(\.user) ?? [
-                fixture.currentUser
-            ]
-        )
+        let bugForumFixture = Self.makeForumPosts(channelID: ChannelID(rawValue: 221), authors: guildAuthors)
         forumPostsByChannel = [
             ChannelID(rawValue: 220): forumFixture,
             ChannelID(rawValue: 221): bugForumFixture,
@@ -121,10 +119,18 @@ public actor MockChatProvider: ChatProvider {
                 messagesByChannel[post.id] = [message]
             }
         }
+#if SAKURACORD_MOTION_BENCHMARK
+        (motionThreadIDs, motionThreadHistoryDelay) = Self.seedRequestedMotionFixture(
+            authors: guildAuthors, messages: &messagesByChannel
+        )
+#endif
         Self.seedThreadCatalogue(
             forumPosts: &forumPostsByChannel, messages: &messagesByChannel,
             channels: fixture.snapshot.channels, owner: fixture.currentUser
         )
+#if SAKURACORD_MOTION_BENCHMARK
+        Self.completeMotionThreadPosts(motionThreadIDs, forumPosts: &forumPostsByChannel, messages: messagesByChannel)
+#endif
         profilesByUser = fixture.profilesByUser
         if let friendCount {
             let fixture = Self.performanceRelationships(friendCount: friendCount)

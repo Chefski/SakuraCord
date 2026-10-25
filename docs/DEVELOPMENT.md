@@ -77,6 +77,14 @@ account is read or changed, and no Discord transport is created. Hosted CAPTCHA
 verification requires Discord and is excluded from this offline fixture.
 **Build & Run Offline Sign In** rebuilds and launches the same mode from Codex.
 
+The side chat motion benchmark is not one of these scenes. Its code compiles
+only when `SAKURACORD_MOTION_BENCHMARK=1` is set at build time, so normal Debug
+and Release builds contain none of it. `./script/motion_benchmark.sh` sets the
+variable, builds that benchmark build, records the open, close, and widen
+motions of fixture threads, and reports them. A benchmark build is a developer
+tool, not a release build; it is packaged to the same `dist/` path as a normal
+build, so package again without the variable before using that app otherwise.
+
 Use `./script/build_and_run.sh run` to launch the normal app and restore an
 existing SakuraCord session through the configured credential mode. Read-only authenticated verification
 may observe existing state and allow normal connection or session-maintenance

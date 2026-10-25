@@ -82,6 +82,7 @@ struct ChatWorkspaceView: View, Equatable {
                     presentsForumComposer: $presentsForumComposer
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .workspaceMotionProbe("primary")
             }
         }
         .onChange(of: model.selectedChannelID) { _, channelID in
@@ -139,6 +140,7 @@ struct ChatWorkspaceView: View, Equatable {
         switch column.content {
         case .sideConversation(let conversation):
             SideConversationView(model: model, conversation: conversation)
+                .workspaceMotionProbe("pane")
                 .reportsSupplementaryPaneFrame(isEnabled: !conversation.isFullWidth)
         case .inspector(let pane):
             ChatWorkspaceSupplementaryContent(
@@ -146,6 +148,7 @@ struct ChatWorkspaceView: View, Equatable {
                 pane: pane,
                 toolbarSearchFieldMetrics: toolbarSearchFieldMetrics
             )
+            .workspaceMotionProbe(column.id)
         }
     }
 }

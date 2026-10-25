@@ -710,7 +710,10 @@ private struct ChatRootView: View {
             }
             groups.append(.init(
                 id: WorkspaceTrailingColumn(.sideConversation(conversation)).id,
-                title: AnyView(SideConversationTitlebarTitle(label: model.sideConversationLabel(conversation))),
+                title: AnyView(
+                    SideConversationTitlebarTitle(label: model.sideConversationLabel(conversation))
+                        .workspaceMotionProbe("toolbarTitle")
+                ),
                 actions: AnyView(SideConversationToolbarActions(model: model, conversation: conversation)),
                 fullWidthActions: fullWidthActions
             ))
@@ -1268,6 +1271,7 @@ private struct ChatRootView: View {
 
         ToolbarItem(id: "side-conversation-title") {
             SideConversationToolbarTitle(label: label, width: sideConversationTitleWidth(actionCount: actionCount))
+                .workspaceMotionProbe("toolbarTitle")
                 // Remeasure changed text without replacing the toolbar item.
                 .id(label.title)
                 .transition(.identity)
