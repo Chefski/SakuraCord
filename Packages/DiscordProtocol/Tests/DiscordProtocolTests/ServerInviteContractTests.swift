@@ -99,15 +99,24 @@ struct ServerInviteContractTests {
         await provider.disconnect()
     }
 
-    @Test(arguments: ["captchaCancel", "captchaEmpty", "captchaDisconnect", "captchaRepeated", "captchaLimited", "captchaTimeout", "captchaNoHandler"])
+    @Test(arguments: ["captchaCancel", "captchaEmpty", "captchaDisconnect", "captchaSessionReplaced", "captchaRepeated", "captchaLimited",
+                      "captchaTimeout", "captchaNoHandler"])
     func `cancelled stale or rejected CAPTCHA cannot cause an automatic join loop`(code: String) async throws {
         let capture = InviteRequestCapture()
-        let provider = try await makeProvider(capture.id)
+        let socket = ReadyGatewaySocket()
+        let provider = try await makeProvider(capture.id, socket: socket)
         let reference = try #require(ServerInviteReference(code))
         if code != "captchaNoHandler" {
             await provider.setCaptchaHandler { _ in
                 if code == "captchaCancel" { return nil }
                 if code == "captchaDisconnect" { await provider.disconnect() }
+                if code == "captchaSessionReplaced" {
+                    // The body still carries the session the join was sent with.
+                    await socket.push(gatewayMessage(op: 0, data: .object([
+                        "session_id": .string("replacement-session"), "resume_gateway_url": .string("wss://gateway.discord.gg")
+                    ]), sequence: 2, eventName: "READY"))
+                    #expect(await eventually { await provider.gatewaySession?.snapshot().sessionID == "replacement-session" })
+                }
                 return code == "captchaEmpty" ? "  " : "human-solution"
             }
         }
@@ -227,8 +236,7 @@ struct ServerInviteContractTests {
         await provider.disconnect()
     }
 
-    private func makeProvider(_ accountID: String) async throws -> DiscordRESTProvider {
-        let socket = ReadyGatewaySocket()
+    private func makeProvider(_ accountID: String, socket: ReadyGatewaySocket = ReadyGatewaySocket()) async throws -> DiscordRESTProvider {
         await socket.push(gatewayMessage(op: 10, data: .object(["heartbeat_interval": .number(60_000)])))
         await socket.push(gatewayMessage(op: 0, data: .object([
             "session_id": .string("invite-session"), "resume_gateway_url": .string("wss://gateway.discord.gg")

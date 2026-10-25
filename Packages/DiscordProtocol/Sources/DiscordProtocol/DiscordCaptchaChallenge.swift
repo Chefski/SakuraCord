@@ -85,20 +85,20 @@ public typealias DiscordCaptchaHandler = @Sendable (DiscordCaptchaChallenge) asy
 
 extension DiscordRESTProvider {
     /// A human's solution, or nil when the challenge was dismissed or failed.
-    /// Throws instead when the request's account, or the Gateway session its
-    /// body carries, is no longer current: a solution is never replayed against
-    /// another one.
-    func humanSolution(
-        for challenge: DiscordCaptchaChallenge, account: UserID?, body: [String: JSONValue]?
-    ) async throws -> String? {
+    /// Throws instead when the request's account changed: a solution is never
+    /// replayed against another one. The transport checks a body's Gateway
+    /// session just before sending the replay.
+    func humanSolution(for challenge: DiscordCaptchaChallenge, account: UserID?) async throws -> String? {
         guard let captchaHandler, !requestSafetyCircuitIsOpen else { return nil }
-        let solution = await captchaHandler(challenge)
+        // Unstructured so teardown can withdraw the sheet; the request's own
+        // cancellation is forwarded to it.
+        let presentation = Task { await captchaHandler(challenge) }
+        captchaPresentations[challenge.id] = presentation
+        let solution = await withTaskCancellationHandler { await presentation.value } onCancel: { presentation.cancel() }
+        captchaPresentations[challenge.id] = nil
         try Task.checkCancellation()
         guard let solution, !solution.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         guard !requestSafetyCircuitIsOpen, currentUser?.id == account else { throw CancellationError() }
-        if case let .string(sessionID)? = body?["session_id"], await gatewaySession?.snapshot().sessionID != sessionID {
-            throw CancellationError()
-        }
         return solution
     }
 }

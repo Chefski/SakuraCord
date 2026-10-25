@@ -544,6 +544,10 @@ extension DiscordRESTProvider {
                 // the immutable status payload immediately before transmission.
                 if let statusSave = context.statusSave { try validateStatusSettingsSave(statusSave) }
                 try requireGuildCommunicationForRequest(path: path, method: method, body: context.body)
+                // A CAPTCHA replay may have waited for a rate-limit slot. Never
+                // send a body bound to a Gateway session that has since changed.
+                if context.headers["X-Captcha-Key"] != nil, case let .string(sessionID)? = context.body?["session_id"],
+                   await gatewaySession?.snapshot().sessionID != sessionID { throw CancellationError() }
                 let networkName: StaticString = isMessageHistoryRequest
                     ? "MessageHistoryNetworkAttempt"
                     : "RESTNetworkAttempt"
@@ -709,7 +713,7 @@ extension DiscordRESTProvider {
         // once; a dismissed or repeated challenge reaches the route's own
         // failure mapping.
         guard let challenge = DiscordCaptchaChallenge(data: response.0, status: response.1.statusCode),
-              let solution = try await humanSolution(for: challenge, account: account, body: body) else { return response }
+              let solution = try await humanSolution(for: challenge, account: account) else { return response }
         return try await requestPerformance(
             path, method, query, body, headers.merging(challenge.replayHeaders(solution: solution)) { $1 }, 1,
             statusSave: statusSave

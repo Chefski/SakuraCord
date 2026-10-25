@@ -193,8 +193,11 @@ extension DiscordRESTProvider {
     }
 
     public func disconnect() async {
-        // Teardown flushes below must fail rather than wait on a human.
+        // Teardown flushes below, and saves already awaiting a sheet, must
+        // fail rather than wait on a human.
         captchaHandler = nil
+        for presentation in captchaPresentations.values { presentation.cancel() }
+        captchaPresentations = [:]
         resetMemberListSubscriptionWork()
         await finishGuildFoldersEdits()
         currentAccountDetails = nil

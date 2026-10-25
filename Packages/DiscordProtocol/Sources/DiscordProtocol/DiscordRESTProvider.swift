@@ -76,6 +76,7 @@ public actor DiscordRESTProvider: PendingCredentialChatProvider {
     let apiDiagnostics: DiscordAPIDiagnosticStore
     /// The app's human-solving presentation, shared by every REST route.
     var captchaHandler: DiscordCaptchaHandler?
+    var captchaPresentations: [UUID: Task<String?, Never>] = [:]
     let usesEmojiDiskCache: Bool
     let usesForwardSearchPeopleDiskCache: Bool
     let persistsResolvedInstallationID: Bool

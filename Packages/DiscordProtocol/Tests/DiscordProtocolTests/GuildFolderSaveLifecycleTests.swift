@@ -103,7 +103,7 @@ extension DirectMessageProviderContractTests {
     func `teardown flush fails a CAPTCHA instead of waiting on a human`() async throws {
         DirectMessageURLProtocol.reset()
         let provider = await guildFolderSaveProvider()
-        let presentations = CaptchaPresentationCount()
+        let presentations = CaptchaCounter()
         await provider.setCaptchaHandler { _ in
             presentations.value.withLock { $0 += 1 }
             return "human-solution"
@@ -116,9 +116,32 @@ extension DirectMessageProviderContractTests {
         #expect(presentations.value.withLock { $0 } == 0)
         #expect(DirectMessageURLProtocol.requests.filter { $0.path == "/api/v9/users/@me/settings-proto/1" }.count == 1)
     }
+
+    @Test(.timeLimit(.minutes(1)))
+    func `teardown withdraws a CAPTCHA a save is already waiting on`() async throws {
+        DirectMessageURLProtocol.reset()
+        let provider = await guildFolderSaveProvider()
+        let presentations = CaptchaCounter(), withdrawals = CaptchaCounter()
+        // Like an open sheet, it ends early only when withdrawn.
+        await provider.setCaptchaHandler { _ in
+            presentations.value.withLock { $0 += 1 }
+            if (try? await Task.sleep(for: .seconds(5))) == nil { withdrawals.value.withLock { $0 += 1 } }
+            return nil
+        }
+        DirectMessageURLProtocol.settingsReplies = [.init(400, """
+            {"captcha_key":["captcha-required"],"captcha_service":"hcaptcha","captcha_sitekey":"site-key"}
+            """)]
+        try await provider.updateGuildRailLayout(guildFolderSaveRail([200, 100, 300]))
+        let save = Task { await provider.flushGuildFoldersIfNeeded() }
+        #expect(await eventually { presentations.value.withLock { $0 } == 1 })
+        await provider.disconnect()
+        await save.value
+        #expect(withdrawals.value.withLock { $0 } == 1)
+        #expect(DirectMessageURLProtocol.requests.filter { $0.path == "/api/v9/users/@me/settings-proto/1" }.count == 1)
+    }
 }
 
-private final class CaptchaPresentationCount: Sendable {
+private final class CaptchaCounter: Sendable {
     let value = Mutex(0)
 }
 
