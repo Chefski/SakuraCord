@@ -8939,7 +8939,7 @@ private func threadWithHistory(in parent: Channel, provider: MockChatProvider) a
     ))
 }
 
-@MainActor @Test func `the member list takes an open thread pane's place and gives it back`() async throws {
+@MainActor @Test func `the member list closes an open thread pane and does not bring it back`() async throws {
     let provider = MockChatProvider()
     let model = AppModel(launchMode: .offlineTesting, provider: provider)
     await model.start()
@@ -8949,21 +8949,16 @@ private func threadWithHistory(in parent: Channel, provider: MockChatProvider) a
     let thread = try await threadWithHistory(in: parent, provider: provider)
     model.open(thread)
     #expect(await until { model.hasCompletedInitialThreadLoad && !model.threadMessages.isEmpty })
-    model.threadTimelinePosition.reading = .bottom
 
-    // Members beside the pane shows the member list in its place; the
-    // thread stays open, though not viewed, and Escape leaves it alone.
+    // Members beside the pane shows the member list in its place and closes
+    // the thread.
     model.toggleMemberInspector()
     #expect(model.workspacePresentation.supplementaryPane == .memberInspector)
-    #expect(model.openThread?.id == thread.id)
-    #expect(!model.isConversationPresented(thread.id))
-    #expect(!model.closeSideConversation())
-    #expect(model.openThread?.id == thread.id)
+    #expect(model.openThread == nil)
 
-    // Members again brings the pane back where the reader left it.
+    // Closing the member list leaves the conversation on its own.
     model.toggleMemberInspector()
-    #expect(model.workspacePresentation.paneSideConversation?.isThread == true)
-    #expect(model.isConversationPresented(thread.id))
-    #expect(model.threadTimelinePosition.restore == .bottom)
     #expect(!model.showInspector)
+    #expect(model.openThread == nil)
+    #expect(model.workspacePresentation.paneSideConversation == nil)
 }
