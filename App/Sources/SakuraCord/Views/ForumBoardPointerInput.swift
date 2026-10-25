@@ -75,14 +75,7 @@ extension ForumBoardView {
         let previous = interaction
         switch hit.entry.item {
         case let .post(input):
-            let regions = cardRegions(for: id)
-            let isOnReaction = regions?.reactionRegionFrame?.contains(hit.local) == true
-            interaction.isReactionHovered = isOnReaction
-            if isOnReaction, let summary = presentations[input.id]?.reaction {
-                presentReactionTooltip(postID: input.id, summary: summary)
-            } else if !isOnReaction {
-                closeReactionTooltip()
-            }
+            interaction.isReactionHovered = cardRegions(for: id)?.reactionRegionFrame?.contains(hit.local) == true
             if let renderer = excerptRenderers[input.id], let excerptOrigin = excerptOrigin(for: id) {
                 let location = renderer.hiddenSpoilerLocation(at: CGPoint(x: hit.local.x - excerptOrigin.x, y: hit.local.y - excerptOrigin.y))
                 if renderer.setHoveredSpoiler(location) { cards[id]?.render(scale: backingScale, fading: false) }
@@ -113,7 +106,6 @@ extension ForumBoardView {
     }
 
     private func clearInnerHover() {
-        closeReactionTooltip()
         for (id, interaction) in interactions where interaction != ForumCardInteraction() {
             interactions[id] = ForumCardInteraction()
             cards[id]?.render(scale: backingScale, fading: false)

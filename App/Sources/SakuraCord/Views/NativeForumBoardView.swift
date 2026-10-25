@@ -192,9 +192,6 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
     private var minuteTimer: Timer?
     private var lastLayoutWidth: CGFloat = 0
     let menuBuilder = ForumPostMenuBuilder()
-    /// The post whose reactors popover is showing.
-    var reactionTooltipPostID: ChannelID?
-    let reactionTooltip = StableAnchoredPopoverPresenter<MessageReactionTooltip>.Coordinator()
     var accessibilityProxies: [ForumBoardItem.Identifier: ForumBoardAccessibilityProxyView] = [:]
     /// A page request is in flight from this board; the model also guards.
     var isRequestingPage = false
@@ -247,7 +244,6 @@ final class ForumBoardView: NSView, NSViewToolTipOwner {
         resizeSettleTask?.cancel()
         minuteTimer?.invalidate()
         minuteTimer = nil
-        reactionTooltip.close()
         NativeTimelineMediaStore.shared.releaseVisibleImages(owner: mediaOwner)
         NativeTimelineMediaStore.shared.cancelStaticRequestsOutsideVisibleSet(owner: mediaOwner)
         for renderer in excerptRenderers.values { renderer.stopObservingReveals() }

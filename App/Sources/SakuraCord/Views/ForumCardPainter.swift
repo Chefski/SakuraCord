@@ -206,7 +206,7 @@ enum ForumCardPainter {
         let spacing = InterfaceScale.metric(12)
         var cursorX = footer.minX
         if let summary = presentation.reaction {
-            let size = NativeTimelineRowLayout.reactionSize(summary.reaction)
+            let size = NativeTimelineRowLayout.reactionSize(summary.reaction, showsReactors: false)
             let originX = alignsReactionTrailing ? footer.maxX - size.width : cursorX
             regions.reactionRegionFrame = CGRect(x: originX, y: footer.midY - size.height / 2, width: size.width, height: size.height)
             if !alignsReactionTrailing { cursorX += size.width + spacing }
@@ -722,11 +722,11 @@ enum ForumCardPainter {
 
     /// Everything the shared reaction pill draws from besides its frame, so
     /// its cached bitmap redraws when any of it changes, including when its
-    /// emoji or reactor avatars finish loading.
+    /// emoji finishes loading.
     private struct ReactionPillKey: Hashable {
         let reaction: Reaction
         let emojiURL: URL?
-        let loadedImages: [Bool]
+        let isEmojiLoaded: Bool
         let isHovered: Bool
         let isDisabled: Bool
         let accent: [CGFloat]
@@ -739,12 +739,10 @@ enum ForumCardPainter {
     ) -> ReactionPillKey {
         let reaction = summary.reaction
         let emojiURL = MessageReactionPresentation.emojiURL(for: reaction, customEmojiURLsByID: model?.customEmojiURLsByID ?? [:])
-        var keys: [NativeTimelineMediaKey] = emojiURL.map { [.media($0, maximumPixelDimension: 64)] } ?? []
-        keys += MessageReactionPresentation.previewPlan(for: reaction).reactors.compactMap { $0.avatarURL.map(NativeTimelineMediaKey.avatar) }
         return ReactionPillKey(
             reaction: reaction,
             emojiURL: emojiURL,
-            loadedImages: keys.map { NativeTimelineRowPainter.mediaImage(for: $0) != nil },
+            isEmojiLoaded: emojiURL.map { NativeTimelineRowPainter.mediaImage(for: .media($0, maximumPixelDimension: 64)) != nil } ?? false,
             isHovered: isHovered,
             isDisabled: summary.isDisabled,
             accent: NSColor.sakuraCordAccentColor.cgColor.components ?? []
@@ -767,7 +765,7 @@ enum ForumCardPainter {
                     NSGraphicsContext.current?.cgContext.setAlpha(0.45)
                 }
                 NativeTimelineRowPainter.reaction(
-                    NativeTimelineRowLayout.reactionRegion(summary.reaction, frame: frame),
+                    NativeTimelineRowLayout.reactionRegion(summary.reaction, frame: frame, showsReactors: false),
                     model: model,
                     isHovered: isHovered,
                     countTransition: nil,

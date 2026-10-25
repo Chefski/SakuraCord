@@ -1199,64 +1199,6 @@ import UserNotifications
 }
 
 @MainActor
-@Test func `forum preview hydration preserves loaded reactor avatars`() async throws {
-    let provider = MockChatProvider()
-    let model = AppModel(launchMode: .offlineTesting, provider: provider)
-    await model.start()
-    let forum = try #require(model.snapshot?.channels.first(where: { $0.kind == .forum }))
-
-    model.selectedChannelID = forum.id
-    #expect(await until { model.hasLoadedForumPosts && !model.forumPosts.isEmpty })
-    let initialPost = try #require(
-        model.forumPosts.first(where: { $0.firstMessage?.reactions.isEmpty == false })
-    )
-    let initialMessage = try #require(initialPost.firstMessage)
-    let initialReaction = try #require(initialMessage.reactions.first)
-    await model.loadReactionReactors(initialReaction, on: initialMessage)
-    #expect(
-        await until {
-            model.forumPosts.first(where: { $0.id == initialPost.id })?
-                .firstMessage?.reactions.first(where: { $0.id == initialReaction.id })?
-                .reactors.isEmpty == false
-        }
-    )
-    let loadedReactors = try #require(
-        model.forumPosts.first(where: { $0.id == initialPost.id })?
-            .firstMessage?.reactions.first(where: { $0.id == initialReaction.id })?
-            .reactors
-    )
-
-    var replacement = try #require(
-        model.forumPosts.first(where: { $0.id == initialPost.id })
-    )
-    var replacementMessage = try #require(replacement.firstMessage)
-    let reactionIndex = try #require(
-        replacementMessage.reactions.firstIndex(where: {
-            $0.id == initialReaction.id
-        })
-    )
-    replacementMessage.reactions[reactionIndex].count += 1
-    replacementMessage.reactions[reactionIndex].reactors = []
-    replacement.firstMessage = replacementMessage
-    await provider.emit(
-        .forumPostPreviewsChanged(channelID: forum.id, posts: [replacement])
-    )
-
-    #expect(
-        await until {
-            guard
-                let reaction = model.forumPosts.first(where: { $0.id == initialPost.id })?
-                    .firstMessage?.reactions.first(where: { $0.id == initialReaction.id })
-            else {
-                return false
-            }
-            return reaction.count == initialReaction.count + 1
-                && reaction.reactors == loadedReactors
-        }
-    )
-}
-
-@MainActor
 @Test func `rapid reaction clicks publish only the latest state per message and emoji`() async throws {
     let provider = ReactionMutationTestProvider()
     let model = reactionMutationTestModel(provider: provider)

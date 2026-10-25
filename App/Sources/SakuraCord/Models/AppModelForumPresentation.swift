@@ -52,7 +52,11 @@ extension AppModel {
             defaultReaction: channel.defaultReaction
         ).flatMap { reaction in
             starter.map {
-                ForumCardPresentation.ReactionSummary(
+                // Cards show only the emoji and count, so reactor identities
+                // stay out of what the card compares, draws and announces.
+                var reaction = reaction
+                reaction.reactors = []
+                return ForumCardPresentation.ReactionSummary(
                     reaction: reaction,
                     message: $0,
                     isDisabled: guildTimeoutUntil(in: post.id, guildID: post.thread.guildID) != nil
