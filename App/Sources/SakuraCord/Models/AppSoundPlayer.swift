@@ -66,10 +66,12 @@ final class MacAppSoundPlayer: AppSoundPlaying {
 
     private var players: [AppSoundEffect: AVAudioPlayer] = [:]
     private var notificationSlots: [AppSoundEffect: NotificationSlot] = [:]
+    private var bannerExports: [NotificationSoundKind: Task<Void, Never>] = [:]
     private let notificationPreferences: NotificationPreferences
 
     init(notificationPreferences: NotificationPreferences) {
         self.notificationPreferences = notificationPreferences
+        syncBannerSounds()
     }
 
     func play(_ effect: AppSoundEffect) {
@@ -140,24 +142,9 @@ final class MacAppSoundPlayer: AppSoundPlaying {
         return player
     }
 
-    private func choice(for kind: NotificationSoundKind) -> NotificationSoundLibrary.Choice {
-        switch kind {
-        case .message:
-            .init(
-                soundID: notificationPreferences.messageSoundID,
-                bookmark: notificationPreferences.messageSoundBookmark
-            )
-        case .call:
-            .init(
-                soundID: notificationPreferences.callRingtoneID,
-                bookmark: notificationPreferences.callRingtoneBookmark
-            )
-        }
-    }
-
     /// Rebuilds the player only when the stored choice changes.
     private func notificationPlayer(for effect: AppSoundEffect, kind: NotificationSoundKind) -> AVAudioPlayer? {
-        var choice = choice(for: kind)
+        var choice = notificationPreferences.soundChoice(for: kind)
         if let slot = notificationSlots[effect], slot.choice == choice { return slot.player }
         releaseNotificationSlot(effect)
 
@@ -191,6 +178,23 @@ final class MacAppSoundPlayer: AppSoundPlaying {
         player.prepareToPlay()
         notificationSlots[effect] = NotificationSlot(choice: choice, player: player, scopedURL: scopedURL)
         return player
+    }
+
+    /// Keeps the Notification Center copies in step with the stored choices,
+    /// including Reset and Import, which only change the preferences.
+    private func syncBannerSounds() {
+        withObservationTracking {
+            for kind in NotificationSoundKind.allCases { _ = notificationPreferences.soundChoice(for: kind) }
+        } onChange: { [weak self] in
+            Task { @MainActor in self?.syncBannerSounds() }
+        }
+        for kind in NotificationSoundKind.allCases {
+            let choice = notificationPreferences.soundChoice(for: kind)
+            bannerExports[kind]?.cancel()
+            bannerExports[kind] = Task.detached(priority: .utility) {
+                NotificationSoundLibrary.exportBannerSound(choice, kind: kind)
+            }
+        }
     }
 
     private func releaseNotificationSlot(_ effect: AppSoundEffect) {

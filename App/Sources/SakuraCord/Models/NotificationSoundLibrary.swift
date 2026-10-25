@@ -1,7 +1,9 @@
+import AVFAudio
 import Foundation
+import OSLog
 
 /// Which notification sound a stored choice controls.
-nonisolated enum NotificationSoundKind: Sendable {
+nonisolated enum NotificationSoundKind: CaseIterable, Sendable {
     case message
     case call
 
@@ -9,6 +11,13 @@ nonisolated enum NotificationSoundKind: Sendable {
         switch self {
         case .message: .message
         case .call: .callRinging
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .message: "Message"
+        case .call: "Call"
         }
     }
 }
@@ -98,5 +107,87 @@ nonisolated enum NotificationSoundLibrary {
             }
         }
         return Resolution(url: defaultURL(kind: kind), isSecurityScoped: false, isStaleBookmark: false)
+    }
+}
+
+/// Notification Center plays `UNNotificationSound(named:)` files from the
+/// app's `Library/Sounds`, so a custom choice is exported there as a CAF.
+nonisolated extension NotificationSoundLibrary {
+    private static let logger = Logger(subsystem: "dev.sakuracord.SakuraCord", category: "Notifications")
+    /// Notification Center ignores sounds of 30 seconds or longer.
+    private static let bannerMaximumSeconds = 29.0
+    private static let bannerChunkFrames: AVAudioFrameCount = 32_768
+
+    static func bannerSoundName(kind: NotificationSoundKind) -> String {
+        switch kind {
+        case .message: "SakuraCord-message.caf"
+        case .call: "SakuraCord-call.caf"
+        }
+    }
+
+    static func bannerSoundURL(kind: NotificationSoundKind) -> URL {
+        URL.libraryDirectory
+            .appending(path: "Sounds", directoryHint: .isDirectory)
+            .appending(path: bannerSoundName(kind: kind), directoryHint: .notDirectory)
+    }
+
+    /// Replaces the exported copy with the current choice, or removes it for
+    /// the default sound. A source longer than the limit is trimmed, so the
+    /// banner plays its start while in-app playback keeps the full file.
+    static func exportBannerSound(_ choice: Choice, kind: NotificationSoundKind) {
+        let destination = bannerSoundURL(kind: kind)
+        guard choice.soundID != bundledID else {
+            try? FileManager.default.removeItem(at: destination)
+            return
+        }
+        let resolution = resolve(choice, kind: kind)
+        let isScoped = resolution.isSecurityScoped && resolution.url.startAccessingSecurityScopedResource()
+        defer { if isScoped { resolution.url.stopAccessingSecurityScopedResource() } }
+        let temporary = FileManager.default.temporaryDirectory.appending(path: "\(UUID().uuidString).caf")
+        defer { try? FileManager.default.removeItem(at: temporary) }
+        do {
+            try convertToLinearPCM(from: resolution.url, to: temporary)
+            // A newer choice's export owns the destination.
+            try Task.checkCancellation()
+            try FileManager.default.createDirectory(
+                at: destination.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            if FileManager.default.fileExists(atPath: destination.path) {
+                _ = try FileManager.default.replaceItemAt(destination, withItemAt: temporary)
+            } else {
+                try FileManager.default.moveItem(at: temporary, to: destination)
+            }
+        } catch is CancellationError {
+            return
+        } catch {
+            // Without a copy the banner keeps the bundled sound.
+            try? FileManager.default.removeItem(at: destination)
+            let nsError = error as NSError
+            logger.error("\(kind.label) banner sound export failed; domain=\(nsError.domain, privacy: .public), code=\(nsError.code)")
+        }
+    }
+
+    private static func convertToLinearPCM(from source: URL, to destination: URL) throws {
+        let input = try AVAudioFile(forReading: source)
+        let format = input.processingFormat
+        let output = try AVAudioFile(
+            forWriting: destination,
+            settings: [
+                AVFormatIDKey: kAudioFormatLinearPCM,
+                AVSampleRateKey: format.sampleRate,
+                AVNumberOfChannelsKey: format.channelCount,
+                AVLinearPCMBitDepthKey: 16,
+                AVLinearPCMIsFloatKey: false,
+            ]
+        )
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: bannerChunkFrames) else { return }
+        let limit = min(input.length, AVAudioFramePosition(format.sampleRate * bannerMaximumSeconds))
+        while input.framePosition < limit {
+            let remaining = AVAudioFrameCount(limit - input.framePosition)
+            try input.read(into: buffer, frameCount: min(bannerChunkFrames, remaining))
+            guard buffer.frameLength > 0 else { break }
+            try output.write(from: buffer)
+        }
     }
 }

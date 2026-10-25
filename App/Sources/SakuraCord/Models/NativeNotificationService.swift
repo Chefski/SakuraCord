@@ -285,6 +285,12 @@ final class NotificationPreferences {
             }
         }
     }
+    func soundChoice(for kind: NotificationSoundKind) -> NotificationSoundLibrary.Choice {
+        switch kind {
+        case .message: .init(soundID: messageSoundID, bookmark: messageSoundBookmark)
+        case .call: .init(soundID: callRingtoneID, bookmark: callRingtoneBookmark)
+        }
+    }
     var suppressesCurrentConversation: Bool {
         didSet {
             defaults.set(suppressesCurrentConversation, forKey: Key.suppressCurrentConversation)
@@ -536,6 +542,16 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
     }()
     private var center: UNUserNotificationCenter { .current() }
 
+    private static func bannerSound(
+        kind: NotificationSoundKind,
+        preferences: NotificationPreferences
+    ) -> UNNotificationSound? {
+        guard preferences.soundChoice(for: kind).soundID != NotificationSoundLibrary.bundledID,
+              FileManager.default.fileExists(atPath: NotificationSoundLibrary.bannerSoundURL(kind: kind).path)
+        else { return notificationSound }
+        return UNNotificationSound(named: UNNotificationSoundName(NotificationSoundLibrary.bannerSoundName(kind: kind)))
+    }
+
     // Offline demos use real system permissions without publishing fixture alerts.
     private let deliversNotifications: Bool
     private let preparePreviewImage: @MainActor (URL?, Int) async -> Data?
@@ -647,7 +663,7 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
         guard pendingRequests[identifier] == token, !Task.isCancelled,
               preferences.isEnabled, preferences.previewStyle == style
         else { return }
-        await add(content, identifier: identifier, kind: "Message", preferences: preferences)
+        await add(content, identifier: identifier, kind: .message, preferences: preferences)
     }
 
     func deliverIncomingCall(
@@ -689,7 +705,7 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
         guard pendingRequests[identifier] == token, !Task.isCancelled,
               preferences.isEnabled, preferences.previewStyle == style
         else { return }
-        await add(content, identifier: identifier, kind: "Call", preferences: preferences)
+        await add(content, identifier: identifier, kind: .call, preferences: preferences)
     }
 
     func cancel(accountID: String, channelID: ChannelID) async {
@@ -724,13 +740,13 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
     private func add(
         _ content: UNNotificationContent,
         identifier: String,
-        kind: StaticString,
+        kind: NotificationSoundKind,
         preferences: NotificationPreferences
     ) async {
         guard deliversNotifications, !isSuppressed, preferences.isEnabled,
               let content = content.mutableCopy() as? UNMutableNotificationContent
         else { return }
-        content.sound = preferences.playsSound ? Self.notificationSound : nil
+        content.sound = preferences.playsSound ? Self.bannerSound(kind: kind, preferences: preferences) : nil
         do {
             try await submitRequest(
                 UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
@@ -738,7 +754,7 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
         } catch {
             let notificationError = error as NSError
             Self.logger.error(
-                "\(kind) notification delivery failed; domain=\(notificationError.domain, privacy: .public), code=\(notificationError.code)"
+                "\(kind.label) notification delivery failed; domain=\(notificationError.domain, privacy: .public), code=\(notificationError.code)"
             )
         }
     }
