@@ -1440,6 +1440,9 @@ extension AccountReadStateModel {
     ) {
         if let token { acknowledgementToken = token }
         var entry = entry(for: channelID)
+        // The server now holds this read state, as its later echo confirms;
+        // a seeded boundary must not replace it as the tracked acknowledgement.
+        entry.hasAuthoritativeReadState = true
         if entry.pendingAcknowledgementID == messageID {
             entry.pendingAcknowledgementID = nil
             pendingRollbacks[channelID] = nil
@@ -1557,19 +1560,23 @@ extension AccountReadStateModel {
             forumVisitBoundaryByID: forumSelectionAcknowledgementBoundary,
             guildJoinedAtByID: guildJoinedAtByID
         )
+        let forumsWithNewPosts = source.forumsWithNewPosts()
         let channelIDs = Set(channelByID.values.filter {
             $0.guildID.map { guildIDs.contains($0) } == true
         }.map(\.id)).union(activeJoinedThreadIDs)
         return channelIDs.contains { channelID in
             guard let state = self[unread: channelID],
                   let guildID = state.guildID, guildIDs.contains(guildID),
-                  state.isAccessible, state.isUnread,
+                  state.isAccessible,
+                  state.isUnread || forumsWithNewPosts.contains(channelID),
                   let entry = entriesStorage[channelID]
             else { return false }
             if channelByID[channelID] == nil, let parentID = state.parentID {
                 _ = self[unread: parentID]
             }
-            return serverAcknowledgement(for: entry, guildIDs: guildIDs, source: source) != nil
+            return serverAcknowledgement(
+                for: entry, guildIDs: guildIDs, source: source, forumsWithNewPosts: forumsWithNewPosts
+            ) != nil
         }
     }
 

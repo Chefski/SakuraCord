@@ -468,7 +468,8 @@ extension AppModel {
 
     func markConversationRead(channelID: ChannelID) {
         guard !runsChatPerformanceBenchmark else { return }
-        guard readState.unread(channelID: channelID),
+        guard readState.unread(channelID: channelID)
+                || readState.forumNewPostCount(channelID: channelID) > 0,
               let target = readState[channelID]?.latestKnownMessageID
         else { return }
         preserveUnreadDividerIfNeeded(channelID: channelID)

@@ -145,9 +145,15 @@ post since joining. An unknown `joined_at` counts as now. The count is hidden
 on the selected row, behind a mention badge, on a muted forum, and unless the
 forum's unread setting resolves to All Messages. A recently created,
 never-acknowledged channel shows Discord's separate "NEW" channel pill instead,
-which SakuraCord does not implement. Labels and counts were compared live in
-web build 649389 and SakuraCord on 25 October 2026, with the official client's
-acknowledgements blocked so both read the same server state.
+which SakuraCord does not implement. Server, category and Read All
+acknowledgements include a forum with counted posts even when its own boundary
+is seeded, so they clear a never-read forum's count, and a completed local
+acknowledgement is tracked before its Gateway echo. Discord's channel menu
+enables Mark as Read on a forum only for unread joined posts; SakuraCord's row
+also offers it while posts are counted. Labels, counts and server Mark as Read
+were compared live in web build 649389 and SakuraCord on 25 and 26 October
+2026, with the official client's acknowledgements blocked so both read the
+same server state.
 
 Inbox tab/collapse settings use the shared type-1 protobuf writer and preserve
 unknown fields. A `400 / 50105` invalid-data rejection reloads settings and reports

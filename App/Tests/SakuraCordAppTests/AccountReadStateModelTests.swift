@@ -194,10 +194,31 @@ struct AccountReadStateModelTests {
         #expect(model(acknowledging: nil, joinedAt: joinedAfter).forumNewPostCount(channelID: channelID) == 0)
         #expect(model(acknowledging: nil, joinedAt: nil).forumNewPostCount(channelID: channelID) == 0)
 
-        // Joined posts keep their label but leave the sidebar count.
-        neverRead.replaceActiveJoinedThreads([newPost.thread])
-        #expect(neverRead.isNewForumPost(newPost))
+        // A completed acknowledgement stays the boundary before its Gateway
+        // echo, so leaving or reopening the forum shows no read post as new.
+        neverRead.completeAcknowledgement(channelID: channelID, messageID: MessageID(rawValue: 1_000), token: nil)
+        #expect(neverRead.endForumVisit(channelID: channelID))
         #expect(neverRead.forumNewPostCount(channelID: channelID) == 0)
+        neverRead.beginForumVisit(channelID: channelID)
+        #expect(!neverRead.isNewForumPost(newPost))
+
+        // Mark as Read clears a never-read forum's count despite its seeded
+        // boundary hiding the forum's own unread state.
+        let unvisited = model(acknowledging: nil, joinedAt: joinedBefore)
+        let targets = unvisited.bulkAcknowledgements(for: guildID)
+        #expect(targets.map(\.channelID) == [channelID])
+        #expect(unvisited.allServerAcknowledgements(in: [guildID]) == targets)
+        for target in targets {
+            unvisited.markAcknowledgementPending(channelID: target.channelID, messageID: target.messageID)
+        }
+        #expect(unvisited.forumNewPostCount(channelID: channelID) == 0)
+
+        // Joined posts keep their label but leave the sidebar count.
+        let joined = model(acknowledging: nil, joinedAt: joinedBefore)
+        joined.beginForumVisit(channelID: channelID)
+        joined.replaceActiveJoinedThreads([newPost.thread])
+        #expect(joined.isNewForumPost(newPost))
+        #expect(joined.forumNewPostCount(channelID: channelID) == 0)
     }
 
     @Test func `forum catalogue unread state seeds omitted thread read state`() {

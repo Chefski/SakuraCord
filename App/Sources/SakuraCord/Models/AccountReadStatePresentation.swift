@@ -88,6 +88,15 @@ extension AccountReadStateModel {
             return parentID
         }
 
+        /// Forums whose sidebar count includes a post. A never-read forum's
+        /// seeded boundary hides those posts from its own unread state, so
+        /// acknowledgement eligibility checks both.
+        func forumsWithNewPosts() -> Set<ChannelID> {
+            Set(entries.values.lazy
+                .filter { $0.isAccessible && !policy.isGuildResourceChannel($0) }
+                .compactMap(newForumPostParentID(of:)))
+        }
+
         /// The server a forum's unseen posts light, honouring its mutes.
         func guildLitByNewPosts(inForum forumID: ChannelID, now: Date) -> GuildID? {
             guard let forum = entries[forumID],
