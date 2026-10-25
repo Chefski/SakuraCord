@@ -74,7 +74,9 @@ extension AppModel {
     }
 
     func isForumPostNew(_ post: ForumPost) -> Bool {
-        readState.isNewForumPost(post)
+        readState.isNewForumPost(
+            post, guildJoinedAt: post.thread.guildID.flatMap { onboardingMember(in: $0)?.joinedAt }
+        )
     }
 
     func shouldEmphasizeForumPost(_ post: ForumPost) -> Bool {

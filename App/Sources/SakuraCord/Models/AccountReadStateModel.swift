@@ -1244,8 +1244,7 @@ extension AccountReadStateModel {
     /// acknowledgement advances. Post-level unread state remains independent.
     func beginForumVisit(channelID: ChannelID) {
         guard self[channelID]?.kind == .forum else { return }
-        forumSelectionAcknowledgementBoundary[channelID] =
-            self[channelID]?.lastAcknowledgedMessageID ?? MessageID(rawValue: 0)
+        forumSelectionAcknowledgementBoundary[channelID] = self[channelID]?.lastAcknowledgedMessageID
     }
 
     func endForumVisit(channelID: ChannelID) {
@@ -1257,8 +1256,13 @@ extension AccountReadStateModel {
             && self[presentation: post.id] == nil
     }
 
-    func isNewForumPost(_ post: ForumPost) -> Bool {
+    /// Discord marks a post new only when it was never opened, the parent has
+    /// an acknowledgement boundary, and the post is past that boundary and was
+    /// created after the user joined the guild.
+    func isNewForumPost(_ post: ForumPost, guildJoinedAt: Date?) -> Bool {
         guard !post.thread.isArchived,
+              let guildJoinedAt,
+              post.id.createdAt > guildJoinedAt,
               post.thread.parentID.flatMap({ self[$0]?.kind }) == .forum,
               isUnopenedForumPost(post),
               let parentID = post.thread.parentID,

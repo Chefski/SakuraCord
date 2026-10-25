@@ -276,9 +276,13 @@ stop unrelated REST or Gateway traffic.
 Forum browsing uses `threads/search` and preview `post-data` batches of at most
 ten. Publish the catalogue independently of starter previews. Advance pagination
 by raw server records, retain valid siblings and cancel obsolete searches.
-Creating a forum post uses one thread mutation after any attachment uploads.
+Creating a forum post uses one thread mutation after any attachment uploads. Its
+nested `message` carries `content` and uploaded `attachments` but no
+`sticker_ids` (official build 649389 omits the field).
 Composer Create Thread uses one thread POST followed by a message send to the new
-thread, with the current public/private-thread permission rules. An unknown
+thread, with the current public/private-thread permission rules. The request's
+`location` is `Plus Button` from the composer and `Thread Browser Toolbar` from
+the Threads browser. An unknown
 thread link may first require one Get Channel; a known one does not.
 
 Thread lifecycle events advance the parent forum boundary before unread
@@ -439,7 +443,9 @@ thread; an archived thread also requires the send rights that would reopen it.
 
 Join (Follow) and leave (Unfollow) are `POST` and `DELETE`
 `/channels/{thread}/thread-members/@me?location=…` without a body; joining is
-not `PUT`. `location` names the surface: `Context Menu` for channel-list and
+not `PUT`. A full thread answers with code `30033`, shown in the application
+alert as "Cannot join thread" ("Cannot join post" for forum posts) and a
+member-limit explanation. `location` names the surface: `Context Menu` for channel-list and
 forum-card menus, `Sidebar Overflow` for the side-pane menu, `Toolbar Overflow`
 for the full-view menu and `Forum Toolbar` for the post header. A 204 updates
 known threads immediately unless a Gateway membership event or a newer join or

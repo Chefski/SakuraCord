@@ -128,35 +128,10 @@ struct AccountReadStateModelTests {
         #expect(batched.isCategoryCollapsed(categoryID: categoryID, guildID: guildID))
     }
 
-    @Test func `forum visit preserves new badges when the prior parent boundary is null`() {
+    @Test func `forum post is new only past an existing boundary and after the guild join`() {
         let newPostID = ChannelID(rawValue: 300)
-        let model = AccountReadStateModel()
-        model.configure(
-            accountID: "account",
-            guilds: [
-                Guild(
-                    id: guildID,
-                    name: "Guild",
-                    defaultMessageNotifications: .allMessages
-                )
-            ],
-            channels: [
-                Channel(
-                    id: channelID,
-                    guildID: guildID,
-                    name: "forum",
-                    kind: .forum,
-                    lastMessageID: MessageID(rawValue: newPostID.rawValue)
-                )
-            ],
-            readStates: [
-                ChannelReadState(
-                    channelID: channelID,
-                    lastAcknowledgedMessageID: nil
-                )
-            ],
-            notificationSettings: []
-        )
+        let joinedBefore = Date(timeIntervalSince1970: 1_420_070_000)
+        let joinedAfter = Date(timeIntervalSince1970: 1_500_000_000)
         let newPost = ForumPost(
             thread: MessageThreadSummary(
                 id: newPostID,
@@ -166,16 +141,36 @@ struct AccountReadStateModelTests {
                 lastMessageID: MessageID(rawValue: newPostID.rawValue)
             )
         )
-        model.merge(forumPost: newPost)
+        func model(acknowledging boundary: MessageID?) -> AccountReadStateModel {
+            let model = AccountReadStateModel()
+            model.configure(
+                accountID: "account",
+                guilds: [Guild(id: guildID, name: "Guild", defaultMessageNotifications: .allMessages)],
+                channels: [
+                    Channel(
+                        id: channelID,
+                        guildID: guildID,
+                        name: "forum",
+                        kind: .forum,
+                        lastMessageID: MessageID(rawValue: newPostID.rawValue)
+                    )
+                ],
+                readStates: [ChannelReadState(channelID: channelID, lastAcknowledgedMessageID: boundary)],
+                notificationSettings: []
+            )
+            model.merge(forumPost: newPost)
+            return model
+        }
 
-        #expect(model.forumNewPostCount(channelID: channelID) == 1)
-        model.beginForumVisit(channelID: channelID)
-        model.markAcknowledgementPending(
-            channelID: channelID,
-            messageID: MessageID(rawValue: 1_000)
-        )
+        let acknowledged = model(acknowledging: MessageID(rawValue: 100))
+        #expect(acknowledged.isNewForumPost(newPost, guildJoinedAt: joinedBefore))
+        #expect(!acknowledged.isNewForumPost(newPost, guildJoinedAt: joinedAfter))
+        #expect(!acknowledged.isNewForumPost(newPost, guildJoinedAt: nil))
+        #expect(!model(acknowledging: nil).isNewForumPost(newPost, guildJoinedAt: joinedBefore))
 
-        #expect(model.isNewForumPost(newPost))
+        acknowledged.beginForumVisit(channelID: channelID)
+        acknowledged.markAcknowledgementPending(channelID: channelID, messageID: MessageID(rawValue: 1_000))
+        #expect(acknowledged.isNewForumPost(newPost, guildJoinedAt: joinedBefore))
     }
 
     @Test func `forum catalogue unread state seeds omitted thread read state`() {

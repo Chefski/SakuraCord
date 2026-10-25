@@ -554,19 +554,24 @@ public struct CreateThreadDraft: Equatable, Sendable {
     /// The parent-channel message the thread starts from. The thread takes
     /// the message's ID; message threads are always public.
     public var starterMessageID: MessageID?
+    /// Reported as the request location: the Threads browser's create button
+    /// differs from the composer's Plus Button.
+    public var isFromThreadBrowser: Bool
 
     public init(
         channelID: ChannelID,
         name: String,
         isPrivate: Bool = false,
         autoArchiveDuration: Int = 4_320,
-        starterMessageID: MessageID? = nil
+        starterMessageID: MessageID? = nil,
+        isFromThreadBrowser: Bool = false
     ) {
         self.channelID = channelID
         self.name = name
         self.isPrivate = isPrivate
         self.autoArchiveDuration = autoArchiveDuration
         self.starterMessageID = starterMessageID
+        self.isFromThreadBrowser = isFromThreadBrowser
     }
 
     /// Starting from `message` with the parent's default inactivity period.

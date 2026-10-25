@@ -351,7 +351,7 @@ struct ThreadCreationContractTests {
             (body["message"] as? [String: Any])?["content"] as? String
                 == "Nested starter content"
         )
-        #expect((body["message"] as? [String: Any])?["sticker_ids"] as? [String] == [])
+        #expect(Set(try #require(body["message"] as? [String: Any]).keys) == ["content"])
     }
 
     @Test(arguments: [

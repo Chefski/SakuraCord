@@ -7788,6 +7788,12 @@ private actor ForumVisitAcknowledgementTestProvider: ChatProvider {
             guilds: [guild],
             channels: [forum],
             members: [],
+            currentMembersByGuildID: [
+                guild.id: Member(
+                    user: user, roleName: "", isOnline: true,
+                    joinedAt: Date(timeIntervalSince1970: 1_420_070_000)
+                )
+            ],
             readStates: [
                 ChannelReadState(
                     channelID: forumID,

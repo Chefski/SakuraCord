@@ -53,6 +53,10 @@ extension AppModel {
                 try await account.provider.setThreadMembership(
                     threadID: thread.id, isJoined: isJoined, location: surface.membershipLocation
                 )
+            } catch ChatProviderError.threadMemberLimitReached {
+                guard model.isCurrentAccountSession(account) else { return }
+                let noun = model.isForumThread(thread) ? "post" : "thread"
+                model.errorMessage = "Cannot join \(noun). This \(noun) has reached its member limit."
             } catch {
                 guard model.isCurrentAccountSession(account) else { return }
                 model.errorMessage = error.localizedDescription

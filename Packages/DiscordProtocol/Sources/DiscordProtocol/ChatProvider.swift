@@ -1118,6 +1118,7 @@ public enum ChatProviderError: LocalizedError, Equatable, Sendable {
     case rateLimited(retryAfter: TimeInterval, requestID: String?)
     case transport(status: Int, requestID: String?)
     case capabilityDisabled(ChatCapability)
+    case threadMemberLimitReached
 
     public var errorDescription: String? {
         switch self {
@@ -1134,6 +1135,7 @@ public enum ChatProviderError: LocalizedError, Equatable, Sendable {
                 ?? "Discord returned HTTP \(status)."
         case let .capabilityDisabled(capability):
             "\(capability.displayName) is not enabled for this account session."
+        case .threadMemberLimitReached: "This thread has reached its member limit."
         }
     }
 }

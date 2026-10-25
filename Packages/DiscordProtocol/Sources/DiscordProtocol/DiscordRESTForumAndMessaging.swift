@@ -295,13 +295,9 @@ extension DiscordRESTProvider {
             throw ChatProviderError.invalidRequest("Select at least one tag before posting.")
         }
         progress(.preparing)
-        var message: [String: JSONValue] = [
-            "content": .string(draft.content),
-            // The current first-party nested forum-post action always includes
-            // the selected sticker list. SakuraCord does not expose forum
-            // sticker sending, so the exact supported shape is an empty list.
-            "sticker_ids": .array([]),
-        ]
+        // Build 649389 omits `sticker_ids`, and SakuraCord does not expose
+        // forum sticker sending.
+        var message: [String: JSONValue] = ["content": .string(draft.content)]
         if !draft.attachments.isEmpty {
             message["attachments"] = try await .array(
                 uploadForumAttachments(
@@ -353,6 +349,8 @@ extension DiscordRESTProvider {
             throw ChatProviderError.invalidRequest("The selected auto-archive duration is invalid.")
         }
         let type = draft.isPrivate ? 12 : (channel.kind == .announcement ? 10 : 11)
+        let location =
+            draft.starterMessageID != nil ? "Message" : draft.isFromThreadBrowser ? "Thread Browser Toolbar" : "Plus Button"
         let baseline = threadRevisionBaseline()
         let dto: ChannelDTO = try await request(
             Self.threadCreationPath(parentID: draft.channelID, starterMessageID: draft.starterMessageID),
@@ -361,7 +359,7 @@ extension DiscordRESTProvider {
                 "name": .string(name),
                 "type": .number(Double(type)),
                 "auto_archive_duration": .number(Double(draft.autoArchiveDuration)),
-                "location": .string(draft.starterMessageID == nil ? "Plus Button" : "Message"),
+                "location": .string(location),
             ]
         )
         let thread = try commitCreatedThread(
@@ -564,11 +562,14 @@ extension DiscordRESTProvider {
     ) async throws {
         advanceThreadMembershipRevision(threadID)
         let epoch = threadMembershipEpochs[threadID]
-        try await requestEmpty(
+        let (data, response) = try await perform(
             "/channels/\(threadID)/thread-members/@me",
             method: isJoined ? "POST" : "DELETE",
-            query: [URLQueryItem(name: "location", value: location.rawValue)]
+            query: [URLQueryItem(name: "location", value: location.rawValue)],
+            body: nil
         )
+        if Self.discordErrorCode(from: data) == 30033 { throw ChatProviderError.threadMemberLimitReached }
+        try validateEmptyResponse(response)
         // A Gateway membership event or a newer join/leave supersedes this
         // answer; an overlapping read does not.
         guard threadMembershipEpochs[threadID] == epoch else { return }
