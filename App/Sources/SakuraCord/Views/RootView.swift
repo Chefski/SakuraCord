@@ -878,9 +878,9 @@ private struct ChatRootView: View {
         ToolbarSpacer(.flexible)
 
         if showsCustomizationModePicker {
-            // Centred between the title and the trailing actions. It keeps
-            // its label, which the overflow menu shows.
-            ToolbarItem(id: "customization-mode") {
+            // In the toolbar's centre, as before side chats. It keeps its
+            // label, which the overflow menu shows.
+            ToolbarItem(id: "customization-mode", placement: .principal) {
                 Picker("Channels & Roles", selection: Binding(
                     get: { model.isBrowsingGuildChannels },
                     set: { model.showGuildCustomizationChannels($0) }
@@ -896,8 +896,6 @@ private struct ChatRootView: View {
                 }
             }
             .visibilityPriority(.low)
-
-            ToolbarSpacer(.flexible)
         }
 
         if !model.isSwitchingAccounts {
@@ -1363,16 +1361,18 @@ private struct ChatRootView: View {
             return true
         }
         let inset = ChatChromeMetrics.toolbarItemEdgeInset
-        // The title, the switch, then Inbox and its gap to the pane, each
-        // with the toolbar's margins.
-        let required = inset + conversationTitleWidth + inset * 2 + customizationModePickerWidth
-            + inset * 2 + ChatChromeMetrics.toolbarIconButtonWidth + inset * 3
+        // The title, then the switch and its gap to the pane, each with the
+        // toolbar's margins.
+        let required = inset + conversationTitleWidth + inset * 2 + customizationModePickerWidth + inset * 3
         _ = customizationPickerRevision
         return supplementaryPaneFrame.minX - columnEdges.detailMinX >= required
     }
 
+    /// Inbox belongs beside a conversation, not on a server's own pages or
+    /// Friends.
     private var showsInboxToolbarItem: Bool {
         !model.isSwitchingAccounts && model.onboardingEntryGuildID == nil
+            && model.guildWorkspacePage == nil && !model.isFriendsPresented
     }
 
     private var selectedGuild: Guild? {
