@@ -22,19 +22,19 @@ nonisolated extension SettingsCatalog {
         ),
         control(
             .accessibilityDisableSidebarAnimations, page: .accessibility,
-            section: .accessibilityMotion, label: "Sidebar and member list",
+            section: .accessibilityMotion, label: "Disable sidebar and member list animations",
             help: "Show or hide the channel sidebar, member list, and search results without animation.",
             keywords: ["motion", "animation", "sidebar", "members", "inspector", "search results"], scope: .appWideLocal
         ),
         control(
             .accessibilityDisableSideChatAnimations, page: .accessibility,
-            section: .accessibilityMotion, label: "Side chats and full width",
+            section: .accessibilityMotion, label: "Disable side chat and full width animations",
             help: "Open, close, and widen side chats without animation.",
             keywords: ["motion", "animation", "threads", "side chat", "pane", "full width"], scope: .appWideLocal
         ),
         control(
             .accessibilityDisableOverlayAnimations, page: .accessibility,
-            section: .accessibilityMotion, label: "Search, popovers and overlays",
+            section: .accessibilityMotion, label: "Disable search, popover and overlay animations",
             help: "Show search, popovers, menus, and overlays without animation.",
             keywords: ["motion", "animation", "search", "popover", "modal", "menu", "dropdown"], scope: .appWideLocal
         ),

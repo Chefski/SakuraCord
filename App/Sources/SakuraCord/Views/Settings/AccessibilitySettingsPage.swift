@@ -42,22 +42,17 @@ struct AccessibilitySettingsPage: View {
                 .tint(SakuraCordAccentColor.color)
                 .settingsControlAnchor(.accessibilityDisableAllAnimations, state: state)
             Group {
-                Toggle("Sidebar and member list", isOn: animationBinding(\.disablesSidebarAnimations))
-                    .accessibilityLabel("Disable sidebar and member list animations")
+                Toggle("Disable sidebar and member list animations", isOn: animationBinding(\.disablesSidebarAnimations))
                     .settingsControlAnchor(.accessibilityDisableSidebarAnimations, state: state)
-                Toggle("Side chats and full width", isOn: animationBinding(\.disablesSideChatAnimations))
-                    .accessibilityLabel("Disable side chat and full width animations")
+                Toggle("Disable side chat and full width animations", isOn: animationBinding(\.disablesSideChatAnimations))
                     .settingsControlAnchor(.accessibilityDisableSideChatAnimations, state: state)
-                Toggle("Search, popovers and overlays", isOn: animationBinding(\.disablesOverlayAnimations))
-                    .accessibilityLabel("Disable search, popover and overlay animations")
+                Toggle("Disable search, popover and overlay animations", isOn: animationBinding(\.disablesOverlayAnimations))
                     .settingsControlAnchor(.accessibilityDisableOverlayAnimations, state: state)
+                Toggle("Disable message sending animations", isOn: animationBinding(\.disablesMessageSendingAnimations))
+                    .settingsControlAnchor(.accessibilityDisableSendAnimations, state: state)
             }
             .tint(SakuraCordAccentColor.color)
             .disabled(value.disablesAllAnimations)
-            Toggle("Disable message sending animations", isOn: $value.disablesMessageSendingAnimations)
-                .tint(SakuraCordAccentColor.color)
-                .disabled(value.disablesAllAnimations)
-                .settingsControlAnchor(.accessibilityDisableSendAnimations, state: state)
         } header: {
             Text("Motion", bundle: #bundle)
         }
