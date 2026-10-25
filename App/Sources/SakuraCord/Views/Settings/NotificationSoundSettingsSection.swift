@@ -86,6 +86,10 @@ struct NotificationSoundSettingsSection: View {
                 bookmark: preferences.callRingtoneBookmark
             )
         }
+        .onChange(of: preferences.playsSound) { _, playsSound in
+            if !playsSound { stopPreview() }
+        }
+        .onDisappear { stopPreview() }
         .onChange(of: preferences.messageSoundID) { _, newValue in
             let tag = displayTag(stored: newValue, bookmark: preferences.messageSoundBookmark)
             if messageSelection != tag { messageSelection = tag }
@@ -119,6 +123,12 @@ struct NotificationSoundSettingsSection: View {
             guard !Task.isCancelled else { return }
             previewingEffect = nil
         }
+    }
+
+    private func stopPreview() {
+        previewResetTask?.cancel()
+        soundPlayer.stopPreview()
+        previewingEffect = nil
     }
 
     private func displayTag(stored: String, bookmark: Data?) -> String {

@@ -135,6 +135,7 @@ nonisolated extension NotificationSoundLibrary {
     /// the default sound. A source longer than the limit is trimmed, so the
     /// banner plays its start while in-app playback keeps the full file.
     static func exportBannerSound(_ choice: Choice, kind: NotificationSoundKind) {
+        guard !Task.isCancelled else { return }
         let destination = bannerSoundURL(kind: kind)
         guard choice.soundID != bundledID else {
             try? FileManager.default.removeItem(at: destination)
@@ -158,9 +159,9 @@ nonisolated extension NotificationSoundLibrary {
             } else {
                 try FileManager.default.moveItem(at: temporary, to: destination)
             }
-        } catch is CancellationError {
-            return
         } catch {
+            // A cancelled export has been superseded, so the newer copy is not its to remove.
+            guard !Task.isCancelled else { return }
             // Without a copy the banner keeps the bundled sound.
             try? FileManager.default.removeItem(at: destination)
             let nsError = error as NSError

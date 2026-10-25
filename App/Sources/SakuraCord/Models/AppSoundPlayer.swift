@@ -38,13 +38,15 @@ protocol AppSoundPlaying: Sendable {
     func play(_ effect: AppSoundEffect)
     func setLooping(_ effect: AppSoundEffect, active: Bool)
     func stopAll()
-    /// Starts a one-shot preview, or stops it if it is already playing.
-    /// Returns the preview's duration when it started, nil otherwise.
+    /// Starts a one-shot preview, or stops it if it is already playing. Only one
+    /// preview plays at a time. Returns the preview's duration when it started, nil otherwise.
     func togglePreview(_ effect: AppSoundEffect) -> TimeInterval?
+    func stopPreview()
 }
 
 extension AppSoundPlaying {
     func togglePreview(_ effect: AppSoundEffect) -> TimeInterval? { nil }
+    func stopPreview() {}
 }
 
 @MainActor
@@ -66,6 +68,7 @@ final class MacAppSoundPlayer: AppSoundPlaying {
 
     private var players: [AppSoundEffect: AVAudioPlayer] = [:]
     private var notificationSlots: [AppSoundEffect: NotificationSlot] = [:]
+    private var previewEffect: AppSoundEffect?
     private var bannerExports: [NotificationSoundKind: Task<Void, Never>] = [:]
     private let notificationPreferences: NotificationPreferences
 
@@ -82,20 +85,25 @@ final class MacAppSoundPlayer: AppSoundPlaying {
     }
 
     func togglePreview(_ effect: AppSoundEffect) -> TimeInterval? {
+        let wasPreviewingThis = previewEffect == effect && existingPlayer(for: effect)?.isPlaying == true
+        stopPreview()
         // Never take over a ringtone that is ringing for a real call.
-        if let active = existingPlayer(for: effect), active.numberOfLoops == -1 {
-            return nil
-        }
-        guard let player = player(for: effect) else { return nil }
-        if player.isPlaying {
-            player.stop()
-            player.currentTime = 0
-            return nil
-        }
+        if let active = existingPlayer(for: effect), active.numberOfLoops == -1 { return nil }
+        guard !wasPreviewingThis, let player = player(for: effect) else { return nil }
         player.numberOfLoops = 0
         player.currentTime = 0
         player.play()
+        previewEffect = effect
         return player.duration
+    }
+
+    func stopPreview() {
+        defer { previewEffect = nil }
+        guard let effect = previewEffect, let player = existingPlayer(for: effect),
+              player.numberOfLoops != -1
+        else { return }
+        player.stop()
+        player.currentTime = 0
     }
 
     func setLooping(_ effect: AppSoundEffect, active: Bool) {
@@ -190,8 +198,11 @@ final class MacAppSoundPlayer: AppSoundPlaying {
         }
         for kind in NotificationSoundKind.allCases {
             let choice = notificationPreferences.soundChoice(for: kind)
-            bannerExports[kind]?.cancel()
+            let previous = bannerExports[kind]
+            previous?.cancel()
+            // Waiting keeps a superseded export from finishing after the newer one.
             bannerExports[kind] = Task.detached(priority: .utility) {
+                await previous?.value
                 NotificationSoundLibrary.exportBannerSound(choice, kind: kind)
             }
         }

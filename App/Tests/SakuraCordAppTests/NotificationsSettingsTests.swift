@@ -31,6 +31,22 @@ import UserNotifications
     #expect(value.groupsByConversation)
 }
 
+@MainActor
+@Test func `Settings export keeps system sounds and leaves out custom file sounds`() {
+    let defaults = InMemoryPreferences()
+    let preferences = NotificationPreferences(defaults: defaults)
+    preferences.messageSoundID = NotificationSoundLibrary.systemID(for: "Glass")
+    preferences.callRingtoneBookmark = Data([1])
+    preferences.callRingtoneID = NotificationSoundLibrary.customID
+
+    let export = SettingsPreferenceStore(defaults: defaults).export(scope: .appWide, page: .notifications)
+    #expect(
+        export.values[SettingsControlID.notificationMessageSound.rawValue]
+            == .string("system:Glass")
+    )
+    #expect(export.values[SettingsControlID.notificationCallRingtone.rawValue] == nil)
+}
+
 @Test func `Message notification events classify replies mentions and conversation kinds`() {
     let currentUser = User(
         id: UserID(rawValue: 1),

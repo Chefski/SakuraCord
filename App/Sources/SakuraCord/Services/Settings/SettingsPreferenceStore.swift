@@ -963,6 +963,9 @@ final class SettingsPreferenceStore {
         var values: [String: SettingsPreferenceValue] = [:]
         for registration in registrations {
             guard let value = value(for: registration.id, accountID: accountID) else { continue }
+            // A custom sound is a machine-local file bookmark, like the download folder,
+            // so only its ID would travel and Import would silently restore Default.
+            if value == .string(NotificationSoundLibrary.customID) { continue }
             values[registration.id.rawValue] = value
         }
         return SettingsPreferenceExport(scope: scope, page: page, values: values)
