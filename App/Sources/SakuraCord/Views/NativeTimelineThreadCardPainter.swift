@@ -1,8 +1,7 @@
 import AppKit
 import SakuraCordModels
 
-@MainActor
-extension NativeTimelineThreadCard {
+nonisolated extension NativeTimelineThreadCard {
     enum Interaction {
         case idle, hovered, pressed
 
@@ -145,7 +144,7 @@ extension NativeTimelineThreadCard {
     }
 }
 
-extension NativeTimelineRowPainter {
+nonisolated extension NativeTimelineRowPainter {
     /// Discord's thread card: the name and message count, then the thread's
     /// latest message or an empty state. It is a button, so it reacts to the
     /// pointer; inside a bubble it tints the bubble section instead of

@@ -8,7 +8,7 @@ nonisolated func coreTextLine(_ value: Any) -> CTLine {
     return unsafeDowncast(object, to: CTLine.self)
 }
 
-enum NativeTimelineSemanticColor {
+nonisolated enum NativeTimelineSemanticColor {
     static func opacity(
         _ color: NSColor,
         _ multiplier: CGFloat
@@ -34,16 +34,16 @@ enum NativeTimelinePostStarterDividerMetrics {
 }
 
 enum NativeTimelineDateSeparatorMetrics {
-    static var rowHeight: CGFloat { InterfaceScale.metric(37) }
-    static var verticalPadding: CGFloat { InterfaceScale.metric(12) }
-    static var lineSpacing: CGFloat { InterfaceScale.metric(10) }
-    static var labelHeight: CGFloat { InterfaceScale.metric(13) }
+    nonisolated static var rowHeight: CGFloat { InterfaceScale.metric(37) }
+    nonisolated static var verticalPadding: CGFloat { InterfaceScale.metric(12) }
+    nonisolated static var lineSpacing: CGFloat { InterfaceScale.metric(10) }
+    nonisolated static var labelHeight: CGFloat { InterfaceScale.metric(13) }
 
-    static var font: NSFont {
+    nonisolated static var font: NSFont {
         .interfaceSystemFont(ofSize: 10, weight: .semibold)
     }
 
-    static func labelWidth(_ label: String) -> CGFloat {
+    nonisolated static func labelWidth(_ label: String) -> CGFloat {
         let attributed = NSAttributedString(
             string: label,
             attributes: [.font: font]
@@ -54,7 +54,7 @@ enum NativeTimelineDateSeparatorMetrics {
         )
     }
 
-    static func labelFrame(
+    nonisolated static func labelFrame(
         for label: String,
         in frame: CGRect
     ) -> CGRect {
@@ -68,7 +68,7 @@ enum NativeTimelineDateSeparatorMetrics {
     }
 }
 
-enum NativeTimelineUnreadSeparatorMetrics {
+nonisolated enum NativeTimelineUnreadSeparatorMetrics {
     static var rowHeight: CGFloat { InterfaceScale.metric(29) }
     static var capsuleHeight: CGFloat { InterfaceScale.metric(19) }
     static var verticalPadding: CGFloat { InterfaceScale.metric(5) }
@@ -116,7 +116,7 @@ nonisolated enum NativeTimelineThreadCard {
     }
 }
 
-enum NativeTimelineReplyMetrics {
+nonisolated enum NativeTimelineReplyMetrics {
     nonisolated static var lineHeight: CGFloat { InterfaceScale.metric(24) }
     static var horizontalSpacing: CGFloat { InterfaceScale.metric(5) }
 
@@ -138,15 +138,15 @@ enum NativeTimelineReplyMetrics {
     /// The media symbol's width and its gap from the summary.
     static var mediaSymbolReserve: CGFloat { InterfaceScale.metric(26) }
 
-    static func summary(
+    @MainActor static func summary(
         for preview: MessageReplyPreview,
         in message: Message,
-        model: AppModel?
+        model source: (any NativeTimelineLayoutSource)?
     ) -> MessageReplySummary.Prepared {
-        if let model {
+        if let source {
             MessageReplySummary.summary(
                 content: preview.content,
-                mentionLabel: MessageMentionResolver(model: model, message: message).label
+                mentionLabel: MessageMentionResolver(source: source, message: message).label
             )
         } else {
             MessageReplySummary.summary(content: preview.content)
@@ -180,20 +180,20 @@ enum NativeTimelineReplyMetrics {
 
     /// The natural width of a one-line reply preview, from its avatar to the
     /// end of its summary or media symbol.
-    static func previewWidth(
+    @MainActor static func previewWidth(
         _ preview: MessageReplyPreview?,
         in message: Message,
-        model: AppModel?
+        source: (any NativeTimelineLayoutSource)?
     ) -> CGFloat {
         guard let preview else {
             return textWidth(unavailableText, font: unavailableFont)
         }
-        let presentation = model?.authorPresentation(for: preview, in: message)
+        let presentation = source?.authorPresentation(for: preview, in: message)
         let author = presentation?.user ?? preview.author
         let authorFont = ProfileNameFontLoader.shared.resolvedFont(for: author, fallback: authorFont)
-        let showsIndicator = model?.accessibilitySettings.roleColorDisplay == .nextToNames
+        let showsIndicator = source?.roleColorDisplay == .nextToNames
             && presentation?.roleColorHex != nil
-        let summary = summary(for: preview, in: message, model: model).text
+        let summary = summary(for: preview, in: message, model: source).text
         return avatarDiameter
             + horizontalSpacing
             + (showsIndicator ? InterfaceScale.metric(16) : 0)

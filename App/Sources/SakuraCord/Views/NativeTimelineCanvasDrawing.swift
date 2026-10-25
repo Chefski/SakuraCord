@@ -1,4 +1,5 @@
 import AppKit
+import OSLog
 import AVFoundation
 import Combine
 import CoreText
@@ -673,8 +674,7 @@ extension NativeTimelineCanvasView {
         )
         messageJumpHighlight = highlight
         invalidateMessageJumpHighlight(messageID)
-        let reducesMotion =
-            NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let reducesMotion = !AppMotionPolicy.animatesUncategorized
         messageJumpHighlightTask = Task { @MainActor [weak self] in
             if reducesMotion {
                 do {
@@ -746,8 +746,7 @@ extension NativeTimelineCanvasView {
         else { return nil }
         let opacity = NativeTimelineMessageJumpHighlightPolicy.opacity(
             elapsed: uptime - highlight.startedAt,
-            reducesMotion:
-                NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            reducesMotion: !AppMotionPolicy.animatesUncategorized
         )
         guard opacity > 0 else { return nil }
         let rowFrame = rowFrame(at: index)
@@ -781,6 +780,7 @@ extension NativeTimelineCanvasView {
                 ProcessInfo.processInfo.systemUptime - startUptime
             drawCount += 1
             totalDrawDuration += duration
+            lifetimeDrawDuration += duration
             maximumDrawDuration = max(
                 maximumDrawDuration,
                 duration

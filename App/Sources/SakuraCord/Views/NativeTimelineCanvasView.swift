@@ -218,6 +218,8 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
     var bottomSpacerHeight: CGFloat = 0
     var maximumDrawDuration = 0.0
     var totalDrawDuration = 0.0
+    /// Like `totalDrawDuration`, but never reset (motion benchmark).
+    var lifetimeDrawDuration = 0.0
     var drawCount = 0
     var maximumRowRasterDuration = 0.0
     var maximumRowRasterHeight: CGFloat = 0
@@ -398,6 +400,9 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
         addSubview(beginningSelectionOverlay)
         addSubview(reactionPickerSource)
         mediaViewerHost.frame = .zero
+        // Placed by frame: as autoresizing constraints, its updates reached
+        // the enclosing SwiftUI layouts on every frame of a column's motion.
+        mediaViewerHost.translatesAutoresizingMaskIntoConstraints = false
         addSubview(mediaViewerHost)
         let notificationCenter = NotificationCenter.default
         notificationCenter.addObserver(self, selector: #selector(composerOverlayDidChange(_:)),
@@ -483,8 +488,7 @@ final class NativeTimelineCanvasView: NSView, WindowModalInputParticipant {
     }
 }
 
-@MainActor
-enum NativeTimelineRowPainter {
+nonisolated enum NativeTimelineRowPainter {
     static func selectionOverlayImage(
         _ box: NativeTimelineAttributedTextBox,
         size: CGSize,
@@ -538,6 +542,9 @@ enum NativeTimelineRowPainter {
         pollPresentation: NativeTimelinePollPresentation = .init(),
         animatedReactionIDs: Set<String> = []
     ) {
+        // Main-thread callers that set no context get one from their model.
+        let context = NativeTimelineRowPaintContext.fallback(model: model, item: item)
+        NativeTimelineRowPaintContext.$current.withValue(context) {
         NSGraphicsContext.saveGraphicsState()
         let transform = NSAffineTransform()
         transform.translateX(by: rowFrame.minX, yBy: rowFrame.minY)
@@ -619,6 +626,7 @@ enum NativeTimelineRowPainter {
             ))
         }
         NSGraphicsContext.restoreGraphicsState()
+        }
     }
 
     static func drawStripedHighlight(
@@ -662,9 +670,9 @@ enum NativeTimelineRowPainter {
                 backgroundAlpha: 0.14
             )
         } else {
-            let currentUserID = model?.currentUser?.id
-            let currentUserRoleIDs =
-                model?.currentUserRoleIDs(for: row.message.guildID) ?? []
+            let context = NativeTimelineRowPaintContext.current
+            let currentUserID = context?.currentUserID
+            let currentUserRoleIDs = context?.currentUserRoleIDs(for: row.message.guildID) ?? []
             switch MessageRowPersistentHighlight.resolve(
                 message: row.message,
                 currentUserID: currentUserID,

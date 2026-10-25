@@ -16,8 +16,15 @@ extension NativeTimelineCanvasView {
         return sendTransitionBlocksInteractions && hit != nil ? self : hit
     }
 
+    /// Whether the pointer's hover is followed: not while scrolling, nor
+    /// while a workspace motion moves the rows under a still pointer, which
+    /// hit-tested their text on every frame. Each resumes hover once done.
+    var tracksHover: Bool {
+        !suppressesHoverPresentation && !WorkspaceLayoutMotion.isMoving
+    }
+
     override func updateTrackingAreas() {
-        guard !suppressesHoverPresentation,
+        guard tracksHover,
               !sendTransitionBlocksInteractions,
               !overlayBlocksInteractions
         else {
@@ -197,12 +204,12 @@ extension NativeTimelineCanvasView {
 
     override func mouseEntered(with event: NSEvent) {
         guard !sendTransitionBlocksInteractions else { return }
-        guard !ComposerOverlayPointerRegion.containsPointer(in: window, at: event.locationInWindow) else {
+        guard !isPointerCovered(at: event.locationInWindow) else {
             clearPointerHoverTargets()
             return
         }
         guard WindowModalCoordinator.allowsInput(for: self) else { return }
-        guard !suppressesHoverPresentation,
+        guard tracksHover,
               !overlayBlocksInteractions,
               editingMessageID == nil,
               event.trackingArea?.userInfo?["nativeTimelineTrackingKind"]
@@ -246,12 +253,12 @@ extension NativeTimelineCanvasView {
 
     override func mouseMoved(with event: NSEvent) {
         guard !sendTransitionBlocksInteractions else { return }
-        guard !ComposerOverlayPointerRegion.containsPointer(in: window, at: event.locationInWindow) else {
+        guard !isPointerCovered(at: event.locationInWindow) else {
             clearPointerHoverTargets()
             return
         }
         guard WindowModalCoordinator.allowsInput(for: self) else { return }
-        guard !suppressesHoverPresentation,
+        guard tracksHover,
               !overlayBlocksInteractions,
               editingMessageID == nil
         else {
@@ -1145,6 +1152,16 @@ extension NativeTimelineCanvasView {
         synchronizeHoverWithCurrentPointer()
     }
 
+    /// Whether something drawn over the timeline takes the pointer: the
+    /// window toolbar, whose glass the timeline scrolls beneath, or the
+    /// composer's suggestions.
+    private func isPointerCovered(at location: NSPoint? = nil) -> Bool {
+        guard let window else { return false }
+        let point = location ?? window.convertPoint(fromScreen: NSEvent.mouseLocation)
+        return window.toolbarCovers(point)
+            || ComposerOverlayPointerRegion.containsPointer(in: window, at: point)
+    }
+
     private func clearPointerHoverTargets() {
         setHoveredPollTarget(nil)
         setHoveredCompactTimestampRow(nil)
@@ -1164,11 +1181,11 @@ extension NativeTimelineCanvasView {
 
     func synchronizeHoverWithCurrentPointer() {
         guard !sendTransitionBlocksInteractions else { return }
-        guard !ComposerOverlayPointerRegion.containsPointer(in: window) else {
+        guard !isPointerCovered() else {
             clearPointerHoverTargets()
             return
         }
-        guard WindowModalCoordinator.allowsInput(for: self), !overlayBlocksInteractions, !suppressesHoverPresentation,
+        guard WindowModalCoordinator.allowsInput(for: self), !overlayBlocksInteractions, tracksHover,
               editingMessageID == nil,
               window?.isKeyWindow == true
         else { return }

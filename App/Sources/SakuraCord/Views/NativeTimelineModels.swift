@@ -317,7 +317,7 @@ nonisolated struct TimelineHistorySkeletonPresentation: Equatable {
     let conversationID: ChannelID?
 }
 
-enum NativeTimelineBeginning: Equatable {
+nonisolated enum NativeTimelineBeginning: Equatable {
     case channel(Channel, rulesChannelID: ChannelID?)
     case thread(
         id: ChannelID,

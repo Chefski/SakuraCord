@@ -183,7 +183,7 @@ nonisolated enum NativeTimelineEditingGeometry {
     }
 }
 
-struct NativeTimelineComponentRevealKey: Hashable {
+nonisolated struct NativeTimelineComponentRevealKey: Hashable, Sendable {
     let messageID: MessageID
     let componentID: String
 

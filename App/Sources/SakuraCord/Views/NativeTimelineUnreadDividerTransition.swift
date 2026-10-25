@@ -205,7 +205,7 @@ struct NativeTimelineUnreadDividerFade {
 
 extension NativeTimelineCanvasView {
     var unreadDividerReducesMotion: Bool {
-        unreadDividerReducesMotionOverride ?? NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        unreadDividerReducesMotionOverride ?? !AppMotionPolicy.animatesUncategorized
     }
 
     /// The divider's row as laid out now, whether or not it has one.
@@ -500,7 +500,9 @@ extension NativeMessageTimelineCoordinator {
         canvas: NativeTimelineCanvasView
     ) -> NativeTimelineUnreadDividerChange? {
         let conversationChanged = newParent.conversation != parent.conversation
-        guard NativeTimelineUnreadDividerMotion.animates(
+        // With all animations off the divider changes in place; Reduce
+        // Motion alone keeps its short fade.
+        guard !AppMotionPolicy.settings.disablesAllAnimations, NativeTimelineUnreadDividerMotion.animates(
             conversationChanged: conversationChanged,
             // Read before this update can establish the position or bring in
             // the first rows, so a divider that arrives with either stays
