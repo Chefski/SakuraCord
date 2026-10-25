@@ -130,11 +130,12 @@ roll such counts up onto the parent forum row: the official client has no
 aggregate forum badge (observed in web build 641803, 20 October 2026, live and
 from READY), and a counted mention must always have a visible row.
 
-A forum post is "New" only when it was never opened, the parent forum has an
-acknowledgement boundary, the post ID is above that boundary and the post was
-created after the current user's `joined_at` for the guild (official client
-code, build 649389). A forum without a boundary, or an unknown `joined_at`,
-marks nothing new.
+A forum post is "New" only when it was never opened, the post ID is above the
+parent forum's acknowledgement boundary captured at channel select, and the post
+was created after the current user's `joined_at` for the guild (official client
+code, build 649389). A never-acknowledged forum's boundary is the join time, so
+every unopened post since joining is new; an unknown `joined_at` marks nothing
+new.
 
 Inbox tab/collapse settings use the shared type-1 protobuf writer and preserve
 unknown fields. A `400 / 50105` invalid-data rejection reloads settings and reports

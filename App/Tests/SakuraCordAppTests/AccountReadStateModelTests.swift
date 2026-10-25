@@ -128,7 +128,7 @@ struct AccountReadStateModelTests {
         #expect(batched.isCategoryCollapsed(categoryID: categoryID, guildID: guildID))
     }
 
-    @Test func `forum post is new only past an existing boundary and after the guild join`() {
+    @Test func `forum post is new only past the boundary or, unread, after the guild join`() {
         let newPostID = ChannelID(rawValue: 300)
         let joinedBefore = Date(timeIntervalSince1970: 1_420_070_000)
         let joinedAfter = Date(timeIntervalSince1970: 1_500_000_000)
@@ -166,7 +166,8 @@ struct AccountReadStateModelTests {
         #expect(acknowledged.isNewForumPost(newPost, guildJoinedAt: joinedBefore))
         #expect(!acknowledged.isNewForumPost(newPost, guildJoinedAt: joinedAfter))
         #expect(!acknowledged.isNewForumPost(newPost, guildJoinedAt: nil))
-        #expect(!model(acknowledging: nil).isNewForumPost(newPost, guildJoinedAt: joinedBefore))
+        #expect(model(acknowledging: nil).isNewForumPost(newPost, guildJoinedAt: joinedBefore))
+        #expect(!model(acknowledging: nil).isNewForumPost(newPost, guildJoinedAt: joinedAfter))
 
         acknowledged.beginForumVisit(channelID: channelID)
         acknowledged.markAcknowledgementPending(channelID: channelID, messageID: MessageID(rawValue: 1_000))

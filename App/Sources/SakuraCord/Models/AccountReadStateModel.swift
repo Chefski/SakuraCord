@@ -1256,19 +1256,21 @@ extension AccountReadStateModel {
             && self[presentation: post.id] == nil
     }
 
-    /// Discord marks a post new only when it was never opened, the parent has
-    /// an acknowledgement boundary, and the post is past that boundary and was
-    /// created after the user joined the guild.
+    /// Discord marks a post new only when it was never opened, is past the
+    /// parent's acknowledgement boundary and was created after the user joined
+    /// the guild. A never-acknowledged forum's boundary is the join time, which
+    /// the join check already enforces.
     func isNewForumPost(_ post: ForumPost, guildJoinedAt: Date?) -> Bool {
         guard !post.thread.isArchived,
               let guildJoinedAt,
               post.id.createdAt > guildJoinedAt,
               post.thread.parentID.flatMap({ self[$0]?.kind }) == .forum,
               isUnopenedForumPost(post),
-              let parentID = post.thread.parentID,
-              let boundary = forumSelectionAcknowledgementBoundary[parentID]
-                ?? self[parentID]?.lastAcknowledgedMessageID
+              let parentID = post.thread.parentID
         else { return false }
+        guard let boundary = forumSelectionAcknowledgementBoundary[parentID]
+            ?? self[parentID]?.lastAcknowledgedMessageID
+        else { return true }
         return MessageID(rawValue: post.id.rawValue) > boundary
     }
 
