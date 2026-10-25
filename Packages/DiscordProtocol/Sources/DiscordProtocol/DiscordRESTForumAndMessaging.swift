@@ -349,8 +349,13 @@ extension DiscordRESTProvider {
             throw ChatProviderError.invalidRequest("The selected auto-archive duration is invalid.")
         }
         let type = draft.isPrivate ? 12 : (channel.kind == .announcement ? 10 : 11)
-        let location =
-            draft.starterMessageID != nil ? "Message" : draft.isFromThreadBrowser ? "Thread Browser Toolbar" : "Plus Button"
+        let location = if draft.starterMessageID != nil {
+            "Message"
+        } else if draft.isFromThreadBrowser {
+            "Thread Browser Toolbar"
+        } else {
+            "Plus Button"
+        }
         let baseline = threadRevisionBaseline()
         let dto: ChannelDTO = try await request(
             Self.threadCreationPath(parentID: draft.channelID, starterMessageID: draft.starterMessageID),
