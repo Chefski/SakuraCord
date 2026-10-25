@@ -946,7 +946,9 @@ final class AppModel {
                 }
                 lastTypingRequestAt[oldValue] = nil
                 _ = readState.updatePresentation(channelID: oldValue, isPresented: false)
-                readState.endForumVisit(channelID: oldValue)
+                if readState.endForumVisit(channelID: oldValue) {
+                    refreshUnreadPresentation()
+                }
             }
             selectedChannel =
                 snapshot?.channels.first { $0.id == selectedChannelID }

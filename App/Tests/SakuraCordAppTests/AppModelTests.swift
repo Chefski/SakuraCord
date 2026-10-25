@@ -1533,7 +1533,7 @@ func `reaction cooldown drops cancelled intent and cleared mutations`(clearMutat
     let unreadPost = try #require(
         model.forumPosts.first(where: { $0.id == provider.unreadPostID })
     )
-    #expect(model.isForumPostNew(newPost))
+    #expect(model.readState.isNewForumPost(newPost))
     #expect(!model.isForumPostUnread(newPost))
     #expect(model.shouldEmphasizeForumPost(newPost))
     #expect(model.isForumPostUnread(unreadPost))
@@ -1541,7 +1541,7 @@ func `reaction cooldown drops cancelled intent and cleared mutations`(clearMutat
     #expect(!model.isChannelUnread(provider.forumID))
 
     model.open(newPost)
-    #expect(!model.isForumPostNew(newPost))
+    #expect(!model.readState.isNewForumPost(newPost))
     #expect(!model.shouldEmphasizeForumPost(newPost))
 }
 
@@ -7739,7 +7739,8 @@ private actor ForumVisitAcknowledgementTestProvider: ChatProvider {
     private let guild = Guild(
         id: GuildID(rawValue: 96_000),
         name: "Forum Visits",
-        currentUserPermissions: .max
+        currentUserPermissions: .max,
+        joinedAt: Date(timeIntervalSince1970: 1_420_070_000)
     )
     private let user = User(
         id: UserID(rawValue: 96_001),
@@ -7788,12 +7789,6 @@ private actor ForumVisitAcknowledgementTestProvider: ChatProvider {
             guilds: [guild],
             channels: [forum],
             members: [],
-            currentMembersByGuildID: [
-                guild.id: Member(
-                    user: user, roleName: "", isOnline: true,
-                    joinedAt: Date(timeIntervalSince1970: 1_420_070_000)
-                )
-            ],
             readStates: [
                 ChannelReadState(
                     channelID: forumID,

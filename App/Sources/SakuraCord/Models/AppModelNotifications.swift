@@ -26,6 +26,10 @@ extension AppModel {
         readState.isChannelMuted(channel)
     }
 
+    func usesAllMessagesUnreadSetting(_ channel: Channel) -> Bool {
+        readState[channel.id].map(readState.usesAllMessagesUnreadSetting(for:)) ?? false
+    }
+
     func inheritedChannelNotificationLevel(
         for channel: Channel
     ) -> MessageNotificationLevel {
@@ -71,12 +75,6 @@ extension AppModel {
             return configured
         }
         return inheritedChannelNotificationLevel(for: parent)
-    }
-
-    func isForumPostNew(_ post: ForumPost) -> Bool {
-        readState.isNewForumPost(
-            post, guildJoinedAt: post.thread.guildID.flatMap { onboardingMember(in: $0)?.joinedAt }
-        )
     }
 
     func shouldEmphasizeForumPost(_ post: ForumPost) -> Bool {

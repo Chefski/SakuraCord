@@ -16,6 +16,7 @@ final class AccountReadStateModel {
         var remoteReadStateOrderIDs: Set<ChannelID>
         var channelByID: [ChannelID: Channel]
         var defaultNotificationLevelByGuild: [GuildID: MessageNotificationLevel]
+        var guildJoinedAtByID: [GuildID: Date]
         var forumPostArchivedByID: [ChannelID: Bool]
         var readStateVersion: Int?
         var usesNewNotifications: Bool
@@ -151,7 +152,10 @@ final class AccountReadStateModel {
     private var defaultNotificationLevelByGuild: [GuildID: MessageNotificationLevel] = [:]
     private var currentUserRoleIDsByGuild: [GuildID: Set<RoleID>] = [:]
     private var pendingRollbacks: [ChannelID: [MessageID: PendingRollback]] = [:]
+    /// The forum boundary captured when a visit began; zero when the forum
+    /// had never been acknowledged, leaving only the join-time check.
     private var forumSelectionAcknowledgementBoundary: [ChannelID: MessageID] = [:]
+    private var guildJoinedAtByID: [GuildID: Date] = [:]
     private var activeJoinedThreadIDs: Set<ChannelID> = []
     private var forumPostArchivedByID: [ChannelID: Bool] = [:]
     private var usesNewNotifications = true
@@ -181,6 +185,7 @@ extension AccountReadStateModel {
         remoteReadStateOrderIDs.removeAll()
         channelByID.removeAll()
         defaultNotificationLevelByGuild.removeAll()
+        guildJoinedAtByID.removeAll()
         currentUserRoleIDsByGuild.removeAll()
         pendingRollbacks.removeAll()
         forumSelectionAcknowledgementBoundary.removeAll()
@@ -279,6 +284,7 @@ extension AccountReadStateModel {
             remoteReadStateOrderIDs: assembly.remoteReadStateOrderIDs,
             channelByID: assembly.channelByID,
             defaultNotificationLevelByGuild: assembly.defaultNotificationLevelByGuild,
+            guildJoinedAtByID: guildJoinedAtByID(guilds),
             forumPostArchivedByID: assembly.forumPostArchivedByID,
             readStateVersion: assembly.readStateVersion,
             usesNewNotifications: usesNewNotifications,
@@ -501,6 +507,7 @@ extension AccountReadStateModel {
         remoteReadStateOrderIDs = state.remoteReadStateOrderIDs
         channelByID = state.channelByID
         defaultNotificationLevelByGuild = state.defaultNotificationLevelByGuild
+        guildJoinedAtByID = state.guildJoinedAtByID
         currentUserRoleIDsByGuild = [:]
         pendingRollbacks = [:]
         forumSelectionAcknowledgementBoundary = [:]
@@ -513,6 +520,14 @@ extension AccountReadStateModel {
         for guild in guilds {
             defaultNotificationLevelByGuild[guild.id] = guild.defaultMessageNotifications
         }
+        guildJoinedAtByID.merge(Self.guildJoinedAtByID(guilds)) { $1 }
+    }
+
+    private nonisolated static func guildJoinedAtByID(_ guilds: [Guild]) -> [GuildID: Date] {
+        Dictionary(
+            guilds.compactMap { guild in guild.joinedAt.map { (guild.id, $0) } },
+            uniquingKeysWith: { $1 }
+        )
     }
 
     func updateNotificationMode(usesNewNotifications: Bool) {
@@ -613,6 +628,7 @@ extension AccountReadStateModel {
         defaultNotificationLevelByGuild = defaultNotificationLevelByGuild.filter {
             guildIDs.contains($0.key)
         }
+        guildJoinedAtByID = guildJoinedAtByID.filter { guildIDs.contains($0.key) }
         currentUserRoleIDsByGuild = currentUserRoleIDsByGuild.filter {
             guildIDs.contains($0.key)
         }
@@ -907,8 +923,8 @@ extension AccountReadStateModel {
         )
     }
 
-    /// Mirrors Discord's quick-switcher unread candidate policy, which is narrower
-    /// than the sidebar and requires the effective setting to be `ALL_MESSAGES`.
+    /// Mirrors Discord's `resolveUnreadSetting(channel) === ALL_MESSAGES`, which
+    /// gates quick-switcher unread candidates and a forum's new-post count.
     func usesAllMessagesUnreadSetting(
         for entry: Entry
     ) -> Bool {
@@ -1243,12 +1259,15 @@ extension AccountReadStateModel {
     /// Captures Discord's forum-selection read boundary before the parent
     /// acknowledgement advances. Post-level unread state remains independent.
     func beginForumVisit(channelID: ChannelID) {
-        guard self[channelID]?.kind == .forum else { return }
-        forumSelectionAcknowledgementBoundary[channelID] = self[channelID]?.lastAcknowledgedMessageID
+        guard let forum = self[channelID], forum.kind == .forum else { return }
+        forumSelectionAcknowledgementBoundary[channelID] =
+            forum.trackedAcknowledgedMessageID ?? MessageID(rawValue: 0)
     }
 
-    func endForumVisit(channelID: ChannelID) {
-        forumSelectionAcknowledgementBoundary[channelID] = nil
+    /// Returns whether a visit ended, which moves the forum's new-post count
+    /// back from the visit boundary to its acknowledgement.
+    func endForumVisit(channelID: ChannelID) -> Bool {
+        forumSelectionAcknowledgementBoundary.removeValue(forKey: channelID) != nil
     }
 
     func isUnopenedForumPost(_ post: ForumPost) -> Bool {
@@ -1256,37 +1275,48 @@ extension AccountReadStateModel {
             && self[presentation: post.id] == nil
     }
 
-    /// Discord marks a post new only when it was never opened, is past the
-    /// parent's acknowledgement boundary and was created after the user joined
-    /// the guild. A never-acknowledged forum's boundary is the join time, which
-    /// the join check already enforces.
-    func isNewForumPost(_ post: ForumPost, guildJoinedAt: Date?) -> Bool {
+    func isNewForumPost(_ post: ForumPost) -> Bool {
         guard !post.thread.isArchived,
-              let guildJoinedAt,
-              post.id.createdAt > guildJoinedAt,
-              post.thread.parentID.flatMap({ self[$0]?.kind }) == .forum,
               isUnopenedForumPost(post),
-              let parentID = post.thread.parentID
+              let parent = post.thread.parentID.flatMap({ self[$0] }),
+              parent.kind == .forum
         else { return false }
-        guard let boundary = forumSelectionAcknowledgementBoundary[parentID]
-            ?? self[parentID]?.lastAcknowledgedMessageID
-        else { return true }
-        return MessageID(rawValue: post.id.rawValue) > boundary
+        return Self.isNewForumPost(
+            post.id,
+            in: parent,
+            visitBoundary: forumSelectionAcknowledgementBoundary[parent.channelID],
+            guildJoinedAt: parent.guildID.flatMap { guildJoinedAtByID[$0] }
+        )
+    }
+
+    /// Discord's rule for an unopened post in a forum. During a visit it is
+    /// `isNewForumThread`: past the boundary captured on selection and created
+    /// after the user joined the guild. Otherwise it is the sidebar count's
+    /// rule: past the forum's acknowledgement, or the join time if the forum
+    /// was never acknowledged. An unknown join time counts as now.
+    nonisolated static func isNewForumPost(
+        _ postID: ChannelID,
+        in forum: Entry,
+        visitBoundary: MessageID?,
+        guildJoinedAt: Date?
+    ) -> Bool {
+        let joinedAt = guildJoinedAt ?? .now
+        if let visitBoundary {
+            return MessageID(rawValue: postID.rawValue) > visitBoundary
+                && postID.createdAt > joinedAt
+        }
+        guard let acknowledged = forum.trackedAcknowledgedMessageID else {
+            return postID.createdAt > joinedAt
+        }
+        return MessageID(rawValue: postID.rawValue) > acknowledged
     }
 
     func forumNewPostCount(channelID: ChannelID) -> Int {
-        guard let parent = self[channelID],
-              parent.kind == .forum,
-              parent.hasAuthoritativeReadState
-        else { return 0 }
-        let boundary = parent.lastAcknowledgedMessageID ?? MessageID(rawValue: 0)
+        let source = unreadPresentationSource()
         return entries.values.lazy.filter { entry in
-            entry.parentID == channelID
-                && entry.isAccessible
+            entry.isAccessible
                 && !self.isGuildResourceChannel(entry)
-                && self.forumPostArchivedByID[entry.channelID] != true
-                && !entry.hasAuthoritativeReadState
-                && MessageID(rawValue: entry.channelID.rawValue) > boundary
+                && source.newForumPostParentID(of: entry) == channelID
         }.count
     }
 
@@ -1523,7 +1553,9 @@ extension AccountReadStateModel {
             entries: entriesStorage,
             activeJoinedThreadIDs: activeJoinedThreadIDs,
             policy: unreadPolicySource,
-            forumPostArchivedByID: forumPostArchivedByID
+            forumPostArchivedByID: forumPostArchivedByID,
+            forumVisitBoundaryByID: forumSelectionAcknowledgementBoundary,
+            guildJoinedAtByID: guildJoinedAtByID
         )
         let channelIDs = Set(channelByID.values.filter {
             $0.guildID.map { guildIDs.contains($0) } == true
@@ -1638,7 +1670,9 @@ extension AccountReadStateModel {
             entries: entries,
             activeJoinedThreadIDs: activeJoinedThreadIDs,
             policy: unreadPolicySource,
-            forumPostArchivedByID: forumPostArchivedByID
+            forumPostArchivedByID: forumPostArchivedByID,
+            forumVisitBoundaryByID: forumSelectionAcknowledgementBoundary,
+            guildJoinedAtByID: guildJoinedAtByID
         )
     }
 

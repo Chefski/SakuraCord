@@ -30,6 +30,8 @@ extension AccountReadStateModel {
         let activeJoinedThreadIDs: Set<ChannelID>
         let policy: UnreadPolicySource
         let forumPostArchivedByID: [ChannelID: Bool]
+        let forumVisitBoundaryByID: [ChannelID: MessageID]
+        let guildJoinedAtByID: [GuildID: Date]
 
         /// Aggregate indicators must point to a current channel or a thread
         /// the sidebar can surface. Retained read history is not membership.
@@ -67,21 +69,23 @@ extension AccountReadStateModel {
             isAggregateConversation(entry) ? entry.guildID : nil
         }
 
-        /// The forum an unseen post counts toward, if the post is newer than
-        /// the forum's acknowledged boundary.
+        /// The forum a new post counts toward. Like Discord's sidebar count,
+        /// only active posts the user has neither joined nor opened count.
         func newForumPostParentID(of entry: Entry) -> ChannelID? {
             guard let parentID = entry.parentID,
                   forumPostArchivedByID[entry.channelID] != true,
+                  !activeJoinedThreadIDs.contains(entry.channelID),
                   !entry.hasAuthoritativeReadState,
                   let parent = entries[parentID],
                   parent.kind == .forum,
-                  parent.hasAuthoritativeReadState
+                  AccountReadStateModel.isNewForumPost(
+                      entry.channelID,
+                      in: parent,
+                      visitBoundary: forumVisitBoundaryByID[parentID],
+                      guildJoinedAt: parent.guildID.flatMap { guildJoinedAtByID[$0] }
+                  )
             else { return nil }
-            let boundary = parent.lastAcknowledgedMessageID
-                ?? MessageID(rawValue: 0)
-            return MessageID(rawValue: entry.channelID.rawValue) > boundary
-                ? parentID
-                : nil
+            return parentID
         }
 
         /// The server a forum's unseen posts light, honouring its mutes.
@@ -471,6 +475,14 @@ extension AccountReadStateModel {
                 hasMentions: mentionCount > 0,
                 threadNotificationSettings: threadNotificationSettings
             )
+        }
+
+        /// Discord's `getTrackedAckMessageId`: a server or local
+        /// acknowledgement, never the boundary seeded for an omitted read state.
+        var trackedAcknowledgedMessageID: MessageID? {
+            hasAuthoritativeReadState || pendingAcknowledgementID != nil
+                ? lastAcknowledgedMessageID
+                : nil
         }
 
         var isUnread: Bool {

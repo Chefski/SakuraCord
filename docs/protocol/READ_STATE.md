@@ -130,12 +130,24 @@ roll such counts up onto the parent forum row: the official client has no
 aggregate forum badge (observed in web build 641803, 20 October 2026, live and
 from READY), and a counted mention must always have a visible row.
 
-A forum post is "New" only when it was never opened, the post ID is above the
-parent forum's acknowledgement boundary captured at channel select, and the post
-was created after the current user's `joined_at` for the guild (official client
-code, build 649389). A never-acknowledged forum's boundary is the join time, so
-every unopened post since joining is new; an unknown `joined_at` marks nothing
-new.
+A forum post is "New" only while its forum is open, when the post is active,
+was never opened, its ID is above the forum's acknowledgement captured at
+channel select, and it was created after the guild's `joined_at` (official
+`isNewForumThread`, build 649389). A never-acknowledged forum captures the join
+time as its boundary, and the capture survives the visit's own acknowledgement.
+The forum row's "N New" count (`ActiveJoinedThreadsStore.getNewThreadCount`)
+counts active posts the user has neither joined nor opened: in the open forum
+by the same rule, elsewhere by post ID above the forum's tracked
+acknowledgement, or above the join time when there is none, with no separate
+join check. Only a server or local acknowledgement is tracked; the boundary
+seeded for a read state READY omits is not, so a never-read forum counts every
+post since joining. An unknown `joined_at` counts as now. The count is hidden
+on the selected row, behind a mention badge, on a muted forum, and unless the
+forum's unread setting resolves to All Messages. A recently created,
+never-acknowledged channel shows Discord's separate "NEW" channel pill instead,
+which SakuraCord does not implement. Labels and counts were compared live in
+web build 649389 and SakuraCord on 25 October 2026, with the official client's
+acknowledgements blocked so both read the same server state.
 
 Inbox tab/collapse settings use the shared type-1 protobuf writer and preserve
 unknown fields. A `400 / 50105` invalid-data rejection reloads settings and reports

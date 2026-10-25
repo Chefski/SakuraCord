@@ -63,7 +63,7 @@ extension AppModel {
             title: post.thread.name,
             hasStatusRow: ForumCardGeometryInput(post: post).hasStatusRow,
             isEmphasized: shouldEmphasizeForumPost(post),
-            isNew: isForumPostNew(post),
+            isNew: readState.isNewForumPost(post),
             isSelected: openThread?.id == post.id,
             isPinned: post.thread.isPinned,
             isLocked: post.thread.isLocked,

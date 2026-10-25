@@ -128,7 +128,7 @@ struct AccountReadStateModelTests {
         #expect(batched.isCategoryCollapsed(categoryID: categoryID, guildID: guildID))
     }
 
-    @Test func `forum post is new only past the boundary or, unread, after the guild join`() {
+    @Test func `forum post newness follows Discord's visit label and sidebar count rules`() {
         let newPostID = ChannelID(rawValue: 300)
         let joinedBefore = Date(timeIntervalSince1970: 1_420_070_000)
         let joinedAfter = Date(timeIntervalSince1970: 1_500_000_000)
@@ -141,11 +141,13 @@ struct AccountReadStateModelTests {
                 lastMessageID: MessageID(rawValue: newPostID.rawValue)
             )
         )
-        func model(acknowledging boundary: MessageID?) -> AccountReadStateModel {
+        func model(acknowledging boundary: MessageID?, joinedAt: Date?) -> AccountReadStateModel {
             let model = AccountReadStateModel()
             model.configure(
                 accountID: "account",
-                guilds: [Guild(id: guildID, name: "Guild", defaultMessageNotifications: .allMessages)],
+                guilds: [
+                    Guild(id: guildID, name: "Guild", defaultMessageNotifications: .allMessages, joinedAt: joinedAt)
+                ],
                 channels: [
                     Channel(
                         id: channelID,
@@ -155,23 +157,47 @@ struct AccountReadStateModelTests {
                         lastMessageID: MessageID(rawValue: newPostID.rawValue)
                     )
                 ],
-                readStates: [ChannelReadState(channelID: channelID, lastAcknowledgedMessageID: boundary)],
+                // READY omits a never-acknowledged forum's read state.
+                readStates: boundary.map { [ChannelReadState(channelID: channelID, lastAcknowledgedMessageID: $0)] } ?? [],
                 notificationSettings: []
             )
             model.merge(forumPost: newPost)
             return model
         }
+        func visitAndAcknowledge(_ model: AccountReadStateModel) {
+            model.beginForumVisit(channelID: channelID)
+            model.markAcknowledgementPending(channelID: channelID, messageID: MessageID(rawValue: 1_000))
+        }
 
-        let acknowledged = model(acknowledging: MessageID(rawValue: 100))
-        #expect(acknowledged.isNewForumPost(newPost, guildJoinedAt: joinedBefore))
-        #expect(!acknowledged.isNewForumPost(newPost, guildJoinedAt: joinedAfter))
-        #expect(!acknowledged.isNewForumPost(newPost, guildJoinedAt: nil))
-        #expect(model(acknowledging: nil).isNewForumPost(newPost, guildJoinedAt: joinedBefore))
-        #expect(!model(acknowledging: nil).isNewForumPost(newPost, guildJoinedAt: joinedAfter))
+        // Outside a visit the sidebar counts past the acknowledgement with no
+        // join check; a visit labels and counts against the captured boundary.
+        let acknowledged = model(acknowledging: MessageID(rawValue: 100), joinedAt: joinedBefore)
+        #expect(acknowledged.forumNewPostCount(channelID: channelID) == 1)
+        visitAndAcknowledge(acknowledged)
+        #expect(acknowledged.isNewForumPost(newPost))
+        #expect(acknowledged.forumNewPostCount(channelID: channelID) == 1)
+        #expect(acknowledged.endForumVisit(channelID: channelID))
+        #expect(acknowledged.forumNewPostCount(channelID: channelID) == 0)
 
-        acknowledged.beginForumVisit(channelID: channelID)
-        acknowledged.markAcknowledgementPending(channelID: channelID, messageID: MessageID(rawValue: 1_000))
-        #expect(acknowledged.isNewForumPost(newPost, guildJoinedAt: joinedBefore))
+        let joinedLater = model(acknowledging: MessageID(rawValue: 100), joinedAt: joinedAfter)
+        #expect(joinedLater.forumNewPostCount(channelID: channelID) == 1)
+        joinedLater.beginForumVisit(channelID: channelID)
+        #expect(!joinedLater.isNewForumPost(newPost))
+        #expect(joinedLater.forumNewPostCount(channelID: channelID) == 0)
+
+        // A never-acknowledged forum uses the join time as its boundary, and
+        // keeps it for the whole visit after the visit acknowledges.
+        let neverRead = model(acknowledging: nil, joinedAt: joinedBefore)
+        #expect(neverRead.forumNewPostCount(channelID: channelID) == 1)
+        visitAndAcknowledge(neverRead)
+        #expect(neverRead.isNewForumPost(newPost))
+        #expect(model(acknowledging: nil, joinedAt: joinedAfter).forumNewPostCount(channelID: channelID) == 0)
+        #expect(model(acknowledging: nil, joinedAt: nil).forumNewPostCount(channelID: channelID) == 0)
+
+        // Joined posts keep their label but leave the sidebar count.
+        neverRead.replaceActiveJoinedThreads([newPost.thread])
+        #expect(neverRead.isNewForumPost(newPost))
+        #expect(neverRead.forumNewPostCount(channelID: channelID) == 0)
     }
 
     @Test func `forum catalogue unread state seeds omitted thread read state`() {
