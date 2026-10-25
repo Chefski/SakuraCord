@@ -229,7 +229,7 @@ extension AppModel {
             WorkspaceLayoutMotion.perform(in: self, categories: inspectorMotionCategories) {
                 closePaneSideConversation()
                 showInspector = true
-                // Search results the side chat hid would take precedence.
+                // Search results would otherwise take the list's place.
                 messageSearch.isPresented = false
             }
             return
