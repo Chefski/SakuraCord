@@ -11,8 +11,14 @@ extension AppModel {
     /// removes it from the DM list, which moves a selection on it to the next
     /// conversation; failures use the workspace error alert and keep the DM.
     func closeDirectMessage(_ channel: Channel) {
-        guard offersCloseDirectMessage(channel), !accountTransitionIsActive else { return }
+        let store = groupDirectMessageLeave
+        guard offersCloseDirectMessage(channel), !accountTransitionIsActive,
+              store.leaving.insert(channel.id).inserted
+        else { return }
         startAccountChildTask(account: accountSession(allowsTransition: true)) { model, session in
+            defer {
+                if model.isCurrentAccountSession(session) { store.leaving.remove(channel.id) }
+            }
             guard !model.accountTransitionIsActive else { return }
             do {
                 try await session.provider.closeDirectMessage(channel.id)
