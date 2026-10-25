@@ -111,7 +111,6 @@ private func column(fullWidth: Bool, reportsFrame: Bool = false) -> WorkspaceCol
         id: "side-thread-regression",
         isSideConversation: true,
         isFullWidth: fullWidth,
-        isDeparting: false,
         content: fullWidth
             ? AnyView(Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity))
             : reportsFrame ? AnyView(pane.reportsSupplementaryPaneFrame()) : AnyView(pane)

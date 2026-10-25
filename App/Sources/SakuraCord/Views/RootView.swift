@@ -669,7 +669,7 @@ private struct ChatRootView: View {
     /// A conversation and the side chats beside it own their toolbar items
     /// (`WorkspaceTitlebar`), which move with their columns.
     private var usesWorkspaceTitlebar: Bool {
-        guard WorkspaceColumnsHost.isEnabled, !model.isSwitchingAccounts, model.onboardingEntryGuildID == nil,
+        guard !model.isSwitchingAccounts, model.onboardingEntryGuildID == nil,
               model.guildWorkspacePage == nil, !model.isFriendsPresented
         else { return false }
         return switch model.workspacePresentation.primary {
