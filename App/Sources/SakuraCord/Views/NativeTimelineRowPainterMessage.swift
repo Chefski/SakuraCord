@@ -24,6 +24,7 @@ struct NativeTimelineMessageDrawInput {
     let pressedComponentButton: NativeTimelineComponentButtonTarget?
     let componentButtonPressProgress: CGFloat
     let isForwardedSourceHovered: Bool
+    let threadCardInteraction: NativeTimelineThreadCard.Interaction
     let isEphemeralDismissHovered: Bool
     let isTranslationActionHovered: Bool
     let hidesMessageContent: Bool
@@ -730,13 +731,14 @@ extension NativeTimelineRowPainter {
                     toX: frame.minX - 4
                 )
             }
-            threadSummary(
+            threadCard(
                 thread,
                 preview: model?.threadPreviewMessages[thread.id],
                 message: message,
                 model: model,
                 in: frame,
-                bubbleRegion: layout.bubbleRegion
+                bubbleRegion: layout.bubbleRegion,
+                interaction: input.threadCardInteraction
             )
         }
         ComponentUnicodeEmojiRenderer.prepareImages(

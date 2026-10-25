@@ -419,6 +419,9 @@ extension NativeTimelineCanvasView {
         {
             setNeedsDisplay(rowFrame(at: index))
         }
+        if let messageID = clearedTargets.threadMessageID {
+            invalidateThreadCard(messageID: messageID)
+        }
         if let messageID = clearedTargets.serverTagMessageID {
             invalidateServerTag(messageID: messageID)
         }
@@ -912,6 +915,7 @@ extension NativeTimelineCanvasView {
             || activeComponentChoiceTarget?.messageID == item.messageID
             || visualPressedComponentButton?.messageID == item.messageID
             || hoveredForwardedSourceMessageID == item.messageID
+            || hoveredThreadMessageID == item.messageID
             || hoveredFooterAction?.messageID == item.messageID
             || isSuppressedToggleHovered(item)
             || !reactionCountTransitions(inMessageAt: index).isEmpty
@@ -950,6 +954,7 @@ extension NativeTimelineCanvasView {
             pressedComponentButton: visualPressedComponentButton?.messageID == item.messageID ? visualPressedComponentButton : nil,
             componentButtonPressProgress: visualPressedComponentButton?.messageID == item.messageID ? componentButtonPressProgress : 0,
             isForwardedSourceHovered: hoveredForwardedSourceMessageID == item.messageID,
+            threadCardInteraction: threadCardInteraction(forMessageID: item.messageID),
             isEphemeralDismissHovered: hoveredFooterAction?.messageID == item.messageID && hoveredFooterAction?.kind == .ephemeralDismiss,
             isTranslationActionHovered: hoveredFooterAction?.messageID == item.messageID && hoveredFooterAction?.kind == .translation,
             isSuppressedToggleHovered: isSuppressedToggleHovered(item),
