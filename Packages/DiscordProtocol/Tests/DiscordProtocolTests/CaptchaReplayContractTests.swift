@@ -26,7 +26,9 @@ struct CaptchaReplayContractTests {
         }
         let userID = UserID(rawValue: 2)
         if challengesReplay {
-            await #expect(throws: ChatProviderError.self) { try await provider.ensurePrivateChannel(for: userID) }
+            await #expect(throws: ChatProviderError.invalidRequest("Couldn’t complete the security check.")) {
+                try await provider.ensurePrivateChannel(for: userID)
+            }
         } else {
             #expect(try await provider.ensurePrivateChannel(for: userID).id == ChannelID(rawValue: 41))
         }

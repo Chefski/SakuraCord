@@ -322,10 +322,7 @@ extension DiscordRESTProvider {
                 authorizationValue = nil
                 throw apiDiagnostics.coalescing(ChatProviderError.unauthenticated, with: response)
             }
-            throw apiDiagnostics.coalescing(ChatProviderError.transport(
-                status: response.statusCode,
-                requestID: response.value(forHTTPHeaderField: "x-request-id")
-            ), with: response)
+            throw unexplainedFailure(data, response)
         }
         do {
             let decodeName: StaticString = isMessageHistoryRequest
@@ -358,22 +355,28 @@ extension DiscordRESTProvider {
         query: [URLQueryItem] = [],
         body: [String: JSONValue]? = nil
     ) async throws {
-        let (_, response) = try await perform(
+        let (data, response) = try await perform(
             path, method: method, query: query, body: body, headers: [:])
-        try validateEmptyResponse(response)
+        try validateEmptyResponse(data, response)
     }
 
-    func validateEmptyResponse(_ response: HTTPURLResponse) throws {
+    func validateEmptyResponse(_ data: Data, _ response: HTTPURLResponse) throws {
         guard (200 ..< 300).contains(response.statusCode) else {
             if response.statusCode == 401 {
                 authorizationValue = nil
                 throw apiDiagnostics.coalescing(ChatProviderError.unauthenticated, with: response)
             }
-            throw apiDiagnostics.coalescing(ChatProviderError.transport(
-                status: response.statusCode,
-                requestID: response.value(forHTTPHeaderField: "x-request-id")
-            ), with: response)
+            throw unexplainedFailure(data, response)
         }
+    }
+
+    /// The failure for a response its route doesn't explain. A challenge left
+    /// unsolved reads as human copy rather than its raw status.
+    func unexplainedFailure(_ data: Data, _ response: HTTPURLResponse) -> any Error {
+        let error: ChatProviderError = DiscordCaptchaChallenge(data: data, status: response.statusCode) != nil
+            ? .invalidRequest("Couldn’t complete the security check.")
+            : .transport(status: response.statusCode, requestID: response.value(forHTTPHeaderField: "x-request-id"))
+        return apiDiagnostics.coalescing(error, with: response)
     }
 
     func requestPerformance(

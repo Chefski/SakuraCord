@@ -86,7 +86,9 @@ replayed once, with one attempt, adding `X-Captcha-Key` plus the challenge's
 `X-Captcha-Session-Id`.
 
 A dismissed or failed widget, an empty solution, a second challenge or no open
-window returns the challenged response to the route's own failure handling. An
+window returns the challenged response to the route's own failure handling. A
+route without its own copy reads “Couldn’t complete the security check.”, never
+the raw HTTP status. An
 account, provider or Gateway session change while the challenge is open cancels
 the request rather than replaying it. Unknown services fail the route without
 replay. hCaptcha uses its SDK; other services render their vendor's explicit

@@ -103,9 +103,7 @@ extension DiscordRESTProvider {
         do {
             let (data, response) = try await perform("/users/@me/relationships", method: "GET", query: [], body: nil)
             guard (200 ..< 300).contains(response.statusCode) else {
-                throw apiDiagnostics.coalescing(ChatProviderError.transport(
-                    status: response.statusCode, requestID: response.value(forHTTPHeaderField: "x-request-id")
-                ), with: response)
+                throw unexplainedFailure(data, response)
             }
             rows = try JSONDecoder().decode(LossyList<GatewayRelationshipDTO>.self, from: data).elements
         } catch {
@@ -238,9 +236,7 @@ extension DiscordRESTProvider {
             }
             throw RelationshipActionError.failed(message)
         }
-        throw apiDiagnostics.coalescing(ChatProviderError.transport(
-            status: response.statusCode, requestID: response.value(forHTTPHeaderField: "x-request-id")
-        ), with: response)
+        throw unexplainedFailure(data, response)
     }
 
     // Official stable633029 module395422 `vU` and module717398 HTTP 429 copy.
@@ -294,9 +290,7 @@ extension DiscordRESTProvider {
                 authorizationValue = nil
                 throw apiDiagnostics.coalescing(ChatProviderError.unauthenticated, with: response)
             }
-            throw apiDiagnostics.coalescing(ChatProviderError.transport(
-                status: response.statusCode, requestID: response.value(forHTTPHeaderField: "x-request-id")
-            ), with: response)
+            throw unexplainedFailure(data, response)
         }
         // Only this friend's events supersede the save; the generation also
         // guards READY and disconnect, which clear the per-user revisions.

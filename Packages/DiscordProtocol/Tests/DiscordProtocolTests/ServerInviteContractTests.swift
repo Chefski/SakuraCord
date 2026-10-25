@@ -111,8 +111,12 @@ struct ServerInviteContractTests {
                 return code == "captchaEmpty" ? "  " : "human-solution"
             }
         }
-        await #expect(throws: (any Error).self) {
+        let error = await #expect(throws: (any Error).self) {
             _ = try await provider.acceptServerInvite(reference, messageID: nil)
+        }
+        // An unsolved challenge never surfaces as a raw HTTP status.
+        if ["captchaCancel", "captchaEmpty", "captchaRepeated", "captchaNoHandler"].contains(code) {
+            #expect(error?.localizedDescription == "Couldn’t complete the security check.")
         }
         let completed = ["captchaRepeated", "captchaLimited", "captchaTimeout"].contains(code)
         #expect(capture.requests.filter { $0.httpMethod == "POST" }.count == (completed ? 2 : 1))

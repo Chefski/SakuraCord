@@ -160,9 +160,7 @@ public extension DiscordRESTProvider {
             if response.statusCode == 429 {
                 throw ServerInviteError.failed("Discord is limiting server actions. Wait before trying again.")
             }
-            throw apiDiagnostics.coalescing(ChatProviderError.transport(
-                status: response.statusCode, requestID: response.value(forHTTPHeaderField: "x-request-id")
-            ), with: response)
+            throw unexplainedFailure(data, response)
         }
     }
 }
