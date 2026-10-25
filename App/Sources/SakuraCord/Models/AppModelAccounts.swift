@@ -306,6 +306,8 @@ extension AppModel {
         messageRowCache = [:]
         messageRowCacheOrder = []
         hasMoreCache = [:]
+        contiguousHistoryBoundaries = [:]
+        threadWindow.cachedCursors = [:]
         threadPreviewMessages = [:]
         threadPreviewParentIDs = [:]
         membersByGuildID = [:]
@@ -468,6 +470,7 @@ extension AppModel {
         replyingTo = nil
         threadReplyingTo = nil
         conversationRefreshJournals.removeAll(keepingCapacity: false)
+        scopedRefreshJournals.removeAll(keepingCapacity: false)
         memberLoadTask?.cancel()
         memberLoadTask = nil
         memberLoadGeneration &+= 1
