@@ -3,7 +3,7 @@ import Observation
 import SakuraCordModels
 
 /// Blocked and ignored content share one presentation; only copy and symbols differ.
-nonisolated enum UserContentSuppression: String {
+enum UserContentSuppression: String {
     case ignored, blocked
 
     var systemImage: String {

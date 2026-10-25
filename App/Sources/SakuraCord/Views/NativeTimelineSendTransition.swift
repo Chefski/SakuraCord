@@ -5,7 +5,7 @@ import SakuraCordModels
 
 /// Where a sent message was in the composer, in window coordinates.
 struct NativeTimelineSendTransitionSource {
-    nonisolated struct Text {
+    struct Text {
         let image: NSImage
         let frame: CGRect
         /// The leading end of the first line's baseline.
@@ -14,7 +14,7 @@ struct NativeTimelineSendTransitionSource {
 
     /// A staged attachment's thumbnail, which flies into its place in the
     /// bubble the way an iMessage photo does.
-    nonisolated struct Attachment {
+    struct Attachment {
         let image: NSImage
         let frame: CGRect
         let cornerRadius: CGFloat
@@ -39,7 +39,7 @@ struct NativeTimelineSendTransitionSource {
 /// composer until then, and released if no timeline claims them in time.
 @MainActor
 final class NativeTimelineSendTransitionStore {
-    nonisolated struct Pending {
+    struct Pending {
         let source: NativeTimelineSendTransitionSource
         let overlay: NativeTimelineSendTransitionOverlay
     }
@@ -261,7 +261,7 @@ enum NativeTimelineSendTransitionSnapshot {
 @MainActor
 final class NativeTimelineSendTransitionOverlay: NSView {
     /// An attachment thumbnail that flies from the composer to its frame.
-    nonisolated struct Piece {
+    struct Piece {
         let index: Int
         let frame: CGRect
         let cornerRadius: CGFloat
@@ -273,7 +273,7 @@ final class NativeTimelineSendTransitionOverlay: NSView {
 
     /// The bubble the field becomes. Messages shown without bubbles have
     /// none; their content leaves the field on its own.
-    nonisolated struct Bubble {
+    struct Bubble {
         let frame: CGRect
         let cornerRadius: CGFloat
         /// Relative to the bubble's bottom trailing corner.
@@ -282,7 +282,7 @@ final class NativeTimelineSendTransitionOverlay: NSView {
     }
 
     /// Destination geometry in this view's (unflipped) coordinates.
-    nonisolated struct Geometry {
+    struct Geometry {
         let fieldFrame: CGRect
         let bubble: Bubble?
         let contentImage: NSImage
@@ -1077,7 +1077,7 @@ extension NativeTimelineCanvasView {
         }
     }
 
-    nonisolated private struct SendTransitionContent {
+    private struct SendTransitionContent {
         let image: NSImage
         let frameInWindow: CGRect
         let baselineInWindow: CGPoint?
@@ -1183,7 +1183,7 @@ extension NativeTimelineCanvasView {
 }
 
 extension NativeMessageTimelineCoordinator {
-    nonisolated struct SendTransitionTranscriptAnchor {
+    struct SendTransitionTranscriptAnchor {
         /// The newest existing message row and where it was.
         let identifier: NativeMessageTimelineItem.Identifier?
         let frameInWindow: CGRect?

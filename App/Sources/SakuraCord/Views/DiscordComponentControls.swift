@@ -1,7 +1,7 @@
 import AppKit
 import SakuraCordModels
 
-nonisolated enum DiscordComponentButtonAppearance {
+enum DiscordComponentButtonAppearance {
     static func backgroundHex(for style: ComponentButtonStyle?) -> UInt32 {
         switch style ?? .secondary {
         case .primary: 0x5865F2
@@ -196,12 +196,11 @@ nonisolated enum ComponentUnicodeEmojiBatchGenerator {
     }
 }
 
-/// Thread-safe: one lock covers the cache and its rendering.
-nonisolated enum ComponentUnicodeEmojiRenderer {
-    private static let lock = NSRecursiveLock()
-    nonisolated(unsafe) private static var cache: [String: NSImage] = [:]
-    nonisolated(unsafe) private static var cacheInsertionOrder: [String] = []
-    nonisolated(unsafe) private static var cacheEvictionIndex = 0
+@MainActor
+enum ComponentUnicodeEmojiRenderer {
+    private static var cache: [String: NSImage] = [:]
+    private static var cacheInsertionOrder: [String] = []
+    private static var cacheEvictionIndex = 0
     private static let sourceFontSize: CGFloat = 64
     private static let canvasPadding = 16
     private static let maximumBatchCount = 16
@@ -209,8 +208,6 @@ nonisolated enum ComponentUnicodeEmojiRenderer {
 
     static func prepareImages<S: Sequence>(for values: S)
     where S.Element == String {
-        lock.lock()
-        defer { lock.unlock() }
         for batch in missingBatches(for: values) {
             renderBatch(batch)
         }
@@ -286,8 +283,6 @@ nonisolated enum ComponentUnicodeEmojiRenderer {
     }
 
     static func image(for value: String) -> NSImage {
-        lock.lock()
-        defer { lock.unlock() }
         if let cached = cache[value] {
             return cached
         }

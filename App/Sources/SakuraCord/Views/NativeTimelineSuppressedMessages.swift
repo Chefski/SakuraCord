@@ -3,7 +3,7 @@ import SakuraCordModels
 
 /// A run of consecutive blocked or ignored messages. The header owns the run's
 /// day and unread separators in both states, so revealing it only adds rows.
-nonisolated struct SuppressedMessageGroup: Equatable {
+struct SuppressedMessageGroup: Equatable {
     let messageIDs: [MessageID]
     let reason: UserContentSuppression
     let isRevealed: Bool
@@ -18,7 +18,7 @@ nonisolated struct SuppressedMessageGroup: Equatable {
 
 /// The header reads like a system message: a symbol in the avatar column,
 /// secondary copy, and an emphasized action that underlines on hover.
-nonisolated struct NativeTimelineSuppressedHeaderLayout: Equatable {
+struct NativeTimelineSuppressedHeaderLayout: Equatable {
     static var contentHeight: CGFloat { InterfaceScale.metric(28) }
     static let fontSize: CGFloat = 13
 
@@ -78,7 +78,7 @@ nonisolated struct NativeTimelineSuppressedHeaderLayout: Equatable {
     }
 }
 
-nonisolated extension NativeTimelineRowPainter {
+extension NativeTimelineRowPainter {
     static func drawSuppressedHeader(
         _ group: SuppressedMessageGroup,
         layout: NativeTimelineSuppressedHeaderLayout,

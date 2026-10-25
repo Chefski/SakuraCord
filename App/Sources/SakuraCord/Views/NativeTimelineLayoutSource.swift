@@ -3,7 +3,7 @@ import MessageRendering
 import SakuraCordModels
 
 /// The invite entry fields consumed by geometry, without its observable store.
-nonisolated struct NativeTimelineInviteEntry: Sendable {
+struct NativeTimelineInviteEntry {
     let invite: ServerInvite?
     let adaptiveColor: UInt32?
     let error: String?

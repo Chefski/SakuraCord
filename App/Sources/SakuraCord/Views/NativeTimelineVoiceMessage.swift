@@ -1,12 +1,11 @@
 import AppKit
-import Synchronization
 import CoreText
 import MediaPipeline
 import SakuraCordModels
 
 /// A voice message's player, laid out once with its row. Bars are reduced
 /// from the stored waveform here so drawing never decodes or allocates.
-nonisolated struct NativeTimelineVoiceMessageRegion {
+struct NativeTimelineVoiceMessageRegion {
     enum Style {
         /// Drawn on its own capsule, outside a bubble.
         case plain
@@ -131,27 +130,25 @@ struct NativeTimelineVoiceMessageDrawState {
     var isSpeedHovered = false
 }
 
-nonisolated enum NativeTimelineVoiceMessagePainter {
-    private struct Fonts: @unchecked Sendable {
+enum NativeTimelineVoiceMessagePainter {
+    private struct Fonts {
         let factor: CGFloat
         let time: NSFont
         let speed: NSFont
     }
 
-    private static let fonts = Mutex<Fonts?>(nil)
+    private static var fonts: Fonts?
 
     /// Fonts are rebuilt only when the interface scale changes.
     private static var scaledFonts: Fonts {
-        fonts.withLock { fonts in
-            if let fonts, fonts.factor == InterfaceScale.factor { return fonts }
-            let created = Fonts(
-                factor: InterfaceScale.factor,
-                time: .interfaceMonospacedDigitSystemFont(ofSize: 12, weight: .medium),
-                speed: .interfaceSystemFont(ofSize: 11, weight: .semibold)
-            )
-            fonts = created
-            return created
-        }
+        if let fonts, fonts.factor == InterfaceScale.factor { return fonts }
+        let created = Fonts(
+            factor: InterfaceScale.factor,
+            time: .interfaceMonospacedDigitSystemFont(ofSize: 12, weight: .medium),
+            speed: .interfaceSystemFont(ofSize: 11, weight: .semibold)
+        )
+        fonts = created
+        return created
     }
 
     static var timeFont: NSFont { scaledFonts.time }
@@ -333,14 +330,13 @@ nonisolated enum NativeTimelineVoiceMessagePainter {
 /// Players repeat a handful of labels ("0:07", "1×"), so their shaped lines
 /// are reused. Lines take their colour from the context, so one entry serves
 /// every appearance.
-nonisolated private enum VoiceMessageLabelCache {
-    private static let lock = NSLock()
-    nonisolated(unsafe) private static var lines: [String: CTLine] = [:]
+@MainActor
+private enum VoiceMessageLabelCache {
+    private static var lines: [String: CTLine] = [:]
 
     static func draw(_ text: String, font: NSFont, color: NSColor, centeredIn frame: CGRect, alignment: NSTextAlignment) {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
         let key = "\(font.fontName)|\(font.pointSize)|\(text)"
-        lock.lock()
         let line: CTLine
         if let cached = lines[key] {
             line = cached
@@ -353,7 +349,6 @@ nonisolated private enum VoiceMessageLabelCache {
             line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attributes))
             lines[key] = line
         }
-        lock.unlock()
         var ascent: CGFloat = 0
         var descent: CGFloat = 0
         let width = CGFloat(CTLineGetTypographicBounds(line, &ascent, &descent, nil))

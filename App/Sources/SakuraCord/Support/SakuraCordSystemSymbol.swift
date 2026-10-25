@@ -7,7 +7,7 @@ enum SakuraCordSystemSymbol {
     nonisolated static let thread = "thread"
     nonisolated static let applicationCommands = "xmark.triangle.circle.square.fill"
 
-    nonisolated private static let privateSymbolsBundle = Bundle(
+    private static let privateSymbolsBundle = Bundle(
         path: "/System/Library/PrivateFrameworks/SFSymbols.framework/Resources/CoreGlyphsPrivate.bundle"
     )
 
@@ -35,7 +35,7 @@ enum SakuraCordSystemSymbol {
         }
     }
 
-    nonisolated static func image(
+    static func image(
         named name: String,
         accessibilityDescription: String? = nil
     ) -> NSImage? {

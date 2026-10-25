@@ -40,7 +40,7 @@ struct NativeTimelineTextSpoilerHitRegion {
     let frame: CGRect
 }
 
-nonisolated enum NativeTimelineTextGeometry {
+enum NativeTimelineTextGeometry {
     static func messageContentDrawingFrame(_ frame: CGRect) -> CGRect {
         var drawingFrame = frame
         drawingFrame.size.height = max(drawingFrame.height + 1, 20)
@@ -48,7 +48,7 @@ nonisolated enum NativeTimelineTextGeometry {
     }
 }
 
-nonisolated enum NativeTimelineLinkAppearance {
+enum NativeTimelineLinkAppearance {
     static let hoverUnderlineStyle = NSUnderlineStyle.single.rawValue
 
     static func applyHover(
@@ -83,7 +83,7 @@ nonisolated enum NativeTimelineLinkAppearance {
     }
 }
 
-nonisolated enum NativeTimelineBeginningText {
+enum NativeTimelineBeginningText {
     static func title(
         _ beginning: NativeTimelineBeginning
     ) -> NativeTimelineAttributedTextBox {

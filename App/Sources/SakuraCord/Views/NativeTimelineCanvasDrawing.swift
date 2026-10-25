@@ -1,5 +1,4 @@
 import AppKit
-import OSLog
 import AVFoundation
 import Combine
 import CoreText

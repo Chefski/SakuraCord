@@ -14,7 +14,7 @@ enum NativeTimelineTextPresentation {
         let mentions: [String: MentionPresentation]
     }
 
-    nonisolated struct Value {
+    struct Value {
         let attributedContent: NSAttributedString?
         let framesetter: CTFramesetter
         let linkedImages: [LinkedImageReference]
@@ -253,7 +253,7 @@ enum NativeTimelineTextPresentation {
 }
 
 nonisolated final class NativeTimelineResolvedTextCache: Sendable {
-    nonisolated struct Key: Hashable, Sendable {
+    struct Key: Hashable, Sendable {
         let messageID: MessageID
         let scope: String
         let prepared: RichMessageAttributedText.Prepared
@@ -266,7 +266,7 @@ nonisolated final class NativeTimelineResolvedTextCache: Sendable {
 
     static let shared = NativeTimelineResolvedTextCache()
 
-    nonisolated private struct State: Sendable {
+    private struct State: Sendable {
         var entries: [Key: NativeTimelineAttributedTextBox] = [:]
         var insertionOrder: [Key] = []
         var evictionIndex = 0
@@ -566,7 +566,7 @@ nonisolated enum NativeTimelineCoreText {
 }
 
 enum NativeTimelineEmbedLayout {
-    nonisolated private struct PreparedField {
+    private struct PreparedField {
         let field: MessageEmbedField
         let name: NativeTimelineAttributedTextBox
         let value: NativeTimelineAttributedTextBox
@@ -1474,14 +1474,14 @@ nonisolated enum NativeTimelineMarkdownChromeMetrics {
     }
 }
 
-nonisolated enum NativeTimelineTimestamp {
+enum NativeTimelineTimestamp {
     /// Header texts by everything they depend on, including the day they
     /// are read on: a row laid out again at another width, as on every
     /// frame of a resize, reuses its timestamp's text.
-    private static let headerTexts = Mutex<[HeaderKey: String]>([:])
+    private static var headerTexts: [HeaderKey: String] = [:]
     /// The day, locale and time zone texts are read in, looked up at most
     /// once a second of wall-clock time, which a sleeping Mac also passes.
-    private static let headerContext = Mutex<HeaderContextLookup?>(nil)
+    private static var headerContext: HeaderContextLookup?
 
     private struct HeaderContextLookup {
         let context: HeaderContext
@@ -1506,19 +1506,17 @@ nonisolated enum NativeTimelineTimestamp {
 
     private static var currentHeaderContext: HeaderContext {
         let now = Date.now
-        return headerContext.withLock { cached in
-            // A clock set back leaves the window too.
-            if let cached, cached.created <= now, now < cached.expires { return cached.context }
-            let timeZone = TimeZone.current
-            var calendar = Calendar.current
-            calendar.timeZone = timeZone
-            let today = calendar.startOfDay(for: now)
-            let context = HeaderContext(today: today, locale: .current, timeZone: timeZone)
-            // Never past midnight, when today's texts become yesterday's.
-            let tomorrow = calendar.date(byAdding: .day, value: 1, to: today) ?? now
-            cached = HeaderContextLookup(context: context, created: now, expires: min(now.addingTimeInterval(1), tomorrow))
-            return context
-        }
+        // A clock set back leaves the window too.
+        if let cached = headerContext, cached.created <= now, now < cached.expires { return cached.context }
+        let timeZone = TimeZone.current
+        var calendar = Calendar.current
+        calendar.timeZone = timeZone
+        let today = calendar.startOfDay(for: now)
+        let context = HeaderContext(today: today, locale: .current, timeZone: timeZone)
+        // Never past midnight, when today's texts become yesterday's.
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: today) ?? now
+        headerContext = HeaderContextLookup(context: context, created: now, expires: min(now.addingTimeInterval(1), tomorrow))
+        return context
     }
 
     static func headerText(
@@ -1531,16 +1529,14 @@ nonisolated enum NativeTimelineTimestamp {
             includesSeconds: settings.includesTimestampSeconds,
             context: currentHeaderContext
         )
-        if let text = headerTexts.withLock({ $0[key] }) { return text }
+        if let text = headerTexts[key] { return text }
         let text = InterfaceTimestampFormatter.messageText(
             for: date,
             format: settings.timestampFormat,
             includesSeconds: settings.includesTimestampSeconds
         )
-        headerTexts.withLock { texts in
-            if texts.count >= 4_096 { texts.removeAll(keepingCapacity: true) }
-            texts[key] = text
-        }
+        if headerTexts.count >= 4_096 { headerTexts.removeAll(keepingCapacity: true) }
+        headerTexts[key] = text
         return text
     }
 
@@ -1635,7 +1631,7 @@ nonisolated enum NativeTimelineRunDelegate {
 }
 
 extension NativeTimelineRowLayout {
-    nonisolated static func measuredTextHeight(
+    static func measuredTextHeight(
         _ framesetter: CTFramesetter,
         value: NSAttributedString,
         length: Int,
@@ -1663,13 +1659,13 @@ extension NativeTimelineRowLayout {
 
     /// A single layout pass shares its font resolution and timestamp gutter.
     /// Recreate this snapshot for each pass so preference changes stay live.
-    nonisolated struct Metrics {
+    struct Metrics {
         let authorFont: NSFont
         let timestampFont: NSFont
         let editedFont: NSFont
         let timestampGutterWidth: CGFloat
 
-        @MainActor init(source: AppModel?) {
+        init(source: AppModel?) {
             self.init(settings: source?.interfaceSettings ?? .defaults)
         }
 
@@ -1681,27 +1677,23 @@ extension NativeTimelineRowLayout {
         }
     }
 
-    nonisolated private struct TextWidthKey: Hashable, Sendable {
+    private struct TextWidthKey: Hashable {
         let text: String
-        let fontName: String
-        let pointSize: CGFloat
+        let font: NSFont
     }
-    /// Thread-safe, as the layouts that measure with it are `nonisolated`.
-    nonisolated private static let measuredTextWidths = Mutex([TextWidthKey: CGFloat]())
+    private static var measuredTextWidths: [TextWidthKey: CGFloat] = [:]
 
-    nonisolated static func measuredTextWidth(_ text: String, font: NSFont) -> CGFloat {
-        let key = TextWidthKey(text: text, fontName: font.fontName, pointSize: font.pointSize)
-        if let width = measuredTextWidths.withLock({ $0[key] }) { return width }
+    static func measuredTextWidth(_ text: String, font: NSFont) -> CGFloat {
+        let key = TextWidthKey(text: text, font: font)
+        if let width = measuredTextWidths[key] { return width }
         let attributed = NSAttributedString(
             string: text,
             attributes: [.font: font]
         )
         let line = CTLineCreateWithAttributedString(attributed)
         let width = ceil(CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil)))
-        measuredTextWidths.withLock { widths in
-            if widths.count >= 4_096 { widths.removeAll(keepingCapacity: true) }
-            widths[key] = width
-        }
+        if measuredTextWidths.count >= 4_096 { measuredTextWidths.removeAll(keepingCapacity: true) }
+        measuredTextWidths[key] = width
         return width
     }
 

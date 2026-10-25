@@ -1,7 +1,7 @@
 import AppKit
 import SakuraCordModels
 
-nonisolated extension NativeTimelineRowPainter {
+extension NativeTimelineRowPainter {
     static func drawPollResult(_ input: NativeTimelineMessageDrawInput) {
         guard let result = input.row.message.pollResultSummary, let frame = input.layout.pollResultFrame else { return }
         pollSurface(in: frame, cornerRadius: NativeTimelinePollLayout.resultCornerRadius(in: frame))

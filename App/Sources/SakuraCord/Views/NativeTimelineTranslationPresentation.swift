@@ -3,8 +3,8 @@ import CoreText
 import SakuraCordModels
 
 /// What a message row shows below its body for an in-memory translation.
-nonisolated struct NativeTimelineTranslationPresentation {
-    nonisolated enum Kind: Equatable {
+struct NativeTimelineTranslationPresentation {
+    enum Kind: Equatable {
         case loading
         case translated
         case failed
@@ -16,7 +16,7 @@ nonisolated struct NativeTimelineTranslationPresentation {
     let actionTitle: String?
     let text: NativeTimelineTextPresentation.Value?
 
-    @MainActor static func make(
+    static func make(
         row: MessageRowPresentation,
         source model: AppModel?,
         isOutgoingBubble: Bool
@@ -68,7 +68,7 @@ nonisolated struct NativeTimelineTranslationPresentation {
 }
 
 extension NativeTimelineRowLayout {
-    nonisolated struct TranslationRegion {
+    struct TranslationRegion {
         let messageID: MessageID
         let regionID: NativeTimelineTextRegion
         let kind: NativeTimelineTranslationPresentation.Kind
@@ -85,7 +85,7 @@ extension NativeTimelineRowLayout {
         let framesetter: CTFramesetter?
     }
 
-    nonisolated static var translationCaptionFont: NSFont {
+    static var translationCaptionFont: NSFont {
         NSFont.interfacePreferredFont(forTextStyle: .caption1)
     }
 
@@ -141,7 +141,7 @@ extension NativeTimelineRowLayout {
     }
 }
 
-nonisolated extension NativeTimelineRowPainter {
+extension NativeTimelineRowPainter {
     static func drawMessageTranslation(_ input: NativeTimelineMessageDrawInput) {
         guard let region = input.layout.translationRegion else { return }
         let font = NativeTimelineRowLayout.translationCaptionFont
@@ -164,6 +164,7 @@ nonisolated extension NativeTimelineRowPainter {
             attributed,
             framesetter: framesetter,
             in: NativeTimelineTextGeometry.messageContentDrawingFrame(textFrame),
+            model: input.model,
             selectionRange: input.textSelection?.itemIdentifier == .message(input.row.identity)
                 && input.textSelection?.region == region.regionID ? input.textSelection?.range : nil,
             hoveredMentionCharacterIndex: input.hoveredMention?.itemIdentifier == .message(input.row.identity)

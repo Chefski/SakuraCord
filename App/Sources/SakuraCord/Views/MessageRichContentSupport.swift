@@ -3,7 +3,7 @@ import MessageRendering
 import SakuraCordModels
 import Synchronization
 
-nonisolated enum DiscordRichMessageMetrics {
+enum DiscordRichMessageMetrics {
     static var maximumWidth: CGFloat { InterfaceScale.metric(520) }
     static var cardCornerRadius: CGFloat { InterfaceScale.metric(8) }
     static var cardPadding: CGFloat { InterfaceScale.metric(12) }
