@@ -172,7 +172,7 @@ extension AppModel {
     var canShowMessageSearch: Bool {
         MessageSearchSurfacePolicy.showsToolbar(
             channelKind: selectedChannel?.kind,
-            hasOpenThread: hasThreadPane && !isThreadFullWidth && sideConversationCover == nil
+            hasOpenThread: hasThreadPane && !isThreadFullWidth
         )
     }
 
@@ -238,7 +238,6 @@ extension AppModel {
         messageSearch.pollRefreshJournal = nil
         WorkspaceLayoutMotion.perform(in: self, categories: inspectorMotionCategories) {
             messageSearch.isPresented = false
-            if sideConversationCover == .messageSearch { sideConversationCover = nil }
         }
         messageSearch.isInputFocused = false
     }
@@ -442,11 +441,8 @@ extension AppModel {
         guard !isMessageSearchVisible else { return }
         AppPerformanceSignposts.beginMessageSearchOpen()
         WorkspaceLayoutMotion.perform(in: self, categories: inspectorMotionCategories) {
-            // Results take a thread pane's place until they close.
-            if workspacePresentation.paneSideConversation != nil {
-                threadTimelinePosition.restore = threadTimelinePosition.reading
-                sideConversationCover = .messageSearch
-            }
+            // Results take a side chat pane's place: it closes for good.
+            closePaneSideConversation()
             messageSearch.isPresented = true
         }
     }
