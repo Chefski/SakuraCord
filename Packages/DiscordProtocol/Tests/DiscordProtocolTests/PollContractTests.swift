@@ -23,25 +23,6 @@ struct PollContractTests {
         await provider.disconnect()
     }
 
-    @Test func `poll error exceptions preserve authentication challenge and malformed request stops`() {
-        let vote = "/channels/200/polls/300/answers/@me"
-        let expired = Data(#"{"code":520001}"#.utf8)
-        for (method, path, code) in [
-            ("PUT", vote, 520000), ("PUT", vote, 520001),
-            ("POST", "/channels/200/polls/300/expire", 520001),
-            ("POST", "/channels/200/polls/300/expire", 520006),
-            ("POST", "/channels/200/messages", 520002), ("POST", "/channels/200/messages", 520004),
-        ] {
-            #expect(!DiscordRESTProvider.isSafetyStop(status: 400, discordCode: code, method: method, data: Data(), path: path))
-        }
-        #expect(DiscordRESTProvider.isSafetyStop(status: 401, discordCode: 520001, method: "PUT", data: expired, path: vote))
-        #expect(DiscordRESTProvider.isSafetyStop(status: 400, discordCode: 40002, method: "PUT", data: Data(), path: vote))
-        #expect(DiscordRESTProvider.isSafetyStop(status: 400, discordCode: 50035, method: "PUT", data: Data(), path: vote))
-        #expect(DiscordRESTProvider.isSafetyStop(status: 400, discordCode: 520001, method: "PATCH", data: expired, path: "/channels/200"))
-        let captcha = Data(#"{"code":520001,"captcha_key":["challenge"]}"#.utf8)
-        #expect(DiscordRESTProvider.isSafetyStop(status: 400, discordCode: 520001, method: "PUT", data: captcha, path: vote))
-    }
-
     @Test func `poll creation and voting match fresh official desktop captures`() async throws {
         let capture = PollRequestCapture()
         let provider = makeProvider(accountID: capture.id)

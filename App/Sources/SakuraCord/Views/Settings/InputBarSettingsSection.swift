@@ -33,17 +33,45 @@ private struct ComposerIconEditor: View {
     @Binding var layout: ComposerIconLayout
     let appearance: ComposerBarAppearance
 
+    @State private var previewText = ""
+    @State private var selection: NSRange?
+    @State private var isFocused = false
+
+    private var showsVoiceButton: Bool {
+        previewText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     var body: some View {
         ComposerChromeLayout(
             appearance: appearance,
-            focus: {},
+            focus: { isFocused = true },
             header: { EmptyView() },
             leading: { ComposerAttachmentButton(appearance: appearance, action: nil) },
             input: {
-                Text("Message")
-                    .font(.interfaceSystem(size: 15))
-                    .foregroundStyle(.tertiary)
-                    .frame(maxWidth: .infinity, minHeight: ChatChromeMetrics.composerControlHeight, alignment: .leading)
+                ZStack(alignment: .leading) {
+                    ComposerTextView(
+                        text: previewText,
+                        placeholder: String(localized: "Message", bundle: #bundle),
+                        sendWithReturn: true,
+                        onTextChange: { previewText = $0 },
+                        onSubmit: { previewText = "" },
+                        canReceiveAttachments: { false },
+                        verticalContentInset: appearance == .defaultStyle
+                            ? ChatChromeMetrics.composerTextVerticalInset : 0,
+                        selection: $selection,
+                        isFocused: $isFocused
+                    )
+                    if previewText.isEmpty {
+                        Text("Message")
+                            .font(.interfaceSystem(size: 15))
+                            .foregroundStyle(.tertiary)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                            .transition(.identity)
+                    }
+                }
+                .frame(minHeight: ChatChromeMetrics.composerControlHeight)
+                .layoutPriority(1)
             },
             accessories: {
                 HStack(spacing: 1) {
@@ -63,9 +91,18 @@ private struct ComposerIconEditor: View {
                 }
                 .frame(height: ChatChromeMetrics.composerControlHeight)
             },
-            send: { ComposerSendButton(action: nil, appearance: appearance) },
+            send: {
+                ComposerSendSlot(
+                    mode: showsVoiceButton ? .voice : .send,
+                    appearance: appearance,
+                    send: { previewText = "" },
+                    startRecording: {},
+                    stopRecording: {}
+                )
+            },
             overlay: { EmptyView() }
         )
+        .animation(.smooth(duration: 0.3), value: showsVoiceButton)
         .padding(ChatChromeMetrics.composerWindowInset)
     }
 }

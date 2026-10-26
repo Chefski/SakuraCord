@@ -25,6 +25,12 @@ final class NativeMemberAccessibilityProxyView: NSButton {
         }
     }
     var activation: ((Member) -> Void)?
+    var customActions: ((Member) -> [NSAccessibilityCustomAction])?
+
+    override func accessibilityCustomActions() -> [NSAccessibilityCustomAction]? {
+        guard let member else { return nil }
+        return customActions?(member)
+    }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)

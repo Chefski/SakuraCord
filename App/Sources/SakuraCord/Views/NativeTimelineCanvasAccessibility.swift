@@ -12,6 +12,7 @@ struct NativeTimelineAccessibilityRowState: Equatable {
     let item: NativeMessageTimelineItem
     let translation: MessageTranslationEntry?
     let isTranslationEnabled: Bool
+    let threadPreview: Message?
 }
 
 nonisolated enum TimelineAccessibilityWorkPolicy {
@@ -174,14 +175,16 @@ extension NativeTimelineCanvasView {
                 translation: item.messageRow.flatMap {
                     model?.messageTranslationPresentation(for: $0.message)
                 },
-                isTranslationEnabled: model?.translation.settings.isEnabled == true
+                isTranslationEnabled: model?.translation.settings.isEnabled == true,
+                threadPreview: item.messageRow?.message.thread.flatMap { model?.threadPreviewMessages[$0.id] }
             )
             let frame = rowFrame(at: index)
             desired.insert(identifier)
             desiredOrder.append(identifier)
-            // Translation state lives outside the immutable message item.
-            // Refresh children and actions when it changes, even if only
-            // this row's presentation was updated.
+            // Translation state and a thread card's latest-message preview
+            // live outside the immutable message item. Refresh children and
+            // actions when they change, even if only this row's
+            // presentation was updated.
             if accessibilityProxies.item(for: identifier) != state {
                 accessibilityProxies.remove(identifier)
                 let source = accessibilityRow(at: index)
@@ -291,6 +294,12 @@ extension NativeTimelineCanvasView {
         let layout = layouts[index]
         let rowFrame = rowFrame(at: index)
         switch item {
+        case let .suppressedMessages(group):
+            return accessibilityElement(role: .button, label: "\(group.label), \(group.actionTitle)",
+                                        frame: rowFrame, parent: self) { [weak self] in
+                self?.toggleSuppressedGroup(group)
+                return self != nil
+            }
         case let .inboxEvent(event):
             return accessibilityElement(role: .button, label: event.name, frame: rowFrame, parent: self) { [weak self] in
                 self?.model?.inbox.selectedEvent = event
@@ -391,11 +400,7 @@ extension NativeTimelineCanvasView {
         let header = makeMessageAccessibilityHeader(for: row, rowFrame: rowFrame)
         let element = header.element
         element.setAccessibilityCustomActions(
-            accessibilityMessageActions(
-                row,
-                rowFrame: rowFrame,
-                rowIndex: rowIndex
-            ).map { action in
+            accessibilityMessageActions(row, rowIndex: rowIndex).map { action in
                 let handler = action.handler
                 action.handler = { [weak self] in
                     guard let self, !self.sendTransitionBlocksInteractions else { return false }
@@ -487,7 +492,8 @@ extension NativeTimelineCanvasView {
         )
         let generatedLabel = SystemMessagePresentation.label(
             for: message,
-            currentUserID: model?.snapshot?.currentUser.id
+            currentUserID: model?.currentUser?.id,
+            recipient: model?.systemMessageRecipient(for: message)
         )
         let baseLabel = message.type.hasGeneratedContent
             ? "System message, \(generatedLabel)"
@@ -505,7 +511,7 @@ extension NativeTimelineCanvasView {
         let element = accessibilityElement(
             role: .row,
             label: ([baseLabel] + metadata).joined(separator: ", "),
-            value: MessageOutboxPresentation.accessibilityStatus(for: message.outboxState),
+            value: MessageOutboxPresentation.accessibilityStatus(for: message),
             help: actions?.openMessage == nil ? nil : "Jump to message",
             identifier: "timeline-message-\(message.id)",
             frame: rowFrame,
@@ -823,6 +829,48 @@ extension NativeTimelineCanvasView {
             gallery.setAccessibilityChildren(attachmentChildren)
             children.append(gallery)
         }
+        if let region = layout.voiceMessageRegion {
+            children.append(voiceMessageAccessibilityElement(region, rowIndex: rowIndex, parent: parent))
+        }
+    }
+
+    private func voiceMessageAccessibilityElement(
+        _ region: NativeTimelineVoiceMessageRegion,
+        rowIndex: Int,
+        parent: Any?
+    ) -> NSAccessibilityElement {
+        let element = accessibilityElement(
+            role: .button,
+            label: "Voice message, \(VoiceMessageDurationFormat.string(region.duration))",
+            help: "Plays or pauses the voice message",
+            frame: accessibilityChildFrame(region.frame, rowIndex: rowIndex),
+            parent: parent
+        ) { [weak self] in
+            guard let playback = self?.model?.voiceMessagePlayback else { return false }
+            playback.toggle(region.playbackID, source: region.source, duration: region.duration)
+            return true
+        }
+        element.setAccessibilityCustomActions([
+            NSAccessibilityCustomAction(name: "Change Playback Speed") { [weak self] in
+                guard let playback = self?.model?.voiceMessagePlayback else { return false }
+                playback.cycleSpeed()
+                return true
+            },
+        ] + [-10.0, 10.0].map { offset in
+            NSAccessibilityCustomAction(name: offset < 0 ? "Skip Back 10 Seconds" : "Skip Forward 10 Seconds") { [weak self] in
+                guard let playback = self?.model?.voiceMessagePlayback else { return false }
+                let duration = playback.duration(of: region.playbackID) ?? region.duration
+                guard duration > 0 else { return false }
+                playback.seek(
+                    region.playbackID,
+                    source: region.source,
+                    duration: duration,
+                    fraction: (playback.position(of: region.playbackID) + offset) / duration
+                )
+                return true
+            }
+        })
+        return element
     }
 
     private func appendMessageRichContentAccessibility(
@@ -875,6 +923,7 @@ extension NativeTimelineCanvasView {
                 role: .button,
                 label: NativeTimelineAccessibilityPresentation
                     .threadLabel(thread),
+                value: threadLastMessageSummary(thread),
                 help: "Open thread",
                 frame: accessibilityChildFrame(frame, rowIndex: rowIndex),
                 parent: parent
@@ -908,13 +957,15 @@ extension NativeTimelineCanvasView {
                     region.frame,
                     rowIndex: rowIndex
                 ),
-                parent: parent
+                parent: parent,
+                isEnabled: model?.canUpdateReactions(on: message) == true
             ) { [weak self] in
-                self?.actions?.react(reaction.emoji, message)
-                return self != nil
+                guard let self, model?.canUpdateReactions(on: message) == true else { return false }
+                actions?.react(reaction.emoji, message)
+                return true
             })
         }
-        if let frame = layout.addReactionFrame {
+        if let frame = layout.addReactionFrame, model?.canCreateReactions(on: message) == true {
             children.append(accessibilityElement(
                 role: .button,
                 label: "Add reaction",
@@ -922,14 +973,7 @@ extension NativeTimelineCanvasView {
                 parent: parent
             ) { [weak self] in
                 guard let self else { return false }
-                self.showReactionPicker(
-                    for: message,
-                    anchor: frame.offsetBy(
-                        dx: 0,
-                        dy: self.displayedRowOrigin(at: rowIndex)
-                    ),
-                    preferredEdge: .maxX
-                )
+                self.showReactionPicker(forMessageRow: message)
                 return true
             })
         }
@@ -960,7 +1004,7 @@ extension NativeTimelineCanvasView {
         if let frame = layout.failedFrame {
             children.append(accessibilityElement(
                 role: .staticText,
-                label: "Failed",
+                label: MessageOutboxPresentation.accessibilityStatus(for: message),
                 frame: accessibilityChildFrame(
                     frame,
                     rowIndex: rowIndex

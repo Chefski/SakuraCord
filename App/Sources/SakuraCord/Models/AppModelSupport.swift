@@ -82,12 +82,26 @@ extension AppModel {
             && (!accountTransitionIsActive || session.allowsTransition)
     }
 
+    /// No challenge is presented for a session being replaced or signed out.
+    func solveCaptcha(_ challenge: DiscordCaptchaChallenge) async -> String? {
+        guard !accountTransitionIsActive else { return nil }
+        return await captcha.solution(for: challenge)
+    }
+
     func invalidateAccountSession() {
         accountSessionGeneration &+= 1
+        resetMessageSearches()
+        captcha.cancel()
         serverInvites.reset()
+        friends.reset()
+        lastDirectMessageSelection = nil
+        ignoredUsers.reset()
         serverTagCards.reset()
         issueReports.reset()
         nicknameEditor.reset()
+        groupDirectMessageEditor.reset()
+        groupDirectMessageLeave.reset()
+        threadActions.reset()
         onboarding.reset()
     }
 
@@ -203,26 +217,31 @@ nonisolated enum OptimisticAttachmentPresentation {
         let properties = source.flatMap {
             CGImageSourceCopyPropertiesAtIndex($0, 0, nil) as? [CFString: Any]
         }
+        let width = (properties?[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue
+        let height = (properties?[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue
+        let orientation = (properties?[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1
+        let swapsDimensions = (5 ... 8).contains(orientation)
         let resourceValues = try? url.resourceValues(forKeys: [.fileSizeKey])
         return Attachment(
             id: id ?? "pending-\(index)",
             filename: url.lastPathComponent,
             url: url,
             mediaType: UTType(filenameExtension: url.pathExtension)?.preferredMIMEType,
-            width: (properties?[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue,
-            height: (properties?[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue,
+            width: swapsDimensions ? height : width,
+            height: swapsDimensions ? width : height,
             size: resourceValues?.fileSize ?? 0
         )
     }
 }
 
-nonisolated enum ComposerSubmissionResult: Equatable, Sendable {
+nonisolated enum ComposerSubmissionResult: Sendable {
     case rejected
-    case enqueued(serverConfirmed: Bool)
+    /// The message is in the outbox; `delivery` settles with server confirmation.
+    case enqueued(delivery: Task<Bool, Never>)
 
-    var serverConfirmed: Bool {
-        guard case let .enqueued(serverConfirmed) = self else { return false }
-        return serverConfirmed
+    func serverConfirmation() async -> Bool {
+        guard case let .enqueued(delivery) = self else { return false }
+        return await delivery.value
     }
 
     var consumedComposer: Bool {
@@ -236,18 +255,11 @@ nonisolated enum MessageComposerDestination: Hashable, Sendable {
     case thread
 }
 
-nonisolated struct ThreadCreationPermissions: Equatable, Sendable {
-    let canCreatePublic: Bool
-    let canCreatePrivate: Bool
-
-    var canCreateAny: Bool { canCreatePublic || canCreatePrivate }
-}
-
 /// A reference type so editing the name does not invalidate every view that
 /// only observes whether a thread is being created.
 @Observable
 final class ThreadCreationDraft {
-    static let maximumNameLength = 100
+    static let maximumNameLength = ThreadNamePolicy.maximumLength
 
     let identity = UUID()
     let parentID: ChannelID
@@ -266,13 +278,40 @@ final class ThreadCreationDraft {
     /// Required-field errors appear after an invalid submission, never while a valid draft is consumed.
     var showsValidationErrors = false
     var isSubmitting = false
+    /// Discord's reason when creating the thread failed; the draft stays.
+    var submissionError: String?
+    /// The parent-channel message a thread started from it takes its ID from.
+    /// Such a thread is public and its name is optional.
+    let starterMessage: Message?
+    /// Created from the Threads browser rather than the composer.
+    let isFromThreadBrowser: Bool
+    /// The first-party default name used when the optional name is blank.
+    let defaultName: String
 
     var trimmedName: String { name.trimmingCharacters(in: .whitespaces) }
 
-    init(parentID: ChannelID, permissions: ThreadCreationPermissions) {
+    /// The name to create the thread with, or nil when one is required.
+    var nameToCreate: String? {
+        if !trimmedName.isEmpty { return trimmedName }
+        return starterMessage == nil ? nil : defaultName
+    }
+
+    init(parentID: ChannelID, permissions: ThreadCreationPermissions, isFromThreadBrowser: Bool = false) {
         self.parentID = parentID
         self.permissions = permissions
+        self.isFromThreadBrowser = isFromThreadBrowser
         isPrivate = !permissions.canCreatePublic
+        starterMessage = nil
+        defaultName = ""
+    }
+
+    init(startingFrom message: Message, defaultName: String) {
+        parentID = message.channelID
+        permissions = ThreadCreationPermissions(canCreatePublic: true, canCreatePrivate: false)
+        isPrivate = false
+        starterMessage = message
+        isFromThreadBrowser = false
+        self.defaultName = defaultName
     }
 }
 
@@ -290,6 +329,10 @@ nonisolated struct MessageNavigationRequest: Equatable, Sendable {
     let requestID: UInt64
     let channelID: ChannelID
     let messageID: MessageID
+    /// The message was already on hand in the open conversation, so the
+    /// timeline can glide to it rather than cut.
+    var glides = false
+    var isUnreadBoundary = false
 }
 
 nonisolated struct ConversationNewestRequest: Equatable, Sendable {

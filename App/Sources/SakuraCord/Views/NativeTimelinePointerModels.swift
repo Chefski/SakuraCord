@@ -5,6 +5,8 @@ nonisolated struct NativeTimelineFooterActionTarget: Equatable {
     enum Kind {
         case ephemeralDismiss
         case translation
+        /// Keyed by the run's first message, which a revealed header shares with its first row.
+        case suppressedToggle
     }
 
     let messageID: MessageID
@@ -96,6 +98,7 @@ nonisolated enum TimelineButtonActivationPolicy {
 
 nonisolated enum NativeTimelinePointerActivationTarget: Hashable {
     case loader
+    case suppressedMessages(MessageID)
     case message(MessageID)
     case componentReveal(MessageID, String)
     case componentImage(MessageID, String)
@@ -204,9 +207,9 @@ nonisolated enum NativeTimelineAvatarPresentation {
     static func replyAvatarFrame(in replyContentFrame: CGRect) -> CGRect {
         CGRect(
             x: replyContentFrame.minX,
-            y: replyContentFrame.minY + InterfaceScale.metric(3),
-            width: InterfaceScale.metric(14),
-            height: InterfaceScale.metric(14)
+            y: replyContentFrame.minY + (NativeTimelineReplyMetrics.lineHeight - NativeTimelineReplyMetrics.avatarDiameter) / 2,
+            width: NativeTimelineReplyMetrics.avatarDiameter,
+            height: NativeTimelineReplyMetrics.avatarDiameter
         )
     }
 

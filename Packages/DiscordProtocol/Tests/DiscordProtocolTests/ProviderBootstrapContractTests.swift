@@ -247,7 +247,7 @@ extension ProviderRequestContractTests {
         await provider.disconnect()
     }
 
-    @Test func `restriction response stops every following authenticated request`() async throws {
+    @Test func `message restriction reports failure while preserving the Gateway and later requests`() async throws {
         RateLimitURLProtocol.reset()
         RateLimitURLProtocol.restrictMessageSend = true
         let configuration = URLSessionConfiguration.ephemeral
@@ -266,12 +266,17 @@ extension ProviderRequestContractTests {
         await #expect(throws: ChatProviderError.self) {
             try await provider.send(SendMessageDraft(channelID: ChannelID(rawValue: 200), content: "hello"))
         }
-        await #expect(throws: ChatProviderError.self) {
-            try await provider.sendTyping(in: ChannelID(rawValue: 200))
-        }
+        try await provider.sendTyping(in: ChannelID(rawValue: 200))
         #expect(RateLimitURLProtocol.messageRequestCount == 1)
-        #expect(RateLimitURLProtocol.typingRequestCount == 0)
-        #expect(await socket.closeCodes == [1000])
+        #expect(RateLimitURLProtocol.typingRequestCount == 1)
+        #expect(await socket.closeCodes.isEmpty)
+        #expect(await !provider.requestSafetyCircuitIsOpen)
+        // After the restriction ends, an explicit send works on the same provider.
+        RateLimitURLProtocol.restrictMessageSend = false
+        _ = try await provider.send(SendMessageDraft(channelID: ChannelID(rawValue: 200), content: "hello"))
+        #expect(RateLimitURLProtocol.messageRequestCount == 2)
+        #expect(await socket.closeCodes.isEmpty)
+        await provider.disconnect()
     }
 
     @Test func `unavailable gateway mention search does not stop message sending`() async throws {
@@ -317,6 +322,12 @@ extension ProviderRequestContractTests {
 
         _ = try await provider.bootstrap()
         #expect(await eventually { await socket.receiveStarted })
+        let privateProfile = try await provider.profile(for: UserID(rawValue: 333_333_333_333_333_333), in: nil)
+        #expect(privateProfile.isPrivate == true)
+        #expect(privateProfile.user.username == "private-user")
+        #expect(privateProfile.mutualFriendsCount == 1)
+        #expect(privateProfile.bio == nil)
+
         let unavailableMessage =
             "This profile is unavailable. You may no longer share a server or friendship with this user."
         for userID in [

@@ -28,7 +28,7 @@ extension Member {
 nonisolated enum NativeMemberListMetrics {
     static var horizontalInset: CGFloat { InterfaceScale.metric(8) }
     static var verticalInset: CGFloat { InterfaceScale.metric(10) }
-    static var sectionHeaderHeight: CGFloat { InterfaceScale.metric(34) }
+    static var sectionHeaderHeight: CGFloat { InterfaceScale.metric(38) }
     static var memberRowHeight: CGFloat { InterfaceScale.metric(46) }
     static var paintedRowHeight: CGFloat { InterfaceScale.metric(44) }
     static var avatarSize: CGFloat { InterfaceScale.metric(34) }
@@ -45,6 +45,22 @@ nonisolated struct NativeMemberListPresentation: Equatable, Sendable {
     var isDark = false
     /// Rows are measured and drawn at this interface size.
     var interfaceScale = InterfaceScale.factor
+    /// Member lists fade offline rows; a friends list does not.
+    var dimsOfflineMembers = true
+    /// Rows such as pending friend requests that show no presence.
+    var presenceHiddenUserIDs: Set<UserID> = []
+    /// Space reserved for hover controls on wider people lists.
+    var trailingAccessoryWidth: CGFloat = 0
+    /// Overrides the usual activity gray for lists displaying secondary names.
+    var activityTextPrimaryOpacity: CGFloat?
+
+    func opacity(for member: Member) -> CGFloat {
+        dimsOfflineMembers && !member.isListedOnline ? 0.55 : 1
+    }
+
+    func status(for member: Member) -> PresenceStatus? {
+        presenceHiddenUserIDs.contains(member.id) ? nil : member.memberListStatus
+    }
 }
 
 nonisolated enum MemberListSkeletonLayout {
@@ -63,7 +79,7 @@ nonisolated enum MemberListSkeletonLayout {
     static func itemsFitting(height: CGFloat, memberCounts: [Int]) -> [Item] {
         let availableHeight = max(
             0,
-            height - NativeMemberListMetrics.verticalInset * 2
+            height - NativeMemberListMetrics.verticalInset
         )
         var result: [Item] = []
         var usedHeight: CGFloat = 0

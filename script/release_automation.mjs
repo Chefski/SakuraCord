@@ -213,9 +213,16 @@ function validateDiscordAnnouncementLayout(value, tagName) {
       `discordAnnouncement must start with a bold feature-specific headline ending in ${expectedEmoji}.`,
     );
   }
+  // Single-fix releases use a short paragraph instead of a padded highlights list.
+  if (
+    lines.length === 3 && lines[1] === "" && lines[2].trim()
+    && lines[2] !== "**Highlights**" && !lines[2].startsWith("- ")
+  ) {
+    return;
+  }
   if (lines[1] !== "" || lines[2] !== "**Highlights**") {
     throw new Error(
-      "discordAnnouncement must contain exactly one blank line, no paragraph, then **Highlights** after its headline.",
+      "discordAnnouncement must contain exactly one blank line, then a single paragraph or **Highlights** with no paragraph before the list.",
     );
   }
   if (!lines[3]?.startsWith("- ")) {

@@ -10,8 +10,14 @@ Development pull requests target `nightly`. The
 `retarget-pull-requests.yml` workflow redirects open PRs targeting `main` when
 they are opened, reopened, edited, or updated with new commits. Only PRs from
 this repository's own `nightly` branch may target `main` for release promotion.
-The workflow changes PR metadata only and never executes contributor code.
-It must be present on the repository's default branch (`main`) to take effect.
+A permission-free `Pull request metadata` workflow signals changes through
+`pull_request_target`, so forks and merge conflicts do not depend on PR CI
+approval or a mergeable PR ref. A scoped Actions event policy permits only this
+signal workflow to use that trigger; see [distribution setup](#distribution-setup).
+Its completed run triggers the retargeter on the default branch, which re-reads
+open PRs targeting `main` and changes metadata only. Neither workflow checks out
+or executes contributor code. The signal and consumers must be present on the
+repository's default branch (`main`) to take effect.
 Retargeting with `GITHUB_TOKEN` does not start a new CI run; push a new commit
 to the PR branch to validate against the updated base before merging. This
 automation does not block direct pushes or merges made before it runs.
@@ -157,10 +163,11 @@ Sparkle secret checks, packaging, signature checks and update-notes validation.
 The release workflow starts optimized packaging while it checks for reusable
 validation. A completed, successful `CI` push run on `nightly` or `main` can
 satisfy validation only for the exact release commit, with successful checkout
-verification and the full `Build and test` step in both the `build (packages)`
-and `build (app)` jobs. Pull request runs, skipped
-tests, and other workflows do not qualify. A repair dispatched with a changed
-workflow also runs validation again. An unavailable lookup or missing match
+verification, `Record clean compilation`, and the full `Build and test` step in
+all four build jobs: `packages`, `protocol`, `media`, and `app`. A suite that
+restored compiler outputs cannot supply clean release validation. Pull request
+runs, skipped tests, and other workflows do not qualify. A repair dispatched
+with a changed workflow also runs validation again. An unavailable lookup or missing match
 runs the complete `./script/ci.sh` suite normally.
 
 The publication job requires successful packaging and either fresh or reused
@@ -171,20 +178,25 @@ rechecks release and announcement checkpoints before writing, preserving
 idempotent retries and published DMGs.
 
 SwiftPM dependency caching is enabled for tag runs as well as branch runs.
-Compiler output artifacts retain the six library test builds and the app test
+Compiler output artifacts retain all seven library test builds and the app test
 build as separate per-job caches for branch CI, and optimized app output for
 release CI. Branch CI gives every tracked file and dependency checkout a
 modification time derived from its Git blob hash, so unchanged sources match
-the restored build records and only changed modules recompile. Only pull
-request runs restore branch caches; `main` and `nightly` pushes compile from
-source so reusable validation is never incremental, then save. These caches are
+the restored build records and only changed modules recompile. PAX archives
+preserve the nanosecond output timestamps recorded by Swift Build. Pull requests
+and `main`/`nightly` pushes restore trusted branch caches; successful branch
+pushes save refreshed outputs. Release validation always compiles from source
+unless it can reuse an exact-commit branch run where every suite compiled clean.
+Optimized release packaging has its own compiler cache. These caches are
 kept for seven days and can cross branch/tag boundaries. Restore accepts only
 successful first-party `CI` pushes from `main`/`nightly` for debug output or
 release tags for optimized output, and only when the source commit is an
 ancestor of the checkout. Keys include the OS, Xcode, Swift, SDK, architecture,
 workspace path, package manifests and lockfiles, and build/workflow scripts.
-Missing, expired, incompatible, or unavailable caches fall back to building
-from source. Cache upload failure does not invalidate tests or block release.
+Restore logs the failing stage and command, and retries transient API or
+download failures up to three attempts. A failed extraction discards partial
+compiler outputs. Missing, expired, incompatible, or unavailable caches fall
+back to building from source. Cache upload failure does not invalidate tests or block release.
 Builds still run after restoration; caches never substitute for validation,
 packaging, signing, or checking the current release metadata.
 
@@ -211,10 +223,17 @@ The tap's README owns its local checks and workflow setup.
 ## One-time Sparkle setup
 
 SakuraCord pins the `SakuraCordApp/Sparkle` fork at
-`2.9.6-sakuracord.2`, based on upstream Sparkle 2.9.6. The fork preserves
+`2.10.0-sakuracord.1`, based on upstream Sparkle 2.10.0. The fork preserves
 Sparkle's signed-feed, archive, bundle-identity, and installation verification.
-Its only behavioral change lets a currently installed build opt in to replacing
-itself with a signed update whose `CFBundleVersion` is lower. Packaging adds the
+Its explicit-version API installs the selected signed full archive even when
+its version is older or equal. Authorization lasts for one update operation;
+the installer authenticates the direct XPC caller against the installed host's
+running code identity and executable path before permitting replacement.
+Cancelled selections are not reused by ordinary update checks. SakuraCord
+binds the selected catalog entry to the signed feed's version and archive URL.
+
+The earlier installed-build downgrade opt-in remains for the existing
+Nightly-to-Regular flow. Packaging adds the
 `SUAllowsVersionDowngrades` opt-in only to Nightly builds so they can return to
 the Regular track; Regular builds retain upstream downgrade protection.
 
@@ -255,6 +274,48 @@ assets, or source.
 
 ## Publication and recovery
 
+### Quiet same-version hotfix
+
+A manual `CI` dispatch can rebuild the existing latest regular release without
+creating another GitHub Release or posting or editing a Discord announcement.
+Supply its existing `tag` and a full `hotfix_commit` SHA. The app retains the
+tag's public version; the CI run number becomes its newer internal build number.
+Normal tag releases and repairs keep their existing announcement behaviour.
+
+Prepare the hotfix from the regular release, backport only the reviewed fixes,
+and retain its original tag unchanged. The hotfix source must descend from that
+tag and already be present on `nightly`. Incorporate the hotfix into `main` and
+`nightly` without rewriting either branch, preserving the ancestry and atomic
+push requirements above. The current workflow/control scripts must include the
+hotfix support before dispatch:
+
+```sh
+: "${release_tag:?Set the existing latest regular tag}"
+: "${hotfix_commit:?Set the reviewed full hotfix commit SHA}"
+gh workflow run ci.yml --ref main \
+  -f tag="$release_tag" -f hotfix_commit="$hotfix_commit"
+```
+
+Hotfixes run full validation and signed packaging. Publication takes the normal
+Sparkle release lock and rechecks the latest release and build number. It adds
+an immutable `hotfix-build-N.dmg.backup` recovery copy and
+`hotfix-build-N.json` source/hash manifest, refreshes the canonical DMG used by
+the website and Homebrew, verifies the download, and replaces the signed
+appcast last. The first hotfix preserves the original DMG as a `.backup` asset.
+It does not edit the release
+title, body, tag, release-copy asset, or Discord checkpoint. The recovery copy
+uses a `.backup` suffix so download discovery still sees exactly one DMG.
+
+After publication, refresh the Homebrew cask checksum through its **Update
+cask** workflow and verify the public downloads and an installed stable app's
+update check. Cached original appcasts or Homebrew metadata can briefly refer
+to the previous canonical DMG checksum during replacement; signature failures
+must be retried after refreshing metadata, never bypassed. An already published
+build cannot be replaced: use a new dispatch for a new build, rather than
+rerunning that build.
+
+### Regular release recovery
+
 The workflow publishes Discord last. A Discord failure therefore leaves the
 verified GitHub Release intact, and a retry reuses the exact committed copy.
 Successful Discord delivery is checkpointed to prevent duplicate posts.
@@ -282,3 +343,148 @@ Developer ID signed and notarized transition release with the old Sparkle key
 before following Sparkle's key-rotation procedure. If the key is lost or
 compromised before that transition, stop publishing the appcast and ship a
 manual-download migration rather than weakening validation.
+
+## Pull request builds
+
+PR CI packages the **debug** app with secure credentials, all resources and
+frameworks, an ad-hoc code signature, and a matching dSYM. The downloadable
+`pr-build-<run ID>-<attempt>` Actions artifact contains `SakuraCord.app.zip`,
+`SakuraCord.dSYM.zip`, and `build.json`; Actions retains it for 90 days. The app
+archive keeps that asset name but contains the debug identity,
+`SakuraCord Debug.app`. Publication validates with default-branch code, which
+also accepts archives made before that rename, so changes to the app name must
+reach `main` in the validator before PR builds use them. CI does not receive
+release-signing credentials. A failed test or packaging step cannot produce a
+published build.
+
+The separate `Publish PR build` workflow runs only trusted default-branch
+control code on an ephemeral hosted runner. It binds the artifact digest to the
+canonical CI workflow, successful run and attempt, PR number, head SHA, base SHA,
+and built merge SHA. All build/test jobs must have passed in that attempt. If GitHub refreshed the
+merge ref after creating the PR event, its actual base must descend from the
+recorded base and remain an ancestor of the canonical PR target. The recorded
+PR head must still match exactly. Incomplete GitHub step records are retried
+for up to ten minutes; failed or skipped required steps are rejected immediately. It reads
+ZIP entries, metadata, and Mach-O UUIDs without executing contributor code,
+rejects unsafe archive paths, checks matching dSYMs, and requires the build
+switching protocol and secure update configuration. A separate ephemeral macOS
+job, with no secrets, verifies nested code signatures and sandbox, installer,
+and recovery entitlements after validated extraction; it never launches the app.
+Only then does the Ubuntu publisher sign the archive
+and exact one-item Sparkle feed with the existing Ed25519 key. The signed feed
+uses Sparkle's standard feed-signature format; no contributor signing tool is
+executed.
+
+All PRs, including forks, publish automatically after successful CI and artifact
+verification. GitHub's approval requirements for running fork CI still apply;
+publication does not require a separate approval. Signing authenticates the
+published bytes, not the safety of contributor code. Before installation, the
+app displays a native system alert warning that anyone can make PR builds and
+that they may contain bugs, issues, or malicious code, with Cancel and Install
+and Restart actions. The build browser links to the PR for code review.
+
+Published builds live in the dedicated public
+[SakuraCordApp/Builds](https://github.com/SakuraCordApp/Builds) repository. Keeping
+these assets out of the app repository prevents PR builds from becoming the
+regular release or the website's newest nightly. Each `pr-N-run-R-attempt-A`
+release contains immutable app, symbols, `appcast.xml`, and `build.json` assets.
+A serialized publisher updates the `pr-builds` release's `catalog.json` only
+after the build's public downloads have been compared with the signed bytes.
+It also maintains a `pr-N` release with `appcast.xml` copied verbatim from that
+PR’s newest retained run/attempt. Installed PR builds use this signed feed for
+normal manual and automatic update checks, so new successful pushes appear as
+updates. Selecting an older build uses its immutable feed for that installation,
+then continues following the PR track. Retry and catalog recovery rebuild the
+track feeds from already signed artifacts, without a signing key.
+Only builds from currently open PRs appear in the catalog. Closing or merging
+a PR refreshes the catalog to hide its builds; reopening it restores its retained
+build history. The permission-free `Pull request metadata` signal triggers a
+default-branch `workflow_run` catalog refresh. The publisher re-reads current
+PR state and never consumes code or artifacts from that signal. Metadata
+reconciliation remains independent of fork CI approval and merge conflicts;
+the next publication or manual catalog recovery also reconciles PR state.
+Immutable downloads and installed PR update feeds remain
+available after closure. Every publication and manual catalog recovery also
+refreshes PR state; a failed GitHub lookup leaves the existing catalog untouched.
+The catalog is discovery metadata, while Sparkle authenticates the
+selected feed and archive before installation. Its schema and validation live
+in `script/pr_builds.mjs` and `script/pr_build_archive.py`.
+
+The publisher reads the commit subject from GitHub at the immutable PR head SHA
+for the build browser. The manifest preserves that subject and head and built
+SHA separately, plus run/attempt, PR,
+configuration, architecture, artifact provenance, version, archive and symbols
+hashes, and binary UUIDs. Reruns receive distinct identities and bundle versions.
+PR bundle versions reserve `4_000_000_000_000_000_000 + runID * 1000 + attempt`
+(with at most 13 run-ID digits and attempts 1–999), within signed 64-bit range.
+The production bundle identifier stays stable for Sparkle; PR builds use the
+app's per-PR local-data namespace, shared by updates within that PR. They retain
+normal update preferences and explicit return-to-release controls. Old PR artifacts lacking the
+switching protocol cannot be published into the catalog.
+
+### Distribution setup
+
+1. Create the public `SakuraCordApp/Builds` repository with an initial commit.
+   Install the existing SakuraCord bot GitHub App on it with **Contents: write**.
+   The publisher requests a short-lived token limited to that repository; no
+   personal access token or source-repository write grant is needed.
+2. Keep the public key in the PR packaging step of `.github/workflows/ci.yml`
+   equal to the key embedded in released apps. The workflow supplies it directly
+   because fork PR workflows cannot read repository variables. Set source-repository **variable**
+   `SPARKLE_ED_PUBLIC_KEY` to the same value for the trusted publisher's independent
+   archive verification. Keep `SPARKLE_ED_PRIVATE_KEY` secret.
+   Set repository variable `SAKURACORD_BOT_CLIENT_ID` to the existing SakuraCord
+   bot app's **Client ID**, not its numeric App ID. This variable and the existing
+   `SAKURACORD_BOT_PRIVATE_KEY` secret supply both the publisher and fix agent's
+   GitHub App credentials.
+3. Configure an active repository Actions event policy named
+   `Allow trusted PR metadata signal` for only
+   `.github/workflows/pull-request-metadata.yml`, explicitly allowing
+   `pull_request_target`. This is the permission-free notification workflow:
+   it must not check out code, download artifacts, interpolate contributor
+   content into commands, or access secrets. The trusted consumers retain their
+   own narrowly scoped permissions and never execute contributor code. Do not
+   expand the policy to other workflows merely to suppress a warning. See
+   [GitHub's event policy guidance](https://docs.github.com/en/actions/reference/security/securely-using-pull_request_target)
+   and [Actions policy API](https://docs.github.com/en/rest/actions/policies#create-a-repository-actions-policy).
+4. Land the signal and trusted consumer workflows on `main` before relying on
+   their triggers. PR CI must contain the packaging changes and the
+   current app/Sparkle switching protocol. Workflow and catalog deployment is
+   independent of app releases. The native installation warning reaches users
+   with an app update; a catalog refresh cannot add it to older app versions.
+   Validate a fresh successful PR run,
+   inspect its public catalog entry and signed downloads, and exercise an
+   actual app switch and return before claiming live distribution verification.
+
+### Retry and recovery
+
+Dispatch from **main**, supplying the actual immutable successful CI run and
+attempt. The same retry procedure applies to first-party and fork builds:
+
+```sh
+: "${pr_ci_run_id:?Set the successful PR CI run ID}"
+: "${pr_ci_attempt:?Set its successful attempt}"
+gh workflow run publish-pr-build.yml --ref main \
+  -f run_id="$pr_ci_run_id" -f run_attempt="$pr_ci_attempt"
+```
+
+Publication queues up to 100 pending workflow runs; manually retry any run
+cancelled after exceeding that limit. Retry the same run/attempt to finish a
+partial publication. Existing draft releases are resumed. Existing immutable
+assets are compared byte-for-byte and never overwritten; mismatches stop the
+workflow. A completed build release with a missing catalog entry is recovered
+by rebuilding the catalog from published manifests, without the signing key or
+an unexpired Actions artifact:
+
+```sh
+gh workflow run publish-pr-build.yml --ref main
+```
+
+Changed catalog or PR-feed assets can briefly return 404 during replacement;
+clients retain their current list and offer retry on a failed refresh. Deleting
+a published build is a deliberate maintainer withdrawal: delete its dedicated
+release, then rebuild the catalog. If withdrawing the last build for a PR,
+also delete its `pr-N` track release. Never edit an existing build's assets to
+repair a binary; publish a fresh CI attempt instead. Published build assets have
+no automatic expiry, unlike the temporary Actions artifact. The same ad-hoc
+signing and notarization limitation described above applies to PR downloads.

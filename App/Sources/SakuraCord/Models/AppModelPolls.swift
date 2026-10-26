@@ -5,6 +5,7 @@ import SakuraCordModels
 /// The current user's poll selection while a vote request is pending.
 struct PollVoteMutationState {
     var channelID: ChannelID
+    var guildID: GuildID?
     var confirmed: Set<Int>
     var desired: Set<Int>
     var isSending: Bool
@@ -60,7 +61,7 @@ private extension Message {
 extension AppModel {
     func canCreatePoll(in channelID: ChannelID) -> Bool {
         let isThread = openThread?.id == channelID
-        guard let channel = isThread ? openThreadParentChannel : snapshot?.channels.first(where: { $0.id == channelID }),
+        guard let channel = isThread ? openThreadParentChannel : messagePresentationChannelsByID[channelID],
               (isThread ? openThreadAccess : conversationAccess(for: channel)).canSend else { return false }
         guard channel.guildID != nil else { return true }
         guard let permissions = effectiveMessagePermissions(in: channel) else { return false }
@@ -77,25 +78,31 @@ extension AppModel {
         if channelID == selectedChannelID {
             guard await prepareChannelMessageSubmission(channelID: channelID, account: session) else { return .rejected }
         }
-        guard isCurrentAccountSession(session), canCreatePoll(in: channelID) else { return .rejected }
-        // The poll appears as an outgoing message with retry, so the creator
-        // does not wait for the server.
-        startAccountChildTask(account: session) { model, _ in
-            _ = await model.sendChannelMessage(channelID: channelID, content: "", replyTo: nil,
-                                               replyPreview: nil, attachments: [], clearsComposer: false, poll: poll)
-        }
-        return .enqueued(serverConfirmed: false)
+        guard isCurrentAccountSession(session), canCreatePoll(in: channelID),
+              allowOutgoingQueueSubmission(),
+              // The poll appears as an outgoing message with retry, so the
+              // creator does not wait for the server.
+              let delivery = enqueueChannelMessage(channelID: channelID, content: "", replyTo: nil,
+                                                   replyPreview: nil, attachments: [], clearsComposer: false, poll: poll)
+        else { return .rejected }
+        return .enqueued(delivery: delivery)
+    }
+
+    func canUpdatePollVote(on message: Message, removing: Bool = false) -> Bool {
+        removing || guildTimeoutUntil(in: message.channelID, guildID: message.guildID) == nil
     }
 
     /// Shows the current user's selection immediately and coalesces requests.
     /// Gateway echoes of the current user's vote are idempotent.
     @discardableResult
     func vote(on message: Message, answerIDs: Set<Int>) -> Bool {
-        guard let poll = (retainedMessage(channelID: message.channelID, messageID: message.id) ?? message).poll,
+        guard canUpdatePollVote(on: message, removing: answerIDs.isEmpty),
+              let poll = (retainedMessage(channelID: message.channelID, messageID: message.id) ?? message).poll,
               !poll.isClosed(), poll.layoutType == 1, poll.allowsMultipleAnswers || answerIDs.count <= 1,
               answerIDs.allSatisfy({ id in poll.answers.contains { $0.id == id } }) else { return false }
         var state = pollVoteMutations[message.id] ?? PollVoteMutationState(
-            channelID: message.channelID, confirmed: poll.selectedAnswerIDs, desired: poll.selectedAnswerIDs, isSending: false
+            channelID: message.channelID, guildID: message.guildID,
+            confirmed: poll.selectedAnswerIDs, desired: poll.selectedAnswerIDs, isSending: false
         )
         state.desired = answerIDs
         pollVoteMutations[message.id] = state
@@ -110,12 +117,21 @@ extension AppModel {
             pollVoteMutations[messageID] = nil
             return
         }
+        guard state.desired.isEmpty || guildTimeoutUntil(in: state.channelID, guildID: state.guildID) == nil else {
+            applyCurrentUserPollSelection(state.confirmed, messageID: messageID, channelID: state.channelID)
+            pollVoteMutations[messageID] = nil
+            return
+        }
         let answerIDs = state.desired
         let channelID = state.channelID
+        let guildID = state.guildID
         state.isSending = true
         pollVoteMutations[messageID] = state
         startAccountChildTask(account: accountSession()) { model, session in
             do {
+                guard answerIDs.isEmpty || model.guildTimeoutUntil(in: channelID, guildID: guildID) == nil else {
+                    throw ChatProviderError.invalidRequest("You are timed out in this server.")
+                }
                 try await session.provider.setPollAnswers(answerIDs.sorted(), messageID: messageID, channelID: channelID)
             } catch {
                 guard model.isCurrentAccountSession(session),
@@ -169,7 +185,7 @@ extension AppModel {
         do {
             let updated = try await session.provider.endPoll(messageID: message.id, channelID: message.channelID)
             guard isCurrentAccountSession(session) else { return }
-            let reconciled = reconcileVisibleOrCached(updated)
+            let reconciled = reconcileVisibleOrCached(updated, updatesOnly: true)
             recordAuthoritativeMessageUpsert(reconciled)
         } catch {
             guard isCurrentAccountSession(session) else { return }
@@ -179,8 +195,8 @@ extension AppModel {
 }
 
 extension AppModel {
-    func messageSearchPagePreservingPollVotes(_ incoming: MessageSearchPage) -> MessageSearchPage {
-        let mutations = messageSearch.pollRefreshJournal?.mutationsByMessageID ?? [:]
+    func messageSearchPagePreservingPollVotes(_ incoming: MessageSearchPage, search: MessageSearchState? = nil) -> MessageSearchPage {
+        let mutations = (search ?? messageSearch).pollRefreshJournal?.mutationsByMessageID ?? [:]
         guard !pollVoteMutations.isEmpty || !mutations.isEmpty else { return incoming }
         var page = incoming
         for resultIndex in page.results.indices {
@@ -196,28 +212,30 @@ extension AppModel {
     }
 
     func reconcilePollSearchMessage(_ message: Message) {
-        guard message.poll != nil, var page = messageSearch.page else { return }
-        var changed = false
-        for resultIndex in page.results.indices {
-            for index in page.results[resultIndex].messages.indices
-            where page.results[resultIndex].messages[index].id == message.id {
-                guard page.results[resultIndex].messages[index].poll != message.poll else { continue }
-                page.results[resultIndex].messages[index].poll = message.poll
-                page.results[resultIndex].messages[index].hasPoll = true
-                changed = true
+        for search in retainedMessageSearches {
+            guard message.poll != nil, var page = search.page else { continue }
+            var changed = false
+            for resultIndex in page.results.indices {
+                for index in page.results[resultIndex].messages.indices
+                where page.results[resultIndex].messages[index].id == message.id {
+                    guard page.results[resultIndex].messages[index].poll != message.poll else { continue }
+                    page.results[resultIndex].messages[index].poll = message.poll
+                    page.results[resultIndex].messages[index].hasPoll = true
+                    changed = true
+                }
             }
+            guard changed else { continue }
+            let oldRows = search.rows
+            search.page = page
+            search.rows = MessageSearchPresentation.rows(for: page, channelsByID: messageSearchChannelsByID(additionalChannels: page.channels))
+            let revision = search.rowsRevision &+ 1
+            search.rowsUpdateJournal.append(MessageRowsUpdateRecordBuilder.make(oldRows: oldRows, newRows: search.rows, revision: revision))
+            search.rowsRevision = revision
         }
-        guard changed else { return }
-        let oldRows = messageSearch.rows
-        messageSearch.page = page
-        messageSearch.rows = MessageSearchPresentation.rows(for: page, channelsByID: messageSearchChannelsByID(additionalChannels: page.channels))
-        let revision = messageSearch.rowsRevision &+ 1
-        messageSearch.rowsUpdateJournal.append(MessageRowsUpdateRecordBuilder.make(oldRows: oldRows, newRows: messageSearch.rows, revision: revision))
-        messageSearch.rowsRevision = revision
     }
 
     func recordPollRefreshMutation(_ mutation: ConversationRefreshMutation, messageID: MessageID, channelID: ChannelID) {
-        guard pollResultRefreshJournals[messageID] != nil || messageSearch.pollRefreshJournal != nil else { return }
+        guard pollResultRefreshJournals[messageID] != nil || retainedMessageSearches.contains(where: { $0.pollRefreshJournal != nil }) else { return }
         let updates: [MessagePollUpdate]
         switch mutation {
         case .upsert(let message):
@@ -235,7 +253,9 @@ extension AppModel {
         var patch = MessageUpdate(messageID: messageID, channelID: channelID)
         patch.pollUpdates = updates
         pollResultRefreshJournals[messageID]?.record(.patch(patch), messageID: messageID)
-        messageSearch.pollRefreshJournal?.record(.patch(patch), messageID: messageID)
+        for search in retainedMessageSearches {
+            search.pollRefreshJournal?.record(.patch(patch), messageID: messageID)
+        }
     }
 
     func loadUnknownPollResults(_ message: Message) async {
@@ -262,7 +282,7 @@ extension AppModel {
                 guard !Task.isCancelled, isCurrentAccountSession(session),
                       let journal = pollResultRefreshJournals[message.id], journal.revision == revision,
                       let fetched = page.messages.first(where: { $0.id == message.id }) else { return }
-                let mutations = ConversationRefreshMutations(messages: journal.mutationsByMessageID, updatedUsers: journal.updatedUsers)
+                let mutations = ConversationRefreshMutations(journal)
                 guard let poll = Self.applyingConversationRefreshMutations(mutations, to: [fetched]).first?.poll else { return }
                 if poll.results == nil, fetched.poll?.results != nil {
                     guard attempt == 0 else {

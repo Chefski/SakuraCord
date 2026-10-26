@@ -6,21 +6,24 @@ extension AppModel {
         let restricted = Set(inbox.mentions.filter { message in
             inboxRequiresAgeAgreement(
                 channelID: message.channelID,
-                guildID: message.guildID ?? readState.entries[message.channelID]?.guildID
+                guildID: message.guildID ?? readState[message.channelID]?.guildID
             )
         }.map(\.id))
-        inbox.hiddenMentionIDs = snapshot?.currentUser.allowsAdultContent == true ? [] : restricted
-        inbox.obscuredMentionIDs = snapshot?.currentUser.allowsAdultContent == true ? restricted : []
+        let blocked = Set(inbox.mentions.filter {
+            isMessageSuppressed($0)
+        }.map(\.id))
+        inbox.hiddenMentionIDs = blocked.union(currentUser?.allowsAdultContent == true ? [] : restricted)
+        inbox.obscuredMentionIDs = currentUser?.allowsAdultContent == true ? restricted : []
     }
 
     func inboxRequiresAgeAgreement(channelID: ChannelID, guildID: GuildID?) -> Bool {
         guard let guildID else { return false }
-        let channel = snapshot?.channels.first { $0.id == channelID }
-        let parentID = inbox.threads[channelID]?.parentID ?? readState.entries[channelID]?.parentID
-        let parent = parentID.flatMap { id in snapshot?.channels.first { $0.id == id } }
-        let restricted = snapshot?.guilds.first { $0.id == guildID }?.isAgeRestricted == true
+        let channel = messagePresentationChannelsByID[channelID]
+        let parentID = inbox.threads[channelID]?.parentID ?? readState[channelID]?.parentID
+        let parent = parentID.flatMap { id in messagePresentationChannelsByID[id] }
+        let restricted = serverRailGuildsByID[guildID]?.isAgeRestricted == true
             || (channel ?? parent)?.isAgeRestricted == true
-        return restricted && (snapshot?.currentUser.allowsAdultContent != true
+        return restricted && (currentUser?.allowsAdultContent != true
             || !inbox.acceptedAgeRestrictedGuildIDs.contains(guildID))
     }
 
@@ -35,10 +38,10 @@ extension AppModel {
     }
 
     func acceptInboxAgeAgreement() {
-        guard snapshot?.currentUser.allowsAdultContent == true, let guildID = inbox.ageRestrictedGuildID else { return }
+        guard currentUser?.allowsAdultContent == true, let guildID = inbox.ageRestrictedGuildID else { return }
         inbox.acceptedAgeRestrictedGuildIDs.insert(guildID)
         if !isOfflineTesting {
-            UserDefaults.standard.set(inbox.acceptedAgeRestrictedGuildIDs.map(\.description), forKey: "dev.sakuracord.inbox-age-agreements")
+            PRBuildProfile.defaults.set(inbox.acceptedAgeRestrictedGuildIDs.map(\.description), forKey: "dev.sakuracord.inbox-age-agreements")
         }
         let action = inbox.ageRestrictedAction
         cancelInboxAgeAgreement()

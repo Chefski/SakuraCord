@@ -9,6 +9,7 @@ struct AccessibilitySettingsPage: View {
 
     var body: some View {
         SettingsPageForm(page: .accessibility, state: state) {
+            motionSection
             cosmeticsSection
             readabilitySection
             voiceOverSection
@@ -32,6 +33,36 @@ struct AccessibilitySettingsPage: View {
             resetTitle: "Reset All Settings",
             message: "This resets all of SakuraCord’s accessibility settings. Are you sure you want to do this?",
             reset: resetPreferences
+        )
+    }
+
+    private var motionSection: some View {
+        Section {
+            Toggle("Disable all animations", isOn: $value.disablesAllAnimations)
+                .tint(SakuraCordAccentColor.color)
+                .settingsControlAnchor(.accessibilityDisableAllAnimations, state: state)
+            Group {
+                Toggle("Disable sidebar and member list animations", isOn: animationBinding(\.disablesSidebarAnimations))
+                    .settingsControlAnchor(.accessibilityDisableSidebarAnimations, state: state)
+                Toggle("Disable side chat and full width animations", isOn: animationBinding(\.disablesSideChatAnimations))
+                    .settingsControlAnchor(.accessibilityDisableSideChatAnimations, state: state)
+                Toggle("Disable search, popover and overlay animations", isOn: animationBinding(\.disablesOverlayAnimations))
+                    .settingsControlAnchor(.accessibilityDisableOverlayAnimations, state: state)
+                Toggle("Disable message sending animations", isOn: animationBinding(\.disablesMessageSendingAnimations))
+                    .settingsControlAnchor(.accessibilityDisableSendAnimations, state: state)
+            }
+            .tint(SakuraCordAccentColor.color)
+            .disabled(value.disablesAllAnimations)
+        } header: {
+            Text("Motion", bundle: #bundle)
+        }
+    }
+
+    /// A category switch, which shows on while "Disable all animations" is.
+    private func animationBinding(_ keyPath: WritableKeyPath<AccessibilitySettingsSnapshot, Bool>) -> Binding<Bool> {
+        Binding(
+            get: { value.disablesAllAnimations || value[keyPath: keyPath] },
+            set: { value[keyPath: keyPath] = $0 }
         )
     }
 

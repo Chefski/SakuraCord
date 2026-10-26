@@ -261,6 +261,11 @@ nonisolated enum NativeEmojiSkinTone: String, CaseIterable, Identifiable, Sendab
     case mediumDark
     case dark
 
+    /// The picker's stored tone, shared by autocomplete and quick reactions.
+    static var preferred: NativeEmojiSkinTone {
+        NativeEmojiSkinTone(rawValue: PRBuildProfile.defaults.string(forKey: "emojiSkinTone") ?? "") ?? .standard
+    }
+
     var id: String {
         rawValue
     }
@@ -324,7 +329,7 @@ struct EmojiPickerView: View {
     @State private var visibleGuildLoadTask: Task<Void, Never>?
     @State private var emojiLockMessage: String?
     @FocusState private var keyboardNavigationIsFocused: Bool
-    @AppStorage("emojiSkinTone") private var skinToneRawValue = NativeEmojiSkinTone.standard.rawValue
+    @AppStorage("emojiSkinTone", store: PRBuildProfile.defaults) private var skinToneRawValue = NativeEmojiSkinTone.standard.rawValue
 
     init(
         model: AppModel,
@@ -528,7 +533,7 @@ struct EmojiPickerView: View {
         if useCase == .message, !model.canComposeEmoji(emoji) {
             return String(localized: "Enable FakeNitro emojis in Features to send this emoji as an image link.", bundle: #bundle)
         }
-        guard DiscordEmojiPermissionPolicy.isPremiumLocked(emoji, for: useCase, premiumType: model.snapshot?.currentUser.premiumType ?? 0) else { return nil }
+        guard DiscordEmojiPermissionPolicy.isPremiumLocked(emoji, for: useCase, premiumType: model.currentUser?.premiumType ?? 0) else { return nil }
         return String(localized: "Using this emoji in your profile requires Nitro.", bundle: #bundle)
     }
 
@@ -974,7 +979,7 @@ final class EmojiPickerDocumentStore {
     private init(empty: Void) {}
 
     func synchronize(with model: AppModel, useCase: DiscordEmojiUseCase) {
-        let premiumType = model.snapshot?.currentUser.premiumType ?? 0
+        let premiumType = model.currentUser?.premiumType ?? 0
         let eligibleGuilds = PickerSectionGuildOrdering.orderedGuilds(
             railItems: model.serverRailItems,
             guildsByID: model.serverRailGuildsByID,
@@ -1083,7 +1088,7 @@ final class EmojiPickerDocumentStore {
         // folding can reduce the displayed count without filling those slots.
         let candidates = discordFrequentlyUsed.filter {
             EmojiFrecencyKeys.value(for: $0) != nil || knownCustomIDs.contains($0)
-        }.prefix(42)
+        }.prefix(EmojiFrecencyKeys.frequentlyUsedCandidateLimit)
         let frequentItems = orderedItems(for: Array(candidates), in: allItems)
         showsFavorites = !favoriteItems.isEmpty
         showsFrequentlyUsed = !frequentItems.isEmpty

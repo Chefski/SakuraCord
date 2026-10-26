@@ -3,7 +3,7 @@ import SwiftUI
 
 enum SakuraCordSystemSymbol {
     nonisolated static let emojiFaceGrinning = "emoji.face.grinning"
-    nonisolated static let stickerFill = "sticker.fill"
+    nonisolated static let sticker = "sticker"
     nonisolated static let thread = "thread"
     nonisolated static let applicationCommands = "xmark.triangle.circle.square.fill"
 
@@ -18,11 +18,11 @@ enum SakuraCordSystemSymbol {
         return Image(emojiFaceGrinning, bundle: privateSymbolsBundle)
     }
 
-    static var stickerFillImage: Image {
+    static var stickerImage: Image {
         guard let privateSymbolsBundle else {
-            return Image(systemName: stickerFill)
+            return Image(systemName: sticker)
         }
-        return Image(stickerFill, bundle: privateSymbolsBundle)
+        return Image(sticker, bundle: privateSymbolsBundle)
     }
 
     @ViewBuilder

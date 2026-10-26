@@ -1,3 +1,4 @@
+import SakuraCordModels
 import SwiftUI
 
 struct GuildIconView: View {
@@ -7,6 +8,10 @@ struct GuildIconView: View {
     let cornerRadius: CGFloat
     var animates = true
     var isSelected = false
+    var loadsImage = true
+    let morphsInFolder: Bool
+    let morphID: GuildID?
+    let maximumPixelDimension: Int?
     @Environment(\.colorScheme) private var colorScheme
 
     init(
@@ -15,7 +20,11 @@ struct GuildIconView: View {
         size: CGFloat,
         cornerRadius: CGFloat,
         animates: Bool = true,
-        isSelected: Bool = false
+        isSelected: Bool = false,
+        loadsImage: Bool = true,
+        morphsInFolder: Bool = false,
+        morphID: GuildID? = nil,
+        maximumPixelDimension: Int? = nil
     ) {
         self.name = name
         self.iconURL = iconURL
@@ -23,29 +32,37 @@ struct GuildIconView: View {
         self.cornerRadius = cornerRadius
         self.animates = animates
         self.isSelected = isSelected
+        self.loadsImage = loadsImage
+        self.morphsInFolder = morphsInFolder
+        self.morphID = morphID
+        self.maximumPixelDimension = maximumPixelDimension
     }
 
     var body: some View {
-        let displayedCornerRadius = iconURL == nil ? size * 0.25 : cornerRadius
         ZStack {
-            ConcentricRectangle(cornerRadius: displayedCornerRadius, style: .continuous)
-                .fill(iconURL == nil ? fallbackBackground : Color.secondary.opacity(0.16))
             if let iconURL {
-                StaticRemoteImage(
-                    url: iconURL,
-                    maximumPixelDimension: requestedPixelDimension
-                )
-                if animates,
-                   NativeTimelineAvatarPresentation
-                    .shouldDecodeAnimation(for: iconURL)
-                {
-                    AnimatedRemoteImage(
+                if loadsImage {
+                    StaticRemoteImage(
                         url: iconURL,
-                        maximumPixelDimension: requestedPixelDimension
+                        maximumPixelDimension: requestedPixelDimension,
+                        retriesFailedLoads: true
                     )
-                    .transition(.identity)
+                    if animates,
+                       NativeTimelineAvatarPresentation
+                        .shouldDecodeAnimation(for: iconURL)
+                    {
+                        AnimatedRemoteImage(
+                            url: iconURL,
+                            maximumPixelDimension: requestedPixelDimension
+                        )
+                        .transition(.identity)
+                    }
+                } else {
+                    Color.clear
                 }
             } else {
+                ConcentricRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(fallbackBackground)
                 Text(initials)
                     .font(.system(size: size * 0.43, weight: .medium))
                     .foregroundStyle(isSelected ? .white : fallbackForeground)
@@ -53,13 +70,14 @@ struct GuildIconView: View {
                     .minimumScaleFactor(0.7)
             }
         }
+        .clipShape(ConcentricRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .modifier(ServerFolderIconMorph(isEnabled: morphsInFolder, guildID: morphID))
         .frame(width: size, height: size)
-        .clipShape(ConcentricRectangle(cornerRadius: displayedCornerRadius, style: .continuous))
         .accessibilityLabel(name.isEmpty ? "Unnamed Server" : name)
     }
 
     private var requestedPixelDimension: Int {
-        max(1, Int((size * 2).rounded(.up)))
+        max(1, maximumPixelDimension ?? Int((size * 2).rounded(.up)))
     }
 
     private var initials: String {

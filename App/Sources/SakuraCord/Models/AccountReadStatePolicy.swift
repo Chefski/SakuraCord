@@ -2,23 +2,6 @@ import Foundation
 import SakuraCordModels
 
 extension AccountReadStateModel {
-    func contributesGuildUnread(
-        channelID: ChannelID,
-        now: Date
-    ) -> Bool {
-        guard let entry = entries[channelID],
-              entry.isAccessible,
-              entry.isUnread
-        else { return false }
-        guard !isGuildResourceChannel(entry) else { return false }
-        if entry.kind == .voice && entry.mentionCount == 0 { return false }
-
-        let policy = effectivePolicy(for: entry, now: now)
-        guard !policy.categoryMuted else { return false }
-        return entry.mentionCount > 0
-            || (!policy.guildMuted && !policy.channelMuted && policy.showsUnread)
-    }
-
     func allowsNativeNotification(
         for mentionKind: MentionKind,
         policy: EffectivePolicy
@@ -97,29 +80,50 @@ extension AccountReadStateModel {
         return unreadPolicySource.defaultNotificationLevelByGuild[guildID] ?? .onlyMentions
     }
 
-    func bulkAcknowledgements(
-        for guildID: GuildID,
-        now: Date = .now
-    ) -> [BulkReadStateAcknowledgement] {
-        entries.values.compactMap { entry in
-            guard entry.guildID == guildID,
-                  unread(channelID: entry.channelID, now: now),
-                  let messageID = entry.latestKnownMessageID
-            else { return nil }
-            return BulkReadStateAcknowledgement(
-                channelID: entry.channelID,
-                messageID: messageID
-            )
-        }
-        .sorted { $0.channelID.rawValue < $1.channelID.rawValue }
+    /// Discord acknowledges a forum up to the current time, so its boundary
+    /// covers every post and reply so far, and any other conversation up to
+    /// its newest message.
+    nonisolated static func acknowledgementTarget(for entry: Entry, now: Date) -> MessageID? {
+        entry.kind == .forum ? MessageID(timestamp: now) : entry.latestKnownMessageID
     }
 
-    func bulkAcknowledgements(
+    /// Discord's server Mark as Read and the server-list Read All scope:
+    /// current server channels and active joined threads, including muted
+    /// conversations, without DMs. Discord's bulk acknowledgement keeps every
+    /// forum, read or not, and moves it to the current time.
+    func allServerAcknowledgements(in guildIDs: Set<GuildID>) -> [BulkReadStateAcknowledgement] {
+        let source = unreadPresentationSource()
+        return entries.values.compactMap {
+            serverAcknowledgement(for: $0, guildIDs: guildIDs, source: source)
+        }.sorted { $0.channelID < $1.channelID }
+    }
+
+    func serverAcknowledgement(
+        for entry: Entry,
+        guildIDs: Set<GuildID>,
+        source: UnreadPresentationSource
+    ) -> BulkReadStateAcknowledgement? {
+        guard let guildID = entry.guildID, guildIDs.contains(guildID),
+              entry.isAccessible,
+              entry.isUnread || entry.kind == .forum,
+              source.isAggregateConversation(entry),
+              !isGuildResourceChannel(entry),
+              [.text, .announcement, .forum, .voice].contains(entry.kind),
+              let messageID = Self.acknowledgementTarget(for: entry, now: .now)
+        else { return nil }
+        return BulkReadStateAcknowledgement(channelID: entry.channelID, messageID: messageID)
+    }
+
+    /// Discord's category Mark as Read (module 334738, build 649389) forces an
+    /// acknowledgement of every readable child and its active joined threads,
+    /// read or muted alike, at its newest message: a forum's latest post,
+    /// not the current time.
+    func categoryAcknowledgements(
         for categoryID: ChannelID,
-        guildID: GuildID,
-        now: Date = .now
+        guildID: GuildID
     ) -> [BulkReadStateAcknowledgement] {
-        entries.values.compactMap { entry in
+        let source = unreadPresentationSource()
+        return entries.values.compactMap { entry in
             let belongsToCategory = entry.parentID == categoryID
                 || entry.parentID.flatMap {
                     unreadPolicySource.channelByID[$0]?.categoryID
@@ -127,9 +131,9 @@ extension AccountReadStateModel {
             guard entry.guildID == guildID,
                   belongsToCategory,
                   entry.isAccessible,
-                  entry.isUnread,
+                  source.isAggregateConversation(entry),
                   !isGuildResourceChannel(entry),
-                  entry.kind != .voice || entry.mentionCount > 0,
+                  [.text, .announcement, .forum, .voice].contains(entry.kind),
                   let messageID = entry.latestKnownMessageID
             else { return nil }
             return BulkReadStateAcknowledgement(
@@ -142,18 +146,19 @@ extension AccountReadStateModel {
 
     /// Resolves every category carrying an acknowledgement-eligible unread
     /// conversation in one account-store pass. The sidebar renders all
-    /// categories together, so asking `bulkAcknowledgements` once per header
-    /// multiplied the same account-wide scan during startup updates.
+    /// categories together, so a scan per header would multiply the same
+    /// account-wide pass during startup updates.
     func unreadCategoryIDs(
         in guildID: GuildID
     ) -> Set<ChannelID> {
         var result: Set<ChannelID> = []
+        let source = unreadPresentationSource()
         for entry in entries.values {
             guard entry.guildID == guildID,
                   entry.isAccessible,
-                  entry.isUnread,
+                  entry.countsAsUnreadConversation && source.isAggregateConversation(entry)
+                    || source.newForumPostParentID(of: entry) != nil,
                   !isGuildResourceChannel(entry),
-                  entry.kind != .voice || entry.mentionCount > 0,
                   let parentID = entry.parentID
             else { continue }
             let categoryID = unreadPolicySource.channelByID[parentID]?.categoryID ?? parentID

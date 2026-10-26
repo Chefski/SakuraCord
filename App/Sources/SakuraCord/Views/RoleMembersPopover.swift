@@ -65,6 +65,11 @@ struct RoleMembersPopover: View {
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
+                            .overlay {
+                                UserContextMenuBridge {
+                                    UserContextMenu.make(for: member.user, context: .init(guildID: guildID), model: model)
+                                }
+                            }
                         }
                         if result.isTruncated {
                             Text("Showing the first \(result.members.count) members.")

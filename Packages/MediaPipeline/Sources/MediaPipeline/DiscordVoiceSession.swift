@@ -100,7 +100,7 @@ public actor DiscordVoiceSession: DaveSessionDelegate {
 
     private lazy var dave = DaveSessionManager(
         selfUserId: info.userID.description,
-        groupId: UInt64(info.serverID) ?? info.channelID.rawValue,
+        groupId: info.channelID.rawValue,
         delegate: self
     )
 
@@ -1787,6 +1787,9 @@ private extension DiscordVoiceSession {
             flags: ["resuming": resuming]
         ))
         do {
+            if !resuming {
+                await dave.resetForFreshSession()
+            }
             try await gateway.connect(resuming: resuming)
         } catch {
             let nsError = error as NSError

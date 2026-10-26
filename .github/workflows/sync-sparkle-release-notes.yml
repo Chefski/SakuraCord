@@ -53,12 +53,12 @@ jobs:
             dmg_name="SakuraCord.v$asset_version.dmg"
           fi
           echo "SAKURACORD_DMG_NAME=$dmg_name" >> "$GITHUB_ENV"
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.SAKURACORD_RELEASE_TAG }}
       - name: Check out current release-control files
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: release-control
           ref: ${{ github.sha }}

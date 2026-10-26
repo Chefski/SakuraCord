@@ -25,12 +25,27 @@ session:
 ./script/build_and_run.sh --offline
 ```
 
-To launch the existing `dist/SakuraCord.app` without rebuilding, use
+Debug builds are packaged as `dist/SakuraCord Debug.app`. To launch the
+existing debug app without rebuilding, use
 `./script/run.sh`, `./script/run.sh --offline`, or
 `./script/run.sh --offline-sign-in`. These are also available as
 the Codex environment actions **Run**, **Run Offline**, and **Run Offline Sign In**. These restart the
 checkout's app so the selected mode takes effect, and require a previously
 built bundle.
+
+In the `--offline` demo, **Settings → Updates → Browse Pull Request Builds**
+shows the production build browser with sample data. Search,
+PR selection, build history, and the installation warning work normally;
+Install and Restart stays disabled and
+the build catalog is not fetched. Normal launches load the published catalog.
+
+To develop against an unpublished Sparkle fork, set
+`SAKURACORD_SPARKLE_PACKAGE_PATH` to a local Swift package named `Sparkle` that
+exports the built framework, then use the same guarded build and test scripts.
+The default dependency remains pinned to the distributed fork version; never
+commit a local-resolution lockfile in place of that pin. See
+[PR build publication](RELEASING.md#pull-request-builds) for the
+distribution contract and rollout prerequisites.
 
 Both launch scripts stop and wait for the checkout's app immediately before
 launching, including when another launcher reopened it during a build. They
@@ -44,9 +59,12 @@ contacting Discord:
 | --- | --- |
 | `./script/build_and_run.sh --offline-sign-in` | Welcome animation and shared native sign-in flow |
 | `./script/build_and_run.sh --offline-long-server-list` | Extended server rail |
-| `./script/build_and_run.sh --offline-forum-performance` | Large forum |
+| `./script/build_and_run.sh --offline-forum-performance` | Large forum; post previews arrive 1.2 s after each page |
+| `./script/build_and_run.sh --offline-forum-performance-autoscroll` | Same forum, then a 15-second, 2,000-point/second scroll; writes frame timing and layout-jump counts to `SAKURACORD_PERFORMANCE_RESULT_PATH` and logs a `ForumBenchmark:` line |
 | `./script/build_and_run.sh --offline-chat-performance` | Large native timeline |
+| `./script/build_and_run.sh --offline-chat-voice-performance` | Large native timeline where every fifth message is a voice message |
 | `./script/build_and_run.sh --offline-pins-performance-autoscroll` | Paginated 5,000-message pins timeline benchmark |
+| `./script/build_and_run.sh --offline-friends-performance` | 1,000 friends plus 200 requests; 20-second scroll with 20 presence updates/second, then 80 category switches |
 | `./script/build_and_run.sh --offline-incoming-private-call` | Incoming direct-message call |
 
 The offline sign-in fixture uses the production sign-in views and state handling
@@ -58,6 +76,14 @@ the welcome. Successful sign-in opens the ordinary offline workspace. No saved
 account is read or changed, and no Discord transport is created. Hosted CAPTCHA
 verification requires Discord and is excluded from this offline fixture.
 **Build & Run Offline Sign In** rebuilds and launches the same mode from Codex.
+
+The side chat motion benchmark is not one of these scenes. Its code compiles
+only when `SAKURACORD_MOTION_BENCHMARK=1` is set at build time, so normal Debug
+and Release builds contain none of it. `./script/motion_benchmark.sh` sets the
+variable, builds that benchmark build, records the open, close, and widen
+motions of fixture threads, and reports them. A benchmark build is a developer
+tool, not a release build; it is packaged to the same `dist/` path as a normal
+build, so package again without the variable before using that app otherwise.
 
 Use `./script/build_and_run.sh run` to launch the normal app and restore an
 existing SakuraCord session through the configured credential mode. Read-only authenticated verification
@@ -74,8 +100,8 @@ normal use. Use explicit scoped fixtures for mutations and local tests for
 bulk actions that would otherwise affect unrelated conversations.
 
 Use `./script/build_and_run.sh run-release` to build the optimized release
-configuration, apply the release credential restrictions, and launch the
-staged app bundle.
+configuration and launch the staged app bundle. It uses Keychain unless the
+machine credential preference is enabled (see Local credential mode).
 
 ## Settings cards in chat
 
@@ -120,8 +146,11 @@ clones and worktrees use the same mode. Inspect or disable it with:
 
 An explicit `SAKURACORD_INSECURE_DEBUG_CREDENTIALS=0` or `1` overrides the
 machine setting for one invocation. Existing checkout-local settings are read
-only when no machine preference exists. Release and update-enabled packages
-always use Keychain and reject an explicit insecure override.
+only when no machine preference exists. `run-release` on this machine honours
+the machine preference, so rebuilt local Releases do not trigger a Keychain
+prompt each time. `package-release` and update-enabled packages always use
+Keychain, and every release mode rejects an explicit
+`SAKURACORD_INSECURE_DEBUG_CREDENTIALS=1`.
 
 Both Run and Build & Run verify the packaged credential mode and signature
 before launch. A stale bundle with a different credential mode is refused.
@@ -158,16 +187,20 @@ proportion to its risk:
 | `./script/build_and_run.sh package` | Stage a signed debug app without launching it |
 | `./script/build_and_run.sh run-release` | Build, stage, and launch an optimized release app |
 | `./script/test.sh protocol` | Run protocol package tests |
+| `./script/test.sh dave` | Run DAVE encryption and recovery tests |
 | `./script/test.sh media` | Run media package tests |
 | `./script/test.sh app` | Run application package tests |
-| `./script/test.sh packages` | Run the six library package tests |
+| `./script/test.sh packages` | Run the seven library package tests |
 | `./script/test.sh all` | Run the configured first-party test matrix |
 | `./script/code_quality.sh check` | Run the pinned SwiftFormat and SwiftLint policy |
 | `./script/ci.sh` | Run code-quality and release checks, the full first-party test matrix, and the app build |
 
-Hosted CI runs `./script/ci.sh packages` (checks and library tests) and
-`./script/ci.sh app` (app tests and build) as parallel jobs, each with its own
-compiler output cache. Branch CI runs on pushes to `main`, `nightly`, and
+Hosted CI runs four parallel jobs with separate compiler output caches:
+`./script/ci.sh packages-core` runs checks and the models, persistence, rendering,
+and plugin SDK tests; `./script/ci.sh protocol` runs protocol tests;
+`./script/ci.sh media` runs DaveKit and media tests; and `./script/ci.sh app`
+runs app tests and builds the executable. The local `packages` and `all` modes
+still run their complete suites. Branch CI runs on pushes to `main`, `nightly`, and
 release tags, and on pull requests; a newer push to a pull request cancels its
 in-progress run. Release compilation runs alongside any required validation,
 and publication waits for both. See

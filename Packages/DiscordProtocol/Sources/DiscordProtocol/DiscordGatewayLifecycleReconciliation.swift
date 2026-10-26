@@ -3,6 +3,7 @@ import SakuraCordModels
 
 extension DiscordRESTProvider {
     func removeGuild(_ guildID: GuildID) {
+        resetMemberListSubscriptionWork(guildID: guildID)
         var channelIDs = Set(
             (cachedChannels[guildID] ?? []).map(\.id)
                 + (cachedGuildChannelDTOs[guildID]?.keys.compactMap(ChannelID.init) ?? [])
@@ -33,6 +34,8 @@ extension DiscordRESTProvider {
         selectedMemberListID[guildID] = nil
         memberListSubscriptions[guildID] = nil
         memberListSubscriptionOrder[guildID] = nil
+        memberListViewportRequests[guildID] = nil
+        memberListsNeedingRefresh[guildID] = nil
         cachedMemberListGroups[guildID] = nil
         requestedHistoryMemberIDs[guildID] = nil
         resolvingHistoryMemberIDs[guildID] = nil
@@ -97,6 +100,30 @@ extension DiscordRESTProvider {
                 cancelPendingMemberRequests(guildID: guildID, error: error)
             } else {
                 cancelPendingMemberRequests(error: error)
+            }
+        case 37:
+            // A socket send completing does not mean Discord accepted its
+            // subscription. The opcode cooldown is shared; without guild
+            // metadata any retained selected subscription may have been refused.
+            let guildIDs = rateLimit.metadata?.guildID.flatMap(GuildID.init)
+                .map { [$0] } ?? Array(Set(memberListSubscriptions.keys)
+                    .union(memberListViewportRequests.keys).union(memberListInFlightRequests.keys))
+            for guildID in guildIDs {
+                var memberListIDs = Set(memberListSubscriptions[guildID].map { Array($0.keys) } ?? [])
+                if let viewport = memberListViewportRequests[guildID] {
+                    memberListIDs.insert(viewport.memberListID)
+                }
+                if let inFlight = memberListInFlightRequests[guildID] {
+                    memberListIDs.insert(inFlight.memberListID)
+                }
+                for memberListID in memberListIDs where !memberListSubscriptionsForRefresh(
+                    guildID: guildID, memberListID: memberListID
+                ).isEmpty {
+                    markMemberListForRefresh(
+                        guildID: guildID, memberListID: memberListID, resetRetryBudget: false
+                    )
+                }
+                scheduleMemberListRefreshRetry(guildID: guildID)
             }
         case 18, 20:
             cancelApplicationStreamNegotiations(

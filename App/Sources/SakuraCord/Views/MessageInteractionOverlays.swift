@@ -9,8 +9,8 @@ enum MessageRowLayoutMetrics {
     nonisolated static var avatarColumnGap: CGFloat { InterfaceScale.metric(12) }
     nonisolated static var compactContentHeight: CGFloat { InterfaceScale.metric(18) }
     nonisolated static var authorLineHeight: CGFloat { InterfaceScale.metric(16) }
-    nonisolated static var authorContentSpacing: CGFloat { InterfaceScale.metric(4) }
-    nonisolated static var commandAuthorContentSpacing: CGFloat { InterfaceScale.metric(2) }
+    nonisolated static var authorContentSpacing: CGFloat { InterfaceScale.metric(2) }
+    nonisolated static var commandAuthorContentSpacing: CGFloat { InterfaceScale.metric(0) }
     nonisolated static var messageGroupSeparation: CGFloat { InterfaceScale.metric(12) }
     // Message density is set in points and is independent of interface size.
     nonisolated static let visibleHighlightInset: CGFloat = 3
@@ -19,6 +19,12 @@ enum MessageRowLayoutMetrics {
     nonisolated static var editFooterIntrinsicBottomInset: CGFloat { InterfaceScale.metric(3) }
     nonisolated static var commandInvocationHeight: CGFloat { InterfaceScale.metric(20) }
     nonisolated static var commandInvocationContentInset: CGFloat { InterfaceScale.metric(3) }
+
+    /// The gap after the avatar column, which widens with the compact
+    /// timestamp gutter so grouped content stays aligned.
+    static func columnGap(timestampGutterWidth: CGFloat) -> CGFloat {
+        avatarColumnGap + max(avatarDiameter, timestampGutterWidth) - avatarDiameter
+    }
 
     nonisolated static func avatarColumnHeight(startsGroup: Bool) -> CGFloat {
         startsGroup ? avatarDiameter : compactContentHeight
@@ -223,6 +229,22 @@ nonisolated enum MessageOutboxPresentation {
         }
     }
 
+    static func failureText(for message: Message) -> String {
+        guard message.outboxState == .failed,
+              case let .autoModeration(explanation) = message.sendFailure
+        else { return "Failed" }
+        let detail = explanation?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return detail.isEmpty ? "This message was blocked by AutoMod." : detail
+    }
+
+    static func accessibilityStatus(for message: Message) -> String {
+        guard message.outboxState == .failed,
+              case let .autoModeration(explanation) = message.sendFailure
+        else { return accessibilityStatus(for: message.outboxState) }
+        let detail = explanation?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return detail.isEmpty ? "Blocked by AutoMod" : "Blocked by AutoMod. \(detail)"
+    }
+
     static func accessibilityStatus(for state: OutboxState) -> String {
         switch state {
         case .queued, .uploading, .sending:
@@ -268,7 +290,9 @@ struct NativeTimelineEditingMessageContent: View {
             InlineMessageEditor(
                 model: model,
                 text: $editText,
+                canEdit: model.guildTimeoutUntil(in: message.channelID, guildID: message.guildID) == nil,
                 save: {
+                    guard model.guildTimeoutUntil(in: message.channelID, guildID: message.guildID) == nil else { return }
                     guard let value = MessageEditInputPolicy.submission(
                         from: editText
                     ) else {
@@ -293,17 +317,20 @@ struct NativeTimelineEditingMessageContent: View {
                         )
                     },
                     addReactionControl: {
-                    ReactionActionMenu(
-                        model: model,
-                        guildID: message.guildID,
-                        isPickerPresented:
-                            $isReactionPickerPresented,
-                        presentation: .inline,
-                        react: react
-                    )
-                    .id("reaction-picker-\(message.id)-inline")
+                        if model.canCreateReactions(on: message) {
+                            ReactionActionMenu(
+                                model: model,
+                                guildID: message.guildID,
+                                isPickerPresented:
+                                    $isReactionPickerPresented,
+                                presentation: .inline,
+                                react: react
+                            )
+                            .id("reaction-picker-\(message.id)-inline")
+                        }
                     }
                 )
+                .disabled(!model.canUpdateReactions(on: message))
             }
             if message.flags.contains(.ephemeral) {
                 HStack(spacing: InterfaceScale.metric(4)) {
@@ -326,16 +353,17 @@ struct NativeTimelineEditingMessageContent: View {
             }
             if message.outboxState == .failed {
                 Label(
-                    "Failed",
+                    MessageOutboxPresentation.failureText(for: message),
                     systemImage: "exclamationmark.circle"
                 )
+                .accessibilityLabel(MessageOutboxPresentation.accessibilityStatus(for: message))
                 .font(.interface(.caption2))
                 .foregroundStyle(.red)
             }
         }
         .accessibilityValue(
             MessageOutboxPresentation.accessibilityStatus(
-                for: message.outboxState
+                for: message
             )
         )
     }
@@ -359,13 +387,23 @@ enum MessageDeleteConfirmationPolicy {
     }
 }
 
+/// Holding Shift alone swaps the hover capsule's quick reactions for
+/// message utilities, as in Discord.
+enum MessageActionShiftPolicy {
+    static func isActive(_ modifierFlags: NSEvent.ModifierFlags) -> Bool {
+        modifierFlags.intersection([.shift, .command, .option, .control]) == .shift
+    }
+}
+
 struct MessageActionCapsule: View {
     let model: AppModel
     let message: Message
     let canEdit: Bool
     let canDelete: Bool
+    let canReact: Bool
+    let showsQuickReactions: Bool
+    let showsShiftActions: Bool
     @Binding var isReactionPickerPresented: Bool
-    @Binding var isDeleteConfirmationPresented: Bool
     let retry: (() -> Void)?
     let edit: () -> Void
     let reply: (() -> Void)?
@@ -373,21 +411,19 @@ struct MessageActionCapsule: View {
     let react: (String) -> Void
     let copy: () -> Void
     let copyLink: () -> Void
-    let openThread: (() -> Void)?
+    let copyMessageID: () -> Void
+    let markUnread: () -> Void
+    let togglePin: (() -> Void)?
+    let showMoreActions: () -> Void
     let delete: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+
+    private var reduceMotion: Bool { systemReduceMotion || !model.animates(.overlays) }
 
     var body: some View {
-        if isDeleteConfirmationPresented {
-            deleteConfirmation
-        } else {
-            actions
-        }
-    }
-
-    private var actions: some View {
-        HoverActionPill {
-            if message.outboxState == .failed {
-                if let retry {
+        if message.outboxState == .failed {
+            HoverActionPill {
+                if message.canRetrySending, let retry {
                     HoverActionButton(
                         systemImage: "arrow.clockwise",
                         help: "Retry send",
@@ -399,73 +435,136 @@ struct MessageActionCapsule: View {
                     help: "Copy text",
                     action: copy
                 )
-            } else {
-                ReactionActionMenu(
-                    model: model,
-                    guildID: message.guildID,
-                    isPickerPresented: $isReactionPickerPresented,
-                    react: react
-                )
-                .id("reaction-picker-\(message.id)-toolbar")
-                if let reply {
-                    HoverActionButton(systemImage: "arrowshape.turn.up.left", help: "Reply", action: reply)
-                }
-                if let forward {
-                    HoverActionButton(
-                        systemImage: "arrowshape.turn.up.right",
-                        help: "Forward",
-                        action: forward
-                    )
-                }
-                if canEdit {
-                    HoverActionButton(systemImage: "pencil", help: "Edit message", action: edit)
-                }
-                HoverActionButton(systemImage: "doc.on.doc", help: "Copy text", action: copy)
-                HoverActionButton(systemImage: "link", help: "Copy message link", action: copyLink)
-                if let openThread {
-                    HoverActionButton(
-                        systemImage: SakuraCordSystemSymbol.thread, help: "Open thread", action: openThread
-                    )
-                }
-                if canDelete {
-                    HoverActionButton(
-                        systemImage: "trash",
-                        help: "Delete message",
-                        role: .destructive
-                    ) {
-                        if MessageDeleteConfirmationPolicy.isBypassed(
-                            by: NSEvent.modifierFlags
-                        ) {
-                            delete()
-                        } else {
-                            isDeleteConfirmationPresented = true
-                        }
+            }
+        } else {
+            // The leading section carries its own trailing spacing, so it
+            // stays in place while empty without widening the pill.
+            HoverActionPill(spacing: 0) {
+                leadingActions
+                HStack(spacing: HoverActionPillMetrics.spacing) {
+                    if canReact {
+                        ReactionActionMenu(
+                            model: model,
+                            guildID: message.guildID,
+                            isPickerPresented: $isReactionPickerPresented,
+                            react: react
+                        )
+                        .id("reaction-picker-\(message.id)-toolbar")
                     }
+                    if let reply {
+                        HoverActionButton(systemImage: "arrowshape.turn.up.left", help: "Reply", action: reply)
+                    }
+                    if canEdit {
+                        HoverActionButton(systemImage: "pencil", help: "Edit message", action: edit)
+                    }
+                    if let forward {
+                        HoverActionButton(
+                            systemImage: "arrowshape.turn.up.right",
+                            help: "Forward",
+                            action: forward
+                        )
+                    }
+                    trailingAction
                 }
             }
+            .animation(reduceMotion ? .easeInOut(duration: 0.15) : .smooth(duration: 0.3), value: showsShiftActions)
         }
     }
 
-    private var deleteConfirmation: some View {
-        HoverActionPill {
-            Text("Delete message?")
-                .font(.interface(.caption).weight(.semibold))
-                .padding(.horizontal, InterfaceScale.metric(4))
-            HoverActionButton(
-                systemImage: "xmark",
-                help: "Cancel deletion"
-            ) {
-                isDeleteConfirmationPresented = false
-            }
-            HoverActionButton(
-                systemImage: "trash.fill",
-                help: "Delete message",
-                role: .destructive
-            ) {
-                isDeleteConfirmationPresented = false
-                delete()
+    /// Quick reactions slide up and out as the Shift utilities rise from
+    /// below; releasing Shift plays the same motion in reverse.
+    private var leadingActions: some View {
+        ZStack(alignment: .trailing) {
+            if showsShiftActions {
+                HStack(spacing: HoverActionPillMetrics.spacing) {
+                    HoverActionButton(systemImage: "number.square", help: "Copy Message ID", action: copyMessageID)
+                    HoverActionButton(systemImage: "link", help: "Copy Link", action: copyLink)
+                    HoverActionButton(systemImage: "envelope.badge", help: "Mark Unread", action: markUnread)
+                    if let togglePin {
+                        HoverActionButton(
+                            systemImage: message.isPinned ? "pin.slash" : "pin",
+                            help: message.isPinned ? "Unpin Message" : "Pin Message",
+                            action: togglePin
+                        )
+                    }
+                }
+                .padding(.trailing, HoverActionPillMetrics.spacing)
+                .transition(variantTransition(isShift: true))
+            } else if showsQuickReactions {
+                HStack(spacing: HoverActionPillMetrics.spacing) {
+                    QuickReactionSection(model: model, message: message, react: react)
+                }
+                .padding(.trailing, HoverActionPillMetrics.spacing)
+                .transition(variantTransition(isShift: false))
             }
         }
+        .clipped()
+    }
+
+    /// Shift turns More into Delete. Shift is held when it is clicked, so
+    /// deletion skips confirmation as it does from the context menu.
+    private var trailingAction: some View {
+        ZStack {
+            if showsShiftActions, canDelete {
+                HoverActionButton(systemImage: "trash", help: "Delete message", role: .destructive, action: delete)
+                    .transition(variantTransition(isShift: true))
+            } else {
+                HoverActionButton(systemImage: "ellipsis", help: "More", action: showMoreActions)
+                    .transition(variantTransition(isShift: false))
+            }
+        }
+        .clipped()
+    }
+
+    private func variantTransition(isShift: Bool) -> AnyTransition {
+        reduceMotion ? .opacity : .move(edge: isShift ? .bottom : .top).combined(with: .opacity)
+    }
+}
+
+/// Its own view so that only this section tracks the model state it reads.
+private struct QuickReactionSection: View {
+    let model: AppModel
+    let message: Message
+    let react: (String) -> Void
+
+    var body: some View {
+        let quickReactions = model.quickReactions(for: message)
+        if !quickReactions.isEmpty {
+            ForEach(quickReactions) { reaction in
+                QuickReactionButton(reaction: reaction, customEmojiURLsByID: model.customEmojiURLsByID) {
+                    react(reaction.token)
+                }
+            }
+            // One load per section; on ForEach it would run per emoji.
+            HoverActionPillDivider()
+                .task { await model.loadDiscordEmojiSettings() }
+        }
+    }
+}
+
+private struct QuickReactionButton: View {
+    let reaction: QuickReaction
+    let customEmojiURLsByID: CustomEmojiImageURLs
+    let action: () -> Void
+
+    var body: some View {
+        let token = Reaction(emoji: reaction.token, count: 0)
+        Button(action: action) {
+            HoverActionControlLabel(diameter: HoverActionPillMetrics.controlDiameter) {
+                MessageReactionEmoji(
+                    reaction: token,
+                    url: MessageReactionPresentation.emojiURL(for: token, customEmojiURLsByID: customEmojiURLsByID),
+                    size: InterfaceScale.metric(18)
+                )
+            }
+        }
+        .buttonStyle(.plain)
+        // Discord marks an applied quick reaction only in its tooltip and
+        // label; clicking it removes that reaction.
+        .help(":\(reaction.name):\n\(reaction.isApplied ? "Click to remove" : "Click to react")")
+        .accessibilityLabel(
+            reaction.isApplied ? "Click to remove \(reaction.name)" : "Click to react with \(reaction.name)"
+        )
     }
 }
 
@@ -495,8 +594,14 @@ private struct ReactionActionMenu: View {
             } label: {
                 SakuraCordSystemSymbol.emojiFaceGrinningImage
                     .symbolVariant(.none)
-                    .font(.interface(.callout).weight(.medium))
+                    .font(.system(
+                        size: InterfaceScale.fontSize(
+                            NSFont.preferredFont(forTextStyle: .callout).pointSize + 2
+                        ),
+                        weight: .medium
+                    ))
                     .foregroundStyle(.primary)
+                    .opacity(presentation == .inline ? 0.8 : 1)
                     .frame(width: width, height: height)
                     .contentShape(
                         ConcentricRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -768,6 +873,7 @@ struct InlineMessageEditorComposerActions {
 private struct InlineMessageEditor: View {
     let model: AppModel
     @Binding var text: String
+    let canEdit: Bool
     let save: () -> Void
     let cancel: () -> Void
     @State private var selection: NSRange?
@@ -805,6 +911,7 @@ private struct InlineMessageEditor: View {
                 selection: $selection,
                 isFocused: $isFocused
             )
+                .disabled(!canEdit)
                 .padding(InterfaceScale.metric(9))
                 .background(
                     Color.primary.opacity(0.065),
@@ -819,7 +926,7 @@ private struct InlineMessageEditor: View {
                 .accessibilityHint("Press Return to save, Shift-Return for a new line, or Escape to cancel.")
                 .onExitCommand(perform: cancel)
             InlineMessageEditFooter(
-                canSave: MessageEditInputPolicy.submission(from: text) != nil,
+                canSave: canEdit && MessageEditInputPolicy.submission(from: text) != nil,
                 save: save,
                 cancel: cancel
             )
@@ -835,7 +942,7 @@ private struct InlineMessageEditor: View {
     }
 
     private var context: ColonAutocompleteContext? {
-        isAutocompleteDismissed ? nil : ColonAutocompleteContext(text: text, selection: selection)
+        !canEdit || isAutocompleteDismissed ? nil : ColonAutocompleteContext(text: text, selection: selection)
     }
 
     private var suggestions: [ColonAutocompleteSuggestion] {
@@ -957,7 +1064,9 @@ struct MessageProfilePopoverContent: View {
                presentation.member.id == userID,
                presentation.requestID == requestID
             {
-                ProfilePresentationContent(presentation: presentation, openProfile: model.expandProfile)
+                ProfilePresentationContent(presentation: presentation, openProfile: model.expandProfile, userMenu: {
+                    UserContextMenu.make(for: presentation.member.user, context: .init(guildID: presentation.guildID), model: model)
+                }, sendMessage: model.sendProfileMessage)
                     .environment(\.profileCosmeticPolicy, model.cosmeticPolicy)
                     .environment(\.serverTagCardModel, model)
             } else {

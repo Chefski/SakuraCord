@@ -9,10 +9,17 @@ nonisolated struct AboutVersionInformation: Equatable, Sendable {
             infoDictionary["CFBundleShortVersionString"],
             allowsSpaces: false
         )
-        displayVersion = Self.sanitizedBundleValue(
+        let releaseDisplay = Self.sanitizedBundleValue(
             infoDictionary["SakuraCordReleaseDisplayVersion"],
             allowsSpaces: true
         ) ?? semanticVersion
+        if infoDictionary["SakuraCordPullRequestBuildID"] != nil,
+           let number = infoDictionary["SakuraCordPullRequestNumber"] as? Int,
+           let sha = Self.sanitizedBundleValue(infoDictionary["SakuraCordBuildHeadSHA"], allowsSpaces: false) {
+            displayVersion = "\(releaseDisplay ?? "Development") PR \(number) \(sha.prefix(7))"
+        } else {
+            displayVersion = releaseDisplay
+        }
     }
 
     init(bundle: Bundle = .main) {

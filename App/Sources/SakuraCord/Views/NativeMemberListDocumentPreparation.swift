@@ -104,6 +104,8 @@ extension NativeMemberListCanvasView {
         contentHeight = document.contentHeight
         invalidateIntrinsicContentSize()
         preparedText = document.preparedText
+        sectionHeaderLines.removeAll(keepingCapacity: true)
+        fittedTextLines.removeAll(keepingCapacity: true)
         memberNameGeometries.removeAll(keepingCapacity: true)
         reconcileServerTagCardPresentation()
         window?.invalidateCursorRects(for: self)
@@ -205,7 +207,7 @@ extension NativeMemberListCanvasView {
         itemIndexesByID.reserveCapacity(items.count)
         var origins: [CGFloat] = []
         origins.reserveCapacity(items.count)
-        var cursorY = NativeMemberListMetrics.verticalInset
+        var cursorY: CGFloat = 0
         for index in items.indices {
             if cancelsCooperatively,
                index.isMultiple(of: 128),
@@ -605,23 +607,26 @@ extension NativeMemberListCanvasView {
             }
             let item = items[index]
             guard case .member(let member, _) = item else { continue }
-            let nameFont = nameFont(for: member)
             if preparationSnapshot?.presentation == presentation,
                let previousIndex = preparationSnapshot?.itemIndexesByID[item.id],
                let previousItems = preparationSnapshot?.items,
                previousItems.indices.contains(previousIndex),
                previousItems[previousIndex] == item,
                let existing = preparationSnapshot?.preparedText[item.id],
-               existing.nameFont == nameFont
+               member.user.displayNameStyle == nil || existing.nameFont == nameFont(for: member)
             {
                 preparedText[item.id] = existing
                 continue
             }
+            let nameFont = nameFont(for: member)
             let nameColor = presentation.roleColorDisplay == .inNames
                 ? MessageAuthorPresentation.topRoleColor(in: member.roles)
                     .map(Self.color(hex:)) ?? labelColor
                 : labelColor
-            let alpha: CGFloat = !member.isListedOnline ? 0.55 : 1
+            let alpha = presentation.opacity(for: member)
+            let activityColor = presentation.activityTextPrimaryOpacity.map {
+                labelColor.withAlphaComponent(alpha * $0)
+            } ?? Self.memberActivityColor.withAlphaComponent(alpha)
             let name = Self.line(
                 member.user.displayName,
                 font: nameFont,
@@ -632,7 +637,7 @@ extension NativeMemberListCanvasView {
                 return NativeMemberActivityPresentation.line(
                     text,
                     font: activityFont,
-                    color: Self.memberActivityColor.withAlphaComponent(alpha),
+                    color: activityColor,
                     showsMusicIcon: member.isListeningToMusic,
                     showsMusicSeparator: member.memberListShowsMusicSeparator
                 )
@@ -641,7 +646,7 @@ extension NativeMemberListCanvasView {
                 Self.line(
                     "…",
                     font: activityFont,
-                    color: Self.memberActivityColor.withAlphaComponent(alpha)
+                    color: activityColor
                 )
             }
             preparedText[item.id] = PreparedText(

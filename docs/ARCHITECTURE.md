@@ -21,6 +21,11 @@ For commands, use [Development](DEVELOPMENT.md). For wire behaviour, use the
 Views consume domain state and invoke owners. They do not construct Discord
 requests, open authenticated transports, or import DaveKit directly.
 
+The App package keeps its implementation and resources in the `SakuraCord`
+library target. The `SakuraCordLauncher` executable target calls its launch entry
+point and produces the `SakuraCord` executable. App tests import the same library,
+so building the executable and tests does not compile a second copy of the app.
+
 ## Find the owner
 
 Start at these files and follow their neighbouring extensions. This is an entry
@@ -30,13 +35,21 @@ are mapped in [Testing](TESTING.md#choose-the-verification-boundary).
 | Work | App model / state | Provider or service | Presentation |
 | --- | --- | --- | --- |
 | Send, retry, drafts | [MessageComposerState.swift](../App/Sources/SakuraCord/Models/MessageComposerState.swift); [AppModelOutgoing.swift](../App/Sources/SakuraCord/Models/AppModelOutgoing.swift) | [DiscordRESTProvider.swift](../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordRESTProvider.swift) | [ComposerView.swift](../App/Sources/SakuraCord/Views/ComposerView.swift) |
-| History and rendering | [AppModelHistory.swift](../App/Sources/SakuraCord/Models/AppModelHistory.swift) | [History provider](../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordRESTProviderMessageHistory.swift); [MessageRendering](../Packages/MessageRendering/Sources) | [NativeMessageTimelineView.swift](../App/Sources/SakuraCord/Views/NativeMessageTimelineView.swift) |
+| History and rendering | [AppModelHistory.swift](../App/Sources/SakuraCord/Models/AppModelHistory.swift); threads: [AppModelThreadHistory.swift](../App/Sources/SakuraCord/Models/AppModelThreadHistory.swift) | [History provider](../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordRESTProviderMessageHistory.swift); [MessageRendering](../Packages/MessageRendering/Sources) | [NativeMessageTimelineView.swift](../App/Sources/SakuraCord/Views/NativeMessageTimelineView.swift) |
 | Inbox and read state | [InboxState.swift](../App/Sources/SakuraCord/Models/InboxState.swift); [AccountReadStateModel.swift](../App/Sources/SakuraCord/Models/AccountReadStateModel.swift) | [DiscordRESTInbox.swift](../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordRESTInbox.swift) | [InboxPopoverView.swift](../App/Sources/SakuraCord/Views/InboxPopoverView.swift) |
+| Friends and relationships | [FriendsState.swift](../App/Sources/SakuraCord/Models/FriendsState.swift); [AppModelFriends.swift](../App/Sources/SakuraCord/Models/AppModelFriends.swift) | [DiscordRESTRelationships.swift](../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordRESTRelationships.swift) | [FriendsView.swift](../App/Sources/SakuraCord/Views/FriendsView.swift) |
 | Joining, onboarding, Guide | [AppModelOnboarding.swift](../App/Sources/SakuraCord/Models/AppModelOnboarding.swift); [AppModelGuildGuide.swift](../App/Sources/SakuraCord/Models/AppModelGuildGuide.swift) | [DiscordRESTOnboarding.swift](../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordRESTOnboarding.swift); [DiscordRESTGuildGuide.swift](../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordRESTGuildGuide.swift) | [GuildCustomizationView.swift](../App/Sources/SakuraCord/Views/GuildCustomizationView.swift) |
 | Profiles and account settings | [ProfileEditorState.swift](../App/Sources/SakuraCord/Models/Settings/ProfileEditorState.swift) | [DiscordRESTProfileSaving.swift](../Packages/DiscordProtocol/Sources/DiscordProtocol/DiscordRESTProfileSaving.swift) | [ProfilesSettingsPage.swift](../App/Sources/SakuraCord/Views/Settings/ProfilesSettingsPage.swift) |
 | Attachment preparation | [AppModelComposerAttachments.swift](../App/Sources/SakuraCord/Models/AppModelComposerAttachments.swift) | [MediaPipeline](../Packages/MediaPipeline/Sources) | [AttachmentSettingsSection.swift](../App/Sources/SakuraCord/Views/Settings/AttachmentSettingsSection.swift) |
 | Bug reports and suggestions | [IssueReportStore.swift](../App/Sources/SakuraCord/Models/IssueReportStore.swift); [AppModelIssueReports.swift](../App/Sources/SakuraCord/Models/AppModelIssueReports.swift) | [IssueReportHubClient.swift](../App/Sources/SakuraCord/Services/IssueReportHubClient.swift) (sakuracord.app); [report-service sign-in](protocol/SESSION.md#report-service-sign-in) | [IssueReportView.swift](../App/Sources/SakuraCord/Views/IssueReport/IssueReportView.swift) |
 | Voice and screen sharing | [AppModelVoice.swift](../App/Sources/SakuraCord/Models/AppModelVoice.swift); [AppModelScreenSharing.swift](../App/Sources/SakuraCord/Models/AppModelScreenSharing.swift) | [DiscordVoiceSession.swift](../Packages/MediaPipeline/Sources/MediaPipeline/DiscordVoiceSession.swift) | [ScreenShareWindowOverlay.swift](../App/Sources/SakuraCord/Views/ScreenShareWindowOverlay.swift) |
+
+Friends uses the existing native member canvas for visible-row drawing, media
+reuse and accessibility. `FriendsState` sorts hydrated relationships when their
+records change, applies presence deltas by identity, and caches each category's
+search projection. `FriendsProjection` adapts those rows to the canvas; the
+provider remains authoritative for relationship metadata and mutations. These
+caches and request-note reveal state are session-scoped.
 
 ## Runtime and account lifetime
 
@@ -61,6 +74,12 @@ logout and failed startup cancel old work and clear its presentation. Draft
 writes capture their original database and drain on teardown; clearing and
 restoring drafts use the same serialized queue. A restoration also checks the
 composer's edit revision so it cannot overwrite a newer edit or clear.
+
+Message search retains its query and results per guild, with all direct messages
+sharing one scope. Channel changes preserve that scope's search. Side-pane threads
+temporarily occupy the results pane; closing them reveals the retained search.
+Search requests publish to their originating scope, and account teardown clears
+every scope.
 
 `GuildOnboardingStore` owns in-memory choices, membership confirmation, Guide
 configuration and progress. `InboxState` owns frozen Inbox groups and loading;
@@ -164,6 +183,7 @@ not start network work merely because a row redraws.
 | Account credentials | `KeychainCredentialStore`; new credentials are saved only after authoritative `READY.user` validation. Debug-only local credential mode is described in [Development](DEVELOPMENT.md#local-credential-mode). |
 | Saved-account labels, avatar and preferred account | Local picker metadata in user defaults; not an authenticated workspace snapshot. |
 | Message drafts and explicitly created invite links | Account-scoped GRDB. Expired links are pruned and checked before reuse; neither restores permissions or membership. |
+| Reply ping choice | App-wide user defaults through `SettingsPreferenceStore`, shared by both composers and retained across account resets. Self-replies suppress the effective ping without changing the saved choice. Offline fixtures keep this choice in memory. |
 | Workspace, message history, members, read state, onboarding choices | Session memory; restored from the live provider, not disk. |
 | Unsaved emoji/reaction usage | Account-scoped user defaults until acknowledged by Discord; replayed over remote history and removed with the account. |
 | Unsaved account status pick | Account-scoped user defaults until saved, superseded or rejected; removed with the account. See [settings synchronization](protocol/SETTINGS.md#status-and-custom-status). |
@@ -171,6 +191,24 @@ not start network work merely because a row redraws.
 | Media cache | Disposable LRU; shares the configured storage budget with drafts, which reserve space first and are never automatically evicted. |
 | Report drafts and report-service session | Session memory; drafts are discarded once filed, and both are cleared when the account changes. Attachments use the existing upload-privacy preparation and are read when attached. |
 | Diagnostics | Bounded memory and optional/specific disk output. See the single [retention and redaction contract](protocol/SESSION.md#diagnostics). |
+
+Pull request builds select an isolated preferences suite and account-database
+folder from the PR number in their packaged build identity before opening either
+store. No regular database is copied or migrated in place; updates within a PR
+retain that PR’s settings and drafts, while different PRs stay separate.
+Returning to Regular or Nightly reopens the original stores. Invalid preview identity metadata still selects an isolated
+profile. Keychain credentials remain shared deliberately. An empty preview
+profile seeds saved-account picker metadata and the preferred account once,
+without copying credentials or writing subsequent changes back. Update-track and
+recovery preferences also stay outside the per-PR profile. Disposable media
+and derived caches remain shared.
+
+Before the first switch into a pull request build, `PRBuildRecovery` asks for a
+folder and saves a signature-validated Regular or Nightly app there, outside the
+bundle Sparkle replaces. The retained app and Finder recovery instructions work
+without launching the experimental executable. Further switches from a preview
+require that saved recovery app to remain intact. Recovery copies are never
+automatically deleted.
 
 Clear Local Activity drains pending writes before removing derived caches and
 learning history. Existing live identities remain available; clearing history
@@ -235,8 +273,18 @@ items, menus, alerts) keeps the system size.
 `WindowModalOverlay` supplies the shared custom modal host. Closing transitions
 retain input ownership until removal. Native sheets and anchored popovers keep
 their platform behaviour; event monitors must respect modal ownership.
-Threads, channel previews and Guide resources reuse the supplementary conversation
-pane and native timeline rather than creating another workspace shell.
+
+Side chats (threads and forum posts, thread creation, voice channel chat, Guide
+resources and Browse Channels previews) are one concept. AppModel's
+`sideConversations` is their single source of truth;
+[AppModelSideConversations.swift](../App/Sources/SakuraCord/Models/AppModelSideConversations.swift)
+owns opening, closing and mutual exclusion. A thread opens above a context side
+chat and returns to it when closed. `WorkspacePresentation` alone decides the
+workspace's primary content and trailing column for the views, toolbar,
+commands and file drops. Every pane uses `SideConversationPane` and the native
+timeline; kinds differ by `SideConversationCapabilities` and message store.
+Voice chat and previews present the selected channel's store; threads and Guide
+resources keep their own.
 
 Profile drafts belong to the editor; permissions, entitlement checks and
 confirmed values belong to the provider. MediaPipeline owns crop/encoding work.

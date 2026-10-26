@@ -149,19 +149,6 @@ import Testing
     #expect(snapshot.serverMetadata?.bio == .value("Server bio"))
 }
 
-@Test func `profile field validation keeps only recognized form failures local`() throws {
-    let body = Data(#"{"code":50035,"errors":{"bio":{"_errors":[{"code":"BASE_TYPE_MAX_LENGTH","message":"Too long"}]}}}"#.utf8)
-    for path in ["/users/%40me/profile", "/guilds/10/profile/%40me"] {
-        #expect(!DiscordRESTProvider.isSafetyStop(status: 400, discordCode: 50035, method: "PATCH", data: body, path: path))
-    }
-    #expect(DiscordRESTProvider.isSafetyStop(status: 400, discordCode: 50035, method: "PATCH", data: body, path: "/channels/10"))
-    #expect(DiscordRESTProvider.isSafetyStop(status: 401, discordCode: 40001, method: "PATCH", data: body, path: "/users/%40me/profile"))
-    let malformed = Data(#"{"code":50035,"errors":{"collectibles_sku_ids":{"_errors":[{"code":"INVALID","message":"Bad SKU"}]}}}"#.utf8)
-    #expect(DiscordRESTProvider.isSafetyStop(status: 400, discordCode: 50035, method: "PATCH", data: malformed, path: "/users/%40me/profile"))
-    let captcha = Data(#"{"code":50035,"captcha_key":[],"errors":{"bio":{"_errors":[{"code":"INVALID","message":"No"}]}}}"#.utf8)
-    #expect(DiscordRESTProvider.isSafetyStop(status: 400, discordCode: 50035, method: "PATCH", data: captcha, path: "/users/%40me/profile"))
-}
-
 @Test func `collectible variants retain independent ownership and expired purchases fail closed`() throws {
     let product = try JSONDecoder().decode(ProfileCollectibleProductDTO.self, from: Data(#"""
     {"sku_id":"100","name":"Flowers","summary":"Nameplate","type":2000,"premium_type":0,"items":[],

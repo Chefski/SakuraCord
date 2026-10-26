@@ -49,6 +49,7 @@ final class NativeTimelinePointerState {
         let codeBlock: NativeTimelineCodeBlockPointerTarget?
         let componentButton: NativeTimelineComponentButtonTarget?
         let forwardedSourceMessageID: MessageID?
+        let threadMessageID: MessageID?
         let footerAction: NativeTimelineFooterActionTarget?
         let serverTagMessageID: MessageID?
     }
@@ -64,6 +65,7 @@ final class NativeTimelinePointerState {
     var pressedCodeBlockCopyButton: NativeTimelineCodeBlockPointerTarget?
     var hoveredComponentButton: NativeTimelineComponentButtonTarget?
     var hoveredForwardedSourceMessageID: MessageID?
+    var hoveredThreadMessageID: MessageID?
     var hoveredFooterAction: NativeTimelineFooterActionTarget?
     var pressedComponentButton: NativeTimelineComponentButtonTarget?
     var visualPressedComponentButton: NativeTimelineComponentButtonTarget?
@@ -77,6 +79,7 @@ final class NativeTimelinePointerState {
     var textSelection: NativeTimelineTextSelection?
     var textSelectionGesture: NativeTimelineTextSelectionGesture?
     var didDragTextSelection = false
+    var didForceClickLookup = false
     var trackingArea: NSTrackingArea?
     var rowTrackingAreas: [NSTrackingArea] = []
     var reactionMouseMonitor: Any?
@@ -93,6 +96,7 @@ final class NativeTimelinePointerState {
             componentButton:
                 visualPressedComponentButton ?? hoveredComponentButton,
             forwardedSourceMessageID: hoveredForwardedSourceMessageID,
+            threadMessageID: hoveredThreadMessageID,
             footerAction: hoveredFooterAction,
             serverTagMessageID: hoveredServerTagMessageID
         )
@@ -107,6 +111,7 @@ final class NativeTimelinePointerState {
         pressedCodeBlockCopyButton = nil
         hoveredComponentButton = nil
         hoveredForwardedSourceMessageID = nil
+        hoveredThreadMessageID = nil
         hoveredFooterAction = nil
         pressedComponentButton = nil
         visualPressedComponentButton = nil
@@ -148,6 +153,7 @@ final class NativeTimelinePointerState {
             || pressedCodeBlockCopyButton != nil
             || hoveredComponentButton != nil
             || hoveredForwardedSourceMessageID != nil
+            || hoveredThreadMessageID != nil
             || hoveredFooterAction != nil
             || pressedComponentButton != nil
             || visualPressedComponentButton != nil
@@ -311,6 +317,11 @@ extension NativeTimelineCanvasView {
         set { pointer.hoveredForwardedSourceMessageID = newValue }
     }
 
+    var hoveredThreadMessageID: MessageID? {
+        get { pointer.hoveredThreadMessageID }
+        set { pointer.hoveredThreadMessageID = newValue }
+    }
+
     var hoveredFooterAction: NativeTimelineFooterActionTarget? {
         get { pointer.hoveredFooterAction }
         set { pointer.hoveredFooterAction = newValue }
@@ -343,7 +354,11 @@ extension NativeTimelineCanvasView {
 
     var pressedActivationTarget: NativeTimelinePointerActivationTarget? {
         get { pointer.pressedActivationTarget }
-        set { pointer.pressedActivationTarget = newValue }
+        set {
+            let old = pointer.pressedActivationTarget
+            pointer.pressedActivationTarget = newValue
+            invalidatePressedThreadCard(old, newValue)
+        }
     }
 
     var hoveredReaction: NativeTimelineReactionPointerTarget? {

@@ -6,6 +6,47 @@ import SwiftUI
 
 @MainActor
 extension NativeMemberListCanvasView {
+    struct SectionHeaderLineKey: Hashable {
+        let text: String
+        let font: NSFont
+        let color: NSColor
+    }
+
+    struct FittedTextLineKey: Hashable {
+        let source: ObjectIdentifier
+        let token: ObjectIdentifier
+        let width: CGFloat
+    }
+
+    struct FittedTextLine {
+        // Retain inputs so their identities cannot be reused while cached.
+        let source: CTLine
+        let token: CTLine
+        let result: CTLine
+    }
+
+    func cachedSectionHeaderLine(_ text: String, font: NSFont, color: NSColor) -> CTLine {
+        // Fresh dynamic providers can render the same color but compare unequal.
+        let color = color.usingColorSpace(.sRGB) ?? color
+        let key = SectionHeaderLineKey(text: text, font: font, color: color)
+        if let cached = sectionHeaderLines[key] { return cached }
+        let result = Self.line(text, font: font, color: color)
+        if sectionHeaderLines.count >= 128 { sectionHeaderLines.removeAll(keepingCapacity: true) }
+        sectionHeaderLines[key] = result
+        return result
+    }
+
+    func cachedFittedTextLine(_ line: CTLine, token: CTLine, maximumWidth: CGFloat) -> CTLine {
+        let key = FittedTextLineKey(
+            source: ObjectIdentifier(line), token: ObjectIdentifier(token), width: maximumWidth
+        )
+        if let cached = fittedTextLines[key] { return cached.result }
+        let result = Self.truncatedLine(line, token: token, maximumWidth: maximumWidth)
+        if fittedTextLines.count >= 512 { fittedTextLines.removeAll(keepingCapacity: true) }
+        fittedTextLines[key] = FittedTextLine(source: line, token: token, result: result)
+        return result
+    }
+
     nonisolated static func line(
         _ text: String,
         font: NSFont,

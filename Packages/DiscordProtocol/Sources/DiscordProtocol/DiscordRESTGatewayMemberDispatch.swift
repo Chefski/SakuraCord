@@ -57,6 +57,7 @@ extension DiscordRESTProvider {
             memberListID: update.id,
             restrictingTo: changedUserIDs
         )
+        let previousMembers = cachedMemberIndex(guildID: guildID)
         cachedMembers[guildID] = DiscordMemberStoreOrdering.merging(
             existing: cachedMembers[guildID] ?? [], updates: members
         )
@@ -68,6 +69,49 @@ extension DiscordRESTProvider {
                 guildID: guildID,
                 members: orderedMemberListMembers(guildID: guildID) ?? members,
                 groups: cachedMemberListGroups[guildID]?[update.id] ?? []
+            )
+        } else {
+            publishCurrentMemberTimeoutChange(previousMembers: previousMembers, guildID: guildID)
+        }
+        await resubscribeInvalidatedMemberListRanges(update, guildID: guildID)
+    }
+
+    /// INVALIDATE keeps the last rows of an accessible list, but Discord
+    /// also sends it for ranges that are still on screen (permission or
+    /// list-id changes). Every retained list with an overlapping range is
+    /// marked for refresh; the selected one is re-sent now so Discord answers
+    /// with a fresh SYNC, and the others are re-sent when selected again.
+    func resubscribeInvalidatedMemberListRanges(
+        _ update: GuildMemberListUpdateDTO,
+        guildID: GuildID
+    ) async {
+        let subscriptions = memberListSubscriptionsForRefresh(guildID: guildID, memberListID: update.id)
+        guard !subscriptions.isEmpty else { return }
+        let invalidatedOverlapsSubscription = update.ops.contains { operation in
+            guard operation.op == "INVALIDATE",
+                  let range = operation.range, range.count == 2,
+                  range[0] <= range[1]
+            else { return false }
+            let invalidated = range[0] ... range[1]
+            return subscriptions.contains { subscription in
+                subscription.ranges.contains { $0.overlaps(invalidated) }
+            }
+        }
+        guard invalidatedOverlapsSubscription else { return }
+        markMemberListForRefresh(guildID: guildID, memberListID: update.id)
+        guard guildID == pendingMemberGuildID,
+              update.id == selectedMemberListID[guildID]
+        else { return }
+        do {
+            // The serialized send satisfies only the refresh generation it
+            // captured. A known cooldown permits one deferred attempt.
+            try await enqueueGuildSubscription(
+                guildID: guildID, request: .refresh(memberListID: update.id, isDeferred: false)
+            )
+        } catch {
+            scheduleMemberListRefreshRetry(guildID: guildID)
+            gatewayLogger.error(
+                "Member-list resubscribe after INVALIDATE failed: \(error.localizedDescription, privacy: .public)"
             )
         }
     }
@@ -82,13 +126,15 @@ extension DiscordRESTProvider {
         else { return }
         let guildRoles = cachedGuildRoles[guildID] ?? []
         let guildRoleCatalog = GuildMemberRoleCatalog(guildRoles)
+        let previousMembers = cachedMemberIndex(guildID: guildID)
         let decodedMembers = chunk.members.compactMap {
             try? $0.domain(
                 currentUserID: currentUser?.id,
                 currentStatus: presenceStatus,
                 guildRoles: guildRoles,
                 guildRoleCatalog: guildRoleCatalog,
-                guildID: guildID
+                guildID: guildID,
+                previousCommunicationDisabledUntil: UserID($0.user.id).flatMap { previousMembers[$0]?.communicationDisabledUntil }
             )
         }
         let responseUserIDs = Set(decodedMembers.map(\.id)).union(
@@ -151,7 +197,6 @@ extension DiscordRESTProvider {
             _ = removeMemberSearchRequest(requestID: requestID)
             search.timeoutTask.cancel()
             let responseMembers = Array(search.members.prefix(search.maximumResults))
-            mergeResolvedMembers(responseMembers, guildID: guildID)
             let members = DiscordMemberStoreOrdering.searchResults(
                 in: cachedMembers[guildID] ?? [],
                 matching: responseMembers,
@@ -171,19 +216,17 @@ extension DiscordRESTProvider {
             let update = try? JSONValueDecoder().decode(
                 GatewayGuildMemberEventDTO.self, from: body
             ), let guildID = GuildID(update.guildID),
-            var member = try? update.member.domain(
+            let member = try? update.member.domain(
                 currentUserID: currentUser?.id,
                 currentStatus: presenceStatus,
                 guildRoles: cachedGuildRoles[guildID] ?? [],
-                guildID: guildID
+                guildID: guildID,
+                previousCommunicationDisabledUntil: UserID(update.member.user.id).flatMap {
+                    cachedMemberIndex(guildID: guildID)[$0]?.communicationDisabledUntil
+                }
             )
         else { return }
         let previousMember = cachedMembers[guildID]?.first { $0.id == member.id }
-        // An omitted timeout leaves the prior value intact; explicit null ends it.
-        if name == "GUILD_MEMBER_UPDATE", case let .object(fields) = body,
-           fields["communication_disabled_until"] == nil {
-            member.communicationDisabledUntil = previousMember?.communicationDisabledUntil
-        }
         let membershipAdded = quickSwitcherGuildMemberUserIDsByGuildID[guildID, default: []].insert(member.id).inserted
         let wasJoined = quickSwitcherJoinedMemberIDsByGuildID[guildID]?.contains(member.id) == true
         if update.member.joinedAt != nil, member.isPending != true {
@@ -246,6 +289,9 @@ extension DiscordRESTProvider {
         if update.guildID == nil {
             cachePrivatePresence(update)
             continuation?.yield(.privateMembersChanged(privateMembersInChannelOrder()))
+            if let userID = UserID(update.user.id) {
+                publishRelationshipPresences(complete: false, userIDs: [userID])
+            }
             return
         }
         guard let guildID = update.guildID.flatMap(GuildID.init),

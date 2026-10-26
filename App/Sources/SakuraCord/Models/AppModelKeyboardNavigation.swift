@@ -11,7 +11,8 @@ extension AppModel {
         // must not build an account-wide channel set on every menu update.
         conversationNavigationHistory.destination(direction: direction) { id in
             !hiddenChannelIDs.contains(id)
-                && (messagePresentationChannel(id) != nil || sidebarThread(id) != nil)
+                && (messagePresentationChannelsByID[id] != nil || visibleChannels.contains { $0.id == id }
+                    || openThread?.id == id || knownThreadIDs.contains(id))
         }
     }
 
@@ -20,21 +21,42 @@ extension AppModel {
     }
 
     func navigateShortcutServer(direction: Int) {
-        if let guildID = keyboardShortcutServerDestination(direction: direction) {
-            selectGuild(guildID)
+        switch keyboardShortcutServerDestination(direction: direction) {
+        case .directMessages: selectGuild(nil)
+        case .guild(let guildID): selectGuild(guildID)
+        case nil: break
         }
     }
 
-    func keyboardShortcutServerDestination(direction: Int) -> GuildID? {
-        let guildIDs = orderedNavigationGuildIDs
-        guard !guildIDs.isEmpty else { return nil }
-        let currentIndex = guildIDs.firstIndex { $0 == selectedGuildID }
-        let start = currentIndex ?? (direction > 0 ? -1 : 0)
-        let destination = guildIDs[(start + direction + guildIDs.count) % guildIDs.count]
-        return destination == selectedGuildID ? nil : destination
+    func keyboardShortcutServerDestination(direction: Int) -> ServerRailNavigationDestination? {
+        let destinations: [ServerRailNavigationDestination] = [.directMessages]
+            + orderedNavigationGuildIDs.map { .guild($0) }
+        let current = selectedGuildID.map { ServerRailNavigationDestination.guild($0) } ?? .directMessages
+        let start = destinations.firstIndex(of: current) ?? 0
+        let destination = destinations[(start + direction + destinations.count) % destinations.count]
+        return destination == current ? nil : destination
+    }
+
+    func keyboardShortcutDirectMessageDestination(direction: Int) -> DirectMessageSidebarSelection? {
+        let channels = DirectMessageInboxPolicy.conversations(in: visibleChannels, pinnedChannelIDs: pinnedDirectMessageIDs)
+            .filter { !hiddenChannelIDs.contains($0.id) && !checkingChannelIDs.contains($0.id) }
+        let destinations: [DirectMessageSidebarSelection] = [.friends] + channels.map { .channel($0.id) }
+        let current: DirectMessageSidebarSelection = isFriendsPresented ? .friends
+            : selectedChannelID.map { .channel($0) } ?? .friends
+        let start = destinations.firstIndex(of: current) ?? 0
+        let destination = destinations[(start + direction + destinations.count) % destinations.count]
+        return destination == current ? nil : destination
     }
 
     func navigateShortcutConversation(direction: Int, unreadOnly: Bool, mentionsOnly: Bool = false) {
+        if selectedGuildID == nil, !unreadOnly {
+            switch keyboardShortcutDirectMessageDestination(direction: direction) {
+            case .friends: openFriends()
+            case .channel(let channelID): navigate(to: channelID)
+            case nil: break
+            }
+            return
+        }
         if let channelID = keyboardShortcutConversationDestination(direction: direction, unreadOnly: unreadOnly, mentionsOnly: mentionsOnly) {
             navigate(to: channelID)
         }
@@ -71,43 +93,48 @@ extension AppModel {
     /// server's channels here repeats on observed workspace updates, including
     /// history pagination, and can block the main thread between scroll frames.
     func hasKeyboardShortcutConversationDestination(unreadOnly: Bool, mentionsOnly: Bool = false) -> Bool {
-        let selectedID = isThreadFullWidth ? openThread?.id : selectedChannelID
+        let selectedID = shortcutThreadIsFullWidth ? openThread?.id : selectedChannelID
         if !unreadOnly {
-            if visibleChannelGroups.contains(where: { group in
+            if selectedGuildID == nil {
+                return !isFriendsPresented || visibleChannels.contains { channel in
+                    (channel.kind == .directMessage || channel.kind == .groupDirectMessage)
+                        && !hiddenChannelIDs.contains(channel.id)
+                        && !checkingChannelIDs.contains(channel.id)
+                }
+            }
+            let groups = selectedChannelGroups(visibleChannelGroups, guildID: selectedGuildID)
+            if groups.contains(where: { group in
                 group.channels.contains { channel in
                     channel.guildID == selectedGuildID && channel.id != selectedID
                         && !hiddenChannelIDs.contains(channel.id)
                         && !checkingChannelIDs.contains(channel.id)
                 }
             }) { return true }
-            return sidebarThreadLayout(guildID: selectedGuildID, channelGroups: visibleChannelGroups, now: .now)
-                .threadsByParentID.values.contains { rows in rows.contains { $0.id != selectedID } }
+            return sidebarThreadLayout(guildID: selectedGuildID, channelGroups: groups, now: .now)
+                .threadsByParentID.values.contains { rows in
+                    rows.contains { $0.id != selectedID && !hiddenChannelIDs.contains($0.id) && !checkingChannelIDs.contains($0.id) }
+                }
         }
         let guildIDs = serverRailPresentation.navigationGuildIDs
         let hiddenIDs = hiddenChannelIDs
-        let entries = readState.entries
-        let channels = snapshot?.channels ?? []
-        let isCandidate: (AccountReadStateModel.Entry) -> Bool = { entry in
-            entry.channelID != selectedID && entry.isAccessible && entry.isUnread
-                && !hiddenIDs.contains(entry.channelID)
-                && (!mentionsOnly || entry.mentionCount > 0)
+        let channels = messagePresentationChannels
+        let isCandidate: (ChannelID) -> Bool = { channelID in
+            guard let entry = self.readState[unread: channelID] else { return false }
+            return channelID != selectedID && entry.isAccessible && entry.isUnread
+                && !hiddenIDs.contains(channelID)
+                && (!mentionsOnly || entry.hasMentions)
                 && (entry.guildID.map { guildIDs.contains($0) } ?? true)
         }
-        let isDestination: (Channel) -> Bool = { channel in
-            guard let entry = entries[channel.id], isCandidate(entry),
-                  channel.guildID.map({ guildIDs.contains($0) }) ?? true
-            else { return false }
-            return self.readState.unread(channelID: channel.id)
+        let isDestination: (ChannelID) -> Bool = { channelID in
+            isCandidate(channelID) && self.readState.unread(channelID: channelID)
         }
-        for thread in snapshot?.activeJoinedThreads ?? [] {
-            guard let entry = entries[thread.id], isCandidate(entry),
+        for thread in activeJoinedThreads {
+            guard isCandidate(thread.id),
                   readState.unread(channelID: thread.id),
-                  let parent = channels.first(where: { $0.id == thread.parentID }),
-                  !hiddenIDs.contains(parent.id) else { continue }
-            let layout = sidebarThreadLayout(
-                guildID: thread.guildID, channelGroups: ChannelGroup.make(from: [parent]), now: .now
-            )
-            if layout.threadsByParentID[parent.id]?.contains(where: { $0.id == thread.id }) == true {
+                  let parentID = thread.parentID, messagePresentationChannelsByID[parentID] != nil,
+                  let parent = readState.channelByID[parentID],
+                  !hiddenIDs.contains(parentID) else { continue }
+            if thread.guildID != nil, !thread.isArchived, SidebarThreadPolicy.listsThreads(under: parent.kind) {
                 return true
             }
         }
@@ -119,13 +146,11 @@ extension AppModel {
             ? shortcutMentionNavigationCandidateIndex
             : shortcutUnreadNavigationCandidateIndex
         if let previousIndex, channels.indices.contains(previousIndex),
-           isDestination(channels[previousIndex])
+           isDestination(channels[previousIndex].id)
         {
             return true
         }
-        let candidateIndex = entries.values.contains(where: isCandidate)
-            ? channels.firstIndex(where: isDestination)
-            : nil
+        let candidateIndex = channels.firstIndex { isDestination($0.id) }
         if mentionsOnly {
             shortcutMentionNavigationCandidateIndex = candidateIndex
         } else {
@@ -134,8 +159,12 @@ extension AppModel {
         return candidateIndex != nil
     }
 
-    private func shortcutChannelsWithThreads(groups: [ChannelGroup], guildID: GuildID?) -> [Channel] {
-        let layout = sidebarThreadLayout(guildID: guildID, channelGroups: groups, now: .now)
+    private func shortcutChannelsWithThreads(groups: [ChannelGroup], guildID: GuildID?, filterSelection: Bool = false) -> [Channel] {
+        let selectedGroups = filterSelection ? channelSelectionGroups(groups, guildID: guildID) : groups
+        let layout = sidebarThreadLayout(guildID: guildID, channelGroups: selectedGroups, now: .now)
+        let groups = filterSelection
+            ? selectedChannelGroups(selectedGroups, guildID: guildID, threadsByParentID: layout.threadsByParentID)
+            : selectedGroups
         return groups.flatMap(\.channels).filter { $0.guildID == guildID }.flatMap { channel in
             [channel] + (layout.threadsByParentID[channel.id] ?? []).map { threadNavigationChannel($0.thread) }
         }
@@ -143,12 +172,18 @@ extension AppModel {
 
     private func shortcutConversationChannels(acrossServers: Bool) -> [Channel] {
         guard acrossServers else {
-            return shortcutChannelsWithThreads(groups: visibleChannelGroups, guildID: selectedGuildID)
+            if selectedGuildID == nil {
+                return DirectMessageInboxPolicy.conversations(in: visibleChannels, pinnedChannelIDs: pinnedDirectMessageIDs)
+            }
+            return shortcutChannelsWithThreads(groups: visibleChannelGroups, guildID: selectedGuildID, filterSelection: true)
         }
         let channelsByGuild = Dictionary(grouping: snapshot?.channels ?? [], by: \.guildID)
         let scopes: [GuildID?] = [nil] + orderedNavigationGuildIDs.map { $0 }
         return scopes.flatMap { guildID in
-            shortcutChannelsWithThreads(
+            if guildID == nil {
+                return DirectMessageInboxPolicy.conversations(in: channelsByGuild[nil] ?? [], pinnedChannelIDs: pinnedDirectMessageIDs)
+            }
+            return shortcutChannelsWithThreads(
                 groups: ChannelGroup.make(from: channelsByGuild[guildID] ?? []), guildID: guildID
             )
         }

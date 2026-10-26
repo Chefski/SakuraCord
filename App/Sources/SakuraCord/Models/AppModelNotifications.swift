@@ -26,6 +26,10 @@ extension AppModel {
         readState.isChannelMuted(channel)
     }
 
+    func usesAllMessagesUnreadSetting(_ channel: Channel) -> Bool {
+        readState[channel.id].map(readState.usesAllMessagesUnreadSetting(for:)) ?? false
+    }
+
     func inheritedChannelNotificationLevel(
         for channel: Channel
     ) -> MessageNotificationLevel {
@@ -50,10 +54,6 @@ extension AppModel {
             || guildAcknowledgementTasks[guildID] != nil
     }
 
-    func isForumPostUnread(_ post: ForumPost) -> Bool {
-        readState.entries[post.id]?.isUnread ?? post.isUnread
-    }
-
     func isForumNotificationMutationPending(_ postID: ChannelID) -> Bool {
         forumNotificationMutationTasks[postID] != nil
     }
@@ -62,9 +62,7 @@ extension AppModel {
         _ post: ForumPost
     ) -> MessageNotificationLevel {
         guard let parentID = post.thread.parentID,
-              let parent =
-              snapshot?.channels.first(where: { $0.id == parentID })
-                ?? visibleChannels.first(where: { $0.id == parentID })
+              let parent = messagePresentationChannel(parentID)
         else { return .onlyMentions }
         if let configured = channelNotificationOverride(for: parent)?
             .messageNotifications,
@@ -75,22 +73,25 @@ extension AppModel {
         return inheritedChannelNotificationLevel(for: parent)
     }
 
-    func isForumPostNew(_ post: ForumPost) -> Bool {
-        readState.isNewForumPost(post)
-    }
-
     func shouldEmphasizeForumPost(_ post: ForumPost) -> Bool {
-        isForumPostUnread(post) || readState.isUnopenedForumPost(post)
+        readState.isForumPostUnread(channelID: post.id) == true
     }
 
-    func forumUnreadMessageCount(_ post: ForumPost) -> Int {
-        guard isForumPostUnread(post) else { return 0 }
-        return readState.unreadMessageCount(channelID: post.id)
+    /// Discord's card footer counts new replies only in an unread post the
+    /// account has opened, never more than its replies, so an unread starter
+    /// alone shows zero.
+    func forumUnreadMessageCount(_ post: ForumPost) -> Int? {
+        guard shouldEmphasizeForumPost(post),
+              readState[post.id]?.trackedAcknowledgedMessageID != nil
+        else { return nil }
+        return min(readState.unreadMessageCount(channelID: post.id), max(0, post.thread.messageCount))
     }
 
     func deliverNativeNotification(for message: Message, isMention: Bool = false) {
         // Keep synthetic performance events away from Notification Center's XPC queue.
-        guard !runsChatPerformanceBenchmark else { return }
+        guard !runsChatPerformanceBenchmark, currentStatus != .dnd, !isMessageSuppressed(message) else { return }
+        // A call announces itself by ringing, not with a banner for its message.
+        guard message.type != .call else { return }
         let channel = snapshot?.channels.first { $0.id == message.channelID }
             ?? visibleChannels.first { $0.id == message.channelID }
         guard let currentUserID = snapshot?.currentUser.id else { return }
@@ -113,7 +114,9 @@ extension AppModel {
         let accountID = readState.accountID ?? "offline"
         let account = accountSession()
         startAccountChildTask(account: account) { model, account in
-            guard model.isCurrentAccountSession(account), !Task.isCancelled else { return }
+            guard model.isCurrentAccountSession(account), !Task.isCancelled,
+                  model.currentStatus != .dnd, !model.isMessageSuppressed(message)
+            else { return }
             var presented = message
             presented.author = model.privateConversationUser(message.author, in: guildID)
             let presentation = NotificationContentPresentation.make(
@@ -170,49 +173,6 @@ extension AppModel {
         startAccountChildTask(account: account) { model, account in
             guard model.isCurrentAccountSession(account), !Task.isCancelled else { return }
             await model.notificationService.cancel(
-                accountID: accountID,
-                channelID: channelID
-            )
-        }
-    }
-
-    func deliverIncomingCallNotification(_ call: PrivateCall) {
-        guard !runsChatPerformanceBenchmark,
-              let currentUserID = snapshot?.currentUser.id
-        else { return }
-        guard notificationPreferences.allows(
-            .incomingCall,
-            isCurrentConversation: readState.isActivelyPresentedAtNewest(call.channelID)
-        ) else { return }
-        guard notificationPreferences.isEnabled, !applicationIsActive else { return }
-        let channel = snapshot?.channels.first { $0.id == call.channelID }
-            ?? visibleChannels.first { $0.id == call.channelID }
-        let callerID = call.ongoingRings.first { $0.recipientID == currentUserID }?.senderID
-        let caller = callerID.flatMap { id in
-            channel?.recipients.first { $0.id == id }
-                ?? snapshot?.members.first { $0.user.id == id }?.user
-        }
-        let accountID = readState.accountID ?? "offline"
-        let account = accountSession()
-        startAccountChildTask(account: account) { model, account in
-            guard model.isCurrentAccountSession(account), !Task.isCancelled else { return }
-            await model.notificationService.deliverIncomingCall(
-                call: call,
-                channel: channel,
-                caller: caller,
-                accountID: accountID,
-                preferences: model.notificationPreferences
-            )
-        }
-    }
-
-    func cancelIncomingCallNotification(channelID: ChannelID) {
-        guard !runsChatPerformanceBenchmark else { return }
-        let accountID = readState.accountID ?? "offline"
-        let account = accountSession()
-        startAccountChildTask(account: account) { model, account in
-            guard model.isCurrentAccountSession(account), !Task.isCancelled else { return }
-            await model.notificationService.cancelIncomingCall(
                 accountID: accountID,
                 channelID: channelID
             )

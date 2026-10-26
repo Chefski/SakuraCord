@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "tagName": "v0.1.7-Beta-1",
+  "githubDescription": "SakuraCord v0.1.7 Beta 1 fixes a crash introduced in v0.1.6 that could occur while a server member list was open with server tags enabled.\n\n## Member list stability\n\n- Fixed a crash when server tags scrolled out of view in the member list. Server tags can remain enabled; disabling them in Accessibility is no longer needed as a workaround.\n\n**Full Changelog:** [v0.1.6...v0.1.7-Beta-1](https://github.com/SakuraCordApp/SakuraCord/compare/v0.1.6...v0.1.7-Beta-1)",
+  "discordAnnouncement": "**Server-tag crash fix 🌙**\n\nFixed a crash when server tags scrolled out of view in the member list. You can leave server tags enabled—disabling them in Accessibility is no longer needed as a workaround."
+}

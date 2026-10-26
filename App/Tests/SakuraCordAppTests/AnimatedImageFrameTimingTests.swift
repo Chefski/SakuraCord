@@ -772,9 +772,10 @@ func `animated image canvas pauses or resets without discarding frames`()
 }
 
 @Test func `bounded frames preserve source loops effect gaps and completion`() {
+    let schedule = AnimatedImageFrameSchedule(durations: [0.25, 0.5, 0.25])
     func frame(_ elapsed: Double, loops: Bool = true, active: Double? = nil, delay: Double = 0, count: Int? = nil) -> Int? {
-        AnimatedImageFrameSchedule.frameIndex(
-            elapsed: elapsed, durations: [0.25, 0.5, 0.25],
+        schedule.frameIndex(
+            elapsed: elapsed,
             playCount: count, isLooping: loops, activeDuration: active, loopDelay: delay
         )
     }

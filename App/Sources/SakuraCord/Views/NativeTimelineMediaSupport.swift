@@ -40,8 +40,10 @@ struct NativeTimelineMediaKey: Hashable {
     let fallbackURL: URL?
     let maximumPixelDimension: Int
 
+    static let avatarPixelDimension = 96
+
     static func avatar(_ url: URL) -> Self {
-        Self(url: url, fallbackURL: nil, maximumPixelDimension: 96)
+        Self(url: url, fallbackURL: nil, maximumPixelDimension: avatarPixelDimension)
     }
 
     static func avatarDecoration(_ url: URL) -> Self {

@@ -32,14 +32,17 @@ func `timeline layout preparation commits a complete update or discards supersed
         onUserScrollBegan: {}, onUserScrollEnded: { _ in }
     )
     let coordinator = timeline.makeCoordinator()
-    let scrollView = coordinator.makeScrollView()
-    defer { coordinator.stopObserving() }
-    scrollView.frame = CGRect(x: 0, y: 0, width: 820, height: 300)
-    scrollView.tile()
-    scrollView.layoutSubtreeIfNeeded()
+    // Keep the viewport fixed while preparation yields. The coordinator enables
+    // the vertical scroller even without a document view; a default legacy
+    // scroller can then shrink the clip width during the await. Match production's
+    // overlay scrollers so that AppKit tiling cannot invalidate this fixture.
+    let viewport = CGRect(x: 0, y: 0, width: 820, height: 300)
+    let scrollView = NSScrollView(frame: viewport)
+    scrollView.scrollerStyle = .overlay
+    let canvas = NativeTimelineCanvasView(frame: viewport)
+    coordinator.canvas = canvas
+    defer { withExtendedLifetime(canvas) { coordinator.stopObserving() } }
     coordinator.update(parent: timeline, scrollView: scrollView)
-    coordinator.reconcileViewportGeometryForTesting()
-    let canvas = try #require(coordinator.canvas)
     canvas.suppressesHoverPresentation = true
 
     if changesPresentation {
@@ -49,6 +52,10 @@ func `timeline layout preparation commits a complete update or discards supersed
     }
     coordinator.update(parent: timeline, scrollView: scrollView)
     let preparation = try #require(coordinator.layoutPreparationTask)
+    let preparedState = try #require(coordinator.layoutPreparation)
+    // Service pending scroller layout before the preparation task runs.
+    scrollView.tile()
+    #expect(scrollView.contentView.bounds.width.rounded() == preparedState.width)
     #expect(coordinator.messageIDs == original.map(\.id))
 
     if replacesDuringPreparation {
@@ -63,6 +70,7 @@ func `timeline layout preparation commits a complete update or discards supersed
         await preparation.value
         #expect(coordinator.layoutPreparationTask == nil)
         #expect(coordinator.messageIDs == messages.map(\.id))
+        #expect(preparedState.isComplete)
         #expect(coordinator.recentLayoutCacheHits == (changesPresentation ? coordinator.items.count : 64))
         #expect(coordinator.items.count == coordinator.layouts.count)
         #expect(coordinator.layouts.count == coordinator.rowHeights.count)
@@ -106,7 +114,7 @@ func `timeline server tags own their activation and reject stale identity layout
     defer { coordinator.stopObserving() }
     coordinator.layoutWidth = 560
     coordinator.presentationRevision = timeline.presentationRevision
-    let layout = NativeTimelineRowLayout.make(item: item, width: 560, model: model)
+    let layout = NativeTimelineRowLayout.make(item: item, width: 560, source: model)
     coordinator.cacheItemLayout(item, layout: layout)
     #expect(coordinator.cachedItemLayout(for: item, width: 560, presentationRevision: timeline.presentationRevision) != nil)
 

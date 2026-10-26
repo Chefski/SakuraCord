@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import SakuraCordModels
 
 nonisolated enum AppColorScheme: String, CaseIterable, Hashable, Identifiable, Sendable {
     case system
@@ -119,7 +120,7 @@ nonisolated struct AppearanceSettingsSnapshot: Equatable, Sendable {
     static let defaults = Self(
         colorScheme: .system,
         composerBarAppearance: .defaultStyle,
-        messageAppearance: .defaultStyle,
+        serverMessageAppearance: .defaultStyle,
         messageSpacing: defaultMessageSpacing
     )
 
@@ -128,8 +129,18 @@ nonisolated struct AppearanceSettingsSnapshot: Equatable, Sendable {
     var windowOpacity: Double = defaultWindowOpacity
     var colorScheme: AppColorScheme
     var composerBarAppearance: ComposerBarAppearance
-    var messageAppearance: MessageAppearance
+    var directMessageAppearance: MessageAppearance = .defaultStyle
+    var groupMessageAppearance: MessageAppearance = .defaultStyle
+    var serverMessageAppearance: MessageAppearance
     var messageSpacing: Double
+
+    func messageAppearance(for kind: ChannelKindValue?) -> MessageAppearance {
+        switch kind {
+        case .directMessage: directMessageAppearance
+        case .groupDirectMessage: groupMessageAppearance
+        default: serverMessageAppearance
+        }
+    }
 
     mutating func normalize() {
         windowOpacity = Self.normalizedWindowOpacity(windowOpacity)
@@ -173,11 +184,9 @@ final class AppearanceSettingsStore {
         } else {
             appearance = .defaultStyle
         }
-        let messageAppearance: MessageAppearance
-        if case let .string(rawValue) = preferences.value(for: .messageAppearance) {
-            messageAppearance = MessageAppearance(rawValue: rawValue) ?? .defaultStyle
-        } else {
-            messageAppearance = .defaultStyle
+        func messageAppearance(_ id: SettingsControlID) -> MessageAppearance {
+            guard case let .string(rawValue) = preferences.value(for: id) else { return .defaultStyle }
+            return MessageAppearance(rawValue: rawValue) ?? .defaultStyle
         }
         let messageSpacing: Double
         if case let .double(value) = preferences.value(for: .messageDensity) {
@@ -188,7 +197,9 @@ final class AppearanceSettingsStore {
         var value = AppearanceSettingsSnapshot(
             colorScheme: colorScheme,
             composerBarAppearance: appearance,
-            messageAppearance: messageAppearance,
+            directMessageAppearance: messageAppearance(.directMessageAppearance),
+            groupMessageAppearance: messageAppearance(.groupMessageAppearance),
+            serverMessageAppearance: messageAppearance(.messageAppearance),
             messageSpacing: messageSpacing
         )
         if case let .string(stored) = preferences.value(for: .composerIcons) {
@@ -219,9 +230,11 @@ final class AppearanceSettingsStore {
             for: .composerBarAppearance
         )
         preferences.set(
-            .string(value.messageAppearance.rawValue),
+            .string(value.serverMessageAppearance.rawValue),
             for: .messageAppearance
         )
+        preferences.set(.string(value.directMessageAppearance.rawValue), for: .directMessageAppearance)
+        preferences.set(.string(value.groupMessageAppearance.rawValue), for: .groupMessageAppearance)
         preferences.set(
             .double(AppearanceSettingsSnapshot.normalizedMessageSpacing(
                 value.messageSpacing
@@ -237,6 +250,18 @@ final class AppearanceSettingsStore {
 
 @MainActor
 extension AppModel {
+    func messageAppearance(for channelID: ChannelID) -> MessageAppearance {
+        if appearanceSettings.directMessageAppearance == appearanceSettings.serverMessageAppearance,
+           appearanceSettings.groupMessageAppearance == appearanceSettings.serverMessageAppearance {
+            return appearanceSettings.serverMessageAppearance
+        }
+        // Most rows belong to the selected channel; avoid searching the workspace for each one.
+        let channel = selectedChannel?.id == channelID
+            ? selectedChannel
+            : messagePresentationChannelsByID[channelID]
+        return appearanceSettings.messageAppearance(for: channel?.kind)
+    }
+
     func applyAppearanceSettings(
         _ value: AppearanceSettingsSnapshot,
         persists: Bool = true
@@ -245,7 +270,9 @@ extension AppModel {
         value.normalize()
         let colorSchemeChanged = appearanceSettings.colorScheme != value.colorScheme
         let messagePresentationChanged =
-            appearanceSettings.messageAppearance != value.messageAppearance
+            appearanceSettings.serverMessageAppearance != value.serverMessageAppearance
+                || appearanceSettings.directMessageAppearance != value.directMessageAppearance
+                || appearanceSettings.groupMessageAppearance != value.groupMessageAppearance
                 || appearanceSettings.messageSpacing != value.messageSpacing
                 || appearanceSettings.interfaceSize != value.interfaceSize
         if colorSchemeChanged {

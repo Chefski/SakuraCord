@@ -7,9 +7,9 @@ source "$ROOT_DIR/script/runtime.sh"
 
 MODE="${1:-all}"
 case "$MODE" in
-  all|checks|packages|app) ;;
+  all|checks|packages|packages-core|protocol|media|app) ;;
   *)
-    echo "usage: $0 [all|checks|packages|app]" >&2
+    echo "usage: $0 [all|checks|packages|packages-core|protocol|media|app]" >&2
     exit 2
     ;;
 esac
@@ -27,7 +27,10 @@ run_checks() {
   "$ROOT_DIR/script/test_debug_credentials_config.sh"
   python3 "$ROOT_DIR/script/test_run_test_diagnostics.py"
   node --test "$ROOT_DIR/script/release_automation.test.mjs"
+  node --test "$ROOT_DIR/script/release_hotfix.test.mjs"
   node --test "$ROOT_DIR/script/ci_reuse.test.mjs"
+  node --test "$ROOT_DIR/script/pr_builds.test.mjs"
+  python3 "$ROOT_DIR/script/test_pr_build_archive.py"
   node --test "$ROOT_DIR/script/update_appcast_display_version.test.mjs"
   "$ROOT_DIR/script/test_release_tag_guard.sh"
 
@@ -49,9 +52,18 @@ case "$MODE" in
     run_checks
     exit 0
     ;;
-  packages)
+  packages|packages-core)
     run_checks
-    "$ROOT_DIR/script/test.sh" packages
+    "$ROOT_DIR/script/test.sh" "$MODE"
+    exit 0
+    ;;
+  protocol)
+    "$ROOT_DIR/script/test.sh" protocol
+    exit 0
+    ;;
+  media)
+    "$ROOT_DIR/script/test.sh" dave
+    "$ROOT_DIR/script/test.sh" media
     exit 0
     ;;
   app)

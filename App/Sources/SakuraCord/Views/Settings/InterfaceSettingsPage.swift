@@ -1,3 +1,4 @@
+import SakuraCordModels
 import SwiftUI
 
 struct InterfaceSettingsPage: View {
@@ -11,8 +12,6 @@ struct InterfaceSettingsPage: View {
             InterfaceSizeSection(value: $appearanceValue.interfaceSize, state: state)
             InterfaceMessagesSection(
                 value: $appearanceValue,
-                interface: value,
-                accessibility: model.accessibilitySettings,
                 reset: resetMessageAppearance,
                 state: state
             )
@@ -36,7 +35,9 @@ struct InterfaceSettingsPage: View {
     }
 
     private func resetMessageAppearance() {
-        appearanceValue.messageAppearance = .defaultStyle
+        appearanceValue.serverMessageAppearance = .defaultStyle
+        appearanceValue.directMessageAppearance = .defaultStyle
+        appearanceValue.groupMessageAppearance = .defaultStyle
         appearanceValue.messageSpacing =
             AppearanceSettingsSnapshot.defaultMessageSpacing
     }
@@ -122,32 +123,29 @@ private struct InterfaceSizeSection: View {
 
 private struct InterfaceMessagesSection: View {
     @Binding var value: AppearanceSettingsSnapshot
-    let interface: InterfaceSettingsSnapshot
-    let accessibility: AccessibilitySettingsSnapshot
     let reset: () -> Void
     let state: SettingsViewState
 
     private var isUsingDefaults: Bool {
-        value.messageAppearance
-            == AppearanceSettingsSnapshot.defaults.messageAppearance
+        value.serverMessageAppearance == .defaultStyle
+            && value.directMessageAppearance == .defaultStyle
+            && value.groupMessageAppearance == .defaultStyle
             && value.messageSpacing
                 == AppearanceSettingsSnapshot.defaults.messageSpacing
     }
 
     var body: some View {
         Section {
-            LabeledContent("Messages") {
-                Picker("Messages", selection: $value.messageAppearance) {
-                    ForEach(MessageAppearance.allCases) { appearance in
-                        Text(appearance.title).tag(appearance)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.radioGroup)
-                .horizontalRadioGroupLayout()
-                .tint(SakuraCordAccentColor.color)
-            }
-            .settingsControlAnchor(.messageAppearance, state: state)
+            appearancePicker(
+                LocalizedStringResource("Direct messages", bundle: #bundle),
+                selection: $value.directMessageAppearance,
+                showsIncomingIdentity: false
+            )
+                .settingsControlAnchor(.directMessageAppearance, state: state)
+            appearancePicker(LocalizedStringResource("Group chats", bundle: #bundle), selection: $value.groupMessageAppearance)
+                .settingsControlAnchor(.groupMessageAppearance, state: state)
+            appearancePicker(LocalizedStringResource("Server channels", bundle: #bundle), selection: $value.serverMessageAppearance)
+                .settingsControlAnchor(.messageAppearance, state: state)
 
             LabeledContent("Density") {
                 HStack {
@@ -168,16 +166,25 @@ private struct InterfaceMessagesSection: View {
             )
             .settingsControlAnchor(.messageDensity, state: state)
 
-            MessageAppearancePreview(
-                appearance: value, interface: interface,
-                accessibility: accessibility
-            )
-
             Button("Reset to Defaults", action: reset)
                 .disabled(isUsingDefaults)
                 .settingsControlAnchor(.resetMessageAppearance, state: state)
         } header: {
             Text("Messages", bundle: #bundle)
+        }
+    }
+
+    private func appearancePicker(
+        _ title: LocalizedStringResource,
+        selection: Binding<MessageAppearance>,
+        showsIncomingIdentity: Bool = true
+    ) -> some View {
+        LabeledContent {
+            MessageAppearancePicker(selection: selection, showsIncomingIdentity: showsIncomingIdentity)
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel(Text(title))
+        } label: {
+            Text(title)
         }
     }
 }

@@ -40,7 +40,7 @@ nonisolated enum SettingsImportValidation {
         case .launchDestination: return SettingsLaunchDestination(rawValue: raw) != nil
         case .appColorScheme: return AppColorScheme(rawValue: raw) != nil
         case .composerBarAppearance: return ComposerBarAppearance(rawValue: raw) != nil
-        case .messageAppearance: return MessageAppearance(rawValue: raw) != nil
+        case .messageAppearance, .directMessageAppearance, .groupMessageAppearance: return MessageAppearance(rawValue: raw) != nil
         case .timestampFormat: return InterfaceTimestampFormat(rawValue: raw) != nil
         case .roleColorDisplay: return RoleColorDisplay(rawValue: raw) != nil
         case .emojiSkinTone: return NativeEmojiSkinTone(rawValue: raw) != nil

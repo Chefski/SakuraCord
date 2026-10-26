@@ -60,12 +60,13 @@ extension NativeTimelineCanvasView {
 
     func accessibilityMessageActions(
         _ row: MessageRowPresentation,
-        rowFrame: CGRect,
         rowIndex: Int
     ) -> [NSAccessibilityCustomAction] {
         let message = row.message
         guard MessageOutboxPresentation.interactionMode(for: message).allowsMessageContextMenu else { return [] }
-        let canEdit = !message.hasPoll && message.author.id == model?.snapshot?.currentUser.id
+        let canEdit = !message.hasPoll && !message.flags.contains(.voiceMessage)
+            && message.author.id == model?.currentUser?.id
+            && model?.guildTimeoutUntil(in: message.channelID, guildID: message.guildID) == nil
             && MessageReplyPresentationPolicy.allowsReplyAction(for: message)
         let canDelete = model?.canDeleteMessage(message) == true
         if messageInteractionContext != .conversation {
@@ -73,12 +74,12 @@ extension NativeTimelineCanvasView {
         }
         var result: [NSAccessibilityCustomAction] = []
         if message.outboxState == .failed {
-            result.append(NSAccessibilityCustomAction(
-                name: "Retry Send"
-            ) { [weak self] in
-                self?.actions?.retry(message)
-                return self != nil
-            })
+            if message.canRetrySending {
+                result.append(NSAccessibilityCustomAction(name: "Retry Send") { [weak self] in
+                    self?.actions?.retry(message)
+                    return self != nil
+                })
+            }
             result.append(NSAccessibilityCustomAction(
                 name: "Copy Text"
             ) {
@@ -87,11 +88,12 @@ extension NativeTimelineCanvasView {
             })
             return result
         }
-        result.append(accessibilityReactionAction(
-            for: message,
-            rowFrame: rowFrame
-        ))
-        if MessageReplyPresentationPolicy.allowsReplyAction(for: message),
+        if model?.canCreateReactions(on: message) == true { result.append(accessibilityReactionAction(for: message)) }
+        result.append(NSAccessibilityCustomAction(name: "View Reactions") { [weak self] in
+            self?.showMessageReactions(message) ?? false
+        })
+        if model?.guildTimeoutUntil(in: message.channelID, guildID: message.guildID) == nil,
+           MessageReplyPresentationPolicy.allowsReplyAction(for: message),
            let reply = actions?.reply
         {
             result.append(NSAccessibilityCustomAction(name: "Reply") {
@@ -111,7 +113,7 @@ extension NativeTimelineCanvasView {
             self?.actions?.markUnread(message)
             return self != nil
         })
-        if message.outboxState == .confirmed, message.author.id == model?.snapshot?.currentUser.id, message.poll?.isClosed() == false {
+        if message.outboxState == .confirmed, message.author.id == model?.currentUser?.id, message.poll?.isClosed() == false {
             result.append(NSAccessibilityCustomAction(name: "End Poll Now") { [weak self] in
                 self?.requestEndPoll(message)
                 return self != nil
@@ -163,21 +165,11 @@ extension NativeTimelineCanvasView {
     }
 
     private func accessibilityReactionAction(
-        for message: Message,
-        rowFrame: CGRect
+        for message: Message
     ) -> NSAccessibilityCustomAction {
         NSAccessibilityCustomAction(name: "Add Reaction") { [weak self] in
             guard let self else { return false }
-            self.showReactionPicker(
-                for: message,
-                anchor: CGRect(
-                    x: rowFrame.maxX - InterfaceScale.metric(32),
-                    y: rowFrame.minY,
-                    width: InterfaceScale.metric(28),
-                    height: InterfaceScale.metric(28)
-                ),
-                preferredEdge: .minY
-            )
+            self.showReactionPicker(forMessageRow: message)
             return true
         }
     }
@@ -251,7 +243,8 @@ extension NativeTimelineCanvasView {
         if message.type.hasGeneratedContent {
             return SystemMessagePresentation.label(
                 for: message,
-                currentUserID: model?.snapshot?.currentUser.id
+                currentUserID: model?.currentUser?.id,
+                recipient: model?.systemMessageRecipient(for: message)
             )
         }
         if message.flags.contains(.isComponentsV2) {

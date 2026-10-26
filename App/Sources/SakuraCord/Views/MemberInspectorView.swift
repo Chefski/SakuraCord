@@ -68,7 +68,9 @@ struct MemberInspectorView: View {
     let viewportIdentity: ChannelID?
     let updateViewport: (ClosedRange<Int>) -> Void
     var openProfile: ((ProfilePresentationState) -> Void)?
-    var nicknameActions: (Member) -> [NicknameMenuAction] = { _ in [] }
+    var sendProfileMessage: ((UserID, String, String) async -> Bool)?
+    var userMenu: (Member) -> NSMenu? = { _ in nil }
+    var userAccessibilityActions: (Member) -> [NSAccessibilityCustomAction] = { _ in [] }
     var presentation = NativeMemberListPresentation()
 
     init(
@@ -81,7 +83,9 @@ struct MemberInspectorView: View {
         viewportIdentity: ChannelID? = nil,
         presentation: NativeMemberListPresentation = .init(),
         openProfile: ((ProfilePresentationState) -> Void)? = nil,
-        nicknameActions: @escaping (Member) -> [NicknameMenuAction] = { _ in [] },
+        sendProfileMessage: ((UserID, String, String) async -> Bool)? = nil,
+        userMenu: @escaping (Member) -> NSMenu? = { _ in nil },
+        userAccessibilityActions: @escaping (Member) -> [NSAccessibilityCustomAction] = { _ in [] },
         updateViewport: @escaping (ClosedRange<Int>) -> Void = { _ in }
     ) {
         self.sections = sections
@@ -94,7 +98,9 @@ struct MemberInspectorView: View {
         self.presentation = presentation
         self.updateViewport = updateViewport
         self.openProfile = openProfile
-        self.nicknameActions = nicknameActions
+        self.sendProfileMessage = sendProfileMessage
+        self.userMenu = userMenu
+        self.userAccessibilityActions = userAccessibilityActions
     }
 
     var body: some View {
@@ -110,8 +116,11 @@ struct MemberInspectorView: View {
             presentation: presentation,
             onViewportRange: updateViewport,
             openProfile: openProfile,
-            nicknameActions: nicknameActions
+            sendProfileMessage: sendProfileMessage,
+            rowMenu: userMenu,
+            rowAccessibilityActions: userAccessibilityActions
         )
+        .ignoresSafeArea(.container, edges: .top)
     }
 }
 
@@ -481,8 +490,8 @@ struct MemberRow: View {
                 }
             }
             .frame(height: InterfaceScale.metric(44))
-            .padding(.vertical, 1)
             .clipShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(9), style: .continuous))
+            .padding(.vertical, 1)
             .contentShape(ConcentricRectangle(cornerRadius: InterfaceScale.metric(9), style: .continuous))
         }
         .buttonStyle(.plain)
@@ -498,10 +507,11 @@ struct MemberRow: View {
 struct MemberAvatar: View {
     let member: Member
     var isHovered = false
+    var showsPresence = true
 
     var body: some View {
         AvatarPresenceView(
-            status: member.memberListStatus,
+            status: showsPresence ? member.memberListStatus : nil,
             avatarSize: InterfaceScale.metric(34),
             indicatorSize: InterfaceScale.metric(11),
             isMobile: member.showsMobileIndicator

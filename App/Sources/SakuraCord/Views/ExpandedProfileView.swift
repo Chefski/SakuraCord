@@ -14,8 +14,25 @@ struct ExpandedProfileView: View {
     }
 
     var body: some View {
+        Group {
+            if let reason = model.profileSuppression(presentation) {
+                SuppressedProfileGate(model: model, presentation: presentation, reason: reason, layout: .expanded)
+                    .overlay(alignment: .topTrailing) {
+                        HoverCloseButton(help: "Close Profile", accessibilityIdentifier: "expanded-profile-close") { modal?() }
+                            .padding(InterfaceScale.metric(10))
+                    }
+            } else {
+                expandedContent
+            }
+        }
+        .windowModalSize(width: 820, height: 720)
+    }
+
+    private var expandedContent: some View {
         ProfileExpandedSurface(profile: presentation.profile, profileContent: {
-            ProfilePresentationContent(presentation: presentation, layout: .expanded, maximumPopoverHeight: InterfaceScale.metric(720))
+            ProfilePresentationContent(presentation: presentation, layout: .expanded, maximumPopoverHeight: InterfaceScale.metric(720), userMenu: {
+                UserContextMenu.make(for: presentation.member.user, context: .init(guildID: presentation.guildID, ignoreLocation: .profile), model: model)
+            })
         }, widgets: {
             widgetBoard
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

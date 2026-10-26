@@ -39,7 +39,7 @@ struct SoftwareUpdateOverviewSection<Destination: Hashable>: View {
             .accessibilityHint("Shows the release notes included with SakuraCord.")
             .settingsControlAnchor(changelogControlID, state: state)
         } header: {
-            Text("Updates", bundle: #bundle)
+            Text("Updates · \(updateController.activeTrackTitle)")
         }
     }
 }

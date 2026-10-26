@@ -28,6 +28,14 @@ std::unique_ptr<IEncryptor> CreateEncryptor()
 void Encryptor::SetKeyRatchet(std::unique_ptr<IKeyRatchet> keyRatchet)
 {
     std::lock_guard<std::mutex> lock(keyGenMutex_);
+    // Protocol transitions may reinstall the current epoch/user key. Retain its
+    // nonce sequence: resetting it would reuse AES-GCM nonces and replay frames.
+    if (keyRatchet_ && keyRatchet) {
+        const auto domain = keyRatchet->GetDomainIdentity();
+        if (!domain.empty() && domain == keyRatchet_->GetDomainIdentity()) {
+            return;
+        }
+    }
     keyRatchet_ = std::move(keyRatchet);
     cryptor_ = nullptr;
     currentKeyGeneration_ = 0;

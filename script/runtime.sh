@@ -15,14 +15,38 @@ SAKURACORD_RUNTIME_LOADED=1
 
 SAKURACORD_ROOT_DIR="${SAKURACORD_ROOT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)}"
 SAKURACORD_PRODUCT_NAME="SakuraCord"
-SAKURACORD_APP_NAME="$SAKURACORD_PRODUCT_NAME"
-SAKURACORD_DISPLAY_NAME="$SAKURACORD_PRODUCT_NAME"
 SAKURACORD_BUNDLE_ID="dev.sakuracord.SakuraCord"
 SAKURACORD_PACKAGE_DIR="$SAKURACORD_ROOT_DIR/App"
 SAKURACORD_SCRATCH_DIR="$SAKURACORD_PACKAGE_DIR/.build"
 SAKURACORD_DIST_DIR="$SAKURACORD_ROOT_DIR/dist"
-SAKURACORD_APP_BUNDLE="$SAKURACORD_DIST_DIR/$SAKURACORD_APP_NAME.app"
-SAKURACORD_EXECUTABLE_PATH="$SAKURACORD_APP_BUNDLE/Contents/MacOS/$SAKURACORD_APP_NAME"
+
+# Selects the app name, bundle path, and icon for a build configuration
+# (debug|release) and release track (regular|nightly). Debug builds are
+# "SakuraCord Debug", nightly release builds are "SakuraCord Nightly", and
+# regular release builds keep the product name.
+sakuracord_select_app_variant() {
+  local configuration="$1"
+  local track="${2:-regular}"
+  if [[ "$configuration" == "debug" ]]; then
+    SAKURACORD_APP_VARIANT=debug
+    SAKURACORD_APP_NAME="$SAKURACORD_PRODUCT_NAME Debug"
+    SAKURACORD_APP_ICON_SOURCE="$SAKURACORD_PRODUCT_NAME Debug.icon"
+  elif [[ "$track" == "nightly" ]]; then
+    SAKURACORD_APP_VARIANT=nightly
+    SAKURACORD_APP_NAME="$SAKURACORD_PRODUCT_NAME Nightly"
+    SAKURACORD_APP_ICON_SOURCE="$SAKURACORD_PRODUCT_NAME Nightly.icon"
+  else
+    SAKURACORD_APP_VARIANT=release
+    SAKURACORD_APP_NAME="$SAKURACORD_PRODUCT_NAME"
+    SAKURACORD_APP_ICON_SOURCE="$SAKURACORD_PRODUCT_NAME.icon"
+  fi
+  SAKURACORD_DISPLAY_NAME="$SAKURACORD_APP_NAME"
+  SAKURACORD_APP_BUNDLE="$SAKURACORD_DIST_DIR/$SAKURACORD_APP_NAME.app"
+  SAKURACORD_EXECUTABLE_PATH="$SAKURACORD_APP_BUNDLE/Contents/MacOS/$SAKURACORD_APP_NAME"
+}
+# Development launches, Computer Use, and profiling target the debug build.
+sakuracord_select_app_variant debug
+
 SAKURACORD_RUNTIME_DIR="$SAKURACORD_ROOT_DIR/.codex-runtime"
 SAKURACORD_OPERATION_LOCK="$SAKURACORD_RUNTIME_DIR/operation.lock"
 SAKURACORD_SWIFTPM_CACHE_DIR="$SAKURACORD_RUNTIME_DIR/swiftpm-cache"

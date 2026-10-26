@@ -118,8 +118,11 @@ nonisolated enum NativeTimelineAccessibilityPresentation {
 
     static func threadLabel(_ thread: MessageThreadSummary) -> String {
         let replyCount = thread.messageCount
-        return "\(thread.name), \(replyCount) "
+        var label = "\(thread.name), \(replyCount) "
             + (replyCount == 1 ? "reply" : "replies")
+        if thread.isArchived { label += ", archived" }
+        if thread.isLocked { label += ", locked" }
+        return label
     }
 
     static func nonblank(_ value: String?) -> String? {
@@ -259,22 +262,79 @@ nonisolated enum NativeTimelineTransientRowGeometry {
 
 @MainActor
 final class NativeTimelineActionCapsuleState: ObservableObject {
-    @Published var isReactionPickerPresented = false {
-        didSet {
-            guard oldValue != isReactionPickerPresented else { return }
-            presentationDidChange?(isPresentationActive)
+    /// The hovered message; the canvas replaces it when the row changes so
+    /// reaction-dependent controls stay current while the capsule is shown.
+    @Published var message: Message
+
+    let controlCount: Int
+    let shiftActionCount: Int
+    let allowsQuickReactions: Bool
+    let isGuildTimedOut: Bool
+    @Published var showsQuickReactions = false
+    @Published private var fitsShiftActions = false
+    @Published var isShiftHeld = false
+    /// Pins the capsule's leading edge instead of its trailing edge, so a
+    /// variant change grows and shrinks the pill away from the clamped side.
+    @Published var pinsLeadingEdge = false
+
+    init(message: Message, controlCount: Int, shiftActionCount: Int, allowsQuickReactions: Bool, isGuildTimedOut: Bool) {
+        self.message = message
+        self.controlCount = controlCount
+        self.shiftActionCount = shiftActionCount
+        self.allowsQuickReactions = allowsQuickReactions
+        self.isGuildTimedOut = isGuildTimedOut
+    }
+
+    var showsShiftActions: Bool {
+        isShiftHeld && fitsShiftActions
+    }
+
+    private var quickReactionPillSize: CGSize {
+        HoverActionPillMetrics.size(
+            controlCount: controlCount + (showsQuickReactions ? QuickReactionPolicy.limit : 0),
+            dividerCount: showsQuickReactions ? 1 : 0
+        )
+    }
+
+    private var shiftPillSize: CGSize {
+        HoverActionPillMetrics.size(controlCount: controlCount + shiftActionCount)
+    }
+
+    var actionSize: CGSize {
+        showsShiftActions ? shiftPillSize : quickReactionPillSize
+    }
+
+    /// Sized for the widest variant, so switching variants animates the
+    /// pill inside a fixed host instead of resizing the host mid-animation.
+    var hostSize: CGSize {
+        let size = quickReactionPillSize
+        guard fitsShiftActions else { return size }
+        return CGSize(width: max(size.width, shiftPillSize.width), height: size.height)
+    }
+
+    func updateAvailableWidth(_ width: CGFloat) {
+        let usableWidth = width - InterfaceScale.metric(16)
+        let showsQuickReactions = allowsQuickReactions
+            && HoverActionPillMetrics.size(controlCount: controlCount + QuickReactionPolicy.limit, dividerCount: 1).width
+            <= usableWidth
+        if self.showsQuickReactions != showsQuickReactions {
+            self.showsQuickReactions = showsQuickReactions
+        }
+        let fitsShiftActions = shiftActionCount > 0 && shiftPillSize.width <= usableWidth
+        if self.fitsShiftActions != fitsShiftActions {
+            self.fitsShiftActions = fitsShiftActions
         }
     }
 
-    @Published var isDeleteConfirmationPresented = false {
+    @Published var isReactionPickerPresented = false {
         didSet {
-            guard oldValue != isDeleteConfirmationPresented else { return }
-            presentationDidChange?(isPresentationActive)
+            guard oldValue != isReactionPickerPresented else { return }
+            presentationDidChange?(isReactionPickerPresented)
         }
     }
 
     var isPresentationActive: Bool {
-        isReactionPickerPresented || isDeleteConfirmationPresented
+        isReactionPickerPresented
     }
 
     var presentationDidChange: ((Bool) -> Void)?
@@ -282,7 +342,6 @@ final class NativeTimelineActionCapsuleState: ObservableObject {
 
 struct NativeTimelineActionCapsuleOverlay: View {
     let model: AppModel
-    let message: Message
     let canEdit: Bool
     let canDelete: Bool
     @ObservedObject var state: NativeTimelineActionCapsuleState
@@ -296,7 +355,10 @@ struct NativeTimelineActionCapsuleOverlay: View {
     let react: (String) -> Void
     let copy: () -> Void
     let copyLink: () -> Void
-    let openThread: (() -> Void)?
+    let copyMessageID: () -> Void
+    let markUnread: () -> Void
+    let togglePin: (() -> Void)?
+    let showMoreActions: () -> Void
     let delete: () -> Void
 
     var body: some View {
@@ -327,12 +389,13 @@ struct NativeTimelineActionCapsuleOverlay: View {
             } else {
                 MessageActionCapsule(
                     model: model,
-                    message: message,
+                    message: state.message,
                     canEdit: canEdit,
                     canDelete: canDelete,
+                    canReact: state.allowsQuickReactions,
+                    showsQuickReactions: state.showsQuickReactions,
+                    showsShiftActions: state.showsShiftActions,
                     isReactionPickerPresented: $state.isReactionPickerPresented,
-                    isDeleteConfirmationPresented:
-                        $state.isDeleteConfirmationPresented,
                     retry: retry,
                     edit: edit,
                     reply: reply,
@@ -340,12 +403,22 @@ struct NativeTimelineActionCapsuleOverlay: View {
                     react: react,
                     copy: copy,
                     copyLink: copyLink,
-                    openThread: openThread,
+                    copyMessageID: copyMessageID,
+                    markUnread: markUnread,
+                    togglePin: togglePin,
+                    showMoreActions: showMoreActions,
                     delete: delete
                 )
             }
         }
         .fixedSize()
+        // The host fits the widest variant; keep the pill against the edge
+        // the canvas anchors so variant changes grow away from it.
+        .frame(
+            maxWidth: .infinity,
+            maxHeight: .infinity,
+            alignment: state.pinsLeadingEdge ? .leading : .trailing
+        )
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Message actions")
     }

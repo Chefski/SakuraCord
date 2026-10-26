@@ -26,16 +26,30 @@ enum ComposerAutocompleteCommand {
 final class ComposerDropInteractionState {
     private(set) var destination: MessageComposerDestination?
     private(set) var isInstant = false
+    /// Last time any file drop target saw the drag, read by the root view's
+    /// watchdog to spot sessions that ended without an exit callback.
+    @ObservationIgnored private(set) var lastDragActivity = ContinuousClock.now
 
     var isTargeted: Bool { destination != nil }
+
+    func noteDragActivity() {
+        lastDragActivity = .now
+    }
 
     func update(
         isTargeted: Bool,
         destination: MessageComposerDestination,
         isInstant: Bool
     ) {
+        if isTargeted { noteDragActivity() }
         self.destination = isTargeted ? destination : nil
         self.isInstant = isTargeted && isInstant
+    }
+
+    func reset() {
+        // `clear(destination:)` can't cover this: a drag that ends without exiting never names its destination.
+        destination = nil
+        isInstant = false
     }
 
     func clear(destination: MessageComposerDestination) {
@@ -69,7 +83,7 @@ nonisolated enum ComposerLatestMessageEditingPolicy {
     ) -> MessageID? {
         guard let currentUserID else { return nil }
         return messages.last(where: {
-            $0.author.id == currentUserID && !$0.hasPoll
+            $0.author.id == currentUserID && !$0.hasPoll && !$0.flags.contains(.voiceMessage)
         })?.id
     }
 }
@@ -82,7 +96,7 @@ extension ComposerView {
         }
         guard let messageID = ComposerLatestMessageEditingPolicy.messageID(
             in: messages,
-            currentUserID: model.snapshot?.currentUser.id
+            currentUserID: model.currentUser?.id
         ) else { return false }
         onEditMessage(messageID)
         return true
@@ -320,7 +334,7 @@ struct ComposerTextView: NSViewRepresentable {
         textView.onFirstResponderChange = { [weak coordinator = context.coordinator] in
             coordinator?.firstResponderDidChange($0)
         }
-        textView.isEditable = context.environment.isEnabled
+        textView.isEditable = context.environment.acceptsComposerInput
         textView.isSelectable = true
         textView.isRichText = true
         textView.importsGraphics = false
@@ -372,7 +386,7 @@ struct ComposerTextView: NSViewRepresentable {
         textView.canReceiveAttachments = { [weak coordinator = context.coordinator] in
             coordinator?.parent.canReceiveAttachments() ?? false
         }
-        textView.capturesUnfocusedTyping = capturesUnfocusedTyping && context.environment.isEnabled
+        textView.capturesUnfocusedTyping = capturesUnfocusedTyping && context.environment.acceptsComposerInput
         ComposerTextCheckingConfiguration.apply(generalInputSettings, to: textView)
 
         let scrollView = NSScrollView()
@@ -424,8 +438,8 @@ struct ComposerTextView: NSViewRepresentable {
             && conversationID == context.coordinator.parent.conversationID
         context.coordinator.parent = self
         sendTransitionAnchor?.textView = textView
-        textView.isEditable = context.environment.isEnabled
-        textView.capturesUnfocusedTyping = capturesUnfocusedTyping && context.environment.isEnabled
+        textView.isEditable = context.environment.acceptsComposerInput
+        textView.capturesUnfocusedTyping = capturesUnfocusedTyping && context.environment.acceptsComposerInput
         context.coordinator.updateCompositionState(from: textView, deferringNotification: true)
 
         textView.onReturn = { [weak coordinator = context.coordinator] event in
@@ -866,6 +880,10 @@ final class ComposerNSTextView: ComposerFocusReportingTextView {
         updateAttachmentDropTarget(sender)
     }
 
+    override func wantsPeriodicDraggingUpdates() -> Bool {
+        true
+    }
+
     override func draggingExited(_ sender: (any NSDraggingInfo)?) {
         onDropTargetChanged?(false, false)
     }
@@ -883,6 +901,10 @@ final class ComposerNSTextView: ComposerFocusReportingTextView {
     }
 
     override func concludeDragOperation(_ sender: (any NSDraggingInfo)?) {
+        onDropTargetChanged?(false, false)
+    }
+
+    override func draggingEnded(_ sender: any NSDraggingInfo) {
         onDropTargetChanged?(false, false)
     }
 
@@ -1393,4 +1415,11 @@ final class ComposerFocusSurfaceView: NSView {
     override func mouseDown(with _: NSEvent) {
         focus()
     }
+}
+
+private extension EnvironmentValues {
+    /// A composer in a pane leaving the workspace takes no text: its thread
+    /// has closed, and a picker closing with it can hand the editor focus
+    /// back.
+    var acceptsComposerInput: Bool { isEnabled && !isLeavingWorkspace }
 }

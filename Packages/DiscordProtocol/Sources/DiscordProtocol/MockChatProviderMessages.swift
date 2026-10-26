@@ -22,6 +22,11 @@ public extension MockChatProvider {
         anchoredAt anchor: MessageHistoryAnchor,
         limit: Int
     ) async throws -> MessagePage {
+#if SAKURACORD_MOTION_BENCHMARK
+        if motionThreadHistoryDelay > .zero, motionThreadIDs.contains(channelID) {
+            try await Task.sleep(for: motionThreadHistoryDelay)
+        }
+#endif
         guard
             snapshot.channels.contains(where: { $0.id == channelID })
             || messagesByChannel[channelID] != nil
@@ -222,7 +227,6 @@ public extension MockChatProvider {
         guard channel.kind != .voice, channel.kind != .forum, channel.kind != .unknown else {
             throw ChatProviderError.invalidRequest("Typing is unavailable in this demo channel.")
         }
-        typingRequests.append(channelID)
     }
 
     func send(_ draft: SendMessageDraft) async throws -> Message {
@@ -249,6 +253,12 @@ public extension MockChatProvider {
                 attachment.isSpoiler && !filename.hasPrefix("SPOILER_")
                     ? "SPOILER_\(filename)" : filename
             staged.description = attachment.description
+            if let voiceMessage = draft.voiceMessage {
+                staged.filename = VoiceMessageMetadata.filename
+                staged.mediaType = "audio/ogg"
+                staged.durationSeconds = voiceMessage.durationSeconds
+                staged.waveform = voiceMessage.waveform
+            }
             return staged
         }
         let replyPreview = draft.replyTo.flatMap { messageID in
@@ -256,7 +266,7 @@ public extension MockChatProvider {
                 MessageReplyPreview(message: $0)
             }
         }
-        let message = Message(
+        var message = Message(
             id: MessageID(rawValue: nextMessageID), channelID: draft.channelID, author: currentUser,
             content: draft.content, replyTo: draft.replyTo, replyPreview: replyPreview,
             attachments: attachments,
@@ -264,8 +274,12 @@ public extension MockChatProvider {
             stickers: draft.stickerIDs.map {
                 MessageSticker(id: $0, name: "Demo sticker", format: .png)
             },
+            mentionedUsers: draft.mentionsRepliedUser
+                ? replyPreview.map { [$0.author] } ?? []
+                : [],
             poll: draft.poll?.preview()
         )
+        if draft.voiceMessage != nil { message.flags.insert(.voiceMessage) }
         messagesByChannel[draft.channelID, default: []].append(message)
         continuation?.yield(.messageCreated(message))
         return message
@@ -513,9 +527,9 @@ public extension MockChatProvider {
         continuation?.yield(.messageUpdated(message))
     }
 
-    func pollVoters(messageID: MessageID, channelID: ChannelID, answerID: Int, after: UserID?, limit: Int) async throws -> PollVoterPage {
+    func pollVoters(messageID: MessageID, channelID: ChannelID, answerID: Int, after: UserID?, limit: Int) async throws -> MessagePeoplePage {
         let poll = messagesByChannel[channelID]?.first(where: { $0.id == messageID })?.poll
-        return PollVoterPage(users: after == nil && poll?.selectedAnswerIDs.contains(answerID) == true ? [currentUser] : [], hasMore: false)
+        return MessagePeoplePage(users: after == nil && poll?.selectedAnswerIDs.contains(answerID) == true ? [currentUser] : [], hasMore: false)
     }
 
     func endPoll(messageID: MessageID, channelID: ChannelID) async throws -> Message {

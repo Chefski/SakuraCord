@@ -6,7 +6,15 @@ if ! git rev-parse --verify --quiet "refs/tags/$release_tag" >/dev/null; then
   echo "Release tag $release_tag does not exist." >&2
   exit 1
 fi
-if [[ "$(git rev-parse HEAD)" != "$(git rev-parse "refs/tags/$release_tag^{commit}")" ]]; then
+hotfix_commit="${SAKURACORD_HOTFIX_COMMIT:-}"
+if [[ -n "$hotfix_commit" ]]; then
+  if [[ "$GITHUB_EVENT_NAME" != "workflow_dispatch" || ! "$hotfix_commit" =~ ^[0-9a-f]{40}$ \
+    || "$(git rev-parse HEAD)" != "$hotfix_commit" ]]; then
+    echo "Hotfixes require a manual dispatch and an exact checked-out commit SHA." >&2
+    exit 1
+  fi
+  git merge-base --is-ancestor "refs/tags/$release_tag^{commit}" "$hotfix_commit"
+elif [[ "$(git rev-parse HEAD)" != "$(git rev-parse "refs/tags/$release_tag^{commit}")" ]]; then
   echo "Checkout does not match the release tag commit." >&2
   exit 1
 fi
@@ -33,6 +41,10 @@ if ! git merge-base --is-ancestor \
     echo "Regular release tags must point to a commit already present on nightly." >&2
   fi
   exit 1
+fi
+if [[ -n "$hotfix_commit" ]]; then
+  git merge-base --is-ancestor "$hotfix_commit" refs/remotes/origin/nightly
+  node "$release_control_root/script/release_hotfix.mjs" preflight
 fi
 release_copy="$release_control_root/Releases/$release_tag.json"
 if [[ ! -f "$release_copy" ]]; then

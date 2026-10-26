@@ -4,10 +4,13 @@ nonisolated extension SettingsCatalog {
     static let privacySafetyPage = page(
         .privacySafety, group: .dataSecurity, title: "Privacy", image: "hand.raised",
         help: "Control local privacy, external links, and scoped data clearing.",
-        keywords: ["links", "security", "typing indicators", "clear data"]
+        keywords: ["links", "security", "typing indicators", "clear data", "ignore", "ignored accounts"]
     )
 
     static let privacySafetyControls: [SettingsControlMetadata] = [
+        control(.ignoredAccounts, page: .privacySafety, section: .privacyRelationships, label: "Ignored Accounts",
+                help: "Manage accounts you have ignored on Discord.", keywords: ["ignore", "unignore", "people", "relationships"],
+                owner: .appModel, scope: .discordSynchronized, persistence: .discordManaged, reset: .notApplicable),
         control(
             .removeMediaMetadata, page: .privacySafety,
             section: .privacyDiscordActivity, label: "Remove metadata from images and videos",

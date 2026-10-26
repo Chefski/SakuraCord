@@ -31,6 +31,31 @@ import Testing
 }
 
 @MainActor
+@Test(arguments: [1, 2])
+func `only legacy settings files expand global message appearance`(version: Int) throws {
+    let store = SettingsPreferenceStore(defaults: InMemoryPreferences())
+    var archive = SettingsArchive(values: [SettingsControlID.messageAppearance.rawValue: .string("bubbles")])
+    archive.version = version
+    let decoded = try SettingsArchive.decode(archive.encodedData())
+    let service = SettingsTransferService(preferences: store)
+    let report = service.importPreferences(decoded)
+    let restored = AppearanceSettingsStore(preferences: store).load()
+    #expect(!report.needsUpdate)
+    #expect(report.importedCount == (version == 1 ? 3 : 1))
+    #expect(restored.serverMessageAppearance == .bubbles)
+    #expect(restored.directMessageAppearance == (version == 1 ? .bubbles : .defaultStyle))
+    #expect(restored.groupMessageAppearance == (version == 1 ? .bubbles : .defaultStyle))
+
+    archive.values[SettingsControlID.directMessageAppearance.rawValue] = .string("default")
+    archive.values[SettingsControlID.groupMessageAppearance.rawValue] = .string("future-style")
+    let partialReport = service.importPreferences(archive)
+    let partial = AppearanceSettingsStore(preferences: store).load()
+    #expect(partialReport.unsupportedKeys == [SettingsControlID.groupMessageAppearance.rawValue])
+    #expect(partial.directMessageAppearance == .defaultStyle)
+    #expect(partial.groupMessageAppearance == restored.groupMessageAppearance)
+}
+
+@MainActor
 @Test func `future and malformed options do not block supported imports or overwrite existing settings`() throws {
     let defaults = InMemoryPreferences()
     defaults.set("private", forKey: "credential")

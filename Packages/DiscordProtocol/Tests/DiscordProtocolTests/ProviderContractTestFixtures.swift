@@ -40,6 +40,9 @@ private enum ReadyGatewayError: Error { case closed }
 actor ReadyGatewaySocket: GatewaySocket {
     private var queued: [GatewaySocketMessage] = []
     private var receiver: CheckedContinuation<GatewaySocketMessage, any Error>?
+    private var heldOpcode: Int?
+    private var heldSend: CheckedContinuation<Void, any Error>?
+    private var heldSendWaiter: CheckedContinuation<Void, Never>?
     private(set) var sentCount = 0
     private(set) var sentPayloads: [Data] = []
     private(set) var sentInstants: [ContinuousClock.Instant] = []
@@ -53,6 +56,30 @@ actor ReadyGatewaySocket: GatewaySocket {
         sentCount += 1
         sentPayloads.append(data)
         sentInstants.append(.now)
+        if let heldOpcode,
+           let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           (object["op"] as? NSNumber)?.intValue == heldOpcode {
+            self.heldOpcode = nil
+            try await withCheckedThrowingContinuation { continuation in
+                heldSend = continuation
+                heldSendWaiter?.resume()
+                heldSendWaiter = nil
+            }
+        }
+    }
+
+    func holdNextSend(opcode: Int) {
+        heldOpcode = opcode
+    }
+
+    func waitForHeldSend() async {
+        guard heldSend == nil else { return }
+        await withCheckedContinuation { heldSendWaiter = $0 }
+    }
+
+    func releaseHeldSend() {
+        heldSend?.resume()
+        heldSend = nil
     }
 
     func sentPayload(opcode: Int) -> Data? {
@@ -84,6 +111,10 @@ actor ReadyGatewaySocket: GatewaySocket {
     }
 
     func close(code: Int) async {
+        heldSend?.resume(throwing: ReadyGatewayError.closed)
+        heldSend = nil
+        heldSendWaiter?.resume()
+        heldSendWaiter = nil
         receiver?.resume(throwing: ReadyGatewayError.closed)
         receiver = nil
     }

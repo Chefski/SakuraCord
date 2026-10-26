@@ -77,6 +77,7 @@ public struct DiscordMessageType: RawRepresentable, Codable, Hashable, Sendable 
     public static let stageTopic = Self(rawValue: 31)
     public static let premiumReferral = Self(rawValue: 35)
     public static let pollResult = Self(rawValue: 46)
+    public static let friendRequestAccepted = Self(rawValue: 67)
 
     /// Exact set used by Discord desktop's current `FORWARDABLE` policy.
     public var isForwardable: Bool {
@@ -90,7 +91,7 @@ public struct DiscordMessageType: RawRepresentable, Codable, Hashable, Sendable 
 
     public var hasGeneratedContent: Bool {
         switch rawValue {
-        case 1 ... 12, 18, 22, 27 ... 31, 46:
+        case 1 ... 12, 18, 22, 27 ... 31, 46, 67:
             true
         default:
             false
@@ -678,8 +679,12 @@ public enum MessageSendProgress: Equatable, Sendable {
 
 public extension Message {
     /// The thread this message shows a card for: the thread it started, or
-    /// the thread a thread-created system message announces.
+    /// the thread a thread-created system message announces. A started thread
+    /// shares the message's ID, and Discord's starter `MESSAGE_UPDATE` carries
+    /// only the has-thread flag.
     var referencedThreadID: ChannelID? {
-        thread?.id ?? (type == .threadCreated ? messageReference?.channelID : nil)
+        if let thread { return thread.id }
+        if type == .threadCreated { return messageReference?.channelID }
+        return flags.contains(.hasThread) ? ChannelID(rawValue: id.rawValue) : nil
     }
 }

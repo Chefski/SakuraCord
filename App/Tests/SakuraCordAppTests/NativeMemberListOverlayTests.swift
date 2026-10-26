@@ -217,6 +217,39 @@ func `cancelled member document preparation stops cooperatively`() async {
     #expect(await task.value == nil)
 }
 
+@Test @MainActor
+func `member list cursor rebuild handles server tags outside the viewport`() throws {
+    var taggedMember = member(id: 1, name: "Tagged")
+    taggedMember.user.primaryGuild = PrimaryGuildIdentity(guildID: GuildID(rawValue: 42), tag: "TEST")
+    let model = AppModel(launchMode: .offlineTesting)
+    let canvas = NativeMemberListCanvasView(frame: CGRect(x: 0, y: 0, width: 300, height: 600))
+    let scrollView = NSScrollView(frame: CGRect(x: 0, y: 0, width: 300, height: 100))
+    scrollView.documentView = canvas
+    canvas.serverTagCardModel = model
+    canvas.updateDocumentIfNeeded(sections: [
+        MemberSection(id: .online, title: "Online", colorHex: nil, totalCount: 1, members: [taggedMember]),
+    ])
+    defer { canvas.tearDown() }
+
+    let index = try #require(canvas.itemIndexesByID[.member(taggedMember.id)])
+    let tagFrame = try #require(canvas.serverTagFrame(at: index))
+    #expect(canvas.canActivateServerTag(at: index))
+    withExtendedLifetime(model) {
+        // The row remains visible even when its tag is wholly above the viewport.
+        // Rebuilding cursors must also handle an edge touch and a partly visible tag.
+        for top in [tagFrame.maxY + 1, tagFrame.maxY, tagFrame.midY] {
+            scrollView.contentView.scroll(to: CGPoint(x: 0, y: top))
+            let visibleRect = scrollView.documentVisibleRect
+            #expect(visibleRect.minY == top)
+            #expect(canvas.itemRange(intersecting: visibleRect).contains(index))
+            let intersection = tagFrame.intersection(visibleRect)
+            #expect(intersection.isEmpty == (top >= tagFrame.maxY))
+            canvas.discardCursorRects()
+            canvas.resetCursorRects()
+        }
+    }
+}
+
 private func member(
     id: UInt64,
     name: String,

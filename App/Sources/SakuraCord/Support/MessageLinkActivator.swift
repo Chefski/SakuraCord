@@ -15,6 +15,8 @@ enum MessageLinkActivator {
             "Jump to message"
         case .pins:
             "See all pinned messages"
+        case .editGroup:
+            "Edit Group"
         }
     }
 
@@ -64,6 +66,8 @@ enum MessageLinkActivator {
                 )
             case .pins(let channelID):
                 model.presentPinnedMessagesFromSystemMessage(channelID: channelID)
+            case .editGroup(let channelID):
+                model.presentGroupDirectMessageEditor(for: channelID)
             }
             return true
         }
@@ -122,6 +126,13 @@ extension AppModel {
         }
     }
 
+    func systemMessageRecipient(for message: Message) -> User? {
+        guard message.type == .friendRequestAccepted,
+              let channel = messagePresentationChannelsByID[message.channelID],
+              channel.kind == .directMessage else { return nil }
+        return channel.recipients.first { $0.id != currentUser?.id }
+    }
+
     func systemMessageUser(
         userID: UserID,
         sourceMessage: Message? = nil
@@ -133,6 +144,7 @@ extension AppModel {
         let sourceUser = sourceMessage.flatMap { message -> User? in
             if message.author.id == userID { return message.author }
             return message.mentionedUsers.first { $0.id == userID }
+                ?? systemMessageRecipient(for: message).flatMap { $0.id == userID ? $0 : nil }
         }
         return sourceUser
             ?? (messages + threadMessages).lazy.compactMap { message -> User? in
@@ -156,6 +168,7 @@ private enum SystemMessageLinkAction {
     case profile(UserID)
     case message(GuildID?, ChannelID, MessageID)
     case pins(ChannelID)
+    case editGroup(ChannelID)
 
     init?(url: URL) {
         guard url.scheme == "sakuracord-action" else { return nil }
@@ -184,6 +197,9 @@ private enum SystemMessageLinkAction {
         case "pins":
             guard parts.count == 1, let channelID = ChannelID(parts[0]) else { return nil }
             self = .pins(channelID)
+        case "edit-group":
+            guard parts.count == 1, let channelID = ChannelID(parts[0]) else { return nil }
+            self = .editGroup(channelID)
         default:
             return nil
         }

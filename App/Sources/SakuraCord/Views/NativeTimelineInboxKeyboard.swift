@@ -65,7 +65,10 @@ extension NativeTimelineCanvasView {
             min(messages.count - 1, max(0, current + (forward ? 1 : -1)))
         } else { forward ? 0 : messages.count - 1 }
         inbox.selectedMessageID = messages[next].id
-        inbox.scrollRequest = MessageTimelineScrollRequest(target: .message(messages[next].id, anchor: .center))
+        inbox.scrollRequest = MessageTimelineScrollRequest(
+            target: .message(messages[next].id, anchor: .center),
+            isAnimated: true
+        )
         if next >= messages.count - 2 { model.loadMoreInbox() }
     }
 

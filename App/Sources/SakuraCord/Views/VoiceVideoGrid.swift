@@ -55,7 +55,7 @@ struct VoiceVideoGrid: View {
 
     private var participants: [VoiceTileParticipant] {
         guard let activeChannel = channel ?? model.activeVoiceChannel else { return [] }
-        let currentUser = model.snapshot?.currentUser
+        let currentUser = model.currentUser
         let currentUserID = currentUser.map { String($0.id.rawValue) }
         let usesLocalVoiceSession = Self.usesLocalVoiceSession(
             displayedChannelID: activeChannel.id,
@@ -297,6 +297,7 @@ struct VoiceVideoGrid: View {
             ) { volume in
                 Task { await model.updateParticipantVolume(volume, userID: participant.id) }
             }
+            .overlay { userMenu(for: participant) }
         case .stream(let owner, let key, let state, let isPaused):
             VoiceStreamTile(
                 owner: owner,
@@ -307,6 +308,20 @@ struct VoiceVideoGrid: View {
                 model: model,
                 isDemanded: isDemanded
             )
+            .overlay { userMenu(for: owner) }
+        }
+    }
+
+    private func userMenu(for participant: VoiceTileParticipant) -> some View {
+        UserContextMenuBridge {
+            guard let id = UserID(participant.id) else { return nil }
+            let sourceChannel = channel ?? model.activeVoiceChannel
+            let user = sourceChannel?.recipients.first { $0.id == id }
+                ?? model.profileMember(id, in: sourceChannel?.guildID)?.user
+                ?? (model.currentUser?.id == id ? model.currentUser : nil)
+                ?? User(id: id, username: "", displayName: participant.name, avatarURL: participant.avatarURL)
+            return UserContextMenu.make(for: user,
+                context: .init(guildID: sourceChannel?.guildID, channelID: sourceChannel?.id), model: model)
         }
     }
 

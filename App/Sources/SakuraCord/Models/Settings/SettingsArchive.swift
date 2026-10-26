@@ -9,7 +9,8 @@ nonisolated extension UTType {
 /// Each entry is decoded independently so future value types cannot discard supported settings.
 nonisolated struct SettingsArchive: Codable, Sendable {
     static let schema = "dev.sakuracord.settings"
-    static let currentVersion = 1
+    // Version 2 splits the global message appearance into conversation-specific choices.
+    static let currentVersion = 2
     static let maximumFileSize = 4 * 1_024 * 1_024
 
     var version = Self.currentVersion

@@ -10,37 +10,83 @@ extension DiscordRESTProvider {
         guard !thread.isArchived, parent.kind != .announcement else { return [] }
         var ids = threadMemberSubscriptions[guildID] ?? []
         let alreadySubscribed = ids.contains(thread.id)
+        let hadPendingRequest = threadMemberSubscriptionRequestIDs[guildID]?[thread.id] != nil
         ids.removeAll { $0 == thread.id }
         ids.append(thread.id)
         let evicted = ids.prefix(max(0, ids.count - 3))
         for id in evicted {
+            threadMemberSubscriptionRequestIDs[guildID]?[id] = nil
             cachedThreadMemberIDs[id] = nil
             continuation?.yield(.threadMembersChanged(guildID: guildID, threadID: id, members: nil))
         }
         threadMemberSubscriptions[guildID] = Array(ids.suffix(3))
-        if !alreadySubscribed, gatewayReady {
+        if !alreadySubscribed || hadPendingRequest, gatewayReady {
+            let requestID = UUID()
+            threadMemberSubscriptionRequestIDs[guildID, default: [:]][thread.id] = requestID
+            defer {
+                if threadMemberSubscriptionRequestIDs[guildID]?[thread.id] == requestID {
+                    threadMemberSubscriptionRequestIDs[guildID]?[thread.id] = nil
+                }
+            }
             do {
-                try await sendThreadMemberSubscription(guildID: guildID)
+                try await sendDesiredThreadMemberSubscription(thread, guildID: guildID, requestID: requestID)
             } catch {
-                threadMemberSubscriptions[guildID]?.removeAll { $0 == thread.id }
+                // An older failure cannot roll back a successor's desired state.
+                if threadMemberSubscriptionRequestIDs[guildID]?[thread.id] == requestID {
+                    threadMemberSubscriptions[guildID]?.removeAll { $0 == thread.id }
+                }
                 throw error
             }
         }
         return resolvedThreadMembers(threadID: thread.id, guildID: guildID)
     }
 
+    private func sendDesiredThreadMemberSubscription(
+        _ thread: MessageThreadSummary, guildID: GuildID, requestID: UUID
+    ) async throws {
+        var repairsMemberReset = false
+        while true {
+            try Task.checkCancellation()
+            guard threadMemberSubscriptionRequestIDs[guildID]?[thread.id] == requestID,
+                  threadMemberSubscriptions[guildID]?.contains(thread.id) == true
+            else { throw CancellationError() }
+            if repairsMemberReset {
+                guard gatewayReady,
+                      let parent = cachedChannels[guildID]?.first(where: { $0.id == thread.parentID }),
+                      canViewMemberListChannel(parent, guildID: guildID)
+                else { throw CancellationError() }
+            }
+            let generation = guildSubscriptionGenerations[guildID] ?? UUID()
+            guildSubscriptionGenerations[guildID] = generation
+            do {
+                try await sendThreadMemberSubscription(guildID: guildID)
+                try Task.checkCancellation()
+                guard threadMemberSubscriptionRequestIDs[guildID]?[thread.id] == requestID,
+                      guildSubscriptionGenerations[guildID] == generation
+                else { throw CancellationError() }
+                return
+            } catch {
+                // Requeue only a superseded local member-list generation. Wire
+                // failures and cooldowns retain the ordinary attempt policy.
+                guard error is CancellationError,
+                      guildSubscriptionGenerations[guildID] != generation
+                else { throw error }
+                repairsMemberReset = true
+            }
+        }
+    }
+
     func sendThreadMemberSubscription(guildID: GuildID) async throws {
         // Subscription updates are partial. Do not replace channel ranges while
         // adding a thread to the same guild subscription.
-        try await sendGateway(DiscordGatewayPayloadFactory.threadMemberSubscriptions(
-            guildID: guildID, threadIDs: threadMemberSubscriptions[guildID] ?? []
-        ))
+        try await enqueueGuildSubscription(guildID: guildID, request: .threads)
         gatewayLogger.info("Thread member subscription sent; retained=\(self.threadMemberSubscriptions[guildID]?.count ?? 0)")
     }
 
     func removeThreadMemberSubscription(_ threadID: ChannelID) async {
         cachedThreadMemberIDs[threadID] = nil
         for (guildID, ids) in threadMemberSubscriptions where ids.contains(threadID) {
+            threadMemberSubscriptionRequestIDs[guildID]?[threadID] = nil
             threadMemberSubscriptions[guildID]?.removeAll { $0 == threadID }
             continuation?.yield(.threadMembersChanged(guildID: guildID, threadID: threadID, members: nil))
             guard gatewayReady else { continue }
@@ -61,18 +107,21 @@ extension DiscordRESTProvider {
     func ingestThreadMembers(_ entries: [ThreadMemberDTO], guildID: GuildID) {
         let roles = cachedGuildRoles[guildID] ?? []
         let catalog = GuildMemberRoleCatalog(roles)
+        let previousMembers = cachedMemberIndex(guildID: guildID)
         let members = entries.compactMap { entry -> Member? in
             guard let member = entry.member else { return nil }
             cacheGatewayUser(member.user, messageSearchEligible: false)
             return try? member.domain(
                 currentUserID: currentUser?.id, currentStatus: presenceStatus,
                 presence: entry.presence, guildRoles: roles,
-                guildRoleCatalog: catalog, guildID: guildID
+                guildRoleCatalog: catalog, guildID: guildID,
+                previousCommunicationDisabledUntil: UserID(member.user.id).flatMap { previousMembers[$0]?.communicationDisabledUntil }
             )
         }
         cachedMembers[guildID] = DiscordMemberStoreOrdering.merging(
             existing: cachedMembers[guildID] ?? [], updates: members
         )
+        publishCurrentMemberTimeoutChange(previousMembers: previousMembers, guildID: guildID)
     }
 
     func resolvedThreadMembers(threadID: ChannelID, guildID: GuildID) -> [Member]? {

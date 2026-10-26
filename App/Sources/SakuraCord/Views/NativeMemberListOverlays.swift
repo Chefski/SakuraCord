@@ -59,19 +59,24 @@ extension NativeMemberListCanvasView {
               !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         else { return }
         placeholderShimmerTask = Task { @MainActor [weak self] in
+            var interval = SkeletonShimmerStyle.minimumFrameInterval
             while !Task.isCancelled {
                 do {
-                    try await Task.sleep(
-                        for: .seconds(
-                            SkeletonShimmerStyle.minimumFrameInterval
-                        )
-                    )
+                    try await Task.sleep(for: .seconds(interval))
                 } catch {
                     return
                 }
                 guard let self, self.hasLoadingPlaceholders else { return }
-                if let rect = self.visiblePlaceholderInvalidationRect() {
+                // Large guilds keep placeholder rows for unrequested ranges
+                // indefinitely, so only animate at frame rate while one is on
+                // screen in a visible window; otherwise poll slowly.
+                if self.window?.occlusionState.contains(.visible) == true,
+                   let rect = self.visiblePlaceholderInvalidationRect()
+                {
                     self.setNeedsDisplay(rect)
+                    interval = SkeletonShimmerStyle.minimumFrameInterval
+                } else {
+                    interval = SkeletonShimmerStyle.idlePollInterval
                 }
             }
         }
@@ -140,12 +145,14 @@ extension NativeMemberListCanvasView {
             let configuration = AvatarOverlayConfiguration(
                 member: member,
                 isHovered: hoveredIndex == index && !isScrolling && !interactionsBlocked
-                    && WindowModalCoordinator.allowsInput(for: self)
+                    && WindowModalCoordinator.allowsInput(for: self),
+                showsPresence: self.presentation.status(for: member) != nil,
+                opacity: self.presentation.opacity(for: member)
             )
             if avatarOverlayConfigurations[id] != configuration {
                 host.rootView = AnyView(
-                    MemberAvatar(member: member, isHovered: configuration.isHovered)
-                        .opacity(member.isListedOnline ? 1 : 0.55)
+                    MemberAvatar(member: member, isHovered: configuration.isHovered, showsPresence: configuration.showsPresence)
+                        .opacity(configuration.opacity)
                         .allowsHitTesting(false)
                 )
                 avatarOverlayConfigurations[id] = configuration
@@ -205,7 +212,7 @@ extension NativeMemberListCanvasView {
                 )
                 let configuration = ActivityEmojiOverlayConfiguration(
                     url: url,
-                    opacity: member.isListedOnline ? 1 : 0.55
+                    opacity: presentation.opacity(for: member)
                 )
                 visibleOverlays.append(ActivityEmojiOverlayPresentation(
                     id: id,
@@ -268,9 +275,23 @@ extension NativeMemberListCanvasView {
 
     func installAccessibilityRows(in range: Range<Int>) {
         var visibleIDs: Set<ItemID> = []
+        var headerIDs: Set<ItemID> = []
         var tagIDs: Set<ItemID> = []
         var children: [Any] = []
         for index in range {
+            if case .header(let header) = items[index], !header.title.isEmpty, !header.isLoadingSkeleton {
+                let id = items[index].id
+                headerIDs.insert(id)
+                let element = accessibilityHeaders[id] ?? NSAccessibilityElement()
+                element.setAccessibilityRole(.headingRole)
+                element.setAccessibilityEnabled(true)
+                element.setAccessibilityLabel("\(header.title) — \(header.totalCount)")
+                element.setAccessibilityParent(self)
+                element.setAccessibilityFrameInParentSpace(itemRect(at: index))
+                accessibilityHeaders[id] = element
+                children.append(element)
+                continue
+            }
             guard case .member(let member, _) = items[index] else { continue }
             let id = items[index].id
             visibleIDs.insert(id)
@@ -280,7 +301,20 @@ extension NativeMemberListCanvasView {
                 accessibilityRows[id] = value
                 return value
             }()
-            proxy.member = member
+            if proxy.member != member {
+                proxy.member = member
+                if presentation.presenceHiddenUserIDs.contains(member.id) {
+                    proxy.setAccessibilityValue(member.activityText ?? "")
+                }
+                if rowMenu != nil {
+                    proxy.toolTip = [member.user.username, member.activityText].compactMap { $0 }.joined(separator: "\n")
+                }
+            }
+            // Resolve the current relationship and channel when VoiceOver asks,
+            // even if this member's row did not otherwise need rebuilding.
+            proxy.customActions = { [weak self] member in
+                self?.rowAccessibilityActions?(member) ?? []
+            }
             proxy.activation = { [weak self] member in
                 guard let self, !self.interactionsBlocked,
                       WindowModalCoordinator.allowsInput(for: self)
@@ -309,6 +343,9 @@ extension NativeMemberListCanvasView {
         for (id, proxy) in accessibilityRows where !visibleIDs.contains(id) {
             proxy.removeFromSuperview()
             accessibilityRows[id] = nil
+        }
+        for id in accessibilityHeaders.keys where !headerIDs.contains(id) {
+            accessibilityHeaders[id] = nil
         }
         for (id, button) in serverTagAccessibilityButtons where !tagIDs.contains(id) {
             button.removeFromSuperview()
@@ -357,14 +394,19 @@ extension NativeMemberListCanvasView {
         }
         setNeedsDisplay(itemRect(at: index))
         let isSelected = selectedMemberID == member.id
-        host.rootView = AnyView(
-            MemberRow(
-                member: member,
-                isSelected: isSelected,
-                showsContents: false,
-                select: { [weak self] in self?.selectMember(member) }
-            )
+        let row = MemberRow(
+            member: member,
+            isSelected: isSelected,
+            showsContents: false,
+            select: { [weak self] in self?.selectMember(member) }
         )
+        if let accessory = rowAccessory?(member) {
+            host.rootView = AnyView(row.overlay(alignment: .trailing) {
+                accessory.padding(.trailing, InterfaceScale.metric(8))
+            })
+        } else {
+            host.rootView = AnyView(row)
+        }
         host.frame = CGRect(
             x: NativeMemberListMetrics.horizontalInset,
             y: origins[index],
@@ -404,7 +446,33 @@ extension NativeMemberListCanvasView {
                 self?.dismissProfile(ifCurrent: presentation.requestID)
             },
             presentationIdentity: AnyHashable(presentation.member.id),
-            content: AnyView(ProfilePresentationContent(presentation: presentation, openProfile: openProfile)
+            outsideClickHandler: { [weak self] event in
+                guard let self, event.type == .leftMouseDown,
+                      !event.modifierFlags.contains(.control),
+                      event.window === self.window,
+                      !self.interactionsBlocked,
+                      WindowModalCoordinator.allowsInput(for: self)
+                else { return false }
+                let point = self.convert(event.locationInWindow, from: nil)
+                guard self.visibleRect.contains(point),
+                      self.serverTagIndex(at: point) == nil,
+                      let index = self.index(at: point),
+                      case .member(let member, _) = self.items[index]
+                else { return false }
+                // Trailing Friends controls own their clicks; only ordinary
+                // profile-row clicks should replace the reusable card.
+                if self.rowAccessory != nil,
+                   point.x >= self.bounds.maxX - NativeMemberListMetrics.horizontalInset - self.presentation.trailingAccessoryWidth
+                { return false }
+                self.selectMember(member)
+                return true
+            },
+            content: AnyView(ProfilePresentationContent(
+                presentation: presentation,
+                openProfile: openProfile,
+                userMenu: { [weak self] in self?.rowMenu?(presentation.member) },
+                sendMessage: sendProfileMessage
+            )
                 .environment(\.profileCosmeticPolicy, cosmeticPolicy)
                 .environment(\.serverTagCardModel, serverTagCardModel))
         )
@@ -577,6 +645,7 @@ extension NativeMemberListCanvasView {
         avatarOverlays.removeAll()
         activityEmojiOverlays.removeAll()
         accessibilityRows.removeAll()
+        accessibilityHeaders.removeAll()
     }
 
 }

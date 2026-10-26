@@ -7,7 +7,7 @@ struct DirectMessageInboxView: View {
     let membersByID: [UserID: Member]
     let privateCallsByChannel: [ChannelID: PrivateCall]
     let animatesAvatars: Bool
-    @Binding var selection: ChannelID?
+    @Binding var selection: DirectMessageSidebarSelection?
     let bottomContentInset: CGFloat
 
     var body: some View {
@@ -18,11 +18,20 @@ struct DirectMessageInboxView: View {
         )
 
         List(selection: $selection) {
+            FriendsSidebarRow(
+                requestCount: model.incomingFriendRequestCount,
+                isSelected: selection == .friends
+            )
+            .tag(DirectMessageSidebarSelection.friends)
+            .pointerStyle(.link)
+            .overlay { ChannelRowHoverBridge(isSelected: selection == .friends) }
+
             Section {
                 ForEach(directMessages) { channel in
                     DirectMessageInboxRow(
                         model: model,
                         channel: channel,
+                        isSelected: selection == .channel(channel.id),
                         isPinned: pinnedChannelIDs.contains(channel.id),
                         member: DirectMessageInboxPolicy.recipientMember(
                             for: channel,
@@ -31,12 +40,8 @@ struct DirectMessageInboxView: View {
                         call: privateCallsByChannel[channel.id],
                         animatesAvatar: animatesAvatars
                     )
-                    .tag(channel.id)
+                    .tag(DirectMessageSidebarSelection.channel(channel.id))
                     .pointerStyle(.link)
-                    .listRowBackground(
-                        RoundedRectangle(cornerRadius: InterfaceScale.metric(8))
-                            .fill(selection == channel.id ? Color.primary.opacity(0.08) : .clear)
-                    )
                 }
 
                 SidebarBottomScrollSpacer(height: bottomContentInset)
@@ -59,6 +64,36 @@ struct DirectMessageInboxView: View {
                 .allowsHitTesting(false)
             }
         }
+    }
+}
+
+private struct FriendsSidebarRow: View {
+    let requestCount: Int
+    let isSelected: Bool
+
+    var body: some View {
+        HStack(spacing: InterfaceScale.metric(10)) {
+            Image(systemName: "person.2.fill")
+                .font(.interfaceSystem(size: 16, weight: .semibold))
+                .foregroundStyle(isSelected ? .primary : .secondary)
+                .frame(width: InterfaceScale.metric(32), height: InterfaceScale.metric(32))
+            Text("Friends")
+                .fontWeight(isSelected ? .semibold : .regular)
+                .foregroundStyle(isSelected ? .primary : .secondary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            if requestCount > 0 {
+                Text(requestCount, format: .number)
+                    .font(.interface(.caption2).bold())
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, InterfaceScale.metric(6))
+                    .padding(.vertical, InterfaceScale.metric(2))
+                    .background(Color(hex: 0xF23F43), in: Capsule())
+            }
+        }
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityValue(requestCount == 0 ? "" : requestCount == 1 ? "1 pending friend request" : "\(requestCount) pending friend requests")
     }
 }
 
@@ -110,6 +145,7 @@ nonisolated enum DirectMessageInboxPolicy {
 private struct DirectMessageInboxRow: View {
     let model: AppModel
     let channel: Channel
+    let isSelected: Bool
     let isPinned: Bool
     let member: Member?
     let call: PrivateCall?
@@ -126,19 +162,19 @@ private struct DirectMessageInboxRow: View {
                 animates: animatesAvatar,
                 isHovered: isHovered
             )
-            .opacity(dimsMutedConversation ? 0.3 : 1)
+            .opacity(suppression != nil ? 0.5 : dimsMutedConversation ? 0.3 : 1)
 
             VStack(alignment: .leading, spacing: InterfaceScale.metric(2)) {
                 Text(channel.name)
                     .accessibilityLabel(isMuted ? "\(channel.name), Muted" : channel.name)
                     .fontWeight(
-                        channel.unreadCount > 0 && !isMuted
+                        channel.unreadCount > 0 && !isMuted && suppression == nil
                             ? .semibold
                             : .regular
                     )
                     .foregroundStyle(nameColor)
                     .lineLimit(1)
-                if let callStatus =
+                if suppression == nil, let callStatus =
                     DirectMessageInboxPolicy.callStatus(for: call)
                 {
                     Label(callStatus, systemImage: "bell.fill")
@@ -152,7 +188,7 @@ private struct DirectMessageInboxRow: View {
                         .foregroundStyle(.secondary)
                         .opacity(dimsMutedConversation ? 0.65 : 1)
                         .lineLimit(1)
-                } else if let secondaryText =
+                } else if suppression == nil, let secondaryText =
                     DirectMessageInboxPolicy.secondaryText(for: channel, member: member)
                 {
                     ProfileStatusTextView(
@@ -190,6 +226,12 @@ private struct DirectMessageInboxRow: View {
                     .frame(width: InterfaceScale.metric(7), height: InterfaceScale.metric(7))
                     .accessibilityLabel("Unread")
             }
+
+            if let suppression {
+                Image(systemName: suppression.systemImage)
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
         }
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
@@ -197,7 +239,7 @@ private struct DirectMessageInboxRow: View {
         .onModalHover { isHovered = $0 }
         .overlay {
             ChannelContextMenuBridge(
-                isSelected: model.selectedChannelID == channel.id,
+                isSelected: isSelected,
                 isUnread: channel.unreadCount > 0,
                 isMutationPending:
                     model.isChannelNotificationMutationPending(channel.id),
@@ -235,13 +277,26 @@ private struct DirectMessageInboxRow: View {
                 pinAction: .available(isPinned: isPinned, toggle: {
                     model.toggleDirectMessagePin(channel.id)
                 }),
-                userActions: {
-                    guard channel.kind == .directMessage, let recipient = channel.recipients.first else { return [] }
-                    return model.nicknameMenuActions(for: recipient, in: nil)
+                userMenu: {
+                    guard channel.kind == .directMessage, let recipient = channel.recipients.first else { return nil }
+                    return UserContextMenu.make(for: recipient, context: .init(channelID: channel.id, ignoreLocation: .directMessage), model: model)
                 },
-                usesCustomSelectionBackground: true
+                groupActions: model.offersGroupDirectMessageActions(channel)
+                    ? GroupDirectMessageMenuActions(
+                        edit: { model.presentGroupDirectMessageEditor(for: channel.id) },
+                        leave: { model.presentLeaveGroupDirectMessage(for: channel.id) }
+                    )
+                    : nil,
+                closeDirectMessage: model.offersCloseDirectMessage(channel)
+                    ? { model.closeDirectMessage(channel) }
+                    : nil
             )
         }
+    }
+
+    private var suppression: UserContentSuppression? {
+        guard channel.kind == .directMessage, let recipient = channel.recipients.first else { return nil }
+        return model.userSuppressionReason(recipient.id)
     }
 
     private var isMuted: Bool {
@@ -249,17 +304,18 @@ private struct DirectMessageInboxRow: View {
     }
 
     private var dimsMutedConversation: Bool {
-        isMuted && model.selectedChannelID != channel.id
+        isMuted && !isSelected
     }
 
     private var nameColor: Color {
-        if model.selectedChannelID == channel.id { return .primary }
+        if suppression != nil { return .primary.opacity(0.45) }
+        if isSelected { return .primary }
         if isMuted { return .primary.opacity(0.3) }
         return channel.unreadCount > 0 ? .primary : .secondary
     }
 
     private var accessibilityValue: String {
-        var states: [String] = []
+        var states: [String] = suppression.map { [$0.rawValue.capitalized] } ?? []
         if channel.mentionCount > 0 {
             states.append(channel.mentionCount == 1
                 ? "1 unread mention"

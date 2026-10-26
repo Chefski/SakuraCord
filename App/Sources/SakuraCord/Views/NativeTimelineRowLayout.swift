@@ -34,7 +34,7 @@ struct NativeTimelineRowLayout {
         let emojiFrame: CGRect
         let countFrame: CGRect?
         let avatarRegions: [AvatarRegion]
-        let overflowFrame: CGRect?
+        let placeholderAvatarFrames: [CGRect]
     }
 
     struct LinkedImageRegion {
@@ -70,8 +70,10 @@ struct NativeTimelineRowLayout {
         let imageRegions: [ImageRegion]
         let mediaFrame: CGRect?
         let mediaURL: URL?
+        let mediaPreviewURL: URL?
         let mediaIsVideo: Bool
         let mediaAutoplaysInline: Bool
+        let mediaPosterFillsFrame: Bool
         let accentColor: UInt32?
         let drawsTopSeparator: Bool
     }
@@ -138,6 +140,8 @@ struct NativeTimelineRowLayout {
     var bubbleRegion: NativeTimelineBubbleRegion?
     var highlightFrame: CGRect?
     var daySeparatorFrame: CGRect?
+    /// The rule closing a forum post's original message off from its replies.
+    var postStarterDividerFrame: CGRect?
     var unreadSeparatorFrame: CGRect?
     var avatarFrame: CGRect?
     var compactTimestampFrame: CGRect?
@@ -152,13 +156,24 @@ struct NativeTimelineRowLayout {
     var timestampText: NativeIdentityTextPresentation?
     var editedText: NativeIdentityTextPresentation?
     var botBadgeFrame: CGRect?
+    var botBadgeText: NativeIdentityTextPresentation?
     var timestampFrame: CGRect?
     var editedFrame: CGRect?
     var activityIndicators: [ActivityIndicator] = []
     var replyFrame: CGRect?
     var replyContentFrame: CGRect?
+    /// A bubble's reply or command elbow: a stem rising from the bubble's top
+    /// edge that turns toward the referenced content at `cornerY`.
+    struct ReferenceConnector {
+        let stemX: CGFloat
+        let fromY: CGFloat
+        let cornerY: CGFloat
+        let toX: CGFloat
+    }
+    var bubbleReferenceConnector: ReferenceConnector?
     var commandInvocationRegion: CommandInvocationRegion?
     var systemIconFrame: CGRect?
+    var suppressedHeader: NativeTimelineSuppressedHeaderLayout?
     var contentFrame: CGRect?
     var attributedContent: NSAttributedString?
     var contentFramesetter: CTFramesetter?
@@ -167,6 +182,7 @@ struct NativeTimelineRowLayout {
     var forwardedSourceRegion: ForwardedSourceRegion?
     var linkedImageRegions: [LinkedImageRegion] = []
     var attachmentRegions: [AttachmentRegion] = []
+    var voiceMessageRegion: NativeTimelineVoiceMessageRegion?
     var embedFrames: [CGRect] = []
     var embedRegions: [EmbedRegion] = []
     var sakuraCordDeepLinkRegions: [SakuraCordDeepLinkRegion] = []
@@ -187,11 +203,27 @@ struct NativeTimelineRowLayout {
     static func make(
         item: NativeMessageTimelineItem,
         width proposedWidth: CGFloat,
-        model: AppModel? = nil,
+        source: AppModel? = nil,
         metrics: Metrics? = nil
     ) -> Self {
         let width = max(InterfaceScale.metric(220), proposedWidth)
         switch item {
+        case let .suppressedMessages(group):
+            var result = Self(height: NativeTimelineSuppressedHeaderLayout.contentHeight)
+            var offset: CGFloat = 0
+            if group.day != nil {
+                result.daySeparatorFrame = CGRect(x: InterfaceScale.metric(12), y: offset,
+                                                  width: width - InterfaceScale.metric(24), height: NativeTimelineDateSeparatorMetrics.rowHeight)
+                offset += NativeTimelineDateSeparatorMetrics.rowHeight
+            }
+            if group.isUnreadBoundary {
+                result.unreadSeparatorFrame = CGRect(x: InterfaceScale.metric(12), y: offset,
+                                                     width: width - InterfaceScale.metric(24), height: NativeTimelineUnreadSeparatorMetrics.rowHeight)
+                offset += NativeTimelineUnreadSeparatorMetrics.rowHeight
+            }
+            result.height += offset
+            result.suppressedHeader = .make(group: group, width: width, originY: offset)
+            return result
         case .inboxGroup:
             return Self(height: InboxRowMetrics.headerHeight)
         case .inboxEvent:
@@ -223,8 +255,8 @@ struct NativeTimelineRowLayout {
                 row: row,
                 isUnreadBoundary: isUnreadBoundary,
                 width: width,
-                model: model,
-                metrics: metrics ?? Metrics(settings: model?.interfaceSettings ?? .defaults)
+                source: source,
+                metrics: metrics ?? Metrics(source: source)
             )
             return builder.make()
         }

@@ -75,6 +75,7 @@ final class MessageSearchState {
 
     func clear() {
         requestTask?.cancel()
+        isPresented = false
         AppPerformanceSignposts.endResourceWindow(named: "MessageSearchBenchmark")
         AppPerformanceSignposts.endResourceWindow(named: "MessageSearchPaginationBenchmark")
         AppPerformanceSignposts.cancelMessageSearchRequest()
@@ -104,6 +105,27 @@ final class MessageSearchState {
 
 @MainActor
 extension AppModel {
+    var retainedMessageSearches: [MessageSearchState] {
+        [messageSearch] + Array(messageSearchesByGuildID.values)
+    }
+
+    func switchMessageSearchScope(from previousGuildID: GuildID?) {
+        // Timings belong to the visible search, while requests may finish off-screen.
+        cancelMessageSearchMeasurement("MessageSearchBenchmark", measuresPagination: false)
+        cancelMessageSearchMeasurement("MessageSearchPaginationBenchmark", measuresPagination: true)
+        AppPerformanceSignposts.endMessageSearchScroll()
+        messageSearch.isInputFocused = false
+        messageSearch.isFilterModalPresented = false
+        messageSearchesByGuildID[previousGuildID] = messageSearch
+        messageSearch = messageSearchesByGuildID.removeValue(forKey: selectedGuildID) ?? MessageSearchState()
+    }
+
+    func resetMessageSearches() {
+        for search in retainedMessageSearches { search.clear() }
+        messageSearchesByGuildID.removeAll()
+        messageSearch = MessageSearchState()
+    }
+
     var messageSearchInputText: String {
         get { messageSearch.queryText }
         set {
@@ -147,32 +169,53 @@ extension AppModel {
         workspaceNavigationOverlay = .quickSwitcher
     }
 
+    var canShowMessageSearch: Bool {
+        MessageSearchSurfacePolicy.showsToolbar(
+            channelKind: selectedChannel?.kind,
+            hasOpenThread: hasThreadPane && !isThreadFullWidth
+        )
+    }
+
+    /// The workspace's own toolbar (`WorkspaceTitlebar`) keeps the search
+    /// field in place beside a thread pane, where it fades out instead of
+    /// leaving the toolbar.
+    var keepsMessageSearchFieldInPlace: Bool {
+        sessionState == .workspace && onboardingEntryGuildID == nil
+            && guildWorkspacePage == nil && !isFriendsPresented
+            && MessageSearchSurfacePolicy.showsToolbar(channelKind: selectedChannel?.kind, hasOpenThread: false)
+    }
+
+    var isMessageSearchVisible: Bool {
+        messageSearch.isPresented && canShowMessageSearch
+            && !isFriendsPresented && onboardingEntryGuildID == nil && guildWorkspacePage == nil
+    }
+
     func presentMessageSearch() {
         if isBrowsingGuildChannels {
             onboarding.isChannelSearchFocused = true
             return
         }
+        if isFriendsSearchActive {
+            friends.isSearchFocused = true
+            return
+        }
         guard sessionState == .workspace,
               selectedChannelID != nil,
-              MessageSearchSurfacePolicy.showsToolbar(
-                  channelKind: selectedChannel?.kind,
-                  hasOpenThread: hasThreadPane
-              )
+              canShowMessageSearch
         else { return }
-        let currentScope = selectedGuildID.map(MessageSearchScope.guild) ?? .directMessages
-        if messageSearch.submittedQuery?.scope != currentScope {
-            messageSearch.clear()
-        }
         workspaceNavigationOverlay = nil
         messageSearch.requestInputFocus()
     }
 
     func presentMessageSearchFromCommand() {
         presentMessageSearch()
-        guard !isBrowsingGuildChannels, messageSearch.isInputFocused,
-              let selectedChannelID,
-              let channel = messageSearchChannels.first(where: { $0.id == selectedChannelID })
-        else { return }
+        guard !isBrowsingGuildChannels, messageSearch.isInputFocused else { return }
+        let channel: Channel? = if isThreadFullWidth, let openThread {
+            threadNavigationChannel(openThread)
+        } else {
+            messageSearchChannels.first(where: { $0.id == selectedChannelID })
+        }
+        guard let channel else { return }
         messageSearch.tokens.removeAll { token in
             if case .channel = token.kind { return true }
             return false
@@ -193,7 +236,9 @@ extension AppModel {
         messageSearch.requestTask = nil
         messageSearch.isSearching = false
         messageSearch.pollRefreshJournal = nil
-        messageSearch.isPresented = false
+        WorkspaceLayoutMotion.perform(in: self, categories: inspectorMotionCategories) {
+            messageSearch.isPresented = false
+        }
         messageSearch.isInputFocused = false
     }
 
@@ -204,7 +249,7 @@ extension AppModel {
 
     @discardableResult
     func consumeEscapeForUnfocusedMessageSearch() -> Bool {
-        guard messageSearch.isPresented, !messageSearch.isInputFocused else { return false }
+        guard isMessageSearchVisible, !messageSearch.isInputFocused else { return false }
         clearMessageSearchInput()
         dismissMessageSearch()
         return true
@@ -268,22 +313,7 @@ extension AppModel {
                 return
             }
             workspaceNavigationOverlay = nil
-            let session = accountSession()
-            startAccountChildTask(account: session) { model, session in
-                do {
-                    let channel = try await session.provider.ensurePrivateChannel(for: user.id)
-                    guard model.isCurrentAccountSession(session) else { return }
-                    if model.snapshot?.channels.contains(where: { $0.id == channel.id }) == false {
-                        model.snapshot?.channels.append(channel)
-                        model.forwardSearchSourceRevision &+= 1
-                    }
-                    model.navigate(to: channel.id)
-                } catch {
-                    guard model.isCurrentAccountSession(session) else { return }
-                    DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
-                    model.errorMessage = error.localizedDescription
-                }
-            }
+            openDirectMessage(with: user)
         }
     }
 
@@ -332,28 +362,29 @@ extension AppModel {
     }
 
     private func startMessageSearchRequest(_ query: MessageSearchQuery, measuresPagination: Bool) {
-        messageSearch.requestTask?.cancel()
+        let search = messageSearch
+        search.requestTask?.cancel()
         AppPerformanceSignposts.endResourceWindow(named: "MessageSearchBenchmark")
         AppPerformanceSignposts.endResourceWindow(
             named: "MessageSearchPaginationBenchmark"
         )
         AppPerformanceSignposts.cancelMessageSearchRequest()
         AppPerformanceSignposts.cancelMessageSearchPagination()
-        messageSearch.isSearching = true
+        search.isSearching = true
         conversationRefreshJournalRevision &+= 1
-        messageSearch.pollRefreshJournal = ConversationRefreshJournal(revision: conversationRefreshJournalRevision)
-        messageSearch.errorMessage = nil
+        search.pollRefreshJournal = ConversationRefreshJournal(revision: conversationRefreshJournalRevision)
+        search.errorMessage = nil
         let resourceWindowName = beginMessageSearchMeasurement(
             measuresPagination: measuresPagination
         )
         let startedAt = ProcessInfo.processInfo.systemUptime
         let session = accountSession()
-        messageSearch.requestTask = Task { [weak self] in
+        search.requestTask = Task { [weak self] in
             guard let self else { return }
             do {
                 let fetchedPage = try await session.provider.searchMessages(query)
                 try Task.checkCancellation()
-                let page = self.messageSearchPagePreservingPollVotes(fetchedPage)
+                let page = self.messageSearchPagePreservingPollVotes(fetchedPage, search: search)
                 let channelsByID = self.messageSearchChannelsByID(
                     additionalChannels: page.channels
                 )
@@ -370,48 +401,50 @@ extension AppModel {
                 self.mergeMessageSearchPrivateChannels(page.channels)
                 // Replay from the original response so vote deltas are applied
                 // once even when more events arrived during row preparation.
-                let latestPage = self.messageSearchPagePreservingPollVotes(fetchedPage)
-                self.messageSearch.page = latestPage
-                self.messageSearch.submittedQuery = query
-                self.messageSearch.rows = latestPage == page ? rows : MessageSearchPresentation.rows(
+                let latestPage = self.messageSearchPagePreservingPollVotes(fetchedPage, search: search)
+                search.page = latestPage
+                search.submittedQuery = query
+                search.rows = latestPage == page ? rows : MessageSearchPresentation.rows(
                     for: latestPage, channelsByID: channelsByID
                 )
-                self.messageSearch.rowsRevision &+= 1
-                self.messageSearch.errorMessage = nil
-                self.messageSearch.isSearching = false
-                self.messageSearch.pollRefreshJournal = nil
-                self.messageSearch.lastCompletedLatencyMilliseconds = Int(
+                search.rowsRevision &+= 1
+                search.errorMessage = nil
+                search.isSearching = false
+                search.pollRefreshJournal = nil
+                search.lastCompletedLatencyMilliseconds = Int(
                     (ProcessInfo.processInfo.systemUptime - startedAt) * 1_000
                 )
-                self.messageSearch.requestTask = nil
-                self.finishMessageSearchMeasurement(
-                    resourceWindowName,
-                    measuresPagination: measuresPagination
-                )
+                search.requestTask = nil
+                if self.messageSearch === search {
+                    self.finishMessageSearchMeasurement(resourceWindowName, measuresPagination: measuresPagination)
+                }
             } catch is CancellationError {
                 return
             } catch {
                 guard !Task.isCancelled, self.isCurrentAccountSession(session) else { return }
-                self.messageSearch.page = nil
-                self.messageSearch.rows = []
-                self.messageSearch.rowsRevision &+= 1
+                search.page = nil
+                search.rows = []
+                search.rowsRevision &+= 1
                 DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
-                self.messageSearch.errorMessage = error.localizedDescription
-                self.messageSearch.isSearching = false
-                self.messageSearch.pollRefreshJournal = nil
-                self.messageSearch.requestTask = nil
-                self.cancelMessageSearchMeasurement(
-                    resourceWindowName,
-                    measuresPagination: measuresPagination
-                )
+                search.errorMessage = error.localizedDescription
+                search.isSearching = false
+                search.pollRefreshJournal = nil
+                search.requestTask = nil
+                if self.messageSearch === search {
+                    self.cancelMessageSearchMeasurement(resourceWindowName, measuresPagination: measuresPagination)
+                }
             }
         }
     }
 
     private func presentMessageSearchResultsIfNeeded() {
-        guard !messageSearch.isPresented else { return }
+        guard !isMessageSearchVisible else { return }
         AppPerformanceSignposts.beginMessageSearchOpen()
-        messageSearch.isPresented = true
+        WorkspaceLayoutMotion.perform(in: self, categories: inspectorMotionCategories) {
+            // Results take a side chat pane's place: it closes for good.
+            closePaneSideConversation()
+            messageSearch.isPresented = true
+        }
     }
 
     func submitMessageSearchInput() {
@@ -484,7 +517,7 @@ extension AppModel {
         // Discord's queryAllUsers path reads UserStore insertion order. This
         // projection contains every live Gateway user DTO, including broad
         // READY_SUPPLEMENTAL hydration, without app-specific disk-only users.
-        var users = (snapshot?.messageSearchUsers ?? []).filter {
+        var users = messageSearchSourceUsers.filter {
             seen.insert($0.id).inserted
         }
         if let selectedGuildID {
@@ -503,7 +536,7 @@ extension AppModel {
                 uniquingKeysWith: { existing, _ in existing }
             )
             let orderedUserIDs =
-                (snapshot?.quickSwitcherGuildMemberUserIDs[selectedGuildID] ?? [])
+                (quickSwitcherGuildMemberUserIDs[selectedGuildID] ?? [])
                 + localGuildUsers.map(\.id)
             for userID in orderedUserIDs where seen.insert(userID).inserted {
                 if let user = localGuildUsersByID[userID] {
@@ -511,7 +544,7 @@ extension AppModel {
                 }
             }
         }
-        if let currentUser = snapshot?.currentUser,
+        if let currentUser,
            seen.insert(currentUser.id).inserted
         {
             users.insert(currentUser, at: 0)
@@ -520,7 +553,7 @@ extension AppModel {
     }
 
     var messageSearchChannels: [Channel] {
-        let allChannels = snapshot?.channels ?? visibleChannels
+        let allChannels = currentUser == nil ? visibleChannels : messagePresentationChannels
         let eligible = allChannels.filter { channel in
             if let selectedGuildID {
                 return channel.guildID == selectedGuildID
@@ -548,31 +581,6 @@ extension AppModel {
             return recipient.username
         }
         return channel.name
-    }
-
-    func messageSearchGuildAliases(guildID: GuildID) -> [UserID: [String]] {
-        var aliases: [UserID: [String]] = [:]
-        func append(_ value: String?, for userID: UserID) {
-            guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !value.isEmpty,
-                  aliases[userID, default: []].contains(where: {
-                      $0.localizedCaseInsensitiveCompare(value) == .orderedSame
-                  }) == false
-            else { return }
-            aliases[userID, default: []].append(value)
-        }
-        for (userID, nickname) in snapshot?.quickSwitcherGuildMemberAliases[guildID] ?? [:] {
-            append(nickname, for: userID)
-        }
-        for member in membersByGuildID[guildID]?.values ?? [UserID: Member]().values {
-            append(member.globalDisplayName, for: member.id)
-            append(member.user.displayName, for: member.id)
-        }
-        for member in memberListsByGuildID[guildID] ?? [] {
-            append(member.globalDisplayName, for: member.id)
-            append(member.user.displayName, for: member.id)
-        }
-        return aliases
     }
 
     func parsePastedMessageSearchSyntax(_ value: String) {
@@ -704,6 +712,13 @@ extension AppModel {
     }
 
     func navigateToInboxResult(_ message: Message, messageID: MessageID? = nil) {
+        if message.guildID != nil, knownRootChannel(message.channelID) == nil,
+           inbox.threads[message.channelID] == nil,
+           readState.entries[message.channelID]?.parentID == nil
+        {
+            resolveInboxThreadThenNavigate(message, messageID: messageID)
+            return
+        }
         if let guildID = message.guildID, inboxRequiresAgeAgreement(channelID: message.channelID, guildID: guildID) {
             requestInboxAgeAgreement(guildID: guildID) { [weak self] in self?.navigateToInboxResult(message, messageID: messageID) }
             return
@@ -712,6 +727,37 @@ extension AppModel {
             || snapshot?.activeJoinedThreads.contains { $0.id == message.channelID } == true
         dismissInbox()
         navigateToMessageResult(source: message, messageID: messageID ?? message.id, initialMessages: isThread ? [message] : nil, isKnownThread: isThread)
+    }
+
+    /// The age gate and thread presentation need the thread's parent. Resolve
+    /// it through the provider now rather than waiting for the background
+    /// inbox metadata lookup, and report a failed lookup.
+    private func resolveInboxThreadThenNavigate(_ message: Message, messageID: MessageID?) {
+        let channelID = message.channelID
+        // The same destination the resolved navigation uses, so a repeated
+        // selection joins the pending lookup instead of restarting it.
+        let target = ConversationNavigationTarget.message(
+            channelID, messageID ?? message.id, fullWidthThread: false
+        )
+        if isNavigating(to: target) { return }
+        startConversationNavigation(target: target) { model, session in
+            let post: ForumPost
+            do {
+                post = try await session.provider.forumPost(threadID: channelID)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard !Task.isCancelled, model.isCurrentAccountSession(session) else { return }
+                DiscordAPIDiagnosticStore.shared.recordClientFailure(error)
+                model.errorMessage = Self.threadResolutionErrorMessage(error)
+                return
+            }
+            guard !Task.isCancelled, model.isCurrentAccountSession(session) else { return }
+            model.inbox.threads[channelID] = post.thread
+            // Hand off to the resolved navigation, which shares this target.
+            model.conversationNavigationTarget = nil
+            model.navigateToInboxResult(message, messageID: messageID)
+        }
     }
 
     func openInboxGroup(_ channelID: ChannelID) {
@@ -774,7 +820,8 @@ extension AppModel {
             source: result.hit,
             messageID: messageID,
             initialMessages: result.messages,
-            isKnownThread: isGuildThreadResult
+            isKnownThread: isGuildThreadResult,
+            fullWidthThread: true
         )
     }
 
@@ -782,7 +829,8 @@ extension AppModel {
         source: Message,
         messageID: MessageID,
         initialMessages: [Message]?,
-        isKnownThread: Bool
+        isKnownThread: Bool,
+        fullWidthThread: Bool = false
     ) {
         let guildID = source.guildID
             ?? snapshot?.channels.first(where: { $0.id == source.channelID })?.guildID
@@ -791,7 +839,8 @@ extension AppModel {
                 to: guildID,
                 linkedChannelID: source.channelID,
                 messageID: messageID,
-                initialMessages: initialMessages ?? [source]
+                initialMessages: initialMessages ?? [source],
+                fullWidthThread: fullWidthThread
             )
         } else {
             navigate(

@@ -21,10 +21,20 @@ nonisolated extension SettingsCatalog {
             .messageAppearance,
             page: .interface,
             section: .interfaceMessages,
-            label: "Messages",
-            help: "Choose SakuraCord's default message layout or conversation bubbles.",
+            label: "Server channels",
+            help: "Choose the message layout for server channels and threads.",
             keywords: ["messages", "bubbles", "iMessage", "chat", "layout", "default"],
             scope: .appWideLocal
+        ),
+        control(
+            .directMessageAppearance, page: .interface, section: .interfaceMessages,
+            label: "Direct messages", help: "Choose the message layout for one-to-one conversations.",
+            keywords: ["DM", "private", "bubbles", "default", "layout"], scope: .appWideLocal
+        ),
+        control(
+            .groupMessageAppearance, page: .interface, section: .interfaceMessages,
+            label: "Group chats", help: "Choose the message layout for group direct messages.",
+            keywords: ["group DM", "bubbles", "default", "layout"], scope: .appWideLocal
         ),
         control(
             .messageDensity,

@@ -26,8 +26,19 @@ final class SettingsTransferService {
         var report = SettingsImportReport()
         report.newerVersion = archive.version > SettingsArchive.currentVersion
         report.unsupportedKeys = archive.unsupportedKeys
+        var values = archive.values
+        if archive.version < 2,
+           case let .string(raw) = values[SettingsControlID.messageAppearance.rawValue],
+           MessageAppearance(rawValue: raw) != nil {
+            // Old backups used this choice everywhere. Preserve any explicit context entries,
+            // including unsupported values, rather than replacing them with the legacy choice.
+            for id: SettingsControlID in [.directMessageAppearance, .groupMessageAppearance]
+                where values[id.rawValue] == nil && !archive.unsupportedKeys.contains(id.rawValue) {
+                values[id.rawValue] = .string(raw)
+            }
+        }
         var accepted: [String: SettingsPreferenceValue] = [:]
-        for (key, value) in archive.values.sorted(by: { $0.key < $1.key }) {
+        for (key, value) in values.sorted(by: { $0.key < $1.key }) {
             let id = SettingsControlID(rawValue: key)
             guard let registration = preferences.registry.registration(id), registration.exports,
                   case .appWide = registration.storage,

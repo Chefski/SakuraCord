@@ -49,6 +49,11 @@ nonisolated struct AccessibilitySettingsSnapshot: Equatable, Sendable {
     var announcesAttachmentTypes: Bool
     var announcesNewMessages: Bool
 
+    var disablesMessageSendingAnimations = false
+    var disablesAllAnimations = false
+    var disablesSidebarAnimations = false
+    var disablesSideChatAnimations = false
+    var disablesOverlayAnimations = false
     var disablesOwnCosmetics = false
 
 }
@@ -90,11 +95,21 @@ final class AccessibilitySettingsStore {
             ?? value.announcesAttachmentTypes
         value.announcesNewMessages = bool(.accessibilityAnnounceNewMessages)
             ?? value.announcesNewMessages
+        value.disablesMessageSendingAnimations = bool(.accessibilityDisableSendAnimations) ?? false
+        value.disablesAllAnimations = bool(.accessibilityDisableAllAnimations) ?? false
+        value.disablesSidebarAnimations = bool(.accessibilityDisableSidebarAnimations) ?? false
+        value.disablesSideChatAnimations = bool(.accessibilityDisableSideChatAnimations) ?? false
+        value.disablesOverlayAnimations = bool(.accessibilityDisableOverlayAnimations) ?? false
         value.disablesOwnCosmetics = bool(.accessibilityDisableOwnCosmetics) ?? false
         return value
     }
 
     func save(_ value: AccessibilitySettingsSnapshot) {
+        preferences.set(.bool(value.disablesMessageSendingAnimations), for: .accessibilityDisableSendAnimations)
+        preferences.set(.bool(value.disablesAllAnimations), for: .accessibilityDisableAllAnimations)
+        preferences.set(.bool(value.disablesSidebarAnimations), for: .accessibilityDisableSidebarAnimations)
+        preferences.set(.bool(value.disablesSideChatAnimations), for: .accessibilityDisableSideChatAnimations)
+        preferences.set(.bool(value.disablesOverlayAnimations), for: .accessibilityDisableOverlayAnimations)
         preferences.set(.bool(value.disablesOwnCosmetics), for: .accessibilityDisableOwnCosmetics)
         preferences.set(.bool(value.underlinesLinks), for: .underlineLinks)
         preferences.set(.string(value.roleColorDisplay.rawValue), for: .roleColorDisplay)
@@ -171,8 +186,24 @@ nonisolated enum AccessibilityMessageMetadataPolicy {
 
 @MainActor
 extension AppModel {
+    var animatesMessageSending: Bool {
+        !accessibilitySettings.disablesMessageSendingAnimations
+            && !accessibilitySettings.disablesAllAnimations
+            && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
+    /// Whether `categories` move rather than snap: macOS Reduce Motion, the
+    /// master switch, and each category's own switch all turn them off.
+    func animates(_ categories: [AppMotionCategory]) -> Bool {
+        AppMotionPolicy.animates(categories, settings: accessibilitySettings)
+    }
+
+    func animates(_ category: AppMotionCategory) -> Bool {
+        animates([category])
+    }
+
     var cosmeticPolicy: ProfileCosmeticPolicy {
-        ProfileCosmeticPolicy(settings: accessibilitySettings, currentUserID: snapshot?.currentUser.id)
+        ProfileCosmeticPolicy(settings: accessibilitySettings, currentUserID: currentUser?.id)
     }
 
     func applyAccessibilitySettings(
@@ -181,6 +212,7 @@ extension AppModel {
     ) {
         let previous = accessibilitySettings
         accessibilitySettings = value
+        AppMotionPolicy.settings = value
         if persists {
             AccessibilitySettingsStore.shared.save(value)
         }

@@ -14,6 +14,8 @@ struct PrivacySafetySettingsPage: View {
                     value: $value,
                     state: state
                 )
+                IgnoredAccountsSettingsSection(model: model)
+                    .settingsControlAnchor(.ignoredAccounts, state: state)
                 PrivacyLinksServicesSection(value: $value, state: state)
                 PrivacyLocalActivitySection(model: model, state: state)
             }

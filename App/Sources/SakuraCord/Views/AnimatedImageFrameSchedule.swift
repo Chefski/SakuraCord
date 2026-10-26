@@ -2,22 +2,32 @@ import Foundation
 
 /// The same source-frame and effect-layer timing used by compositor animations,
 /// expressed as a frame index for animations whose raster set exceeds the budget.
-nonisolated enum AnimatedImageFrameSchedule {
-    static func frameIndex(
+nonisolated struct AnimatedImageFrameSchedule {
+    private let frameEnds: [TimeInterval]
+    private let sourceDuration: TimeInterval
+
+    init(durations: [TimeInterval]) {
+        var end: TimeInterval = 0
+        frameEnds = durations.map { duration in
+            end += duration
+            return end
+        }
+        sourceDuration = max(end, 0.05)
+    }
+
+    func frameIndex(
         elapsed: TimeInterval,
-        durations: [TimeInterval],
         playCount: Int?,
         isLooping: Bool,
         activeDuration: TimeInterval?,
         loopDelay: TimeInterval
     ) -> Int? {
-        guard !durations.isEmpty, elapsed >= 0 else { return nil }
-        let sourceDuration = AnimatedImageKeyframeSchedule.duration(for: durations)
+        guard !frameEnds.isEmpty, elapsed >= 0 else { return nil }
         let position: TimeInterval
         if let activeDuration {
             let sourceLimit = playCount.flatMap { $0 > 0 ? sourceDuration * Double($0) : nil }
             if isLooping, loopDelay <= 0 {
-                if let sourceLimit, elapsed >= sourceLimit { return durations.count - 1 }
+                if let sourceLimit, elapsed >= sourceLimit { return frameEnds.count - 1 }
                 position = elapsed.truncatingRemainder(dividingBy: sourceDuration)
             } else {
                 let active = activeDuration > 0 ? activeDuration : sourceDuration
@@ -25,7 +35,7 @@ nonisolated enum AnimatedImageFrameSchedule {
                     ? elapsed.truncatingRemainder(dividingBy: active + max(0, loopDelay))
                     : elapsed
                 guard cyclePosition < active else { return nil }
-                if let sourceLimit, cyclePosition >= sourceLimit { return durations.count - 1 }
+                if let sourceLimit, cyclePosition >= sourceLimit { return frameEnds.count - 1 }
                 position = cyclePosition.truncatingRemainder(dividingBy: sourceDuration)
             }
         } else {
@@ -34,11 +44,18 @@ nonisolated enum AnimatedImageFrameSchedule {
             if !isLooping, elapsed >= sourceDuration { return 0 }
             position = elapsed.truncatingRemainder(dividingBy: sourceDuration)
         }
-        var end: TimeInterval = 0
-        for (index, duration) in durations.enumerated() {
-            end += duration
-            if position < end { return index }
+        // Source durations are positive. Find the first end strictly after
+        // this position, preserving the existing boundary and loop semantics.
+        var lower = 0
+        var upper = frameEnds.count
+        while lower < upper {
+            let middle = lower + (upper - lower) / 2
+            if position < frameEnds[middle] {
+                upper = middle
+            } else {
+                lower = middle + 1
+            }
         }
-        return durations.count - 1
+        return min(lower, frameEnds.count - 1)
     }
 }

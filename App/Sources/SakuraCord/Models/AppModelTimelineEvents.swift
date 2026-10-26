@@ -516,8 +516,16 @@ extension AppModel {
                 priority: preparationPriority
             )
         }
-        guard !Task.isCancelled, selectedChannelID == channelID else {
-            return false
+        guard !Task.isCancelled, selectedChannelID == channelID else { return false }
+        // The timeline can change while rows are prepared off the main actor.
+        // Revalidate the insertion against the current window, not the IDs
+        // that pagination filtered before awaiting preparation.
+        guard earlier.allSatisfy({ message in
+            !selectedMessageIDs.contains(message.id)
+                && (messages.first.map { Self.messagePrecedes(message, $0) } ?? true)
+        }) else {
+            mergeOverlappingSelectedHistoryMessages(earlier)
+            return true
         }
         let stateCommit = AppPerformanceSignposts.signposter.beginInterval(
             "EarlierHistoryStateCommit",
@@ -703,13 +711,27 @@ extension AppModel {
                 priority: preparationPriority
             )
         }
-        guard !Task.isCancelled, selectedChannelID == channelID else {
-            return false
+        guard !Task.isCancelled, selectedChannelID == channelID else { return false }
+        guard later.allSatisfy({ message in
+            !selectedMessageIDs.contains(message.id)
+                && (messages.last.map { Self.messagePrecedes($0, message) } ?? true)
+        }) else {
+            mergeOverlappingSelectedHistoryMessages(later)
+            return true
         }
         AppPerformanceSignposts.measureSync("LaterHistoryStateCommit") {
             appendSelectedMessages(later, preparedRows: preparedRows)
         }
         return true
+    }
+
+    private func mergeOverlappingSelectedHistoryMessages(_ history: [Message]) {
+        // Keep live edits/reactions for IDs already present. A simple filtered
+        // prepend/append is insufficient: new rows can now interleave with
+        // the history page, so rebuild their order and grouping together.
+        let missing = history.filter { !selectedMessageIDs.contains($0.id) }
+        guard !missing.isEmpty else { return }
+        replaceSelectedMessages(with: Self.merging(current: messages, fresh: missing))
     }
 
     func commitBatchedSelectedMessages() {
@@ -724,18 +746,23 @@ extension AppModel {
         )
     }
 
+    /// - Parameter updatesOnly: An edit or poll result updates a retained
+    ///   row but never inserts one, which could land outside the loaded
+    ///   window and join it to unrelated history.
     @discardableResult
-    func reconcileVisibleOrCached(_ incoming: Message) -> Message {
+    func reconcileVisibleOrCached(_ incoming: Message, updatesOnly: Bool = false) -> Message {
         let message = pollVotePresentationPreserving(reactionPresentationPreserving(
             outgoingMediaPresentationPreserving(incoming)
         ))
         reconcileInboxMessage(message)
         receiveGuideResourceEvent(.messageUpdated(message))
         if message.channelID == openThread?.id {
-            reconcileThread(message)
+            if updatesOnly { reconcileThreadUpdate(message) } else { reconcileThread(message) }
         }
         if message.channelID == selectedChannelID {
-            reconcile(message)
+            if updatesOnly { reconcileSelectedMessageUpdate(message) } else { reconcile(message) }
+        } else if updatesOnly {
+            reconcileCachedMessageUpdate(message)
         } else {
             cache(message)
         }
@@ -821,11 +848,13 @@ extension AppModel {
         return result
     }
 
-    func updateOutgoingState(_ state: OutboxState, nonce: String, channelID: ChannelID) {
+    func updateOutgoingState(_ state: OutboxState, nonce: String, channelID: ChannelID, failure: MessageSendFailure? = nil) {
+        composer.outbox.updateState(state, nonce: nonce, channelID: channelID)
         if openThread?.id == channelID,
            let index = threadMessages.firstIndex(where: { $0.nonce == nonce })
         {
             threadMessages[index].outboxState = state
+            threadMessages[index].sendFailure = failure
             return
         }
         if selectedChannelID == channelID,
@@ -833,6 +862,7 @@ extension AppModel {
         {
             mutateSelectedMessages {
                 $0[index].outboxState = state
+                $0[index].sendFailure = failure
             }
             return
         }
@@ -840,6 +870,7 @@ extension AppModel {
               let index = cached.firstIndex(where: { $0.nonce == nonce })
         else { return }
         cached[index].outboxState = state
+        cached[index].sendFailure = failure
         messageCache[channelID] = cached
     }
 
@@ -860,26 +891,43 @@ extension AppModel {
     }
 
     func outgoingState(nonce: String, channelID: ChannelID) -> OutboxState? {
+        let visibleState: OutboxState?
         if openThread?.id == channelID {
-            return threadMessages.first { $0.nonce == nonce }?.outboxState
+            visibleState = threadMessages.first { $0.nonce == nonce }?.outboxState
+        } else if selectedChannelID == channelID {
+            visibleState = messages.first { $0.nonce == nonce }?.outboxState
+        } else {
+            visibleState = messageCache[channelID]?.first { $0.nonce == nonce }?.outboxState
         }
-        if selectedChannelID == channelID {
-            return messages.first { $0.nonce == nonce }?.outboxState
-        }
-        return messageCache[channelID]?.first { $0.nonce == nonce }?.outboxState
+        // Fresh authoritative history can settle a failed send even when its
+        // Gateway event was missed. An old optimistic row cannot downgrade it.
+        if visibleState == .confirmed { return .confirmed }
+        return composer.outbox.state(nonce: nonce, channelID: channelID) ?? visibleState
     }
 
     func reconcileThread(_ message: Message) {
+        let message = withOpenThreadGuild(message)
         var updated = threadMessages
-        if let index = updated.firstIndex(where: {
+        let index = updated.firstIndex(where: {
             $0.id == message.id || ($0.nonce != nil && $0.nonce == message.nonce)
-        }) {
-            updated.remove(at: index)
-            if let duplicateIndex = updated.firstIndex(where: {
-                $0.id == message.id
-            }) {
-                updated.remove(at: duplicateIndex)
+        })
+        // A confirmed message joins the window only within its cursors, so
+        // it never bridges unloaded history. A loaded row is still updated;
+        // a pending send confirmed outside the window leaves it, and the
+        // window shows the message once it reaches it.
+        if message.outboxState == .confirmed, !threadWindowAdmits(message.id) {
+            guard let index else { return }
+            if updated[index].id == message.id, updated[index].outboxState == .confirmed {
+                reconcileThreadUpdate(message)
+            } else {
+                updated.remove(at: index)
+                threadMessages = updated
             }
+            return
+        }
+        if index != nil {
+            // Both a loaded copy and the pending row it confirms give way.
+            updated.removeAll { $0.id == message.id || ($0.nonce != nil && $0.nonce == message.nonce) }
         }
         Self.insert(message, intoSorted: &updated)
         guard updated != threadMessages else { return }
@@ -887,6 +935,7 @@ extension AppModel {
     }
 
     func reconcileThreadUpdate(_ message: Message) {
+        let message = withOpenThreadGuild(message)
         guard let index = threadMessages.firstIndex(where: {
             $0.id == message.id
         }) else { return }
@@ -923,14 +972,39 @@ extension AppModel {
         return lowerBound
     }
 
+    /// Unconfirmed local sends stay below settled messages in submission
+    /// order. A confirmation carries a later server timestamp than the local
+    /// time of the sends queued behind it, so it settles in place.
     static func messagePrecedes(_ lhs: Message, _ rhs: Message) -> Bool {
-        lhs.timestamp != rhs.timestamp ? lhs.timestamp < rhs.timestamp : lhs.id < rhs.id
+        let lhsUnconfirmed = lhs.isUnconfirmedLocalSend
+        if lhsUnconfirmed != rhs.isUnconfirmedLocalSend { return !lhsUnconfirmed }
+        return lhs.timestamp != rhs.timestamp ? lhs.timestamp < rhs.timestamp : lhs.id < rhs.id
     }
 
     func cache(_ message: Message) {
-        let current = messageCache[message.channelID] ?? []
+        // The open thread's window is cached when it closes.
+        guard message.channelID != openThread?.id else { return }
+        var cached = messageCache[message.channelID]
+        if message.outboxState == .confirmed, hasMoreCache[message.channelID] == true,
+           let storedLower = threadWindow.cachedCursors[message.channelID]?.lower,
+           message.id < max(storedLower, cached?.first { $0.outboxState == .confirmed }?.id ?? storedLower)
+        {
+            // A cached thread window admits nothing below its REST edge while
+            // older history remains. A send confirmed there leaves its row.
+            if let nonce = message.nonce,
+               let index = cached?.firstIndex(where: { $0.nonce == nonce && $0.outboxState != .confirmed })
+            {
+                cached?.remove(at: index)
+                if let cached { storeCachedMessages(cached, for: message.channelID) }
+            }
+            return
+        }
+        if cached == nil {
+            // A live message alone does not connect to older history.
+            markHistoryContiguous(through: nil, in: message.channelID)
+        }
         storeCachedMessages(
-            Self.merging(current: current, fresh: [message]),
+            Self.merging(current: cached ?? [], fresh: [message]),
             for: message.channelID
         )
     }
@@ -960,6 +1034,10 @@ extension AppModel {
             messageRowCache[evicted] = nil
             messageRowCacheOrder.removeAll { $0 == evicted }
             hasMoreCache[evicted] = nil
+            if evicted != selectedChannelID, evicted != openThread?.id {
+                contiguousHistoryBoundaries[evicted] = nil
+                threadWindow.cachedCursors[evicted] = nil
+            }
         }
     }
 

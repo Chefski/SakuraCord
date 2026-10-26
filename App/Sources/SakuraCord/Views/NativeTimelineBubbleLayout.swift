@@ -22,28 +22,32 @@ enum NativeTimelineBubbleLayout {
     }
 
     static var horizontalPadding: CGFloat { InterfaceScale.metric(12) }
+    static var verticalPadding: CGFloat { InterfaceScale.metric(8) }
+    /// The height of a bubble holding one line of text.
+    static var oneLineHeight: CGFloat {
+        MessageRowLayoutMetrics.compactContentHeight + verticalPadding * 2
+    }
+    /// No taller than a one-line bubble, which the avatar is bottom-aligned to.
+    static var avatarDiameter: CGFloat { InterfaceScale.metric(32) }
 
     static func context(
         for message: Message,
-        model: AppModel?
+        source: AppModel?
     ) -> Context {
-        let isEnabled =
-            model?.appearanceSettings.messageAppearance == .bubbles
-                && !message.type.hasGeneratedContent
-        // Standard message layout never consumes bubble identity. Avoid an
-        // account-wide channel search for every newly paginated message.
-        guard isEnabled else {
-            return Context(isEnabled: false, isOutgoing: false, showsAvatar: true)
-        }
-        let selectedChannel = model?.selectedChannel
-        let channel = selectedChannel?.id == message.channelID
-            ? selectedChannel
-            : model?.snapshot?.channels.first { $0.id == message.channelID }
-        return Context(
-            isEnabled: isEnabled,
-            isOutgoing: isEnabled
-                && message.author.id == model?.snapshot?.currentUser.id,
-            showsAvatar: channel?.kind != .directMessage
+        source?.bubbleContext(for: message)
+            ?? Context(isEnabled: false, isOutgoing: false, showsAvatar: true)
+    }
+
+    /// One-to-one conversations leave incoming bubbles without avatars.
+    static func showsAvatar(in channel: Channel?) -> Bool {
+        channel?.kind != .directMessage
+    }
+
+    /// The widest a bubble's content column may grow in a timeline row.
+    static func maximumContentWidth(availableWidth: CGFloat) -> CGFloat {
+        max(
+            InterfaceScale.metric(28),
+            min(InterfaceScale.metric(500), availableWidth * 0.68 - horizontalPadding * 2)
         )
     }
 
@@ -57,10 +61,7 @@ enum NativeTimelineBubbleLayout {
     ) -> CGFloat {
         guard isEnabled else { return InterfaceScale.metric(80) }
         let minimumWidth: CGFloat = InterfaceScale.metric(28)
-        let maximumWidth = max(
-            minimumWidth,
-            min(InterfaceScale.metric(500), availableWidth * 0.68 - horizontalPadding * 2)
-        )
+        let maximumWidth = maximumContentWidth(availableWidth: availableWidth)
         var preferredWidth = message.hasPoll ? min(InterfaceScale.metric(456), maximumWidth) : minimumWidth
         if let attributedContent = content.attributedContent {
             preferredWidth = max(
@@ -139,13 +140,40 @@ enum NativeTimelineBubbleLayout {
             availableWidth - horizontalInset - horizontalPadding
                 - preferredContentWidth
         } else {
-            horizontalInset
-                + (context.showsAvatar ? avatarWidth + columnGap : 0)
-                + horizontalPadding
+            incomingBubbleMinX(
+                horizontalInset: horizontalInset,
+                avatarWidth: avatarWidth,
+                columnGap: columnGap,
+                showsAvatar: context.showsAvatar
+            ) + horizontalPadding
         }
         return Column(
             contentX: contentX,
             contentWidth: preferredContentWidth
+        )
+    }
+
+    /// Where an incoming bubble's leading edge sits, past the avatar column
+    /// when one shows.
+    static func incomingBubbleMinX(
+        horizontalInset: CGFloat,
+        avatarWidth: CGFloat,
+        columnGap: CGFloat,
+        showsAvatar: Bool
+    ) -> CGFloat {
+        horizontalInset + (showsAvatar ? avatarWidth + columnGap : 0)
+    }
+
+    /// The conversation timeline's incoming bubble edge, so chrome outside
+    /// the timeline can line up with the bubbles.
+    static func incomingBubbleMinX(showsAvatar: Bool, settings: InterfaceSettingsSnapshot) -> CGFloat {
+        incomingBubbleMinX(
+            horizontalInset: MessageRowLayoutMetrics.horizontalInset,
+            avatarWidth: MessageRowLayoutMetrics.avatarDiameter,
+            columnGap: MessageRowLayoutMetrics.columnGap(
+                timestampGutterWidth: NativeTimelineCompactTimestampMetrics.width(settings: settings)
+            ),
+            showsAvatar: showsAvatar
         )
     }
 
@@ -207,7 +235,7 @@ enum NativeTimelineBubbleLayout {
             ?? defaultFrame
     }
 
-    private static func measuredTextWidth(
+    static func measuredTextWidth(
         _ framesetter: CTFramesetter,
         length: Int,
         maximumWidth: CGFloat
@@ -230,6 +258,14 @@ enum NativeTimelineBubbleLayout {
 enum NativeTimelineBubbleDrawing {
     static var cornerRadius: CGFloat { InterfaceScale.metric(18) }
 
+    static func foregroundColor(for region: NativeTimelineBubbleRegion?) -> NSColor {
+        region?.isOutgoing == true ? .white : .labelColor
+    }
+
+    static func secondaryForegroundColor(for region: NativeTimelineBubbleRegion?) -> NSColor {
+        region?.isOutgoing == true ? .white.withAlphaComponent(0.72) : .secondaryLabelColor
+    }
+
     static let incomingFillColor = NSColor(name: nil) { appearance in
         switch appearance.bestMatch(from: [.darkAqua, .aqua]) {
         case .darkAqua:
@@ -240,23 +276,20 @@ enum NativeTimelineBubbleDrawing {
     }
 
     static func fillColor(for region: NativeTimelineBubbleRegion) -> NSColor {
-        region.isOutgoing ? .sakuraCordAccentColor : incomingFillColor
+        return region.isOutgoing ? .sakuraCordAccentColor : incomingFillColor
     }
 
     static func fill(_ region: NativeTimelineBubbleRegion) {
         fillColor(for: region).setFill()
-        if region.showsTail {
-            tailPath(for: region).fill()
-        }
-        bodyPath(for: region).fill()
+        path(for: region).fill()
     }
 
+    /// The bubble's complete outline. The tail is merged into the body as a
+    /// single contour, so translucent fills and clips cover every point once.
     static func path(for region: NativeTimelineBubbleRegion) -> NSBezierPath {
-        let path = bodyPath(for: region)
-        if region.showsTail {
-            path.append(tailPath(for: region))
-        }
-        return path
+        let body = bodyPath(for: region)
+        guard region.showsTail else { return body }
+        return NSBezierPath(cgPath: body.cgPath.union(tailPath(for: region).cgPath))
     }
 
     static func bodyPath(
@@ -268,71 +301,51 @@ enum NativeTimelineBubbleDrawing {
         )
     }
 
+    /// Fills only the part of the tail that extends past the body, for
+    /// treatments that already cover the body's own bottom corner.
+    static func fillTailProtrusion(of region: NativeTimelineBubbleRegion) {
+        guard region.showsTail else { return }
+        NSGraphicsContext.saveGraphicsState()
+        let outsideBody = NSBezierPath(rect: region.frame.insetBy(
+            dx: -cornerRadius,
+            dy: -cornerRadius
+        ))
+        outsideBody.append(bodyPath(for: region))
+        outsideBody.windingRule = .evenOdd
+        outsideBody.addClip()
+        tailPath(for: region).fill()
+        NSGraphicsContext.restoreGraphicsState()
+    }
+
+    /// The tail at the bubble's bottom outer corner. Its inner points lie
+    /// inside the body so the union with the body has no seam or notch.
     static func tailPath(
         for region: NativeTimelineBubbleRegion
     ) -> NSBezierPath {
-        let path = NSBezierPath()
-        if region.isOutgoing {
-            path.move(to: CGPoint(
-                x: region.frame.maxX - InterfaceScale.metric(4),
-                y: region.frame.maxY - InterfaceScale.metric(15)
-            ))
-            path.curve(
-                to: CGPoint(x: region.frame.maxX + InterfaceScale.metric(10), y: region.frame.maxY),
-                controlPoint1: CGPoint(
-                    x: region.frame.maxX - InterfaceScale.metric(2),
-                    y: region.frame.maxY - InterfaceScale.metric(5)
-                ),
-                controlPoint2: CGPoint(
-                    x: region.frame.maxX + InterfaceScale.metric(2),
-                    y: region.frame.maxY
-                )
-            )
-            path.curve(
-                to: CGPoint(
-                    x: region.frame.maxX - InterfaceScale.metric(7),
-                    y: region.frame.maxY - InterfaceScale.metric(3)
-                ),
-                controlPoint1: CGPoint(
-                    x: region.frame.maxX + InterfaceScale.metric(4),
-                    y: region.frame.maxY
-                ),
-                controlPoint2: CGPoint(
-                    x: region.frame.maxX - InterfaceScale.metric(2),
-                    y: region.frame.maxY - 1
-                )
-            )
-        } else {
-            path.move(to: CGPoint(
-                x: region.frame.minX + InterfaceScale.metric(4),
-                y: region.frame.maxY - InterfaceScale.metric(15)
-            ))
-            path.curve(
-                to: CGPoint(x: region.frame.minX - InterfaceScale.metric(10), y: region.frame.maxY),
-                controlPoint1: CGPoint(
-                    x: region.frame.minX + InterfaceScale.metric(2),
-                    y: region.frame.maxY - InterfaceScale.metric(5)
-                ),
-                controlPoint2: CGPoint(
-                    x: region.frame.minX - InterfaceScale.metric(2),
-                    y: region.frame.maxY
-                )
-            )
-            path.curve(
-                to: CGPoint(
-                    x: region.frame.minX + InterfaceScale.metric(7),
-                    y: region.frame.maxY - InterfaceScale.metric(3)
-                ),
-                controlPoint1: CGPoint(
-                    x: region.frame.minX - InterfaceScale.metric(4),
-                    y: region.frame.maxY
-                ),
-                controlPoint2: CGPoint(
-                    x: region.frame.minX + InterfaceScale.metric(2),
-                    y: region.frame.maxY - 1
-                )
+        let frame = region.frame
+        let edgeX = region.isOutgoing ? frame.maxX : frame.minX
+        let inward: CGFloat = region.isOutgoing ? -1 : 1
+        func point(_ inset: CGFloat, _ rise: CGFloat) -> CGPoint {
+            CGPoint(
+                x: edgeX + inward * InterfaceScale.metric(inset),
+                y: frame.maxY - InterfaceScale.metric(rise)
             )
         }
+        // Start where the straight outer edge meets the bottom corner.
+        let startRise = min(18, frame.height / InterfaceScale.metric(1) / 2)
+        let path = NSBezierPath()
+        path.move(to: point(16, startRise))
+        path.line(to: point(0, startRise))
+        path.curve(
+            to: point(-6, 0),
+            controlPoint1: point(0, 6),
+            controlPoint2: point(-2.5, 0.8)
+        )
+        path.curve(
+            to: point(16, 2.2),
+            controlPoint1: point(4, 0.4),
+            controlPoint2: point(10, 1.4)
+        )
         path.close()
         return path
     }

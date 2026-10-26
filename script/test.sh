@@ -67,6 +67,7 @@ run_package_tests() {
   run_tests "$ROOT_DIR/Packages/DiscordProtocol"
   run_tests "$ROOT_DIR/Packages/SakuraCordPersistence"
   run_tests "$ROOT_DIR/Packages/MessageRendering"
+  run_tests "$ROOT_DIR/Packages/DaveKit"
   run_tests "$ROOT_DIR/Packages/MediaPipeline"
   run_tests "$ROOT_DIR/Packages/SakuraCordPluginSDK"
 }
@@ -78,18 +79,27 @@ case "$TARGET" in
   protocol)
     run_tests "$ROOT_DIR/Packages/DiscordProtocol"
     ;;
+  dave)
+    run_tests "$ROOT_DIR/Packages/DaveKit"
+    ;;
   media)
     run_tests "$ROOT_DIR/Packages/MediaPipeline"
     ;;
   packages)
     run_package_tests
     ;;
+  packages-core)
+    run_tests "$ROOT_DIR/Packages/SakuraCordModels"
+    run_tests "$ROOT_DIR/Packages/SakuraCordPersistence"
+    run_tests "$ROOT_DIR/Packages/MessageRendering"
+    run_tests "$ROOT_DIR/Packages/SakuraCordPluginSDK"
+    ;;
   all)
     run_package_tests
     run_tests "$ROOT_DIR/App"
     ;;
   *)
-    echo "usage: $0 [app|protocol|media|packages|all]" >&2
+    echo "usage: $0 [app|protocol|dave|media|packages|packages-core|all]" >&2
     exit 2
     ;;
 esac

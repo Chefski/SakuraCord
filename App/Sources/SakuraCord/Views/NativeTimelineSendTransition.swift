@@ -141,8 +141,13 @@ final class NativeTimelineSendTransitionStore {
         return Pending(source: source, overlay: overlay)
     }
 
-    func discard(_ channelID: ChannelID) {
-        pending.removeValue(forKey: channelID)?.overlay.dismiss()
+    func discard(_ channelID: ChannelID, animated: Bool = true) {
+        guard let overlay = pending.removeValue(forKey: channelID)?.overlay else { return }
+        if animated {
+            overlay.dismiss()
+        } else {
+            overlay.removeFromSuperview()
+        }
     }
 }
 
@@ -154,11 +159,16 @@ enum NativeTimelineSendTransitionTiming {
     static let duration: CFTimeInterval = 0.36
     static let fillFadeDuration: CFTimeInterval = 0.08
     static let sourceTextFadeDuration: CFTimeInterval = 0.1
+    static let plainTextCrossFadeDuration: CFTimeInterval = 0.2
     static let contentFadeDuration: CFTimeInterval = 0.08
     static let contentRefreshDuration: CFTimeInterval = 0.12
     static let tailFadeDelay: CFTimeInterval = 0.06
     static let tailFadeDuration: CFTimeInterval = 0.12
     static let dismissalDuration: CFTimeInterval = 0.12
+    /// The composer stacks attachments above the text while a message puts
+    /// its text first, so their paths cross. The text leaves first and
+    /// passes over the media, which follows a beat behind and lands below.
+    static let mediaStagger: CFTimeInterval = 0.06
     /// How long a landed bubble may wait for its row's media to decode, so
     /// the hand-off never shows a loading placeholder.
     static let mediaWaitLimit: TimeInterval = 0.6
@@ -167,25 +177,30 @@ enum NativeTimelineSendTransitionTiming {
         CAMediaTimingFunction(controlPoints: 0.23, 1, 0.32, 1)
     }
 
-    private struct ControlPoints {
-        let x1: Float
-        let y1: Float
-        let x2: Float
-        let y2: Float
+    static let verticalCurve = NativeTimelineGlideCurve(
+        x1: 0.2, y1: 0.01, x2: 0.28, y2: 0.91, duration: duration
+    )
+
+    static var vertical: CAMediaTimingFunction { verticalCurve.timingFunction }
+}
+
+/// A cubic Bézier curve the transcript can glide on, readable at any moment
+/// so a glide that is interrupted continues from where its rows are drawn.
+struct NativeTimelineGlideCurve {
+    let x1: Float
+    let y1: Float
+    let x2: Float
+    let y2: Float
+    let duration: CFTimeInterval
+
+    var timingFunction: CAMediaTimingFunction {
+        CAMediaTimingFunction(controlPoints: x1, y1, x2, y2)
     }
 
-    private static let verticalControlPoints = ControlPoints(x1: 0.2, y1: 0.01, x2: 0.28, y2: 0.91)
-
-    static var vertical: CAMediaTimingFunction {
-        let points = verticalControlPoints
-        return CAMediaTimingFunction(controlPoints: points.x1, points.y1, points.x2, points.y2)
-    }
-
-    /// The vertical curve's progress after `fraction` of the duration.
-    static func verticalProgress(at fraction: Double) -> Double {
+    /// The curve's progress after `fraction` of the duration.
+    func progress(at fraction: Double) -> Double {
         guard fraction > 0 else { return 0 }
         guard fraction < 1 else { return 1 }
-        let points = verticalControlPoints
         func bezier(_ parameter: Double, _ first: Float, _ second: Float) -> Double {
             let inverse = 1 - parameter
             return 3 * inverse * inverse * parameter * Double(first)
@@ -196,13 +211,13 @@ enum NativeTimelineSendTransitionTiming {
         var upper = 1.0
         for _ in 0 ..< 24 {
             let middle = (lower + upper) / 2
-            if bezier(middle, points.x1, points.x2) < fraction {
+            if bezier(middle, x1, x2) < fraction {
                 lower = middle
             } else {
                 upper = middle
             }
         }
-        return bezier((lower + upper) / 2, points.y1, points.y2)
+        return bezier((lower + upper) / 2, y1, y2)
     }
 }
 
@@ -256,14 +271,20 @@ final class NativeTimelineSendTransitionOverlay: NSView {
         let fadesOut: Bool
     }
 
-    /// Destination geometry in this view's (unflipped) coordinates.
-    struct Geometry {
-        let fieldFrame: CGRect
-        let bubbleFrame: CGRect
-        let bubbleCornerRadius: CGFloat
+    /// The bubble the field becomes. Messages shown without bubbles have
+    /// none; their content leaves the field on its own.
+    struct Bubble {
+        let frame: CGRect
+        let cornerRadius: CGFloat
         /// Relative to the bubble's bottom trailing corner.
         let tailPath: CGPath?
         let fillColor: CGColor
+    }
+
+    /// Destination geometry in this view's (unflipped) coordinates.
+    struct Geometry {
+        let fieldFrame: CGRect
+        let bubble: Bubble?
         let contentImage: NSImage
         let contentFrame: CGRect
         /// The content point that leaves from `sourceAnchor`.
@@ -333,6 +354,8 @@ final class NativeTimelineSendTransitionOverlay: NSView {
         layer = root
         wantsLayer = true
         for sublayer in [bubbleLayer, tailLayer, clipLayer] {
+            // The message body flies over the attachment copies it crosses.
+            sublayer.zPosition = 1
             root.addSublayer(sublayer)
         }
         bubbleLayer.opacity = 0
@@ -356,46 +379,54 @@ final class NativeTimelineSendTransitionOverlay: NSView {
         CATransaction.setDisableActions(true)
         defer { CATransaction.commit() }
         let field = geometry.fieldFrame
-        let bubble = geometry.bubbleFrame
-        let fieldCornerRadius = min(geometry.bubbleCornerRadius, field.height / 2)
         typealias Timing = NativeTimelineSendTransitionTiming
 
-        bubbleLayer.backgroundColor = geometry.fillColor
-        morph(
-            bubbleLayer, from: field, to: bubble,
-            cornerRadius: (fieldCornerRadius, geometry.bubbleCornerRadius)
-        )
-        fadeIn(bubbleLayer, duration: Timing.fillFadeDuration)
-
-        if let tailPath = geometry.tailPath {
-            tailLayer.bounds = .zero
-            tailLayer.anchorPoint = .zero
-            tailLayer.position = CGPoint(x: bubble.maxX, y: bubble.minY)
-            tailLayer.path = tailPath
-            tailLayer.fillColor = geometry.fillColor
-            animateAxes(
-                tailLayer,
-                offset: CGPoint(x: field.maxX - bubble.maxX, y: field.minY - bubble.minY)
+        // The clip carries the content along the bubble's path. Without a
+        // bubble it stays put and the content travels on its own.
+        let clipOrigin: (source: CGPoint, target: CGPoint)
+        if let bubble = geometry.bubble {
+            let target = bubble.frame
+            let fieldCornerRadius = min(bubble.cornerRadius, field.height / 2)
+            bubbleLayer.backgroundColor = bubble.fillColor
+            morph(
+                bubbleLayer, from: field, to: target,
+                cornerRadius: (fieldCornerRadius, bubble.cornerRadius)
             )
-            fadeIn(tailLayer, duration: Timing.tailFadeDuration, delay: Timing.tailFadeDelay)
-        }
+            fadeIn(bubbleLayer, duration: Timing.fillFadeDuration)
 
-        clipLayer.masksToBounds = true
-        morph(
-            clipLayer, from: field, to: bubble,
-            cornerRadius: (fieldCornerRadius, geometry.bubbleCornerRadius)
-        )
-        // Content is positioned within the clip, which carries it along the
-        // bubble's path; this offset carries it from the source anchor.
+            if let tailPath = bubble.tailPath {
+                tailLayer.bounds = .zero
+                tailLayer.anchorPoint = .zero
+                tailLayer.position = CGPoint(x: target.maxX, y: target.minY)
+                tailLayer.path = tailPath
+                tailLayer.fillColor = bubble.fillColor
+                animateAxes(
+                    tailLayer,
+                    offset: CGPoint(x: field.maxX - target.maxX, y: field.minY - target.minY)
+                )
+                fadeIn(tailLayer, duration: Timing.tailFadeDuration, delay: Timing.tailFadeDelay)
+            }
+
+            clipLayer.masksToBounds = true
+            morph(
+                clipLayer, from: field, to: target,
+                cornerRadius: (fieldCornerRadius, bubble.cornerRadius)
+            )
+            clipOrigin = (field.origin, target.origin)
+        } else {
+            clipLayer.masksToBounds = false
+            clipLayer.frame = bounds
+            clipOrigin = (.zero, .zero)
+        }
         contentLayer.position = CGPoint(
-            x: geometry.contentAnchor.x - bubble.minX,
-            y: geometry.contentAnchor.y - bubble.minY
+            x: geometry.contentAnchor.x - clipOrigin.target.x,
+            y: geometry.contentAnchor.y - clipOrigin.target.y
         )
         animateAxes(
             contentLayer,
             offset: CGPoint(
-                x: geometry.sourceAnchor.x - field.minX - contentLayer.position.x,
-                y: geometry.sourceAnchor.y - field.minY - contentLayer.position.y
+                x: geometry.sourceAnchor.x - clipOrigin.source.x - contentLayer.position.x,
+                y: geometry.sourceAnchor.y - clipOrigin.source.y - contentLayer.position.y
             )
         )
         finalContentLayer.contents = geometry.contentImage
@@ -404,17 +435,24 @@ final class NativeTimelineSendTransitionOverlay: NSView {
             dx: -geometry.contentAnchor.x,
             dy: -geometry.contentAnchor.y
         )
-        fadeIn(finalContentLayer, duration: Timing.contentFadeDuration)
+        // Composer text and message text look alike, so without a bubble to
+        // hide the swap the two cross-fade over a little longer.
+        let crossFade = geometry.bubble == nil ? Timing.plainTextCrossFadeDuration : nil
+        fadeIn(finalContentLayer, duration: crossFade ?? Timing.contentFadeDuration)
         if let heldTextFrame {
             sourceTextLayer.frame = heldTextFrame.offsetBy(
                 dx: -geometry.sourceAnchor.x,
                 dy: -geometry.sourceAnchor.y
             )
             sourceTextLayer.opacity = 0
-            add(sourceTextLayer, "opacity", from: 1, to: 0, duration: Timing.sourceTextFadeDuration)
+            add(
+                sourceTextLayer, "opacity", from: 1, to: 0,
+                duration: crossFade ?? Timing.sourceTextFadeDuration
+            )
         }
 
         var landingIndexes = Set<Int>()
+        let delay = mediaDelay
         for piece in geometry.pieces {
             guard let layer = pieceLayers[piece.index],
                   let source = pieceSourceFrames[piece.index]
@@ -422,17 +460,24 @@ final class NativeTimelineSendTransitionOverlay: NSView {
             landingIndexes.insert(piece.index)
             morph(
                 layer, from: source, to: piece.frame,
-                cornerRadius: (pieceSourceCornerRadii[piece.index] ?? piece.cornerRadius, piece.cornerRadius)
+                cornerRadius: (pieceSourceCornerRadii[piece.index] ?? piece.cornerRadius, piece.cornerRadius),
+                delay: delay
             )
             let opacity: Float = piece.fadesOut ? 0 : piece.opacity
             layer.opacity = opacity
-            add(layer, "opacity", from: 1, to: CGFloat(opacity), timing: Timing.vertical)
+            add(layer, "opacity", from: 1, to: CGFloat(opacity), timing: Timing.vertical, delay: delay)
         }
         // Anything the destination has no frame for leaves with the field.
         for (index, layer) in pieceLayers where !landingIndexes.contains(index) {
             layer.opacity = 0
             add(layer, "opacity", from: 1, to: 0, duration: Timing.dismissalDuration)
         }
+    }
+
+    /// How long attachments wait for the text to lead them out.
+    var mediaDelay: CFTimeInterval {
+        heldTextFrame != nil && !pieceLayers.isEmpty
+            ? NativeTimelineSendTransitionTiming.mediaStagger : 0
     }
 
     /// Replaces the bubble's content after its media finishes loading.
@@ -480,7 +525,8 @@ final class NativeTimelineSendTransitionOverlay: NSView {
         _ layer: CALayer,
         from source: CGRect,
         to target: CGRect,
-        cornerRadius: (from: CGFloat, to: CGFloat)
+        cornerRadius: (from: CGFloat, to: CGFloat),
+        delay: CFTimeInterval = 0
     ) {
         typealias Timing = NativeTimelineSendTransitionTiming
         layer.frame = target
@@ -488,30 +534,32 @@ final class NativeTimelineSendTransitionOverlay: NSView {
         layer.cornerRadius = cornerRadius.to
         animateAxes(
             layer,
-            offset: CGPoint(x: source.midX - target.midX, y: source.midY - target.midY)
+            offset: CGPoint(x: source.midX - target.midX, y: source.midY - target.midY),
+            delay: delay
         )
-        add(layer, "bounds.size.width", from: source.width, to: target.width, timing: Timing.horizontal)
-        add(layer, "bounds.size.height", from: source.height, to: target.height, timing: Timing.vertical)
-        add(layer, "cornerRadius", from: cornerRadius.from, to: cornerRadius.to, timing: Timing.vertical)
+        add(layer, "bounds.size.width", from: source.width, to: target.width, timing: Timing.horizontal, delay: delay)
+        add(layer, "bounds.size.height", from: source.height, to: target.height, timing: Timing.vertical, delay: delay)
+        add(layer, "cornerRadius", from: cornerRadius.from, to: cornerRadius.to, timing: Timing.vertical, delay: delay)
     }
 
     private func animateAxes(
         _ layer: CALayer,
         offset: CGPoint,
-        duration: CFTimeInterval = NativeTimelineSendTransitionTiming.duration
+        duration: CFTimeInterval = NativeTimelineSendTransitionTiming.duration,
+        delay: CFTimeInterval = 0
     ) {
         if abs(offset.x) >= 0.5 {
             add(
                 layer, "position.x", from: offset.x, to: 0,
                 timing: NativeTimelineSendTransitionTiming.horizontal,
-                duration: duration, isAdditive: true
+                duration: duration, delay: delay, isAdditive: true
             )
         }
         if abs(offset.y) >= 0.5 {
             add(
                 layer, "position.y", from: offset.y, to: 0,
                 timing: NativeTimelineSendTransitionTiming.vertical,
-                duration: duration, isAdditive: true
+                duration: duration, delay: delay, isAdditive: true
             )
         }
     }
@@ -535,6 +583,7 @@ final class NativeTimelineSendTransitionOverlay: NSView {
         to: CGFloat,
         timing: CAMediaTimingFunction = CAMediaTimingFunction(name: .easeOut),
         duration: CFTimeInterval = NativeTimelineSendTransitionTiming.duration,
+        delay: CFTimeInterval = 0,
         isAdditive: Bool = false
     ) {
         let animation = CABasicAnimation(keyPath: keyPath)
@@ -543,6 +592,11 @@ final class NativeTimelineSendTransitionOverlay: NSView {
         animation.duration = duration
         animation.timingFunction = timing
         animation.isAdditive = isAdditive
+        if delay > 0 {
+            // Holds its starting value until the delayed start.
+            animation.beginTime = layer.convertTime(CACurrentMediaTime(), from: nil) + delay
+            animation.fillMode = .backwards
+        }
         layer.add(animation, forKey: nil)
     }
 }
@@ -553,14 +607,15 @@ struct NativeTimelineTranscriptGlide {
     let beganAt: CFTimeInterval
     /// How long the rows stay put before gliding.
     let hold: CFTimeInterval
+    let curve: NativeTimelineGlideCurve
 
     var endsAt: CFTimeInterval {
-        beganAt + hold + NativeTimelineSendTransitionTiming.duration
+        beganAt + hold + curve.duration
     }
 
     func remaining(at time: CFTimeInterval) -> CGFloat {
-        let fraction = (time - beganAt - hold) / NativeTimelineSendTransitionTiming.duration
-        return offset * CGFloat(1 - NativeTimelineSendTransitionTiming.verticalProgress(at: fraction))
+        let fraction = (time - beganAt - hold) / curve.duration
+        return offset * CGFloat(1 - curve.progress(at: fraction))
     }
 }
 
@@ -602,6 +657,11 @@ extension NativeTimelineCanvasView {
         rowIndex index: Int,
         transcriptShift: CGFloat
     ) {
+        guard model?.animatesMessageSending == true else {
+            pending.overlay.removeFromSuperview()
+            cancelTranscriptGlide()
+            return
+        }
         guard let window,
               let (geometry, bubbleInWindow) = sendTransitionGeometry(
                   from: pending, rowIndex: index, in: window
@@ -619,6 +679,7 @@ extension NativeTimelineCanvasView {
             omittedAttachments: Set(geometry.pieces.filter { !$0.fadesOut }.map(\.index)),
             bubbleFrameInWindow: bubbleInWindow,
             endUptime: CACurrentMediaTime() + NativeTimelineSendTransitionTiming.duration
+                + pending.overlay.mediaDelay
         )
         // Earlier sends keep flying; each hides only its own row.
         sendTransitions.append(transition)
@@ -644,7 +705,7 @@ extension NativeTimelineCanvasView {
     ) -> (NativeTimelineSendTransitionOverlay.Geometry, CGRect)? {
         let source = pending.source
         let overlay = pending.overlay
-        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+        guard model?.animatesMessageSending == true,
               source.window === window,
               overlay.window === window,
               items.indices.contains(index),
@@ -652,13 +713,13 @@ extension NativeTimelineCanvasView {
               case let .message(row, _, _) = items[index]
         else { return nil }
         let layout = layouts[index]
-        guard let region = layout.bubbleRegion, region.isOutgoing else { return nil }
         let rowFrame = rowFrame(at: index)
+        guard let target = layout.sendTransitionFrame(rowWidth: rowFrame.width) else { return nil }
         let toWindow = { (rect: CGRect) in
             self.convert(rect.offsetBy(dx: rowFrame.minX, dy: rowFrame.minY), to: nil)
         }
-        let bubbleInWindow = toWindow(region.frame)
-        guard convert(visibleRect, to: nil).intersects(bubbleInWindow) else { return nil }
+        let targetInWindow = toWindow(target)
+        guard convert(visibleRect, to: nil).intersects(targetInWindow) else { return nil }
         let flyingAttachments = Set(source.attachments.indices.filter {
             source.attachments[$0] != nil && layout.attachmentRegions.indices.contains($0)
         })
@@ -674,7 +735,7 @@ extension NativeTimelineCanvasView {
             omittingAttachments: flyingAttachments.subtracting(fadingAttachments)
         ) else { return nil }
         let toOverlay = { (rect: CGRect) in overlay.convert(rect, from: nil) }
-        let bubbleFrame = toOverlay(bubbleInWindow)
+        let targetFrame = toOverlay(targetInWindow)
         let fieldFrame = toOverlay(source.fieldFrame)
         // Text leaves from its own baseline; anything else leaves from the
         // field's top leading corner.
@@ -684,7 +745,7 @@ extension NativeTimelineCanvasView {
         } else {
             anchors = (
                 CGPoint(x: fieldFrame.minX, y: fieldFrame.maxY),
-                CGPoint(x: bubbleFrame.minX, y: bubbleFrame.maxY)
+                CGPoint(x: targetFrame.minX, y: targetFrame.maxY)
             )
         }
         let mediaOpacity = Float(MessageOutboxPresentation.mediaOpacity(for: row.message.outboxState))
@@ -698,32 +759,50 @@ extension NativeTimelineCanvasView {
                 fadesOut: fadingAttachments.contains(attachmentIndex)
             )
         }
-        var fillColor = NSColor.clear.cgColor
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            fillColor = NativeTimelineBubbleDrawing.fillColor(for: region).cgColor
+        let bubble = layout.bubbleRegion.map { region in
+            var fillColor = NSColor.clear.cgColor
+            effectiveAppearance.performAsCurrentDrawingAppearance {
+                fillColor = NativeTimelineBubbleDrawing.fillColor(for: region).cgColor
+            }
+            return NativeTimelineSendTransitionOverlay.Bubble(
+                frame: targetFrame,
+                cornerRadius: min(
+                    NativeTimelineBubbleDrawing.cornerRadius,
+                    targetFrame.height / 2,
+                    targetFrame.width / 2
+                ),
+                tailPath: region.showsTail ? Self.sendTransitionTailPath() : nil,
+                fillColor: fillColor
+            )
         }
         let geometry = NativeTimelineSendTransitionOverlay.Geometry(
             fieldFrame: fieldFrame,
-            bubbleFrame: bubbleFrame,
-            bubbleCornerRadius: min(
-                NativeTimelineBubbleDrawing.cornerRadius,
-                bubbleFrame.height / 2,
-                bubbleFrame.width / 2
-            ),
-            tailPath: region.showsTail ? Self.sendTransitionTailPath() : nil,
-            fillColor: fillColor,
+            bubble: bubble,
             contentImage: content.image,
             contentFrame: toOverlay(content.frameInWindow),
             contentAnchor: anchors.content,
             sourceAnchor: anchors.source,
             pieces: pieces
         )
-        return (geometry, bubbleInWindow)
+        return (geometry, targetInWindow)
     }
 
     /// Keeps in-flight bubbles aimed at their rows after a later timeline
     /// update moves them, and ends a transition whose row changed shape.
     func reconcileSendTransitions() {
+        guard model?.animatesMessageSending == true else {
+            let store = model?.timelineSendTransitionStore
+            let hasPending = presentedConversationID.map { store?.hasPendingSource(for: $0) == true } ?? false
+            if hasPending || !sendTransitions.isEmpty {
+                cancelTranscriptGlide()
+            }
+            if let presentedConversationID {
+                store?.discard(presentedConversationID, animated: false)
+            }
+            finishSendTransitions(reconcilesHeldMedia: true)
+            restoreSendTransitionInteractions()
+            return
+        }
         for transition in sendTransitions {
             reconcileSendTransition(transition)
         }
@@ -732,13 +811,13 @@ extension NativeTimelineCanvasView {
     private func reconcileSendTransition(_ transition: NativeTimelineSendTransition) {
         guard let index = items.lastIndex(where: { $0.identifier == transition.identifier }),
               layouts.indices.contains(index),
-              let region = layouts[index].bubbleRegion
+              let target = layouts[index].sendTransitionFrame(rowWidth: rowFrame(at: index).width)
         else {
             finishSendTransition(transition)
             return
         }
         let rowFrame = rowFrame(at: index)
-        let bubbleInWindow = convert(region.frame.offsetBy(dx: rowFrame.minX, dy: rowFrame.minY), to: nil)
+        let bubbleInWindow = convert(target.offsetBy(dx: rowFrame.minX, dy: rowFrame.minY), to: nil)
         let previous = transition.bubbleFrameInWindow
         guard abs(bubbleInWindow.width - previous.width) < 0.5,
               abs(bubbleInWindow.height - previous.height) < 0.5
@@ -855,23 +934,28 @@ extension NativeTimelineCanvasView {
         transcriptGlide.map { CACurrentMediaTime() < $0.endsAt } ?? false
     }
 
-    /// The destination bubble stays transparent while its copy is in flight.
+    /// The destination bubble, or a plain row's body, stays transparent while
+    /// its copy is in flight. A plain row's author header remains, so it
+    /// arrives with the transcript.
     func clearSendTransitionBubble(
         for item: NativeMessageTimelineItem,
         layout: NativeTimelineRowLayout,
         rowFrame: CGRect
     ) {
         guard hidesRowForSendTransition(item.identifier),
-              let region = layout.bubbleRegion,
               let context = NSGraphicsContext.current?.cgContext
         else { return }
         context.saveGState()
         context.setBlendMode(.clear)
-        context.addPath(NativeTimelineBubbleDrawing.path(for: NativeTimelineBubbleRegion(
-            frame: region.frame.offsetBy(dx: rowFrame.minX, dy: rowFrame.minY).insetBy(dx: -1, dy: -1),
-            isOutgoing: region.isOutgoing,
-            showsTail: region.showsTail
-        )).cgPath)
+        if let region = layout.bubbleRegion {
+            context.addPath(NativeTimelineBubbleDrawing.path(for: NativeTimelineBubbleRegion(
+                frame: region.frame.offsetBy(dx: rowFrame.minX, dy: rowFrame.minY).insetBy(dx: -1, dy: -1),
+                isOutgoing: region.isOutgoing,
+                showsTail: region.showsTail
+            )).cgPath)
+        } else if let body = layout.sendTransitionFrame(rowWidth: rowFrame.width) {
+            context.addRect(body.offsetBy(dx: rowFrame.minX, dy: rowFrame.minY).insetBy(dx: -1, dy: 0))
+        }
         context.fillPath()
         context.restoreGState()
     }
@@ -879,9 +963,12 @@ extension NativeTimelineCanvasView {
     /// Plays the earlier rows' jump back as a glide on the bubble's vertical
     /// curve. Pointer actions wait until this presentation-only animation
     /// reaches the final positions used by hit testing.
-    func glideTranscript(by shift: CGFloat, holdingFor hold: CFTimeInterval = 0) {
+    func glideTranscript(
+        by shift: CGFloat,
+        holdingFor hold: CFTimeInterval = 0,
+        on curve: NativeTimelineGlideCurve = NativeTimelineSendTransitionTiming.verticalCurve
+    ) {
         guard abs(shift) >= 0.5, let layer else { return }
-        typealias Timing = NativeTimelineSendTransitionTiming
         // A send can move the rows twice in quick succession, once as the
         // composer collapses and again as the message arrives. Continue
         // from where the rows are drawn now so they travel only the net
@@ -911,7 +998,9 @@ extension NativeTimelineCanvasView {
             restoreSendTransitionInteractions()
             return
         }
-        transcriptGlide = NativeTimelineTranscriptGlide(offset: translation, beganAt: now, hold: hold)
+        transcriptGlide = NativeTimelineTranscriptGlide(
+            offset: translation, beganAt: now, hold: hold, curve: curve
+        )
         suppressSendTransitionInteractions()
         // Rows outside the viewport become visible during the glide.
         setNeedsDisplay(visible.insetBy(dx: 0, dy: -abs(translation)))
@@ -919,24 +1008,24 @@ extension NativeTimelineCanvasView {
         if hold > 0 {
             let held = CAKeyframeAnimation(keyPath: "transform.translation.y")
             held.values = [translation, translation, 0]
-            held.keyTimes = [0, NSNumber(value: hold / (hold + Timing.duration)), 1]
-            held.timingFunctions = [CAMediaTimingFunction(name: .linear), Timing.vertical]
+            held.keyTimes = [0, NSNumber(value: hold / (hold + curve.duration)), 1]
+            held.timingFunctions = [CAMediaTimingFunction(name: .linear), curve.timingFunction]
             held.isAdditive = true
             animation = held
         } else {
             let glide = CABasicAnimation(keyPath: "transform.translation.y")
             glide.fromValue = translation
             glide.toValue = 0
-            glide.timingFunction = Timing.vertical
+            glide.timingFunction = curve.timingFunction
             glide.isAdditive = true
             animation = glide
         }
-        animation.duration = hold + Timing.duration
+        animation.duration = hold + curve.duration
         layer.add(animation, forKey: Self.transcriptGlideKey)
         transcriptGlideFinishTask?.cancel()
         transcriptGlideFinishTask = Task { @MainActor [weak self] in
             do {
-                try await Task.sleep(for: .seconds(hold + Timing.duration))
+                try await Task.sleep(for: .seconds(hold + curve.duration))
             } catch {
                 return
             }
@@ -994,17 +1083,24 @@ extension NativeTimelineCanvasView {
         let baselineInWindow: CGPoint?
     }
 
-    /// Renders what the destination bubble contains, without its fill, so the
-    /// flying copy can morph its own background independently. Attachments
-    /// that arrive as flying thumbnails are left out.
+    /// Renders what the destination bubble or plain body contains, without a
+    /// bubble's fill, so the flying copy can morph its own background
+    /// independently. Attachments that arrive as flying thumbnails are left
+    /// out.
     private func sendTransitionContent(
         item: NativeMessageTimelineItem,
         layout: NativeTimelineRowLayout,
         rowFrame: CGRect,
         omittingAttachments omitted: Set<Int>
     ) -> SendTransitionContent? {
-        guard let region = layout.bubbleRegion else { return nil }
-        let bubblePath = NativeTimelineBubbleDrawing.path(for: region)
+        let bubblePath: NSBezierPath
+        if let region = layout.bubbleRegion {
+            bubblePath = NativeTimelineBubbleDrawing.path(for: region)
+        } else if let body = layout.sendTransitionFrame(rowWidth: rowFrame.width) {
+            bubblePath = NSBezierPath(rect: body)
+        } else {
+            return nil
+        }
         let drawRect = bubblePath.bounds.insetBy(dx: -1, dy: -1).integral
         guard let image = NativeTimelineSendTransitionSnapshot.render(
             size: drawRect.size,
@@ -1104,7 +1200,6 @@ extension NativeMessageTimelineCoordinator {
         for parent: NativeMessageTimelineView
     ) -> SendTransitionTranscriptAnchor? {
         guard parent.conversation == self.parent.conversation,
-              parent.model.appearanceSettings.messageAppearance == .bubbles,
               !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
               let channelID = parent.conversation.sendTransitionChannelID,
               let canvas
@@ -1145,7 +1240,7 @@ extension NativeMessageTimelineCoordinator {
            )
         {
             canvas.beginSendTransition(from: pending, rowIndex: index, transcriptShift: shift())
-        } else if anchor.isSending {
+        } else if anchor.isSending, parent.model.animatesMessageSending {
             // The composer resizing as it clears moves the transcript too.
             // Until the message arrives, hold the rows where they were so
             // they move once, together with the bubble.
@@ -1155,6 +1250,17 @@ extension NativeMessageTimelineCoordinator {
                 by: shift(),
                 holdingFor: holdsForMessage ? NativeTimelineSendTransitionStore.lifetime : 0
             )
+        } else if preparation.bottomInsetChanged,
+                  let destination = parent.conversation.composerDestination,
+                  parent.model.composer.isAnimatingResize(of: destination)
+        {
+            // The composer is growing or shrinking on its resize curve; the
+            // rows the inset just moved follow its edge on the same curve.
+            canvas.glideTranscript(by: shift(), on: ComposerResizeMotion.glideCurve)
+        } else if preparation.bottomInsetChanged, preparation.wasNearBottom {
+            // Footer chrome such as the typing bubble resized under the
+            // newest rows. Glide them with it rather than jumping.
+            canvas.glideTranscript(by: shift())
         }
     }
 
@@ -1165,8 +1271,9 @@ extension NativeMessageTimelineCoordinator {
         channelID: ChannelID,
         anchor: SendTransitionTranscriptAnchor
     ) -> (Int, NativeTimelineSendTransitionStore.Pending)? {
+        guard parent.model.animatesMessageSending else { return nil }
         let store = parent.model.timelineSendTransitionStore
-        let currentUserID = parent.model.snapshot?.currentUser.id
+        let currentUserID = parent.model.currentUser?.id
         for index in items.indices.reversed().prefix(3) {
             // A fast confirmation can replace the optimistic row before this
             // update, so recognise this client's send by its nonce.
@@ -1199,5 +1306,42 @@ extension NativeTimelineConversation {
         case .search, .pins, .inbox, .resource:
             nil
         }
+    }
+
+    /// The composer that sits over this timeline.
+    var composerDestination: MessageComposerDestination? {
+        switch self {
+        case .channel: .channel
+        case .thread: .thread
+        case .search, .pins, .inbox, .resource: nil
+        }
+    }
+}
+
+extension NativeTimelineRowLayout {
+    /// The part of a row sent from the composer that leaves the field: its
+    /// outgoing bubble, or without bubbles, the message body beside the
+    /// avatar column and below the author header, which stays in the
+    /// transcript.
+    func sendTransitionFrame(rowWidth: CGFloat) -> CGRect? {
+        if let bubbleRegion {
+            return bubbleRegion.isOutgoing ? bubbleRegion.frame : nil
+        }
+        let bodyFrames = [
+            contentFrame, forwardedHeaderFrame, voiceMessageRegion?.frame, pollLayout?.frame,
+        ].compactMap { $0 }
+            + attachmentRegions.map(\.frame)
+            + linkedImageRegions.map(\.frame)
+            + stickerFrames
+            + embedFrames
+            + componentFrames
+        guard let first = bodyFrames.first else { return nil }
+        let body = bodyFrames.dropFirst().reduce(first) { $0.union($1) }
+        return CGRect(
+            x: body.minX,
+            y: body.minY,
+            width: max(body.width, rowWidth - body.minX),
+            height: max(body.height, height - body.minY)
+        )
     }
 }

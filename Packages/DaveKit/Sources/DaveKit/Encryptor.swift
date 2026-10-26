@@ -16,6 +16,10 @@ class Encryptor {
         daveEncryptorSetKeyRatchet(encryptorHandle, keyRatchet.handle)
     }
 
+    func clearKeyRatchet() {
+        daveEncryptorSetKeyRatchet(encryptorHandle, nil)
+    }
+
     func setPassthroughMode(enabled: Bool) {
         daveEncryptorSetPassthroughMode(encryptorHandle, enabled)
     }
