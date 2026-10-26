@@ -863,11 +863,7 @@ extension AppModel {
     }
 
     func consumePrivateCallChanged(_ call: inout PrivateCall) {
-        let previousCall = privateCallsByChannel[call.channelID]
         let currentUserID = snapshot?.currentUser.id
-        let wasRingingCurrentUser = currentUserID.map {
-            previousCall?.isRinging($0) == true
-        } ?? false
         if call.voiceStates == nil {
             call.voiceStates = privateCallsByChannel[call.channelID]?.voiceStates
         }
@@ -880,12 +876,6 @@ extension AppModel {
             endLocalOutgoingPrivateCallRing(channelID: call.channelID)
         } else {
             reconcilePrivateCallSounds()
-        }
-        let isRingingCurrentUser = currentUserID.map(call.isRinging) ?? false
-        if !wasRingingCurrentUser, isRingingCurrentUser {
-            deliverIncomingCallNotification(call)
-        } else if wasRingingCurrentUser, !isRingingCurrentUser {
-            cancelIncomingCallNotification(channelID: call.channelID)
         }
     }
 
@@ -908,7 +898,6 @@ extension AppModel {
             }
         }
         endLocalOutgoingPrivateCallRing(channelID: channelID)
-        cancelIncomingCallNotification(channelID: channelID)
     }
 
     func consumeSnapshotChanged(_ value: BootstrapSnapshot) {

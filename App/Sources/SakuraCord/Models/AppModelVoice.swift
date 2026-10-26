@@ -428,9 +428,10 @@ extension AppModel {
             locallyStartedOutgoingChannelIDs:
                 locallyStartedOutgoingPrivateCallRings
         )
+        // Calls never post banners: the app rings and shows its own prompt
+        // whether or not it is in front, and only Do Not Disturb silences it.
         let shouldRingIncoming = state.ringsIncoming
             && currentStatus != .dnd
-            && (applicationIsActive || !notificationPreferences.isEnabled)
             && notificationPreferences.playsSound
             && privateCallsByChannel.values.contains { call in
                 snapshot.map { call.isRinging($0.currentUser.id) } == true && !isIncomingCallSuppressed(call)

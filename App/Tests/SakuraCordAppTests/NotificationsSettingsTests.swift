@@ -159,28 +159,7 @@ import UserNotifications
     #expect(NotificationFocusPolicy.interruptionLevel != .critical)
 }
 
-@Test func `Notification privacy identities grouping and call deep links are deterministic`() {
-    let hiddenCall = NotificationContentPresentation.makeIncomingCall(
-        callerName: "Caller",
-        conversationName: "Private group",
-        style: .hidden
-    )
-    #expect(hiddenCall == NotificationContentPresentation(
-        title: "SakuraCord",
-        subtitle: "",
-        body: "Incoming call"
-    ))
-    #expect(NotificationContentPresentation.makeIncomingCall(
-        callerName: "Caller",
-        conversationName: "Private group",
-        style: .senderOnly
-    ).subtitle.isEmpty)
-    #expect(NotificationContentPresentation.makeIncomingCall(
-        callerName: "Caller",
-        conversationName: "Private group",
-        style: .full
-    ).subtitle == "Private group")
-
+@Test func `Notification identities, grouping and deep links are deterministic`() {
     let channelID = ChannelID(rawValue: 30)
     let messageID = MessageID(rawValue: 31)
     #expect(
@@ -211,14 +190,13 @@ import UserNotifications
 
 @MainActor
 @Test(arguments: [false, true], [PresenceStatus.online, .dnd])
-func `Incoming call notifications deduplicate and cancel at the ringing boundary`(
+func `Incoming calls ring in the app whether or not it is in front, and only Do Not Disturb silences them`(
     appIsActive: Bool, status: PresenceStatus
 ) async throws {
-    let service = RecordingNotificationService()
     let sounds = RecordingAppSoundPlayer()
     let model = AppModel(
         launchMode: .offlineTesting,
-        notificationService: service,
+        notificationService: RecordingNotificationService(),
         soundPlayer: sounds,
         notificationPreferences: NotificationPreferences(defaults: InMemoryPreferences())
     )
@@ -228,7 +206,6 @@ func `Incoming call notifications deduplicate and cancel at the ringing boundary
         $0.kind == .directMessage && !$0.recipients.isEmpty
     })
     let caller = try #require(channel.recipients.first)
-    model.selectedChannelID = channel.id
     model.mainWindowIsActive = appIsActive
     model.applicationIsActive = appIsActive
     model.applyCurrentStatus(status)
@@ -240,42 +217,19 @@ func `Incoming call notifications deduplicate and cancel at the ringing boundary
         ]
     )
 
-    let expectedNotifications = appIsActive || status == .dnd ? [] : [channel.id]
     model.consumePrivateCallChanged(&call)
-    for task in Array(model.accountChildTasks.values) { await task.value }
-    #expect(service.deliveredCallChannelIDs == expectedNotifications)
-    #expect(sounds.looping[.callRinging] == (appIsActive && status != .dnd))
-    model.consumePrivateCallChanged(&call)
-    await Task.yield()
-    #expect(service.deliveredCallChannelIDs == expectedNotifications)
+    #expect(model.incomingPrivateCalls.map(\.channelID) == [channel.id])
+    #expect(sounds.looping[.callRinging] == (status != .dnd))
 
     model.applyCurrentStatus(.dnd)
     #expect(sounds.looping[.callRinging] == false)
     model.applyCurrentStatus(.online)
-    #expect(sounds.looping[.callRinging] == appIsActive)
-    for task in Array(model.accountChildTasks.values) { await task.value }
-    let resumedNotifications = appIsActive ? [] : [channel.id]
-    #expect(service.deliveredCallChannelIDs == resumedNotifications)
-    model.applyCurrentStatus(.dnd)
-    model.applyCurrentStatus(.online)
-    model.consumePrivateCallChanged(&call)
-    for task in Array(model.accountChildTasks.values) { await task.value }
-    #expect(service.deliveredCallChannelIDs == resumedNotifications)
+    #expect(sounds.looping[.callRinging] == true)
 
-    let rings = call.ongoingRings
     call.ongoingRings = []
     model.consumePrivateCallChanged(&call)
-    #expect(await until { service.cancelledCallChannelIDs == [channel.id] })
+    #expect(model.incomingPrivateCalls.isEmpty)
     #expect(sounds.looping[.callRinging] == false)
-
-    model.applyCurrentStatus(.dnd)
-    call.ongoingRings = rings
-    model.consumePrivateCallChanged(&call)
-    call.ongoingRings = []
-    model.consumePrivateCallChanged(&call)
-    model.applyCurrentStatus(.online)
-    for task in Array(model.accountChildTasks.values) { await task.value }
-    #expect(service.deliveredCallChannelIDs == resumedNotifications)
 }
 
 @MainActor
@@ -491,8 +445,6 @@ private final class RecordingNotificationService: NativeNotificationService {
     var requestError: AuthorizationError?
     let status: UNAuthorizationStatus
     private(set) var messageSounds: [Bool] = []
-    private(set) var deliveredCallChannelIDs: [ChannelID] = []
-    private(set) var cancelledCallChannelIDs: [ChannelID] = []
     private(set) var cancelledMessageChannelIDs: [ChannelID] = []
 
     init(status: UNAuthorizationStatus = .authorized) {
@@ -514,22 +466,8 @@ private final class RecordingNotificationService: NativeNotificationService {
         messageSounds.append(preferences.playsSound)
     }
 
-    func deliverIncomingCall(
-        call: PrivateCall,
-        channel _: Channel?,
-        caller _: User?,
-        accountID _: String,
-        preferences _: NotificationPreferences
-    ) async {
-        deliveredCallChannelIDs.append(call.channelID)
-    }
-
     func cancel(accountID _: String, channelID: ChannelID) async {
         cancelledMessageChannelIDs.append(channelID)
-    }
-
-    func cancelIncomingCall(accountID _: String, channelID: ChannelID) async {
-        cancelledCallChannelIDs.append(channelID)
     }
 
     func setDockBadge(_: Int, enabled _: Bool) {}

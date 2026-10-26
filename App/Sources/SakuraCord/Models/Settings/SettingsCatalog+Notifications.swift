@@ -80,7 +80,7 @@ nonisolated extension SettingsCatalog {
         ),
         control(
             .notificationIncomingCalls, page: .notifications, section: .notificationEvents,
-            label: "Incoming calls", help: "Allow native alerts for newly ringing private calls.",
+            label: "Incoming calls", help: "Ring in SakuraCord and show its call prompt for newly ringing private calls.",
             keywords: ["call", "ring", "voice"], scope: .appWideLocal
         ),
         control(
