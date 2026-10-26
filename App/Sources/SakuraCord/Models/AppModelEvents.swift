@@ -69,7 +69,6 @@ extension AppModel {
         isMarkingAllServersRead = false
         acknowledgementTasks.values.forEach { $0.cancel() }
         acknowledgementTasks.removeAll()
-        debouncedAcknowledgementTargets.removeAll()
         acknowledgementProcessorTask?.cancel()
         acknowledgementProcessorTask = nil
         guildAcknowledgementTasks.values.forEach { $0.cancel() }
@@ -284,8 +283,8 @@ extension AppModel {
             removeInboxMessage(messageID, mentionsOnly: false)
         case .channelPinsInvalidated(let channelID):
             invalidatePinnedMessages(in: channelID)
-        case .readStateSnapshot(let states, let version):
-            consumeReadStateSnapshot(states, version: version)
+        case .readStateSnapshot(let states, _):
+            consumeReadStateSnapshot(states)
             reconcileInboxReadState()
         case .readStateChanged(let state):
             consumeReadStateChange(state)
@@ -661,16 +660,9 @@ extension AppModel {
         }
     }
 
-    func consumeReadStateSnapshot(_ states: [ChannelReadState], version: Int?) {
-        let incomingVersion = version ?? states.compactMap(\.version).max()
-        let incomingVersionDescription = incomingVersion.map(String.init) ?? "none"
-        let pendingCount = readState.entries.values.count {
-            $0.pendingAcknowledgementID != nil
-        }
-        Self.unreadDiagnosticsLogger.info(
-            "Read-state snapshot received; states=\(states.count), version=\(incomingVersionDescription, privacy: .public), pending=\(pendingCount)"
-        )
-        readState.replaceReadStates(states, version: incomingVersion)
+    func consumeReadStateSnapshot(_ states: [ChannelReadState]) {
+        Self.unreadDiagnosticsLogger.info("Read-state snapshot received; states=\(states.count)")
+        readState.replaceReadStates(states)
         if let selectedChannelID {
             _ = readState.updatePresentation(
                 channelID: selectedChannelID,
@@ -693,22 +685,32 @@ extension AppModel {
     }
 
     func consumeReadStateChange(_ state: ChannelReadState) {
-        let heldBacklog = readState.holdsAutomaticAcknowledgement(state.channelID)
-        if readState.applyRemote(state) {
-            refreshUnreadPresentation()
-            if heldBacklog, !readState.holdsAutomaticAcknowledgement(state.channelID) {
-                acknowledgeIfEligible(channelID: state.channelID)
+        let channelID = state.channelID
+        if state.isManual {
+            // Discord's manual MESSAGE_ACK cancels unsent reads and stops the
+            // selected conversation acknowledging automatically until the
+            // selection changes.
+            discardPendingAcknowledgement(for: channelID)
+            if channelID == selectedChannelID || channelID == openThread?.id {
+                readState.holdUntilSelectionChange(channelID: channelID)
+                unreadDividerMessageIDs[channelID] = nil
             }
-            if !readState.unread(channelID: state.channelID) {
-                cancelNativeNotifications(channelID: state.channelID)
-            }
-        } else {
+        }
+        let heldBacklog = readState.holdsAutomaticAcknowledgement(channelID)
+        guard readState.applyRemote(state) else {
             let messageID = state.lastAcknowledgedMessageID?.rawValue ?? 0
-            let channelID = state.channelID.rawValue
-            let versionDescription = state.version.map(String.init) ?? "none"
             Self.unreadDiagnosticsLogger.info(
-                "Read event ignored c=\(channelID, privacy: .public) m=\(messageID, privacy: .public) v=\(versionDescription, privacy: .public)"
+                "Read event ignored c=\(channelID.rawValue, privacy: .public) m=\(messageID, privacy: .public)"
             )
+            return
+        }
+        if state.isManual { preserveUnreadDividerIfNeeded(channelID: channelID) }
+        refreshUnreadPresentation()
+        if heldBacklog, !readState.holdsAutomaticAcknowledgement(channelID) {
+            acknowledgeIfEligible(channelID: channelID)
+        }
+        if !readState.unread(channelID: channelID) {
+            cancelNativeNotifications(channelID: channelID)
         }
     }
 

@@ -84,8 +84,9 @@ extension AppModel {
               readState.presentations[channelID]?.initialPositionEstablished == true
         else { return false }
         // Sending is an explicit move to the newest message, so it releases a
-        // held backlog the way scrolling toward the newest message does.
-        reportTimelineScrollTowardNewest(channelID: channelID)
+        // held backlog the way scrolling does, and, as Discord's own-message
+        // acknowledgement, Mark Unread's hold too.
+        releaseHeldVisit(channelID: channelID)
         requestNewestMessagePresentation(channelID: channelID)
         return true
     }
@@ -212,20 +213,10 @@ extension AppModel {
         // loaded message, else the previous millisecond. Its read state
         // compares timestamps, so a boundary inside the selected message's
         // own millisecond would leave that message read.
+        // Read state changes only when its manual Gateway event arrives.
         let millisecond = message.id.rawValue >> 22
         let target = conversationMessages.lazy.map(\.id).filter { $0 < message.id }.max()
             ?? MessageID(rawValue: millisecond > 0 ? (millisecond - 1) << 22 : 0)
-        discardPendingAcknowledgement(for: channelID)
-        readState.markUnread(
-            channelID: channelID,
-            after: target,
-            mentionCount: mentionCount
-        )
-        // "Mark Unread" identifies the exact first-new row. Publish that
-        // anchor in the same transaction instead of waiting for a later
-        // timeline geometry callback to infer it from read state.
-        unreadDividerMessageIDs[channelID] = message.id
-        refreshUnreadPresentation()
         enqueueAcknowledgement(
             channelID: channelID,
             mutation: readStateMutation(
@@ -286,7 +277,7 @@ extension AppModel {
               readState.shouldAcknowledgeForumVisit(channelID: channelID)
         else { return }
         let target = MessageID(timestamp: now)
-        readState.markAcknowledgementPending(channelID: channelID, messageID: target)
+        readState.acknowledge(channelID: channelID, messageID: target)
         refreshUnreadPresentation(readChangedChannelID: channelID)
         cancelNativeNotifications(channelID: channelID)
         enqueueAcknowledgement(
@@ -308,36 +299,19 @@ extension AppModel {
             || (channelID == selectedChannelID && hasMoreLaterMessages)
     }
 
-    /// Drops any debounced or queued acknowledgement for the channel. Neither
-    /// reached Discord, so their optimistic intents are removed too.
+    /// Drops any debounced or queued acknowledgement for the channel. Read
+    /// state already shows them and does not change.
     func discardPendingAcknowledgement(for channelID: ChannelID) {
         acknowledgementTasks[channelID]?.cancel()
         acknowledgementTasks[channelID] = nil
-        let dropped = [
-            debouncedAcknowledgementTargets.removeValue(forKey: channelID),
-            queuedAcknowledgements.removeValue(forKey: channelID)?.messageID,
-        ]
-        for messageID in dropped.compactMap(\.self) {
-            readState.failAcknowledgement(channelID: channelID, messageID: messageID)
-        }
+        queuedAcknowledgements[channelID] = nil
         acknowledgementQueueOrder.removeAll { $0 == channelID }
     }
 
     func scheduleAcknowledgement(channelID: ChannelID, messageID: MessageID) {
         guard !runsChatPerformanceBenchmark, !isDetachedFromNewest(channelID) else { return }
-        if let pending = readState[channelID]?.pendingAcknowledgementID,
-           pending >= messageID
-        {
-            return
-        }
         acknowledgementTasks[channelID]?.cancel()
-        if let replaced = debouncedAcknowledgementTargets.removeValue(forKey: channelID) {
-            // The replaced debounce never reached Discord. Undo its optimistic
-            // intent so the new one rolls back to the last real boundary.
-            readState.failAcknowledgement(channelID: channelID, messageID: replaced)
-        }
-        readState.markAcknowledgementPending(channelID: channelID, messageID: messageID)
-        debouncedAcknowledgementTargets[channelID] = messageID
+        readState.acknowledge(channelID: channelID, messageID: messageID)
         Self.unreadDiagnosticsLogger.info(
             "Read acknowledgement scheduled; channel=\(channelID.rawValue, privacy: .public), target=\(messageID.rawValue, privacy: .public)"
         )
@@ -348,19 +322,6 @@ extension AppModel {
             do {
                 try await Task.sleep(for: debounce)
                 guard let self, !Task.isCancelled else { return }
-                // While the conversation stays presented, the reader may
-                // have moved away from its newest message during the
-                // debounce. Leaving it after reaching the newest still counts.
-                let presentation = self.readState.presentations[channelID]
-                let movedAway = presentation?.isPresented == true
-                    && presentation?.hasReachedReadBoundary == false
-                self.debouncedAcknowledgementTargets[channelID] = nil
-                guard !movedAway, !self.isDetachedFromNewest(channelID) else {
-                    self.readState.failAcknowledgement(channelID: channelID, messageID: messageID)
-                    self.acknowledgementTasks[channelID] = nil
-                    self.refreshUnreadPresentation(readChangedChannelID: channelID)
-                    return
-                }
                 self.enqueueAcknowledgement(
                     channelID: channelID,
                     mutation: self.readStateMutation(
@@ -388,14 +349,8 @@ extension AppModel {
             if let scope = ProcessInfo.processInfo.environment["SAKURACORD_INBOX_VERIFICATION_GUILD_ID"],
                readState[channelID]?.guildID?.description != scope { return }
         #endif
-        if let queued = queuedAcknowledgements[channelID] {
-            // The most recent action wins; the unsent one it replaces is dropped.
-            var sent = mutation
-            sent.categoryReadID = mutation.categoryReadID ?? queued.categoryReadID
-            queuedAcknowledgements[channelID] = sent
-            readState.failAcknowledgement(channelID: channelID, messageID: queued.messageID)
-        } else {
-            queuedAcknowledgements[channelID] = mutation
+        // The most recent action replaces an unsent one.
+        if queuedAcknowledgements.updateValue(mutation, forKey: channelID) == nil {
             acknowledgementQueueOrder.append(channelID)
         }
         guard acknowledgementProcessorTask == nil else { return }
@@ -416,13 +371,14 @@ extension AppModel {
             guard let mutation = queuedAcknowledgements.removeValue(forKey: channelID) else {
                 continue
             }
+            let token = readState.acknowledgementToken
             do {
                 logReadAcknowledgementSending(channelID: channelID, mutation: mutation)
                 let response = try await session.provider.acknowledge(
                     channelID: channelID,
                     messageID: mutation.messageID,
-                    token: readState.acknowledgementToken,
-                    manual: mutation.wireManual ?? mutation.manual,
+                    token: token,
+                    manual: mutation.manual,
                     mentionCount: mutation.mentionCount,
                     flags: mutation.flags,
                     lastViewed: mutation.lastViewed
@@ -431,44 +387,19 @@ extension AppModel {
                       generation == acknowledgementGeneration,
                       isCurrentAccountSession(session)
                 else { return }
-                readState.completeAcknowledgement(
-                    channelID: channelID,
-                    messageID: mutation.messageID,
-                    token: response.token
-                )
+                readState.completeAcknowledgement(token: response.token, sentWith: token)
                 logReadAcknowledgementAccepted(channelID: channelID, mutation: mutation)
-                reconcileInboxReadState()
             } catch is CancellationError {
                 return
             } catch {
-                guard generation == acknowledgementGeneration,
-                      isCurrentAccountSession(session)
-                else { return }
-                rollbackReadAcknowledgement(channelID: channelID, mutation: mutation)
+                // As in Discord, a failure changes no read state.
+                logReadAcknowledgementFailed(channelID: channelID, mutation: mutation)
             }
         }
         if generation == acknowledgementGeneration,
            isCurrentAccountSession(session)
         {
             acknowledgementProcessorTask = nil
-        }
-    }
-
-    func rollbackReadAcknowledgement(channelID: ChannelID, mutation: ReadStateMutation) {
-        let heldBacklog = readState.holdsAutomaticAcknowledgement(channelID)
-        readState.failAcknowledgement(channelID: channelID, messageID: mutation.messageID)
-        logReadAcknowledgementFailed(channelID: channelID, mutation: mutation)
-        refreshUnreadPresentation(readChangedChannelID: channelID)
-        reconcileInboxReadState()
-        if let categoryReadID = mutation.categoryReadID, categoryReadID != lastFailedCategoryReadID {
-            lastFailedCategoryReadID = categoryReadID
-            errorMessage = "Discord did not accept the category read-state update."
-        }
-        if mutation.manual {
-            errorMessage = "Discord did not accept the read-state update."
-            if heldBacklog, !readState.holdsAutomaticAcknowledgement(channelID) {
-                acknowledgeIfEligible(channelID: channelID)
-            }
         }
     }
 
@@ -494,24 +425,21 @@ extension AppModel {
         refreshUnreadPresentation(readChangedChannelID: channelID)
     }
 
-    private func markRead(
-        channelID: ChannelID,
-        through target: MessageID,
-        categoryReadID: UUID? = nil
-    ) {
+    private func markRead(channelID: ChannelID, through target: MessageID) {
         preserveUnreadDividerIfNeeded(channelID: channelID)
         discardPendingAcknowledgement(for: channelID)
         readState.unblockAutomaticAcknowledgement(channelID: channelID)
-        readState.markAcknowledgementPending(channelID: channelID, messageID: target)
+        readState.acknowledge(channelID: channelID, messageID: target)
         cancelNativeNotifications(channelID: channelID)
-        var mutation = readStateMutation(
+        enqueueAcknowledgement(
             channelID: channelID,
-            messageID: target,
-            manual: false,
-            mentionCount: nil
+            mutation: readStateMutation(
+                channelID: channelID,
+                messageID: target,
+                manual: false,
+                mentionCount: nil
+            )
         )
-        mutation.categoryReadID = categoryReadID
-        enqueueAcknowledgement(channelID: channelID, mutation: mutation)
     }
 
     func markGuildRead(_ guildID: GuildID) {
@@ -524,10 +452,7 @@ extension AppModel {
             preserveUnreadDividerIfNeeded(channelID: target.channelID)
             discardPendingAcknowledgement(for: target.channelID)
             readState.unblockAutomaticAcknowledgement(channelID: target.channelID)
-            readState.markAcknowledgementPending(
-                channelID: target.channelID,
-                messageID: target.messageID
-            )
+            readState.acknowledge(channelID: target.channelID, messageID: target.messageID)
             cancelNativeNotifications(channelID: target.channelID)
         }
         refreshUnreadPresentation()
@@ -536,47 +461,13 @@ extension AppModel {
         let session = accountSession()
         let activeProvider = session.provider
         guildAcknowledgementTasks[guildID] = Task { [weak self] in
-            do {
-                try await activeProvider.acknowledgeBulk(targets)
-                guard let self,
-                      self.isCurrentAccountSession(session),
-                      generation == self.acknowledgementGeneration
-                else { return }
-                for target in targets {
-                    self.readState.completeAcknowledgement(
-                        channelID: target.channelID,
-                        messageID: target.messageID,
-                        token: nil
-                    )
-                }
-            } catch is CancellationError {
-                return
-            } catch let partial as PartialBulkReadAcknowledgementError {
-                guard let self,
-                      self.isCurrentAccountSession(session),
-                      generation == self.acknowledgementGeneration
-                else { return }
-                self.resolvePartialBulkAcknowledgement(partial, targets: targets)
-                self.errorMessage =
-                    "Discord accepted part of the server read-state update, but not the remaining updates."
-            } catch {
-                guard let self,
-                      self.isCurrentAccountSession(session),
-                      generation == self.acknowledgementGeneration
-                else { return }
-                for target in targets {
-                    self.readState.failAcknowledgement(
-                        channelID: target.channelID,
-                        messageID: target.messageID
-                    )
-                }
-                self.errorMessage = "Discord did not accept the server read-state update."
-            }
+            // As in Discord, a failed batch is dropped silently.
+            try? await activeProvider.acknowledgeBulk(targets)
             guard let self,
+                  !Task.isCancelled,
                   self.isCurrentAccountSession(session),
                   generation == self.acknowledgementGeneration
             else { return }
-            self.refreshUnreadPresentation()
             self.guildAcknowledgementTasks[guildID] = nil
             self.refreshServerRailPresentation(guildID: guildID)
         }
@@ -587,35 +478,10 @@ extension AppModel {
     /// channel acknowledgement, as an explicit read does.
     func markCategoryRead(categoryID: ChannelID, guildID: GuildID) {
         guard !runsChatPerformanceBenchmark else { return }
-        let categoryReadID = UUID()
         for target in readState.categoryAcknowledgements(for: categoryID, guildID: guildID) {
-            markRead(channelID: target.channelID, through: target.messageID, categoryReadID: categoryReadID)
+            markRead(channelID: target.channelID, through: target.messageID)
         }
         refreshUnreadPresentation()
-    }
-
-    func resolvePartialBulkAcknowledgement(
-        _ partial: PartialBulkReadAcknowledgementError,
-        targets: [BulkReadStateAcknowledgement]
-    ) {
-        let acceptedByChannelID = Dictionary(
-            partial.acceptedReadStates.map { ($0.channelID, $0.messageID) },
-            uniquingKeysWith: { _, later in later }
-        )
-        for target in targets {
-            if acceptedByChannelID[target.channelID] == target.messageID {
-                readState.completeAcknowledgement(
-                    channelID: target.channelID,
-                    messageID: target.messageID,
-                    token: nil
-                )
-            } else {
-                readState.failAcknowledgement(
-                    channelID: target.channelID,
-                    messageID: target.messageID
-                )
-            }
-        }
     }
 
     func setGuildNotificationLevel(

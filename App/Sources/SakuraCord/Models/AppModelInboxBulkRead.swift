@@ -32,7 +32,6 @@ extension AppModel {
 
     private func markInboxGroupsRead(_ groups: [InboxUnreadGroup], additionalTargets: [BulkReadStateAcknowledgement] = []) {
         guard inbox.bulkTask == nil else { return }
-        let previousEventStates = inbox.scheduledEvents.readStates
         let targets = inboxBulkTargets(groups, additionalTargets: additionalTargets)
         guard !targets.isEmpty else { return }
         let previousEventTasks = groups.compactMap { $0.guildID.flatMap { inbox.eventMutationTasks[$0] } }
@@ -48,25 +47,11 @@ extension AppModel {
             guard let self else { return }
             for task in previousEventTasks { await task.value }
             guard !Task.isCancelled, isCurrentAccountSession(session) else { return }
-            do {
-                try await session.provider.acknowledgeBulk(targets)
-                guard isCurrentAccountSession(session) else { return }
-                for target in targets where target.readStateType == 0 {
-                    readState.completeAcknowledgement(channelID: target.channelID, messageID: target.messageID, token: nil)
-                    if readState[target.channelID]?.isUnread != true {
-                        cancelNativeNotifications(channelID: target.channelID)
-                    }
-                }
-            } catch let partial as PartialBulkReadAcknowledgementError {
-                guard isCurrentAccountSession(session) else { return }
-                resolvePartialBulkAcknowledgement(partial, targets: targets.filter { $0.readStateType == 0 })
-                restoreFailedInboxEventGroups(groups, accepted: partial.acceptedReadStates, previousStates: previousEventStates)
-                inbox.errorMessage = partial.failureDescription
-            } catch {
-                guard isCurrentAccountSession(session) else { return }
-                restoreFailedInboxEventGroups(groups, accepted: [], previousStates: previousEventStates)
-                for target in targets where target.readStateType == 0 { readState.failAcknowledgement(channelID: target.channelID, messageID: target.messageID) }
-                inbox.errorMessage = error.localizedDescription
+            // As in Discord, a failed batch is dropped silently.
+            try? await session.provider.acknowledgeBulk(targets)
+            guard isCurrentAccountSession(session) else { return }
+            for target in targets where target.readStateType == 0 && readState[target.channelID]?.isUnread != true {
+                cancelNativeNotifications(channelID: target.channelID)
             }
             for group in groups where group.isEvents {
                 if let guildID = group.guildID,
@@ -75,7 +60,6 @@ extension AppModel {
                 }
             }
             refreshUnreadPresentation()
-            reconcileInboxReadState()
             inbox.bulkTask = nil
         }
     }
@@ -107,31 +91,17 @@ extension AppModel {
         for target in targets where target.readStateType == 0 {
             discardPendingAcknowledgement(for: target.channelID)
             readState.unblockAutomaticAcknowledgement(channelID: target.channelID)
-            readState.markAcknowledgementPending(channelID: target.channelID, messageID: target.messageID)
+            readState.acknowledge(channelID: target.channelID, messageID: target.messageID)
         }
     }
 
     private func stageInboxBulkRead(_ groups: [InboxUnreadGroup]) {
-        for group in groups {
-            if group.isEvents, let guildID = group.guildID {
-                let boundary = ScheduledEventID(rawValue: group.newestUnreadMessageID.rawValue)
-                inbox.pendingEventAcknowledgements[guildID] = boundary
-                inbox.scheduledEvents.readStates[guildID]?.lastAcknowledgedID = boundary
-                inbox.scheduledEvents.readStates[guildID]?.mentionCount = 0
-            } else { inbox.pendingReadGroups[group.id] = group }
-        }
-    }
-
-    private func restoreFailedInboxEventGroups(
-        _ groups: [InboxUnreadGroup], accepted: [BulkReadStateAcknowledgement],
-        previousStates: [GuildID: InboxEventReadState]
-    ) {
-        let acceptedIDs = Set(accepted.filter { $0.readStateType == 1 }.map(\.channelID))
-        for group in groups where group.isEvents && !acceptedIDs.contains(group.id) {
-            guard let guildID = group.guildID,
-                  inbox.pendingEventAcknowledgements[guildID]?.rawValue == group.newestUnreadMessageID.rawValue else { continue }
-            inbox.scheduledEvents.readStates[guildID] = previousStates[guildID]
-            restoreInboxGroup(group)
+        for group in groups where group.isEvents {
+            guard let guildID = group.guildID else { continue }
+            let boundary = ScheduledEventID(rawValue: group.newestUnreadMessageID.rawValue)
+            inbox.pendingEventAcknowledgements[guildID] = boundary
+            inbox.scheduledEvents.readStates[guildID]?.lastAcknowledgedID = boundary
+            inbox.scheduledEvents.readStates[guildID]?.mentionCount = 0
         }
     }
 }

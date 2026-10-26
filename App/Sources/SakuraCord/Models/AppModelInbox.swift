@@ -386,13 +386,6 @@ extension AppModel {
 
     func reconcileInboxReadState() {
         guard inbox.isPresented else { return }
-        for (id, group) in inbox.pendingReadGroups where readState[id]?.pendingAcknowledgementID == nil {
-            if (readState[id]?.lastAcknowledgedMessageID ?? MessageID(rawValue: 0)) < group.newestUnreadMessageID {
-                restoreInboxGroup(group)
-                inbox.undoGroups.removeAll { $0.id == id }
-            }
-            inbox.pendingReadGroups[id] = nil
-        }
         inbox.groups.removeAll { group in
             !group.isEvents && (readState[group.id]?.lastAcknowledgedMessageID ?? MessageID(rawValue: 0)) >= group.newestUnreadMessageID
         }
@@ -408,11 +401,10 @@ extension AppModel {
             return
         }
         let boundary = Self.inboxAcknowledgementTarget(for: group, now: .now)
-        inbox.pendingReadGroups[channelID] = group
         let metadata = readState.acknowledgementMetadata(channelID: channelID)
         let lastViewed = readState[channelID]?.lastViewed
         discardPendingAcknowledgement(for: channelID)
-        readState.markAcknowledgementPending(channelID: channelID, messageID: boundary)
+        readState.acknowledge(channelID: channelID, messageID: boundary)
         enqueueAcknowledgement(channelID: channelID, mutation: ReadStateMutation(
             messageID: boundary, manual: false, mentionCount: nil,
             flags: metadata.flags, lastViewed: lastViewed
@@ -433,11 +425,11 @@ extension AppModel {
         }
         let metadata = readState.acknowledgementMetadata(channelID: group.id)
         let lastViewed = readState[group.id]?.lastViewed
-        inbox.pendingReadGroups[group.id] = nil
-        readState.markUnread(channelID: group.id, after: boundary, mentionCount: 0)
+        discardPendingAcknowledgement(for: group.id)
+        readState.acknowledge(channelID: group.id, messageID: boundary)
         enqueueAcknowledgement(channelID: group.id, mutation: ReadStateMutation(
-            messageID: boundary, manual: true, mentionCount: nil,
-            flags: metadata.flags, lastViewed: lastViewed, wireManual: false
+            messageID: boundary, manual: false, mentionCount: nil,
+            flags: metadata.flags, lastViewed: lastViewed
         ))
         restoreInboxGroup(group)
         refreshUnreadPresentation()

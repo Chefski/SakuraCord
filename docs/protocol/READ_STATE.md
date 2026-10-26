@@ -15,7 +15,7 @@ Relevant checks are [AccountReadStateModelTests.swift](../../App/Tests/SakuraCor
 
 ## Acknowledgement authority
 
-READY read state and versioned Gateway acknowledgements are authoritative across
+READY read state and Gateway acknowledgements are authoritative across
 launches. Do not persist a second local read boundary. Ordinary viewing ACKs require
 the actual visible conversation/read geometry, not row construction or a temporary
 pre-position viewport. The UI's visit boundary can remain stable while provider
@@ -32,38 +32,41 @@ acknowledged boundary, including a READY `last_message_id` that is not a
 snowflake (such as the number `-11`), is not held: no scroll can reach its
 unread start. Wheel or scrollbar movement toward newer messages releases the
 hold; resizing and app-owned positioning do not. A window detached from the
-newest message never acknowledges automatically, and a debounced acknowledgement
-is dropped if the reader moved away from the newest message while the
-conversation stayed open; leaving after reaching it still counts. A remote
-ACK or failed Mark Unread rollback that releases the hold resumes ordinary
-viewing acknowledgements without requiring another geometry callback.
+newest message never acknowledges automatically. A remote ACK that releases the
+hold resumes ordinary viewing acknowledgements without requiring another
+geometry callback.
 
 A channel ACK posts to `/channels/{channel}/messages/{message}/ack` with applicable
-flags, `last_viewed` and the latest server-issued token. Serialize account requests
-and coalesce per channel, where the most recent action replaces an unsent one.
-As on Discord, the most recent action wins by issue order, not boundary: a
-conversation shows the newer of the read state last accepted and its latest
-unresolved intent. A success becomes the accepted state unless a newer one was
-accepted first, and supersedes every earlier intent; failure, or dropping an
-unsent intent such as a cancelled debounce, removes only that intent, so
-nothing rolls back below an accepted ACK. A Gateway or snapshot read state
-settles the intent it echoes; any other live one is newer than every intent
-issued before it. Mention and unread counts come from each boundary plus the
-live messages received above it, so repeating or replacing an intent neither
-restores cleared mentions nor drops new ones.
-Reconnects overlay pending intent rather than cancelling it. No automatic replay
-follows an ambiguous failure.
+flags, `last_viewed` and the latest server-issued token. As in Discord's
+`ReadStateStore` (module 573163, build 649389, inspected 26 October 2026), each
+conversation has one current boundary. A read sets it and clears the counts
+immediately, and nothing rolls back if Discord rejects the request; there is no
+automatic replay. A completed request only chains its response token, unless a
+newer token or READY replaced the one it was sent with. Account requests are
+serialized and coalesced per channel, where the most recent action replaces an
+unsent one; this transport never changes the displayed read state. Gateway
+acknowledgements apply in received order, with no version or boundary
+comparison: an ordinary one at the current boundary is ignored, any other
+acknowledges there and clears mentions, and a manual one always rebuilds at its
+boundary with its mention count. A delayed echo of an earlier read can
+therefore move the boundary back until the next echo, as in Discord. A full
+READY replaces every read state and clears the token; no pending
+acknowledgement survives it.
 
 Explicit Mark Unread targets the nearest older loaded message, or the first
 snowflake of the previous millisecond when none is loaded, with `manual:true`
 and recomputed mention count (module 439147, build 649389). Discord compares
 read boundaries by timestamp, so a boundary inside the selected message's own
 millisecond, such as its ID less one, leaves it read in the official client.
-**Inbox Undo is different:** it sends an ordinary ACK to the captured old
-boundary, preserving `last_viewed` and omitting `manual` and `mention_count`. A strictly newer account read-state version can therefore move
-the boundary backwards without `manual`. Older versions are ignored; equal-version
-ordinary updates do not gain that authority. A pending Undo's exact target must
-survive a preceding read ACK arriving late. Do not impose unconditional monotonicity.
+Read state changes only when the manual Gateway event arrives, and a failed
+request changes nothing. That event cancels the conversation's unsent reads and,
+while it is selected or open as a thread, holds automatic acknowledgement until
+the selection changes. Unlike a held backlog, scrolling does not release it;
+reading the conversation or sending to it does, as Discord's own-message
+acknowledgement does (build 649389). **Inbox Undo is different:** it
+sends an ordinary ACK to the captured old boundary, preserving `last_viewed`
+and omitting `manual` and `mention_count`, and applies it locally like any
+read, moving the boundary backwards.
 
 ## Unread groups and bulk actions
 
@@ -83,8 +86,9 @@ web build 649389) use the same bulk route with type 0 entries for accessible
 current server channels and active joined threads, including muted
 conversations. They exclude DMs, departed/archived threads, resource channels
 and scheduled events. Targets are captured only after native confirmation; new
-messages beyond those boundaries stay unread. Accepted batches remain read if a
-later batch fails; failed targets roll back without automatic replay.
+messages beyond those boundaries stay unread. As in Discord's bulk queue, a
+failed batch, including an Inbox one, is dropped silently and rolls nothing
+back.
 
 This scope follows Vencord’s
 [ReadAllNotificationsButton](https://github.com/Vendicated/Vencord/blob/32c90633ce6a95d7e56c95479efbb431bacf1eac/src/plugins/readAllNotificationsButton/index.tsx),
@@ -96,8 +100,7 @@ The [production web client](https://discord.com/assets/web.4d4b2f75fdea5470.js)
 pause after each successful batch. SakuraCord follows that pacing between
 batches, in addition to server-provided rate-limit cooldowns. The web client's
 bulk queue retries a failed batch up to three total attempts; SakuraCord retains
-its one-attempt mutation policy and partial-batch reconciliation rather than
-replaying an ambiguous write. Read All errors include the underlying failure.
+its one-attempt mutation policy rather than replaying an ambiguous write.
 
 Restricted groups require the applicable account eligibility and local server
 consent before exposing their contents. Mentions also gate restricted accessories.
@@ -175,9 +178,8 @@ include every forum, read or not, as Discord's bulk acknowledgement does
 sends each conversation its own channel ACK: every readable child (text,
 announcement, forum and voice) and its active joined threads, read or unread
 and muted or not, at its newest message, so a forum targets its latest post.
-Each of these clears a never-read forum's count, and a completed local
-acknowledgement is tracked before its Gateway echo; a still-pending earlier
-intent that later fails cannot roll back behind it. A forum's own Mark as Read
+Each of these clears a never-read forum's count, and a local acknowledgement
+is tracked at once, before its Gateway echo. A forum's own Mark as Read
 is enabled only by Discord's forum unread count: active posts newer than the
 forum's tracked acknowledgement that are unread, where a joined post must be
 unmuted unless mentioned. It is therefore unavailable on a never-read forum

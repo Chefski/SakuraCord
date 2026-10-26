@@ -200,9 +200,15 @@ extension AppModel {
         }
     }
 
-    /// Releases a held visit. A scroll clamped at the newest edge reports no
-    /// new position, so an already visible newest message is acknowledged here.
+    /// Releases a held backlog, but not Mark Unread's hold.
     func reportTimelineScrollTowardNewest(channelID: ChannelID) {
+        guard readState.presentations[channelID]?.isHeldUntilSelectionChange != true else { return }
+        releaseHeldVisit(channelID: channelID)
+    }
+
+    /// A scroll clamped at the newest edge reports no new position, so an
+    /// already visible newest message is acknowledged here.
+    func releaseHeldVisit(channelID: ChannelID) {
         guard readState.holdsAutomaticAcknowledgement(channelID),
               isConversationPresented(channelID),
               let target = readState.unblockAutomaticAcknowledgement(channelID: channelID)

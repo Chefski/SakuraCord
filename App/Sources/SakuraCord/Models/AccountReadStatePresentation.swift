@@ -517,7 +517,6 @@ extension AccountReadStateModel {
         var lastAcknowledgedMessageID: MessageID?
         var mentionCount: Int
         var unreadMessageCount: Int
-        var pendingAcknowledgementID: MessageID?
         var flags: UInt64?
         var lastViewed: Int?
         var threadNotificationSettings: ThreadNotificationSettings?
@@ -539,9 +538,7 @@ extension AccountReadStateModel {
         /// Discord's `getTrackedAckMessageId`: a server or local
         /// acknowledgement, never the boundary seeded for an omitted read state.
         var trackedAcknowledgedMessageID: MessageID? {
-            hasAuthoritativeReadState || pendingAcknowledgementID != nil
-                ? lastAcknowledgedMessageID
-                : nil
+            hasAuthoritativeReadState ? lastAcknowledgedMessageID : nil
         }
 
         var isUnread: Bool {
@@ -568,6 +565,8 @@ extension AccountReadStateModel {
         /// acknowledge. The hold lapses once that message is acknowledged by
         /// any path, so it needs no separate release when read elsewhere.
         var heldThroughMessageID: MessageID?
+        /// Mark Unread's hold, which, as in Discord, scrolling does not release.
+        var isHeldUntilSelectionChange = false
 
         var meetsViewingConditions: Bool {
             isPresented
