@@ -44,28 +44,33 @@ immediately, and nothing rolls back if Discord rejects the request; there is no
 automatic replay. A completed request only chains its response token, unless a
 newer token or READY replaced the one it was sent with. Account requests are
 serialized and coalesced per channel, where the most recent read replaces an
-unsent one; Mark Unread replaces nothing. This transport never changes the
-displayed read state. The account's own message, except a poll result,
-acknowledges its conversation locally without a request and replaces an
-unsent read, as Discord's `MESSAGE_CREATE` does. Gateway
+unsent one. This transport never changes the displayed read state. The
+account's own message, except a poll result, acknowledges its conversation
+locally without a request and drops a read still in its debounce, as Discord's
+`MESSAGE_CREATE` does. Gateway
 acknowledgements apply in received order, with no version or boundary
 comparison: an ordinary one at the current boundary is ignored, any other
 acknowledges there and clears mentions, and a manual one always rebuilds at its
 boundary with its mention count. A delayed echo of an earlier read can
 therefore move the boundary back until the next echo, as in Discord. A full
 READY replaces every read state and clears the token; no pending
-acknowledgement survives it.
+acknowledgement survives it. Every path that leaves a conversation read clears
+its native notifications, and the Inbox drops the groups it reads.
 
 Explicit Mark Unread targets the nearest older loaded message, or the first
-snowflake of the previous millisecond when none is loaded, with `manual:true`
-and recomputed mention count (module 439147, build 649389). Discord compares
-read boundaries by timestamp, so a boundary inside the selected message's own
-millisecond, such as its ID less one, leaves it read in the official client.
-Read state changes only when the manual Gateway event arrives, and a failed
-request changes nothing. That event, not the click, cancels the conversation's
-unsent reads and, while it is selected or open as a thread, holds automatic
-acknowledgement until the selection changes. Unlike a held backlog, scrolling
-does not release it; reading the conversation or sending to it does.
+snowflake of the previous millisecond when none is loaded (module 439147,
+build 649389). Discord compares read boundaries by timestamp, so a boundary
+inside the selected message's own millisecond, such as its ID less one, leaves
+it read in the official client. In a thread it first reopens an archived one
+with `PATCH {archived:false}`, stopping if that fails, then joins an unjoined
+one with location `Mark Unread`, continuing if that fails. It then posts
+exactly `manual:true` and the recomputed mention count at once, outside the
+read queue. Read state changes only when the manual Gateway event arrives, and
+a failed request changes nothing. That event drops a read still in its
+debounce; an explicit read is sent at once (module 334738), so it survives.
+While the conversation is selected or open as a thread, the event also holds
+automatic acknowledgement until the selection changes or any acknowledgement,
+at any boundary, arrives; unlike a held backlog, scrolling does not release it.
 **Inbox Undo is different:** it
 sends an ordinary ACK to the captured old boundary, preserving `last_viewed`
 and omitting `manual` and `mention_count`, and applies it locally like any

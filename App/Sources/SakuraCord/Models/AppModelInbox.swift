@@ -384,12 +384,14 @@ extension AppModel {
         if inbox.tab == .mentions, inbox.visibleMentions.isEmpty { loadMoreInbox() }
     }
 
+    /// Drops Inbox groups that any read-state change has read.
     func reconcileInboxReadState() {
         guard inbox.isPresented else { return }
+        let count = inbox.groups.count
         inbox.groups.removeAll { group in
             !group.isEvents && (readState[group.id]?.lastAcknowledgedMessageID ?? MessageID(rawValue: 0)) >= group.newestUnreadMessageID
         }
-        publishInbox()
+        if inbox.groups.count != count { publishInbox() }
     }
 
     func markInboxGroupRead(_ channelID: ChannelID, allowsUndo: Bool = true) {
@@ -406,8 +408,7 @@ extension AppModel {
         discardPendingAcknowledgement(for: channelID)
         readState.acknowledge(channelID: channelID, messageID: boundary)
         enqueueAcknowledgement(channelID: channelID, mutation: ReadStateMutation(
-            messageID: boundary, manual: false, mentionCount: nil,
-            flags: metadata.flags, lastViewed: lastViewed
+            messageID: boundary, flags: metadata.flags, lastViewed: lastViewed
         ))
         if readState[channelID]?.isUnread != true {
             cancelNativeNotifications(channelID: channelID)
@@ -428,8 +429,7 @@ extension AppModel {
         discardPendingAcknowledgement(for: group.id)
         readState.acknowledge(channelID: group.id, messageID: boundary)
         enqueueAcknowledgement(channelID: group.id, mutation: ReadStateMutation(
-            messageID: boundary, manual: false, mentionCount: nil,
-            flags: metadata.flags, lastViewed: lastViewed
+            messageID: boundary, flags: metadata.flags, lastViewed: lastViewed
         ))
         restoreInboxGroup(group)
         refreshUnreadPresentation()

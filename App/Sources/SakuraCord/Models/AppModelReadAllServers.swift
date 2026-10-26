@@ -24,7 +24,6 @@ extension AppModel {
         }
         isMarkingAllServersRead = true
         refreshUnreadPresentation()
-        reconcileInboxReadState()
         let generation = acknowledgementGeneration
         let session = accountSession()
         allServersReadTask = Task { [weak self] in

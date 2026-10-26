@@ -198,6 +198,16 @@ struct InboxTests {
         #expect(model.readState.entries[group.id]?.isUnread == receivesNewerMessage)
     }
 
+    /// A read leaves the Inbox at once; a failed request never undoes it.
+    @Test func `local reads remove the Inbox groups they read`() async throws {
+        let (model, _) = await fixture()
+        model.presentInbox()
+        await model.inbox.loadTask?.value
+        let group = try #require(model.inbox.groups.first { !$0.isEvents })
+        model.markConversationRead(channelID: group.id)
+        #expect(!model.inbox.groups.contains { $0.id == group.id })
+    }
+
     @Test func `Unread keeps server order and channel positions independent of categories`() async throws {
         let (model, _) = await fixture()
         var snapshot = try #require(model.snapshot)

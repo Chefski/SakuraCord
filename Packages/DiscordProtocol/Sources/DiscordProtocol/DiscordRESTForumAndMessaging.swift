@@ -1230,19 +1230,19 @@ extension DiscordRESTProvider {
         flags: UInt64?,
         lastViewed: Int?
     ) async throws -> ReadAcknowledgementResponse {
-        var body: [String: JSONValue] = ["token": .null]
-        if let token {
-            body["token"] = .string(token)
-        }
+        // Mark Unread posts exactly `manual` and the mention count
+        // (module 439147, build 649389); a read posts the token and metadata.
+        var body: [String: JSONValue]
         if manual {
-            body["manual"] = .bool(true)
-            body["mention_count"] = .number(Double(max(0, mentionCount ?? 0)))
-        }
-        if let flags {
-            body["flags"] = .number(Double(flags))
-        }
-        if let lastViewed {
-            body["last_viewed"] = .number(Double(lastViewed))
+            body = ["manual": .bool(true), "mention_count": .number(Double(max(0, mentionCount ?? 0)))]
+        } else {
+            body = ["token": token.map(JSONValue.string) ?? .null]
+            if let flags {
+                body["flags"] = .number(Double(flags))
+            }
+            if let lastViewed {
+                body["last_viewed"] = .number(Double(lastViewed))
+            }
         }
         let (data, response) = try await perform(
             "/channels/\(channelID)/messages/\(messageID)/ack",

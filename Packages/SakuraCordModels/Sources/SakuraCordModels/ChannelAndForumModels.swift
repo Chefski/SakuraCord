@@ -460,6 +460,8 @@ public enum ThreadMembershipLocation: String, Hashable, Sendable {
     case fullViewMenu = "Toolbar Overflow"
     /// The forum post header Follow toggle.
     case forumToolbar = "Forum Toolbar"
+    /// Mark Unread in a thread the account has not joined.
+    case markUnread = "Mark Unread"
 }
 
 public struct ForumPostAttachment: Equatable, Identifiable, Sendable {

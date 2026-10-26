@@ -213,19 +213,31 @@ extension AppModel {
         // loaded message, else the previous millisecond. Its read state
         // compares timestamps, so a boundary inside the selected message's
         // own millisecond would leave that message read.
-        // Read state changes only when its manual Gateway event arrives.
         let millisecond = message.id.rawValue >> 22
         let target = conversationMessages.lazy.map(\.id).filter { $0 < message.id }.max()
             ?? MessageID(rawValue: millisecond > 0 ? (millisecond - 1) << 22 : 0)
-        enqueueAcknowledgement(
-            channelID: channelID,
-            mutation: readStateMutation(
-                channelID: channelID,
-                messageID: target,
-                manual: true,
-                mentionCount: mentionCount
-            )
-        )
+        guard !isOutsideAcknowledgementScope(channelID) else { return }
+        let thread = channelID == openThread?.id ? openThread.map(currentThreadSummary) : nil
+        // The same action (E10) reopens an archived thread and joins an
+        // unjoined one, then posts `manual` and the mention count at once,
+        // outside the read queue. Read state changes only when its manual
+        // Gateway event arrives.
+        startAccountChildTask(account: accountSession()) { model, account in
+            if let thread {
+                guard await model.prepareThreadForMarkUnread(thread, account: account) else { return }
+            }
+            guard model.isCurrentAccountSession(account) else { return }
+            do {
+                _ = try await account.provider.acknowledge(
+                    channelID: channelID, messageID: target, token: nil,
+                    manual: true, mentionCount: mentionCount, flags: nil, lastViewed: nil
+                )
+            } catch {
+                Self.unreadDiagnosticsLogger.error(
+                    "Mark Unread failed c=\(channelID.rawValue, privacy: .public) m=\(target.rawValue, privacy: .public)"
+                )
+            }
+        }
     }
 
     func requestNotificationPermission() async throws -> Bool {
@@ -282,12 +294,7 @@ extension AppModel {
         cancelNativeNotifications(channelID: channelID)
         enqueueAcknowledgement(
             channelID: channelID,
-            mutation: readStateMutation(
-                channelID: channelID,
-                messageID: target,
-                manual: false,
-                mentionCount: nil
-            )
+            mutation: readStateMutation(channelID: channelID, messageID: target)
         )
     }
 
@@ -299,13 +306,29 @@ extension AppModel {
             || (channelID == selectedChannelID && hasMoreLaterMessages)
     }
 
-    /// Drops any debounced or queued read for the channel. Read state already
-    /// shows it and does not change. A queued Mark Unread is kept, as
-    /// Discord sends it at once.
-    func discardPendingAcknowledgement(for channelID: ChannelID) {
+    /// DEBUG Inbox verification confines account acknowledgements to one server.
+    func isOutsideAcknowledgementScope(_ channelID: ChannelID) -> Bool {
+        #if DEBUG
+            if let scope = ProcessInfo.processInfo.environment["SAKURACORD_INBOX_VERIFICATION_GUILD_ID"] {
+                return readState[channelID]?.guildID?.description != scope
+            }
+        #endif
+        return false
+    }
+
+    /// Discord's `clearOutgoingAck` (E11): drops a read still in its debounce.
+    /// A read past it is already sent in Discord's terms, even while
+    /// SakuraCord's account queue holds it.
+    func cancelDebouncedAcknowledgement(for channelID: ChannelID) {
         acknowledgementTasks[channelID]?.cancel()
         acknowledgementTasks[channelID] = nil
-        queuedAcknowledgements.removeAll { $0.channelID == channelID && !$0.mutation.manual }
+    }
+
+    /// Drops any debounced or queued read for the channel, which a newer
+    /// explicit read replaces. Read state already shows it.
+    func discardPendingAcknowledgement(for channelID: ChannelID) {
+        cancelDebouncedAcknowledgement(for: channelID)
+        queuedAcknowledgements.removeAll { $0.channelID == channelID }
     }
 
     func scheduleAcknowledgement(channelID: ChannelID, messageID: MessageID) {
@@ -324,12 +347,7 @@ extension AppModel {
                 guard let self, !Task.isCancelled else { return }
                 self.enqueueAcknowledgement(
                     channelID: channelID,
-                    mutation: self.readStateMutation(
-                        channelID: channelID,
-                        messageID: messageID,
-                        manual: false,
-                        mentionCount: nil
-                    )
+                    mutation: self.readStateMutation(channelID: channelID, messageID: messageID)
                 )
                 self.acknowledgementTasks[channelID] = nil
             } catch is CancellationError {
@@ -344,16 +362,9 @@ extension AppModel {
         channelID: ChannelID,
         mutation: ReadStateMutation
     ) {
-        guard !runsChatPerformanceBenchmark else { return }
-        #if DEBUG
-            if let scope = ProcessInfo.processInfo.environment["SAKURACORD_INBOX_VERIFICATION_GUILD_ID"],
-               readState[channelID]?.guildID?.description != scope { return }
-        #endif
-        // The most recent read replaces an unsent one. Mark Unread replaces
-        // nothing; its Gateway event cancels unsent reads.
-        if !mutation.manual,
-           let index = queuedAcknowledgements.firstIndex(where: { $0.channelID == channelID && !$0.mutation.manual })
-        {
+        guard !runsChatPerformanceBenchmark, !isOutsideAcknowledgementScope(channelID) else { return }
+        // The most recent read replaces an unsent one.
+        if let index = queuedAcknowledgements.firstIndex(where: { $0.channelID == channelID }) {
             queuedAcknowledgements[index].mutation = mutation
         } else {
             queuedAcknowledgements.append((channelID, mutation))
@@ -380,8 +391,8 @@ extension AppModel {
                     channelID: channelID,
                     messageID: mutation.messageID,
                     token: token,
-                    manual: mutation.manual,
-                    mentionCount: mutation.mentionCount,
+                    manual: false,
+                    mentionCount: nil,
                     flags: mutation.flags,
                     lastViewed: mutation.lastViewed
                 )
@@ -433,15 +444,7 @@ extension AppModel {
         readState.unblockAutomaticAcknowledgement(channelID: channelID)
         readState.acknowledge(channelID: channelID, messageID: target)
         cancelNativeNotifications(channelID: channelID)
-        enqueueAcknowledgement(
-            channelID: channelID,
-            mutation: readStateMutation(
-                channelID: channelID,
-                messageID: target,
-                manual: false,
-                mentionCount: nil
-            )
-        )
+        enqueueAcknowledgement(channelID: channelID, mutation: readStateMutation(channelID: channelID, messageID: target))
     }
 
     func markGuildRead(_ guildID: GuildID) {

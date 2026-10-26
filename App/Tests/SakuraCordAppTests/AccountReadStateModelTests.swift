@@ -412,6 +412,24 @@ struct AccountReadStateModelTests {
         )
     }
 
+    /// Discord's `ack()` ends Mark Unread's suppression at any boundary (E2,
+    /// E11), so another client's earlier read cannot leave reading blocked.
+    @Test func `any acknowledgement ends Mark Unread's hold`() {
+        let model = makeModel(latest: 20, acknowledged: 20)
+        _ = model.updatePresentation(
+            channelID: channelID, isPresented: true, initialHistoryLoaded: true,
+            initialPositionEstablished: true, windowIsActive: true, hasReachedReadBoundary: true
+        )
+        model.holdUntilSelectionChange(channelID: channelID)
+        #expect(model.applyRemote(ChannelReadState(
+            channelID: channelID, lastAcknowledgedMessageID: MessageID(rawValue: 10), isManual: true
+        )))
+        #expect(model.holdsAutomaticAcknowledgement(channelID))
+        #expect(model.applyRemote(ChannelReadState(channelID: channelID, lastAcknowledgedMessageID: MessageID(rawValue: 5))))
+        #expect(!model.holdsAutomaticAcknowledgement(channelID))
+        #expect(model.updatePresentation(channelID: channelID, hasReachedReadBoundary: true) == MessageID(rawValue: 20))
+    }
+
     /// Discord's MESSAGE_ACK (build 649389) applies events in received order,
     /// with no version or boundary comparison.
     @Test func `gateway acknowledgements apply in received order`() {
@@ -1181,8 +1199,6 @@ func `guild pages do not acknowledge the hidden selected conversation`(page: Gui
         channelID: channelID,
         mutation: AppModel.ReadStateMutation(
             messageID: MessageID(rawValue: 99_921),
-            manual: false,
-            mentionCount: nil,
             flags: 0,
             lastViewed: 0
         )
@@ -1674,8 +1690,7 @@ private func makeLowerBoundBacklog(in model: AppModel, channelID: ChannelID) {
     #expect(request.manual)
     #expect(request.mentionCount == expectedMentions)
     #expect((request.mentionCount ?? 0) > 0)
-    #expect(request.flags == 1)
-    #expect(request.lastViewed != nil)
+    #expect(request.token == nil && request.flags == nil && request.lastViewed == nil)
     #expect(await eventually {
         model.readState.entries[channelID]?.lastAcknowledgedMessageID == request.messageID
     })
@@ -1715,6 +1730,29 @@ private func makeLowerBoundBacklog(in model: AppModel, channelID: ChannelID) {
     #expect(model.channelMentionCount(channelID) == 1)
     #expect(model.readState.holdsAutomaticAcknowledgement(channelID))
     #expect(await provider.acknowledgementRequests.isEmpty)
+}
+
+/// Discord sends an explicit read at once (module 334738), so a manual echo
+/// arriving later cannot cancel it, even while the account queue holds it.
+@MainActor
+@Test func `a manual echo keeps a queued explicit read`() async throws {
+    let provider = MockChatProvider()
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    let channelID = ChannelID(rawValue: 210)
+    model.selectedChannelID = channelID
+    #expect(await until { !model.isLoadingMessages && model.selectedChannelID == channelID })
+    let newest = try #require(model.readState.entries[channelID]?.latestKnownMessageID)
+    model.enqueueAcknowledgement(
+        channelID: channelID, mutation: model.readStateMutation(channelID: channelID, messageID: newest)
+    )
+
+    model.consumeImmediately(.readStateChanged(ChannelReadState(
+        channelID: channelID, lastAcknowledgedMessageID: MessageID(rawValue: 1), isManual: true
+    )))
+    await model.acknowledgementProcessorTask?.value
+
+    #expect(await provider.acknowledgementRequests.map(\.messageID) == [newest])
 }
 
 @MainActor

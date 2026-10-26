@@ -49,19 +49,44 @@ extension AppModel {
         guard threadActionPolicy(thread).canChangeMembership else { return }
         startAccountChildTask(account: accountSession()) { model, account in
             guard model.threadActionPolicy(thread).canChangeMembership else { return }
+            await model.changeThreadMembership(thread, isJoined: isJoined, location: surface.membershipLocation, account: account)
+        }
+    }
+
+    /// Failures use the application alert.
+    private func changeThreadMembership(
+        _ thread: MessageThreadSummary, isJoined: Bool, location: ThreadMembershipLocation, account: AppModelAccountSession
+    ) async {
+        do {
+            try await account.provider.setThreadMembership(threadID: thread.id, isJoined: isJoined, location: location)
+        } catch ChatProviderError.threadMemberLimitReached {
+            guard isCurrentAccountSession(account) else { return }
+            let noun = isForumThread(thread) ? "post" : "thread"
+            errorMessage = "Cannot join \(noun). This \(noun) has reached its member limit."
+        } catch {
+            guard isCurrentAccountSession(account) else { return }
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Discord's Mark Unread (E10) first reopens an archived thread, stopping
+    /// if that fails, then joins an unjoined one, continuing if that fails.
+    func prepareThreadForMarkUnread(_ thread: MessageThreadSummary, account: AppModelAccountSession) async -> Bool {
+        if thread.isArchived {
+            let post = forumCataloguePosts.first { $0.id == thread.id } ?? ForumPost(thread: thread)
             do {
-                try await account.provider.setThreadMembership(
-                    threadID: thread.id, isJoined: isJoined, location: surface.membershipLocation
-                )
-            } catch ChatProviderError.threadMemberLimitReached {
-                guard model.isCurrentAccountSession(account) else { return }
-                let noun = model.isForumThread(thread) ? "post" : "thread"
-                model.errorMessage = "Cannot join \(noun). This \(noun) has reached its member limit."
+                let updated = try await account.provider.updateForumPost(post, mutation: .archived(false))
+                guard isCurrentAccountSession(account) else { return false }
+                reconcileMutatedThread(updated)
             } catch {
-                guard model.isCurrentAccountSession(account) else { return }
-                model.errorMessage = error.localizedDescription
+                if isCurrentAccountSession(account) { errorMessage = error.localizedDescription }
+                return false
             }
         }
+        if thread.notificationSettings == nil {
+            await changeThreadMembership(thread, isJoined: true, location: .markUnread, account: account)
+        }
+        return true
     }
 
     /// Close/Reopen, Lock/Unlock and Pin/Unpin from any thread surface.

@@ -128,8 +128,6 @@ final class AppModel {
 
     struct ReadStateMutation: Sendable {
         var messageID: MessageID
-        var manual: Bool
-        var mentionCount: Int?
         var flags: UInt64?
         var lastViewed: Int?
     }

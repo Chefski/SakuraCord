@@ -199,7 +199,9 @@ extension AccountReadStateModel {
         }
     }
 
-    func replaceSnapshot(_ snapshot: BootstrapSnapshot) {
+    /// Returns the conversations READY leaves read that were unread.
+    @discardableResult
+    func replaceSnapshot(_ snapshot: BootstrapSnapshot) -> Set<ChannelID> {
         retainGuilds(Set(snapshot.guilds.map(\.id)))
         merge(guilds: snapshot.guilds)
         let channelsByGuild = Dictionary(grouping: snapshot.channels, by: \.guildID)
@@ -215,9 +217,10 @@ extension AccountReadStateModel {
         // Discord's CONNECTION_OPEN clears the ACK token and replaces read
         // state; no pending acknowledgement survives READY.
         acknowledgementToken = nil
-        replaceReadStates(snapshot.readStates)
+        let read = replaceReadStates(snapshot.readStates)
         for thread in snapshot.threads + snapshot.activeJoinedThreads { merge(thread: thread) }
         replaceActiveJoinedThreads(snapshot.activeJoinedThreads)
+        return read
     }
 
     nonisolated static func makeInitialState(_ input: InitialStateInput) -> InitialState {
@@ -751,8 +754,10 @@ extension AccountReadStateModel {
     }
 
     /// A full READY replaces every read state, keeping only what the account
-    /// knows about each conversation's channel and messages.
-    func replaceReadStates(_ states: [ChannelReadState]) {
+    /// knows about each conversation's channel and messages. Returns the
+    /// conversations it leaves read that were unread.
+    @discardableResult
+    func replaceReadStates(_ states: [ChannelReadState]) -> Set<ChannelID> {
         let previousEntries = entries
         remoteReadStateOrder.removeAll(keepingCapacity: true)
         remoteReadStateOrderIDs.removeAll(keepingCapacity: true)
@@ -763,6 +768,9 @@ extension AccountReadStateModel {
             guard let previous = previousEntries[channelID] else { continue }
             self[channelID] = reconciledSnapshotEntry(channelID: channelID, previous: previous)
         }
+        return Set(previousEntries.values.lazy
+            .filter { $0.isUnread && self[$0.channelID]?.isUnread == false }
+            .map(\.channelID))
     }
 
     func quickSwitcherMentionChannelIDs(
@@ -1233,9 +1241,10 @@ extension AccountReadStateModel {
         return acknowledged < held
     }
 
-    /// Discord's `ack()`: the boundary and counts change immediately and
+    /// Discord's `ack()` (E2): the boundary and counts change immediately and
     /// never roll back, whether or not Discord accepts the request. Like any
-    /// acknowledgement, it may move the boundary backwards.
+    /// acknowledgement, it may move the boundary backwards, and it ends Mark
+    /// Unread's hold at any boundary.
     func acknowledge(channelID: ChannelID, messageID: MessageID) {
         var entry = entry(for: channelID)
         entry.lastAcknowledgedMessageID = messageID
@@ -1243,6 +1252,9 @@ extension AccountReadStateModel {
         entry.unreadMessageCount = entry.isUnread ? max(1, entry.unreadMessageCount) : 0
         entry.hasAuthoritativeReadState = true
         self[channelID] = entry
+        if self[presentation: channelID]?.isHeldUntilSelectionChange == true {
+            _ = unblockAutomaticAcknowledgement(channelID: channelID)
+        }
     }
 
     /// Discord's manual MESSAGE_ACK stops a selected conversation from
