@@ -30,7 +30,10 @@ final class HumanCaptchaStore {
     }
 
     func complete(id: UUID, token: String?) {
-        finish(id: id, token: token?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? token : nil)
+        guard let index = waiting.firstIndex(where: { $0.challenge.id == id }) else { return }
+        let continuation = waiting.remove(at: index).continuation
+        challenge = waiting.first?.challenge
+        continuation.resume(returning: token)
     }
 
     /// Without an identifier, releases every waiting challenge.
@@ -42,13 +45,6 @@ final class HumanCaptchaStore {
             for entry in released { entry.continuation.resume(returning: nil) }
             return
         }
-        finish(id: id, token: nil)
-    }
-
-    private func finish(id: UUID, token: String?) {
-        guard let index = waiting.firstIndex(where: { $0.challenge.id == id }) else { return }
-        let continuation = waiting.remove(at: index).continuation
-        challenge = waiting.first?.challenge
-        continuation.resume(returning: token)
+        complete(id: id, token: nil)
     }
 }
