@@ -20,10 +20,10 @@ nonisolated enum SidebarThreadPolicy {
     struct Candidate: Sendable {
         let thread: MessageThreadSummary
         let latestMessageID: MessageID?
-        /// Discord's raw `hasUnread`, independent of notification settings.
+        /// Discord's `hasUnread` for a joined thread. Like Discord's thread
+        /// row, it ignores the parent's mute and unread setting; only the
+        /// thread's own mute dims the row.
         let hasUnread: Bool
-        /// The read-state unread presentation used for the row's emphasis.
-        let showsUnread: Bool
         let mentionCount: Int
     }
 
@@ -89,7 +89,7 @@ nonisolated enum SidebarThreadPolicy {
         return visible.map {
             SidebarThreadRow(
                 thread: $0.thread,
-                isUnread: $0.showsUnread,
+                isUnread: $0.hasUnread,
                 mentionCount: $0.mentionCount,
                 isMuted: isMuted($0.thread, now: now)
             )
@@ -176,8 +176,7 @@ extension AppModel {
         return SidebarThreadPolicy.Candidate(
             thread: thread,
             latestMessageID: latestMessageID,
-            hasUnread: entry?.isUnread ?? false,
-            showsUnread: readState.unread(channelID: thread.id),
+            hasUnread: entry.map { $0.isUnread && readState.countsMentions($0) } ?? false,
             mentionCount: readState.mentions(channelID: thread.id)
         )
     }

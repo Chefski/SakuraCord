@@ -533,11 +533,10 @@ struct ProviderRequestContractTests {
         #expect(RateLimitURLProtocol.ackRequestCount == 3)
         #expect(RateLimitURLProtocol.ackMethod == "POST")
         #expect(RateLimitURLProtocol.ackPath == "/api/v9/channels/200/messages/332/ack")
-        #expect(RateLimitURLProtocol.ackBody?["token"] as? String == "next-token")
+        // Mark Unread's body is exactly Discord's: no token or metadata.
+        #expect(RateLimitURLProtocol.ackBody?.count == 2)
         #expect(RateLimitURLProtocol.ackBody?["manual"] as? Bool == true)
         #expect((RateLimitURLProtocol.ackBody?["mention_count"] as? NSNumber)?.intValue == 4)
-        #expect((RateLimitURLProtocol.ackBody?["flags"] as? NSNumber)?.uint64Value == 3)
-        #expect((RateLimitURLProtocol.ackBody?["last_viewed"] as? NSNumber)?.intValue == 4_222)
 
         RateLimitURLProtocol.ackStatus = 429
         await #expect(throws: ChatProviderError.self) {

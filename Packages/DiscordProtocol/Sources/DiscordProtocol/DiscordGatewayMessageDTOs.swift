@@ -742,6 +742,7 @@ struct ForumThreadSearchResponseDTO: Decodable {
                 return nil
             }
             post.firstMessage = post.firstMessage ?? firstByChannel[post.id]
+            post.isFirstMessageLoaded = true
             post.mostRecentMessage = recentByChannel[post.id]
             post.owner = post.owner ?? post.firstMessage?.author
             return post

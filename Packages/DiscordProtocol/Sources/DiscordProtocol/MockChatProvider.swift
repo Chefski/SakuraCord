@@ -33,7 +33,7 @@ public actor MockChatProvider: ChatProvider {
     public internal(set) var acknowledgementRequests: [AcknowledgementRequest] = []
     public internal(set) var bulkAcknowledgementRequests:
         [[BulkReadStateAcknowledgement]] = []
-    var bulkAckAcceptedPrefixBeforeFailure: Int?
+    var failsBulkAcknowledgement = false
     public internal(set) var guildNotificationRequests: [GuildNotificationRequest] = []
     public internal(set) var channelNotificationRequests: [ChannelNotificationRequest] = []
     public internal(set) var categoryNotificationRequests: [CategoryNotificationRequest] = []

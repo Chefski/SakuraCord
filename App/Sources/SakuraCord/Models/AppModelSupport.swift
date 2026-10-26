@@ -82,9 +82,16 @@ extension AppModel {
             && (!accountTransitionIsActive || session.allowsTransition)
     }
 
+    /// No challenge is presented for a session being replaced or signed out.
+    func solveCaptcha(_ challenge: DiscordCaptchaChallenge) async -> String? {
+        guard !accountTransitionIsActive else { return nil }
+        return await captcha.solution(for: challenge)
+    }
+
     func invalidateAccountSession() {
         accountSessionGeneration &+= 1
         resetMessageSearches()
+        captcha.cancel()
         serverInvites.reset()
         friends.reset()
         lastDirectMessageSelection = nil
@@ -276,6 +283,8 @@ final class ThreadCreationDraft {
     /// The parent-channel message a thread started from it takes its ID from.
     /// Such a thread is public and its name is optional.
     let starterMessage: Message?
+    /// Created from the Threads browser rather than the composer.
+    let isFromThreadBrowser: Bool
     /// The first-party default name used when the optional name is blank.
     let defaultName: String
 
@@ -287,9 +296,10 @@ final class ThreadCreationDraft {
         return starterMessage == nil ? nil : defaultName
     }
 
-    init(parentID: ChannelID, permissions: ThreadCreationPermissions) {
+    init(parentID: ChannelID, permissions: ThreadCreationPermissions, isFromThreadBrowser: Bool = false) {
         self.parentID = parentID
         self.permissions = permissions
+        self.isFromThreadBrowser = isFromThreadBrowser
         isPrivate = !permissions.canCreatePublic
         starterMessage = nil
         defaultName = ""
@@ -300,6 +310,7 @@ final class ThreadCreationDraft {
         permissions = ThreadCreationPermissions(canCreatePublic: true, canCreatePrivate: false)
         isPrivate = false
         starterMessage = message
+        isFromThreadBrowser = false
         self.defaultName = defaultName
     }
 }

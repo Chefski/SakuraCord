@@ -128,11 +128,8 @@ final class AppModel {
 
     struct ReadStateMutation: Sendable {
         var messageID: MessageID
-        var manual: Bool
-        var mentionCount: Int?
         var flags: UInt64?
         var lastViewed: Int?
-        var wireManual: Bool?
     }
 
     struct CategoryCollapseMutationState {
@@ -167,6 +164,7 @@ final class AppModel {
         ServerRailPresentationStore()
     @ObservationIgnored let onboarding = GuildOnboardingStore()
     @ObservationIgnored let serverInvites = ServerInvitePresentationStore()
+    @ObservationIgnored let captcha = HumanCaptchaStore()
     @ObservationIgnored let friends = FriendsState()
     @ObservationIgnored let ignoredUsers = IgnoredUsersState()
     @ObservationIgnored let serverTagCards = ServerTagCardStore()
@@ -946,7 +944,9 @@ final class AppModel {
                 }
                 lastTypingRequestAt[oldValue] = nil
                 _ = readState.updatePresentation(channelID: oldValue, isPresented: false)
-                readState.endForumVisit(channelID: oldValue)
+                if readState.endForumVisit(channelID: oldValue) {
+                    refreshUnreadPresentation()
+                }
             }
             selectedChannel =
                 snapshot?.channels.first { $0.id == selectedChannelID }
@@ -1167,17 +1167,13 @@ final class AppModel {
     @ObservationIgnored var didAttemptDiscordEmojiSettings = false
     @ObservationIgnored var acknowledgementTasks: [ChannelID: Task<Void, Never>] = [:]
     /// The target each debounced acknowledgement task will send.
-    @ObservationIgnored var debouncedAcknowledgementTargets: [ChannelID: MessageID] = [:]
-    @ObservationIgnored var queuedAcknowledgements: [ChannelID: ReadStateMutation] = [:]
-    @ObservationIgnored var acknowledgementQueueOrder: [ChannelID] = []
+    @ObservationIgnored var queuedAcknowledgements: [(channelID: ChannelID, mutation: ReadStateMutation)] = []
     @ObservationIgnored var acknowledgementProcessorTask: Task<Void, Never>?
     @ObservationIgnored var acknowledgementGeneration = 0
     var isMarkingAllServersRead = false
     @ObservationIgnored var allServersReadTask: Task<Void, Never>?
     @ObservationIgnored var guildAcknowledgementTasks:
         [GuildID: Task<Void, Never>] = [:]
-    @ObservationIgnored var categoryAcknowledgementTasks:
-        [ChannelID: Task<Void, Never>] = [:]
     @ObservationIgnored var guildNotificationMutationTasks: [GuildID: Task<Void, Never>] = [:]
     @ObservationIgnored var guildNotificationSettingsRevisions: [GuildID: UInt64] = [:]
     @ObservationIgnored var channelNotificationMutationTasks: [ChannelID: Task<Void, Never>] = [:]

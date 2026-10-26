@@ -17,23 +17,6 @@ extension AppModel {
             )
         }
         let starter = post.firstMessage
-        let excerpt: ForumCardPresentation.Excerpt
-        if let starter {
-            excerpt = starter.content.isEmpty ? .empty : .message(starter, author: forumCardAuthor(for: starter))
-        } else {
-            excerpt = .pending
-        }
-        let thumbnail = starter?.attachments.first.map(ForumCardPresentation.Media.init(attachment:))
-        let hero: ForumCardPresentation.Hero =
-            if let thumbnail {
-                .media(thumbnail)
-            } else if let preview = post.mostRecentMessage ?? starter, !preview.content.isEmpty {
-                .text(preview)
-            } else if starter == nil {
-                .pending
-            } else {
-                .empty
-            }
         let galleryAuthor: ForumCardPresentation.Author? =
             if let starter {
                 forumCardAuthor(for: starter)
@@ -47,12 +30,35 @@ extension AppModel {
             } else {
                 nil
             }
+        let excerpt: ForumCardPresentation.Excerpt
+        if let starter {
+            excerpt = starter.content.isEmpty ? .empty : .message(starter, author: forumCardAuthor(for: starter))
+        } else {
+            excerpt = post.isFirstMessageLoaded ? .deleted(author: galleryAuthor) : .pending
+        }
+        let thumbnail = starter?.attachments.first.map(ForumCardPresentation.Media.init(attachment:))
+        let hero: ForumCardPresentation.Hero =
+            if let thumbnail {
+                .media(thumbnail)
+            } else if starter == nil, post.isFirstMessageLoaded {
+                .deleted
+            } else if let preview = post.mostRecentMessage ?? starter, !preview.content.isEmpty {
+                .text(preview)
+            } else if starter == nil {
+                .pending
+            } else {
+                .empty
+            }
         let reaction = ForumPostReactionPresentation.displayedReaction(
             reactions: starter?.reactions ?? [],
             defaultReaction: channel.defaultReaction
         ).flatMap { reaction in
             starter.map {
-                ForumCardPresentation.ReactionSummary(
+                // Cards show only the emoji and count, so reactor identities
+                // stay out of what the card compares, draws and announces.
+                var reaction = reaction
+                reaction.reactors = []
+                return ForumCardPresentation.ReactionSummary(
                     reaction: reaction,
                     message: $0,
                     isDisabled: guildTimeoutUntil(in: post.id, guildID: post.thread.guildID) != nil
@@ -63,7 +69,7 @@ extension AppModel {
             title: post.thread.name,
             hasStatusRow: ForumCardGeometryInput(post: post).hasStatusRow,
             isEmphasized: shouldEmphasizeForumPost(post),
-            isNew: isForumPostNew(post),
+            isNew: readState.isNewForumPost(post),
             isSelected: openThread?.id == post.id,
             isPinned: post.thread.isPinned,
             isLocked: post.thread.isLocked,

@@ -20,9 +20,6 @@ extension ForumBoardView {
                 if let url = MessageReactionPresentation.emojiURL(for: reaction, customEmojiURLsByID: customEmojiURLsByID) {
                     postKeys.insert(.media(url, maximumPixelDimension: 64))
                 }
-                for reactor in MessageReactionPresentation.previewPlan(for: reaction).reactors {
-                    if let url = reactor.avatarURL { postKeys.insert(.avatar(url)) }
-                }
             }
             keys.formUnion(postKeys)
             keysByPost[postID] = postKeys
@@ -63,54 +60,6 @@ extension ForumBoardView {
         }
     }
 
-    // MARK: Reaction tooltip
-
-    /// Shows or updates the reactors popover for a post's reaction. Each call
-    /// re-resolves its content, so a late emoji catalogue still updates it.
-    func presentReactionTooltip(
-        postID: ChannelID,
-        summary: ForumCardPresentation.ReactionSummary
-    ) {
-        guard let model, let window else { return }
-        let anchor = StablePopoverAnchor(sourceView: self) { [weak self] in
-            guard let self, let entry = layoutState?.entry(for: .post(postID)),
-                  let frame = cardRegions(for: .post(postID))?.reactionRegionFrame
-            else { return nil }
-            return frame.offsetBy(dx: entry.frame.minX, dy: entry.frame.minY)
-        }
-        let screenPoint = NSEvent.mouseLocation
-        let pointInView = convert(window.convertPoint(fromScreen: screenPoint), from: nil)
-        var snapshot: StablePopoverAnchorSnapshot?
-        if let source = anchor.sourceRect() {
-            snapshot = StablePopoverAnchorSnapshot(
-                mouseLocationInScreen: screenPoint,
-                mouseLocationInSource: CGPoint(x: pointInView.x - source.minX, y: pointInView.y - source.minY)
-            )
-        }
-        let reaction = summary.reaction
-        let emojiURL = MessageReactionPresentation.emojiURL(for: reaction, customEmojiURLsByID: model.customEmojiURLsByID)
-        let wasShown = reactionTooltipPostID == postID
-        reactionTooltipPostID = postID
-        reactionTooltip.update(
-            anchor: anchor,
-            anchorSnapshot: snapshot,
-            isPresented: true,
-            configuration: .hover,
-            onDismiss: { [weak self] in self?.reactionTooltipPostID = nil },
-            presentationIdentity: AnyHashable(postID),
-            content: MessageReactionTooltip(reaction: reaction, emojiURL: emojiURL)
-        )
-        if !wasShown, reaction.count > 0 {
-            Task { await model.loadReactionReactors(reaction, on: summary.message) }
-        }
-    }
-
-    func closeReactionTooltip() {
-        guard reactionTooltipPostID != nil else { return }
-        reactionTooltipPostID = nil
-        reactionTooltip.close()
-    }
-
     // MARK: Tooltips
 
     func rebuildToolTips() {
@@ -147,7 +96,7 @@ extension ForumBoardView {
                 model: model,
                 thread: post.thread,
                 surface: .forumCard,
-                isUnread: model.isForumPostUnread(post),
+                isUnread: model.canMarkConversationRead(channelID: post.id),
                 offersTags: true
             ),
             tags: channel.availableTags,

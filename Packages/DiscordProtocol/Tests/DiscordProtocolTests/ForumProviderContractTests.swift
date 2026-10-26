@@ -351,7 +351,7 @@ struct ThreadCreationContractTests {
             (body["message"] as? [String: Any])?["content"] as? String
                 == "Nested starter content"
         )
-        #expect((body["message"] as? [String: Any])?["sticker_ids"] as? [String] == [])
+        #expect(Set(try #require(body["message"] as? [String: Any]).keys) == ["content"])
     }
 
     @Test(arguments: [
@@ -1097,39 +1097,6 @@ private final class ThreadLookupURLProtocol: URLProtocol, @unchecked Sendable {
     #expect(merged.isUnread)
 }
 
-@Test func `catalogue refresh retains loaded forum reactor identities`() throws {
-    let channelID = ChannelID(rawValue: 110)
-    let owner = User(id: UserID(rawValue: 8), username: "owner", displayName: "Owner")
-    let reactor = ReactionReactor(id: UserID(rawValue: 9), displayName: "Reactor")
-    let existingMessage = Message(
-        id: MessageID(rawValue: 111),
-        channelID: channelID,
-        author: owner,
-        content: "Existing",
-        reactions: [Reaction(emoji: "❤️", count: 1, reactors: [reactor])]
-    )
-    var incomingMessage = existingMessage
-    incomingMessage.content = "Fresh"
-    incomingMessage.reactions = [Reaction(emoji: "❤️", count: 2)]
-    let existing = ForumPost(
-        thread: MessageThreadSummary(id: channelID, name: "Old"),
-        firstMessage: existingMessage
-    )
-    let incoming = ForumPost(
-        thread: MessageThreadSummary(id: channelID, name: "Fresh"),
-        firstMessage: incomingMessage
-    )
-
-    let merged = DiscordRESTProvider.mergingForumPostCatalogueMetadata(
-        incoming: incoming,
-        existing: existing
-    )
-
-    #expect(merged.firstMessage?.content == "Fresh")
-    #expect(merged.firstMessage?.reactions.first?.count == 2)
-    #expect(merged.firstMessage?.reactions.first?.reactors == [reactor])
-}
-
 @Test func `superseded forum catalogue refreshes leave only the latest query active`() async throws {
     let provider = DiscordRESTProvider(
         credentials: ForumPostDeletionCredentialStore(),
@@ -1628,6 +1595,8 @@ func `deleted messages cannot return through cached thread previews`(bulk: Bool)
     await provider.receiveGatewayDispatchForTesting(name: bulk ? "MESSAGE_DELETE_BULK" : "MESSAGE_DELETE", data: .object(payload))
     let cached = try #require(await provider.cachedForumPostForTesting(threadID: thread.id))
     #expect(cached.firstMessage == nil)
+    // A deleted starter is answered, not still loading.
+    #expect(cached.isFirstMessageLoaded)
     #expect(cached.mostRecentMessage == nil)
     await provider.disconnect()
 }

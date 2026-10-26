@@ -295,13 +295,9 @@ extension DiscordRESTProvider {
             throw ChatProviderError.invalidRequest("Select at least one tag before posting.")
         }
         progress(.preparing)
-        var message: [String: JSONValue] = [
-            "content": .string(draft.content),
-            // The current first-party nested forum-post action always includes
-            // the selected sticker list. SakuraCord does not expose forum
-            // sticker sending, so the exact supported shape is an empty list.
-            "sticker_ids": .array([]),
-        ]
+        // Build 649389 omits `sticker_ids`, and SakuraCord does not expose
+        // forum sticker sending.
+        var message: [String: JSONValue] = ["content": .string(draft.content)]
         if !draft.attachments.isEmpty {
             message["attachments"] = try await .array(
                 uploadForumAttachments(
@@ -353,6 +349,13 @@ extension DiscordRESTProvider {
             throw ChatProviderError.invalidRequest("The selected auto-archive duration is invalid.")
         }
         let type = draft.isPrivate ? 12 : (channel.kind == .announcement ? 10 : 11)
+        let location = if draft.starterMessageID != nil {
+            "Message"
+        } else if draft.isFromThreadBrowser {
+            "Thread Browser Toolbar"
+        } else {
+            "Plus Button"
+        }
         let baseline = threadRevisionBaseline()
         let dto: ChannelDTO = try await request(
             Self.threadCreationPath(parentID: draft.channelID, starterMessageID: draft.starterMessageID),
@@ -361,7 +364,7 @@ extension DiscordRESTProvider {
                 "name": .string(name),
                 "type": .number(Double(type)),
                 "auto_archive_duration": .number(Double(draft.autoArchiveDuration)),
-                "location": .string(draft.starterMessageID == nil ? "Plus Button" : "Message"),
+                "location": .string(location),
             ]
         )
         let thread = try commitCreatedThread(
@@ -564,11 +567,14 @@ extension DiscordRESTProvider {
     ) async throws {
         advanceThreadMembershipRevision(threadID)
         let epoch = threadMembershipEpochs[threadID]
-        try await requestEmpty(
+        let (data, response) = try await perform(
             "/channels/\(threadID)/thread-members/@me",
             method: isJoined ? "POST" : "DELETE",
-            query: [URLQueryItem(name: "location", value: location.rawValue)]
+            query: [URLQueryItem(name: "location", value: location.rawValue)],
+            body: nil
         )
+        if Self.discordErrorCode(from: data) == 30033 { throw ChatProviderError.threadMemberLimitReached }
+        try validateEmptyResponse(data, response)
         // A Gateway membership event or a newer join/leave supersedes this
         // answer; an overlapping read does not.
         guard threadMembershipEpochs[threadID] == epoch else { return }
@@ -707,20 +713,11 @@ extension DiscordRESTProvider {
         existing: ForumPost
     ) -> ForumPost {
         var merged = incoming
-        if let firstMessage = incoming.firstMessage {
-            merged.firstMessage = firstMessage.preservingReactionReactors(
-                from: existing.firstMessage ?? firstMessage
-            )
-        } else {
+        if incoming.firstMessage == nil, !incoming.isFirstMessageLoaded {
             merged.firstMessage = existing.firstMessage
+            merged.isFirstMessageLoaded = existing.isFirstMessageLoaded
         }
-        if let mostRecentMessage = incoming.mostRecentMessage {
-            merged.mostRecentMessage = mostRecentMessage.preservingReactionReactors(
-                from: existing.mostRecentMessage ?? mostRecentMessage
-            )
-        } else {
-            merged.mostRecentMessage = existing.mostRecentMessage
-        }
+        merged.mostRecentMessage = incoming.mostRecentMessage ?? existing.mostRecentMessage
         merged.thread.lastNonMessageActivityAt = incoming.thread.lastNonMessageActivityAt
             ?? existing.thread.lastNonMessageActivityAt
         merged.owner = incoming.owner ?? existing.owner
@@ -788,7 +785,7 @@ extension DiscordRESTProvider {
             forumPreviewHydrationQueues[supersededParentID] = nil
         }
         let missingIDs = postIDs.lazy.filter {
-            self.cachedForumPosts[parentID]?[$0]?.firstMessage == nil
+            self.cachedForumPosts[parentID]?[$0].map { $0.firstMessage == nil && !$0.isFirstMessageLoaded } ?? false
         }
         forumPreviewHydrationQueues[parentID, default: ForumPreviewHydrationQueue()]
             .enqueue(missingIDs)
@@ -837,14 +834,14 @@ extension DiscordRESTProvider {
                       var post = cachedForumPosts[parentID]?[channelID]
                 else { continue }
                 if let message = try? data.firstMessage?.domain() {
-                    post.firstMessage = message.preservingReactionReactors(
-                        from: post.firstMessage ?? message
-                    )
+                    post.firstMessage = message
+                    post.isFirstMessageLoaded = true
+                } else if data.firstMessage == nil {
+                    post.firstMessage = nil
+                    post.isFirstMessageLoaded = true
                 }
                 if let message = try? data.mostRecentMessage?.domain() {
-                    post.mostRecentMessage = message.preservingReactionReactors(
-                        from: post.mostRecentMessage ?? message
-                    )
+                    post.mostRecentMessage = message
                 }
                 cachedForumPosts[parentID, default: [:]][channelID] = post
                 cacheForumPreviewMessages(post)
@@ -1233,19 +1230,19 @@ extension DiscordRESTProvider {
         flags: UInt64?,
         lastViewed: Int?
     ) async throws -> ReadAcknowledgementResponse {
-        var body: [String: JSONValue] = ["token": .null]
-        if let token {
-            body["token"] = .string(token)
-        }
+        // Mark Unread posts exactly `manual` and the mention count
+        // (module 439147, build 649389); a read posts the token and metadata.
+        var body: [String: JSONValue]
         if manual {
-            body["manual"] = .bool(true)
-            body["mention_count"] = .number(Double(max(0, mentionCount ?? 0)))
-        }
-        if let flags {
-            body["flags"] = .number(Double(flags))
-        }
-        if let lastViewed {
-            body["last_viewed"] = .number(Double(lastViewed))
+            body = ["manual": .bool(true), "mention_count": .number(Double(max(0, mentionCount ?? 0)))]
+        } else {
+            body = ["token": token.map(JSONValue.string) ?? .null]
+            if let flags {
+                body["flags"] = .number(Double(flags))
+            }
+            if let lastViewed {
+                body["last_viewed"] = .number(Double(lastViewed))
+            }
         }
         let (data, response) = try await perform(
             "/channels/\(channelID)/messages/\(messageID)/ack",
@@ -1259,10 +1256,7 @@ extension DiscordRESTProvider {
                 authorizationValue = nil
                 throw apiDiagnostics.coalescing(ChatProviderError.unauthenticated, with: response)
             }
-            throw apiDiagnostics.coalescing(ChatProviderError.transport(
-                status: response.statusCode,
-                requestID: response.value(forHTTPHeaderField: "x-request-id")
-            ), with: response)
+            throw unexplainedFailure(data, response)
         }
         guard !data.isEmpty else { return ReadAcknowledgementResponse(token: token) }
         return try JSONDecoder().decode(ReadAcknowledgementResponse.self, from: data)
@@ -1285,36 +1279,26 @@ extension DiscordRESTProvider {
     public func acknowledgeBulk(
         _ readStates: [BulkReadStateAcknowledgement]
     ) async throws {
-        var acceptedReadStates: [BulkReadStateAcknowledgement] = []
-        for batch in readStates.chunked(maximumCount: 100) {
-            do {
-                if !acceptedReadStates.isEmpty {
-                    // Discord's BULK_ACK queue spaces successful batches by one second.
-                    try await Task.sleep(for: .seconds(1))
-                }
-                try await requestEmpty(
-                    "/read-states/ack-bulk",
-                    method: "POST",
-                    body: [
-                        "read_states": .array(
-                            batch.map { readState in
-                                .object([
-                                    "channel_id": .string(readState.channelID.description),
-                                    "message_id": .string(readState.messageID.description),
-                                    "read_state_type": .number(Double(readState.readStateType)),
-                                ])
-                            }
-                        )
-                    ]
-                )
-                acceptedReadStates.append(contentsOf: batch)
-            } catch {
-                guard !acceptedReadStates.isEmpty else { throw error }
-                throw PartialBulkReadAcknowledgementError(
-                    acceptedReadStates: acceptedReadStates,
-                    failureDescription: error.localizedDescription
-                )
+        for (index, batch) in readStates.chunked(maximumCount: 100).enumerated() {
+            if index > 0 {
+                // Discord's BULK_ACK queue spaces successful batches by one second.
+                try await Task.sleep(for: .seconds(1))
             }
+            try await requestEmpty(
+                "/read-states/ack-bulk",
+                method: "POST",
+                body: [
+                    "read_states": .array(
+                        batch.map { readState in
+                            .object([
+                                "channel_id": .string(readState.channelID.description),
+                                "message_id": .string(readState.messageID.description),
+                                "read_state_type": .number(Double(readState.readStateType)),
+                            ])
+                        }
+                    )
+                ]
+            )
         }
     }
 

@@ -30,6 +30,8 @@ extension AccountReadStateModel {
         let activeJoinedThreadIDs: Set<ChannelID>
         let policy: UnreadPolicySource
         let forumPostArchivedByID: [ChannelID: Bool]
+        let forumVisitBoundaryByID: [ChannelID: MessageID]
+        let guildJoinedAtByID: [GuildID: Date]
 
         /// Aggregate indicators must point to a current channel or a thread
         /// the sidebar can surface. Retained read history is not membership.
@@ -67,21 +69,32 @@ extension AccountReadStateModel {
             isAggregateConversation(entry) ? entry.guildID : nil
         }
 
-        /// The forum an unseen post counts toward, if the post is newer than
-        /// the forum's acknowledged boundary.
+        /// The forum a new post counts toward. Like Discord's sidebar count,
+        /// only active posts the user has neither joined nor opened count.
         func newForumPostParentID(of entry: Entry) -> ChannelID? {
             guard let parentID = entry.parentID,
                   forumPostArchivedByID[entry.channelID] != true,
+                  !activeJoinedThreadIDs.contains(entry.channelID),
                   !entry.hasAuthoritativeReadState,
                   let parent = entries[parentID],
                   parent.kind == .forum,
-                  parent.hasAuthoritativeReadState
+                  AccountReadStateModel.isNewForumPost(
+                      entry.channelID,
+                      in: parent,
+                      visitBoundary: forumVisitBoundaryByID[parentID],
+                      guildJoinedAt: parent.guildID.flatMap { guildJoinedAtByID[$0] }
+                  )
             else { return nil }
-            let boundary = parent.lastAcknowledgedMessageID
-                ?? MessageID(rawValue: 0)
-            return MessageID(rawValue: entry.channelID.rawValue) > boundary
-                ? parentID
-                : nil
+            return parentID
+        }
+
+        /// Forums whose sidebar count includes a post. A never-read forum's
+        /// seeded boundary hides those posts from its own unread state, so
+        /// acknowledgement eligibility checks both.
+        func forumsWithNewPosts() -> Set<ChannelID> {
+            Set(entries.values.lazy
+                .filter { $0.isAccessible && !policy.isGuildResourceChannel($0) }
+                .compactMap(newForumPostParentID(of:)))
         }
 
         /// The server a forum's unseen posts light, honouring its mutes.
@@ -130,6 +143,33 @@ extension AccountReadStateModel {
             cancelsCooperatively: Bool = false,
             cancellationCheck: @Sendable () -> Bool = { Task.isCancelled }
         ) -> UnreadPresentationProjection? {
+            projection(
+                of: entries.values,
+                now: now,
+                cancelsCooperatively: cancelsCooperatively,
+                cancellationCheck: cancellationCheck
+            )
+        }
+
+        /// The projection of one server's conversations, or of direct
+        /// messages for `nil`. Every value it holds for that scope equals the
+        /// full projection's; account-wide totals cover only the scope.
+        func projection(
+            scope guildID: GuildID?,
+            now: Date = .now
+        ) -> UnreadPresentationProjection? {
+            projection(
+                of: entries.values.lazy.filter { $0.guildID == guildID },
+                now: now
+            )
+        }
+
+        private func projection(
+            of scope: some Sequence<Entry>,
+            now: Date,
+            cancelsCooperatively: Bool = false,
+            cancellationCheck: @Sendable () -> Bool = { Task.isCancelled }
+        ) -> UnreadPresentationProjection? {
             var unreadConversationIDs: Set<ChannelID> = []
             var unreadByChannelID: [ChannelID: Bool] = [:]
             var mentionsByChannelID: [ChannelID: Int] = [:]
@@ -140,10 +180,10 @@ extension AccountReadStateModel {
             var directMessageUnread = false
             var directMessageMentions = 0
             var totalMentions = 0
-            unreadByChannelID.reserveCapacity(entries.count)
-            mentionsByChannelID.reserveCapacity(entries.count)
+            unreadByChannelID.reserveCapacity(scope.underestimatedCount)
+            mentionsByChannelID.reserveCapacity(scope.underestimatedCount)
 
-            for (offset, entry) in entries.values.enumerated() {
+            for (offset, entry) in scope.enumerated() {
                 if cancelsCooperatively,
                    offset.isMultiple(of: 64),
                    cancellationCheck()
@@ -166,10 +206,11 @@ extension AccountReadStateModel {
                         for: entry,
                         now: now
                     )
-                    channelUnread = channelMentions > 0
-                        || (!effectivePolicy.guildMuted
-                            && !effectivePolicy.presentationChannelMuted
-                            && effectivePolicy.showsUnread)
+                    channelUnread = policy.presentsUnread(
+                        entry,
+                        mentionCount: channelMentions,
+                        effectivePolicy: effectivePolicy
+                    )
                     contributesToGuildUnread = policy.contributesOwnGuildUnread(
                         entry,
                         effectivePolicy: effectivePolicy
@@ -200,7 +241,7 @@ extension AccountReadStateModel {
                     unreadByGuildID[guildID] = true
                 }
                 if isEligible,
-                   entry.countsAsUnreadConversation
+                   entry.countsAsUnreadConversation && isAggregateConversation(entry)
                     || newForumPostParentID(of: entry) != nil,
                    let guildID = entry.guildID,
                    let parentID = entry.parentID
@@ -280,8 +321,6 @@ extension AccountReadStateModel {
             let inheritedChannelMuted = directMuted
                 || parentMuted
                 || activeMute(ancestorOverride, now: now)
-            let presentationOverrideMuted = directMuted
-                || (parentIsConversation && parentMuted)
             let categoryMuted = activeMute(categoryOverride, now: now)
             let guildDefault = isDirectMessage
                 ? .allMessages
@@ -317,7 +356,9 @@ extension AccountReadStateModel {
             let channelMuted = inheritedChannelMuted
                 || threadMuted
                 || threadLevel == .nothing
-            let presentationChannelMuted = presentationOverrideMuted
+            // A joined thread's unread ignores its parent's mute, as in
+            // Discord's thread row and GuildReadStateStore.
+            let presentationChannelMuted = directMuted
                 || threadMuted
                 || threadLevel == .nothing
             let showsUnread = showsUnread(
@@ -377,6 +418,21 @@ extension AccountReadStateModel {
             return level == .allMessages
         }
 
+        /// Whether an unread entry presents as unread. Discord shows a joined
+        /// thread unread unless the thread or server is muted; its parent's
+        /// and server's unread settings do not apply.
+        func presentsUnread(
+            _ entry: Entry,
+            mentionCount: Int,
+            effectivePolicy: EffectivePolicy
+        ) -> Bool {
+            let isThread = channelByID[entry.channelID] == nil && entry.parentID != nil
+            return mentionCount > 0
+                || (!effectivePolicy.guildMuted
+                    && !effectivePolicy.presentationChannelMuted
+                    && (isThread || effectivePolicy.showsUnread))
+        }
+
         /// Whether an entry's own unread lights its server. A forum's own
         /// boundary trails its newest post, so a forum lights the server only
         /// through mentions, its unseen posts and its joined threads.
@@ -384,7 +440,14 @@ extension AccountReadStateModel {
             _ entry: Entry,
             effectivePolicy: EffectivePolicy
         ) -> Bool {
-            !effectivePolicy.categoryMuted
+            if channelByID[entry.channelID] == nil, entry.parentID != nil {
+                return presentsUnread(
+                    entry,
+                    mentionCount: entry.mentionCount,
+                    effectivePolicy: effectivePolicy
+                )
+            }
+            return !effectivePolicy.categoryMuted
                 && (entry.mentionCount > 0
                     || (entry.kind != .forum
                         && !effectivePolicy.guildMuted
@@ -454,7 +517,6 @@ extension AccountReadStateModel {
         var lastAcknowledgedMessageID: MessageID?
         var mentionCount: Int
         var unreadMessageCount: Int
-        var pendingAcknowledgementID: MessageID?
         var flags: UInt64?
         var lastViewed: Int?
         var threadNotificationSettings: ThreadNotificationSettings?
@@ -471,6 +533,12 @@ extension AccountReadStateModel {
                 hasMentions: mentionCount > 0,
                 threadNotificationSettings: threadNotificationSettings
             )
+        }
+
+        /// Discord's `getTrackedAckMessageId`: a server or local
+        /// acknowledgement, never the boundary seeded for an omitted read state.
+        var trackedAcknowledgedMessageID: MessageID? {
+            hasAuthoritativeReadState ? lastAcknowledgedMessageID : nil
         }
 
         var isUnread: Bool {
@@ -497,6 +565,8 @@ extension AccountReadStateModel {
         /// acknowledge. The hold lapses once that message is acknowledged by
         /// any path, so it needs no separate release when read elsewhere.
         var heldThroughMessageID: MessageID?
+        /// Mark Unread's hold, which, as in Discord, scrolling does not release.
+        var isHeldUntilSelectionChange = false
 
         var meetsViewingConditions: Bool {
             isPresented
@@ -520,6 +590,7 @@ extension AccountReadStateModel {
         var mentionKind: MentionKind
         var shouldNotify: Bool
         var requiresUnreadPresentationRefresh = false
+        var acknowledgesOwnMessage = false
     }
 
     struct AcknowledgementMetadata: Equatable, Sendable {

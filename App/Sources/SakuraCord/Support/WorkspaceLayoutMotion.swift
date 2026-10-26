@@ -130,13 +130,24 @@ enum WorkspaceLayoutMotion {
     /// laid out, which can take a while; the motion settles a spring's
     /// duration after that.
     private static func afterCommit(_ animation: Animation, _ change: @escaping () -> Void) {
+        pendingStarts += 1
         DispatchQueue.main.async {
             MainActor.assumeIsolated {
                 settlesAt = .now + settling
                 withAnimation(animation, change)
+                pendingStarts -= 1
+                if pendingStarts == 0 {
+                    for waiter in startWaiters { waiter.resume() }
+                    startWaiters.removeAll()
+                }
             }
         }
     }
+
+    /// Motions waiting for the frame that commits their layout
+    /// (`afterCommit`), and the settling that waits for them to start.
+    private static var pendingStarts = 0
+    private static var startWaiters: [CheckedContinuation<Void, Never>] = []
 
     /// Keeps the running motion from settling until a spring's duration
     /// from now, for a column whose motion started late
@@ -171,6 +182,13 @@ enum WorkspaceLayoutMotion {
         }
         phase.settleTask?.cancel()
         phase.settleTask = Task {
+            // Laying out the committing frame can take longer than the
+            // spring, as it builds a pane for the first time. Settling before
+            // the columns started let go of the one leaving before the
+            // arriving one came in.
+            if pendingStarts > 0 {
+                await withCheckedContinuation { startWaiters.append($0) }
+            }
             await untilSettled()
             guard !Task.isCancelled else { return }
             phase.isMoving = false

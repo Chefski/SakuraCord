@@ -181,7 +181,7 @@ extension AppModel {
 
     func createThreadFromBrowser() {
         dismissThreadBrowser()
-        beginThreadCreation()
+        beginThreadCreation(fromThreadBrowser: true)
     }
 
     /// A fresh READY starts a new connection: older threads load again when
