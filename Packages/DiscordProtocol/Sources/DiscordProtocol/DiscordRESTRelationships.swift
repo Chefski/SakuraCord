@@ -141,7 +141,7 @@ extension DiscordRESTProvider {
         ]
         if let note = try FriendRequestNote.normalized(note) { body["note"] = .string(note) }
         try await relationshipMutation(
-            "/users/@me/relationships", method: "POST", body: body, location: "Add Friend", explainsEveryFailure: true,
+            "/users/@me/relationships", method: "POST", body: body, location: "Add Friend", explainsEveryFailure: true, quietWhenChallengeClosed: true,
             failure: { Self.friendRequestFailureMessage(code: $0, status: $1, discordTag: tag) }
         )
     }
@@ -151,7 +151,7 @@ extension DiscordRESTProvider {
     /// the Add Friend form and Group DM add flow send by tag.
     public func sendFriendRequest(to user: User, location: IgnoreActionLocation) async throws {
         try await relationshipMutation(
-            "/users/@me/relationships/\(user.id)", method: "PUT", body: [:], location: location.rawValue, explainsEveryFailure: true,
+            "/users/@me/relationships/\(user.id)", method: "PUT", body: [:], location: location.rawValue, explainsEveryFailure: true, quietWhenChallengeClosed: true,
             failure: { Self.friendRequestFailureMessage(code: $0, status: $1, discordTag: user.tag) }
         )
     }
@@ -207,9 +207,13 @@ extension DiscordRESTProvider {
     /// `failure` returns nil for the stranger-confirmation response (80013), which
     /// accept turns into a prompt and send leaves to its caller. Sending
     /// explains every failed status; other routes only explain 400, 403 and 429.
+    /// - Parameter quietWhenChallengeClosed: A friend request whose security
+    ///   check the reader closed fails silently. Its failure copy blamed the
+    ///   username.
     private func relationshipMutation(
         _ path: String, method: String, body: [String: JSONValue]?, location: String?,
-        explainsEveryFailure: Bool = false, failure: (Int?, Int) -> String?
+        explainsEveryFailure: Bool = false, quietWhenChallengeClosed: Bool = false,
+        failure: (Int?, Int) -> String?
     ) async throws {
         guard currentUser != nil else { throw ChatProviderError.unauthenticated }
         var headers: [String: String] = [:]
@@ -228,6 +232,9 @@ extension DiscordRESTProvider {
         if method == "POST", path == "/users/@me/relationships",
            let fields = try? JSONDecoder().decode([String: JSONValue].self, from: data), fields["note"] != nil {
             throw RelationshipActionError.failed(FriendRequestNote.validationMessage)
+        }
+        if quietWhenChallengeClosed, DiscordCaptchaChallenge(data: data, status: response.statusCode) != nil {
+            throw CancellationError()
         }
         let code = Self.discordErrorCode(from: data)
         if explainsEveryFailure || [400, 403, 429].contains(response.statusCode) {
