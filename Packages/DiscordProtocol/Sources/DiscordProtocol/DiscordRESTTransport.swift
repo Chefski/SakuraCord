@@ -732,12 +732,8 @@ extension DiscordRESTProvider {
         guard let challenge = DiscordCaptchaChallenge(data: response.0, status: response.1.statusCode) else {
             return (response, false)
         }
-        let solution: String
-        switch try await humanSolution(for: challenge, account: account) {
-        case let .solved(value): solution = value
-        case .dismissed: return (response, true)
-        case .unavailable: return (response, false)
-        }
+        let outcome = try await humanSolution(for: challenge, account: account)
+        guard case let .solved(solution) = outcome else { return (response, outcome == .dismissed) }
         let replay = try await requestPerformance(
             path, method, query, body, headers.merging(challenge.replayHeaders(solution: solution)) { $1 }, 1,
             statusSave: statusSave

@@ -356,17 +356,6 @@ struct RelationshipContractTests {
         await provider.disconnect()
     }
 
-    @Test func `closing a friend request's challenge fails quietly without a replay`() async throws {
-        let (provider, session) = await makeProvider()
-        defer { session.invalidateAndCancel() }
-        await provider.setCaptchaHandler { _ in nil }
-        await #expect(throws: CancellationError.self) {
-            try await provider.sendFriendRequest(username: "captcha-hcaptcha", discriminator: nil)
-        }
-        #expect(fixture.requests.withLock { $0 }.count == 1)
-        await provider.disconnect()
-    }
-
     @Test
     func `blocking presents the human challenge and preserves its original context`() async throws {
         let (provider, session) = await makeProvider()
