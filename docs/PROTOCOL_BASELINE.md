@@ -64,7 +64,8 @@ and each topic's contract tests before changing them.
 | Password/MFA | Original plus at most two bounded retries for the documented transient status set above. |
 | Report-service OAuth2 authorization | One ordinary read of the consent details, then one authorizing POST that is never replayed. See [report-service sign-in](protocol/SESSION.md#report-service-sign-in). |
 | Remote-auth ticket exchange | Original plus at most three bounded transient-status retries. |
-| User-completed CAPTCHA on any route, including login | At most one single-attempt replay of the challenged request after human completion; a second challenge terminates the attempt. See [Human CAPTCHA](#human-captcha). |
+| User-completed CAPTCHA on an authenticated route | At most one single-attempt replay of the challenged request after human completion; a second challenge terminates the attempt. See [Human CAPTCHA](#human-captcha). |
+| User-completed CAPTCHA at password or QR login | The solved request keeps that flow's budget above: password/MFA at most one further transient-status retry, the remote-auth ticket exchange at most two; a second challenge terminates the attempt. |
 | Full relationship read | At most once per Gateway connection, on the ordinary read budget. |
 | Selected member-list refresh | One deferred attempt after a known opcode-37 cooldown per invalidation; no background retry loop. See [member lists](protocol/GUILDS.md#guild-and-member-lifecycle). |
 
