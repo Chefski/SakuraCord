@@ -113,17 +113,20 @@ enum ForumCardPainter {
             height: CGFloat(lines) * metrics.titleLineHeight
         )
         cursorY = regions.titleFrame.maxY + metrics.titleSpacing
-        let excerptFrame = CGRect(
-            x: padding, y: cursorY, width: textMaxX - padding,
-            height: CGFloat(metrics.excerptLines) * metrics.excerptLineHeight
-        )
-        regions.excerptFrame = excerptFrame
         regions.footerFrame = CGRect(
             x: padding,
             y: size.height - padding - metrics.footerHeight,
             width: size.width - padding * 2,
             height: metrics.footerHeight
         )
+        // A line with a mention or emoji is taller than body text, and a
+        // two-line slot cut a second such line off. The excerpt draws no
+        // more than its lines, so its slot runs down to the footer.
+        let excerptFrame = CGRect(
+            x: padding, y: cursorY, width: textMaxX - padding,
+            height: max(CGFloat(metrics.excerptLines) * metrics.excerptLineHeight, regions.footerFrame.minY - cursorY)
+        )
+        regions.excerptFrame = excerptFrame
         if hasThumbnail {
             regions.thumbnailFrame = CGRect(
                 x: size.width - padding - metrics.thumbnailSize,
@@ -312,12 +315,7 @@ enum ForumCardPainter {
             let drawnLines = max(1, Int((regions.titleFrame.height / metrics.titleLineHeight).rounded()))
             drawTitle(presentation, in: regions.titleFrame, maximumLines: min(input.titleLines, drawnLines), metrics: metrics, on: canvas)
             if let excerptFrame = regions.excerptFrame {
-                // A line with a mention or emoji is taller than body text, and
-                // the slot cut a second such line off. The excerpt draws no
-                // more than its lines, so it may run down to the footer.
-                var slot = excerptFrame
-                slot.size.height = max(slot.height, regions.footerFrame.minY - slot.minY)
-                drawExcerpt(presentation, in: slot, renderer: input.excerpt, metrics: metrics, on: canvas)
+                drawExcerpt(presentation, in: excerptFrame, renderer: input.excerpt, metrics: metrics, on: canvas)
             }
             if let thumbnail = presentation.thumbnail, let frame = regions.thumbnailFrame {
                 drawMedia(

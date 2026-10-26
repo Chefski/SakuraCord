@@ -539,11 +539,20 @@ final class WorkspaceColumnsView: NSView {
     /// cover at `time`. As one column takes another's place, their reveals
     /// add up to one, so this moves steadily from the leaving column's width
     /// to the arriving one's. The wider of the two narrowed midway, and the
-    /// conversation widened and narrowed again, re-wrapping its text.
+    /// conversation widened and narrowed again, re-wrapping its text. A side
+    /// chat that replaces another in place arrives at once while the column
+    /// it interrupted is still leaving, so the cover stops at the widest
+    /// column in view.
     private func trailingCoverage(at time: CFTimeInterval, provisionalStart: CFTimeInterval?) -> CGFloat {
-        islands.lazy.filter { !$0.column.isFullWidth }.reduce(0) { covered, island in
-            covered + width(of: island.column) * island.reveal.value(at: time, provisionalStart: provisionalStart)
+        var covered: CGFloat = 0
+        var widest: CGFloat = 0
+        for island in islands where !island.column.isFullWidth {
+            let width = width(of: island.column)
+            let reveal = island.reveal.value(at: time, provisionalStart: provisionalStart)
+            covered += width * reveal
+            if reveal > 0 { widest = max(widest, width) }
         }
+        return min(covered, widest)
     }
 
     /// Lets a timeline that a column slides over follow the column.
