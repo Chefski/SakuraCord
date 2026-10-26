@@ -40,11 +40,12 @@ viewing acknowledgements without requiring another geometry callback.
 
 A channel ACK posts to `/channels/{channel}/messages/{message}/ack` with applicable
 flags, `last_viewed` and the latest server-issued token. Serialize account requests
-and coalesce per channel; retain each optimistic intent's rollback boundary. A
-debounced intent replaced before it is sent is rolled back first, so only
-queued or in-flight intents remain as predecessors.
-Definite failure reverts that intent without undoing an earlier accepted ACK
-or discarding subsequent live messages and mentions.
+and coalesce per channel. A conversation shows its unresolved intents over the
+read state Discord last accepted: the highest read intent above that boundary,
+or a later Mark Unread exactly. Success advances the accepted boundary when it
+is newer (Mark Unread's always); failure, or dropping an unsent intent, only
+removes the intent, so nothing rolls back below an accepted ACK and live
+messages and mentions since are kept.
 Reconnects overlay pending intent rather than cancelling it. No automatic replay
 follows an ambiguous failure.
 

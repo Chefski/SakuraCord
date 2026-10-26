@@ -35,18 +35,88 @@ final class AccountReadStateModel {
         var activeJoinedThreads: [MessageThreadSummary] = []
     }
 
-    private struct PendingRollback: Sendable {
-        var messageID: MessageID
-        var predecessorMessageID: MessageID?
-        var lastAcknowledgedMessageID: MessageID?
-        var latestUnreadMessageID: MessageID?
-        var mentionCount: Int
-        var unreadMessageCount: Int
-        var optimisticMentionCount: Int
-        var optimisticUnreadMessageCount: Int
+    /// Unresolved acknowledgements for one conversation. The entry always
+    /// shows them over the read state Discord last accepted, so resolving one
+    /// only removes it or advances that accepted state.
+    private struct AcknowledgementIntents: Sendable {
+        /// A read boundary with its counts, and the arrivals counted when it
+        /// was captured.
+        struct Boundary: Sendable {
+            var messageID: MessageID?
+            var mentionCount: Int
+            var unreadMessageCount: Int
+            var receivedMentionCount: Int
+            var receivedUnreadMessageCount: Int
+        }
+
+        struct Intent: Sendable {
+            var sequence: Int
+            /// Mark Unread or Inbox Undo: shown exactly, not as a floor.
+            var isExact: Bool
+            /// A read that leaves known messages unread keeps the counts below it.
+            var inheritsCounts: Bool
+            var boundary: Boundary
+        }
+
+        var accepted: Boundary
+        var intents: [MessageID: Intent] = [:]
         var receivedMentionCount = 0
         var receivedUnreadMessageCount = 0
-        var requiresExactBoundary = false
+        var nextSequence = 0
+
+        init(entry: Entry) {
+            accepted = Boundary(
+                messageID: entry.lastAcknowledgedMessageID,
+                mentionCount: entry.mentionCount,
+                unreadMessageCount: entry.unreadMessageCount,
+                receivedMentionCount: 0,
+                receivedUnreadMessageCount: 0
+            )
+        }
+
+        mutating func add(
+            _ messageID: MessageID,
+            isExact: Bool,
+            inheritsCounts: Bool,
+            mentionCount: Int,
+            unreadMessageCount: Int
+        ) {
+            intents[messageID] = Intent(
+                sequence: nextSequence,
+                isExact: isExact,
+                inheritsCounts: inheritsCounts,
+                boundary: Boundary(
+                    messageID: messageID,
+                    mentionCount: mentionCount,
+                    unreadMessageCount: unreadMessageCount,
+                    receivedMentionCount: receivedMentionCount,
+                    receivedUnreadMessageCount: receivedUnreadMessageCount
+                )
+            )
+            nextSequence += 1
+        }
+
+        /// The latest Mark Unread shows exactly until a later read passes it;
+        /// a read shows only above the boundary beneath it.
+        func present(on entry: inout Entry) {
+            let exact = intents.filter { $0.value.isExact }.max { $0.value.sequence < $1.value.sequence }
+            let read = intents
+                .filter { !$0.value.isExact && $0.value.sequence > (exact?.value.sequence ?? -1) }
+                .max { $0.key < $1.key }
+            var shown = exact?.value.boundary ?? accepted
+            if let read, shown.messageID.map({ read.key > $0 }) ?? true {
+                if read.value.inheritsCounts {
+                    shown.messageID = read.key
+                } else {
+                    shown = read.value.boundary
+                }
+            }
+            entry.lastAcknowledgedMessageID = shown.messageID
+            entry.mentionCount = shown.mentionCount + receivedMentionCount - shown.receivedMentionCount
+            entry.unreadMessageCount = shown.unreadMessageCount
+                + receivedUnreadMessageCount - shown.receivedUnreadMessageCount
+            entry.pendingAcknowledgementID = read?.key ?? exact?.key
+        }
     }
 
     private nonisolated struct InitialStateAssembly {
@@ -151,7 +221,7 @@ final class AccountReadStateModel {
     private(set) var channelByID: [ChannelID: Channel] = [:]
     private var defaultNotificationLevelByGuild: [GuildID: MessageNotificationLevel] = [:]
     private var currentUserRoleIDsByGuild: [GuildID: Set<RoleID>] = [:]
-    private var pendingRollbacks: [ChannelID: [MessageID: PendingRollback]] = [:]
+    private var acknowledgementIntents: [ChannelID: AcknowledgementIntents] = [:]
     /// The forum boundary captured when a visit began; zero when the forum
     /// had never been acknowledged, leaving only the join-time check.
     private var forumSelectionAcknowledgementBoundary: [ChannelID: MessageID] = [:]
@@ -187,7 +257,7 @@ extension AccountReadStateModel {
         defaultNotificationLevelByGuild.removeAll()
         guildJoinedAtByID.removeAll()
         currentUserRoleIDsByGuild.removeAll()
-        pendingRollbacks.removeAll()
+        acknowledgementIntents.removeAll()
         forumSelectionAcknowledgementBoundary.removeAll()
         forumPostArchivedByID.removeAll()
         activeJoinedThreadIDs.removeAll()
@@ -547,7 +617,7 @@ extension AccountReadStateModel {
         defaultNotificationLevelByGuild = state.defaultNotificationLevelByGuild
         guildJoinedAtByID = state.guildJoinedAtByID
         currentUserRoleIDsByGuild = [:]
-        pendingRollbacks = [:]
+        acknowledgementIntents = [:]
         forumSelectionAcknowledgementBoundary = [:]
         forumPostArchivedByID = state.forumPostArchivedByID
         usesNewNotifications = state.usesNewNotifications
@@ -616,7 +686,7 @@ extension AccountReadStateModel {
             channelByID[channelID] = nil
             self[channelID] = nil
             self[presentation: channelID] = nil
-            pendingRollbacks[channelID] = nil
+            acknowledgementIntents[channelID] = nil
             forumSelectionAcknowledgementBoundary[channelID] = nil
         }
         merge(channels: channels)
@@ -634,7 +704,7 @@ extension AccountReadStateModel {
         for channelID in removedIDs {
             self[channelID] = nil
             self[presentation: channelID] = nil
-            pendingRollbacks[channelID] = nil
+            acknowledgementIntents[channelID] = nil
             forumPostArchivedByID[channelID] = nil
         }
         for thread in threads {
@@ -651,7 +721,7 @@ extension AccountReadStateModel {
             self[channelID] = nil
             self[presentation: channelID] = nil
             channelByID[channelID] = nil
-            pendingRollbacks[channelID] = nil
+            acknowledgementIntents[channelID] = nil
             forumSelectionAcknowledgementBoundary[channelID] = nil
             forumPostArchivedByID[channelID] = nil
         }
@@ -788,7 +858,7 @@ extension AccountReadStateModel {
         } == true
         var entry = entry(for: state.channelID)
         if let pending = entry.pendingAcknowledgementID,
-           pendingRollbacks[state.channelID]?[pending]?.requiresExactBoundary == true,
+           acknowledgementIntents[state.channelID]?.intents[pending]?.isExact == true,
            state.lastAcknowledgedMessageID != pending {
             // A preceding read ACK may arrive after a queued Undo. Keep the
             // local intent until its exact boundary succeeds or rolls back.
@@ -825,13 +895,13 @@ extension AccountReadStateModel {
             : 0
         let confirmsPending = entry.pendingAcknowledgementID.map { pending in
             entry.lastAcknowledgedMessageID.map { acknowledged in
-                state.isManual || pendingRollbacks[state.channelID]?[pending]?.requiresExactBoundary == true
+                state.isManual || acknowledgementIntents[state.channelID]?.intents[pending]?.isExact == true
                     ? acknowledged == pending : acknowledged >= pending
             } ?? false
         } ?? false
         if confirmsPending {
             entry.pendingAcknowledgementID = nil
-            pendingRollbacks[state.channelID] = nil
+            acknowledgementIntents[state.channelID] = nil
         }
         self[state.channelID] = entry
         if let version = state.version {
@@ -1063,14 +1133,14 @@ extension AccountReadStateModel {
         remote: ChannelReadState?
     ) {
         guard let pending = previous.pendingAcknowledgementID,
-              pendingRollbacks[channelID]?[pending] != nil
+              let intent = acknowledgementIntents[channelID]?.intents[pending]
         else { return }
         let confirmsPending = remote?.lastAcknowledgedMessageID.map { acknowledged in
-            remote?.isManual == true || pendingRollbacks[channelID]?[pending]?.requiresExactBoundary == true
+            remote?.isManual == true || intent.isExact
                 ? acknowledged == pending : acknowledged >= pending
         } ?? false
         if confirmsPending {
-            pendingRollbacks[channelID] = nil
+            acknowledgementIntents[channelID] = nil
             return
         }
         var value = self[channelID] ?? previous
@@ -1159,12 +1229,9 @@ extension AccountReadStateModel {
             }
             entry.mentionCount += 1
         }
-        if let pending = entry.pendingAcknowledgementID,
-           var rollback = pendingRollbacks[message.channelID]?[pending]
-        {
-            rollback.receivedUnreadMessageCount += 1
-            if mentionKind != .none { rollback.receivedMentionCount += 1 }
-            pendingRollbacks[message.channelID]?[pending] = rollback
+        acknowledgementIntents[message.channelID]?.receivedUnreadMessageCount += 1
+        if mentionKind != .none {
+            acknowledgementIntents[message.channelID]?.receivedMentionCount += 1
         }
         self[message.channelID] = entry
 
@@ -1414,26 +1481,15 @@ extension AccountReadStateModel {
 
     func markAcknowledgementPending(channelID: ChannelID, messageID: MessageID) {
         var entry = entry(for: channelID)
-        let clearsCounts = entry.latestKnownMessageID.map { messageID >= $0 } == true
-        if pendingRollbacks[channelID]?[messageID] == nil {
-            pendingRollbacks[channelID, default: [:]][messageID] = PendingRollback(
-                messageID: messageID,
-                predecessorMessageID: entry.pendingAcknowledgementID,
-                lastAcknowledgedMessageID: entry.lastAcknowledgedMessageID,
-                latestUnreadMessageID: entry.latestUnreadMessageID,
-                mentionCount: entry.mentionCount,
-                unreadMessageCount: entry.unreadMessageCount,
-                optimisticMentionCount: clearsCounts ? 0 : entry.mentionCount,
-                optimisticUnreadMessageCount: clearsCounts ? 0 : entry.unreadMessageCount
-            )
-        }
-        entry.lastAcknowledgedMessageID = maximum(entry.lastAcknowledgedMessageID, messageID)
-        entry.pendingAcknowledgementID = maximum(entry.pendingAcknowledgementID, messageID)
-        if clearsCounts {
-            entry.mentionCount = 0
-            entry.unreadMessageCount = 0
-        }
-        self[channelID] = entry
+        var record = acknowledgementIntents[channelID] ?? AcknowledgementIntents(entry: entry)
+        record.add(
+            messageID,
+            isExact: false,
+            inheritsCounts: entry.latestKnownMessageID.map { messageID < $0 } ?? true,
+            mentionCount: 0,
+            unreadMessageCount: 0
+        )
+        settle(record, channelID: channelID, entry: &entry)
     }
 
     func markUnread(
@@ -1442,30 +1498,16 @@ extension AccountReadStateModel {
         mentionCount: Int
     ) {
         var entry = entry(for: channelID)
-        pendingRollbacks[channelID] = Dictionary(
-            uniqueKeysWithValues: [
-                (
-                    messageID,
-                    PendingRollback(
-                        messageID: messageID,
-                        predecessorMessageID: nil,
-                        lastAcknowledgedMessageID: entry.lastAcknowledgedMessageID,
-                        latestUnreadMessageID: entry.latestUnreadMessageID,
-                        mentionCount: entry.mentionCount,
-                        unreadMessageCount: entry.unreadMessageCount,
-                        optimisticMentionCount: max(0, mentionCount),
-                        optimisticUnreadMessageCount: max(1, entry.unreadMessageCount),
-                        requiresExactBoundary: true
-                    )
-                )
-            ]
+        var record = acknowledgementIntents[channelID] ?? AcknowledgementIntents(entry: entry)
+        record.add(
+            messageID,
+            isExact: true,
+            inheritsCounts: false,
+            mentionCount: max(0, mentionCount),
+            unreadMessageCount: max(1, entry.unreadMessageCount)
         )
-        entry.lastAcknowledgedMessageID = messageID
-        entry.pendingAcknowledgementID = messageID
         entry.latestUnreadMessageID = maximum(entry.latestUnreadMessageID, entry.latestKnownMessageID)
-        entry.mentionCount = max(0, mentionCount)
-        entry.unreadMessageCount = max(1, entry.unreadMessageCount)
-        self[channelID] = entry
+        settle(record, channelID: channelID, entry: &entry)
         _ = updatePresentation(
             channelID: channelID,
             hasReachedReadBoundary: false,
@@ -1481,6 +1523,8 @@ extension AccountReadStateModel {
         )
     }
 
+    /// Discord accepted the acknowledgement. A newer boundary, or Mark
+    /// Unread's exact one, becomes the floor any failure rolls back to.
     func completeAcknowledgement(
         channelID: ChannelID,
         messageID: MessageID,
@@ -1491,111 +1535,39 @@ extension AccountReadStateModel {
         // The server now holds this read state, as its later echo confirms;
         // a seeded boundary must not replace it as the tracked acknowledgement.
         entry.hasAuthoritativeReadState = true
-        if entry.pendingAcknowledgementID == messageID {
-            entry.pendingAcknowledgementID = nil
-            pendingRollbacks[channelID] = nil
-        } else {
-            discardPendingRollback(
-                channelID: channelID,
-                messageID: messageID,
-                succeeded: true
-            )
-            // An accepted boundary is the floor for any still-pending intent's
-            // rollback, so a later failure cannot restore an older boundary.
-            if var rollbacks = pendingRollbacks[channelID] {
-                for (pendingID, rollback) in rollbacks {
-                    rollbacks[pendingID]?.lastAcknowledgedMessageID = maximum(
-                        rollback.lastAcknowledgedMessageID, messageID
-                    )
-                }
-                pendingRollbacks[channelID] = rollbacks
+        if var record = acknowledgementIntents[channelID],
+           let intent = record.intents.removeValue(forKey: messageID)
+        {
+            let isNewer = record.accepted.messageID.map { messageID > $0 } ?? true
+            if intent.isExact || isNewer && !intent.inheritsCounts {
+                record.accepted = intent.boundary
+            } else if isNewer {
+                record.accepted.messageID = messageID
             }
+            settle(record, channelID: channelID, entry: &entry)
+        } else {
+            self[channelID] = entry
         }
-        self[channelID] = entry
     }
 
+    /// The acknowledgement failed or was never sent: drop it and show what
+    /// remains over the accepted read state.
     func failAcknowledgement(channelID: ChannelID, messageID: MessageID) {
+        guard var record = acknowledgementIntents[channelID],
+              record.intents.removeValue(forKey: messageID) != nil
+        else { return }
         var entry = entry(for: channelID)
-        if entry.pendingAcknowledgementID == messageID,
-           let rollback = pendingRollbacks[channelID]?[messageID]
-        {
-            entry.lastAcknowledgedMessageID = rollback.lastAcknowledgedMessageID
-            entry.latestUnreadMessageID = maximum(entry.latestUnreadMessageID, rollback.latestUnreadMessageID)
-            // Roll back the intent while retaining arrivals after it began.
-            entry.mentionCount = rollback.mentionCount
-                + rollback.receivedMentionCount
-            entry.unreadMessageCount = rollback.unreadMessageCount
-                + rollback.receivedUnreadMessageCount
-            entry.pendingAcknowledgementID = rollback.predecessorMessageID
-            if let predecessorID = rollback.predecessorMessageID,
-               var predecessor = pendingRollbacks[channelID]?[predecessorID]
-            {
-                // Bulk and channel ACKs can finish out of order. Retain these
-                // arrivals if the earlier request subsequently fails too.
-                predecessor.receivedMentionCount += rollback.receivedMentionCount
-                predecessor.receivedUnreadMessageCount += rollback.receivedUnreadMessageCount
-                pendingRollbacks[channelID]?[predecessorID] = predecessor
-            }
-            pendingRollbacks[channelID]?[messageID] = nil
-            if pendingRollbacks[channelID]?.isEmpty == true {
-                pendingRollbacks[channelID] = nil
-            }
-        } else {
-            discardPendingRollback(
-                channelID: channelID,
-                messageID: messageID,
-                succeeded: false
-            )
-        }
-        self[channelID] = entry
+        settle(record, channelID: channelID, entry: &entry)
     }
 
-    private func discardPendingRollback(
+    private func settle(
+        _ record: AcknowledgementIntents,
         channelID: ChannelID,
-        messageID: MessageID,
-        succeeded: Bool
+        entry: inout Entry
     ) {
-        guard let discarded = pendingRollbacks[channelID]?[messageID] else { return }
-        let childID = pendingRollbacks[channelID]?.values.first {
-            $0.predecessorMessageID == messageID
-        }?.messageID
-        if let childID, var child = pendingRollbacks[channelID]?[childID] {
-            child.predecessorMessageID = discarded.predecessorMessageID
-            if succeeded {
-                // The accepted boundary supersedes every earlier intent. A
-                // later failure must not reach behind it through the chain.
-                child.predecessorMessageID = nil
-                var predecessorID = discarded.predecessorMessageID
-                while let priorID = predecessorID,
-                      let predecessor = pendingRollbacks[channelID]?[priorID]
-                {
-                    predecessorID = predecessor.predecessorMessageID
-                    pendingRollbacks[channelID]?[priorID] = nil
-                }
-            } else {
-                child.lastAcknowledgedMessageID = discarded.lastAcknowledgedMessageID
-                child.latestUnreadMessageID = maximum(child.latestUnreadMessageID, discarded.latestUnreadMessageID)
-                child.mentionCount = discarded.mentionCount
-                    + max(0, child.mentionCount - discarded.optimisticMentionCount)
-                child.unreadMessageCount = discarded.unreadMessageCount
-                    + max(0, child.unreadMessageCount - discarded.optimisticUnreadMessageCount)
-            }
-            pendingRollbacks[channelID]?[childID] = child
-        }
-        if !succeeded,
-           let predecessorID = discarded.predecessorMessageID,
-           var predecessor = pendingRollbacks[channelID]?[predecessorID]
-        {
-            // A failed interior intent's arrivals are already in its child's
-            // rollback boundary, but must also survive its predecessor failing.
-            predecessor.receivedMentionCount += discarded.receivedMentionCount
-            predecessor.receivedUnreadMessageCount += discarded.receivedUnreadMessageCount
-            pendingRollbacks[channelID]?[predecessorID] = predecessor
-        }
-        pendingRollbacks[channelID]?[messageID] = nil
-        if pendingRollbacks[channelID]?.isEmpty == true {
-            pendingRollbacks[channelID] = nil
-        }
+        record.present(on: &entry)
+        acknowledgementIntents[channelID] = record.intents.isEmpty ? nil : record
+        self[channelID] = entry
     }
 
     private func seedOmittedReadBoundaries(channelIDs: Set<ChannelID>) {

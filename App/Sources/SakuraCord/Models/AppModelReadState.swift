@@ -309,7 +309,7 @@ extension AppModel {
     }
 
     /// Drops any debounced or queued acknowledgement for the channel. Neither
-    /// reached Discord, so each optimistic intent is rolled back, newest first.
+    /// reached Discord, so their optimistic intents are removed too.
     func discardPendingAcknowledgement(for channelID: ChannelID) {
         acknowledgementTasks[channelID]?.cancel()
         acknowledgementTasks[channelID] = nil

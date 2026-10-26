@@ -222,14 +222,23 @@ struct AccountReadStateModelTests {
         }
         #expect(unvisited.forumNewPostCount(channelID: channelID) == 0)
 
-        // A bulk acknowledgement that succeeds while the visit's is pending is
-        // the floor if the visit's then fails, so the post stays read.
-        let overlapping = model(acknowledging: MessageID(rawValue: 100), joinedAt: joinedBefore)
-        overlapping.markAcknowledgementPending(channelID: channelID, messageID: MessageID(rawValue: 1_000))
-        overlapping.markAcknowledgementPending(channelID: channelID, messageID: MessageID(rawValue: 500))
-        overlapping.completeAcknowledgement(channelID: channelID, messageID: MessageID(rawValue: 500), token: nil)
-        overlapping.failAcknowledgement(channelID: channelID, messageID: MessageID(rawValue: 1_000))
-        #expect(overlapping.forumNewPostCount(channelID: channelID) == 0)
+        // A lower category acknowledgement overlapping the visit's leaves the
+        // post read when the visit's fails, before or after it succeeds.
+        for visitFailsFirst in [false, true] {
+            let overlapping = model(acknowledging: MessageID(rawValue: 100), joinedAt: joinedBefore)
+            overlapping.markAcknowledgementPending(channelID: channelID, messageID: MessageID(rawValue: 1_000))
+            overlapping.markAcknowledgementPending(channelID: channelID, messageID: MessageID(rawValue: 500))
+            if visitFailsFirst {
+                overlapping.failAcknowledgement(channelID: channelID, messageID: MessageID(rawValue: 1_000))
+            }
+            overlapping.completeAcknowledgement(channelID: channelID, messageID: MessageID(rawValue: 500), token: nil)
+            if !visitFailsFirst {
+                overlapping.failAcknowledgement(channelID: channelID, messageID: MessageID(rawValue: 1_000))
+            }
+            #expect(overlapping.entries[channelID]?.lastAcknowledgedMessageID == MessageID(rawValue: 500))
+            #expect(overlapping.entries[channelID]?.pendingAcknowledgementID == nil)
+            #expect(overlapping.forumNewPostCount(channelID: channelID) == 0)
+        }
 
         // Joined posts keep their label but leave the sidebar count.
         let joined = model(acknowledging: nil, joinedAt: joinedBefore)
