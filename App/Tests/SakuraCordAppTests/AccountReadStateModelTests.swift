@@ -817,6 +817,15 @@ struct AccountReadStateModelTests {
         ))
         #expect(model.unread(channelID: unread.id))
         #expect(model.guildUnread(guildID))
+        // Nor do inherited unread settings apply, so navigation and the Dock
+        // count agree with its row and server.
+        model.apply(GuildNotificationSettings(
+            guildID: guildID,
+            messageNotifications: .allMessages,
+            channelOverrides: [ChannelNotificationOverride(channelID: channelID, flags: 1 << 9)]
+        ))
+        #expect(model.unread(channelID: unread.id))
+        #expect(model.unreadPresentationProjection().unreadConversationCount == 1)
     }
 
     /// Discord's server Mark as Read acknowledges muted channels too.
@@ -2005,6 +2014,41 @@ func `read state completion releases a held backlog without another geometry cal
     #expect(
         model.readState.entries[channelID]?.lastAcknowledgedMessageID
             == request.messageID
+    )
+}
+
+/// Category Mark as Read replaces a queued forum visit's current-time
+/// acknowledgement with the forum's older latest post. The dropped intent must
+/// not stay pending, or later automatic acknowledgements at or below it stop.
+@MainActor
+@Test func `category mark as read retires the queued acknowledgement it replaces`() async throws {
+    let provider = MockChatProvider()
+    let model = AppModel(launchMode: .offlineTesting, provider: provider)
+    await model.start()
+    let forumID = ChannelID(rawValue: 220)
+    let forum = try #require(model.readState.channelByID[forumID])
+    let categoryID = try #require(forum.categoryID)
+    let guildID = try #require(forum.guildID)
+    let latestPost = try #require(
+        model.readState.categoryAcknowledgements(for: categoryID, guildID: guildID)
+            .first { $0.channelID == forumID }?.messageID
+    )
+    let visit = MessageID(timestamp: .now)
+    try #require(visit > latestPost)
+    model.readState.markAcknowledgementPending(channelID: forumID, messageID: visit)
+    model.enqueueAcknowledgement(
+        channelID: forumID,
+        mutation: model.readStateMutation(channelID: forumID, messageID: visit, manual: false, mentionCount: nil)
+    )
+
+    model.markCategoryRead(categoryID: categoryID, guildID: guildID)
+    #expect(await eventually {
+        await provider.acknowledgementRequests.contains { $0.channelID == forumID }
+            && model.readState.entries[forumID]?.pendingAcknowledgementID == nil
+    })
+    #expect(
+        await provider.acknowledgementRequests.filter { $0.channelID == forumID }.map(\.messageID)
+            == [latestPost]
     )
 }
 

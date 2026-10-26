@@ -133,6 +133,9 @@ final class AppModel {
         var flags: UInt64?
         var lastViewed: Int?
         var wireManual: Bool?
+        /// A category Mark as Read reports a failure once, however many of
+        /// its requests fail.
+        var categoryReadID: UUID?
     }
 
     struct CategoryCollapseMutationState {
@@ -1172,6 +1175,7 @@ final class AppModel {
     @ObservationIgnored var debouncedAcknowledgementTargets: [ChannelID: MessageID] = [:]
     @ObservationIgnored var queuedAcknowledgements: [ChannelID: ReadStateMutation] = [:]
     @ObservationIgnored var acknowledgementQueueOrder: [ChannelID] = []
+    @ObservationIgnored var lastFailedCategoryReadID: UUID?
     @ObservationIgnored var acknowledgementProcessorTask: Task<Void, Never>?
     @ObservationIgnored var acknowledgementGeneration = 0
     var isMarkingAllServersRead = false

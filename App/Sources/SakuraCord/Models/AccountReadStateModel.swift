@@ -1684,14 +1684,14 @@ extension AccountReadStateModel {
               countsMentions(entry)
         else { return false }
         guard !isGuildResourceChannel(entry) else { return false }
-        if entry.kind == .voice && entry.mentionCount == 0 {
+        if entry.kind == .voice, entry.mentionCount == 0 {
             return false
         }
-        let policy = effectivePolicy(for: entry, now: now)
-        return entry.mentionCount > 0
-            || (!policy.guildMuted
-                && !policy.presentationChannelMuted
-                && policy.showsUnread)
+        return unreadPolicySource.presentsUnread(
+            entry,
+            mentionCount: entry.mentionCount,
+            effectivePolicy: effectivePolicy(for: entry, now: now)
+        )
     }
 
     func mentions(channelID: ChannelID) -> Int {

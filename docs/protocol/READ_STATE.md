@@ -132,10 +132,11 @@ once, when the thread is first known, and is not a tracked acknowledgement.
 Server unread indicators and the Dock's unread-conversation count use current
 channels and active joined threads with accessible current parents. As in
 Discord's thread row and `GuildReadStateStore`, a joined thread's unread row
-ignores its parent's mute and unread setting, and it lights the server unless
-the thread or the server is muted. Retained
-thread read state is not evidence of membership: archived, left or orphaned
-threads keep their read history without contributing to those aggregates.
+ignores its parent's mute and inherited unread settings. Unless the thread or
+the server is muted, it lights the server, counts in the Dock and is an unread
+navigation destination. Retained thread read state is not evidence of
+membership: archived, left or orphaned threads keep their read history without
+contributing to those aggregates.
 Thread membership changes refresh both indicators. A forum contributes unseen
 posts, not its raw message boundary, while active joined posts retain their own
 conversation unread state. Mention totals remain a separate projection with

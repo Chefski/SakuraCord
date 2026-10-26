@@ -206,10 +206,11 @@ extension AccountReadStateModel {
                         for: entry,
                         now: now
                     )
-                    channelUnread = channelMentions > 0
-                        || (!effectivePolicy.guildMuted
-                            && !effectivePolicy.presentationChannelMuted
-                            && effectivePolicy.showsUnread)
+                    channelUnread = policy.presentsUnread(
+                        entry,
+                        mentionCount: channelMentions,
+                        effectivePolicy: effectivePolicy
+                    )
                     contributesToGuildUnread = policy.contributesOwnGuildUnread(
                         entry,
                         effectivePolicy: effectivePolicy
@@ -417,6 +418,21 @@ extension AccountReadStateModel {
             return level == .allMessages
         }
 
+        /// Whether an unread entry presents as unread. Discord shows a joined
+        /// thread unread unless the thread or server is muted; its parent's
+        /// and server's unread settings do not apply.
+        func presentsUnread(
+            _ entry: Entry,
+            mentionCount: Int,
+            effectivePolicy: EffectivePolicy
+        ) -> Bool {
+            let isThread = channelByID[entry.channelID] == nil && entry.parentID != nil
+            return mentionCount > 0
+                || (!effectivePolicy.guildMuted
+                    && !effectivePolicy.presentationChannelMuted
+                    && (isThread || effectivePolicy.showsUnread))
+        }
+
         /// Whether an entry's own unread lights its server. A forum's own
         /// boundary trails its newest post, so a forum lights the server only
         /// through mentions, its unseen posts and its joined threads.
@@ -424,11 +440,12 @@ extension AccountReadStateModel {
             _ entry: Entry,
             effectivePolicy: EffectivePolicy
         ) -> Bool {
-            // Discord lights the server for an unread joined thread unless the
-            // thread or server is muted; channel settings do not apply.
             if channelByID[entry.channelID] == nil, entry.parentID != nil {
-                return entry.mentionCount > 0
-                    || (!effectivePolicy.guildMuted && !effectivePolicy.presentationChannelMuted)
+                return presentsUnread(
+                    entry,
+                    mentionCount: entry.mentionCount,
+                    effectivePolicy: effectivePolicy
+                )
             }
             return !effectivePolicy.categoryMuted
                 && (entry.mentionCount > 0
