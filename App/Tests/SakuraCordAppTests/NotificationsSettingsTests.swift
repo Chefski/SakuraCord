@@ -262,6 +262,14 @@ func `Incoming calls ring in the app whether or not it is in front, and only Do 
     #expect(sounds.looping[.callRinging] == false)
     model.updateLocalChannelNotificationOverride(guildID: nil, channelID: channel.id) { $0.isMuted = false }
     #expect(sounds.looping[.callRinging] == true)
+
+    // A timed mute that ends while the call still rings lets it ring.
+    model.updateLocalChannelNotificationOverride(guildID: nil, channelID: channel.id) {
+        $0.isMuted = true
+        $0.muteConfiguration = DiscordMuteConfiguration(endTime: .now.addingTimeInterval(0.2))
+    }
+    #expect(sounds.looping[.callRinging] == false)
+    #expect(await eventually { sounds.looping[.callRinging] == true })
 }
 
 @MainActor

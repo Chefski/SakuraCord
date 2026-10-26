@@ -432,11 +432,15 @@ extension AppModel {
         // Calls never post banners: the app rings and shows its own prompt
         // whether or not it is in front. Do Not Disturb and a muted
         // conversation silence it.
+        let now = Date.now
+        let ringingCalls = privateCallsByChannel.values.filter { call in
+            snapshot.map { call.isRinging($0.currentUser.id) } == true && !isIncomingCallSuppressed(call)
+        }
+        scheduleRingingMuteExpiry(ringingCalls, now: now)
         let alertsIncoming = state.ringsIncoming
             && currentStatus != .dnd
-            && privateCallsByChannel.values.contains { call in
-                snapshot.map { call.isRinging($0.currentUser.id) } == true && !isIncomingCallSuppressed(call)
-                    && !isPrivateCallConversationMuted(call)
+            && ringingCalls.contains { call in
+                privateCallMute(call, at: now) == nil
                     && notificationPreferences.allows(
                         .incomingCall,
                         isCurrentConversation: readState.isActivelyPresentedAtNewest(call.channelID)
@@ -449,9 +453,29 @@ extension AppModel {
         requestIncomingCallAttention(alertsIncoming && !applicationIsActive)
     }
 
-    private func isPrivateCallConversationMuted(_ call: PrivateCall) -> Bool {
-        guard let channel = snapshot?.channels.first(where: { $0.id == call.channelID }) else { return false }
-        return isChannelMuted(channel)
+    /// The conversation's active mute, with its end if timed; nil when not
+    /// muted. Read by ID: a ringing call can outlive its channel in the list.
+    private func privateCallMute(_ call: PrivateCall, at date: Date) -> DiscordMuteConfiguration? {
+        if snapshot?.channels.first(where: { $0.id == call.channelID })?.isMuted == true {
+            return DiscordMuteConfiguration()
+        }
+        guard let override = readState.notificationOverride(channelID: call.channelID, guildID: nil),
+              override.isMuted
+        else { return nil }
+        let mute = override.muteConfiguration ?? DiscordMuteConfiguration()
+        return mute.isActive(at: date) ? mute : nil
+    }
+
+    /// A timed mute that ends while its call still rings lets it ring then.
+    private func scheduleRingingMuteExpiry(_ calls: [PrivateCall], now: Date) {
+        ringingMuteExpiryTask?.cancel()
+        ringingMuteExpiryTask = nil
+        guard let expiry = calls.compactMap({ privateCallMute($0, at: now)?.endTime }).min() else { return }
+        ringingMuteExpiryTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(max(0, expiry.timeIntervalSinceNow)))
+            guard !Task.isCancelled else { return }
+            self?.reconcilePrivateCallSounds()
+        }
     }
 
     private func requestIncomingCallAttention(_ requested: Bool) {
