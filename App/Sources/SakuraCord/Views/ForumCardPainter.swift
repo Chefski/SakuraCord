@@ -271,9 +271,9 @@ enum ForumCardPainter {
     private static func countContentWidth(_ presentation: ForumCardPresentation, textWidth: CGFloat) -> CGFloat {
         let iconWidth = InterfaceScale.metric(14) + InterfaceScale.metric(4)
         var width = iconWidth + textWidth
-        if presentation.unreadCount > 0 {
+        if let unreadCountText = presentation.unreadCountText {
             width += InterfaceScale.metric(4) + NativeTimelineRowLayout.measuredTextWidth(
-                "(\(presentation.unreadCount.formatted()) New)", font: footerEmphasisFont
+                "(\(unreadCountText) New)", font: footerEmphasisFont
             )
         }
         return ceil(width) + 1
@@ -539,7 +539,7 @@ enum ForumCardPainter {
                 font: metrics.excerptFont,
                 color: .tertiaryLabelColor
             )
-        case .message:
+        case .deleted, .message:
             // Markdown lines can be taller than body text; the slot clips.
             drawExcerptText(renderer, at: frame.origin, clip: frame, on: canvas)
         }
@@ -559,7 +559,7 @@ enum ForumCardPainter {
             break
         case let .media(media):
             drawMedia(media, in: frame, style: MediaStyle(cornerRadius: radius, isCompact: false), failedMedia: failedMedia, on: canvas)
-        case .text:
+        case .text, .deleted:
             // The preview stays inside the hero, above its tag row.
             let tagReserve = presentation.tags.isEmpty ? 0 : InterfaceScale.metric(34)
             drawExcerptText(
@@ -791,9 +791,9 @@ enum ForumCardPainter {
                 color: .secondaryLabelColor
             )
             cursorX += countWidth + InterfaceScale.metric(3)
-            if presentation.unreadCount > 0 {
+            if let unreadCountText = presentation.unreadCountText {
                 canvas.text(
-                    "(\(presentation.unreadCount.formatted()) New)",
+                    "(\(unreadCountText) New)",
                     in: CGRect(x: cursorX, y: frame.midY - lineHeight / 2, width: max(0, frame.maxX - cursorX), height: lineHeight),
                     font: footerEmphasisFont,
                     color: .sakuraCordAccentColor

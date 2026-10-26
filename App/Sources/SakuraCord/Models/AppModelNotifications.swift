@@ -26,6 +26,10 @@ extension AppModel {
         readState.isChannelMuted(channel)
     }
 
+    func usesAllMessagesUnreadSetting(_ channel: Channel) -> Bool {
+        readState[channel.id].map(readState.usesAllMessagesUnreadSetting(for:)) ?? false
+    }
+
     func inheritedChannelNotificationLevel(
         for channel: Channel
     ) -> MessageNotificationLevel {
@@ -50,10 +54,6 @@ extension AppModel {
             || guildAcknowledgementTasks[guildID] != nil
     }
 
-    func isForumPostUnread(_ post: ForumPost) -> Bool {
-        readState[post.id]?.isUnread ?? post.isUnread
-    }
-
     func isForumNotificationMutationPending(_ postID: ChannelID) -> Bool {
         forumNotificationMutationTasks[postID] != nil
     }
@@ -73,17 +73,18 @@ extension AppModel {
         return inheritedChannelNotificationLevel(for: parent)
     }
 
-    func isForumPostNew(_ post: ForumPost) -> Bool {
-        readState.isNewForumPost(post)
-    }
-
     func shouldEmphasizeForumPost(_ post: ForumPost) -> Bool {
-        isForumPostUnread(post) || readState.isUnopenedForumPost(post)
+        readState.isForumPostUnread(channelID: post.id) == true
     }
 
-    func forumUnreadMessageCount(_ post: ForumPost) -> Int {
-        guard isForumPostUnread(post) else { return 0 }
-        return readState.unreadMessageCount(channelID: post.id)
+    /// Discord's card footer counts new replies only in an unread post the
+    /// account has opened, never more than its replies, so an unread starter
+    /// alone shows zero.
+    func forumUnreadMessageCount(_ post: ForumPost) -> Int? {
+        guard shouldEmphasizeForumPost(post),
+              readState[post.id]?.trackedAcknowledgedMessageID != nil
+        else { return nil }
+        return min(readState.unreadMessageCount(channelID: post.id), max(0, post.thread.messageCount))
     }
 
     func deliverNativeNotification(for message: Message, isMention: Bool = false) {

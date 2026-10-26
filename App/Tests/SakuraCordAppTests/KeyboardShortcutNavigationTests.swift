@@ -101,7 +101,8 @@ struct KeyboardShortcutNavigationTests {
         model.readState.applyRemote(ChannelReadState(
             channelID: ChannelID(rawValue: 20),
             lastAcknowledgedMessageID: MessageID(rawValue: 50),
-            mentionCount: 2
+            mentionCount: 2,
+            isManual: true
         ))
         model.selectedChannelID = ChannelID(rawValue: 10)
         #expect(model.keyboardShortcutConversationDestination(direction: 1, unreadOnly: true, mentionsOnly: true) == ChannelID(rawValue: 20))
@@ -113,7 +114,8 @@ struct KeyboardShortcutNavigationTests {
     @Test func `menu availability matches ordered navigation without constructing destinations`() {
         let model = makeModel()
         model.readState.applyRemote(ChannelReadState(channelID: ChannelID(rawValue: 20),
-                                                    lastAcknowledgedMessageID: MessageID(rawValue: 50), mentionCount: 2))
+                                                    lastAcknowledgedMessageID: MessageID(rawValue: 50), mentionCount: 2,
+                                                    isManual: true))
         for selected in [10, 11, 12, 20, 30, 999] {
             model.selectedChannelID = ChannelID(rawValue: UInt64(selected))
             for hidden in [Set<ChannelID>(), [ChannelID(rawValue: 10), ChannelID(rawValue: 20)]] {

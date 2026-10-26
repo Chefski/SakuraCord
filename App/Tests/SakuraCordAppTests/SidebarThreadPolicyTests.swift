@@ -39,7 +39,6 @@ private func candidate(
         thread: thread,
         latestMessageID: thread.lastMessageID,
         hasUnread: hasUnread,
-        showsUnread: hasUnread && !isMuted,
         mentionCount: mentions
     )
 }
@@ -97,6 +96,6 @@ private let day: TimeInterval = 86_400
     var thread = candidate("old", lastActivity: now - 30 * day, joinedAt: now).thread
     thread.lastNonMessageActivityAt = now
     let updated = SidebarThreadPolicy.Candidate(thread: thread, latestMessageID: thread.lastMessageID,
-        hasUnread: false, showsUnread: false, mentionCount: 0)
+        hasUnread: false, mentionCount: 0)
     #expect(SidebarThreadPolicy.relevanceDeadline(for: updated) == now + 7 * day)
 }

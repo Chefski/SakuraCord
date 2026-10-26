@@ -96,7 +96,7 @@ extension ForumBoardView {
                 model: model,
                 thread: post.thread,
                 surface: .forumCard,
-                isUnread: model.isForumPostUnread(post),
+                isUnread: model.canMarkConversationRead(channelID: post.id),
                 offersTags: true
             ),
             tags: channel.availableTags,

@@ -603,12 +603,14 @@ extension AppModel {
         selectedChannelThreadCreationPermissions.canCreateAny
     }
 
-    func beginThreadCreation() {
+    func beginThreadCreation(fromThreadBrowser: Bool = false) {
         let permissions = selectedChannelThreadCreationPermissions
         guard let channelID = selectedChannelID, permissions.canCreateAny else { return }
         // Like Discord, the channel's unsent text becomes the thread's first message.
         let channelDraft = draft
-        openSideConversation(.threadCreation(ThreadCreationDraft(parentID: channelID, permissions: permissions)))
+        openSideConversation(.threadCreation(ThreadCreationDraft(
+            parentID: channelID, permissions: permissions, isFromThreadBrowser: fromThreadBrowser
+        )))
         dismissPinnedMessages()
         if !isConversationPresented(channelID) { suspendSelectedConversationPresentation() }
         if !channelDraft.isEmpty {
@@ -700,7 +702,8 @@ extension AppModel {
             name: name,
             isPrivate: creation.isPrivate,
             autoArchiveDuration: selectedChannel?.defaultAutoArchiveDuration ?? 4_320,
-            starterMessageID: creation.starterMessage?.id
+            starterMessageID: creation.starterMessage?.id,
+            isFromThreadBrowser: creation.isFromThreadBrowser
         )
         translation.resetDraft(.thread)
         creation.isSubmitting = true

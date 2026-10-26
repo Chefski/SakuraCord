@@ -1043,7 +1043,7 @@ import UserNotifications
 }
 
 @MainActor
-@Test func `workspace replacement removes stale channels and settings while preserving pending read intent`() async throws {
+@Test func `workspace replacement removes stale channels and settings and replaces read state`() async throws {
     let user = User(id: UserID(rawValue: 1), username: "reader", displayName: "Reader")
     let guildID = GuildID(rawValue: 100)
     let channelID = ChannelID(rawValue: 200)
@@ -1063,8 +1063,8 @@ import UserNotifications
     await model.start()
     model.selectedChannelID = channelID
     await model.channelLoadTask?.value
-    model.readState.completeAcknowledgement(channelID: channelID, messageID: MessageID(rawValue: 250), token: "retained-token")
-    model.readState.markAcknowledgementPending(channelID: channelID, messageID: MessageID(rawValue: 900))
+    model.readState.completeAcknowledgement(token: "cleared-token", sentWith: nil)
+    model.readState.acknowledge(channelID: channelID, messageID: MessageID(rawValue: 900))
     var replacement = initial
     replacement.channels = [
         Channel(id: channelID, guildID: guildID, name: "After", lastMessageID: MessageID(rawValue: 1000)),
@@ -1082,9 +1082,9 @@ import UserNotifications
     #expect(model.readState.entries[removedID] == nil)
     #expect(model.readState.entries[addedID]?.lastAcknowledgedMessageID == MessageID(rawValue: 1000))
     #expect(model.readState.notificationSettings(guildID: guildID) == nil)
-    #expect(model.readState.entries[channelID]?.lastAcknowledgedMessageID == MessageID(rawValue: 900))
-    #expect(model.readState.entries[channelID]?.pendingAcknowledgementID == MessageID(rawValue: 900))
-    #expect(model.readState.acknowledgementToken == "retained-token")
+    // As Discord's CONNECTION_OPEN, READY overrides an unconfirmed read.
+    #expect(model.readState.entries[channelID]?.lastAcknowledgedMessageID == MessageID(rawValue: 850))
+    #expect(model.readState.acknowledgementToken == nil)
 }
 
 @MainActor
@@ -1475,16 +1475,13 @@ func `reaction cooldown drops cancelled intent and cleared mutations`(clearMutat
     let unreadPost = try #require(
         model.forumPosts.first(where: { $0.id == provider.unreadPostID })
     )
-    #expect(model.isForumPostNew(newPost))
-    #expect(!model.isForumPostUnread(newPost))
+    #expect(model.readState.isNewForumPost(newPost))
     #expect(model.shouldEmphasizeForumPost(newPost))
-    #expect(model.isForumPostUnread(unreadPost))
     #expect(model.shouldEmphasizeForumPost(unreadPost))
     #expect(!model.isChannelUnread(provider.forumID))
 
     model.open(newPost)
-    #expect(!model.isForumPostNew(newPost))
-    #expect(!model.shouldEmphasizeForumPost(newPost))
+    #expect(!model.readState.isNewForumPost(newPost))
 }
 
 @MainActor
@@ -4263,7 +4260,7 @@ func `GIF completion preserves newer text and channel drafts`(changesChannel: Bo
 
     #expect(model.messages == loadedMessages)
     #expect(!model.isLoadingMessages)
-    model.consumeReadStateSnapshot([], version: nil)
+    model.consumeReadStateSnapshot([])
     #expect(model.readState.presentations[channelID]?.initialHistoryLoaded == true)
 
     await model.channelLoadTask?.value
@@ -5091,7 +5088,6 @@ func `a late send confirmation outside the thread window stays out of it and its
     )))
 
     #expect(model.readState.entries[threadID]?.lastAcknowledgedMessageID == acknowledged)
-    #expect(model.readState.entries[threadID]?.pendingAcknowledgementID == nil)
 }
 
 @MainActor
@@ -7705,7 +7701,8 @@ private actor ForumVisitAcknowledgementTestProvider: ChatProvider {
     private let guild = Guild(
         id: GuildID(rawValue: 96_000),
         name: "Forum Visits",
-        currentUserPermissions: .max
+        currentUserPermissions: .max,
+        joinedAt: Date(timeIntervalSince1970: 1_420_070_000)
     )
     private let user = User(
         id: UserID(rawValue: 96_001),
@@ -7732,7 +7729,8 @@ private actor ForumVisitAcknowledgementTestProvider: ChatProvider {
                     guildID: guild.id,
                     parentID: forumID,
                     name: "Brand new",
-                    lastMessageID: MessageID(rawValue: newPostID.rawValue)
+                    // A reply a millisecond later, past Discord's fallback boundary.
+                    lastMessageID: MessageID(rawValue: newPostID.rawValue + (1 << 22))
                 )
             ),
             ForumPost(

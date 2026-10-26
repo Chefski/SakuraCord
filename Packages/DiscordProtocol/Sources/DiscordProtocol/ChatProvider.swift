@@ -8,19 +8,6 @@ public enum MessageHistoryAnchor: Equatable, Sendable {
     case around(MessageID)
 }
 
-public struct PartialBulkReadAcknowledgementError: Error, Sendable {
-    public let acceptedReadStates: [BulkReadStateAcknowledgement]
-    public let failureDescription: String
-
-    public init(
-        acceptedReadStates: [BulkReadStateAcknowledgement],
-        failureDescription: String
-    ) {
-        self.acceptedReadStates = acceptedReadStates
-        self.failureDescription = failureDescription
-    }
-}
-
 /// A pending emoji batch contributed to another type-2 settings save. The
 /// owner acknowledges its captured uses only after the merged response arrives.
 public struct EmojiFrecencySaveContribution: Sendable {
@@ -1129,6 +1116,7 @@ public enum ChatProviderError: LocalizedError, Equatable, Sendable {
     case rateLimited(retryAfter: TimeInterval, requestID: String?)
     case transport(status: Int, requestID: String?)
     case capabilityDisabled(ChatCapability)
+    case threadMemberLimitReached
 
     public var errorDescription: String? {
         switch self {
@@ -1145,6 +1133,7 @@ public enum ChatProviderError: LocalizedError, Equatable, Sendable {
                 ?? "Discord returned HTTP \(status)."
         case let .capabilityDisabled(capability):
             "\(capability.displayName) is not enabled for this account session."
+        case .threadMemberLimitReached: "This thread has reached its member limit."
         }
     }
 }
