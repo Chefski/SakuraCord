@@ -1282,36 +1282,26 @@ extension DiscordRESTProvider {
     public func acknowledgeBulk(
         _ readStates: [BulkReadStateAcknowledgement]
     ) async throws {
-        var acceptedReadStates: [BulkReadStateAcknowledgement] = []
-        for batch in readStates.chunked(maximumCount: 100) {
-            do {
-                if !acceptedReadStates.isEmpty {
-                    // Discord's BULK_ACK queue spaces successful batches by one second.
-                    try await Task.sleep(for: .seconds(1))
-                }
-                try await requestEmpty(
-                    "/read-states/ack-bulk",
-                    method: "POST",
-                    body: [
-                        "read_states": .array(
-                            batch.map { readState in
-                                .object([
-                                    "channel_id": .string(readState.channelID.description),
-                                    "message_id": .string(readState.messageID.description),
-                                    "read_state_type": .number(Double(readState.readStateType)),
-                                ])
-                            }
-                        )
-                    ]
-                )
-                acceptedReadStates.append(contentsOf: batch)
-            } catch {
-                guard !acceptedReadStates.isEmpty else { throw error }
-                throw PartialBulkReadAcknowledgementError(
-                    acceptedReadStates: acceptedReadStates,
-                    failureDescription: error.localizedDescription
-                )
+        for (index, batch) in readStates.chunked(maximumCount: 100).enumerated() {
+            if index > 0 {
+                // Discord's BULK_ACK queue spaces successful batches by one second.
+                try await Task.sleep(for: .seconds(1))
             }
+            try await requestEmpty(
+                "/read-states/ack-bulk",
+                method: "POST",
+                body: [
+                    "read_states": .array(
+                        batch.map { readState in
+                            .object([
+                                "channel_id": .string(readState.channelID.description),
+                                "message_id": .string(readState.messageID.description),
+                                "read_state_type": .number(Double(readState.readStateType)),
+                            ])
+                        }
+                    )
+                ]
+            )
         }
     }
 

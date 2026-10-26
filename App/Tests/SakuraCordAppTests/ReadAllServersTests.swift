@@ -60,7 +60,7 @@ struct ReadAllServersTests {
         #expect(await provider.bulkAcknowledgementRequests.isEmpty)
         model.featuresSettings.readAllButton = true
         #expect(model.hasUnreadServers)
-        if fails { await provider.failBulkAcknowledgement(afterAcceptedCount: 1) }
+        if fails { await provider.failBulkAcknowledgement() }
         model.markAllServersRead()
         let task = model.allServersReadTask
         model.markAllServersRead()

@@ -8,19 +8,6 @@ public enum MessageHistoryAnchor: Equatable, Sendable {
     case around(MessageID)
 }
 
-public struct PartialBulkReadAcknowledgementError: Error, Sendable {
-    public let acceptedReadStates: [BulkReadStateAcknowledgement]
-    public let failureDescription: String
-
-    public init(
-        acceptedReadStates: [BulkReadStateAcknowledgement],
-        failureDescription: String
-    ) {
-        self.acceptedReadStates = acceptedReadStates
-        self.failureDescription = failureDescription
-    }
-}
-
 /// A pending emoji batch contributed to another type-2 settings save. The
 /// owner acknowledges its captured uses only after the merged response arrives.
 public struct EmojiFrecencySaveContribution: Sendable {
