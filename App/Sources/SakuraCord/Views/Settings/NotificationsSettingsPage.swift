@@ -50,8 +50,6 @@ struct NotificationsSettingsPage: View {
         .onChange(of: [
             preferences.isEnabled, preferences.playsSound, preferences.notifiesIncomingCalls,
         ]) { model.reconcilePrivateCallSounds() }
-        // A call already ringing switches to the new ringtone.
-        .onChange(of: preferences.soundChoice(for: .call)) { model.reconcilePrivateCallSounds() }
         .settingsResetConfirmation(
             "Reset Notification Settings?",
             isPresented: $showsResetConfirmation,

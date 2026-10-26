@@ -143,6 +143,11 @@ actor BannerSoundStore {
             return nil
         }
         let resolution = NotificationSoundLibrary.resolve(choice, kind: kind)
+        // An unresolved bookmark keeps Default for now and is retried next time.
+        guard choice.soundID != NotificationSoundLibrary.customID || resolution.isSecurityScoped else {
+            replaceExport(kind, with: nil)
+            return nil
+        }
         let isScoped = resolution.isSecurityScoped && resolution.url.startAccessingSecurityScopedResource()
         defer { if isScoped { resolution.url.stopAccessingSecurityScopedResource() } }
         let stamp = NotificationSoundLibrary.FileStamp(resolution.url)

@@ -769,7 +769,10 @@ final class MacNativeNotificationService: NSObject, NativeNotificationService {
         guard deliversNotifications, !isSuppressed, preferences.isEnabled,
               let content = content.mutableCopy() as? UNMutableNotificationContent
         else { return }
-        content.sound = preferences.playsSound ? await Self.bannerSound(kind: kind, preferences: preferences) : nil
+        let sound = preferences.playsSound ? await Self.bannerSound(kind: kind, preferences: preferences) : nil
+        // Settings can change while a custom sound exports.
+        guard !isSuppressed, preferences.isEnabled else { return }
+        content.sound = preferences.playsSound ? sound : nil
         do {
             try await submitRequest(
                 UNNotificationRequest(identifier: identifier, content: content, trigger: nil)

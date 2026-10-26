@@ -71,6 +71,9 @@ final class MacAppSoundPlayer: AppSoundPlaying {
         var sourceStamp: NotificationSoundLibrary.FileStamp?
         /// A temporary copy holding the first `maximumSeconds` of a longer file.
         var trimmedURL: URL?
+        /// The bookmark could not be resolved, for example while its volume
+        /// is unmounted, so the slot plays Default until it resolves again.
+        var awaitsBookmark: Bool
     }
 
     private var players: [AppSoundEffect: AVAudioPlayer] = [:]
@@ -161,7 +164,8 @@ final class MacAppSoundPlayer: AppSoundPlaying {
     private func notificationPlayer(for effect: AppSoundEffect, kind: NotificationSoundKind) -> AVAudioPlayer? {
         var choice = notificationPreferences.soundChoice(for: kind)
         if let slot = notificationSlots[effect], slot.choice == choice,
-           slot.sourceStamp == NotificationSoundLibrary.FileStamp(slot.sourceURL)
+           slot.sourceStamp == NotificationSoundLibrary.FileStamp(slot.sourceURL),
+           !(slot.awaitsBookmark && NotificationSoundLibrary.resolve(choice, kind: kind).isSecurityScoped)
         {
             return slot.player
         }
@@ -189,21 +193,23 @@ final class MacAppSoundPlayer: AppSoundPlaying {
                 for: kind
             )
         }
-        guard var player else {
-            scopedURL?.stopAccessingSecurityScopedResource()
-            return nil
-        }
         var trimmedURL: URL?
-        if player.duration > NotificationSoundLibrary.maximumSeconds {
+        if let long = player, long.duration > NotificationSoundLibrary.maximumSeconds {
             let url = FileManager.default.temporaryDirectory.appending(path: "\(UUID().uuidString).caf")
-            if (try? NotificationSoundLibrary.convertToLinearPCM(from: player.url ?? resolution.url, to: url)) != nil,
+            if (try? NotificationSoundLibrary.convertToLinearPCM(from: resolution.url, to: url)) != nil,
                let trimmed = NotificationSoundLibrary.makePlayer(at: url)
             {
                 player = trimmed
                 trimmedURL = url
             } else {
+                // Never play past the limit.
                 try? FileManager.default.removeItem(at: url)
+                player = NotificationSoundLibrary.makePlayer(at: NotificationSoundLibrary.defaultURL(kind: kind))
             }
+        }
+        guard let player else {
+            scopedURL?.stopAccessingSecurityScopedResource()
+            return nil
         }
         notificationSlots[effect] = NotificationSlot(
             choice: choice,
@@ -211,14 +217,16 @@ final class MacAppSoundPlayer: AppSoundPlaying {
             scopedURL: scopedURL,
             sourceURL: resolution.url,
             sourceStamp: NotificationSoundLibrary.FileStamp(resolution.url),
-            trimmedURL: trimmedURL
+            trimmedURL: trimmedURL,
+            awaitsBookmark: choice.soundID == NotificationSoundLibrary.customID && !resolution.isSecurityScoped
         )
         return player
     }
 
-    /// Exports the stored choices before the first banner needs them, and
-    /// removes the copy when a choice returns to Default, including after
-    /// Reset and Import, which only change the preferences.
+    /// Follows every change to the stored choices, including Reset and
+    /// Import, which only change the preferences: exports them before the
+    /// first banner needs them, removes the copy when a choice returns to
+    /// Default, and switches a ringing call to the new ringtone.
     private func syncBannerSounds() {
         withObservationTracking {
             for kind in NotificationSoundKind.allCases { _ = notificationPreferences.soundChoice(for: kind) }
@@ -234,6 +242,7 @@ final class MacAppSoundPlayer: AppSoundPlaying {
                 _ = await BannerSoundStore.shared.soundName(for: choice, kind: kind)
             }
         }
+        if existingPlayer(for: .callRinging)?.numberOfLoops == -1 { setLooping(.callRinging, active: true) }
     }
 
     private func releaseNotificationSlot(_ effect: AppSoundEffect) {
