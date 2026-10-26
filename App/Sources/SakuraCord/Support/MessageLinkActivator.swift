@@ -1,4 +1,4 @@
-import AppKit
+import Foundation
 import MessageRendering
 import SakuraCordModels
 
@@ -109,14 +109,6 @@ enum MessageLinkActivator {
         } else {
             confirm(url)
         }
-    }
-
-    static func openInApplication(_ url: URL, applicationURL: URL) async throws {
-        _ = try await NSWorkspace.shared.open(
-            [url],
-            withApplicationAt: applicationURL,
-            configuration: NSWorkspace.OpenConfiguration()
-        )
     }
 }
 

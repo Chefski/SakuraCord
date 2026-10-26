@@ -10,12 +10,12 @@ extension NativeTimelineCanvasView {
         let layout = layouts[index]
         let isConcealed = layout.componentLayouts.contains { component in
             component.containers.contains { container in
-                container.isSpoiler && container.frame.contains(localPoint)
-                    && !spoilerRevealStore.isMediaRevealed(
-                        NativeTimelineComponentRevealKey(
-                            messageID: row.message.id,
-                            componentID: container.componentID
-                        )
+                container.frame.contains(localPoint)
+                    && NativeTimelineSpoilerConcealmentPolicy.isConcealed(
+                        messageID: row.message.id,
+                        contentID: container.componentID,
+                        isSpoiler: container.isSpoiler,
+                        store: spoilerRevealStore
                     )
             }
         }
@@ -71,9 +71,10 @@ extension NativeTimelineCanvasView {
                 opener: { confirmedURL in
                     Task { @MainActor [weak self] in
                         do {
-                            try await MessageLinkActivator.openInApplication(
-                                confirmedURL,
-                                applicationURL: application
+                            _ = try await NSWorkspace.shared.open(
+                                [confirmedURL],
+                                withApplicationAt: application,
+                                configuration: NSWorkspace.OpenConfiguration()
                             )
                         } catch {
                             self?.presentActionError(error)

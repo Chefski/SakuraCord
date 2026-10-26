@@ -1164,7 +1164,7 @@ extension NativeTimelineCanvasView {
                   highlightFrame: layouts[index].highlightFrame
               )
         else { return nil }
-        let menu = messageContextMenu(
+        guard let menu = messageContextMenu(
             for: row,
             at: index,
             targetsAuthor: NativeTimelineAuthorProfileGeometry.hitFrame(
@@ -1177,10 +1177,8 @@ extension NativeTimelineCanvasView {
             failedMediaActions: interactionMode == .failed
                 ? imageItem.map(imageContextMenuActions(for:))
                 : nil
-        )
-        if let menu {
-            prependTextLinkActions(to: menu, row: row, index: index, localPoint: localPoint)
-        }
+        ) else { return nil }
+        prependTextLinkActions(to: menu, row: row, index: index, localPoint: localPoint)
         return menu
     }
 
